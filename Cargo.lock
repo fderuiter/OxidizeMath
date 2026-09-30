@@ -1088,7 +1088,6 @@ dependencies = [
  "rand",
  "rand_distr",
  "scientific_metadata",
- "serde",
  "thiserror 2.0.18",
  "verified_engine",
 ]
@@ -1105,7 +1104,6 @@ dependencies = [
  "pure_math",
  "rand",
  "scientific_metadata",
- "serde",
  "statrs",
  "thiserror 2.0.18",
  "verified_engine",
@@ -1124,7 +1122,6 @@ dependencies = [
  "pure_math",
  "rand",
  "scientific_metadata",
- "serde",
  "thiserror 2.0.18",
  "verified_engine",
 ]
@@ -1140,8 +1137,6 @@ dependencies = [
  "pure_math",
  "rand",
  "scientific_metadata",
- "serde",
- "thiserror 2.0.18",
  "verified_engine",
 ]
 
@@ -1157,8 +1152,6 @@ dependencies = [
  "pure_math",
  "rand",
  "scientific_metadata",
- "serde",
- "thiserror 2.0.18",
  "verified_engine",
 ]
 
@@ -2645,7 +2638,6 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "diagnostics",
- "serde",
  "thiserror 2.0.18",
  "verified_engine",
 ]

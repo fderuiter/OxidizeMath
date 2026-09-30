@@ -7,7 +7,6 @@ edition = "2024"
 nalgebra = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
 oxidize_core = { path = "../oxidize_core" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
 
@@ -16,6 +15,9 @@ scientific_metadata = { path = "../scientific_metadata" }
 diagnostics = { path = "../diagnostics" }
 pure_math = { path = "../pure_math" }
 domain_applied = { path = "../domain_applied" }
+
+[package.metadata.cargo-machete]
+ignored = ["scientific_metadata"]
 
 
 

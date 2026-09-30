@@ -28,6 +28,7 @@ egui = { workspace = true }
 
 [package.metadata.cargo-machete]
 ignored = [
+    "diagnostics",
     "domain_ai",
     "domain_applied",
     "domain_biology",
@@ -36,6 +37,7 @@ ignored = [
     "domain_physics",
     "eframe",
     "egui",
+    "federated_registry",
     "math_commons",
     "math_explorer",
     "nalgebra",
