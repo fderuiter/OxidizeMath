@@ -128,6 +128,8 @@ pub mod rng;
 pub mod traceability;
 #[allow(missing_docs)]
 pub mod vfs;
+#[allow(missing_docs)]
+pub mod workspace;
 
 #[allow(missing_docs)]
 pub mod prelude {

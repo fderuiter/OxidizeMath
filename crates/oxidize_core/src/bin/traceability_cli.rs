@@ -111,35 +111,6 @@ fn print_dashboard(report: &oxidize_core::traceability::TraceabilityReport) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn get_workspace_members() -> (bool, Vec<String>) {
-    let mut cargo_toml_path = "Cargo.toml";
-    let mut content = std::fs::read_to_string(cargo_toml_path).unwrap_or_default();
-
-    if !content.contains("[workspace]") {
-        cargo_toml_path = "../../Cargo.toml";
-        content =
-            std::fs::read_to_string(cargo_toml_path).expect("Failed to read workspace Cargo.toml");
-    }
-
-    let table = content
-        .parse::<toml::Table>()
-        .expect("Failed to parse Cargo.toml");
-
-    let members = table
-        .get("workspace")
-        .and_then(|w| w.as_table())
-        .and_then(|w| w.get("members"))
-        .and_then(|m| m.as_array())
-        .expect("Could not find workspace.members array in Cargo.toml")
-        .iter()
-        .filter_map(|v| v.as_str().map(String::from))
-        .collect();
-
-    let is_root = cargo_toml_path == "Cargo.toml";
-    (is_root, members)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
 fn scan_src_dir(src_path: std::path::PathBuf, is_root: bool, code_dirs: &mut Vec<String>) {
     let mut stack = vec![src_path];
 
@@ -172,7 +143,7 @@ fn scan_src_dir(src_path: std::path::PathBuf, is_root: bool, code_dirs: &mut Vec
 
 #[cfg(not(target_arch = "wasm32"))]
 fn discover_code_dirs() -> Vec<String> {
-    let (is_root, members) = get_workspace_members();
+    let (is_root, members) = oxidize_core::workspace::get_workspace_members();
     let mut code_dirs = Vec::new();
     let root_prefix = if is_root { "" } else { "../../" };
 
