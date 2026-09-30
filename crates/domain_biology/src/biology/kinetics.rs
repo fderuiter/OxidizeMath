@@ -160,7 +160,7 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_original_behavior() {
-                let reaction = MichaelisMenten::new(100.0, 50.0).unwrap();
+        let reaction = MichaelisMenten::new(100.0, 50.0).unwrap();
         // At [S] = Km, v = Vmax / 2
         let v = reaction.reaction_velocity(50.0).unwrap();
         assert!((v - 50.0).abs() < math_commons::registry::TOLERANCE_FAST);

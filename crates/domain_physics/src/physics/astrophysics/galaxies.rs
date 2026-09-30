@@ -161,10 +161,3 @@ impl GalaxyModel for TypeCode95To99 {
         Redshift(0.0031 * m.0 - 0.0223)
     }
 }
-
-
-
-
-
-
-

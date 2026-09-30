@@ -180,4 +180,3 @@ impl<S: AllocationStrategy> StratifiedRandomizer<S> {
         Ok(final_assignments)
     }
 }
-

@@ -1,8 +1,8 @@
 //! Continuous Chaos (The Lorenz System)
 
-use scientific_metadata::theory::TheoryDescribable;
 use nalgebra::Vector3;
 use pure_math::pure_math::analysis::ode::{OdeSystem, Solver, TimeStepper};
+use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 /// Represents the state of the Lorenz system $(x, y, z)$.

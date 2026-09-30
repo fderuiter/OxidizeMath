@@ -238,7 +238,9 @@ fn compile_papers() {
         _ => {
             eprintln!("Error: pdflatex is not installed or not in PATH.");
             eprintln!("Please install TeXLive to compile academic papers:");
-            eprintln!("sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science");
+            eprintln!(
+                "sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science"
+            );
             exit(1);
         }
     }

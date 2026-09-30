@@ -10,7 +10,7 @@ use rand::Rng;
 #[verified_engine::verified]
 pub fn random_walk_1d(steps: usize) -> f64 {
     let mut rng = oxidize_core::rng::OxidizeRng::default();
-        // allow(entropy_guard)
+    // allow(entropy_guard)
     random_walk_1d_with_rng(steps, &mut rng)
 }
 

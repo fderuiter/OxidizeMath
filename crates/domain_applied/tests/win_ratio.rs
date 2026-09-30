@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
-use domain_applied::applied::win_ratio::pair_comparison::{WinRatioAnalysis, HigherIsBetter, MatchedPairing, UnmatchedPairing};
+use domain_applied::applied::win_ratio::pair_comparison::{
+    HigherIsBetter, MatchedPairing, UnmatchedPairing, WinRatioAnalysis,
+};
 use domain_applied::applied::win_ratio::{
     bmi, pair_comparison, probability_win_ratio, sample_win_ratio, simulation,
 };
