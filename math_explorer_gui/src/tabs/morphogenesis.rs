@@ -102,10 +102,19 @@ impl ExplorerTab for MorphogenesisTab {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let image = Self::plot_concentration(self.system.u(), self.width, self.height);
-            let texture = ctx.load_texture("morphogenesis_tex", image, egui::TextureOptions::NEAREST);
-            self.texture = Some(texture.clone());
-            
-            ui.add(egui::Image::new(&texture).fit_to_exact_size(ui.available_size()));
+            if let Some(ref mut texture) = self.texture {
+                texture.set(image, egui::TextureOptions::NEAREST);
+            } else {
+                self.texture = Some(ctx.load_texture(
+                    "morphogenesis_tex",
+                    image,
+                    egui::TextureOptions::NEAREST,
+                ));
+            }
+
+            if let Some(texture) = &self.texture {
+                ui.add(egui::Image::new(texture).fit_to_exact_size(ui.available_size()));
+            }
         });
     }
 }
