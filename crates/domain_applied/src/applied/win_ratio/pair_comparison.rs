@@ -211,7 +211,6 @@ impl<T> WinRatioAnalysis<T> {
     }
 }
 
-
 impl<T: PartialOrd + 'static> Default for WinRatioAnalysis<T> {
     #[verified_engine::verified]
     fn default() -> Self {
@@ -224,9 +223,6 @@ impl<T: PartialOrd + 'static> Default for WinRatioAnalysis<T> {
         Self::new()
     }
 }
-
-
-
 
 /// Calculates the raw Win Ratio.
 ///

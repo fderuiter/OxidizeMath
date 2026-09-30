@@ -121,7 +121,6 @@ impl<State: Clone> RungeKutta4<State> {
             initial_state: example_state.clone(),
         }
     }
-
 }
 
 impl<State: VectorOperations> Solver<State> for RungeKutta4<State> {

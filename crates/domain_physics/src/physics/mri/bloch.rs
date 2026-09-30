@@ -88,8 +88,7 @@ impl BlochSimulator {
         self.t1 = t1;
         self.t2 = t2;
     }
-
-    }
+}
 
 use oxidize_core::{ModelConfig, ModelState, SimulationModel};
 use serde::{Deserialize, Serialize};
