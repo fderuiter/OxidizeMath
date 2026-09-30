@@ -1,6 +1,5 @@
 //! Analytical tools and derived quantities for Fluid Dynamics.
 
-
 use super::types::{FlowState, FluidProperties};
 
 /// Calculates the Reynolds Number ($Re$).
