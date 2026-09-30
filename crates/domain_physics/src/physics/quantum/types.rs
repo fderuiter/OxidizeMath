@@ -1,6 +1,6 @@
-use scientific_metadata::theory::TheoryDescribable;
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
+use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 /// Represents the state of a quantum system as a vector in a Hilbert space.

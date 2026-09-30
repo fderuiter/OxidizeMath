@@ -208,4 +208,3 @@ pub fn try_estimate_hazard_ratio(
 
     Ok(rate1 / rate2)
 }
-

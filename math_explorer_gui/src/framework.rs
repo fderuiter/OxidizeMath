@@ -180,7 +180,7 @@ impl SimulationFramework {
                         // Requirement 4 & Acceptance Criteria 3: On-demand registration of bibliographic details when active/loaded
                         scientific_metadata::citation_registry::CitationRegistry::register(
                             tool.name().to_string(),
-                            theory.theory_citation()
+                            theory.theory_citation(),
                         );
                         // Requirement 5: Screen readers can successfully navigate the theory text and citations
                         use crate::accessibility::AccessibleHoverText;
@@ -228,7 +228,7 @@ impl SimulationFramework {
                             // Requirement 4 & Acceptance Criteria 3: On-demand registration of bibliographic details when active/loaded
                             scientific_metadata::citation_registry::CitationRegistry::register(
                                 new_tool.name().to_string(),
-                                new_tool.theory().theory_citation()
+                                new_tool.theory().theory_citation(),
                             );
                             self.active_tool = Some(new_tool);
                         }
