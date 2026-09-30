@@ -5,47 +5,6 @@ edition = "2021"
 publish = false
 
 [dependencies]
-oxidize_core = { path = "../oxidize_core" }
-verified_engine = { path = "../verified_engine" }
-verified_engine_macros = { path = "../verified_engine_macros" }
-math_commons = { path = "../math_commons" }
-pure_math = { path = "../pure_math" }
-domain_ai = { path = "../domain_ai" }
-domain_physics = { path = "../domain_physics" }
-domain_biology = { path = "../domain_biology" }
-domain_applied = { path = "../domain_applied" }
-domain_climate = { path = "../domain_climate" }
-domain_epidemiology = { path = "../domain_epidemiology" }
-math_explorer = { path = "../../math_explorer", features = ["pure_math", "applied", "ai", "biology", "climate", "epidemiology", "physics"] }
-
-nalgebra = { workspace = true }
-rand = { workspace = true }
-thiserror = { workspace = true }
-eframe = { workspace = true }
-egui = { workspace = true }
-
-[package.metadata.cargo-machete]
-ignored = [
-    "diagnostics",
-    "domain_ai",
-    "domain_applied",
-    "domain_biology",
-    "domain_climate",
-    "domain_epidemiology",
-    "domain_physics",
-    "eframe",
-    "egui",
-    "federated_registry",
-    "math_commons",
-    "math_explorer",
-    "nalgebra",
-    "oxidize_core",
-    "pure_math",
-    "rand",
-    "thiserror",
-    "verified_engine",
-    "verified_engine_macros"
-]
 
 [lints]
 workspace = true

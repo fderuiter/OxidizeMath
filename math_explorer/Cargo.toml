@@ -14,7 +14,6 @@ domain_physics = { path = "../crates/domain_physics", optional = true }
 domain_biology = { path = "../crates/domain_biology", optional = true }
 domain_climate = { path = "../crates/domain_climate", optional = true }
 domain_epidemiology = { path = "../crates/domain_epidemiology", optional = true }
-thiserror = { workspace = true }
 nalgebra = { workspace = true }
 oxidize_core = { path = "../crates/oxidize_core" }
 
@@ -168,9 +167,6 @@ required-features = ["pure_math"]
 [[example]]
 name = "lorenz_chaos"
 required-features = ["physics"]
-
-[package.metadata.cargo-machete]
-ignored = ["thiserror"]
 
 [lints]
 workspace = true
