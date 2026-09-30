@@ -129,6 +129,9 @@ pub fn render_all_theory_parameters<T: TheoryDescribable>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     struct DummyMissingTheoryModel {
         param_val: f64,
@@ -173,6 +176,7 @@ mod tests {
 
     #[test]
     fn test_get_theory_constraint_fallback_and_telemetry() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         let _ = global_registry().try_recv_all();
 
         let model = DummyMissingTheoryModel { param_val: 10.0 };
@@ -196,6 +200,7 @@ mod tests {
 
     #[test]
     fn test_render_theory_parameter_fallback_and_telemetry() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         let _ = global_registry().try_recv_all();
 
         let ctx = egui::Context::default();
@@ -222,6 +227,7 @@ mod tests {
 
     #[test]
     fn test_render_all_theory_parameters_resiliency() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         let _ = global_registry().try_recv_all();
 
         struct DummyIncompleteModel;
