@@ -171,6 +171,7 @@ pub trait InteractivePreset: Sized {
     }
 
     /// Parses and validates a JSON preset string, applying configuration if valid.
+    #[allow(clippy::wrong_self_convention)]
     fn from_json_str(&mut self, json_str: &str) -> Result<(), String> {
         let envelope: PresetWrapper<Self::Config> = serde_json::from_str(json_str)
             .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
@@ -197,25 +198,28 @@ pub struct PresetDialogState {
 impl PresetDialogState {
     /// Spawns background thread for file pick dialog and returns imported JSON content over channel.
     pub fn trigger_import(&mut self) {
-        let (tx, rx) = channel();
+        let (_tx, rx) = channel();
         self.import_rx = Some(rx);
 
         #[cfg(not(target_arch = "wasm32"))]
-        std::thread::spawn(move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("JSON Preset", &["json"])
-                .pick_file()
-            {
-                match std::fs::read_to_string(path) {
-                    Ok(content) => {
-                        let _ = tx.send(Ok(content));
-                    }
-                    Err(e) => {
-                        let _ = tx.send(Err(format!("Failed to read file: {}", e)));
+        {
+            let tx = _tx;
+            std::thread::spawn(move || {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("JSON Preset", &["json"])
+                    .pick_file()
+                {
+                    match std::fs::read_to_string(path) {
+                        Ok(content) => {
+                            let _ = tx.send(Ok(content));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Err(format!("Failed to read file: {}", e)));
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
     }
 
     /// Spawns background thread for file save dialog to write exported JSON string.
@@ -232,6 +236,10 @@ impl PresetDialogState {
                     let _ = std::fs::write(path, json_content);
                 }
             });
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (json_content, default_filename);
         }
     }
 
