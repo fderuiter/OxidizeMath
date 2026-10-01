@@ -1,8 +1,6 @@
 \documentclass{article}
 \usepackage{amsmath}
 \usepackage{graphicx}
-\usepackage{biblatex}
-\addbibresource{references.bib}
 
 \usepackage{accessibility}
 \usepackage{amssymb}
@@ -55,6 +53,7 @@ All tests pass, confirming the structural integrity of the implementation and it
 \section{Conclusion}
 This paper has presented a complete architectural implementation of the CERA framework in Rust. We have detailed the model structure, the loss functions, and the data flow, and have verified the implementation with a comprehensive test suite. While the model does not yet learn, this work serves as a robust and validated foundation for future research into climate-invariant machine learning models.
 
-\printbibliography
+\bibliographystyle{plain}
+\bibliography{references}
 
 \end{document}
