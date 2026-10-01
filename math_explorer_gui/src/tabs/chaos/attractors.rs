@@ -13,6 +13,7 @@ pub struct AttractorPlotter {
     paused: bool,
     simulation_speed: usize,
     dt: f64,
+    diverged: bool,
 
     // Visualization
     history: VecDeque<Vector3<f64>>, // Store as Vector3 for easier math
@@ -31,6 +32,7 @@ impl Default for AttractorPlotter {
             paused: false,
             simulation_speed: 5,
             dt: 0.01,
+            diverged: false,
             history: VecDeque::with_capacity(2000),
             max_points: 2000,
             camera: crate::framework::Camera3D::new(0.0, 0.0, 1.0),
@@ -42,9 +44,9 @@ impl AttractorPlotter {
     fn reset(&mut self) {
         let initial_state = LorenzState::new(1.0, 1.0, 1.0);
         // Preserve parameters but reset state
-        let sigma = self.system.sigma;
-        let rho = self.system.rho;
-        let beta = self.system.beta;
+        let sigma = if self.system.sigma.is_finite() { self.system.sigma } else { 10.0 };
+        let rho = if self.system.rho.is_finite() { self.system.rho } else { 28.0 };
+        let beta = if self.system.beta.is_finite() { self.system.beta } else { 8.0 / 3.0 };
 
         self.system = LorenzBuilder::new()
             .sigma(sigma)
@@ -53,6 +55,16 @@ impl AttractorPlotter {
             .build(initial_state);
 
         self.history.clear();
+        self.diverged = false;
+    }
+
+    fn reset_defaults(&mut self) {
+        let initial_state = LorenzState::new(1.0, 1.0, 1.0);
+        self.system = LorenzBuilder::new().build(initial_state);
+        self.dt = 0.01;
+        self.history.clear();
+        self.diverged = false;
+        self.paused = false;
     }
 
     /// Projects 3D point to 2D screen space based on rotation
@@ -75,13 +87,34 @@ impl InteractiveTool for AttractorPlotter {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         // --- Simulation ---
-        if !self.paused {
+        if !self.paused && !self.diverged {
             for _ in 0..self.simulation_speed {
+                let current_vec = self.system.state.vec;
+                if !current_vec.x.is_finite()
+                    || !current_vec.y.is_finite()
+                    || !current_vec.z.is_finite()
+                {
+                    self.diverged = true;
+                    self.paused = true;
+                    break;
+                }
+
                 self.system.step(self.dt);
+
+                let next_vec = self.system.state.vec;
+                if !next_vec.x.is_finite()
+                    || !next_vec.y.is_finite()
+                    || !next_vec.z.is_finite()
+                {
+                    self.diverged = true;
+                    self.paused = true;
+                    break;
+                }
+
                 if self.history.len() >= self.max_points {
                     self.history.pop_front();
                 }
-                self.history.push_back(self.system.state.vec);
+                self.history.push_back(next_vec);
             }
             ctx.request_repaint();
         }
@@ -92,11 +125,26 @@ impl InteractiveTool for AttractorPlotter {
             ui.separator();
 
             ui.collapsing("Parameters", |ui| {
-                ui.add(egui::Slider::new(&mut self.system.sigma, 0.0..=50.0).text("Prandtl Number (σ)"));
+                if ui
+                    .add(egui::Slider::new(&mut self.system.sigma, 0.0..=50.0).text("Prandtl Number (σ)"))
+                    .changed()
+                {
+                    self.diverged = false;
+                }
 
-                ui.add(egui::Slider::new(&mut self.system.rho, 0.0..=100.0).text("Rayleigh Number (ρ)"));
+                if ui
+                    .add(egui::Slider::new(&mut self.system.rho, 0.0..=100.0).text("Rayleigh Number (ρ)"))
+                    .changed()
+                {
+                    self.diverged = false;
+                }
 
-                ui.add(egui::Slider::new(&mut self.system.beta, 0.0..=10.0).text("Geometric Factor (β)"));
+                if ui
+                    .add(egui::Slider::new(&mut self.system.beta, 0.0..=10.0).text("Geometric Factor (β)"))
+                    .changed()
+                {
+                    self.diverged = false;
+                }
             });
 
             ui.collapsing("Simulation", |ui| {
@@ -112,11 +160,26 @@ impl InteractiveTool for AttractorPlotter {
                     }
                 });
 
-                ui.add(egui::Slider::new(&mut self.simulation_speed, 1..=50).text("Speed (steps/frame)"));
+                if ui
+                    .add(egui::Slider::new(&mut self.simulation_speed, 1..=50).text("Speed (steps/frame)"))
+                    .changed()
+                {
+                    self.diverged = false;
+                }
 
-                ui.add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"));
+                if ui
+                    .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
+                    .changed()
+                {
+                    self.diverged = false;
+                }
 
-                ui.add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"));
+                if ui
+                    .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
+                    .changed()
+                {
+                    self.diverged = false;
+                }
             });
 
             ui.collapsing("View", |ui| {
@@ -131,6 +194,29 @@ impl InteractiveTool for AttractorPlotter {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            if self.diverged {
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_rgb(80, 20, 20))
+                    .stroke(egui::Stroke::new(1.0, egui::Color32::RED))
+                    .inner_margin(8.0)
+                    .corner_radius(4.0)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(
+                                    "⚠ Warning: Solver diverged (non-finite state detected). Simulation paused.",
+                                )
+                                .color(egui::Color32::YELLOW)
+                                .strong(),
+                            );
+                            if ui.button("↻ Reset Parameters").clicked() {
+                                self.reset_defaults();
+                            }
+                        });
+                    });
+                ui.add_space(8.0);
+            }
+
             let points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
 
             let response = Plot::new("attractor_plot")
@@ -169,4 +255,31 @@ impl scientific_metadata::theory::TheoryDescribable for AttractorPlotter {
     fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_attractor_divergence_detection() {
+        let mut plotter = AttractorPlotter::default();
+        plotter.system.state.vec = Vector3::new(f64::NAN, 1.0, 1.0);
+
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            plotter.show(ctx);
+        });
+
+        assert!(plotter.diverged, "Plotter should detect divergence on non-finite state");
+        assert!(plotter.paused, "Plotter should pause simulation when diverged");
+        assert!(
+            plotter.history.iter().all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()),
+            "History must not contain non-finite values"
+        );
+
+        plotter.reset_defaults();
+        assert!(!plotter.diverged, "Reset should clear diverged flag");
+        assert!(!plotter.paused, "Reset should unpause simulation");
+    }
 }

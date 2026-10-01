@@ -99,6 +99,7 @@ pub struct OdeSolverTool {
     time_series: Vec<f64>,
     y_series: Vec<f64>,
     v_series: Vec<f64>,
+    diverged: bool,
 }
 
 impl Default for OdeSolverTool {
@@ -115,6 +116,7 @@ impl Default for OdeSolverTool {
             time_series: Vec::new(),
             y_series: Vec::new(),
             v_series: Vec::new(),
+            diverged: false,
         };
         tool.recalculate();
         tool
@@ -122,12 +124,36 @@ impl Default for OdeSolverTool {
 }
 
 impl OdeSolverTool {
+    fn reset(&mut self) {
+        match self.preset {
+            OdePreset::Exponential => {
+                self.param_k = 1.0;
+                self.ic_y0 = 1.0;
+            }
+            OdePreset::HarmonicOscillator => {
+                self.param_k = 1.0;
+                self.ic_y0 = 1.0;
+                self.ic_v0 = 0.0;
+            }
+            OdePreset::LogisticGrowth => {
+                self.param_r = 1.0;
+                self.param_cap_k = 10.0;
+                self.ic_y0 = 1.0;
+            }
+        }
+        self.dt = 0.05;
+        self.total_time = 10.0;
+        self.recalculate();
+    }
+
+    #[allow(clippy::too_many_lines)]
     fn recalculate(&mut self) {
         self.time_series.clear();
         self.y_series.clear();
         self.v_series.clear();
+        self.diverged = false;
 
-        if self.dt <= 0.0 || self.total_time <= 0.0 {
+        if self.dt <= 0.0 || self.total_time <= 0.0 || !self.dt.is_finite() || !self.total_time.is_finite() {
             return;
         }
 
@@ -141,9 +167,14 @@ impl OdeSolverTool {
                 let mut model = OdeModel::new(init_state, dynamics, solver);
 
                 for i in 0..=num_steps {
+                    let state = model.get_state();
+                    if !state.0.iter().all(|v| v.is_finite()) {
+                        self.diverged = true;
+                        break;
+                    }
                     let t = i as f64 * self.dt;
                     self.time_series.push(t);
-                    self.y_series.push(model.get_state().0[0]);
+                    self.y_series.push(state.0[0]);
                     model.step(self.dt);
                 }
             }
@@ -154,10 +185,15 @@ impl OdeSolverTool {
                 let mut model = OdeModel::new(init_state, dynamics, solver);
 
                 for i in 0..=num_steps {
+                    let state = model.get_state();
+                    if !state.0.iter().all(|v| v.is_finite()) {
+                        self.diverged = true;
+                        break;
+                    }
                     let t = i as f64 * self.dt;
                     self.time_series.push(t);
-                    self.y_series.push(model.get_state().0[0]);
-                    self.v_series.push(model.get_state().0[1]);
+                    self.y_series.push(state.0[0]);
+                    self.v_series.push(state.0[1]);
                     model.step(self.dt);
                 }
             }
@@ -171,9 +207,14 @@ impl OdeSolverTool {
                 let mut model = OdeModel::new(init_state, dynamics, solver);
 
                 for i in 0..=num_steps {
+                    let state = model.get_state();
+                    if !state.0.iter().all(|v| v.is_finite()) {
+                        self.diverged = true;
+                        break;
+                    }
                     let t = i as f64 * self.dt;
                     self.time_series.push(t);
-                    self.y_series.push(model.get_state().0[0]);
+                    self.y_series.push(state.0[0]);
                     model.step(self.dt);
                 }
             }
@@ -337,6 +378,29 @@ impl InteractiveTool for OdeSolverTool {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Solution Trajectory");
 
+            if self.diverged {
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_rgb(80, 20, 20))
+                    .stroke(egui::Stroke::new(1.0, egui::Color32::RED))
+                    .inner_margin(8.0)
+                    .corner_radius(4.0)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(
+                                    "⚠ Warning: Solver diverged (non-finite state detected). Integration halted.",
+                                )
+                                .color(egui::Color32::YELLOW)
+                                .strong(),
+                            );
+                            if ui.button("↻ Reset Parameters").clicked() {
+                                self.reset();
+                            }
+                        });
+                    });
+                ui.add_space(8.0);
+            }
+
             let mut plot_points_y = Vec::new();
             let mut plot_points_v = Vec::new();
 
@@ -386,4 +450,35 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
     fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ode_divergence_detection() {
+        let mut tool = OdeSolverTool {
+            preset: OdePreset::Exponential,
+            param_k: 1000.0,
+            dt: 1.0,
+            total_time: 100.0,
+            ..Default::default()
+        };
+        tool.recalculate();
+
+        assert!(tool.diverged, "Tool should detect divergence and set diverged flag");
+        assert!(
+            tool.y_series.iter().all(|y| y.is_finite()),
+            "y_series must not contain non-finite values"
+        );
+        assert!(
+            tool.v_series.iter().all(|v| v.is_finite()),
+            "v_series must not contain non-finite values"
+        );
+
+        tool.reset();
+        assert!(!tool.diverged, "Reset should clear diverged flag");
+        assert!(!tool.y_series.is_empty(), "y_series should be populated after reset");
+    }
 }
