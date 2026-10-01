@@ -16,9 +16,6 @@ diagnostics = { path = "../diagnostics" }
 pure_math = { path = "../pure_math" }
 domain_applied = { path = "../domain_applied" }
 
-[package.metadata.cargo-machete]
-ignored = ["scientific_metadata"]
-
 
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

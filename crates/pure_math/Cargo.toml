@@ -23,21 +23,12 @@ scientific_metadata = { path = "../scientific_metadata" }
 diagnostics = { path = "../diagnostics" }
 dashu = { workspace = true, features = ["num-traits_v02"] }
 
-[package.metadata.cargo-machete]
-ignored = ["scientific_metadata"]
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-
 [dev-dependencies]
 approx = { workspace = true }
-
-[package.metadata.cargo-machete]
-ignored = ["scientific_metadata"]
 
 [lints]
 workspace = true
 
 [package.metadata.cargo-machete]
 ignored = ["scientific_metadata"]
+
