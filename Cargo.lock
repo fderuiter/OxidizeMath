@@ -2611,7 +2611,6 @@ dependencies = [
 name = "markdown_tests"
 version = "0.1.0"
 dependencies = [
- "diagnostics",
  "domain_ai",
  "domain_applied",
  "domain_biology",
@@ -2620,7 +2619,6 @@ dependencies = [
  "domain_physics",
  "eframe",
  "egui",
- "federated_registry",
  "math_commons",
  "math_explorer",
  "nalgebra 0.34.2",

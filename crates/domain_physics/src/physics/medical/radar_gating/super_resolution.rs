@@ -253,11 +253,13 @@ impl MusicEstimator {
         // but use incremental addition for 'r' to avoid int-to-float conversion overhead in loop body.
         for _ in 0..=steps {
             let alpha = constant_factor * r;
+            let (sin_alpha, cos_alpha) = alpha.sin_cos();
+            let step_phasor = Complex::new(cos_alpha, sin_alpha);
 
-            // Construct steering vector a(R) in-place
-            for k in 0..n {
-                let phase = alpha * (k as f64);
-                a_vec[k] = Complex::new(0.0, phase).exp();
+            // Construct steering vector a(R) in-place using complex phasor recurrence
+            a_vec[0] = Complex::new(1.0, 0.0);
+            for k in 1..n {
+                a_vec[k] = a_vec[k - 1] * step_phasor;
             }
 
             // Denominator D = a^H * P_noise * a
