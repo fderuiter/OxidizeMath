@@ -56,7 +56,7 @@
         $$r_j = \begin{cases} 1, & \text{if } x_j \text{ is identical to the pseudo-label } \overline{y}_{i}, \\ 0, & \text{otherwise.} \end{cases}$$
     \item The GRPO loss for the Solver: $\mathcal{L}_{\text{GRPO}}(\phi)$
     \item The Solver's success probability: $p$
-    \item KL divergence between the current Solver policy ($S_{\phi}$) and an optimal policy ($S^{*}$): $\mathbb{D}_{\text{KL}}(S_{\phi}}||S^{*})$
+    \item KL divergence between the current Solver policy ($S_{\phi}$) and an optimal policy ($S^{*}$): $\mathbb{D}_{\text{KL}}(S_{\phi}||S^{*})$
     \item Lower bound on the KL divergence, where $\beta$ is a temperature parameter:
         $$D_{\text{KL}}(S_{\phi}||S^{*}) \geq \frac{p(1-p)}{2\beta^2}$$
     \item Condition that maximizes the reward variance (and thus the lower bound): $\hat{p}=0.5$

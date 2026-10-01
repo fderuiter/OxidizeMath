@@ -14,7 +14,7 @@
 \maketitle
 
 \begin{abstract}
-This paper presents a comprehensive Rust implementation and analysis of the mathematical framework proposed in "Learning Turbulent Flows with Generative Models: Super-resolution, Forecasting, and Sparse Flow Reconstruction" by Oommen et al. We explore the use of adversarially trained neural operators (adv-NO) and other generative models to mitigate spectral bias in turbulence simulations. Our implementation, developed within the \texttt{math_explorer} ecosystem, validates the original paper's findings and provides a robust, efficient, and open-source tool for the scientific machine learning community. We detail the model architectures, training procedures, and loss functions, and replicate the key experiments in spatio-temporal super-resolution, forecasting, and sparse flow reconstruction.
+This paper presents a comprehensive Rust implementation and analysis of the mathematical framework proposed in "Learning Turbulent Flows with Generative Models: Super-resolution, Forecasting, and Sparse Flow Reconstruction" by Oommen et al. We explore the use of adversarially trained neural operators (adv-NO) and other generative models to mitigate spectral bias in turbulence simulations. Our implementation, developed within the \texttt{math\_explorer} ecosystem, validates the original paper's findings and provides a robust, efficient, and open-source tool for the scientific machine learning community. We detail the model architectures, training procedures, and loss functions, and replicate the key experiments in spatio-temporal super-resolution, forecasting, and sparse flow reconstruction.
 \end{abstract}
 
 \section{Introduction}
@@ -22,7 +22,7 @@ The study of turbulent flows is a cornerstone of fluid mechanics, yet it remains
 
 In recent years, machine learning has offered a promising new frontier. Neural Operators (NOs), in particular, have emerged as a powerful tool for learning mappings between infinite-dimensional function spaces, making them well-suited for modeling complex physical systems \cite{lu2021learning}. Architectures like the Fourier Neural Operator (FNO) \cite{li2020fourier} have demonstrated remarkable success in solving parametric PDEs. However, a fundamental limitation of standard NOs trained with conventional L2 loss functions is \textit{spectral bias}---a tendency to accurately learn low-frequency components while failing to capture the fine-scale, high-frequency details that are characteristic of turbulence \cite{rahaman2019spectral}. This results in overly smooth, non-physical predictions.
 
-This work presents a robust, open-source Rust implementation of the framework proposed by Oommen et al. \cite{oommen2025integrating}, which addresses spectral bias by synergistically combining operator learning with generative modeling. Our implementation, built within the \texttt{math_explorer} ecosystem using the \texttt{tch-rs} library for PyTorch bindings, focuses on three key challenges:
+This work presents a robust, open-source Rust implementation of the framework proposed by Oommen et al. \cite{oommen2025integrating}, which addresses spectral bias by synergistically combining operator learning with generative modeling. Our implementation, built within the \texttt{math\_explorer} ecosystem using the \texttt{tch-rs} library for PyTorch bindings, focuses on three key challenges:
 \begin{enumerate}
     \item \textbf{Spatio-temporal Super-resolution:} Reconstructing high-resolution, high-framerate flow fields from coarse data.
     \item \textbf{Forecasting:} Predicting the future evolution of turbulent flows from limited historical data.
@@ -31,7 +31,7 @@ This work presents a robust, open-source Rust implementation of the framework pr
 By creating a publicly available, high-quality Rust implementation, we aim to validate the original findings and provide a platform for further research into generative models for scientific machine learning.
 
 \section{Methods}
-Our implementation closely follows the methodologies presented by Oommen et al. \cite{oommen2025integrating}. We developed all models in Rust using the \texttt{tch-rs} library, which provides bindings to the underlying LibTorch C++ library. This ensures that the core tensor operations and automatic differentiation capabilities are consistent with the original PyTorch-based work. The code is organized into a modular structure within the \texttt{math_explorer::applied::generative_turbulence} crate.
+Our implementation closely follows the methodologies presented by Oommen et al. \cite{oommen2025integrating}. We developed all models in Rust using the \texttt{tch-rs} library, which provides bindings to the underlying LibTorch C++ library. This ensures that the core tensor operations and automatic differentiation capabilities are consistent with the original PyTorch-based work. The code is organized into a modular structure within the \texttt{math\_explorer::applied::generative\_turbulence} crate.
 
 \subsection{Adversarially Trained Neural Operator (adv-NO)}
 The core of the proposed solution to spectral bias is the adversarially trained Neural Operator (adv-NO). This model reframes the standard NO training as a generative adversarial process.
@@ -58,7 +58,7 @@ For the task of reconstructing a full flow field from sparse measurements, we im
 The model is conditioned on the sparse input by concatenating the masked flow field with the binary mask itself, which is then fed into the score network. The score network is a time-conditioned U-Net, where the conditioning is on the noise level $\sigma$.
 
 \section{Implementation Verification}
-To verify the correctness of our Rust implementation, we developed a comprehensive integration test (\texttt{tests::generative_turbulence}) that simulates a full, end-to-end training step of the \texttt{AdvNO} model on the 2D spatio-temporal super-resolution task.
+To verify the correctness of our Rust implementation, we developed a comprehensive integration test (\texttt{tests::generative\_turbulence}) that simulates a full, end-to-end training step of the \texttt{AdvNO} model on the 2D spatio-temporal super-resolution task.
 
 \subsection{Test Setup}
 The test initializes the generator and discriminator U-Nets, along with their respective Adam optimizers. It creates dummy input tensors representing batches of low-resolution, low-framerate (LRLF) data and corresponding high-resolution, high-framerate (HRHF) target data. The tensor shapes were configured to match the 8x spatial upsampling described in the paper (e.g., from 16x16 to 128x128).
@@ -67,9 +67,9 @@ The test initializes the generator and discriminator U-Nets, along with their re
 The test executes the following sequence:
 \begin{enumerate}
     \item A forward pass through the generator to produce a \texttt{fake} high-resolution output. The output tensor shape is asserted to match the target HRHF shape.
-    \item Forward passes through the discriminator for both the real (\texttt{hrhf_data}) and fake (\texttt{fake_hrhf}) tensors.
-    \item Calculation of the discriminator loss using our \texttt{discriminator_loss} function. A backward pass is performed to compute gradients, and the discriminator's optimizer takes a step.
-    \item Calculation of the composite generator loss, including the adversarial component from \texttt{generator_loss}, the \texttt{perceptual_loss} from our VGG19 implementation, and an L1 loss.
+    \item Forward passes through the discriminator for both the real (\texttt{hrhf\_data}) and fake (\texttt{fake\_hrhf}) tensors.
+    \item Calculation of the discriminator loss using our \texttt{discriminator\_loss} function. A backward pass is performed to compute gradients, and the discriminator's optimizer takes a step.
+    \item Calculation of the composite generator loss, including the adversarial component from \texttt{generator\_loss}, the \texttt{perceptual\_loss} from our VGG19 implementation, and an L1 loss.
     \item A final backward pass on the total generator loss, followed by a step from the generator's optimizer.
 \end{enumerate}
 
