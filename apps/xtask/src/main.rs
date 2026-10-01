@@ -258,6 +258,7 @@ fn compile_papers() {
         if path.is_file() && path.extension().is_some_and(|ext| ext == "tex") {
             println!("Compiling {:?}", path);
             let status = Command::new("pdflatex")
+                .env("TEXINPUTS", "papers//:")
                 .arg("-interaction=nonstopmode")
                 .arg("-halt-on-error")
                 .arg("-output-directory")

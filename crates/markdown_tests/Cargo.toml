@@ -9,6 +9,7 @@ oxidize_core = { path = "../oxidize_core" }
 verified_engine = { path = "../verified_engine" }
 verified_engine_macros = { path = "../verified_engine_macros" }
 math_commons = { path = "../math_commons" }
+diagnostics = { path = "../diagnostics" }
 pure_math = { path = "../pure_math" }
 domain_ai = { path = "../domain_ai" }
 domain_physics = { path = "../domain_physics" }
