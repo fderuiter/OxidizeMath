@@ -25,6 +25,10 @@ pub trait VirtualFileSystem {
 #[allow(missing_docs)]
 pub struct DefaultVfs;
 
+#[cfg(target_arch = "wasm32")]
+#[allow(missing_docs)]
+pub type DefaultVfs = WasmVfs;
+
 #[cfg(not(target_arch = "wasm32"))]
 impl VirtualFileSystem for DefaultVfs {
     fn read_to_string(
