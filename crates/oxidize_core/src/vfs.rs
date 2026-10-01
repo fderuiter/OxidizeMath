@@ -78,6 +78,10 @@ include!(concat!(env!("OUT_DIR"), "/vfs_data.rs"));
 pub struct WasmVfs;
 
 #[cfg(target_arch = "wasm32")]
+#[allow(missing_docs)]
+pub type DefaultVfs = WasmVfs;
+
+#[cfg(target_arch = "wasm32")]
 impl VirtualFileSystem for WasmVfs {
     fn read_to_string(
         &self,

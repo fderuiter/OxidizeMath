@@ -36,6 +36,7 @@ pub fn blend_gaussians(
 /// Evaluates the opacity of a 2D Gaussian at a specific point.
 ///
 /// alpha = alpha_raw * exp(-0.5 * (x - mu)^T * Sigma^-1 * (x - mu))
+#[inline]
 #[verified_engine::verified]
 pub fn evaluate_gaussian_opacity(gaussian: &Gaussian2D, point: &nalgebra::Point2<f64>) -> f64 {
     let dx = point.x - gaussian.mean.x;
@@ -50,7 +51,7 @@ pub fn evaluate_gaussian_opacity(gaussian: &Gaussian2D, point: &nalgebra::Point2
 
     let power = a * dx * dx + 2.0 * b * dx * dy + c * dy * dy;
 
-    if power > 0.0 {
+    if power > 0.0 || power < -16.0 {
         return 0.0;
     }
 
@@ -80,6 +81,18 @@ mod tests {
         // At 1 sigma away (x=1), exp(-0.5 * 1 * 1 * 1) = exp(-0.5) = 0.6065
         let opacity_sigma = evaluate_gaussian_opacity(&g, &Point2::new(1.0, 0.0));
         assert!((opacity_sigma - (-0.5f64).exp()).abs() < math_commons::registry::TOLERANCE_FAST);
+
+        // Far away point (power < -16.0), early exit returns 0.0
+        let opacity_far = evaluate_gaussian_opacity(&g, &Point2::new(10.0, 0.0));
+        assert_eq!(opacity_far, 0.0);
+
+        // Positive power (invalid conic), early exit returns 0.0
+        let g_pos = Gaussian2D {
+            conic: Matrix2::from_diagonal_element(0.5),
+            ..g
+        };
+        let opacity_pos = evaluate_gaussian_opacity(&g_pos, &Point2::new(1.0, 0.0));
+        assert_eq!(opacity_pos, 0.0);
     }
 
     #[test]
