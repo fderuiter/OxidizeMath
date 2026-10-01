@@ -2455,6 +2455,9 @@
     },
     {
       "signature": "pub trait VirtualFileSystem"
+    },
+    {
+      "signature": "pub type DefaultVfs = WasmVfs"
     }
   ],
   "crates/pure_math/src/error.rs": [
