@@ -140,10 +140,6 @@ jobs:
         if: matrix.target != 'wasm32-unknown-unknown'
         uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Free up disk space before coverage
-        if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo clean
-
       - name: Run Integrity Verified Suite
         if: matrix.target != 'wasm32-unknown-unknown'
         run: cargo run -p unified_verification --release -- verify-suite

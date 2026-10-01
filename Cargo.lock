@@ -3319,6 +3319,7 @@ dependencies = [
  "approx",
  "async-recursion",
  "futures",
+ "getrandom 0.2.17",
  "js-sys",
  "quote",
  "rand",
