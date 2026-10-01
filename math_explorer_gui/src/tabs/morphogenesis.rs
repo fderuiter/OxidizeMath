@@ -1,3 +1,4 @@
+use crate::presets::{InteractivePreset, MorphogenesisPresetConfig, PresetDialogState};
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use eframe::egui::ColorImage;
@@ -12,6 +13,7 @@ pub struct MorphogenesisTab {
     dt: f64,
     paused: bool,
     texture: Option<egui::TextureHandle>,
+    dialog_state: PresetDialogState,
 }
 
 impl Default for MorphogenesisTab {
@@ -48,6 +50,7 @@ impl Default for MorphogenesisTab {
             dt: 0.05,
             paused: false,
             texture: None,
+            dialog_state: PresetDialogState::default(),
         }
     }
 }
@@ -98,6 +101,10 @@ impl ExplorerTab for MorphogenesisTab {
                 self.system.diffusion_coeffs[0] = 1.0;
                 self.system.diffusion_coeffs[1] = 50.0;
             }
+
+            let mut dialog_state = std::mem::take(&mut self.dialog_state);
+            crate::presets::render_preset_buttons(&mut dialog_state, ui, self);
+            self.dialog_state = dialog_state;
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -186,4 +193,54 @@ impl SimpleRng {
         min + self.next_f64() * (max - min)
     }
 }
-// [cite:graph_parameters_rust]
+impl InteractivePreset for MorphogenesisTab {
+    type Config = MorphogenesisPresetConfig;
+
+    fn domain(&self) -> &'static str {
+        "biology"
+    }
+
+    fn title(&self) -> String {
+        "Turing Morphogenesis Simulation".to_string()
+    }
+
+    fn export_config(&self) -> Self::Config {
+        MorphogenesisPresetConfig {
+            a: self.system.kinetics.a,
+            b: self.system.kinetics.b,
+            d_u: self.system.diffusion_coeffs[0],
+            d_v: self.system.diffusion_coeffs[1],
+            dt: self.dt,
+            width: self.width,
+            height: self.height,
+        }
+    }
+
+    fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
+        self.system.kinetics.a = config.a;
+        self.system.kinetics.b = config.b;
+        self.system.diffusion_coeffs[0] = config.d_u;
+        self.system.diffusion_coeffs[1] = config.d_v;
+        self.dt = config.dt;
+        if config.width != self.width || config.height != self.height {
+            self.width = config.width;
+            self.height = config.height;
+            let kinetics = SchnakenbergKinetics { a: config.a, b: config.b };
+            let diffusion = FiniteDifference2D::new(
+                math_explorer::math_kernel::types::Dimension(self.width),
+                math_explorer::math_kernel::types::Dimension(self.height),
+                math_explorer::math_kernel::types::StepSize(1.0),
+                math_explorer::math_kernel::types::StepSize(1.0),
+            );
+            self.system = TuringSystem::new_with_kinetics(
+                math_explorer::math_kernel::types::Dimension(self.width * self.height),
+                math_explorer::biology::morphogenesis::DiffusionCoeff(config.d_u),
+                math_explorer::biology::morphogenesis::DiffusionCoeff(config.d_v),
+                kinetics,
+                diffusion,
+            );
+        }
+        Self::initialize_system(&mut self.system, self.width, self.height);
+        Ok(())
+    }
+}

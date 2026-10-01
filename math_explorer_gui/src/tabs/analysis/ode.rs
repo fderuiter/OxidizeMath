@@ -1,28 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::framework::InteractiveTool;
+use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialogState};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::{
     OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
 };
-
-#[derive(PartialEq, Clone, Copy, Debug)]
-enum OdePreset {
-    Exponential,
-    HarmonicOscillator,
-    LogisticGrowth,
-}
-
-impl OdePreset {
-    fn name(&self) -> &'static str {
-        match self {
-            OdePreset::Exponential => "y' = k*y (Exponential)",
-            OdePreset::HarmonicOscillator => "y'' = -k*y (Harmonic Oscillator)",
-            OdePreset::LogisticGrowth => "y' = r*y*(1 - y/K) (Logistic Growth)",
-        }
-    }
-}
 
 // ----------------------------------------------------------------------------
 // ODE System Definitions
@@ -88,6 +72,8 @@ pub struct OdeSolverTool {
     y_series: Vec<f64>,
     v_series: Vec<f64>,
     diverged: bool,
+    // Dialog & Presets
+    dialog_state: PresetDialogState,
 }
 
 impl Default for OdeSolverTool {
@@ -105,6 +91,7 @@ impl Default for OdeSolverTool {
             y_series: Vec::new(),
             v_series: Vec::new(),
             diverged: false,
+            dialog_state: PresetDialogState::default(),
         };
         tool.recalculate();
         tool
@@ -284,6 +271,12 @@ impl InteractiveTool for OdeSolverTool {
                 ui.label("Total Time:");
                 if ui.add(egui::DragValue::new(&mut self.total_time).speed(1.0).range(1.0..=100.0)).changed() { changed = true; }
             });
+
+            let mut dialog_state = std::mem::take(&mut self.dialog_state);
+            if crate::presets::render_preset_buttons(&mut dialog_state, ui, self) {
+                changed = true;
+            }
+            self.dialog_state = dialog_state;
         });
 
         if changed {
@@ -356,6 +349,44 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
 
+impl InteractivePreset for OdeSolverTool {
+    type Config = OdePresetConfig;
+
+    fn domain(&self) -> &'static str {
+        "analysis"
+    }
+
+    fn title(&self) -> String {
+        format!("ODE Solver - {}", self.preset.name())
+    }
+
+    fn export_config(&self) -> Self::Config {
+        OdePresetConfig {
+            preset: self.preset,
+            dt: self.dt,
+            total_time: self.total_time,
+            param_k: self.param_k,
+            param_r: self.param_r,
+            param_cap_k: self.param_cap_k,
+            ic_y0: self.ic_y0,
+            ic_v0: self.ic_v0,
+        }
+    }
+
+    fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
+        self.preset = config.preset;
+        self.dt = config.dt;
+        self.total_time = config.total_time;
+        self.param_k = config.param_k;
+        self.param_r = config.param_r;
+        self.param_cap_k = config.param_cap_k;
+        self.ic_y0 = config.ic_y0;
+        self.ic_v0 = config.ic_v0;
+        self.recalculate();
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,5 +452,7 @@ mod tests {
 
         assert!(tool.diverged());
         assert!(tool.y_series.iter().all(|y| y.is_finite()));
+    }
+}
     }
 }

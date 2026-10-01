@@ -2673,6 +2673,7 @@ dependencies = [
 name = "math_explorer_gui"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "console_error_panic_hook",
  "diagnostics",
  "eframe",
@@ -2692,6 +2693,8 @@ dependencies = [
  "rand",
  "rfd",
  "scientific_metadata",
+ "serde",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
