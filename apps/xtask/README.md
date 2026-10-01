@@ -11,6 +11,7 @@ These commands run automated checks in git hooks or CI.
 |---|---|---|
 | `check-file-lengths` | Verifies file-length constraints. | Active |
 | `check-staged-duplicates` | Checks for duplicated files in staging. | Active |
+| `lint-all` | Runs formatting, clippy, file-length, and staged duplicate checks. | Active |
 | `test-features` | Runs tests for various cargo features. | Active |
 | `traceability` | Generates and checks the traceability report. | Active |
 | `verify-records` | Verifies structural records. | Active |

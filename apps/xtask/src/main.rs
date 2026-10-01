@@ -15,6 +15,7 @@ fn main() {
     }
     match args[1].as_str() {
         "setup" => setup(),
+        "lint-all" | "lint" => lint_all(),
         "test-features" => test_features(&args[2..]),
         "verify-suite" => verify_suite(&args[2..]),
         "verify-records" => verify_records(),
@@ -37,6 +38,9 @@ fn print_help() {
         "  check-file-lengths       - Run centralized verification suite for file-length constraints"
     );
     println!("  check-staged-duplicates  - Run staged duplicates check");
+    println!(
+        "  lint-all                 - Run format, clippy, file-length, and staged duplicate checks"
+    );
     println!("  test-features            - Run tests across feature combinations");
     println!("  traceability             - Generate traceability report");
     println!("  verify-records           - Verify verification records");
@@ -57,6 +61,34 @@ fn run_cmd(cmd: &str, args: &[&str]) {
             exit(1);
         }
     }
+}
+
+fn lint_all() {
+    println!("=== Running Workspace Lint Suite ===");
+    println!("\n--- Step 1: Format Check ---");
+    run_cmd("cargo", &["fmt", "--all", "--", "--check"]);
+
+    println!("\n--- Step 2: Clippy Lints ---");
+    run_cmd(
+        "cargo",
+        &[
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--all-features",
+            "--",
+            "-D",
+            "warnings",
+        ],
+    );
+
+    println!("\n--- Step 3: Staged Duplicates Check ---");
+    check_staged_duplicates();
+
+    println!("\n--- Step 4: File Length Checks ---");
+    check_file_lengths();
+
+    println!("\n=== All Lint Checks Passed Successfully ===");
 }
 
 fn setup_pre_commit_hook(hook_path: &str, hook_content: &str) {
@@ -115,26 +147,14 @@ if ! command -v cargo >/dev/null 2>&1; then
     fi
 fi
 
-echo "Running staged duplicates check..."
-cargo run -p xtask -- check-staged-duplicates
-
-echo "Running centralized verification suite..."
-OUTPUT=$(cargo run -p xtask -- check-file-lengths 2>&1)
+echo "Running pre-commit lint check..."
+cargo run -p xtask -- lint-all
 EXIT_CODE=$?
 
-echo "$OUTPUT"
-
 if [ $EXIT_CODE -ne 0 ]; then
-    echo "Verification failed! Commit blocked due to file-length constraints."
+    echo "Linting failed! Commit blocked."
     exit 1
 fi
-
-case "$OUTPUT" in
-    *"File length violation"*)
-        echo "Verification failed! Commit blocked due to file-length constraints."
-        exit 1
-        ;;
-esac
 
 exit 0
 "#;
