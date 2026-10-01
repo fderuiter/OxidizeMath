@@ -16,7 +16,7 @@
 \maketitle
 
 \begin{abstract}
-This paper presents a Rust-based implementation of the CERA (Climate-invariant Encoding through Representation Alignment) framework, a novel machine learning approach designed to improve the generalization of climate models. We detail the architecture of the CERA model, including its autoencoder with 1D convolutional layers and a predictor MLP, and the use of Earth Mover's Distance (EMD) for latent space alignment. The implementation is developed within the \texttt{math_explorer} crate. The end-to-end architecture is verified with tests that confirm the integrity of the data flow and the correctness of component shapes. This work provides a foundation for further research, which would require the integration of a full backpropagation algorithm to enable model training and validation on climate data.
+This paper presents a Rust-based implementation of the CERA (Climate-invariant Encoding through Representation Alignment) framework, a novel machine learning approach designed to improve the generalization of climate models. We detail the architecture of the CERA model, including its autoencoder with 1D convolutional layers and a predictor MLP, and the use of Earth Mover's Distance (EMD) for latent space alignment. The implementation is developed within the \texttt{math\_explorer} crate. The end-to-end architecture is verified with tests that confirm the integrity of the data flow and the correctness of component shapes. This work provides a foundation for further research, which would require the integration of a full backpropagation algorithm to enable model training and validation on climate data.
 \end{abstract}
 
 \section{Introduction}
@@ -32,16 +32,16 @@ The autoencoder uses 1D convolutional layers in its encoder to create a latent r
 The total loss for the CERA framework is a weighted sum of three components: the reconstruction loss of the autoencoder, the prediction loss of the predictor, and the EMD loss.
 
 \section{Rust Implementation}
-The CERA framework is implemented in Rust within the \texttt{math_explorer} crate, in a new module named \texttt{climate}.
+The CERA framework is implemented in Rust within the \texttt{math\_explorer} crate, in a new module named \texttt{climate}.
 
 \subsection{Project Structure}
-The \texttt{climate} module is organized into sub-modules for the CERA model (\texttt{cera.rs}), the autoencoder (\texttt{autoencoder.rs}), the predictor (\texttt{predictor.rs}), the loss functions (\texttt{loss.rs}), and tensor operations (\texttt{tensor_ops.rs}).
+The \texttt{climate} module is organized into sub-modules for the CERA model (\texttt{cera.rs}), the autoencoder (\texttt{autoencoder.rs}), the predictor (\texttt{predictor.rs}), the loss functions (\texttt{loss.rs}), and tensor operations (\texttt{tensor\_ops.rs}).
 
 \subsection{Core Components}
 The implementation includes data structures for the \texttt{Cera}, \texttt{Autoencoder}, and \texttt{Predictor} models. The core logic for data flow, batching, and loss calculation is implemented.
 
 \subsection{Limitations}
-A critical component of training a neural network is backpropagation, the process of calculating gradients and updating model weights. The current implementation features a placeholder for the optimization step (\texttt{optimizer_step}) which does not perform true gradient descent. Instead, it simulates weight updates with random noise. This allows for testing the complete data pipeline and architecture, but the model does not learn from the data. A full implementation would require an automatic differentiation engine.
+A critical component of training a neural network is backpropagation, the process of calculating gradients and updating model weights. The current implementation features a placeholder for the optimization step (\texttt{optimizer\_step}) which does not perform true gradient descent. Instead, it simulates weight updates with random noise. This allows for testing the complete data pipeline and architecture, but the model does not learn from the data. A full implementation would require an automatic differentiation engine.
 
 \section{Verification}
 The correctness of the implementation's architecture is verified through a series of unit and integration tests. These tests confirm that:

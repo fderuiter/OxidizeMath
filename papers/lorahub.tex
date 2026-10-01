@@ -4,6 +4,7 @@
 \usepackage{geometry}
 \usepackage{accessibility}
 \usepackage{listings}
+\usepackage{xcolor}
 
 \geometry{margin=1in}
 
@@ -12,7 +13,7 @@
 \date{\today}
 
 \lstset{
-    language=Rust,
+    language=C,
     basicstyle=\ttfamily\small,
     keywordstyle=\color{blue},
     stringstyle=\color{red},
@@ -57,11 +58,11 @@ The LoraHub algorithm \cite{huang2023lorahub} can be broken down into two key ma
 
 \section{Rust Implementation}
 
-We implement these concepts in Rust, creating a new module within the \texttt{math_explorer} project. This implementation relies on the \texttt{nalgebra} library for its linear algebra capabilities \cite{nalgebra}.
+We implement these concepts in Rust, creating a new module within the \texttt{math\_explorer} project. This implementation relies on the \texttt{nalgebra} library for its linear algebra capabilities \cite{nalgebra}.
 
 \subsection{Combining LoRA Modules}
 
-The \texttt{combine_loras} function takes a slice of LoRA state dictionaries and a slice of weights and returns their weighted sum. A \texttt{LoraStateDict} is represented as a \texttt{HashMap<String, DMatrix<f64>>}.
+The \texttt{combine\_loras} function takes a slice of LoRA state dictionaries and a slice of weights and returns their weighted sum. A \texttt{LoraStateDict} is represented as a \texttt{HashMap<String, DMatrix<f64>>}.
 
 \begin{lstlisting}
 pub fn combine_loras(loras: &[LoraStateDict], weights: &[f64]) -> Result<LoraStateDict, &'static str> {
@@ -95,7 +96,7 @@ pub fn combine_loras(loras: &[LoraStateDict], weights: &[f64]) -> Result<LoraSta
 
 \subsection{Objective Function}
 
-The objective function is implemented by \texttt{calculate_objective_score}, which combines a (mock) loss value with the L1 regularization term.
+The objective function is implemented by \texttt{calculate\_objective\_score}, which combines a (mock) loss value with the L1 regularization term.
 
 \begin{lstlisting}
 pub fn l1_regularization(weights: &[f64], alpha: f64) -> f64 {
@@ -114,7 +115,7 @@ pub fn calculate_objective_score(weights: &[f64], mock_loss: f64, alpha: f64) ->
 
 \section{Conclusion}
 
-We have successfully implemented the mathematical core of the LoraHub framework in Rust. This implementation provides a foundation for building a full LoraHub-style model composition system in Rust. The code is modular, tested, and integrated into the \texttt{math_explorer} project, aligning with its goal of providing a library of mathematical algorithms. The next steps would involve integrating this mathematical core with a machine learning framework in Rust to replicate the full behavior of LoraHub.
+We have successfully implemented the mathematical core of the LoraHub framework in Rust. This implementation provides a foundation for building a full LoraHub-style model composition system in Rust. The code is modular, tested, and integrated into the \texttt{math\_explorer} project, aligning with its goal of providing a library of mathematical algorithms. The next steps would involve integrating this mathematical core with a machine learning framework in Rust to replicate the full behavior of LoraHub.
 
 \bibliographystyle{plain}
 \bibliography{references}

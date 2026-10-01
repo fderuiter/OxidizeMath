@@ -17,7 +17,7 @@
 \maketitle
 
 \begin{abstract}
-This paper presents a robust and efficient Rust implementation of the empirical formulas for irregular dwarf galaxies, as described in the work of Tillaboev, Tadjibaev, and Otojanova (2025). The implementation provides a set of functions to calculate key physical properties of these galaxies, including mass, apparent magnitude, and redshift, based on the linear regression models derived in the original study. The code is organized into a modular structure within the existing \texttt{math_explorer} framework, ensuring clarity and maintainability. Unit tests have been developed to verify the correctness of the implementation against the published formulas. This work serves as a practical computational tool for researchers in astrophysics and a demonstration of how to translate empirical scientific findings into reliable software.
+This paper presents a robust and efficient Rust implementation of the empirical formulas for irregular dwarf galaxies, as described in the work of Tillaboev, Tadjibaev, and Otojanova (2025). The implementation provides a set of functions to calculate key physical properties of these galaxies, including mass, apparent magnitude, and redshift, based on the linear regression models derived in the original study. The code is organized into a modular structure within the existing \texttt{math\_explorer} framework, ensuring clarity and maintainability. Unit tests have been developed to verify the correctness of the implementation against the published formulas. This work serves as a practical computational tool for researchers in astrophysics and a demonstration of how to translate empirical scientific findings into reliable software.
 \end{abstract}
 
 \section{Introduction}
@@ -26,11 +26,11 @@ The study of dwarf galaxies is crucial for understanding the large-scale structu
 
 The authors of the original study performed a statistical analysis of a catalog of 413 dwarf galaxies and derived a set of linear regression formulas that connect properties such as mass, distance, magnitude, and redshift. These formulas are valuable for predicting galaxy properties and for testing models of galaxy formation and evolution.
 
-The goal of the work presented in this paper is to create a high-quality, well-tested Rust implementation of these empirical formulas. By encapsulating the formulas in a software library, we make them more accessible and usable for the scientific community. This implementation is part of the larger \texttt{math_explorer} project, a library of mathematical and scientific algorithms written in Rust.
+The goal of the work presented in this paper is to create a high-quality, well-tested Rust implementation of these empirical formulas. By encapsulating the formulas in a software library, we make them more accessible and usable for the scientific community. This implementation is part of the larger \texttt{math\_explorer} project, a library of mathematical and scientific algorithms written in Rust.
 
 \section{Methodology}
 
-The implementation is housed within the \texttt{math_explorer} Rust crate, in a new submodule: \texttt{physics::astrophysics::galaxies}. This structure was chosen to maintain the modularity and organization of the existing project.
+The implementation is housed within the \texttt{math\_explorer} Rust crate, in a new submodule: \texttt{physics::astrophysics::galaxies}. This structure was chosen to maintain the modularity and organization of the existing project.
 
 \subsection{Data Structures}
 

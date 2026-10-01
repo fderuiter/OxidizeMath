@@ -1,11 +1,13 @@
 \documentclass[12pt]{article}
 
 \usepackage{amsmath, amssymb}
+\usepackage{ifthen}
 \usepackage{geometry}
 \usepackage{graphicx}
 \usepackage{accessibility}
 \usepackage{listings}
 \usepackage{xcolor}
+\usepackage{url}
 
 \geometry{margin=1in}
 
@@ -79,28 +81,28 @@ A logarithmic term that accounts for diminishing returns on how often you contac
 \log(1 + f(t))
 \end{equation}
 
-\subsection{Personality Score \( P_{\text{total}} \)}
+\subsection{Personality Score $P_{\text{total}}$}
 A weighted sum of key personality traits—intelligence, emotional sensitivity, wealth, and talents:
 
 \begin{equation}
 P_{\text{total}} = w_I \cdot I + w_{E_s} \cdot E_s + w_W \cdot W + w_T \cdot T
 \end{equation}
 
-\subsection{Birth Order \( B \)}
+\subsection{Birth Order $ B $}
 A refinement of the birth order effect, including factors like intelligence or emotional connection:
 
 \begin{equation}
 B = B_1, B_2, B_3, B_4
 \end{equation}
 
-\subsection{Major Life Events \( M \)}
+\subsection{Major Life Events $ M $}
 Adds points for significant life events:
 
 \begin{equation}
 M = \sum m_i
 \end{equation}
 
-\subsection{Health Crisis Factor \( H \)}
+\subsection{Health Crisis Factor $ H $}
 Multiplies favoritism if you helped during a crisis:
 
 \begin{equation}
@@ -110,7 +112,7 @@ H = \begin{cases}
 \end{cases}
 \end{equation}
 
-\subsection{Social Media Activity \( S \)}
+\subsection{Social Media Activity $ S $}
 Adds a multiplier for engaging with mom’s social media posts:
 
 \begin{equation}
@@ -120,7 +122,7 @@ S = \begin{cases}
 \end{cases}
 \end{equation}
 
-\subsection{Favorability Decay \( D \)}
+\subsection{Favorability Decay $ D $}
 Decays over time since your last contact with mom:
 
 \begin{equation}
@@ -134,7 +136,7 @@ Accounts for the proximity of your siblings to mom, reducing your score if they�
 \sum_{i=1}^{n} \frac{1}{S_i(t)}
 \end{equation}
 
-\subsection{Randomness \( R \)}
+\subsection{Randomness $ R $}
 Adds random fluctuations based on mom's unpredictable mood:
 
 \begin{equation}

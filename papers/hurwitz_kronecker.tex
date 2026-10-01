@@ -95,7 +95,7 @@ We have developed a Rust implementation to compute and verify the summation form
 
 \subsection{Module Structure}
 
-The core logic is located in the \texttt{math_explorer::pure_math::number_theory} module, which is further divided into:
+The core logic is located in the \texttt{math\_explorer::pure\_math::number\_theory} module, which is further divided into:
 \begin{itemize}
     \item \texttt{primes}: For generating prime numbers.
     \item \texttt{class\_number}: For computing the class number $h(D)$.
@@ -116,7 +116,7 @@ pub fn hurwitz_class_number(d: i64) -> f64
 pub fn verify_summation_formula(p: u64) -> bool
 \end{verbatim}
 
-The \texttt{class_number} function is implemented by counting the number of reduced, primitive, positive-definite binary quadratic forms of a given discriminant, following the algorithm described in \cite{cohen1993course}.
+The \texttt{class\_number} function is implemented by counting the number of reduced, primitive, positive-definite binary quadratic forms of a given discriminant, following the algorithm described in \cite{cohen1993course}.
 
 \section{Verification and Results}
 
