@@ -11,6 +11,7 @@
 
 mod axis;
 pub mod commands;
+pub mod export;
 mod items;
 mod legend;
 mod memory;
@@ -29,6 +30,7 @@ use emath::Float as _;
 
 pub use crate::{
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
+    export::{color32_image_to_png, export_csv, export_json, save_file_dialog},
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, ClosestElem, HLine, Line, LineStyle,
         MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem, PlotItemBase,
@@ -1416,44 +1418,18 @@ impl<'a> Plot<'a> {
             egui::Rect::from_min_size(plot_rect.min, egui::vec2(plot_rect.width(), 30.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Table View").clicked() {
-                    access_state.show_table = !access_state.show_table;
+                if ui.button("Save PNG").clicked() {
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
                 }
                 if ui.button("Export CSV").clicked() {
-                    use std::io::Write as _;
-                    if let Ok(mut file) = std::fs::File::create("export.csv") {
-                        let _ = writeln!(file, "Dataset,X,Y");
-                        for (name, pts) in &accessible_datasets {
-                            for p in pts {
-                                let _ = writeln!(file, "{},{},{}", name, p[0], p[1]);
-                            }
-                        }
-                    }
+                    export::export_csv(&accessible_datasets);
                 }
                 if ui.button("Export JSON").clicked() {
-                    use std::io::Write as _;
-                    if let Ok(mut file) = std::fs::File::create("export.json") {
-                        let _ = writeln!(file, "[");
-                        let mut first = true;
-                        for (name, pts) in &accessible_datasets {
-                            for p in pts {
-                                if !first {
-                                    let _ = writeln!(file, ",");
-                                }
-                                first = false;
-                                let _ = writeln!(
-                                    file,
-                                    "{{\"dataset\": \"{}\", \"x\": {}, \"y\": {}}}",
-                                    name, p[0], p[1]
-                                );
-                            }
-                        }
-                        let _ = writeln!(
-                            file,
-                            "
-]"
-                        );
-                    }
+                    export::export_json(&accessible_datasets);
+                }
+                if ui.button("Table View").clicked() {
+                    access_state.show_table = !access_state.show_table;
                 }
             });
         });
@@ -1558,15 +1534,43 @@ impl<'a> Plot<'a> {
             }
         }
 
-        ui.data_mut(|d| d.insert_temp(plot_id, access_state));
-        // --- END ACCESSIBILITY LOGIC ---
-        mem.store(ui.ctx(), plot_id);
-
         let response = if show_x || show_y {
             response.on_hover_cursor(CursorIcon::Crosshair)
         } else {
             response
         };
+
+        response.context_menu(|ui| {
+            if ui.button("Save PNG").clicked() {
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+                ui.close();
+            }
+            if ui.button("Export CSV").clicked() {
+                export::export_csv(&accessible_datasets);
+                ui.close();
+            }
+            if ui.button("Export JSON").clicked() {
+                export::export_json(&accessible_datasets);
+                ui.close();
+            }
+            if ui.button("Table View").clicked() {
+                access_state.show_table = !access_state.show_table;
+                ui.close();
+            }
+        });
+
+        ui.data_mut(|d| d.insert_temp(plot_id, access_state));
+        // --- END ACCESSIBILITY LOGIC ---
+        mem.store(ui.ctx(), plot_id);
+
+        for event in ui.input(|i| i.raw.events.clone()) {
+            if let egui::Event::Screenshot { image, .. } = event
+                && let Ok(png_bytes) = export::color32_image_to_png(&image)
+            {
+                export::save_file_dialog("plot.png", &png_bytes, "PNG Image", &["png"]);
+            }
+        }
 
         ui.advance_cursor_after_rect(complete_rect);
 

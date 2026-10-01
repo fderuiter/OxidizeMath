@@ -51,7 +51,7 @@ pub fn evaluate_gaussian_opacity(gaussian: &Gaussian2D, point: &nalgebra::Point2
 
     let power = a * dx * dx + 2.0 * b * dx * dy + c * dy * dy;
 
-    if power > 0.0 || power < -16.0 {
+    if !(-16.0..=0.0).contains(&power) {
         return 0.0;
     }
 

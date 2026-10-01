@@ -55,7 +55,7 @@ rand = { version = "0.8.6", default-features = false, features = ["std", "alloc"
 rand_chacha = { version = "0.3.1", default-features = false, features = ["std"] }
 rand_distr = "0.4.3"
 regex = "1.10"
-rfd = "0.17.2"
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
 rustfft = "6.2.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
