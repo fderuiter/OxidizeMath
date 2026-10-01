@@ -16,6 +16,7 @@ diagnostics = { path = "../diagnostics" }
 pure_math = { path = "../pure_math" }
 domain_applied = { path = "../domain_applied" }
 
+
 [dev-dependencies]
 approx = { workspace = true }
 

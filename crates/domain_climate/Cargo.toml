@@ -13,6 +13,7 @@ math_commons = { path = "../math_commons" }
 scientific_metadata = { path = "../scientific_metadata" }
 pure_math = { path = "../pure_math" }
 
+
 [dev-dependencies]
 approx = { workspace = true }
 

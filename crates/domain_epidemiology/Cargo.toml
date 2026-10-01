@@ -14,6 +14,7 @@ scientific_metadata = { path = "../scientific_metadata" }
 diagnostics = { path = "../diagnostics" }
 pure_math = { path = "../pure_math" }
 
+
 [dev-dependencies]
 approx = { workspace = true }
 
