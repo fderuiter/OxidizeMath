@@ -3,11 +3,9 @@ name = "diagnostics"
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+[dev-dependencies]
 thiserror = { workspace = true }
-
-[package.metadata.cargo-machete]
-ignored = ["thiserror"]
 
 [lints]
 workspace = true
+

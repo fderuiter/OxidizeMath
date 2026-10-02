@@ -1,9 +1,0 @@
-[package]
-name = "workspace-deps-migrator"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-toml_edit = "0.20"
-walkdir = "2.4"
-[workspace]

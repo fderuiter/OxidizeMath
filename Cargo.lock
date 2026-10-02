@@ -2661,7 +2661,6 @@ dependencies = [
  "pure_math",
  "rand",
  "serde_json",
- "thiserror 2.0.18",
  "verified_engine",
 ]
 

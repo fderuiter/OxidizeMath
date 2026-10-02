@@ -5,6 +5,8 @@ edition = "2021"
 publish = false
 
 [dependencies]
+
+[dev-dependencies]
 oxidize_core = { path = "../oxidize_core" }
 verified_engine = { path = "../verified_engine" }
 verified_engine_macros = { path = "../verified_engine_macros" }
@@ -24,29 +26,6 @@ rand = { workspace = true }
 thiserror = { workspace = true }
 eframe = { workspace = true }
 egui = { workspace = true }
-
-[package.metadata.cargo-machete]
-ignored = [
-    "diagnostics",
-    "domain_ai",
-    "domain_applied",
-    "domain_biology",
-    "domain_climate",
-    "domain_epidemiology",
-    "domain_physics",
-    "eframe",
-    "egui",
-    "federated_registry",
-    "math_commons",
-    "math_explorer",
-    "nalgebra",
-    "oxidize_core",
-    "pure_math",
-    "rand",
-    "thiserror",
-    "verified_engine",
-    "verified_engine_macros"
-]
 
 [lints]
 workspace = true
