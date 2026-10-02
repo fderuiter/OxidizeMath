@@ -39,7 +39,7 @@ graph TD
 
 ## Git Hooks & Guardrails
 
-To ensure immediate feedback and high integrity, standards (such as file-length limits in core directories) are enforced automatically at the commit level. Running the project setup command (`cargo run -p xtask -- setup`) automatically configures a Git pre-commit hook that runs the centralized verification suite. This minimizes CI failures and maintains architectural constraints.
+To ensure immediate feedback and high integrity, repository quality standards (including code formatting, clippy lints, file-length limits, and staged duplicate checks) are enforced automatically at the commit level. Running the project setup command (`cargo run -p xtask -- setup`) automatically configures a Git pre-commit hook that delegates execution to the dedicated lint suite (`cargo run -p xtask -- lint-all`). You can also run `cargo run -p xtask -- lint-all` manually at any time to verify local quality checks before staging or committing changes. This minimizes CI failures and maintains architectural constraints.
 
 ##  Testing
 

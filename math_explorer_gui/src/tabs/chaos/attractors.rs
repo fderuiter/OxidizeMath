@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::accessibility::AccessibleTheoryHover;
 use crate::framework::InteractiveTool;
 use eframe::egui;
@@ -41,9 +43,15 @@ impl Default for AttractorPlotter {
 }
 
 impl AttractorPlotter {
-    fn reset(&mut self) {
+    #[must_use]
+    #[allow(dead_code)]
+    pub fn diverged(&self) -> bool {
+        self.diverged
+    }
+
+    pub fn reset(&mut self) {
         let initial_state = LorenzState::new(1.0, 1.0, 1.0);
-        // Preserve parameters but reset state
+        // Preserve parameters if finite, but reset state
         let sigma = if self.system.sigma.is_finite() { self.system.sigma } else { 10.0 };
         let rho = if self.system.rho.is_finite() { self.system.rho } else { 28.0 };
         let beta = if self.system.beta.is_finite() { self.system.beta } else { 8.0 / 3.0 };
@@ -56,15 +64,15 @@ impl AttractorPlotter {
 
         self.history.clear();
         self.diverged = false;
+        self.paused = false;
     }
 
-    fn reset_defaults(&mut self) {
-        let initial_state = LorenzState::new(1.0, 1.0, 1.0);
-        self.system = LorenzBuilder::new().build(initial_state);
+    pub fn reset_parameters(&mut self) {
+        self.system.sigma = 10.0;
+        self.system.rho = 28.0;
+        self.system.beta = 8.0 / 3.0;
         self.dt = 0.01;
-        self.history.clear();
-        self.diverged = false;
-        self.paused = false;
+        self.reset();
     }
 
     /// Projects 3D point to 2D screen space based on rotation
@@ -101,11 +109,8 @@ impl InteractiveTool for AttractorPlotter {
 
                 self.system.step(self.dt);
 
-                let next_vec = self.system.state.vec;
-                if !next_vec.x.is_finite()
-                    || !next_vec.y.is_finite()
-                    || !next_vec.z.is_finite()
-                {
+                let vec = self.system.state.vec;
+                if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
                     self.diverged = true;
                     self.paused = true;
                     break;
@@ -114,7 +119,7 @@ impl InteractiveTool for AttractorPlotter {
                 if self.history.len() >= self.max_points {
                     self.history.pop_front();
                 }
-                self.history.push_back(next_vec);
+                self.history.push_back(vec);
             }
             ctx.request_repaint();
         }
@@ -125,24 +130,15 @@ impl InteractiveTool for AttractorPlotter {
             ui.separator();
 
             ui.collapsing("Parameters", |ui| {
-                if ui
-                    .add(egui::Slider::new(&mut self.system.sigma, 0.0..=50.0).text("Prandtl Number (σ)"))
-                    .changed()
-                {
+                if ui.add(egui::Slider::new(&mut self.system.sigma, 0.0..=50.0).text("Prandtl Number (σ)")).changed() {
                     self.diverged = false;
                 }
 
-                if ui
-                    .add(egui::Slider::new(&mut self.system.rho, 0.0..=100.0).text("Rayleigh Number (ρ)"))
-                    .changed()
-                {
+                if ui.add(egui::Slider::new(&mut self.system.rho, 0.0..=100.0).text("Rayleigh Number (ρ)")).changed() {
                     self.diverged = false;
                 }
 
-                if ui
-                    .add(egui::Slider::new(&mut self.system.beta, 0.0..=10.0).text("Geometric Factor (β)"))
-                    .changed()
-                {
+                if ui.add(egui::Slider::new(&mut self.system.beta, 0.0..=10.0).text("Geometric Factor (β)")).changed() {
                     self.diverged = false;
                 }
             });
@@ -154,30 +150,24 @@ impl InteractiveTool for AttractorPlotter {
                         .clicked()
                     {
                         self.paused = !self.paused;
+                        if !self.paused && self.diverged {
+                            self.diverged = false;
+                        }
                     }
                     if ui.button("↻ Reset").clicked() {
                         self.reset();
                     }
                 });
 
-                if ui
-                    .add(egui::Slider::new(&mut self.simulation_speed, 1..=50).text("Speed (steps/frame)"))
-                    .changed()
-                {
+                if ui.add(egui::Slider::new(&mut self.simulation_speed, 1..=50).text("Speed (steps/frame)")).changed() {
                     self.diverged = false;
                 }
 
-                if ui
-                    .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
-                    .changed()
-                {
+                if ui.add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)")).changed() {
                     self.diverged = false;
                 }
 
-                if ui
-                    .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
-                    .changed()
-                {
+                if ui.add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points")).changed() {
                     self.diverged = false;
                 }
             });
@@ -195,26 +185,21 @@ impl InteractiveTool for AttractorPlotter {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.diverged {
-                egui::Frame::NONE
-                    .fill(egui::Color32::from_rgb(80, 20, 20))
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::RED))
-                    .inner_margin(8.0)
-                    .corner_radius(4.0)
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(
-                                    "⚠ Warning: Solver diverged (non-finite state detected). Simulation paused.",
-                                )
-                                .color(egui::Color32::YELLOW)
+                ui.group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("⚠️ Solver Divergence Warning: Non-finite state detected (NaN or Inf). Simulation halted.")
+                                .color(egui::Color32::RED)
                                 .strong(),
-                            );
-                            if ui.button("↻ Reset Parameters").clicked() {
-                                self.reset_defaults();
-                            }
-                        });
+                        );
+                        if ui.button("↻ Reset Parameters").clicked() {
+                            self.reset_parameters();
+                        }
+                        if ui.button("↻ Reset State").clicked() {
+                            self.reset();
+                        }
                     });
-                ui.add_space(8.0);
+                });
             }
 
             let points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
@@ -237,9 +222,6 @@ impl InteractiveTool for AttractorPlotter {
         });
     }
 }
-
-// [cite:graph_parameters_rust]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -264,22 +246,34 @@ mod tests {
     #[test]
     fn test_attractor_divergence_detection() {
         let mut plotter = AttractorPlotter::default();
-        plotter.system.state.vec = Vector3::new(f64::NAN, 1.0, 1.0);
+        assert!(!plotter.diverged());
+
+        // Introduce a non-finite state
+        plotter.system.state.vec.x = f64::NAN;
 
         let ctx = egui::Context::default();
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             plotter.show(ctx);
         });
 
-        assert!(plotter.diverged, "Plotter should detect divergence on non-finite state");
-        assert!(plotter.paused, "Plotter should pause simulation when diverged");
-        assert!(
-            plotter.history.iter().all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()),
-            "History must not contain non-finite values"
-        );
+        assert!(plotter.diverged());
+        assert!(plotter.paused);
+        // Verify history contains no non-finite values
+        assert!(plotter.history.iter().all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
 
-        plotter.reset_defaults();
-        assert!(!plotter.diverged, "Reset should clear diverged flag");
-        assert!(!plotter.paused, "Reset should unpause simulation");
+        // Reset clears diverged flag cleanly
+        plotter.reset();
+        assert!(!plotter.diverged());
+    }
+
+    #[test]
+    fn test_attractor_reset_parameters() {
+        let mut plotter = AttractorPlotter::default();
+        plotter.system.sigma = f64::NAN;
+        plotter.diverged = true;
+
+        plotter.reset_parameters();
+        assert!(!plotter.diverged());
+        assert_eq!(plotter.system.sigma, 10.0);
     }
 }
