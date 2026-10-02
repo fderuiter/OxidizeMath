@@ -8,7 +8,7 @@ We implemented immediate non-finite step interceptors and interactive diagnostic
 1. Added non-finite state checks in `AttractorPlotter::show` to halt simulation step loops when non-finite states occur, setting `diverged = true` and pausing simulation without pushing `NaN`/`Inf` to trajectory history.
 2. Added divergence checks in `OdeSolverTool::recalculate` to halt Runge-Kutta 4 iteration upon encountering non-finite states and show an egui warning banner with parameter reset controls.
 3. Added unit tests in both `attractors.rs` and `ode.rs` to verify that divergent parameters trigger the `diverged` flag, halt integration, and prevent non-finite float leakage.
-4. Cleaned up duplicate `[package.metadata.cargo-machete]` manifest entries across workspace domain crates to ensure workspace compilation integrity.
+4. Cleaned up duplicate `[package.metadata.cargo-machete]` manifest entries across workspace domain crates, removed duplicate WASM `DefaultVfs` type alias definitions in `vfs.rs`, and suppressed procedural macro double_must_use clippy lints in `traceability.rs`.
 
 ## Consequences
 - **Safety**: Solver loops halt immediately on divergence, preventing non-finite floats from entering plot data buffers.
