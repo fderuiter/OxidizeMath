@@ -1319,7 +1319,12 @@ dependencies = [
  "document-features",
  "egui",
  "emath",
+ "js-sys",
+ "png",
+ "rfd",
  "serde",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -3848,9 +3853,6 @@ dependencies = [
  "raw-window-handle",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wayland-backend",
- "wayland-client",
- "wayland-protocols",
  "web-sys",
  "windows-sys 0.61.2",
 ]
