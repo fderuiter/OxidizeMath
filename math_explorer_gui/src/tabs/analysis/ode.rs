@@ -454,5 +454,3 @@ mod tests {
         assert!(tool.y_series.iter().all(|y| y.is_finite()));
     }
 }
-    }
-}
