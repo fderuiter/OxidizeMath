@@ -2460,6 +2460,17 @@
       "signature": "pub type DefaultVfs = WasmVfs"
     }
   ],
+  "crates/oxidize_core/src/workspace.rs": [
+    {
+      "signature": "pub fn get_workspace_members () -> (bool , Vec < String >)"
+    },
+    {
+      "signature": "pub fn get_workspace_members_from_paths (primary : & Path , fallback : & Path) -> (bool , Vec < String >)"
+    },
+    {
+      "signature": "pub fn parse_workspace_members (content : & str) -> Result < Vec < String > , String >"
+    }
+  ],
   "crates/pure_math/src/error.rs": [
     {
       "signature": "pub enum CopulaError"

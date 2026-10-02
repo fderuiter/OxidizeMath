@@ -4690,6 +4690,7 @@ name = "unified_verification"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "oxidize_core",
  "proc-macro2",
  "quote",
  "regex",

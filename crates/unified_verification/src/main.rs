@@ -2,7 +2,6 @@
 #![allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 #![allow(clippy::all)]
 use std::env;
-use std::fs;
 use std::process::Command;
 mod api_drift;
 mod ast_visitor;
@@ -14,24 +13,6 @@ mod utils;
 mod vulnerabilities;
 mod workflow_linter;
 use utils::{check_file_lengths, check_staged_duplicates};
-fn get_workspace_members() -> Vec<String> {
-    let content = fs::read_to_string("Cargo.toml").unwrap_or_default();
-    let parsed: toml::Value =
-        toml::from_str(&content).unwrap_or_else(|_| toml::Value::Table(Default::default()));
-    let mut members = Vec::new();
-    if let Some(workspace) = parsed.get("workspace") {
-        if let Some(mems) = workspace.get("members") {
-            if let Some(arr) = mems.as_array() {
-                for v in arr {
-                    if let Some(s) = v.as_str() {
-                        members.push(s.to_string());
-                    }
-                }
-            }
-        }
-    }
-    members
-}
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -59,21 +40,21 @@ fn main() {
         }
         "check-staged-duplicates" => check_staged_duplicates(),
         "test-policy-audit" => {
-            let members = get_workspace_members();
+            let (_, members) = oxidize_core::workspace::get_workspace_members();
             let member_refs: Vec<&str> = members.iter().map(|s| s.as_str()).collect();
             if !policy_audit::run_policy_audit(&member_refs) {
                 std::process::exit(1);
             }
         }
         "check-entropy" => {
-            let members = get_workspace_members();
+            let (_, members) = oxidize_core::workspace::get_workspace_members();
             let debt = entropy_guard::check_entropy(&members);
             for d in debt {
                 println!("{}", d);
             }
         }
         "check-file-lengths" => {
-            let members = get_workspace_members();
+            let (_, members) = oxidize_core::workspace::get_workspace_members();
             let debt = check_file_lengths(&members);
             let has_debt = !debt.is_empty();
             for d in debt {
@@ -247,7 +228,7 @@ fn verify_suite(args: &[String]) {
     let mut passed_security = true;
     let auto_fix = args.contains(&"--auto-fix".to_string());
 
-    let members = get_workspace_members();
+    let (_, members) = oxidize_core::workspace::get_workspace_members();
     let member_refs: Vec<&str> = members.iter().map(|s| s.as_str()).collect();
 
     if !profile::check_profiles(&member_refs, auto_fix) {
