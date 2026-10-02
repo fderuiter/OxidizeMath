@@ -38,6 +38,9 @@ num-complex = { workspace = true }
 rand = { workspace = true }
 petgraph = { workspace = true }
 inventory = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+chrono = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 muda = { workspace = true }

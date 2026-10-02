@@ -6,6 +6,7 @@ mod app;
 pub mod async_sim;
 #[allow(missing_docs)]
 pub mod framework;
+pub mod presets;
 #[allow(missing_docs)]
 pub mod reflective_ui;
 mod tabs;
