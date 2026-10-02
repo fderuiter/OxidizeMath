@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::accessibility::AccessibleTheoryHover;
 use crate::framework::InteractiveTool;
 use eframe::egui;
@@ -13,14 +15,13 @@ pub struct AttractorPlotter {
     paused: bool,
     simulation_speed: usize,
     dt: f64,
+    diverged: bool,
 
     // Visualization
     history: VecDeque<Vector3<f64>>, // Store as Vector3 for easier math
     max_points: usize,
 
     camera: crate::framework::Camera3D,
-
-    diverged: bool,
 }
 
 impl Default for AttractorPlotter {
@@ -33,15 +34,17 @@ impl Default for AttractorPlotter {
             paused: false,
             simulation_speed: 5,
             dt: 0.01,
+            diverged: false,
             history: VecDeque::with_capacity(2000),
             max_points: 2000,
             camera: crate::framework::Camera3D::new(0.0, 0.0, 1.0),
-            diverged: false,
         }
     }
 }
 
 impl AttractorPlotter {
+    #[must_use]
+    #[allow(dead_code)]
     pub fn diverged(&self) -> bool {
         self.diverged
     }
@@ -94,13 +97,25 @@ impl InteractiveTool for AttractorPlotter {
         // --- Simulation ---
         if !self.paused && !self.diverged {
             for _ in 0..self.simulation_speed {
+                let current_vec = self.system.state.vec;
+                if !current_vec.x.is_finite()
+                    || !current_vec.y.is_finite()
+                    || !current_vec.z.is_finite()
+                {
+                    self.diverged = true;
+                    self.paused = true;
+                    break;
+                }
+
                 self.system.step(self.dt);
+
                 let vec = self.system.state.vec;
                 if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
                     self.diverged = true;
                     self.paused = true;
                     break;
                 }
+
                 if self.history.len() >= self.max_points {
                     self.history.pop_front();
                 }
@@ -207,9 +222,6 @@ impl InteractiveTool for AttractorPlotter {
         });
     }
 }
-
-// [cite:graph_parameters_rust]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {

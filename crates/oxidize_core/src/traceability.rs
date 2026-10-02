@@ -419,6 +419,7 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         }
     }
 
+    #[allow(clippy::double_must_use)]
     #[async_recursion::async_recursion(?Send)]
     async fn parse_module_tree(&self, file_path: &str, active_files: &mut HashSet<String>) {
         if active_files.contains(file_path) {

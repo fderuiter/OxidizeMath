@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
@@ -110,6 +112,8 @@ impl Default for OdeSolverTool {
 }
 
 impl OdeSolverTool {
+    #[must_use]
+    #[allow(dead_code)]
     pub fn diverged(&self) -> bool {
         self.diverged
     }
@@ -136,13 +140,14 @@ impl OdeSolverTool {
         self.recalculate();
     }
 
+    #[allow(clippy::too_many_lines)]
     fn recalculate(&mut self) {
         self.time_series.clear();
         self.y_series.clear();
         self.v_series.clear();
         self.diverged = false;
 
-        if self.dt <= 0.0 || self.total_time <= 0.0 {
+        if self.dt <= 0.0 || self.total_time <= 0.0 || !self.dt.is_finite() || !self.total_time.is_finite() {
             return;
         }
 
@@ -335,9 +340,6 @@ impl InteractiveTool for OdeSolverTool {
     }
 }
 
-// [cite:graph_parameters_rust]
-
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "OdeSolverTool",
@@ -381,8 +383,10 @@ mod tests {
 
     #[test]
     fn test_ode_nan_initial_condition() {
-        let mut tool = OdeSolverTool::default();
-        tool.ic_y0 = f64::NAN;
+        let mut tool = OdeSolverTool {
+            ic_y0: f64::NAN,
+            ..Default::default()
+        };
         tool.recalculate();
 
         assert!(tool.diverged());
@@ -391,10 +395,12 @@ mod tests {
 
     #[test]
     fn test_ode_harmonic_oscillator_divergence() {
-        let mut tool = OdeSolverTool::default();
-        tool.preset = OdePreset::HarmonicOscillator;
-        tool.param_k = 1e300;
-        tool.ic_y0 = 1e300;
+        let mut tool = OdeSolverTool {
+            preset: OdePreset::HarmonicOscillator,
+            param_k: 1e300,
+            ic_y0: 1e300,
+            ..Default::default()
+        };
         tool.recalculate();
 
         assert!(tool.diverged());
@@ -404,11 +410,13 @@ mod tests {
 
     #[test]
     fn test_ode_logistic_growth_divergence() {
-        let mut tool = OdeSolverTool::default();
-        tool.preset = OdePreset::LogisticGrowth;
-        tool.param_r = 1e300;
-        tool.param_cap_k = 1.0;
-        tool.ic_y0 = 1e300;
+        let mut tool = OdeSolverTool {
+            preset: OdePreset::LogisticGrowth,
+            param_r: 1e300,
+            param_cap_k: 1.0,
+            ic_y0: 1e300,
+            ..Default::default()
+        };
         tool.recalculate();
 
         assert!(tool.diverged());

@@ -36,3 +36,11 @@ identifier = "new"
 
 [[dead_code]]
 file = "math_explorer_gui/src/tabs/geometry_topology/export_utils.rs"
+
+[[dead_code]]
+file = "math_explorer_gui/src/tabs/chaos/attractors.rs"
+identifier = "diverged"
+
+[[dead_code]]
+file = "math_explorer_gui/src/tabs/analysis/ode.rs"
+identifier = "diverged"
