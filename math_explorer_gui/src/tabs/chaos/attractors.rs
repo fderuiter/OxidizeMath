@@ -42,6 +42,7 @@ impl Default for AttractorPlotter {
 }
 
 impl AttractorPlotter {
+    #[allow(dead_code)]
     pub fn diverged(&self) -> bool {
         self.diverged
     }
