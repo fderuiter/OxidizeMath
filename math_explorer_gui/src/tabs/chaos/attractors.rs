@@ -19,6 +19,8 @@ pub struct AttractorPlotter {
     max_points: usize,
 
     camera: crate::framework::Camera3D,
+
+    diverged: bool,
 }
 
 impl Default for AttractorPlotter {
@@ -34,17 +36,22 @@ impl Default for AttractorPlotter {
             history: VecDeque::with_capacity(2000),
             max_points: 2000,
             camera: crate::framework::Camera3D::new(0.0, 0.0, 1.0),
+            diverged: false,
         }
     }
 }
 
 impl AttractorPlotter {
-    fn reset(&mut self) {
+    pub fn diverged(&self) -> bool {
+        self.diverged
+    }
+
+    pub fn reset(&mut self) {
         let initial_state = LorenzState::new(1.0, 1.0, 1.0);
-        // Preserve parameters but reset state
-        let sigma = self.system.sigma;
-        let rho = self.system.rho;
-        let beta = self.system.beta;
+        // Preserve parameters if finite, but reset state
+        let sigma = if self.system.sigma.is_finite() { self.system.sigma } else { 10.0 };
+        let rho = if self.system.rho.is_finite() { self.system.rho } else { 28.0 };
+        let beta = if self.system.beta.is_finite() { self.system.beta } else { 8.0 / 3.0 };
 
         self.system = LorenzBuilder::new()
             .sigma(sigma)
@@ -53,6 +60,16 @@ impl AttractorPlotter {
             .build(initial_state);
 
         self.history.clear();
+        self.diverged = false;
+        self.paused = false;
+    }
+
+    pub fn reset_parameters(&mut self) {
+        self.system.sigma = 10.0;
+        self.system.rho = 28.0;
+        self.system.beta = 8.0 / 3.0;
+        self.dt = 0.01;
+        self.reset();
     }
 
     /// Projects 3D point to 2D screen space based on rotation
@@ -75,13 +92,19 @@ impl InteractiveTool for AttractorPlotter {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         // --- Simulation ---
-        if !self.paused {
+        if !self.paused && !self.diverged {
             for _ in 0..self.simulation_speed {
                 self.system.step(self.dt);
+                let vec = self.system.state.vec;
+                if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
+                    self.diverged = true;
+                    self.paused = true;
+                    break;
+                }
                 if self.history.len() >= self.max_points {
                     self.history.pop_front();
                 }
-                self.history.push_back(self.system.state.vec);
+                self.history.push_back(vec);
             }
             ctx.request_repaint();
         }
@@ -92,11 +115,17 @@ impl InteractiveTool for AttractorPlotter {
             ui.separator();
 
             ui.collapsing("Parameters", |ui| {
-                ui.add(egui::Slider::new(&mut self.system.sigma, 0.0..=50.0).text("Prandtl Number (σ)"));
+                if ui.add(egui::Slider::new(&mut self.system.sigma, 0.0..=50.0).text("Prandtl Number (σ)")).changed() {
+                    self.diverged = false;
+                }
 
-                ui.add(egui::Slider::new(&mut self.system.rho, 0.0..=100.0).text("Rayleigh Number (ρ)"));
+                if ui.add(egui::Slider::new(&mut self.system.rho, 0.0..=100.0).text("Rayleigh Number (ρ)")).changed() {
+                    self.diverged = false;
+                }
 
-                ui.add(egui::Slider::new(&mut self.system.beta, 0.0..=10.0).text("Geometric Factor (β)"));
+                if ui.add(egui::Slider::new(&mut self.system.beta, 0.0..=10.0).text("Geometric Factor (β)")).changed() {
+                    self.diverged = false;
+                }
             });
 
             ui.collapsing("Simulation", |ui| {
@@ -106,17 +135,26 @@ impl InteractiveTool for AttractorPlotter {
                         .clicked()
                     {
                         self.paused = !self.paused;
+                        if !self.paused && self.diverged {
+                            self.diverged = false;
+                        }
                     }
                     if ui.button("↻ Reset").clicked() {
                         self.reset();
                     }
                 });
 
-                ui.add(egui::Slider::new(&mut self.simulation_speed, 1..=50).text("Speed (steps/frame)"));
+                if ui.add(egui::Slider::new(&mut self.simulation_speed, 1..=50).text("Speed (steps/frame)")).changed() {
+                    self.diverged = false;
+                }
 
-                ui.add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"));
+                if ui.add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)")).changed() {
+                    self.diverged = false;
+                }
 
-                ui.add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"));
+                if ui.add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points")).changed() {
+                    self.diverged = false;
+                }
             });
 
             ui.collapsing("View", |ui| {
@@ -131,6 +169,24 @@ impl InteractiveTool for AttractorPlotter {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            if self.diverged {
+                ui.group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("⚠️ Solver Divergence Warning: Non-finite state detected (NaN or Inf). Simulation halted.")
+                                .color(egui::Color32::RED)
+                                .strong(),
+                        );
+                        if ui.button("↻ Reset Parameters").clicked() {
+                            self.reset_parameters();
+                        }
+                        if ui.button("↻ Reset State").clicked() {
+                            self.reset();
+                        }
+                    });
+                });
+            }
+
             let points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
 
             let response = Plot::new("attractor_plot")
@@ -169,4 +225,43 @@ impl scientific_metadata::theory::TheoryDescribable for AttractorPlotter {
     fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_attractor_divergence_detection() {
+        let mut plotter = AttractorPlotter::default();
+        assert!(!plotter.diverged());
+
+        // Introduce a non-finite state
+        plotter.system.state.vec.x = f64::NAN;
+
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            plotter.show(ctx);
+        });
+
+        assert!(plotter.diverged());
+        assert!(plotter.paused);
+        // Verify history contains no non-finite values
+        assert!(plotter.history.iter().all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+
+        // Reset clears diverged flag cleanly
+        plotter.reset();
+        assert!(!plotter.diverged());
+    }
+
+    #[test]
+    fn test_attractor_reset_parameters() {
+        let mut plotter = AttractorPlotter::default();
+        plotter.system.sigma = f64::NAN;
+        plotter.diverged = true;
+
+        plotter.reset_parameters();
+        assert!(!plotter.diverged());
+        assert_eq!(plotter.system.sigma, 10.0);
+    }
 }
