@@ -253,4 +253,35 @@ impl<'a> PlotUi<'a> {
         }
         self.items.push(Box::new(chart));
     }
+
+    /// Request screenshot image capture of the current plot view.
+    pub fn save_png(&self) {
+        self.ctx
+            .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+    }
+
+    /// Alias for [`save_png`](Self::save_png).
+    pub fn export_png(&self) {
+        self.save_png();
+    }
+
+    /// Export active plot datasets to CSV.
+    pub fn export_csv(&self) {
+        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
+            .items
+            .iter()
+            .map(|item| (item.name().to_owned(), item.extract_points()))
+            .collect();
+        crate::export::export_csv(&datasets);
+    }
+
+    /// Export active plot datasets to JSON.
+    pub fn export_json(&self) {
+        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
+            .items
+            .iter()
+            .map(|item| (item.name().to_owned(), item.extract_points()))
+            .collect();
+        crate::export::export_json(&datasets);
+    }
 }
