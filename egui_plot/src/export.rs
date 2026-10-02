@@ -68,12 +68,12 @@ pub fn color32_image_to_png(image: &egui::ColorImage) -> Result<Vec<u8>, String>
 }
 
 /// Trigger cross-platform file saving dialog or browser download action.
-pub fn save_file_dialog(filename: &str, content: &[u8], filter_name: &str, filter_ext: &[&str]) {
+pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _filter_ext: &[&str]) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let builder = rfd::FileDialog::new()
             .set_file_name(filename)
-            .add_filter(filter_name, filter_ext);
+            .add_filter(_filter_name, _filter_ext);
         if let Some(path) = builder.save_file() {
             let _ = std::fs::write(path, content);
         }
