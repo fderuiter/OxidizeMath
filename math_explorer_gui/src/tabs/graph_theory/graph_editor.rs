@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{InteractionContext, InteractiveTool};
 use eframe::egui;
@@ -8,6 +10,16 @@ use math_explorer::pure_math::graph_theory::{
 };
 use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphSnapshot {
+    pub node_positions: HashMap<usize, Pos2>,
+    pub edges: Vec<(usize, usize, f64)>,
+    pub selected_node: Option<usize>,
+    pub next_node_id: usize,
+}
+
+const MAX_SNAPSHOTS: usize = 50;
 
 #[derive(PartialEq, Default)]
 enum EditorMode {
@@ -30,6 +42,8 @@ pub struct GraphEditorTool {
     mode: EditorMode,
     hovered_node: Option<usize>,
     hovered_edge: Option<usize>,
+    undo_stack: Vec<GraphSnapshot>,
+    redo_stack: Vec<GraphSnapshot>,
 }
 
 impl InteractiveTool for GraphEditorTool {
@@ -46,6 +60,43 @@ impl InteractiveTool for GraphEditorTool {
             ui.radio_value(&mut self.mode, EditorMode::AddNode, "Add Node/Move");
             ui.radio_value(&mut self.mode, EditorMode::AddEdge, "Add Edge");
             ui.radio_value(&mut self.mode, EditorMode::Remove, "Remove");
+        });
+
+        ui.separator();
+
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(self.can_undo(), egui::Button::new("↩ Undo"))
+                .accessible_hover_text("Undo the last graph modification (Ctrl+Z / Cmd+Z)")
+                .clicked()
+            {
+                self.undo();
+            }
+
+            if ui
+                .add_enabled(self.can_redo(), egui::Button::new("↪ Redo"))
+                .accessible_hover_text("Redo the last undone graph modification (Ctrl+Y / Cmd+Shift+Z)")
+                .clicked()
+            {
+                self.redo();
+            }
+        });
+
+        ui.input_mut(|i| {
+            let ctrl_or_cmd = i.modifiers.command || i.modifiers.ctrl || i.modifiers.mac_cmd;
+            if ctrl_or_cmd && i.key_pressed(egui::Key::Z) {
+                if i.modifiers.shift {
+                    if self.can_redo() {
+                        self.redo();
+                    }
+                } else if self.can_undo() {
+                    self.undo();
+                }
+            } else if ctrl_or_cmd && i.key_pressed(egui::Key::Y) {
+                if self.can_redo() {
+                    self.redo();
+                }
+            }
         });
 
         ui.separator();
@@ -71,12 +122,15 @@ impl InteractiveTool for GraphEditorTool {
             .accessible_hover_text("Remove all nodes and edges and start with a fresh graph")
             .clicked()
         {
-            self.graph = Graph::new();
-            self.node_indices.clear();
-            self.node_positions.clear();
-            self.edges.clear();
-            self.selected_node = None;
-            self.next_node_id = 0;
+            if !self.node_positions.is_empty() || !self.edges.is_empty() {
+                self.push_undo_snapshot();
+                self.graph = Graph::new();
+                self.node_indices.clear();
+                self.node_positions.clear();
+                self.edges.clear();
+                self.selected_node = None;
+                self.next_node_id = 0;
+            }
         }
 
         ui.separator();
@@ -85,6 +139,25 @@ impl InteractiveTool for GraphEditorTool {
         ui.separator();
         ui.label(format!("Nodes: {}", self.node_positions.len()));
         ui.label(format!("Edges: {}", self.edges.len()));
+    }
+
+    fn on_keyboard(&mut self, ctx: &InteractionContext) {
+        let ctrl_or_cmd = ctx.modifiers.command || ctx.modifiers.ctrl || ctx.modifiers.mac_cmd;
+        if ctrl_or_cmd {
+            if ctx.keys_down.contains(&egui::Key::Z) {
+                if ctx.modifiers.shift {
+                    if self.can_redo() {
+                        self.redo();
+                    }
+                } else if self.can_undo() {
+                    self.undo();
+                }
+            } else if ctx.keys_down.contains(&egui::Key::Y) {
+                if self.can_redo() {
+                    self.redo();
+                }
+            }
+        }
     }
 
     fn on_hover(&mut self, ctx: &InteractionContext) {
@@ -128,6 +201,7 @@ impl InteractiveTool for GraphEditorTool {
         if self.mode == EditorMode::AddNode {
             if ctx.response.drag_started() {
                 if let Some(id) = self.hovered_node {
+                    self.push_undo_snapshot();
                     self.dragged_node = Some(id);
                 }
             }
@@ -155,6 +229,7 @@ impl InteractiveTool for GraphEditorTool {
                     EditorMode::AddNode => {
                         if self.hovered_node.is_none() {
                             // Add Node
+                            self.push_undo_snapshot();
                             let node_index = self.graph.add_node(pos);
                             self.node_indices.insert(self.next_node_id, node_index);
                             self.node_positions.insert(self.next_node_id, pos);
@@ -172,6 +247,7 @@ impl InteractiveTool for GraphEditorTool {
                                     });
 
                                     if !edge_exists {
+                                        self.push_undo_snapshot();
                                         let weight = 1.0;
                                         self.edges.push((selected_id, clicked_id, weight));
                                         if let (Some(&u_idx), Some(&v_idx)) = (
@@ -197,6 +273,7 @@ impl InteractiveTool for GraphEditorTool {
                     EditorMode::Remove => {
                         if let Some(clicked_id) = self.hovered_node {
                             // Remove Node
+                            self.push_undo_snapshot();
                             self.node_positions.remove(&clicked_id);
                             self.node_indices.remove(&clicked_id);
 
@@ -209,6 +286,7 @@ impl InteractiveTool for GraphEditorTool {
                             self.rebuild_graph();
                         } else if let Some(edge_idx) = self.hovered_edge {
                             // Remove Edge
+                            self.push_undo_snapshot();
                             self.edges.remove(edge_idx);
                             self.rebuild_graph();
                         }
@@ -273,6 +351,64 @@ impl InteractiveTool for GraphEditorTool {
 }
 
 impl GraphEditorTool {
+    pub fn can_undo(&self) -> bool { !self.undo_stack.is_empty() }
+    pub fn can_redo(&self) -> bool { !self.redo_stack.is_empty() }
+
+    pub fn push_undo_snapshot(&mut self) {
+        let snapshot = GraphSnapshot {
+            node_positions: self.node_positions.clone(),
+            edges: self.edges.clone(),
+            selected_node: self.selected_node,
+            next_node_id: self.next_node_id,
+        };
+        self.undo_stack.push(snapshot);
+        if self.undo_stack.len() > MAX_SNAPSHOTS {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    pub fn undo(&mut self) {
+        if let Some(previous_state) = self.undo_stack.pop() {
+            let current_state = GraphSnapshot {
+                node_positions: self.node_positions.clone(),
+                edges: self.edges.clone(),
+                selected_node: self.selected_node,
+                next_node_id: self.next_node_id,
+            };
+            self.redo_stack.push(current_state);
+            self.restore_snapshot(previous_state);
+        }
+    }
+
+    pub fn redo(&mut self) {
+        if let Some(next_state) = self.redo_stack.pop() {
+            let current_state = GraphSnapshot {
+                node_positions: self.node_positions.clone(),
+                edges: self.edges.clone(),
+                selected_node: self.selected_node,
+                next_node_id: self.next_node_id,
+            };
+            self.undo_stack.push(current_state);
+            self.restore_snapshot(next_state);
+        }
+    }
+
+    fn restore_snapshot(&mut self, snapshot: GraphSnapshot) {
+        self.node_positions = snapshot.node_positions;
+        self.edges = snapshot.edges;
+        self.selected_node = if snapshot
+            .selected_node
+            .map_or(false, |id| self.node_positions.contains_key(&id))
+        {
+            snapshot.selected_node
+        } else {
+            None
+        };
+        self.next_node_id = snapshot.next_node_id;
+        self.rebuild_graph();
+    }
+
     fn show_layout_toolbar(&mut self, ui: &mut egui::Ui) {
         ui.label("Auto Layout:");
         ui.horizontal(|ui| {
@@ -283,8 +419,11 @@ impl GraphEditorTool {
                 .accessible_hover_text("Arrange nodes in a circle")
                 .clicked()
             {
-                let layout = circular_layout(&self.graph, bounds);
-                self.apply_layout(&layout);
+                if !self.node_positions.is_empty() {
+                    self.push_undo_snapshot();
+                    let layout = circular_layout(&self.graph, bounds);
+                    self.apply_layout(&layout);
+                }
             }
 
             if ui
@@ -292,8 +431,11 @@ impl GraphEditorTool {
                 .accessible_hover_text("Arrange nodes in a grid layout")
                 .clicked()
             {
-                let layout = grid_layout(&self.graph, bounds);
-                self.apply_layout(&layout);
+                if !self.node_positions.is_empty() {
+                    self.push_undo_snapshot();
+                    let layout = grid_layout(&self.graph, bounds);
+                    self.apply_layout(&layout);
+                }
             }
 
             if ui
@@ -301,8 +443,11 @@ impl GraphEditorTool {
                 .accessible_hover_text("Arrange nodes using force-directed physics")
                 .clicked()
             {
-                let layout = force_directed_layout(&self.graph, bounds, 100);
-                self.apply_layout(&layout);
+                if !self.node_positions.is_empty() {
+                    self.push_undo_snapshot();
+                    let layout = force_directed_layout(&self.graph, bounds, 100);
+                    self.apply_layout(&layout);
+                }
             }
         });
     }
@@ -319,18 +464,12 @@ impl GraphEditorTool {
     fn rebuild_graph(&mut self) {
         self.graph = Graph::new();
         self.node_indices.clear();
-
-        // Re-add nodes
         for (&id, &pos) in &self.node_positions {
             let idx = self.graph.add_node(pos);
             self.node_indices.insert(id, idx);
         }
-
-        // Re-add edges
         for &(u, v, weight) in &self.edges {
-            if let (Some(&u_idx), Some(&v_idx)) =
-                (self.node_indices.get(&u), self.node_indices.get(&v))
-            {
+            if let (Some(&u_idx), Some(&v_idx)) = (self.node_indices.get(&u), self.node_indices.get(&v)) {
                 self.graph.add_edge(u_idx, v_idx, weight);
             }
         }
@@ -338,7 +477,6 @@ impl GraphEditorTool {
 }
 
 // [cite:graph_parameters_rust]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -355,3 +493,7 @@ impl scientific_metadata::theory::TheoryDescribable for GraphEditorTool {
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+#[cfg(test)]
+mod tests;
+
