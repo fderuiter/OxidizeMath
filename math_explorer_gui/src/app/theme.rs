@@ -28,12 +28,14 @@ impl ThemeMode {
                 visuals.window_fill = egui::Color32::BLACK;
                 visuals.widgets.noninteractive.bg_fill = egui::Color32::BLACK;
                 visuals.widgets.noninteractive.fg_stroke =
-                    egui::Stroke::new(1.0, egui::Color32::WHITE);
-                visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
-                visuals.widgets.hovered.fg_stroke = egui::Stroke::new(2.0, egui::Color32::YELLOW);
-                visuals.widgets.active.fg_stroke = egui::Stroke::new(2.0, egui::Color32::WHITE);
+                    egui::Stroke::new(1.0_f32, egui::Color32::WHITE);
+                visuals.widgets.inactive.fg_stroke =
+                    egui::Stroke::new(1.0_f32, egui::Color32::WHITE);
+                visuals.widgets.hovered.fg_stroke =
+                    egui::Stroke::new(2.0_f32, egui::Color32::YELLOW);
+                visuals.widgets.active.fg_stroke = egui::Stroke::new(2.0_f32, egui::Color32::WHITE);
                 visuals.selection.bg_fill = egui::Color32::YELLOW;
-                visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::BLACK);
+                visuals.selection.stroke = egui::Stroke::new(1.0_f32, egui::Color32::BLACK);
                 visuals
             }
         }
