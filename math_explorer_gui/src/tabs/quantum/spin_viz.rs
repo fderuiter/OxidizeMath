@@ -1,6 +1,6 @@
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints, Points};
+use egui_plot::{Line, Plot, PlotPoint, Points};
 use scientific_metadata::theory::TheoryDescribable;
 use math_explorer::physics::quantum::{evolve_state, spin, QuantumOperator, QuantumState};
 use num_complex::Complex;
@@ -13,6 +13,9 @@ pub struct SpinVisualizer {
     time: f64,
     paused: bool,
     camera: crate::framework::Camera3D,
+    sx: QuantumOperator,
+    sy: QuantumOperator,
+    sz: QuantumOperator,
 }
 
 impl Default for SpinVisualizer {
@@ -26,6 +29,9 @@ impl Default for SpinVisualizer {
             time: 0.0,
             paused: true,
             camera: crate::framework::Camera3D::new(0.5, 0.5, 1.0),
+            sx: spin::sigma_x(),
+            sy: spin::sigma_y(),
+            sz: spin::sigma_z(),
         }
     }
 }
@@ -38,22 +44,15 @@ impl SpinVisualizer {
     }
 
     fn step(&mut self, dt: f64) {
-        let sx = spin::sigma_x().matrix;
-        let sy = spin::sigma_y().matrix;
-        let sz = spin::sigma_z().matrix;
-
         let bx = self.b_field[0];
         let by = self.b_field[1];
         let bz = self.b_field[2];
 
         // H = 0.5 * (Bx*Sx + By*Sy + Bz*Sz)
-        // Note: DMatrix * scalar works, but DMatrix<Complex> * Complex might need explicit loop or map if not implemented.
-        // nalgebra usually implements mul for T: Scalar.
-        // Let's rely on nalgebra's operator overloading.
-
-        let h_matrix =
-            (sx * Complex::new(bx, 0.0) + sy * Complex::new(by, 0.0) + sz * Complex::new(bz, 0.0))
-                * Complex::new(0.5, 0.0);
+        let h_matrix = (&self.sx.matrix * Complex::new(bx, 0.0)
+            + &self.sy.matrix * Complex::new(by, 0.0)
+            + &self.sz.matrix * Complex::new(bz, 0.0))
+            * Complex::new(0.5, 0.0);
 
         let hamiltonian = QuantumOperator::new(h_matrix);
 
@@ -80,6 +79,11 @@ impl InteractiveTool for SpinVisualizer {
             self.step(0.05);
             ctx.request_repaint();
         }
+
+        // Calculate expectation values once per frame
+        let ex = self.sx.expectation_value(&self.psi).re;
+        let ey = self.sy.expectation_value(&self.psi).re;
+        let ez = self.sz.expectation_value(&self.psi).re;
 
         egui::SidePanel::left("spin_controls").show(ctx, |ui| {
             ui.heading("Controls");
@@ -116,14 +120,6 @@ impl InteractiveTool for SpinVisualizer {
             self.camera.ui(ui);
 
             ui.separator();
-            // Calculate expectation values
-            let sx_op = spin::sigma_x();
-            let sy_op = spin::sigma_y();
-            let sz_op = spin::sigma_z();
-
-            let ex = sx_op.expectation_value(&self.psi).re;
-            let ey = sy_op.expectation_value(&self.psi).re;
-            let ez = sz_op.expectation_value(&self.psi).re;
 
             ui.label(format!("Ex (x): {:.3}", ex));
             ui.label(format!("Ey (y): {:.3}", ey));
@@ -131,74 +127,84 @@ impl InteractiveTool for SpinVisualizer {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let sx_op = spin::sigma_x();
-            let sy_op = spin::sigma_y();
-            let sz_op = spin::sigma_z();
-
-            let ex = sx_op.expectation_value(&self.psi).re;
-            let ey = sy_op.expectation_value(&self.psi).re;
-            let ez = sz_op.expectation_value(&self.psi).re;
-
-            // Generate sphere wireframe
-            let mut circle_points = Vec::new();
-            // Equator (z=0)
-            let mut equator = Vec::new();
-            for i in 0..=60 {
+            // Generate sphere wireframe with fixed stack arrays
+            let mut equator = [PlotPoint::new(0.0, 0.0); 61];
+            for (i, pt) in equator.iter_mut().enumerate() {
                 let theta = i as f64 * std::f64::consts::TAU / 60.0;
-                equator.push(self.project([theta.cos(), theta.sin(), 0.0]));
+                let [x, y] = self.project([theta.cos(), theta.sin(), 0.0]);
+                *pt = PlotPoint::new(x, y);
             }
-            circle_points.push(("Equator", equator, egui::Color32::GRAY));
 
-            // Meridian (x=0)
-            let mut meridian = Vec::new();
-            for i in 0..=60 {
+            let mut meridian = [PlotPoint::new(0.0, 0.0); 61];
+            for (i, pt) in meridian.iter_mut().enumerate() {
                 let theta = i as f64 * std::f64::consts::TAU / 60.0;
-                meridian.push(self.project([0.0, theta.cos(), theta.sin()]));
+                let [x, y] = self.project([0.0, theta.cos(), theta.sin()]);
+                *pt = PlotPoint::new(x, y);
             }
-            circle_points.push(("Meridian YZ", meridian, egui::Color32::GRAY));
 
-            // Meridian (y=0)
-            let mut meridian2 = Vec::new();
-            for i in 0..=60 {
+            let mut meridian2 = [PlotPoint::new(0.0, 0.0); 61];
+            for (i, pt) in meridian2.iter_mut().enumerate() {
                 let theta = i as f64 * std::f64::consts::TAU / 60.0;
-                meridian2.push(self.project([theta.cos(), 0.0, theta.sin()]));
+                let [x, y] = self.project([theta.cos(), 0.0, theta.sin()]);
+                *pt = PlotPoint::new(x, y);
             }
-            circle_points.push(("Meridian XZ", meridian2, egui::Color32::GRAY));
 
-            // Vector
-            let start = self.project([0.0, 0.0, 0.0]);
-            let end = self.project([ex, ey, ez]);
-            let vec_line = vec![start, end];
+            // Vector & Axes
+            let origin = {
+                let [x, y] = self.project([0.0, 0.0, 0.0]);
+                PlotPoint::new(x, y)
+            };
+            let end = {
+                let [x, y] = self.project([ex, ey, ez]);
+                PlotPoint::new(x, y)
+            };
+            let vec_line = [origin, end];
+
+            let x_axis = [
+                origin,
+                {
+                    let [x, y] = self.project([1.2, 0.0, 0.0]);
+                    PlotPoint::new(x, y)
+                },
+            ];
+            let y_axis = [
+                origin,
+                {
+                    let [x, y] = self.project([0.0, 1.2, 0.0]);
+                    PlotPoint::new(x, y)
+                },
+            ];
+            let z_axis = [
+                origin,
+                {
+                    let [x, y] = self.project([0.0, 0.0, 1.2]);
+                    PlotPoint::new(x, y)
+                },
+            ];
+            let tip = [end];
 
             let response = Plot::new("bloch_sphere")
                 .data_aspect(1.0)
                 .view_aspect(1.0)
                 .show(ui, |plot_ui| {
-                    for (name, points, color) in circle_points {
-                        plot_ui.line(Line::new(name, PlotPoints::new(points)).color(color));
-                    }
-                    // Draw axes
-                    let origin = self.project([0.0, 0.0, 0.0]);
-                    let x_axis = vec![origin, self.project([1.2, 0.0, 0.0])];
-                    let y_axis = vec![origin, self.project([0.0, 1.2, 0.0])];
-                    let z_axis = vec![origin, self.project([0.0, 0.0, 1.2])];
+                    plot_ui.line(Line::new("", &equator[..]).color(egui::Color32::GRAY));
+                    plot_ui.line(Line::new("", &meridian[..]).color(egui::Color32::GRAY));
+                    plot_ui.line(Line::new("", &meridian2[..]).color(egui::Color32::GRAY));
 
-                    plot_ui.line(Line::new("X", PlotPoints::new(x_axis)).color(egui::Color32::RED));
-                    plot_ui
-                        .line(Line::new("Y", PlotPoints::new(y_axis)).color(egui::Color32::GREEN));
-                    plot_ui
-                        .line(Line::new("Z", PlotPoints::new(z_axis)).color(egui::Color32::BLUE));
+                    plot_ui.line(Line::new("", &x_axis[..]).color(egui::Color32::RED));
+                    plot_ui.line(Line::new("", &y_axis[..]).color(egui::Color32::GREEN));
+                    plot_ui.line(Line::new("", &z_axis[..]).color(egui::Color32::BLUE));
 
-                    // Draw state vector
+                    // Draw state vector (only named line in legend)
                     plot_ui.line(
-                        Line::new("State", PlotPoints::new(vec_line))
+                        Line::new("State", &vec_line[..])
                             .color(egui::Color32::YELLOW)
                             .width(3.0_f32),
                     );
 
                     // Draw point at tip
                     plot_ui.points(
-                        Points::new("State Tip", PlotPoints::new(vec![end]))
+                        Points::new("", &tip[..])
                             .radius(5.0_f32)
                             .color(egui::Color32::YELLOW),
                     );
@@ -230,4 +236,39 @@ impl scientific_metadata::theory::TheoryDescribable for SpinVisualizer {
     fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_spin_visualizer_initialization_and_reset() {
+        let mut viz = SpinVisualizer::default();
+        assert_eq!(viz.time, 0.0);
+        assert!(viz.paused);
+
+        let ez = viz.sz.expectation_value(&viz.psi).re;
+        assert!((ez - 1.0).abs() < 1e-6);
+
+        viz.step(0.1);
+        assert!(viz.time > 0.0);
+
+        viz.reset();
+        assert_eq!(viz.time, 0.0);
+        let ez_reset = viz.sz.expectation_value(&viz.psi).re;
+        assert!((ez_reset - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cached_operators_match_pauli() {
+        let viz = SpinVisualizer::default();
+        let sx_ref = spin::sigma_x();
+        let sy_ref = spin::sigma_y();
+        let sz_ref = spin::sigma_z();
+
+        assert_eq!(viz.sx.matrix, sx_ref.matrix);
+        assert_eq!(viz.sy.matrix, sy_ref.matrix);
+        assert_eq!(viz.sz.matrix, sz_ref.matrix);
+    }
 }

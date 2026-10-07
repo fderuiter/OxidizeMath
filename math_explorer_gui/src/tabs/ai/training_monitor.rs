@@ -58,18 +58,25 @@ impl Default for TrainingMonitorTool {
 }
 
 impl TrainingMonitorTool {
-    fn reset(&mut self) {
-        if let Ok(adam) = Adam::new(self.learning_rate) {
-            let optimizer = Box::new(adam);
-            self.training_loop = TrainingLoop::new(2, self.hidden_dim, 2, optimizer);
-            self.epoch = 0;
-            self.loss_history.clear();
-            self.accuracy_history.clear();
-            self.is_training = false;
-        }
+    fn reinit_model(&mut self) {
+        let optimizer: Box<dyn math_explorer::ai::optimization::Optimizer<f64>> =
+            match Adam::new(self.learning_rate) {
+                Ok(adam) => Box::new(adam),
+                Err(_) => Box::new(math_explorer::ai::optimization::SGD::new(self.learning_rate)),
+            };
 
-        // Regenerate data for freshness
+        self.training_loop = TrainingLoop::new(2, self.hidden_dim, 2, optimizer);
+        self.epoch = 0;
+        self.loss_history.clear();
+        self.accuracy_history.clear();
+        self.is_training = false;
         self.data = generate_spiral_data(100);
+    }
+
+    pub fn reset(&mut self) {
+        self.learning_rate = 0.01;
+        self.hidden_dim = 16;
+        self.reinit_model();
     }
 
     fn step(&mut self) {
@@ -135,8 +142,8 @@ impl InteractiveTool for TrainingMonitorTool {
             }
 
             if ui
-                .button("↻ Reset Model")
-                .accessible_hover_text("Re-initialize the neural network weights and clear metrics")
+                .button("↻ Reset to Defaults")
+                .accessible_hover_text("Re-initialize neural network weights and reset hyperparameters to default values")
                 .clicked()
             {
                 self.reset();
@@ -157,7 +164,7 @@ impl InteractiveTool for TrainingMonitorTool {
             if ui.add(egui::Slider::new(&mut self.hidden_dim, 2..=64).text("Hidden Neurons"))
                 .changed()
             {
-                self.reset();
+                self.reinit_model();
             }
 
             ui.separator();
@@ -295,4 +302,30 @@ impl scientific_metadata::theory::TheoryDescribable for TrainingMonitorTool {
     fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_training_monitor_reset() {
+        let mut tool = TrainingMonitorTool::default();
+
+        tool.learning_rate = 0.05;
+        tool.hidden_dim = 32;
+        tool.epoch = 10;
+        tool.is_training = true;
+        tool.loss_history.push([1.0, 0.5]);
+        tool.accuracy_history.push([1.0, 0.8]);
+
+        tool.reset();
+
+        assert_eq!(tool.learning_rate, 0.01);
+        assert_eq!(tool.hidden_dim, 16);
+        assert_eq!(tool.epoch, 0);
+        assert!(!tool.is_training);
+        assert!(tool.loss_history.is_empty());
+        assert!(tool.accuracy_history.is_empty());
+    }
 }
