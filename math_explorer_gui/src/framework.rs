@@ -3,13 +3,9 @@ use scientific_metadata::theory::TheoryDescribable;
 
 #[allow(missing_docs)]
 pub struct ToolMetadata {
-    #[allow(missing_docs)]
     pub name: &'static str,
-    #[allow(missing_docs)]
     pub domain: &'static str,
-    #[allow(missing_docs)]
     pub tags: &'static [&'static str],
-    #[allow(missing_docs)]
     pub build: fn() -> Box<dyn InteractiveTool>,
 }
 
@@ -25,24 +21,16 @@ pub enum InputMode {
 }
 
 /// Event context provided to interaction hooks.
+#[allow(missing_docs)]
 pub struct InteractionContext<'a> {
-    #[allow(missing_docs)]
     pub pointer_pos: Option<egui::Pos2>,
-    #[allow(missing_docs)]
     pub delta: egui::Vec2,
-    #[allow(missing_docs)]
     pub is_dragging: bool,
-    #[allow(missing_docs)]
     pub is_clicked: bool,
-    #[allow(missing_docs)]
     pub response: &'a egui::Response,
-    #[allow(missing_docs)]
     pub input_mode: InputMode,
-    #[allow(missing_docs)]
     pub multi_touch: Option<egui::MultiTouchInfo>,
-    #[allow(missing_docs)]
     pub keys_down: std::collections::HashSet<egui::Key>,
-    #[allow(missing_docs)]
     pub modifiers: egui::Modifiers,
 }
 
@@ -142,6 +130,10 @@ pub struct SimulationFramework {
     pub input_mode: InputMode,
     #[allow(missing_docs)]
     pub show_theory_portal: bool,
+    #[allow(missing_docs)]
+    pub search_query: String,
+    last_announced_count: Option<usize>,
+    last_announced_query: String,
 }
 
 impl SimulationFramework {
@@ -161,6 +153,9 @@ impl SimulationFramework {
             selected_tool_index: None,
             input_mode: InputMode::Mouse,
             show_theory_portal: false,
+            search_query: String::new(),
+            last_announced_count: None,
+            last_announced_query: String::new(),
         }
     }
 
@@ -215,25 +210,86 @@ impl SimulationFramework {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.heading("Tools");
-                ui.separator();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for (i, meta) in self.available_tools.iter().enumerate() {
-                        if ui
-                            .selectable_label(self.selected_tool_index == Some(i), meta.name)
-                            .clicked()
-                            && self.selected_tool_index != Some(i)
-                        {
-                            self.selected_tool_index = Some(i);
-                            let new_tool = (meta.build)();
-                            // Requirement 4 & Acceptance Criteria 3: On-demand registration of bibliographic details when active/loaded
-                            scientific_metadata::citation_registry::CitationRegistry::register(
-                                new_tool.name().to_string(),
-                                new_tool.theory().theory_citation(),
-                            );
-                            self.active_tool = Some(new_tool);
+
+                // Requirement 2: Render search input bar at top of side panel
+                ui.horizontal(|ui| {
+                    let text_edit = egui::TextEdit::singleline(&mut self.search_query)
+                        .hint_text("🔍 Filter tools...");
+                    let response = ui.add(text_edit);
+
+                    // Requirement 4: Display clear search button when search_query is not empty
+                    if !self.search_query.is_empty() {
+                        if ui.button("❌").on_hover_text("Clear search").clicked() {
+                            self.search_query.clear();
                         }
                     }
+
+                    // Requirement 4 / User Scenario: Clear filter on Escape key press
+                    if ui.input(|i| i.key_pressed(egui::Key::Escape)) && response.has_focus() {
+                        self.search_query.clear();
+                    }
                 });
+
+                ui.separator();
+
+                // Requirement 3: Filter self.available_tools by search_query matching meta.name or meta.tags
+                let query = self.search_query.trim().to_lowercase();
+                let filtered_tools: Vec<(usize, &&'static ToolMetadata)> = self
+                    .available_tools
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, meta)| {
+                        if query.is_empty() {
+                            true
+                        } else {
+                            meta.name.to_lowercase().contains(&query)
+                                || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
+                        }
+                    })
+                    .collect();
+
+                let count = filtered_tools.len();
+
+                // Requirement 6: Send filtered count updates via accessibility::announce_status
+                if self.last_announced_count != Some(count) || self.last_announced_query != query {
+                    if !query.is_empty() {
+                        let msg = if count == 1 {
+                            "1 tool matches filter".to_string()
+                        } else {
+                            format!("{} tools match filter", count)
+                        };
+                        crate::accessibility::announce_status(&msg);
+                    }
+                    self.last_announced_count = Some(count);
+                    self.last_announced_query = query;
+                }
+
+                if filtered_tools.is_empty() {
+                    // Requirement 5: Render empty state message with a clear button when no tools match
+                    ui.label(format!("No tools match '{}'", self.search_query));
+                    if ui.button("Clear search").clicked() {
+                        self.search_query.clear();
+                    }
+                } else {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for &(i, meta) in &filtered_tools {
+                            if ui
+                                .selectable_label(self.selected_tool_index == Some(i), meta.name)
+                                .clicked()
+                                && self.selected_tool_index != Some(i)
+                            {
+                                self.selected_tool_index = Some(i);
+                                let new_tool = (meta.build)();
+                                scientific_metadata::citation_registry::CitationRegistry::register(
+                                    new_tool.name().to_string(),
+                                    new_tool.theory().theory_citation(),
+                                );
+                                self.active_tool = Some(new_tool);
+                            }
+                        }
+                    });
+                }
+
                 ui.separator();
                 ui.checkbox(&mut self.show_theory_portal, "Theory Context Portal");
             });
@@ -278,22 +334,11 @@ impl SimulationFramework {
     }
 }
 
-#[allow(missing_docs)]
-pub struct CoordinateMapper {
-    #[allow(missing_docs)]
-    pub screen_rect: egui::Rect,
-    #[allow(missing_docs)]
-    pub sim_rect: egui::Rect,
-}
-
 #[derive(Clone, Copy, Debug)]
 #[allow(missing_docs)]
 pub struct Camera3D {
-    #[allow(missing_docs)]
     pub pitch: f32,
-    #[allow(missing_docs)]
     pub yaw: f32,
-    #[allow(missing_docs)]
     pub zoom: f32,
 }
 
@@ -348,24 +393,26 @@ impl Camera3D {
         let mut yaw_delta = 0.0;
         let mut pitch_delta = 0.0;
         let mut zoom_factor = 1.0;
-        if ui.input(|i| i.key_down(egui::Key::A)) {
-            yaw_delta += 0.05;
-        }
-        if ui.input(|i| i.key_down(egui::Key::D)) {
-            yaw_delta -= 0.05;
-        }
-        if ui.input(|i| i.key_down(egui::Key::W)) {
-            pitch_delta += 0.05;
-        }
-        if ui.input(|i| i.key_down(egui::Key::S)) {
-            pitch_delta -= 0.05;
-        }
-        if ui.input(|i| i.key_down(egui::Key::Q)) {
-            zoom_factor *= 1.05;
-        }
-        if ui.input(|i| i.key_down(egui::Key::E)) {
-            zoom_factor /= 1.05;
-        }
+        ui.input(|i| {
+            if i.key_down(egui::Key::A) {
+                yaw_delta += 0.05;
+            }
+            if i.key_down(egui::Key::D) {
+                yaw_delta -= 0.05;
+            }
+            if i.key_down(egui::Key::W) {
+                pitch_delta += 0.05;
+            }
+            if i.key_down(egui::Key::S) {
+                pitch_delta -= 0.05;
+            }
+            if i.key_down(egui::Key::Q) {
+                zoom_factor *= 1.05;
+            }
+            if i.key_down(egui::Key::E) {
+                zoom_factor /= 1.05;
+            }
+        });
 
         self.yaw -= yaw_delta;
         self.pitch -= pitch_delta;
@@ -439,37 +486,5 @@ impl Camera3D {
         ui.drag_angle(&mut self.pitch);
 
         ui.add(egui::Slider::new(&mut self.zoom, 0.1..=5.0).text("Zoom"));
-    }
-}
-
-impl CoordinateMapper {
-    #[allow(missing_docs)]
-    pub fn new(screen_rect: egui::Rect, sim_rect: egui::Rect) -> Self {
-        Self {
-            screen_rect,
-            sim_rect,
-        }
-    }
-
-    #[allow(missing_docs)]
-    pub fn screen_to_sim(&self, pos: egui::Pos2) -> egui::Pos2 {
-        let x_norm = (pos.x - self.screen_rect.min.x) / self.screen_rect.width();
-        let y_norm = (pos.y - self.screen_rect.min.y) / self.screen_rect.height();
-
-        egui::Pos2::new(
-            self.sim_rect.min.x + x_norm * self.sim_rect.width(),
-            self.sim_rect.min.y + y_norm * self.sim_rect.height(),
-        )
-    }
-
-    #[allow(missing_docs)]
-    pub fn sim_to_screen(&self, pos: egui::Pos2) -> egui::Pos2 {
-        let x_norm = (pos.x - self.sim_rect.min.x) / self.sim_rect.width();
-        let y_norm = (pos.y - self.sim_rect.min.y) / self.sim_rect.height();
-
-        egui::Pos2::new(
-            self.screen_rect.min.x + x_norm * self.screen_rect.width(),
-            self.screen_rect.min.y + y_norm * self.screen_rect.height(),
-        )
     }
 }
