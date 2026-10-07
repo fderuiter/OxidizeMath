@@ -281,11 +281,11 @@ pub fn render_theory_summary_with_export(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+    pub(crate) static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     struct DummyMissingTheoryModel {
         param_val: f64,
