@@ -489,12 +489,6 @@ mod tests {
         assert_eq!(app.selected_tab, initial_tab);
         assert!(app.show_info);
     }
-}
-
-#[cfg(test)]
-mod shortcut_tests {
-    use super::*;
-    use eframe::App;
 
     #[test]
     fn test_cheatsheet_shortcut_question() {

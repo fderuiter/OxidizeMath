@@ -3,13 +3,9 @@ use scientific_metadata::theory::TheoryDescribable;
 
 #[allow(missing_docs)]
 pub struct ToolMetadata {
-    #[allow(missing_docs)]
     pub name: &'static str,
-    #[allow(missing_docs)]
     pub domain: &'static str,
-    #[allow(missing_docs)]
     pub tags: &'static [&'static str],
-    #[allow(missing_docs)]
     pub build: fn() -> Box<dyn InteractiveTool>,
 }
 
@@ -25,24 +21,16 @@ pub enum InputMode {
 }
 
 /// Event context provided to interaction hooks.
+#[allow(missing_docs)]
 pub struct InteractionContext<'a> {
-    #[allow(missing_docs)]
     pub pointer_pos: Option<egui::Pos2>,
-    #[allow(missing_docs)]
     pub delta: egui::Vec2,
-    #[allow(missing_docs)]
     pub is_dragging: bool,
-    #[allow(missing_docs)]
     pub is_clicked: bool,
-    #[allow(missing_docs)]
     pub response: &'a egui::Response,
-    #[allow(missing_docs)]
     pub input_mode: InputMode,
-    #[allow(missing_docs)]
     pub multi_touch: Option<egui::MultiTouchInfo>,
-    #[allow(missing_docs)]
     pub keys_down: std::collections::HashSet<egui::Key>,
-    #[allow(missing_docs)]
     pub modifiers: egui::Modifiers,
 }
 
@@ -160,6 +148,9 @@ pub struct SimulationFramework {
     pub show_theory_portal: bool,
     #[allow(missing_docs)]
     pub saved_tool_states: std::collections::HashMap<String, String>,
+    pub search_query: String,
+    last_announced_count: Option<usize>,
+    last_announced_query: String,
 }
 
 impl SimulationFramework {
@@ -180,6 +171,9 @@ impl SimulationFramework {
             input_mode: InputMode::Mouse,
             show_theory_portal: false,
             saved_tool_states: std::collections::HashMap::new(),
+            search_query: String::new(),
+            last_announced_count: None,
+            last_announced_query: String::new(),
         }
     }
 
@@ -203,13 +197,14 @@ impl SimulationFramework {
                         );
                         // Requirement 5: Screen readers can successfully navigate the theory text and citations
                         use crate::accessibility::AccessibleHoverText;
+                        use crate::reflective_ui::render_theory_summary_with_export;
 
-                        ui.label(theory.theory_description())
+                        render_theory_summary_with_export(ui, &theory.theory_description(), None)
                             .accessible_hover_text("Theoretical background description");
 
                         ui.separator();
                         ui.heading("Citations");
-                        ui.label(theory.theory_citation())
+                        render_theory_summary_with_export(ui, &theory.theory_citation(), None)
                             .accessible_hover_text("Academic citations");
 
                         let available = theory.available_descriptions();
@@ -217,7 +212,8 @@ impl SimulationFramework {
                             ui.separator();
                             ui.heading("Additional Context");
                             for (key, desc) in available {
-                                ui.label(format!("{}: {}", key, desc))
+                                let context_entry = format!("{}: {}", key, desc);
+                                render_theory_summary_with_export(ui, &context_entry, None)
                                     .accessible_hover_text(format!(
                                         "Additional context for {}",
                                         key
@@ -229,39 +225,89 @@ impl SimulationFramework {
             });
     }
 
+    fn render_search_bar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            let text_edit =
+                egui::TextEdit::singleline(&mut self.search_query).hint_text("🔍 Filter tools...");
+            let response = ui.add(text_edit);
+
+            if !self.search_query.is_empty()
+                && ui.button("❌").on_hover_text("Clear search").clicked()
+            {
+                self.search_query.clear();
+            }
+
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) && response.has_focus() {
+                self.search_query.clear();
+            }
+        });
+    }
+
+    fn render_filtered_tools(&mut self, ui: &mut egui::Ui) {
+        let query = self.search_query.trim().to_lowercase();
+        let filtered_tools: Vec<(usize, &&'static ToolMetadata)> = self
+            .available_tools
+            .iter()
+            .enumerate()
+            .filter(|(_, meta)| {
+                if query.is_empty() {
+                    true
+                } else {
+                    meta.name.to_lowercase().contains(&query)
+                        || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
+                }
+            })
+            .collect();
+
+        let count = filtered_tools.len();
+
+        if self.last_announced_count != Some(count) || self.last_announced_query != query {
+            if !query.is_empty() {
+                let msg = if count == 1 {
+                    "1 tool matches filter".to_string()
+                } else {
+                    format!("{} tools match filter", count)
+                };
+                crate::accessibility::announce_status(&msg);
+            }
+            self.last_announced_count = Some(count);
+            self.last_announced_query = query;
+        }
+
+        if filtered_tools.is_empty() {
+            ui.label(format!("No tools match '{}'", self.search_query));
+            if ui.button("Clear search").clicked() {
+                self.search_query.clear();
+            }
+        } else {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for &(i, meta) in &filtered_tools {
+                    if ui
+                        .selectable_label(self.selected_tool_index == Some(i), meta.name)
+                        .clicked()
+                        && self.selected_tool_index != Some(i)
+                    {
+                        self.selected_tool_index = Some(i);
+                        let new_tool = (meta.build)();
+                        scientific_metadata::citation_registry::CitationRegistry::register(
+                            new_tool.name().to_string(),
+                            new_tool.theory().theory_citation(),
+                        );
+                        self.active_tool = Some(new_tool);
+                    }
+                }
+            });
+        }
+    }
+
     fn show_side_panel(&mut self, ctx: &egui::Context, id_source: &str) {
         egui::SidePanel::right(format!("{}_tool_selector", id_source))
             .resizable(false)
             .show(ctx, |ui| {
                 ui.heading("Tools");
+                self.render_search_bar(ui);
                 ui.separator();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for (i, meta) in self.available_tools.iter().enumerate() {
-                        if ui
-                            .selectable_label(self.selected_tool_index == Some(i), meta.name)
-                            .clicked()
-                            && self.selected_tool_index != Some(i)
-                        {
-                            if let Some(old_tool) = &self.active_tool {
-                                if let Some(state) = old_tool.save_state() {
-                                    self.saved_tool_states
-                                        .insert(old_tool.name().to_string(), state);
-                                }
-                            }
-                            self.selected_tool_index = Some(i);
-                            let mut new_tool = (meta.build)();
-                            if let Some(state) = self.saved_tool_states.get(new_tool.name()) {
-                                new_tool.load_state(state);
-                            }
-                            // Requirement 4 & Acceptance Criteria 3: On-demand registration of bibliographic details when active/loaded
-                            scientific_metadata::citation_registry::CitationRegistry::register(
-                                new_tool.name().to_string(),
-                                new_tool.theory().theory_citation(),
-                            );
-                            self.active_tool = Some(new_tool);
-                        }
-                    }
-                });
+                self.render_filtered_tools(ui);
                 ui.separator();
                 ui.checkbox(&mut self.show_theory_portal, "Theory Context Portal");
             });
