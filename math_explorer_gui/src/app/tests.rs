@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "unit_tests"))]
-
 use super::*;
 use eframe::{App, Storage};
 

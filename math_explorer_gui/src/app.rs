@@ -1,8 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
-#[cfg(test)]
-mod tests;
-
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
@@ -418,3 +413,6 @@ impl eframe::App for MathExplorerApp {
         std::time::Duration::from_secs(5)
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -126,7 +126,9 @@ pub fn export_custom_image(
     let target_w = (options.width as f32 * options.scale).round() as u32;
     let mut target_h = (options.height as f32 * options.scale).round() as u32;
 
-    if let Some(ratio) = options.aspect_ratio.ratio().filter(|&r| r > 0.0) {
+    if let Some(ratio) = options.aspect_ratio.ratio()
+        && ratio > 0.0
+    {
         target_h = (target_w as f32 / ratio).round() as u32;
     }
 
