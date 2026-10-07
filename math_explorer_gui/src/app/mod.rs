@@ -5,6 +5,7 @@ mod tests;
 
 pub use theme::ThemeMode;
 
+use crate::command_palette::CommandPalette;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
@@ -30,6 +31,7 @@ pub struct MathExplorerApp {
     show_errors: bool,
     show_help_menu: bool,
     pub theme: ThemeMode,
+    command_palette: CommandPalette,
 }
 
 impl Default for MathExplorerApp {
@@ -46,6 +48,7 @@ impl Default for MathExplorerApp {
             show_errors: true,
             show_help_menu: false,
             theme: ThemeMode::Dark,
+            command_palette: CommandPalette::default(),
         }
     }
 }
@@ -73,6 +76,18 @@ impl MathExplorerApp {
 
             // View Menu
             let view_menu = Submenu::new("View", true);
+            let cmd_palette_item = MenuItem::with_id(
+                MenuId::new("cmd_palette"),
+                "Command Palette...",
+                true,
+                Some(muda::accelerator::Accelerator::new(
+                    Some(muda::accelerator::Modifiers::META),
+                    muda::accelerator::Code::KeyK,
+                )),
+            );
+            view_menu.append(&cmd_palette_item).unwrap();
+            view_menu.append(&PredefinedMenuItem::separator()).unwrap();
+
             for (i, tab) in app.tabs.iter().enumerate() {
                 let item =
                     MenuItem::with_id(MenuId::new(format!("tab_{}", i)), tab.name(), true, None);
@@ -190,12 +205,36 @@ impl eframe::App for MathExplorerApp {
             crate::accessibility::announce_status_with_priority(&msg, "assertive");
         }
 
-        // Global Keyboard Shortcut Listener for Cheatsheet Modal
+        // Global Keyboard Shortcut Listener for Cheatsheet & Command Palette Modals
         let modifiers = if cfg!(target_os = "macos") {
             egui::Modifiers::MAC_CMD
         } else {
             egui::Modifiers::CTRL
         };
+
+        // Command Palette (Cmd+K / Ctrl+K)
+        let cmd_k_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
+            ctx,
+            "Command Palette",
+            "Toggle modal command palette for fuzzy search tab switching",
+            egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::K),
+            false,
+            "Global",
+            None,
+            None,
+        );
+
+        if cmd_k_triggered {
+            self.command_palette.toggle();
+            let status_msg = if self.command_palette.is_open {
+                "Command palette opened"
+            } else {
+                "Command palette closed"
+            };
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
+            });
+        }
 
         let slash_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
             ctx,
@@ -314,6 +353,8 @@ impl eframe::App for MathExplorerApp {
                     if let Ok(idx) = event.id.0[4..].parse::<usize>() {
                         self.selected_tab = idx;
                     }
+                } else if event.id.0 == "cmd_palette" {
+                    self.command_palette.toggle();
                 } else if event.id.0 == "help_commands" {
                     self.show_help_menu = !self.show_help_menu;
                 } else if event.id.0 == "theme_dark" {
@@ -368,6 +409,19 @@ impl eframe::App for MathExplorerApp {
                     }
                 });
                 ui.menu_button("View", |ui| {
+                    let cmd_shortcut = if cfg!(target_os = "macos") {
+                        "Cmd+K"
+                    } else {
+                        "Ctrl+K"
+                    };
+                    if ui
+                        .add(egui::Button::new("🔍 Command Palette...").shortcut_text(cmd_shortcut))
+                        .clicked()
+                    {
+                        self.command_palette.toggle();
+                        ui.close();
+                    }
+                    ui.separator();
                     for (i, tab) in self.tabs.iter().enumerate() {
                         if ui
                             .radio_value(&mut self.selected_tab, i, tab.name())
@@ -470,6 +524,20 @@ impl eframe::App for MathExplorerApp {
                     }
                 });
         }
+
+        // Render Command Palette Overlay
+        if let Some(new_tab_idx) = self.command_palette.show(ctx, &self.tabs) {
+            if new_tab_idx < self.tabs.len() {
+                self.selected_tab = new_tab_idx;
+                let tab_name = self.tabs[new_tab_idx].name();
+                ctx.data_mut(|d| {
+                    d.insert_temp(
+                        egui::Id::new("aria_live_message"),
+                        format!("Switched to tab {}", tab_name),
+                    );
+                });
+            }
+        }
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
@@ -481,3 +549,4 @@ impl eframe::App for MathExplorerApp {
         std::time::Duration::from_secs(5)
     }
 }
+

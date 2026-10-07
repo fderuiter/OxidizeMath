@@ -241,3 +241,26 @@ fn test_cheatsheet_shortcut_aria_announcements() {
     let aria_msg = ctx.data(|d| d.get_temp::<String>(egui::Id::new("aria_live_message")));
     assert_eq!(aria_msg, Some("Hotkey overlay opened".to_string()));
 }
+
+#[test]
+fn test_command_palette_shortcut_cmd_k() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let mut frame = eframe::Frame::_new_kittest();
+
+    assert!(!app.command_palette.is_open);
+
+    let modifiers = if cfg!(target_os = "macos") {
+        egui::Modifiers::MAC_CMD
+    } else {
+        egui::Modifiers::CTRL
+    };
+
+    send_key(&ctx, &mut app, &mut frame, egui::Key::K, modifiers);
+
+    assert!(app.command_palette.is_open);
+
+    let aria_msg = ctx.data(|d| d.get_temp::<String>(egui::Id::new("aria_live_message")));
+    assert_eq!(aria_msg, Some("Command palette opened".to_string()));
+}
