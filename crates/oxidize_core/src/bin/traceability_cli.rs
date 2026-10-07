@@ -162,12 +162,10 @@ fn scan_src_dir(src_path: std::path::PathBuf, is_root: bool, code_dirs: &mut Vec
                 }
             }
             if has_rs_files {
-                let mut target_dir = dir.to_string_lossy().to_string();
+                let mut target_dir = oxidize_core::path_utils::normalize_path(&dir);
                 if !is_root && target_dir.starts_with("../../") {
                     target_dir = target_dir.trim_start_matches("../../").to_string();
                 }
-                // Convert windows backslashes to forward slashes just in case
-                target_dir = target_dir.replace("\\", "/");
                 code_dirs.push(target_dir);
             }
         }
