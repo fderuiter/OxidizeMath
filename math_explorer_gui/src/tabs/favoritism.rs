@@ -59,6 +59,33 @@ impl ExplorerTab for FavoritismTab {
         "Favoritism"
     }
 
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct FavoritismState {
+            selected_child_index: Option<usize>,
+            new_child_name: String,
+        }
+
+        serde_json::to_string(&FavoritismState {
+            selected_child_index: self.selected_child_index,
+            new_child_name: self.new_child_name.clone(),
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct FavoritismState {
+            selected_child_index: Option<usize>,
+            new_child_name: String,
+        }
+
+        if let Ok(s) = serde_json::from_str::<FavoritismState>(state) {
+            self.selected_child_index = s.selected_child_index;
+            self.new_child_name = s.new_child_name;
+        }
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::SidePanel::left("favoritism_left_panel").show(ctx, |ui| {

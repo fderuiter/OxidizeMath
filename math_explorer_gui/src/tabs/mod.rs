@@ -68,4 +68,12 @@ pub trait ExplorerTab {
     /// * `ctx` - The egui Context, used for adding widgets and handling input.
     /// * `frame` - The eframe Frame, used for window management (e.g., resizing, closing).
     fn show(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame);
+
+    /// Serializes the tab's parameter and panel state into a String.
+    fn save_state(&self) -> Option<String> {
+        None
+    }
+
+    /// Deserializes and restores the tab's parameter and panel state from a String.
+    fn load_state(&mut self, _state: &str) {}
 }
