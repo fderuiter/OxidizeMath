@@ -2,7 +2,10 @@ use crate::accessibility::AccessibleHoverText;
 use crate::framework::{InteractionContext, InteractiveTool};
 use eframe::egui;
 use eframe::egui::Pos2;
-use math_explorer::pure_math::graph_theory::graph::Graph;
+use math_explorer::pure_math::graph_theory::{
+    graph::Graph,
+    layout::{circular_layout, force_directed_layout, grid_layout},
+};
 use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
 
@@ -75,6 +78,9 @@ impl InteractiveTool for GraphEditorTool {
             self.selected_node = None;
             self.next_node_id = 0;
         }
+
+        ui.separator();
+        self.show_layout_toolbar(ui);
 
         ui.separator();
         ui.label(format!("Nodes: {}", self.node_positions.len()));
@@ -267,6 +273,49 @@ impl InteractiveTool for GraphEditorTool {
 }
 
 impl GraphEditorTool {
+    fn show_layout_toolbar(&mut self, ui: &mut egui::Ui) {
+        ui.label("Auto Layout:");
+        ui.horizontal(|ui| {
+            let bounds = (100.0, 100.0, 700.0, 500.0);
+
+            if ui
+                .button("⭕ Circular")
+                .accessible_hover_text("Arrange nodes in a circle")
+                .clicked()
+            {
+                let layout = circular_layout(&self.graph, bounds);
+                self.apply_layout(&layout);
+            }
+
+            if ui
+                .button("▦ Grid")
+                .accessible_hover_text("Arrange nodes in a grid layout")
+                .clicked()
+            {
+                let layout = grid_layout(&self.graph, bounds);
+                self.apply_layout(&layout);
+            }
+
+            if ui
+                .button("🧲 Force-Directed")
+                .accessible_hover_text("Arrange nodes using force-directed physics")
+                .clicked()
+            {
+                let layout = force_directed_layout(&self.graph, bounds, 100);
+                self.apply_layout(&layout);
+            }
+        });
+    }
+
+    fn apply_layout(&mut self, layout: &HashMap<NodeIndex, (f32, f32)>) {
+        for (&id, &node_idx) in &self.node_indices {
+            if let Some(&(x, y)) = layout.get(&node_idx) {
+                self.node_positions.insert(id, Pos2::new(x, y));
+            }
+        }
+        self.rebuild_graph();
+    }
+
     fn rebuild_graph(&mut self) {
         self.graph = Graph::new();
         self.node_indices.clear();
