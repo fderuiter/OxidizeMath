@@ -30,7 +30,11 @@ use emath::Float as _;
 
 pub use crate::{
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
-    export::{color32_image_to_png, export_csv, export_json, save_file_dialog},
+    export::{
+        AspectRatioOption, ExportOptions, MAX_EXPORT_DIMENSION, color32_image_to_png,
+        copy_image_to_clipboard, export_csv, export_custom_image, export_custom_png, export_json,
+        save_file_dialog,
+    },
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, ClosestElem, HLine, Line, LineStyle,
         MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem, PlotItemBase,
@@ -1403,12 +1407,37 @@ impl<'a> Plot<'a> {
         let transform = mem.transform;
 
         // --- ACCESSIBILITY LOGIC INJECTED ---
-        #[derive(Clone, Default)]
+        #[derive(Clone)]
         struct AccessState {
             show_table: bool,
+            show_export_modal: bool,
+            export_scale: f32,
+            export_aspect: AspectRatioOption,
+            export_line_thickness: f32,
+            export_bg_opacity: f32,
+            export_bg_dark: bool,
+            status_message: Option<String>,
             focused_item: usize,
             focused_point: usize,
         }
+
+        impl Default for AccessState {
+            fn default() -> Self {
+                Self {
+                    show_table: false,
+                    show_export_modal: false,
+                    export_scale: 1.0,
+                    export_aspect: AspectRatioOption::SixteenNine,
+                    export_line_thickness: 2.0,
+                    export_bg_opacity: 1.0,
+                    export_bg_dark: true,
+                    status_message: None,
+                    focused_item: 0,
+                    focused_point: 0,
+                }
+            }
+        }
+
         let mut access_state =
             ui.data_mut(|d| d.get_temp::<AccessState>(plot_id).unwrap_or_default());
 
@@ -1419,8 +1448,7 @@ impl<'a> Plot<'a> {
         ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Save PNG").clicked() {
-                    ui.ctx()
-                        .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+                    access_state.show_export_modal = true;
                 }
                 if ui.button("Export CSV").clicked() {
                     export::export_csv(&accessible_datasets);
@@ -1448,6 +1476,176 @@ impl<'a> Plot<'a> {
                     }
                 });
             });
+        }
+
+        if access_state.show_export_modal {
+            let mut modal_open = access_state.show_export_modal;
+            let mut close_requested = false;
+            egui::Window::new(format!("Export High-Res Plot - {id_source:?}"))
+                .open(&mut modal_open)
+                .resizable(true)
+                .collapsible(false)
+                .default_width(380.0)
+                .show(ui.ctx(), |ui| {
+                    ui.label(egui::RichText::new("Offscreen Plot Render Settings").strong());
+                    ui.separator();
+
+                    ui.horizontal(|ui| {
+                        ui.label("Resolution Scale:");
+                        ui.selectable_value(&mut access_state.export_scale, 1.0, "1x (1080p)");
+                        ui.selectable_value(&mut access_state.export_scale, 2.0, "2x (4K)");
+                        ui.selectable_value(&mut access_state.export_scale, 4.0, "4x");
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Aspect Ratio:");
+                        egui::ComboBox::from_id_salt(plot_id.with("export_aspect"))
+                            .selected_text(match access_state.export_aspect {
+                                AspectRatioOption::Free => "Custom / Free",
+                                AspectRatioOption::SixteenNine => "16:9 (Widescreen)",
+                                AspectRatioOption::FourThree => "4:3 (Standard)",
+                                AspectRatioOption::OneOne => "1:1 (Square)",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut access_state.export_aspect,
+                                    AspectRatioOption::SixteenNine,
+                                    "16:9 (Widescreen)",
+                                );
+                                ui.selectable_value(
+                                    &mut access_state.export_aspect,
+                                    AspectRatioOption::FourThree,
+                                    "4:3 (Standard)",
+                                );
+                                ui.selectable_value(
+                                    &mut access_state.export_aspect,
+                                    AspectRatioOption::OneOne,
+                                    "1:1 (Square)",
+                                );
+                                ui.selectable_value(
+                                    &mut access_state.export_aspect,
+                                    AspectRatioOption::Free,
+                                    "Custom / Free",
+                                );
+                            });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Line Thickness:");
+                        ui.add(egui::Slider::new(
+                            &mut access_state.export_line_thickness,
+                            0.5..=10.0,
+                        ));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Background Opacity:");
+                        ui.add(egui::Slider::new(
+                            &mut access_state.export_bg_opacity,
+                            0.0..=1.0,
+                        ));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Background Color:");
+                        ui.selectable_value(&mut access_state.export_bg_dark, true, "Dark");
+                        ui.selectable_value(&mut access_state.export_bg_dark, false, "Light");
+                    });
+
+                    ui.separator();
+
+                    let base_w = 1920u32;
+                    let base_h = 1080u32;
+                    let calc_w = (base_w as f32 * access_state.export_scale).round() as u32;
+                    let mut calc_h = (base_h as f32 * access_state.export_scale).round() as u32;
+                    if let Some(ratio) = access_state.export_aspect.ratio() {
+                        if ratio > 0.0 {
+                            calc_h = (calc_w as f32 / ratio).round() as u32;
+                        }
+                    }
+
+                    if calc_w > export::MAX_EXPORT_DIMENSION
+                        || calc_h > export::MAX_EXPORT_DIMENSION
+                    {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "⚠️ Capped at max dimension {}x{} px",
+                                export::MAX_EXPORT_DIMENSION,
+                                export::MAX_EXPORT_DIMENSION
+                            ))
+                            .color(Color32::YELLOW),
+                        );
+                    } else {
+                        ui.label(format!("Target Canvas Size: {} x {} px", calc_w, calc_h));
+                    }
+
+                    if let Some(msg) = &access_state.status_message {
+                        ui.label(egui::RichText::new(msg).color(Color32::GREEN));
+                    }
+
+                    ui.separator();
+
+                    let options = export::ExportOptions {
+                        width: base_w,
+                        height: base_h,
+                        scale: access_state.export_scale,
+                        line_thickness: access_state.export_line_thickness,
+                        background_opacity: access_state.export_bg_opacity,
+                        background_color: if access_state.export_bg_dark {
+                            Color32::from_rgb(18, 18, 18)
+                        } else {
+                            Color32::WHITE
+                        },
+                        aspect_ratio: access_state.export_aspect,
+                    };
+
+                    ui.horizontal(|ui| {
+                        if ui.button("💾 Save PNG").clicked() {
+                            match export::export_custom_png(&accessible_datasets, &options) {
+                                Ok(png_bytes) => {
+                                    export::save_file_dialog(
+                                        "plot.png",
+                                        &png_bytes,
+                                        "PNG Image",
+                                        &["png"],
+                                    );
+                                    access_state.status_message =
+                                        Some("PNG image saved successfully.".to_string());
+                                }
+                                Err(e) => {
+                                    access_state.status_message =
+                                        Some(format!("Export failed: {e}"));
+                                }
+                            }
+                        }
+
+                        if ui.button("📋 Copy to Clipboard").clicked() {
+                            match export::export_custom_image(&accessible_datasets, &options) {
+                                Ok(color_img) => {
+                                    match export::copy_image_to_clipboard(&color_img) {
+                                        Ok(_) => {
+                                            access_state.status_message =
+                                                Some("Copied plot image to clipboard!".to_string());
+                                        }
+                                        Err(e) => {
+                                            access_state.status_message =
+                                                Some(format!("Clipboard copy failed: {e}"));
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    access_state.status_message =
+                                        Some(format!("Render failed: {e}"));
+                                }
+                            }
+                        }
+
+                        if ui.button("Close").clicked() {
+                            close_requested = true;
+                        }
+                    });
+                });
+            access_state.show_export_modal = modal_open && !close_requested;
         }
 
         if focus_response.has_focus() {
@@ -1542,8 +1740,7 @@ impl<'a> Plot<'a> {
 
         response.context_menu(|ui| {
             if ui.button("Save PNG").clicked() {
-                ui.ctx()
-                    .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+                access_state.show_export_modal = true;
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {
