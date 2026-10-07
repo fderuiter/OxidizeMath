@@ -114,6 +114,29 @@ impl ExplorerTab for TraceabilityTab {
         "Traceability Portal"
     }
 
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct TraceabilityState {
+            repo_path: Option<String>,
+        }
+
+        serde_json::to_string(&TraceabilityState {
+            repo_path: self.repo_path.clone(),
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct TraceabilityState {
+            repo_path: Option<String>,
+        }
+
+        if let Ok(s) = serde_json::from_str::<TraceabilityState>(state) {
+            self.repo_path = s.repo_path;
+        }
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if let Some(rx) = &self.report_rx {
