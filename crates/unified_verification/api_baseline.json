@@ -2971,6 +2971,20 @@
       "signature": "pub struct Graph < N , E >"
     }
   ],
+  "crates/pure_math/src/pure_math/graph_theory/layout.rs": [
+    {
+      "signature": "pub fn circular_layout < N , E > (graph : & Graph < N , E > , bounds : LayoutBounds ,) -> HashMap < NodeIndex , (f32 , f32) >"
+    },
+    {
+      "signature": "pub fn force_directed_layout < N , E > (graph : & Graph < N , E > , bounds : LayoutBounds , iterations : usize ,) -> HashMap < NodeIndex , (f32 , f32) >"
+    },
+    {
+      "signature": "pub fn grid_layout < N , E > (graph : & Graph < N , E > , bounds : LayoutBounds ,) -> HashMap < NodeIndex , (f32 , f32) >"
+    },
+    {
+      "signature": "pub type LayoutBounds = (f32 , f32 , f32 , f32)"
+    }
+  ],
   "crates/pure_math/src/pure_math/graph_theory/parameters/degree.rs": [
     {
       "signature": "pub fn degeneracy < N , E > (g : & Graph < N , E >) -> usize where N : Clone , E : Clone ,"
