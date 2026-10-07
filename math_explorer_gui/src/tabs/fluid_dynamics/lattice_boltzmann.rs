@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::{SimCommand, StateSnapshot};
 use eframe::egui::Color32;
@@ -127,18 +129,41 @@ inventory::submit! {
 
 impl TheoryDescribable for LbmUnified {
     fn theory_description(&self) -> String {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).theory_description()
+        self.solver.theory_description()
     }
     
     fn phonetic_description(&self) -> String {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).phonetic_description()
+        self.solver.phonetic_description()
     }
     
     fn theory_citation(&self) -> String {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).theory_citation()
+        self.solver.theory_citation()
     }
     
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).available_descriptions()
+        self.solver.available_descriptions()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lbm_unified_theory_describable_delegation() {
+        let params = HashMap::new();
+        let lbm = LbmUnified::new(&params);
+
+        assert_eq!(lbm.theory_description(), lbm.solver.theory_description());
+        assert!(!lbm.theory_description().is_empty());
+
+        assert_eq!(lbm.phonetic_description(), lbm.solver.phonetic_description());
+        assert!(!lbm.phonetic_description().is_empty());
+
+        assert_eq!(lbm.theory_citation(), lbm.solver.theory_citation());
+        assert!(!lbm.theory_citation().is_empty());
+
+        assert_eq!(lbm.available_descriptions(), lbm.solver.available_descriptions());
+        assert!(!lbm.available_descriptions().is_empty());
     }
 }
