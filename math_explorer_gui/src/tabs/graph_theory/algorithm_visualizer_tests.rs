@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
-
 use super::*;
+use eframe::egui;
 
 #[test]
 fn test_algorithm_visualizer_defaults() {
@@ -16,7 +16,7 @@ fn test_algorithm_visualizer_timer_progression() {
     let ctx = egui::Context::default();
     let mut tool = AlgorithmVisualizerTool {
         is_playing: true,
-        playback_speed: 2.0, // 0.5 sec per step
+        playback_speed: 2.0,
         ..Default::default()
     };
 
@@ -35,13 +35,9 @@ fn test_algorithm_visualizer_timer_progression() {
 #[test]
 fn test_algorithm_visualizer_stop_at_end() {
     let ctx = egui::Context::default();
-    let default_tool = AlgorithmVisualizerTool::default();
-    let visit_len = default_tool.visit_order.len();
-    let mut tool = AlgorithmVisualizerTool {
-        animation_step: visit_len,
-        is_playing: true,
-        ..Default::default()
-    };
+    let mut tool = AlgorithmVisualizerTool::default();
+    tool.animation_step = tool.visit_order.len();
+    tool.is_playing = true;
 
     let raw_input = egui::RawInput {
         predicted_dt: 1.0,
@@ -52,7 +48,7 @@ fn test_algorithm_visualizer_stop_at_end() {
     });
 
     assert!(!tool.is_playing);
-    assert_eq!(tool.animation_step, visit_len);
+    assert_eq!(tool.animation_step, tool.visit_order.len());
     assert_eq!(tool.step_timer, 0.0);
 }
 
