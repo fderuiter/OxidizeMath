@@ -50,7 +50,7 @@ impl ContravariantVector {
     /// ```
     #[verified_engine::verified]
     pub fn new(data: DVector<f64>) -> Self {
-        debug_assert!(data.len() > 0);
+        debug_assert!(!data.is_empty());
         Self(data)
     }
 
@@ -83,7 +83,7 @@ impl CovariantVector {
     /// ```
     #[verified_engine::verified]
     pub fn new(data: DVector<f64>) -> Self {
-        debug_assert!(data.len() > 0);
+        debug_assert!(!data.is_empty());
         Self(data)
     }
 

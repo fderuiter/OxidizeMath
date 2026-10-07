@@ -71,17 +71,18 @@ impl AstVisitor {
                 has_semantic = true;
 
                 let s = attr_str.replace("\\", "/");
-                if let Some(pos) = s.find('"') {
-                    if let Some(end) = s[pos + 1..].find('"') {
-                        let raw_path = &s[pos + 1..pos + 1 + end];
-                        let clean_name = raw_path
-                            .trim_start_matches("papers/")
-                            .trim_start_matches("spec:")
-                            .trim_start_matches("registry:")
-                            .trim_end_matches(".tex");
-                        if !clean_name.is_empty() {
-                            self.verified_modules.push(clean_name.to_string());
-                        }
+                if let Some((pos, end)) = s
+                    .find('"')
+                    .and_then(|p| s[p + 1..].find('"').map(|e| (p, e)))
+                {
+                    let raw_path = &s[pos + 1..pos + 1 + end];
+                    let clean_name = raw_path
+                        .trim_start_matches("papers/")
+                        .trim_start_matches("spec:")
+                        .trim_start_matches("registry:")
+                        .trim_end_matches(".tex");
+                    if !clean_name.is_empty() {
+                        self.verified_modules.push(clean_name.to_string());
                     }
                 }
             }

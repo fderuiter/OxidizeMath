@@ -259,13 +259,11 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
                 let mut is_verified = false;
                 for (module, target_paper) in &registry_links {
                     let target_clean = target_paper.strip_suffix(".tex").unwrap_or(target_paper);
-                    if target_paper == paper || target_clean == model_name {
-                        if let Some(status) = report.semantic_integrity_status.get(module) {
-                            if status == "Verified" {
-                                is_verified = true;
-                                break;
-                            }
-                        }
+                    if (target_paper == paper || target_clean == model_name)
+                        && matches!(report.semantic_integrity_status.get(module), Some(status) if status == "Verified")
+                    {
+                        is_verified = true;
+                        break;
                     }
                 }
                 if is_verified {

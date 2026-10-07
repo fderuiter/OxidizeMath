@@ -92,7 +92,7 @@ where
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(metric_fn: F) -> Self {
-        debug_assert!(true);
+        debug_assert!(std::mem::size_of::<Self>() == std::mem::size_of::<F>());
         Self { metric_fn }
     }
 }
