@@ -49,4 +49,73 @@ mod tests {
 
         assert_eq!(filtered_count, 0);
     }
+
+    #[test]
+    fn test_framework_default_tool_selection() {
+        let framework = SimulationFramework::new("analysis");
+        if !framework.available_tools.is_empty() {
+            assert_eq!(framework.selected_tool_index, Some(0));
+            assert!(framework.active_tool.is_some());
+        } else {
+            assert_eq!(framework.selected_tool_index, None);
+            assert!(framework.active_tool.is_none());
+        }
+
+        // Test empty domain edge case
+        let empty_framework = SimulationFramework::new("non_existent_domain_xyz");
+        assert!(empty_framework.available_tools.is_empty());
+        assert_eq!(empty_framework.selected_tool_index, None);
+        assert!(empty_framework.active_tool.is_none());
+    }
+
+    #[test]
+    fn test_framework_empty_domain_rendering() {
+        let ctx = eframe::egui::Context::default();
+        let mut empty_framework = SimulationFramework::new("non_existent_domain_xyz");
+
+        // Ensure calling show within ctx.run on empty framework does not panic
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            empty_framework.show(ctx, "test_empty_domain");
+        });
+        assert!(empty_framework.active_tool.is_none());
+    }
+
+    #[test]
+    fn test_framework_quick_start_card_rendering() {
+        let ctx = eframe::egui::Context::default();
+        let mut framework = SimulationFramework::new("analysis");
+
+        // Reset active_tool to None to simulate quick-start landing page state
+        framework.active_tool = None;
+        framework.selected_tool_index = None;
+
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            framework.show(ctx, "test_quick_start");
+        });
+
+        if !framework.available_tools.is_empty() {
+            framework.select_tool(0);
+            assert_eq!(framework.selected_tool_index, Some(0));
+            assert!(framework.active_tool.is_some());
+        }
+    }
+
+    #[test]
+    fn test_framework_state_roundtrip() {
+        let mut framework = SimulationFramework::new("analysis");
+        framework.show_theory_portal = true;
+
+        let saved_json = framework
+            .save_state()
+            .expect("Must serialize framework state");
+
+        let mut framework2 = SimulationFramework::new("analysis");
+        framework2.load_state(&saved_json);
+
+        assert!(framework2.show_theory_portal);
+        if !framework.available_tools.is_empty() {
+            assert_eq!(framework2.selected_tool_index, Some(0));
+            assert!(framework2.active_tool.is_some());
+        }
+    }
 }

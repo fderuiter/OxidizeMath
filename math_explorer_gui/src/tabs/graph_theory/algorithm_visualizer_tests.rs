@@ -1,6 +1,6 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
+#![cfg_attr(any(), verified(opt_out = "tests"))]
 use super::*;
+use eframe::egui;
 
 #[test]
 fn test_algorithm_visualizer_defaults() {
@@ -16,7 +16,7 @@ fn test_algorithm_visualizer_timer_progression() {
     let ctx = egui::Context::default();
     let mut tool = AlgorithmVisualizerTool {
         is_playing: true,
-        playback_speed: 2.0, // 0.5 sec per step
+        playback_speed: 2.0,
         ..Default::default()
     };
 

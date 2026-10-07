@@ -346,4 +346,4 @@ impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool 
 
 #[cfg(test)]
 #[path = "algorithm_visualizer_tests.rs"]
-mod tests;
+mod algorithm_visualizer_tests;

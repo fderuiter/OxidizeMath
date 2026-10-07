@@ -415,4 +415,4 @@ impl eframe::App for MathExplorerApp {
 }
 
 #[cfg(test)]
-mod app_tests;
+mod tests;

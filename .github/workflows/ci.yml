@@ -136,6 +136,14 @@ jobs:
         if: matrix.target != 'wasm32-unknown-unknown'
         run: cargo clippy --workspace --all-features -- -D warnings
 
+      - name: Check Workspace Benchmarks (Native)
+        if: matrix.target != 'wasm32-unknown-unknown'
+        run: cargo check --workspace --benches --all-features --verbose
+
+      - name: Run Clippy Benchmarks (Native)
+        if: matrix.target != 'wasm32-unknown-unknown'
+        run: cargo clippy --workspace --benches --all-features -- -D warnings
+
       - name: Install cargo-llvm-cov
         if: matrix.target != 'wasm32-unknown-unknown'
         uses: taiki-e/install-action@cargo-llvm-cov
