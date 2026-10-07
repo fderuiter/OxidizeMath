@@ -79,6 +79,42 @@ impl eframe::App for MathExplorerApp {
             crate::accessibility::announce_status_with_priority(&msg, "assertive");
         }
 
+        // Global Keyboard Shortcut Listener for Cheatsheet Modal
+        let modifiers = if cfg!(target_os = "macos") {
+            egui::Modifiers::MAC_CMD
+        } else {
+            egui::Modifiers::CTRL
+        };
+
+        let slash_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
+            ctx,
+            "Command Cheatsheet",
+            "Toggle global command cheatsheet modal",
+            egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::Slash),
+            true,
+            "Global",
+            None,
+            None,
+        );
+
+        let question_triggered = !ctx.wants_keyboard_input()
+            && ctx.input_mut(|i| {
+                i.consume_key(egui::Modifiers::NONE, egui::Key::Questionmark)
+                    || i.consume_key(egui::Modifiers::SHIFT, egui::Key::Questionmark)
+            });
+
+        if slash_triggered || question_triggered {
+            self.show_help_menu = !self.show_help_menu;
+            let status_msg = if self.show_help_menu {
+                "Hotkey overlay opened"
+            } else {
+                "Hotkey overlay closed"
+            };
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
+            });
+        }
+
         // Fetch new events
         let new_events = global_registry().try_recv_all();
         for event in &new_events {
@@ -287,5 +323,147 @@ impl eframe::App for MathExplorerApp {
                     }
                 });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::App;
+
+    #[test]
+    fn test_cheatsheet_shortcut_question() {
+        let ctx = egui::Context::default();
+        let mut app = MathExplorerApp::default();
+        let mut frame = eframe::Frame::_new_kittest();
+
+        assert!(!app.show_help_menu);
+
+        // Press '?'
+        let raw_input = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key: egui::Key::Questionmark,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+
+        let _ = ctx.run(raw_input, |ctx| {
+            app.update(ctx, &mut frame);
+        });
+
+        assert!(app.show_help_menu);
+
+        // Press '?' again to close
+        let raw_input = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key: egui::Key::Questionmark,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+
+        let _ = ctx.run(raw_input, |ctx| {
+            app.update(ctx, &mut frame);
+        });
+
+        assert!(!app.show_help_menu);
+    }
+
+    #[test]
+    fn test_cheatsheet_shortcut_ctrl_slash() {
+        let ctx = egui::Context::default();
+        let mut app = MathExplorerApp::default();
+        let mut frame = eframe::Frame::_new_kittest();
+
+        assert!(!app.show_help_menu);
+
+        let modifiers = if cfg!(target_os = "macos") {
+            egui::Modifiers::MAC_CMD
+        } else {
+            egui::Modifiers::CTRL
+        };
+
+        let raw_input = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key: egui::Key::Slash,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            }],
+            ..Default::default()
+        };
+
+        let _ = ctx.run(raw_input, |ctx| {
+            app.update(ctx, &mut frame);
+        });
+
+        assert!(app.show_help_menu);
+    }
+
+    #[test]
+    fn test_cheatsheet_shortcut_wants_keyboard_input_ignored() {
+        let ctx = egui::Context::default();
+        let mut app = MathExplorerApp::default();
+        let mut frame = eframe::Frame::_new_kittest();
+
+        assert!(!app.show_help_menu);
+
+        // Simulate focus on a text input so wants_keyboard_input() becomes true
+        let raw_input = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key: egui::Key::Questionmark,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+
+        let mut dummy_string = String::new();
+        let _ = ctx.run(raw_input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let re = ui.add(egui::TextEdit::singleline(&mut dummy_string));
+                re.request_focus();
+            });
+            app.update(ctx, &mut frame);
+        });
+
+        assert!(!app.show_help_menu);
+    }
+
+    #[test]
+    fn test_cheatsheet_shortcut_aria_announcements() {
+        let ctx = egui::Context::default();
+        let mut app = MathExplorerApp::default();
+        let mut frame = eframe::Frame::_new_kittest();
+
+        let raw_input = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key: egui::Key::Questionmark,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+
+        let _ = ctx.run(raw_input, |ctx| {
+            app.update(ctx, &mut frame);
+        });
+
+        assert!(app.show_help_menu);
+
+        let aria_msg = ctx.data(|d| d.get_temp::<String>(egui::Id::new("aria_live_message")));
+        assert_eq!(aria_msg, Some("Hotkey overlay opened".to_string()));
     }
 }
