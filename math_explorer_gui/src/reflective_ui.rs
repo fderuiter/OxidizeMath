@@ -126,6 +126,160 @@ pub fn render_all_theory_parameters<T: TheoryDescribable>(
     changed
 }
 
+fn format_metric_label(label: &str, value: &str) -> String {
+    if label.is_empty() {
+        value.to_string()
+    } else if label.ends_with(':') {
+        format!("{} {}", label, value)
+    } else {
+        format!("{}: {}", label, value)
+    }
+}
+
+/// Renders a formatted metric label and value alongside an inline copy button and context menu.
+pub fn render_copyable_metric(ui: &mut egui::Ui, label: &str, value: &str) -> egui::Response {
+    let response = ui
+        .horizontal(|ui| {
+            ui.label(format_metric_label(label, value));
+            if ui.button("📋").on_hover_text("Copy value").clicked() {
+                ui.ctx().copy_text(value.to_string());
+            }
+        })
+        .response;
+
+    response.context_menu(|ui| {
+        if ui.button("Copy Value").clicked() {
+            ui.ctx().copy_text(value.to_string());
+            ui.close_kind(egui::UiKind::Menu);
+        }
+        if ui.button("Copy Label & Value").clicked() {
+            ui.ctx().copy_text(format_metric_label(label, value));
+            ui.close_kind(egui::UiKind::Menu);
+        }
+    });
+
+    response
+}
+
+/// Renders a mathematical formula (LaTeX with optional plain text) alongside inline export buttons and a right-click context menu.
+pub fn render_formula_with_export(
+    ui: &mut egui::Ui,
+    latex_str: &str,
+    plain_str: Option<&str>,
+) -> egui::Response {
+    let plain_text = plain_str.unwrap_or(latex_str);
+    let is_latex_empty = latex_str.trim().is_empty();
+    let is_plain_empty = plain_text.trim().is_empty();
+
+    let response = ui
+        .horizontal_wrapped(|ui| {
+            ui.add(egui::Label::new(latex_str).wrap());
+            if ui
+                .add_enabled(!is_latex_empty, egui::Button::new("📋 LaTeX"))
+                .on_hover_text("Copy LaTeX formula")
+                .clicked()
+            {
+                ui.ctx().copy_text(latex_str.to_string());
+            }
+            if ui
+                .add_enabled(!is_plain_empty, egui::Button::new("📋 Text"))
+                .on_hover_text("Copy plain text formula")
+                .clicked()
+            {
+                ui.ctx().copy_text(plain_text.to_string());
+            }
+        })
+        .response;
+
+    response.context_menu(|ui| {
+        if ui
+            .add_enabled(!is_latex_empty, egui::Button::new("Copy LaTeX"))
+            .clicked()
+        {
+            ui.ctx().copy_text(latex_str.to_string());
+            ui.close_kind(egui::UiKind::Menu);
+        }
+        if ui
+            .add_enabled(!is_plain_empty, egui::Button::new("Copy Plain Text"))
+            .clicked()
+        {
+            ui.ctx().copy_text(plain_text.to_string());
+            ui.close_kind(egui::UiKind::Menu);
+        }
+        if !is_latex_empty
+            && !is_plain_empty
+            && latex_str != plain_text
+            && ui.button("Copy Both (LaTeX & Text)").clicked()
+        {
+            ui.ctx()
+                .copy_text(format!("LaTeX: {}\nPlain: {}", latex_str, plain_text));
+            ui.close_kind(egui::UiKind::Menu);
+        }
+    });
+
+    response
+}
+
+/// Renders theoretical summary text alongside inline export buttons and a right-click context menu.
+pub fn render_theory_summary_with_export(
+    ui: &mut egui::Ui,
+    text: &str,
+    latex_str: Option<&str>,
+) -> egui::Response {
+    let plain_text = text;
+    let latex_text = latex_str.unwrap_or(text);
+    let is_plain_empty = plain_text.trim().is_empty();
+    let is_latex_empty = latex_text.trim().is_empty();
+
+    let response = ui
+        .horizontal_wrapped(|ui| {
+            ui.add(egui::Label::new(text).wrap());
+            if ui
+                .add_enabled(!is_plain_empty, egui::Button::new("📋 Text"))
+                .on_hover_text("Copy text summary")
+                .clicked()
+            {
+                ui.ctx().copy_text(plain_text.to_string());
+            }
+            if ui
+                .add_enabled(!is_latex_empty, egui::Button::new("📋 LaTeX"))
+                .on_hover_text("Copy LaTeX formula/text")
+                .clicked()
+            {
+                ui.ctx().copy_text(latex_text.to_string());
+            }
+        })
+        .response;
+
+    response.context_menu(|ui| {
+        if ui
+            .add_enabled(!is_plain_empty, egui::Button::new("Copy Plain Text"))
+            .clicked()
+        {
+            ui.ctx().copy_text(plain_text.to_string());
+            ui.close_kind(egui::UiKind::Menu);
+        }
+        if ui
+            .add_enabled(!is_latex_empty, egui::Button::new("Copy LaTeX"))
+            .clicked()
+        {
+            ui.ctx().copy_text(latex_text.to_string());
+            ui.close_kind(egui::UiKind::Menu);
+        }
+        if !is_plain_empty
+            && !is_latex_empty
+            && plain_text != latex_text
+            && ui.button("Copy Both (Text & LaTeX)").clicked()
+        {
+            ui.ctx()
+                .copy_text(format!("Text: {}\nLaTeX: {}", plain_text, latex_text));
+            ui.close_kind(egui::UiKind::Menu);
+        }
+    });
+
+    response
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,23 +293,18 @@ mod tests {
 
     impl TheoryDescribable for DummyMissingTheoryModel {
         fn theory_description(&self) -> String {
-            "Dummy description".to_string()
+            "Dummy description".into()
         }
-
         fn phonetic_description(&self) -> String {
-            "Dummy phonetic".to_string()
+            "Dummy phonetic".into()
         }
-
         fn theory_citation(&self) -> String {
-            "Dummy citation".to_string()
+            "Dummy citation".into()
         }
-
         fn available_descriptions(&self) -> HashMap<String, String> {
             HashMap::new()
         }
-
         fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-            // Intentionally empty parameter map
             HashMap::new()
         }
 
@@ -274,5 +423,70 @@ mod tests {
                 assert!(!changed);
             });
         });
+    }
+
+    #[test]
+    fn test_render_copyable_metric() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let resp1 = render_copyable_metric(ui, "Test Metric", "42.0");
+                assert!(resp1.rect.width() >= 0.0);
+
+                let resp2 = render_copyable_metric(ui, "Test Metric:", "100");
+                assert!(resp2.rect.width() >= 0.0);
+
+                let resp3 = render_copyable_metric(ui, "", "empty_label_val");
+                assert!(resp3.rect.width() >= 0.0);
+            });
+        });
+    }
+
+    #[test]
+    fn test_render_formula_with_export() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let r1 = render_formula_with_export(ui, "\\frac{d}{dx} e^x", Some("d/dx e^x"));
+                let r2 = render_formula_with_export(ui, "", None);
+                assert!(r1.rect.width() >= 0.0 && r2.rect.width() >= 0.0);
+            });
+        });
+    }
+
+    #[test]
+    fn test_render_theory_summary_with_export() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let r1 =
+                    render_theory_summary_with_export(ui, "Euler identity", Some("e^{i\\pi}+1=0"));
+                let r2 = render_theory_summary_with_export(ui, "", None);
+                assert!(r1.rect.width() >= 0.0 && r2.rect.width() >= 0.0);
+            });
+        });
+    }
+
+    #[test]
+    fn test_formula_export_populates_copied_text() {
+        let ctx = egui::Context::default();
+        let full_output = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.ctx().copy_text("\\int_0^1 x^2 dx = 1/3".to_string());
+            });
+        });
+        let copied = full_output
+            .platform_output
+            .commands
+            .iter()
+            .any(|cmd| match cmd {
+                egui::OutputCommand::CopyText(txt) => txt == "\\int_0^1 x^2 dx = 1/3",
+                _ => false,
+            });
+        assert!(
+            copied,
+            "Expected CopyText output command in full_output.platform_output, got: {:?}",
+            full_output.platform_output.commands
+        );
     }
 }

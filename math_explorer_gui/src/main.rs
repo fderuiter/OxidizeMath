@@ -8,6 +8,8 @@ pub mod async_sim;
 pub mod camera;
 #[allow(missing_docs)]
 pub mod framework;
+#[cfg(test)]
+mod framework_tests;
 pub mod presets;
 #[allow(missing_docs)]
 pub mod reflective_ui;

@@ -1,4 +1,5 @@
 use crate::framework::InteractiveTool;
+use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::complex::mapping::conformal_scale_factor;
@@ -140,8 +141,16 @@ impl InteractiveTool for ComplexMappingTool {
             let derivative_fn = |z| self.function.derivative(z);
             let scale_factor = conformal_scale_factor(derivative_fn, z0);
 
-            ui.label(format!("w = f(z) ≈ {:.3} + {:.3}i", w0.re, w0.im));
-            ui.label(format!("Scale factor |f'(z)| ≈ {:.3}", scale_factor));
+            render_copyable_metric(
+                ui,
+                "w = f(z)",
+                &format!("{:.3} + {:.3}i", w0.re, w0.im),
+            );
+            render_copyable_metric(
+                ui,
+                "Scale factor |f'(z)|",
+                &format!("{:.3}", scale_factor),
+            );
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {

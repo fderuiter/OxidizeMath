@@ -254,10 +254,18 @@ impl<'a> PlotUi<'a> {
         self.items.push(Box::new(chart));
     }
 
-    /// Request screenshot image capture of the current plot view.
+    /// Export active plot datasets to high-resolution PNG offscreen.
     pub fn save_png(&self) {
-        self.ctx
-            .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
+            .items
+            .iter()
+            .map(|item| (item.name().to_owned(), item.extract_points()))
+            .collect();
+        if let Ok(png_bytes) =
+            crate::export::export_custom_png(&datasets, &crate::export::ExportOptions::default())
+        {
+            crate::export::save_file_dialog("plot.png", &png_bytes, "PNG Image", &["png"]);
+        }
     }
 
     /// Alias for [`save_png`](Self::save_png).

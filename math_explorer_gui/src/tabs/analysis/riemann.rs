@@ -1,4 +1,5 @@
 use crate::framework::InteractiveTool;
+use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints, Polygon};
 use math_explorer::pure_math::analysis::integration::{Integrator, Trapezoidal};
@@ -151,7 +152,7 @@ impl InteractiveTool for RiemannIntegrationTool {
 
             ui.separator();
             ui.heading("Result");
-            ui.label(format!("Area ≈ {:.6}", self.result));
+            render_copyable_metric(ui, "Area", &format!("{:.6}", self.result));
         });
 
         if changed {
