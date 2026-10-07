@@ -1,7 +1,7 @@
+use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 use scientific_metadata::theory::TheoryDescribable;
 
-#[allow(missing_docs)]
 pub struct ToolMetadata {
     pub name: &'static str,
     pub domain: &'static str,
@@ -12,7 +12,6 @@ pub struct ToolMetadata {
 inventory::collect!(ToolMetadata);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(missing_docs)]
 pub enum InputMode {
     Mouse,
     Touch,
@@ -32,9 +31,7 @@ pub struct InteractionContext<'a> {
     pub modifiers: egui::Modifiers,
 }
 
-#[allow(missing_docs)]
 pub trait InteractiveTool {
-    #[allow(missing_docs)]
     fn name(&self) -> &'static str;
 
     /// Provide theoretical context.
@@ -45,6 +42,23 @@ pub trait InteractiveTool {
     /// with an allocated painter to call the normalized event hooks and `draw`.
     fn show(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left(format!("{}_controls", self.name())).show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading(self.name());
+                let help_btn = ui
+                    .add(egui::Button::new("❓").small())
+                    .accessible_hover_text(format!(
+                        "Toggle Theory Context Portal for {}",
+                        self.name()
+                    ));
+                if help_btn.clicked() {
+                    let current = ctx.data(|d| {
+                        d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL"))
+                            .unwrap_or(false)
+                    });
+                    ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), !current));
+                }
+            });
+            ui.separator();
             self.show_ui(ui);
         });
 
@@ -274,6 +288,7 @@ impl SimulationFramework {
         });
     }
 
+    #[allow(clippy::too_many_lines)]
     fn render_filtered_tools(&mut self, ui: &mut egui::Ui) {
         let query = self.search_query.trim().to_lowercase();
         let filtered_tools: Vec<(usize, &&'static ToolMetadata)> = self
@@ -312,18 +327,33 @@ impl SimulationFramework {
             }
         } else {
             let mut tool_to_select = None;
+            let mut open_portal_for_tool = None;
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for &(i, meta) in &filtered_tools {
-                    if ui
-                        .selectable_label(self.selected_tool_index == Some(i), meta.name)
-                        .clicked()
-                        && self.selected_tool_index != Some(i)
-                    {
-                        tool_to_select = Some(i);
-                    }
+                    ui.horizontal(|ui| {
+                        let is_selected = self.selected_tool_index == Some(i);
+                        if ui.selectable_label(is_selected, meta.name).clicked() {
+                            tool_to_select = Some(i);
+                        }
+                        let tool_help_btn = ui
+                            .add(egui::Button::new("❓").small())
+                            .accessible_hover_text(format!(
+                                "Open Theory Context Portal for {}",
+                                meta.name
+                            ));
+                        if tool_help_btn.clicked() {
+                            open_portal_for_tool = Some(i);
+                        }
+                    });
                 }
             });
-            if let Some(idx) = tool_to_select {
+            if let Some(idx) = open_portal_for_tool {
+                self.select_tool(idx);
+                self.show_theory_portal = true;
+                ui.ctx().data_mut(|d| {
+                    d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), true);
+                });
+            } else if let Some(idx) = tool_to_select {
                 self.select_tool(idx);
             }
         }
@@ -333,12 +363,33 @@ impl SimulationFramework {
         egui::SidePanel::right(format!("{}_tool_selector", id_source))
             .resizable(false)
             .show(ctx, |ui| {
-                ui.heading("Tools");
+                ui.horizontal(|ui| {
+                    ui.heading("Tools");
+                    let help_btn = ui
+                        .add(egui::Button::new("❓").small())
+                        .accessible_hover_text("Toggle Theory Context Portal");
+                    if help_btn.clicked() {
+                        self.show_theory_portal = !self.show_theory_portal;
+                        ctx.data_mut(|d| {
+                            d.insert_temp(
+                                egui::Id::new("SHOW_THEORY_PORTAL"),
+                                self.show_theory_portal,
+                            )
+                        });
+                    }
+                });
                 self.render_search_bar(ui);
                 ui.separator();
                 self.render_filtered_tools(ui);
                 ui.separator();
-                ui.checkbox(&mut self.show_theory_portal, "Theory Context Portal");
+                if ui
+                    .checkbox(&mut self.show_theory_portal, "Theory Context Portal")
+                    .changed()
+                {
+                    ctx.data_mut(|d| {
+                        d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), self.show_theory_portal)
+                    });
+                }
             });
     }
 
@@ -472,6 +523,16 @@ impl SimulationFramework {
             );
         });
 
+        if let Some(portal_state) =
+            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL")))
+        {
+            self.show_theory_portal = portal_state;
+        } else {
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), self.show_theory_portal)
+            });
+        }
+
         self.show_side_panel(ctx, id_source);
         self.show_theory_portal(ctx, id_source);
 
@@ -482,7 +543,67 @@ impl SimulationFramework {
                 self.show_quick_start_cards(ui);
             });
         }
+
+        if let Some(portal_state) =
+            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL")))
+        {
+            self.show_theory_portal = portal_state;
+        }
     }
 }
 
 pub use crate::camera::{Camera3D, CoordinateMapper};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_framework_state_roundtrip() {
+        let mut framework = SimulationFramework::new("analysis");
+        framework.show_theory_portal = true;
+        if !framework.available_tools.is_empty() {
+            framework.selected_tool_index = Some(0);
+            let meta = framework.available_tools[0];
+            framework.active_tool = Some((meta.build)());
+        }
+
+        let saved_json = framework
+            .save_state()
+            .expect("Must serialize framework state");
+
+        let mut framework2 = SimulationFramework::new("analysis");
+        framework2.load_state(&saved_json);
+
+        assert!(framework2.show_theory_portal);
+        if !framework.available_tools.is_empty() {
+            assert_eq!(framework2.selected_tool_index, Some(0));
+            assert!(framework2.active_tool.is_some());
+        }
+    }
+
+    #[test]
+    fn test_framework_show_theory_portal_toggle() {
+        let ctx = egui::Context::default();
+        let mut framework = SimulationFramework::new("analysis");
+        assert!(!framework.show_theory_portal);
+
+        // Frame 1
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            framework.show(ctx, "test_framework");
+        });
+        assert_eq!(
+            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL"))),
+            Some(false)
+        );
+
+        // Mutate context temp data (simulating help button click)
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), true));
+
+        // Frame 2: framework syncs from context temp data
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            framework.show(ctx, "test_framework");
+        });
+        assert!(framework.show_theory_portal);
+    }
+}
