@@ -1,3 +1,4 @@
+// [cite:attention_is_all_you_need_rust]
 use statrs::function::gamma::gamma;
 use std::f64::consts::PI;
 

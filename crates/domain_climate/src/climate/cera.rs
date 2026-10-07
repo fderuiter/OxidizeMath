@@ -1,3 +1,4 @@
+// [cite:cera_framework]
 //! This module defines the core CERA framework, integrating the autoencoder and predictor.
 
 use crate::climate::autoencoder::{Autoencoder, AutoencoderModel};

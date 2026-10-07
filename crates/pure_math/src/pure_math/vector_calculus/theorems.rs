@@ -23,6 +23,7 @@ where
     S: OrthogonalCoordinateSystem,
     F: Fn(&Vector3<f64>) -> Vector3<f64> + Copy,
 {
+    debug_assert!(steps > 0);
     let lhs = integrate_volume(coords, domain, steps, |p| divergence(coords, field, p));
 
     let rhs = integrate_surface_flux(coords, domain, steps, field);
@@ -36,6 +37,7 @@ where
     S: OrthogonalCoordinateSystem,
     F: Fn(&Vector3<f64>) -> f64,
 {
+    debug_assert!(steps > 0);
     let d = (domain.max - domain.min) / (steps as f64);
     let mut sum = 0.0;
 
@@ -64,6 +66,7 @@ where
     S: OrthogonalCoordinateSystem,
     F: Fn(&Vector3<f64>) -> Vector3<f64>,
 {
+    debug_assert!(steps > 0);
     let d = (domain.max - domain.min) / (steps as f64);
     let mut flux = 0.0;
 

@@ -1,3 +1,4 @@
+// [cite:modular_polynomials_review]
 use nalgebra::{Matrix2, Point3, Vector3};
 
 /// Represents a parametric surface $r(u, v)$ in $\mathbb{R}^3$.

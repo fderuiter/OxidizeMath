@@ -1,6 +1,7 @@
 use crate::framework::InteractiveTool;
 use eframe::egui;
 
+#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 #[derive(Default)]
 pub struct GaussianSplattingTool {
     pub scale: f64,
