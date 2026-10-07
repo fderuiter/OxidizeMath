@@ -1,3 +1,10 @@
+mod theme;
+
+#[cfg(test)]
+mod tests;
+
+pub use theme::ThemeMode;
+
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
@@ -9,6 +16,8 @@ pub struct AppState {
     pub show_info: bool,
     pub show_warnings: bool,
     pub show_errors: bool,
+    #[serde(default)]
+    pub theme: ThemeMode,
     pub tab_states: std::collections::HashMap<String, String>,
 }
 
@@ -20,6 +29,7 @@ pub struct MathExplorerApp {
     show_warnings: bool,
     show_errors: bool,
     show_help_menu: bool,
+    pub theme: ThemeMode,
 }
 
 impl Default for MathExplorerApp {
@@ -35,6 +45,7 @@ impl Default for MathExplorerApp {
             show_warnings: true,
             show_errors: true,
             show_help_menu: false,
+            theme: ThemeMode::Dark,
         }
     }
 }
@@ -69,6 +80,21 @@ impl MathExplorerApp {
             }
             menu.append(&view_menu).unwrap();
 
+            // Appearance Menu
+            let appearance_menu = Submenu::new("Appearance", true);
+            let dark_item = MenuItem::with_id(MenuId::new("theme_dark"), "Dark", true, None);
+            let light_item = MenuItem::with_id(MenuId::new("theme_light"), "Light", true, None);
+            let hc_item = MenuItem::with_id(
+                MenuId::new("theme_high_contrast"),
+                "High Contrast",
+                true,
+                None,
+            );
+            appearance_menu.append(&dark_item).unwrap();
+            appearance_menu.append(&light_item).unwrap();
+            appearance_menu.append(&hc_item).unwrap();
+            menu.append(&appearance_menu).unwrap();
+
             menu.init_for_nsapp();
         }
 
@@ -93,6 +119,7 @@ impl MathExplorerApp {
             show_info: self.show_info,
             show_warnings: self.show_warnings,
             show_errors: self.show_errors,
+            theme: self.theme,
             tab_states,
         };
         serde_json::to_string(&app_state).unwrap_or_default()
@@ -120,6 +147,7 @@ impl MathExplorerApp {
         self.show_info = app_state.show_info;
         self.show_warnings = app_state.show_warnings;
         self.show_errors = app_state.show_errors;
+        self.theme = app_state.theme;
 
         for tab in &mut self.tabs {
             if let Some(tab_str) = app_state.tab_states.get(tab.name()) {
@@ -142,6 +170,10 @@ impl MathExplorerApp {
 impl eframe::App for MathExplorerApp {
     #[allow(clippy::too_many_lines)]
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        if ctx.style().visuals != self.theme.visuals() {
+            ctx.set_visuals(self.theme.visuals());
+        }
+
         if let Some(msg) = ctx.data_mut(|d| {
             let msg = d.get_temp::<String>(egui::Id::new("aria_live_message"));
             d.remove::<String>(egui::Id::new("aria_live_message"));
@@ -284,6 +316,15 @@ impl eframe::App for MathExplorerApp {
                     }
                 } else if event.id.0 == "help_commands" {
                     self.show_help_menu = !self.show_help_menu;
+                } else if event.id.0 == "theme_dark" {
+                    self.theme = ThemeMode::Dark;
+                    ctx.set_visuals(self.theme.visuals());
+                } else if event.id.0 == "theme_light" {
+                    self.theme = ThemeMode::Light;
+                    ctx.set_visuals(self.theme.visuals());
+                } else if event.id.0 == "theme_high_contrast" {
+                    self.theme = ThemeMode::HighContrast;
+                    ctx.set_visuals(self.theme.visuals());
                 }
             }
         }
@@ -334,6 +375,33 @@ impl eframe::App for MathExplorerApp {
                         {
                             ui.close();
                         }
+                    }
+                });
+                ui.menu_button("Appearance", |ui| {
+                    if ui
+                        .radio_value(&mut self.theme, ThemeMode::Dark, ThemeMode::Dark.name())
+                        .clicked()
+                    {
+                        ctx.set_visuals(self.theme.visuals());
+                        ui.close();
+                    }
+                    if ui
+                        .radio_value(&mut self.theme, ThemeMode::Light, ThemeMode::Light.name())
+                        .clicked()
+                    {
+                        ctx.set_visuals(self.theme.visuals());
+                        ui.close();
+                    }
+                    if ui
+                        .radio_value(
+                            &mut self.theme,
+                            ThemeMode::HighContrast,
+                            ThemeMode::HighContrast.name(),
+                        )
+                        .clicked()
+                    {
+                        ctx.set_visuals(self.theme.visuals());
+                        ui.close();
                     }
                 });
                 ui.menu_button("Help", |ui| {
@@ -413,7 +481,4 @@ impl eframe::App for MathExplorerApp {
         std::time::Duration::from_secs(5)
     }
 }
-
-#[cfg(test)]
-#[path = "app_tests.rs"]
-mod tests;
+}

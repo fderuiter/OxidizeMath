@@ -39,6 +39,14 @@ impl Default for BankrollGrowthTool {
 }
 
 impl BankrollGrowthTool {
+    pub fn reset_defaults(&mut self) {
+        self.initial_bankroll = 1000.0;
+        self.probability = 0.55;
+        self.odds = 2.0;
+        self.num_bets = 100;
+        self.recalculate();
+    }
+
     fn recalculate(&mut self) {
         self.full_kelly_points.clear();
         self.half_kelly_points.clear();
@@ -144,9 +152,18 @@ impl InteractiveTool for BankrollGrowthTool {
                 .add(egui::Slider::new(&mut self.num_bets, 10..=1000).text("Number of Bets"))
                 .changed();
 
-            if ui.button("Rerun Simulation").clicked() {
-                changed = true;
-            }
+            ui.horizontal(|ui| {
+                if ui.button("Rerun Simulation").clicked() {
+                    changed = true;
+                }
+                if ui
+                    .button("↻ Reset to Defaults")
+                    .accessible_hover_text("Reset initial bankroll, win probability, odds, and bet count to default values")
+                    .clicked()
+                {
+                    self.reset_defaults();
+                }
+            });
 
             if changed {
                 self.recalculate();
@@ -208,4 +225,29 @@ impl scientific_metadata::theory::TheoryDescribable for BankrollGrowthTool {
     fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bankroll_growth_reset_defaults() {
+        let mut tool = BankrollGrowthTool::default();
+
+        tool.initial_bankroll = 5000.0;
+        tool.probability = 0.70;
+        tool.odds = 3.0;
+        tool.num_bets = 500;
+        tool.recalculate();
+
+        tool.reset_defaults();
+
+        assert_eq!(tool.initial_bankroll, 1000.0);
+        assert_eq!(tool.probability, 0.55);
+        assert_eq!(tool.odds, 2.0);
+        assert_eq!(tool.num_bets, 100);
+        assert_eq!(tool.full_kelly_points.len(), 101);
+        assert!(tool.error_msg.is_none());
+    }
 }

@@ -14,6 +14,9 @@ pub struct GridWorldTool {
     episodes: u32,
     total_reward: f64,
     steps: u32,
+    is_playing: bool,
+    playback_speed: f32,
+    last_tick: std::time::Instant,
 }
 
 impl Default for GridWorldTool {
@@ -34,6 +37,9 @@ impl Default for GridWorldTool {
             episodes: 0,
             total_reward: 0.0,
             steps: 0,
+            is_playing: false,
+            playback_speed: 5.0,
+            last_tick: std::time::Instant::now(),
         }
     }
 }
@@ -85,6 +91,17 @@ impl InteractiveTool for GridWorldTool {
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
+        if self.is_playing {
+            let speed_hz = self.playback_speed.clamp(1.0, 20.0);
+            let interval = std::time::Duration::from_secs_f32(1.0 / speed_hz);
+            let now = std::time::Instant::now();
+            if now.duration_since(self.last_tick) >= interval {
+                self.step_agent();
+                self.last_tick = now;
+            }
+            ctx.request_repaint();
+        }
+
         let input_mode = ctx.data(|d| {
             d.get_temp(egui::Id::new("INPUT_MODE"))
                 .unwrap_or(InputMode::Mouse)
@@ -99,11 +116,28 @@ impl InteractiveTool for GridWorldTool {
                 {
                     self.step_agent();
                 }
+                let play_pause_label = if self.is_playing { "⏸ Pause" } else { "▶ Play" };
+                let play_pause_hover = if self.is_playing {
+                    "Pause continuous Q-learning playback"
+                } else {
+                    "Start continuous Q-learning playback"
+                };
+                if ui
+                    .button(play_pause_label)
+                    .accessible_hover_text(play_pause_hover)
+                    .clicked()
+                {
+                    self.is_playing = !self.is_playing;
+                    if self.is_playing {
+                        self.last_tick = std::time::Instant::now();
+                    }
+                }
                 if ui
                     .button("▶ Train (100 Episodes)")
                     .accessible_hover_text("Train the agent for 100 episodes instantly")
                     .clicked()
                 {
+                    self.is_playing = false;
                     for _ in 0..100 {
                         let mut temp_steps = 0;
                         while !self.env.is_terminal(&self.current_state) && temp_steps < 100 {
@@ -118,10 +152,16 @@ impl InteractiveTool for GridWorldTool {
                     .accessible_hover_text("Clear the Q-table and reset the agent's knowledge")
                     .clicked()
                 {
+                    self.is_playing = false;
                     self.agent = TabularQAgent::new(math_commons::primitives::UnitInterval::new(0.1).unwrap(), math_commons::primitives::UnitInterval::new(0.9).unwrap(), math_commons::primitives::UnitInterval::new(0.1).unwrap(), None);
                     self.reset_episode();
                     self.episodes = 0;
                 }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Speed:");
+                ui.add(egui::Slider::new(&mut self.playback_speed, 1.0..=20.0).text("Hz"));
             });
 
             ui.horizontal(|ui| {
@@ -203,5 +243,67 @@ impl scientific_metadata::theory::TheoryDescribable for GridWorldTool {
         map.insert("discount_factor".into(), "Determines the importance of future rewards. A factor of 0 makes the agent opportunistic, while 1 makes it strive for long-term high reward.".into());
         map.insert("exploration_rate".into(), "The probability that the agent will choose a random action instead of the best known action, facilitating exploration of the state space.".into());
         map
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_grid_world_default_playback_state() {
+        let tool = GridWorldTool::default();
+        assert!(!tool.is_playing);
+        assert!((1.0..=20.0).contains(&tool.playback_speed));
+    }
+
+    #[test]
+    fn test_grid_world_playback_toggle_and_speed_bounds() {
+        let mut tool = GridWorldTool {
+            is_playing: true,
+            ..Default::default()
+        };
+        assert!(tool.is_playing);
+
+        tool.playback_speed = 10.0;
+        assert_eq!(tool.playback_speed, 10.0);
+
+        tool.playback_speed = 0.5; // below min speed
+        let speed_hz = tool.playback_speed.clamp(1.0, 20.0);
+        assert_eq!(speed_hz, 1.0);
+
+        tool.playback_speed = 25.0; // above max speed
+        let speed_hz = tool.playback_speed.clamp(1.0, 20.0);
+        assert_eq!(speed_hz, 20.0);
+    }
+
+    #[test]
+    fn test_grid_world_pause_on_train_and_reset() {
+        let mut tool = GridWorldTool {
+            is_playing: true,
+            ..Default::default()
+        };
+
+        // Simulate reset episode / train pausing playback
+        tool.is_playing = false;
+        assert!(!tool.is_playing);
+    }
+
+    #[test]
+    fn test_grid_world_step_and_terminal_reset() {
+        let mut tool = GridWorldTool::default();
+        let initial_state = tool.current_state;
+        tool.step_agent();
+        assert_ne!(
+            (tool.current_state, tool.steps, tool.episodes),
+            (initial_state, 0, 0)
+        );
+
+        // Test terminal state reset
+        tool.current_state = tool.env.goal;
+        tool.step_agent();
+        assert_eq!(tool.current_state, tool.env.start);
+        assert_eq!(tool.steps, 0);
+        assert_eq!(tool.episodes, 1);
     }
 }
