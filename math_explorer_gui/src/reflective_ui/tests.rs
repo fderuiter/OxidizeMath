@@ -175,8 +175,7 @@ fn test_render_theory_summary_with_export() {
     let ctx = egui::Context::default();
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| {
-            let r1 =
-                render_theory_summary_with_export(ui, "Euler identity", Some("e^{i\\pi}+1=0"));
+            let r1 = render_theory_summary_with_export(ui, "Euler identity", Some("e^{i\\pi}+1=0"));
             let r2 = render_theory_summary_with_export(ui, "", None);
             assert!(r1.rect.width() >= 0.0 && r2.rect.width() >= 0.0);
         });

@@ -33,8 +33,7 @@ impl ThemeMode {
                     egui::Stroke::new(1.0_f32, egui::Color32::WHITE);
                 visuals.widgets.hovered.fg_stroke =
                     egui::Stroke::new(2.0_f32, egui::Color32::YELLOW);
-                visuals.widgets.active.fg_stroke =
-                    egui::Stroke::new(2.0_f32, egui::Color32::WHITE);
+                visuals.widgets.active.fg_stroke = egui::Stroke::new(2.0_f32, egui::Color32::WHITE);
                 visuals.selection.bg_fill = egui::Color32::YELLOW;
                 visuals.selection.stroke = egui::Stroke::new(1.0_f32, egui::Color32::BLACK);
                 visuals

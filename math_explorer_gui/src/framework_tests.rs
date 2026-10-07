@@ -144,4 +144,3 @@ mod tests {
         assert!(framework.show_theory_portal);
     }
 }
-
