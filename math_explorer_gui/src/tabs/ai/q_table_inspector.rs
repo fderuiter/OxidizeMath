@@ -98,6 +98,33 @@ impl InteractiveTool for QTableInspectorTool {
         "Q-Table Inspector"
     }
 
+    fn export_data(&self) -> Option<crate::framework::ExportableData> {
+        let mut row_headers = Vec::new();
+        let col_headers = vec!["Up".into(), "Down".into(), "Left".into(), "Right".into()];
+        let mut matrix = Vec::new();
+
+        for y in 0..self.env.height {
+            for x in 0..self.env.width {
+                let state = GridState { x, y };
+                row_headers.push(format!("State ({x}, {y})"));
+                let row = vec![
+                    self.agent.get_q_value(&state, &Move::Up),
+                    self.agent.get_q_value(&state, &Move::Down),
+                    self.agent.get_q_value(&state, &Move::Left),
+                    self.agent.get_q_value(&state, &Move::Right),
+                ];
+                matrix.push(row);
+            }
+        }
+
+        Some(crate::framework::ExportableData::grid(
+            "Q-Table Matrix",
+            row_headers,
+            col_headers,
+            matrix,
+        ))
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         let input_mode = ctx.data(|d| {

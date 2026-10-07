@@ -21,9 +21,7 @@ impl OdeSystem<VecState> for ExponentialOde {
         self.derivative_in_place(t, state, &mut out);
         out
     }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.k * state.0[0];
-    }
+    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) { out.0[0] = self.k * state.0[0]; }
 }
 
 #[derive(Clone, Debug)]
@@ -237,6 +235,14 @@ impl InteractiveTool for OdeSolverTool {
             self.ic_v0 = s.ic_v0;
             self.recalculate();
         }
+    }
+
+    fn export_data(&self) -> Option<crate::framework::ExportableData> {
+        let mut datasets = vec![("State y(t)".to_string(), self.time_series.iter().zip(&self.y_series).map(|(&t, &y)| [t, y]).collect())];
+        if !self.v_series.is_empty() {
+            datasets.push(("Velocity v(t)".to_string(), self.time_series.iter().zip(&self.v_series).map(|(&t, &v)| [t, v]).collect()));
+        }
+        Some(crate::framework::ExportableData::series("ODE Simulation", vec!["Time".into(), "Value".into()], datasets))
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]

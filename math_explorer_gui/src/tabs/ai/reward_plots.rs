@@ -74,6 +74,21 @@ impl InteractiveTool for RewardPlotsTool {
         "Reward Plots"
     }
 
+    fn export_data(&self) -> Option<crate::framework::ExportableData> {
+        let pts: Vec<[f64; 2]> = self
+            .rewards_per_episode
+            .iter()
+            .enumerate()
+            .map(|(idx, &r)| [idx as f64 + 1.0, r])
+            .collect();
+        Some(crate::framework::ExportableData::single_series(
+            "Reinforcement Learning Rewards",
+            vec!["Episode".into(), "Total Reward".into()],
+            "Episode Reward",
+            pts,
+        ))
+    }
+
     fn show(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("reward_plots_controls").show(ctx, |ui| {
             ui.heading("Training Controls");

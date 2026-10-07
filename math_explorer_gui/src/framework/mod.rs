@@ -1,6 +1,9 @@
 use eframe::egui;
 use scientific_metadata::theory::TheoryDescribable;
 
+pub mod export;
+pub use export::*;
+
 #[allow(missing_docs)]
 pub struct ToolMetadata {
     #[allow(missing_docs)]
@@ -50,32 +53,22 @@ pub struct InteractionContext<'a> {
 pub trait InteractiveTool {
     #[allow(missing_docs)]
     fn name(&self) -> &'static str;
-
-    /// Provide theoretical context.
     fn theory(&self) -> &dyn TheoryDescribable;
 
-    /// Show the tool. Tools can implement this to take full control over rendering.
-    /// The default implementation delegates to `show_ui` and then sets up a CentralPanel
-    /// with an allocated painter to call the normalized event hooks and `draw`.
     fn show(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left(format!("{}_controls", self.name())).show(ctx, |ui| {
             self.show_ui(ui);
         });
-
         egui::CentralPanel::default().show(ctx, |ui| {
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
-
             let multi_touch = ui.input(|i| i.multi_touch());
-
             let input_mode = ctx.data(|d| {
                 d.get_temp(egui::Id::new("INPUT_MODE"))
                     .unwrap_or(InputMode::Mouse)
             });
-
             let keys_down = ui.input(|i| i.keys_down.clone());
             let modifiers = ui.input(|i| i.modifiers);
-
             let interaction_ctx = InteractionContext {
                 pointer_pos: response.interact_pointer_pos(),
                 delta: response.drag_delta(),
@@ -87,11 +80,9 @@ pub trait InteractiveTool {
                 keys_down,
                 modifiers,
             };
-
             if interaction_ctx.response.has_focus() {
                 self.on_keyboard(&interaction_ctx);
             }
-
             if interaction_ctx.multi_touch.is_some() {
                 self.on_gesture(&interaction_ctx);
             } else if let Some(_pos) = interaction_ctx.pointer_pos {
@@ -104,38 +95,25 @@ pub trait InteractiveTool {
                     self.on_hover(&interaction_ctx);
                 }
             }
-
             self.draw(ui, &response, &painter);
         });
     }
 
-    /// Optional: UI rendering for the tool's specific side-panel controls.
     fn show_ui(&mut self, _ui: &mut egui::Ui) {}
-
-    /// Optional: Context-based drawing.
     fn draw(&mut self, _ui: &mut egui::Ui, _response: &egui::Response, _painter: &egui::Painter) {}
-
-    // Normalized event hooks
-    #[allow(missing_docs)]
     fn on_hover(&mut self, _ctx: &InteractionContext) {}
-    #[allow(missing_docs)]
     fn on_drag(&mut self, _ctx: &InteractionContext) {}
-    #[allow(missing_docs)]
     fn on_click(&mut self, _ctx: &InteractionContext) {}
-    #[allow(missing_docs)]
     fn on_brush(&mut self, _ctx: &InteractionContext) {}
-    #[allow(missing_docs)]
     fn on_gesture(&mut self, _ctx: &InteractionContext) {}
-    #[allow(missing_docs)]
     fn on_keyboard(&mut self, _ctx: &InteractionContext) {}
-
-    /// Optional hook to serialize tool-specific parameters into a String (e.g. JSON).
     fn save_state(&self) -> Option<String> {
         None
     }
-
-    /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, _state: &str) {}
+    fn export_data(&self) -> Option<ExportableData> {
+        None
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -160,6 +138,8 @@ pub struct SimulationFramework {
     pub show_theory_portal: bool,
     #[allow(missing_docs)]
     pub saved_tool_states: std::collections::HashMap<String, String>,
+    #[allow(missing_docs)]
+    pub status_message: Option<(String, std::time::Instant)>,
 }
 
 impl SimulationFramework {
@@ -169,8 +149,6 @@ impl SimulationFramework {
             .into_iter()
             .filter(|t| t.domain == domain)
             .collect();
-
-        // Sort by name for deterministic order
         available_tools.sort_by_key(|t| t.name);
 
         Self {
@@ -180,6 +158,7 @@ impl SimulationFramework {
             input_mode: InputMode::Mouse,
             show_theory_portal: false,
             saved_tool_states: std::collections::HashMap::new(),
+            status_message: None,
         }
     }
 
@@ -194,19 +173,14 @@ impl SimulationFramework {
                     if let Some(tool) = &self.active_tool {
                         ui.heading(format!("Theory: {}", tool.name()));
                         ui.separator();
-
                         let theory = tool.theory();
-                        // Requirement 4 & Acceptance Criteria 3: On-demand registration of bibliographic details when active/loaded
                         scientific_metadata::citation_registry::CitationRegistry::register(
                             tool.name().to_string(),
                             theory.theory_citation(),
                         );
-                        // Requirement 5: Screen readers can successfully navigate the theory text and citations
                         use crate::accessibility::AccessibleHoverText;
-
                         ui.label(theory.theory_description())
                             .accessible_hover_text("Theoretical background description");
-
                         ui.separator();
                         ui.heading("Citations");
                         ui.label(theory.theory_citation())
@@ -253,7 +227,6 @@ impl SimulationFramework {
                             if let Some(state) = self.saved_tool_states.get(new_tool.name()) {
                                 new_tool.load_state(state);
                             }
-                            // Requirement 4 & Acceptance Criteria 3: On-demand registration of bibliographic details when active/loaded
                             scientific_metadata::citation_registry::CitationRegistry::register(
                                 new_tool.name().to_string(),
                                 new_tool.theory().theory_citation(),
@@ -264,10 +237,38 @@ impl SimulationFramework {
                 });
                 ui.separator();
                 ui.checkbox(&mut self.show_theory_portal, "Theory Context Portal");
+
+                if let Some(tool) = &self.active_tool {
+                    if let Some(exportable) = tool.export_data() {
+                        ui.separator();
+                        ui.heading("Export Simulation Data");
+                        ui.horizontal(|ui| {
+                            if ui.button("Save CSV File").clicked() {
+                                egui_plot::export::save_file_dialog(
+                                    "simulation_data.csv",
+                                    exportable.to_csv().as_bytes(),
+                                    "CSV File",
+                                    &["csv"],
+                                );
+                            }
+                            if ui.button("Copy to Clipboard").clicked() {
+                                egui_plot::export::copy_tsv_to_clipboard(ctx, &exportable.to_tsv());
+                                self.status_message = Some((
+                                    "Copied to clipboard!".to_string(),
+                                    std::time::Instant::now(),
+                                ));
+                            }
+                        });
+                        if let Some((msg, time)) = &self.status_message {
+                            if time.elapsed().as_secs() < 3 {
+                                ui.label(egui::RichText::new(msg).color(egui::Color32::GREEN));
+                            }
+                        }
+                    }
+                }
             });
     }
 
-    /// Serializes the framework state (selected tool index, active tool state, theory portal state) to JSON.
     pub fn save_state(&self) -> Option<String> {
         let mut tool_states = self.saved_tool_states.clone();
         if let Some(active_tool) = &self.active_tool {
@@ -280,7 +281,6 @@ impl SimulationFramework {
                 .get(idx)
                 .map(|meta| meta.name.to_string())
         });
-
         let state = FrameworkState {
             selected_tool_index: self.selected_tool_index,
             selected_tool_name,
@@ -290,7 +290,6 @@ impl SimulationFramework {
         serde_json::to_string(&state).ok()
     }
 
-    /// Deserializes and restores the framework state from JSON.
     pub fn load_state(&mut self, state_str: &str) {
         let state: FrameworkState = match serde_json::from_str(state_str) {
             Ok(s) => s,
@@ -298,7 +297,6 @@ impl SimulationFramework {
         };
         self.show_theory_portal = state.show_theory_portal;
         self.saved_tool_states = state.tool_states;
-
         let tool_idx = if let Some(ref name) = state.selected_tool_name {
             self.available_tools
                 .iter()
@@ -307,7 +305,6 @@ impl SimulationFramework {
         } else {
             state.selected_tool_index
         };
-
         if let Some(idx) = tool_idx {
             if idx < self.available_tools.len() {
                 self.selected_tool_index = Some(idx);
@@ -327,12 +324,10 @@ impl SimulationFramework {
 
     #[allow(missing_docs)]
     pub fn show(&mut self, ctx: &egui::Context, id_source: &str) {
-        // Update global input mode
         ctx.input(|i| {
             if i.any_touches() || i.multi_touch().is_some() {
                 self.input_mode = InputMode::Touch;
             } else if i.pointer.is_moving() && !i.any_touches() {
-                // Heuristic: if pointer is moving but no touches, likely mouse
                 self.input_mode = InputMode::Mouse;
             }
         });
@@ -342,13 +337,11 @@ impl SimulationFramework {
                 egui::Id::new("INPUT_MODE_TOUCH"),
                 self.input_mode == InputMode::Touch,
             );
-            // Clear CMD_REGISTRY at start of frame
             d.insert_temp(
                 egui::Id::new("CMD_REGISTRY"),
                 egui_plot::commands::CommandRegistryData::default(),
             );
         });
-
         self.show_side_panel(ctx, id_source);
         self.show_theory_portal(ctx, id_source);
 
@@ -379,14 +372,11 @@ mod tests {
             let meta = framework.available_tools[0];
             framework.active_tool = Some((meta.build)());
         }
-
         let saved_json = framework
             .save_state()
             .expect("Must serialize framework state");
-
         let mut framework2 = SimulationFramework::new("analysis");
         framework2.load_state(&saved_json);
-
         assert!(framework2.show_theory_portal);
         if !framework.available_tools.is_empty() {
             assert_eq!(framework2.selected_tool_index, Some(0));

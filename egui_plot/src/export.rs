@@ -2,13 +2,48 @@
 
 /// Format dataset points to CSV string.
 pub fn format_csv(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
-    let mut csv = String::from("Dataset,X,Y\n");
+    format_csv_with_headers(datasets, &["X", "Y"])
+}
+
+/// Format dataset points to CSV string with custom column headers.
+pub fn format_csv_with_headers(datasets: &[(String, Vec<[f64; 2]>)], headers: &[&str]) -> String {
+    format_delimited_with_headers(datasets, headers, ',')
+}
+
+/// Format dataset points to TSV string.
+pub fn format_tsv(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
+    format_tsv_with_headers(datasets, &["X", "Y"])
+}
+
+/// Format dataset points to TSV string with custom column headers.
+pub fn format_tsv_with_headers(datasets: &[(String, Vec<[f64; 2]>)], headers: &[&str]) -> String {
+    format_delimited_with_headers(datasets, headers, '\t')
+}
+
+fn format_delimited_with_headers(
+    datasets: &[(String, Vec<[f64; 2]>)],
+    headers: &[&str],
+    sep: char,
+) -> String {
+    let h_x = headers.first().copied().unwrap_or("X");
+    let h_y = headers.get(1).copied().unwrap_or("Y");
+    let mut out = format!("Dataset{sep}{h_x}{sep}{h_y}\n");
     for (name, pts) in datasets {
         for p in pts {
-            csv.push_str(&format!("{name},{},{}\n", p[0], p[1]));
+            out.push_str(&format!("{name}{sep}{}{sep}{}\n", p[0], p[1]));
         }
     }
-    csv
+    out
+}
+
+/// Copy CSV text to the system clipboard via egui output.
+pub fn copy_csv_to_clipboard(ctx: &egui::Context, text: &str) {
+    ctx.copy_text(text.to_string());
+}
+
+/// Copy TSV text to the system clipboard via egui output.
+pub fn copy_tsv_to_clipboard(ctx: &egui::Context, text: &str) {
+    ctx.copy_text(text.to_string());
 }
 
 /// Format dataset points to JSON string.
@@ -134,6 +169,21 @@ mod tests {
         assert!(csv.contains("Series 1,0,1"));
         assert!(csv.contains("Series 1,2,3"));
         assert!(csv.contains("Series 2,4,5"));
+    }
+
+    #[test]
+    fn test_format_csv_with_headers_and_tsv() {
+        let datasets = vec![("Series 1".to_string(), vec![[0.0, 1.0], [2.0, 3.0]])];
+        let csv = format_csv_with_headers(&datasets, &["Time", "Position"]);
+        assert!(csv.contains("Dataset,Time,Position"));
+        assert!(csv.contains("Series 1,0,1"));
+
+        let tsv = format_tsv(&datasets);
+        assert!(tsv.contains("Dataset\tX\tY"));
+        assert!(tsv.contains("Series 1\t0\t1"));
+
+        let tsv_custom = format_tsv_with_headers(&datasets, &["Time", "Velocity"]);
+        assert!(tsv_custom.contains("Dataset\tTime\tVelocity"));
     }
 
     #[test]

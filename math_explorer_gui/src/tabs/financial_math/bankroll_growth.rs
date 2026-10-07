@@ -110,6 +110,19 @@ impl InteractiveTool for BankrollGrowthTool {
         "Bankroll Growth"
     }
 
+    fn export_data(&self) -> Option<crate::framework::ExportableData> {
+        let datasets = vec![
+            ("Full Kelly".to_string(), self.full_kelly_points.clone()),
+            ("Half Kelly".to_string(), self.half_kelly_points.clone()),
+            ("Quarter Kelly".to_string(), self.quarter_kelly_points.clone()),
+        ];
+        Some(crate::framework::ExportableData::series(
+            "Bankroll Growth",
+            vec!["Bet Number".into(), "Bankroll ($)".into()],
+            datasets,
+        ))
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         eframe::egui::CentralPanel::default().show(ctx, |ui| {

@@ -136,6 +136,29 @@ impl InteractiveTool for AttentionMapsTool {
         "Attention Maps"
     }
 
+    fn export_data(&self) -> Option<crate::framework::ExportableData> {
+        let nrows = self.attention_weights.nrows();
+        let ncols = self.attention_weights.ncols();
+        let row_headers: Vec<String> = (0..nrows).map(|r| format!("Token {r}")).collect();
+        let col_headers: Vec<String> = (0..ncols).map(|c| format!("Key {c}")).collect();
+        let mut matrix = Vec::with_capacity(nrows);
+
+        for r in 0..nrows {
+            let mut row = Vec::with_capacity(ncols);
+            for c in 0..ncols {
+                row.push(self.attention_weights[(r, c)]);
+            }
+            matrix.push(row);
+        }
+
+        Some(crate::framework::ExportableData::grid(
+            "Attention Weights Matrix",
+            row_headers,
+            col_headers,
+            matrix,
+        ))
+    }
+
     
 
     fn show(&mut self, ctx: &egui::Context) {

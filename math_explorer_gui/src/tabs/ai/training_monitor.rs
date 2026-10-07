@@ -104,6 +104,18 @@ impl InteractiveTool for TrainingMonitorTool {
         "Training Monitor"
     }
 
+    fn export_data(&self) -> Option<crate::framework::ExportableData> {
+        let datasets = vec![
+            ("Training Loss".to_string(), self.loss_history.clone()),
+            ("Training Accuracy".to_string(), self.accuracy_history.clone()),
+        ];
+        Some(crate::framework::ExportableData::series(
+            "Training Monitor Metrics",
+            vec!["Epoch".into(), "Metric Value".into()],
+            datasets,
+        ))
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         // Run training step if active

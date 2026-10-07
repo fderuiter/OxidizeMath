@@ -69,6 +69,19 @@ impl InteractiveTool for SirTool {
         "SIR Model"
     }
 
+    fn export_data(&self) -> Option<crate::framework::ExportableData> {
+        let datasets = vec![
+            ("Susceptible (S)".to_string(), self.s_points.clone()),
+            ("Infected (I)".to_string(), self.i_points.clone()),
+            ("Recovered (R)".to_string(), self.r_points.clone()),
+        ];
+        Some(crate::framework::ExportableData::series(
+            "SIR Model Simulation",
+            vec!["Time (days)".into(), "Individuals".into()],
+            datasets,
+        ))
+    }
+
     fn show(&mut self, ctx: &egui::Context) {
         eframe::egui::CentralPanel::default().show(ctx, |ui| {
             self.show_ui(ui);
