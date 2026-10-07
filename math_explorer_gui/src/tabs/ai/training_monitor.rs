@@ -310,14 +310,15 @@ mod tests {
 
     #[test]
     fn test_training_monitor_reset() {
-        let mut tool = TrainingMonitorTool::default();
-
-        tool.learning_rate = 0.05;
-        tool.hidden_dim = 32;
-        tool.epoch = 10;
-        tool.is_training = true;
-        tool.loss_history.push([1.0, 0.5]);
-        tool.accuracy_history.push([1.0, 0.8]);
+        let mut tool = TrainingMonitorTool {
+            learning_rate: 0.05,
+            hidden_dim: 32,
+            epoch: 10,
+            is_training: true,
+            loss_history: vec![[1.0, 0.5]],
+            accuracy_history: vec![[1.0, 0.8]],
+            ..Default::default()
+        };
 
         tool.reset();
 

@@ -1,3 +1,5 @@
+mod diagnostics;
+mod menu;
 mod theme;
 
 #[cfg(test)]
@@ -278,73 +280,7 @@ impl eframe::App for MathExplorerApp {
         self.diagnostic_events.extend(new_events);
 
         // Issues & Diagnostics Panel
-        egui::TopBottomPanel::bottom("issues_panel")
-            .resizable(true)
-            .min_height(100.0)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.heading("Issues & Diagnostics");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Clear").clicked() {
-                            self.diagnostic_events.clear();
-                        }
-                        ui.checkbox(&mut self.show_errors, "Errors/Fatal");
-                        ui.checkbox(&mut self.show_warnings, "Warnings");
-                        ui.checkbox(&mut self.show_info, "Info");
-                    });
-                });
-                ui.separator();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for event in &self.diagnostic_events {
-                        let show = match event.severity {
-                            Severity::Info => self.show_info,
-                            Severity::Warning => self.show_warnings,
-                            Severity::Error | Severity::Fatal => self.show_errors,
-                        };
-                        if !show {
-                            continue;
-                        }
-
-                        let color = match event.severity {
-                            Severity::Info => egui::Color32::LIGHT_BLUE,
-                            Severity::Warning => egui::Color32::YELLOW,
-                            Severity::Error => egui::Color32::RED,
-                            Severity::Fatal => egui::Color32::DARK_RED,
-                        };
-
-                        ui.group(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "[{} - {}]",
-                                        event.source, event.severity
-                                    ))
-                                    .color(color)
-                                    .strong(),
-                                );
-                                if let Some(thread) = &event.thread_name {
-                                    ui.label(
-                                        egui::RichText::new(format!("(Thread: {})", thread))
-                                            .italics(),
-                                    );
-                                }
-                                ui.label(&event.message);
-                            });
-                            if !event.metadata.is_empty() {
-                                ui.horizontal_wrapped(|ui| {
-                                    for (k, v) in &event.metadata {
-                                        ui.label(
-                                            egui::RichText::new(format!("{}: {}", k, v))
-                                                .monospace()
-                                                .size(10.0),
-                                        );
-                                    }
-                                });
-                            }
-                        });
-                    }
-                });
-            });
+        self.render_issues_panel(ctx);
 
         #[cfg(target_os = "macos")]
         {
@@ -480,50 +416,7 @@ impl eframe::App for MathExplorerApp {
             });
         }
 
-        if self.show_help_menu {
-            egui::Window::new("Help Menu")
-                .open(&mut self.show_help_menu)
-                .resizable(true)
-                .show(ctx, |ui| {
-                    ui.heading("Available Commands");
-                    ui.separator();
-
-                    let registry_data = ctx.data(|d| {
-                        d.get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new(
-                            "CMD_REGISTRY",
-                        ))
-                        .unwrap_or_default()
-                    });
-
-                    if registry_data.commands.is_empty() {
-                        ui.label("No commands available for the current context.");
-                    } else {
-                        for cmd in registry_data.commands {
-                            ui.group(|ui| {
-                                ui.label(egui::RichText::new(&cmd.name).strong());
-                                ui.label(&cmd.description);
-
-                                let trigger_str = match &cmd.trigger {
-                                    egui_plot::commands::CommandTrigger::Key(k) => {
-                                        format!("Key: {:?}", k)
-                                    }
-                                    egui_plot::commands::CommandTrigger::Shortcut(m, k) => {
-                                        format!("Shortcut: {:?} + {:?}", m, k)
-                                    }
-                                    egui_plot::commands::CommandTrigger::AltClick => {
-                                        "Alt-Click".to_string()
-                                    }
-                                };
-                                ui.label(egui::RichText::new(trigger_str).code());
-
-                                if cmd.desktop_only {
-                                    ui.label(egui::RichText::new("Desktop Only").italics());
-                                }
-                            });
-                        }
-                    }
-                });
-        }
+        self.render_help_menu(ctx);
 
         // Render Command Palette Overlay
         if let Some(new_tab_idx) = self.command_palette.show(ctx, &self.tabs) {
@@ -549,4 +442,3 @@ impl eframe::App for MathExplorerApp {
         std::time::Duration::from_secs(5)
     }
 }
-
