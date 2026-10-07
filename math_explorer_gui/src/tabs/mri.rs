@@ -65,6 +65,33 @@ impl ExplorerTab for MriTab {
         "MRI Physics"
     }
 
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct MriState {
+            paused: bool,
+            time_scale: f64,
+        }
+
+        serde_json::to_string(&MriState {
+            paused: self.paused,
+            time_scale: self.time_scale,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct MriState {
+            paused: bool,
+            time_scale: f64,
+        }
+
+        if let Ok(s) = serde_json::from_str::<MriState>(state) {
+            self.paused = s.paused;
+            self.time_scale = s.time_scale;
+        }
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // --- Simulation Step ---

@@ -26,6 +26,14 @@ impl ExplorerTab for BatteryDegradationTab {
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.framework.show(ctx, "battery_degradation");
     }
+
+    fn save_state(&self) -> Option<String> {
+        self.framework.save_state()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        self.framework.load_state(state);
+    }
 }
 
 // [cite:algorithmic_information_rust]

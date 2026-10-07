@@ -27,6 +27,14 @@ impl ExplorerTab for ClinicalTrialsTab {
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.framework.show(ctx, "clinical_trials");
     }
+
+    fn save_state(&self) -> Option<String> {
+        self.framework.save_state()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        self.framework.load_state(state);
+    }
 }
 
 // [cite:clinical_trials_statistics]

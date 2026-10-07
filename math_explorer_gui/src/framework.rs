@@ -128,6 +128,22 @@ pub trait InteractiveTool {
     fn on_gesture(&mut self, _ctx: &InteractionContext) {}
     #[allow(missing_docs)]
     fn on_keyboard(&mut self, _ctx: &InteractionContext) {}
+
+    /// Optional hook to serialize tool-specific parameters into a String (e.g. JSON).
+    fn save_state(&self) -> Option<String> {
+        None
+    }
+
+    /// Optional hook to deserialize and restore tool-specific parameters from a String.
+    fn load_state(&mut self, _state: &str) {}
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct FrameworkState {
+    selected_tool_index: Option<usize>,
+    selected_tool_name: Option<String>,
+    show_theory_portal: bool,
+    tool_states: std::collections::HashMap<String, String>,
 }
 
 #[allow(missing_docs)]
@@ -142,6 +158,8 @@ pub struct SimulationFramework {
     pub input_mode: InputMode,
     #[allow(missing_docs)]
     pub show_theory_portal: bool,
+    #[allow(missing_docs)]
+    pub saved_tool_states: std::collections::HashMap<String, String>,
 }
 
 impl SimulationFramework {
@@ -161,6 +179,7 @@ impl SimulationFramework {
             selected_tool_index: None,
             input_mode: InputMode::Mouse,
             show_theory_portal: false,
+            saved_tool_states: std::collections::HashMap::new(),
         }
     }
 
@@ -223,8 +242,17 @@ impl SimulationFramework {
                             .clicked()
                             && self.selected_tool_index != Some(i)
                         {
+                            if let Some(old_tool) = &self.active_tool {
+                                if let Some(state) = old_tool.save_state() {
+                                    self.saved_tool_states
+                                        .insert(old_tool.name().to_string(), state);
+                                }
+                            }
                             self.selected_tool_index = Some(i);
-                            let new_tool = (meta.build)();
+                            let mut new_tool = (meta.build)();
+                            if let Some(state) = self.saved_tool_states.get(new_tool.name()) {
+                                new_tool.load_state(state);
+                            }
                             // Requirement 4 & Acceptance Criteria 3: On-demand registration of bibliographic details when active/loaded
                             scientific_metadata::citation_registry::CitationRegistry::register(
                                 new_tool.name().to_string(),
@@ -237,6 +265,64 @@ impl SimulationFramework {
                 ui.separator();
                 ui.checkbox(&mut self.show_theory_portal, "Theory Context Portal");
             });
+    }
+
+    /// Serializes the framework state (selected tool index, active tool state, theory portal state) to JSON.
+    pub fn save_state(&self) -> Option<String> {
+        let mut tool_states = self.saved_tool_states.clone();
+        if let Some(active_tool) = &self.active_tool {
+            if let Some(state) = active_tool.save_state() {
+                tool_states.insert(active_tool.name().to_string(), state);
+            }
+        }
+        let selected_tool_name = self.selected_tool_index.and_then(|idx| {
+            self.available_tools
+                .get(idx)
+                .map(|meta| meta.name.to_string())
+        });
+
+        let state = FrameworkState {
+            selected_tool_index: self.selected_tool_index,
+            selected_tool_name,
+            show_theory_portal: self.show_theory_portal,
+            tool_states,
+        };
+        serde_json::to_string(&state).ok()
+    }
+
+    /// Deserializes and restores the framework state from JSON.
+    pub fn load_state(&mut self, state_str: &str) {
+        let state: FrameworkState = match serde_json::from_str(state_str) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        self.show_theory_portal = state.show_theory_portal;
+        self.saved_tool_states = state.tool_states;
+
+        let tool_idx = if let Some(ref name) = state.selected_tool_name {
+            self.available_tools
+                .iter()
+                .position(|m| m.name == *name)
+                .or(state.selected_tool_index)
+        } else {
+            state.selected_tool_index
+        };
+
+        if let Some(idx) = tool_idx {
+            if idx < self.available_tools.len() {
+                self.selected_tool_index = Some(idx);
+                let meta = self.available_tools[idx];
+                let mut tool = (meta.build)();
+                if let Some(saved) = self.saved_tool_states.get(tool.name()) {
+                    tool.load_state(saved);
+                }
+                scientific_metadata::citation_registry::CitationRegistry::register(
+                    tool.name().to_string(),
+                    tool.theory().theory_citation(),
+                );
+                self.active_tool = Some(tool);
+            }
+        }
     }
 
     #[allow(missing_docs)]
@@ -278,198 +364,33 @@ impl SimulationFramework {
     }
 }
 
-#[allow(missing_docs)]
-pub struct CoordinateMapper {
-    #[allow(missing_docs)]
-    pub screen_rect: egui::Rect,
-    #[allow(missing_docs)]
-    pub sim_rect: egui::Rect,
-}
+pub use crate::camera::{Camera3D, CoordinateMapper};
 
-#[derive(Clone, Copy, Debug)]
-#[allow(missing_docs)]
-pub struct Camera3D {
-    #[allow(missing_docs)]
-    pub pitch: f32,
-    #[allow(missing_docs)]
-    pub yaw: f32,
-    #[allow(missing_docs)]
-    pub zoom: f32,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl Default for Camera3D {
-    fn default() -> Self {
-        Self {
-            pitch: 0.5,
-            yaw: 0.5,
-            zoom: 1.0,
-        }
-    }
-}
-
-impl Camera3D {
-    #[allow(missing_docs)]
-    pub fn new(pitch: f32, yaw: f32, zoom: f32) -> Self {
-        Self { pitch, yaw, zoom }
-    }
-
-    #[allow(missing_docs)]
-    pub fn handle_interaction(&mut self, response: &egui::Response, ui: &egui::Ui) {
-        let multi_touch = ui.input(|i| i.multi_touch());
-
-        if let Some(touch) = multi_touch {
-            if touch.zoom_delta != 1.0 {
-                let zoom_factor = 1.0 + (touch.zoom_delta - 1.0) * 0.5;
-                self.zoom *= zoom_factor;
-                self.zoom = self.zoom.clamp(0.01, 100.0);
-            }
-            if touch.translation_delta != egui::Vec2::ZERO {
-                self.yaw -= touch.translation_delta.x * 0.01;
-                self.pitch -= touch.translation_delta.y * 0.01;
-            }
-        } else if response.dragged() {
-            let delta = response.drag_delta();
-            self.yaw -= delta.x * 0.01;
-            self.pitch -= delta.y * 0.01;
+    #[test]
+    fn test_framework_state_roundtrip() {
+        let mut framework = SimulationFramework::new("analysis");
+        framework.show_theory_portal = true;
+        if !framework.available_tools.is_empty() {
+            framework.selected_tool_index = Some(0);
+            let meta = framework.available_tools[0];
+            framework.active_tool = Some((meta.build)());
         }
 
-        let scroll = ui.input(|i| i.raw_scroll_delta.y);
-        if scroll != 0.0 && response.hovered() && multi_touch.is_none() {
-            self.zoom *= 1.0 + (scroll * 0.001);
-            self.zoom = self.zoom.clamp(0.01, 100.0);
+        let saved_json = framework
+            .save_state()
+            .expect("Must serialize framework state");
+
+        let mut framework2 = SimulationFramework::new("analysis");
+        framework2.load_state(&saved_json);
+
+        assert!(framework2.show_theory_portal);
+        if !framework.available_tools.is_empty() {
+            assert_eq!(framework2.selected_tool_index, Some(0));
+            assert!(framework2.active_tool.is_some());
         }
-
-        if response.has_focus() {
-            self.handle_keyboard_interaction(ui);
-        }
-    }
-
-    fn handle_keyboard_interaction(&mut self, ui: &egui::Ui) {
-        let mut yaw_delta = 0.0;
-        let mut pitch_delta = 0.0;
-        let mut zoom_factor = 1.0;
-        if ui.input(|i| i.key_down(egui::Key::A)) {
-            yaw_delta += 0.05;
-        }
-        if ui.input(|i| i.key_down(egui::Key::D)) {
-            yaw_delta -= 0.05;
-        }
-        if ui.input(|i| i.key_down(egui::Key::W)) {
-            pitch_delta += 0.05;
-        }
-        if ui.input(|i| i.key_down(egui::Key::S)) {
-            pitch_delta -= 0.05;
-        }
-        if ui.input(|i| i.key_down(egui::Key::Q)) {
-            zoom_factor *= 1.05;
-        }
-        if ui.input(|i| i.key_down(egui::Key::E)) {
-            zoom_factor /= 1.05;
-        }
-
-        self.yaw -= yaw_delta;
-        self.pitch -= pitch_delta;
-        self.zoom *= zoom_factor;
-        self.zoom = self.zoom.clamp(0.01, 100.0);
-
-        self.register_camera_commands(ui);
-    }
-
-    fn register_camera_commands(&self, ui: &egui::Ui) {
-        ui.ctx().data_mut(|d| {
-            let mut registry = d
-                .get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new("CMD_REGISTRY"))
-                .unwrap_or_default();
-
-            let commands = [
-                (egui::Key::W, "Pitch Up", "Rotate camera pitch upwards"),
-                (egui::Key::S, "Pitch Down", "Rotate camera pitch downwards"),
-                (egui::Key::A, "Yaw Left", "Rotate camera yaw left"),
-                (egui::Key::D, "Yaw Right", "Rotate camera yaw right"),
-                (egui::Key::Q, "Zoom Out", "Zoom camera out"),
-                (egui::Key::E, "Zoom In", "Zoom camera in"),
-            ];
-
-            for (key, name, desc) in commands {
-                if !registry
-                    .commands
-                    .iter()
-                    .any(|c| c.name == name && c.context == "Camera 3D")
-                {
-                    registry
-                        .commands
-                        .push(egui_plot::commands::CommandMetadata {
-                            name: name.to_string(),
-                            description: desc.to_string(),
-                            trigger: egui_plot::commands::CommandTrigger::Key(key),
-                            desktop_only: true,
-                            context: "Camera 3D".to_string(),
-                        });
-                }
-            }
-            d.insert_temp(egui::Id::new("CMD_REGISTRY"), registry);
-        });
-    }
-
-    #[allow(missing_docs)]
-    pub fn project(&self, point: &[f64; 3]) -> [f64; 2] {
-        let cy = (self.yaw as f64).cos();
-        let sy = (self.yaw as f64).sin();
-        let cp = (self.pitch as f64).cos();
-        let sp = (self.pitch as f64).sin();
-
-        // Apply yaw (rotate around Z)
-        let x1 = point[0] * cy - point[1] * sy;
-        let y1 = point[0] * sy + point[1] * cy;
-        let z1 = point[2];
-
-        // Apply pitch (rotate around X)
-        let x2 = x1;
-        let y2 = y1 * cp - z1 * sp;
-
-        [x2 * (self.zoom as f64), y2 * (self.zoom as f64)]
-    }
-
-    #[allow(missing_docs)]
-    pub fn ui(&mut self, ui: &mut egui::Ui) {
-        ui.label("Yaw");
-        ui.drag_angle(&mut self.yaw);
-
-        ui.label("Pitch");
-        ui.drag_angle(&mut self.pitch);
-
-        ui.add(egui::Slider::new(&mut self.zoom, 0.1..=5.0).text("Zoom"));
-    }
-}
-
-impl CoordinateMapper {
-    #[allow(missing_docs)]
-    pub fn new(screen_rect: egui::Rect, sim_rect: egui::Rect) -> Self {
-        Self {
-            screen_rect,
-            sim_rect,
-        }
-    }
-
-    #[allow(missing_docs)]
-    pub fn screen_to_sim(&self, pos: egui::Pos2) -> egui::Pos2 {
-        let x_norm = (pos.x - self.screen_rect.min.x) / self.screen_rect.width();
-        let y_norm = (pos.y - self.screen_rect.min.y) / self.screen_rect.height();
-
-        egui::Pos2::new(
-            self.sim_rect.min.x + x_norm * self.sim_rect.width(),
-            self.sim_rect.min.y + y_norm * self.sim_rect.height(),
-        )
-    }
-
-    #[allow(missing_docs)]
-    pub fn sim_to_screen(&self, pos: egui::Pos2) -> egui::Pos2 {
-        let x_norm = (pos.x - self.sim_rect.min.x) / self.sim_rect.width();
-        let y_norm = (pos.y - self.sim_rect.min.y) / self.sim_rect.height();
-
-        egui::Pos2::new(
-            self.screen_rect.min.x + x_norm * self.screen_rect.width(),
-            self.screen_rect.min.y + y_norm * self.screen_rect.height(),
-        )
     }
 }

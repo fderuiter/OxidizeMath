@@ -60,6 +60,33 @@ impl ExplorerTab for MorphogenesisTab {
         "Morphogenesis"
     }
 
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct MorphoState {
+            dt: f64,
+            paused: bool,
+        }
+
+        serde_json::to_string(&MorphoState {
+            dt: self.dt,
+            paused: self.paused,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct MorphoState {
+            dt: f64,
+            paused: bool,
+        }
+
+        if let Ok(s) = serde_json::from_str::<MorphoState>(state) {
+            self.dt = s.dt;
+            self.paused = s.paused;
+        }
+    }
+
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if !self.paused {
             self.system.step(self.dt);
