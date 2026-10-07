@@ -63,44 +63,9 @@ impl InteractiveTool for GraphEditorTool {
         });
 
         ui.separator();
-
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(self.can_undo(), egui::Button::new("↩ Undo"))
-                .accessible_hover_text("Undo the last graph modification (Ctrl+Z / Cmd+Z)")
-                .clicked()
-            {
-                self.undo();
-            }
-
-            if ui
-                .add_enabled(self.can_redo(), egui::Button::new("↪ Redo"))
-                .accessible_hover_text("Redo the last undone graph modification (Ctrl+Y / Cmd+Shift+Z)")
-                .clicked()
-            {
-                self.redo();
-            }
-        });
-
-        ui.input_mut(|i| {
-            let ctrl_or_cmd = i.modifiers.command || i.modifiers.ctrl || i.modifiers.mac_cmd;
-            if ctrl_or_cmd && i.key_pressed(egui::Key::Z) {
-                if i.modifiers.shift {
-                    if self.can_redo() {
-                        self.redo();
-                    }
-                } else if self.can_undo() {
-                    self.undo();
-                }
-            } else if ctrl_or_cmd && i.key_pressed(egui::Key::Y) {
-                if self.can_redo() {
-                    self.redo();
-                }
-            }
-        });
+        self.show_undo_redo_toolbar(ui);
 
         ui.separator();
-
         match self.mode {
             EditorMode::AddNode => {
                 ui.label("Click empty space to add a node.");
@@ -116,22 +81,7 @@ impl InteractiveTool for GraphEditorTool {
         }
 
         ui.separator();
-
-        if ui
-            .button("🔄 Clear Graph")
-            .accessible_hover_text("Remove all nodes and edges and start with a fresh graph")
-            .clicked()
-        {
-            if !self.node_positions.is_empty() || !self.edges.is_empty() {
-                self.push_undo_snapshot();
-                self.graph = Graph::new();
-                self.node_indices.clear();
-                self.node_positions.clear();
-                self.edges.clear();
-                self.selected_node = None;
-                self.next_node_id = 0;
-            }
-        }
+        self.show_clear_button(ui);
 
         ui.separator();
         self.show_layout_toolbar(ui);
@@ -152,10 +102,8 @@ impl InteractiveTool for GraphEditorTool {
                 } else if self.can_undo() {
                     self.undo();
                 }
-            } else if ctx.keys_down.contains(&egui::Key::Y) {
-                if self.can_redo() {
-                    self.redo();
-                }
+            } else if ctx.keys_down.contains(&egui::Key::Y) && self.can_redo() {
+                self.redo();
             }
         }
     }
@@ -354,6 +302,58 @@ impl GraphEditorTool {
     pub fn can_undo(&self) -> bool { !self.undo_stack.is_empty() }
     pub fn can_redo(&self) -> bool { !self.redo_stack.is_empty() }
 
+    fn show_undo_redo_toolbar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(self.can_undo(), egui::Button::new("↩ Undo"))
+                .accessible_hover_text("Undo the last graph modification (Ctrl+Z / Cmd+Z)")
+                .clicked()
+            {
+                self.undo();
+            }
+
+            if ui
+                .add_enabled(self.can_redo(), egui::Button::new("↪ Redo"))
+                .accessible_hover_text("Redo the last undone graph modification (Ctrl+Y / Cmd+Shift+Z)")
+                .clicked()
+            {
+                self.redo();
+            }
+        });
+
+        ui.input_mut(|i| {
+            let ctrl_or_cmd = i.modifiers.command || i.modifiers.ctrl || i.modifiers.mac_cmd;
+            if ctrl_or_cmd && i.key_pressed(egui::Key::Z) {
+                if i.modifiers.shift {
+                    if self.can_redo() {
+                        self.redo();
+                    }
+                } else if self.can_undo() {
+                    self.undo();
+                }
+            } else if ctrl_or_cmd && i.key_pressed(egui::Key::Y) && self.can_redo() {
+                self.redo();
+            }
+        });
+    }
+
+    fn show_clear_button(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .button("🔄 Clear Graph")
+            .accessible_hover_text("Remove all nodes and edges and start with a fresh graph")
+            .clicked()
+            && (!self.node_positions.is_empty() || !self.edges.is_empty())
+        {
+            self.push_undo_snapshot();
+            self.graph = Graph::new();
+            self.node_indices.clear();
+            self.node_positions.clear();
+            self.edges.clear();
+            self.selected_node = None;
+            self.next_node_id = 0;
+        }
+    }
+
     pub fn push_undo_snapshot(&mut self) {
         let snapshot = GraphSnapshot {
             node_positions: self.node_positions.clone(),
@@ -397,14 +397,9 @@ impl GraphEditorTool {
     fn restore_snapshot(&mut self, snapshot: GraphSnapshot) {
         self.node_positions = snapshot.node_positions;
         self.edges = snapshot.edges;
-        self.selected_node = if snapshot
+        self.selected_node = snapshot
             .selected_node
-            .map_or(false, |id| self.node_positions.contains_key(&id))
-        {
-            snapshot.selected_node
-        } else {
-            None
-        };
+            .filter(|id| self.node_positions.contains_key(id));
         self.next_node_id = snapshot.next_node_id;
         self.rebuild_graph();
     }
@@ -418,36 +413,33 @@ impl GraphEditorTool {
                 .button("⭕ Circular")
                 .accessible_hover_text("Arrange nodes in a circle")
                 .clicked()
+                && !self.node_positions.is_empty()
             {
-                if !self.node_positions.is_empty() {
-                    self.push_undo_snapshot();
-                    let layout = circular_layout(&self.graph, bounds);
-                    self.apply_layout(&layout);
-                }
+                self.push_undo_snapshot();
+                let layout = circular_layout(&self.graph, bounds);
+                self.apply_layout(&layout);
             }
 
             if ui
                 .button("▦ Grid")
                 .accessible_hover_text("Arrange nodes in a grid layout")
                 .clicked()
+                && !self.node_positions.is_empty()
             {
-                if !self.node_positions.is_empty() {
-                    self.push_undo_snapshot();
-                    let layout = grid_layout(&self.graph, bounds);
-                    self.apply_layout(&layout);
-                }
+                self.push_undo_snapshot();
+                let layout = grid_layout(&self.graph, bounds);
+                self.apply_layout(&layout);
             }
 
             if ui
                 .button("🧲 Force-Directed")
                 .accessible_hover_text("Arrange nodes using force-directed physics")
                 .clicked()
+                && !self.node_positions.is_empty()
             {
-                if !self.node_positions.is_empty() {
-                    self.push_undo_snapshot();
-                    let layout = force_directed_layout(&self.graph, bounds, 100);
-                    self.apply_layout(&layout);
-                }
+                self.push_undo_snapshot();
+                let layout = force_directed_layout(&self.graph, bounds, 100);
+                self.apply_layout(&layout);
             }
         });
     }
