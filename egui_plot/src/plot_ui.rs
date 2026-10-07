@@ -292,4 +292,29 @@ impl<'a> PlotUi<'a> {
             .collect();
         crate::export::export_json(&datasets);
     }
+
+    /// Zoom in on the plot relative to the center of the current bounds.
+    /// A `zoom_factor` > 1.0 reduces the visible range to show more detail.
+    pub fn zoom_in(&mut self, zoom_factor: Vec2) {
+        let center = self.plot_bounds().center();
+        self.zoom_bounds(zoom_factor, center);
+    }
+
+    /// Zoom out on the plot relative to the center of the current bounds.
+    /// A `zoom_factor` > 1.0 increases the visible range to show more data.
+    pub fn zoom_out(&mut self, zoom_factor: Vec2) {
+        let center = self.plot_bounds().center();
+        let factor = Vec2::new(1.0 / zoom_factor.x, 1.0 / zoom_factor.y);
+        self.zoom_bounds(factor, center);
+    }
+
+    /// Reset the plot bounds to default auto-bounds (home view reset).
+    pub fn reset_home(&mut self) {
+        self.set_auto_bounds(true);
+    }
+
+    /// Alias for [`reset_home`](Self::reset_home).
+    pub fn reset_view(&mut self) {
+        self.reset_home();
+    }
 }

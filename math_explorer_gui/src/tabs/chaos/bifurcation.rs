@@ -93,8 +93,8 @@ impl InteractiveTool for BifurcationDiagram {
             }
 
             ui.separator();
-            ui.label("Zoom: Use mouse wheel to zoom, drag to pan.");
-            ui.label("Double-click to reset view.");
+            ui.label("Zoom: Use mouse wheel or on-canvas ➕ / ➖ buttons, drag to pan.");
+            ui.label("Reset view: Double-click or click on-canvas ⌂ Reset button.");
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {

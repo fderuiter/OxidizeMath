@@ -201,6 +201,7 @@ pub struct Plot<'a> {
     grid_spacing: Rangef,
     grid_spacers: [GridSpacer<'a>; 2],
     clamp_grid: bool,
+    show_zoom_controls: bool,
 
     sense: Sense,
 }
@@ -251,6 +252,7 @@ impl<'a> Plot<'a> {
             grid_spacing: Rangef::new(8.0, 300.0),
             grid_spacers: [log_grid_spacer(10), log_grid_spacer(10)],
             clamp_grid: false,
+            show_zoom_controls: true,
 
             sense: egui::Sense::click_and_drag(),
         }
@@ -381,6 +383,14 @@ impl<'a> Plot<'a> {
     #[inline]
     pub fn allow_double_click_reset(mut self, on: bool) -> Self {
         self.allow_double_click_reset = on;
+        self
+    }
+
+    /// Whether to show the floating zoom and home view controls on the plot canvas overlay.
+    /// Default: `true`.
+    #[inline]
+    pub fn show_zoom_controls(mut self, show: bool) -> Self {
+        self.show_zoom_controls = show;
         self
     }
 
@@ -849,6 +859,7 @@ impl<'a> Plot<'a> {
 
             clamp_grid,
             grid_spacers,
+            show_zoom_controls,
             sense,
         } = self;
 
@@ -1447,6 +1458,48 @@ impl<'a> Plot<'a> {
             egui::Rect::from_min_size(plot_rect.min, egui::vec2(plot_rect.width(), 30.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
             ui.horizontal(|ui| {
+                if show_zoom_controls {
+                    let can_zoom = allow_zoom.any();
+                    let zoom_in_btn = ui
+                        .add_enabled(can_zoom, egui::Button::new("➕"))
+                        .on_hover_text("Zoom In");
+                    if zoom_in_btn.clicked() && can_zoom {
+                        let mut factor = Vec2::splat(1.25);
+                        if !allow_zoom.x {
+                            factor.x = 1.0;
+                        }
+                        if !allow_zoom.y {
+                            factor.y = 1.0;
+                        }
+                        mem.transform.zoom(factor, plot_rect.center());
+                        mem.auto_bounds = mem.auto_bounds.and(!allow_zoom);
+                        ui.ctx().request_repaint();
+                    }
+
+                    let zoom_out_btn = ui
+                        .add_enabled(can_zoom, egui::Button::new("➖"))
+                        .on_hover_text("Zoom Out");
+                    if zoom_out_btn.clicked() && can_zoom {
+                        let mut factor = Vec2::splat(0.8);
+                        if !allow_zoom.x {
+                            factor.x = 1.0;
+                        }
+                        if !allow_zoom.y {
+                            factor.y = 1.0;
+                        }
+                        mem.transform.zoom(factor, plot_rect.center());
+                        mem.auto_bounds = mem.auto_bounds.and(!allow_zoom);
+                        ui.ctx().request_repaint();
+                    }
+
+                    let reset_btn = ui.button("⌂ Reset").on_hover_text("Reset View (Home)");
+                    if reset_btn.clicked() {
+                        mem.auto_bounds = true.into();
+                        ui.ctx().request_repaint();
+                    }
+                    ui.separator();
+                }
+
                 if ui.button("Save PNG").clicked() {
                     access_state.show_export_modal = true;
                 }
@@ -2400,4 +2453,55 @@ pub fn format_number(number: f64, num_decimals: usize) -> String {
 pub fn color_from_strength(ui: &Ui, strength: f32) -> Color32 {
     let base_color = ui.visuals().text_color();
     base_color.gamma_multiply(strength.sqrt())
+}
+
+#[cfg(test)]
+mod zoom_control_tests {
+    use super::*;
+
+    #[test]
+    fn test_plot_show_zoom_controls_builder() {
+        let plot = Plot::new("test");
+        assert!(plot.show_zoom_controls);
+
+        let plot_disabled = Plot::new("test").show_zoom_controls(false);
+        assert!(!plot_disabled.show_zoom_controls);
+    }
+
+    #[test]
+    fn test_plot_ui_zoom_and_reset_methods() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new("test_plot").show(ui, |plot_ui| {
+                    let _initial_bounds = plot_ui.plot_bounds();
+                    plot_ui.zoom_in(Vec2::splat(1.5));
+                    assert_eq!(plot_ui.bounds_modifications.len(), 1);
+
+                    plot_ui.zoom_out(Vec2::splat(1.5));
+                    assert_eq!(plot_ui.bounds_modifications.len(), 2);
+
+                    plot_ui.reset_home();
+                    assert_eq!(plot_ui.bounds_modifications.len(), 3);
+
+                    plot_ui.reset_view();
+                    assert_eq!(plot_ui.bounds_modifications.len(), 4);
+                });
+            });
+        });
+    }
+
+    #[test]
+    fn test_plot_overlay_buttons_render() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new("test_overlay_plot")
+                    .show_zoom_controls(true)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("l", vec![[0.0, 0.0], [1.0, 1.0]]));
+                    });
+            });
+        });
+    }
 }
