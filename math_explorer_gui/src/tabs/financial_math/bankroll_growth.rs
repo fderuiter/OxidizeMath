@@ -221,9 +221,11 @@ mod tests {
 
     #[test]
     fn test_bankroll_growth_recalculate_on_parameter_change() {
-        let mut tool = BankrollGrowthTool::default();
-        tool.num_bets = 50;
-        tool.initial_bankroll = 500.0;
+        let mut tool = BankrollGrowthTool {
+            num_bets: 50,
+            initial_bankroll: 500.0,
+            ..Default::default()
+        };
         tool.recalculate();
 
         assert_eq!(tool.full_kelly_points.len(), 51);
@@ -245,8 +247,10 @@ mod tests {
 
     #[test]
     fn test_bankroll_growth_error_handling() {
-        let mut tool = BankrollGrowthTool::default();
-        tool.probability = 1.5; // Invalid probability for UnitInterval
+        let mut tool = BankrollGrowthTool {
+            probability: 1.5, // Invalid probability for UnitInterval
+            ..Default::default()
+        };
         tool.recalculate();
 
         assert!(tool.error_msg.is_some());
