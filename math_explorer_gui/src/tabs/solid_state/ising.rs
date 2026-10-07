@@ -12,6 +12,8 @@ pub struct IsingModelTool {
     running: bool,
     steps_per_frame: usize,
     texture: Option<egui::TextureHandle>,
+    pixels: Vec<egui::Color32>,
+    dirty: bool,
 }
 
 impl Default for IsingModelTool {
@@ -24,6 +26,8 @@ impl Default for IsingModelTool {
             running: false,
             steps_per_frame: 5000,
             texture: None,
+            pixels: Vec::new(),
+            dirty: true,
         }
     }
 }
@@ -44,21 +48,41 @@ impl InteractiveTool for IsingModelTool {
                 ui.heading("Ising Model Controls");
                 ui.separator();
 
-                ui.add(egui::Slider::new(&mut self.temperature, 0.1..=10.0).text("Temperature (T) - K (relative)"));
+                if ui
+                    .add(egui::Slider::new(&mut self.temperature, 0.1..=10.0).text("Temperature (T) - K (relative)"))
+                    .changed()
+                {
+                    self.dirty = true;
+                }
                 ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
 
-                ui.add(egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"));
+                if ui
+                    .add(egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"))
+                    .changed()
+                {
+                    self.dirty = true;
+                }
                 ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
 
-                ui.add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"));
+                if ui
+                    .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
+                    .changed()
+                {
+                    self.dirty = true;
+                }
 
                 ui.separator();
 
-                ui.add(
-                    egui::Slider::new(&mut self.steps_per_frame, 100..=50000)
-                        .text("Simulation Speed (Steps/Frame)")
-                        .logarithmic(true),
-                );
+                if ui
+                    .add(
+                        egui::Slider::new(&mut self.steps_per_frame, 100..=50000)
+                            .text("Simulation Speed (Steps/Frame)")
+                            .logarithmic(true),
+                    )
+                    .changed()
+                {
+                    self.dirty = true;
+                }
 
                 ui.separator();
 
@@ -86,6 +110,7 @@ impl InteractiveTool for IsingModelTool {
                     {
                         self.lattice = SpinLattice::new(100, 100, None);
                         self.texture = None; // Force texture recreation
+                        self.dirty = true;
                     }
                 });
 
@@ -127,6 +152,7 @@ impl InteractiveTool for IsingModelTool {
 
             self.lattice
                 .evolve(self.steps_per_frame, t_phys, self.j_coupling, self.h_field);
+            self.dirty = true;
             ctx.request_repaint();
         }
 
@@ -135,27 +161,29 @@ impl InteractiveTool for IsingModelTool {
             let width = self.lattice.width();
             let height = self.lattice.height();
 
-            let image = egui::ColorImage::from_rgba_unmultiplied(
-                [width, height],
-                &self
-                    .lattice
-                    .spins()
-                    .iter()
-                    .flat_map(|&s| {
-                        if s > 0 {
-                            [200, 50, 50, 255] // Red (Up)
-                        } else {
-                            [50, 50, 200, 255] // Blue (Down)
-                        }
-                    })
-                    .collect::<Vec<u8>>(),
-            );
+            if self.pixels.len() != width * height {
+                self.pixels.resize(width * height, egui::Color32::BLACK);
+                self.dirty = true;
+            }
 
-            let texture_opts = egui::TextureOptions::NEAREST; // Pixelated look
-            if let Some(texture) = &mut self.texture {
-                texture.set(image, texture_opts);
-            } else {
-                self.texture = Some(ctx.load_texture("ising_lattice", image, texture_opts));
+            if self.dirty || self.texture.is_none() {
+                for (&s, pixel) in self.lattice.spins().iter().zip(self.pixels.iter_mut()) {
+                    *pixel = if s > 0 {
+                        egui::Color32::from_rgb(200, 50, 50) // Red (Up)
+                    } else {
+                        egui::Color32::from_rgb(50, 50, 200) // Blue (Down)
+                    };
+                }
+
+                let image = egui::ColorImage::new([width, height], self.pixels.clone());
+                let texture_opts = egui::TextureOptions::NEAREST; // Pixelated look
+                if let Some(texture) = &mut self.texture {
+                    texture.set(image, texture_opts);
+                } else {
+                    self.texture = Some(ctx.load_texture("ising_lattice", image, texture_opts));
+                }
+
+                self.dirty = false;
             }
 
             if let Some(texture) = &self.texture {
@@ -182,4 +210,41 @@ impl scientific_metadata::theory::TheoryDescribable for IsingModelTool {
     fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ising_model_tool_dirty_state_and_texture_update() {
+        let mut tool = IsingModelTool::default();
+        assert!(tool.dirty, "IsingModelTool should initialize with dirty state");
+        assert!(tool.pixels.is_empty(), "Pixel buffer should initialize empty");
+        assert!(tool.texture.is_none(), "Texture handle should initialize as None");
+
+        let ctx = egui::Context::default();
+
+        // Initial render pass populates pixel buffer and texture, then clears dirty flag
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            tool.show(ctx);
+        });
+        assert!(!tool.dirty, "Dirty flag should be false after texture update");
+        assert_eq!(tool.pixels.len(), 10000, "Pixel buffer should resize to match lattice size (100x100)");
+        assert!(tool.texture.is_some(), "Texture should be created");
+
+        // Idle render pass without simulation step shouldn't set dirty
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            tool.show(ctx);
+        });
+        assert!(!tool.dirty);
+
+        // Simulation step while running marks state dirty and updates texture
+        tool.running = true;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            tool.show(ctx);
+        });
+        assert!(!tool.dirty, "Dirty flag should be cleared again after rendering frame update");
+        assert_eq!(tool.pixels.len(), 10000);
+    }
 }
