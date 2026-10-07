@@ -1,4 +1,5 @@
 use crate::framework::InteractiveTool;
+use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::epidemiology::compartmental::SIRModel;
@@ -100,6 +101,13 @@ impl InteractiveTool for SirTool {
             if changed {
                 self.recalculate();
             }
+
+            let r0 = if self.gamma > 0.0 {
+                self.beta / self.gamma
+            } else {
+                f64::INFINITY
+            };
+            render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{:.2}", r0));
 
             ui.separator();
             ui.heading("Simulation");
