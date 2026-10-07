@@ -1316,6 +1316,7 @@ name = "egui_plot"
 version = "0.34.1"
 dependencies = [
  "ahash",
+ "arboard",
  "document-features",
  "egui",
  "emath",
