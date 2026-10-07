@@ -299,8 +299,14 @@ jobs:
         with:
           toolchain: nightly
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.10.2
+
+      # Pinned cargo-packager version for reproducible packaging builds without source compilation fallback
       - name: Install cargo-packager
-        run: cargo install cargo-packager
+        env:
+          CARGO_PACKAGER_VERSION: "0.11.8"
+        run: cargo binstall --no-confirm --no-compile cargo-packager@${{ env.CARGO_PACKAGER_VERSION }}
 
       - name: Build and Package
         shell: bash

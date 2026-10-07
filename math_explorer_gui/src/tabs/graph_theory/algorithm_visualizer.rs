@@ -156,16 +156,7 @@ impl AlgorithmVisualizerTool {
             }
         }
     }
-}
-
-impl InteractiveTool for AlgorithmVisualizerTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
-    fn name(&self) -> &'static str {
-        "Algorithm Visualizer"
-    }
-
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
+    fn update_animation(&mut self, ctx: &egui::Context) {
         if self.is_playing && !self.visit_order.is_empty() {
             let dt = ctx.input(|i| i.stable_dt);
             self.step_timer += dt;
@@ -186,131 +177,68 @@ impl InteractiveTool for AlgorithmVisualizerTool {
                 ctx.request_repaint();
             }
         }
+    }
 
+    fn render_controls(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("algorithm_visualizer_controls").show(ctx, |ui| {
             ui.heading("Algorithm Visualizer");
             ui.separator();
-
             ui.label("Select Algorithm:");
             let mut changed = false;
-            if ui
-                .radio_value(
-                    &mut self.selected_algorithm,
-                    Algorithm::Dijkstra,
-                    "Dijkstra",
-                )
-                .clicked()
-            {
-                changed = true;
-            }
-            if ui
-                .radio_value(&mut self.selected_algorithm, Algorithm::Bfs, "BFS")
-                .clicked()
-            {
-                changed = true;
-            }
-            if ui
-                .radio_value(&mut self.selected_algorithm, Algorithm::Dfs, "DFS")
-                .clicked()
-            {
-                changed = true;
-            }
-
-            if changed {
-                self.run_algorithm();
-            }
-
+            if ui.radio_value(&mut self.selected_algorithm, Algorithm::Dijkstra, "Dijkstra").clicked() { changed = true; }
+            if ui.radio_value(&mut self.selected_algorithm, Algorithm::Bfs, "BFS").clicked() { changed = true; }
+            if ui.radio_value(&mut self.selected_algorithm, Algorithm::Dfs, "DFS").clicked() { changed = true; }
+            if changed { self.run_algorithm(); }
             ui.separator();
 
             if !self.visit_order.is_empty() {
-                ui.label(format!(
-                    "Animation Step: {} / {}",
-                    self.animation_step,
-                    self.visit_order.len()
-                ));
-
+                ui.label(format!("Animation Step: {} / {}", self.animation_step, self.visit_order.len()));
                 ui.horizontal(|ui| {
-                    if ui
-                        .button("↻ Reset")
-                        .accessible_hover_text("Restart the algorithm visualization")
-                        .clicked()
-                    {
+                    if ui.button("↻ Reset").accessible_hover_text("Restart the algorithm visualization").clicked() {
                         self.animation_step = 0;
                         self.is_playing = false;
                         self.step_timer = 0.0;
                     }
-
                     let play_pause_label = if self.is_playing { "⏸ Pause" } else { "▶ Play" };
-                    let play_pause_hover = if self.is_playing {
-                        "Pause the algorithm visualization"
-                    } else {
-                        "Start or resume continuous algorithm visualization"
-                    };
-                    if ui
-                        .button(play_pause_label)
-                        .accessible_hover_text(play_pause_hover)
-                        .clicked()
-                    {
+                    let play_pause_hover = if self.is_playing { "Pause the algorithm visualization" } else { "Start or resume continuous algorithm visualization" };
+                    if ui.button(play_pause_label).accessible_hover_text(play_pause_hover).clicked() {
                         if self.is_playing {
                             self.is_playing = false;
                             self.step_timer = 0.0;
                         } else {
-                            if self.animation_step >= self.visit_order.len() {
-                                self.animation_step = 0;
-                            }
+                            if self.animation_step >= self.visit_order.len() { self.animation_step = 0; }
                             self.is_playing = true;
                             self.step_timer = 0.0;
                         }
                     }
-
                     let can_step = self.animation_step < self.visit_order.len();
-                    if ui
-                        .add_enabled(can_step, eframe::egui::Button::new("▶ Step"))
-                        .accessible_hover_text("Advance visualization by one step")
-                        .clicked()
-                    {
+                    if ui.add_enabled(can_step, eframe::egui::Button::new("▶ Step")).accessible_hover_text("Advance visualization by one step").clicked() {
                         self.animation_step += 1;
                         self.is_playing = false;
                         self.step_timer = 0.0;
                     }
-                    if ui
-                        .add_enabled(can_step, eframe::egui::Button::new("⏹ Finish"))
-                        .accessible_hover_text("Skip to the end of the visualization")
-                        .clicked()
-                    {
+                    if ui.add_enabled(can_step, eframe::egui::Button::new("⏹ Finish")).accessible_hover_text("Skip to the end of the visualization").clicked() {
                         self.animation_step = self.visit_order.len();
                         self.is_playing = false;
                         self.step_timer = 0.0;
                     }
                 });
 
-                let slider =
-                    egui::Slider::new(&mut self.animation_step, 0..=self.visit_order.len())
-                        .text("Step");
-                if ui.add(slider).changed() {
-                    self.step_timer = 0.0;
-                }
-
-                ui.add(
-                    egui::Slider::new(&mut self.playback_speed, 0.5..=5.0)
-                        .text("Speed")
-                        .suffix("x"),
-                );
+                let slider = egui::Slider::new(&mut self.animation_step, 0..=self.visit_order.len()).text("Step");
+                if ui.add(slider).changed() { self.step_timer = 0.0; }
+                ui.add(egui::Slider::new(&mut self.playback_speed, 0.5..=5.0).text("Speed").suffix("x"));
             }
-
             ui.separator();
             ui.label("Click a node to set as start node.");
         });
+    }
 
+    fn render_canvas(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            let (response, painter) =
-                ui.allocate_painter(ui.available_size(), egui::Sense::click());
-            let _ = response
-                .clone()
-                .accessible_hover_text("Graph Theory Algorithm Visualization");
+            let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click());
+            let _ = response.clone().accessible_hover_text("Graph Theory Algorithm Visualization");
             let pointer_pos = response.interact_pointer_pos();
             let node_radius = 15.0;
-
             let to_screen = eframe::egui::emath::RectTransform::from_to(
                 eframe::egui::Rect::from_min_size(Pos2::ZERO, response.rect.size()),
                 response.rect,
@@ -334,94 +262,66 @@ impl InteractiveTool for AlgorithmVisualizerTool {
                 self.run_algorithm();
             }
 
-            // Draw edges
-            for &(u, v, weight) in &self.edges {
-                if let (Some(&pos_u), Some(&pos_v)) =
-                    (self.node_positions.get(&u), self.node_positions.get(&v))
-                {
-                    let screen_pos_u = to_screen.transform_pos(pos_u);
-                    let screen_pos_v = to_screen.transform_pos(pos_v);
-
-                    // Check if both nodes have been visited
-                    let u_visited = self
-                        .visit_order
-                        .iter()
-                        .take(self.animation_step)
-                        .any(|&id| id == u);
-                    let v_visited = self
-                        .visit_order
-                        .iter()
-                        .take(self.animation_step)
-                        .any(|&id| id == v);
-
-                    let color = if u_visited && v_visited {
-                        egui::Color32::from_rgb(100, 200, 100) // Visited edge
-                    } else {
-                        egui::Color32::GRAY
-                    };
-
-                    painter.line_segment([screen_pos_u, screen_pos_v], (2.0, color));
-
-                    // Draw weight
-                    let mid_point = screen_pos_u + (screen_pos_v - screen_pos_u) * 0.5;
-                    painter.text(
-                        mid_point,
-                        egui::Align2::CENTER_CENTER,
-                        format!("{:.1}", weight),
-                        egui::FontId::proportional(12.0),
-                        egui::Color32::WHITE,
-                    );
-                }
-            }
-
-            // Draw nodes
-            for (&id, &pos) in &self.node_positions {
-                let screen_pos = to_screen.transform_pos(pos);
-                let is_start = self.start_node == Some(id);
-
-                // Determine visitation status based on animation step
-                let visit_index = self.visit_order.iter().position(|&vid| vid == id);
-                let is_visited = visit_index.is_some_and(|idx| idx < self.animation_step);
-                let is_current = visit_index.is_some_and(|idx| {
-                    idx == self.animation_step.saturating_sub(1) && self.animation_step > 0
-                });
-
-                let fill_color = if is_start {
-                    egui::Color32::YELLOW
-                } else if is_current {
-                    egui::Color32::RED
-                } else if is_visited {
-                    egui::Color32::GREEN
-                } else {
-                    egui::Color32::LIGHT_BLUE
-                };
-
-                painter.circle(
-                    screen_pos,
-                    node_radius,
-                    fill_color,
-                    (1.0, egui::Color32::WHITE),
-                );
-
-                let label = if self.selected_algorithm == Algorithm::Dijkstra && is_visited {
-                    if let Some(dist) = self.distances.get(&id) {
-                        format!("{:.1}", dist)
-                    } else {
-                        id.to_string()
-                    }
-                } else {
-                    id.to_string()
-                };
-
-                painter.text(
-                    screen_pos,
-                    egui::Align2::CENTER_CENTER,
-                    label,
-                    egui::FontId::proportional(12.0),
-                    egui::Color32::BLACK,
-                );
-            }
+            self.draw_edges(&painter, &to_screen);
+            self.draw_nodes(&painter, &to_screen, node_radius);
         });
+    }
+
+    fn draw_edges(&self, painter: &egui::Painter, to_screen: &eframe::egui::emath::RectTransform) {
+        for &(u, v, weight) in &self.edges {
+            if let (Some(&pos_u), Some(&pos_v)) = (self.node_positions.get(&u), self.node_positions.get(&v)) {
+                let screen_pos_u = to_screen.transform_pos(pos_u);
+                let screen_pos_v = to_screen.transform_pos(pos_v);
+                let u_visited = self.visit_order.iter().take(self.animation_step).any(|&id| id == u);
+                let v_visited = self.visit_order.iter().take(self.animation_step).any(|&id| id == v);
+                let color = if u_visited && v_visited { egui::Color32::from_rgb(100, 200, 100) } else { egui::Color32::GRAY };
+                painter.line_segment([screen_pos_u, screen_pos_v], (2.0, color));
+
+                let mid_point = screen_pos_u + (screen_pos_v - screen_pos_u) * 0.5;
+                painter.text(mid_point, egui::Align2::CENTER_CENTER, format!("{:.1}", weight), egui::FontId::proportional(12.0), egui::Color32::WHITE);
+            }
+        }
+    }
+
+    fn draw_nodes(&self, painter: &egui::Painter, to_screen: &eframe::egui::emath::RectTransform, node_radius: f32) {
+        for (&id, &pos) in &self.node_positions {
+            let screen_pos = to_screen.transform_pos(pos);
+            let is_start = self.start_node == Some(id);
+            let visit_index = self.visit_order.iter().position(|&vid| vid == id);
+            let is_visited = visit_index.is_some_and(|idx| idx < self.animation_step);
+            let is_current = visit_index.is_some_and(|idx| idx == self.animation_step.saturating_sub(1) && self.animation_step > 0);
+
+            let fill_color = if is_start {
+                egui::Color32::YELLOW
+            } else if is_current {
+                egui::Color32::RED
+            } else if is_visited {
+                egui::Color32::GREEN
+            } else {
+                egui::Color32::LIGHT_BLUE
+            };
+
+            painter.circle(screen_pos, node_radius, fill_color, (1.0, egui::Color32::WHITE));
+            let label = if self.selected_algorithm == Algorithm::Dijkstra && is_visited {
+                if let Some(dist) = self.distances.get(&id) { format!("{:.1}", dist) } else { id.to_string() }
+            } else {
+                id.to_string()
+            };
+            painter.text(screen_pos, egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(12.0), egui::Color32::BLACK);
+        }
+    }
+}
+
+impl InteractiveTool for AlgorithmVisualizerTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn name(&self) -> &'static str {
+        "Algorithm Visualizer"
+    }
+
+    fn show(&mut self, ctx: &egui::Context) {
+        self.update_animation(ctx);
+        self.render_controls(ctx);
+        self.render_canvas(ctx);
     }
 }
 
