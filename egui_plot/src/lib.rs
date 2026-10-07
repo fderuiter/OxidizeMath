@@ -1558,10 +1558,10 @@ impl<'a> Plot<'a> {
                     let base_h = 1080u32;
                     let calc_w = (base_w as f32 * access_state.export_scale).round() as u32;
                     let mut calc_h = (base_h as f32 * access_state.export_scale).round() as u32;
-                    if let Some(ratio) = access_state.export_aspect.ratio() {
-                        if ratio > 0.0 {
-                            calc_h = (calc_w as f32 / ratio).round() as u32;
-                        }
+                    if let Some(ratio) = access_state.export_aspect.ratio()
+                        && ratio > 0.0
+                    {
+                        calc_h = (calc_w as f32 / ratio).round() as u32;
                     }
 
                     if calc_w > export::MAX_EXPORT_DIMENSION
