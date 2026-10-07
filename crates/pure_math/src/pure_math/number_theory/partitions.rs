@@ -1,3 +1,4 @@
+// [cite:partitions_implementation]
 //! # Partition Functions
 //!
 //! This module implements restricted partition functions based on the work of Pushpa and Vasuki.

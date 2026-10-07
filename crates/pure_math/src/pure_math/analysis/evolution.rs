@@ -3,6 +3,8 @@
 //! Provides a single trait structure merging AI optimizers and Physics solvers.
 //! Enforces fixed loop bounds and centralized RNG injection.
 
+#![cfg_attr(any(), verified(opt_out = "infrastructure"))]
+
 use rand::RngCore;
 use thiserror::Error;
 

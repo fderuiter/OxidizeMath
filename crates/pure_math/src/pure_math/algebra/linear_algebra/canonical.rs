@@ -1,3 +1,4 @@
+// [cite:advanced_linear_algebra]
 //! # Canonical Forms
 //!
 //! Canonical forms categorize matrices that cannot be fully diagonalized (defective matrices) or provide a standard representation for similarity classes.

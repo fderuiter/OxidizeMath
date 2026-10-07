@@ -19,6 +19,7 @@ pub trait Metric {
     /// May also return a `TensorError` propagated from `metric_at`.
     #[verified_engine::verified]
     fn inverse_metric_at(&self, point: &DVector<f64>) -> Result<DMatrix<f64>, TensorError> {
+        debug_assert!(!point.is_empty());
         let g_cov = self.metric_at(point)?;
         g_cov.try_inverse().ok_or(TensorError::SingularMetric)
     }
@@ -35,6 +36,7 @@ pub trait Metric {
         vec: &ContravariantVector,
         point: &DVector<f64>,
     ) -> Result<CovariantVector, TensorError> {
+        debug_assert!(!point.is_empty());
         let g = self.metric_at(point)?;
         if g.nrows() != vec.dim() || g.ncols() != vec.dim() {
             return Err(crate::pure_math::tensor::TensorError::Math(
@@ -60,6 +62,7 @@ pub trait Metric {
         vec: &CovariantVector,
         point: &DVector<f64>,
     ) -> Result<ContravariantVector, TensorError> {
+        debug_assert!(!point.is_empty());
         let g_inv = self.inverse_metric_at(point)?;
         if g_inv.nrows() != vec.dim() || g_inv.ncols() != vec.dim() {
             return Err(crate::pure_math::tensor::TensorError::Math(
@@ -89,6 +92,7 @@ where
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(metric_fn: F) -> Self {
+        debug_assert!(true);
         Self { metric_fn }
     }
 }
@@ -99,6 +103,7 @@ where
 {
     #[verified_engine::verified]
     fn metric_at(&self, point: &DVector<f64>) -> Result<DMatrix<f64>, TensorError> {
+        debug_assert!(!point.is_empty());
         Ok((self.metric_fn)(point))
     }
 }

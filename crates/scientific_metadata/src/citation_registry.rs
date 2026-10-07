@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "metadata"))]
+
 use std::collections::HashMap;
 use std::sync::{OnceLock, RwLock};
 

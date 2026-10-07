@@ -1,3 +1,4 @@
+// [cite:hurwitz_kronecker]
 //! # Class Number
 //!
 //! This module provides functions for calculating the class number of imaginary quadratic orders.

@@ -1,3 +1,4 @@
+// [cite:dijkstra]
 use petgraph::graph::NodeIndex;
 use petgraph::visit::{Data, EdgeRef, IntoEdges, Visitable};
 use std::cmp::Ordering;

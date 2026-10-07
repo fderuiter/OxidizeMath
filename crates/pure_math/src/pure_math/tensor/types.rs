@@ -1,3 +1,4 @@
+// [cite:tensors]
 //! # Tensor Types
 //!
 //! Core data structures representing various tensor types on a manifold, such
@@ -49,13 +50,16 @@ impl ContravariantVector {
     /// ```
     #[verified_engine::verified]
     pub fn new(data: DVector<f64>) -> Self {
+        debug_assert!(data.len() > 0);
         Self(data)
     }
 
     /// Returns the dimensionality (number of components) of the vector.
     #[verified_engine::verified]
     pub fn dim(&self) -> usize {
-        self.0.len()
+        let d = self.0.len();
+        debug_assert!(d > 0);
+        d
     }
 }
 
@@ -79,13 +83,16 @@ impl CovariantVector {
     /// ```
     #[verified_engine::verified]
     pub fn new(data: DVector<f64>) -> Self {
+        debug_assert!(data.len() > 0);
         Self(data)
     }
 
     /// Returns the dimensionality (number of components) of the vector.
     #[verified_engine::verified]
     pub fn dim(&self) -> usize {
-        self.0.len()
+        let d = self.0.len();
+        debug_assert!(d > 0);
+        d
     }
 }
 
@@ -109,6 +116,7 @@ impl Rank2Tensor {
     /// ```
     #[verified_engine::verified]
     pub fn new(data: DMatrix<f64>) -> Self {
+        debug_assert!(data.nrows() > 0 && data.ncols() > 0);
         Self(data)
     }
 }

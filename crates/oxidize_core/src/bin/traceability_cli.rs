@@ -63,6 +63,35 @@ fn check_and_print_errors(report: &oxidize_core::traceability::TraceabilityRepor
         failed = true;
     }
 
+    let unverified_semantics: Vec<&String> = report
+        .semantic_integrity_status
+        .iter()
+        .filter_map(|(k, v)| if v != "Verified" { Some(k) } else { None })
+        .collect();
+
+    if !unverified_semantics.is_empty() {
+        println!("\n[!] Unverified Semantic Integrity Statuses Detected:");
+        let mut sorted_unverified = unverified_semantics;
+        sorted_unverified.sort();
+        for module in sorted_unverified {
+            println!("  - {}: Unverified", module);
+        }
+        failed = true;
+    }
+
+    let verified_density = if report.verified_funcs > 0 {
+        report.verified_asserts as f64 / report.verified_funcs as f64
+    } else {
+        0.0
+    };
+    if report.verified_funcs > 0 && verified_density < 0.4 {
+        println!(
+            "\n[!] Assertion Density Failure: Verified modules have a density of {:.2} asserts/fn, which is below the minimum required 0.4 asserts/fn.",
+            verified_density
+        );
+        failed = true;
+    }
+
     failed
 }
 
@@ -96,13 +125,6 @@ fn print_dashboard(report: &oxidize_core::traceability::TraceabilityReport) {
         "Unverified Modules Density: {:.2} asserts/fn",
         unverified_density
     );
-
-    if report.verified_funcs > 0 && verified_density < 0.4 {
-        println!(
-            "\n[!] Assertion Density Failure: Verified modules have a density of {:.2} asserts/fn, which is below the minimum required 0.4 asserts/fn.",
-            verified_density
-        );
-    }
 
     println!("\n=== Semantic Integrity ===");
     for (module, status) in &report.semantic_integrity_status {
@@ -193,13 +215,13 @@ fn main() {
             println!("=== Traceability Report ===");
             println!("Summary: Scanned {} source files.", report.scanned_files);
 
+            print_dashboard(&report);
+
             let failed = check_and_print_errors(&report);
 
             if failed {
                 process::exit(1);
             }
-
-            print_dashboard(&report);
 
             println!("All checks passed!");
         }

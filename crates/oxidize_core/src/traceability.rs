@@ -253,6 +253,33 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         )
         .await;
 
+        for paper in &valid_papers {
+            let model_name = paper.strip_suffix(".tex").unwrap_or(paper);
+            if !report.semantic_integrity_status.contains_key(model_name) {
+                let mut is_verified = false;
+                for (module, target_paper) in &registry_links {
+                    let target_clean = target_paper.strip_suffix(".tex").unwrap_or(target_paper);
+                    if target_paper == paper || target_clean == model_name {
+                        if let Some(status) = report.semantic_integrity_status.get(module) {
+                            if status == "Verified" {
+                                is_verified = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if is_verified {
+                    report
+                        .semantic_integrity_status
+                        .insert(model_name.to_string(), "Verified".to_string());
+                } else {
+                    report
+                        .semantic_integrity_status
+                        .insert(model_name.to_string(), "Unverified".to_string());
+                }
+            }
+        }
+
         Self::finalize_report_orphans(&mut report);
 
         Ok(report)
@@ -377,12 +404,17 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
             report.verified_funcs += visitor.verified_funcs;
             report.verified_asserts += visitor.verified_asserts;
 
-            for cite in final_citations {
-                if visitor.semantic_integrity_funcs > 0 {
+            let mut all_citations = final_citations.to_vec();
+            all_citations.extend(visitor.verified_modules.clone());
+            all_citations.sort();
+            all_citations.dedup();
+
+            for cite in all_citations {
+                if visitor.semantic_integrity_funcs > 0 || visitor.verified_funcs > 0 {
                     report
                         .semantic_integrity_status
                         .insert(cite.clone(), "Verified".to_string());
-                } else if !report.semantic_integrity_status.contains_key(cite) {
+                } else if !report.semantic_integrity_status.contains_key(&cite) {
                     report
                         .semantic_integrity_status
                         .insert(cite.clone(), "Unverified".to_string());
