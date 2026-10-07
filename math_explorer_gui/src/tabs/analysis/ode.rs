@@ -198,9 +198,46 @@ impl OdeSolverTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct OdeState {
+    dt: f64,
+    total_time: f64,
+    param_k: f64,
+    param_r: f64,
+    param_cap_k: f64,
+    ic_y0: f64,
+    ic_v0: f64,
+}
+
 impl InteractiveTool for OdeSolverTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str { "ODE Solvers" }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&OdeState {
+            dt: self.dt,
+            total_time: self.total_time,
+            param_k: self.param_k,
+            param_r: self.param_r,
+            param_cap_k: self.param_cap_k,
+            ic_y0: self.ic_y0,
+            ic_v0: self.ic_v0,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(s) = serde_json::from_str::<OdeState>(state) {
+            self.dt = s.dt;
+            self.total_time = s.total_time;
+            self.param_k = s.param_k;
+            self.param_r = s.param_r;
+            self.param_cap_k = s.param_cap_k;
+            self.ic_y0 = s.ic_y0;
+            self.ic_v0 = s.ic_v0;
+            self.recalculate();
+        }
+    }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {

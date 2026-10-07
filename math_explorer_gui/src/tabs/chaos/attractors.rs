@@ -92,6 +92,50 @@ impl InteractiveTool for AttractorPlotter {
         "Attractor Plotter"
     }
 
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct AttractorState {
+            sigma: f64,
+            rho: f64,
+            beta: f64,
+            dt: f64,
+            simulation_speed: usize,
+            paused: bool,
+        }
+
+        serde_json::to_string(&AttractorState {
+            sigma: self.system.sigma,
+            rho: self.system.rho,
+            beta: self.system.beta,
+            dt: self.dt,
+            simulation_speed: self.simulation_speed,
+            paused: self.paused,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct AttractorState {
+            sigma: f64,
+            rho: f64,
+            beta: f64,
+            dt: f64,
+            simulation_speed: usize,
+            paused: bool,
+        }
+
+        if let Ok(s) = serde_json::from_str::<AttractorState>(state) {
+            self.system.sigma = s.sigma;
+            self.system.rho = s.rho;
+            self.system.beta = s.beta;
+            self.dt = s.dt;
+            self.simulation_speed = s.simulation_speed;
+            self.paused = s.paused;
+            self.reset();
+        }
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         // --- Simulation ---

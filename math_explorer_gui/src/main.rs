@@ -5,6 +5,8 @@ mod app;
 #[allow(missing_docs)]
 pub mod async_sim;
 #[allow(missing_docs)]
+pub mod camera;
+#[allow(missing_docs)]
 pub mod framework;
 pub mod presets;
 #[allow(missing_docs)]

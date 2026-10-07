@@ -27,6 +27,14 @@ impl ExplorerTab for GeometryTopologyTab {
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.framework.show(ctx, "geometry_topology");
     }
+
+    fn save_state(&self) -> Option<String> {
+        self.framework.save_state()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        self.framework.load_state(state);
+    }
 }
 
 // [cite:graph_parameters_rust]
