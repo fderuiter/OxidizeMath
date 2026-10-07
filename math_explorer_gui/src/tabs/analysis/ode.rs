@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::accessibility::AccessibleHoverText;
 use crate::framework::InteractiveTool;
 use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialogState};
 use eframe::egui;
@@ -309,6 +310,16 @@ impl InteractiveTool for OdeSolverTool {
                 if ui.add(egui::DragValue::new(&mut self.total_time).speed(1.0).range(1.0..=100.0)).changed() { changed = true; }
             });
 
+            ui.add_space(10.0);
+            if ui
+                .button("↻ Reset to Defaults")
+                .accessible_hover_text("Reset parameters to default values")
+                .clicked()
+            {
+                self.reset_parameters();
+                changed = true;
+            }
+
             let mut dialog_state = std::mem::take(&mut self.dialog_state);
             if crate::presets::render_preset_buttons(&mut dialog_state, ui, self) {
                 changed = true;
@@ -489,5 +500,40 @@ mod tests {
 
         assert!(tool.diverged());
         assert!(tool.y_series.iter().all(|y| y.is_finite()));
+    }
+
+    #[test]
+    fn test_ode_reset_parameters() {
+        let mut tool = OdeSolverTool::default();
+
+        // Exponential preset
+        tool.param_k = 5.0;
+        tool.ic_y0 = 3.0;
+        tool.dt = 0.1;
+        tool.total_time = 20.0;
+        tool.reset_parameters();
+        assert_eq!(tool.param_k, 1.0);
+        assert_eq!(tool.ic_y0, 1.0);
+        assert_eq!(tool.dt, 0.05);
+        assert_eq!(tool.total_time, 10.0);
+        assert!(!tool.y_series.is_empty());
+
+        // Harmonic Oscillator preset
+        tool.preset = OdePreset::HarmonicOscillator;
+        tool.param_k = 4.0;
+        tool.ic_y0 = 2.0;
+        tool.ic_v0 = -1.0;
+        tool.reset_parameters();
+        assert_eq!(tool.param_k, 1.0);
+        assert_eq!(tool.ic_y0, 1.0);
+        assert_eq!(tool.ic_v0, 0.0);
+
+        // Logistic Growth preset
+        tool.preset = OdePreset::LogisticGrowth;
+        tool.param_r = 2.5;
+        tool.param_cap_k = 50.0;
+        tool.reset_parameters();
+        assert_eq!(tool.param_r, 1.0);
+        assert_eq!(tool.param_cap_k, 10.0);
     }
 }

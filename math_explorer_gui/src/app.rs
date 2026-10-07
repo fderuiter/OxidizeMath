@@ -492,7 +492,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod tests {
+mod shortcut_tests {
     use super::*;
     use eframe::App;
 
