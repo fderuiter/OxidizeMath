@@ -29,6 +29,9 @@ pub struct AlgorithmVisualizerTool {
     animation_step: usize,
     visit_order: Vec<usize>, // List of node IDs in the order they are visited
     distances: HashMap<usize, f64>, // For Dijkstra
+    is_playing: bool,
+    playback_speed: f32,
+    step_timer: f32,
 }
 
 impl Default for AlgorithmVisualizerTool {
@@ -43,6 +46,9 @@ impl Default for AlgorithmVisualizerTool {
             animation_step: 0,
             visit_order: Vec::new(),
             distances: HashMap::new(),
+            is_playing: false,
+            playback_speed: 2.0,
+            step_timer: 0.0,
         };
         tool.build_sample_graph();
         tool
@@ -101,6 +107,8 @@ impl AlgorithmVisualizerTool {
         self.visit_order.clear();
         self.distances.clear();
         self.animation_step = 0;
+        self.is_playing = false;
+        self.step_timer = 0.0;
 
         let start_id = match self.start_node {
             Some(id) => id,
@@ -158,6 +166,27 @@ impl InteractiveTool for AlgorithmVisualizerTool {
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
+        if self.is_playing && !self.visit_order.is_empty() {
+            let dt = ctx.input(|i| i.stable_dt);
+            self.step_timer += dt;
+            let step_interval = 1.0 / self.playback_speed;
+            while self.step_timer >= step_interval && self.is_playing {
+                self.step_timer -= step_interval;
+                if self.animation_step < self.visit_order.len() {
+                    self.animation_step += 1;
+                }
+                if self.animation_step >= self.visit_order.len() {
+                    self.animation_step = self.visit_order.len();
+                    self.is_playing = false;
+                    self.step_timer = 0.0;
+                    break;
+                }
+            }
+            if self.is_playing {
+                ctx.request_repaint();
+            }
+        }
+
         egui::SidePanel::left("algorithm_visualizer_controls").show(ctx, |ui| {
             ui.heading("Algorithm Visualizer");
             ui.separator();
@@ -207,7 +236,33 @@ impl InteractiveTool for AlgorithmVisualizerTool {
                         .clicked()
                     {
                         self.animation_step = 0;
+                        self.is_playing = false;
+                        self.step_timer = 0.0;
                     }
+
+                    let play_pause_label = if self.is_playing { "⏸ Pause" } else { "▶ Play" };
+                    let play_pause_hover = if self.is_playing {
+                        "Pause the algorithm visualization"
+                    } else {
+                        "Start or resume continuous algorithm visualization"
+                    };
+                    if ui
+                        .button(play_pause_label)
+                        .accessible_hover_text(play_pause_hover)
+                        .clicked()
+                    {
+                        if self.is_playing {
+                            self.is_playing = false;
+                            self.step_timer = 0.0;
+                        } else {
+                            if self.animation_step >= self.visit_order.len() {
+                                self.animation_step = 0;
+                            }
+                            self.is_playing = true;
+                            self.step_timer = 0.0;
+                        }
+                    }
+
                     let can_step = self.animation_step < self.visit_order.len();
                     if ui
                         .add_enabled(can_step, eframe::egui::Button::new("▶ Step"))
@@ -215,6 +270,8 @@ impl InteractiveTool for AlgorithmVisualizerTool {
                         .clicked()
                     {
                         self.animation_step += 1;
+                        self.is_playing = false;
+                        self.step_timer = 0.0;
                     }
                     if ui
                         .add_enabled(can_step, eframe::egui::Button::new("⏹ Finish"))
@@ -222,13 +279,23 @@ impl InteractiveTool for AlgorithmVisualizerTool {
                         .clicked()
                     {
                         self.animation_step = self.visit_order.len();
+                        self.is_playing = false;
+                        self.step_timer = 0.0;
                     }
                 });
 
                 let slider =
                     egui::Slider::new(&mut self.animation_step, 0..=self.visit_order.len())
                         .text("Step");
-                ui.add(slider);
+                if ui.add(slider).changed() {
+                    self.step_timer = 0.0;
+                }
+
+                ui.add(
+                    egui::Slider::new(&mut self.playback_speed, 0.5..=5.0)
+                        .text("Speed")
+                        .suffix("x"),
+                );
             }
 
             ui.separator();
@@ -375,4 +442,71 @@ impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool 
     fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_algorithm_visualizer_defaults() {
+        let tool = AlgorithmVisualizerTool::default();
+        assert!(!tool.is_playing);
+        assert_eq!(tool.playback_speed, 2.0);
+        assert_eq!(tool.step_timer, 0.0);
+        assert_eq!(tool.animation_step, 0);
+    }
+
+    #[test]
+    fn test_algorithm_visualizer_timer_progression() {
+        let ctx = egui::Context::default();
+        let mut tool = AlgorithmVisualizerTool::default();
+        tool.is_playing = true;
+        tool.playback_speed = 2.0; // 0.5 sec per step
+
+        let raw_input = egui::RawInput {
+            predicted_dt: 0.6,
+            ..Default::default()
+        };
+        let _ = ctx.run(raw_input, |ctx| {
+            tool.show(ctx);
+        });
+
+        assert_eq!(tool.animation_step, 1);
+        assert!(tool.is_playing);
+    }
+
+    #[test]
+    fn test_algorithm_visualizer_stop_at_end() {
+        let ctx = egui::Context::default();
+        let mut tool = AlgorithmVisualizerTool::default();
+        tool.animation_step = tool.visit_order.len();
+        tool.is_playing = true;
+
+        let raw_input = egui::RawInput {
+            predicted_dt: 1.0,
+            ..Default::default()
+        };
+        let _ = ctx.run(raw_input, |ctx| {
+            tool.show(ctx);
+        });
+
+        assert!(!tool.is_playing);
+        assert_eq!(tool.animation_step, tool.visit_order.len());
+        assert_eq!(tool.step_timer, 0.0);
+    }
+
+    #[test]
+    fn test_run_algorithm_resets_playback_state() {
+        let mut tool = AlgorithmVisualizerTool::default();
+        tool.is_playing = true;
+        tool.step_timer = 0.4;
+        tool.animation_step = 3;
+
+        tool.run_algorithm();
+
+        assert!(!tool.is_playing);
+        assert_eq!(tool.step_timer, 0.0);
+        assert_eq!(tool.animation_step, 0);
+    }
 }
