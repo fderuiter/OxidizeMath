@@ -55,7 +55,6 @@ pub enum SimStateUpdate {
     #[allow(missing_docs)]
     Snapshot(StateSnapshot),
     #[allow(missing_docs)]
-    #[allow(missing_docs)]
     Status { running: bool },
 }
 
