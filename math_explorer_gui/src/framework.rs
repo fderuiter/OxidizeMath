@@ -205,91 +205,89 @@ impl SimulationFramework {
             });
     }
 
+    fn render_search_bar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            let text_edit =
+                egui::TextEdit::singleline(&mut self.search_query).hint_text("🔍 Filter tools...");
+            let response = ui.add(text_edit);
+
+            if !self.search_query.is_empty()
+                && ui.button("❌").on_hover_text("Clear search").clicked()
+            {
+                self.search_query.clear();
+            }
+
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) && response.has_focus() {
+                self.search_query.clear();
+            }
+        });
+    }
+
+    fn render_filtered_tools(&mut self, ui: &mut egui::Ui) {
+        let query = self.search_query.trim().to_lowercase();
+        let filtered_tools: Vec<(usize, &&'static ToolMetadata)> = self
+            .available_tools
+            .iter()
+            .enumerate()
+            .filter(|(_, meta)| {
+                if query.is_empty() {
+                    true
+                } else {
+                    meta.name.to_lowercase().contains(&query)
+                        || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
+                }
+            })
+            .collect();
+
+        let count = filtered_tools.len();
+
+        if self.last_announced_count != Some(count) || self.last_announced_query != query {
+            if !query.is_empty() {
+                let msg = if count == 1 {
+                    "1 tool matches filter".to_string()
+                } else {
+                    format!("{} tools match filter", count)
+                };
+                crate::accessibility::announce_status(&msg);
+            }
+            self.last_announced_count = Some(count);
+            self.last_announced_query = query;
+        }
+
+        if filtered_tools.is_empty() {
+            ui.label(format!("No tools match '{}'", self.search_query));
+            if ui.button("Clear search").clicked() {
+                self.search_query.clear();
+            }
+        } else {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for &(i, meta) in &filtered_tools {
+                    if ui
+                        .selectable_label(self.selected_tool_index == Some(i), meta.name)
+                        .clicked()
+                        && self.selected_tool_index != Some(i)
+                    {
+                        self.selected_tool_index = Some(i);
+                        let new_tool = (meta.build)();
+                        scientific_metadata::citation_registry::CitationRegistry::register(
+                            new_tool.name().to_string(),
+                            new_tool.theory().theory_citation(),
+                        );
+                        self.active_tool = Some(new_tool);
+                    }
+                }
+            });
+        }
+    }
+
     fn show_side_panel(&mut self, ctx: &egui::Context, id_source: &str) {
         egui::SidePanel::right(format!("{}_tool_selector", id_source))
             .resizable(false)
             .show(ctx, |ui| {
                 ui.heading("Tools");
-
-                // Requirement 2: Render search input bar at top of side panel
-                ui.horizontal(|ui| {
-                    let text_edit = egui::TextEdit::singleline(&mut self.search_query)
-                        .hint_text("🔍 Filter tools...");
-                    let response = ui.add(text_edit);
-
-                    // Requirement 4: Display clear search button when search_query is not empty
-                    if !self.search_query.is_empty() {
-                        if ui.button("❌").on_hover_text("Clear search").clicked() {
-                            self.search_query.clear();
-                        }
-                    }
-
-                    // Requirement 4 / User Scenario: Clear filter on Escape key press
-                    if ui.input(|i| i.key_pressed(egui::Key::Escape)) && response.has_focus() {
-                        self.search_query.clear();
-                    }
-                });
-
+                self.render_search_bar(ui);
                 ui.separator();
-
-                // Requirement 3: Filter self.available_tools by search_query matching meta.name or meta.tags
-                let query = self.search_query.trim().to_lowercase();
-                let filtered_tools: Vec<(usize, &&'static ToolMetadata)> = self
-                    .available_tools
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, meta)| {
-                        if query.is_empty() {
-                            true
-                        } else {
-                            meta.name.to_lowercase().contains(&query)
-                                || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
-                        }
-                    })
-                    .collect();
-
-                let count = filtered_tools.len();
-
-                // Requirement 6: Send filtered count updates via accessibility::announce_status
-                if self.last_announced_count != Some(count) || self.last_announced_query != query {
-                    if !query.is_empty() {
-                        let msg = if count == 1 {
-                            "1 tool matches filter".to_string()
-                        } else {
-                            format!("{} tools match filter", count)
-                        };
-                        crate::accessibility::announce_status(&msg);
-                    }
-                    self.last_announced_count = Some(count);
-                    self.last_announced_query = query;
-                }
-
-                if filtered_tools.is_empty() {
-                    // Requirement 5: Render empty state message with a clear button when no tools match
-                    ui.label(format!("No tools match '{}'", self.search_query));
-                    if ui.button("Clear search").clicked() {
-                        self.search_query.clear();
-                    }
-                } else {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        for &(i, meta) in &filtered_tools {
-                            if ui
-                                .selectable_label(self.selected_tool_index == Some(i), meta.name)
-                                .clicked()
-                                && self.selected_tool_index != Some(i)
-                            {
-                                self.selected_tool_index = Some(i);
-                                let new_tool = (meta.build)();
-                                scientific_metadata::citation_registry::CitationRegistry::register(
-                                    new_tool.name().to_string(),
-                                    new_tool.theory().theory_citation(),
-                                );
-                                self.active_tool = Some(new_tool);
-                            }
-                        }
-                    });
-                }
-
+                self.render_filtered_tools(ui);
                 ui.separator();
                 ui.checkbox(&mut self.show_theory_portal, "Theory Context Portal");
             });
