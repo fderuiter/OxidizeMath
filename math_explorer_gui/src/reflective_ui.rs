@@ -27,6 +27,168 @@ fn log_missing_metadata_warning(param_name: &str) {
     });
 }
 
+/// Internal state stored in egui temporary memory for each `AnimatedSlider`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AnimatedSliderState {
+    /// Whether parameter animation is currently playing.
+    pub playing: bool,
+    /// Sweep direction (+1.0 for forward, -1.0 for reverse).
+    pub direction: f64,
+}
+
+impl Default for AnimatedSliderState {
+    fn default() -> Self {
+        Self {
+            playing: false,
+            direction: 1.0,
+        }
+    }
+}
+
+/// An interactive parameter slider coupled with play/pause animation controls.
+pub struct AnimatedSlider<'a> {
+    value: &'a mut f64,
+    min: f64,
+    max: f64,
+    step: f64,
+    label: String,
+    id_salt: Option<egui::Id>,
+    speed: Option<f64>,
+}
+
+impl<'a> AnimatedSlider<'a> {
+    /// Creates an `AnimatedSlider` from a value reference and range bounds.
+    pub fn new(value: &'a mut f64, range: std::ops::RangeInclusive<f64>) -> Self {
+        let min = *range.start();
+        let max = *range.end();
+        Self {
+            value,
+            min,
+            max,
+            step: 0.0,
+            label: String::new(),
+            id_salt: None,
+            speed: None,
+        }
+    }
+
+    /// Creates an `AnimatedSlider` from a `ParameterConstraint`.
+    pub fn from_constraint(value: &'a mut f64, constraint: &ParameterConstraint) -> Self {
+        Self {
+            value,
+            min: constraint.min,
+            max: constraint.max,
+            step: constraint.step,
+            label: String::new(),
+            id_salt: None,
+            speed: None,
+        }
+    }
+
+    /// Sets the label text displayed alongside the slider.
+    pub fn text(mut self, label: impl Into<String>) -> Self {
+        self.label = label.into();
+        self
+    }
+
+    /// Sets a custom ID salt for persistent memory lookup.
+    pub fn id_salt(mut self, id_salt: impl std::hash::Hash) -> Self {
+        self.id_salt = Some(egui::Id::new(id_salt));
+        self
+    }
+
+    /// Sets the step size for discrete slider increments.
+    pub fn step_by(mut self, step: f64) -> Self {
+        self.step = step;
+        self
+    }
+
+    /// Sets the animation speed in units per second.
+    pub fn speed(mut self, speed: f64) -> Self {
+        self.speed = Some(speed);
+        self
+    }
+}
+
+impl<'a> egui::Widget for AnimatedSlider<'a> {
+    #[allow(clippy::too_many_lines)]
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let id = self
+            .id_salt
+            .unwrap_or_else(|| ui.make_persistent_id(&self.label));
+        let mut state: AnimatedSliderState =
+            ui.ctx().data_mut(|d| d.get_temp(id)).unwrap_or_default();
+
+        let mut changed = false;
+
+        let response = ui
+            .horizontal(|ui| {
+                let button_text = if state.playing { "⏸" } else { "▶" };
+                let play_btn = ui.button(button_text).on_hover_text(if state.playing {
+                    "Pause animation"
+                } else {
+                    "Play animation"
+                });
+
+                if play_btn.clicked() {
+                    state.playing = !state.playing;
+                    changed = true;
+                }
+
+                let mut slider = egui::Slider::new(self.value, self.min..=self.max);
+                if !self.label.is_empty() {
+                    slider = slider.text(&self.label);
+                }
+                if self.step > 0.0 {
+                    slider = slider.step_by(self.step);
+                }
+
+                let slider_resp = ui.add(slider);
+                if slider_resp.changed() {
+                    changed = true;
+                }
+
+                if slider_resp.lost_focus() {
+                    state.playing = false;
+                }
+
+                slider_resp
+            })
+            .response;
+
+        if state.playing {
+            let dt = ui.input(|i| i.stable_dt as f64).min(0.1);
+            let range = (self.max - self.min).abs();
+            let speed = self
+                .speed
+                .unwrap_or_else(|| if range > 0.0 { range / 5.0 } else { 1.0 });
+
+            if range > 0.0 && dt > 0.0 {
+                *self.value += speed * dt * state.direction;
+                if *self.value >= self.max {
+                    *self.value = self.max;
+                    state.direction = -1.0;
+                } else if *self.value <= self.min {
+                    *self.value = self.min;
+                    state.direction = 1.0;
+                }
+                *self.value = self.value.clamp(self.min, self.max);
+                changed = true;
+            }
+
+            ui.ctx().request_repaint();
+        }
+
+        ui.ctx().data_mut(|d| d.insert_temp(id, state));
+
+        let mut final_response = response;
+        if changed {
+            final_response.mark_changed();
+        }
+        final_response
+    }
+}
+
 /// Renders a UI parameter directly from the theoretical constraints.
 pub fn render_theory_parameter<T: TheoryDescribable>(
     ui: &mut egui::Ui,
@@ -44,11 +206,11 @@ pub fn render_theory_parameter<T: TheoryDescribable>(
         &fallback
     };
 
-    let slider = egui::Slider::new(value, constraint.min..=constraint.max)
-        .step_by(constraint.step)
-        .text(label);
+    let animated_slider = AnimatedSlider::from_constraint(value, constraint)
+        .text(label)
+        .id_salt(param_name);
 
-    let response = ui.add(slider);
+    let response = ui.add(animated_slider);
     let available_descs = model.available_descriptions();
 
     if let Some(param_desc) = available_descs.get(param_name) {
@@ -98,11 +260,12 @@ pub fn render_all_theory_parameters<T: TheoryDescribable>(
                 log_missing_metadata_warning(&param_name);
                 &fallback
             };
-            let slider = egui::Slider::new(&mut value, constraint.min..=constraint.max)
-                .step_by(constraint.step)
-                .text(&param_name);
 
-            let mut response = ui.add(slider);
+            let animated_slider = AnimatedSlider::from_constraint(&mut value, constraint)
+                .text(&param_name)
+                .id_salt(&param_name);
+
+            let mut response = ui.add(animated_slider);
             let available_descs = model.available_descriptions();
 
             if let Some(param_desc) = available_descs.get(&param_name) {
@@ -281,212 +444,5 @@ pub fn render_theory_summary_with_export(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Mutex;
-
-    static TEST_MUTEX: Mutex<()> = Mutex::new(());
-
-    struct DummyMissingTheoryModel {
-        param_val: f64,
-    }
-
-    impl TheoryDescribable for DummyMissingTheoryModel {
-        fn theory_description(&self) -> String {
-            "Dummy description".into()
-        }
-        fn phonetic_description(&self) -> String {
-            "Dummy phonetic".into()
-        }
-        fn theory_citation(&self) -> String {
-            "Dummy citation".into()
-        }
-        fn available_descriptions(&self) -> HashMap<String, String> {
-            HashMap::new()
-        }
-        fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-            HashMap::new()
-        }
-
-        fn get_parameter(&self, name: &str) -> Option<f64> {
-            if name == "missing_param" {
-                Some(self.param_val)
-            } else {
-                None
-            }
-        }
-
-        fn set_parameter(&mut self, name: &str, value: f64) {
-            if name == "missing_param" {
-                self.param_val = value;
-            }
-        }
-    }
-
-    #[test]
-    fn test_get_theory_constraint_fallback_and_telemetry() {
-        let _guard = TEST_MUTEX.lock().unwrap();
-        let _ = global_registry().try_recv_all();
-
-        let model = DummyMissingTheoryModel { param_val: 10.0 };
-        let constraint = get_theory_constraint(&model, "missing_param");
-
-        assert_eq!(constraint.min, 0.0);
-        assert_eq!(constraint.max, 100.0);
-        assert_eq!(constraint.step, 0.1);
-
-        let events = global_registry().try_recv_all();
-        let warning_event = events.iter().find(|e| {
-            e.source == "reflective_ui"
-                && e.severity == Severity::Warning
-                && e.message.contains("missing_param")
-        });
-        assert!(
-            warning_event.is_some(),
-            "Expected diagnostic warning event for missing parameter metadata"
-        );
-    }
-
-    #[test]
-    fn test_render_theory_parameter_fallback_and_telemetry() {
-        let _guard = TEST_MUTEX.lock().unwrap();
-        let _ = global_registry().try_recv_all();
-
-        let ctx = egui::Context::default();
-        let model = DummyMissingTheoryModel { param_val: 10.0 };
-        let mut value = 10.0;
-
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                render_theory_parameter(ui, &model, "missing_param", "Missing Param", &mut value);
-            });
-        });
-
-        let events = global_registry().try_recv_all();
-        let warning_event = events.iter().find(|e| {
-            e.source == "reflective_ui"
-                && e.severity == Severity::Warning
-                && e.message.contains("missing_param")
-        });
-        assert!(
-            warning_event.is_some(),
-            "Expected diagnostic warning event during parameter rendering"
-        );
-    }
-
-    #[test]
-    fn test_render_all_theory_parameters_resiliency() {
-        let _guard = TEST_MUTEX.lock().unwrap();
-        let _ = global_registry().try_recv_all();
-
-        struct DummyIncompleteModel;
-        impl TheoryDescribable for DummyIncompleteModel {
-            fn theory_description(&self) -> String {
-                "Incomplete".to_string()
-            }
-            fn phonetic_description(&self) -> String {
-                "Incomplete".to_string()
-            }
-            fn theory_citation(&self) -> String {
-                "None".to_string()
-            }
-            fn available_descriptions(&self) -> HashMap<String, String> {
-                HashMap::new()
-            }
-            fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-                let mut map = HashMap::new();
-                map.insert(
-                    "valid_param".to_string(),
-                    ParameterConstraint {
-                        min: 0.0,
-                        max: 10.0,
-                        step: 1.0,
-                    },
-                );
-                map
-            }
-            fn get_parameter(&self, name: &str) -> Option<f64> {
-                if name == "valid_param" {
-                    Some(5.0)
-                } else {
-                    None
-                }
-            }
-        }
-
-        let ctx = egui::Context::default();
-        let mut model = DummyIncompleteModel;
-
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                let changed = render_all_theory_parameters(ui, &mut model);
-                assert!(!changed);
-            });
-        });
-    }
-
-    #[test]
-    fn test_render_copyable_metric() {
-        let ctx = egui::Context::default();
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                let resp1 = render_copyable_metric(ui, "Test Metric", "42.0");
-                assert!(resp1.rect.width() >= 0.0);
-
-                let resp2 = render_copyable_metric(ui, "Test Metric:", "100");
-                assert!(resp2.rect.width() >= 0.0);
-
-                let resp3 = render_copyable_metric(ui, "", "empty_label_val");
-                assert!(resp3.rect.width() >= 0.0);
-            });
-        });
-    }
-
-    #[test]
-    fn test_render_formula_with_export() {
-        let ctx = egui::Context::default();
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                let r1 = render_formula_with_export(ui, "\\frac{d}{dx} e^x", Some("d/dx e^x"));
-                let r2 = render_formula_with_export(ui, "", None);
-                assert!(r1.rect.width() >= 0.0 && r2.rect.width() >= 0.0);
-            });
-        });
-    }
-
-    #[test]
-    fn test_render_theory_summary_with_export() {
-        let ctx = egui::Context::default();
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                let r1 =
-                    render_theory_summary_with_export(ui, "Euler identity", Some("e^{i\\pi}+1=0"));
-                let r2 = render_theory_summary_with_export(ui, "", None);
-                assert!(r1.rect.width() >= 0.0 && r2.rect.width() >= 0.0);
-            });
-        });
-    }
-
-    #[test]
-    fn test_formula_export_populates_copied_text() {
-        let ctx = egui::Context::default();
-        let full_output = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                ui.ctx().copy_text("\\int_0^1 x^2 dx = 1/3".to_string());
-            });
-        });
-        let copied = full_output
-            .platform_output
-            .commands
-            .iter()
-            .any(|cmd| match cmd {
-                egui::OutputCommand::CopyText(txt) => txt == "\\int_0^1 x^2 dx = 1/3",
-                _ => false,
-            });
-        assert!(
-            copied,
-            "Expected CopyText output command in full_output.platform_output, got: {:?}",
-            full_output.platform_output.commands
-        );
-    }
-}
+#[path = "reflective_ui_tests.rs"]
+mod tests;

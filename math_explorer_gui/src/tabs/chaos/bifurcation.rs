@@ -1,5 +1,6 @@
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
 use crate::framework::InteractiveTool;
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use egui_plot::{Plot, PlotPoints, Points};
 use scientific_metadata::theory::TheoryDescribable;
@@ -72,10 +73,20 @@ impl InteractiveTool for BifurcationDiagram {
             ui.separator();
 
             let mut changed = false;
-            changed |= ui.add(egui::Slider::new(&mut self.r_min, 0.0..=4.0).text("Min r"))
+            changed |= ui
+                .add(
+                    AnimatedSlider::new(&mut self.r_min, 0.0..=4.0)
+                        .text("Min r")
+                        .id_salt("bifurcation_r_min"),
+                )
                 .changed();
 
-            changed |= ui.add(egui::Slider::new(&mut self.r_max, self.r_min..=4.0).text("Max r"))
+            changed |= ui
+                .add(
+                    AnimatedSlider::new(&mut self.r_max, self.r_min..=4.0)
+                        .text("Max r")
+                        .id_salt("bifurcation_r_max"),
+                )
                 .changed();
 
             changed |= ui.add(egui::Slider::new(&mut self.steps, 100..=2000).text("Resolution (steps)"))

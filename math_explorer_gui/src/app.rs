@@ -415,4 +415,5 @@ impl eframe::App for MathExplorerApp {
 }
 
 #[cfg(test)]
+#[path = "app_tests.rs"]
 mod tests;
