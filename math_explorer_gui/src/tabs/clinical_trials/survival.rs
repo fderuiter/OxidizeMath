@@ -1,4 +1,5 @@
 use crate::framework::InteractiveTool;
+use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::applied::clinical_trials::survival_analysis::{
@@ -121,7 +122,7 @@ impl InteractiveTool for SurvivalAnalysisTool {
             }
 
             ui.separator();
-            ui.label(format!("Observations: {}", self.observations.len()));
+            render_copyable_metric(ui, "Observations", &self.observations.len().to_string());
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {

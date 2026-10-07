@@ -126,6 +126,45 @@ pub fn render_all_theory_parameters<T: TheoryDescribable>(
     changed
 }
 
+/// Renders a formatted metric label and value alongside an inline copy button and context menu.
+pub fn render_copyable_metric(ui: &mut egui::Ui, label: &str, value: &str) -> egui::Response {
+    let response = ui
+        .horizontal(|ui| {
+            let label_text = if label.is_empty() {
+                value.to_string()
+            } else if label.ends_with(':') {
+                format!("{} {}", label, value)
+            } else {
+                format!("{}: {}", label, value)
+            };
+            ui.label(label_text);
+            if ui.button("📋").on_hover_text("Copy value").clicked() {
+                ui.ctx().copy_text(value.to_string());
+            }
+        })
+        .response;
+
+    response.context_menu(|ui| {
+        if ui.button("Copy Value").clicked() {
+            ui.ctx().copy_text(value.to_string());
+            ui.close_kind(egui::UiKind::Menu);
+        }
+        if ui.button("Copy Label & Value").clicked() {
+            let combined = if label.is_empty() {
+                value.to_string()
+            } else if label.ends_with(':') {
+                format!("{} {}", label, value)
+            } else {
+                format!("{}: {}", label, value)
+            };
+            ui.ctx().copy_text(combined);
+            ui.close_kind(egui::UiKind::Menu);
+        }
+    });
+
+    response
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,6 +311,23 @@ mod tests {
             egui::CentralPanel::default().show(ctx, |ui| {
                 let changed = render_all_theory_parameters(ui, &mut model);
                 assert!(!changed);
+            });
+        });
+    }
+
+    #[test]
+    fn test_render_copyable_metric() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let resp1 = render_copyable_metric(ui, "Test Metric", "42.0");
+                assert!(resp1.rect.width() >= 0.0);
+
+                let resp2 = render_copyable_metric(ui, "Test Metric:", "100");
+                assert!(resp2.rect.width() >= 0.0);
+
+                let resp3 = render_copyable_metric(ui, "", "empty_label_val");
+                assert!(resp3.rect.width() >= 0.0);
             });
         });
     }

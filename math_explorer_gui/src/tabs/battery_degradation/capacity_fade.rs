@@ -1,4 +1,5 @@
 use crate::framework::InteractiveTool;
+use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{HLine, Line, Plot, PlotPoints};
 use math_explorer::applied::battery_degradation::{Cycles, DepthOfDischarge, PowerLawModel};
@@ -105,9 +106,11 @@ impl InteractiveTool for CapacityFadeTool {
             } else {
                 0.0
             };
-            ui.horizontal(|ui| {
-                ui.label(format!("Projected Cycle Life (to 70%): {:.0} cycles", n70));
-            });
+            render_copyable_metric(
+                ui,
+                "Projected Cycle Life (to 70%)",
+                &format!("{:.0} cycles", n70),
+            );
         });
     }
 }
