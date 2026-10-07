@@ -2,11 +2,18 @@
 
 use crate::framework::InteractiveTool;
 use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialogState};
+use crate::widgets::{GridDataSource, NumericalDataGrid};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::{
     OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
 };
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum OdeViewMode {
+    Plot,
+    DataGrid,
+}
 
 // ----------------------------------------------------------------------------
 // ODE System Definitions
@@ -72,8 +79,68 @@ pub struct OdeSolverTool {
     y_series: Vec<f64>,
     v_series: Vec<f64>,
     diverged: bool,
+    view_mode: OdeViewMode,
+    grid_widget: NumericalDataGrid,
     // Dialog & Presets
     dialog_state: PresetDialogState,
+}
+
+struct OdeGridAdapter<'a> {
+    tool: &'a mut OdeSolverTool,
+}
+
+impl<'a> GridDataSource for OdeGridAdapter<'a> {
+    fn num_rows(&self) -> usize {
+        self.tool.time_series.len()
+    }
+
+    fn num_cols(&self) -> usize {
+        if self.tool.preset == OdePreset::HarmonicOscillator { 4 } else { 3 }
+    }
+
+    fn header(&self, col: usize) -> String {
+        match col {
+            0 => "Step".to_string(),
+            1 => "Time (t)".to_string(),
+            2 => "y(t)".to_string(),
+            3 => "y'(t)".to_string(),
+            _ => String::new(),
+        }
+    }
+
+    fn cell_value(&self, row: usize, col: usize) -> f64 {
+        match col {
+            0 => row as f64,
+            1 => self.tool.time_series.get(row).copied().unwrap_or(0.0),
+            2 => self.tool.y_series.get(row).copied().unwrap_or(0.0),
+            3 => self.tool.v_series.get(row).copied().unwrap_or(0.0),
+            _ => 0.0,
+        }
+    }
+
+    fn set_cell_value(&mut self, row: usize, col: usize, val: f64) {
+        if row < self.tool.time_series.len() {
+            if row == 0 {
+                if col == 2 {
+                    self.tool.ic_y0 = val;
+                    self.tool.recalculate();
+                } else if col == 3 {
+                    self.tool.ic_v0 = val;
+                    self.tool.recalculate();
+                }
+            } else {
+                if col == 2 && row < self.tool.y_series.len() {
+                    self.tool.y_series[row] = val;
+                } else if col == 3 && row < self.tool.v_series.len() {
+                    self.tool.v_series[row] = val;
+                }
+            }
+        }
+    }
+
+    fn is_editable(&self, _row: usize, col: usize) -> bool {
+        col >= 2
+    }
 }
 
 impl Default for OdeSolverTool {
@@ -91,6 +158,8 @@ impl Default for OdeSolverTool {
             y_series: Vec::new(),
             v_series: Vec::new(),
             diverged: false,
+            view_mode: OdeViewMode::Plot,
+            grid_widget: NumericalDataGrid::new(),
             dialog_state: PresetDialogState::default(),
         };
         tool.recalculate();
@@ -142,35 +211,22 @@ impl OdeSolverTool {
 
         match self.preset {
             OdePreset::Exponential => {
-                let init_state = VecState(vec![self.ic_y0]);
-                let dynamics = ExponentialOde { k: self.param_k };
-                let solver = RungeKutta4::new(&init_state);
-                let mut model = OdeModel::new(init_state, dynamics, solver);
-
+                let init = VecState(vec![self.ic_y0]);
+                let mut model = OdeModel::new(init.clone(), ExponentialOde { k: self.param_k }, RungeKutta4::new(&init));
                 for i in 0..=num_steps {
                     let y = model.get_state().0[0];
-                    if !y.is_finite() {
-                        self.diverged = true;
-                        break;
-                    }
+                    if !y.is_finite() { self.diverged = true; break; }
                     self.time_series.push(i as f64 * self.dt);
                     self.y_series.push(y);
                     model.step(self.dt);
                 }
             }
             OdePreset::HarmonicOscillator => {
-                let init_state = VecState(vec![self.ic_y0, self.ic_v0]);
-                let dynamics = HarmonicOscillatorOde { k: self.param_k };
-                let solver = RungeKutta4::new(&init_state);
-                let mut model = OdeModel::new(init_state, dynamics, solver);
-
+                let init = VecState(vec![self.ic_y0, self.ic_v0]);
+                let mut model = OdeModel::new(init.clone(), HarmonicOscillatorOde { k: self.param_k }, RungeKutta4::new(&init));
                 for i in 0..=num_steps {
-                    let y = model.get_state().0[0];
-                    let v = model.get_state().0[1];
-                    if !y.is_finite() || !v.is_finite() {
-                        self.diverged = true;
-                        break;
-                    }
+                    let (y, v) = (model.get_state().0[0], model.get_state().0[1]);
+                    if !y.is_finite() || !v.is_finite() { self.diverged = true; break; }
                     self.time_series.push(i as f64 * self.dt);
                     self.y_series.push(y);
                     self.v_series.push(v);
@@ -178,17 +234,11 @@ impl OdeSolverTool {
                 }
             }
             OdePreset::LogisticGrowth => {
-                let init_state = VecState(vec![self.ic_y0]);
-                let dynamics = LogisticGrowthOde { r: self.param_r, cap_k: self.param_cap_k };
-                let solver = RungeKutta4::new(&init_state);
-                let mut model = OdeModel::new(init_state, dynamics, solver);
-
+                let init = VecState(vec![self.ic_y0]);
+                let mut model = OdeModel::new(init.clone(), LogisticGrowthOde { r: self.param_r, cap_k: self.param_cap_k }, RungeKutta4::new(&init));
                 for i in 0..=num_steps {
                     let y = model.get_state().0[0];
-                    if !y.is_finite() {
-                        self.diverged = true;
-                        break;
-                    }
+                    if !y.is_finite() { self.diverged = true; break; }
                     self.time_series.push(i as f64 * self.dt);
                     self.y_series.push(y);
                     model.step(self.dt);
@@ -314,6 +364,12 @@ impl InteractiveTool for OdeSolverTool {
                 changed = true;
             }
             self.dialog_state = dialog_state;
+
+            ui.add_space(10.0);
+            ui.separator();
+            ui.heading("View Mode");
+            ui.selectable_value(&mut self.view_mode, OdeViewMode::Plot, "📈 Plot View");
+            ui.selectable_value(&mut self.view_mode, OdeViewMode::DataGrid, "🔢 Numerical Data Grid");
         });
 
         if changed {
@@ -321,51 +377,61 @@ impl InteractiveTool for OdeSolverTool {
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Solution Trajectory");
+            if self.view_mode == OdeViewMode::DataGrid {
+                ui.heading("ODE State Vectors Grid");
+                ui.label("Double-click state vector cells to audit or overwrite numerical trajectory values.");
+                ui.separator();
+                let mut grid_widget = self.grid_widget.clone();
+                let mut adapter = OdeGridAdapter { tool: self };
+                grid_widget.show(ui, &mut adapter);
+                self.grid_widget = grid_widget;
+            } else {
+                ui.heading("Solution Trajectory");
 
-            if self.diverged {
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new("⚠️ Solver Divergence Warning: Non-finite state detected (NaN or Inf). Integration terminated.")
-                                .color(egui::Color32::RED)
-                                .strong(),
-                        );
-                        if ui.button("↻ Reset Parameters").clicked() {
-                            self.reset_parameters();
-                            changed = true;
+                if self.diverged {
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("⚠️ Solver Divergence Warning: Non-finite state detected (NaN or Inf). Integration terminated.")
+                                    .color(egui::Color32::RED)
+                                    .strong(),
+                            );
+                            if ui.button("↻ Reset Parameters").clicked() {
+                                self.reset_parameters();
+                                changed = true;
+                            }
+                        });
+                    });
+                }
+
+                let mut plot_points_y = Vec::new();
+                let mut plot_points_v = Vec::new();
+
+                for (i, &t) in self.time_series.iter().enumerate() {
+                    if let Some(&y) = self.y_series.get(i) {
+                        plot_points_y.push([t, y]);
+                    }
+                    if let Some(&v) = self.v_series.get(i) {
+                        plot_points_v.push([t, v]);
+                    }
+                }
+
+                let line_y = Line::new("y(t)", PlotPoints::new(plot_points_y)).color(egui::Color32::LIGHT_BLUE);
+
+                Plot::new("ode_plot")
+                    .view_aspect(2.0)
+                    .x_axis_label("Time (t)")
+                    .y_axis_label("Value")
+                    .legend(egui_plot::Legend::default())
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(line_y);
+                        if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
+                            let line_v = Line::new("y'(t)", PlotPoints::new(plot_points_v))
+                                .color(egui::Color32::LIGHT_RED);
+                            plot_ui.line(line_v);
                         }
                     });
-                });
             }
-
-            let mut plot_points_y = Vec::new();
-            let mut plot_points_v = Vec::new();
-
-            for (i, &t) in self.time_series.iter().enumerate() {
-                if let Some(&y) = self.y_series.get(i) {
-                    plot_points_y.push([t, y]);
-                }
-                if let Some(&v) = self.v_series.get(i) {
-                    plot_points_v.push([t, v]);
-                }
-            }
-
-            let line_y = Line::new("y(t)", PlotPoints::new(plot_points_y)).color(egui::Color32::LIGHT_BLUE);
-
-            Plot::new("ode_plot")
-                .view_aspect(2.0)
-                .x_axis_label("Time (t)")
-                .y_axis_label("Value")
-                .legend(egui_plot::Legend::default())
-                .show(ui, |plot_ui| {
-                    plot_ui.line(line_y);
-                    if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-                        let line_v = Line::new("y'(t)", PlotPoints::new(plot_points_v))
-                            .color(egui::Color32::LIGHT_RED);
-                        plot_ui.line(line_v);
-                    }
-                });
         });
     }
 }
@@ -425,69 +491,5 @@ impl InteractivePreset for OdeSolverTool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ode_divergence_detection() {
-        let mut tool = OdeSolverTool::default();
-        assert!(!tool.diverged());
-
-        // Set exponential growth rate and initial value that causes f64 overflow/divergence
-        tool.param_k = 1e300;
-        tool.ic_y0 = 1e300;
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        // Verify time_series and y_series do not contain non-finite values
-        assert!(tool.y_series.iter().all(|y| y.is_finite()));
-        assert!(tool.time_series.iter().all(|t| t.is_finite()));
-
-        // Reset parameters recovers from divergence
-        tool.reset_parameters();
-        assert!(!tool.diverged());
-        assert!(!tool.y_series.is_empty());
-    }
-
-    #[test]
-    fn test_ode_nan_initial_condition() {
-        let mut tool = OdeSolverTool {
-            ic_y0: f64::NAN,
-            ..Default::default()
-        };
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        assert!(tool.y_series.is_empty());
-    }
-
-    #[test]
-    fn test_ode_harmonic_oscillator_divergence() {
-        let mut tool = OdeSolverTool {
-            preset: OdePreset::HarmonicOscillator,
-            param_k: 1e300,
-            ic_y0: 1e300,
-            ..Default::default()
-        };
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        assert!(tool.y_series.iter().all(|y| y.is_finite()));
-        assert!(tool.v_series.iter().all(|v| v.is_finite()));
-    }
-
-    #[test]
-    fn test_ode_logistic_growth_divergence() {
-        let mut tool = OdeSolverTool {
-            preset: OdePreset::LogisticGrowth,
-            param_r: 1e300,
-            param_cap_k: 1.0,
-            ic_y0: 1e300,
-            ..Default::default()
-        };
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        assert!(tool.y_series.iter().all(|y| y.is_finite()));
-    }
-}
+#[path = "ode_tests.rs"]
+mod ode_tests;

@@ -15,6 +15,7 @@ pub mod export;
 mod items;
 mod legend;
 mod memory;
+pub mod numerical_data_grid;
 mod plot_ui;
 mod transform;
 
@@ -38,6 +39,9 @@ pub use crate::{
     },
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::PlotMemory,
+    numerical_data_grid::{
+        CellEdit, GridDataSource, NumericalDataGrid, SimpleMatrixGrid, SynchronizedTimeSeriesGrid,
+    },
     plot_ui::PlotUi,
     transform::{PlotBounds, PlotTransform},
 };
@@ -1435,19 +1439,17 @@ impl<'a> Plot<'a> {
         });
 
         if access_state.show_table {
-            egui::Window::new(format!("Data Table - {id_source:?}")).show(ui.ctx(), |ui| {
-                egui::ScrollArea::both().show(ui, |ui| {
-                    for (name, pts) in &accessible_datasets {
-                        if pts.is_empty() {
-                            continue;
-                        }
-                        ui.heading(name);
-                        for p in pts {
-                            ui.label(format!("X: {:.4}, Y: {:.4}", p[0], p[1]));
-                        }
-                    }
+            egui::Window::new(format!("Data Table - {id_source:?}"))
+                .default_size([600.0, 400.0])
+                .show(ui.ctx(), |ui| {
+                    let datasets_ref: Vec<(&str, &[[f64; 2]])> = accessible_datasets
+                        .iter()
+                        .map(|(name, pts)| (name.as_str(), pts.as_slice()))
+                        .collect();
+                    let mut sync_grid = SynchronizedTimeSeriesGrid::from_datasets(&datasets_ref);
+                    let mut grid_widget = NumericalDataGrid::new();
+                    grid_widget.show(ui, &mut sync_grid);
                 });
-            });
         }
 
         if focus_response.has_focus() {

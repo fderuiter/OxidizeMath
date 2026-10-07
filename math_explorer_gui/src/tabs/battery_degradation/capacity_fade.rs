@@ -1,13 +1,24 @@
 use crate::framework::InteractiveTool;
 use crate::reflective_ui::render_copyable_metric;
+use crate::widgets::{GridDataSource, NumericalDataGrid};
 use eframe::egui;
 use egui_plot::{HLine, Line, Plot, PlotPoints};
 use math_explorer::applied::battery_degradation::{Cycles, DepthOfDischarge, PowerLawModel};
+use std::collections::HashMap;
+
+#[derive(Clone, Copy, PartialEq)]
+enum CapacityFadeViewMode {
+    Plot,
+    DataGrid,
+}
 
 pub struct CapacityFadeTool {
     dod: f64,
     temperature: f64,
     cycles_to_simulate: f64,
+    view_mode: CapacityFadeViewMode,
+    grid_widget: NumericalDataGrid,
+    overrides: HashMap<usize, f64>,
 }
 
 impl Default for CapacityFadeTool {
@@ -16,7 +27,69 @@ impl Default for CapacityFadeTool {
             dod: 80.0,
             temperature: 25.0,
             cycles_to_simulate: 2000.0,
+            view_mode: CapacityFadeViewMode::Plot,
+            grid_widget: NumericalDataGrid::new(),
+            overrides: HashMap::new(),
         }
+    }
+}
+
+struct CapacityGridAdapter<'a> {
+    tool: &'a mut CapacityFadeTool,
+}
+
+impl<'a> GridDataSource for CapacityGridAdapter<'a> {
+    fn num_rows(&self) -> usize {
+        101
+    }
+
+    fn num_cols(&self) -> usize {
+        4
+    }
+
+    fn header(&self, col: usize) -> String {
+        match col {
+            0 => "Step".to_string(),
+            1 => "Cycle".to_string(),
+            2 => "State of Health (SoH)".to_string(),
+            3 => "Degradation (%)".to_string(),
+            _ => String::new(),
+        }
+    }
+
+    fn cell_value(&self, row: usize, col: usize) -> f64 {
+        let cycle = (self.tool.cycles_to_simulate / 100.0) * (row as f64);
+        match col {
+            0 => row as f64,
+            1 => cycle,
+            2 => {
+                if let Some(&ov) = self.tool.overrides.get(&row) {
+                    ov
+                } else {
+                    let model = PowerLawModel::standard();
+                    if let (Ok(c), Ok(d)) = (Cycles::new(cycle), DepthOfDischarge::new(self.tool.dod)) {
+                        model.capacity(c, d).as_f64()
+                    } else {
+                        0.0
+                    }
+                }
+            }
+            3 => {
+                let soh = self.cell_value(row, 2);
+                (1.0 - soh) * 100.0
+            }
+            _ => 0.0,
+        }
+    }
+
+    fn set_cell_value(&mut self, row: usize, col: usize, val: f64) {
+        if col == 2 {
+            self.tool.overrides.insert(row, val.clamp(0.0, 1.0));
+        }
+    }
+
+    fn is_editable(&self, _row: usize, col: usize) -> bool {
+        col == 2
     }
 }
 
@@ -52,11 +125,29 @@ impl InteractiveTool for CapacityFadeTool {
             ui.add_space(10.0);
 
             ui.add(egui::Slider::new(&mut self.cycles_to_simulate, 100.0..=10000.0).text("Simulation Range - Cycles"));
+
+            ui.add_space(15.0);
+            ui.separator();
+            ui.heading("View Mode");
+            ui.selectable_value(&mut self.view_mode, CapacityFadeViewMode::Plot, "📈 Plot View");
+            ui.selectable_value(&mut self.view_mode, CapacityFadeViewMode::DataGrid, "🔢 Numerical Data Grid");
+            if !self.overrides.is_empty() && ui.button("↻ Clear Overrides").clicked() {
+                self.overrides.clear();
+            }
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Capacity Fade Projection");
-            ui.label("Estimation based on Power Law Model for Li-ion batteries.");
+            if self.view_mode == CapacityFadeViewMode::DataGrid {
+                ui.heading("Capacity Fade Numerical Grid");
+                ui.label("Double-click State of Health (SoH) cells to perform scenario overwrites.");
+                ui.separator();
+                let mut grid_widget = self.grid_widget.clone();
+                let mut adapter = CapacityGridAdapter { tool: self };
+                grid_widget.show(ui, &mut adapter);
+                self.grid_widget = grid_widget;
+            } else {
+                ui.heading("Capacity Fade Projection");
+                ui.label("Estimation based on Power Law Model for Li-ion batteries.");
 
             let model = PowerLawModel::standard();
             let dod_val = DepthOfDischarge::new(self.dod);
@@ -65,7 +156,9 @@ impl InteractiveTool for CapacityFadeTool {
             let points: Vec<[f64; 2]> = (0..=100)
                 .map(|i| {
                     let cycle = (self.cycles_to_simulate / 100.0) * (i as f64);
-                    if let (Ok(c), Ok(d)) = (Cycles::new(cycle), dod_val.clone()) {
+                    if let Some(&ov) = self.overrides.get(&i) {
+                        [cycle, ov]
+                    } else if let (Ok(c), Ok(d)) = (Cycles::new(cycle), dod_val.clone()) {
                         let capacity = model.capacity(c, d);
                         [cycle, capacity.as_f64()]
                     } else {
@@ -111,6 +204,7 @@ impl InteractiveTool for CapacityFadeTool {
                 "Projected Cycle Life (to 70%)",
                 &format!("{:.0} cycles", n70),
             );
+            }
         });
     }
 }

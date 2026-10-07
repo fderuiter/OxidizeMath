@@ -1,7 +1,9 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{InputMode, InteractiveTool};
+use crate::widgets::{GridDataSource, NumericalDataGrid};
 use eframe::egui;
 use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorldEnv, Move};
+use math_explorer::ai::reinforcement_learning::types::QFunction;
 use math_explorer::ai::reinforcement_learning::{algorithms::TabularQAgent, MarkovDecisionProcess};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -13,11 +15,104 @@ enum HeatmapView {
     Right,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum QInspectorMode {
+    Heatmap,
+    DataGrid,
+}
+
 pub struct QTableInspectorTool {
     env: GridWorldEnv,
     agent: TabularQAgent<GridState, Move>,
     episodes_trained: u32,
     view: HeatmapView,
+    display_mode: QInspectorMode,
+    grid_widget: NumericalDataGrid,
+}
+
+struct QTableGridAdapter<'a> {
+    states: Vec<GridState>,
+    agent: &'a mut TabularQAgent<GridState, Move>,
+}
+
+impl<'a> QTableGridAdapter<'a> {
+    fn new(env: &GridWorldEnv, agent: &'a mut TabularQAgent<GridState, Move>) -> Self {
+        let mut states = Vec::new();
+        for y in 0..env.height {
+            for x in 0..env.width {
+                states.push(GridState { x, y });
+            }
+        }
+        Self { states, agent }
+    }
+}
+
+impl<'a> GridDataSource for QTableGridAdapter<'a> {
+    fn num_rows(&self) -> usize {
+        self.states.len()
+    }
+
+    fn num_cols(&self) -> usize {
+        5
+    }
+
+    fn header(&self, col: usize) -> String {
+        match col {
+            0 => "Move Up".to_string(),
+            1 => "Move Down".to_string(),
+            2 => "Move Left".to_string(),
+            3 => "Move Right".to_string(),
+            4 => "Max Q".to_string(),
+            _ => String::new(),
+        }
+    }
+
+    fn row_label(&self, row: usize) -> Option<String> {
+        self.states.get(row).map(|s| format!("State ({}, {})", s.x, s.y))
+    }
+
+    fn cell_value(&self, row: usize, col: usize) -> f64 {
+        if let Some(state) = self.states.get(row) {
+            match col {
+                0 => self.agent.get_q_value(state, &Move::Up),
+                1 => self.agent.get_q_value(state, &Move::Down),
+                2 => self.agent.get_q_value(state, &Move::Left),
+                3 => self.agent.get_q_value(state, &Move::Right),
+                4 => {
+                    let mut max_q = f64::NEG_INFINITY;
+                    for a in [Move::Up, Move::Down, Move::Left, Move::Right] {
+                        let q = self.agent.get_q_value(state, &a);
+                        if q > max_q {
+                            max_q = q;
+                        }
+                    }
+                    if max_q == f64::NEG_INFINITY { 0.0 } else { max_q }
+                }
+                _ => 0.0,
+            }
+        } else {
+            0.0
+        }
+    }
+
+    fn set_cell_value(&mut self, row: usize, col: usize, val: f64) {
+        if let Some(state) = self.states.get(row) {
+            let action = match col {
+                0 => Some(Move::Up),
+                1 => Some(Move::Down),
+                2 => Some(Move::Left),
+                3 => Some(Move::Right),
+                _ => None,
+            };
+            if let Some(a) = action {
+                self.agent.q_func.update(state, &a, val);
+            }
+        }
+    }
+
+    fn is_editable(&self, _row: usize, col: usize) -> bool {
+        col < 4
+    }
 }
 
 impl Default for QTableInspectorTool {
@@ -36,6 +131,8 @@ impl Default for QTableInspectorTool {
             agent,
             episodes_trained: 0,
             view: HeatmapView::MaxQ,
+            display_mode: QInspectorMode::Heatmap,
+            grid_widget: NumericalDataGrid::new(),
         }
     }
 }
@@ -138,31 +235,45 @@ impl InteractiveTool for QTableInspectorTool {
             }
 
             ui.separator();
-            ui.heading("Heatmap View");
-            ui.radio_value(&mut self.view, HeatmapView::MaxQ, "Max Q-Value");
-            ui.radio_value(&mut self.view, HeatmapView::Up, "Move Up Q-Value");
-            ui.radio_value(&mut self.view, HeatmapView::Down, "Move Down Q-Value");
-            ui.radio_value(&mut self.view, HeatmapView::Left, "Move Left Q-Value");
-            ui.radio_value(&mut self.view, HeatmapView::Right, "Move Right Q-Value");
+            ui.heading("Display Mode");
+            ui.selectable_value(&mut self.display_mode, QInspectorMode::Heatmap, "🎨 Heatmap View");
+            ui.selectable_value(&mut self.display_mode, QInspectorMode::DataGrid, "🔢 Numerical Q-Table Grid");
 
-            ui.separator();
-            ui.label("Legend:");
-            ui.horizontal(|ui| {
-                ui.label("Goal:");
-                let (response, painter) =
-                    ui.allocate_painter(egui::vec2(legend_size, legend_size), egui::Sense::hover());
-                painter.rect_filled(response.rect, 0.0, egui::Color32::GREEN);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Trap:");
-                let (response, painter) =
-                    ui.allocate_painter(egui::vec2(legend_size, legend_size), egui::Sense::hover());
-                painter.rect_filled(response.rect, 0.0, egui::Color32::RED);
-            });
+            if self.display_mode == QInspectorMode::Heatmap {
+                ui.separator();
+                ui.heading("Heatmap View");
+                ui.radio_value(&mut self.view, HeatmapView::MaxQ, "Max Q-Value");
+                ui.radio_value(&mut self.view, HeatmapView::Up, "Move Up Q-Value");
+                ui.radio_value(&mut self.view, HeatmapView::Down, "Move Down Q-Value");
+                ui.radio_value(&mut self.view, HeatmapView::Left, "Move Left Q-Value");
+                ui.radio_value(&mut self.view, HeatmapView::Right, "Move Right Q-Value");
+
+                ui.separator();
+                ui.label("Legend:");
+                ui.horizontal(|ui| {
+                    ui.label("Goal:");
+                    let (response, painter) =
+                        ui.allocate_painter(egui::vec2(legend_size, legend_size), egui::Sense::hover());
+                    painter.rect_filled(response.rect, 0.0, egui::Color32::GREEN);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Trap:");
+                    let (response, painter) =
+                        ui.allocate_painter(egui::vec2(legend_size, legend_size), egui::Sense::hover());
+                    painter.rect_filled(response.rect, 0.0, egui::Color32::RED);
+                });
+            }
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Q-Value Heatmap");
+            if self.display_mode == QInspectorMode::DataGrid {
+                ui.heading("Numerical Q-Table Matrix");
+                ui.label("Double-click Q-value cells to directly edit reward weights and update agent policy.");
+                ui.separator();
+                let mut adapter = QTableGridAdapter::new(&self.env, &mut self.agent);
+                self.grid_widget.show(ui, &mut adapter);
+            } else {
+                ui.heading("Q-Value Heatmap");
 
             let grid_size = egui::vec2(
                 self.env.width as f32 * cell_size,
@@ -243,6 +354,7 @@ impl InteractiveTool for QTableInspectorTool {
                         );
                     }
                 }
+            }
             }
         });
     }

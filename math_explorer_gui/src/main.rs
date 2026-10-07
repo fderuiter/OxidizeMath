@@ -12,6 +12,8 @@ pub mod presets;
 #[allow(missing_docs)]
 pub mod reflective_ui;
 mod tabs;
+#[allow(missing_docs)]
+pub mod widgets;
 
 use app::MathExplorerApp;
 
