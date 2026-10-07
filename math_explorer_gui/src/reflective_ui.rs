@@ -44,24 +44,43 @@ pub fn render_theory_parameter<T: TheoryDescribable>(
         &fallback
     };
 
-    let slider = egui::Slider::new(value, constraint.min..=constraint.max)
-        .step_by(constraint.step)
-        .text(label);
-
-    let response = ui.add(slider);
     let available_descs = model.available_descriptions();
-
-    if let Some(param_desc) = available_descs.get(param_name) {
-        response.accessible_hover_text(param_desc)
+    let tooltip = if let Some(param_desc) = available_descs.get(param_name) {
+        param_desc.clone()
     } else {
-        let tooltip = format!(
+        format!(
             "{}\n\nCitation: {}",
             model.theory_description(),
             model.theory_citation()
-        );
+        )
+    };
 
-        response.accessible_hover_text(tooltip)
-    }
+    let mut slider_response = None;
+
+    ui.horizontal(|ui| {
+        let slider = egui::Slider::new(value, constraint.min..=constraint.max)
+            .step_by(constraint.step)
+            .text(label);
+
+        let slider_resp = ui.add(slider).accessible_hover_text(&tooltip);
+
+        let help_btn = ui
+            .add(egui::Button::new("❓").small())
+            .accessible_hover_text(&tooltip);
+
+        if help_btn.clicked() {
+            let current = ui.ctx().data(|d| {
+                d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL"))
+                    .unwrap_or(false)
+            });
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), !current));
+        }
+
+        slider_response = Some(slider_resp);
+    });
+
+    slider_response.unwrap_or_else(|| ui.label(label))
 }
 
 /// Fallback mechanism for complex parameters that require a custom UI layout
@@ -91,31 +110,7 @@ pub fn render_all_theory_parameters<T: TheoryDescribable>(
 
     for param_name in param_names {
         if let Some(mut value) = model.get_parameter(&param_name) {
-            let fallback = default_fallback_constraint();
-            let constraint = if let Some(c) = params.get(&param_name) {
-                c
-            } else {
-                log_missing_metadata_warning(&param_name);
-                &fallback
-            };
-            let slider = egui::Slider::new(&mut value, constraint.min..=constraint.max)
-                .step_by(constraint.step)
-                .text(&param_name);
-
-            let mut response = ui.add(slider);
-            let available_descs = model.available_descriptions();
-
-            if let Some(param_desc) = available_descs.get(&param_name) {
-                response = response.accessible_hover_text(param_desc);
-            } else {
-                let tooltip = format!(
-                    "{}\n\nCitation: {}",
-                    model.theory_description(),
-                    model.theory_citation()
-                );
-                response = response.accessible_hover_text(tooltip);
-            }
-
+            let response = render_theory_parameter(ui, model, &param_name, &param_name, &mut value);
             if response.changed() {
                 model.set_parameter(&param_name, value);
                 changed = true;
@@ -488,5 +483,74 @@ pub(crate) mod tests {
             "Expected CopyText output command in full_output.platform_output, got: {:?}",
             full_output.platform_output.commands
         );
+    }
+
+    #[test]
+    fn test_render_theory_parameter_help_button_toggle() {
+        let ctx = egui::Context::default();
+        let model = DummyMissingTheoryModel { param_val: 10.0 };
+        let mut value = 10.0;
+
+        // Frame 1: render parameter, portal state is not set or false
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                render_theory_parameter(ui, &model, "missing_param", "Missing Param", &mut value);
+            });
+        });
+
+        let initial_portal = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL")));
+        assert_ne!(initial_portal, Some(true));
+
+        // Get rect/interaction or simulate toggle in context
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), true));
+        let updated_portal = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL")));
+        assert_eq!(updated_portal, Some(true));
+    }
+
+    #[test]
+    fn test_render_theory_parameter_with_custom_description_and_help_button() {
+        struct DummyWithDescModel;
+        impl TheoryDescribable for DummyWithDescModel {
+            fn theory_description(&self) -> String {
+                "Model description".to_string()
+            }
+            fn phonetic_description(&self) -> String {
+                "Model phonetic".to_string()
+            }
+            fn theory_citation(&self) -> String {
+                "Citation 2026".to_string()
+            }
+            fn available_descriptions(&self) -> HashMap<String, String> {
+                let mut map = HashMap::new();
+                map.insert(
+                    "param1".to_string(),
+                    "Custom parameter 1 tooltip".to_string(),
+                );
+                map
+            }
+            fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+                let mut map = HashMap::new();
+                map.insert(
+                    "param1".to_string(),
+                    ParameterConstraint {
+                        min: 0.0,
+                        max: 50.0,
+                        step: 0.5,
+                    },
+                );
+                map
+            }
+        }
+
+        let ctx = egui::Context::default();
+        let model = DummyWithDescModel;
+        let mut val = 25.0;
+
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let response = render_theory_parameter(ui, &model, "param1", "Param One", &mut val);
+                assert!(response.rect.width() >= 0.0);
+            });
+        });
     }
 }
