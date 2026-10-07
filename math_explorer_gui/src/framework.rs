@@ -197,13 +197,14 @@ impl SimulationFramework {
                         );
                         // Requirement 5: Screen readers can successfully navigate the theory text and citations
                         use crate::accessibility::AccessibleHoverText;
+                        use crate::reflective_ui::render_theory_summary_with_export;
 
-                        ui.label(theory.theory_description())
+                        render_theory_summary_with_export(ui, &theory.theory_description(), None)
                             .accessible_hover_text("Theoretical background description");
 
                         ui.separator();
                         ui.heading("Citations");
-                        ui.label(theory.theory_citation())
+                        render_theory_summary_with_export(ui, &theory.theory_citation(), None)
                             .accessible_hover_text("Academic citations");
 
                         let available = theory.available_descriptions();
@@ -211,7 +212,8 @@ impl SimulationFramework {
                             ui.separator();
                             ui.heading("Additional Context");
                             for (key, desc) in available {
-                                ui.label(format!("{}: {}", key, desc))
+                                let context_entry = format!("{}: {}", key, desc);
+                                render_theory_summary_with_export(ui, &context_entry, None)
                                     .accessible_hover_text(format!(
                                         "Additional context for {}",
                                         key
