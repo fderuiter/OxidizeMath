@@ -16,7 +16,7 @@ fn test_algorithm_visualizer_timer_progression() {
     let ctx = egui::Context::default();
     let mut tool = AlgorithmVisualizerTool {
         is_playing: true,
-        playback_speed: 2.0,
+        playback_speed: 2.0, // 0.5 sec per step
         ..Default::default()
     };
 
@@ -35,9 +35,11 @@ fn test_algorithm_visualizer_timer_progression() {
 #[test]
 fn test_algorithm_visualizer_stop_at_end() {
     let ctx = egui::Context::default();
-    let mut tool = AlgorithmVisualizerTool::default();
+    let mut tool = AlgorithmVisualizerTool {
+        is_playing: true,
+        ..Default::default()
+    };
     tool.animation_step = tool.visit_order.len();
-    tool.is_playing = true;
 
     let raw_input = egui::RawInput {
         predicted_dt: 1.0,
