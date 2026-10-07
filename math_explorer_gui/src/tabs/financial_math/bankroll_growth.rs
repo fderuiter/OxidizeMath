@@ -1,7 +1,7 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::InteractiveTool;
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::kelly::{
     kelly_fraction, variants, BankrollFraction, UnitInterval, Odds,
 };
@@ -14,9 +14,9 @@ pub struct BankrollGrowthTool {
     num_bets: usize,
 
     // Cached plot data
-    full_kelly_points: Vec<[f64; 2]>,
-    half_kelly_points: Vec<[f64; 2]>,
-    quarter_kelly_points: Vec<[f64; 2]>,
+    full_kelly_points: Vec<PlotPoint>,
+    half_kelly_points: Vec<PlotPoint>,
+    quarter_kelly_points: Vec<PlotPoint>,
 
     error_msg: Option<String>,
 }
@@ -62,9 +62,9 @@ impl BankrollGrowthTool {
                         let mut hk_bankroll = self.initial_bankroll;
                         let mut qk_bankroll = self.initial_bankroll;
 
-                        self.full_kelly_points.push([0.0, fk_bankroll]);
-                        self.half_kelly_points.push([0.0, hk_bankroll]);
-                        self.quarter_kelly_points.push([0.0, qk_bankroll]);
+                        self.full_kelly_points.push(PlotPoint::new(0.0, fk_bankroll));
+                        self.half_kelly_points.push(PlotPoint::new(0.0, hk_bankroll));
+                        self.quarter_kelly_points.push(PlotPoint::new(0.0, qk_bankroll));
 
                         for i in 1..=self.num_bets {
                             let win = rng.r#gen::<f64>() < p.value();
@@ -84,9 +84,12 @@ impl BankrollGrowthTool {
                             update_bankroll(&mut hk_bankroll, &hk);
                             update_bankroll(&mut qk_bankroll, &qk);
 
-                            self.full_kelly_points.push([i as f64, fk_bankroll]);
-                            self.half_kelly_points.push([i as f64, hk_bankroll]);
-                            self.quarter_kelly_points.push([i as f64, qk_bankroll]);
+                            self.full_kelly_points
+                                .push(PlotPoint::new(i as f64, fk_bankroll));
+                            self.half_kelly_points
+                                .push(PlotPoint::new(i as f64, hk_bankroll));
+                            self.quarter_kelly_points
+                                .push(PlotPoint::new(i as f64, qk_bankroll));
                         }
                     }
                     (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
@@ -165,25 +168,16 @@ impl InteractiveTool for BankrollGrowthTool {
 
                 plot.show(ui, |plot_ui| {
                     plot_ui.line(
-                        Line::new(
-                            "Full Kelly",
-                            PlotPoints::new(self.full_kelly_points.clone()),
-                        )
-                        .color(egui::Color32::RED),
+                        Line::new("Full Kelly", &self.full_kelly_points[..])
+                            .color(egui::Color32::RED),
                     );
                     plot_ui.line(
-                        Line::new(
-                            "Half Kelly",
-                            PlotPoints::new(self.half_kelly_points.clone()),
-                        )
-                        .color(egui::Color32::YELLOW),
+                        Line::new("Half Kelly", &self.half_kelly_points[..])
+                            .color(egui::Color32::YELLOW),
                     );
                     plot_ui.line(
-                        Line::new(
-                            "Quarter Kelly",
-                            PlotPoints::new(self.quarter_kelly_points.clone()),
-                        )
-                        .color(egui::Color32::GREEN),
+                        Line::new("Quarter Kelly", &self.quarter_kelly_points[..])
+                            .color(egui::Color32::GREEN),
                     );
                 });
             }
@@ -209,3 +203,56 @@ impl scientific_metadata::theory::TheoryDescribable for BankrollGrowthTool {
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui_plot::PlotPoints;
+
+    #[test]
+    fn test_bankroll_growth_default_points() {
+        let tool = BankrollGrowthTool::default();
+        assert_eq!(tool.full_kelly_points.len(), 101);
+        assert_eq!(tool.half_kelly_points.len(), 101);
+        assert_eq!(tool.quarter_kelly_points.len(), 101);
+        assert_eq!(tool.full_kelly_points[0], PlotPoint::new(0.0, 1000.0));
+        assert!(tool.error_msg.is_none());
+    }
+
+    #[test]
+    fn test_bankroll_growth_recalculate_on_parameter_change() {
+        let mut tool = BankrollGrowthTool::default();
+        tool.num_bets = 50;
+        tool.initial_bankroll = 500.0;
+        tool.recalculate();
+
+        assert_eq!(tool.full_kelly_points.len(), 51);
+        assert_eq!(tool.half_kelly_points.len(), 51);
+        assert_eq!(tool.quarter_kelly_points.len(), 51);
+        assert_eq!(tool.full_kelly_points[0], PlotPoint::new(0.0, 500.0));
+        assert_eq!(tool.half_kelly_points[0], PlotPoint::new(0.0, 500.0));
+        assert_eq!(tool.quarter_kelly_points[0], PlotPoint::new(0.0, 500.0));
+    }
+
+    #[test]
+    fn test_bankroll_growth_slice_borrowing() {
+        let tool = BankrollGrowthTool::default();
+        let fk_slice: &[PlotPoint] = &tool.full_kelly_points[..];
+        let plot_points = PlotPoints::from(fk_slice);
+        assert_eq!(plot_points.points().len(), 101);
+        let _line = Line::new("Full Kelly", fk_slice);
+    }
+
+    #[test]
+    fn test_bankroll_growth_error_handling() {
+        let mut tool = BankrollGrowthTool::default();
+        tool.probability = 1.5; // Invalid probability for UnitInterval
+        tool.recalculate();
+
+        assert!(tool.error_msg.is_some());
+        assert!(tool.full_kelly_points.is_empty());
+        assert!(tool.half_kelly_points.is_empty());
+        assert!(tool.quarter_kelly_points.is_empty());
+    }
+}
+
