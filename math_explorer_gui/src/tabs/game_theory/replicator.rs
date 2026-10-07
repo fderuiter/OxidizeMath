@@ -1,5 +1,6 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::InteractiveTool;
+use crate::presets::{InteractivePreset, PresetDialogState, ReplicatorPresetConfig};
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints, VLine};
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
@@ -16,6 +17,7 @@ pub struct ReplicatorDynamicsTool {
     playback_time: f64,
     is_playing: bool,
     playback_speed: f64,
+    dialog_state: PresetDialogState,
 }
 
 impl Default for ReplicatorDynamicsTool {
@@ -44,6 +46,7 @@ impl Default for ReplicatorDynamicsTool {
             playback_time: 0.0,
             is_playing: false,
             playback_speed: 1.0,
+            dialog_state: PresetDialogState::default(),
         };
         tool.run_simulation();
         tool
@@ -189,6 +192,12 @@ impl ReplicatorDynamicsTool {
         {
             self.run_simulation();
         }
+
+        let mut dialog_state = std::mem::take(&mut self.dialog_state);
+        if crate::presets::render_preset_buttons(&mut dialog_state, ui, self) {
+            self.run_simulation();
+        }
+        self.dialog_state = dialog_state;
     }
 
     fn show_trajectory_plot(&self, ui: &mut egui::Ui) {
@@ -362,4 +371,56 @@ impl scientific_metadata::theory::TheoryDescribable for ReplicatorDynamicsTool {
     fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+}
+
+impl InteractivePreset for ReplicatorDynamicsTool {
+    type Config = ReplicatorPresetConfig;
+
+    fn domain(&self) -> &'static str {
+        "game_theory"
+    }
+
+    fn title(&self) -> String {
+        "Replicator Dynamics Simulation".to_string()
+    }
+
+    fn export_config(&self) -> Self::Config {
+        let rows = self.payoff_matrix.nrows();
+        let cols = self.payoff_matrix.ncols();
+        let mut matrix = Vec::with_capacity(rows);
+        for i in 0..rows {
+            let mut row = Vec::with_capacity(cols);
+            for j in 0..cols {
+                row.push(self.payoff_matrix[(i, j)]);
+            }
+            matrix.push(row);
+        }
+        let initial_pop: Vec<f64> = self.initial_population.iter().copied().collect();
+
+        ReplicatorPresetConfig {
+            payoff_matrix: matrix,
+            initial_population: initial_pop,
+            time_horizon: self.time_horizon,
+            dt: self.dt,
+            strategy_names: self.strategy_names.clone(),
+        }
+    }
+
+    fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
+        config.validate()?;
+
+        let rows = config.payoff_matrix.len();
+        let mut flat = Vec::with_capacity(rows * rows);
+        for row in &config.payoff_matrix {
+            flat.extend_from_slice(row);
+        }
+
+        self.payoff_matrix = DMatrix::from_row_slice(rows, rows, &flat);
+        self.initial_population = DVector::from_vec(config.initial_population);
+        self.time_horizon = config.time_horizon;
+        self.dt = config.dt;
+        self.strategy_names = config.strategy_names;
+        self.run_simulation();
+        Ok(())
+    }
 }
