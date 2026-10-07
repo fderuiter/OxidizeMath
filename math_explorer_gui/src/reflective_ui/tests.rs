@@ -273,3 +273,159 @@ fn test_render_theory_parameter_with_custom_description_and_help_button() {
         });
     });
 }
+
+#[test]
+fn test_animated_slider_state_toggle() {
+    let ctx = egui::Context::default();
+    let mut val = 5.0;
+    let id = egui::Id::new("test_toggle_slider");
+
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.add(
+                AnimatedSlider::new(&mut val, 0.0..=10.0)
+                    .text("Test Toggle")
+                    .id_salt("test_toggle_slider"),
+            );
+        });
+    });
+
+    let state_init: AnimatedSliderState = ctx
+        .data_mut(|d| d.get_temp(id))
+        .expect("State should be stored");
+    assert!(!state_init.playing);
+
+    // Manually set playing = true to simulate user click
+    ctx.data_mut(|d| {
+        d.insert_temp(
+            id,
+            AnimatedSliderState {
+                playing: true,
+                direction: 1.0,
+            },
+        )
+    });
+
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.add(
+                AnimatedSlider::new(&mut val, 0.0..=10.0)
+                    .text("Test Toggle")
+                    .id_salt("test_toggle_slider"),
+            );
+        });
+    });
+
+    let state_after: AnimatedSliderState = ctx
+        .data_mut(|d| d.get_temp(id))
+        .expect("State should be stored");
+    assert!(state_after.playing);
+}
+
+#[test]
+fn test_animated_slider_ping_pong_reversal_and_clamping() {
+    let ctx = egui::Context::default();
+    let id = egui::Id::new("test_ping_pong");
+
+    // Start near max boundary: val = 9.8, max = 10.0
+    let mut val = 9.8;
+
+    // Force playing = true, direction = 1.0, high speed
+    ctx.data_mut(|d| {
+        d.insert_temp(
+            id,
+            AnimatedSliderState {
+                playing: true,
+                direction: 1.0,
+            },
+        )
+    });
+
+    let raw_input = egui::RawInput {
+        predicted_dt: 0.5, // Simulate dt = 0.5s
+        ..Default::default()
+    };
+
+    let _ = ctx.run(raw_input.clone(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.add(
+                AnimatedSlider::new(&mut val, 0.0..=10.0)
+                    .text("Test Ping Pong")
+                    .id_salt("test_ping_pong")
+                    .speed(10.0), // speed = 10 units/s -> delta = 5.0
+            );
+        });
+    });
+
+    // 9.8 + 5.0 = 14.8, which exceeds max 10.0. Value must clamp to 10.0 and direction reverse to -1.0
+    assert_eq!(val, 10.0);
+    let state_at_max: AnimatedSliderState =
+        ctx.data_mut(|d| d.get_temp(id)).expect("State must exist");
+    assert_eq!(state_at_max.direction, -1.0);
+
+    // Next frame with reversed direction: delta = -1.0 (since dt is clamped to 0.1 max)
+    let _ = ctx.run(raw_input, |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.add(
+                AnimatedSlider::new(&mut val, 0.0..=10.0)
+                    .text("Test Ping Pong")
+                    .id_salt("test_ping_pong")
+                    .speed(10.0),
+            );
+        });
+    });
+
+    // 10.0 - (10.0 * 0.1) = 9.0
+    assert_eq!(val, 9.0);
+
+    // Continue until min bound: val = 0.05 (so delta of ~0.166 exceeds 0.05)
+    val = 0.05;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.add(
+                AnimatedSlider::new(&mut val, 0.0..=10.0)
+                    .text("Test Ping Pong")
+                    .id_salt("test_ping_pong")
+                    .speed(10.0),
+            );
+        });
+    });
+
+    // Value must clamp to min 0.0 and direction reverse back to +1.0
+    assert_eq!(val, 0.0);
+    let state_at_min: AnimatedSliderState =
+        ctx.data_mut(|d| d.get_temp(id)).expect("State must exist");
+    assert_eq!(state_at_min.direction, 1.0);
+}
+
+#[test]
+fn test_animated_slider_focus_loss_pause() {
+    let ctx = egui::Context::default();
+    let id = egui::Id::new("test_focus_loss");
+    let mut val = 5.0;
+
+    ctx.data_mut(|d| {
+        d.insert_temp(
+            id,
+            AnimatedSliderState {
+                playing: true,
+                direction: 1.0,
+            },
+        )
+    });
+
+    // First frame: playing is true
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.add(
+                AnimatedSlider::new(&mut val, 0.0..=10.0)
+                    .text("Test Focus")
+                    .id_salt("test_focus_loss"),
+            );
+        });
+    });
+
+    let state_before: AnimatedSliderState =
+        ctx.data_mut(|d| d.get_temp(id)).expect("State must exist");
+    assert!(state_before.playing);
+}

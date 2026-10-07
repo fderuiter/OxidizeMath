@@ -309,6 +309,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn test_training_monitor_reset() {
         let mut tool = TrainingMonitorTool::default();
 

@@ -232,6 +232,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn test_bankroll_growth_reset_defaults() {
         let mut tool = BankrollGrowthTool::default();
 

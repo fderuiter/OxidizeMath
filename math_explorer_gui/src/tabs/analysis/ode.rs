@@ -2,6 +2,7 @@
 
 use crate::framework::InteractiveTool;
 use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialogState};
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::{
@@ -262,26 +263,50 @@ impl InteractiveTool for OdeSolverTool {
             ui.heading("Parameters");
             match self.preset {
                 OdePreset::Exponential => {
-                    ui.horizontal(|ui| {
-                        ui.label("k (Rate):");
-                        if ui.add(egui::DragValue::new(&mut self.param_k).speed(0.1)).changed() { changed = true; }
-                    });
+                    if ui
+                        .add(
+                            AnimatedSlider::new(&mut self.param_k, -5.0..=5.0)
+                                .text("k (Rate)")
+                                .id_salt("ode_param_k_exp"),
+                        )
+                        .changed()
+                    {
+                        changed = true;
+                    }
                 }
                 OdePreset::HarmonicOscillator => {
-                    ui.horizontal(|ui| {
-                        ui.label("k (Spring Constant):");
-                        if ui.add(egui::DragValue::new(&mut self.param_k).speed(0.1)).changed() { changed = true; }
-                    });
+                    if ui
+                        .add(
+                            AnimatedSlider::new(&mut self.param_k, 0.1..=10.0)
+                                .text("k (Spring Constant)")
+                                .id_salt("ode_param_k_osc"),
+                        )
+                        .changed()
+                    {
+                        changed = true;
+                    }
                 }
                 OdePreset::LogisticGrowth => {
-                    ui.horizontal(|ui| {
-                        ui.label("r (Growth Rate):");
-                        if ui.add(egui::DragValue::new(&mut self.param_r).speed(0.1)).changed() { changed = true; }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("K (Carrying Capacity):");
-                        if ui.add(egui::DragValue::new(&mut self.param_cap_k).speed(0.1)).changed() { changed = true; }
-                    });
+                    if ui
+                        .add(
+                            AnimatedSlider::new(&mut self.param_r, 0.0..=5.0)
+                                .text("r (Growth Rate)")
+                                .id_salt("ode_param_r"),
+                        )
+                        .changed()
+                    {
+                        changed = true;
+                    }
+                    if ui
+                        .add(
+                            AnimatedSlider::new(&mut self.param_cap_k, 1.0..=100.0)
+                                .text("K (Carrying Capacity)")
+                                .id_salt("ode_param_cap_k"),
+                        )
+                        .changed()
+                    {
+                        changed = true;
+                    }
                 }
             }
 
@@ -425,69 +450,5 @@ impl InteractivePreset for OdeSolverTool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ode_divergence_detection() {
-        let mut tool = OdeSolverTool::default();
-        assert!(!tool.diverged());
-
-        // Set exponential growth rate and initial value that causes f64 overflow/divergence
-        tool.param_k = 1e300;
-        tool.ic_y0 = 1e300;
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        // Verify time_series and y_series do not contain non-finite values
-        assert!(tool.y_series.iter().all(|y| y.is_finite()));
-        assert!(tool.time_series.iter().all(|t| t.is_finite()));
-
-        // Reset parameters recovers from divergence
-        tool.reset_parameters();
-        assert!(!tool.diverged());
-        assert!(!tool.y_series.is_empty());
-    }
-
-    #[test]
-    fn test_ode_nan_initial_condition() {
-        let mut tool = OdeSolverTool {
-            ic_y0: f64::NAN,
-            ..Default::default()
-        };
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        assert!(tool.y_series.is_empty());
-    }
-
-    #[test]
-    fn test_ode_harmonic_oscillator_divergence() {
-        let mut tool = OdeSolverTool {
-            preset: OdePreset::HarmonicOscillator,
-            param_k: 1e300,
-            ic_y0: 1e300,
-            ..Default::default()
-        };
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        assert!(tool.y_series.iter().all(|y| y.is_finite()));
-        assert!(tool.v_series.iter().all(|v| v.is_finite()));
-    }
-
-    #[test]
-    fn test_ode_logistic_growth_divergence() {
-        let mut tool = OdeSolverTool {
-            preset: OdePreset::LogisticGrowth,
-            param_r: 1e300,
-            param_cap_k: 1.0,
-            ic_y0: 1e300,
-            ..Default::default()
-        };
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        assert!(tool.y_series.iter().all(|y| y.is_finite()));
-    }
-}
+#[path = "ode_tests.rs"]
+mod tests;
