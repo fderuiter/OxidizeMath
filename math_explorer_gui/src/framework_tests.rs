@@ -118,4 +118,30 @@ mod tests {
             assert!(framework2.active_tool.is_some());
         }
     }
+
+    #[test]
+    fn test_framework_show_theory_portal_toggle() {
+        let ctx = eframe::egui::Context::default();
+        let mut framework = SimulationFramework::new("analysis");
+        assert!(!framework.show_theory_portal);
+
+        // Frame 1
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            framework.show(ctx, "test_framework");
+        });
+        assert_eq!(
+            ctx.data(|d| d.get_temp::<bool>(eframe::egui::Id::new("SHOW_THEORY_PORTAL"))),
+            Some(false)
+        );
+
+        // Mutate context temp data (simulating help button click)
+        ctx.data_mut(|d| d.insert_temp(eframe::egui::Id::new("SHOW_THEORY_PORTAL"), true));
+
+        // Frame 2: framework syncs from context temp data
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            framework.show(ctx, "test_framework");
+        });
+        assert!(framework.show_theory_portal);
+    }
 }
+

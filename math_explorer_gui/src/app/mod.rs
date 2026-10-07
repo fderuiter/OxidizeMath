@@ -481,4 +481,3 @@ impl eframe::App for MathExplorerApp {
         std::time::Duration::from_secs(5)
     }
 }
-}
