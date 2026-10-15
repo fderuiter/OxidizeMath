@@ -412,8 +412,8 @@ pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _fil
                 let uint8_array = js_sys::Uint8Array::from(content);
                 let array = js_sys::Array::new();
                 array.push(&uint8_array);
-                let mut blob_props = BlobPropertyBag::new();
-                blob_props.type_(mime_type);
+                let blob_props = BlobPropertyBag::new();
+                blob_props.set_type(mime_type);
                 if let Ok(blob) = Blob::new_with_u8_array_sequence_and_options(&array, &blob_props)
                 {
                     if let Ok(url) = Url::create_object_url_with_blob(&blob) {
