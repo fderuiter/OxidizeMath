@@ -1493,18 +1493,23 @@ impl<'a> Plot<'a> {
                     *ds_color
                 };
 
-                let dashed_shapes =
-                    Shape::dashed_line(&screen_pts, Stroke::new(2.5, accent_color), 8.0, 5.0);
+                let dashed_shapes = Shape::dashed_line(
+                    &screen_pts,
+                    Stroke::new(2.5_f32, accent_color),
+                    8.0_f32,
+                    5.0_f32,
+                );
                 ui.painter().with_clip_rect(plot_rect).extend(dashed_shapes);
 
                 // Draw formula badge overlay on plot canvas
-                let badge_pos = plot_rect.min + egui::vec2(12.0, 36.0);
-                let badge_rect = egui::Rect::from_min_size(badge_pos, egui::vec2(220.0, 65.0));
+                let badge_pos = plot_rect.min + egui::vec2(12.0_f32, 36.0_f32);
+                let badge_rect =
+                    egui::Rect::from_min_size(badge_pos, egui::vec2(220.0_f32, 65.0_f32));
 
                 ui.scope_builder(egui::UiBuilder::new().max_rect(badge_rect), |ui| {
                     egui::Frame::window(ui.style())
-                        .fill(ui.visuals().window_fill.gamma_multiply(0.85))
-                        .stroke(egui::Stroke::new(1.5, accent_color))
+                        .fill(ui.visuals().window_fill.gamma_multiply(0.85_f32))
+                        .stroke(egui::Stroke::new(1.5_f32, accent_color))
                         .corner_radius(6.0)
                         .inner_margin(6.0)
                         .show(ui, |ui| {
