@@ -345,16 +345,26 @@ pub fn format_json(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
     json
 }
 
+/// Export dataset points to CSV string with a custom filename and initiate download or file save dialog.
+pub fn export_csv_filename(datasets: &[(String, Vec<[f64; 2]>)], filename: &str) {
+    let csv = format_csv(datasets);
+    save_file_dialog(filename, csv.as_bytes(), "CSV File", &["csv"]);
+}
+
 /// Export dataset points to CSV string and initiate download or file save dialog.
 pub fn export_csv(datasets: &[(String, Vec<[f64; 2]>)]) {
-    let csv = format_csv(datasets);
-    save_file_dialog("export.csv", csv.as_bytes(), "CSV File", &["csv"]);
+    export_csv_filename(datasets, "export.csv");
+}
+
+/// Export dataset points to JSON string with a custom filename and initiate download or file save dialog.
+pub fn export_json_filename(datasets: &[(String, Vec<[f64; 2]>)], filename: &str) {
+    let json = format_json(datasets);
+    save_file_dialog(filename, json.as_bytes(), "JSON File", &["json"]);
 }
 
 /// Export dataset points to JSON string and initiate download or file save dialog.
 pub fn export_json(datasets: &[(String, Vec<[f64; 2]>)]) {
-    let json = format_json(datasets);
-    save_file_dialog("export.json", json.as_bytes(), "JSON File", &["json"]);
+    export_json_filename(datasets, "export.json");
 }
 
 /// Render plot datasets into an `egui::ColorImage` buffer using offscreen rasterization.
