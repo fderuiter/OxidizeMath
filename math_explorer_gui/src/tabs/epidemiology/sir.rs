@@ -110,7 +110,12 @@ impl InteractiveTool for SirTool {
             render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{:.2}", r0));
 
             ui.separator();
-            ui.heading("Simulation");
+            ui.horizontal(|ui| {
+                ui.heading("Simulation");
+                if ui.button("Import Dataset (CSV)").clicked() {
+                    egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), egui::Id::new("sir_plot"));
+                }
+            });
 
             let plot = Plot::new("sir_plot")
                 .view_aspect(2.0)
