@@ -367,10 +367,17 @@ mod tests {
         let elapsed = start.elapsed();
 
         assert!((res.r_squared - 1.0).abs() < 1e-4);
+
+        #[cfg(not(debug_assertions))]
+        let max_ms = 16;
+        #[cfg(debug_assertions)]
+        let max_ms = 100;
+
         assert!(
-            elapsed.as_millis() < 16,
-            "Fit took {:?} which exceeds 16ms",
-            elapsed
+            elapsed.as_millis() < max_ms,
+            "Fit took {:?} which exceeds {}ms",
+            elapsed,
+            max_ms
         );
     }
 

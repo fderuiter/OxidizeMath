@@ -1510,8 +1510,8 @@ impl<'a> Plot<'a> {
                     egui::Frame::window(ui.style())
                         .fill(ui.visuals().window_fill.gamma_multiply(0.85_f32))
                         .stroke(egui::Stroke::new(1.5_f32, accent_color))
-                        .corner_radius(6.0)
-                        .inner_margin(6.0)
+                        .corner_radius(6.0_f32)
+                        .inner_margin(6.0_f32)
                         .show(ui, |ui| {
                             ui.vertical(|ui| {
                                 let name_display = if fit_res.dataset_name.is_empty() {
@@ -1525,7 +1525,9 @@ impl<'a> Plot<'a> {
                                         .color(accent_color),
                                 );
                                 ui.label(
-                                    egui::RichText::new(&fit_res.formula).monospace().size(13.0),
+                                    egui::RichText::new(&fit_res.formula)
+                                        .monospace()
+                                        .size(13.0_f32),
                                 );
                                 ui.label(
                                     egui::RichText::new(format!("R² = {:.4}", fit_res.r_squared))
@@ -1541,7 +1543,7 @@ impl<'a> Plot<'a> {
         let focus_response = response.interact(egui::Sense::focusable_noninteractive());
 
         let overlay_rect =
-            egui::Rect::from_min_size(plot_rect.min, egui::vec2(plot_rect.width(), 30.0));
+            egui::Rect::from_min_size(plot_rect.min, egui::vec2(plot_rect.width(), 30.0_f32));
         ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Save PNG").clicked() {
