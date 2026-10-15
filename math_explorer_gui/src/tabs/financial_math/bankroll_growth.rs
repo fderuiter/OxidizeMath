@@ -233,12 +233,13 @@ mod tests {
 
     #[test]
     fn test_bankroll_growth_reset_defaults() {
-        let mut tool = BankrollGrowthTool::default();
-
-        tool.initial_bankroll = 5000.0;
-        tool.probability = 0.70;
-        tool.odds = 3.0;
-        tool.num_bets = 500;
+        let mut tool = BankrollGrowthTool {
+            initial_bankroll: 5000.0,
+            probability: 0.70,
+            odds: 3.0,
+            num_bets: 500,
+            ..Default::default()
+        };
         tool.recalculate();
 
         tool.reset_defaults();

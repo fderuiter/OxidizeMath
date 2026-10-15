@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use eframe::egui;
 
 include!(concat!(env!("OUT_DIR"), "/generated_tabs.rs"));

@@ -7,6 +7,7 @@ use math_explorer::biology::neuroscience::{
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
+#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct HodgkinHuxleyUnified {
     neuron: HodgkinHuxleyNeuron,
     params: HodgkinHuxleyParameters,

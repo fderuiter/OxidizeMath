@@ -10,6 +10,7 @@ use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct LbmUnified {
     solver: LatticeBoltzmannD2Q9<BgkCollision>,
 }

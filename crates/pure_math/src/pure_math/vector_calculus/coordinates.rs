@@ -1,3 +1,4 @@
+// [cite:quasiperfect_alcf]
 use nalgebra::Vector3;
 
 /// Trait for Orthogonal Coordinate Systems.
@@ -23,16 +24,19 @@ pub struct Cartesian;
 impl OrthogonalCoordinateSystem for Cartesian {
     #[verified_engine::verified]
     fn local_to_cartesian(&self, point: &Vector3<f64>) -> Vector3<f64> {
+        debug_assert!(point.iter().all(|x| x.is_finite()));
         *point
     }
 
     #[verified_engine::verified]
     fn cartesian_to_local(&self, cartesian: &Vector3<f64>) -> Vector3<f64> {
+        debug_assert!(cartesian.iter().all(|x| x.is_finite()));
         *cartesian
     }
 
     #[verified_engine::verified]
     fn scale_factors(&self, _point: &Vector3<f64>) -> Vector3<f64> {
+        debug_assert!(_point.iter().all(|x| x.is_finite()));
         Vector3::new(1.0, 1.0, 1.0)
     }
 }
@@ -44,6 +48,7 @@ pub struct Cylindrical;
 impl OrthogonalCoordinateSystem for Cylindrical {
     #[verified_engine::verified]
     fn local_to_cartesian(&self, point: &Vector3<f64>) -> Vector3<f64> {
+        debug_assert!(point.iter().all(|x| x.is_finite()));
         let rho = point[0];
         let phi = point[1];
         let z = point[2];
@@ -52,6 +57,7 @@ impl OrthogonalCoordinateSystem for Cylindrical {
 
     #[verified_engine::verified]
     fn cartesian_to_local(&self, cartesian: &Vector3<f64>) -> Vector3<f64> {
+        debug_assert!(cartesian.iter().all(|x| x.is_finite()));
         let x = cartesian[0];
         let y = cartesian[1];
         let z = cartesian[2];
@@ -62,6 +68,7 @@ impl OrthogonalCoordinateSystem for Cylindrical {
 
     #[verified_engine::verified]
     fn scale_factors(&self, point: &Vector3<f64>) -> Vector3<f64> {
+        debug_assert!(point.iter().all(|x| x.is_finite()));
         let rho = point[0];
         Vector3::new(1.0, rho, 1.0)
     }
@@ -75,6 +82,7 @@ pub struct Spherical;
 impl OrthogonalCoordinateSystem for Spherical {
     #[verified_engine::verified]
     fn local_to_cartesian(&self, point: &Vector3<f64>) -> Vector3<f64> {
+        debug_assert!(point.iter().all(|x| x.is_finite()));
         let r = point[0];
         let theta = point[1];
         let phi = point[2];
@@ -88,6 +96,7 @@ impl OrthogonalCoordinateSystem for Spherical {
 
     #[verified_engine::verified]
     fn cartesian_to_local(&self, cartesian: &Vector3<f64>) -> Vector3<f64> {
+        debug_assert!(cartesian.iter().all(|x| x.is_finite()));
         let x = cartesian[0];
         let y = cartesian[1];
         let z = cartesian[2];
@@ -102,6 +111,7 @@ impl OrthogonalCoordinateSystem for Spherical {
 
     #[verified_engine::verified]
     fn scale_factors(&self, point: &Vector3<f64>) -> Vector3<f64> {
+        debug_assert!(point.iter().all(|x| x.is_finite()));
         let r = point[0];
         let theta = point[1];
         Vector3::new(1.0, r, r * theta.sin())

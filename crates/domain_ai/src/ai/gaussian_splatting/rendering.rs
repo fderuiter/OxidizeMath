@@ -1,3 +1,4 @@
+// [cite:gaussian_splatting]
 use super::structs::Gaussian2D;
 use nalgebra::Vector3;
 

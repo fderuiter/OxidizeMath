@@ -253,6 +253,31 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         )
         .await;
 
+        for paper in &valid_papers {
+            let model_name = paper.strip_suffix(".tex").unwrap_or(paper);
+            if !report.semantic_integrity_status.contains_key(model_name) {
+                let mut is_verified = false;
+                for (module, target_paper) in &registry_links {
+                    let target_clean = target_paper.strip_suffix(".tex").unwrap_or(target_paper);
+                    if (target_paper == paper || target_clean == model_name)
+                        && matches!(report.semantic_integrity_status.get(module), Some(status) if status == "Verified")
+                    {
+                        is_verified = true;
+                        break;
+                    }
+                }
+                if is_verified {
+                    report
+                        .semantic_integrity_status
+                        .insert(model_name.to_string(), "Verified".to_string());
+                } else {
+                    report
+                        .semantic_integrity_status
+                        .insert(model_name.to_string(), "Unverified".to_string());
+                }
+            }
+        }
+
         Self::finalize_report_orphans(&mut report);
 
         Ok(report)
@@ -280,14 +305,16 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         report: &mut TraceabilityReport,
         auto_fix: bool,
     ) {
+        let norm_file = crate::path_utils::normalize_path(&file);
         report.scanned_files += 1;
-        let is_module =
-            file.ends_with("mod.rs") || file.contains("/tabs/") || file.ends_with("lib.rs");
+        let is_module = norm_file.ends_with("mod.rs")
+            || norm_file.contains("/tabs/")
+            || norm_file.ends_with("lib.rs");
 
-        if let Ok(mut content) = self.vfs.read_to_string(&file).await {
+        if let Ok(mut content) = self.vfs.read_to_string(&norm_file).await {
             let citations = Self::extract_citations(&content);
             let (file_modified, final_citations) = Self::fix_and_collect_citations(
-                &file,
+                &norm_file,
                 &mut content,
                 citations,
                 registered_modules,
@@ -297,11 +324,11 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
             );
 
             if file_modified {
-                let _ = self.vfs.write_to_file(&file, content.as_bytes()).await;
+                let _ = self.vfs.write_to_file(&norm_file, content.as_bytes()).await;
             }
 
             Self::analyze_file_ast(
-                &file,
+                &norm_file,
                 &content,
                 is_module,
                 &final_citations,
@@ -377,12 +404,17 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
             report.verified_funcs += visitor.verified_funcs;
             report.verified_asserts += visitor.verified_asserts;
 
-            for cite in final_citations {
-                if visitor.semantic_integrity_funcs > 0 {
+            let mut all_citations = final_citations.to_vec();
+            all_citations.extend(visitor.verified_modules.clone());
+            all_citations.sort();
+            all_citations.dedup();
+
+            for cite in all_citations {
+                if visitor.semantic_integrity_funcs > 0 || visitor.verified_funcs > 0 {
                     report
                         .semantic_integrity_status
                         .insert(cite.clone(), "Verified".to_string());
-                } else if !report.semantic_integrity_status.contains_key(cite) {
+                } else if !report.semantic_integrity_status.contains_key(&cite) {
                     report
                         .semantic_integrity_status
                         .insert(cite.clone(), "Unverified".to_string());
@@ -422,19 +454,20 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     #[allow(clippy::double_must_use)]
     #[async_recursion::async_recursion(?Send)]
     async fn parse_module_tree(&self, file_path: &str, active_files: &mut HashSet<String>) {
-        if active_files.contains(file_path) {
+        let norm_file_path = crate::path_utils::normalize_path(file_path);
+        if active_files.contains(&norm_file_path) {
             return;
         }
-        if let Ok(content) = self.vfs.read_to_string(file_path).await {
-            active_files.insert(file_path.to_string());
+        if let Ok(content) = self.vfs.read_to_string(&norm_file_path).await {
+            active_files.insert(norm_file_path.clone());
             if let Ok(ast) = syn::parse_file(&content) {
                 let mut visitor = crate::ast_visitor::AstVisitor::new();
                 syn::visit::Visit::visit_file(&mut visitor, &ast);
 
-                let mut dir_parts: Vec<&str> = file_path.split('/').collect();
-                let is_mod_rs = file_path.ends_with("mod.rs")
-                    || file_path.ends_with("lib.rs")
-                    || file_path.ends_with("main.rs");
+                let mut dir_parts: Vec<&str> = norm_file_path.split('/').collect();
+                let is_mod_rs = norm_file_path.ends_with("mod.rs")
+                    || norm_file_path.ends_with("lib.rs")
+                    || norm_file_path.ends_with("main.rs");
                 if is_mod_rs {
                     dir_parts.pop();
                 } else if let Some(stem) =

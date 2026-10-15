@@ -31,6 +31,8 @@ pub fn chirp_z_transform(
     sample_rate: f64,
     output_bins: usize,
 ) -> Vec<Complex<f64>> {
+    debug_assert!(!signal.is_empty());
+    debug_assert!(sample_rate > 0.0);
     let mut output = Vec::with_capacity(output_bins);
 
     // Iterate over each output frequency bin 'k'

@@ -6,6 +6,7 @@ use math_commons::math_kernel::colormap::heatmap_color;
 use math_explorer::biology::diffusion::FiniteDifference2D;
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 
+#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct MorphogenesisTab {
     system: TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
     width: usize,

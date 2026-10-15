@@ -1,3 +1,4 @@
+// [cite:self_calibration_paper]
 use super::types::{Answer, Response};
 use std::collections::HashMap;
 

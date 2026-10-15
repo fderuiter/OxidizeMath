@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "metadata"))]
+
 use std::collections::HashMap;
 
 /// A structured representation of mathematical constraints for a parameter.

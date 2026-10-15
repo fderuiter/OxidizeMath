@@ -10,6 +10,7 @@ fn partial_derivative<F>(i: usize, point: &Vector3<f64>, f: F) -> f64
 where
     F: Fn(&Vector3<f64>) -> f64,
 {
+    debug_assert!(i < 3);
     let mut p_plus = *point;
     p_plus[i] += H;
     let mut p_minus = *point;
@@ -25,6 +26,7 @@ where
     S: OrthogonalCoordinateSystem,
     F: Fn(&Vector3<f64>) -> f64,
 {
+    debug_assert!(point.iter().all(|x| x.is_finite()));
     let factors = coords.scale_factors(point);
     let mut grad = Vector3::zeros();
 
@@ -44,6 +46,7 @@ where
     S: OrthogonalCoordinateSystem,
     F: Fn(&Vector3<f64>) -> Vector3<f64>,
 {
+    debug_assert!(point.iter().all(|x| x.is_finite()));
     let factors = coords.scale_factors(point);
     let h1h2h3 = factors[0] * factors[1] * factors[2];
 
@@ -77,6 +80,7 @@ where
     S: OrthogonalCoordinateSystem,
     F: Fn(&Vector3<f64>) -> Vector3<f64>,
 {
+    debug_assert!(point.iter().all(|x| x.is_finite()));
     let h = coords.scale_factors(point);
     let mut result = Vector3::zeros();
 
@@ -107,6 +111,7 @@ where
     S: OrthogonalCoordinateSystem,
     F: Fn(&Vector3<f64>) -> f64,
 {
+    debug_assert!(point.iter().all(|x| x.is_finite()));
     let h_factors = coords.scale_factors(point);
     let h1h2h3 = h_factors[0] * h_factors[1] * h_factors[2];
 

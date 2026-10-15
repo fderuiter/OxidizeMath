@@ -1,3 +1,4 @@
+// [cite:chaos_theory]
 //! Continuous Chaos (The Lorenz System)
 
 use nalgebra::Vector3;

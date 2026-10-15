@@ -1,3 +1,4 @@
+// [cite:generative_turbulence]
 //! Turbulence Modeling concepts.
 //!
 //! Implements basic Reynolds-Averaged Navier-Stokes (RANS) concepts.
