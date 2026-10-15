@@ -75,6 +75,245 @@ impl Default for ExportOptions {
     }
 }
 
+/// An empirical or external dataset imported into egui_plot.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub struct ImportedDataset {
+    /// Name/label of the dataset (e.g. column header or file name).
+    pub name: String,
+    /// Numerical [x, y] coordinates.
+    pub points: Vec<[f64; 2]>,
+    /// Whether the dataset is currently visible in the plot overlay.
+    pub visible: bool,
+}
+
+impl ImportedDataset {
+    /// Create a new imported dataset with default visibility (true).
+    pub fn new(name: impl Into<String>, points: Vec<[f64; 2]>) -> Self {
+        Self {
+            name: name.into(),
+            points,
+            visible: true,
+        }
+    }
+}
+
+/// Parse tabular dataset text (CSV, TSV, semicolon-separated) into imported datasets.
+/// Auto-detects delimiters and headers, converts rows into numerical `[f64; 2]` pairs,
+/// and skips invalid rows or non-numeric values.
+pub fn parse_csv(content: &str) -> Vec<ImportedDataset> {
+    let lines: Vec<&str> = content
+        .lines()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty() && !s.starts_with('#'))
+        .collect();
+
+    if lines.is_empty() {
+        return Vec::new();
+    }
+
+    let first_line = lines[0];
+
+    let delimiter = if first_line.contains('\t') {
+        '\t'
+    } else if first_line.contains(';') {
+        ';'
+    } else {
+        ','
+    };
+
+    fn split_line(line: &str, delimiter: char) -> Vec<&str> {
+        line.split(delimiter).map(|s| s.trim()).collect()
+    }
+
+    let first_tokens = split_line(first_line, delimiter);
+    let is_num = |s: &str| s.parse::<f64>().is_ok();
+
+    let (headers, data_start_index) = if first_tokens.iter().any(|&t| !is_num(t)) {
+        (
+            first_tokens
+                .iter()
+                .map(|&s| s.to_string())
+                .collect::<Vec<_>>(),
+            1,
+        )
+    } else {
+        (Vec::new(), 0)
+    };
+
+    let is_standard_export = if headers.len() == 3 {
+        let h0 = headers[0].to_lowercase();
+        let h1 = headers[1].to_lowercase();
+        let h2 = headers[2].to_lowercase();
+        h0.contains("dataset") || h0.contains("name") || (h1 == "x" && h2 == "y")
+    } else {
+        false
+    };
+
+    let mut datasets_map: std::collections::BTreeMap<String, Vec<[f64; 2]>> =
+        std::collections::BTreeMap::new();
+
+    if is_standard_export {
+        for line in &lines[data_start_index..] {
+            let tokens = split_line(line, delimiter);
+            if tokens.len() >= 3
+                && let (Ok(x), Ok(y)) = (tokens[1].parse::<f64>(), tokens[2].parse::<f64>())
+                && x.is_finite()
+                && y.is_finite()
+            {
+                datasets_map
+                    .entry(tokens[0].to_string())
+                    .or_default()
+                    .push([x, y]);
+            }
+        }
+    } else if headers.len() > 2 {
+        let mut series_names = Vec::new();
+        for h in &headers[1..] {
+            series_names.push(if h.is_empty() {
+                "Imported Dataset".to_string()
+            } else {
+                h.clone()
+            });
+        }
+
+        for line in &lines[data_start_index..] {
+            let tokens = split_line(line, delimiter);
+            if tokens.len() >= 2
+                && let Ok(x) = tokens[0].parse::<f64>()
+            {
+                for (i, y_str) in tokens[1..].iter().enumerate() {
+                    if i < series_names.len()
+                        && let Ok(y) = y_str.parse::<f64>()
+                        && x.is_finite()
+                        && y.is_finite()
+                    {
+                        datasets_map
+                            .entry(series_names[i].clone())
+                            .or_default()
+                            .push([x, y]);
+                    }
+                }
+            }
+        }
+    } else {
+        let default_name = if headers.len() >= 2 && !headers[1].is_empty() {
+            let h1 = headers[1].trim();
+            if h1.eq_ignore_ascii_case("y") {
+                "Imported Dataset".to_string()
+            } else {
+                h1.to_string()
+            }
+        } else {
+            "Imported Dataset".to_string()
+        };
+
+        for line in &lines[data_start_index..] {
+            let tokens = split_line(line, delimiter);
+            if tokens.len() >= 2 {
+                if tokens.len() >= 3 && !is_num(tokens[0]) {
+                    if let (Ok(x), Ok(y)) = (tokens[1].parse::<f64>(), tokens[2].parse::<f64>())
+                        && x.is_finite()
+                        && y.is_finite()
+                    {
+                        datasets_map
+                            .entry(tokens[0].to_string())
+                            .or_default()
+                            .push([x, y]);
+                    }
+                } else if let (Ok(x), Ok(y)) = (tokens[0].parse::<f64>(), tokens[1].parse::<f64>())
+                    && x.is_finite()
+                    && y.is_finite()
+                {
+                    datasets_map
+                        .entry(default_name.clone())
+                        .or_default()
+                        .push([x, y]);
+                }
+            }
+        }
+    }
+
+    datasets_map
+        .into_iter()
+        .filter(|(_, pts)| !pts.is_empty())
+        .map(|(name, points)| ImportedDataset::new(name, points))
+        .collect()
+}
+
+type PendingImport = (egui::Id, Vec<ImportedDataset>);
+
+static PENDING_IMPORTS: std::sync::Mutex<
+    Option<(
+        std::sync::mpsc::Sender<PendingImport>,
+        std::sync::mpsc::Receiver<PendingImport>,
+    )>,
+> = std::sync::Mutex::new(None);
+
+/// Drain any asynchronously imported datasets for the given plot ID.
+pub fn drain_imported_datasets(plot_id: egui::Id) -> Vec<ImportedDataset> {
+    let mut datasets = Vec::new();
+    if let Ok(guard) = PENDING_IMPORTS.lock()
+        && let Some((_, rx)) = guard.as_ref()
+    {
+        while let Ok((id, ds_list)) = rx.try_recv() {
+            if id == plot_id || id == egui::Id::NULL {
+                datasets.extend(ds_list);
+            }
+        }
+    }
+    datasets
+}
+
+/// Trigger cross-platform CSV dataset file import dialog asynchronously.
+pub fn trigger_import_csv(sender: std::sync::mpsc::Sender<Vec<ImportedDataset>>) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::thread::spawn(move || {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("CSV / TSV File", &["csv", "tsv", "txt"])
+                .pick_file()
+                && let Ok(content) = std::fs::read_to_string(path)
+            {
+                let datasets = parse_csv(&content);
+                if !datasets.is_empty() {
+                    let _ = sender.send(datasets);
+                }
+            }
+        });
+    }
+}
+
+/// Trigger CSV file import specifically for a target plot ID.
+pub fn trigger_import_csv_for_plot(ctx: &egui::Context, plot_id: egui::Id) {
+    let ctx_clone = ctx.clone();
+    let tx = {
+        let mut guard = PENDING_IMPORTS.lock().unwrap();
+        if guard.is_none() {
+            let (tx, rx) = std::sync::mpsc::channel();
+            *guard = Some((tx, rx));
+        }
+        guard.as_ref().unwrap().0.clone()
+    };
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::thread::spawn(move || {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("CSV / TSV File", &["csv", "tsv", "txt"])
+                .pick_file()
+                && let Ok(content) = std::fs::read_to_string(path)
+            {
+                let datasets = parse_csv(&content);
+                if !datasets.is_empty() {
+                    let _ = tx.send((plot_id, datasets));
+                    ctx_clone.request_repaint();
+                }
+            }
+        });
+    }
+}
+
 /// Format dataset points to CSV string.
 pub fn format_csv(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
     let mut csv = String::from("Dataset,X,Y\n");
@@ -568,5 +807,57 @@ mod tests {
         let png_bytes = export_custom_png(&datasets, &options).expect("Thick line export failed");
         assert!(!png_bytes.is_empty());
         assert_eq!(&png_bytes[1..4], b"PNG");
+    }
+
+    #[test]
+    fn test_parse_csv_standard_export() {
+        let content = "Dataset,X,Y\nSeries A,0.0,1.0\nSeries A,1.0,2.0\nSeries B,2.0,3.0\n";
+        let datasets = parse_csv(content);
+        assert_eq!(datasets.len(), 2);
+
+        let series_a = datasets.iter().find(|d| d.name == "Series A").unwrap();
+        assert_eq!(series_a.points, vec![[0.0, 1.0], [1.0, 2.0]]);
+
+        let series_b = datasets.iter().find(|d| d.name == "Series B").unwrap();
+        assert_eq!(series_b.points, vec![[2.0, 3.0]]);
+    }
+
+    #[test]
+    fn test_parse_csv_two_column_headerless() {
+        let content = "0.0, 10.0\n1.0, 20.0\n2.0, 30.0\n";
+        let datasets = parse_csv(content);
+        assert_eq!(datasets.len(), 1);
+        assert_eq!(datasets[0].name, "Imported Dataset");
+        assert_eq!(
+            datasets[0].points,
+            vec![[0.0, 10.0], [1.0, 20.0], [2.0, 30.0]]
+        );
+    }
+
+    #[test]
+    fn test_parse_csv_tab_separated() {
+        let content = "Time\tTemperature\n0.0\t15.5\n1.0\t18.2\n2.0\t21.0\n";
+        let datasets = parse_csv(content);
+        assert_eq!(datasets.len(), 1);
+        assert_eq!(datasets[0].name, "Temperature");
+        assert_eq!(
+            datasets[0].points,
+            vec![[0.0, 15.5], [1.0, 18.2], [2.0, 21.0]]
+        );
+    }
+
+    #[test]
+    fn test_parse_csv_missing_values() {
+        let content = "X,Y\n0.0,1.0\n1.0,\ninvalid,data\n2.0,3.0\n,4.0\n3.0,5.0\n";
+        let datasets = parse_csv(content);
+        assert_eq!(datasets.len(), 1);
+        assert_eq!(datasets[0].points, vec![[0.0, 1.0], [2.0, 3.0], [3.0, 5.0]]);
+    }
+
+    #[test]
+    fn test_parse_csv_corrupted_text() {
+        let content = "Not a CSV file at all\nJust some random text\nWith no numbers anywhere\n";
+        let datasets = parse_csv(content);
+        assert!(datasets.is_empty());
     }
 }
