@@ -31,9 +31,10 @@ use emath::Float as _;
 pub use crate::{
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
     export::{
-        AspectRatioOption, ExportOptions, MAX_EXPORT_DIMENSION, color32_image_to_png,
-        copy_image_to_clipboard, export_csv, export_custom_image, export_custom_png, export_json,
-        save_file_dialog,
+        AspectRatioOption, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
+        color32_image_to_png, copy_image_to_clipboard, export_csv, export_custom_image,
+        export_custom_png, export_json, parse_csv, save_file_dialog, trigger_import_csv,
+        trigger_import_csv_for_plot,
     },
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, ClosestElem, HLine, Line, LineStyle,
@@ -957,7 +958,25 @@ impl<'a> Plot<'a> {
             last_click_pos_for_zoom: None,
             x_axis_thickness: Default::default(),
             y_axis_thickness: Default::default(),
+            imported_datasets: Default::default(),
         });
+
+        // Drain any newly imported CSV datasets for this plot
+        let newly_imported = export::drain_imported_datasets(plot_id);
+        if !newly_imported.is_empty() {
+            for new_ds in newly_imported {
+                if let Some(existing) = mem
+                    .imported_datasets
+                    .iter_mut()
+                    .find(|d| d.name == new_ds.name)
+                {
+                    existing.points = new_ds.points;
+                    existing.visible = true;
+                } else {
+                    mem.imported_datasets.push(new_ds);
+                }
+            }
+        }
 
         let last_plot_transform = mem.transform;
 
@@ -970,7 +989,20 @@ impl<'a> Plot<'a> {
             last_auto_bounds: mem.auto_bounds,
             response,
             bounds_modifications: Vec::new(),
+            plot_id,
         };
+
+        // Render persisted imported datasets as overlay items
+        for dataset in &mem.imported_datasets {
+            if dataset.visible && !dataset.points.is_empty() {
+                plot_ui.points(
+                    Points::new(&dataset.name, dataset.points.clone())
+                        .radius(3.0_f32)
+                        .shape(MarkerShape::Circle),
+                );
+            }
+        }
+
         let inner = build_fn(&mut plot_ui);
         let PlotUi {
             mut items,
@@ -1737,6 +1769,10 @@ impl<'a> Plot<'a> {
         };
 
         response.context_menu(|ui| {
+            if ui.button("Import CSV").clicked() {
+                export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
+                ui.close();
+            }
             if ui.button("Save PNG").clicked() {
                 access_state.show_export_modal = true;
                 ui.close();

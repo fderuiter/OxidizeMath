@@ -14,6 +14,7 @@ pub struct PlotUi<'a> {
     pub(crate) last_auto_bounds: Vec2b,
     pub(crate) response: Response,
     pub(crate) bounds_modifications: Vec<BoundsModification>,
+    pub(crate) plot_id: egui::Id,
 }
 
 impl<'a> PlotUi<'a> {
@@ -291,5 +292,10 @@ impl<'a> PlotUi<'a> {
             .map(|item| (item.name().to_owned(), item.extract_points()))
             .collect();
         crate::export::export_json(&datasets);
+    }
+
+    /// Trigger asynchronous CSV dataset import for this plot.
+    pub fn import_csv(&mut self) {
+        crate::export::trigger_import_csv_for_plot(&self.ctx, self.plot_id);
     }
 }

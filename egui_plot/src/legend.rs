@@ -412,6 +412,16 @@ impl Widget for &mut LegendWidget {
                             handle_focus_on_legend_item(&focus_on_item, entries);
                         }
 
+                        response_union.context_menu(|ui| {
+                            if ui.button("Import CSV").clicked() {
+                                crate::export::trigger_import_csv_for_plot(
+                                    ui.ctx(),
+                                    egui::Id::NULL,
+                                );
+                                ui.close();
+                            }
+                        });
+
                         response_union
                     })
                     .inner

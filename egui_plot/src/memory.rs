@@ -32,6 +32,9 @@ pub struct PlotMemory {
     /// in order to fit the labels, if necessary.
     pub(crate) x_axis_thickness: BTreeMap<usize, f32>,
     pub(crate) y_axis_thickness: BTreeMap<usize, f32>,
+
+    /// Persisted imported datasets overlaid on the plot.
+    pub imported_datasets: Vec<crate::export::ImportedDataset>,
 }
 
 impl PlotMemory {
