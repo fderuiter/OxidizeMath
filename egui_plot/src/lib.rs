@@ -12,6 +12,7 @@
 mod axis;
 pub mod commands;
 pub mod export;
+pub mod fit;
 mod items;
 mod legend;
 mod memory;
@@ -35,6 +36,7 @@ pub use crate::{
         copy_image_to_clipboard, export_csv, export_custom_image, export_custom_png, export_json,
         save_file_dialog,
     },
+    fit::{FitResult, FitType, fit_dataset},
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, ClosestElem, HLine, Line, LineStyle,
         MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem, PlotItemBase,
@@ -1334,10 +1336,14 @@ impl<'a> Plot<'a> {
         }
 
         // --- EXTRACT DATASETS INJECTED ---
-        let mut accessible_datasets: Vec<(String, Vec<[f64; 2]>)> = Vec::new();
+        let mut accessible_datasets: Vec<(String, Vec<[f64; 2]>, Color32)> = Vec::new();
         for item in &items {
-            accessible_datasets.push((item.name().to_owned(), item.extract_points()));
+            accessible_datasets.push((item.name().to_owned(), item.extract_points(), item.color()));
         }
+        let export_datasets: Vec<(String, Vec<[f64; 2]>)> = accessible_datasets
+            .iter()
+            .map(|(n, p, _)| (n.clone(), p.clone()))
+            .collect();
         // --- END EXTRACT DATASETS ---
         let prepared = PreparedPlot {
             plot_area_response: &response,
@@ -1419,6 +1425,9 @@ impl<'a> Plot<'a> {
             status_message: Option<String>,
             focused_item: usize,
             focused_point: usize,
+            fit_degree: Option<usize>,
+            fit_dataset_idx: usize,
+            show_fit_overlay: bool,
         }
 
         impl Default for AccessState {
@@ -1434,6 +1443,9 @@ impl<'a> Plot<'a> {
                     status_message: None,
                     focused_item: 0,
                     focused_point: 0,
+                    fit_degree: None,
+                    fit_dataset_idx: 0,
+                    show_fit_overlay: true,
                 }
             }
         }
@@ -1441,23 +1453,202 @@ impl<'a> Plot<'a> {
         let mut access_state =
             ui.data_mut(|d| d.get_temp::<AccessState>(plot_id).unwrap_or_default());
 
+        let valid_fit_datasets: Vec<(usize, &String, &Vec<[f64; 2]>)> = accessible_datasets
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, pts, _))| pts.len() >= 2)
+            .map(|(idx, (name, pts, _))| (idx, name, pts))
+            .collect();
+
+        if let Some(&(first_valid_idx, _, _)) = valid_fit_datasets.first()
+            && (access_state.fit_dataset_idx >= accessible_datasets.len()
+                || accessible_datasets[access_state.fit_dataset_idx].1.len() < 2)
+        {
+            access_state.fit_dataset_idx = first_valid_idx;
+        }
+
+        if access_state.show_fit_overlay
+            && let Some(deg) = access_state.fit_degree
+            && let Some((ds_name, ds_pts, ds_color)) =
+                accessible_datasets.get(access_state.fit_dataset_idx)
+            && let Some(fit_res) = crate::fit::fit_dataset(ds_pts, deg, ds_name)
+        {
+            let bounds = mem.transform.bounds();
+            let x_min = bounds.min[0];
+            let x_max = bounds.max[0];
+            if x_max > x_min {
+                let sample_count = 200;
+                let screen_pts: Vec<Pos2> = (0..=sample_count)
+                    .map(|i| {
+                        let t = i as f64 / (sample_count as f64);
+                        let x = x_min + t * (x_max - x_min);
+                        let y = fit_res.eval(x);
+                        mem.transform.position_from_point(&PlotPoint::new(x, y))
+                    })
+                    .collect();
+
+                let accent_color = if *ds_color == Color32::TRANSPARENT {
+                    ui.visuals().widgets.active.bg_fill
+                } else {
+                    *ds_color
+                };
+
+                let dashed_shapes = Shape::dashed_line(
+                    &screen_pts,
+                    Stroke::new(2.5_f32, accent_color),
+                    8.0_f32,
+                    5.0_f32,
+                );
+                ui.painter().with_clip_rect(plot_rect).extend(dashed_shapes);
+
+                // Draw formula badge overlay on plot canvas
+                let badge_pos = plot_rect.min + egui::vec2(12.0_f32, 36.0_f32);
+                let badge_rect =
+                    egui::Rect::from_min_size(badge_pos, egui::vec2(220.0_f32, 65.0_f32));
+
+                ui.scope_builder(egui::UiBuilder::new().max_rect(badge_rect), |ui| {
+                    egui::Frame::window(ui.style())
+                        .fill(ui.visuals().window_fill.gamma_multiply(0.85_f32))
+                        .stroke(egui::Stroke::new(1.5_f32, accent_color))
+                        .corner_radius(6.0_f32)
+                        .inner_margin(6.0_f32)
+                        .show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                let name_display = if fit_res.dataset_name.is_empty() {
+                                    format!("Dataset {}", access_state.fit_dataset_idx + 1)
+                                } else {
+                                    fit_res.dataset_name.clone()
+                                };
+                                ui.label(
+                                    egui::RichText::new(format!("Fit: {}", name_display))
+                                        .strong()
+                                        .color(accent_color),
+                                );
+                                ui.label(
+                                    egui::RichText::new(&fit_res.formula)
+                                        .monospace()
+                                        .size(13.0_f32),
+                                );
+                                ui.label(
+                                    egui::RichText::new(format!("R² = {:.4}", fit_res.r_squared))
+                                        .small()
+                                        .color(ui.visuals().text_color()),
+                                );
+                            });
+                        });
+                });
+            }
+        }
+
         let focus_response = response.interact(egui::Sense::focusable_noninteractive());
 
         let overlay_rect =
-            egui::Rect::from_min_size(plot_rect.min, egui::vec2(plot_rect.width(), 30.0));
+            egui::Rect::from_min_size(plot_rect.min, egui::vec2(plot_rect.width(), 30.0_f32));
         ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Save PNG").clicked() {
                     access_state.show_export_modal = true;
                 }
                 if ui.button("Export CSV").clicked() {
-                    export::export_csv(&accessible_datasets);
+                    export::export_csv(&export_datasets);
                 }
                 if ui.button("Export JSON").clicked() {
-                    export::export_json(&accessible_datasets);
+                    export::export_json(&export_datasets);
                 }
                 if ui.button("Table View").clicked() {
                     access_state.show_table = !access_state.show_table;
+                }
+
+                ui.separator();
+
+                if valid_fit_datasets.is_empty() {
+                    ui.add_enabled_ui(false, |ui| {
+                        let _ = ui.button("Fit Curve").on_hover_text(
+                            "Requires a dataset with at least 2 points for curve fitting",
+                        );
+                    });
+                } else {
+                    ui.menu_button("Fit Curve", |ui| {
+                        if valid_fit_datasets.len() > 1 {
+                            ui.label(egui::RichText::new("Select Dataset:").small().weak());
+                            for (idx, name, pts) in &valid_fit_datasets {
+                                let label = if name.is_empty() {
+                                    format!("Dataset {}", idx + 1)
+                                } else {
+                                    name.to_string()
+                                };
+                                if ui
+                                    .selectable_label(
+                                        access_state.fit_dataset_idx == *idx,
+                                        format!("{} ({} pts)", label, pts.len()),
+                                    )
+                                    .clicked()
+                                {
+                                    access_state.fit_dataset_idx = *idx;
+                                }
+                            }
+                            ui.separator();
+                        }
+                        ui.label(egui::RichText::new("Fit Model:").small().weak());
+                        if ui
+                            .selectable_label(
+                                access_state.fit_degree == Some(1),
+                                "Linear (Degree 1)",
+                            )
+                            .clicked()
+                        {
+                            access_state.fit_degree = Some(1);
+                            access_state.show_fit_overlay = true;
+                            ui.close();
+                        }
+                        if ui
+                            .selectable_label(
+                                access_state.fit_degree == Some(2),
+                                "Polynomial (Degree 2)",
+                            )
+                            .clicked()
+                        {
+                            access_state.fit_degree = Some(2);
+                            access_state.show_fit_overlay = true;
+                            ui.close();
+                        }
+                        if ui
+                            .selectable_label(
+                                access_state.fit_degree == Some(3),
+                                "Polynomial (Degree 3)",
+                            )
+                            .clicked()
+                        {
+                            access_state.fit_degree = Some(3);
+                            access_state.show_fit_overlay = true;
+                            ui.close();
+                        }
+                        if ui
+                            .selectable_label(
+                                access_state.fit_degree == Some(4),
+                                "Polynomial (Degree 4)",
+                            )
+                            .clicked()
+                        {
+                            access_state.fit_degree = Some(4);
+                            access_state.show_fit_overlay = true;
+                            ui.close();
+                        }
+                    });
+
+                    if access_state.fit_degree.is_some() {
+                        let toggle_text = if access_state.show_fit_overlay {
+                            "Hide Fit"
+                        } else {
+                            "Show Fit"
+                        };
+                        if ui.button(toggle_text).clicked() {
+                            access_state.show_fit_overlay = !access_state.show_fit_overlay;
+                        }
+                        if ui.button("Clear Fit").clicked() {
+                            access_state.fit_degree = None;
+                        }
+                    }
                 }
             });
         });
@@ -1465,7 +1656,7 @@ impl<'a> Plot<'a> {
         if access_state.show_table {
             egui::Window::new(format!("Data Table - {id_source:?}")).show(ui.ctx(), |ui| {
                 egui::ScrollArea::both().show(ui, |ui| {
-                    for (name, pts) in &accessible_datasets {
+                    for (name, pts, _) in &accessible_datasets {
                         if pts.is_empty() {
                             continue;
                         }
@@ -1599,7 +1790,7 @@ impl<'a> Plot<'a> {
 
                     ui.horizontal(|ui| {
                         if ui.button("💾 Save PNG").clicked() {
-                            match export::export_custom_png(&accessible_datasets, &options) {
+                            match export::export_custom_png(&export_datasets, &options) {
                                 Ok(png_bytes) => {
                                     export::save_file_dialog(
                                         "plot.png",
@@ -1618,7 +1809,7 @@ impl<'a> Plot<'a> {
                         }
 
                         if ui.button("📋 Copy to Clipboard").clicked() {
-                            match export::export_custom_image(&accessible_datasets, &options) {
+                            match export::export_custom_image(&export_datasets, &options) {
                                 Ok(color_img) => {
                                     match export::copy_image_to_clipboard(&color_img) {
                                         Ok(_) => {
@@ -1682,7 +1873,7 @@ impl<'a> Plot<'a> {
                     changed = true;
                 }
 
-                if let Some((_, pts)) = accessible_datasets.get(access_state.focused_item) {
+                if let Some((_, pts, _)) = accessible_datasets.get(access_state.focused_item) {
                     let num_pts = pts.len();
                     if num_pts > 0 {
                         let right_triggered =
@@ -1720,7 +1911,7 @@ impl<'a> Plot<'a> {
                 }
 
                 if changed
-                    && let Some((name, pts)) = accessible_datasets.get(access_state.focused_item)
+                    && let Some((name, pts, _)) = accessible_datasets.get(access_state.focused_item)
                     && let Some(p) = pts.get(access_state.focused_point)
                 {
                     let msg = format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]);
@@ -1742,17 +1933,89 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {
-                export::export_csv(&accessible_datasets);
+                export::export_csv(&export_datasets);
                 ui.close();
             }
             if ui.button("Export JSON").clicked() {
-                export::export_json(&accessible_datasets);
+                export::export_json(&export_datasets);
                 ui.close();
             }
             if ui.button("Table View").clicked() {
                 access_state.show_table = !access_state.show_table;
                 ui.close();
             }
+
+            ui.separator();
+
+            ui.menu_button("Fit Curve", |ui| {
+                if valid_fit_datasets.is_empty() {
+                    ui.add_enabled_ui(false, |ui| {
+                        let _ = ui.button("Linear (Degree 1)").on_hover_text(
+                            "Requires a dataset with at least 2 points for curve fitting",
+                        );
+                        let _ = ui.button("Polynomial (Degree 2)").on_hover_text(
+                            "Requires a dataset with at least 2 points for curve fitting",
+                        );
+                        let _ = ui.button("Polynomial (Degree 3)").on_hover_text(
+                            "Requires a dataset with at least 2 points for curve fitting",
+                        );
+                        let _ = ui.button("Polynomial (Degree 4)").on_hover_text(
+                            "Requires a dataset with at least 2 points for curve fitting",
+                        );
+                    });
+                } else {
+                    if valid_fit_datasets.len() > 1 {
+                        ui.label(egui::RichText::new("Select Dataset:").small().weak());
+                        for (idx, name, pts) in &valid_fit_datasets {
+                            let label = if name.is_empty() {
+                                format!("Dataset {}", idx + 1)
+                            } else {
+                                name.to_string()
+                            };
+                            if ui
+                                .selectable_label(
+                                    access_state.fit_dataset_idx == *idx,
+                                    format!("{} ({} pts)", label, pts.len()),
+                                )
+                                .clicked()
+                            {
+                                access_state.fit_dataset_idx = *idx;
+                            }
+                        }
+                        ui.separator();
+                    }
+
+                    ui.label(egui::RichText::new("Select Model:").small().weak());
+                    if ui.button("Linear (Degree 1)").clicked() {
+                        access_state.fit_degree = Some(1);
+                        access_state.show_fit_overlay = true;
+                        ui.close();
+                    }
+                    if ui.button("Polynomial (Degree 2)").clicked() {
+                        access_state.fit_degree = Some(2);
+                        access_state.show_fit_overlay = true;
+                        ui.close();
+                    }
+                    if ui.button("Polynomial (Degree 3)").clicked() {
+                        access_state.fit_degree = Some(3);
+                        access_state.show_fit_overlay = true;
+                        ui.close();
+                    }
+                    if ui.button("Polynomial (Degree 4)").clicked() {
+                        access_state.fit_degree = Some(4);
+                        access_state.show_fit_overlay = true;
+                        ui.close();
+                    }
+
+                    if access_state.fit_degree.is_some() {
+                        ui.separator();
+                        if ui.button("Clear Fit Overlay").clicked() {
+                            access_state.fit_degree = None;
+                            ui.close();
+                        }
+                    }
+                }
+            });
         });
 
         ui.data_mut(|d| d.insert_temp(plot_id, access_state));
