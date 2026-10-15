@@ -138,6 +138,17 @@ pub trait InteractiveTool {
 
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, _state: &str) {}
+
+    /// Optional hook to export tool datasets.
+    /// Default implementation extracts datasets recorded from embedded `egui_plot::Plot`s if available.
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        egui_plot::get_last_plot_datasets()
+    }
+
+    /// Optional hook to provide custom figure export options.
+    fn export_figure_options(&self) -> Option<egui_plot::export::ExportOptions> {
+        None
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -165,6 +176,10 @@ pub struct SimulationFramework {
     pub search_query: String,
     last_announced_count: Option<usize>,
     last_announced_query: String,
+    pub show_export_modal: bool,
+    pub export_options: egui_plot::export::ExportOptions,
+    pub export_bg_dark: bool,
+    pub export_status_message: Option<String>,
 }
 
 impl SimulationFramework {
@@ -188,6 +203,10 @@ impl SimulationFramework {
             search_query: String::new(),
             last_announced_count: None,
             last_announced_query: String::new(),
+            show_export_modal: false,
+            export_options: egui_plot::export::ExportOptions::default(),
+            export_bg_dark: true,
+            export_status_message: None,
         };
 
         if !framework.available_tools.is_empty() {
@@ -274,6 +293,8 @@ impl SimulationFramework {
 
     #[allow(missing_docs)]
     pub fn show(&mut self, ctx: &egui::Context, id_source: &str) {
+        egui_plot::clear_last_plot_datasets();
+
         // Update global input mode
         ctx.input(|i| {
             if i.any_touches() || i.multi_touch().is_some() {
@@ -308,6 +329,8 @@ impl SimulationFramework {
 
         self.show_side_panel(ctx, id_source);
         self.show_theory_portal(ctx, id_source);
+        self.show_export_action_bar(ctx, id_source);
+        self.show_export_modal_dialog(ctx, id_source);
 
         if let Some(tool) = &mut self.active_tool {
             tool.show(ctx);

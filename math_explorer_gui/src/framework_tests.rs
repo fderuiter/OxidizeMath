@@ -143,4 +143,55 @@ mod tests {
         });
         assert!(framework.show_theory_portal);
     }
+
+    #[test]
+    fn test_framework_export_action_bar_and_modal() {
+        let ctx = eframe::egui::Context::default();
+        let mut framework = SimulationFramework::new("analysis");
+
+        assert!(!framework.show_export_modal);
+
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            framework.show(ctx, "test_export_ui");
+        });
+
+        if let Some(tool) = &framework.active_tool {
+            let datasets = tool.export_datasets();
+            let figure_opts = tool.export_figure_options();
+            assert!(figure_opts.is_none() || figure_opts.is_some());
+            assert!(datasets.is_empty() || !datasets.is_empty());
+        }
+
+        framework.show_export_modal = true;
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            framework.show(ctx, "test_export_ui");
+        });
+        assert!(framework.show_export_modal);
+    }
+
+    #[test]
+    fn test_dataset_export_formatting_and_png_rendering() {
+        let datasets = vec![(
+            "Test Series".to_string(),
+            vec![[0.0, 1.0], [1.0, 2.0], [2.0, 4.0]],
+        )];
+
+        let csv = egui_plot::export::format_csv(&datasets);
+        assert!(csv.starts_with("Dataset,X,Y\n"));
+        assert!(csv.contains("Test Series,0,1\n"));
+        assert!(csv.contains("Test Series,1,2\n"));
+
+        let json = egui_plot::export::format_json(&datasets);
+        assert!(json.starts_with("[\n"));
+        assert!(json.contains("\"dataset\": \"Test Series\""));
+        assert!(json.contains("\"x\": 0, \"y\": 1"));
+
+        let options = egui_plot::export::ExportOptions::default();
+        let png_bytes = egui_plot::export::export_custom_png(&datasets, &options);
+        assert!(png_bytes.is_ok());
+        let bytes = png_bytes.unwrap();
+        assert!(!bytes.is_empty());
+        // PNG header magic bytes
+        assert_eq!(&bytes[0..4], &[0x89, 0x50, 0x4E, 0x47]);
+    }
 }

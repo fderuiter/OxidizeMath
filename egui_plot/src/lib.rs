@@ -1338,6 +1338,7 @@ impl<'a> Plot<'a> {
         for item in &items {
             accessible_datasets.push((item.name().to_owned(), item.extract_points()));
         }
+        append_last_plot_datasets(&accessible_datasets);
         // --- END EXTRACT DATASETS ---
         let prepared = PreparedPlot {
             plot_area_response: &response,
@@ -2400,4 +2401,25 @@ pub fn format_number(number: f64, num_decimals: usize) -> String {
 pub fn color_from_strength(ui: &Ui, strength: f32) -> Color32 {
     let base_color = ui.visuals().text_color();
     base_color.gamma_multiply(strength.sqrt())
+}
+
+thread_local! {
+    static LAST_PLOT_DATASETS: std::cell::RefCell<Vec<(String, Vec<[f64; 2]>)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Clears thread-local record of plot datasets from the current frame.
+pub fn clear_last_plot_datasets() {
+    LAST_PLOT_DATASETS.with(|d| d.borrow_mut().clear());
+}
+
+/// Appends datasets captured from an `egui_plot::Plot` widget.
+pub fn append_last_plot_datasets(datasets: &[(String, Vec<[f64; 2]>)]) {
+    LAST_PLOT_DATASETS.with(|d| {
+        d.borrow_mut().extend(datasets.iter().cloned());
+    });
+}
+
+/// Retrieves all plot datasets captured across `egui_plot::Plot` widgets rendered in the active session.
+pub fn get_last_plot_datasets() -> Vec<(String, Vec<[f64; 2]>)> {
+    LAST_PLOT_DATASETS.with(|d| d.borrow().clone())
 }
