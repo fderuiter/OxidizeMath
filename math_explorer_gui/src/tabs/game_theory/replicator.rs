@@ -201,6 +201,7 @@ impl ReplicatorDynamicsTool {
     }
 
     fn show_trajectory_plot(&self, ui: &mut egui::Ui) {
+        let text_color = ui.visuals().text_color();
         Plot::new("replicator_plot")
             .legend(Legend::default())
             .allow_drag(true)
@@ -229,7 +230,7 @@ impl ReplicatorDynamicsTool {
 
                 // Add vertical line for current playback time
                 plot_ui.vline(
-                    VLine::new("Current Time", self.playback_time).color(egui::Color32::WHITE),
+                    VLine::new("Current Time", self.playback_time).color(text_color),
                 );
             });
     }
