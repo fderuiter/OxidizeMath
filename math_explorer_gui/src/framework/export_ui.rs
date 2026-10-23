@@ -172,7 +172,7 @@ impl SimulationFramework {
     }
 
     fn render_modal_save_gif(&mut self, ui: &mut egui::Ui) {
-        if ui.button("🎥 Save GIF").clicked() {
+        if ui.button("🎬 Save GIF").clicked() {
             if let Some(tool) = &mut self.active_tool {
                 let frames = tool.sample_animation_frames(self.export_gif_frames as usize);
                 let file_slug = tool.name().to_lowercase().replace(' ', "_");

@@ -241,3 +241,86 @@ fn test_cheatsheet_shortcut_aria_announcements() {
     let aria_msg = ctx.data(|d| d.get_temp::<String>(egui::Id::new("aria_live_message")));
     assert_eq!(aria_msg, Some("Hotkey overlay opened".to_string()));
 }
+
+#[test]
+fn test_workspace_envelope_serialization_and_parsing() {
+    let app = MathExplorerApp::default();
+    let state = app.get_app_state();
+    let mgr = WorkspaceSessionManager::default();
+
+    let json_str = mgr.create_envelope(state.clone());
+    assert!(json_str.contains("\"schema_version\": \"1.0\""));
+    assert!(json_str.contains("\"app_version\":"));
+    assert!(json_str.contains("\"timestamp\":"));
+
+    let parsed_state = mgr
+        .parse_envelope(&json_str)
+        .expect("Parsing valid envelope must succeed");
+    assert_eq!(parsed_state.selected_tab, state.selected_tab);
+    assert_eq!(parsed_state.theme, state.theme);
+}
+
+#[test]
+fn test_workspace_envelope_backward_compatibility() {
+    let app = MathExplorerApp::default();
+    let raw_app_state_json = app.save_state_to_json();
+    let mgr = WorkspaceSessionManager::default();
+
+    let parsed_state = mgr
+        .parse_envelope(&raw_app_state_json)
+        .expect("Parsing raw AppState JSON must succeed");
+    assert_eq!(parsed_state.selected_tab, app.selected_tab);
+    assert_eq!(parsed_state.theme, app.theme);
+}
+
+#[test]
+fn test_workspace_envelope_schema_version_validation() {
+    let mgr = WorkspaceSessionManager::default();
+    let invalid_version_json = r#"{
+        "schema_version": "2.0",
+        "app_version": "0.1.0",
+        "timestamp": "2026-10-23T00:00:00Z",
+        "app_state": {
+            "selected_tab": 0,
+            "selected_tab_name": null,
+            "show_info": true,
+            "show_warnings": true,
+            "show_errors": true,
+            "theme": "Dark",
+            "tab_states": {}
+        }
+    }"#;
+
+    let res = mgr.parse_envelope(invalid_version_json);
+    assert!(res.is_err());
+    let err = res.unwrap_err();
+    assert!(err.contains("Incompatible schema version"));
+}
+
+#[test]
+fn test_workspace_envelope_corrupted_json_handling() {
+    let mgr = WorkspaceSessionManager::default();
+    let corrupted_json = "{ corrupted: json, bad_value: [ ";
+
+    let res = mgr.parse_envelope(corrupted_json);
+    assert!(res.is_err());
+    let err = res.unwrap_err();
+    assert!(err.contains("Invalid workspace file format"));
+}
+
+#[test]
+fn test_workspace_session_manager_active_file_path() {
+    let mut mgr = WorkspaceSessionManager::default();
+    assert!(mgr.active_file_path().is_none());
+
+    let test_path = std::path::PathBuf::from("/tmp/test_session.mws");
+    mgr.set_active_file_path(Some(test_path.clone()));
+    assert_eq!(mgr.active_file_path(), Some(&test_path));
+
+    mgr.set_toast("Test message", false);
+    assert!(mgr.toast().is_some());
+    assert_eq!(mgr.toast().unwrap().0, "Test message");
+
+    mgr.clear_toast();
+    assert!(mgr.toast().is_none());
+}
