@@ -136,6 +136,41 @@ impl InteractiveTool for AttractorPlotter {
         }
     }
 
+    fn step_simulation(&mut self) {
+        if !self.diverged {
+            for _ in 0..self.simulation_speed {
+                let current_vec = self.system.state.vec;
+                if !current_vec.x.is_finite()
+                    || !current_vec.y.is_finite()
+                    || !current_vec.z.is_finite()
+                {
+                    self.diverged = true;
+                    self.paused = true;
+                    break;
+                }
+
+                self.system.step(self.dt);
+
+                let vec = self.system.state.vec;
+                if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
+                    self.diverged = true;
+                    self.paused = true;
+                    break;
+                }
+
+                if self.history.len() >= self.max_points {
+                    self.history.pop_front();
+                }
+                self.history.push_back(vec);
+            }
+        }
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+        vec![("Trajectory".to_string(), points)]
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         // --- Simulation ---

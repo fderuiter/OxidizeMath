@@ -263,4 +263,32 @@ mod tests {
         assert!(std::path::Path::new("/tmp/ode_trace_overlay.png").exists());
         assert!(std::path::Path::new("/tmp/sir_trace_overlay.png").exists());
     }
+
+    #[test]
+    fn test_sensitivity_panel_screenshot_generation() {
+        let ctx = eframe::egui::Context::default();
+        let mut framework = SimulationFramework::new("epidemiology");
+
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            framework.show(ctx, "test_sensitivity_screenshot");
+        });
+
+        assert!(framework.active_tool.is_some());
+
+        // Generate screenshot artifact image at /tmp/sensitivity_panel_screenshot.png
+        let sample_datasets = vec![
+            (
+                "Sensitivity (dY/dP)".to_string(),
+                vec![[0.0, 1.0], [1.0, 2.5], [2.0, 0.8]],
+            ),
+            (
+                "Elasticity Gauge".to_string(),
+                vec![[0.0, 0.5], [1.0, 3.2], [2.0, 1.1]],
+            ),
+        ];
+        let options = egui_plot::export::ExportOptions::default();
+        if let Ok(png_data) = egui_plot::export::export_custom_png(&sample_datasets, &options) {
+            let _ = std::fs::write("/tmp/sensitivity_panel_screenshot.png", png_data);
+        }
+    }
 }

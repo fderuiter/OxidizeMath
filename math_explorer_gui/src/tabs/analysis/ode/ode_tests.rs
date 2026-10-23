@@ -1,4 +1,4 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+#![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
 use crate::framework::{InteractiveTool, TraceSeries};

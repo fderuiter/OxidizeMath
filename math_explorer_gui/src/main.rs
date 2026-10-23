@@ -13,6 +13,8 @@ mod framework_tests;
 pub mod presets;
 #[allow(missing_docs)]
 pub mod reflective_ui;
+#[allow(missing_docs)]
+pub mod sensitivity;
 mod tabs;
 
 use app::MathExplorerApp;
