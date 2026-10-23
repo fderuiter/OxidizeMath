@@ -69,19 +69,19 @@ pub struct PlotMemory {
     pub show_settings_modal: bool,
 }
 
-#[allow(dead_code)]
+#[cfg(feature = "serde")]
 #[inline]
 fn default_grid_density() -> f32 {
     8.0
 }
 
-#[allow(dead_code)]
+#[cfg(feature = "serde")]
 #[inline]
 fn default_true() -> bool {
     true
 }
 
-#[allow(dead_code)]
+#[cfg(feature = "serde")]
 #[inline]
 fn default_show_grid() -> Vec2b {
     Vec2b::new(true, true)
