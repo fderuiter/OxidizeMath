@@ -155,7 +155,7 @@ mod tests {
         let initial_prime_cap = widget.is_prime_lookup.capacity();
 
         assert!(initial_pixels_cap >= 200 * 200);
-        assert!(initial_prime_cap >= 200 * 200 + 1);
+        assert!(initial_prime_cap > 200 * 200);
 
         // Increase grid size to 300
         widget.grid_size = 300;
