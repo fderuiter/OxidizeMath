@@ -363,6 +363,16 @@ impl SimulationFramework {
         } else {
             egui::Color32::WHITE
         };
+
+        ui.horizontal(|ui| {
+            ui.label("GIF FPS:");
+            ui.add(egui::Slider::new(&mut self.export_gif_fps, 1..=60));
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("GIF Frame Steps:");
+            ui.add(egui::Slider::new(&mut self.export_gif_frames, 5..=60));
+        });
     }
 
     fn render_modal_save_png(&mut self, ui: &mut egui::Ui) {
@@ -384,6 +394,35 @@ impl SimulationFramework {
                     }
                     Err(e) => {
                         self.export_status_message = Some(format!("Export failed: {e}"));
+                    }
+                }
+            }
+        }
+    }
+
+    fn render_modal_save_gif(&mut self, ui: &mut egui::Ui) {
+        if ui.button("🎥 Save GIF").clicked() {
+            if let Some(tool) = &mut self.active_tool {
+                let frames = tool.sample_animation_frames(self.export_gif_frames as usize);
+                let file_slug = tool.name().to_lowercase().replace(' ', "_");
+                let filename = format!("{}_animation.gif", file_slug);
+                match egui_plot::export::export_custom_gif(
+                    &frames,
+                    &self.export_options,
+                    self.export_gif_fps,
+                ) {
+                    Ok(gif_bytes) => {
+                        egui_plot::export::save_file_dialog(
+                            &filename,
+                            &gif_bytes,
+                            "GIF Animation",
+                            &["gif"],
+                        );
+                        self.export_status_message =
+                            Some("GIF animation saved successfully.".to_string());
+                    }
+                    Err(e) => {
+                        self.export_status_message = Some(format!("GIF export failed: {e}"));
                     }
                 }
             }
@@ -450,6 +489,7 @@ impl SimulationFramework {
 
         ui.horizontal(|ui| {
             self.render_modal_save_png(ui);
+            self.render_modal_save_gif(ui);
             self.render_modal_copy_clipboard(ui);
         });
     }

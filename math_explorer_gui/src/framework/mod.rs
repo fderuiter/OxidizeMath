@@ -149,6 +149,35 @@ pub trait InteractiveTool {
     fn export_figure_options(&self) -> Option<egui_plot::export::ExportOptions> {
         None
     }
+
+    /// Optional hook to step simulation logic during frame sampling for GIF animation export.
+    fn step_simulation(&mut self) {}
+
+    /// Optional hook to sample multi-frame animation datasets for GIF export.
+    fn sample_animation_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<egui_plot::export::DatasetFrame> {
+        let count = num_frames.max(1);
+        let mut frames = Vec::with_capacity(count);
+
+        for _ in 0..count {
+            self.step_simulation();
+            let ds = self.export_datasets();
+            if !ds.is_empty() {
+                frames.push(ds);
+            }
+        }
+
+        if frames.is_empty() {
+            let ds = self.export_datasets();
+            if !ds.is_empty() {
+                frames = egui_plot::export::sample_progressive_frames(&ds, count);
+            }
+        }
+
+        frames
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -179,6 +208,8 @@ pub struct SimulationFramework {
     pub show_export_modal: bool,
     pub export_options: egui_plot::export::ExportOptions,
     pub export_bg_dark: bool,
+    pub export_gif_fps: u32,
+    pub export_gif_frames: u32,
     pub export_status_message: Option<String>,
 }
 
@@ -206,6 +237,8 @@ impl SimulationFramework {
             show_export_modal: false,
             export_options: egui_plot::export::ExportOptions::default(),
             export_bg_dark: true,
+            export_gif_fps: 15,
+            export_gif_frames: 20,
             export_status_message: None,
         };
 

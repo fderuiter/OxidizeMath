@@ -1455,6 +1455,8 @@ impl<'a> Plot<'a> {
             export_line_thickness: f32,
             export_bg_opacity: f32,
             export_bg_dark: bool,
+            export_gif_fps: u32,
+            export_gif_frames: u32,
             status_message: Option<String>,
             focused_item: usize,
             focused_point: usize,
@@ -1473,6 +1475,8 @@ impl<'a> Plot<'a> {
                     export_line_thickness: 2.0,
                     export_bg_opacity: 1.0,
                     export_bg_dark: true,
+                    export_gif_fps: 15,
+                    export_gif_frames: 20,
                     status_message: None,
                     focused_item: 0,
                     focused_point: 0,
@@ -1776,6 +1780,19 @@ impl<'a> Plot<'a> {
                         ui.selectable_value(&mut access_state.export_bg_dark, false, "Light");
                     });
 
+                    ui.horizontal(|ui| {
+                        ui.label("GIF FPS:");
+                        ui.add(egui::Slider::new(&mut access_state.export_gif_fps, 1..=60));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("GIF Frame Steps:");
+                        ui.add(egui::Slider::new(
+                            &mut access_state.export_gif_frames,
+                            5..=60,
+                        ));
+                    });
+
                     ui.separator();
 
                     let base_w = 1920u32;
@@ -1837,6 +1854,33 @@ impl<'a> Plot<'a> {
                                 Err(e) => {
                                     access_state.status_message =
                                         Some(format!("Export failed: {e}"));
+                                }
+                            }
+                        }
+
+                        if ui.button("🎥 Save GIF").clicked() {
+                            let sampled_frames = export::sample_progressive_frames(
+                                &export_datasets,
+                                access_state.export_gif_frames as usize,
+                            );
+                            match export::export_custom_gif(
+                                &sampled_frames,
+                                &options,
+                                access_state.export_gif_fps,
+                            ) {
+                                Ok(gif_bytes) => {
+                                    export::save_file_dialog(
+                                        "plot.gif",
+                                        &gif_bytes,
+                                        "GIF Animation",
+                                        &["gif"],
+                                    );
+                                    access_state.status_message =
+                                        Some("GIF animation saved successfully.".to_string());
+                                }
+                                Err(e) => {
+                                    access_state.status_message =
+                                        Some(format!("GIF export failed: {e}"));
                                 }
                             }
                         }
