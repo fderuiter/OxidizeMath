@@ -1,15 +1,20 @@
+mod session;
 mod theme;
+mod ui_panels;
 
 #[cfg(test)]
 mod tests;
 
+#[allow(unused_imports)]
+pub use session::WorkspaceEnvelope;
+pub use session::WorkspaceSessionManager;
 pub use theme::ThemeMode;
 
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct AppState {
     pub selected_tab: usize,
     pub selected_tab_name: Option<String>,
@@ -30,6 +35,7 @@ pub struct MathExplorerApp {
     show_errors: bool,
     show_help_menu: bool,
     pub theme: ThemeMode,
+    pub session_manager: WorkspaceSessionManager,
 }
 
 impl Default for MathExplorerApp {
@@ -46,6 +52,7 @@ impl Default for MathExplorerApp {
             show_errors: true,
             show_help_menu: false,
             theme: ThemeMode::Dark,
+            session_manager: WorkspaceSessionManager::new(),
         }
     }
 }
@@ -70,6 +77,31 @@ impl MathExplorerApp {
             let app_menu = Submenu::new("Math Explorer", true);
             app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
             menu.append(&app_menu).unwrap();
+
+            // File Menu
+            let file_menu = Submenu::new("File", true);
+            let open_item = MenuItem::with_id(
+                MenuId::new("file_open"),
+                "Open Workspace Session...",
+                true,
+                None,
+            );
+            let save_item = MenuItem::with_id(
+                MenuId::new("file_save"),
+                "Save Workspace Session",
+                true,
+                None,
+            );
+            let save_as_item = MenuItem::with_id(
+                MenuId::new("file_save_as"),
+                "Save Workspace Session As...",
+                true,
+                None,
+            );
+            file_menu.append(&open_item).unwrap();
+            file_menu.append(&save_item).unwrap();
+            file_menu.append(&save_as_item).unwrap();
+            menu.append(&file_menu).unwrap();
 
             // View Menu
             let view_menu = Submenu::new("View", true);
@@ -101,8 +133,8 @@ impl MathExplorerApp {
         app
     }
 
-    /// Serializes the entire application state (selected tab, panel toggles, individual tab states) to JSON.
-    pub fn save_state_to_json(&self) -> String {
+    /// Extracts current application state into an `AppState` struct.
+    pub fn get_app_state(&self) -> AppState {
         let mut tab_states = std::collections::HashMap::new();
         for tab in &self.tabs {
             if let Some(tab_str) = tab.save_state() {
@@ -113,7 +145,7 @@ impl MathExplorerApp {
             .tabs
             .get(self.selected_tab)
             .map(|t| t.name().to_string());
-        let app_state = AppState {
+        AppState {
             selected_tab: self.selected_tab,
             selected_tab_name,
             show_info: self.show_info,
@@ -121,29 +153,11 @@ impl MathExplorerApp {
             show_errors: self.show_errors,
             theme: self.theme,
             tab_states,
-        };
-        serde_json::to_string(&app_state).unwrap_or_default()
+        }
     }
 
-    /// Deserializes and restores the application state from JSON.
-    pub fn load_state_from_json(&mut self, json_str: &str) {
-        let app_state: AppState = match serde_json::from_str(json_str) {
-            Ok(state) => state,
-            Err(err) => {
-                global_registry().emit(TelemetryEvent {
-                    source: "MathExplorerApp".to_string(),
-                    severity: Severity::Warning,
-                    message: format!(
-                        "Failed to parse saved session state, resetting to defaults: {}",
-                        err
-                    ),
-                    metadata: std::collections::HashMap::new(),
-                    thread_name: None,
-                });
-                return;
-            }
-        };
-
+    /// Restores application state from an `AppState` struct.
+    pub fn apply_app_state(&mut self, app_state: AppState) {
         self.show_info = app_state.show_info;
         self.show_warnings = app_state.show_warnings;
         self.show_errors = app_state.show_errors;
@@ -163,6 +177,30 @@ impl MathExplorerApp {
             }
         } else if app_state.selected_tab < self.tabs.len() {
             self.selected_tab = app_state.selected_tab;
+        }
+    }
+
+    /// Serializes the entire application state (selected tab, panel toggles, individual tab states) to JSON.
+    pub fn save_state_to_json(&self) -> String {
+        serde_json::to_string(&self.get_app_state()).unwrap_or_default()
+    }
+
+    /// Deserializes and restores the application state from JSON.
+    pub fn load_state_from_json(&mut self, json_str: &str) {
+        match self.session_manager.parse_envelope(json_str) {
+            Ok(app_state) => self.apply_app_state(app_state),
+            Err(err) => {
+                global_registry().emit(TelemetryEvent {
+                    source: "MathExplorerApp".to_string(),
+                    severity: Severity::Warning,
+                    message: format!(
+                        "Failed to parse saved session state, resetting to defaults: {}",
+                        err
+                    ),
+                    metadata: std::collections::HashMap::new(),
+                    thread_name: None,
+                });
+            }
         }
     }
 }
@@ -189,6 +227,11 @@ impl eframe::App for MathExplorerApp {
         }) {
             crate::accessibility::announce_status_with_priority(&msg, "assertive");
         }
+
+        let mut session_mgr = std::mem::take(&mut self.session_manager);
+        session_mgr.register_and_check_shortcuts(ctx, self);
+        session_mgr.poll(self, ctx);
+        self.session_manager = session_mgr;
 
         // Global Keyboard Shortcut Listener for Cheatsheet Modal
         let modifiers = if cfg!(target_os = "macos") {
@@ -239,78 +282,28 @@ impl eframe::App for MathExplorerApp {
         self.diagnostic_events.extend(new_events);
 
         // Issues & Diagnostics Panel
-        egui::TopBottomPanel::bottom("issues_panel")
-            .resizable(true)
-            .min_height(100.0)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.heading("Issues & Diagnostics");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Clear").clicked() {
-                            self.diagnostic_events.clear();
-                        }
-                        ui.checkbox(&mut self.show_errors, "Errors/Fatal");
-                        ui.checkbox(&mut self.show_warnings, "Warnings");
-                        ui.checkbox(&mut self.show_info, "Info");
-                    });
-                });
-                ui.separator();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for event in &self.diagnostic_events {
-                        let show = match event.severity {
-                            Severity::Info => self.show_info,
-                            Severity::Warning => self.show_warnings,
-                            Severity::Error | Severity::Fatal => self.show_errors,
-                        };
-                        if !show {
-                            continue;
-                        }
-
-                        let color = match event.severity {
-                            Severity::Info => egui::Color32::LIGHT_BLUE,
-                            Severity::Warning => egui::Color32::YELLOW,
-                            Severity::Error => egui::Color32::RED,
-                            Severity::Fatal => egui::Color32::DARK_RED,
-                        };
-
-                        ui.group(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "[{} - {}]",
-                                        event.source, event.severity
-                                    ))
-                                    .color(color)
-                                    .strong(),
-                                );
-                                if let Some(thread) = &event.thread_name {
-                                    ui.label(
-                                        egui::RichText::new(format!("(Thread: {})", thread))
-                                            .italics(),
-                                    );
-                                }
-                                ui.label(&event.message);
-                            });
-                            if !event.metadata.is_empty() {
-                                ui.horizontal_wrapped(|ui| {
-                                    for (k, v) in &event.metadata {
-                                        ui.label(
-                                            egui::RichText::new(format!("{}: {}", k, v))
-                                                .monospace()
-                                                .size(10.0),
-                                        );
-                                    }
-                                });
-                            }
-                        });
-                    }
-                });
-            });
+        ui_panels::render_issues_panel(
+            ctx,
+            &mut self.diagnostic_events,
+            &mut self.show_errors,
+            &mut self.show_warnings,
+            &mut self.show_info,
+        );
 
         #[cfg(target_os = "macos")]
         {
             if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
-                if event.id.0.starts_with("tab_") {
+                if event.id.0 == "file_open" {
+                    self.session_manager.trigger_open();
+                } else if event.id.0 == "file_save" {
+                    let state = self.get_app_state();
+                    let env_json = self.session_manager.create_envelope(state);
+                    self.session_manager.trigger_save(env_json);
+                } else if event.id.0 == "file_save_as" {
+                    let state = self.get_app_state();
+                    let env_json = self.session_manager.create_envelope(state);
+                    self.session_manager.trigger_save_as(env_json);
+                } else if event.id.0.starts_with("tab_") {
                     if let Ok(idx) = event.id.0[4..].parse::<usize>() {
                         self.selected_tab = idx;
                     }
@@ -355,13 +348,54 @@ impl eframe::App for MathExplorerApp {
 
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    let shortcut_text = if cfg!(target_os = "macos") {
-                        "Cmd+Q"
+                    let cmd_str = if cfg!(target_os = "macos") {
+                        "Cmd+"
                     } else {
-                        "Ctrl+Q"
+                        "Ctrl+"
                     };
+                    let shift_cmd_str = if cfg!(target_os = "macos") {
+                        "Cmd+Shift+"
+                    } else {
+                        "Ctrl+Shift+"
+                    };
+
                     if ui
-                        .add(egui::Button::new("Quit").shortcut_text(shortcut_text))
+                        .add(
+                            egui::Button::new("Open Workspace Session...")
+                                .shortcut_text(format!("{}O", cmd_str)),
+                        )
+                        .clicked()
+                    {
+                        self.session_manager.trigger_open();
+                        ui.close();
+                    }
+                    if ui
+                        .add(
+                            egui::Button::new("Save Workspace Session")
+                                .shortcut_text(format!("{}S", cmd_str)),
+                        )
+                        .clicked()
+                    {
+                        let state = self.get_app_state();
+                        let env_json = self.session_manager.create_envelope(state);
+                        self.session_manager.trigger_save(env_json);
+                        ui.close();
+                    }
+                    if ui
+                        .add(
+                            egui::Button::new("Save Workspace Session As...")
+                                .shortcut_text(format!("{}S", shift_cmd_str)),
+                        )
+                        .clicked()
+                    {
+                        let state = self.get_app_state();
+                        let env_json = self.session_manager.create_envelope(state);
+                        self.session_manager.trigger_save_as(env_json);
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui
+                        .add(egui::Button::new("Quit").shortcut_text(format!("{}Q", cmd_str)))
                         .clicked()
                     {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -413,6 +447,8 @@ impl eframe::App for MathExplorerApp {
                     }
                 });
             });
+
+            self.session_manager.render_toast(ui);
         });
 
         // Render Active Tab
@@ -426,50 +462,7 @@ impl eframe::App for MathExplorerApp {
             });
         }
 
-        if self.show_help_menu {
-            egui::Window::new("Help Menu")
-                .open(&mut self.show_help_menu)
-                .resizable(true)
-                .show(ctx, |ui| {
-                    ui.heading("Available Commands");
-                    ui.separator();
-
-                    let registry_data = ctx.data(|d| {
-                        d.get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new(
-                            "CMD_REGISTRY",
-                        ))
-                        .unwrap_or_default()
-                    });
-
-                    if registry_data.commands.is_empty() {
-                        ui.label("No commands available for the current context.");
-                    } else {
-                        for cmd in registry_data.commands {
-                            ui.group(|ui| {
-                                ui.label(egui::RichText::new(&cmd.name).strong());
-                                ui.label(&cmd.description);
-
-                                let trigger_str = match &cmd.trigger {
-                                    egui_plot::commands::CommandTrigger::Key(k) => {
-                                        format!("Key: {:?}", k)
-                                    }
-                                    egui_plot::commands::CommandTrigger::Shortcut(m, k) => {
-                                        format!("Shortcut: {:?} + {:?}", m, k)
-                                    }
-                                    egui_plot::commands::CommandTrigger::AltClick => {
-                                        "Alt-Click".to_string()
-                                    }
-                                };
-                                ui.label(egui::RichText::new(trigger_str).code());
-
-                                if cmd.desktop_only {
-                                    ui.label(egui::RichText::new("Desktop Only").italics());
-                                }
-                            });
-                        }
-                    }
-                });
-        }
+        ui_panels::render_help_window(ctx, &mut self.show_help_menu);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
