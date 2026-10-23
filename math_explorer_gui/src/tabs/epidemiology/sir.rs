@@ -237,8 +237,10 @@ mod tests {
 
     #[test]
     fn test_sir_trace_snapshot_pinning_and_exports() {
-        let mut tool = SirTool::default();
-        tool.beta = 0.2;
+        let mut tool = SirTool {
+            beta: 0.2,
+            ..Default::default()
+        };
         tool.recalculate();
 
         // Pin snapshot for beta = 0.2

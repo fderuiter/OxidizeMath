@@ -68,8 +68,10 @@ fn test_ode_logistic_growth_divergence() {
 
 #[test]
 fn test_ode_trace_snapshot_pinning_and_export() {
-    let mut tool = OdeSolverTool::default();
-    tool.param_k = 1.0;
+    let mut tool = OdeSolverTool {
+        param_k: 1.0,
+        ..Default::default()
+    };
     tool.recalculate();
 
     // Pin baseline trajectory k=1.0
