@@ -232,6 +232,75 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_trace_overlay_screenshots() {
+        let options = egui_plot::export::ExportOptions::default();
+
+        // ODE trace overlay datasets
+        let ode_datasets = vec![
+            (
+                "y(t) [Active: k=2.50, dt=0.05]".to_string(),
+                (0..=100)
+                    .map(|i| {
+                        let t = i as f64 * 0.05;
+                        [t, (2.5 * t).exp().min(100.0)]
+                    })
+                    .collect(),
+            ),
+            (
+                "y(t) (Baseline 1: k=1.00, dt=0.05)".to_string(),
+                (0..=100)
+                    .map(|i| {
+                        let t = i as f64 * 0.05;
+                        [t, (1.0 * t).exp().min(100.0)]
+                    })
+                    .collect(),
+            ),
+        ];
+
+        if let Ok(png) = egui_plot::export::export_custom_png(&ode_datasets, &options) {
+            let _ = std::fs::write("/tmp/ode_trace_overlay.png", png);
+        }
+
+        // SIR trace overlay datasets
+        let sir_datasets = vec![
+            (
+                "Infected [Active: β=0.80, γ=0.10, N=1000]".to_string(),
+                (0..=100)
+                    .map(|i| {
+                        let t = i as f64 * 1.0;
+                        [t, 800.0 * (-((t - 15.0) / 5.0).powi(2)).exp()]
+                    })
+                    .collect(),
+            ),
+            (
+                "Infected (Baseline 1: β=0.20, γ=0.10, N=1000)".to_string(),
+                (0..=100)
+                    .map(|i| {
+                        let t = i as f64 * 1.0;
+                        [t, 200.0 * (-((t - 30.0) / 10.0).powi(2)).exp()]
+                    })
+                    .collect(),
+            ),
+            (
+                "Infected (Baseline 2: β=0.50, γ=0.10, N=1000)".to_string(),
+                (0..=100)
+                    .map(|i| {
+                        let t = i as f64 * 1.0;
+                        [t, 500.0 * (-((t - 20.0) / 7.0).powi(2)).exp()]
+                    })
+                    .collect(),
+            ),
+        ];
+
+        if let Ok(png) = egui_plot::export::export_custom_png(&sir_datasets, &options) {
+            let _ = std::fs::write("/tmp/sir_trace_overlay.png", png);
+        }
+
+        assert!(std::path::Path::new("/tmp/ode_trace_overlay.png").exists());
+        assert!(std::path::Path::new("/tmp/sir_trace_overlay.png").exists());
+    }
+
+    #[test]
     fn test_sensitivity_panel_screenshot_generation() {
         let ctx = eframe::egui::Context::default();
         let mut framework = SimulationFramework::new("epidemiology");

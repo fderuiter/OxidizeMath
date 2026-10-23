@@ -18,14 +18,10 @@ use super::{Cursor, LabelFormatter, PlotBounds, PlotTransform};
 
 pub use bar::Bar;
 pub use box_elem::{BoxElem, BoxSpread};
+pub use callout::Callout;
 pub use values::{
     ClosestElem, LineStyle, MarkerShape, Orientation, PlotGeometry, PlotPoint, PlotPoints,
 };
-
-mod bar;
-mod box_elem;
-mod rect_elem;
-mod values;
 
 const DEFAULT_FILL_ALPHA: f32 = 0.05;
 
@@ -92,6 +88,12 @@ macro_rules! builder_methods_for_base {
         }
     };
 }
+
+mod bar;
+mod box_elem;
+mod callout;
+mod rect_elem;
+mod values;
 
 /// Container to pass-through several parameters related to plot visualization
 pub struct PlotConfig<'a> {
@@ -795,7 +797,9 @@ impl PlotItem for Text {
             self.color
         };
 
-        let galley = self.text.clone().into_galley(
+        let job =
+            crate::latex::parse_latex_to_layout_job(self.text.text(), TextStyle::Small, ui, color);
+        let galley = WidgetText::LayoutJob(Arc::new(job)).into_galley(
             ui,
             Some(egui::TextWrapMode::Extend),
             f32::INFINITY,

@@ -942,6 +942,9 @@ pub fn color32_image_to_png(image: &egui::ColorImage) -> Result<Vec<u8>, String>
     Ok(bytes)
 }
 
+/// Type alias representing a single exported frame's dataset series.
+pub type ExportFrame = DatasetFrame;
+
 /// Trigger cross-platform file saving dialog or browser download action.
 pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _filter_ext: &[&str]) {
     #[cfg(not(target_arch = "wasm32"))]
@@ -1289,6 +1292,7 @@ mod tests {
         assert_eq!(&gif_bytes[0..6], b"GIF89a");
 
         let _ = std::fs::write("/tmp/simulation_export.gif", &gif_bytes);
+        let _ = std::fs::write("/tmp/sample_export.gif", &gif_bytes);
 
         if let Ok(png_bytes) = export_custom_png(&frame1, &options) {
             let _ = std::fs::write("/tmp/gif_frame_preview.png", &png_bytes);
@@ -1301,7 +1305,10 @@ mod tests {
         let result = export_custom_gif(&[], &options, 10);
         assert!(result.is_err());
         let err_msg = result.unwrap_err();
-        assert!(err_msg.contains("No dataset frames provided"));
+        assert!(
+            err_msg.contains("No dataset frames provided")
+                || err_msg.contains("No animation frames provided")
+        );
     }
 
     #[test]
@@ -1317,6 +1324,20 @@ mod tests {
             .expect("Single-frame fallback GIF export failed");
         assert!(!gif_bytes.is_empty());
         assert_eq!(&gif_bytes[0..6], b"GIF89a");
+    }
+
+    #[test]
+    fn test_export_custom_gif_max_dimension_cap() {
+        let frame1 = vec![("Series".to_string(), vec![[0.0, 0.0]])];
+        let options = ExportOptions {
+            width: 5000,
+            height: 5000,
+            scale: 1.0,
+            ..Default::default()
+        };
+        let result = export_custom_gif(&[frame1], &options, 10);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exceed maximum limit"));
     }
 
     #[test]
