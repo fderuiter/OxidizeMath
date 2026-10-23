@@ -15,6 +15,12 @@ pub const EXPORT_PALETTE: &[egui::Color32] = &[
     egui::Color32::from_rgb(127, 127, 127), // Gray
 ];
 
+/// Named dataset slice of 2D plot points.
+pub type ExportDataset = (String, Vec<[f64; 2]>);
+
+/// Frame snapshot containing multiple named plot datasets.
+pub type DatasetFrame = Vec<ExportDataset>;
+
 /// Preset choices for export canvas aspect ratio.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -372,6 +378,15 @@ pub fn export_custom_image(
     datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<egui::ColorImage, String> {
+    export_custom_image_with_bounds(datasets, options, None)
+}
+
+/// Render plot datasets into an `egui::ColorImage` buffer with custom bounding box override.
+pub fn export_custom_image_with_bounds(
+    datasets: &[(String, Vec<[f64; 2]>)],
+    options: &ExportOptions,
+    custom_bounds: Option<[f64; 4]>,
+) -> Result<egui::ColorImage, String> {
     let target_w = (options.width as f32 * options.scale).round() as u32;
     let mut target_h = (options.height as f32 * options.scale).round() as u32;
 
@@ -398,21 +413,26 @@ pub fn export_custom_image(
 
     let mut pixels = vec![bg_pixel; width * height];
 
-    let mut min_x = f64::INFINITY;
-    let mut max_x = -f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_y = -f64::INFINITY;
+    let (mut min_x, mut max_x, mut min_y, mut max_y) = if let Some(b) = custom_bounds {
+        (b[0], b[1], b[2], b[3])
+    } else {
+        let mut min_x = f64::INFINITY;
+        let mut max_x = -f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_y = -f64::INFINITY;
 
-    for (_, pts) in datasets {
-        for p in pts {
-            if p[0].is_finite() && p[1].is_finite() {
-                min_x = min_x.min(p[0]);
-                max_x = max_x.max(p[0]);
-                min_y = min_y.min(p[1]);
-                max_y = max_y.max(p[1]);
+        for (_, pts) in datasets {
+            for p in pts {
+                if p[0].is_finite() && p[1].is_finite() {
+                    min_x = min_x.min(p[0]);
+                    max_x = max_x.max(p[0]);
+                    min_y = min_y.min(p[1]);
+                    max_y = max_y.max(p[1]);
+                }
             }
         }
-    }
+        (min_x, max_x, min_y, max_y)
+    };
 
     if min_x >= max_x {
         min_x -= 1.0;
@@ -467,6 +487,123 @@ pub fn export_custom_image(
     }
 
     Ok(egui::ColorImage::new([width, height], pixels))
+}
+
+/// Convert a sequence of `egui::ColorImage` frames into an animated GIF byte stream.
+pub fn color32_images_to_gif(images: &[egui::ColorImage], fps: u32) -> Result<Vec<u8>, String> {
+    if images.is_empty() {
+        return Err("No frames provided for GIF encoding".to_string());
+    }
+
+    let clamped_fps = fps.clamp(1, 60);
+    let delay_ms = (1000 / clamped_fps).max(1);
+    let delay =
+        image::Delay::from_saturating_duration(std::time::Duration::from_millis(delay_ms as u64));
+
+    let mut gif_bytes = Vec::new();
+    {
+        let mut encoder = image::codecs::gif::GifEncoder::new(&mut gif_bytes);
+        encoder
+            .set_repeat(image::codecs::gif::Repeat::Infinite)
+            .map_err(|e| format!("Failed to set GIF repeat mode: {e}"))?;
+
+        for img in images {
+            let width = img.width() as u32;
+            let height = img.height() as u32;
+            if width == 0 || height == 0 {
+                continue;
+            }
+
+            let mut rgba_buf = Vec::with_capacity((width * height * 4) as usize);
+            for p in &img.pixels {
+                rgba_buf.push(p.r());
+                rgba_buf.push(p.g());
+                rgba_buf.push(p.b());
+                rgba_buf.push(p.a());
+            }
+
+            let rgba_img = image::RgbaImage::from_raw(width, height, rgba_buf)
+                .ok_or_else(|| "Failed to construct RGBA buffer for GIF frame".to_string())?;
+
+            let frame = image::Frame::from_parts(rgba_img, 0, 0, delay);
+            encoder
+                .encode_frame(frame)
+                .map_err(|e| format!("Failed to encode GIF frame: {e}"))?;
+        }
+    }
+
+    if gif_bytes.is_empty() {
+        return Err("GIF encoding produced empty byte stream".to_string());
+    }
+
+    Ok(gif_bytes)
+}
+
+/// Sample progressive frame steps across a dataset for time-evolution animations.
+pub fn sample_progressive_frames(
+    datasets: &[ExportDataset],
+    num_frames: usize,
+) -> Vec<DatasetFrame> {
+    let count = num_frames.max(1);
+    let mut frames = Vec::with_capacity(count);
+
+    for frame_idx in 1..=count {
+        let mut frame_datasets = Vec::with_capacity(datasets.len());
+        for (name, pts) in datasets {
+            if pts.is_empty() {
+                frame_datasets.push((name.clone(), Vec::new()));
+            } else {
+                let keep_count = ((pts.len() * frame_idx) / count).max(1).min(pts.len());
+                frame_datasets.push((name.clone(), pts[..keep_count].to_vec()));
+            }
+        }
+        frames.push(frame_datasets);
+    }
+
+    frames
+}
+
+/// Render a sequence of plot frame datasets into an animated GIF byte stream.
+pub fn export_custom_gif(
+    frames: &[DatasetFrame],
+    options: &ExportOptions,
+    fps: u32,
+) -> Result<Vec<u8>, String> {
+    if frames.is_empty() {
+        return Err("No dataset frames provided for GIF export".to_string());
+    }
+
+    let mut min_x = f64::INFINITY;
+    let mut max_x = -f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_y = -f64::INFINITY;
+
+    for frame in frames {
+        for (_, pts) in frame {
+            for p in pts {
+                if p[0].is_finite() && p[1].is_finite() {
+                    min_x = min_x.min(p[0]);
+                    max_x = max_x.max(p[0]);
+                    min_y = min_y.min(p[1]);
+                    max_y = max_y.max(p[1]);
+                }
+            }
+        }
+    }
+
+    let custom_bounds = if min_x < max_x && min_y < max_y {
+        Some([min_x, max_x, min_y, max_y])
+    } else {
+        None
+    };
+
+    let mut images = Vec::with_capacity(frames.len());
+    for frame in frames {
+        let image = export_custom_image_with_bounds(frame, options, custom_bounds)?;
+        images.push(image);
+    }
+
+    color32_images_to_gif(&images, fps)
 }
 
 /// Render plot datasets into a high-resolution PNG image byte buffer using offscreen rasterization.
@@ -652,6 +789,8 @@ pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _fil
             "application/json"
         } else if filename.ends_with(".png") {
             "image/png"
+        } else if filename.ends_with(".gif") {
+            "image/gif"
         } else {
             "application/octet-stream"
         };
@@ -859,5 +998,83 @@ mod tests {
         let content = "Not a CSV file at all\nJust some random text\nWith no numbers anywhere\n";
         let datasets = parse_csv(content);
         assert!(datasets.is_empty());
+    }
+
+    #[test]
+    fn test_color32_images_to_gif_header_and_delay() {
+        let frame1 = egui::ColorImage::new([10, 10], vec![egui::Color32::RED; 100]);
+        let frame2 = egui::ColorImage::new([10, 10], vec![egui::Color32::BLUE; 100]);
+        let frame3 = egui::ColorImage::new([10, 10], vec![egui::Color32::GREEN; 100]);
+
+        let gif_bytes =
+            color32_images_to_gif(&[frame1, frame2, frame3], 15).expect("GIF encoding failed");
+        assert!(!gif_bytes.is_empty());
+        assert_eq!(&gif_bytes[0..6], b"GIF89a");
+    }
+
+    #[test]
+    fn test_export_custom_gif_multiframe() {
+        let frame1 = vec![("Line".to_string(), vec![[0.0, 0.0], [1.0, 1.0]])];
+        let frame2 = vec![("Line".to_string(), vec![[0.0, 0.0], [1.0, 1.0], [2.0, 4.0]])];
+        let frame3 = vec![(
+            "Line".to_string(),
+            vec![[0.0, 0.0], [1.0, 1.0], [2.0, 4.0], [3.0, 9.0]],
+        )];
+
+        let options = ExportOptions {
+            width: 400,
+            height: 300,
+            ..Default::default()
+        };
+
+        let gif_bytes = export_custom_gif(&[frame1.clone(), frame2, frame3], &options, 10)
+            .expect("Multi-frame GIF export failed");
+        assert!(!gif_bytes.is_empty());
+        assert_eq!(&gif_bytes[0..6], b"GIF89a");
+
+        let _ = std::fs::write("/tmp/simulation_export.gif", &gif_bytes);
+
+        if let Ok(png_bytes) = export_custom_png(&frame1, &options) {
+            let _ = std::fs::write("/tmp/gif_frame_preview.png", &png_bytes);
+        }
+    }
+
+    #[test]
+    fn test_export_custom_gif_empty_handling() {
+        let options = ExportOptions::default();
+        let result = export_custom_gif(&[], &options, 10);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err();
+        assert!(err_msg.contains("No dataset frames provided"));
+    }
+
+    #[test]
+    fn test_export_custom_gif_single_frame_fallback() {
+        let frame1 = vec![("Single".to_string(), vec![[0.0, 1.0], [1.0, 2.0]])];
+        let options = ExportOptions {
+            width: 100,
+            height: 100,
+            ..Default::default()
+        };
+
+        let gif_bytes = export_custom_gif(&[frame1], &options, 10)
+            .expect("Single-frame fallback GIF export failed");
+        assert!(!gif_bytes.is_empty());
+        assert_eq!(&gif_bytes[0..6], b"GIF89a");
+    }
+
+    #[test]
+    fn test_sample_progressive_frames() {
+        let datasets = vec![(
+            "Trace".to_string(),
+            vec![[0.0, 0.0], [1.0, 1.0], [2.0, 2.0], [3.0, 3.0]],
+        )];
+
+        let frames = sample_progressive_frames(&datasets, 4);
+        assert_eq!(frames.len(), 4);
+        assert_eq!(frames[0][0].1.len(), 1);
+        assert_eq!(frames[1][0].1.len(), 2);
+        assert_eq!(frames[2][0].1.len(), 3);
+        assert_eq!(frames[3][0].1.len(), 4);
     }
 }
