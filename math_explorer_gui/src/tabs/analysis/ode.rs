@@ -55,6 +55,36 @@ impl OdeSystem<VecState> for LogisticGrowthOde {
     }
 }
 
+fn eval_ode_final_state(preset: OdePreset, dt: f64, total_time: f64, p_map: &std::collections::HashMap<String, f64>) -> f64 {
+    let y0 = p_map.get("y0").copied().unwrap_or(1.0);
+    let v0 = p_map.get("v0").copied().unwrap_or(0.0);
+    let k = p_map.get("k").copied().unwrap_or(1.0);
+    let r = p_map.get("r").copied().unwrap_or(1.0);
+    let cap_k = p_map.get("cap_k").copied().unwrap_or(10.0);
+
+    let steps = (total_time / dt).ceil() as usize;
+    match preset {
+        OdePreset::Exponential => {
+            let init = VecState(vec![y0]);
+            let mut model = OdeModel::new(init.clone(), ExponentialOde { k }, RungeKutta4::new(&init));
+            for _ in 0..steps { model.step(dt); }
+            model.state.0[0]
+        }
+        OdePreset::HarmonicOscillator => {
+            let init = VecState(vec![y0, v0]);
+            let mut model = OdeModel::new(init.clone(), HarmonicOscillatorOde { k }, RungeKutta4::new(&init));
+            for _ in 0..steps { model.step(dt); }
+            model.state.0[0]
+        }
+        OdePreset::LogisticGrowth => {
+            let init = VecState(vec![y0]);
+            let mut model = OdeModel::new(init.clone(), LogisticGrowthOde { r, cap_k }, RungeKutta4::new(&init));
+            for _ in 0..steps { model.step(dt); }
+            model.state.0[0]
+        }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Tool Implementation
 // ----------------------------------------------------------------------------
@@ -74,6 +104,7 @@ pub struct OdeSolverTool {
     diverged: bool,
     // Dialog & Presets
     dialog_state: PresetDialogState,
+    sensitivity_engine: crate::sensitivity::SensitivityEngine,
 }
 
 impl Default for OdeSolverTool {
@@ -92,6 +123,7 @@ impl Default for OdeSolverTool {
             v_series: Vec::new(),
             diverged: false,
             dialog_state: PresetDialogState::default(),
+            sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
         };
         tool.recalculate();
         tool
@@ -314,6 +346,30 @@ impl InteractiveTool for OdeSolverTool {
                 changed = true;
             }
             self.dialog_state = dialog_state;
+
+            let params = match self.preset {
+                OdePreset::Exponential => vec![("k".to_string(), self.param_k), ("y0".to_string(), self.ic_y0)],
+                OdePreset::HarmonicOscillator => vec![
+                    ("k".to_string(), self.param_k),
+                    ("y0".to_string(), self.ic_y0),
+                    ("v0".to_string(), self.ic_v0),
+                ],
+                OdePreset::LogisticGrowth => vec![
+                    ("r".to_string(), self.param_r),
+                    ("cap_k".to_string(), self.param_cap_k),
+                    ("y0".to_string(), self.ic_y0),
+                ],
+            };
+
+            let current_preset = self.preset;
+            let current_dt = self.dt;
+            let current_total_time = self.total_time;
+
+            self.sensitivity_engine.compute(&params, |p_map| {
+                eval_ode_final_state(current_preset, current_dt, current_total_time, p_map)
+            });
+
+            crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "ode_tool");
         });
 
         if changed {
@@ -425,69 +481,4 @@ impl InteractivePreset for OdeSolverTool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ode_divergence_detection() {
-        let mut tool = OdeSolverTool::default();
-        assert!(!tool.diverged());
-
-        // Set exponential growth rate and initial value that causes f64 overflow/divergence
-        tool.param_k = 1e300;
-        tool.ic_y0 = 1e300;
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        // Verify time_series and y_series do not contain non-finite values
-        assert!(tool.y_series.iter().all(|y| y.is_finite()));
-        assert!(tool.time_series.iter().all(|t| t.is_finite()));
-
-        // Reset parameters recovers from divergence
-        tool.reset_parameters();
-        assert!(!tool.diverged());
-        assert!(!tool.y_series.is_empty());
-    }
-
-    #[test]
-    fn test_ode_nan_initial_condition() {
-        let mut tool = OdeSolverTool {
-            ic_y0: f64::NAN,
-            ..Default::default()
-        };
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        assert!(tool.y_series.is_empty());
-    }
-
-    #[test]
-    fn test_ode_harmonic_oscillator_divergence() {
-        let mut tool = OdeSolverTool {
-            preset: OdePreset::HarmonicOscillator,
-            param_k: 1e300,
-            ic_y0: 1e300,
-            ..Default::default()
-        };
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        assert!(tool.y_series.iter().all(|y| y.is_finite()));
-        assert!(tool.v_series.iter().all(|v| v.is_finite()));
-    }
-
-    #[test]
-    fn test_ode_logistic_growth_divergence() {
-        let mut tool = OdeSolverTool {
-            preset: OdePreset::LogisticGrowth,
-            param_r: 1e300,
-            param_cap_k: 1.0,
-            ic_y0: 1e300,
-            ..Default::default()
-        };
-        tool.recalculate();
-
-        assert!(tool.diverged());
-        assert!(tool.y_series.iter().all(|y| y.is_finite()));
-    }
-}
+mod ode_tests;
