@@ -14,6 +14,7 @@ pub mod commands;
 pub mod export;
 pub mod fit;
 mod items;
+pub mod latex;
 mod legend;
 mod memory;
 mod plot_ui;
@@ -43,6 +44,7 @@ pub use crate::{
         MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem, PlotItemBase,
         PlotPoint, PlotPoints, Points, Polygon, Text, VLine,
     },
+    latex::{parse_latex_to_layout_job, parse_latex_with_font},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::PlotMemory,
     plot_ui::PlotUi,

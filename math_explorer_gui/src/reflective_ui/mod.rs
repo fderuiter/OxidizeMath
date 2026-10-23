@@ -166,9 +166,16 @@ pub fn render_formula_with_export(
     let is_latex_empty = latex_str.trim().is_empty();
     let is_plain_empty = plain_text.trim().is_empty();
 
+    let formula_job = egui_plot::parse_latex_to_layout_job(
+        latex_str,
+        egui::TextStyle::Body,
+        ui,
+        ui.visuals().text_color(),
+    );
+
     let response = ui
         .horizontal_wrapped(|ui| {
-            ui.add(egui::Label::new(latex_str).wrap());
+            ui.add(egui::Label::new(formula_job).wrap());
             if ui
                 .add_enabled(!is_latex_empty, egui::Button::new("📋 LaTeX"))
                 .on_hover_text("Copy LaTeX formula")
