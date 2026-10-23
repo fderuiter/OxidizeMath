@@ -39,13 +39,11 @@ impl WorkspaceSessionManager {
     }
 
     /// Returns a reference to the active workspace file path if set.
-    #[allow(dead_code)]
     pub fn active_file_path(&self) -> Option<&PathBuf> {
         self.active_file_path.as_ref()
     }
 
     /// Sets the active workspace file path.
-    #[allow(dead_code)]
     pub fn set_active_file_path(&mut self, path: Option<PathBuf>) {
         self.active_file_path = path;
     }
@@ -56,13 +54,11 @@ impl WorkspaceSessionManager {
     }
 
     /// Clears the active toast notification message.
-    #[allow(dead_code)]
     pub fn clear_toast(&mut self) {
         self.toast = None;
     }
 
     /// Returns the active toast notification message if present.
-    #[allow(dead_code)]
     pub fn toast(&self) -> Option<&(String, bool)> {
         self.toast.as_ref()
     }
@@ -163,7 +159,7 @@ impl WorkspaceSessionManager {
 
     /// Saves the workspace session state directly if an active file path exists, or prompts Save As otherwise.
     pub fn trigger_save(&mut self, envelope_json: String) {
-        if let Some(path) = self.active_file_path.clone() {
+        if let Some(path) = self.active_file_path().cloned() {
             #[cfg(not(target_arch = "wasm32"))]
             {
                 let path_clone = path.clone();
@@ -245,7 +241,7 @@ impl WorkspaceSessionManager {
                     Ok((path, content)) => match self.parse_envelope(&content) {
                         Ok(app_state) => {
                             app.apply_app_state(app_state);
-                            self.active_file_path = Some(path.clone());
+                            self.set_active_file_path(Some(path.clone()));
                             let file_name = path
                                 .file_name()
                                 .and_then(|n| n.to_str())
@@ -300,7 +296,7 @@ impl WorkspaceSessionManager {
                 self.save_as_rx = None;
                 match res {
                     Ok(path) => {
-                        self.active_file_path = Some(path.clone());
+                        self.set_active_file_path(Some(path.clone()));
                         let file_name = path
                             .file_name()
                             .and_then(|n| n.to_str())
@@ -342,7 +338,7 @@ impl WorkspaceSessionManager {
 
     /// Renders any active workspace toast notification message in the UI.
     pub fn render_toast(&mut self, ui: &mut egui::Ui) {
-        if let Some((msg, is_error)) = &self.toast {
+        if let Some((msg, is_error)) = self.toast() {
             let mut dismiss = false;
             ui.horizontal(|ui| {
                 let color = if *is_error {
@@ -357,7 +353,7 @@ impl WorkspaceSessionManager {
                 }
             });
             if dismiss {
-                self.toast = None;
+                self.clear_toast();
             }
         }
     }

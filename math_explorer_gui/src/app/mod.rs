@@ -322,6 +322,13 @@ impl eframe::App for MathExplorerApp {
             }
         }
 
+        #[cfg(target_os = "macos")]
+        if self.session_manager.toast().is_some() {
+            egui::TopBottomPanel::top("toast_panel").show(ctx, |ui| {
+                self.session_manager.render_toast(ui);
+            });
+        }
+
         // Render Menu Bar (Native fallback for non-macOS or inside the app)
         #[cfg(not(target_os = "macos"))]
         egui::TopBottomPanel::top("main_menu").show(ctx, |ui| {
