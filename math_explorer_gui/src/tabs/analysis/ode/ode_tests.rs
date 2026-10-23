@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use crate::framework::{InteractiveTool, TraceSeries};
 
 #[test]
 fn test_ode_divergence_detection() {
@@ -63,4 +64,50 @@ fn test_ode_logistic_growth_divergence() {
 
     assert!(tool.diverged());
     assert!(tool.y_series.iter().all(|y| y.is_finite()));
+}
+
+#[test]
+fn test_ode_trace_snapshot_pinning_and_export() {
+    let mut tool = OdeSolverTool {
+        param_k: 1.0,
+        ..Default::default()
+    };
+    tool.recalculate();
+
+    // Pin baseline trajectory k=1.0
+    let summary = tool.param_summary();
+    let pts: Vec<[f64; 2]> = tool
+        .time_series
+        .iter()
+        .zip(&tool.y_series)
+        .map(|(&t, &y)| [t, y])
+        .collect();
+    tool.snapshot_manager.add_snapshot(
+        "Baseline 1",
+        summary,
+        vec![TraceSeries::new("y(t)", pts.clone())],
+    );
+
+    assert_eq!(tool.snapshot_manager.len(), 1);
+
+    // Change parameter k=2.5 and recalculate active simulation
+    tool.param_k = 2.5;
+    tool.recalculate();
+
+    // Pinned snapshot retains baseline curve points
+    assert_eq!(
+        tool.snapshot_manager.snapshots()[0].param_summary,
+        "k=1.00, dt=0.05"
+    );
+    assert_eq!(tool.snapshot_manager.snapshots()[0].series[0].points, pts);
+
+    // Export datasets includes active + pinned traces
+    let exported = tool.export_datasets();
+    assert!(exported.iter().any(|(name, _)| name.contains("Baseline 1")));
+
+    // State serialization roundtrip preserves snapshot
+    let state = tool.save_state().expect("save state");
+    let mut restored = OdeSolverTool::default();
+    restored.load_state(&state);
+    assert_eq!(restored.snapshot_manager.len(), 1);
 }

@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::InteractiveTool;
+use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
 use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialogState};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
@@ -104,6 +104,7 @@ pub struct OdeSolverTool {
     diverged: bool,
     // Dialog & Presets
     dialog_state: PresetDialogState,
+    snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
 }
 
@@ -123,6 +124,7 @@ impl Default for OdeSolverTool {
             v_series: Vec::new(),
             diverged: false,
             dialog_state: PresetDialogState::default(),
+            snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
         };
         tool.recalculate();
@@ -131,6 +133,13 @@ impl Default for OdeSolverTool {
 }
 
 impl OdeSolverTool {
+    pub fn param_summary(&self) -> String {
+        match self.preset {
+            OdePreset::Exponential => format!("k={:.2}, dt={:.2}", self.param_k, self.dt),
+            OdePreset::HarmonicOscillator => format!("k={:.2}, dt={:.2}", self.param_k, self.dt),
+            OdePreset::LogisticGrowth => format!("r={:.2}, K={:.2}, dt={:.2}", self.param_r, self.param_cap_k, self.dt),
+        }
+    }
     #[must_use]
     #[allow(dead_code)]
     pub fn diverged(&self) -> bool {
@@ -239,11 +248,35 @@ struct OdeState {
     param_cap_k: f64,
     ic_y0: f64,
     ic_v0: f64,
+    #[serde(default)]
+    snapshot_manager: TraceSnapshotManager,
 }
 
 impl InteractiveTool for OdeSolverTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str { "ODE Solvers" }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut datasets = egui_plot::get_last_plot_datasets();
+        if datasets.is_empty() {
+            let mut plot_points_y = Vec::new();
+            let mut plot_points_v = Vec::new();
+            for (i, &t) in self.time_series.iter().enumerate() {
+                if let Some(&y) = self.y_series.get(i) {
+                    plot_points_y.push([t, y]);
+                }
+                if let Some(&v) = self.v_series.get(i) {
+                    plot_points_v.push([t, v]);
+                }
+            }
+            datasets.push(("y(t)".to_string(), plot_points_y));
+            if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
+                datasets.push(("y'(t)".to_string(), plot_points_v));
+            }
+            datasets.extend(self.snapshot_manager.export_datasets());
+        }
+        datasets
+    }
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&OdeState {
@@ -254,6 +287,7 @@ impl InteractiveTool for OdeSolverTool {
             param_cap_k: self.param_cap_k,
             ic_y0: self.ic_y0,
             ic_v0: self.ic_v0,
+            snapshot_manager: self.snapshot_manager.clone(),
         })
         .ok()
     }
@@ -267,6 +301,7 @@ impl InteractiveTool for OdeSolverTool {
             self.param_cap_k = s.param_cap_k;
             self.ic_y0 = s.ic_y0;
             self.ic_v0 = s.ic_v0;
+            self.snapshot_manager = s.snapshot_manager;
             self.recalculate();
         }
     }
@@ -274,6 +309,18 @@ impl InteractiveTool for OdeSolverTool {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         let mut changed = false;
+
+        let mut plot_points_y = Vec::new();
+        let mut plot_points_v = Vec::new();
+
+        for (i, &t) in self.time_series.iter().enumerate() {
+            if let Some(&y) = self.y_series.get(i) {
+                plot_points_y.push([t, y]);
+            }
+            if let Some(&v) = self.v_series.get(i) {
+                plot_points_v.push([t, v]);
+            }
+        }
 
         egui::SidePanel::left("ode_controls").show(ctx, |ui| {
             ui.heading("ODE System");
@@ -341,6 +388,22 @@ impl InteractiveTool for OdeSolverTool {
                 if ui.add(egui::DragValue::new(&mut self.total_time).speed(1.0).range(1.0..=100.0)).changed() { changed = true; }
             });
 
+            ui.add_space(10.0);
+            let param_summary = self.param_summary();
+            let is_harmonic = self.preset == OdePreset::HarmonicOscillator;
+            let py = plot_points_y.clone();
+            let pv = plot_points_v.clone();
+            let current_len = self.snapshot_manager.len();
+
+            self.snapshot_manager.render_ui(ui, || {
+                let label = format!("Baseline {}", current_len + 1);
+                let mut series = vec![TraceSeries::new("y(t)", py)];
+                if is_harmonic && !pv.is_empty() {
+                    series.push(TraceSeries::new("y'(t)", pv));
+                }
+                Some((label, param_summary, series))
+            });
+
             let mut dialog_state = std::mem::take(&mut self.dialog_state);
             if crate::presets::render_preset_buttons(&mut dialog_state, ui, self) {
                 changed = true;
@@ -395,18 +458,6 @@ impl InteractiveTool for OdeSolverTool {
                 });
             }
 
-            let mut plot_points_y = Vec::new();
-            let mut plot_points_v = Vec::new();
-
-            for (i, &t) in self.time_series.iter().enumerate() {
-                if let Some(&y) = self.y_series.get(i) {
-                    plot_points_y.push([t, y]);
-                }
-                if let Some(&v) = self.v_series.get(i) {
-                    plot_points_v.push([t, v]);
-                }
-            }
-
             let line_y = Line::new("y(t)", PlotPoints::new(plot_points_y)).color(egui::Color32::LIGHT_BLUE);
 
             Plot::new("ode_plot")
@@ -421,6 +472,7 @@ impl InteractiveTool for OdeSolverTool {
                             .color(egui::Color32::LIGHT_RED);
                         plot_ui.line(line_v);
                     }
+                    self.snapshot_manager.render_on_plot(plot_ui);
                 });
         });
     }
