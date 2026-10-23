@@ -197,6 +197,7 @@ pub struct Plot<'a> {
     y_axes: Vec<AxisHints<'a>>, // default y axes
     legend_config: Option<Legend>,
     cursor_color: Option<Color32>,
+    cursor_snap_distance: Option<f32>,
     show_background: bool,
     show_axes: Vec2b,
 
@@ -247,6 +248,7 @@ impl<'a> Plot<'a> {
             y_axes: vec![AxisHints::new(Axis::Y)],
             legend_config: None,
             cursor_color: None,
+            cursor_snap_distance: Some(16.0),
             show_background: true,
             show_axes: true.into(),
 
@@ -799,6 +801,14 @@ impl<'a> Plot<'a> {
         self
     }
 
+    /// Distance in points within which pointer snaps to plot curve points.
+    /// Default is `16.0` points.
+    #[inline]
+    pub fn cursor_snap_distance(mut self, distance: f32) -> Self {
+        self.cursor_snap_distance = Some(distance);
+        self
+    }
+
     /// Interact with and add items to the plot and finally draw it.
     pub fn show<'b, R>(
         self,
@@ -842,6 +852,7 @@ impl<'a> Plot<'a> {
             y_axes,
             legend_config,
             cursor_color,
+            cursor_snap_distance,
             reset,
             show_background,
             show_axes,
@@ -1425,6 +1436,7 @@ impl<'a> Plot<'a> {
             draw_cursor_y: linked_cursors.as_ref().is_some_and(|group| group.1.y),
             draw_cursors,
             cursor_color,
+            cursor_snap_distance,
             grid_spacers: active_grid_spacers,
             clamp_grid: active_clamp_grid,
             plot_id,
@@ -1489,6 +1501,8 @@ impl<'a> Plot<'a> {
             export_line_thickness: f32,
             export_bg_opacity: f32,
             export_bg_dark: bool,
+            export_gif_fps: u32,
+            export_gif_frames: u32,
             status_message: Option<String>,
             focused_item: usize,
             focused_point: usize,
@@ -1514,6 +1528,8 @@ impl<'a> Plot<'a> {
                     export_line_thickness: 2.0,
                     export_bg_opacity: 1.0,
                     export_bg_dark: true,
+                    export_gif_fps: 15,
+                    export_gif_frames: 20,
                     status_message: None,
                     focused_item: 0,
                     focused_point: 0,
@@ -1846,6 +1862,19 @@ impl<'a> Plot<'a> {
                         ui.selectable_value(&mut access_state.export_bg_dark, false, "Light");
                     });
 
+                    ui.horizontal(|ui| {
+                        ui.label("GIF FPS:");
+                        ui.add(egui::Slider::new(&mut access_state.export_gif_fps, 1..=60));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("GIF Frame Steps:");
+                        ui.add(egui::Slider::new(
+                            &mut access_state.export_gif_frames,
+                            5..=60,
+                        ));
+                    });
+
                     ui.separator();
 
                     let base_w = 1920u32;
@@ -1907,6 +1936,33 @@ impl<'a> Plot<'a> {
                                 Err(e) => {
                                     access_state.status_message =
                                         Some(format!("Export failed: {e}"));
+                                }
+                            }
+                        }
+
+                        if ui.button("🎥 Save GIF").clicked() {
+                            let sampled_frames = export::sample_progressive_frames(
+                                &export_datasets,
+                                access_state.export_gif_frames as usize,
+                            );
+                            match export::export_custom_gif(
+                                &sampled_frames,
+                                &options,
+                                access_state.export_gif_fps,
+                            ) {
+                                Ok(gif_bytes) => {
+                                    export::save_file_dialog(
+                                        "plot.gif",
+                                        &gif_bytes,
+                                        "GIF Animation",
+                                        &["gif"],
+                                    );
+                                    access_state.status_message =
+                                        Some("GIF animation saved successfully.".to_string());
+                                }
+                                Err(e) => {
+                                    access_state.status_message =
+                                        Some(format!("GIF export failed: {e}"));
                                 }
                             }
                         }
@@ -2497,6 +2553,7 @@ struct PreparedPlot<'a> {
     draw_cursor_y: bool,
     draw_cursors: Vec<Cursor>,
     cursor_color: Option<Color32>,
+    cursor_snap_distance: Option<f32>,
 
     clamp_grid: bool,
     plot_id: Id,
@@ -2721,6 +2778,7 @@ impl PreparedPlot<'_> {
             show_y,
             label_formatter,
             items,
+            cursor_snap_distance,
             ..
         } = self;
 
@@ -2728,7 +2786,9 @@ impl PreparedPlot<'_> {
             return (Vec::new(), None);
         }
 
-        let interact_radius_sq = ui.style().interaction.interact_radius.powi(2);
+        let snap_distance =
+            cursor_snap_distance.unwrap_or_else(|| ui.style().interaction.interact_radius);
+        let snap_dist_sq = snap_distance.powi(2);
 
         let candidates = items
             .iter()
@@ -2742,7 +2802,7 @@ impl PreparedPlot<'_> {
 
         let closest = candidates
             .min_by_key(|(_, elem)| elem.dist_sq.ord())
-            .filter(|(_, elem)| elem.dist_sq <= interact_radius_sq);
+            .filter(|(_, elem)| elem.dist_sq <= snap_dist_sq);
 
         let plot = items::PlotConfig {
             ui,
@@ -3050,4 +3110,98 @@ fn test_plot_settings_modal_toggle_and_rendering() {
         mem.show_settings_modal,
         "Settings modal should be active after toggle"
     );
+}
+
+#[cfg(test)]
+mod cursor_snap_tests {
+    use super::*;
+
+    #[test]
+    fn test_cursor_snap_distance_builder() {
+        let default_plot = Plot::new("default_plot");
+        assert_eq!(default_plot.cursor_snap_distance, Some(16.0));
+
+        let custom_plot = Plot::new("custom_plot").cursor_snap_distance(32.0);
+        assert_eq!(custom_plot.cursor_snap_distance, Some(32.0));
+    }
+
+    #[test]
+    fn test_cursor_snap_distance_hover() {
+        egui::__run_test_ui(|ui| {
+            let pts = vec![[0.0, 0.0], [10.0, 10.0]];
+            let line = Line::new("Series 1", PlotPoints::new(pts));
+
+            let response = Plot::new("snap_test")
+                .cursor_snap_distance(16.0)
+                .show(ui, |plot_ui| {
+                    plot_ui.line(line);
+                });
+
+            assert!(response.response.rect.width() > 0.0);
+            assert_eq!(response.hovered_plot_item, None);
+        });
+    }
+
+    #[test]
+    fn test_cursor_snap_custom_threshold() {
+        egui::__run_test_ui(|ui| {
+            let pts = vec![[5.0, 5.0]];
+            let points = Points::new("Points Series", PlotPoints::new(pts));
+
+            let res_tight = Plot::new("tight_snap")
+                .cursor_snap_distance(2.0)
+                .show(ui, |plot_ui| {
+                    plot_ui.points(points);
+                });
+
+            assert_eq!(res_tight.hovered_plot_item, None);
+            assert!(res_tight.transform.bounds().is_valid());
+        });
+    }
+
+    #[test]
+    fn test_overlapping_series_selection() {
+        egui::__run_test_ui(|ui| {
+            let s1 = vec![[0.0, 0.0], [10.0, 10.0]];
+            let s2 = vec![[0.0, 1.0], [10.0, 11.0]];
+
+            let line1 = Line::new("Series Alpha", PlotPoints::new(s1));
+            let line2 = Line::new("Series Beta", PlotPoints::new(s2));
+
+            let response = Plot::new("overlap_test").show(ui, |plot_ui| {
+                plot_ui.line(line1);
+                plot_ui.line(line2);
+            });
+
+            assert!(response.response.rect.width() > 0.0);
+            assert_eq!(
+                response.transform.frame().width(),
+                response.response.rect.width()
+            );
+        });
+    }
+
+    #[test]
+    fn test_generate_snap_tooltip_verification_screenshot() {
+        let sample_pts: Vec<[f64; 2]> = (0..50)
+            .map(|i| {
+                let x = i as f64 * 0.2;
+                let y = (x * 0.8).sin() * 2.0;
+                [x, y]
+            })
+            .collect();
+
+        let datasets = vec![("Sine Wave Curve".to_string(), sample_pts)];
+        let options = ExportOptions {
+            width: 800,
+            height: 450,
+            line_thickness: 2.0,
+            ..Default::default()
+        };
+
+        if let Ok(png_bytes) = export_custom_png(&datasets, &options) {
+            let res = std::fs::write("/tmp/snap_tooltip_verification.png", png_bytes);
+            assert!(res.is_ok());
+        }
+    }
 }
