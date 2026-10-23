@@ -35,6 +35,56 @@ pub struct PlotMemory {
 
     /// Persisted imported datasets overlaid on the plot.
     pub imported_datasets: Vec<crate::export::ImportedDataset>,
+
+    /// Toggle logarithmic scale transformation on X-axis.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub log_x: bool,
+
+    /// Toggle logarithmic scale transformation on Y-axis.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub log_y: bool,
+
+    /// Minimum grid line spacing in pixels (grid density).
+    #[cfg_attr(feature = "serde", serde(default = "default_grid_density"))]
+    pub grid_density: f32,
+
+    /// Visibility of X-axis labels.
+    #[cfg_attr(feature = "serde", serde(default = "default_true"))]
+    pub show_x_labels: bool,
+
+    /// Visibility of Y-axis labels.
+    #[cfg_attr(feature = "serde", serde(default = "default_true"))]
+    pub show_y_labels: bool,
+
+    /// Clamp grid lines to actual data range.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub clamp_grid: bool,
+
+    /// Grid line visibility per axis.
+    #[cfg_attr(feature = "serde", serde(default = "default_show_grid"))]
+    pub show_grid: Vec2b,
+
+    /// Toggle visibility of plot settings modal window.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub show_settings_modal: bool,
+}
+
+#[allow(dead_code)]
+#[inline]
+fn default_grid_density() -> f32 {
+    8.0
+}
+
+#[allow(dead_code)]
+#[inline]
+fn default_true() -> bool {
+    true
+}
+
+#[allow(dead_code)]
+#[inline]
+fn default_show_grid() -> Vec2b {
+    Vec2b::new(true, true)
 }
 
 impl PlotMemory {
