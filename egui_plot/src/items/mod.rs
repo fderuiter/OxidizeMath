@@ -18,14 +18,10 @@ use super::{Cursor, LabelFormatter, PlotBounds, PlotTransform};
 
 pub use bar::Bar;
 pub use box_elem::{BoxElem, BoxSpread};
+pub use callout::Callout;
 pub use values::{
     ClosestElem, LineStyle, MarkerShape, Orientation, PlotGeometry, PlotPoint, PlotPoints,
 };
-
-mod bar;
-mod box_elem;
-mod rect_elem;
-mod values;
 
 const DEFAULT_FILL_ALPHA: f32 = 0.05;
 
@@ -92,6 +88,12 @@ macro_rules! builder_methods_for_base {
         }
     };
 }
+
+mod bar;
+mod box_elem;
+mod callout;
+mod rect_elem;
+mod values;
 
 /// Container to pass-through several parameters related to plot visualization
 pub struct PlotConfig<'a> {
