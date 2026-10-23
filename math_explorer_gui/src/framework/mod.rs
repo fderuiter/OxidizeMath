@@ -1,5 +1,8 @@
 mod export_ui;
+pub mod trace_overlay;
 mod ui;
+
+pub use trace_overlay::*;
 
 use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
