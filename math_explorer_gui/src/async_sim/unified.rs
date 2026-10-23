@@ -116,6 +116,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     cached_phonetic: String,
     cached_citation: String,
     cached_descs: HashMap<String, String>,
+    sensitivity_engine: crate::sensitivity::SensitivityEngine,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -153,6 +154,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             cached_phonetic: temp_model.phonetic_description(),
             cached_citation: temp_model.theory_citation(),
             cached_descs: temp_model.available_descriptions(),
+            sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -193,6 +195,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.separator();
         }
 
+        let param_list: Vec<(String, f64)> = self
+            .param_metadata
+            .iter()
+            .filter_map(|(name, _)| params_lock.get(name).map(|v| (name.clone(), *v)))
+            .collect();
+
         for (name, constraint) in &self.param_metadata {
             if let Some(val) = params_lock.get_mut(name) {
                 let slider = egui::Slider::new(val, constraint.min..=constraint.max)
@@ -204,6 +212,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 }
             }
         }
+
+        self.sensitivity_engine
+            .compute(&param_list, |p_map| p_map.values().map(|v| v.abs()).sum());
+
+        crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, M::name());
     }
 
     fn draw_left_panel(&mut self, ctx: &egui::Context) {
