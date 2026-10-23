@@ -274,6 +274,30 @@ impl<'a> PlotUi<'a> {
         self.save_png();
     }
 
+    /// Export active plot datasets to vector SVG offscreen.
+    pub fn save_svg(&self) {
+        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
+            .items
+            .iter()
+            .map(|item| (item.name().to_owned(), item.extract_points()))
+            .collect();
+        if let Ok(svg_text) =
+            crate::export::export_custom_svg(&datasets, &crate::export::ExportOptions::default())
+        {
+            crate::export::save_file_dialog(
+                "plot.svg",
+                svg_text.as_bytes(),
+                "SVG Vector Image",
+                &["svg"],
+            );
+        }
+    }
+
+    /// Alias for [`save_svg`](Self::save_svg).
+    pub fn export_svg(&self) {
+        self.save_svg();
+    }
+
     /// Export active plot datasets to CSV.
     pub fn export_csv(&self) {
         let datasets: Vec<(String, Vec<[f64; 2]>)> = self

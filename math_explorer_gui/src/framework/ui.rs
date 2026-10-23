@@ -382,9 +382,30 @@ impl SimulationFramework {
                         self.export_status_message =
                             Some("PNG image saved successfully.".to_string());
                     }
-                    Err(e) => {
-                        self.export_status_message = Some(format!("Export failed: {e}"));
+                    Err(e) => self.export_status_message = Some(format!("Export failed: {e}")),
+                }
+            }
+        }
+    }
+
+    fn render_modal_save_svg(&mut self, ui: &mut egui::Ui) {
+        if ui.button("💾 Save SVG").clicked() {
+            if let Some(tool) = &self.active_tool {
+                let datasets = tool.export_datasets();
+                let file_slug = tool.name().to_lowercase().replace(' ', "_");
+                let filename = format!("{}_figure.svg", file_slug);
+                match egui_plot::export::export_custom_svg(&datasets, &self.export_options) {
+                    Ok(svg_text) => {
+                        egui_plot::export::save_file_dialog(
+                            &filename,
+                            svg_text.as_bytes(),
+                            "SVG Vector Image",
+                            &["svg"],
+                        );
+                        self.export_status_message =
+                            Some("SVG image saved successfully.".to_string());
                     }
+                    Err(e) => self.export_status_message = Some(format!("Export failed: {e}")),
                 }
             }
         }
@@ -398,16 +419,13 @@ impl SimulationFramework {
                     Ok(color_img) => match egui_plot::export::copy_image_to_clipboard(&color_img) {
                         Ok(_) => {
                             self.export_status_message =
-                                Some("Copied plot image to clipboard!".to_string());
+                                Some("Copied plot image to clipboard!".to_string())
                         }
                         Err(e) => {
-                            self.export_status_message =
-                                Some(format!("Clipboard copy failed: {e}"));
+                            self.export_status_message = Some(format!("Clipboard copy failed: {e}"))
                         }
                     },
-                    Err(e) => {
-                        self.export_status_message = Some(format!("Render failed: {e}"));
-                    }
+                    Err(e) => self.export_status_message = Some(format!("Render failed: {e}")),
                 }
             }
         }
@@ -430,13 +448,10 @@ impl SimulationFramework {
         if calc_w > egui_plot::export::MAX_EXPORT_DIMENSION
             || calc_h > egui_plot::export::MAX_EXPORT_DIMENSION
         {
+            let max_dim = egui_plot::export::MAX_EXPORT_DIMENSION;
             ui.label(
-                egui::RichText::new(format!(
-                    "⚠️ Capped at max dimension {}x{} px",
-                    egui_plot::export::MAX_EXPORT_DIMENSION,
-                    egui_plot::export::MAX_EXPORT_DIMENSION
-                ))
-                .color(egui::Color32::YELLOW),
+                egui::RichText::new(format!("⚠️ Capped at max dimension {max_dim}x{max_dim} px"))
+                    .color(egui::Color32::YELLOW),
             );
         } else {
             ui.label(format!("Target Canvas Size: {} x {} px", calc_w, calc_h));
@@ -450,6 +465,7 @@ impl SimulationFramework {
 
         ui.horizontal(|ui| {
             self.render_modal_save_png(ui);
+            self.render_modal_save_svg(ui);
             self.render_modal_copy_clipboard(ui);
         });
     }
