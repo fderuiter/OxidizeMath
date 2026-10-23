@@ -974,6 +974,14 @@ impl<'a> Plot<'a> {
             x_axis_thickness: Default::default(),
             y_axis_thickness: Default::default(),
             imported_datasets: Default::default(),
+            log_x: false,
+            log_y: false,
+            grid_density: 8.0,
+            show_x_labels: true,
+            show_y_labels: true,
+            clamp_grid: false,
+            show_grid: Vec2b::new(true, true),
+            show_settings_modal: false,
         });
 
         // Drain any newly imported CSV datasets for this plot
@@ -1342,23 +1350,48 @@ impl<'a> Plot<'a> {
 
         // --- transform initialized
 
+        // Apply dynamic grid settings from PlotMemory
+        let active_grid_spacing = Rangef::new(mem.grid_density, grid_spacing.max);
+        let active_show_x = show_x && mem.show_x_labels;
+        let active_show_y = show_y && mem.show_y_labels;
+        let active_show_grid = Vec2b::new(
+            show_grid.x && mem.show_grid.x,
+            show_grid.y && mem.show_grid.y,
+        );
+        let active_clamp_grid = clamp_grid || mem.clamp_grid;
+
+        let [default_x_spacer, default_y_spacer] = grid_spacers;
+        let active_x_spacer: GridSpacer<'a> = if mem.log_x {
+            logarithmic_grid_spacer()
+        } else {
+            default_x_spacer
+        };
+        let active_y_spacer: GridSpacer<'a> = if mem.log_y {
+            logarithmic_grid_spacer()
+        } else {
+            default_y_spacer
+        };
+        let active_grid_spacers = [active_x_spacer, active_y_spacer];
+
         // Add legend widgets to plot
         let bounds = mem.transform.bounds();
         let x_axis_range = bounds.range_x();
         let x_steps = Arc::new({
             let input = GridInput {
                 bounds: (bounds.min[0], bounds.max[0]),
-                base_step_size: mem.transform.dvalue_dpos()[0].abs() * grid_spacing.min as f64,
+                base_step_size: mem.transform.dvalue_dpos()[0].abs()
+                    * active_grid_spacing.min as f64,
             };
-            (grid_spacers[0])(input)
+            (active_grid_spacers[0])(input)
         });
         let y_axis_range = bounds.range_y();
         let y_steps = Arc::new({
             let input = GridInput {
                 bounds: (bounds.min[1], bounds.max[1]),
-                base_step_size: mem.transform.dvalue_dpos()[1].abs() * grid_spacing.min as f64,
+                base_step_size: mem.transform.dvalue_dpos()[1].abs()
+                    * active_grid_spacing.min as f64,
             };
-            (grid_spacers[1])(input)
+            (active_grid_spacers[1])(input)
         });
         for (i, mut widget) in x_axis_widgets.into_iter().enumerate() {
             widget.range = x_axis_range.clone();
@@ -1394,20 +1427,21 @@ impl<'a> Plot<'a> {
         let prepared = PreparedPlot {
             plot_area_response: &response,
             items,
-            show_x,
-            show_y,
+            show_x: active_show_x,
+            show_y: active_show_y,
             label_formatter,
             coordinates_formatter,
-            show_grid,
-            grid_spacing,
+            show_grid: active_show_grid,
+            grid_spacing: active_grid_spacing,
             transform: mem.transform,
             draw_cursor_x: linked_cursors.as_ref().is_some_and(|group| group.1.x),
             draw_cursor_y: linked_cursors.as_ref().is_some_and(|group| group.1.y),
             draw_cursors,
             cursor_color,
             cursor_snap_distance,
-            grid_spacers,
-            clamp_grid,
+            grid_spacers: active_grid_spacers,
+            clamp_grid: active_clamp_grid,
+            plot_id,
         };
 
         let (plot_cursors, mut hovered_plot_item) = prepared.ui(ui, &response);
@@ -1477,6 +1511,13 @@ impl<'a> Plot<'a> {
             fit_degree: Option<usize>,
             fit_dataset_idx: usize,
             show_fit_overlay: bool,
+            show_settings_modal: bool,
+            log_x: bool,
+            log_y: bool,
+            grid_density: f32,
+            show_x_labels: bool,
+            show_y_labels: bool,
+            clamp_grid: bool,
         }
 
         impl Default for AccessState {
@@ -1497,12 +1538,38 @@ impl<'a> Plot<'a> {
                     fit_degree: None,
                     fit_dataset_idx: 0,
                     show_fit_overlay: true,
+                    show_settings_modal: false,
+                    log_x: false,
+                    log_y: false,
+                    grid_density: 8.0,
+                    show_x_labels: true,
+                    show_y_labels: true,
+                    clamp_grid: false,
                 }
             }
         }
 
-        let mut access_state =
-            ui.data_mut(|d| d.get_temp::<AccessState>(plot_id).unwrap_or_default());
+        let mut access_state = ui
+            .data_mut(|d| d.get_temp::<AccessState>(plot_id))
+            .unwrap_or_else(|| AccessState {
+                show_settings_modal: mem.show_settings_modal,
+                log_x: mem.log_x,
+                log_y: mem.log_y,
+                grid_density: mem.grid_density,
+                show_x_labels: mem.show_x_labels,
+                show_y_labels: mem.show_y_labels,
+                clamp_grid: mem.clamp_grid,
+                ..Default::default()
+            });
+
+        if ui.ctx().data_mut(|d| {
+            d.get_temp::<bool>(plot_id.with("toggle_settings"))
+                .unwrap_or(false)
+        }) {
+            access_state.show_settings_modal = !access_state.show_settings_modal;
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(plot_id.with("toggle_settings"), false));
+        }
 
         let valid_fit_datasets: Vec<(usize, &String, &Vec<[f64; 2]>)> = accessible_datasets
             .iter()
@@ -1608,6 +1675,9 @@ impl<'a> Plot<'a> {
                 }
                 if ui.button("Table View").clicked() {
                     access_state.show_table = !access_state.show_table;
+                }
+                if ui.button("🔧 Settings").clicked() {
+                    access_state.show_settings_modal = !access_state.show_settings_modal;
                 }
 
                 ui.separator();
@@ -1928,6 +1998,78 @@ impl<'a> Plot<'a> {
             access_state.show_export_modal = modal_open && !close_requested;
         }
 
+        if access_state.show_settings_modal {
+            let mut modal_open = access_state.show_settings_modal;
+            let mut close_requested = false;
+            egui::Window::new(format!("Plot Settings 🔧 - {id_source:?}"))
+                .open(&mut modal_open)
+                .resizable(true)
+                .collapsible(false)
+                .default_width(320.0)
+                .show(ui.ctx(), |ui| {
+                    ui.label(egui::RichText::new("Grid & Axis Settings").strong());
+                    ui.separator();
+
+                    ui.label(
+                        egui::RichText::new("Axis Scale Transformations")
+                            .small()
+                            .weak(),
+                    );
+                    ui.checkbox(&mut access_state.log_x, "Logarithmic X-Axis");
+                    ui.checkbox(&mut access_state.log_y, "Logarithmic Y-Axis");
+
+                    ui.separator();
+                    ui.label(egui::RichText::new("Grid Line Density").small().weak());
+                    ui.horizontal(|ui| {
+                        ui.label("Min Line Spacing (px):");
+                        ui.add(egui::Slider::new(
+                            &mut access_state.grid_density,
+                            4.0..=100.0,
+                        ));
+                    });
+
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new("Axis Labels & Visibility")
+                            .small()
+                            .weak(),
+                    );
+                    ui.checkbox(&mut access_state.show_x_labels, "Show X-Axis Labels");
+                    ui.checkbox(&mut access_state.show_y_labels, "Show Y-Axis Labels");
+                    ui.checkbox(&mut mem.show_grid.x, "Show X Grid Lines");
+                    ui.checkbox(&mut mem.show_grid.y, "Show Y Grid Lines");
+
+                    ui.separator();
+                    ui.label(egui::RichText::new("Grid Bounds").small().weak());
+                    ui.checkbox(&mut access_state.clamp_grid, "Clamp Grid to Data Range");
+
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if ui.button("Reset Defaults").clicked() {
+                            access_state.log_x = false;
+                            access_state.log_y = false;
+                            access_state.grid_density = 8.0;
+                            access_state.show_x_labels = true;
+                            access_state.show_y_labels = true;
+                            access_state.clamp_grid = false;
+                            mem.show_grid = Vec2b::new(true, true);
+                        }
+                        if ui.button("Close").clicked() {
+                            close_requested = true;
+                        }
+                    });
+                });
+            access_state.show_settings_modal = modal_open && !close_requested;
+        }
+
+        mem.show_settings_modal = access_state.show_settings_modal;
+        mem.log_x = access_state.log_x;
+        mem.log_y = access_state.log_y;
+        mem.grid_density = access_state.grid_density;
+        mem.show_x_labels = access_state.show_x_labels;
+        mem.show_y_labels = access_state.show_y_labels;
+        mem.clamp_grid = access_state.clamp_grid;
+
         if focus_response.has_focus() {
             let mut changed = false;
             let num_items = accessible_datasets.len();
@@ -2037,6 +2179,11 @@ impl<'a> Plot<'a> {
             }
             if ui.button("Table View").clicked() {
                 access_state.show_table = !access_state.show_table;
+                ui.close();
+            }
+            if ui.button("🔧 Plot Settings").clicked() {
+                access_state.show_settings_modal = true;
+                mem.show_settings_modal = true;
                 ui.close();
             }
 
@@ -2327,6 +2474,51 @@ pub fn log_grid_spacer(log_base: i64) -> GridSpacer<'static> {
     Box::new(step_sizes)
 }
 
+/// Grid spacer for logarithmic scale axes.
+///
+/// Handles non-positive bounds by clamping minimum bound to positive values.
+pub fn logarithmic_grid_spacer() -> GridSpacer<'static> {
+    let step_sizes = move |input: GridInput| -> Vec<GridMark> {
+        let (min_b, max_b) = input.bounds;
+        // Edge case handling: fallback non-positive data bounds to positive minimum bounds
+        let min_pos = if min_b <= 0.0 { 1e-6 } else { min_b };
+        let max_pos = if max_b <= min_pos {
+            min_pos + 10.0
+        } else {
+            max_b
+        };
+
+        let min_log = min_pos.log10().floor() as i32;
+        let max_log = max_pos.log10().ceil() as i32;
+
+        let mut marks = Vec::new();
+        let start = min_log.clamp(-300, 300);
+        let end = max_log.clamp(-300, 300);
+
+        for exp in start..=end {
+            let base_val = 10.0_f64.powi(exp);
+            if base_val >= min_pos && base_val <= max_pos {
+                marks.push(GridMark {
+                    value: base_val,
+                    step_size: base_val,
+                });
+            }
+            for m in 2..10 {
+                let sub_val = m as f64 * base_val;
+                if sub_val >= min_pos && sub_val <= max_pos {
+                    marks.push(GridMark {
+                        value: sub_val,
+                        step_size: base_val,
+                    });
+                }
+            }
+        }
+        marks
+    };
+
+    Box::new(step_sizes)
+}
+
 /// Splits the grid into uniform-sized spacings (e.g. 100, 25, 1).
 ///
 /// This function should return 3 positive step sizes, designating where the lines in the grid are drawn.
@@ -2366,6 +2558,7 @@ struct PreparedPlot<'a> {
     cursor_snap_distance: Option<f32>,
 
     clamp_grid: bool,
+    plot_id: Id,
 }
 
 impl PreparedPlot<'_> {
@@ -2462,6 +2655,28 @@ impl PreparedPlot<'_> {
                 );
                 painter.galley(rect.min, galley, text_color);
             }
+        }
+
+        // Render persistent top-right wrench button overlay
+        let wrench_size = Vec2::splat(24.0);
+        let wrench_rect = Rect::from_min_size(
+            transform.frame().right_top() + vec2(-30.0, 6.0),
+            wrench_size,
+        );
+        let mut wrench_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(wrench_rect)
+                .layout(Layout::centered_and_justified(egui::Direction::LeftToRight)),
+        );
+        wrench_ui.set_clip_rect(transform.frame().intersect(ui.clip_rect()));
+        if wrench_ui
+            .add(egui::Button::new("🔧").corner_radius(4.0))
+            .on_hover_text("Plot Grid & Axis Settings")
+            .clicked()
+        {
+            ui.ctx().data_mut(|d| {
+                d.insert_temp(self.plot_id.with("toggle_settings"), true);
+            });
         }
 
         (cursors, hovered_item_id)
@@ -2783,6 +2998,120 @@ pub fn append_last_plot_datasets(datasets: &[(String, Vec<[f64; 2]>)]) {
 /// Retrieves all plot datasets captured across `egui_plot::Plot` widgets rendered in the active session.
 pub fn get_last_plot_datasets() -> Vec<(String, Vec<[f64; 2]>)> {
     LAST_PLOT_DATASETS.with(|d| d.borrow().clone())
+}
+
+#[test]
+fn test_logarithmic_grid_spacer_positive_and_non_positive_bounds() {
+    let spacer = logarithmic_grid_spacer();
+    let input_pos = GridInput {
+        bounds: (1.0, 100.0),
+        base_step_size: 1.0,
+    };
+    let marks_pos = (spacer)(input_pos);
+    assert!(
+        !marks_pos.is_empty(),
+        "Log spacer should return marks for positive bounds"
+    );
+    assert!(marks_pos.iter().any(|m| (m.value - 1.0).abs() < 1e-5));
+    assert!(marks_pos.iter().any(|m| (m.value - 10.0).abs() < 1e-5));
+    assert!(marks_pos.iter().any(|m| (m.value - 100.0).abs() < 1e-5));
+
+    // Test non-positive data bounds handling
+    let spacer_nonpos = logarithmic_grid_spacer();
+    let input_nonpos = GridInput {
+        bounds: (-10.0, 50.0),
+        base_step_size: 1.0,
+    };
+    let marks_nonpos = (spacer_nonpos)(input_nonpos);
+    assert!(
+        !marks_nonpos.is_empty(),
+        "Log spacer should handle non-positive bounds by falling back to positive minimum bounds"
+    );
+    assert!(
+        marks_nonpos.iter().all(|m| m.value > 0.0),
+        "All generated log marks must be positive"
+    );
+}
+
+#[test]
+fn test_plot_memory_grid_settings_persistence() {
+    let ctx = egui::Context::default();
+    let id = Id::new("test_plot_memory_id");
+
+    let mem = PlotMemory {
+        auto_bounds: Vec2b::new(true, true),
+        hovered_legend_item: None,
+        hidden_items: Default::default(),
+        transform: PlotTransform::new_with_invert_axis(
+            Rect::from_min_size(Pos2::ZERO, vec2(100.0, 100.0)),
+            PlotBounds::NOTHING,
+            Vec2b::new(false, false),
+            Vec2b::new(false, false),
+        ),
+        last_click_pos_for_zoom: None,
+        x_axis_thickness: Default::default(),
+        y_axis_thickness: Default::default(),
+        imported_datasets: Default::default(),
+        log_x: true,
+        log_y: true,
+        grid_density: 16.0,
+        show_x_labels: false,
+        show_y_labels: true,
+        clamp_grid: true,
+        show_grid: Vec2b::new(true, false),
+        show_settings_modal: true,
+    };
+
+    mem.clone().store(&ctx, id);
+
+    let loaded = PlotMemory::load(&ctx, id).expect("PlotMemory should load from context");
+    assert!(loaded.log_x);
+    assert!(loaded.log_y);
+    assert_eq!(loaded.grid_density, 16.0);
+    assert!(!loaded.show_x_labels);
+    assert!(loaded.show_y_labels);
+    assert!(loaded.clamp_grid);
+    assert_eq!(loaded.show_grid, Vec2b::new(true, false));
+    assert!(loaded.show_settings_modal);
+}
+
+#[test]
+fn generate_plot_settings_modal_screenshot() {
+    let datasets = vec![(
+        "Log-Scale Signal".to_string(),
+        vec![[1.0, 10.0], [10.0, 100.0], [100.0, 1000.0]],
+    )];
+    let options = crate::export::ExportOptions::default();
+    if let Ok(png_bytes) = crate::export::export_custom_png(&datasets, &options) {
+        let _ = std::fs::write("/tmp/plot_grid_settings_modal.png", png_bytes);
+    }
+}
+
+#[test]
+fn test_plot_settings_modal_toggle_and_rendering() {
+    let ctx = egui::Context::default();
+    let id = Id::new("test_plot_modal_rendering");
+
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            Plot::new(id).id(id).show(ui, |_plot_ui| {});
+        });
+    });
+
+    // Toggle settings modal via context storage signal
+    ctx.data_mut(|d| d.insert_temp(id.with("toggle_settings"), true));
+
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            Plot::new(id).id(id).show(ui, |_plot_ui| {});
+        });
+    });
+
+    let mem = PlotMemory::load(&ctx, id).expect("PlotMemory should exist");
+    assert!(
+        mem.show_settings_modal,
+        "Settings modal should be active after toggle"
+    );
 }
 
 #[cfg(test)]

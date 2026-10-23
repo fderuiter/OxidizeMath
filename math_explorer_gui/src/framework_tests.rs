@@ -196,6 +196,48 @@ mod tests {
     }
 
     #[test]
+    fn test_plot_grid_settings_modal_framework_integration() {
+        let ctx = eframe::egui::Context::default();
+        let plot_id = eframe::egui::Id::new("framework_test_plot_id");
+
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            eframe::egui::CentralPanel::default().show(ctx, |ui| {
+                egui_plot::Plot::new(plot_id)
+                    .id(plot_id)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(egui_plot::Line::new(
+                            "Signal",
+                            vec![[0.0, 1.0], [1.0, 10.0], [2.0, 100.0]],
+                        ));
+                    });
+            });
+        });
+
+        // Toggle settings modal via context storage signal
+        ctx.data_mut(|d| d.insert_temp(plot_id.with("toggle_settings"), true));
+
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            eframe::egui::CentralPanel::default().show(ctx, |ui| {
+                egui_plot::Plot::new(plot_id)
+                    .id(plot_id)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(egui_plot::Line::new(
+                            "Signal",
+                            vec![[0.0, 1.0], [1.0, 10.0], [2.0, 100.0]],
+                        ));
+                    });
+            });
+        });
+
+        let mem =
+            egui_plot::PlotMemory::load(&ctx, plot_id).expect("PlotMemory should be populated");
+        assert!(
+            mem.show_settings_modal,
+            "Plot settings modal state must be true after toggle"
+        );
+    }
+
+    #[test]
     fn test_generate_trace_overlay_screenshots() {
         let options = egui_plot::export::ExportOptions::default();
 
