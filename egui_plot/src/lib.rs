@@ -39,9 +39,9 @@ pub use crate::{
     },
     fit::{FitResult, FitType, fit_dataset},
     items::{
-        Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, ClosestElem, HLine, Line, LineStyle,
-        MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem, PlotItemBase,
-        PlotPoint, PlotPoints, Points, Polygon, Text, VLine,
+        Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
+        LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
+        PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, Text, VLine,
     },
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::PlotMemory,
