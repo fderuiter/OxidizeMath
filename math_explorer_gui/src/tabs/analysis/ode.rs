@@ -462,8 +462,8 @@ impl InteractiveTool for OdeSolverTool {
 
             Plot::new("ode_plot")
                 .view_aspect(2.0)
-                .x_axis_label("Time (t)")
-                .y_axis_label("Value")
+                .x_axis_label("t \\text{ (Time)}")
+                .y_axis_label("y(t)")
                 .legend(egui_plot::Legend::default())
                 .show(ui, |plot_ui| {
                     plot_ui.line(line_y);

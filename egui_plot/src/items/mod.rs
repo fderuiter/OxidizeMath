@@ -797,7 +797,9 @@ impl PlotItem for Text {
             self.color
         };
 
-        let galley = self.text.clone().into_galley(
+        let job =
+            crate::latex::parse_latex_to_layout_job(self.text.text(), TextStyle::Small, ui, color);
+        let galley = WidgetText::LayoutJob(Arc::new(job)).into_galley(
             ui,
             Some(egui::TextWrapMode::Extend),
             f32::INFINITY,
