@@ -32,9 +32,9 @@ impl Callout {
             target_point: target_point.into(),
             label_offset: Vec2::ZERO,
             text: text.into(),
-            leader_stroke: Stroke::new(1.0, Color32::TRANSPARENT),
+            leader_stroke: Stroke::new(1.0_f32, Color32::TRANSPARENT),
             frame_fill: Color32::TRANSPARENT,
-            frame_stroke: Stroke::new(0.0, Color32::TRANSPARENT),
+            frame_stroke: Stroke::new(0.0_f32, Color32::TRANSPARENT),
             corner_radius: CornerRadius::ZERO,
             anchor: Align2::CENTER_CENTER,
             text_color: Color32::TRANSPARENT,
@@ -164,9 +164,9 @@ impl PlotItem for Callout {
 
         if self.base.highlight {
             shapes.push(Shape::rect_stroke(
-                frame_rect.expand(1.0),
+                frame_rect.expand(1.0_f32),
                 self.corner_radius,
-                Stroke::new(1.0, leader_color),
+                Stroke::new(1.0_f32, leader_color),
                 egui::StrokeKind::Outside,
             ));
         }
@@ -213,17 +213,17 @@ mod tests {
         let point = PlotPoint::new(1.0, 2.0);
         let callout = Callout::new(point, "Root Point")
             .offset(vec2(10.0, -15.0))
-            .leader_stroke(Stroke::new(2.0, Color32::RED))
-            .frame(Color32::BLACK, Stroke::new(1.0, Color32::WHITE))
+            .leader_stroke(Stroke::new(2.0_f32, Color32::RED))
+            .frame(Color32::BLACK, Stroke::new(1.0_f32, Color32::WHITE))
             .corner_radius(CornerRadius::same(4))
             .anchor(Align2::LEFT_TOP)
             .name("root_callout");
 
         assert_eq!(callout.target_point, point);
         assert_eq!(callout.label_offset, vec2(10.0, -15.0));
-        assert_eq!(callout.leader_stroke, Stroke::new(2.0, Color32::RED));
+        assert_eq!(callout.leader_stroke, Stroke::new(2.0_f32, Color32::RED));
         assert_eq!(callout.frame_fill, Color32::BLACK);
-        assert_eq!(callout.frame_stroke, Stroke::new(1.0, Color32::WHITE));
+        assert_eq!(callout.frame_stroke, Stroke::new(1.0_f32, Color32::WHITE));
         assert_eq!(callout.corner_radius, CornerRadius::same(4));
         assert_eq!(callout.anchor, Align2::LEFT_TOP);
         assert_eq!(callout.base().name, "root_callout");
@@ -251,7 +251,7 @@ mod tests {
 
                 let callout = Callout::new([5.0, 5.0], "Center Point")
                     .offset(Vec2::ZERO)
-                    .leader_stroke(Stroke::new(1.0, Color32::BLUE));
+                    .leader_stroke(Stroke::new(1.0_f32, Color32::BLUE));
 
                 let mut shapes = Vec::new();
                 callout.shapes(ui, &transform, &mut shapes);
@@ -281,8 +281,8 @@ mod tests {
 
                 let callout = Callout::new([2.0, 2.0], "Annotated Root")
                     .offset(vec2(20.0, -20.0))
-                    .leader_stroke(Stroke::new(1.5, Color32::RED))
-                    .frame(Color32::DARK_GRAY, Stroke::new(1.0, Color32::WHITE));
+                    .leader_stroke(Stroke::new(1.5_f32, Color32::RED))
+                    .frame(Color32::DARK_GRAY, Stroke::new(1.0_f32, Color32::WHITE));
 
                 let mut shapes = Vec::new();
                 callout.shapes(ui, &transform, &mut shapes);
