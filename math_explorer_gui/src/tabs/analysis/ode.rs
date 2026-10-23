@@ -8,19 +8,11 @@ use math_explorer::pure_math::analysis::ode::{
     OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
 };
 
-// ----------------------------------------------------------------------------
-// ODE System Definitions
-// ----------------------------------------------------------------------------
-
 #[derive(Clone, Debug)]
 struct ExponentialOde { k: f64 }
 
 impl OdeSystem<VecState> for ExponentialOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState {
-        let mut out = VecState(vec![0.0; state.0.len()]);
-        self.derivative_in_place(t, state, &mut out);
-        out
-    }
+    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
     fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
         out.0[0] = self.k * state.0[0];
     }
@@ -30,11 +22,7 @@ impl OdeSystem<VecState> for ExponentialOde {
 struct HarmonicOscillatorOde { k: f64 }
 
 impl OdeSystem<VecState> for HarmonicOscillatorOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState {
-        let mut out = VecState(vec![0.0; state.0.len()]);
-        self.derivative_in_place(t, state, &mut out);
-        out
-    }
+    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
     fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
         out.0[0] = state.0[1];
         out.0[1] = -self.k * state.0[0];
@@ -45,11 +33,7 @@ impl OdeSystem<VecState> for HarmonicOscillatorOde {
 struct LogisticGrowthOde { r: f64, cap_k: f64 }
 
 impl OdeSystem<VecState> for LogisticGrowthOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState {
-        let mut out = VecState(vec![0.0; state.0.len()]);
-        self.derivative_in_place(t, state, &mut out);
-        out
-    }
+    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
     fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
         out.0[0] = self.r * state.0[0] * (1.0 - state.0[0] / self.cap_k);
     }
@@ -61,7 +45,6 @@ fn eval_ode_final_state(preset: OdePreset, dt: f64, total_time: f64, p_map: &std
     let k = p_map.get("k").copied().unwrap_or(1.0);
     let r = p_map.get("r").copied().unwrap_or(1.0);
     let cap_k = p_map.get("cap_k").copied().unwrap_or(10.0);
-
     let steps = (total_time / dt).ceil() as usize;
     match preset {
         OdePreset::Exponential => {
@@ -135,8 +118,7 @@ impl Default for OdeSolverTool {
 impl OdeSolverTool {
     pub fn param_summary(&self) -> String {
         match self.preset {
-            OdePreset::Exponential => format!("k={:.2}, dt={:.2}", self.param_k, self.dt),
-            OdePreset::HarmonicOscillator => format!("k={:.2}, dt={:.2}", self.param_k, self.dt),
+            OdePreset::Exponential | OdePreset::HarmonicOscillator => format!("k={:.2}, dt={:.2}", self.param_k, self.dt),
             OdePreset::LogisticGrowth => format!("r={:.2}, K={:.2}, dt={:.2}", self.param_r, self.param_cap_k, self.dt),
         }
     }
@@ -148,20 +130,9 @@ impl OdeSolverTool {
 
     pub fn reset_parameters(&mut self) {
         match self.preset {
-            OdePreset::Exponential => {
-                self.param_k = 1.0;
-                self.ic_y0 = 1.0;
-            }
-            OdePreset::HarmonicOscillator => {
-                self.param_k = 1.0;
-                self.ic_y0 = 1.0;
-                self.ic_v0 = 0.0;
-            }
-            OdePreset::LogisticGrowth => {
-                self.param_r = 1.0;
-                self.param_cap_k = 10.0;
-                self.ic_y0 = 1.0;
-            }
+            OdePreset::Exponential => { self.param_k = 1.0; self.ic_y0 = 1.0; }
+            OdePreset::HarmonicOscillator => { self.param_k = 1.0; self.ic_y0 = 1.0; self.ic_v0 = 0.0; }
+            OdePreset::LogisticGrowth => { self.param_r = 1.0; self.param_cap_k = 10.0; self.ic_y0 = 1.0; }
         }
         self.dt = 0.05;
         self.total_time = 10.0;
@@ -187,7 +158,6 @@ impl OdeSolverTool {
                 let dynamics = ExponentialOde { k: self.param_k };
                 let solver = RungeKutta4::new(&init_state);
                 let mut model = OdeModel::new(init_state, dynamics, solver);
-
                 for i in 0..=num_steps {
                     let y = model.get_state().0[0];
                     if !y.is_finite() {
@@ -204,7 +174,6 @@ impl OdeSolverTool {
                 let dynamics = HarmonicOscillatorOde { k: self.param_k };
                 let solver = RungeKutta4::new(&init_state);
                 let mut model = OdeModel::new(init_state, dynamics, solver);
-
                 for i in 0..=num_steps {
                     let y = model.get_state().0[0];
                     let v = model.get_state().0[1];
@@ -223,7 +192,6 @@ impl OdeSolverTool {
                 let dynamics = LogisticGrowthOde { r: self.param_r, cap_k: self.param_cap_k };
                 let solver = RungeKutta4::new(&init_state);
                 let mut model = OdeModel::new(init_state, dynamics, solver);
-
                 for i in 0..=num_steps {
                     let y = model.get_state().0[0];
                     if !y.is_finite() {
@@ -497,13 +465,8 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
 impl InteractivePreset for OdeSolverTool {
     type Config = OdePresetConfig;
 
-    fn domain(&self) -> &'static str {
-        "analysis"
-    }
-
-    fn title(&self) -> String {
-        format!("ODE Solver - {}", self.preset.name())
-    }
+    fn domain(&self) -> &'static str { "analysis" }
+    fn title(&self) -> String { format!("ODE Solver - {}", self.preset.name()) }
 
     fn export_config(&self) -> Self::Config {
         OdePresetConfig {

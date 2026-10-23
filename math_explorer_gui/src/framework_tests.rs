@@ -193,6 +193,42 @@ mod tests {
         assert!(!bytes.is_empty());
         // PNG header magic bytes
         assert_eq!(&bytes[0..4], &[0x89, 0x50, 0x4E, 0x47]);
+
+        let svg_res = egui_plot::export::export_custom_svg(&datasets, &options);
+        assert!(svg_res.is_ok());
+        let svg_str = svg_res.unwrap();
+        assert!(svg_str.contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        assert!(svg_str.contains("<svg "));
+        assert!(svg_str.contains("<polyline points="));
+        assert!(svg_str.contains("data-name=\"Test Series\""));
+    }
+
+    #[test]
+    fn test_svg_export_integration_modal_flow() {
+        let datasets = vec![
+            (
+                "Signal A".to_string(),
+                vec![[0.0, 0.0], [1.0, 3.0], [2.0, 1.5]],
+            ),
+            (
+                "Signal B".to_string(),
+                vec![[0.0, 2.0], [1.0, 0.5], [2.0, 4.0]],
+            ),
+        ];
+        let options = egui_plot::export::ExportOptions {
+            line_thickness: 3.0,
+            scale: 1.5,
+            ..Default::default()
+        };
+        let svg = egui_plot::export::export_custom_svg(&datasets, &options)
+            .expect("Integration SVG rendering failed");
+        let _ = std::fs::write("/tmp/sample_plot_export.svg", &svg);
+
+        assert!(svg.contains("width=\"2880\""));
+        assert!(svg.contains("height=\"1620\""));
+        assert!(svg.contains("stroke-width=\"4.50\""));
+        assert!(svg.contains("data-name=\"Signal A\""));
+        assert!(svg.contains("data-name=\"Signal B\""));
     }
 
     #[test]

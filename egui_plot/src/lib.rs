@@ -35,8 +35,9 @@ pub use crate::{
     export::{
         AspectRatioOption, ExportFrame, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
         color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard, export_csv,
-        export_custom_gif, export_custom_image, export_custom_png, export_json, parse_csv,
-        save_file_dialog, trigger_import_csv, trigger_import_csv_for_plot,
+        export_custom_gif, export_custom_image, export_custom_png, export_custom_svg, export_json,
+        export_svg, export_svg_filename, parse_csv, save_file_dialog, trigger_import_csv,
+        trigger_import_csv_for_plot,
     },
     fit::{FitResult, FitType, fit_dataset},
     items::{
@@ -1934,6 +1935,25 @@ impl<'a> Plot<'a> {
                                     );
                                     access_state.status_message =
                                         Some("PNG image saved successfully.".to_string());
+                                }
+                                Err(e) => {
+                                    access_state.status_message =
+                                        Some(format!("Export failed: {e}"));
+                                }
+                            }
+                        }
+
+                        if ui.button("💾 Save SVG").clicked() {
+                            match export::export_custom_svg(&export_datasets, &options) {
+                                Ok(svg_text) => {
+                                    export::save_file_dialog(
+                                        "plot.svg",
+                                        svg_text.as_bytes(),
+                                        "SVG Vector Image",
+                                        &["svg"],
+                                    );
+                                    access_state.status_message =
+                                        Some("SVG image saved successfully.".to_string());
                                 }
                                 Err(e) => {
                                     access_state.status_message =

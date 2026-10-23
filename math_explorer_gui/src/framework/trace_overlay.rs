@@ -193,7 +193,7 @@ impl TraceSnapshotManager {
                 let line = Line::new(line_name, PlotPoints::new(series.points.clone()))
                     .color(color)
                     .style(LineStyle::Dashed { length: 6.0 })
-                    .width(1.5);
+                    .width(1.5_f32);
 
                 plot_ui.line(line);
             }

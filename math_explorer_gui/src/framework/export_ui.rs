@@ -171,6 +171,31 @@ impl SimulationFramework {
         }
     }
 
+    fn render_modal_save_svg(&mut self, ui: &mut egui::Ui) {
+        if ui.button("💾 Save SVG").clicked() {
+            if let Some(tool) = &self.active_tool {
+                let datasets = tool.export_datasets();
+                let file_slug = tool.name().to_lowercase().replace(' ', "_");
+                let filename = format!("{}_figure.svg", file_slug);
+                match egui_plot::export::export_custom_svg(&datasets, &self.export_options) {
+                    Ok(svg_text) => {
+                        egui_plot::export::save_file_dialog(
+                            &filename,
+                            svg_text.as_bytes(),
+                            "SVG Vector Image",
+                            &["svg"],
+                        );
+                        self.export_status_message =
+                            Some("SVG image saved successfully.".to_string());
+                    }
+                    Err(e) => {
+                        self.export_status_message = Some(format!("Export failed: {e}"));
+                    }
+                }
+            }
+        }
+    }
+
     fn render_modal_save_gif(&mut self, ui: &mut egui::Ui) {
         if ui.button("🎬 Save GIF").clicked() {
             if let Some(tool) = &mut self.active_tool {
@@ -260,6 +285,7 @@ impl SimulationFramework {
 
         ui.horizontal(|ui| {
             self.render_modal_save_png(ui);
+            self.render_modal_save_svg(ui);
             self.render_modal_save_gif(ui);
             self.render_modal_copy_clipboard(ui);
         });

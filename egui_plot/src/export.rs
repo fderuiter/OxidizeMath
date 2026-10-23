@@ -373,6 +373,182 @@ pub fn export_json(datasets: &[(String, Vec<[f64; 2]>)]) {
     export_json_filename(datasets, "export.json");
 }
 
+/// Helper function to escape special XML characters in text attributes or content.
+fn escape_xml(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+/// Render plot datasets into vector SVG XML string.
+pub fn export_custom_svg(
+    datasets: &[(String, Vec<[f64; 2]>)],
+    options: &ExportOptions,
+) -> Result<String, String> {
+    let target_w = (options.width as f32 * options.scale).round() as u32;
+    let mut target_h = (options.height as f32 * options.scale).round() as u32;
+
+    if let Some(ratio) = options.aspect_ratio.ratio().filter(|&r| r > 0.0) {
+        target_h = (target_w as f32 / ratio).round() as u32;
+    }
+
+    if target_w > MAX_EXPORT_DIMENSION || target_h > MAX_EXPORT_DIMENSION {
+        return Err(format!(
+            "Requested dimensions ({}x{}) exceed maximum limit of {}x{}",
+            target_w, target_h, MAX_EXPORT_DIMENSION, MAX_EXPORT_DIMENSION
+        ));
+    }
+
+    let width = target_w.max(1) as usize;
+    let height = target_h.max(1) as usize;
+
+    let bg_r = options.background_color.r();
+    let bg_g = options.background_color.g();
+    let bg_b = options.background_color.b();
+    let bg_a_factor =
+        (options.background_color.a() as f32 / 255.0) * options.background_opacity.clamp(0.0, 1.0);
+
+    let mut min_x = f64::INFINITY;
+    let mut max_x = -f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_y = -f64::INFINITY;
+
+    for (_, pts) in datasets {
+        for p in pts {
+            if p[0].is_finite() && p[1].is_finite() {
+                min_x = min_x.min(p[0]);
+                max_x = max_x.max(p[0]);
+                min_y = min_y.min(p[1]);
+                max_y = max_y.max(p[1]);
+            }
+        }
+    }
+
+    if min_x >= max_x {
+        min_x -= 1.0;
+        max_x += 1.0;
+    }
+    if min_y >= max_y {
+        min_y -= 1.0;
+        max_y += 1.0;
+    }
+
+    let margin_x = (max_x - min_x) * 0.05;
+    let margin_y = (max_y - min_y) * 0.05;
+    min_x -= margin_x;
+    max_x += margin_x;
+    min_y -= margin_y;
+    max_y += margin_y;
+
+    let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
+    let draw_w = (width as f64 - 2.0 * padding).max(1.0);
+    let draw_h = (height as f64 - 2.0 * padding).max(1.0);
+
+    let to_pixel = |p: [f64; 2]| -> (f64, f64) {
+        let x_norm = (p[0] - min_x) / (max_x - min_x);
+        let y_norm = (p[1] - min_y) / (max_y - min_y);
+        let px = padding + x_norm * draw_w;
+        let py = (height as f64 - padding) - y_norm * draw_h;
+        (px, py)
+    };
+
+    let stroke_width = (options.line_thickness * options.scale).max(1.0);
+    let marker_radius = (stroke_width / 2.0).max(1.5);
+
+    let mut svg = String::new();
+    svg.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    svg.push_str(&format!(
+        "<svg width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" xmlns=\"http://www.w3.org/2000/svg\">\n",
+        width, height, width, height
+    ));
+
+    // Background rect
+    svg.push_str(&format!(
+        "  <rect width=\"{}\" height=\"{}\" fill=\"rgb({},{},{})\" fill-opacity=\"{:.3}\" />\n",
+        width, height, bg_r, bg_g, bg_b, bg_a_factor
+    ));
+
+    for (d_idx, (name, pts)) in datasets.iter().enumerate() {
+        if pts.is_empty() {
+            continue;
+        }
+        let color = EXPORT_PALETTE[d_idx % EXPORT_PALETTE.len()];
+        let hex_color = format!("#{:02x}{:02x}{:02x}", color.r(), color.g(), color.b());
+        let escaped_name = escape_xml(name);
+
+        svg.push_str(&format!(
+            "  <g id=\"dataset-{}\" data-name=\"{}\">\n",
+            d_idx, escaped_name
+        ));
+
+        let mut current_segment: Vec<(f64, f64)> = Vec::new();
+        let flush_segment = |segment: &mut Vec<(f64, f64)>, svg: &mut String| {
+            if segment.is_empty() {
+                return;
+            }
+            if segment.len() == 1 {
+                let (px, py) = segment[0];
+                svg.push_str(&format!(
+                    "    <circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" />\n",
+                    px, py, marker_radius, hex_color
+                ));
+            } else {
+                let points_str: Vec<String> = segment
+                    .iter()
+                    .map(|(px, py)| format!("{:.2},{:.2}", px, py))
+                    .collect();
+                svg.push_str(&format!(
+                    "    <polyline points=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{:.2}\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n",
+                    points_str.join(" "),
+                    hex_color,
+                    stroke_width
+                ));
+                for (px, py) in segment.iter() {
+                    svg.push_str(&format!(
+                        "    <circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" />\n",
+                        px, py, marker_radius, hex_color
+                    ));
+                }
+            }
+            segment.clear();
+        };
+
+        for &p in pts {
+            if p[0].is_finite() && p[1].is_finite() {
+                current_segment.push(to_pixel(p));
+            } else {
+                flush_segment(&mut current_segment, &mut svg);
+            }
+        }
+        flush_segment(&mut current_segment, &mut svg);
+
+        svg.push_str("  </g>\n");
+    }
+
+    svg.push_str("</svg>\n");
+
+    Ok(svg)
+}
+
+/// Export dataset points to SVG string with a custom filename and initiate download or file save dialog.
+pub fn export_svg_filename(
+    datasets: &[(String, Vec<[f64; 2]>)],
+    options: &ExportOptions,
+    filename: &str,
+) {
+    if let Ok(svg) = export_custom_svg(datasets, options) {
+        save_file_dialog(filename, svg.as_bytes(), "SVG Vector Image", &["svg"]);
+    }
+}
+
+/// Export dataset points to SVG string and initiate download or file save dialog.
+pub fn export_svg(datasets: &[(String, Vec<[f64; 2]>)], options: &ExportOptions) {
+    export_svg_filename(datasets, options, "export.svg");
+}
+
 /// Render plot datasets into an `egui::ColorImage` buffer using offscreen rasterization.
 pub fn export_custom_image(
     datasets: &[(String, Vec<[f64; 2]>)],
@@ -792,6 +968,8 @@ pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _fil
             "application/json"
         } else if filename.ends_with(".png") {
             "image/png"
+        } else if filename.ends_with(".svg") {
+            "image/svg+xml"
         } else if filename.ends_with(".gif") {
             "image/gif"
         } else {
@@ -1001,6 +1179,84 @@ mod tests {
         let content = "Not a CSV file at all\nJust some random text\nWith no numbers anywhere\n";
         let datasets = parse_csv(content);
         assert!(datasets.is_empty());
+    }
+
+    #[test]
+    fn test_export_custom_svg_structure_and_escaping() {
+        let datasets = vec![(
+            "Dataset & \"Special <Name>\"".to_string(),
+            vec![[0.0, 1.0], [1.0, 2.0], [2.0, 4.0]],
+        )];
+        let options = ExportOptions::default();
+        let svg = export_custom_svg(&datasets, &options).expect("SVG export failed");
+
+        assert!(svg.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        assert!(svg.contains("<svg "));
+        assert!(svg.contains("xmlns=\"http://www.w3.org/2000/svg\""));
+        assert!(svg.contains("<rect "));
+        assert!(svg.contains("<polyline points="));
+        assert!(svg.contains("<circle cx="));
+
+        // Verify XML character escaping in dataset name attribute
+        assert!(svg.contains("data-name=\"Dataset &amp; &quot;Special &lt;Name&gt;&quot;\""));
+    }
+
+    #[test]
+    fn test_export_custom_svg_stroke_width_options() {
+        let datasets = vec![("Test".to_string(), vec![[0.0, 0.0], [1.0, 1.0]])];
+        let options = ExportOptions {
+            line_thickness: 4.5,
+            scale: 2.0,
+            ..Default::default()
+        };
+        let svg = export_custom_svg(&datasets, &options).expect("SVG export failed");
+        assert!(svg.contains("stroke-width=\"9.00\""));
+    }
+
+    #[test]
+    fn test_export_custom_svg_non_finite_splitting() {
+        let datasets = vec![(
+            "NonFinite".to_string(),
+            vec![
+                [0.0, 0.0],
+                [1.0, 1.0],
+                [f64::NAN, 2.0],
+                [3.0, f64::INFINITY],
+                [4.0, 4.0],
+                [5.0, 5.0],
+            ],
+        )];
+        let options = ExportOptions::default();
+        let svg = export_custom_svg(&datasets, &options).expect("SVG export failed");
+        assert!(svg.contains("<polyline points="));
+        // Verify no NaN or inf leaked into SVG string
+        assert!(!svg.contains("NaN"));
+        assert!(!svg.contains("inf"));
+    }
+
+    #[test]
+    fn test_export_custom_svg_empty_and_zero_points() {
+        let datasets: Vec<(String, Vec<[f64; 2]>)> = vec![
+            ("Empty".to_string(), vec![]),
+            ("ZeroPoints".to_string(), vec![]),
+        ];
+        let options = ExportOptions::default();
+        let svg = export_custom_svg(&datasets, &options).expect("SVG empty plot failed");
+        assert!(svg.contains("<svg "));
+        assert!(svg.contains("<rect "));
+        assert!(!svg.contains("<polyline"));
+    }
+
+    #[test]
+    fn test_export_custom_svg_max_dimension_cap() {
+        let datasets = vec![("Cap".to_string(), vec![[0.0, 0.0]])];
+        let options = ExportOptions {
+            width: MAX_EXPORT_DIMENSION + 100,
+            ..Default::default()
+        };
+        let result = export_custom_svg(&datasets, &options);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exceed maximum limit"));
     }
 
     #[test]
