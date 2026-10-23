@@ -182,16 +182,34 @@ pub trait PlotItem {
             }
         };
 
-        let line_color = if plot.ui.visuals().dark_mode {
-            Color32::from_gray(100).additive()
+        let item_color = if self.color() != Color32::TRANSPARENT {
+            self.color()
+        } else if plot.ui.visuals().dark_mode {
+            Color32::from_gray(200)
         } else {
-            Color32::from_black_alpha(180)
+            Color32::from_black_alpha(200)
         };
 
         // this method is only called, if the value is in the result set of find_closest()
         let value = points[elem.index];
         let pointer = plot.transform.position_from_point(&value);
-        shapes.push(Shape::circle_filled(pointer, 3.0, line_color));
+
+        // Marker dot anchored to snapped point
+        shapes.push(Shape::circle_filled(pointer, 4.0, item_color));
+        shapes.push(Shape::circle_stroke(
+            pointer,
+            6.0,
+            Stroke::new(1.5_f32, plot.ui.visuals().window_stroke().color),
+        ));
+
+        // Callout box frame anchored around snapped point
+        let callout_rect = Rect::from_center_size(pointer, vec2(14.0, 14.0));
+        shapes.push(Shape::rect_stroke(
+            callout_rect,
+            2.0,
+            Stroke::new(1.0_f32, item_color),
+            egui::StrokeKind::Outside,
+        ));
 
         rulers_and_tooltip_at_value(
             plot_area_response,
@@ -1732,31 +1750,6 @@ pub(super) fn rulers_and_tooltip_at_value(
         cursors.push(Cursor::Horizontal { y: value.y });
     }
 
-    let text = if let Some(custom_label) = label_formatter {
-        custom_label(name, &value)
-    } else {
-        let prefix = if name.is_empty() {
-            String::new()
-        } else {
-            format!("{name}\n")
-        };
-        let scale = plot.transform.dvalue_dpos();
-        let x_decimals = ((-scale[0].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6);
-        let y_decimals = ((-scale[1].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6);
-        if plot.show_x && plot.show_y {
-            format!(
-                "{}x = {:.*}\ny = {:.*}",
-                prefix, x_decimals, value.x, y_decimals, value.y
-            )
-        } else if plot.show_x {
-            format!("{}x = {:.*}", prefix, x_decimals, value.x)
-        } else if plot.show_y {
-            format!("{}y = {:.*}", prefix, y_decimals, value.y)
-        } else {
-            unreachable!()
-        }
-    };
-
     // We show the tooltip as soon as we're hovering the plot area:
     let mut tooltip = egui::Tooltip::always_open(
         plot_area_response.ctx.clone(),
@@ -1771,7 +1764,33 @@ pub(super) fn rulers_and_tooltip_at_value(
 
     tooltip.gap(12.0).show(|ui| {
         ui.set_max_width(tooltip_width);
-        ui.label(text);
+        if let Some(custom_label) = label_formatter {
+            ui.label(custom_label(name, &value));
+        } else {
+            if !name.is_empty() {
+                ui.label(egui::RichText::new(name).strong());
+                ui.add_space(2.0);
+            }
+            let scale = plot.transform.dvalue_dpos();
+            let x_decimals = ((-scale[0].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6);
+            let y_decimals = ((-scale[1].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6);
+            if plot.show_x && plot.show_y {
+                ui.label(
+                    egui::RichText::new(format!("x = {:.*}", x_decimals, value.x)).monospace(),
+                );
+                ui.label(
+                    egui::RichText::new(format!("y = {:.*}", y_decimals, value.y)).monospace(),
+                );
+            } else if plot.show_x {
+                ui.label(
+                    egui::RichText::new(format!("x = {:.*}", x_decimals, value.x)).monospace(),
+                );
+            } else if plot.show_y {
+                ui.label(
+                    egui::RichText::new(format!("y = {:.*}", y_decimals, value.y)).monospace(),
+                );
+            }
+        }
     });
 }
 

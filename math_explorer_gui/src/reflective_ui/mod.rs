@@ -121,6 +121,27 @@ pub fn render_all_theory_parameters<T: TheoryDescribable>(
     changed
 }
 
+/// Renders a collapsible parameter sensitivity and perturbation analysis panel for a theory-describable model.
+pub fn render_sensitivity_panel<T: TheoryDescribable>(
+    ui: &mut egui::Ui,
+    model: &mut T,
+    engine: &mut crate::sensitivity::SensitivityEngine,
+    id_source: &str,
+) {
+    let params_map = model.theory_parameters();
+    let mut param_list = Vec::new();
+    for key in params_map.keys() {
+        if let Some(val) = model.get_parameter(key) {
+            param_list.push((key.clone(), val));
+        }
+    }
+    param_list.sort_by(|a, b| a.0.cmp(&b.0));
+
+    engine.compute(&param_list, |p_map| p_map.values().map(|v| v.abs()).sum());
+
+    crate::sensitivity::render_sensitivity_panel_ui(ui, engine, id_source);
+}
+
 fn format_metric_label(label: &str, value: &str) -> String {
     if label.is_empty() {
         value.to_string()
