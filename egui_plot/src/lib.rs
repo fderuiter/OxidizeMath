@@ -14,6 +14,7 @@ pub mod commands;
 pub mod export;
 pub mod fit;
 mod items;
+pub mod latex;
 mod legend;
 mod memory;
 mod plot_ui;
@@ -32,17 +33,18 @@ use emath::Float as _;
 pub use crate::{
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
     export::{
-        AspectRatioOption, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
-        color32_image_to_png, copy_image_to_clipboard, export_csv, export_custom_image,
-        export_custom_png, export_json, parse_csv, save_file_dialog, trigger_import_csv,
-        trigger_import_csv_for_plot,
+        AspectRatioOption, ExportFrame, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
+        color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard, export_csv,
+        export_custom_gif, export_custom_image, export_custom_png, export_json, parse_csv,
+        save_file_dialog, trigger_import_csv, trigger_import_csv_for_plot,
     },
     fit::{FitResult, FitType, fit_dataset},
     items::{
-        Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, ClosestElem, HLine, Line, LineStyle,
-        MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem, PlotItemBase,
-        PlotPoint, PlotPoints, Points, Polygon, Text, VLine,
+        Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
+        LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
+        PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, Text, VLine,
     },
+    latex::{parse_latex_to_layout_job, parse_latex_with_font},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::PlotMemory,
     plot_ui::PlotUi,
@@ -1940,7 +1942,7 @@ impl<'a> Plot<'a> {
                             }
                         }
 
-                        if ui.button("🎥 Save GIF").clicked() {
+                        if ui.button("🎬 Save GIF").clicked() {
                             let sampled_frames = export::sample_progressive_frames(
                                 &export_datasets,
                                 access_state.export_gif_frames as usize,

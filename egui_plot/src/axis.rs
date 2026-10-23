@@ -242,7 +242,14 @@ impl<'a> AxisWidget<'a> {
             return (response, tick_labels_thickness);
         }
 
-        let galley = self.hints.label.into_galley(
+        let label_text = self.hints.label.text();
+        let job = crate::latex::parse_latex_to_layout_job(
+            label_text,
+            TextStyle::Body,
+            ui,
+            ui.visuals().text_color(),
+        );
+        let galley = WidgetText::LayoutJob(Arc::new(job)).into_galley(
             ui,
             Some(TextWrapMode::Extend),
             f32::INFINITY,
