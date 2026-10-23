@@ -629,6 +629,68 @@ pub fn color32_image_to_png(image: &egui::ColorImage) -> Result<Vec<u8>, String>
     Ok(bytes)
 }
 
+/// Type alias representing a single exported frame's dataset series.
+pub type ExportFrame = Vec<(String, Vec<[f64; 2]>)>;
+
+/// Convert a sequence of `egui::ColorImage` frames into GIF encoded bytes.
+pub fn color32_images_to_gif(images: &[egui::ColorImage], fps: u32) -> Result<Vec<u8>, String> {
+    if images.is_empty() {
+        return Err("No images provided for GIF animation".to_string());
+    }
+
+    let mut gif_bytes = Vec::new();
+    {
+        let mut encoder = image::codecs::gif::GifEncoder::new(&mut gif_bytes);
+        let _ = encoder.set_repeat(image::codecs::gif::Repeat::Infinite);
+
+        let delay_ms = 1000u32.checked_div(fps).unwrap_or(100).max(1);
+        let delay = image::Delay::from_saturating_duration(std::time::Duration::from_millis(
+            delay_ms as u64,
+        ));
+
+        for img in images {
+            let width = img.width() as u32;
+            let height = img.height() as u32;
+            let mut raw_rgba = Vec::with_capacity(img.pixels.len() * 4);
+            for p in &img.pixels {
+                raw_rgba.push(p.r());
+                raw_rgba.push(p.g());
+                raw_rgba.push(p.b());
+                raw_rgba.push(p.a());
+            }
+
+            let buffer = image::RgbaImage::from_raw(width, height, raw_rgba)
+                .ok_or_else(|| "Failed to create RGBA buffer for GIF frame".to_string())?;
+
+            let frame = image::Frame::from_parts(buffer, 0, 0, delay);
+            encoder
+                .encode_frame(frame)
+                .map_err(|e| format!("GIF encoding error: {e}"))?;
+        }
+    }
+
+    Ok(gif_bytes)
+}
+
+/// Render a sequence of plot frame datasets into a multi-frame GIF image byte buffer using offscreen rasterization.
+pub fn export_custom_gif(
+    frames: &[ExportFrame],
+    options: &ExportOptions,
+    fps: u32,
+) -> Result<Vec<u8>, String> {
+    if frames.is_empty() {
+        return Err("No animation frames provided for GIF export".to_string());
+    }
+
+    let mut images = Vec::with_capacity(frames.len());
+    for frame_datasets in frames {
+        let img = export_custom_image(frame_datasets, options)?;
+        images.push(img);
+    }
+
+    color32_images_to_gif(&images, fps)
+}
+
 /// Trigger cross-platform file saving dialog or browser download action.
 pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _filter_ext: &[&str]) {
     #[cfg(not(target_arch = "wasm32"))]
@@ -652,6 +714,8 @@ pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _fil
             "application/json"
         } else if filename.ends_with(".png") {
             "image/png"
+        } else if filename.ends_with(".gif") {
+            "image/gif"
         } else {
             "application/octet-stream"
         };
@@ -859,5 +923,65 @@ mod tests {
         let content = "Not a CSV file at all\nJust some random text\nWith no numbers anywhere\n";
         let datasets = parse_csv(content);
         assert!(datasets.is_empty());
+    }
+
+    #[test]
+    fn test_color32_images_to_gif() {
+        let frame1 = egui::ColorImage::new([4, 4], vec![egui::Color32::RED; 16]);
+        let frame2 = egui::ColorImage::new([4, 4], vec![egui::Color32::BLUE; 16]);
+        let gif_bytes = color32_images_to_gif(&[frame1, frame2], 10).expect("GIF encoding failed");
+        assert!(!gif_bytes.is_empty());
+        assert!(gif_bytes.starts_with(b"GIF89a"));
+    }
+
+    #[test]
+    fn test_export_custom_gif_multiframe() {
+        let frame1 = vec![("Series 1".to_string(), vec![[0.0, 0.0], [1.0, 1.0]])];
+        let frame2 = vec![("Series 1".to_string(), vec![[0.0, 0.0], [1.0, 2.0]])];
+        let options = ExportOptions {
+            width: 100,
+            height: 100,
+            ..Default::default()
+        };
+        let gif_bytes =
+            export_custom_gif(&[frame1, frame2], &options, 15).expect("GIF export failed");
+        assert!(!gif_bytes.is_empty());
+        assert!(gif_bytes.starts_with(b"GIF89a"));
+        let _ = std::fs::write("/tmp/sample_export.gif", &gif_bytes);
+    }
+
+    #[test]
+    fn test_export_custom_gif_single_frame_fallback() {
+        let frame1 = vec![("Series 1".to_string(), vec![[0.0, 0.0], [1.0, 1.0]])];
+        let options = ExportOptions {
+            width: 50,
+            height: 50,
+            ..Default::default()
+        };
+        let gif_bytes = export_custom_gif(&[frame1], &options, 5).expect("Single frame GIF failed");
+        assert!(!gif_bytes.is_empty());
+        assert!(gif_bytes.starts_with(b"GIF89a"));
+    }
+
+    #[test]
+    fn test_export_custom_gif_empty_frames_error() {
+        let options = ExportOptions::default();
+        let result = export_custom_gif(&[], &options, 10);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No animation frames provided"));
+    }
+
+    #[test]
+    fn test_export_custom_gif_max_dimension_cap() {
+        let frame1 = vec![("Series".to_string(), vec![[0.0, 0.0]])];
+        let options = ExportOptions {
+            width: 5000,
+            height: 5000,
+            scale: 1.0,
+            ..Default::default()
+        };
+        let result = export_custom_gif(&[frame1], &options, 10);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exceed maximum limit"));
     }
 }

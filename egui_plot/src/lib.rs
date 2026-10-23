@@ -32,10 +32,10 @@ use emath::Float as _;
 pub use crate::{
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
     export::{
-        AspectRatioOption, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
-        color32_image_to_png, copy_image_to_clipboard, export_csv, export_custom_image,
-        export_custom_png, export_json, parse_csv, save_file_dialog, trigger_import_csv,
-        trigger_import_csv_for_plot,
+        AspectRatioOption, ExportFrame, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
+        color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard, export_csv,
+        export_custom_gif, export_custom_image, export_custom_png, export_json, parse_csv,
+        save_file_dialog, trigger_import_csv, trigger_import_csv_for_plot,
     },
     fit::{FitResult, FitType, fit_dataset},
     items::{
@@ -1455,6 +1455,8 @@ impl<'a> Plot<'a> {
             export_line_thickness: f32,
             export_bg_opacity: f32,
             export_bg_dark: bool,
+            export_fps: u32,
+            export_frame_count: u32,
             status_message: Option<String>,
             focused_item: usize,
             focused_point: usize,
@@ -1473,6 +1475,8 @@ impl<'a> Plot<'a> {
                     export_line_thickness: 2.0,
                     export_bg_opacity: 1.0,
                     export_bg_dark: true,
+                    export_fps: 10,
+                    export_frame_count: 30,
                     status_message: None,
                     focused_item: 0,
                     focused_point: 0,
@@ -1776,6 +1780,19 @@ impl<'a> Plot<'a> {
                         ui.selectable_value(&mut access_state.export_bg_dark, false, "Light");
                     });
 
+                    ui.horizontal(|ui| {
+                        ui.label("Animation FPS:");
+                        ui.add(egui::Slider::new(&mut access_state.export_fps, 1..=60).text("fps"));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Frame Count:");
+                        ui.add(
+                            egui::Slider::new(&mut access_state.export_frame_count, 2..=120)
+                                .text("frames"),
+                        );
+                    });
+
                     ui.separator();
 
                     let base_w = 1920u32;
@@ -1833,6 +1850,40 @@ impl<'a> Plot<'a> {
                                     );
                                     access_state.status_message =
                                         Some("PNG image saved successfully.".to_string());
+                                }
+                                Err(e) => {
+                                    access_state.status_message =
+                                        Some(format!("Export failed: {e}"));
+                                }
+                            }
+                        }
+
+                        if ui.button("🎬 Save GIF").clicked() {
+                            let frame_count = access_state.export_frame_count.max(1) as usize;
+                            let mut frames = Vec::with_capacity(frame_count);
+                            for frame_idx in 1..=frame_count {
+                                let mut frame_ds = Vec::new();
+                                for (name, pts) in &export_datasets {
+                                    let take_count = (pts.len() * frame_idx) / frame_count;
+                                    let take_count = take_count.max(1).min(pts.len());
+                                    frame_ds.push((name.clone(), pts[..take_count].to_vec()));
+                                }
+                                frames.push(frame_ds);
+                            }
+                            match export::export_custom_gif(
+                                &frames,
+                                &options,
+                                access_state.export_fps,
+                            ) {
+                                Ok(gif_bytes) => {
+                                    export::save_file_dialog(
+                                        "plot.gif",
+                                        &gif_bytes,
+                                        "GIF Animation",
+                                        &["gif"],
+                                    );
+                                    access_state.status_message =
+                                        Some("GIF animation saved successfully.".to_string());
                                 }
                                 Err(e) => {
                                     access_state.status_message =
