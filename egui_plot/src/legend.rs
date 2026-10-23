@@ -184,9 +184,18 @@ impl LegendEntry {
             hovered: _,
         } = self;
 
-        let font_id = text_style.resolve(ui.style());
-
-        let galley = ui.fonts_mut(|f| f.layout_delayed_color(name.clone(), font_id, f32::INFINITY));
+        let job = crate::latex::parse_latex_to_layout_job(
+            name,
+            text_style.clone(),
+            ui,
+            ui.visuals().text_color(),
+        );
+        let galley = egui::WidgetText::LayoutJob(std::sync::Arc::new(job)).into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            text_style.clone(),
+        );
 
         let icon_size = galley.size().y;
         let icon_spacing = icon_size / 5.0;

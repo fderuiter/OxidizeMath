@@ -178,6 +178,19 @@ impl<'a> PlotUi<'a> {
         self.items.push(Box::new(text));
     }
 
+    /// Add a callout annotation.
+    pub fn callout(&mut self, mut callout: crate::Callout) {
+        if callout.text.is_empty() {
+            return;
+        }
+
+        if callout.leader_stroke.color == Color32::TRANSPARENT {
+            callout.leader_stroke.color = self.auto_color();
+        }
+
+        self.items.push(Box::new(callout));
+    }
+
     /// Add data points.
     pub fn points(&mut self, mut points: crate::Points<'a>) {
         if points.series.is_empty() {
