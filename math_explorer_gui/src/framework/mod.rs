@@ -151,27 +151,32 @@ pub trait InteractiveTool {
         None
     }
 
-    /// Optional hook to sample animation frame steps across the simulation/tool.
-    /// Default implementation samples multi-frame animation steps from current datasets.
-    fn export_animation_frames(
+    /// Optional hook to step simulation logic during frame sampling for GIF animation export.
+    fn step_simulation(&mut self) {}
+
+    /// Optional hook to sample multi-frame animation datasets for GIF export.
+    fn sample_animation_frames(
         &mut self,
-        frames_count: usize,
-    ) -> Vec<Vec<(String, Vec<[f64; 2]>)>> {
-        let current = self.export_datasets();
-        if current.is_empty() || frames_count == 0 {
-            return Vec::new();
-        }
-        let frames_count = frames_count.max(1);
-        let mut frames = Vec::with_capacity(frames_count);
-        for frame_idx in 1..=frames_count {
-            let mut frame_ds = Vec::new();
-            for (name, pts) in &current {
-                let take_count = (pts.len() * frame_idx) / frames_count;
-                let take_count = take_count.max(1).min(pts.len());
-                frame_ds.push((name.clone(), pts[..take_count].to_vec()));
+        num_frames: usize,
+    ) -> Vec<egui_plot::export::DatasetFrame> {
+        let count = num_frames.max(1);
+        let mut frames = Vec::with_capacity(count);
+
+        for _ in 0..count {
+            self.step_simulation();
+            let ds = self.export_datasets();
+            if !ds.is_empty() {
+                frames.push(ds);
             }
-            frames.push(frame_ds);
         }
+
+        if frames.is_empty() {
+            let ds = self.export_datasets();
+            if !ds.is_empty() {
+                frames = egui_plot::export::sample_progressive_frames(&ds, count);
+            }
+        }
+
         frames
     }
 }
@@ -204,8 +209,8 @@ pub struct SimulationFramework {
     pub show_export_modal: bool,
     pub export_options: egui_plot::export::ExportOptions,
     pub export_bg_dark: bool,
-    pub export_fps: u32,
-    pub export_frame_count: u32,
+    pub export_gif_fps: u32,
+    pub export_gif_frames: u32,
     pub export_status_message: Option<String>,
 }
 
@@ -233,8 +238,8 @@ impl SimulationFramework {
             show_export_modal: false,
             export_options: egui_plot::export::ExportOptions::default(),
             export_bg_dark: true,
-            export_fps: 10,
-            export_frame_count: 30,
+            export_gif_fps: 15,
+            export_gif_frames: 20,
             export_status_message: None,
         };
 
