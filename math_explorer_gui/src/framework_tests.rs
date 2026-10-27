@@ -277,7 +277,7 @@ mod tests {
     fn test_generate_trace_overlay_screenshots() {
         let options = egui_plot::export::ExportOptions::default();
 
-        // ODE trace overlay datasets
+        // ODE trace overlay datasets with auto history ghost trace and pinned baseline
         let ode_datasets = vec![
             (
                 "y(t) [Active: k=2.50, dt=0.05]".to_string(),
@@ -285,6 +285,15 @@ mod tests {
                     .map(|i| {
                         let t = i as f64 * 0.05;
                         [t, (2.5 * t).exp().min(100.0)]
+                    })
+                    .collect(),
+            ),
+            (
+                "y(t) (Run 1: k=0.50, dt=0.05)".to_string(),
+                (0..=100)
+                    .map(|i| {
+                        let t = i as f64 * 0.05;
+                        [t, (0.5 * t).exp().min(100.0)]
                     })
                     .collect(),
             ),

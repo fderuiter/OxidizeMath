@@ -111,3 +111,24 @@ fn test_ode_trace_snapshot_pinning_and_export() {
     restored.load_state(&state);
     assert_eq!(restored.snapshot_manager.len(), 1);
 }
+
+#[test]
+fn test_ode_auto_history_buffering() {
+    let mut tool = OdeSolverTool::default();
+    assert_eq!(tool.snapshot_manager.history_len(), 0);
+
+    for i in 1..=7 {
+        let old_summary = tool.param_summary();
+        let pts: Vec<[f64; 2]> = tool.time_series.iter().zip(&tool.y_series).map(|(&t, &y)| [t, y]).collect();
+        tool.snapshot_manager.push_history_run(old_summary, vec![TraceSeries::new("y(t)", pts)]);
+        tool.param_k = i as f64 * 0.5;
+        tool.recalculate();
+    }
+
+    assert_eq!(tool.snapshot_manager.history_len(), 5);
+    assert!(tool.snapshot_manager.history_runs()[0].param_summary.contains("k=1.00"));
+    assert!(tool.snapshot_manager.history_runs()[4].param_summary.contains("k=3.00"));
+
+    let exported = tool.export_datasets();
+    assert!(exported.iter().any(|(name, _)| name.contains("Run")));
+}
