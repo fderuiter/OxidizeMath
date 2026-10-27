@@ -17,10 +17,15 @@ pub struct WorkspaceEnvelope {
     pub timestamp: String,
     /// Wrapped application state payload.
     pub app_state: AppState,
+    /// Recent undo history snapshots.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub history_undo_stack: Vec<AppState>,
+    /// Recent redo history snapshots.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub history_redo_stack: Vec<AppState>,
 }
 
 /// Manages non-blocking file dialog operations, active workspace file path tracking, and envelope parsing.
-#[derive(Default)]
 pub struct WorkspaceSessionManager {
     /// Active workspace file path for direct single-keystroke saves (`Cmd+S`).
     active_file_path: Option<PathBuf>,
@@ -30,6 +35,35 @@ pub struct WorkspaceSessionManager {
     save_as_rx: Option<Receiver<Result<PathBuf, String>>>,
     /// Inline UI toast message and error flag.
     toast: Option<(String, bool)>,
+    /// Undo history stack.
+    undo_stack: Vec<AppState>,
+    /// Redo history stack.
+    redo_stack: Vec<AppState>,
+    /// Maximum depth of history stacks.
+    max_history_depth: usize,
+    /// Last committed state snapshot for diff tracking.
+    last_committed_state: Option<AppState>,
+    /// Flag indicating an active drag interaction for coalescing continuous slider edits.
+    is_dragging: bool,
+    /// Flag indicating an active undo/redo restoration.
+    is_restoring: bool,
+}
+
+impl Default for WorkspaceSessionManager {
+    fn default() -> Self {
+        Self {
+            active_file_path: None,
+            open_rx: None,
+            save_as_rx: None,
+            toast: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            max_history_depth: 50,
+            last_committed_state: None,
+            is_dragging: false,
+            is_restoring: false,
+        }
+    }
 }
 
 impl WorkspaceSessionManager {
@@ -63,6 +97,83 @@ impl WorkspaceSessionManager {
         self.toast.as_ref()
     }
 
+    /// Returns true if an undo operation can be performed.
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    /// Returns true if a redo operation can be performed.
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
+
+    /// Pushes an application state snapshot onto the undo stack.
+    pub fn push_undo(&mut self, state: AppState) {
+        if self.is_restoring {
+            return;
+        }
+        if self.undo_stack.last() == Some(&state) {
+            return;
+        }
+        self.undo_stack.push(state);
+        if self.undo_stack.len() > self.max_history_depth {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    /// Pushes an application state snapshot onto the redo stack.
+    pub fn push_redo(&mut self, state: AppState) {
+        self.redo_stack.push(state);
+    }
+
+    /// Pops the top state snapshot from the undo stack.
+    pub fn pop_undo(&mut self) -> Option<AppState> {
+        self.undo_stack.pop()
+    }
+
+    /// Pops the top state snapshot from the redo stack.
+    pub fn pop_redo(&mut self) -> Option<AppState> {
+        self.redo_stack.pop()
+    }
+
+    /// Sets the restoration flag to avoid recording snapshots during undo/redo state restoration.
+    pub fn set_is_restoring(&mut self, restoring: bool) {
+        self.is_restoring = restoring;
+    }
+
+    /// Tracks application state changes and updates the history buffer.
+    pub fn track_state_changes(&mut self, ctx: &egui::Context, current_state: AppState) {
+        if self.is_restoring {
+            self.last_committed_state = Some(current_state);
+            self.is_restoring = false;
+            return;
+        }
+
+        if let Some(ref last_state) = self.last_committed_state {
+            if &current_state != last_state {
+                let pointer_down = ctx.input(|i| i.pointer.any_down());
+                if pointer_down {
+                    if !self.is_dragging {
+                        self.push_undo(last_state.clone());
+                        self.is_dragging = true;
+                    }
+                } else {
+                    if !self.is_dragging {
+                        self.push_undo(last_state.clone());
+                    } else {
+                        self.is_dragging = false;
+                    }
+                }
+                self.last_committed_state = Some(current_state);
+            } else if !ctx.input(|i| i.pointer.any_down()) {
+                self.is_dragging = false;
+            }
+        } else {
+            self.last_committed_state = Some(current_state);
+        }
+    }
+
     /// Wraps the given application state inside a versioned workspace envelope and serializes it to JSON.
     pub fn create_envelope(&self, app_state: AppState) -> String {
         let envelope = WorkspaceEnvelope {
@@ -70,13 +181,15 @@ impl WorkspaceSessionManager {
             app_version: env!("CARGO_PKG_VERSION").to_string(),
             timestamp: chrono::Utc::now().to_rfc3339(),
             app_state,
+            history_undo_stack: self.undo_stack.clone(),
+            history_redo_stack: self.redo_stack.clone(),
         };
         serde_json::to_string_pretty(&envelope).unwrap_or_default()
     }
 
     /// Validates and parses workspace session content from a JSON string.
     /// Supports both versioned `WorkspaceEnvelope` payloads and legacy/raw `AppState` JSON.
-    pub fn parse_envelope(&self, json_str: &str) -> Result<AppState, String> {
+    pub fn parse_envelope(&mut self, json_str: &str) -> Result<AppState, String> {
         let val: serde_json::Value = serde_json::from_str(json_str)
             .map_err(|e| format!("Invalid workspace file format: {}", e))?;
 
@@ -97,10 +210,18 @@ impl WorkspaceSessionManager {
                     envelope.schema_version
                 ));
             }
+            self.undo_stack = envelope.history_undo_stack;
+            self.redo_stack = envelope.history_redo_stack;
+            self.last_committed_state = Some(envelope.app_state.clone());
+            self.is_restoring = true;
             Ok(envelope.app_state)
         } else {
             let state: AppState = serde_json::from_str(json_str)
                 .map_err(|e| format!("Corrupted workspace state JSON: {}", e))?;
+            self.undo_stack.clear();
+            self.redo_stack.clear();
+            self.last_committed_state = Some(state.clone());
+            self.is_restoring = true;
             Ok(state)
         }
     }
@@ -177,6 +298,25 @@ impl WorkspaceSessionManager {
         }
     }
 
+    fn reg_shortcut(
+        ctx: &egui::Context,
+        name: &str,
+        cat: &str,
+        k: egui::Key,
+        m: egui::Modifiers,
+    ) -> bool {
+        egui_plot::commands::CommandRegistryData::register_and_check(
+            ctx,
+            name,
+            "",
+            egui_plot::commands::CommandTrigger::Shortcut(m, k),
+            true,
+            cat,
+            None,
+            None,
+        )
+    }
+
     /// Registers global workspace session keyboard shortcuts and checks for user triggers.
     pub fn register_and_check_shortcuts(&mut self, ctx: &egui::Context, app: &mut MathExplorerApp) {
         let modifiers = if cfg!(target_os = "macos") {
@@ -186,50 +326,55 @@ impl WorkspaceSessionManager {
         };
         let shift_modifiers = modifiers | egui::Modifiers::SHIFT;
 
-        let open_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
-            ctx,
-            "Open Workspace Session...",
-            "Open a workspace session file (.mws or .json)",
-            egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::O),
-            true,
-            "File",
-            None,
-            None,
-        );
+        let (undo, redo) = Self::check_history_shortcuts(ctx, modifiers, shift_modifiers);
+        let (open, save_as, save) = Self::check_file_shortcuts(ctx, modifiers, shift_modifiers);
 
-        let save_as_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
-            ctx,
-            "Save Workspace Session As...",
-            "Save active workspace session to a new file",
-            egui_plot::commands::CommandTrigger::Shortcut(shift_modifiers, egui::Key::S),
-            true,
-            "File",
-            None,
-            None,
-        );
-
-        let save_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
-            ctx,
-            "Save Workspace Session",
-            "Save current workspace session state to disk",
-            egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::S),
-            true,
-            "File",
-            None,
-            None,
-        );
-
-        if open_triggered {
+        if undo {
+            app.undo();
+        } else if redo {
+            app.redo();
+        } else if open {
             self.trigger_open();
-        } else if save_as_triggered {
+        } else if save_as {
             let state = app.get_app_state();
             let env_json = self.create_envelope(state);
             self.trigger_save_as(env_json);
-        } else if save_triggered {
+        } else if save {
             let state = app.get_app_state();
             let env_json = self.create_envelope(state);
             self.trigger_save(env_json);
         }
+    }
+
+    fn check_history_shortcuts(
+        ctx: &egui::Context,
+        m: egui::Modifiers,
+        sm: egui::Modifiers,
+    ) -> (bool, bool) {
+        let undo = Self::reg_shortcut(ctx, "Undo", "Edit", egui::Key::Z, m);
+        let redo_shift = Self::reg_shortcut(ctx, "Redo", "Edit", egui::Key::Z, sm);
+        let redo_ctrl_y = !cfg!(target_os = "macos")
+            && Self::reg_shortcut(ctx, "Redo (Ctrl+Y)", "Edit", egui::Key::Y, m);
+
+        (undo, redo_shift || redo_ctrl_y)
+    }
+
+    fn check_file_shortcuts(
+        ctx: &egui::Context,
+        m: egui::Modifiers,
+        sm: egui::Modifiers,
+    ) -> (bool, bool, bool) {
+        let open = Self::reg_shortcut(ctx, "Open Workspace Session...", "File", egui::Key::O, m);
+        let save_as = Self::reg_shortcut(
+            ctx,
+            "Save Workspace Session As...",
+            "File",
+            egui::Key::S,
+            sm,
+        );
+        let save = Self::reg_shortcut(ctx, "Save Workspace Session", "File", egui::Key::S, m);
+
+        (open, save_as, save)
     }
 
     /// Polls pending background file open channel.
@@ -248,41 +393,16 @@ impl WorkspaceSessionManager {
                                 .unwrap_or("workspace.mws");
                             let msg = format!("Loaded workspace session from {}", file_name);
                             self.set_toast(&msg, false);
-
-                            global_registry().emit(TelemetryEvent {
-                                source: "WorkspaceSessionManager".to_string(),
-                                severity: Severity::Info,
-                                message: msg.clone(),
-                                metadata: std::collections::HashMap::new(),
-                                thread_name: None,
-                            });
-                            ctx.data_mut(|d| {
-                                d.insert_temp(egui::Id::new("aria_live_message"), msg);
-                            });
+                            log_telemetry(msg, Severity::Info, ctx, "aria_live_message");
                         }
                         Err(err) => {
                             self.set_toast(&err, true);
-                            global_registry().emit(TelemetryEvent {
-                                source: "WorkspaceSessionManager".to_string(),
-                                severity: Severity::Error,
-                                message: err.clone(),
-                                metadata: std::collections::HashMap::new(),
-                                thread_name: None,
-                            });
-                            ctx.data_mut(|d| {
-                                d.insert_temp(egui::Id::new("aria_live_assertive_message"), err);
-                            });
+                            log_telemetry(err, Severity::Error, ctx, "aria_live_assertive_message");
                         }
                     },
                     Err(err) => {
                         self.set_toast(&err, true);
-                        global_registry().emit(TelemetryEvent {
-                            source: "WorkspaceSessionManager".to_string(),
-                            severity: Severity::Error,
-                            message: err.clone(),
-                            metadata: std::collections::HashMap::new(),
-                            thread_name: None,
-                        });
+                        log_telemetry(err, Severity::Error, ctx, "aria_live_assertive_message");
                     }
                 }
             }
@@ -303,27 +423,11 @@ impl WorkspaceSessionManager {
                             .unwrap_or("workspace.mws");
                         let msg = format!("Exported workspace session to {}", file_name);
                         self.set_toast(&msg, false);
-
-                        global_registry().emit(TelemetryEvent {
-                            source: "WorkspaceSessionManager".to_string(),
-                            severity: Severity::Info,
-                            message: msg.clone(),
-                            metadata: std::collections::HashMap::new(),
-                            thread_name: None,
-                        });
-                        ctx.data_mut(|d| {
-                            d.insert_temp(egui::Id::new("aria_live_message"), msg);
-                        });
+                        log_telemetry(msg, Severity::Info, ctx, "aria_live_message");
                     }
                     Err(err) => {
                         self.set_toast(&err, true);
-                        global_registry().emit(TelemetryEvent {
-                            source: "WorkspaceSessionManager".to_string(),
-                            severity: Severity::Error,
-                            message: err.clone(),
-                            metadata: std::collections::HashMap::new(),
-                            thread_name: None,
-                        });
+                        log_telemetry(err, Severity::Error, ctx, "aria_live_assertive_message");
                     }
                 }
             }
@@ -357,4 +461,17 @@ impl WorkspaceSessionManager {
             }
         }
     }
+}
+
+fn log_telemetry(msg: String, severity: Severity, ctx: &egui::Context, aria_key: &str) {
+    global_registry().emit(TelemetryEvent {
+        source: "WorkspaceSessionManager".to_string(),
+        severity,
+        message: msg.clone(),
+        metadata: std::collections::HashMap::new(),
+        thread_name: None,
+    });
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new(aria_key), msg);
+    });
 }
