@@ -97,7 +97,7 @@ fn test_ode_trace_snapshot_pinning_and_export() {
     // Pinned snapshot retains baseline curve points
     assert_eq!(
         tool.snapshot_manager.snapshots()[0].param_summary,
-        "k=1.00, dt=0.05"
+        r"k=1.00, \Delta t=0.05"
     );
     assert_eq!(tool.snapshot_manager.snapshots()[0].series[0].points, pts);
 
