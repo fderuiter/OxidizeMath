@@ -45,7 +45,7 @@ pub use crate::{
         LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
         PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, Text, VLine,
     },
-    latex::{parse_latex_to_layout_job, parse_latex_with_font},
+    latex::{MathBox, parse_latex_to_layout_job, parse_latex_with_font, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::PlotMemory,
     plot_ui::PlotUi,

@@ -118,8 +118,8 @@ impl Default for OdeSolverTool {
 impl OdeSolverTool {
     pub fn param_summary(&self) -> String {
         match self.preset {
-            OdePreset::Exponential | OdePreset::HarmonicOscillator => format!("k={:.2}, dt={:.2}", self.param_k, self.dt),
-            OdePreset::LogisticGrowth => format!("r={:.2}, K={:.2}, dt={:.2}", self.param_r, self.param_cap_k, self.dt),
+            OdePreset::Exponential | OdePreset::HarmonicOscillator => format!(r"k={:.2}, \Delta t={:.2}", self.param_k, self.dt),
+            OdePreset::LogisticGrowth => format!(r"r={:.2}, K={:.2}, \Delta t={:.2}", self.param_r, self.param_cap_k, self.dt),
         }
     }
     #[must_use]

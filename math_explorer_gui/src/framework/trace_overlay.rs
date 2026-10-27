@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use eframe::egui;
-use egui_plot::{Line, LineStyle, PlotPoints, PlotUi};
+use egui_plot::{render_math_label, Line, LineStyle, PlotPoints, PlotUi};
 use serde::{Deserialize, Serialize};
 
 /// Maximum pinned trace snapshots permitted per tool instance.
@@ -291,7 +291,12 @@ impl TraceSnapshotManager {
                             );
                             ui.add_space(12.0);
 
-                            ui.label(egui::RichText::new(snapshot.display_label()).strong());
+                            render_math_label(
+                                ui,
+                                &snapshot.display_label(),
+                                egui::TextStyle::Body,
+                                ui.visuals().text_color(),
+                            );
 
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),

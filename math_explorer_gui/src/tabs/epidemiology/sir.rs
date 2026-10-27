@@ -52,7 +52,7 @@ impl Default for SirTool {
 
 impl SirTool {
     pub fn param_summary(&self) -> String {
-        format!("β={:.2}, γ={:.2}, N={:.0}", self.beta, self.gamma, self.n)
+        format!(r"\beta={:.2}, \gamma={:.2}, N={:.0}", self.beta, self.gamma, self.n)
     }
 
     fn render_parameter_controls(&mut self, ui: &mut egui::Ui) -> bool {
@@ -295,7 +295,7 @@ mod tests {
         tool.recalculate();
 
         // Snapshot remains preserved
-        assert_eq!(tool.snapshot_manager.snapshots()[0].param_summary, "β=0.20, γ=0.10, N=1000");
+        assert_eq!(tool.snapshot_manager.snapshots()[0].param_summary, r"\beta=0.20, \gamma=0.10, N=1000");
 
         // Export includes both active simulation curves and pinned snapshot traces
         let exported = tool.export_datasets();
