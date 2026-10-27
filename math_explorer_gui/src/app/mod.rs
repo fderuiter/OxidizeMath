@@ -58,7 +58,6 @@ impl Default for MathExplorerApp {
 }
 
 impl MathExplorerApp {
-    #[allow(clippy::vec_init_then_push)]
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
 
@@ -69,66 +68,7 @@ impl MathExplorerApp {
         }
 
         #[cfg(target_os = "macos")]
-        {
-            use muda::{Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
-            let menu = Menu::new();
-
-            // App Menu
-            let app_menu = Submenu::new("Math Explorer", true);
-            app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
-            menu.append(&app_menu).unwrap();
-
-            // File Menu
-            let file_menu = Submenu::new("File", true);
-            let open_item = MenuItem::with_id(
-                MenuId::new("file_open"),
-                "Open Workspace Session...",
-                true,
-                None,
-            );
-            let save_item = MenuItem::with_id(
-                MenuId::new("file_save"),
-                "Save Workspace Session",
-                true,
-                None,
-            );
-            let save_as_item = MenuItem::with_id(
-                MenuId::new("file_save_as"),
-                "Save Workspace Session As...",
-                true,
-                None,
-            );
-            file_menu.append(&open_item).unwrap();
-            file_menu.append(&save_item).unwrap();
-            file_menu.append(&save_as_item).unwrap();
-            menu.append(&file_menu).unwrap();
-
-            // View Menu
-            let view_menu = Submenu::new("View", true);
-            for (i, tab) in app.tabs.iter().enumerate() {
-                let item =
-                    MenuItem::with_id(MenuId::new(format!("tab_{}", i)), tab.name(), true, None);
-                view_menu.append(&item).unwrap();
-            }
-            menu.append(&view_menu).unwrap();
-
-            // Appearance Menu
-            let appearance_menu = Submenu::new("Appearance", true);
-            let dark_item = MenuItem::with_id(MenuId::new("theme_dark"), "Dark", true, None);
-            let light_item = MenuItem::with_id(MenuId::new("theme_light"), "Light", true, None);
-            let hc_item = MenuItem::with_id(
-                MenuId::new("theme_high_contrast"),
-                "High Contrast",
-                true,
-                None,
-            );
-            appearance_menu.append(&dark_item).unwrap();
-            appearance_menu.append(&light_item).unwrap();
-            appearance_menu.append(&hc_item).unwrap();
-            menu.append(&appearance_menu).unwrap();
-
-            menu.init_for_nsapp();
-        }
+        setup_macos_menu(&app);
 
         app
     }
@@ -201,6 +141,31 @@ impl MathExplorerApp {
                     thread_name: None,
                 });
             }
+        }
+    }
+
+    /// Returns the names of all registered tabs.
+    pub fn tab_names(&self) -> Vec<&'static str> {
+        self.tabs.iter().map(|t| t.name()).collect()
+    }
+
+    /// Restores the previous application state from the undo history stack.
+    pub fn undo(&mut self) {
+        if let Some(prev) = self.session_manager.pop_undo() {
+            let current = self.get_app_state();
+            self.session_manager.push_redo(current);
+            self.apply_app_state(prev);
+            self.session_manager.set_is_restoring(true);
+        }
+    }
+
+    /// Re-applies an undone application state from the redo history stack.
+    pub fn redo(&mut self) {
+        if let Some(next) = self.session_manager.pop_redo() {
+            let current = self.get_app_state();
+            self.session_manager.push_undo(current);
+            self.apply_app_state(next);
+            self.session_manager.set_is_restoring(true);
         }
     }
 }
@@ -303,6 +268,10 @@ impl eframe::App for MathExplorerApp {
                     let state = self.get_app_state();
                     let env_json = self.session_manager.create_envelope(state);
                     self.session_manager.trigger_save_as(env_json);
+                } else if event.id.0 == "edit_undo" {
+                    self.undo();
+                } else if event.id.0 == "edit_redo" {
+                    self.redo();
                 } else if event.id.0.starts_with("tab_") {
                     if let Ok(idx) = event.id.0[4..].parse::<usize>() {
                         self.selected_tab = idx;
@@ -332,130 +301,7 @@ impl eframe::App for MathExplorerApp {
         // Render Menu Bar (Native fallback for non-macOS or inside the app)
         #[cfg(not(target_os = "macos"))]
         egui::TopBottomPanel::top("main_menu").show(ctx, |ui| {
-            let modifiers = if cfg!(target_os = "macos") {
-                egui::Modifiers::MAC_CMD
-            } else {
-                egui::Modifiers::CTRL
-            };
-
-            let quit_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
-                ctx,
-                "Quit",
-                "Quit the application",
-                egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::Q),
-                true,
-                "Global",
-                Some(ui),
-                None,
-            );
-
-            if quit_triggered {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
-
-            egui::MenuBar::new().ui(ui, |ui| {
-                ui.menu_button("File", |ui| {
-                    let cmd_str = if cfg!(target_os = "macos") {
-                        "Cmd+"
-                    } else {
-                        "Ctrl+"
-                    };
-                    let shift_cmd_str = if cfg!(target_os = "macos") {
-                        "Cmd+Shift+"
-                    } else {
-                        "Ctrl+Shift+"
-                    };
-
-                    if ui
-                        .add(
-                            egui::Button::new("Open Workspace Session...")
-                                .shortcut_text(format!("{}O", cmd_str)),
-                        )
-                        .clicked()
-                    {
-                        self.session_manager.trigger_open();
-                        ui.close();
-                    }
-                    if ui
-                        .add(
-                            egui::Button::new("Save Workspace Session")
-                                .shortcut_text(format!("{}S", cmd_str)),
-                        )
-                        .clicked()
-                    {
-                        let state = self.get_app_state();
-                        let env_json = self.session_manager.create_envelope(state);
-                        self.session_manager.trigger_save(env_json);
-                        ui.close();
-                    }
-                    if ui
-                        .add(
-                            egui::Button::new("Save Workspace Session As...")
-                                .shortcut_text(format!("{}S", shift_cmd_str)),
-                        )
-                        .clicked()
-                    {
-                        let state = self.get_app_state();
-                        let env_json = self.session_manager.create_envelope(state);
-                        self.session_manager.trigger_save_as(env_json);
-                        ui.close();
-                    }
-                    ui.separator();
-                    if ui
-                        .add(egui::Button::new("Quit").shortcut_text(format!("{}Q", cmd_str)))
-                        .clicked()
-                    {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                });
-                ui.menu_button("View", |ui| {
-                    for (i, tab) in self.tabs.iter().enumerate() {
-                        if ui
-                            .radio_value(&mut self.selected_tab, i, tab.name())
-                            .clicked()
-                        {
-                            ui.close();
-                        }
-                    }
-                });
-                ui.menu_button("Appearance", |ui| {
-                    if ui
-                        .radio_value(&mut self.theme, ThemeMode::Dark, ThemeMode::Dark.name())
-                        .clicked()
-                    {
-                        ctx.set_visuals(self.theme.visuals());
-                        ui.close();
-                    }
-                    if ui
-                        .radio_value(&mut self.theme, ThemeMode::Light, ThemeMode::Light.name())
-                        .clicked()
-                    {
-                        ctx.set_visuals(self.theme.visuals());
-                        ui.close();
-                    }
-                    if ui
-                        .radio_value(
-                            &mut self.theme,
-                            ThemeMode::HighContrast,
-                            ThemeMode::HighContrast.name(),
-                        )
-                        .clicked()
-                    {
-                        ctx.set_visuals(self.theme.visuals());
-                        ui.close();
-                    }
-                });
-                ui.menu_button("Help", |ui| {
-                    if ui
-                        .checkbox(&mut self.show_help_menu, "Command Framework")
-                        .clicked()
-                    {
-                        ui.close();
-                    }
-                });
-            });
-
-            self.session_manager.render_toast(ui);
+            ui_panels::render_main_menu(self, ctx, ui);
         });
 
         // Render Active Tab
@@ -470,6 +316,10 @@ impl eframe::App for MathExplorerApp {
         }
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
+
+        let current_app_state = self.get_app_state();
+        self.session_manager
+            .track_state_changes(ctx, current_app_state);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
@@ -480,4 +330,73 @@ impl eframe::App for MathExplorerApp {
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(5)
     }
+}
+
+#[cfg(target_os = "macos")]
+fn setup_macos_menu(app: &MathExplorerApp) {
+    use muda::{Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+    let menu = Menu::new();
+
+    // App Menu
+    let app_menu = Submenu::new("Math Explorer", true);
+    app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
+    menu.append(&app_menu).unwrap();
+
+    // File Menu
+    let file_menu = Submenu::new("File", true);
+    let open_item = MenuItem::with_id(
+        MenuId::new("file_open"),
+        "Open Workspace Session...",
+        true,
+        None,
+    );
+    let save_item = MenuItem::with_id(
+        MenuId::new("file_save"),
+        "Save Workspace Session",
+        true,
+        None,
+    );
+    let save_as_item = MenuItem::with_id(
+        MenuId::new("file_save_as"),
+        "Save Workspace Session As...",
+        true,
+        None,
+    );
+    file_menu.append(&open_item).unwrap();
+    file_menu.append(&save_item).unwrap();
+    file_menu.append(&save_as_item).unwrap();
+    menu.append(&file_menu).unwrap();
+
+    // Edit Menu
+    let edit_menu = Submenu::new("Edit", true);
+    let undo_item = MenuItem::with_id(MenuId::new("edit_undo"), "Undo", true, None);
+    let redo_item = MenuItem::with_id(MenuId::new("edit_redo"), "Redo", true, None);
+    edit_menu.append(&undo_item).unwrap();
+    edit_menu.append(&redo_item).unwrap();
+    menu.append(&edit_menu).unwrap();
+
+    // View Menu
+    let view_menu = Submenu::new("View", true);
+    for (i, tab) in app.tabs.iter().enumerate() {
+        let item = MenuItem::with_id(MenuId::new(format!("tab_{}", i)), tab.name(), true, None);
+        view_menu.append(&item).unwrap();
+    }
+    menu.append(&view_menu).unwrap();
+
+    // Appearance Menu
+    let appearance_menu = Submenu::new("Appearance", true);
+    let dark_item = MenuItem::with_id(MenuId::new("theme_dark"), "Dark", true, None);
+    let light_item = MenuItem::with_id(MenuId::new("theme_light"), "Light", true, None);
+    let hc_item = MenuItem::with_id(
+        MenuId::new("theme_high_contrast"),
+        "High Contrast",
+        true,
+        None,
+    );
+    appearance_menu.append(&dark_item).unwrap();
+    appearance_menu.append(&light_item).unwrap();
+    appearance_menu.append(&hc_item).unwrap();
+    menu.append(&appearance_menu).unwrap();
+
+    menu.init_for_nsapp();
 }

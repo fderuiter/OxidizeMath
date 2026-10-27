@@ -246,7 +246,7 @@ fn test_cheatsheet_shortcut_aria_announcements() {
 fn test_workspace_envelope_serialization_and_parsing() {
     let app = MathExplorerApp::default();
     let state = app.get_app_state();
-    let mgr = WorkspaceSessionManager::default();
+    let mut mgr = WorkspaceSessionManager::default();
 
     let json_str = mgr.create_envelope(state.clone());
     assert!(json_str.contains("\"schema_version\": \"1.0\""));
@@ -264,7 +264,7 @@ fn test_workspace_envelope_serialization_and_parsing() {
 fn test_workspace_envelope_backward_compatibility() {
     let app = MathExplorerApp::default();
     let raw_app_state_json = app.save_state_to_json();
-    let mgr = WorkspaceSessionManager::default();
+    let mut mgr = WorkspaceSessionManager::default();
 
     let parsed_state = mgr
         .parse_envelope(&raw_app_state_json)
@@ -275,7 +275,7 @@ fn test_workspace_envelope_backward_compatibility() {
 
 #[test]
 fn test_workspace_envelope_schema_version_validation() {
-    let mgr = WorkspaceSessionManager::default();
+    let mut mgr = WorkspaceSessionManager::default();
     let invalid_version_json = r#"{
         "schema_version": "2.0",
         "app_version": "0.1.0",
@@ -299,7 +299,7 @@ fn test_workspace_envelope_schema_version_validation() {
 
 #[test]
 fn test_workspace_envelope_corrupted_json_handling() {
-    let mgr = WorkspaceSessionManager::default();
+    let mut mgr = WorkspaceSessionManager::default();
     let corrupted_json = "{ corrupted: json, bad_value: [ ";
 
     let res = mgr.parse_envelope(corrupted_json);
@@ -323,4 +323,142 @@ fn test_workspace_session_manager_active_file_path() {
 
     mgr.clear_toast();
     assert!(mgr.toast().is_none());
+}
+
+#[test]
+fn test_undo_redo_tab_and_theme_navigation() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let mut frame = eframe::Frame::_new_kittest();
+
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        app.update(ctx, &mut frame);
+    });
+    assert_eq!(app.selected_tab, 0);
+    assert_eq!(app.theme, ThemeMode::Dark);
+    assert!(!app.session_manager.can_undo());
+    assert!(!app.session_manager.can_redo());
+
+    app.theme = ThemeMode::Light;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        app.update(ctx, &mut frame);
+    });
+    assert!(app.session_manager.can_undo());
+
+    if app.tabs.len() > 1 {
+        app.selected_tab = 1;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            app.update(ctx, &mut frame);
+        });
+    }
+
+    if app.tabs.len() > 1 {
+        app.undo();
+        assert_eq!(app.selected_tab, 0);
+        assert!(app.session_manager.can_redo());
+    }
+
+    app.undo();
+    assert_eq!(app.theme, ThemeMode::Dark);
+
+    app.redo();
+    assert_eq!(app.theme, ThemeMode::Light);
+}
+
+#[test]
+fn test_history_stack_max_depth_capping() {
+    let mut mgr = WorkspaceSessionManager::default();
+
+    for i in 0..70 {
+        let state = AppState {
+            selected_tab: i,
+            selected_tab_name: None,
+            show_info: true,
+            show_warnings: true,
+            show_errors: true,
+            theme: ThemeMode::Dark,
+            tab_states: std::collections::HashMap::new(),
+        };
+        mgr.push_undo(state);
+    }
+
+    let mut popped = 0;
+    while mgr.pop_undo().is_some() {
+        popped += 1;
+    }
+    assert_eq!(popped, 50);
+}
+
+#[test]
+fn test_continuous_slider_drag_coalescing() {
+    let ctx = egui::Context::default();
+    let mut mgr = WorkspaceSessionManager::default();
+
+    let state0 = AppState {
+        selected_tab: 0,
+        selected_tab_name: None,
+        show_info: true,
+        show_warnings: true,
+        show_errors: true,
+        theme: ThemeMode::Dark,
+        tab_states: std::collections::HashMap::new(),
+    };
+    mgr.track_state_changes(&ctx, state0.clone());
+
+    let raw_input_down = egui::RawInput {
+        events: vec![egui::Event::PointerButton {
+            pos: egui::pos2(10.0, 10.0),
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }],
+        ..Default::default()
+    };
+
+    let _ = ctx.run(raw_input_down, |_| {});
+
+    for i in 1..=10 {
+        let mut state_i = state0.clone();
+        state_i.selected_tab = i;
+        mgr.track_state_changes(&ctx, state_i);
+    }
+
+    assert_eq!(mgr.pop_undo(), Some(state0));
+    assert!(mgr.pop_undo().is_none());
+}
+
+#[test]
+fn test_workspace_envelope_history_preservation() {
+    let mut mgr1 = WorkspaceSessionManager::default();
+    let state0 = AppState {
+        selected_tab: 0,
+        selected_tab_name: None,
+        show_info: true,
+        show_warnings: true,
+        show_errors: true,
+        theme: ThemeMode::Dark,
+        tab_states: std::collections::HashMap::new(),
+    };
+    let state1 = AppState {
+        selected_tab: 1,
+        selected_tab_name: None,
+        show_info: true,
+        show_warnings: true,
+        show_errors: true,
+        theme: ThemeMode::Light,
+        tab_states: std::collections::HashMap::new(),
+    };
+
+    mgr1.push_undo(state0.clone());
+    let env_json = mgr1.create_envelope(state1.clone());
+
+    let mut mgr2 = WorkspaceSessionManager::default();
+    let parsed_state = mgr2
+        .parse_envelope(&env_json)
+        .expect("Parsing envelope with history must succeed");
+
+    assert_eq!(parsed_state, state1);
+    assert!(mgr2.can_undo());
+    assert_eq!(mgr2.pop_undo(), Some(state0));
 }
