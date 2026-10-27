@@ -29,6 +29,7 @@ pub struct SirTool {
 
     snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    last_param_summary: String,
 }
 
 impl Default for SirTool {
@@ -44,6 +45,7 @@ impl Default for SirTool {
             r_points: vec![],
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
+            last_param_summary: String::new(),
         };
         tool.recalculate();
         tool
@@ -134,6 +136,7 @@ impl SirTool {
                 model.step(dt);
             }
         }
+        self.last_param_summary = self.param_summary();
     }
 }
 
@@ -189,6 +192,12 @@ impl InteractiveTool for SirTool {
         ui.vertical(|ui| {
             ui.heading("Parameters");
             if self.render_parameter_controls(ui) {
+                let series = vec![
+                    TraceSeries::new("Susceptible", self.s_points.clone()),
+                    TraceSeries::new("Infected", self.i_points.clone()),
+                    TraceSeries::new("Recovered", self.r_points.clone()),
+                ];
+                self.snapshot_manager.push_history_run(&self.last_param_summary, series);
                 self.recalculate();
             }
 

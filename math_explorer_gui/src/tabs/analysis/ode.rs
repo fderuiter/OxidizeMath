@@ -89,6 +89,7 @@ pub struct OdeSolverTool {
     dialog_state: PresetDialogState,
     snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    last_param_summary: String,
 }
 
 impl Default for OdeSolverTool {
@@ -109,6 +110,7 @@ impl Default for OdeSolverTool {
             dialog_state: PresetDialogState::default(),
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
+            last_param_summary: String::new(),
         };
         tool.recalculate();
         tool
@@ -204,6 +206,7 @@ impl OdeSolverTool {
                 }
             }
         }
+        self.last_param_summary = self.param_summary();
     }
 }
 
@@ -404,6 +407,11 @@ impl InteractiveTool for OdeSolverTool {
         });
 
         if changed {
+            let mut series = vec![TraceSeries::new("y(t)", plot_points_y.clone())];
+            if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
+                series.push(TraceSeries::new("y'(t)", plot_points_v.clone()));
+            }
+            self.snapshot_manager.push_history_run(&self.last_param_summary, series);
             self.recalculate();
         }
 
@@ -470,26 +478,16 @@ impl InteractivePreset for OdeSolverTool {
 
     fn export_config(&self) -> Self::Config {
         OdePresetConfig {
-            preset: self.preset,
-            dt: self.dt,
-            total_time: self.total_time,
-            param_k: self.param_k,
-            param_r: self.param_r,
-            param_cap_k: self.param_cap_k,
-            ic_y0: self.ic_y0,
-            ic_v0: self.ic_v0,
+            preset: self.preset, dt: self.dt, total_time: self.total_time,
+            param_k: self.param_k, param_r: self.param_r, param_cap_k: self.param_cap_k,
+            ic_y0: self.ic_y0, ic_v0: self.ic_v0,
         }
     }
 
     fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
-        self.preset = config.preset;
-        self.dt = config.dt;
-        self.total_time = config.total_time;
-        self.param_k = config.param_k;
-        self.param_r = config.param_r;
-        self.param_cap_k = config.param_cap_k;
-        self.ic_y0 = config.ic_y0;
-        self.ic_v0 = config.ic_v0;
+        self.preset = config.preset; self.dt = config.dt; self.total_time = config.total_time;
+        self.param_k = config.param_k; self.param_r = config.param_r; self.param_cap_k = config.param_cap_k;
+        self.ic_y0 = config.ic_y0; self.ic_v0 = config.ic_v0;
         self.recalculate();
         Ok(())
     }
