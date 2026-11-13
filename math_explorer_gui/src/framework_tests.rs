@@ -274,6 +274,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_generate_trace_overlay_screenshots() {
         let options = egui_plot::export::ExportOptions::default();
 

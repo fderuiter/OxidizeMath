@@ -304,7 +304,7 @@
 //! - [`ctmc`]: Continuous-time Markov chains
 //! - [`tensor`]: Time-indexed transition tensors
 //! - [`hmm`]: Hidden Markov models
-//! - [`error`]: Error types
+//! - [`MarkovError`]: Error types
 
 pub mod ctmc;
 pub mod dtmc;
