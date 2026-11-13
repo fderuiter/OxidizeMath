@@ -1,7 +1,5 @@
 #[cfg(target_arch = "wasm32")]
-use super::{
-    take_worker_context, SimCommand, SimStateUpdate, SimWorkerState, WorkerStatusEvent,
-};
+use super::{take_worker_context, SimCommand, SimStateUpdate, SimWorkerState, WorkerStatusEvent};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
