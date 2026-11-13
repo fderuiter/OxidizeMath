@@ -64,6 +64,14 @@ jobs:
       - name: Check File Lengths (500 lines limit)
         run: cargo run -p unified_verification --release -- check-file-lengths
 
+      - name: Build Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --all-features
+
+      - name: Run Doc Tests
+        run: cargo test --doc --workspace --all-features
+
   build-and-test:
     name: Build and Test (${{ matrix.name }})
     needs: pre-flight

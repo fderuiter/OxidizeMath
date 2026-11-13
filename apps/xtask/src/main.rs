@@ -39,7 +39,7 @@ fn print_help() {
     );
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!(
-        "  lint-all                 - Run format, clippy, file-length, and staged duplicate checks"
+        "  lint-all                 - Run format, clippy, file-length, duplicate, doc, and doctest checks"
     );
     println!("  test-features            - Run tests across feature combinations");
     println!("  traceability             - Generate traceability report");
@@ -52,8 +52,17 @@ fn print_help() {
 }
 
 fn run_cmd(cmd: &str, args: &[&str]) {
+    run_cmd_with_env(cmd, args, &[]);
+}
+
+fn run_cmd_with_env(cmd: &str, args: &[&str], envs: &[(&str, &str)]) {
     println!("Running: {} {}", cmd, args.join(" "));
-    let status = Command::new(cmd).args(args).status();
+    let mut command = Command::new(cmd);
+    command.args(args);
+    for (k, v) in envs {
+        command.env(k, v);
+    }
+    let status = command.status();
     match status {
         Ok(s) if s.success() => (),
         _ => {
@@ -87,6 +96,16 @@ fn lint_all() {
 
     println!("\n--- Step 4: File Length Checks ---");
     check_file_lengths();
+
+    println!("\n--- Step 5: Cargo Doc Verification ---");
+    run_cmd_with_env(
+        "cargo",
+        &["doc", "--workspace", "--no-deps", "--all-features"],
+        &[("RUSTDOCFLAGS", "-D warnings")],
+    );
+
+    println!("\n--- Step 6: Doc Tests ---");
+    run_cmd("cargo", &["test", "--doc", "--workspace", "--all-features"]);
 
     println!("\n=== All Lint Checks Passed Successfully ===");
 }
