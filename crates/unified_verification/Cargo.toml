@@ -11,7 +11,7 @@ walkdir = { workspace = true }
 quote = { workspace = true }
 syn = { workspace = true, features = ["full", "visit"] }
 toml = { workspace = true }
-serde_yaml = { workspace = true }
+serde-saphyr = { workspace = true }
 proc-macro2 = { workspace = true, features = ["span-locations"] }
 chrono = { workspace = true }
 oxidize_core = { path = "../oxidize_core" }

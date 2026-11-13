@@ -35,7 +35,7 @@ pub fn bessel_j(nu: f64, x: f64) -> f64 {
 /// Placeholder: Returns NaN as reliable implementation is complex without external crate.
 #[verified_engine::verified]
 pub fn bessel_y(_nu: f64, _x: f64) -> f64 {
-    unimplemented!("Bessel function of second kind not yet implemented via series expansion")
+    f64::NAN
 }
 
 /// Spherical Bessel Function of the First Kind $j_\ell(x)$.

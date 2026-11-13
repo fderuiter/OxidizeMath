@@ -64,6 +64,14 @@ jobs:
       - name: Check File Lengths (500 lines limit)
         run: cargo run -p unified_verification --release -- check-file-lengths
 
+      - name: Build Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --all-features
+
+      - name: Run Doc Tests
+        run: cargo test --doc --workspace --all-features
+
   build-and-test:
     name: Build and Test (${{ matrix.name }})
     needs: pre-flight
@@ -141,6 +149,11 @@ jobs:
       - name: Run Clippy Benchmarks (Native)
         if: matrix.target != 'wasm32-unknown-unknown'
         run: cargo clippy --workspace --benches --all-features -- -D warnings
+
+      - name: Run Workspace Tests (Native Linux)
+        if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
+        run: cargo test --workspace --lib --tests
+
       - name: Run Integrity Verified Suite
         if: matrix.target != 'wasm32-unknown-unknown'
         run: cargo run -p unified_verification --release -- verify-suite

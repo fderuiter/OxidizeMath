@@ -3,6 +3,13 @@ pub mod unified;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 
+#[cfg(any(target_arch = "wasm32", test))]
+use std::collections::HashMap;
+#[cfg(any(target_arch = "wasm32", test))]
+use std::sync::atomic::{AtomicU32, Ordering};
+#[cfg(any(target_arch = "wasm32", test))]
+use std::sync::Mutex;
+
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
 
@@ -79,13 +86,20 @@ pub struct SimulationController {
     pub running: bool,
     #[cfg(target_arch = "wasm32")]
     worker: Option<web_sys::Worker>,
+    #[cfg(target_arch = "wasm32")]
+    handle: Option<u32>,
 }
 
 impl Drop for SimulationController {
     fn drop(&mut self) {
         #[cfg(target_arch = "wasm32")]
-        if let Some(worker) = &self.worker {
-            worker.terminate();
+        {
+            if let Some(worker) = &self.worker {
+                worker.terminate();
+            }
+            if let Some(handle) = self.handle.take() {
+                unregister_worker_context(handle);
+            }
         }
     }
 }
@@ -169,13 +183,13 @@ impl SimulationController {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
         let (state_tx, state_rx) = mpsc::channel::<SimStateUpdate>();
 
-        let ctx = Box::new(WorkerContext {
+        let ctx = WorkerContext {
             runner: Box::new(runner),
             cmd_rx,
             state_tx,
-        });
+        };
 
-        let ptr = Box::into_raw(ctx) as u32;
+        let handle = register_worker_context(ctx);
 
         let mut opt_worker = None;
         // Try to initialize a Web Worker
@@ -198,8 +212,8 @@ impl SimulationController {
             );
             let _ = js_sys::Reflect::set(
                 &msg,
-                &wasm_bindgen::JsValue::from_str("ptr"),
-                &wasm_bindgen::JsValue::from_f64(ptr as f64),
+                &wasm_bindgen::JsValue::from_str("handle"),
+                &wasm_bindgen::JsValue::from_f64(handle as f64),
             );
 
             let _ = worker.post_message(&msg);
@@ -207,7 +221,7 @@ impl SimulationController {
         } else {
             // Fallback if worker.js doesn't exist
             wasm_bindgen_futures::spawn_local(async move {
-                run_simulation_worker(ptr).await;
+                run_simulation_worker(handle).await;
             });
         }
 
@@ -217,6 +231,7 @@ impl SimulationController {
             latest_snapshot: None,
             running: false,
             worker: opt_worker,
+            handle: Some(handle),
         }
     }
 
@@ -261,11 +276,42 @@ impl SimulationController {
 }
 // theory_verification!
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(missing_docs)]
 pub struct WorkerContext {
-    runner: Box<dyn SimulationRunner>,
-    cmd_rx: Receiver<SimCommand>,
-    state_tx: Sender<SimStateUpdate>,
+    #[allow(missing_docs)]
+    pub runner: Box<dyn SimulationRunner>,
+    #[allow(missing_docs)]
+    pub cmd_rx: Receiver<SimCommand>,
+    #[allow(missing_docs)]
+    pub state_tx: Sender<SimStateUpdate>,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+static NEXT_HANDLE: AtomicU32 = AtomicU32::new(1);
+#[cfg(any(target_arch = "wasm32", test))]
+static WORKER_REGISTRY: Mutex<Option<HashMap<u32, WorkerContext>>> = Mutex::new(None);
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(missing_docs)]
+pub fn register_worker_context(ctx: WorkerContext) -> u32 {
+    let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
+    let mut guard = WORKER_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
+    guard.get_or_insert_with(HashMap::new).insert(handle, ctx);
+    handle
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(missing_docs)]
+pub fn take_worker_context(handle: u32) -> Option<WorkerContext> {
+    let mut guard = WORKER_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
+    guard.as_mut()?.remove(&handle)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(missing_docs)]
+pub fn unregister_worker_context(handle: u32) -> Option<WorkerContext> {
+    take_worker_context(handle)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -350,9 +396,11 @@ pub fn setup_wake_listener() {
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen]
-pub async fn run_simulation_worker(ptr: u32) {
+pub async fn run_simulation_worker(handle: u32) {
+    let Some(ctx) = take_worker_context(handle) else {
+        return;
+    };
     setup_wake_listener();
-    let ctx = unsafe { Box::from_raw(ptr as *mut WorkerContext) };
     let mut runner = ctx.runner;
     let cmd_rx = ctx.cmd_rx;
     let state_tx = ctx.state_tx;
@@ -417,3 +465,6 @@ pub async fn run_simulation_worker(ptr: u32) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
