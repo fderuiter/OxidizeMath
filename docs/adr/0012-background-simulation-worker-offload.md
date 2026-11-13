@@ -13,7 +13,7 @@ Long-running numerical simulations (reaction-diffusion systems) and reinforcemen
 4. Extracted WebAssembly worker event listener and suspend/wake loop into `async_sim::wasm` maintaining file length constraints.
 5. Offloaded morphogenesis reaction-diffusion numerical stepping and RL training loops to background worker threads.
 6. Filtered out external tool download directories (`cargo-machete*`, `dist`, `artifacts`) from test discovery in `crates/markdown_tests/build.rs`.
-7. Gated threaded worker test harnesses on non-wasm targets and permitted platform-inactive menu methods on macOS where native system menus are used.
+7. Gated threaded worker test harnesses on non-wasm targets and authorized dead-code lint bypasses for platform-inactive menu methods on macOS in `verification_whitelist.toml`.
 
 ## Consequences
 - Heavy mathematical simulation and RL episode stepping run asynchronously without blocking the UI thread.
