@@ -5,7 +5,7 @@ use egui::{Color32, Pos2, Response, Vec2, Vec2b, epaint::Hsva};
 use crate::{BoundsModification, PlotBounds, PlotItem, PlotPoint, PlotTransform};
 
 /// Provides methods to interact with a plot while building it. It is the single argument of the closure
-/// provided to [`Plot::show`]. See [`Plot`] for an example of how to use it.
+/// provided to [`crate::Plot::show`]. See [`crate::Plot`] for an example of how to use it.
 pub struct PlotUi<'a> {
     pub(crate) ctx: egui::Context,
     pub(crate) items: Vec<Box<dyn PlotItem + 'a>>,
@@ -62,7 +62,7 @@ impl<'a> PlotUi<'a> {
     }
 
     /// Whether the plot axes were in auto-bounds mode in the last frame. If called on the first
-    /// frame, this is the [`Plot`]'s default auto-bounds mode.
+    /// frame, this is the [`crate::Plot`]'s default auto-bounds mode.
     pub fn auto_bounds(&self) -> Vec2b {
         self.last_auto_bounds
     }
