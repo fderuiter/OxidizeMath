@@ -1,6 +1,10 @@
 use super::*;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 struct DummyRunner;
@@ -32,12 +36,14 @@ fn create_dummy_context() -> WorkerContext {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct MockRunner {
     step_count: Arc<AtomicUsize>,
     steps_per_frame: usize,
     max_steps: usize,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl SimulationRunner for MockRunner {
     fn process_command(&mut self, cmd: SimCommand) {
         if let SimCommand::SetSpeed(speed) = cmd {
@@ -69,6 +75,7 @@ impl SimulationRunner for MockRunner {
 }
 
 #[test]
+#[cfg(not(target_arch = "wasm32"))]
 fn test_simulation_controller_start_pause() {
     let steps = Arc::new(AtomicUsize::new(0));
     let runner = MockRunner {
@@ -103,6 +110,7 @@ fn test_simulation_controller_start_pause() {
 }
 
 #[test]
+#[cfg(not(target_arch = "wasm32"))]
 fn test_runner_auto_completion() {
     let steps = Arc::new(AtomicUsize::new(0));
     let runner = MockRunner {

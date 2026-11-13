@@ -98,11 +98,13 @@ impl WorkspaceSessionManager {
     }
 
     /// Returns true if an undo operation can be performed.
+    #[allow(dead_code)]
     pub fn can_undo(&self) -> bool {
         !self.undo_stack.is_empty()
     }
 
     /// Returns true if a redo operation can be performed.
+    #[allow(dead_code)]
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
     }
