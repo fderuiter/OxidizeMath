@@ -151,6 +151,9 @@ impl MathExplorerApp {
 
     /// Restores the previous application state from the undo history stack.
     pub fn undo(&mut self) {
+        if !self.session_manager.can_undo() {
+            return;
+        }
         if let Some(prev) = self.session_manager.pop_undo() {
             let current = self.get_app_state();
             self.session_manager.push_redo(current);
@@ -161,6 +164,9 @@ impl MathExplorerApp {
 
     /// Re-applies an undone application state from the redo history stack.
     pub fn redo(&mut self) {
+        if !self.session_manager.can_redo() {
+            return;
+        }
         if let Some(next) = self.session_manager.pop_redo() {
             let current = self.get_app_state();
             self.session_manager.push_undo(current);
@@ -377,8 +383,8 @@ fn setup_macos_menu(app: &MathExplorerApp) {
 
     // View Menu
     let view_menu = Submenu::new("View", true);
-    for (i, tab) in app.tabs.iter().enumerate() {
-        let item = MenuItem::with_id(MenuId::new(format!("tab_{}", i)), tab.name(), true, None);
+    for (i, tab_name) in app.tab_names().into_iter().enumerate() {
+        let item = MenuItem::with_id(MenuId::new(format!("tab_{}", i)), tab_name, true, None);
         view_menu.append(&item).unwrap();
     }
     menu.append(&view_menu).unwrap();
