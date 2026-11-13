@@ -34,7 +34,7 @@ where
     pub q_func: Q,
     learning_rate: UnitInterval,
     discount_factor: UnitInterval,
-    strategy: Box<dyn ExplorationStrategy<S, A>>,
+    strategy: Box<dyn ExplorationStrategy<S, A> + Send>,
     #[allow(missing_docs)]
     pub rng: oxidize_core::rng::OxidizeRng,
 }
@@ -56,7 +56,7 @@ where
         q_func: Q,
         learning_rate: UnitInterval,
         discount_factor: UnitInterval,
-        strategy: Box<dyn ExplorationStrategy<S, A>>,
+        strategy: Box<dyn ExplorationStrategy<S, A> + Send>,
         seed: Option<u64>,
     ) -> Self {
         let rng = if let Some(s) = seed {

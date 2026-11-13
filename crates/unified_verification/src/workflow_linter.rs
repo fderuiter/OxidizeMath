@@ -32,7 +32,9 @@ pub fn validate_permissions_block(yaml: &Value) -> Result<(), &'static str> {
     }
 
     if !is_read_only {
-        return Err("Workflow 'permissions' block must explicitly be read-only globally. (e.g., 'permissions: read-all' or specific 'read' permissions)");
+        return Err(
+            "Workflow 'permissions' block must explicitly be read-only globally. (e.g., 'permissions: read-all' or specific 'read' permissions)",
+        );
     }
 
     Ok(())
