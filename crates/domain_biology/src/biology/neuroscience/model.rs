@@ -22,7 +22,7 @@ use verified_engine::Theory;
 ///
 /// 2.  **Gating Variables ($x \in \{n, m, h\}$):**
 ///     $$ \frac{dx}{dt} = \alpha_x(V)(1 - x) - \beta_x(V)x $$
-///     The rate constants $\alpha_x$ and $\beta_x$ are determined by the [`GatingKinetics`](domain_biology::biology::neuroscience::kinetics::GatingKinetics) strategy.
+///     The rate constants $\alpha_x$ and $\beta_x$ are determined by the [`GatingKinetics`](crate::biology::neuroscience::kinetics::GatingKinetics) strategy.
 #[derive(Debug, Clone, Theory)]
 #[theory(
     description = "The Hodgkin-Huxley model describes the initiation and propagation of action potentials in neurons using a set of non-linear differential equations.",

@@ -1,17 +1,9 @@
 #[cfg(target_arch = "wasm32")]
-use super::{SimCommand, SimStateUpdate, SimWorkerState, SimulationRunner, WorkerStatusEvent};
-#[cfg(target_arch = "wasm32")]
-use std::sync::mpsc::{Receiver, Sender};
+use super::{
+    take_worker_context, SimCommand, SimStateUpdate, SimWorkerState, WorkerStatusEvent,
+};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
-
-#[cfg(target_arch = "wasm32")]
-#[allow(missing_docs)]
-pub struct WorkerContext {
-    pub runner: Box<dyn SimulationRunner>,
-    pub cmd_rx: Receiver<SimCommand>,
-    pub state_tx: Sender<SimStateUpdate>,
-}
 
 #[cfg(target_arch = "wasm32")]
 #[allow(missing_docs)]
@@ -96,10 +88,12 @@ pub fn setup_wake_listener() {
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen]
-#[allow(missing_docs)]
-pub async fn run_simulation_worker(ptr: u32) {
+#[allow(missing_docs, clippy::too_many_lines, clippy::cognitive_complexity)]
+pub async fn run_simulation_worker(handle: u32) {
+    let Some(ctx) = take_worker_context(handle) else {
+        return;
+    };
     setup_wake_listener();
-    let ctx = unsafe { Box::from_raw(ptr as *mut WorkerContext) };
     let mut runner = ctx.runner;
     let cmd_rx = ctx.cmd_rx;
     let state_tx = ctx.state_tx;

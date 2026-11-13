@@ -48,7 +48,7 @@ impl Callout {
         self
     }
 
-    /// Alias for [`offset`].
+    /// Alias for [`Self::offset`].
     #[inline]
     pub fn label_offset(mut self, offset: impl Into<Vec2>) -> Self {
         self.label_offset = offset.into();

@@ -217,13 +217,20 @@ pub struct SimulationController {
     state: SimWorkerState,
     #[cfg(target_arch = "wasm32")]
     worker: Option<web_sys::Worker>,
+    #[cfg(target_arch = "wasm32")]
+    handle: Option<u32>,
 }
 
 impl Drop for SimulationController {
     fn drop(&mut self) {
         #[cfg(target_arch = "wasm32")]
-        if let Some(worker) = &self.worker {
-            worker.terminate();
+        {
+            if let Some(worker) = &self.worker {
+                worker.terminate();
+            }
+            if let Some(handle) = self.handle.take() {
+                unregister_worker_context(handle);
+            }
         }
     }
 }
@@ -316,13 +323,13 @@ impl SimulationController {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
         let (state_tx, state_rx) = mpsc::channel::<SimStateUpdate>();
 
-        let ctx = Box::new(WorkerContext {
+        let ctx = WorkerContext {
             runner: Box::new(runner),
             cmd_rx,
             state_tx,
-        });
+        };
 
-        let ptr = Box::into_raw(ctx) as u32;
+        let handle = register_worker_context(ctx);
 
         let mut opt_worker = None;
         // Try to initialize a Web Worker
@@ -345,8 +352,8 @@ impl SimulationController {
             );
             let _ = js_sys::Reflect::set(
                 &msg,
-                &wasm_bindgen::JsValue::from_str("ptr"),
-                &wasm_bindgen::JsValue::from_f64(ptr as f64),
+                &wasm_bindgen::JsValue::from_str("handle"),
+                &wasm_bindgen::JsValue::from_f64(handle as f64),
             );
 
             let _ = worker.post_message(&msg);
@@ -354,7 +361,7 @@ impl SimulationController {
         } else {
             // Fallback if worker.js doesn't exist
             wasm_bindgen_futures::spawn_local(async move {
-                run_simulation_worker(ptr).await;
+                run_simulation_worker(handle).await;
             });
         }
 
@@ -364,6 +371,7 @@ impl SimulationController {
             latest_snapshot: None,
             state: SimWorkerState::Ready,
             worker: opt_worker,
+            handle: Some(handle),
         }
     }
 
@@ -455,6 +463,11 @@ impl SimulationController {
     }
 }
 // theory_verification!
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub mod registry;
+#[cfg(any(target_arch = "wasm32", test))]
+pub use registry::*;
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;

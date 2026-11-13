@@ -140,3 +140,14 @@ fn test_bessel_orthogonality_check() {
     // Should be close to 0
     assert!(val.abs() < 1e-3, "Bessel orthogonality failed: {}", val);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_bessel_y_stub_returns_nan() {
+    assert!(bessel::bessel_y(0.0, 1.0).is_nan());
+    assert!(bessel::bessel_y(1.0, 2.5).is_nan());
+    assert!(bessel::bessel_y(-1.0, 2.0).is_nan());
+    assert!(bessel::bessel_y(0.0, 0.0).is_nan());
+    assert!(bessel::bessel_y(f64::INFINITY, 1.0).is_nan());
+    assert!(bessel::bessel_y(0.0, f64::INFINITY).is_nan());
+}
