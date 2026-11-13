@@ -58,6 +58,9 @@ jobs:
       - name: Check Unused Dependencies
         uses: bnjbvr/cargo-machete@main
 
+      - name: Clean Machete Artifacts
+        run: rm -rf cargo-machete*
+
       - name: Check Formatting
         run: cargo fmt --all -- --check
 
