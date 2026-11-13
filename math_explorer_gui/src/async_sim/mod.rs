@@ -1,13 +1,137 @@
+#[cfg(test)]
+mod tests;
 #[allow(missing_docs)]
 pub mod unified;
+
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsCast;
+#[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum SimWorkerState {
+    #[default]
+    Uninitialized,
+    Ready,
+    Running,
+    Stepping,
+    Faulted,
+    Terminated,
+}
+
+impl SimWorkerState {
+    #[allow(missing_docs)]
+    pub fn is_running(&self) -> bool {
+        matches!(self, Self::Running)
+    }
+
+    #[allow(missing_docs)]
+    pub fn is_ready(&self) -> bool {
+        matches!(self, Self::Ready)
+    }
+
+    #[allow(missing_docs)]
+    pub fn is_faulted(&self) -> bool {
+        matches!(self, Self::Faulted)
+    }
+
+    #[allow(missing_docs)]
+    pub fn is_terminated(&self) -> bool {
+        matches!(self, Self::Terminated)
+    }
+
+    #[allow(missing_docs)]
+    pub fn is_command_valid(&self, cmd: &SimCommand) -> bool {
+        match self {
+            Self::Ready => !matches!(cmd, SimCommand::Pause),
+            Self::Running => !matches!(cmd, SimCommand::Start),
+            Self::Stepping => !matches!(cmd, SimCommand::Start | SimCommand::Pause),
+            Self::Uninitialized | Self::Faulted | Self::Terminated => false,
+        }
+    }
+}
+
+impl std::fmt::Display for SimWorkerState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Uninitialized => write!(f, "Uninitialized"),
+            Self::Ready => write!(f, "Ready"),
+            Self::Running => write!(f, "Running"),
+            Self::Stepping => write!(f, "Stepping"),
+            Self::Faulted => write!(f, "Faulted"),
+            Self::Terminated => write!(f, "Terminated"),
+        }
+    }
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkerStatusEvent {
+    Ready,
+    Running,
+    Stepping,
+    Paused,
+    Faulted(String),
+    Terminated,
+}
+
+impl WorkerStatusEvent {
+    #[allow(missing_docs)]
+    pub fn to_state(&self) -> SimWorkerState {
+        match self {
+            Self::Ready | Self::Paused => SimWorkerState::Ready,
+            Self::Running => SimWorkerState::Running,
+            Self::Stepping => SimWorkerState::Stepping,
+            Self::Faulted(_) => SimWorkerState::Faulted,
+            Self::Terminated => SimWorkerState::Terminated,
+        }
+    }
+}
+
+impl From<&WorkerStatusEvent> for SimWorkerState {
+    fn from(event: &WorkerStatusEvent) -> Self {
+        event.to_state()
+    }
+}
+
+impl From<WorkerStatusEvent> for SimWorkerState {
+    fn from(event: WorkerStatusEvent) -> Self {
+        event.to_state()
+    }
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SimCommandError {
+    InvalidTransition {
+        current_state: SimWorkerState,
+        command: &'static str,
+    },
+    ChannelDisconnected,
+}
+
+impl std::fmt::Display for SimCommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidTransition {
+                current_state,
+                command,
+            } => {
+                write!(
+                    f,
+                    "Invalid simulation command '{command}' in state {current_state}"
+                )
+            }
+            Self::ChannelDisconnected => {
+                write!(f, "Simulation worker channel disconnected")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SimCommandError {}
 
 #[allow(missing_docs)]
 pub enum SimCommand {
@@ -36,6 +160,21 @@ pub enum SimCommand {
     Custom(String),
 }
 
+impl SimCommand {
+    #[allow(missing_docs)]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Start => "Start",
+            Self::Pause => "Pause",
+            Self::Reset => "Reset",
+            Self::SetSpeed(_) => "SetSpeed",
+            Self::ApplyBrush { .. } => "ApplyBrush",
+            Self::ClearObstacles => "ClearObstacles",
+            Self::Custom(_) => "Custom",
+        }
+    }
+}
+
 #[allow(missing_docs)]
 pub struct StateSnapshot {
     #[allow(missing_docs)]
@@ -55,7 +194,7 @@ pub enum SimStateUpdate {
     #[allow(missing_docs)]
     Snapshot(StateSnapshot),
     #[allow(missing_docs)]
-    Status { running: bool },
+    Status(WorkerStatusEvent),
 }
 
 #[allow(missing_docs)]
@@ -75,8 +214,7 @@ pub struct SimulationController {
     cmd_tx: Sender<SimCommand>,
     state_rx: Receiver<SimStateUpdate>,
     latest_snapshot: Option<StateSnapshot>,
-    #[allow(missing_docs)]
-    pub running: bool,
+    state: SimWorkerState,
     #[cfg(target_arch = "wasm32")]
     worker: Option<web_sys::Worker>,
 }
@@ -99,33 +237,42 @@ impl SimulationController {
         let (state_tx, state_rx) = mpsc::channel::<SimStateUpdate>();
 
         thread::spawn(move || {
-            let mut running = false;
+            let mut state = SimWorkerState::Ready;
             let mut steps_per_frame = runner.get_steps_per_frame();
+            let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
 
             loop {
                 let mut cmd_opt = None;
-                if running {
+                if state.is_running() {
                     if let Ok(c) = cmd_rx.try_recv() {
                         cmd_opt = Some(c);
                     }
+                } else if let Ok(c) = cmd_rx.recv() {
+                    cmd_opt = Some(c);
                 } else {
-                    if let Ok(c) = cmd_rx.recv() {
-                        cmd_opt = Some(c);
-                    } else {
-                        break;
-                    }
+                    break;
                 }
 
                 if let Some(mut cmd) = cmd_opt {
                     loop {
                         match cmd {
                             SimCommand::Start => {
-                                running = true;
-                                let _ = state_tx.send(SimStateUpdate::Status { running: true });
+                                state = SimWorkerState::Running;
+                                let _ = state_tx
+                                    .send(SimStateUpdate::Status(WorkerStatusEvent::Running));
                             }
                             SimCommand::Pause => {
-                                running = false;
-                                let _ = state_tx.send(SimStateUpdate::Status { running: false });
+                                state = SimWorkerState::Ready;
+                                let _ =
+                                    state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+                            }
+                            SimCommand::Reset => {
+                                state = SimWorkerState::Ready;
+                                runner.process_command(SimCommand::Reset);
+                                let snapshot = runner.get_snapshot();
+                                let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
+                                let _ =
+                                    state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
                             }
                             SimCommand::SetSpeed(speed) => {
                                 steps_per_frame = speed;
@@ -143,7 +290,7 @@ impl SimulationController {
                     }
                 }
 
-                if running {
+                if state.is_running() {
                     for _ in 0..steps_per_frame {
                         runner.step();
                     }
@@ -159,7 +306,7 @@ impl SimulationController {
             cmd_tx,
             state_rx,
             latest_snapshot: None,
-            running: false,
+            state: SimWorkerState::Ready,
         }
     }
 
@@ -215,14 +362,40 @@ impl SimulationController {
             cmd_tx,
             state_rx,
             latest_snapshot: None,
-            running: false,
+            state: SimWorkerState::Ready,
             worker: opt_worker,
         }
     }
 
     #[allow(missing_docs)]
-    pub fn send_command(&self, cmd: SimCommand) {
-        let _ = self.cmd_tx.send(cmd);
+    pub fn state(&self) -> SimWorkerState {
+        self.state
+    }
+
+    #[allow(missing_docs)]
+    pub fn send_command(&mut self, cmd: SimCommand) -> Result<(), SimCommandError> {
+        if !self.state.is_command_valid(&cmd) {
+            return Err(SimCommandError::InvalidTransition {
+                current_state: self.state,
+                command: cmd.name(),
+            });
+        }
+
+        let cmd_target_state = match cmd {
+            SimCommand::Start => Some(SimWorkerState::Running),
+            SimCommand::Pause | SimCommand::Reset => Some(SimWorkerState::Ready),
+            _ => None,
+        };
+
+        if self.cmd_tx.send(cmd).is_err() {
+            self.state = SimWorkerState::Faulted;
+            return Err(SimCommandError::ChannelDisconnected);
+        }
+
+        if let Some(target) = cmd_target_state {
+            self.state = target;
+        }
+
         #[cfg(target_arch = "wasm32")]
         {
             if let Some(worker) = &self.worker {
@@ -237,6 +410,8 @@ impl SimulationController {
                 wake_worker();
             }
         }
+
+        Ok(())
     }
 
     #[allow(missing_docs)]
@@ -246,174 +421,42 @@ impl SimulationController {
 
     #[allow(missing_docs)]
     pub fn update(&mut self) -> Option<&StateSnapshot> {
-        while let Ok(update) = self.state_rx.try_recv() {
-            match update {
-                SimStateUpdate::Snapshot(snapshot) => {
-                    self.latest_snapshot = Some(snapshot);
-                }
-                SimStateUpdate::Status { running } => {
-                    self.running = running;
-                }
-            }
-        }
-        self.latest_snapshot.as_ref()
-    }
-}
-// theory_verification!
+        let mut disconnected = false;
+        let mut received_new_snapshot = false;
 
-#[cfg(target_arch = "wasm32")]
-pub struct WorkerContext {
-    runner: Box<dyn SimulationRunner>,
-    cmd_rx: Receiver<SimCommand>,
-    state_tx: Sender<SimStateUpdate>,
-}
-
-#[cfg(target_arch = "wasm32")]
-pub fn wake_worker() {
-    let global = js_sys::global();
-    if let Ok(wake_fn) = js_sys::Reflect::get(
-        &global,
-        &wasm_bindgen::JsValue::from_str("__sim_worker_wake"),
-    ) {
-        if wake_fn.is_function() {
-            let func = wake_fn.unchecked_into::<js_sys::Function>();
-            let _ = func.call0(&wasm_bindgen::JsValue::UNDEFINED);
-        }
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-async fn yield_to_event_loop() {
-    let promise = js_sys::Promise::new(&mut |resolve, _| {
-        let global = js_sys::global();
-        let timeout_scheduled = if let Ok(worker_scope) = global
-            .clone()
-            .dyn_into::<web_sys::DedicatedWorkerGlobalScope>(
-        ) {
-            worker_scope
-                .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0)
-                .is_ok()
-        } else if let Ok(window) = global.dyn_into::<web_sys::Window>() {
-            window
-                .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0)
-                .is_ok()
-        } else {
-            false
-        };
-        if !timeout_scheduled {
-            let _ = resolve.call0(&wasm_bindgen::JsValue::UNDEFINED);
-        }
-    });
-    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-}
-
-#[cfg(target_arch = "wasm32")]
-async fn suspend_worker() {
-    let promise = js_sys::Promise::new(&mut |resolve, _| {
-        let global = js_sys::global();
-        let _ = js_sys::Reflect::set(
-            &global,
-            &wasm_bindgen::JsValue::from_str("__sim_worker_wake"),
-            &resolve,
-        );
-    });
-    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-    // Remove the wake function after waking up
-    let global = js_sys::global();
-    let _ = js_sys::Reflect::delete_property(
-        &global,
-        &wasm_bindgen::JsValue::from_str("__sim_worker_wake"),
-    );
-}
-
-#[cfg(target_arch = "wasm32")]
-pub fn setup_wake_listener() {
-    let global = js_sys::global();
-    if let Ok(worker_scope) = global.dyn_into::<web_sys::DedicatedWorkerGlobalScope>() {
-        let cb = wasm_bindgen::closure::Closure::wrap(Box::new(move |e: web_sys::MessageEvent| {
-            if let Ok(data) = e.data().dyn_into::<js_sys::Object>() {
-                if let Ok(type_val) =
-                    js_sys::Reflect::get(&data, &wasm_bindgen::JsValue::from_str("type"))
-                {
-                    if type_val.as_string().as_deref() == Some("wake") {
-                        wake_worker();
+        loop {
+            match self.state_rx.try_recv() {
+                Ok(update) => match update {
+                    SimStateUpdate::Snapshot(snapshot) => {
+                        self.latest_snapshot = Some(snapshot);
+                        received_new_snapshot = true;
                     }
-                }
-            }
-        })
-            as Box<dyn FnMut(web_sys::MessageEvent)>);
-        let _ =
-            worker_scope.add_event_listener_with_callback("message", cb.as_ref().unchecked_ref());
-        cb.forget(); // Leak to keep it alive
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen::prelude::wasm_bindgen]
-pub async fn run_simulation_worker(ptr: u32) {
-    setup_wake_listener();
-    let ctx = unsafe { Box::from_raw(ptr as *mut WorkerContext) };
-    let mut runner = ctx.runner;
-    let cmd_rx = ctx.cmd_rx;
-    let state_tx = ctx.state_tx;
-
-    let mut running = false;
-    let mut steps_per_frame = runner.get_steps_per_frame();
-
-    loop {
-        let mut cmd_opt = None;
-        if running {
-            if let Ok(c) = cmd_rx.try_recv() {
-                cmd_opt = Some(c);
-            }
-        } else {
-            if let Ok(c) = cmd_rx.try_recv() {
-                cmd_opt = Some(c);
-            } else {
-                suspend_worker().await;
-                // After waking up, try to receive the command again
-                if let Ok(c) = cmd_rx.try_recv() {
-                    cmd_opt = Some(c);
-                }
-            }
-        }
-
-        if let Some(mut cmd) = cmd_opt {
-            loop {
-                match cmd {
-                    SimCommand::Start => {
-                        running = true;
-                        let _ = state_tx.send(SimStateUpdate::Status { running: true });
+                    SimStateUpdate::Status(event) => {
+                        self.state = event.to_state();
                     }
-                    SimCommand::Pause => {
-                        running = false;
-                        let _ = state_tx.send(SimStateUpdate::Status { running: false });
-                    }
-                    SimCommand::SetSpeed(speed) => {
-                        steps_per_frame = speed;
-                        runner.process_command(SimCommand::SetSpeed(speed));
-                    }
-                    _ => {
-                        runner.process_command(cmd);
-                    }
-                }
-                if let Ok(c) = cmd_rx.try_recv() {
-                    cmd = c;
-                } else {
+                },
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    disconnected = true;
                     break;
                 }
             }
         }
 
-        if running {
-            for _ in 0..steps_per_frame {
-                runner.step();
-            }
-            let snapshot = runner.get_snapshot();
-            if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
-                break;
-            }
-            yield_to_event_loop().await;
+        if disconnected && self.state != SimWorkerState::Terminated {
+            self.state = SimWorkerState::Faulted;
+        }
+
+        if received_new_snapshot {
+            self.latest_snapshot.as_ref()
+        } else {
+            None
         }
     }
 }
+// theory_verification!
+
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
+#[cfg(target_arch = "wasm32")]
+pub use wasm::*;
