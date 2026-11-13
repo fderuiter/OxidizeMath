@@ -16,8 +16,10 @@ The repository lacked centralized architecture blueprints and onboarding documen
 3. Updated `CONTRIBUTING.md` with the verified OxidizeMath clone URL (`https://github.com/fderuiter/OxidizeMath.git`), workspace-wide test commands (`cargo test --workspace`), and links to architecture guides.
 4. Updated `README.md` to reference the correct repository URL and direct contributors to the new architecture documentation suite.
 5. Integrated an automated markdown link verification task (`check-markdown-links`) into the workspace lint suite (`cargo run -p xtask -- lint-all`).
+6. Configured markdown discovery traversal in `crates/markdown_tests` and `xtask` to explicitly filter transient tool directories (`cargo-machete*`, `artifacts`, `dist`).
 
 ## Consequences
 - New contributors can clone the correct repository and run verified tests across all workspace member crates.
 - System architecture, CERA modeling, and runtime verification constraints are documented with Mermaid diagrams and valid Rust examples.
 - Automated linting verifies that internal relative documentation links resolve to existing files.
+- Transient tool and distribution directories cannot inadvertently inject external untagged code blocks into workspace doctest harnesses.

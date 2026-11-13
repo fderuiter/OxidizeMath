@@ -435,7 +435,13 @@ fn collect_md_files(dir: &Path, out: &mut Vec<PathBuf>) {
             let path = entry.path();
             if path.is_dir() {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name == "target" || name == ".git" || name == "node_modules" {
+                if name == "target"
+                    || name == ".git"
+                    || name == "node_modules"
+                    || name.starts_with("cargo-machete")
+                    || name == "artifacts"
+                    || name == "dist"
+                {
                     continue;
                 }
                 collect_md_files(&path, out);
