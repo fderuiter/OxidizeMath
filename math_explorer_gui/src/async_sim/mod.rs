@@ -1,5 +1,9 @@
+#[cfg(test)]
+mod tests;
 #[allow(missing_docs)]
 pub mod unified;
+#[cfg(target_arch = "wasm32")]
+use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 
@@ -19,6 +23,8 @@ pub enum SimCommand {
     Reset,
     #[allow(missing_docs)]
     SetSpeed(usize),
+    #[allow(missing_docs)]
+    TrainEpisodes(usize),
     #[allow(missing_docs)]
     ApplyBrush {
         #[allow(missing_docs)]
@@ -68,6 +74,10 @@ pub trait SimulationRunner: Send + 'static {
     fn get_snapshot(&self) -> StateSnapshot;
     #[allow(missing_docs)]
     fn get_steps_per_frame(&self) -> usize;
+    #[allow(missing_docs)]
+    fn is_complete(&self) -> bool {
+        false
+    }
 }
 
 #[allow(missing_docs)]
@@ -96,7 +106,7 @@ impl SimulationController {
     #[allow(missing_docs)]
     pub fn new<T: SimulationRunner>(mut runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = mpsc::channel::<SimStateUpdate>();
+        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(4);
 
         thread::spawn(move || {
             let mut running = false;
@@ -131,6 +141,11 @@ impl SimulationController {
                                 steps_per_frame = speed;
                                 runner.process_command(SimCommand::SetSpeed(speed));
                             }
+                            SimCommand::TrainEpisodes(_) => {
+                                running = true;
+                                runner.process_command(cmd);
+                                let _ = state_tx.send(SimStateUpdate::Status { running: true });
+                            }
                             _ => {
                                 runner.process_command(cmd);
                             }
@@ -146,10 +161,19 @@ impl SimulationController {
                 if running {
                     for _ in 0..steps_per_frame {
                         runner.step();
+                        if runner.is_complete() {
+                            break;
+                        }
                     }
+                    let is_done = runner.is_complete();
                     let snapshot = runner.get_snapshot();
-                    if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
-                        break;
+                    if is_done {
+                        running = false;
+                        let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
+                        let _ = state_tx.send(SimStateUpdate::Status { running: false });
+                    } else {
+                        let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
+                        thread::sleep(std::time::Duration::from_millis(16));
                     }
                 }
             }
@@ -167,7 +191,7 @@ impl SimulationController {
     // theory_verification!
     pub fn new<T: SimulationRunner>(runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = mpsc::channel::<SimStateUpdate>();
+        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(4);
 
         let ctx = Box::new(WorkerContext {
             runner: Box::new(runner),
@@ -265,7 +289,7 @@ impl SimulationController {
 pub struct WorkerContext {
     runner: Box<dyn SimulationRunner>,
     cmd_rx: Receiver<SimCommand>,
-    state_tx: Sender<SimStateUpdate>,
+    state_tx: SyncSender<SimStateUpdate>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -393,6 +417,11 @@ pub async fn run_simulation_worker(ptr: u32) {
                         steps_per_frame = speed;
                         runner.process_command(SimCommand::SetSpeed(speed));
                     }
+                    SimCommand::TrainEpisodes(_) => {
+                        running = true;
+                        runner.process_command(cmd);
+                        let _ = state_tx.send(SimStateUpdate::Status { running: true });
+                    }
                     _ => {
                         runner.process_command(cmd);
                     }
@@ -408,10 +437,18 @@ pub async fn run_simulation_worker(ptr: u32) {
         if running {
             for _ in 0..steps_per_frame {
                 runner.step();
+                if runner.is_complete() {
+                    break;
+                }
             }
+            let is_done = runner.is_complete();
             let snapshot = runner.get_snapshot();
-            if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
-                break;
+            if is_done {
+                running = false;
+                let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
+                let _ = state_tx.send(SimStateUpdate::Status { running: false });
+            } else {
+                let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
             }
             yield_to_event_loop().await;
         }

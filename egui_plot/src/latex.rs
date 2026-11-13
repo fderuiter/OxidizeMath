@@ -733,7 +733,7 @@ fn paint_math_box(painter: &egui::Painter, origin: Pos2, math_box: &MathBox, geo
                     Pos2::new(origin.x, line_y),
                     Pos2::new(origin.x + width, line_y),
                 ],
-                Stroke::new(1.2, stroke_color),
+                Stroke::new(1.2_f32, stroke_color),
             );
 
             let den_x = origin.x + (width - den_g.size.x) / 2.0;
@@ -756,7 +756,7 @@ fn paint_math_box(painter: &egui::Painter, origin: Pos2, math_box: &MathBox, geo
             let bar_end = bar_start + rad_g.size.x + 2.0;
             painter.line_segment(
                 [Pos2::new(bar_start, bar_y), Pos2::new(bar_end, bar_y)],
-                Stroke::new(1.2, color),
+                Stroke::new(1.2_f32, color),
             );
         }
         (MathBox::Script { base, sup, sub }, children) => {
