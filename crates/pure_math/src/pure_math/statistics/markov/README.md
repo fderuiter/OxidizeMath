@@ -77,7 +77,7 @@ graph TD
 
 ## Contributing
 
-See the [Project Contributing Guide](../../../../../CONTRIBUTING.md) for details on adding new architectures, models, or algorithms. Run the comprehensive test suite to ensure mathematical integrity:
+See the [Project Contributing Guide](../../../../../../CONTRIBUTING.md) for details on adding new architectures, models, or algorithms. Run the comprehensive test suite to ensure mathematical integrity:
 
 ```bash
 cargo test --lib pure_math::statistics::markov

@@ -107,4 +107,4 @@ graph TD
 
 ## Contributing
 
-See the [Project Contributing Guide](../../../CONTRIBUTING.md) for details on adding new architectures, models, or algorithms.
+See the [Project Contributing Guide](../../../../CONTRIBUTING.md) for details on adding new architectures, models, or algorithms.

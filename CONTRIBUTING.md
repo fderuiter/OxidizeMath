@@ -1,6 +1,6 @@
-# Contributing to Math Explorer
+# Contributing to OxidizeMath
 
-First off, thank you for considering contributing to Math Explorer! It's people like you that make this tool such a great resource.
+First off, thank you for considering contributing to OxidizeMath! It's people like you that make this tool such a great resource.
 
 ##  The "Golden Rule" of Contribution
 
@@ -8,13 +8,23 @@ First off, thank you for considering contributing to Math Explorer! It's people 
 
 When you submit a PR, you aren't just merging code; you are merging knowledge. Ensure your contributions are accessible to others.
 
+## Architecture Guides
+
+Before implementing new features or making structural changes, review our centralized architecture documentation:
+
+- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 18 crates.
+- [CERA Framework Guide](docs/architecture/cera_framework.md): Climate-invariant encoding, representation alignment, and modeling pipelines.
+- [Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md): NASA Power of 10 Rule 3 enforcement and `VerifiedEngine` runtime rules.
+- [Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md): Step-by-step tutorial to implement and register simulation tabs.
+- [Documentation Index](docs/README.md): Overview of architecture guides and architectural decision records.
+
 ##  Getting Started
 
 1.  **Fork the repository** on GitHub.
 2.  **Clone your fork** locally:
     ```bash
-    git clone https://github.com/fderuiter/math-explorer.git
-    cd math-explorer
+    git clone https://github.com/fderuiter/OxidizeMath.git
+    cd OxidizeMath
     ```
 3.  **Create a branch** for your feature or fix:
     ```bash
@@ -43,14 +53,14 @@ To ensure immediate feedback and high integrity, repository quality standards (i
 
 ##  Testing
 
-We take reliability seriously. Before submitting, ensure all tests pass.
+We take reliability seriously. Before submitting, ensure all tests pass across the entire workspace member list in `Cargo.toml`.
 
 ```bash
-# Run tests for the core library
-cargo test --package math_explorer
+# Run tests across all workspace member crates
+cargo test --workspace
 
-# Run checks for the GUI (if applicable)
-cargo check --package math_explorer_gui
+# Run checks across all workspace members (including GUI and tooling)
+cargo check --workspace
 ```
 
 If you add new functionality, **you must add tests**.
@@ -59,11 +69,11 @@ If you add new functionality, **you must add tests**.
 
 ##  Contributing to the GUI
 
-The `math_explorer_gui` crate is built with **egui** and **eframe**.
+The `math_explorer_gui` crate is built with **egui** and **eframe**. For a complete walkthrough on creating and registering new interactive simulation tools, follow the [Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md).
 
 *   **Structure:**
     *   UI code resides in `math_explorer_gui/src`.
-    *   The GUI should primarily visualize and control logic defined in the core `math_explorer` library. Avoid implementing heavy mathematical logic directly in the GUI crate.
+    *   The GUI should primarily visualize and control logic defined in domain crates or the core `math_explorer` library. Avoid implementing heavy mathematical logic directly in the GUI crate.
 *   **Dependencies:** We maintain strict version compatibility between `egui`, `eframe`, and `egui_plot`. Check `Cargo.toml` before updating dependencies.
 
 ##  Documentation Style Guide
@@ -137,7 +147,7 @@ To ensure reliability and verifiability, we adopt an adaptation of NASA's "Power
 
 3.  **No Dynamic Memory Allocation (Post-Init)**:
     *   **Rule**: Do not use dynamic memory allocation after initialization.
-    *   **Implementation**: Minimize dynamic allocation during the core simulation loop. Pre-allocate `Vec` capacities (`Vec::with_capacity`). Avoid creating new heap-allocated structures inside hot loops.
+    *   **Implementation**: Minimize dynamic allocation during the core simulation loop. Pre-allocate `Vec` capacities (`Vec::with_capacity`). Avoid creating new heap-allocated structures inside hot loops. See the [Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md) for details.
 
 4.  **Limit Function Length**:
     *   **Rule**: No function should be longer than what can be printed on a single sheet of paper (approx. 60 lines).
