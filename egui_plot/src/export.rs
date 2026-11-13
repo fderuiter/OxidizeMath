@@ -104,6 +104,75 @@ impl ImportedDataset {
     }
 }
 
+/// Parse a single delimited text line into tokens, respecting RFC 4180 quoted strings.
+pub fn split_line(line: &str, delimiter: char) -> Vec<String> {
+    let chars: Vec<char> = line.chars().collect();
+    let len = chars.len();
+    if len == 0 {
+        return vec![String::new()];
+    }
+
+    let mut tokens = Vec::new();
+    let mut i = 0;
+
+    while i < len {
+        // Skip leading whitespace before token if delimiter is not whitespace
+        while i < len && chars[i] != delimiter && chars[i].is_whitespace() {
+            i += 1;
+        }
+
+        if i < len && chars[i] == '"' {
+            // Quoted token
+            i += 1; // skip opening quote
+            let mut token = String::new();
+            while i < len {
+                if chars[i] == '"' {
+                    if i + 1 < len && chars[i + 1] == '"' {
+                        token.push('"');
+                        i += 2;
+                    } else {
+                        // closing quote
+                        i += 1;
+                        break;
+                    }
+                } else {
+                    token.push(chars[i]);
+                    i += 1;
+                }
+            }
+            // Skip any whitespace after closing quote up to delimiter
+            while i < len && chars[i] != delimiter && chars[i].is_whitespace() {
+                i += 1;
+            }
+            tokens.push(token);
+            if i < len && chars[i] == delimiter {
+                i += 1;
+                if i == len {
+                    tokens.push(String::new());
+                    break;
+                }
+            }
+        } else {
+            // Unquoted token
+            let mut token = String::new();
+            while i < len && chars[i] != delimiter {
+                token.push(chars[i]);
+                i += 1;
+            }
+            tokens.push(token.trim().to_string());
+            if i < len && chars[i] == delimiter {
+                i += 1;
+                if i == len {
+                    tokens.push(String::new());
+                    break;
+                }
+            }
+        }
+    }
+
+    tokens
+}
+
 /// Parse tabular dataset text (CSV, TSV, semicolon-separated) into imported datasets.
 /// Auto-detects delimiters and headers, converts rows into numerical `[f64; 2]` pairs,
 /// and skips invalid rows or non-numeric values.
@@ -128,21 +197,11 @@ pub fn parse_csv(content: &str) -> Vec<ImportedDataset> {
         ','
     };
 
-    fn split_line(line: &str, delimiter: char) -> Vec<&str> {
-        line.split(delimiter).map(|s| s.trim()).collect()
-    }
-
     let first_tokens = split_line(first_line, delimiter);
     let is_num = |s: &str| s.parse::<f64>().is_ok();
 
-    let (headers, data_start_index) = if first_tokens.iter().any(|&t| !is_num(t)) {
-        (
-            first_tokens
-                .iter()
-                .map(|&s| s.to_string())
-                .collect::<Vec<_>>(),
-            1,
-        )
+    let (headers, data_start_index) = if first_tokens.iter().any(|t| !is_num(t)) {
+        (first_tokens.clone(), 1)
     } else {
         (Vec::new(), 0)
     };
@@ -168,7 +227,7 @@ pub fn parse_csv(content: &str) -> Vec<ImportedDataset> {
                 && y.is_finite()
             {
                 datasets_map
-                    .entry(tokens[0].to_string())
+                    .entry(tokens[0].clone())
                     .or_default()
                     .push([x, y]);
             }
@@ -217,13 +276,13 @@ pub fn parse_csv(content: &str) -> Vec<ImportedDataset> {
         for line in &lines[data_start_index..] {
             let tokens = split_line(line, delimiter);
             if tokens.len() >= 2 {
-                if tokens.len() >= 3 && !is_num(tokens[0]) {
+                if tokens.len() >= 3 && !is_num(&tokens[0]) {
                     if let (Ok(x), Ok(y)) = (tokens[1].parse::<f64>(), tokens[2].parse::<f64>())
                         && x.is_finite()
                         && y.is_finite()
                     {
                         datasets_map
-                            .entry(tokens[0].to_string())
+                            .entry(tokens[0].clone())
                             .or_default()
                             .push([x, y]);
                     }
@@ -320,12 +379,66 @@ pub fn trigger_import_csv_for_plot(ctx: &egui::Context, plot_id: egui::Id) {
     }
 }
 
+/// Helper function to sanitize a CSV field value under RFC 4180 and mitigate formula injection (CWE-1236).
+///
+/// Prefixes formula trigger characters (`=`, `+`, `-`, `@`, `\t`, `\r`) with a single quote,
+/// and wraps fields containing commas, double quotes, formula characters, or line breaks in RFC 4180 double quotes.
+pub fn escape_csv_field(field: &str) -> String {
+    let starts_with_formula = field.starts_with(['=', '+', '-', '@', '\t', '\r'])
+        || (field.starts_with(char::is_whitespace)
+            && field.trim_start().starts_with(['=', '+', '-', '@']));
+    let has_formula_char = field.contains(['=', '+', '-', '@']);
+
+    let content = if starts_with_formula {
+        format!("'{field}")
+    } else {
+        field.to_string()
+    };
+
+    let needs_quotes = starts_with_formula
+        || has_formula_char
+        || field.contains(',')
+        || field.contains('"')
+        || field.contains('\n')
+        || field.contains('\r');
+
+    if needs_quotes {
+        let escaped = content.replace('"', "\"\"");
+        format!("\"{escaped}\"")
+    } else {
+        content
+    }
+}
+
+/// Helper function to escape special JSON characters under RFC 8259.
+pub fn escape_json_string(input: &str) -> String {
+    let mut escaped = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\x08' => escaped.push_str("\\b"),
+            '\x0C' => escaped.push_str("\\f"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                use std::fmt::Write;
+                let _ = write!(escaped, "\\u{:04x}", c as u32);
+            }
+            c => escaped.push(c),
+        }
+    }
+    escaped
+}
+
 /// Format dataset points to CSV string.
 pub fn format_csv(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
     let mut csv = String::from("Dataset,X,Y\n");
     for (name, pts) in datasets {
+        let escaped_name = escape_csv_field(name);
         for p in pts {
-            csv.push_str(&format!("{name},{},{}\n", p[0], p[1]));
+            csv.push_str(&format!("{escaped_name},{},{}\n", p[0], p[1]));
         }
     }
     csv
@@ -336,6 +449,7 @@ pub fn format_json(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
     let mut json = String::from("[\n");
     let mut first = true;
     for (name, pts) in datasets {
+        let escaped_name = escape_json_string(name);
         for p in pts {
             if !first {
                 json.push_str(",\n");
@@ -343,7 +457,7 @@ pub fn format_json(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
             first = false;
             json.push_str(&format!(
                 "  {{\"dataset\": \"{}\", \"x\": {}, \"y\": {}}}",
-                name, p[0], p[1]
+                escaped_name, p[0], p[1]
             ));
         }
     }
@@ -1025,6 +1139,117 @@ mod tests {
         assert!(json.contains("\"dataset\": \"Series 1\""));
         assert!(json.contains("\"x\": 0"));
         assert!(json.contains("\"y\": 1"));
+    }
+
+    #[test]
+    fn test_escape_csv_field_neutralization_and_quoting() {
+        // Formula characters at start are prefixed with single quote and wrapped in double quotes
+        assert_eq!(escape_csv_field("=SUM(A1)"), "\"'=SUM(A1)\"");
+        assert_eq!(escape_csv_field("+123"), "\"'+123\"");
+        assert_eq!(escape_csv_field("-456"), "\"'-456\"");
+        assert_eq!(escape_csv_field("@cmd"), "\"'@cmd\"");
+        assert_eq!(escape_csv_field("\t=SUM"), "\"'\t=SUM\"");
+        assert_eq!(escape_csv_field("  =SUM"), "\"'  =SUM\"");
+
+        // Names containing only formula prefixes
+        assert_eq!(escape_csv_field("="), "\"'=\"");
+        assert_eq!(escape_csv_field("+"), "\"'+\"");
+        assert_eq!(escape_csv_field("-"), "\"\'-\"");
+        assert_eq!(escape_csv_field("@"), "\"'@\"");
+        assert_eq!(escape_csv_field("==="), "\"'===\"");
+        assert_eq!(escape_csv_field("+-@="), "\"'+-@=\"");
+
+        // Commas, quotes, and repeated quotes
+        assert_eq!(escape_csv_field("Series, 1"), "\"Series, 1\"");
+        assert_eq!(escape_csv_field("Series \"A\""), "\"Series \"\"A\"\"\"");
+        assert_eq!(
+            escape_csv_field("\"\"\"quoted\"\"\""),
+            "\"\"\"\"\"\"\"quoted\"\"\"\"\"\"\""
+        );
+
+        // Strings with embedded line breaks
+        assert_eq!(escape_csv_field("Line 1\nLine 2"), "\"Line 1\nLine 2\"");
+        assert_eq!(escape_csv_field("Line 1\r\nLine 2"), "\"Line 1\r\nLine 2\"");
+
+        // Empty string and unmodified alphanumeric names
+        assert_eq!(escape_csv_field(""), "");
+        assert_eq!(escape_csv_field("Series 1"), "Series 1");
+        assert_eq!(escape_csv_field("Test Series"), "Test Series");
+        assert_eq!(escape_csv_field("Signal A"), "Signal A");
+    }
+
+    #[test]
+    fn test_escape_json_string_escaping() {
+        assert_eq!(escape_json_string("Series \"1\""), "Series \\\"1\\\"");
+        assert_eq!(escape_json_string("C:\\path\\file"), "C:\\\\path\\\\file");
+        assert_eq!(
+            escape_json_string("Line 1\nLine 2\tTab"),
+            "Line 1\\nLine 2\\tTab"
+        );
+        assert_eq!(
+            escape_json_string("\x00\x08\x0C\x1F"),
+            "\\u0000\\b\\f\\u001f"
+        );
+        assert_eq!(escape_json_string(""), "");
+        assert_eq!(escape_json_string("Series 1"), "Series 1");
+    }
+
+    #[test]
+    fn test_format_csv_with_sanitization() {
+        let datasets = vec![
+            ("=cmd|' /C calc'!A0".to_string(), vec![[0.0, 1.0]]),
+            ("Series, 1".to_string(), vec![[2.0, 3.0]]),
+            ("Normal Series".to_string(), vec![[4.0, 5.0]]),
+        ];
+        let csv = format_csv(&datasets);
+        assert!(csv.starts_with("Dataset,X,Y\n"));
+        assert!(csv.contains("\"'=cmd|' /C calc'!A0\",0,1\n"));
+        assert!(csv.contains("\"Series, 1\",2,3\n"));
+        assert!(csv.contains("Normal Series,4,5\n"));
+    }
+
+    #[test]
+    fn test_format_json_with_escaping() {
+        let datasets = vec![(
+            "Series \"Alpha\"\nSpecial\tData".to_string(),
+            vec![[1.0, 2.0]],
+        )];
+        let json = format_json(&datasets);
+        assert!(json.starts_with("[\n"));
+        assert!(json.contains("\"dataset\": \"Series \\\"Alpha\\\"\\nSpecial\\tData\""));
+        assert!(json.contains("\"x\": 1, \"y\": 2"));
+    }
+
+    #[test]
+    fn test_parse_csv_quoted_tokens() {
+        let content = "Dataset,X,Y\n\"Series, A\",0.0,1.0\n\"Series \"\"Special\"\" B\",1.0,2.0\n\"'=SUM(A1)\",2.0,3.0\n";
+        let datasets = parse_csv(content);
+        assert_eq!(datasets.len(), 3);
+
+        let series_a = datasets.iter().find(|d| d.name == "Series, A").unwrap();
+        assert_eq!(series_a.points, vec![[0.0, 1.0]]);
+
+        let series_b = datasets
+            .iter()
+            .find(|d| d.name == "Series \"Special\" B")
+            .unwrap();
+        assert_eq!(series_b.points, vec![[1.0, 2.0]]);
+
+        let series_formula = datasets.iter().find(|d| d.name == "'=SUM(A1)").unwrap();
+        assert_eq!(series_formula.points, vec![[2.0, 3.0]]);
+    }
+
+    #[test]
+    fn test_split_line_comprehensive() {
+        assert_eq!(split_line("", ','), vec![""]);
+        assert_eq!(split_line("A,B,C", ','), vec!["A", "B", "C"]);
+        assert_eq!(split_line("\"A,B\",C", ','), vec!["A,B", "C"]);
+        assert_eq!(split_line("\"A\"\"B\",C", ','), vec!["A\"B", "C"]);
+        assert_eq!(split_line("  \"A, B\"  ,  42  ", ','), vec!["A, B", "42"]);
+        assert_eq!(split_line("\"A\tB\"\tC", '\t'), vec!["A\tB", "C"]);
+        assert_eq!(split_line("A,B,", ','), vec!["A", "B", ""]);
+        assert_eq!(split_line(",,", ','), vec!["", "", ""]);
+        assert_eq!(split_line("\"unclosed,1,2", ','), vec!["unclosed,1,2"]);
     }
 
     #[test]
