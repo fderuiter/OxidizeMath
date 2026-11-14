@@ -91,6 +91,17 @@ pub fn check_osv_vulnerabilities_with_path_and_url(lock_path: &Path, osv_url: &s
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+pub const IGNORED_ADVISORIES: &[&str] = &[
+    // Informational notices for unmaintained transitive dependencies that do not have security vulnerabilities:
+    "RUSTSEC-2024-0436", // paste - unmaintained (required by nalgebra)
+    "RUSTSEC-2024-0370", // proc-macro-error - unmaintained
+    "RUSTSEC-2026-0192", // ttf-parser - unmaintained (required by egui/ab_glyph)
+    "RUSTSEC-2026-0370", // zvariant - unmaintained as standalone crate (merged into zbus)
+    "RUSTSEC-2026-0371", // zbus_names - unmaintained as standalone crate (merged into zbus)
+    "RUSTSEC-2026-0372", // zvariant_derive - unmaintained as standalone crate (merged into zbus)
+];
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn parse_advisories(res_json: &serde_json::Value, pkg_names: &[(String, String)]) -> bool {
     let mut passed = true;
 
@@ -103,6 +114,13 @@ pub fn parse_advisories(res_json: &serde_json::Value, pkg_names: &[(String, Stri
                         .get(i)
                         .map(|(n, v)| (n.as_str(), v.as_str()))
                         .unwrap_or(("unknown", "unknown"));
+                    if IGNORED_ADVISORIES.contains(&vuln_id) {
+                        println!(
+                            "[-] Ignoring informational/unmaintained advisory for {} {}: {}",
+                            pkg_name, pkg_version, vuln_id
+                        );
+                        continue;
+                    }
                     println!(
                         "[!] Vulnerability found in {} {}: {}",
                         pkg_name, pkg_version, vuln_id
@@ -335,5 +353,20 @@ version = "0.1.0"
         });
         let pkg_names = vec![("glib".to_string(), "0.18.5".to_string())];
         assert!(!parse_advisories(&res_json, &pkg_names));
+    }
+
+    #[test]
+    fn test_ignored_unmaintained_advisory_passes() {
+        let res_json = serde_json::json!({
+            "results": [
+                {
+                    "vulns": [
+                        { "id": "RUSTSEC-2024-0436" }
+                    ]
+                }
+            ]
+        });
+        let pkg_names = vec![("paste".to_string(), "1.0.15".to_string())];
+        assert!(parse_advisories(&res_json, &pkg_names));
     }
 }
