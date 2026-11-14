@@ -107,19 +107,13 @@ pub fn grid_layout<N, E>(
 }
 
 #[verified_engine::verified]
-fn compute_repulsive_forces(
-    nodes: &[NodeIndex],
-    positions: &HashMap<NodeIndex, (f32, f32)>,
-    k2: f32,
-    disp: &mut HashMap<NodeIndex, (f32, f32)>,
-) {
-    let n = nodes.len();
+fn compute_repulsive_forces(positions: &[(f32, f32)], k2: f32, disp: &mut [(f32, f32)]) {
+    let n = positions.len();
     for i in 0..n {
-        let u = nodes[i];
-        let pos_u = *positions.get(&u).unwrap();
+        let pos_u = positions[i];
 
-        for &v in &nodes[(i + 1)..] {
-            let pos_v = *positions.get(&v).unwrap();
+        for j in (i + 1)..n {
+            let pos_v = positions[j];
 
             let mut dx = pos_u.0 - pos_v.0;
             let mut dy = pos_u.1 - pos_v.1;
@@ -135,76 +129,66 @@ fn compute_repulsive_forces(
             let fx = (dx / dist) * fr;
             let fy = (dy / dist) * fr;
 
-            if let Some(d_u) = disp.get_mut(&u) {
-                d_u.0 += fx;
-                d_u.1 += fy;
-            }
-            if let Some(d_v) = disp.get_mut(&v) {
-                d_v.0 -= fx;
-                d_v.1 -= fy;
-            }
+            disp[i].0 += fx;
+            disp[i].1 += fy;
+            disp[j].0 -= fx;
+            disp[j].1 -= fy;
         }
     }
 }
 
 #[verified_engine::verified]
 fn compute_attractive_forces(
-    edges: &[(NodeIndex, NodeIndex)],
-    positions: &HashMap<NodeIndex, (f32, f32)>,
+    edges: &[(usize, usize)],
+    positions: &[(f32, f32)],
     k: f32,
-    disp: &mut HashMap<NodeIndex, (f32, f32)>,
+    disp: &mut [(f32, f32)],
 ) {
     for &(u, v) in edges {
         if u == v {
             continue;
         }
-        if let (Some(&pos_u), Some(&pos_v)) = (positions.get(&u), positions.get(&v)) {
-            let mut dx = pos_u.0 - pos_v.0;
-            let mut dy = pos_u.1 - pos_v.1;
-            let mut dist = (dx * dx + dy * dy).sqrt();
+        let pos_u = positions[u];
+        let pos_v = positions[v];
 
-            if dist < 0.001 {
-                dx = 0.01;
-                dy = 0.01;
-                dist = 0.01414;
-            }
+        let mut dx = pos_u.0 - pos_v.0;
+        let mut dy = pos_u.1 - pos_v.1;
+        let mut dist = (dx * dx + dy * dy).sqrt();
 
-            let fa = (dist * dist) / k;
-            let fx = (dx / dist) * fa;
-            let fy = (dy / dist) * fa;
-
-            if let Some(d_u) = disp.get_mut(&u) {
-                d_u.0 -= fx;
-                d_u.1 -= fy;
-            }
-            if let Some(d_v) = disp.get_mut(&v) {
-                d_v.0 += fx;
-                d_v.1 += fy;
-            }
+        if dist < 0.001 {
+            dx = 0.01;
+            dy = 0.01;
+            dist = 0.01414;
         }
+
+        let fa = (dist * dist) / k;
+        let fx = (dx / dist) * fa;
+        let fy = (dy / dist) * fa;
+
+        disp[u].0 -= fx;
+        disp[u].1 -= fy;
+        disp[v].0 += fx;
+        disp[v].1 += fy;
     }
 }
 
 #[verified_engine::verified]
 fn apply_displacements(
-    nodes: &[NodeIndex],
-    positions: &mut HashMap<NodeIndex, (f32, f32)>,
-    disp: &HashMap<NodeIndex, (f32, f32)>,
+    positions: &mut [(f32, f32)],
+    disp: &[(f32, f32)],
     temp: f32,
     bounds: (f32, f32, f32, f32),
 ) {
     let (min_bound_x, min_bound_y, max_bound_x, max_bound_y) = bounds;
-    for &u in nodes {
-        if let (Some(pos), Some(d)) = (positions.get_mut(&u), disp.get(&u)) {
-            let d_len = (d.0 * d.0 + d.1 * d.1).sqrt();
-            if d_len > 0.0001 {
-                let cap = d_len.min(temp);
-                pos.0 += (d.0 / d_len) * cap;
-                pos.1 += (d.1 / d_len) * cap;
-            }
-            pos.0 = pos.0.clamp(min_bound_x, max_bound_x);
-            pos.1 = pos.1.clamp(min_bound_y, max_bound_y);
+    for (pos, d) in positions.iter_mut().zip(disp.iter()) {
+        let d_len = (d.0 * d.0 + d.1 * d.1).sqrt();
+        if d_len > 0.0001 {
+            let cap = d_len.min(temp);
+            pos.0 += (d.0 / d_len) * cap;
+            pos.1 += (d.1 / d_len) * cap;
         }
+        pos.0 = pos.0.clamp(min_bound_x, max_bound_x);
+        pos.1 = pos.1.clamp(min_bound_y, max_bound_y);
     }
 }
 
@@ -217,12 +201,12 @@ pub fn force_directed_layout<N, E>(
     bounds: LayoutBounds,
     iterations: usize,
 ) -> HashMap<NodeIndex, (f32, f32)> {
-    let mut positions = circular_layout(graph, bounds);
+    let initial_positions = circular_layout(graph, bounds);
     let nodes: Vec<NodeIndex> = graph.graph.node_indices().collect();
     let n = nodes.len();
 
     if n <= 1 || iterations == 0 {
-        return positions;
+        return initial_positions;
     }
 
     let (min_x, min_y, max_x, max_y) = bounds;
@@ -231,10 +215,21 @@ pub fn force_directed_layout<N, E>(
     let k = ((width * height) / (n as f32)).sqrt();
     let k2 = k * k;
 
-    let edges: Vec<(NodeIndex, NodeIndex)> = graph
+    let mut node_to_idx = HashMap::with_capacity(n);
+    let mut pos = Vec::with_capacity(n);
+    for (i, &node) in nodes.iter().enumerate() {
+        node_to_idx.insert(node, i);
+        pos.push(initial_positions[&node]);
+    }
+
+    let edges: Vec<(usize, usize)> = graph
         .graph
         .edge_references()
-        .map(|e| (e.source(), e.target()))
+        .filter_map(|e| {
+            let u = node_to_idx.get(&e.source())?;
+            let v = node_to_idx.get(&e.target())?;
+            Some((*u, *v))
+        })
         .collect();
 
     let margin = 20.0;
@@ -248,14 +243,15 @@ pub fn force_directed_layout<N, E>(
     let mut temp = (width.min(height) * 0.1).max(1.0);
     let dt = temp / (iterations as f32);
 
+    let mut disp = vec![(0.0f32, 0.0f32); n];
+
     for _step in 0..iterations {
-        let mut disp: HashMap<NodeIndex, (f32, f32)> =
-            nodes.iter().map(|&n| (n, (0.0, 0.0))).collect();
-        compute_repulsive_forces(&nodes, &positions, k2, &mut disp);
-        compute_attractive_forces(&edges, &positions, k, &mut disp);
-        apply_displacements(&nodes, &mut positions, &disp, temp, clamp_bounds);
+        disp.fill((0.0, 0.0));
+        compute_repulsive_forces(&pos, k2, &mut disp);
+        compute_attractive_forces(&edges, &pos, k, &mut disp);
+        apply_displacements(&mut pos, &disp, temp, clamp_bounds);
         temp = (temp - dt).max(0.001);
     }
 
-    positions
+    nodes.into_iter().zip(pos).collect()
 }
