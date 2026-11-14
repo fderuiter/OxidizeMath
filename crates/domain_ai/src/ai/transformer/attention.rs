@@ -2,7 +2,39 @@
 
 use crate::ai::activations::softmax_row_wise;
 use crate::ai::transformer::traits::AttentionMechanism;
-use nalgebra::DMatrix;
+use nalgebra::{DMatrix, DMatrixView};
+
+/// Computes the Scaled Dot-Product Attention from strided matrix views.
+#[verified_engine::verified]
+fn scaled_dot_product_attention_view(
+    q: DMatrixView<'_, f64>,
+    k: DMatrixView<'_, f64>,
+    v: DMatrixView<'_, f64>,
+    mask: Option<&DMatrix<f64>>,
+) -> (DMatrix<f64>, DMatrix<f64>) {
+    let d_k = q.ncols() as f64;
+
+    // 1. Calculate scores: Q * K^T
+    let mut scores = q * k.transpose();
+
+    // 2. Scale scores
+    if d_k > 0.0 {
+        scores /= d_k.sqrt();
+    }
+
+    // 3. Apply mask if provided
+    if let Some(m) = mask {
+        scores += m;
+    }
+
+    // 4. Apply softmax to get attention weights
+    let attention_weights = softmax_row_wise(&scores);
+
+    // 5. Multiply weights by V to get the final output
+    let output = &attention_weights * v;
+
+    (output, attention_weights)
+}
 
 /// Computes the Scaled Dot-Product Attention.
 ///
@@ -25,54 +57,32 @@ pub fn scaled_dot_product_attention(
     v: &DMatrix<f64>,
     mask: Option<&DMatrix<f64>>,
 ) -> (DMatrix<f64>, DMatrix<f64>) {
-    let d_k = q.ncols() as f64;
-
-    // 1. Calculate scores: Q * K^T
-    let mut scores = q * k.transpose();
-
-    // 2. Scale scores
-    // Prevent division by zero if d_k is 0 (which would cause NaNs).
-    // If d_k is 0, we skip scaling, leaving scores as 0 (valid for dot product of empty vectors).
-    if d_k > 0.0 {
-        scores /= d_k.sqrt();
-    }
-
-    // 3. Apply mask if provided (e.g., for padding or preventing future token peeking)
-    if let Some(m) = mask {
-        // The mask is added to the scores. For positions to be ignored,
-        // the mask should contain a very large negative number.
-        scores += m;
-    }
-
-    // 4. Apply softmax to get attention weights
-    let attention_weights = softmax_row_wise(&scores);
-
-    // 5. Multiply weights by V to get the final output
-    let output = &attention_weights * v;
-
-    (output, attention_weights)
+    scaled_dot_product_attention_view(q.as_view(), k.as_view(), v.as_view(), mask)
 }
 
-/// Multi-Head Attention mechanism.
+/// Multi-Head Attention mechanism with fused batch linear projections.
 ///
 /// This struct holds the learnable weight matrices for the projections.
+/// Projection weights `w_q`, `w_k`, and `w_v` are fused into unified
+/// matrices of dimension `(d_model, d_model)` to maximize GEMM throughput.
+#[derive(Clone, Debug)]
 pub struct MultiHeadAttention {
     d_model: usize,
     h: usize,
     d_k: usize,
 
-    /// Weight matrices for query projections for each head
-    pub w_q: Vec<DMatrix<f64>>,
-    /// Weight matrices for key projections for each head
-    pub w_k: Vec<DMatrix<f64>>,
-    /// Weight matrices for value projections for each head
-    pub w_v: Vec<DMatrix<f64>>,
-    /// Final output weight matrix
+    /// Fused weight matrix for query projections: shape (d_model, d_model)
+    pub w_q: DMatrix<f64>,
+    /// Fused weight matrix for key projections: shape (d_model, d_model)
+    pub w_k: DMatrix<f64>,
+    /// Fused weight matrix for value projections: shape (d_model, d_model)
+    pub w_v: DMatrix<f64>,
+    /// Final output weight matrix: shape (d_model, d_model)
     pub w_o: DMatrix<f64>,
 }
 
 impl MultiHeadAttention {
-    /// Creates a new `MultiHeadAttention` instance.
+    /// Creates a new `MultiHeadAttention` instance with zero-initialized weights.
     ///
     /// In a real model, the weight matrices would be initialized randomly.
     /// Here, they are initialized as zeros for simplicity.
@@ -88,11 +98,166 @@ impl MultiHeadAttention {
             d_model,
             h,
             d_k,
-            w_q: (0..h).map(|_| DMatrix::zeros(d_model, d_k)).collect(),
-            w_k: (0..h).map(|_| DMatrix::zeros(d_model, d_k)).collect(),
-            w_v: (0..h).map(|_| DMatrix::zeros(d_model, d_k)).collect(),
+            w_q: DMatrix::zeros(d_model, d_model),
+            w_k: DMatrix::zeros(d_model, d_model),
+            w_v: DMatrix::zeros(d_model, d_model),
             w_o: DMatrix::zeros(d_model, d_model),
         }
+    }
+
+    /// Constructs a `MultiHeadAttention` instance from legacy per-head weight matrices.
+    ///
+    /// This provides backward conversion compatibility for models or serialized weights
+    /// stored in separate per-head projection format.
+    ///
+    /// # Arguments
+    /// * `d_model` - Total model dimension.
+    /// * `h` - Number of attention heads.
+    /// * `w_q` - Slice of query weight matrices for each head, each of shape `(d_model, d_k)`.
+    /// * `w_k` - Slice of key weight matrices for each head, each of shape `(d_model, d_k)`.
+    /// * `w_v` - Slice of value weight matrices for each head, each of shape `(d_model, d_k)`.
+    /// * `w_o` - Output projection weight matrix of shape `(d_model, d_model)`.
+    #[verified_engine::verified]
+    pub fn from_head_weights(
+        d_model: usize,
+        h: usize,
+        w_q: &[DMatrix<f64>],
+        w_k: &[DMatrix<f64>],
+        w_v: &[DMatrix<f64>],
+        w_o: DMatrix<f64>,
+    ) -> Result<Self, String> {
+        if !d_model.is_multiple_of(h) {
+            return Err("d_model must be divisible by the number of heads h".to_string());
+        }
+        let d_k = d_model / h;
+
+        if w_q.len() != h || w_k.len() != h || w_v.len() != h {
+            return Err(format!(
+                "Expected {} weight matrices per projection type, got w_q: {}, w_k: {}, w_v: {}",
+                h,
+                w_q.len(),
+                w_k.len(),
+                w_v.len()
+            ));
+        }
+
+        if w_o.nrows() != d_model || w_o.ncols() != d_model {
+            return Err(format!(
+                "w_o dimension mismatch: expected ({}, {}), got ({}, {})",
+                d_model,
+                d_model,
+                w_o.nrows(),
+                w_o.ncols()
+            ));
+        }
+
+        let mut fused_q = DMatrix::zeros(d_model, d_model);
+        let mut fused_k = DMatrix::zeros(d_model, d_model);
+        let mut fused_v = DMatrix::zeros(d_model, d_model);
+
+        for (i, ((q_i, k_i), v_i)) in w_q.iter().zip(w_k.iter()).zip(w_v.iter()).enumerate() {
+            if q_i.nrows() != d_model || q_i.ncols() != d_k {
+                return Err(format!(
+                    "Head {} w_q dimension mismatch: expected ({}, {}), got ({}, {})",
+                    i,
+                    d_model,
+                    d_k,
+                    q_i.nrows(),
+                    q_i.ncols()
+                ));
+            }
+            if k_i.nrows() != d_model || k_i.ncols() != d_k {
+                return Err(format!(
+                    "Head {} w_k dimension mismatch: expected ({}, {}), got ({}, {})",
+                    i,
+                    d_model,
+                    d_k,
+                    k_i.nrows(),
+                    k_i.ncols()
+                ));
+            }
+            if v_i.nrows() != d_model || v_i.ncols() != d_k {
+                return Err(format!(
+                    "Head {} w_v dimension mismatch: expected ({}, {}), got ({}, {})",
+                    i,
+                    d_model,
+                    d_k,
+                    v_i.nrows(),
+                    v_i.ncols()
+                ));
+            }
+
+            let start_col = i * d_k;
+            fused_q
+                .view_mut((0, start_col), (d_model, d_k))
+                .copy_from(q_i);
+            fused_k
+                .view_mut((0, start_col), (d_model, d_k))
+                .copy_from(k_i);
+            fused_v
+                .view_mut((0, start_col), (d_model, d_k))
+                .copy_from(v_i);
+        }
+
+        Ok(Self {
+            d_model,
+            h,
+            d_k,
+            w_q: fused_q,
+            w_k: fused_k,
+            w_v: fused_v,
+            w_o,
+        })
+    }
+
+    /// Converts fused projection weights back into legacy per-head weight vectors.
+    ///
+    /// Returns `(w_q, w_k, w_v)` where each vector has length `h` and elements of shape `(d_model, d_k)`.
+    #[allow(clippy::type_complexity)]
+    #[verified_engine::verified]
+    pub fn to_head_weights(&self) -> (Vec<DMatrix<f64>>, Vec<DMatrix<f64>>, Vec<DMatrix<f64>>) {
+        let mut w_q = Vec::with_capacity(self.h);
+        let mut w_k = Vec::with_capacity(self.h);
+        let mut w_v = Vec::with_capacity(self.h);
+
+        for i in 0..self.h {
+            let start_col = i * self.d_k;
+            w_q.push(
+                self.w_q
+                    .view((0, start_col), (self.d_model, self.d_k))
+                    .into_owned(),
+            );
+            w_k.push(
+                self.w_k
+                    .view((0, start_col), (self.d_model, self.d_k))
+                    .into_owned(),
+            );
+            w_v.push(
+                self.w_v
+                    .view((0, start_col), (self.d_model, self.d_k))
+                    .into_owned(),
+            );
+        }
+
+        (w_q, w_k, w_v)
+    }
+
+    /// Returns the model dimension `d_model`.
+    #[inline]
+    pub fn d_model(&self) -> usize {
+        self.d_model
+    }
+
+    /// Returns the number of heads `h`.
+    #[inline]
+    pub fn h(&self) -> usize {
+        self.h
+    }
+
+    /// Returns the head dimension `d_k`.
+    #[inline]
+    pub fn d_k(&self) -> usize {
+        self.d_k
     }
 
     /// Performs the forward pass for the Multi-Head Attention layer.
@@ -104,31 +269,72 @@ impl MultiHeadAttention {
         v: &DMatrix<f64>,
         mask: Option<&DMatrix<f64>>,
     ) -> DMatrix<f64> {
-        let mut head_outputs = Vec::with_capacity(self.h);
+        let sequence_length = q.nrows();
+        let kv_sequence_length = k.nrows();
 
-        // 1. Linearly project Q, K, V for each head and apply attention
+        // 1. Fused linear projection: single matrix multiplication per tensor
+        let q_proj = q * &self.w_q;
+        let k_proj = k * &self.w_k;
+        let v_proj = v * &self.w_v;
+
+        // 2. Head splitting via strided matrix views and attention computation
+        let mut concatenated_output = DMatrix::zeros(sequence_length, self.d_model);
+
         for i in 0..self.h {
-            let q_proj = q * &self.w_q[i];
-            let k_proj = k * &self.w_k[i];
-            let v_proj = v * &self.w_v[i];
+            let start_col = i * self.d_k;
+            let q_head = q_proj.view((0, start_col), (sequence_length, self.d_k));
+            let k_head = k_proj.view((0, start_col), (kv_sequence_length, self.d_k));
+            let v_head = v_proj.view((0, start_col), (kv_sequence_length, self.d_k));
 
             let (head_output, _attention_weights) =
-                scaled_dot_product_attention(&q_proj, &k_proj, &v_proj, mask);
-            head_outputs.push(head_output);
-        }
+                scaled_dot_product_attention_view(q_head, k_head, v_head, mask);
 
-        // 2. Concatenate the outputs of the heads
-        let sequence_length = q.nrows();
-        let mut concatenated_output = DMatrix::zeros(sequence_length, self.d_model);
-        for (i, head_output) in head_outputs.iter().enumerate() {
-            let start_col = i * self.d_k;
             concatenated_output
                 .view_mut((0, start_col), (sequence_length, self.d_k))
-                .copy_from(head_output);
+                .copy_from(&head_output);
         }
 
-        // 3. Apply the final linear projection
+        // 3. Final linear projection
         concatenated_output * &self.w_o
+    }
+
+    /// Performs the forward pass and returns both the output and the per-head attention weights.
+    #[verified_engine::verified]
+    pub fn forward_with_weights(
+        &self,
+        q: &DMatrix<f64>,
+        k: &DMatrix<f64>,
+        v: &DMatrix<f64>,
+        mask: Option<&DMatrix<f64>>,
+    ) -> (DMatrix<f64>, Vec<DMatrix<f64>>) {
+        let sequence_length = q.nrows();
+        let kv_sequence_length = k.nrows();
+
+        let q_proj = q * &self.w_q;
+        let k_proj = k * &self.w_k;
+        let v_proj = v * &self.w_v;
+
+        let mut concatenated_output = DMatrix::zeros(sequence_length, self.d_model);
+        let mut all_weights = Vec::with_capacity(self.h);
+
+        for i in 0..self.h {
+            let start_col = i * self.d_k;
+            let q_head = q_proj.view((0, start_col), (sequence_length, self.d_k));
+            let k_head = k_proj.view((0, start_col), (kv_sequence_length, self.d_k));
+            let v_head = v_proj.view((0, start_col), (kv_sequence_length, self.d_k));
+
+            let (head_output, attention_weights) =
+                scaled_dot_product_attention_view(q_head, k_head, v_head, mask);
+
+            concatenated_output
+                .view_mut((0, start_col), (sequence_length, self.d_k))
+                .copy_from(&head_output);
+
+            all_weights.push(attention_weights);
+        }
+
+        let output = concatenated_output * &self.w_o;
+        (output, all_weights)
     }
 
     /// Helper for backward compatibility or direct usage
@@ -221,5 +427,46 @@ mod tests {
             expected_weight,
             epsilon = math_commons::registry::TOLERANCE_FAST
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "d_model must be divisible by the number of heads h")]
+    #[verified_engine::verified]
+    fn test_non_divisible_d_model_panics() {
+        let _ = MultiHeadAttention::new(65, 8);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_from_head_weights_roundtrip() {
+        let d_model = 16;
+        let h = 4;
+        let d_k = d_model / h;
+
+        let w_q: Vec<DMatrix<f64>> = (0..h)
+            .map(|head| {
+                DMatrix::from_fn(d_model, d_k, |r, c| (head * 100 + r * 10 + c) as f64 * 0.01)
+            })
+            .collect();
+        let w_k: Vec<DMatrix<f64>> = (0..h)
+            .map(|head| {
+                DMatrix::from_fn(d_model, d_k, |r, c| (head * 200 + r * 10 + c) as f64 * 0.01)
+            })
+            .collect();
+        let w_v: Vec<DMatrix<f64>> = (0..h)
+            .map(|head| {
+                DMatrix::from_fn(d_model, d_k, |r, c| (head * 300 + r * 10 + c) as f64 * 0.01)
+            })
+            .collect();
+        let w_o = DMatrix::from_fn(d_model, d_model, |r, c| (r * 10 + c) as f64 * 0.01);
+
+        let mha = MultiHeadAttention::from_head_weights(d_model, h, &w_q, &w_k, &w_v, w_o.clone())
+            .unwrap();
+        let (rec_q, rec_k, rec_v) = mha.to_head_weights();
+
+        assert_eq!(rec_q, w_q);
+        assert_eq!(rec_k, w_k);
+        assert_eq!(rec_v, w_v);
+        assert_eq!(mha.w_o, w_o);
     }
 }
