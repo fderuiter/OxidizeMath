@@ -49,7 +49,69 @@ graph TD
 
 ## Git Hooks & Guardrails
 
-To ensure immediate feedback and high integrity, repository quality standards (including code formatting, clippy lints, file-length limits, and staged duplicate checks) are enforced automatically at the commit level. Running the project setup command (`cargo run -p xtask -- setup`) automatically configures a Git pre-commit hook that delegates execution to the dedicated lint suite (`cargo run -p xtask -- lint-all`). You can also run `cargo run -p xtask -- lint-all` manually at any time to verify local quality checks before staging or committing changes. This minimizes CI failures and maintains architectural constraints.
+To ensure immediate feedback and high integrity, repository quality standards (including code formatting, clippy lints, file-length limits, and staged duplicate checks) are enforced automatically at the commit level.
+
+### Version-Controlled Hooks via `core.hooksPath`
+
+Pre-commit hooks are tracked directly under version control in the `.githooks/` directory instead of untracked local directories like `.git/hooks/`. Git is configured to use this version-controlled directory through the `core.hooksPath` setting:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+When configured, Git executes `.githooks/pre-commit` before completing any `git commit`. The pre-commit hook runs the workspace verification suite (`cargo run -p xtask -- lint-all`). If any check fails (e.g. code formatting, clippy lints, or file length violations), the hook exits with a non-zero exit code and blocks the commit.
+
+### Automated Activation
+
+Running the workspace setup command automatically compiles the codebase, executes tests, configures `core.hooksPath` to `.githooks`, and validates executable permissions on Unix platforms:
+
+```bash
+cargo run -p xtask -- setup
+```
+
+### Manual Verification Checks
+
+You can run the full lint suite manually at any time before committing or pushing changes:
+
+```bash
+cargo run -p xtask -- lint-all
+```
+
+This command executes all workspace quality gates:
+1. **Formatting**: `cargo fmt --all -- --check`
+2. **Clippy Lints**: `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+3. **Staged Duplicates**: Duplicate file detection in staged git changes
+4. **File Length Constraints**: Enforces the 500-line ceiling per source file
+5. **Documentation**: `cargo doc --workspace --no-deps --all-features` (with warnings treated as errors)
+6. **Documentation Tests**: `cargo test --doc --workspace --all-features`
+7. **Markdown Links**: Validates all internal relative markdown links
+
+### Troubleshooting
+
+- **Pre-commit hook does not execute on `git commit`**:
+  Verify your local Git configuration points to `.githooks`:
+  ```bash
+  git config core.hooksPath
+  ```
+  If this command returns nothing or an unexpected path, configure it by running:
+  ```bash
+  cargo run -p xtask -- setup
+  # or manually:
+  git config core.hooksPath .githooks
+  ```
+
+- **Permission denied when committing (Unix / macOS)**:
+  Ensure the hook script has executable permissions:
+  ```bash
+  chmod +x .githooks/pre-commit
+  ```
+
+- **Emergency Commit Bypass**:
+  In rare situations where a local commit must be made without running verification checks (such as an emergency work-in-progress checkpoint on a private development branch), use `git commit --no-verify`:
+  ```bash
+  git commit --no-verify -m "wip: checkpoint"
+  ```
+  Note that continuous integration (CI) workflows enforce all checks on pull requests regardless of local bypasses.
 
 ##  Testing
 
