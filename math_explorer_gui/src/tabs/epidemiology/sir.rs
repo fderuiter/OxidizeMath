@@ -1,7 +1,7 @@
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::epidemiology::compartmental::SIRModel;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -23,9 +23,9 @@ pub struct SirTool {
     duration: f64,
 
     // Cached plot data
-    s_points: Vec<[f64; 2]>,
-    i_points: Vec<[f64; 2]>,
-    r_points: Vec<[f64; 2]>,
+    s_points: Vec<PlotPoint>,
+    i_points: Vec<PlotPoint>,
+    r_points: Vec<PlotPoint>,
 
     snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
@@ -129,9 +129,9 @@ impl SirTool {
             for i in 0..=steps {
                 let t = i as f64 * dt;
                 let state = model.state();
-                self.s_points.push([t, state.s]);
-                self.i_points.push([t, state.i]);
-                self.r_points.push([t, state.r]);
+                self.s_points.push(PlotPoint::new(t, state.s));
+                self.i_points.push(PlotPoint::new(t, state.i));
+                self.r_points.push(PlotPoint::new(t, state.r));
 
                 model.step(dt);
             }
@@ -149,9 +149,9 @@ impl InteractiveTool for SirTool {
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut datasets = egui_plot::get_last_plot_datasets();
         if datasets.is_empty() {
-            datasets.push(("Susceptible".to_string(), self.s_points.clone()));
-            datasets.push(("Infected".to_string(), self.i_points.clone()));
-            datasets.push(("Recovered".to_string(), self.r_points.clone()));
+            datasets.push(("Susceptible".to_string(), self.s_points.iter().map(|p| [p.x, p.y]).collect()));
+            datasets.push(("Infected".to_string(), self.i_points.iter().map(|p| [p.x, p.y]).collect()));
+            datasets.push(("Recovered".to_string(), self.r_points.iter().map(|p| [p.x, p.y]).collect()));
             datasets.extend(self.snapshot_manager.export_datasets());
         }
         datasets
@@ -192,10 +192,11 @@ impl InteractiveTool for SirTool {
         ui.vertical(|ui| {
             ui.heading("Parameters");
             if self.render_parameter_controls(ui) {
+                let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
                 let series = vec![
-                    TraceSeries::new("Susceptible", self.s_points.clone()),
-                    TraceSeries::new("Infected", self.i_points.clone()),
-                    TraceSeries::new("Recovered", self.r_points.clone()),
+                    TraceSeries::new("Susceptible", to_pairs(&self.s_points)),
+                    TraceSeries::new("Infected", to_pairs(&self.i_points)),
+                    TraceSeries::new("Recovered", to_pairs(&self.r_points)),
                 ];
                 self.snapshot_manager.push_history_run(&self.last_param_summary, series);
                 self.recalculate();
@@ -210,17 +211,18 @@ impl InteractiveTool for SirTool {
 
             ui.add_space(8.0);
             let param_summary = self.param_summary();
-            let s_pts = self.s_points.clone();
-            let i_pts = self.i_points.clone();
-            let r_pts = self.r_points.clone();
             let current_len = self.snapshot_manager.len();
+            let s_points = &self.s_points;
+            let i_points = &self.i_points;
+            let r_points = &self.r_points;
 
-            self.snapshot_manager.render_ui(ui, || {
+            self.snapshot_manager.render_ui(ui, move || {
                 let label = format!("Baseline {}", current_len + 1);
+                let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
                 let series = vec![
-                    TraceSeries::new("Susceptible", s_pts),
-                    TraceSeries::new("Infected", i_pts),
-                    TraceSeries::new("Recovered", r_pts),
+                    TraceSeries::new("Susceptible", to_pairs(s_points)),
+                    TraceSeries::new("Infected", to_pairs(i_points)),
+                    TraceSeries::new("Recovered", to_pairs(r_points)),
                 ];
                 Some((label, param_summary, series))
             });
@@ -241,15 +243,15 @@ impl InteractiveTool for SirTool {
 
             plot.show(ui, |plot_ui| {
                 plot_ui.line(
-                    Line::new("Susceptible", PlotPoints::new(self.s_points.clone()))
+                    Line::new("Susceptible", &self.s_points[..])
                         .color(egui::Color32::BLUE),
                 );
                 plot_ui.line(
-                    Line::new("Infected", PlotPoints::new(self.i_points.clone()))
+                    Line::new("Infected", &self.i_points[..])
                         .color(egui::Color32::RED),
                 );
                 plot_ui.line(
-                    Line::new("Recovered", PlotPoints::new(self.r_points.clone()))
+                    Line::new("Recovered", &self.r_points[..])
                         .color(egui::Color32::GREEN),
                 );
                 self.snapshot_manager.render_on_plot(plot_ui);
@@ -291,10 +293,11 @@ mod tests {
 
         // Pin snapshot for beta = 0.2
         let summary = tool.param_summary();
+        let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
         let series = vec![
-            TraceSeries::new("Susceptible", tool.s_points.clone()),
-            TraceSeries::new("Infected", tool.i_points.clone()),
-            TraceSeries::new("Recovered", tool.r_points.clone()),
+            TraceSeries::new("Susceptible", to_pairs(&tool.s_points)),
+            TraceSeries::new("Infected", to_pairs(&tool.i_points)),
+            TraceSeries::new("Recovered", to_pairs(&tool.r_points)),
         ];
         assert!(tool.snapshot_manager.add_snapshot("Run 1", summary, series));
         assert_eq!(tool.snapshot_manager.len(), 1);
@@ -317,5 +320,14 @@ mod tests {
         restored.load_state(&state);
         assert_eq!(restored.snapshot_manager.len(), 1);
         assert_eq!(restored.beta, 0.5);
+    }
+
+    #[test]
+    fn test_sir_borrowed_slice_points() {
+        let tool = SirTool::default();
+        let s_slice: &[PlotPoint] = &tool.s_points[..];
+        let plot_points: egui_plot::PlotPoints<'_> = s_slice.into();
+        assert!(matches!(plot_points, egui_plot::PlotPoints::Borrowed(_)));
+        assert_eq!(plot_points.points().len(), tool.s_points.len());
     }
 }

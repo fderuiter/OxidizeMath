@@ -22,6 +22,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0005: Active Documentation Standard (Extended)](adr/0005-active-documentation-standard.md)
 - [ADR 0008: Pre-Commit Lint Suite](adr/0008-xtask-lint-all-pre-commit.md)
 - [ADR 0012: Centralized Architecture Guide Suite](adr/0012-centralized-architecture-suite.md)
+- [ADR 0013: Retire Deprecated Battery Primitives](adr/0013-retire-deprecated-battery-primitives.md)
 - [ADR 0013: Retire Legacy BCS Gap Solver Function](adr/0013-retire-legacy-bcs-gap-solver.md)
 
 ## Contributing

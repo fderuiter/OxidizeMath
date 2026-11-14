@@ -607,22 +607,6 @@ impl<'a> Plot<'a> {
         self
     }
 
-    /// Expand bounds to fit all items across the x axis, including values given by `include_x`.
-    #[deprecated = "Use `auto_bounds` instead"]
-    #[inline]
-    pub fn auto_bounds_x(mut self) -> Self {
-        self.default_auto_bounds.x = true;
-        self
-    }
-
-    /// Expand bounds to fit all items across the y axis, including values given by `include_y`.
-    #[deprecated = "Use `auto_bounds` instead"]
-    #[inline]
-    pub fn auto_bounds_y(mut self) -> Self {
-        self.default_auto_bounds.y = true;
-        self
-    }
-
     /// Show a legend including all named items.
     #[inline]
     pub fn legend(mut self, legend: Legend) -> Self {
@@ -671,14 +655,6 @@ impl<'a> Plot<'a> {
     #[inline]
     pub fn link_cursor(mut self, group_id: impl Into<Id>, link: impl Into<Vec2b>) -> Self {
         self.linked_cursors = Some((group_id.into(), link.into()));
-        self
-    }
-
-    /// Round grid positions to full pixels to avoid aliasing. Improves plot appearance but might have an
-    /// undesired effect when shifting the plot bounds. Enabled by default.
-    #[inline]
-    #[deprecated = "This no longer has any effect and is always enabled."]
-    pub fn sharp_grid_lines(self, _enabled: bool) -> Self {
         self
     }
 
@@ -768,13 +744,6 @@ impl<'a> Plot<'a> {
             main.min_thickness = min_width;
         }
         self
-    }
-
-    /// Set the main Y-axis-width by number of digits
-    #[inline]
-    #[deprecated = "Use `y_axis_min_width` instead"]
-    pub fn y_axis_width(self, digits: usize) -> Self {
-        self.y_axis_min_width(12.0 * digits as f32)
     }
 
     /// Set custom configuration for X-axis

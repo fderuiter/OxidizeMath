@@ -40,6 +40,37 @@ pub fn validate_permissions_block(yaml: &Value) -> Result<(), &'static str> {
     Ok(())
 }
 
+pub fn validate_concurrency_block(yaml: &Value) -> Result<(), &'static str> {
+    let concurrency = yaml
+        .get("concurrency")
+        .ok_or("Workflow is missing a global 'concurrency' block.")?;
+
+    match concurrency {
+        Value::String(s) => {
+            if s.trim().is_empty() {
+                return Err("Workflow 'concurrency' block cannot be empty.");
+            }
+        }
+        Value::Object(map) => {
+            let group = map
+                .get("group")
+                .ok_or("Workflow 'concurrency' block must specify a 'group'.")?;
+            if let Value::String(s) = group {
+                if s.trim().is_empty() {
+                    return Err("Workflow 'concurrency' group cannot be empty.");
+                }
+            } else {
+                return Err("Workflow 'concurrency' group must be a string.");
+            }
+        }
+        _ => {
+            return Err("Workflow 'concurrency' block must be a valid string or mapping.");
+        }
+    }
+
+    Ok(())
+}
+
 pub fn lint_workflows() -> bool {
     let workflows_dir = Path::new(".github/workflows");
     if !workflows_dir.exists() {
@@ -78,12 +109,19 @@ pub fn lint_workflows() -> bool {
                     eprintln!("Error in {}: {}", path_str, msg);
                     all_passed = false;
                 }
+
+                if let Err(msg) = validate_concurrency_block(&yaml) {
+                    eprintln!("Error in {}: {}", path_str, msg);
+                    all_passed = false;
+                }
             }
         }
     }
 
     if all_passed {
-        println!("All workflows passed linting (read-only permissions enforced).");
+        println!(
+            "All workflows passed linting (read-only permissions and concurrency controls enforced)."
+        );
     }
 
     all_passed
@@ -166,5 +204,83 @@ name: CI
 permissions: [unclosed list
 "#;
         assert!(validate_str(yaml).is_err());
+    }
+
+    fn validate_concurrency_str(content: &str) -> Result<(), String> {
+        let yaml: Value =
+            serde_saphyr::from_str(content).map_err(|e| format!("Invalid YAML syntax: {}", e))?;
+        validate_concurrency_block(&yaml).map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn test_valid_concurrency_mapping() {
+        let yaml = r#"
+name: CI
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+"#;
+        assert!(validate_concurrency_str(yaml).is_ok());
+    }
+
+    #[test]
+    fn test_valid_concurrency_string() {
+        let yaml = r#"
+name: CI
+concurrency: ci-run
+"#;
+        assert!(validate_concurrency_str(yaml).is_ok());
+    }
+
+    #[test]
+    fn test_missing_concurrency() {
+        let yaml = r#"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+"#;
+        assert_eq!(
+            validate_concurrency_str(yaml),
+            Err("Workflow is missing a global 'concurrency' block.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_invalid_concurrency_missing_group() {
+        let yaml = r#"
+name: CI
+concurrency:
+  cancel-in-progress: true
+"#;
+        assert_eq!(
+            validate_concurrency_str(yaml),
+            Err("Workflow 'concurrency' block must specify a 'group'.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_invalid_concurrency_empty_group() {
+        let yaml = r#"
+name: CI
+concurrency:
+  group: "   "
+"#;
+        assert_eq!(
+            validate_concurrency_str(yaml),
+            Err("Workflow 'concurrency' group cannot be empty.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_invalid_concurrency_empty_string() {
+        let yaml = r#"
+name: CI
+concurrency: "   "
+"#;
+        assert_eq!(
+            validate_concurrency_str(yaml),
+            Err("Workflow 'concurrency' block cannot be empty.".to_string())
+        );
     }
 }

@@ -508,17 +508,6 @@
       "signature": "pub fn stirling_approximation_ln_factorial (n : u64) -> f64"
     }
   ],
-  "crates/domain_applied/src/applied/battery_degradation/mod.rs": [
-    {
-      "signature": "pub fn capacity (n : f64 , d : f64) -> f64"
-    },
-    {
-      "signature": "pub fn cycles_to_capacity (target_capacity : f64 , d : f64) -> f64"
-    },
-    {
-      "signature": "pub fn n70 (d : f64) -> f64"
-    }
-  ],
   "crates/domain_applied/src/applied/battery_degradation/model.rs": [
     {
       "signature": "pub struct PowerLawModel"
