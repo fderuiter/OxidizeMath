@@ -3,7 +3,7 @@ use rand::Rng;
 
 use crate::climate::tensor_ops::conv1d;
 use nalgebra::{DMatrix, DVector, Dyn, Matrix, Storage};
-use pure_math::pure_math::analysis::optimization::ModelOptimizer as Optimizer;
+use pure_math::pure_math::analysis::optimization::{ModelOptimizer as Optimizer, ParamType};
 
 /// A trait representing the Autoencoder model interface.
 pub trait AutoencoderModel {
@@ -335,11 +335,76 @@ impl pure_math::pure_math::analysis::optimization::Trainable<f32> for Autoencode
 
     fn backward_update(
         &mut self,
-        _x: &nalgebra::DVector<f32>,
-        _loss_grad: &nalgebra::DVector<f32>,
-        _optimizer: &mut dyn Optimizer<f32>,
+        x: &nalgebra::DVector<f32>,
+        loss_grad: &nalgebra::DVector<f32>,
+        optimizer: &mut dyn Optimizer<f32>,
     ) -> Result<(), pure_math::pure_math::analysis::optimization::OptimizationError> {
-        panic!("autoencoder backpropagation is not yet implemented");
+        let mut activations = Vec::with_capacity(7);
+        let mut zs = Vec::with_capacity(6);
+        let mut current = x.clone();
+        activations.push(current.clone());
+
+        for i in 0..6 {
+            let layer = if i < 3 {
+                &self.encoder.layers[i]
+            } else {
+                &self.decoder.layers[i - 3]
+            };
+            let z = &layer.kernel * &current + &layer.bias;
+            zs.push(z.clone());
+            let mut a = z.clone();
+            // Layers 2 (latent) and 5 (reconstruction output) use linear activations
+            if i != 2 && i != 5 {
+                for v in a.iter_mut() {
+                    if *v < 0.0 {
+                        *v *= 0.01;
+                    }
+                }
+            }
+            current = a.clone();
+            activations.push(a);
+        }
+
+        let mut d_z = loss_grad.clone();
+
+        for i in (0..6).rev() {
+            let a_prev = &activations[i];
+            let d_w = &d_z * a_prev.transpose();
+            let d_b = d_z.clone();
+
+            let layer = if i < 3 {
+                &mut self.encoder.layers[i]
+            } else {
+                &mut self.decoder.layers[i - 3]
+            };
+
+            let d_a_prev = if i > 0 {
+                Some(layer.kernel.transpose() * &d_z)
+            } else {
+                None
+            };
+
+            optimizer.update_matrix((i, ParamType::Weight), &mut layer.kernel, &d_w)?;
+            optimizer.update_vector((i, ParamType::Bias), &mut layer.bias, &d_b)?;
+
+            if let Some(d_a_prev) = d_a_prev {
+                if i - 1 == 2 {
+                    // Latent layer has linear activation
+                    d_z = d_a_prev;
+                } else {
+                    let z_prev = &zs[i - 1];
+                    let mut d_z_prev = d_a_prev;
+                    for (j, val) in z_prev.iter().enumerate() {
+                        if *val < 0.0 {
+                            d_z_prev[j] *= 0.01;
+                        }
+                    }
+                    d_z = d_z_prev;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -378,5 +443,34 @@ mod tests {
         leaky_relu(&mut matrix, 0.1);
         let expected = DMatrix::from_row_slice(2, 2, &[-0.1, 2.0, -0.3, 0.0]);
         assert!((matrix - expected).abs().max() < math_commons::registry::TOLERANCE_FAST_F32);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_autoencoder_backward_update() {
+        use pure_math::pure_math::analysis::optimization::SGD;
+        use pure_math::pure_math::analysis::optimization::Trainable;
+
+        let in_channels = 2;
+        let latent_channels = 3;
+        let mut autoencoder = Autoencoder::new(in_channels, latent_channels);
+
+        let initial_kernel_0 = autoencoder.encoder.layers[0].kernel.clone();
+        let initial_bias_0 = autoencoder.encoder.layers[0].bias.clone();
+        let initial_decoder_kernel_2 = autoencoder.decoder.layers[2].kernel.clone();
+
+        let x = nalgebra::DVector::from_vec(vec![1.0, -0.5]);
+        let loss_grad = nalgebra::DVector::from_vec(vec![0.1, -0.2]);
+        let mut optimizer = SGD::new(0.01);
+
+        let result = autoencoder.backward_update(&x, &loss_grad, &mut optimizer);
+        assert!(result.is_ok());
+
+        assert_ne!(autoencoder.encoder.layers[0].kernel, initial_kernel_0);
+        assert_ne!(autoencoder.encoder.layers[0].bias, initial_bias_0);
+        assert_ne!(
+            autoencoder.decoder.layers[2].kernel,
+            initial_decoder_kernel_2
+        );
     }
 }
