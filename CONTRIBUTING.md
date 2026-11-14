@@ -89,7 +89,7 @@ We follow the **Curator's Philosophy**: "Code explains HOW; Docs explain WHY."
 
 Example:
 
-```rust,ignore
+```text
 /// Checks if a number is a prime number.
 ///
 /// # Arguments
