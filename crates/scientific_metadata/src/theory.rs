@@ -44,8 +44,82 @@ pub trait TheoryDescribable {
 
 /// A macro active within the GUI crate context to fetch the theoretical description.
 #[macro_export]
-macro_rules! theory_verification {
+macro_rules! theory_description {
     ($obj:expr) => {
         $obj.theory_description()
     };
+}
+
+/// Deprecated compatibility alias for [`theory_description!`].
+#[deprecated(
+    since = "0.4.0",
+    note = "Use `theory_description!` instead to avoid naming conflicts with `pure_math::theory_verification!`"
+)]
+#[macro_export]
+macro_rules! theory_verification {
+    ($obj:expr) => {
+        $crate::theory_description!($obj)
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct MockModel {
+        description: String,
+        phonetic: String,
+        citation: String,
+    }
+
+    impl MockModel {
+        fn new() -> Self {
+            Self {
+                description: "Verified test description".to_string(),
+                phonetic: "test model".to_string(),
+                citation: "Author et al. (2026)".to_string(),
+            }
+        }
+    }
+
+    impl TheoryDescribable for MockModel {
+        fn theory_description(&self) -> String {
+            self.description.clone()
+        }
+
+        fn phonetic_description(&self) -> String {
+            self.phonetic.clone()
+        }
+
+        fn theory_citation(&self) -> String {
+            self.citation.clone()
+        }
+
+        fn available_descriptions(&self) -> HashMap<String, String> {
+            let mut map = HashMap::new();
+            map.insert("default".to_string(), self.description.clone());
+            map
+        }
+    }
+
+    #[test]
+    fn test_theory_description_macro_expansion() {
+        let model = MockModel::new();
+        let desc = theory_description!(model);
+        assert_eq!(desc, "Verified test description");
+
+        let desc_ref = theory_description!(&model);
+        assert_eq!(desc_ref, "Verified test description");
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_deprecated_theory_verification_macro_alias() {
+        let model = MockModel::new();
+        let desc = theory_verification!(model);
+        assert_eq!(desc, "Verified test description");
+
+        let desc_ref = theory_verification!(&model);
+        assert_eq!(desc_ref, "Verified test description");
+    }
 }
