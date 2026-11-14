@@ -17,14 +17,6 @@ struct GizmoHandle {
     depth: f32,
 }
 
-#[allow(missing_docs)]
-pub struct CoordinateMapper {
-    #[allow(missing_docs)]
-    pub screen_rect: egui::Rect,
-    #[allow(missing_docs)]
-    pub sim_rect: egui::Rect,
-}
-
 #[derive(Clone, Copy, Debug)]
 #[allow(missing_docs)]
 pub struct Camera3D {
@@ -416,38 +408,6 @@ impl Camera3D {
         ui.drag_angle(&mut self.pitch);
 
         ui.add(egui::Slider::new(&mut self.zoom, 0.1..=5.0).text("Zoom"));
-    }
-}
-
-impl CoordinateMapper {
-    #[allow(missing_docs)]
-    pub fn new(screen_rect: egui::Rect, sim_rect: egui::Rect) -> Self {
-        Self {
-            screen_rect,
-            sim_rect,
-        }
-    }
-
-    #[allow(missing_docs)]
-    pub fn screen_to_sim(&self, pos: egui::Pos2) -> egui::Pos2 {
-        let x_norm = (pos.x - self.screen_rect.min.x) / self.screen_rect.width();
-        let y_norm = (pos.y - self.screen_rect.min.y) / self.screen_rect.height();
-
-        egui::Pos2::new(
-            self.sim_rect.min.x + x_norm * self.sim_rect.width(),
-            self.sim_rect.min.y + y_norm * self.sim_rect.height(),
-        )
-    }
-
-    #[allow(missing_docs)]
-    pub fn sim_to_screen(&self, pos: egui::Pos2) -> egui::Pos2 {
-        let x_norm = (pos.x - self.sim_rect.min.x) / self.sim_rect.width();
-        let y_norm = (pos.y - self.sim_rect.min.y) / self.sim_rect.height();
-
-        egui::Pos2::new(
-            self.screen_rect.min.x + x_norm * self.screen_rect.width(),
-            self.screen_rect.min.y + y_norm * self.screen_rect.height(),
-        )
     }
 }
 

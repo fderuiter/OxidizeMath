@@ -3,13 +3,52 @@ use eframe::egui;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
+use std::sync::{LazyLock, RwLock};
 
-fn default_fallback_constraint() -> ParameterConstraint {
-    ParameterConstraint {
-        min: 0.0,
-        max: 100.0,
-        step: 0.1,
+/// Default fallback constraint used when metadata is missing.
+pub static DEFAULT_FALLBACK_CONSTRAINT: ParameterConstraint = ParameterConstraint {
+    min: 0.0,
+    max: 100.0,
+    step: 0.1,
+};
+
+/// Returns fallback constraint struct.
+pub fn default_fallback_constraint() -> ParameterConstraint {
+    DEFAULT_FALLBACK_CONSTRAINT.clone()
+}
+
+/// Returns a reference to the static fallback constraint.
+pub fn default_fallback_constraint_ref() -> &'static ParameterConstraint {
+    &DEFAULT_FALLBACK_CONSTRAINT
+}
+
+static THEORY_METADATA_CACHE: LazyLock<
+    RwLock<HashMap<&'static str, HashMap<String, ParameterConstraint>>>,
+> = LazyLock::new(|| RwLock::new(HashMap::new()));
+
+/// Clears the global parameter metadata cache (primarily used for test isolation).
+pub fn clear_metadata_cache() {
+    if let Ok(mut cache) = THEORY_METADATA_CACHE.write() {
+        cache.clear();
     }
+}
+
+/// Returns the cached parameter constraints map for the given model type.
+/// If not yet cached, queries `model.theory_parameters()` once and caches the result.
+pub fn get_cached_theory_parameters<T: TheoryDescribable>(
+    model: &T,
+) -> HashMap<String, ParameterConstraint> {
+    let key = std::any::type_name::<T>();
+    if let Ok(cache) = THEORY_METADATA_CACHE.read() {
+        if let Some(params) = cache.get(key) {
+            return params.clone();
+        }
+    }
+    let params = model.theory_parameters();
+    if let Ok(mut cache) = THEORY_METADATA_CACHE.write() {
+        cache.insert(key, params.clone());
+    }
+    params
 }
 
 fn log_missing_metadata_warning(param_name: &str) {
@@ -27,34 +66,15 @@ fn log_missing_metadata_warning(param_name: &str) {
     });
 }
 
-/// Renders a UI parameter directly from the theoretical constraints.
-pub fn render_theory_parameter<T: TheoryDescribable>(
+/// Renders a UI parameter slider using pre-fetched parameter constraint and tooltip.
+/// This helper performs zero heap allocations during slider rendering.
+pub fn render_parameter_slider(
     ui: &mut egui::Ui,
-    model: &T,
-    param_name: &str,
     label: &str,
     value: &mut f64,
+    constraint: &ParameterConstraint,
+    tooltip: &str,
 ) -> egui::Response {
-    let params = model.theory_parameters();
-    let fallback = default_fallback_constraint();
-    let constraint = if let Some(c) = params.get(param_name) {
-        c
-    } else {
-        log_missing_metadata_warning(param_name);
-        &fallback
-    };
-
-    let available_descs = model.available_descriptions();
-    let tooltip = if let Some(param_desc) = available_descs.get(param_name) {
-        param_desc.clone()
-    } else {
-        format!(
-            "{}\n\nCitation: {}",
-            model.theory_description(),
-            model.theory_citation()
-        )
-    };
-
     let mut slider_response = None;
 
     ui.horizontal(|ui| {
@@ -62,11 +82,11 @@ pub fn render_theory_parameter<T: TheoryDescribable>(
             .step_by(constraint.step)
             .text(label);
 
-        let slider_resp = ui.add(slider).accessible_hover_text(&tooltip);
+        let slider_resp = ui.add(slider).accessible_hover_text(tooltip);
 
         let help_btn = ui
             .add(egui::Button::new("❓").small())
-            .accessible_hover_text(&tooltip);
+            .accessible_hover_text(tooltip);
 
         if help_btn.clicked() {
             let current = ui.ctx().data(|d| {
@@ -83,21 +103,110 @@ pub fn render_theory_parameter<T: TheoryDescribable>(
     slider_response.unwrap_or_else(|| ui.label(label))
 }
 
+/// Renders a UI parameter slider using pre-fetched parameter metadata maps without recreating them.
+pub fn render_theory_parameter_with_metadata(
+    ui: &mut egui::Ui,
+    param_name: &str,
+    label: &str,
+    value: &mut f64,
+    params: &HashMap<String, ParameterConstraint>,
+    descs: &HashMap<String, String>,
+    default_tooltip: &str,
+) -> egui::Response {
+    let constraint = lookup_theory_constraint(params, param_name);
+    let tooltip = if let Some(desc) = descs.get(param_name) {
+        desc.as_str()
+    } else {
+        default_tooltip
+    };
+
+    render_parameter_slider(ui, label, value, constraint, tooltip)
+}
+
+/// Renders a UI parameter directly from the theoretical constraints.
+pub fn render_theory_parameter<T: TheoryDescribable>(
+    ui: &mut egui::Ui,
+    model: &T,
+    param_name: &str,
+    label: &str,
+    value: &mut f64,
+) -> egui::Response {
+    let params = model.theory_parameters();
+    let available_descs = model.available_descriptions();
+    let default_tooltip = format!(
+        "{}\n\nCitation: {}",
+        model.theory_description(),
+        model.theory_citation()
+    );
+
+    render_theory_parameter_with_metadata(
+        ui,
+        param_name,
+        label,
+        value,
+        &params,
+        &available_descs,
+        &default_tooltip,
+    )
+}
+
+/// Looks up a single parameter constraint from a pre-fetched parameter map
+/// without generating full map copies or heap allocations.
+pub fn lookup_theory_constraint<'a>(
+    params: &'a HashMap<String, ParameterConstraint>,
+    param_name: &str,
+) -> &'a ParameterConstraint {
+    if let Some(constraint) = params.get(param_name) {
+        constraint
+    } else {
+        log_missing_metadata_warning(param_name);
+        default_fallback_constraint_ref()
+    }
+}
+
+/// Queries a single parameter constraint by borrowed reference from a pre-fetched parameter map.
+pub fn get_theory_constraint_ref<'a>(
+    params: &'a HashMap<String, ParameterConstraint>,
+    param_name: &str,
+) -> &'a ParameterConstraint {
+    lookup_theory_constraint(params, param_name)
+}
+
+/// Queries a single parameter constraint using cached theoretical constraints,
+/// avoiding allocating or copying the full metadata map on every frame.
+pub fn get_cached_theory_constraint<T: TheoryDescribable>(
+    model: &T,
+    param_name: &str,
+) -> ParameterConstraint {
+    let key = std::any::type_name::<T>();
+    if let Ok(cache) = THEORY_METADATA_CACHE.read() {
+        if let Some(params) = cache.get(key) {
+            return lookup_theory_constraint(params, param_name).clone();
+        }
+    }
+
+    let params = model.theory_parameters();
+    let result = lookup_theory_constraint(&params, param_name).clone();
+
+    if let Ok(mut cache) = THEORY_METADATA_CACHE.write() {
+        cache.insert(key, params);
+    }
+
+    result
+}
+
 /// Fallback mechanism for complex parameters that require a custom UI layout
 /// but still need to be validated against theoretical limits.
+/// Caches the parameter metadata per model type to avoid recreating maps on every frame.
 pub fn get_theory_constraint<T: TheoryDescribable>(
     model: &T,
     param_name: &str,
 ) -> ParameterConstraint {
-    if let Some(constraint) = model.theory_parameters().get(param_name) {
-        constraint.clone()
-    } else {
-        log_missing_metadata_warning(param_name);
-        default_fallback_constraint()
-    }
+    get_cached_theory_constraint(model, param_name)
 }
 
 /// Dynamically renders UI sliders for all properties defined in the model metadata.
+/// Queries metadata once per batch render and passes borrowed references to child slider renderers.
 pub fn render_all_theory_parameters<T: TheoryDescribable>(
     ui: &mut egui::Ui,
     model: &mut T,
@@ -105,14 +214,29 @@ pub fn render_all_theory_parameters<T: TheoryDescribable>(
     let mut changed = false;
 
     let params = model.theory_parameters();
-    let mut param_names: Vec<String> = params.keys().cloned().collect();
+    let descs = model.available_descriptions();
+    let default_tooltip = format!(
+        "{}\n\nCitation: {}",
+        model.theory_description(),
+        model.theory_citation()
+    );
+
+    let mut param_names: Vec<&str> = params.keys().map(|s| s.as_str()).collect();
     param_names.sort();
 
     for param_name in param_names {
-        if let Some(mut value) = model.get_parameter(&param_name) {
-            let response = render_theory_parameter(ui, model, &param_name, &param_name, &mut value);
+        if let Some(mut value) = model.get_parameter(param_name) {
+            let response = render_theory_parameter_with_metadata(
+                ui,
+                param_name,
+                param_name,
+                &mut value,
+                &params,
+                &descs,
+                &default_tooltip,
+            );
             if response.changed() {
-                model.set_parameter(&param_name, value);
+                model.set_parameter(param_name, value);
                 changed = true;
             }
         }
@@ -128,7 +252,7 @@ pub fn render_sensitivity_panel<T: TheoryDescribable>(
     engine: &mut crate::sensitivity::SensitivityEngine,
     id_source: &str,
 ) {
-    let params_map = model.theory_parameters();
+    let params_map = get_cached_theory_parameters(model);
     let mut param_list = Vec::new();
     for key in params_map.keys() {
         if let Some(val) = model.get_parameter(key) {

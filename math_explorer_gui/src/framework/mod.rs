@@ -385,4 +385,4 @@ impl SimulationFramework {
     }
 }
 
-pub use crate::camera::{Camera3D, CoordinateMapper};
+pub use crate::camera::Camera3D;

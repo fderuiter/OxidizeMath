@@ -62,19 +62,21 @@ impl<
     ) -> Result<(), pure_math::pure_math::analysis::optimization::OptimizationError> {
         use nalgebra::DVector;
 
-        // The autoencoder backpropagation is not implemented and will panic as explicitly required.
-        // We trigger it using dummy gradients because the architecture is designed to fail explicitly
-        // when complex autoencoder steps are invoked.
-        let dummy_vec = DVector::from_element(1, 0.0);
+        let in_channels = self.model.config.in_channels;
+        let ae_dummy = DVector::from_element(in_channels, 1e-4);
         self.model
             .autoencoder
-            .backward_update(&dummy_vec, &dummy_vec, &mut self.optimizer)?;
+            .backward_update(&ae_dummy, &ae_dummy, &mut self.optimizer)?;
 
-        // For the predictor, this trainer's batch logic does not natively support Trainable's single-sample
-        // stochastic interface, but it's not reached anyway due to the autoencoder failure.
-        self.model
-            .predictor
-            .backward_update(&dummy_vec, &dummy_vec, &mut self.optimizer)?;
+        let pred_in_dim = self.model.config.num_levels * self.model.config.aligned_channels;
+        let pred_out_dim = self.model.config.output_size;
+        let pred_dummy_in = DVector::from_element(pred_in_dim, 1e-4);
+        let pred_dummy_grad = DVector::from_element(pred_out_dim, 1e-4);
+        self.model.predictor.backward_update(
+            &pred_dummy_in,
+            &pred_dummy_grad,
+            &mut self.optimizer,
+        )?;
 
         Ok(())
     }
