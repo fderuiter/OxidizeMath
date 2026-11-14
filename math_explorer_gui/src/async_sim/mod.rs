@@ -1,5 +1,9 @@
+#[cfg(test)]
+mod tests;
 #[allow(missing_docs)]
 pub mod unified;
+#[cfg(any(target_arch = "wasm32", test))]
+use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 
@@ -13,9 +17,6 @@ use std::sync::Mutex;
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsCast;
-
 #[allow(missing_docs)]
 pub enum SimCommand {
     #[allow(missing_docs)]
@@ -26,6 +27,8 @@ pub enum SimCommand {
     Reset,
     #[allow(missing_docs)]
     SetSpeed(usize),
+    #[allow(missing_docs)]
+    TrainEpisodes(usize),
     #[allow(missing_docs)]
     ApplyBrush {
         #[allow(missing_docs)]
@@ -75,6 +78,10 @@ pub trait SimulationRunner: Send + 'static {
     fn get_snapshot(&self) -> StateSnapshot;
     #[allow(missing_docs)]
     fn get_steps_per_frame(&self) -> usize;
+    #[allow(missing_docs)]
+    fn is_complete(&self) -> bool {
+        false
+    }
 }
 
 #[allow(missing_docs)]
@@ -110,7 +117,7 @@ impl SimulationController {
     #[allow(missing_docs)]
     pub fn new<T: SimulationRunner>(mut runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = mpsc::channel::<SimStateUpdate>();
+        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(4);
 
         thread::spawn(move || {
             let mut running = false;
@@ -145,6 +152,11 @@ impl SimulationController {
                                 steps_per_frame = speed;
                                 runner.process_command(SimCommand::SetSpeed(speed));
                             }
+                            SimCommand::TrainEpisodes(_) => {
+                                running = true;
+                                runner.process_command(cmd);
+                                let _ = state_tx.send(SimStateUpdate::Status { running: true });
+                            }
                             _ => {
                                 runner.process_command(cmd);
                             }
@@ -160,10 +172,19 @@ impl SimulationController {
                 if running {
                     for _ in 0..steps_per_frame {
                         runner.step();
+                        if runner.is_complete() {
+                            break;
+                        }
                     }
+                    let is_done = runner.is_complete();
                     let snapshot = runner.get_snapshot();
-                    if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
-                        break;
+                    if is_done {
+                        running = false;
+                        let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
+                        let _ = state_tx.send(SimStateUpdate::Status { running: false });
+                    } else {
+                        let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
+                        thread::sleep(std::time::Duration::from_millis(16));
                     }
                 }
             }
@@ -181,7 +202,7 @@ impl SimulationController {
     // theory_verification!
     pub fn new<T: SimulationRunner>(runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = mpsc::channel::<SimStateUpdate>();
+        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(4);
 
         let ctx = WorkerContext {
             runner: Box::new(runner),
@@ -284,7 +305,7 @@ pub struct WorkerContext {
     #[allow(missing_docs)]
     pub cmd_rx: Receiver<SimCommand>,
     #[allow(missing_docs)]
-    pub state_tx: Sender<SimStateUpdate>,
+    pub state_tx: SyncSender<SimStateUpdate>,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -315,156 +336,6 @@ pub fn unregister_worker_context(handle: u32) -> Option<WorkerContext> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn wake_worker() {
-    let global = js_sys::global();
-    if let Ok(wake_fn) = js_sys::Reflect::get(
-        &global,
-        &wasm_bindgen::JsValue::from_str("__sim_worker_wake"),
-    ) {
-        if wake_fn.is_function() {
-            let func = wake_fn.unchecked_into::<js_sys::Function>();
-            let _ = func.call0(&wasm_bindgen::JsValue::UNDEFINED);
-        }
-    }
-}
-
+pub mod wasm;
 #[cfg(target_arch = "wasm32")]
-async fn yield_to_event_loop() {
-    let promise = js_sys::Promise::new(&mut |resolve, _| {
-        let global = js_sys::global();
-        let timeout_scheduled = if let Ok(worker_scope) = global
-            .clone()
-            .dyn_into::<web_sys::DedicatedWorkerGlobalScope>(
-        ) {
-            worker_scope
-                .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0)
-                .is_ok()
-        } else if let Ok(window) = global.dyn_into::<web_sys::Window>() {
-            window
-                .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0)
-                .is_ok()
-        } else {
-            false
-        };
-        if !timeout_scheduled {
-            let _ = resolve.call0(&wasm_bindgen::JsValue::UNDEFINED);
-        }
-    });
-    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-}
-
-#[cfg(target_arch = "wasm32")]
-async fn suspend_worker() {
-    let promise = js_sys::Promise::new(&mut |resolve, _| {
-        let global = js_sys::global();
-        let _ = js_sys::Reflect::set(
-            &global,
-            &wasm_bindgen::JsValue::from_str("__sim_worker_wake"),
-            &resolve,
-        );
-    });
-    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-    // Remove the wake function after waking up
-    let global = js_sys::global();
-    let _ = js_sys::Reflect::delete_property(
-        &global,
-        &wasm_bindgen::JsValue::from_str("__sim_worker_wake"),
-    );
-}
-
-#[cfg(target_arch = "wasm32")]
-pub fn setup_wake_listener() {
-    let global = js_sys::global();
-    if let Ok(worker_scope) = global.dyn_into::<web_sys::DedicatedWorkerGlobalScope>() {
-        let cb = wasm_bindgen::closure::Closure::wrap(Box::new(move |e: web_sys::MessageEvent| {
-            if let Ok(data) = e.data().dyn_into::<js_sys::Object>() {
-                if let Ok(type_val) =
-                    js_sys::Reflect::get(&data, &wasm_bindgen::JsValue::from_str("type"))
-                {
-                    if type_val.as_string().as_deref() == Some("wake") {
-                        wake_worker();
-                    }
-                }
-            }
-        })
-            as Box<dyn FnMut(web_sys::MessageEvent)>);
-        let _ =
-            worker_scope.add_event_listener_with_callback("message", cb.as_ref().unchecked_ref());
-        cb.forget(); // Leak to keep it alive
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen::prelude::wasm_bindgen]
-pub async fn run_simulation_worker(handle: u32) {
-    let Some(ctx) = take_worker_context(handle) else {
-        return;
-    };
-    setup_wake_listener();
-    let mut runner = ctx.runner;
-    let cmd_rx = ctx.cmd_rx;
-    let state_tx = ctx.state_tx;
-
-    let mut running = false;
-    let mut steps_per_frame = runner.get_steps_per_frame();
-
-    loop {
-        let mut cmd_opt = None;
-        if running {
-            if let Ok(c) = cmd_rx.try_recv() {
-                cmd_opt = Some(c);
-            }
-        } else {
-            if let Ok(c) = cmd_rx.try_recv() {
-                cmd_opt = Some(c);
-            } else {
-                suspend_worker().await;
-                // After waking up, try to receive the command again
-                if let Ok(c) = cmd_rx.try_recv() {
-                    cmd_opt = Some(c);
-                }
-            }
-        }
-
-        if let Some(mut cmd) = cmd_opt {
-            loop {
-                match cmd {
-                    SimCommand::Start => {
-                        running = true;
-                        let _ = state_tx.send(SimStateUpdate::Status { running: true });
-                    }
-                    SimCommand::Pause => {
-                        running = false;
-                        let _ = state_tx.send(SimStateUpdate::Status { running: false });
-                    }
-                    SimCommand::SetSpeed(speed) => {
-                        steps_per_frame = speed;
-                        runner.process_command(SimCommand::SetSpeed(speed));
-                    }
-                    _ => {
-                        runner.process_command(cmd);
-                    }
-                }
-                if let Ok(c) = cmd_rx.try_recv() {
-                    cmd = c;
-                } else {
-                    break;
-                }
-            }
-        }
-
-        if running {
-            for _ in 0..steps_per_frame {
-                runner.step();
-            }
-            let snapshot = runner.get_snapshot();
-            if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
-                break;
-            }
-            yield_to_event_loop().await;
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests;
+pub use wasm::{run_simulation_worker, wake_worker};

@@ -44,3 +44,19 @@ identifier = "diverged"
 [[dead_code]]
 file = "math_explorer_gui/src/tabs/analysis/ode.rs"
 identifier = "diverged"
+
+[[dead_code]]
+file = "math_explorer_gui/src/app/session.rs"
+identifier = "can_undo"
+
+[[dead_code]]
+file = "math_explorer_gui/src/app/session.rs"
+identifier = "can_redo"
+
+[[dead_code]]
+file = "math_explorer_gui/src/app/mod.rs"
+identifier = "tab_names"
+
+[[dead_code]]
+file = "math_explorer_gui/src/app/ui_panels.rs"
+identifier = "render_main_menu"

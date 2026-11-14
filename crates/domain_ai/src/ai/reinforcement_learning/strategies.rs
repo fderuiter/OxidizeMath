@@ -3,7 +3,7 @@ use math_commons::primitives::UnitInterval;
 use rand::Rng;
 
 /// Strategy for selecting an action based on Q-values.
-pub trait ExplorationStrategy<S, A> {
+pub trait ExplorationStrategy<S, A>: Send {
     #[verified_engine::verified]
     #[allow(missing_docs)]
     fn select_action(

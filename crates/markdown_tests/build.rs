@@ -20,8 +20,8 @@ fn get_markdown_files(dir: &Path, files: &mut Vec<PathBuf>, dirs: &mut Vec<PathB
                         || name == ".cargo"
                         || name == ".rustup"
                         || name.starts_with("cargo-machete")
-                        || name == "artifacts"
                         || name == "dist"
+                        || name == "artifacts"
                     {
                         continue;
                     }
