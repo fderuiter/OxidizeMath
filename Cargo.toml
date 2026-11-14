@@ -30,6 +30,9 @@ missing_docs = "warn"
 too_many_lines = "deny"
 cognitive_complexity = "deny"
 
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "warn"
+
 [workspace.dependencies]
 chrono = "0.4"
 approx = "0.5.1"
@@ -46,7 +49,6 @@ muda = "0.19.3"
 nalgebra = "0.34.0"
 num-complex = "0.4.6"
 num-traits = "0.2.19"
-obj-exporter = "0.2.0"
 petgraph = "0.6.4"
 proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
 quadrature = "0.1.2"

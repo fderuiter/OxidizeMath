@@ -24,4 +24,5 @@ These commands are used for manual repository maintenance or legacy workflows.
 |---|---|---|
 | `compile-papers` | Compiles academic papers using Tectonic. | Legacy |
 | `regenerate-baseline` | Regenerates the public API baseline. | Legacy |
-| `setup` | Installs the pre-commit hook and runs initial checks. | Legacy |
+| `setup` | Configures version-controlled git hooks and runs initial checks. | Legacy |
+
