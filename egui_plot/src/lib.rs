@@ -481,7 +481,7 @@ impl<'a> Plot<'a> {
     /// Default is a log-10 grid, i.e. every plot unit is divided into 10 other units.
     ///
     /// The function has this signature:
-    /// ```ignore
+    /// ```text
     /// fn step_sizes(input: GridInput) -> Vec<GridMark>;
     /// ```
     ///
@@ -607,22 +607,6 @@ impl<'a> Plot<'a> {
         self
     }
 
-    /// Expand bounds to fit all items across the x axis, including values given by `include_x`.
-    #[deprecated = "Use `auto_bounds` instead"]
-    #[inline]
-    pub fn auto_bounds_x(mut self) -> Self {
-        self.default_auto_bounds.x = true;
-        self
-    }
-
-    /// Expand bounds to fit all items across the y axis, including values given by `include_y`.
-    #[deprecated = "Use `auto_bounds` instead"]
-    #[inline]
-    pub fn auto_bounds_y(mut self) -> Self {
-        self.default_auto_bounds.y = true;
-        self
-    }
-
     /// Show a legend including all named items.
     #[inline]
     pub fn legend(mut self, legend: Legend) -> Self {
@@ -671,14 +655,6 @@ impl<'a> Plot<'a> {
     #[inline]
     pub fn link_cursor(mut self, group_id: impl Into<Id>, link: impl Into<Vec2b>) -> Self {
         self.linked_cursors = Some((group_id.into(), link.into()));
-        self
-    }
-
-    /// Round grid positions to full pixels to avoid aliasing. Improves plot appearance but might have an
-    /// undesired effect when shifting the plot bounds. Enabled by default.
-    #[inline]
-    #[deprecated = "This no longer has any effect and is always enabled."]
-    pub fn sharp_grid_lines(self, _enabled: bool) -> Self {
         self
     }
 
@@ -768,13 +744,6 @@ impl<'a> Plot<'a> {
             main.min_thickness = min_width;
         }
         self
-    }
-
-    /// Set the main Y-axis-width by number of digits
-    #[inline]
-    #[deprecated = "Use `y_axis_min_width` instead"]
-    pub fn y_axis_width(self, digits: usize) -> Self {
-        self.y_axis_min_width(12.0 * digits as f32)
     }
 
     /// Set custom configuration for X-axis
@@ -2610,10 +2579,10 @@ impl PreparedPlot<'_> {
         }
 
         let hover_pos = response.hover_pos();
-        let (cursors, hovered_item_id) = if let Some(pointer) = hover_pos {
+        let (cursors, hovered_item_id, hovered_point) = if let Some(pointer) = hover_pos {
             self.hover(ui, pointer, &mut shapes)
         } else {
-            (Vec::new(), None)
+            (Vec::new(), None, None)
         };
 
         // Draw cursors
@@ -2655,7 +2624,8 @@ impl PreparedPlot<'_> {
             let hover_pos = response.hover_pos();
             if let Some(pointer) = hover_pos {
                 let font_id = TextStyle::Monospace.resolve(ui.style());
-                let coordinate = transform.value_from_position(pointer);
+                let coordinate =
+                    hovered_point.unwrap_or_else(|| transform.value_from_position(pointer));
                 let text = formatter.format(&coordinate, transform.bounds());
                 let padded_frame = transform.frame().shrink(4.0);
                 let (anchor, position) = match corner {
@@ -2792,7 +2762,12 @@ impl PreparedPlot<'_> {
         }
     }
 
-    fn hover(&self, ui: &Ui, pointer: Pos2, shapes: &mut Vec<Shape>) -> (Vec<Cursor>, Option<Id>) {
+    fn hover(
+        &self,
+        ui: &Ui,
+        pointer: Pos2,
+        shapes: &mut Vec<Shape>,
+    ) -> (Vec<Cursor>, Option<Id>, Option<PlotPoint>) {
         let Self {
             plot_area_response,
             transform,
@@ -2805,7 +2780,7 @@ impl PreparedPlot<'_> {
         } = self;
 
         if !show_x && !show_y {
-            return (Vec::new(), None);
+            return (Vec::new(), None, None);
         }
 
         let snap_distance =
@@ -2835,8 +2810,8 @@ impl PreparedPlot<'_> {
 
         let mut cursors = Vec::new();
 
-        let hovered_plot_item_id = if let Some((item, elem)) = closest {
-            item.on_hover(
+        let (hovered_plot_item_id, hovered_point) = if let Some((item, elem)) = closest {
+            let point = item.on_hover(
                 plot_area_response,
                 elem,
                 shapes,
@@ -2844,7 +2819,7 @@ impl PreparedPlot<'_> {
                 &plot,
                 label_formatter,
             );
-            Some(item.id())
+            (Some(item.id()), point)
         } else {
             let value = transform.value_from_position(pointer);
             items::rulers_and_tooltip_at_value(
@@ -2855,24 +2830,30 @@ impl PreparedPlot<'_> {
                 &mut cursors,
                 label_formatter,
             );
-            None
+            (None, None)
         };
 
-        (cursors, hovered_plot_item_id)
+        (cursors, hovered_plot_item_id, hovered_point)
     }
 }
 
 /// Returns next bigger power in given base
 /// e.g.
-/// ```ignore
-/// use egui_plot::next_power;
-/// assert_eq!(next_power(0.01, 10.0), 0.01);
-/// assert_eq!(next_power(0.02, 10.0), 0.1);
-/// assert_eq!(next_power(0.2,  10.0), 1);
+/// ```text
+/// next_power(0.01, 10.0) == 0.1
+/// next_power(0.02, 10.0) == 0.1
+/// next_power(0.2,  10.0) == 1.0
 /// ```
 fn next_power(value: f64, base: f64) -> f64 {
     debug_assert_ne!(value, 0.0, "Bad input"); // can be negative (typical for Y axis)
     base.powi(value.abs().log(base).ceil() as i32)
+}
+
+#[test]
+fn test_next_power() {
+    assert_eq!(next_power(0.01, 10.0), 0.1);
+    assert_eq!(next_power(0.02, 10.0), 0.1);
+    assert_eq!(next_power(0.2, 10.0), 1.0);
 }
 
 /// Fill in all values between [min, max] which are a multiple of `step_size`
@@ -3225,5 +3206,120 @@ mod cursor_snap_tests {
             let res = std::fs::write("/tmp/snap_tooltip_verification.png", png_bytes);
             assert!(res.is_ok());
         }
+    }
+
+    #[test]
+    fn test_coordinates_formatter_snapped_to_curve_point() {
+        let target_curve_point = PlotPoint::new(3.0, 7.0);
+
+        // Obtain screen position of the target point
+        let ctx = egui::Context::default();
+        let mut curve_point_screen_pos = Pos2::ZERO;
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0))),
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let pts = vec![[0.0, 0.0], [3.0, 7.0], [10.0, 10.0]];
+                    let line = Line::new("Series 1", PlotPoints::new(pts));
+                    let res =
+                        Plot::new("snap_fmt_test")
+                            .cursor_snap_distance(20.0)
+                            .show(ui, |plot_ui| {
+                                plot_ui.line(line);
+                            });
+                    curve_point_screen_pos = res.transform.position_from_point(&target_curve_point);
+                });
+            },
+        );
+
+        let run_plot_at_pointer =
+            |pointer_pos: Pos2| -> (Option<PlotPoint>, Option<Id>, PlotPoint) {
+                let ctx = egui::Context::default();
+                let pts = vec![[0.0, 0.0], [3.0, 7.0], [10.0, 10.0]];
+
+                // Frame 1: initial layout
+                let _ = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0))),
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            let line = Line::new("Series 1", PlotPoints::new(pts.clone()));
+                            let _ = Plot::new("snap_fmt_test").cursor_snap_distance(20.0).show(
+                                ui,
+                                |plot_ui| {
+                                    plot_ui.line(line);
+                                },
+                            );
+                        });
+                    },
+                );
+
+                // Frame 2: with mouse pointer moved to destination
+                let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+                let cap_clone = captured.clone();
+                let mut hovered_item = None;
+                let mut raw_val = PlotPoint::new(0.0, 0.0);
+
+                let _ = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0))),
+                        events: vec![egui::Event::PointerMoved(pointer_pos)],
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            let line = Line::new("Series 1", PlotPoints::new(pts.clone()));
+                            let res = Plot::new("snap_fmt_test")
+                                .cursor_snap_distance(20.0)
+                                .coordinates_formatter(
+                                    Corner::LeftTop,
+                                    CoordinatesFormatter::new({
+                                        let cap = cap_clone.clone();
+                                        move |point, _| {
+                                            *cap.lock().unwrap() = Some(*point);
+                                            format!("x: {:.2}, y: {:.2}", point.x, point.y)
+                                        }
+                                    }),
+                                )
+                                .show(ui, |plot_ui| {
+                                    plot_ui.line(line);
+                                });
+                            hovered_item = res.hovered_plot_item;
+                            raw_val = res.transform.value_from_position(pointer_pos);
+                        });
+                    },
+                );
+
+                let fmt_point = *captured.lock().unwrap();
+                (fmt_point, hovered_item, raw_val)
+            };
+
+        // 1. Hover within snap distance (5 pixels away)
+        let near_pos = curve_point_screen_pos + vec2(4.0, -3.0);
+        assert!(near_pos.distance(curve_point_screen_pos) <= 20.0);
+        let (snapped_opt, hovered_id, _) = run_plot_at_pointer(near_pos);
+        let line_id = Id::new("Series 1");
+        assert_eq!(hovered_id, Some(line_id));
+        let snapped_coord =
+            snapped_opt.expect("coordinates formatter should be called when hovering");
+        assert_eq!(snapped_coord.x, target_curve_point.x);
+        assert_eq!(snapped_coord.y, target_curve_point.y);
+
+        // 2. Hover outside snap distance (50 pixels away): fallback to raw pointer coordinates
+        let far_pos = curve_point_screen_pos + vec2(50.0, 50.0);
+        assert!(far_pos.distance(curve_point_screen_pos) > 20.0);
+        let (unsnapped_opt, far_hovered_id, far_raw_point) = run_plot_at_pointer(far_pos);
+        assert_eq!(far_hovered_id, None);
+        let unsnapped_coord = unsnapped_opt
+            .expect("coordinates formatter should be called when hovering outside snap");
+        assert_ne!(unsnapped_coord.x, target_curve_point.x);
+        assert_ne!(unsnapped_coord.y, target_curve_point.y);
+        assert!((unsnapped_coord.x - far_raw_point.x).abs() < 1e-6);
+        assert!((unsnapped_coord.y - far_raw_point.y).abs() < 1e-6);
     }
 }

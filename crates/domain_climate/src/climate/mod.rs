@@ -61,7 +61,7 @@
 //!
 //! ## Usage
 //!
-//! ```rust,should_panic
+//! ```rust
 //! use domain_climate::climate::cera::Cera;
 //! use domain_climate::climate::config::CeraConfig;
 //! use domain_climate::climate::training::CeraTrainer;

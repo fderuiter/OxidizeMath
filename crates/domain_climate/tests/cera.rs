@@ -22,7 +22,6 @@ fn generate_synthetic_data(n_samples: usize, offset: f32) -> (DMatrix<f32>, DMat
 }
 
 #[test]
-#[should_panic(expected = "autoencoder backpropagation is not yet implemented")]
 #[verified_engine::verified]
 fn test_cera_integration() {
     // 1. Configure the CERA model

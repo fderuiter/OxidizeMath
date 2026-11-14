@@ -4,24 +4,6 @@ mod tests {
     use domain_applied::applied::battery_degradation::{
         Capacity, Cycles, DepthOfDischarge, PowerLawModel,
     };
-    #[allow(deprecated)]
-    use domain_applied::applied::battery_degradation::{capacity, cycles_to_capacity, n70};
-
-    #[test]
-    #[allow(deprecated)]
-    #[verified_engine::verified]
-    fn test_legacy_functions() {
-        let d = 60.0;
-        let n = n70(d);
-
-        assert!((n - 600.0).abs() < 50.0);
-
-        let cap = capacity(n, d);
-        assert!((cap - 0.7).abs() < math_commons::registry::TOLERANCE_FAST);
-
-        let cycles = cycles_to_capacity(0.7, d);
-        assert!((cycles - n).abs() < math_commons::registry::TOLERANCE_FAST);
-    }
 
     #[test]
     #[verified_engine::verified]

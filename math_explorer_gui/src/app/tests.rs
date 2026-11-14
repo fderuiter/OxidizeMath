@@ -81,6 +81,7 @@ fn test_app_state_save_and_restore() {
     }
     app1.show_info = false;
     app1.show_warnings = true;
+    app1.show_diagnostics_panel = false;
     app1.theme = ThemeMode::Light;
 
     let json = app1.save_state_to_json();
@@ -94,6 +95,7 @@ fn test_app_state_save_and_restore() {
     }
     assert!(!app2.show_info);
     assert!(app2.show_warnings);
+    assert!(!app2.show_diagnostics_panel);
     assert_eq!(app2.theme, ThemeMode::Light);
 }
 
@@ -377,6 +379,7 @@ fn test_history_stack_max_depth_capping() {
             show_info: true,
             show_warnings: true,
             show_errors: true,
+            show_diagnostics_panel: true,
             theme: ThemeMode::Dark,
             tab_states: std::collections::HashMap::new(),
         };
@@ -401,6 +404,7 @@ fn test_continuous_slider_drag_coalescing() {
         show_info: true,
         show_warnings: true,
         show_errors: true,
+        show_diagnostics_panel: true,
         theme: ThemeMode::Dark,
         tab_states: std::collections::HashMap::new(),
     };
@@ -437,6 +441,7 @@ fn test_workspace_envelope_history_preservation() {
         show_info: true,
         show_warnings: true,
         show_errors: true,
+        show_diagnostics_panel: true,
         theme: ThemeMode::Dark,
         tab_states: std::collections::HashMap::new(),
     };
@@ -446,6 +451,7 @@ fn test_workspace_envelope_history_preservation() {
         show_info: true,
         show_warnings: true,
         show_errors: true,
+        show_diagnostics_panel: true,
         theme: ThemeMode::Light,
         tab_states: std::collections::HashMap::new(),
     };
