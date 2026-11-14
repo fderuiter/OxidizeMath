@@ -279,6 +279,7 @@ fn test_render_theory_parameter_with_custom_description_and_help_button() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn test_render_all_theory_parameters_single_metadata_query() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 

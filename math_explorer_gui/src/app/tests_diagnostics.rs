@@ -131,6 +131,7 @@ fn find_text_pos(shapes: &[egui::epaint::ClippedShape], target: &str) -> Option<
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn test_diagnostics_panel_hide_action() {
     let ctx = egui::Context::default();
     let mut events = Vec::new();
