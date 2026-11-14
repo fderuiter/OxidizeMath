@@ -30,8 +30,10 @@ cargo run --release --package math_explorer --example hodgkin_huxley_demo
 *(See `math_explorer/examples/hodgkin_huxley_demo.rs` for implementation details)*
 
 ```rust
+# #[cfg(feature = "biology")]
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 
+# #[cfg(feature = "biology")]
 fn main() {
     // Initialize a neuron at resting potential (-65.0 mV)
     let mut neuron = HodgkinHuxleyNeuron::new(-65.0);
@@ -45,6 +47,8 @@ fn main() {
         }
     }
 }
+# #[cfg(not(feature = "biology"))]
+# fn main() {}
 ```
 
 ### Example: Chaos Theory
@@ -58,10 +62,14 @@ cargo run --release --package math_explorer --example lorenz_chaos
 *(See `math_explorer/examples/lorenz_chaos.rs` for implementation details)*
 
 ```rust
+# #[cfg(all(feature = "physics", feature = "pure_math"))]
 use math_explorer::physics::chaos::lorenz::{LorenzSystem, LorenzState};
+# #[cfg(all(feature = "physics", feature = "pure_math"))]
 use math_explorer::physics::chaos::metrics::lorenz_lyapunov;
+# #[cfg(all(feature = "physics", feature = "pure_math"))]
 use math_explorer::pure_math::analysis::ode::RungeKutta4;
 
+# #[cfg(all(feature = "physics", feature = "pure_math"))]
 fn main() {
     let initial_state = LorenzState::new(10.0, 10.0, 10.0);
     let system = LorenzSystem::default_chaotic(initial_state);
@@ -72,6 +80,8 @@ fn main() {
     let lambda = lorenz_lyapunov(&system, &mut solver, initial_state.vec, 0.01, 1000, 1.0).unwrap();
     println!("Lyapunov Exponent: {:.4}", lambda);
 }
+# #[cfg(not(all(feature = "physics", feature = "pure_math")))]
+# fn main() {}
 ```
 
 ### Example: AI Transformer
@@ -85,9 +95,12 @@ cargo run --release --package math_explorer --example transformer_demo
 *(See `math_explorer/examples/transformer_demo.rs` for implementation details)*
 
 ```rust
+# #[cfg(feature = "ai")]
 use math_explorer::ai::transformer::Encoder;
+# #[cfg(feature = "ai")]
 use nalgebra::DMatrix;
 
+# #[cfg(feature = "ai")]
 fn main() {
     // 6 layers, 512 embedding dim, 8 heads, 2048 feed-forward dim
     let encoder = Encoder::new(6, 512, 8, 2048);
@@ -96,6 +109,8 @@ fn main() {
     let input = DMatrix::zeros(10, 512);
     let _output = encoder.forward(input, None);
 }
+# #[cfg(not(feature = "ai"))]
+# fn main() {}
 ```
 
 ##  Config
