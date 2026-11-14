@@ -119,4 +119,4 @@ Agents that learn from interaction. Includes:
 ---
 
 ## Contributing
-See the [Project Contributing Guide](../../../CONTRIBUTING.md) for details on adding new architectures or layers.
+See the [Project Contributing Guide](../../../../CONTRIBUTING.md) for details on adding new architectures or layers.

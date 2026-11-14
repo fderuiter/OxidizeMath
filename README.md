@@ -14,8 +14,8 @@
 ## Install
 
 ```bash
-git clone https://github.com/fderuiter/math-explorer.git
-cd math-explorer
+git clone https://github.com/fderuiter/OxidizeMath.git
+cd OxidizeMath
 
 # Check prerequisites, build the core library, run tests, and automatically configure Git hooks
 # Note: To compile academic papers, ensure Tectonic is installed.
@@ -157,6 +157,18 @@ Available feature flags include: `ai`, `applied`, `biology`, `climate`, `epidemi
 
 ---
 
+## Architecture Documentation
+
+For detailed system architecture, runtime constraints, and simulation guides, explore the [Centralized Architecture Guide Suite](docs/architecture/README.md):
+
+*   **[System Overview & Crate Topology](docs/architecture/system_overview.md):** 5-layer system design, crate dependency graphs, and catalog of all 18 crates.
+*   **[CERA Framework Guide](docs/architecture/cera_framework.md):** Climate-invariant encoding, representation alignment pipelines, and Earth Mover's Distance loss.
+*   **[Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md):** NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and `VerifiedEngine` runtime metrics.
+*   **[Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md):** Contributor onboarding tutorial to build and register interactive simulation tabs.
+*   **[Documentation Index](docs/README.md):** Primary documentation index linking to the architecture suite and historical decisions.
+
+---
+
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for our style guide and process.
@@ -166,8 +178,8 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for our 
 To verify the integrity of all mathematical implementations:
 
 ```bash
-# Test the core library
-cargo test --package math_explorer
+# Run tests across all workspace member crates
+cargo test --workspace
 ```
 
 ### License
