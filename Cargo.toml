@@ -45,7 +45,7 @@ futures = "0.3"
 getrandom = { version = "0.2.17", features = ["js"] }
 inventory = "0.3.24"
 js-sys = "0.3.60"
-muda = "0.19.3"
+muda = { version = "0.19.3", default-features = false }
 nalgebra = "0.34.0"
 num-complex = "0.4.6"
 num-traits = "0.2.19"
