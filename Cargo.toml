@@ -30,6 +30,9 @@ missing_docs = "warn"
 too_many_lines = "deny"
 cognitive_complexity = "deny"
 
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "warn"
+
 [workspace.dependencies]
 chrono = "0.4"
 approx = "0.5.1"
