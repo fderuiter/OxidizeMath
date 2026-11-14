@@ -1,84 +1,109 @@
 use super::*;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread;
 use std::time::Duration;
 
-struct DummyRunner;
+#[cfg(not(target_arch = "wasm32"))]
+struct MockRunner {
+    step_count: Arc<AtomicUsize>,
+    steps_per_frame: usize,
+    max_steps: usize,
+}
 
-impl SimulationRunner for DummyRunner {
-    fn process_command(&mut self, _cmd: SimCommand) {}
-    fn step(&mut self) {}
+#[cfg(not(target_arch = "wasm32"))]
+impl SimulationRunner for MockRunner {
+    fn process_command(&mut self, cmd: SimCommand) {
+        if let SimCommand::SetSpeed(speed) = cmd {
+            self.steps_per_frame = speed;
+        }
+    }
+
+    fn step(&mut self) {
+        self.step_count.fetch_add(1, Ordering::SeqCst);
+    }
+
     fn get_snapshot(&self) -> StateSnapshot {
         StateSnapshot {
             width: 1,
             height: 1,
-            pixels: Arc::new(std::sync::RwLock::new(vec![])),
-            custom_data: vec![],
+            pixels: Arc::new(std::sync::RwLock::new(vec![eframe::egui::Color32::WHITE])),
+            custom_data: vec![self.step_count.load(Ordering::SeqCst) as f64],
             structured_data: None,
         }
     }
+
     fn get_steps_per_frame(&self) -> usize {
-        1
+        self.steps_per_frame
     }
-}
 
-fn create_dummy_context() -> WorkerContext {
-    let (_cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-    let (state_tx, _state_rx) = mpsc::channel::<SimStateUpdate>();
-    WorkerContext {
-        runner: Box::new(DummyRunner),
-        cmd_rx,
-        state_tx,
+    fn is_complete(&self) -> bool {
+        self.step_count.load(Ordering::SeqCst) >= self.max_steps
     }
 }
 
 #[test]
-fn test_handle_registry_valid_retrieval() {
-    let ctx = create_dummy_context();
-    let handle = register_worker_context(ctx);
-    assert!(handle > 0, "Registered handle must be positive integer");
+#[cfg(not(target_arch = "wasm32"))]
+fn test_simulation_controller_start_pause() {
+    let steps = Arc::new(AtomicUsize::new(0));
+    let runner = MockRunner {
+        step_count: Arc::clone(&steps),
+        steps_per_frame: 2,
+        max_steps: 1000,
+    };
 
-    let retrieved = take_worker_context(handle);
-    assert!(retrieved.is_some(), "Valid handle must retrieve context");
+    let mut controller = SimulationController::new(runner);
+    assert!(!controller.is_running());
+    assert_eq!(steps.load(Ordering::SeqCst), 0);
+
+    // Start simulation
+    let _ = controller.send_command(SimCommand::Start);
+    thread::sleep(Duration::from_millis(50));
+    let snap_is_some = controller.update().is_some();
+    assert!(controller.is_running());
+    assert!(snap_is_some);
+    let current_steps = steps.load(Ordering::SeqCst);
+    assert!(current_steps > 0);
+
+    // Pause simulation
+    let _ = controller.send_command(SimCommand::Pause);
+    thread::sleep(Duration::from_millis(50));
+    controller.update();
+    assert!(!controller.is_running());
+    let paused_steps = steps.load(Ordering::SeqCst);
+
+    // Ensure zero background processing while paused
+    thread::sleep(Duration::from_millis(50));
+    assert_eq!(steps.load(Ordering::SeqCst), paused_steps);
 }
 
 #[test]
-fn test_handle_registry_invalid_rejection() {
-    // Forged or non-existent handle IDs must return None
-    assert!(take_worker_context(0).is_none());
-    assert!(take_worker_context(999_999_999).is_none());
-    assert!(take_worker_context(u32::MAX).is_none());
-}
+#[cfg(not(target_arch = "wasm32"))]
+fn test_runner_auto_completion() {
+    let steps = Arc::new(AtomicUsize::new(0));
+    let runner = MockRunner {
+        step_count: Arc::clone(&steps),
+        steps_per_frame: 5,
+        max_steps: 15,
+    };
 
-#[test]
-fn test_handle_registry_duplicate_consumption() {
-    let ctx = create_dummy_context();
-    let handle = register_worker_context(ctx);
+    let mut controller = SimulationController::new(runner);
+    let _ = controller.send_command(SimCommand::Start);
 
-    // First consumption succeeds
-    let first = take_worker_context(handle);
-    assert!(first.is_some());
+    // Wait for worker to finish max_steps
+    for _ in 0..50 {
+        thread::sleep(Duration::from_millis(15));
+        controller.update();
+        if !controller.is_running() && steps.load(Ordering::SeqCst) >= 15 {
+            break;
+        }
+    }
 
-    // Subsequent/duplicate retrieval returns None because context is consumed
-    let second = take_worker_context(handle);
-    assert!(second.is_none());
-
-    let third = take_worker_context(handle);
-    assert!(third.is_none());
-}
-
-#[test]
-fn test_handle_registry_unregister_cleanup() {
-    let ctx = create_dummy_context();
-    let handle = register_worker_context(ctx);
-
-    // Dropping simulation controller before worker starts cleans up registry
-    let removed = unregister_worker_context(handle);
-    assert!(removed.is_some(), "Unregister must return existing context");
-
-    // Once cleaned up, worker attempting to take handle gets None
-    assert!(take_worker_context(handle).is_none());
-    assert!(unregister_worker_context(handle).is_none());
+    assert_eq!(steps.load(Ordering::SeqCst), 15);
+    assert!(!controller.is_running());
 }
 
 struct TestRunner {

@@ -1,137 +1,18 @@
 #[cfg(test)]
+mod runner_tests;
+#[cfg(test)]
 mod tests;
 #[allow(missing_docs)]
 pub mod unified;
+
+pub mod state;
+pub use state::*;
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
-
-#[allow(missing_docs)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum SimWorkerState {
-    #[default]
-    Uninitialized,
-    Ready,
-    Running,
-    Stepping,
-    Faulted,
-    Terminated,
-}
-
-impl SimWorkerState {
-    #[allow(missing_docs)]
-    pub fn is_running(&self) -> bool {
-        matches!(self, Self::Running)
-    }
-
-    #[allow(missing_docs)]
-    pub fn is_ready(&self) -> bool {
-        matches!(self, Self::Ready)
-    }
-
-    #[allow(missing_docs)]
-    pub fn is_faulted(&self) -> bool {
-        matches!(self, Self::Faulted)
-    }
-
-    #[allow(missing_docs)]
-    pub fn is_terminated(&self) -> bool {
-        matches!(self, Self::Terminated)
-    }
-
-    #[allow(missing_docs)]
-    pub fn is_command_valid(&self, cmd: &SimCommand) -> bool {
-        match self {
-            Self::Ready => !matches!(cmd, SimCommand::Pause),
-            Self::Running => !matches!(cmd, SimCommand::Start),
-            Self::Stepping => !matches!(cmd, SimCommand::Start | SimCommand::Pause),
-            Self::Uninitialized | Self::Faulted | Self::Terminated => false,
-        }
-    }
-}
-
-impl std::fmt::Display for SimWorkerState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Uninitialized => write!(f, "Uninitialized"),
-            Self::Ready => write!(f, "Ready"),
-            Self::Running => write!(f, "Running"),
-            Self::Stepping => write!(f, "Stepping"),
-            Self::Faulted => write!(f, "Faulted"),
-            Self::Terminated => write!(f, "Terminated"),
-        }
-    }
-}
-
-#[allow(missing_docs)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkerStatusEvent {
-    Ready,
-    Running,
-    Stepping,
-    Paused,
-    Faulted(String),
-    Terminated,
-}
-
-impl WorkerStatusEvent {
-    #[allow(missing_docs)]
-    pub fn to_state(&self) -> SimWorkerState {
-        match self {
-            Self::Ready | Self::Paused => SimWorkerState::Ready,
-            Self::Running => SimWorkerState::Running,
-            Self::Stepping => SimWorkerState::Stepping,
-            Self::Faulted(_) => SimWorkerState::Faulted,
-            Self::Terminated => SimWorkerState::Terminated,
-        }
-    }
-}
-
-impl From<&WorkerStatusEvent> for SimWorkerState {
-    fn from(event: &WorkerStatusEvent) -> Self {
-        event.to_state()
-    }
-}
-
-impl From<WorkerStatusEvent> for SimWorkerState {
-    fn from(event: WorkerStatusEvent) -> Self {
-        event.to_state()
-    }
-}
-
-#[allow(missing_docs)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SimCommandError {
-    InvalidTransition {
-        current_state: SimWorkerState,
-        command: &'static str,
-    },
-    ChannelDisconnected,
-}
-
-impl std::fmt::Display for SimCommandError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidTransition {
-                current_state,
-                command,
-            } => {
-                write!(
-                    f,
-                    "Invalid simulation command '{command}' in state {current_state}"
-                )
-            }
-            Self::ChannelDisconnected => {
-                write!(f, "Simulation worker channel disconnected")
-            }
-        }
-    }
-}
-
-impl std::error::Error for SimCommandError {}
 
 #[allow(missing_docs)]
 pub enum SimCommand {
@@ -143,6 +24,8 @@ pub enum SimCommand {
     Reset,
     #[allow(missing_docs)]
     SetSpeed(usize),
+    #[allow(missing_docs)]
+    TrainEpisodes(usize),
     #[allow(missing_docs)]
     ApplyBrush {
         #[allow(missing_docs)]
@@ -168,6 +51,7 @@ impl SimCommand {
             Self::Pause => "Pause",
             Self::Reset => "Reset",
             Self::SetSpeed(_) => "SetSpeed",
+            Self::TrainEpisodes(_) => "TrainEpisodes",
             Self::ApplyBrush { .. } => "ApplyBrush",
             Self::ClearObstacles => "ClearObstacles",
             Self::Custom(_) => "Custom",
@@ -207,6 +91,10 @@ pub trait SimulationRunner: Send + 'static {
     fn get_snapshot(&self) -> StateSnapshot;
     #[allow(missing_docs)]
     fn get_steps_per_frame(&self) -> usize;
+    #[allow(missing_docs)]
+    fn is_complete(&self) -> bool {
+        false
+    }
 }
 
 #[allow(missing_docs)]
@@ -217,31 +105,14 @@ pub struct SimulationController {
     state: SimWorkerState,
     #[cfg(target_arch = "wasm32")]
     worker: Option<web_sys::Worker>,
-    #[cfg(target_arch = "wasm32")]
-    handle: Option<u32>,
-}
-
-impl Drop for SimulationController {
-    fn drop(&mut self) {
-        #[cfg(target_arch = "wasm32")]
-        {
-            if let Some(worker) = &self.worker {
-                worker.terminate();
-            }
-            if let Some(handle) = self.handle.take() {
-                unregister_worker_context(handle);
-            }
-        }
-    }
 }
 
 impl SimulationController {
     #[cfg(not(target_arch = "wasm32"))]
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    #[allow(missing_docs)]
+    #[allow(missing_docs, clippy::too_many_lines)]
     pub fn new<T: SimulationRunner>(mut runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = mpsc::channel::<SimStateUpdate>();
+        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(4);
 
         thread::spawn(move || {
             let mut state = SimWorkerState::Ready;
@@ -285,6 +156,12 @@ impl SimulationController {
                                 steps_per_frame = speed;
                                 runner.process_command(SimCommand::SetSpeed(speed));
                             }
+                            SimCommand::TrainEpisodes(_) => {
+                                state = SimWorkerState::Running;
+                                runner.process_command(cmd);
+                                let _ = state_tx
+                                    .send(SimStateUpdate::Status(WorkerStatusEvent::Running));
+                            }
                             _ => {
                                 runner.process_command(cmd);
                             }
@@ -300,10 +177,25 @@ impl SimulationController {
                 if state.is_running() {
                     for _ in 0..steps_per_frame {
                         runner.step();
+                        if runner.is_complete() {
+                            break;
+                        }
                     }
+                    let is_done = runner.is_complete();
                     let snapshot = runner.get_snapshot();
-                    if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
-                        break;
+                    if is_done {
+                        state = SimWorkerState::Ready;
+                        if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
+                            break;
+                        }
+                        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+                    } else {
+                        if let Err(mpsc::TrySendError::Disconnected(_)) =
+                            state_tx.try_send(SimStateUpdate::Snapshot(snapshot))
+                        {
+                            break;
+                        }
+                        thread::sleep(std::time::Duration::from_millis(16));
                     }
                 }
             }
@@ -321,7 +213,7 @@ impl SimulationController {
     // theory_verification!
     pub fn new<T: SimulationRunner>(runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = mpsc::channel::<SimStateUpdate>();
+        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(4);
 
         let ctx = WorkerContext {
             runner: Box::new(runner),
@@ -355,11 +247,13 @@ impl SimulationController {
                 &wasm_bindgen::JsValue::from_str("handle"),
                 &wasm_bindgen::JsValue::from_f64(handle as f64),
             );
+            if worker.post_message(&msg).is_ok() {
+                opt_worker = Some(worker);
+            }
+        }
 
-            let _ = worker.post_message(&msg);
-            opt_worker = Some(worker);
-        } else {
-            // Fallback if worker.js doesn't exist
+        // If Web Worker failed to initialize or isn't supported, run in-thread via microtask
+        if opt_worker.is_none() {
             wasm_bindgen_futures::spawn_local(async move {
                 run_simulation_worker(handle).await;
             });
@@ -371,13 +265,17 @@ impl SimulationController {
             latest_snapshot: None,
             state: SimWorkerState::Ready,
             worker: opt_worker,
-            handle: Some(handle),
         }
     }
 
     #[allow(missing_docs)]
     pub fn state(&self) -> SimWorkerState {
         self.state
+    }
+
+    #[allow(missing_docs)]
+    pub fn is_running(&self) -> bool {
+        self.state.is_running()
     }
 
     #[allow(missing_docs)]
@@ -390,7 +288,7 @@ impl SimulationController {
         }
 
         let cmd_target_state = match cmd {
-            SimCommand::Start => Some(SimWorkerState::Running),
+            SimCommand::Start | SimCommand::TrainEpisodes(_) => Some(SimWorkerState::Running),
             SimCommand::Pause | SimCommand::Reset => Some(SimWorkerState::Ready),
             _ => None,
         };

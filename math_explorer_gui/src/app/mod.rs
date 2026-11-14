@@ -145,6 +145,7 @@ impl MathExplorerApp {
     }
 
     /// Returns the names of all registered tabs.
+    #[allow(dead_code)]
     pub fn tab_names(&self) -> Vec<&'static str> {
         self.tabs.iter().map(|t| t.name()).collect()
     }

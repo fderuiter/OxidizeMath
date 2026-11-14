@@ -1,10 +1,9 @@
-#[cfg(target_arch = "wasm32")]
+//! WebAssembly worker integration for async simulation.
+
 use super::{take_worker_context, SimCommand, SimStateUpdate, SimWorkerState, WorkerStatusEvent};
-#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
-#[cfg(target_arch = "wasm32")]
-#[allow(missing_docs)]
+/// Wakes up the Web Worker if it is suspended.
 pub fn wake_worker() {
     let global = js_sys::global();
     if let Ok(wake_fn) = js_sys::Reflect::get(
@@ -18,7 +17,6 @@ pub fn wake_worker() {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
 async fn yield_to_event_loop() {
     let promise = js_sys::Promise::new(&mut |resolve, _| {
         let global = js_sys::global();
@@ -43,7 +41,6 @@ async fn yield_to_event_loop() {
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }
 
-#[cfg(target_arch = "wasm32")]
 async fn suspend_worker() {
     let promise = js_sys::Promise::new(&mut |resolve, _| {
         let global = js_sys::global();
@@ -61,8 +58,7 @@ async fn suspend_worker() {
     );
 }
 
-#[cfg(target_arch = "wasm32")]
-#[allow(missing_docs)]
+/// Sets up the event listener for wake messages in DedicatedWorkerGlobalScope.
 pub fn setup_wake_listener() {
     let global = js_sys::global();
     if let Ok(worker_scope) = global.dyn_into::<web_sys::DedicatedWorkerGlobalScope>() {
@@ -84,7 +80,7 @@ pub fn setup_wake_listener() {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+/// Simulation worker entry point for WebAssembly.
 #[wasm_bindgen::prelude::wasm_bindgen]
 #[allow(missing_docs, clippy::too_many_lines, clippy::cognitive_complexity)]
 pub async fn run_simulation_worker(handle: u32) {
@@ -137,6 +133,11 @@ pub async fn run_simulation_worker(handle: u32) {
                         steps_per_frame = speed;
                         runner.process_command(SimCommand::SetSpeed(speed));
                     }
+                    SimCommand::TrainEpisodes(_) => {
+                        state = SimWorkerState::Running;
+                        runner.process_command(cmd);
+                        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Running));
+                    }
                     _ => {
                         runner.process_command(cmd);
                     }
@@ -152,10 +153,18 @@ pub async fn run_simulation_worker(handle: u32) {
         if state.is_running() {
             for _ in 0..steps_per_frame {
                 runner.step();
+                if runner.is_complete() {
+                    break;
+                }
             }
+            let is_done = runner.is_complete();
             let snapshot = runner.get_snapshot();
-            if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
-                break;
+            if is_done {
+                state = SimWorkerState::Ready;
+                let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
+                let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+            } else {
+                let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
             }
             yield_to_event_loop().await;
         }
