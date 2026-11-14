@@ -23,6 +23,32 @@ macro_rules! impl_binop {
             }
         }
     };
+    ($type:ident, $trt:ident, $mth:ident) => {
+        impl std::ops::$trt for $type {
+            type Output = $type;
+            fn $mth(self, rhs: $type) -> $type {
+                $type(self.0.$mth(rhs.0))
+            }
+        }
+        impl std::ops::$trt<&$type> for $type {
+            type Output = $type;
+            fn $mth(self, rhs: &$type) -> $type {
+                $type(self.0.$mth(&rhs.0))
+            }
+        }
+        impl std::ops::$trt<$type> for &$type {
+            type Output = $type;
+            fn $mth(self, rhs: $type) -> $type {
+                $type(self.0.clone().$mth(rhs.0))
+            }
+        }
+        impl std::ops::$trt<&$type> for &$type {
+            type Output = $type;
+            fn $mth(self, rhs: &$type) -> $type {
+                $type(self.0.clone().$mth(&rhs.0))
+            }
+        }
+    };
 }
 
 /// A macro to define a bounded float primitive.
