@@ -1,4 +1,21 @@
-#[allow(missing_docs)]
+/// Clebsch-Gordan coefficient calculator for angular momentum coupling.
+///
+/// # Example
+/// ```
+/// use math_commons::wigner::ClebschGordan;
+///
+/// let cg = ClebschGordan {
+///     tj1: 3,
+///     tm1: -1,
+///     tj2: 2,
+///     tm2: 2,
+///     tj12: 5,
+///     tm12: 1,
+/// };
+/// let val = cg.value();
+/// let expected = (3.0_f64 / 10.0).sqrt();
+/// assert!((val - expected).abs() < 1e-6);
+/// ```
 pub struct ClebschGordan {
     #[allow(missing_docs)]
     pub tj1: i32,

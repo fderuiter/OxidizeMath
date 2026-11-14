@@ -1,13 +1,100 @@
 #![doc = include_str!("../README.md")]
 use serde::{Deserialize, Serialize};
 
-#[allow(missing_docs)]
+/// Configuration contract for simulation models.
+///
+/// Implementors must support serialization, deserialization, and cloning.
+///
+/// # Example
+/// ```
+/// use oxidize_core::ModelConfig;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+/// struct GridConfig {
+///     width: usize,
+///     height: usize,
+/// }
+/// impl ModelConfig for GridConfig {}
+///
+/// let config = GridConfig { width: 32, height: 32 };
+/// assert_eq!(config.width, 32);
+/// ```
 pub trait ModelConfig: Clone + Serialize + Deserialize<'static> {}
 
-#[allow(missing_docs)]
+/// State representation contract for simulation models.
+///
+/// Implementors must be cloneable to support state snapshots and checkpoints.
+///
+/// # Example
+/// ```
+/// use oxidize_core::ModelState;
+///
+/// #[derive(Clone, PartialEq, Debug)]
+/// struct HeatState {
+///     temperature: f64,
+/// }
+/// impl ModelState for HeatState {}
+///
+/// let state = HeatState { temperature: 293.15 };
+/// let cloned = state.clone();
+/// assert_eq!(state, cloned);
+/// ```
 pub trait ModelState: Clone {}
 
-#[allow(missing_docs)]
+/// Core simulation model interface defining the lifecycle of a simulation step.
+///
+/// # Example
+/// ```
+/// use oxidize_core::{ModelConfig, ModelState, SimulationModel};
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Clone, Serialize, Deserialize)]
+/// struct CounterConfig {
+///     start: i64,
+/// }
+/// impl ModelConfig for CounterConfig {}
+///
+/// #[derive(Clone, Debug, PartialEq)]
+/// struct CounterState {
+///     count: i64,
+/// }
+/// impl ModelState for CounterState {}
+///
+/// #[derive(Debug, thiserror::Error)]
+/// #[error("Counter simulation error: {0}")]
+/// struct CounterError(String);
+///
+/// struct CounterSim {
+///     state: CounterState,
+/// }
+///
+/// impl SimulationModel for CounterSim {
+///     type Config = CounterConfig;
+///     type State = CounterState;
+///     type Error = CounterError;
+///
+///     fn initialize<R: rand::RngCore>(config: Self::Config, _provider: R) -> Result<Self, Self::Error> {
+///         Ok(Self {
+///             state: CounterState { count: config.start },
+///         })
+///     }
+///
+///     fn step(&mut self) -> Result<(), Self::Error> {
+///         self.state.count += 1;
+///         Ok(())
+///     }
+///
+///     fn get_state(&self) -> Self::State {
+///         self.state.clone()
+///     }
+/// }
+///
+/// let mut sim = CounterSim::initialize(CounterConfig { start: 10 }, oxidize_core::rng::OxidizeRng::new(42)).unwrap();
+/// assert_eq!(sim.get_state().count, 10);
+/// sim.step().unwrap();
+/// assert_eq!(sim.get_state().count, 11);
+/// ```
 pub trait SimulationModel: Sized {
     #[allow(missing_docs)]
     type Config: ModelConfig;

@@ -20,7 +20,29 @@ pub struct TelemetryEvent {
     pub thread_name: Option<String>,
 }
 
-#[allow(missing_docs)]
+/// A thread-safe event registry for telemetry aggregation and event dispatch.
+///
+/// # Example
+/// ```
+/// use federated_registry::{FederatedRegistry, TelemetryEvent, Severity};
+/// use std::collections::HashMap;
+///
+/// let registry = FederatedRegistry::new();
+/// registry.register_source("physics_engine");
+/// assert!(registry.known_sources().contains(&"physics_engine".to_string()));
+///
+/// registry.emit(TelemetryEvent {
+///     source: "physics_engine".to_string(),
+///     severity: Severity::Info,
+///     message: "Simulation step completed".to_string(),
+///     metadata: HashMap::new(),
+///     thread_name: None,
+/// });
+///
+/// let events = registry.try_recv_all();
+/// assert_eq!(events.len(), 1);
+/// assert_eq!(events[0].message, "Simulation step completed");
+/// ```
 pub struct FederatedRegistry {
     sender: Sender<TelemetryEvent>,
     receiver: Arc<Mutex<Receiver<TelemetryEvent>>>,
@@ -38,7 +60,16 @@ impl FederatedRegistry {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Registers a unique telemetry source name in the registry.
+    ///
+    /// # Example
+    /// ```
+    /// use federated_registry::FederatedRegistry;
+    ///
+    /// let registry = FederatedRegistry::new();
+    /// registry.register_source("sensor_array");
+    /// assert_eq!(registry.known_sources(), vec!["sensor_array".to_string()]);
+    /// ```
     pub fn register_source(&self, name: &str) {
         let mut sources = match self.sources.lock() {
             Ok(guard) => guard,
@@ -58,7 +89,26 @@ impl FederatedRegistry {
         sources.clone()
     }
 
-    #[allow(missing_docs)]
+    /// Dispatches a telemetry event to the internal channel.
+    ///
+    /// # Example
+    /// ```
+    /// use federated_registry::{FederatedRegistry, TelemetryEvent, Severity};
+    /// use std::collections::HashMap;
+    ///
+    /// let registry = FederatedRegistry::new();
+    /// registry.emit(TelemetryEvent {
+    ///     source: "telemetry_daemon".to_string(),
+    ///     severity: Severity::Warning,
+    ///     message: "Heartbeat ping".to_string(),
+    ///     metadata: HashMap::new(),
+    ///     thread_name: None,
+    /// });
+    ///
+    /// let events = registry.try_recv_all();
+    /// assert_eq!(events.len(), 1);
+    /// assert_eq!(events[0].source, "telemetry_daemon");
+    /// ```
     pub fn emit(&self, event: TelemetryEvent) {
         if self.sender.send(event.clone()).is_err() {
             eprintln!(
