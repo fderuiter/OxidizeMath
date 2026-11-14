@@ -22,6 +22,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0005: Active Documentation Standard (Extended)](adr/0005-active-documentation-standard.md)
 - [ADR 0008: Pre-Commit Lint Suite](adr/0008-xtask-lint-all-pre-commit.md)
 - [ADR 0012: Centralized Architecture Guide Suite](adr/0012-centralized-architecture-suite.md)
+- [ADR 0013: Trait-Level Executable Doc-Test Suites](adr/0013-trait-level-runnable-doctests.md)
 
 ## Contributing
 
