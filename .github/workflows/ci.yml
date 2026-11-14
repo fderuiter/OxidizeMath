@@ -61,6 +61,12 @@ jobs:
       - name: Clean up machete artifacts
         run: rm -rf cargo-machete*
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
+
+      - name: Install cargo-audit
+        run: cargo binstall --no-confirm --version 0.23.0 cargo-audit
+
       - name: Security Audit
         run: cargo audit
 
