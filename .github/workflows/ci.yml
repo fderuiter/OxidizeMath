@@ -16,6 +16,7 @@ jobs:
   pre-flight:
     name: Pre-flight Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -79,6 +80,7 @@ jobs:
     name: Build and Test (${{ matrix.name }})
     needs: pre-flight
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -209,6 +211,7 @@ jobs:
     name: Compile Academic Papers
     needs: pre-flight
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -235,6 +238,7 @@ jobs:
     name: Domain Tests (${{ matrix.feature || 'core-only' }})
     needs: pre-flight
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -288,6 +292,7 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build-and-test
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       matrix:
         include:
