@@ -2,7 +2,7 @@ use dashu::base::Abs;
 use dashu::float::FBig;
 use dashu::integer::IBig;
 use dashu::rational::RBig;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, RemAssign, Sub, SubAssign};
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 #[allow(missing_docs)]
 pub struct Integer(pub IBig);
@@ -157,39 +157,11 @@ impl PartialOrd<i32> for Integer {
     }
 }
 
-macro_rules! impl_binop {
-    ($trt:ident, $mth:ident) => {
-        impl $trt for Integer {
-            type Output = Integer;
-            fn $mth(self, rhs: Integer) -> Integer {
-                Integer(self.0.$mth(rhs.0))
-            }
-        }
-        impl $trt<&Integer> for Integer {
-            type Output = Integer;
-            fn $mth(self, rhs: &Integer) -> Integer {
-                Integer(self.0.$mth(&rhs.0))
-            }
-        }
-        impl $trt<Integer> for &Integer {
-            type Output = Integer;
-            fn $mth(self, rhs: Integer) -> Integer {
-                Integer(self.0.clone().$mth(rhs.0))
-            }
-        }
-        impl $trt<&Integer> for &Integer {
-            type Output = Integer;
-            fn $mth(self, rhs: &Integer) -> Integer {
-                Integer(self.0.clone().$mth(&rhs.0))
-            }
-        }
-    };
-}
-impl_binop!(Add, add);
-impl_binop!(Sub, sub);
-impl_binop!(Mul, mul);
-impl_binop!(Div, div);
-impl_binop!(Rem, rem);
+math_commons::impl_binop!(Integer, Add, add);
+math_commons::impl_binop!(Integer, Sub, sub);
+math_commons::impl_binop!(Integer, Mul, mul);
+math_commons::impl_binop!(Integer, Div, div);
+math_commons::impl_binop!(Integer, Rem, rem);
 
 impl AddAssign for Integer {
     fn add_assign(&mut self, rhs: Self) {
