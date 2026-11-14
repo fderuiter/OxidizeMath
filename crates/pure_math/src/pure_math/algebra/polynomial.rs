@@ -12,6 +12,12 @@ pub struct Polynomial<T: Ring> {
     pub coeffs: Vec<T>, // coeffs[i] is coefficient of x^i
 }
 
+impl<T: Ring> Default for Polynomial<T> {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
 impl<T: Ring> Polynomial<T> {
     #[allow(missing_docs)]
     #[verified_engine::verified]
@@ -57,21 +63,55 @@ impl<T: Ring> Polynomial<T> {
         }
         result
     }
+
+    /// Scale polynomial by a scalar.
+    #[verified_engine::verified]
+    pub fn scale(&self, scalar: &T) -> Self {
+        if self.coeffs.is_empty() || scalar.is_zero() {
+            return Polynomial::new(vec![]);
+        }
+        let mut new_coeffs = Vec::with_capacity(self.coeffs.len());
+        for c in &self.coeffs {
+            new_coeffs.push(c.clone() * scalar.clone());
+        }
+        Polynomial::new(new_coeffs)
+    }
 }
 
 impl<T: Ring> Add for Polynomial<T> {
     type Output = Self;
     #[verified_engine::verified]
-    fn add(self, other: Self) -> Self {
-        let max_len = std::cmp::max(self.coeffs.len(), other.coeffs.len());
-        let mut new_coeffs = Vec::with_capacity(max_len);
+    fn add(mut self, other: Self) -> Self {
+        self += other;
+        self
+    }
+}
 
-        for i in 0..max_len {
-            let a = self.coeffs.get(i).cloned().unwrap_or(T::zero());
-            let b = other.coeffs.get(i).cloned().unwrap_or(T::zero());
-            new_coeffs.push(a + b);
-        }
-        Polynomial::new(new_coeffs)
+impl<'b, T: Ring> Add<&'b Polynomial<T>> for &Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn add(self, other: &'b Polynomial<T>) -> Polynomial<T> {
+        let mut res = self.clone();
+        res += other;
+        res
+    }
+}
+
+impl<'b, T: Ring> Add<&'b Polynomial<T>> for Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn add(mut self, other: &'b Polynomial<T>) -> Polynomial<T> {
+        self += other;
+        self
+    }
+}
+
+impl<T: Ring> Add<Polynomial<T>> for &Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn add(self, mut other: Polynomial<T>) -> Polynomial<T> {
+        other += self;
+        other
     }
 }
 
@@ -85,6 +125,30 @@ impl<T: Ring> Mul for Polynomial<T> {
         let deg1 = self.coeffs.len() - 1;
         let deg2 = other.coeffs.len() - 1;
         let mut new_coeffs = vec![T::zero(); deg1 + deg2 + 1];
+        let other_len = other.coeffs.len();
+
+        for (i, c1) in self.coeffs.into_iter().enumerate() {
+            for (j, c2) in other.coeffs[..other_len - 1].iter().enumerate() {
+                new_coeffs[i + j] += c1.clone() * c2.clone();
+            }
+            if let Some(c2) = other.coeffs.last() {
+                new_coeffs[i + other_len - 1] += c1 * c2.clone();
+            }
+        }
+        Polynomial::new(new_coeffs)
+    }
+}
+
+impl<'b, T: Ring> Mul<&'b Polynomial<T>> for &Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn mul(self, other: &'b Polynomial<T>) -> Polynomial<T> {
+        if self.coeffs.is_empty() || other.coeffs.is_empty() {
+            return Polynomial::new(vec![]);
+        }
+        let deg1 = self.coeffs.len() - 1;
+        let deg2 = other.coeffs.len() - 1;
+        let mut new_coeffs = vec![T::zero(); deg1 + deg2 + 1];
 
         for (i, c1) in self.coeffs.iter().enumerate() {
             for (j, c2) in other.coeffs.iter().enumerate() {
@@ -92,6 +156,82 @@ impl<T: Ring> Mul for Polynomial<T> {
             }
         }
         Polynomial::new(new_coeffs)
+    }
+}
+
+impl<'b, T: Ring> Mul<&'b Polynomial<T>> for Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn mul(self, other: &'b Polynomial<T>) -> Polynomial<T> {
+        if self.coeffs.is_empty() || other.coeffs.is_empty() {
+            return Polynomial::new(vec![]);
+        }
+        let deg1 = self.coeffs.len() - 1;
+        let deg2 = other.coeffs.len() - 1;
+        let mut new_coeffs = vec![T::zero(); deg1 + deg2 + 1];
+        let other_len = other.coeffs.len();
+
+        for (i, c1) in self.coeffs.into_iter().enumerate() {
+            for (j, c2) in other.coeffs[..other_len - 1].iter().enumerate() {
+                new_coeffs[i + j] += c1.clone() * c2.clone();
+            }
+            if let Some(c2) = other.coeffs.last() {
+                new_coeffs[i + other_len - 1] += c1 * c2.clone();
+            }
+        }
+        Polynomial::new(new_coeffs)
+    }
+}
+
+impl<T: Ring> Mul<Polynomial<T>> for &Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn mul(self, other: Polynomial<T>) -> Polynomial<T> {
+        self * &other
+    }
+}
+
+impl<T: Ring> Mul<T> for Polynomial<T> {
+    type Output = Self;
+    #[verified_engine::verified]
+    fn mul(mut self, scalar: T) -> Self {
+        if self.coeffs.is_empty() || scalar.is_zero() {
+            return Polynomial::new(vec![]);
+        }
+        let len = self.coeffs.len();
+        let mut new_coeffs = Vec::with_capacity(len);
+        let last = self.coeffs.pop();
+        for c in self.coeffs {
+            new_coeffs.push(c * scalar.clone());
+        }
+        if let Some(c) = last {
+            new_coeffs.push(c * scalar);
+        }
+        Polynomial::new(new_coeffs)
+    }
+}
+
+impl<'b, T: Ring> Mul<&'b T> for Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn mul(self, scalar: &'b T) -> Polynomial<T> {
+        self * scalar.clone()
+    }
+}
+
+impl<'b, T: Ring> Mul<&'b T> for &Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn mul(self, scalar: &'b T) -> Polynomial<T> {
+        self.scale(scalar)
+    }
+}
+
+impl<T: Ring> Mul<T> for &Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn mul(self, scalar: T) -> Polynomial<T> {
+        self.scale(&scalar)
     }
 }
 
@@ -115,36 +255,120 @@ impl<T: Ring> Ring for Polynomial<T> {
 impl<T: Ring> AddAssign for Polynomial<T> {
     #[verified_engine::verified]
     fn add_assign(&mut self, other: Self) {
-        *self = self.clone() + other;
+        if self.coeffs.len() < other.coeffs.len() {
+            self.coeffs.resize(other.coeffs.len(), T::zero());
+        }
+        for (i, c) in other.coeffs.into_iter().enumerate() {
+            self.coeffs[i] += c;
+        }
+        self.trim();
+    }
+}
+
+impl<T: Ring> AddAssign<&Polynomial<T>> for Polynomial<T> {
+    #[verified_engine::verified]
+    fn add_assign(&mut self, other: &Self) {
+        if self.coeffs.len() < other.coeffs.len() {
+            self.coeffs.resize(other.coeffs.len(), T::zero());
+        }
+        for (i, c) in other.coeffs.iter().enumerate() {
+            self.coeffs[i] += c.clone();
+        }
+        self.trim();
     }
 }
 
 impl<T: Ring> Sub for Polynomial<T> {
     type Output = Self;
     #[verified_engine::verified]
-    fn sub(self, other: Self) -> Self {
-        self + (-other)
+    fn sub(mut self, other: Self) -> Self {
+        self -= other;
+        self
+    }
+}
+
+impl<'b, T: Ring> Sub<&'b Polynomial<T>> for &Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn sub(self, other: &'b Polynomial<T>) -> Polynomial<T> {
+        let mut res = self.clone();
+        res -= other;
+        res
+    }
+}
+
+impl<'b, T: Ring> Sub<&'b Polynomial<T>> for Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn sub(mut self, other: &'b Polynomial<T>) -> Polynomial<T> {
+        self -= other;
+        self
+    }
+}
+
+impl<T: Ring> Sub<Polynomial<T>> for &Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn sub(self, other: Polynomial<T>) -> Polynomial<T> {
+        self - &other
     }
 }
 
 impl<T: Ring> SubAssign for Polynomial<T> {
     #[verified_engine::verified]
     fn sub_assign(&mut self, other: Self) {
-        *self = self.clone() - other;
+        if self.coeffs.len() < other.coeffs.len() {
+            self.coeffs.resize(other.coeffs.len(), T::zero());
+        }
+        for (i, c) in other.coeffs.into_iter().enumerate() {
+            self.coeffs[i] -= c;
+        }
+        self.trim();
+    }
+}
+
+impl<T: Ring> SubAssign<&Polynomial<T>> for Polynomial<T> {
+    #[verified_engine::verified]
+    fn sub_assign(&mut self, other: &Self) {
+        if self.coeffs.len() < other.coeffs.len() {
+            self.coeffs.resize(other.coeffs.len(), T::zero());
+        }
+        for (i, c) in other.coeffs.iter().enumerate() {
+            self.coeffs[i] -= c.clone();
+        }
+        self.trim();
     }
 }
 
 impl<T: Ring> MulAssign for Polynomial<T> {
     #[verified_engine::verified]
     fn mul_assign(&mut self, other: Self) {
-        *self = self.clone() * other;
+        *self = std::mem::take(self) * other;
+    }
+}
+
+impl<T: Ring> MulAssign<&Polynomial<T>> for Polynomial<T> {
+    #[verified_engine::verified]
+    fn mul_assign(&mut self, other: &Self) {
+        *self = std::mem::take(self) * other;
     }
 }
 
 impl<T: Ring> Neg for Polynomial<T> {
     type Output = Self;
     #[verified_engine::verified]
-    fn neg(self) -> Self {
-        Polynomial::new(self.coeffs.into_iter().map(|c| -c).collect())
+    fn neg(mut self) -> Self {
+        for c in &mut self.coeffs {
+            *c = -std::mem::replace(c, T::zero());
+        }
+        self
+    }
+}
+
+impl<T: Ring> Neg for &Polynomial<T> {
+    type Output = Polynomial<T>;
+    #[verified_engine::verified]
+    fn neg(self) -> Polynomial<T> {
+        Polynomial::new(self.coeffs.iter().map(|c| -c.clone()).collect())
     }
 }
