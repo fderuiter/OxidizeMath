@@ -188,4 +188,35 @@ fn test_force_directed_layout() {
             assert!(dist > 0.1, "Force directed nodes should not overlap");
         }
     }
+
+    // Single node graph
+    let mut g_single: Graph<(), ()> = Graph::new();
+    let single_node = g_single.add_node(());
+    let res_single = force_directed_layout(&g_single, bounds, 50);
+    assert_eq!(res_single.len(), 1);
+    assert!((res_single[&single_node].0 - 200.0).abs() < 1e-4);
+    assert!((res_single[&single_node].1 - 200.0).abs() < 1e-4);
+
+    // Zero iterations (returns initial circular layout)
+    let res_zero = force_directed_layout(&g, bounds, 0);
+    assert_eq!(res_zero.len(), 4);
+    for n in &nodes {
+        assert!(res_zero.contains_key(n));
+    }
+
+    // Graph with self-loop and multi-edge
+    let mut g_complex: Graph<(), ()> = Graph::new();
+    let ca = g_complex.add_node(());
+    let cb = g_complex.add_node(());
+    g_complex.add_edge(ca, ca, ()); // self loop
+    g_complex.add_edge(ca, cb, ()); // multi edge 1
+    g_complex.add_edge(ca, cb, ()); // multi edge 2
+    let res_complex = force_directed_layout(&g_complex, bounds, 30);
+    assert_eq!(res_complex.len(), 2);
+    let pa = res_complex[&ca];
+    let pb = res_complex[&cb];
+    assert!(pa.0.is_finite() && pa.1.is_finite());
+    assert!(pb.0.is_finite() && pb.1.is_finite());
+    let dist = ((pa.0 - pb.0).powi(2) + (pa.1 - pb.1).powi(2)).sqrt();
+    assert!(dist > 0.1, "Nodes should not overlap");
 }
