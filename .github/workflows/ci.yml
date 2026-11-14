@@ -167,6 +167,14 @@ jobs:
         if: matrix.target != 'wasm32-unknown-unknown'
         run: cargo clippy --workspace --benches --all-features -- -D warnings
 
+      - name: Check Workspace Examples (Native)
+        if: matrix.target != 'wasm32-unknown-unknown'
+        run: cargo check --workspace --examples --all-features --verbose
+
+      - name: Run Clippy Examples (Native)
+        if: matrix.target != 'wasm32-unknown-unknown'
+        run: cargo clippy --workspace --examples --all-features -- -D warnings
+
       - name: Run Workspace Tests (Native Linux)
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
         run: cargo test --workspace --lib --tests
