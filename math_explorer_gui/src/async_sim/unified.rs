@@ -1,5 +1,7 @@
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::{SimCommand, SimulationController, SimulationRunner, StateSnapshot};
+use crate::async_sim::{
+    SimCommand, SimWorkerState, SimulationController, SimulationRunner, StateSnapshot,
+};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui::{ColorImage, TextureOptions};
@@ -159,10 +161,27 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
+    #[allow(missing_docs)]
+    pub fn state(&self) -> SimWorkerState {
+        self.controller.state()
+    }
+
+    fn reset_simulation(&mut self) {
+        if self.controller.state() == SimWorkerState::Faulted
+            || self.controller.state() == SimWorkerState::Terminated
+        {
+            let runner = UnifiedSimRunner::<M>::new(Arc::clone(&self.params));
+            self.controller = SimulationController::new(runner);
+        } else {
+            let _ = self.controller.send_command(SimCommand::Reset);
+        }
+    }
+
     fn draw_model_parameters(&mut self, ui: &mut egui::Ui) {
         ui.separator();
         ui.label("Model Parameters");
 
+        let mut reset_needed = false;
         let mut params_lock = self.params.write().unwrap();
 
         let presets = M::presets();
@@ -174,7 +193,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                         for (k, v) in &preset_params {
                             params_lock.insert(k.clone(), *v);
                         }
-                        self.controller.send_command(SimCommand::Reset);
+                        reset_needed = true;
                     }
                 }
             });
@@ -187,7 +206,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 ui.label("Actions:");
                 for action in custom_actions {
                     if ui.button(action).clicked() {
-                        self.controller
+                        let _ = self
+                            .controller
                             .send_command(SimCommand::Custom(action.to_string()));
                     }
                 }
@@ -217,28 +237,60 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .compute(&param_list, |p_map| p_map.values().map(|v| v.abs()).sum());
 
         crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, M::name());
+
+        drop(params_lock);
+        if reset_needed {
+            self.reset_simulation();
+        }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn draw_left_panel(&mut self, ctx: &egui::Context) {
-        let is_running = self.controller.running;
+        let state = self.controller.state();
 
         egui::SidePanel::left(format!("{}_controls", M::name())).show(ctx, |ui| {
             ui.heading(M::name());
             ui.separator();
 
+            ui.horizontal(|ui| {
+                ui.label("Status:");
+                let (status_text, color) = match state {
+                    SimWorkerState::Uninitialized => ("Uninitialized", egui::Color32::GRAY),
+                    SimWorkerState::Ready => ("Ready", egui::Color32::from_rgb(80, 200, 120)),
+                    SimWorkerState::Running => ("Running", egui::Color32::from_rgb(60, 160, 240)),
+                    SimWorkerState::Stepping => ("Stepping", egui::Color32::from_rgb(240, 200, 60)),
+                    SimWorkerState::Faulted => ("Faulted", egui::Color32::RED),
+                    SimWorkerState::Terminated => ("Terminated", egui::Color32::DARK_GRAY),
+                };
+                ui.colored_label(color, status_text);
+            });
+            ui.separator();
+
+            let run_pause_enabled =
+                matches!(state, SimWorkerState::Ready | SimWorkerState::Running);
+            let button_text = if state.is_running() {
+                "⏸ Pause"
+            } else {
+                "▶ Run"
+            };
+            let tooltip_text = match state {
+                SimWorkerState::Running => "Pause simulation",
+                SimWorkerState::Ready => "Start simulation",
+                SimWorkerState::Faulted => {
+                    "Worker thread faulted. Click Reset to restore simulation."
+                }
+                _ => "Simulation worker unavailable",
+            };
+
             if ui
-                .button(if is_running { "⏸ Pause" } else { "▶ Run" })
-                .accessible_hover_text(if is_running {
-                    "Pause simulation"
-                } else {
-                    "Start simulation"
-                })
+                .add_enabled(run_pause_enabled, egui::Button::new(button_text))
+                .accessible_hover_text(tooltip_text)
                 .clicked()
             {
-                if is_running {
-                    self.controller.send_command(SimCommand::Pause);
+                if state.is_running() {
+                    let _ = self.controller.send_command(SimCommand::Pause);
                 } else {
-                    self.controller.send_command(SimCommand::Start);
+                    let _ = self.controller.send_command(SimCommand::Start);
                 }
             }
 
@@ -247,7 +299,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 .accessible_hover_text("Reset simulation state")
                 .clicked()
             {
-                self.controller.send_command(SimCommand::Reset);
+                self.reset_simulation();
             }
 
             ui.separator();
@@ -259,7 +311,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 )
                 .changed()
             {
-                self.controller
+                let _ = self
+                    .controller
                     .send_command(SimCommand::SetSpeed(self.steps_per_frame));
             }
 
@@ -298,7 +351,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     if let Some(pos) = plot_ui.pointer_coordinate() {
                         let grid_x = pos.x.round() as i32;
                         let grid_y = pos.y.round() as i32;
-                        self.controller.send_command(SimCommand::ApplyBrush {
+                        let _ = self.controller.send_command(SimCommand::ApplyBrush {
                             cx: grid_x,
                             cy: grid_y,
                             r: 2,
@@ -369,7 +422,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
 
     fn show(&mut self, ctx: &egui::Context) {
         let has_update = self.controller.update().is_some();
-        if has_update || self.controller.running {
+        if has_update || self.controller.state().is_running() {
             ctx.request_repaint();
         }
 

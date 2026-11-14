@@ -206,7 +206,7 @@ impl RewardPlotsTool {
                     .accessible_hover_text("Pause training in background thread")
                     .clicked()
                 {
-                    self.controller.send_command(SimCommand::Pause);
+                    let _ = self.controller.send_command(SimCommand::Pause);
                 }
             } else {
                 let has_unfinished =
@@ -223,9 +223,10 @@ impl RewardPlotsTool {
                     .clicked()
                 {
                     if has_unfinished {
-                        self.controller.send_command(SimCommand::Start);
+                        let _ = self.controller.send_command(SimCommand::Start);
                     } else {
-                        self.controller
+                        let _ = self
+                            .controller
                             .send_command(SimCommand::TrainEpisodes(self.training_steps));
                     }
                 }
@@ -238,7 +239,7 @@ impl RewardPlotsTool {
                 )
                 .clicked()
             {
-                self.controller.send_command(SimCommand::Reset);
+                let _ = self.controller.send_command(SimCommand::Reset);
                 self.rewards_per_episode.clear();
                 self.episodes_trained = 0;
                 self.target_episodes = 0;
@@ -291,7 +292,7 @@ impl InteractiveTool for RewardPlotsTool {
             }
         }
 
-        let is_running = self.controller.running;
+        let is_running = self.controller.is_running();
         if is_running {
             ctx.request_repaint();
         }
