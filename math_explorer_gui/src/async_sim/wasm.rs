@@ -1,6 +1,6 @@
 //! WebAssembly worker integration for async simulation.
 
-use super::{take_worker_context, SimCommand, SimStateUpdate};
+use super::{take_worker_context, SimCommand, SimStateUpdate, SimWorkerState, WorkerStatusEvent};
 use wasm_bindgen::JsCast;
 
 /// Wakes up the Web Worker if it is suspended.
@@ -82,6 +82,7 @@ pub fn setup_wake_listener() {
 
 /// Simulation worker entry point for WebAssembly.
 #[wasm_bindgen::prelude::wasm_bindgen]
+#[allow(missing_docs, clippy::too_many_lines, clippy::cognitive_complexity)]
 pub async fn run_simulation_worker(handle: u32) {
     let Some(ctx) = take_worker_context(handle) else {
         return;
@@ -91,12 +92,13 @@ pub async fn run_simulation_worker(handle: u32) {
     let cmd_rx = ctx.cmd_rx;
     let state_tx = ctx.state_tx;
 
-    let mut running = false;
+    let mut state = SimWorkerState::Ready;
     let mut steps_per_frame = runner.get_steps_per_frame();
+    let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
 
     loop {
         let mut cmd_opt = None;
-        if running {
+        if state.is_running() {
             if let Ok(c) = cmd_rx.try_recv() {
                 cmd_opt = Some(c);
             }
@@ -113,21 +115,28 @@ pub async fn run_simulation_worker(handle: u32) {
             loop {
                 match cmd {
                     SimCommand::Start => {
-                        running = true;
-                        let _ = state_tx.send(SimStateUpdate::Status { running: true });
+                        state = SimWorkerState::Running;
+                        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Running));
                     }
                     SimCommand::Pause => {
-                        running = false;
-                        let _ = state_tx.send(SimStateUpdate::Status { running: false });
+                        state = SimWorkerState::Ready;
+                        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+                    }
+                    SimCommand::Reset => {
+                        state = SimWorkerState::Ready;
+                        runner.process_command(SimCommand::Reset);
+                        let snapshot = runner.get_snapshot();
+                        let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
+                        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
                     }
                     SimCommand::SetSpeed(speed) => {
                         steps_per_frame = speed;
                         runner.process_command(SimCommand::SetSpeed(speed));
                     }
                     SimCommand::TrainEpisodes(_) => {
-                        running = true;
+                        state = SimWorkerState::Running;
                         runner.process_command(cmd);
-                        let _ = state_tx.send(SimStateUpdate::Status { running: true });
+                        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Running));
                     }
                     _ => {
                         runner.process_command(cmd);
@@ -141,7 +150,7 @@ pub async fn run_simulation_worker(handle: u32) {
             }
         }
 
-        if running {
+        if state.is_running() {
             for _ in 0..steps_per_frame {
                 runner.step();
                 if runner.is_complete() {
@@ -151,9 +160,9 @@ pub async fn run_simulation_worker(handle: u32) {
             let is_done = runner.is_complete();
             let snapshot = runner.get_snapshot();
             if is_done {
-                running = false;
+                state = SimWorkerState::Ready;
                 let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
-                let _ = state_tx.send(SimStateUpdate::Status { running: false });
+                let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
             } else {
                 let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
             }

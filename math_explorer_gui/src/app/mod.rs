@@ -384,8 +384,8 @@ fn setup_macos_menu(app: &MathExplorerApp) {
 
     // View Menu
     let view_menu = Submenu::new("View", true);
-    for (i, tab_name) in app.tab_names().into_iter().enumerate() {
-        let item = MenuItem::with_id(MenuId::new(format!("tab_{}", i)), tab_name, true, None);
+    for (i, name) in app.tab_names().into_iter().enumerate() {
+        let item = MenuItem::with_id(MenuId::new(format!("tab_{}", i)), name, true, None);
         view_menu.append(&item).unwrap();
     }
     menu.append(&view_menu).unwrap();

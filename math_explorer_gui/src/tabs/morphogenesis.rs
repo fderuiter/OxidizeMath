@@ -123,8 +123,8 @@ impl Default for MorphogenesisTab {
             height,
         };
 
-        let controller = SimulationController::new(runner);
-        controller.send_command(SimCommand::Start);
+        let mut controller = SimulationController::new(runner);
+        let _ = controller.send_command(SimCommand::Start);
 
         Self {
             controller,
@@ -169,9 +169,9 @@ impl ExplorerTab for MorphogenesisTab {
             self.params.write().unwrap().dt = s.dt;
             self.paused = s.paused;
             if self.paused {
-                self.controller.send_command(SimCommand::Pause);
+                let _ = self.controller.send_command(SimCommand::Pause);
             } else {
-                self.controller.send_command(SimCommand::Start);
+                let _ = self.controller.send_command(SimCommand::Start);
             }
         }
     }
@@ -209,14 +209,14 @@ impl MorphogenesisTab {
                 {
                     self.paused = !self.paused;
                     if self.paused {
-                        self.controller.send_command(SimCommand::Pause);
+                        let _ = self.controller.send_command(SimCommand::Pause);
                     } else {
-                        self.controller.send_command(SimCommand::Start);
+                        let _ = self.controller.send_command(SimCommand::Start);
                     }
                 }
 
                 if ui.button("↻ Reset").clicked() {
-                    self.controller.send_command(SimCommand::Reset);
+                    let _ = self.controller.send_command(SimCommand::Reset);
                 }
             });
 
@@ -414,10 +414,10 @@ impl InteractivePreset for MorphogenesisTab {
             };
             self.controller = SimulationController::new(runner);
             if !self.paused {
-                self.controller.send_command(SimCommand::Start);
+                let _ = self.controller.send_command(SimCommand::Start);
             }
         } else {
-            self.controller.send_command(SimCommand::Reset);
+            let _ = self.controller.send_command(SimCommand::Reset);
         }
         Ok(())
     }
