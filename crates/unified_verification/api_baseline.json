@@ -2112,9 +2112,6 @@
       "signature": "pub fn coherence_factors_strong (xi_k : ElectronVolts , delta : ElectronVolts ,) -> Result < (f64 , f64) , String >"
     },
     {
-      "signature": "pub fn solve_gap_equation (energies_xi : & [f64] , potential_v_magnitude : f64 , debye_energy : f64 , iterations : usize ,) -> Result < f64 , String >"
-    },
-    {
       "signature": "pub struct BcsGapSolver"
     },
     {

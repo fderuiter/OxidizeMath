@@ -152,36 +152,6 @@ impl GapEquation for IsotropicBCSModel {
 
 // --- Legacy API ---
 
-#[deprecated(
-    note = "Use BcsGapSolver and IsotropicBCSModel instead for better type safety and error handling"
-)]
-#[allow(missing_docs)]
-#[verified_engine::verified]
-pub fn solve_gap_equation(
-    energies_xi: &[f64],
-    potential_v_magnitude: f64,
-    debye_energy: f64,
-    iterations: usize,
-) -> Result<f64, String> {
-    let model = IsotropicBCSModel::new(energies_xi.to_vec(), potential_v_magnitude, debye_energy)
-        .map_err(|e| e.to_string())?;
-
-    let solver = BcsGapSolver::default()
-        .with_max_iterations(iterations)
-        .with_tolerance(math_commons::registry::TOLERANCE_STANDARD)
-        .with_mixing_param(0.5);
-
-    let initial_guess = ElectronVolts::new(0.01 * debye_energy);
-
-    match solver.solve(&model, initial_guess) {
-        Ok(delta) => Ok(delta / ElectronVolts::new(1.0)),
-        Err(SolidStateError::ConvergenceFailure(_, last_val)) => {
-            Ok(last_val / ElectronVolts::new(1.0))
-        }
-        Err(e) => Err(e.to_string()),
-    }
-}
-
 #[allow(missing_docs)]
 #[verified_engine::verified]
 pub fn coherence_factors(xi_k: f64, delta: f64) -> Result<(f64, f64), String> {
@@ -238,14 +208,25 @@ mod tests {
 
     #[test]
     #[verified_engine::verified]
-    fn test_legacy_wrapper() {
+    fn test_bcs_gap_solver_direct() {
         let energies: Vec<f64> = (0..100).map(|i| (i as f64 - 50.0) * 0.1).collect();
         let potential = 0.5;
         let debye = 5.0;
 
-        #[allow(deprecated)]
-        let res = solve_gap_equation(&energies, potential, debye, 1000);
-        assert!(res.is_ok());
-        assert!(res.unwrap() > 0.0);
+        let model = IsotropicBCSModel::new(energies, potential, debye).unwrap();
+        let solver = BcsGapSolver::default()
+            .with_max_iterations(1000)
+            .with_tolerance(math_commons::registry::TOLERANCE_STANDARD)
+            .with_mixing_param(0.5);
+
+        let initial_guess = ElectronVolts::new(0.01 * debye);
+        let res = solver.solve(&model, initial_guess);
+
+        let delta = match res {
+            Ok(delta) => delta,
+            Err(SolidStateError::ConvergenceFailure(_, last_val)) => last_val,
+            Err(e) => panic!("Unexpected solver error: {:?}", e),
+        };
+        assert!((delta / ElectronVolts::new(1.0)) > 0.0);
     }
 }
