@@ -17,6 +17,9 @@ use std::collections::HashMap;
 ///     max: 10.0,
 ///     step: 0.1,
 /// };
+/// assert_eq!(constraint.min, 0.0);
+/// assert_eq!(constraint.max, 10.0);
+/// assert_eq!(constraint.step, 0.1);
 /// assert!(constraint.min <= constraint.max);
 /// assert!(constraint.step > 0.0);
 /// ```
@@ -94,6 +97,10 @@ pub struct ParameterConstraint {
 /// }
 ///
 /// let mut pendulum = Pendulum { length: 2.0 };
+/// assert_eq!(pendulum.theory_description(), "Simple pendulum of length 2.00 meters");
+/// assert_eq!(pendulum.phonetic_description(), "Simple pendulum");
+/// assert_eq!(pendulum.theory_citation(), "Landau, L. D., & Lifshitz, E. M. (1976). Mechanics.");
+/// assert_eq!(pendulum.theory_parameters()["length"].min, 0.1);
 /// assert_eq!(pendulum.get_parameter("length"), Some(2.0));
 /// pendulum.set_parameter("length", 3.5);
 /// assert_eq!(pendulum.get_parameter("length"), Some(3.5));

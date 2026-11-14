@@ -2,8 +2,15 @@
 //! Handles custom color-gradient and step-linear mappings across the codebase.
 
 /// Maps a normalized scalar value (0.0 to 1.0) to an RGB color based on a typical heatmap (blue -> green -> red).
+///
+/// # Example
+/// ```
+/// use math_commons::math_kernel::colormap::heatmap_color;
+///
+/// assert_eq!(heatmap_color(0.0), [0, 0, 255]);
+/// assert_eq!(heatmap_color(1.0), [255, 0, 0]);
+/// ```
 #[inline(always)]
-#[allow(missing_docs)]
 pub fn heatmap_color(mut t: f64) -> [u8; 3] {
     t = t.clamp(0.0, 1.0);
 
@@ -30,8 +37,17 @@ pub fn cyclic_cosine_palette(n: f64) -> [u8; 3] {
 }
 
 /// Maps a normalized scalar value using a step-linear gradient.
+///
+/// # Example
+/// ```
+/// use math_commons::math_kernel::colormap::mapped_gradient;
+///
+/// let blue = mapped_gradient(0.0, 0.0, 100.0);
+/// assert_eq!(blue, [0, 0, 255]);
+/// let red = mapped_gradient(100.0, 0.0, 100.0);
+/// assert_eq!(red, [255, 0, 0]);
+/// ```
 #[inline(always)]
-#[allow(missing_docs)]
 pub fn mapped_gradient(value: f64, min_val: f64, max_val: f64) -> [u8; 3] {
     let range = max_val - min_val;
     let normalized = if range == 0.0 {

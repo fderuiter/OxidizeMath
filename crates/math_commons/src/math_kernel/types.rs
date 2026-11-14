@@ -52,6 +52,14 @@ impl DerefMut for Dimension {
 }
 
 /// Converts a 2D coordinate into a 1D flat index.
+///
+/// # Example
+/// ```
+/// use math_commons::math_kernel::types::flatten_2d_index;
+///
+/// let index = flatten_2d_index(4, 2, 10);
+/// assert_eq!(index, 24);
+/// ```
 #[inline(always)]
 pub fn flatten_2d_index(x: usize, y: usize, width: usize) -> usize {
     y * width + x
