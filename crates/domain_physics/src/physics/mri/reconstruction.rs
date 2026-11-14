@@ -15,7 +15,19 @@ use std::f64::consts::PI;
 fn separable_transform(matrix: &DMatrix<Complex<f64>>, inverse: bool) -> DMatrix<Complex<f64>> {
     let rows = matrix.nrows();
     let cols = matrix.ncols();
+    if rows == 0 || cols == 0 {
+        return DMatrix::zeros(rows, cols);
+    }
+
     let pi_factor = if inverse { 2.0 * PI } else { -2.0 * PI };
+
+    // Precompute twiddle factor vectors (roots of unity)
+    let col_twiddles: Vec<Complex<f64>> = (0..cols)
+        .map(|m| Complex::from_polar(1.0, pi_factor * (m as f64) / (cols as f64)))
+        .collect();
+    let row_twiddles: Vec<Complex<f64>> = (0..rows)
+        .map(|m| Complex::from_polar(1.0, pi_factor * (m as f64) / (rows as f64)))
+        .collect();
 
     // Intermediate step: Transform rows
     // For each row `r`, compute transform into `temp[r, :]`.
@@ -25,13 +37,12 @@ fn separable_transform(matrix: &DMatrix<Complex<f64>>, inverse: bool) -> DMatrix
         for k in 0..cols {
             // Output column index (frequency or space)
             let mut sum = Complex::new(0.0, 0.0);
-            let phase_step = pi_factor * (k as f64) / (cols as f64);
 
             for n in 0..cols {
                 // Input column index
                 let val = matrix[(r, n)];
-                let phase = phase_step * (n as f64);
-                sum += val * Complex::from_polar(1.0, phase);
+                let twiddle = col_twiddles[(k * n) % cols];
+                sum += val * twiddle;
             }
             temp[(r, k)] = sum;
         }
@@ -45,13 +56,12 @@ fn separable_transform(matrix: &DMatrix<Complex<f64>>, inverse: bool) -> DMatrix
         for k in 0..rows {
             // Output row index
             let mut sum = Complex::new(0.0, 0.0);
-            let phase_step = pi_factor * (k as f64) / (rows as f64);
 
             for n in 0..rows {
                 // Input row index
                 let val = temp[(n, c)];
-                let phase = phase_step * (n as f64);
-                sum += val * Complex::from_polar(1.0, phase);
+                let twiddle = row_twiddles[(k * n) % rows];
+                sum += val * twiddle;
             }
             result[(k, c)] = sum;
         }

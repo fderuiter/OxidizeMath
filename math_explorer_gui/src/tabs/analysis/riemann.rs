@@ -267,11 +267,13 @@ mod tests {
 
     #[test]
     fn test_riemann_recalculate_parameter_updates() {
-        let mut tool = RiemannIntegrationTool::default();
-        tool.steps = 25;
-        tool.preset = FunctionPreset::XSquared;
-        tool.min_x = 0.0;
-        tool.max_x = 3.0;
+        let mut tool = RiemannIntegrationTool {
+            steps: 25,
+            preset: FunctionPreset::XSquared,
+            min_x: 0.0,
+            max_x: 3.0,
+            ..Default::default()
+        };
         tool.recalculate();
 
         assert_eq!(tool.cached_trapezoid_polygons.len(), 25);
