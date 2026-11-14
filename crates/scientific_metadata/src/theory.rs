@@ -3,49 +3,159 @@
 use std::collections::HashMap;
 
 /// A structured representation of mathematical constraints for a parameter.
+///
+/// Encapsulates numeric ranges and adjustment steps used by user interfaces
+/// and simulation solvers to validate parameter inputs.
+///
+/// # Example
+///
+/// ```rust
+/// use scientific_metadata::theory::ParameterConstraint;
+///
+/// let constraint = ParameterConstraint {
+///     min: 0.0,
+///     max: 10.0,
+///     step: 0.1,
+/// };
+/// assert!(constraint.min <= constraint.max);
+/// assert!(constraint.step > 0.0);
+/// ```
 #[derive(Debug, Clone)]
 pub struct ParameterConstraint {
-    #[allow(missing_docs)]
+    /// Minimum allowable numerical value for the parameter.
     pub min: f64,
-    #[allow(missing_docs)]
+    /// Maximum allowable numerical value for the parameter.
     pub max: f64,
-    #[allow(missing_docs)]
+    /// Recommended adjustment step size for interactive UI controls.
     pub step: f64,
 }
 
 /// A standardized trait for exporting human-readable, verified descriptions
-/// for every mathematical model.
+/// and parameter metadata for mathematical models.
+///
+/// Implementing this trait allows simulation models across the workspace to expose
+/// verified descriptions, phonetic representations for accessibility, literature citations,
+/// and dynamic parameter reflection without coupling calculation routines to UI or database dependencies.
+///
+/// # Example
+///
+/// ```rust
+/// use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+/// use std::collections::HashMap;
+///
+/// struct Pendulum {
+///     length: f64,
+/// }
+///
+/// impl TheoryDescribable for Pendulum {
+///     fn theory_description(&self) -> String {
+///         format!("Simple pendulum of length {:.2} meters", self.length)
+///     }
+///
+///     fn phonetic_description(&self) -> String {
+///         "Simple pendulum".to_string()
+///     }
+///
+///     fn theory_citation(&self) -> String {
+///         "Landau, L. D., & Lifshitz, E. M. (1976). Mechanics.".to_string()
+///     }
+///
+///     fn available_descriptions(&self) -> HashMap<String, String> {
+///         let mut descs = HashMap::new();
+///         descs.insert("default".to_string(), "Pendulum oscillation".to_string());
+///         descs
+///     }
+///
+///     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+///         let mut params = HashMap::new();
+///         params.insert(
+///             "length".to_string(),
+///             ParameterConstraint {
+///                 min: 0.1,
+///                 max: 10.0,
+///                 step: 0.1,
+///             },
+///         );
+///         params
+///     }
+///
+///     fn get_parameter(&self, name: &str) -> Option<f64> {
+///         match name {
+///             "length" => Some(self.length),
+///             _ => None,
+///         }
+///     }
+///
+///     fn set_parameter(&mut self, name: &str, value: f64) {
+///         if name == "length" {
+///             self.length = value;
+///         }
+///     }
+/// }
+///
+/// let mut pendulum = Pendulum { length: 2.0 };
+/// assert_eq!(pendulum.get_parameter("length"), Some(2.0));
+/// pendulum.set_parameter("length", 3.5);
+/// assert_eq!(pendulum.get_parameter("length"), Some(3.5));
+/// ```
 pub trait TheoryDescribable {
-    /// Returns the verified human-readable description for accessibility.
+    /// Returns the verified human-readable description for accessibility and UI tooltips.
     fn theory_description(&self) -> String;
 
-    /// Returns the human-verified phonetic string for screen readers.
+    /// Returns the human-verified phonetic string for screen readers and speech synthesis.
     fn phonetic_description(&self) -> String;
 
-    /// Returns the citation for the mathematical model.
+    /// Returns the academic or bibliographic citation for the mathematical model.
     fn theory_citation(&self) -> String;
 
-    /// Returns a list of all available descriptions for a given mathematical state or operation.
+    /// Returns a list of all available descriptions for a given mathematical state, regime, or operation.
     fn available_descriptions(&self) -> HashMap<String, String>;
 
     /// Returns theoretical constraints for parameter fields of the model.
+    ///
+    /// By default, returns an empty map for models without exposed parameters.
     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
         HashMap::new()
     }
 
-    /// Dynamically gets a parameter by name
+    /// Dynamically retrieves the current floating-point value of a named parameter, or `None` if not found.
     fn get_parameter(&self, _name: &str) -> Option<f64> {
         None
     }
 
-    /// Dynamically sets a parameter by name
+    /// Dynamically updates the floating-point value of a named parameter.
+    ///
+    /// If the parameter name is unrecognized, this call is a no-op.
     fn set_parameter(&mut self, _name: &str, _value: f64) {}
 }
 
-/// A macro active within the GUI crate context to fetch the theoretical description.
+/// A macro active within user interface contexts to fetch the theoretical description of a model.
+///
+/// Delegates to [`TheoryDescribable::theory_description`].
+///
+/// # Example
+///
+/// ```rust
+/// use scientific_metadata::theory::TheoryDescribable;
+/// use scientific_metadata::theory_verification;
+/// use std::collections::HashMap;
+///
+/// struct Model;
+/// impl TheoryDescribable for Model {
+///     fn theory_description(&self) -> String { "Verified Model Description".to_string() }
+///     fn phonetic_description(&self) -> String { "Verified Model".to_string() }
+///     fn theory_citation(&self) -> String { "Citation 2026".to_string() }
+///     fn available_descriptions(&self) -> HashMap<String, String> { HashMap::new() }
+/// }
+///
+/// let m = Model;
+/// assert_eq!(theory_verification!(m), "Verified Model Description");
+/// ```
 #[macro_export]
 macro_rules! theory_verification {
     ($obj:expr) => {
         $obj.theory_description()
     };
 }
+
+pub use crate::theory_verification;

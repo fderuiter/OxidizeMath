@@ -2707,6 +2707,7 @@ dependencies = [
  "oxidize_core",
  "pure_math",
  "rand",
+ "scientific_metadata",
  "thiserror 2.0.18",
  "verified_engine",
  "verified_engine_macros",
