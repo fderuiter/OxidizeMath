@@ -143,11 +143,82 @@ fn test_bessel_orthogonality_check() {
 
 #[test]
 #[verified_engine::verified]
-fn test_bessel_y_stub_returns_nan() {
-    assert!(bessel::bessel_y(0.0, 1.0).is_nan());
-    assert!(bessel::bessel_y(1.0, 2.5).is_nan());
-    assert!(bessel::bessel_y(-1.0, 2.0).is_nan());
-    assert!(bessel::bessel_y(0.0, 0.0).is_nan());
+fn test_bessel_y_boundary_conditions() {
+    // Negative inputs x < 0 return NaN
+    assert!(bessel::bessel_y(0.0, -1.0).is_nan());
+    assert!(bessel::bessel_y(1.0, -0.5).is_nan());
+    assert!(bessel::bessel_y(0.5, -2.0).is_nan());
+
+    // Zero input x = 0 returns NEG_INFINITY
+    assert_eq!(bessel::bessel_y(0.0, 0.0), f64::NEG_INFINITY);
+    assert_eq!(bessel::bessel_y(1.0, 0.0), f64::NEG_INFINITY);
+    assert_eq!(bessel::bessel_y(0.5, 0.0), f64::NEG_INFINITY);
+
+    // NaN or infinite inputs return NaN
+    assert!(bessel::bessel_y(f64::NAN, 1.0).is_nan());
+    assert!(bessel::bessel_y(0.0, f64::NAN).is_nan());
     assert!(bessel::bessel_y(f64::INFINITY, 1.0).is_nan());
     assert!(bessel::bessel_y(0.0, f64::INFINITY).is_nan());
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_bessel_y_integer_orders() {
+    // Known reference values for Y_0 and Y_1
+    assert_abs_diff_eq!(
+        bessel::bessel_y(0.0, 1.0),
+        0.08825696421567697,
+        epsilon = math_commons::registry::TOLERANCE_STANDARD
+    );
+    assert_abs_diff_eq!(
+        bessel::bessel_y(0.0, 2.0),
+        0.5103756726497453,
+        epsilon = math_commons::registry::TOLERANCE_STANDARD
+    );
+    assert_abs_diff_eq!(
+        bessel::bessel_y(1.0, 1.0),
+        -0.7812128213002888,
+        epsilon = math_commons::registry::TOLERANCE_STANDARD
+    );
+    assert_abs_diff_eq!(
+        bessel::bessel_y(1.0, 2.0),
+        -0.10703243154093743,
+        epsilon = math_commons::registry::TOLERANCE_STANDARD
+    );
+
+    // Negative integer reflection: Y_{-n}(x) = (-1)^n Y_n(x)
+    assert_abs_diff_eq!(
+        bessel::bessel_y(-1.0, 1.0),
+        -bessel::bessel_y(1.0, 1.0),
+        epsilon = math_commons::registry::TOLERANCE_STANDARD
+    );
+    assert_abs_diff_eq!(
+        bessel::bessel_y(-2.0, 1.5),
+        bessel::bessel_y(2.0, 1.5),
+        epsilon = math_commons::registry::TOLERANCE_STANDARD
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_bessel_y_non_integer_orders() {
+    // Analytic relation: Y_{1/2}(x) = -sqrt(2 / (pi * x)) * cos(x)
+    for &x in &[0.5, 1.0, 2.0, 3.0] {
+        let expected = -(2.0 / (std::f64::consts::PI * x)).sqrt() * x.cos();
+        assert_abs_diff_eq!(
+            bessel::bessel_y(0.5, x),
+            expected,
+            epsilon = math_commons::registry::TOLERANCE_STANDARD
+        );
+    }
+
+    // Analytic relation: Y_{-1/2}(x) = sqrt(2 / (pi * x)) * sin(x)
+    for &x in &[0.5, 1.0, 2.0, 3.0] {
+        let expected = (2.0 / (std::f64::consts::PI * x)).sqrt() * x.sin();
+        assert_abs_diff_eq!(
+            bessel::bessel_y(-0.5, x),
+            expected,
+            epsilon = math_commons::registry::TOLERANCE_STANDARD
+        );
+    }
 }
