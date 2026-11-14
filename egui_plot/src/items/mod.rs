@@ -173,7 +173,7 @@ pub trait PlotItem {
         cursors: &mut Vec<Cursor>,
         plot: &PlotConfig<'_>,
         label_formatter: &LabelFormatter<'_>,
-    ) {
+    ) -> Option<PlotPoint> {
         let points = match self.geometry() {
             PlotGeometry::Points(points) => points,
             PlotGeometry::None => {
@@ -221,6 +221,8 @@ pub trait PlotItem {
             cursors,
             label_formatter,
         );
+
+        Some(value)
     }
 }
 
@@ -1489,11 +1491,12 @@ impl PlotItem for BarChart {
         cursors: &mut Vec<Cursor>,
         plot: &PlotConfig<'_>,
         _: &LabelFormatter<'_>,
-    ) {
+    ) -> Option<PlotPoint> {
         let bar = &self.bars[elem.index];
 
         bar.add_shapes(plot.transform, true, shapes);
         bar.add_rulers_and_text(self, plot, shapes, cursors);
+        None
     }
 
     fn base(&self) -> &PlotItemBase {
@@ -1616,11 +1619,12 @@ impl PlotItem for BoxPlot {
         cursors: &mut Vec<Cursor>,
         plot: &PlotConfig<'_>,
         _: &LabelFormatter<'_>,
-    ) {
+    ) -> Option<PlotPoint> {
         let box_plot = &self.boxes[elem.index];
 
         box_plot.add_shapes(plot.transform, true, shapes);
         box_plot.add_rulers_and_text(self, plot, shapes, cursors);
+        None
     }
 
     fn base(&self) -> &PlotItemBase {
