@@ -15,7 +15,7 @@ Isolated helper scripts, unlinked design logs, and disconnected crate documentat
 We implement the **Active Documentation Standard** across all workspace crates.
 
 1.  **Native Crate-Level Documentation via `include_str!`**: All existing `//!` inner doc-comments from the primary entry points of workspace crates have been extracted into localized `README.md` files. These files are integrated back into the source code using the compiler-validated attribute:
-    ```rust,ignore
+    ```text
     #![doc = include_str!("../README.md")]
     ```
     This ensures any documentation updates in markdown files are automatically reflected in Rustdocs upon compilation, eliminating duplication efforts.

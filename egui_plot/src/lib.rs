@@ -481,7 +481,7 @@ impl<'a> Plot<'a> {
     /// Default is a log-10 grid, i.e. every plot unit is divided into 10 other units.
     ///
     /// The function has this signature:
-    /// ```ignore
+    /// ```text
     /// fn step_sizes(input: GridInput) -> Vec<GridMark>;
     /// ```
     ///
@@ -2839,15 +2839,21 @@ impl PreparedPlot<'_> {
 
 /// Returns next bigger power in given base
 /// e.g.
-/// ```ignore
-/// use egui_plot::next_power;
-/// assert_eq!(next_power(0.01, 10.0), 0.01);
-/// assert_eq!(next_power(0.02, 10.0), 0.1);
-/// assert_eq!(next_power(0.2,  10.0), 1);
+/// ```text
+/// next_power(0.01, 10.0) == 0.1
+/// next_power(0.02, 10.0) == 0.1
+/// next_power(0.2,  10.0) == 1.0
 /// ```
 fn next_power(value: f64, base: f64) -> f64 {
     debug_assert_ne!(value, 0.0, "Bad input"); // can be negative (typical for Y axis)
     base.powi(value.abs().log(base).ceil() as i32)
+}
+
+#[test]
+fn test_next_power() {
+    assert_eq!(next_power(0.01, 10.0), 0.1);
+    assert_eq!(next_power(0.02, 10.0), 0.1);
+    assert_eq!(next_power(0.2, 10.0), 1.0);
 }
 
 /// Fill in all values between [min, max] which are a multiple of `step_size`
