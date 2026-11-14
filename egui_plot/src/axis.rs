@@ -172,13 +172,6 @@ impl<'a> AxisHints<'a> {
         self
     }
 
-    /// Specify maximum number of digits for ticks.
-    #[inline]
-    #[deprecated = "Use `min_thickness` instead"]
-    pub fn max_digits(self, digits: usize) -> Self {
-        self.min_thickness(12.0 * digits as f32)
-    }
-
     /// Specify the placement of the axis.
     ///
     /// For X-axis, use [`VPlacement`].

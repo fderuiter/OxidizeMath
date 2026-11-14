@@ -40,15 +40,15 @@
 //! We provide an upper bound approximation for the prefix Kolmogorov complexity of an integer $n$:
 //! $$ K(n) \le \log_2(n) + 2 \log_2(\log_2(n)) + O(1) $$
 //!
-//! ```rust,ignore
-//! use pure_math::pure_math::algorithmic_information::kolmogorov::prefix_kolmogorov_approx;
-//! use crate::math_types::Integer;
+//! ```rust
+//! use pure_math::pure_math::algorithmic_information::kolmogorov::kolmogorov_complexity;
+//! use pure_math::math_types::Integer;
 //!
 //! // Calculate complexity of a large number
 //! let n = Integer::from(1000000);
-//! let k = prefix_kolmogorov_approx(&n);
+//! let k = kolmogorov_complexity(&n);
 //!
-//! println!("Approximate Complexity K({}): {:.2} bits", n, k);
+//! println!("Approximate Complexity K({:?}): {} bits", n, k);
 //! // Expected: ~20 bits (log2(10^6) ≈ 19.93)
 //! ```
 //!

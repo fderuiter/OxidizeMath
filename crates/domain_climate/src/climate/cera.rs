@@ -181,7 +181,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "autoencoder backpropagation is not yet implemented")]
     #[verified_engine::verified]
     fn test_cera_training_and_prediction() {
         let config = CeraConfig {

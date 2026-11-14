@@ -12,6 +12,8 @@ pub struct IsingModelTool {
     running: bool,
     steps_per_frame: usize,
     texture: Option<egui::TextureHandle>,
+    pixels: Vec<egui::Color32>,
+    dirty: bool,
 }
 
 impl Default for IsingModelTool {
@@ -24,6 +26,8 @@ impl Default for IsingModelTool {
             running: false,
             steps_per_frame: 5000,
             texture: None,
+            pixels: Vec::new(),
+            dirty: true,
         }
     }
 }
@@ -44,21 +48,41 @@ impl InteractiveTool for IsingModelTool {
                 ui.heading("Ising Model Controls");
                 ui.separator();
 
-                ui.add(egui::Slider::new(&mut self.temperature, 0.1..=10.0).text("Temperature (T) - K (relative)"));
+                if ui
+                    .add(egui::Slider::new(&mut self.temperature, 0.1..=10.0).text("Temperature (T) - K (relative)"))
+                    .changed()
+                {
+                    self.dirty = true;
+                }
                 ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
 
-                ui.add(egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"));
+                if ui
+                    .add(egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"))
+                    .changed()
+                {
+                    self.dirty = true;
+                }
                 ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
 
-                ui.add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"));
+                if ui
+                    .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
+                    .changed()
+                {
+                    self.dirty = true;
+                }
 
                 ui.separator();
 
-                ui.add(
-                    egui::Slider::new(&mut self.steps_per_frame, 100..=50000)
-                        .text("Simulation Speed (Steps/Frame)")
-                        .logarithmic(true),
-                );
+                if ui
+                    .add(
+                        egui::Slider::new(&mut self.steps_per_frame, 100..=50000)
+                            .text("Simulation Speed (Steps/Frame)")
+                            .logarithmic(true),
+                    )
+                    .changed()
+                {
+                    self.dirty = true;
+                }
 
                 ui.separator();
 
@@ -85,7 +109,7 @@ impl InteractiveTool for IsingModelTool {
                         .clicked()
                     {
                         self.lattice = SpinLattice::new(100, 100, None);
-                        self.texture = None; // Force texture recreation
+                        self.dirty = true;
                     }
                 });
 
@@ -127,6 +151,7 @@ impl InteractiveTool for IsingModelTool {
 
             self.lattice
                 .evolve(self.steps_per_frame, t_phys, self.j_coupling, self.h_field);
+            self.dirty = true;
             ctx.request_repaint();
         }
 
@@ -134,34 +159,121 @@ impl InteractiveTool for IsingModelTool {
         egui::CentralPanel::default().show(ctx, |ui| {
             let width = self.lattice.width();
             let height = self.lattice.height();
+            let num_pixels = width * height;
 
-            let image = egui::ColorImage::from_rgba_unmultiplied(
-                [width, height],
-                &self
-                    .lattice
-                    .spins()
-                    .iter()
-                    .flat_map(|&s| {
-                        if s > 0 {
-                            [200, 50, 50, 255] // Red (Up)
-                        } else {
-                            [50, 50, 200, 255] // Blue (Down)
-                        }
-                    })
-                    .collect::<Vec<u8>>(),
-            );
+            if self.dirty || self.texture.is_none() {
+                if self.pixels.len() != num_pixels {
+                    self.pixels.resize(num_pixels, egui::Color32::BLACK);
+                }
 
-            let texture_opts = egui::TextureOptions::NEAREST; // Pixelated look
-            if let Some(texture) = &mut self.texture {
-                texture.set(image, texture_opts);
-            } else {
-                self.texture = Some(ctx.load_texture("ising_lattice", image, texture_opts));
+                for (pixel, &s) in self.pixels.iter_mut().zip(self.lattice.spins().iter()) {
+                    *pixel = if s > 0 {
+                        egui::Color32::from_rgb(200, 50, 50) // Red (Up)
+                    } else {
+                        egui::Color32::from_rgb(50, 50, 200) // Blue (Down)
+                    };
+                }
+
+                let image = egui::ColorImage {
+                    size: [width, height],
+                    pixels: self.pixels.clone(),
+                    ..Default::default()
+                };
+
+                let texture_opts = egui::TextureOptions::NEAREST; // Pixelated look
+                if let Some(texture) = &mut self.texture {
+                    texture.set(image, texture_opts);
+                } else {
+                    self.texture = Some(ctx.load_texture("ising_lattice", image, texture_opts));
+                }
+
+                self.dirty = false;
             }
 
             if let Some(texture) = &self.texture {
                 ui.image(texture); // Show the texture
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ising_model_initial_state() {
+        let tool = IsingModelTool::default();
+        assert!(tool.dirty);
+        assert!(tool.texture.is_none());
+        assert!(tool.pixels.is_empty());
+    }
+
+    #[test]
+    fn test_ising_model_render_lifecycle_and_dirty_tracking() {
+        let ctx = egui::Context::default();
+        let mut tool = IsingModelTool::default();
+
+        // 1. Initial render pass initializes texture and pixel buffer, then clears dirty flag.
+        assert!(tool.dirty);
+        assert!(tool.texture.is_none());
+
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            tool.show(ctx);
+        });
+
+        assert!(!tool.dirty);
+        assert!(tool.texture.is_some());
+        assert_eq!(tool.pixels.len(), 100 * 100);
+
+        // Verify pixel buffer content matches lattice spins
+        for (pixel, &s) in tool.pixels.iter().zip(tool.lattice.spins().iter()) {
+            let expected = if s > 0 {
+                egui::Color32::from_rgb(200, 50, 50)
+            } else {
+                egui::Color32::from_rgb(50, 50, 200)
+            };
+            assert_eq!(*pixel, expected);
+        }
+
+        let initial_pixels_cap = tool.pixels.capacity();
+        let initial_tex_id = tool.texture.as_ref().unwrap().id();
+
+        // 2. Idle frame does not mark dirty and reuses persistent pixel buffer and texture.
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            tool.show(ctx);
+        });
+
+        assert!(!tool.dirty);
+        assert_eq!(tool.pixels.capacity(), initial_pixels_cap);
+        assert_eq!(tool.texture.as_ref().unwrap().id(), initial_tex_id);
+
+        // 3. Simulating running state sets dirty during evolution and clears it upon texture upload.
+        tool.running = true;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            tool.show(ctx);
+        });
+
+        assert!(!tool.dirty);
+        assert_eq!(tool.pixels.capacity(), initial_pixels_cap);
+        assert_eq!(tool.texture.as_ref().unwrap().id(), initial_tex_id);
+
+        // 4. Manually setting dirty flag causes texture update and re-clearing.
+        tool.running = false;
+        tool.dirty = true;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            tool.show(ctx);
+        });
+        assert!(!tool.dirty);
+
+        // 5. Lattice reset marks dirty and retains existing texture handle for reuse.
+        tool.lattice = SpinLattice::new(100, 100, None);
+        tool.dirty = true;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            tool.show(ctx);
+        });
+        assert!(!tool.dirty);
+        assert_eq!(tool.texture.as_ref().unwrap().id(), initial_tex_id);
     }
 }
 

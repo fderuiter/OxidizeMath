@@ -2,6 +2,7 @@ use super::gradients::{CentralDifferenceEstimator, GradientEstimator};
 use super::tables::{CUBE_EDGE_FLAGS, EDGE_CONNECTION, TRIANGLE_CONNECTION_TABLE};
 use super::types::{Mesh, Point3D, VoxelGrid};
 use crate::error::IsosurfaceError;
+use std::collections::HashMap;
 
 /// Interpolates between two points (p1, v1) and (p2, v2) to find the point where value == threshold.
 #[inline]
@@ -43,10 +44,8 @@ struct CubeData {
     normals: [Point3D; 8],
     /// The case index (0-255).
     index: usize,
-    /// Base index for edge deduplication.
-    base_idx: usize,
-    stride_y: usize,
-    stride_z: usize,
+    /// Coordinate of the cube in the grid (x, y, z).
+    coords: (usize, usize, usize),
 }
 
 /// Marching Cubes algorithm implementation.
@@ -107,13 +106,10 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
     pub fn extract(&self, threshold: f32) -> Result<Mesh, IsosurfaceError> {
         self.validate_grid()?;
 
-        let total_voxels = self.grid.width() * self.grid.height() * self.grid.depth();
-        let max_vertices = total_voxels * 3;
-
-        let mut vertices = Vec::with_capacity(max_vertices);
-        let mut normals = Vec::with_capacity(max_vertices);
-        let mut indices = Vec::with_capacity(max_vertices * 5); // Rough upper bound for indices
-        let mut edge_to_vertex = vec![u32::MAX; max_vertices];
+        let mut vertices = Vec::new();
+        let mut normals = Vec::new();
+        let mut indices = Vec::new();
+        let mut edge_to_vertex: HashMap<(usize, usize, usize, u8), u32> = HashMap::new();
 
         let stride_y = self.grid.width();
         let stride_z = self.grid.width() * self.grid.height();
@@ -155,9 +151,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
                         positions,
                         normals: cube_normals,
                         index,
-                        base_idx,
-                        stride_y,
-                        stride_z,
+                        coords: (x, y, z),
                     };
 
                     self.triangulate_cube(
@@ -363,26 +357,25 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
 
     #[inline]
     #[verified_engine::verified]
-    fn get_edge_index(
+    fn get_edge_key(
         &self,
-        base_idx: usize,
-        stride_y: usize,
-        stride_z: usize,
+        coords: (usize, usize, usize),
         edge_num: usize,
-    ) -> usize {
+    ) -> (usize, usize, usize, u8) {
+        let (x, y, z) = coords;
         match edge_num {
-            0 => base_idx * 3,
-            1 => (base_idx + 1) * 3 + 1,
-            2 => (base_idx + stride_y) * 3,
-            3 => base_idx * 3 + 1,
-            4 => (base_idx + stride_z) * 3,
-            5 => (base_idx + 1 + stride_z) * 3 + 1,
-            6 => (base_idx + stride_y + stride_z) * 3,
-            7 => (base_idx + stride_z) * 3 + 1,
-            8 => base_idx * 3 + 2,
-            9 => (base_idx + 1) * 3 + 2,
-            10 => (base_idx + 1 + stride_y) * 3 + 2,
-            11 => (base_idx + stride_y) * 3 + 2,
+            0 => (x, y, z, 0),
+            1 => (x + 1, y, z, 1),
+            2 => (x, y + 1, z, 0),
+            3 => (x, y, z, 1),
+            4 => (x, y, z + 1, 0),
+            5 => (x + 1, y, z + 1, 1),
+            6 => (x, y + 1, z + 1, 0),
+            7 => (x, y, z + 1, 1),
+            8 => (x, y, z, 2),
+            9 => (x + 1, y, z, 2),
+            10 => (x + 1, y + 1, z, 2),
+            11 => (x, y + 1, z, 2),
             _ => unreachable!(),
         }
     }
@@ -396,7 +389,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
         vertices: &mut Vec<Point3D>,
         normals: &mut Vec<Point3D>,
         indices: &mut Vec<usize>,
-        edge_to_vertex: &mut [u32],
+        edge_to_vertex: &mut HashMap<(usize, usize, usize, u8), u32>,
     ) {
         let edge_flags = CUBE_EDGE_FLAGS[cube.index];
         let mut edge_vertex_indices = [0usize; 12];
@@ -404,11 +397,10 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
         // Interpolate vertices and normals on intersected edges
         for i in 0..12 {
             if (edge_flags & (1 << i)) != 0 {
-                let global_edge_idx =
-                    self.get_edge_index(cube.base_idx, cube.stride_y, cube.stride_z, i);
+                let edge_key = self.get_edge_key(cube.coords, i);
 
-                if edge_to_vertex[global_edge_idx] != u32::MAX {
-                    edge_vertex_indices[i] = edge_to_vertex[global_edge_idx] as usize;
+                if let Some(&cached_idx) = edge_to_vertex.get(&edge_key) {
+                    edge_vertex_indices[i] = cached_idx as usize;
                 } else {
                     let v1_idx = EDGE_CONNECTION[i][0];
                     let v2_idx = EDGE_CONNECTION[i][1];
@@ -432,7 +424,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
                     let new_idx = vertices.len();
                     vertices.push(v);
                     normals.push(n);
-                    edge_to_vertex[global_edge_idx] = new_idx as u32;
+                    edge_to_vertex.insert(edge_key, new_idx as u32);
                     edge_vertex_indices[i] = new_idx;
                 }
             }

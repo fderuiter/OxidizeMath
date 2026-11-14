@@ -53,7 +53,7 @@ fn print_help() {
     println!("Legacy Utility Tasks:");
     println!("  compile-papers           - Compile academic papers with Tectonic");
     println!("  regenerate-baseline      - Regenerate public API baseline");
-    println!("  setup                    - Run setup script and install pre-commit hook");
+    println!("  setup                    - Run setup script and configure git hooks");
 }
 
 fn run_cmd(cmd: &str, args: &[&str]) {
@@ -118,38 +118,39 @@ fn lint_all() {
     println!("\n=== All Lint Checks Passed Successfully ===");
 }
 
-fn setup_pre_commit_hook(hook_path: &str, hook_content: &str) {
-    if std::path::Path::new(hook_path).exists() {
-        let existing = fs::read_to_string(hook_path).unwrap_or_default();
-        if !existing.contains("auto-generated pre-commit hook") {
-            println!(
-                "Warning: A custom pre-commit hook exists at {}. Please merge the verification check manually or remove it to allow auto-installation.",
-                hook_path
-            );
-        } else {
-            fs::write(hook_path, hook_content).unwrap();
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mut perms = fs::metadata(hook_path).unwrap().permissions();
-                perms.set_mode(0o755);
-                fs::set_permissions(hook_path, perms).unwrap();
-            }
-            println!("Pre-commit hook updated.");
-        }
-    } else {
-        if let Some(parent) = std::path::Path::new(hook_path).parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(hook_path, hook_content).unwrap();
+fn configure_git_hooks() {
+    println!("\n--- Configuring Git Hooks ---");
+    run_cmd("git", &["config", "core.hooksPath", ".githooks"]);
+
+    let hook_path = Path::new(".githooks/pre-commit");
+    if hook_path.exists() {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(hook_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(hook_path, perms).unwrap();
+            if let Ok(metadata) = fs::metadata(hook_path) {
+                let mut perms = metadata.permissions();
+                if perms.mode() & 0o111 == 0 {
+                    perms.set_mode(0o755);
+                    if let Err(e) = fs::set_permissions(hook_path, perms) {
+                        eprintln!(
+                            "Warning: Failed to set executable permissions on {}: {}",
+                            hook_path.display(),
+                            e
+                        );
+                    } else {
+                        println!("Pre-commit hook permissions set to executable (0755).");
+                    }
+                } else {
+                    println!("Pre-commit hook executable permissions verified.");
+                }
+            }
         }
-        println!("Pre-commit hook installed.");
+        println!("Git core.hooksPath configured to .githooks");
+    } else {
+        eprintln!(
+            "Warning: Expected hook script not found at {}.",
+            hook_path.display()
+        );
     }
 }
 
@@ -158,35 +159,7 @@ fn setup() {
     run_cmd("cargo", &["build"]);
     run_cmd("cargo", &["test"]);
 
-    let hook_path = ".git/hooks/pre-commit";
-    let hook_content = r#"#!/bin/sh
-# auto-generated pre-commit hook
-
-for profile in "$HOME/.bash_profile" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.zshrc"; do
-    if [ -f "$profile" ]; then
-        . "$profile" >/dev/null 2>&1 || true
-    fi
-done
-
-if ! command -v cargo >/dev/null 2>&1; then
-    if [ -d "$HOME/.cargo/bin" ]; then
-        export PATH="$PATH:$HOME/.cargo/bin"
-    fi
-fi
-
-echo "Running pre-commit lint check..."
-cargo run -p xtask -- lint-all
-EXIT_CODE=$?
-
-if [ $EXIT_CODE -ne 0 ]; then
-    echo "Linting failed! Commit blocked."
-    exit 1
-fi
-
-exit 0
-"#;
-
-    setup_pre_commit_hook(hook_path, hook_content);
+    configure_git_hooks();
     println!("=== Setup Complete ===");
 }
 
@@ -473,4 +446,36 @@ fn extract_md_links(content: &str) -> Vec<String> {
         }
     }
     links
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_git_hooks_path_configuration() {
+        configure_git_hooks();
+        let output = Command::new("git")
+            .args(["config", "core.hooksPath"])
+            .output()
+            .expect("failed to execute git");
+        assert!(output.status.success());
+        let hooks_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        assert_eq!(hooks_path, ".githooks");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_pre_commit_hook_executable() {
+        use std::os::unix::fs::PermissionsExt;
+        let hook_path = Path::new(".githooks/pre-commit");
+        if hook_path.exists() {
+            let metadata = fs::metadata(hook_path).expect("failed to read metadata");
+            assert_ne!(
+                metadata.permissions().mode() & 0o111,
+                0,
+                "Hook should be executable"
+            );
+        }
+    }
 }

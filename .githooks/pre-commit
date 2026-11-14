@@ -1,0 +1,25 @@
+#!/bin/sh
+# Version-controlled pre-commit hook
+
+for profile in "$HOME/.bash_profile" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [ -f "$profile" ]; then
+        . "$profile" >/dev/null 2>&1 || true
+    fi
+done
+
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -d "$HOME/.cargo/bin" ]; then
+        export PATH="$PATH:$HOME/.cargo/bin"
+    fi
+fi
+
+echo "Running pre-commit lint check..."
+cargo run -p xtask -- lint-all
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "Linting failed! Commit blocked."
+    exit 1
+fi
+
+exit 0

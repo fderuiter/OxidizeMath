@@ -1,7 +1,7 @@
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
 use crate::framework::InteractiveTool;
 use eframe::egui;
-use egui_plot::{Plot, PlotPoints, Points};
+use egui_plot::{Plot, PlotPoint, Points};
 use scientific_metadata::theory::TheoryDescribable;
 use math_explorer::physics::chaos::logistic;
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ pub struct BifurcationDiagram {
     r_min: f64,
     r_max: f64,
     steps: usize,
-    points: Vec<[f64; 2]>,
+    points: Vec<PlotPoint>,
 }
 
 impl Default for BifurcationDiagram {
@@ -29,7 +29,7 @@ impl Default for BifurcationDiagram {
 impl BifurcationDiagram {
     fn recompute(&mut self) {
         let raw_points = logistic::generate_bifurcation_diagram(self.r_min, self.r_max, self.steps);
-        self.points = raw_points.into_iter().map(|(r, x)| [r, x]).collect();
+        self.points = raw_points.into_iter().map(|(r, x)| PlotPoint::new(r, x)).collect();
     }
 }
 
@@ -104,7 +104,7 @@ impl InteractiveTool for BifurcationDiagram {
                 .y_axis_label("Population (x)")
                 .show(ui, |plot_ui| {
                     plot_ui.points(
-                        Points::new("Attractor", PlotPoints::new(self.points.clone()))
+                        Points::new("Attractor", &self.points[..])
                             .radius(1.0_f32)
                             .color(egui::Color32::from_rgb(100, 200, 255)),
                     );
@@ -124,5 +124,26 @@ inventory::submit! {
         domain: "chaos",
         tags: &[],
         build: || Box::new(BifurcationDiagram::default()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bifurcation_recompute_and_borrowed_slice() {
+        let mut tool = BifurcationDiagram::default();
+        assert!(!tool.points.is_empty());
+
+        let count_initial = tool.points.len();
+        tool.steps = 200;
+        tool.recompute();
+        assert_ne!(tool.points.len(), count_initial);
+
+        let slice: &[PlotPoint] = &tool.points[..];
+        let plot_points: egui_plot::PlotPoints<'_> = slice.into();
+        assert!(matches!(plot_points, egui_plot::PlotPoints::Borrowed(_)));
+        assert_eq!(plot_points.points().len(), tool.points.len());
     }
 }

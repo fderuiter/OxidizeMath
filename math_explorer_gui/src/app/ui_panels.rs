@@ -11,6 +11,7 @@ pub fn render_issues_panel(
     show_errors: &mut bool,
     show_warnings: &mut bool,
     show_info: &mut bool,
+    show_panel: &mut bool,
 ) {
     egui::TopBottomPanel::bottom("issues_panel")
         .resizable(true)
@@ -19,6 +20,9 @@ pub fn render_issues_panel(
             ui.horizontal(|ui| {
                 ui.heading("Issues & Diagnostics");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("Hide").clicked() {
+                        *show_panel = false;
+                    }
                     if ui.button("Clear").clicked() {
                         diagnostic_events.clear();
                     }
@@ -242,6 +246,16 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                     app.selected_tab = i;
                     ui.close();
                 }
+            }
+            ui.separator();
+            if ui
+                .checkbox(
+                    &mut app.show_diagnostics_panel,
+                    "Issues & Diagnostics Panel",
+                )
+                .clicked()
+            {
+                ui.close();
             }
         });
 

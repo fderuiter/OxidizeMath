@@ -4,6 +4,8 @@ mod ui_panels;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_diagnostics;
 
 #[allow(unused_imports)]
 pub use session::WorkspaceEnvelope;
@@ -14,6 +16,10 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct AppState {
     pub selected_tab: usize,
@@ -21,6 +27,8 @@ pub struct AppState {
     pub show_info: bool,
     pub show_warnings: bool,
     pub show_errors: bool,
+    #[serde(default = "default_true")]
+    pub show_diagnostics_panel: bool,
     #[serde(default)]
     pub theme: ThemeMode,
     pub tab_states: std::collections::HashMap<String, String>,
@@ -30,6 +38,7 @@ pub struct MathExplorerApp {
     tabs: Vec<Box<dyn ExplorerTab>>,
     selected_tab: usize,
     diagnostic_events: Vec<TelemetryEvent>,
+    pub show_diagnostics_panel: bool,
     show_info: bool,
     show_warnings: bool,
     show_errors: bool,
@@ -47,6 +56,7 @@ impl Default for MathExplorerApp {
             tabs,
             selected_tab: 0,
             diagnostic_events: Vec::new(),
+            show_diagnostics_panel: true,
             show_info: true,
             show_warnings: true,
             show_errors: true,
@@ -91,6 +101,7 @@ impl MathExplorerApp {
             show_info: self.show_info,
             show_warnings: self.show_warnings,
             show_errors: self.show_errors,
+            show_diagnostics_panel: self.show_diagnostics_panel,
             theme: self.theme,
             tab_states,
         }
@@ -101,6 +112,7 @@ impl MathExplorerApp {
         self.show_info = app_state.show_info;
         self.show_warnings = app_state.show_warnings;
         self.show_errors = app_state.show_errors;
+        self.show_diagnostics_panel = app_state.show_diagnostics_panel;
         self.theme = app_state.theme;
 
         for tab in &mut self.tabs {
@@ -241,6 +253,31 @@ impl eframe::App for MathExplorerApp {
             });
         }
 
+        let shift_modifiers = modifiers | egui::Modifiers::SHIFT;
+        let toggle_diagnostics_triggered =
+            egui_plot::commands::CommandRegistryData::register_and_check(
+                ctx,
+                "Toggle Issues & Diagnostics",
+                "Toggle visibility of the Issues & Diagnostics panel",
+                egui_plot::commands::CommandTrigger::Shortcut(shift_modifiers, egui::Key::D),
+                true,
+                "Global",
+                None,
+                None,
+            );
+
+        if toggle_diagnostics_triggered {
+            self.show_diagnostics_panel = !self.show_diagnostics_panel;
+            let status_msg = if self.show_diagnostics_panel {
+                "Issues & Diagnostics panel opened"
+            } else {
+                "Issues & Diagnostics panel closed"
+            };
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
+            });
+        }
+
         // Fetch new events
         let new_events = global_registry().try_recv_all();
         for event in &new_events {
@@ -254,13 +291,16 @@ impl eframe::App for MathExplorerApp {
         self.diagnostic_events.extend(new_events);
 
         // Issues & Diagnostics Panel
-        ui_panels::render_issues_panel(
-            ctx,
-            &mut self.diagnostic_events,
-            &mut self.show_errors,
-            &mut self.show_warnings,
-            &mut self.show_info,
-        );
+        if self.show_diagnostics_panel {
+            ui_panels::render_issues_panel(
+                ctx,
+                &mut self.diagnostic_events,
+                &mut self.show_errors,
+                &mut self.show_warnings,
+                &mut self.show_info,
+                &mut self.show_diagnostics_panel,
+            );
+        }
 
         #[cfg(target_os = "macos")]
         {
@@ -294,6 +334,8 @@ impl eframe::App for MathExplorerApp {
                 } else if event.id.0 == "theme_high_contrast" {
                     self.theme = ThemeMode::HighContrast;
                     ctx.set_visuals(self.theme.visuals());
+                } else if event.id.0 == "view_toggle_diagnostics" {
+                    self.show_diagnostics_panel = !self.show_diagnostics_panel;
                 }
             }
         }
@@ -341,7 +383,7 @@ impl eframe::App for MathExplorerApp {
 
 #[cfg(target_os = "macos")]
 fn setup_macos_menu(app: &MathExplorerApp) {
-    use muda::{Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+    use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
     let menu = Menu::new();
 
     // App Menu
@@ -388,6 +430,15 @@ fn setup_macos_menu(app: &MathExplorerApp) {
         let item = MenuItem::with_id(MenuId::new(format!("tab_{}", i)), name, true, None);
         view_menu.append(&item).unwrap();
     }
+    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    let diag_item = CheckMenuItem::with_id(
+        MenuId::new("view_toggle_diagnostics"),
+        "Issues & Diagnostics Panel",
+        true,
+        app.show_diagnostics_panel,
+        None,
+    );
+    view_menu.append(&diag_item).unwrap();
     menu.append(&view_menu).unwrap();
 
     // Appearance Menu
