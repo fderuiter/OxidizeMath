@@ -1,7 +1,7 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::InteractiveTool;
 use eframe::egui;
-use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
+use egui_plot::{Bar, BarChart, Line, Plot, PlotPoint, Points};
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 use std::collections::VecDeque;
 
@@ -10,10 +10,11 @@ pub struct SpikeAnalysisTool {
     neuron: HodgkinHuxleyNeuron,
     time: f64,
     is_running: bool,
-    history: VecDeque<[f64; 2]>, // [time, voltage]
+    history_points: Vec<PlotPoint>, // [time, voltage]
 
     // Analysis State
     spike_times: Vec<f64>,
+    spike_plot_points: Vec<PlotPoint>,
     isis: VecDeque<f64>, // Inter-Spike Intervals (ms)
     last_voltage: f64,
 
@@ -31,8 +32,9 @@ impl Default for SpikeAnalysisTool {
             neuron,
             time: 0.0,
             is_running: false,
-            history: VecDeque::new(),
+            history_points: Vec::new(),
             spike_times: Vec::new(),
+            spike_plot_points: Vec::new(),
             isis: VecDeque::new(),
             last_voltage: -65.0,
             input_current: 10.0,
@@ -57,7 +59,14 @@ impl InteractiveTool for SpikeAnalysisTool {
 
             ui.add(egui::Slider::new(&mut self.input_current, 0.0..=50.0).text("Input Current (µA/cm²) - I_ext"));
 
-            ui.add(egui::Slider::new(&mut self.spike_threshold, -50.0..=20.0).text("Spike Threshold (mV) - Threshold"));
+            let threshold_changed = ui
+                .add(egui::Slider::new(&mut self.spike_threshold, -50.0..=20.0).text("Spike Threshold (mV) - Threshold"))
+                .changed();
+            if threshold_changed {
+                for pt in &mut self.spike_plot_points {
+                    pt.y = self.spike_threshold;
+                }
+            }
 
             ui.separator();
             ui.add(egui::Slider::new(&mut self.simulation_speed, 1..=100).text("Simulation Speed (steps/frame)"));
@@ -120,7 +129,7 @@ impl InteractiveTool for SpikeAnalysisTool {
                         // Voltage Line
                         plot_ui.line(Line::new(
                             "Voltage",
-                            PlotPoints::new(self.history.iter().copied().collect::<Vec<_>>()),
+                            &self.history_points[..],
                         ));
 
                         // Threshold Line
@@ -130,15 +139,8 @@ impl InteractiveTool for SpikeAnalysisTool {
                         );
 
                         // Spike Markers (Raster)
-                        // Using VLine might be too much if there are many spikes, maybe Points?
-                        // Let's use Points at (time, threshold)
-                        let spike_points: Vec<[f64; 2]> = self
-                            .spike_times
-                            .iter()
-                            .map(|&t| [t, self.spike_threshold])
-                            .collect();
                         plot_ui.points(
-                            egui_plot::Points::new("Spikes", PlotPoints::new(spike_points))
+                            Points::new("Spikes", &self.spike_plot_points[..])
                                 .radius(3.0_f32)
                                 .color(egui::Color32::GREEN),
                         );
@@ -184,17 +186,16 @@ impl SpikeAnalysisTool {
             // Recording every 10th step = 0.1ms resolution
             // Or just check time % 0.1 < dt
             if (self.time * 10.0).round() % 1.0 == 0.0 {
-                self.history.push_back([self.time, v]);
-            }
-
-            // Manage History Size (keep last 5000 points = 500ms window approx if subsampled)
-            // But for analysis we might want longer history. Let's keep last 2000ms.
-            // 2000ms / 0.1ms = 20,000 points.
-            if self.history.len() > 20_000 {
-                self.history.pop_front();
+                self.history_points.push(PlotPoint::new(self.time, v));
             }
 
             self.last_voltage = v;
+        }
+
+        // Manage History Size (keep last 2000ms. 2000ms / 0.1ms = 20,000 points.)
+        if self.history_points.len() > 20_000 {
+            let excess = self.history_points.len() - 20_000;
+            self.history_points.drain(0..excess);
         }
     }
 
@@ -204,6 +205,7 @@ impl SpikeAnalysisTool {
             self.isis.push_back(isi);
         }
         self.spike_times.push(time);
+        self.spike_plot_points.push(PlotPoint::new(time, self.spike_threshold));
 
         // Keep ISI history manageable? Maybe last 1000 intervals.
         if self.isis.len() > 1000 {
@@ -217,8 +219,9 @@ impl SpikeAnalysisTool {
     fn reset(&mut self) {
         self.neuron = HodgkinHuxleyNeuron::new(-65.0);
         self.time = 0.0;
-        self.history.clear();
+        self.history_points.clear();
         self.spike_times.clear();
+        self.spike_plot_points.clear();
         self.isis.clear();
         self.last_voltage = -65.0;
         self.is_running = false;
@@ -280,4 +283,59 @@ impl scientific_metadata::theory::TheoryDescribable for SpikeAnalysisTool {
     fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_spike_analysis_simulation_and_borrowed_slices() {
+        let mut tool = SpikeAnalysisTool::default();
+        assert!(tool.history_points.is_empty());
+        assert!(tool.spike_plot_points.is_empty());
+
+        // Step simulation to generate history points
+        tool.simulation_speed = 50;
+        tool.input_current = 20.0;
+        for _ in 0..100 {
+            tool.step_simulation();
+        }
+
+        assert!(!tool.history_points.is_empty());
+
+        // Verify borrowed slice conversions for history_points and spike_plot_points
+        {
+            let history_slice: &[PlotPoint] = &tool.history_points[..];
+            let history_points: egui_plot::PlotPoints<'_> = history_slice.into();
+            assert!(matches!(history_points, egui_plot::PlotPoints::Borrowed(_)));
+            assert_eq!(history_points.points().len(), tool.history_points.len());
+
+            let spike_slice: &[PlotPoint] = &tool.spike_plot_points[..];
+            let spike_plot_points: egui_plot::PlotPoints<'_> = spike_slice.into();
+            assert!(matches!(spike_plot_points, egui_plot::PlotPoints::Borrowed(_)));
+            assert_eq!(spike_plot_points.points().len(), tool.spike_plot_points.len());
+        }
+
+        // Test threshold update adjusts existing spike points
+        let old_threshold = tool.spike_threshold;
+        tool.record_spike(12.34);
+        assert!(!tool.spike_plot_points.is_empty());
+        let last_pt = tool.spike_plot_points.last().unwrap();
+        assert_eq!(last_pt.y, old_threshold);
+
+        let new_threshold = 15.0;
+        tool.spike_threshold = new_threshold;
+        for pt in &mut tool.spike_plot_points {
+            pt.y = tool.spike_threshold;
+        }
+        assert_eq!(tool.spike_plot_points.last().unwrap().y, new_threshold);
+
+        // Reset clears all buffers
+        tool.reset();
+        assert!(tool.history_points.is_empty());
+        assert!(tool.spike_plot_points.is_empty());
+        assert!(tool.spike_times.is_empty());
+        assert_eq!(tool.time, 0.0);
+    }
 }
