@@ -78,6 +78,8 @@ pub struct MorphogenesisTab {
     paused: bool,
     texture: Option<egui::TextureHandle>,
     dialog_state: PresetDialogState,
+    pixels: Vec<egui::Color32>,
+    dirty: bool,
 }
 
 impl Default for MorphogenesisTab {
@@ -134,6 +136,8 @@ impl Default for MorphogenesisTab {
             paused: false,
             texture: None,
             dialog_state: PresetDialogState::default(),
+            pixels: Vec::new(),
+            dirty: true,
         }
     }
 }
@@ -173,11 +177,14 @@ impl ExplorerTab for MorphogenesisTab {
             } else {
                 let _ = self.controller.send_command(SimCommand::Start);
             }
+            self.dirty = true;
         }
     }
 
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.controller.update();
+        if self.controller.update().is_some() {
+            self.dirty = true;
+        }
 
         if !self.paused {
             ctx.request_repaint();
@@ -217,6 +224,7 @@ impl MorphogenesisTab {
 
                 if ui.button("↻ Reset").clicked() {
                     let _ = self.controller.send_command(SimCommand::Reset);
+                    self.dirty = true;
                 }
             });
 
@@ -244,21 +252,37 @@ impl MorphogenesisTab {
 
     fn draw_canvas(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(snapshot) = self.controller.latest_snapshot() {
-                if let Ok(pixels) = snapshot.pixels.try_read() {
-                    if !pixels.is_empty() {
-                        let image = ColorImage::new(
-                            [snapshot.width, snapshot.height],
-                            pixels.clone(),
-                        );
-                        if let Some(ref mut texture) = self.texture {
-                            texture.set(image, egui::TextureOptions::NEAREST);
-                        } else {
-                            self.texture = Some(ctx.load_texture(
-                                "morphogenesis_tex",
-                                image,
-                                egui::TextureOptions::NEAREST,
-                            ));
+            if self.dirty || self.texture.is_none() {
+                if let Some(snapshot) = self.controller.latest_snapshot() {
+                    if let Ok(snapshot_pixels) = snapshot.pixels.try_read() {
+                        if !snapshot_pixels.is_empty() {
+                            let num_pixels = snapshot.width * snapshot.height;
+                            if self.pixels.len() != num_pixels {
+                                self.pixels.resize(num_pixels, egui::Color32::BLACK);
+                            }
+
+                            if snapshot_pixels.len() == num_pixels {
+                                self.pixels.copy_from_slice(&snapshot_pixels);
+                            }
+
+                            let image = ColorImage {
+                                size: [snapshot.width, snapshot.height],
+                                pixels: self.pixels.clone(),
+                                ..Default::default()
+                            };
+
+                            let texture_opts = egui::TextureOptions::NEAREST;
+                            if let Some(texture) = &mut self.texture {
+                                texture.set(image, texture_opts);
+                            } else {
+                                self.texture = Some(ctx.load_texture(
+                                    "morphogenesis_tex",
+                                    image,
+                                    texture_opts,
+                                ));
+                            }
+
+                            self.dirty = false;
                         }
                     }
                 }
@@ -305,7 +329,8 @@ impl MorphogenesisTab {
     }
 
     fn plot_concentration(data: &[f64], width: usize, height: usize) -> ColorImage {
-        let mut pixels = Vec::with_capacity(width * height * 4);
+        let num_pixels = width * height;
+        let mut pixels = Vec::with_capacity(num_pixels);
 
         let (min, max) = data
             .iter()
@@ -319,13 +344,14 @@ impl MorphogenesisTab {
         for &val in data {
             let norm = (val - min) * inv_range;
             let rgb = heatmap_color(norm);
-            pixels.push(rgb[0]);
-            pixels.push(rgb[1]);
-            pixels.push(rgb[2]);
-            pixels.push(255);
+            pixels.push(egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]));
         }
 
-        ColorImage::from_rgba_unmultiplied([width, height], &pixels)
+        ColorImage {
+            size: [width, height],
+            pixels,
+            ..Default::default()
+        }
     }
 }
 
@@ -416,9 +442,15 @@ impl InteractivePreset for MorphogenesisTab {
             if !self.paused {
                 let _ = self.controller.send_command(SimCommand::Start);
             }
+            self.dirty = true;
         } else {
             let _ = self.controller.send_command(SimCommand::Reset);
+            self.dirty = true;
         }
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "morphogenesis/tests.rs"]
+mod tests;
