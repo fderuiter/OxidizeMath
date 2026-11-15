@@ -1,31 +1,30 @@
 use super::linear_algebra::{Matrix, Vector};
-use std::f64::consts::E;
+use crate::ai::activation_kernels as kernel;
 
 /// ReLU (Rectified Linear Unit) activation function: f(z) = max(0, z).
 /// Applied element-wise.
 #[verified_engine::verified]
 pub fn relu(z: &Vector) -> Vector {
-    z.map(|v| if v > 0.0 { v } else { 0.0 })
+    z.map(kernel::relu)
 }
 
 /// Derivative of ReLU.
 /// f'(z) = 1 if z > 0, else 0.
 #[verified_engine::verified]
 pub fn relu_prime(z: &Vector) -> Vector {
-    z.map(|v| if v > 0.0 { 1.0 } else { 0.0 })
+    z.map(kernel::relu_prime)
 }
 
 /// Sigmoid activation function: \sigma(z) = 1 / (1 + e^{-z}).
 #[verified_engine::verified]
 pub fn sigmoid(z: &Vector) -> Vector {
-    z.map(|v| 1.0 / (1.0 + E.powf(-v)))
+    z.map(kernel::sigmoid)
 }
 
 /// Derivative of Sigmoid: \sigma'(z) = \sigma(z) * (1 - \sigma(z)).
 #[verified_engine::verified]
 pub fn sigmoid_prime(z: &Vector) -> Vector {
-    let s = sigmoid(z);
-    s.map(|v| v * (1.0 - v))
+    z.map(kernel::sigmoid_prime)
 }
 
 /// Computes the gradients for a linear layer during backpropagation.
@@ -79,37 +78,24 @@ where
 /// Tanh activation function.
 #[verified_engine::verified]
 pub fn tanh(z: &Vector) -> Vector {
-    z.map(|v| v.tanh())
+    z.map(kernel::tanh)
 }
 
 /// Derivative of Tanh: 1 - tanh^2(z).
 #[verified_engine::verified]
 pub fn tanh_prime(z: &Vector) -> Vector {
-    let t = tanh(z);
-    t.map(|v| 1.0 - v * v)
+    z.map(kernel::tanh_prime)
 }
 
 /// GELU (Gaussian Error Linear Unit) activation function.
 /// Approximation: 0.5 * z * (1 + tanh(sqrt(2/pi) * (z + 0.044715 * z^3)))
 #[verified_engine::verified]
 pub fn gelu(z: &Vector) -> Vector {
-    let sqrt_2_over_pi = (2.0f64 / std::f64::consts::PI).sqrt();
-    z.map(|v| 0.5 * v * (1.0 + (sqrt_2_over_pi * (v + 0.044715 * v.powi(3))).tanh()))
+    z.map(kernel::gelu)
 }
 
 /// Derivative of GELU (Approximation).
 #[verified_engine::verified]
 pub fn gelu_prime(z: &Vector) -> Vector {
-    let sqrt_2_over_pi = (2.0f64 / std::f64::consts::PI).sqrt();
-    z.map(|v| {
-        let x_cube = v.powi(3);
-        let inner = sqrt_2_over_pi * (v + 0.044715 * x_cube);
-        let tanh_inner = inner.tanh();
-        let sech_sq = 1.0 - tanh_inner * tanh_inner;
-
-        let term1 = 0.5 * (1.0 + tanh_inner);
-        let term2 = 0.5 * v * sech_sq * sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * v * v);
-
-        term1 + term2
-    })
+    z.map(kernel::gelu_prime)
 }
