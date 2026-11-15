@@ -166,8 +166,10 @@ fn test_attractor_annotations_toggle_and_fixed_points() {
 
 #[test]
 fn test_attractor_state_serialization_roundtrip_with_annotations() {
-    let mut plotter = AttractorPlotter::default();
-    plotter.show_annotations = false;
+    let plotter = AttractorPlotter {
+        show_annotations: false,
+        ..Default::default()
+    };
 
     let saved = plotter.save_state().expect("save_state should succeed");
     let mut restored = AttractorPlotter::default();
