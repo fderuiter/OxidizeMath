@@ -115,6 +115,61 @@ fn test_czt_config_smoke() {
 
 #[test]
 #[verified_engine::verified]
+fn test_czt_radar_peak_matching() {
+    let start_dist = 0.5;
+    let step_dist = 0.001; // 1mm resolution
+    let bins = 50;
+    let bandwidth = 4.0e9;
+    let chirp_time = 50.0e-6;
+    let c = 3.0e8;
+    let sample_rate = 2.0e6;
+    let n_samples = 256;
+
+    let config = SpatialCztConfig {
+        start_distance: start_dist,
+        step_distance: step_dist,
+        output_bins: bins,
+        bandwidth,
+        chirp_time,
+        c,
+    };
+
+    // Target at 0.525 m (bin 25)
+    let target_range = 0.525;
+    // Beat frequency: f_b = (2 * B * R) / (c * T_c)
+    let beat_freq = (2.0 * bandwidth * target_range) / (c * chirp_time);
+
+    let signal: Vec<Complex<f64>> = (0..n_samples)
+        .map(|n| {
+            let t = n as f64 / sample_rate;
+            Complex::new(0.0, 2.0 * PI * beat_freq * t).exp()
+        })
+        .collect();
+
+    let spectrum = config.process(&signal, sample_rate);
+    assert_eq!(spectrum.len(), bins);
+
+    let mut max_mag = -1.0;
+    let mut peak_bin = 0;
+    for (i, val) in spectrum.iter().enumerate() {
+        let mag = val.norm();
+        if mag > max_mag {
+            max_mag = mag;
+            peak_bin = i;
+        }
+    }
+
+    let estimated_range = start_dist + step_dist * peak_bin as f64;
+    assert!(
+        (estimated_range - target_range).abs() <= step_dist,
+        "Estimated range {} differed from target range {}",
+        estimated_range,
+        target_range
+    );
+}
+
+#[test]
+#[verified_engine::verified]
 fn test_music_smoke() {
     // 64 samples per chirp, 10 snapshots, 1 target
     let mut estimator = MusicEstimator::new(64, 10, 1).unwrap();
