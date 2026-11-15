@@ -14,6 +14,7 @@ mod models;
 use models::*;
 
 
+
 // ----------------------------------------------------------------------------
 // Tool Implementation
 // ----------------------------------------------------------------------------
@@ -263,6 +264,13 @@ impl InteractiveTool for OdeSolverTool {
                     }
                 });
 
+            let (latex_eq, plain_eq) = match self.preset {
+                OdePreset::Exponential => (r"\frac{dy}{dt} = k y", "dy/dt = k*y"),
+                OdePreset::HarmonicOscillator => (r"\frac{d^2 y}{dt^2} = -k y", "d^2y/dt^2 = -k*y"),
+                OdePreset::LogisticGrowth => (r"\frac{dy}{dt} = r y (1 - \frac{y}{K})", "dy/dt = r*y*(1 - y/K)"),
+            };
+            crate::reflective_ui::render_formula_with_export(ui, latex_eq, Some(plain_eq));
+
             ui.add_space(10.0);
             ui.heading("Parameters");
             match self.preset {
@@ -415,9 +423,15 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        match self.preset {
+            OdePreset::Exponential => r"Exponential model: $\frac{dy}{dt} = k y$".into(),
+            OdePreset::HarmonicOscillator => r"Harmonic oscillator: $\frac{d^2 y}{dt^2} = -k y$".into(),
+            OdePreset::LogisticGrowth => r"Logistic growth: $\frac{dy}{dt} = r y (1 - \frac{y}{K})$".into(),
+        }
+    }
+    fn phonetic_description(&self) -> String { "Ordinary differential equations theory".into() }
+    fn theory_citation(&self) -> String { "Differential Equations and Dynamical Systems (Perko, 2001)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
 

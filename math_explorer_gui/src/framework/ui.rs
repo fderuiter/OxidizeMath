@@ -24,7 +24,8 @@ impl SimulationFramework {
                         use crate::accessibility::AccessibleHoverText;
                         use crate::reflective_ui::render_theory_summary_with_export;
 
-                        render_theory_summary_with_export(ui, &theory.theory_description(), None)
+                        let theory_desc = theory.theory_description();
+                        render_theory_summary_with_export(ui, &theory_desc, Some(&theory_desc))
                             .accessible_hover_text("Theoretical background description");
 
                         ui.separator();
