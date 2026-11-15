@@ -1,72 +1,18 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
-use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialogState};
+use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::{
-    OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
+    OdeModel, RungeKutta4, TimeStepper, VecState,
 };
 
-#[derive(Clone, Debug)]
-struct ExponentialOde { k: f64 }
+mod annotations;
+mod models;
 
-impl OdeSystem<VecState> for ExponentialOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.k * state.0[0];
-    }
-}
+use models::*;
 
-#[derive(Clone, Debug)]
-struct HarmonicOscillatorOde { k: f64 }
-
-impl OdeSystem<VecState> for HarmonicOscillatorOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = state.0[1];
-        out.0[1] = -self.k * state.0[0];
-    }
-}
-
-#[derive(Clone, Debug)]
-struct LogisticGrowthOde { r: f64, cap_k: f64 }
-
-impl OdeSystem<VecState> for LogisticGrowthOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.r * state.0[0] * (1.0 - state.0[0] / self.cap_k);
-    }
-}
-
-fn eval_ode_final_state(preset: OdePreset, dt: f64, total_time: f64, p_map: &std::collections::HashMap<String, f64>) -> f64 {
-    let y0 = p_map.get("y0").copied().unwrap_or(1.0);
-    let v0 = p_map.get("v0").copied().unwrap_or(0.0);
-    let k = p_map.get("k").copied().unwrap_or(1.0);
-    let r = p_map.get("r").copied().unwrap_or(1.0);
-    let cap_k = p_map.get("cap_k").copied().unwrap_or(10.0);
-    let steps = (total_time / dt).ceil() as usize;
-    match preset {
-        OdePreset::Exponential => {
-            let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), ExponentialOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-        OdePreset::HarmonicOscillator => {
-            let init = VecState(vec![y0, v0]);
-            let mut model = OdeModel::new(init.clone(), HarmonicOscillatorOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-        OdePreset::LogisticGrowth => {
-            let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), LogisticGrowthOde { r, cap_k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-    }
-}
 
 // ----------------------------------------------------------------------------
 // Tool Implementation
@@ -85,11 +31,10 @@ pub struct OdeSolverTool {
     y_series: Vec<f64>,
     v_series: Vec<f64>,
     diverged: bool,
-    // Dialog & Presets
-    dialog_state: PresetDialogState,
     snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     last_param_summary: String,
+    pub show_annotations: bool,
 }
 
 impl Default for OdeSolverTool {
@@ -101,10 +46,10 @@ impl Default for OdeSolverTool {
             ic_y0: 1.0, ic_v0: 0.0,
             time_series: Vec::new(), y_series: Vec::new(), v_series: Vec::new(),
             diverged: false,
-            dialog_state: PresetDialogState::default(),
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
+            show_annotations: true,
         };
         tool.recalculate();
         tool
@@ -215,11 +160,25 @@ struct OdeState {
     ic_v0: f64,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
+    #[serde(default = "default_annotations_enabled")]
+    show_annotations: bool,
+}
+
+fn default_annotations_enabled() -> bool {
+    true
 }
 
 impl InteractiveTool for OdeSolverTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str { "ODE Solvers" }
+    fn domain(&self) -> &'static str { "analysis" }
+
+    fn export_preset_json(&self) -> Result<String, String> { self.to_json_string() }
+    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let res = self.from_json_str(json_str);
+        if res.is_ok() { self.recalculate(); }
+        res
+    }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut datasets = egui_plot::get_last_plot_datasets();
@@ -253,6 +212,7 @@ impl InteractiveTool for OdeSolverTool {
             ic_y0: self.ic_y0,
             ic_v0: self.ic_v0,
             snapshot_manager: self.snapshot_manager.clone(),
+            show_annotations: self.show_annotations,
         })
         .ok()
     }
@@ -263,12 +223,13 @@ impl InteractiveTool for OdeSolverTool {
             self.param_k = s.param_k; self.param_r = s.param_r; self.param_cap_k = s.param_cap_k;
             self.ic_y0 = s.ic_y0; self.ic_v0 = s.ic_v0;
             self.snapshot_manager = s.snapshot_manager;
+            self.show_annotations = s.show_annotations;
             self.recalculate();
         }
     }
 
     fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        self.from_json_str(json_str)
+        self.import_preset_json(json_str)
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -353,6 +314,9 @@ impl InteractiveTool for OdeSolverTool {
                 if ui.add(egui::DragValue::new(&mut self.total_time).speed(1.0).range(1.0..=100.0)).changed() { changed = true; }
             });
 
+            ui.add_space(5.0);
+            ui.checkbox(&mut self.show_annotations, "Show Annotations");
+
             ui.add_space(10.0);
             let param_summary = self.param_summary();
             let is_harmonic = self.preset == OdePreset::HarmonicOscillator;
@@ -369,16 +333,10 @@ impl InteractiveTool for OdeSolverTool {
                 Some((label, param_summary, series))
             });
 
-            let mut dialog_state = std::mem::take(&mut self.dialog_state);
-            if crate::presets::render_preset_buttons(&mut dialog_state, ui, self) {
-                changed = true;
-            }
-            self.dialog_state = dialog_state;
             if ui.button("🎨 Starter Gallery").on_hover_text("Open Starter Template Gallery").clicked() {
                 let cur = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")).unwrap_or(false));
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur));
             }
-
             let params = match self.preset {
                 OdePreset::Exponential => vec![("k".to_string(), self.param_k), ("y0".to_string(), self.ic_y0)],
                 OdePreset::HarmonicOscillator => vec![("k".to_string(), self.param_k), ("y0".to_string(), self.ic_y0), ("v0".to_string(), self.ic_v0)],
@@ -437,6 +395,9 @@ impl InteractiveTool for OdeSolverTool {
                         let line_v = Line::new("y'(t)", PlotPoints::new(plot_points_v))
                             .color(egui::Color32::LIGHT_RED);
                         plot_ui.line(line_v);
+                    }
+                    if self.show_annotations && !self.diverged {
+                        annotations::render_ode_callouts(plot_ui, self);
                     }
                     self.snapshot_manager.render_on_plot(plot_ui);
                 });

@@ -10,8 +10,8 @@ The graphical front-end for the `math_explorer` library, built using `eframe` (e
 Ensure you have the Rust toolchain installed. This crate is part of the `math_explorer` workspace.
 
 ```bash
-git clone https://github.com/fderuiter/math-explorer.git
-cd math-explorer
+git clone https://github.com/fderuiter/OxidizeMath.git
+cd OxidizeMath
 ```
 
 ##  Usage

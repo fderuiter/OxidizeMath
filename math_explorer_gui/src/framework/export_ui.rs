@@ -8,6 +8,15 @@ impl SimulationFramework {
             return;
         }
 
+        if let Some(tool) = &mut self.active_tool {
+            if self.preset_dialog.poll_import_tool(tool.as_mut()) {
+                if let Some(state) = tool.save_state() {
+                    self.saved_tool_states
+                        .insert(tool.name().to_string(), state);
+                }
+            }
+        }
+
         egui::TopBottomPanel::top(format!("{}_export_bar", id_source))
             .exact_height(32.0)
             .show(ctx, |ui| {
@@ -73,6 +82,56 @@ impl SimulationFramework {
                                 self.show_starter_gallery,
                             )
                         });
+                    }
+
+                    ui.separator();
+                    ui.label(egui::RichText::new("⚙ Presets:").strong());
+
+                    if ui
+                        .button("Import Preset JSON")
+                        .on_hover_text("Import parameter preset from a JSON file")
+                        .clicked()
+                    {
+                        self.preset_dialog.trigger_import();
+                    }
+
+                    if ui
+                        .button("Export Preset JSON")
+                        .on_hover_text("Export current parameter preset to a JSON file")
+                        .clicked()
+                    {
+                        if let Some(tool) = &self.active_tool {
+                            match tool.export_preset_json() {
+                                Ok(json_str) => {
+                                    let filename = format!("{}_preset.json", file_slug);
+                                    self.preset_dialog.trigger_export(json_str, &filename);
+                                }
+                                Err(err) => {
+                                    federated_registry::global_registry().emit(
+                                        federated_registry::TelemetryEvent {
+                                            source: "PresetSerialization".to_string(),
+                                            severity: federated_registry::Severity::Warning,
+                                            message: err.clone(),
+                                            metadata: std::collections::HashMap::new(),
+                                            thread_name: None,
+                                        },
+                                    );
+                                    self.preset_dialog.toast_error = Some(err);
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(ref err) = self.preset_dialog.toast_error {
+                        ui.separator();
+                        ui.colored_label(egui::Color32::RED, format!("⚠️ {}", err));
+                        if ui
+                            .small_button("✖")
+                            .on_hover_text("Dismiss warning")
+                            .clicked()
+                        {
+                            self.preset_dialog.toast_error = None;
+                        }
                     }
                 });
             });

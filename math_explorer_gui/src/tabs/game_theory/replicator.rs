@@ -1,6 +1,6 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::InteractiveTool;
-use crate::presets::{InteractivePreset, PresetDialogState, ReplicatorPresetConfig};
+use crate::presets::{InteractivePreset, ReplicatorPresetConfig};
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints, VLine};
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
@@ -17,7 +17,6 @@ pub struct ReplicatorDynamicsTool {
     playback_time: f64,
     is_playing: bool,
     playback_speed: f64,
-    dialog_state: PresetDialogState,
 }
 
 impl Default for ReplicatorDynamicsTool {
@@ -46,7 +45,6 @@ impl Default for ReplicatorDynamicsTool {
             playback_time: 0.0,
             is_playing: false,
             playback_speed: 1.0,
-            dialog_state: PresetDialogState::default(),
         };
         tool.run_simulation();
         tool
@@ -192,12 +190,6 @@ impl ReplicatorDynamicsTool {
         {
             self.run_simulation();
         }
-
-        let mut dialog_state = std::mem::take(&mut self.dialog_state);
-        if crate::presets::render_preset_buttons(&mut dialog_state, ui, self) {
-            self.run_simulation();
-        }
-        self.dialog_state = dialog_state;
     }
 
     fn show_trajectory_plot(&self, ui: &mut egui::Ui) {
@@ -296,6 +288,32 @@ impl InteractiveTool for ReplicatorDynamicsTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Replicator Dynamics"
+    }
+    fn domain(&self) -> &'static str {
+        "game_theory"
+    }
+
+    fn export_preset_json(&self) -> Result<String, String> {
+        self.to_json_string()
+    }
+
+    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let res = self.from_json_str(json_str);
+        if res.is_ok() {
+            self.run_simulation();
+        }
+        res
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&self.export_config()).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(config) = serde_json::from_str::<ReplicatorPresetConfig>(state) {
+            let _ = self.apply_config(config);
+            self.run_simulation();
+        }
     }
 
     fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {

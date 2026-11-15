@@ -188,6 +188,18 @@ impl ExplorerTab for MorphogenesisTab {
         }
     }
 
+    fn domain(&self) -> &'static str {
+        "biology"
+    }
+
+    fn export_preset_json(&self) -> Result<String, String> {
+        self.to_json_string()
+    }
+
+    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        self.from_json_str(json_str)
+    }
+
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.controller.update().is_some() {
             self.dirty = true;
