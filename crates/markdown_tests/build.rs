@@ -1,6 +1,7 @@
 //! Legacy crate.
 #[path = "../oxidize_core/src/path_utils.rs"]
-mod path_utils;
+/// Path utilities.
+pub mod path_utils;
 
 use std::env;
 use std::fs;

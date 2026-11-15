@@ -3,18 +3,6 @@ file = "crates/oxidize_core/src/lib.rs"
 identifier = "tests"
 
 [[dead_code]]
-file = "crates/oxidize_core/src/path_utils.rs"
-identifier = "normalize_path"
-
-[[dead_code]]
-file = "crates/oxidize_core/src/path_utils.rs"
-identifier = "strip_and_normalize"
-
-[[dead_code]]
-file = "crates/oxidize_core/src/path_utils.rs"
-identifier = "join_and_normalize"
-
-[[dead_code]]
 file = "crates/domain_climate/src/climate/autoencoder.rs"
 identifier = "in_channels"
 
@@ -35,9 +23,6 @@ file = "math_explorer/examples/bench_rk4_alloc.rs"
 identifier = "new"
 
 [[dead_code]]
-file = "math_explorer_gui/src/tabs/geometry_topology/export_utils.rs"
-
-[[dead_code]]
 file = "math_explorer_gui/src/tabs/chaos/attractors.rs"
 identifier = "diverged"
 
@@ -45,18 +30,3 @@ identifier = "diverged"
 file = "math_explorer_gui/src/tabs/analysis/ode.rs"
 identifier = "diverged"
 
-[[dead_code]]
-file = "math_explorer_gui/src/app/session.rs"
-identifier = "can_undo"
-
-[[dead_code]]
-file = "math_explorer_gui/src/app/session.rs"
-identifier = "can_redo"
-
-[[dead_code]]
-file = "math_explorer_gui/src/app/mod.rs"
-identifier = "tab_names"
-
-[[dead_code]]
-file = "math_explorer_gui/src/app/ui_panels.rs"
-identifier = "render_main_menu"
