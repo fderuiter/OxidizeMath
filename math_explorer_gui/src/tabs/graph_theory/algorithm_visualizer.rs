@@ -9,11 +9,18 @@ use petgraph::graph::NodeIndex;
 use petgraph::visit::{Bfs, Dfs};
 use std::collections::HashMap;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum Algorithm {
     Dijkstra,
     Bfs,
     Dfs,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct AlgorithmVisualizerState {
+    selected_algorithm: Algorithm,
+    start_node: Option<usize>,
+    playback_speed: f32,
 }
 
 pub struct AlgorithmVisualizerTool {
@@ -316,6 +323,28 @@ impl InteractiveTool for AlgorithmVisualizerTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Algorithm Visualizer"
+    }
+
+    fn domain(&self) -> &'static str {
+        "graph_theory"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&AlgorithmVisualizerState {
+            selected_algorithm: self.selected_algorithm,
+            start_node: self.start_node,
+            playback_speed: self.playback_speed,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(loaded) = serde_json::from_str::<AlgorithmVisualizerState>(state) {
+            self.selected_algorithm = loaded.selected_algorithm;
+            self.start_node = loaded.start_node;
+            self.playback_speed = loaded.playback_speed;
+            self.run_algorithm();
+        }
     }
 
     fn show(&mut self, ctx: &egui::Context) {
