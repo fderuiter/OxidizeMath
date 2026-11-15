@@ -97,3 +97,66 @@ fn test_autoencoder_gradient_finite_difference() {
         num_grad_00
     );
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_conv_layer_analytical_gradient() {
+    use domain_climate::climate::autoencoder::ConvLayer;
+    use nalgebra::DMatrix;
+
+    let mut layer = ConvLayer::new(2, 3);
+    layer.kernel.fill(0.2);
+    layer.bias.fill(0.1);
+
+    let initial_kernel = layer.kernel.clone();
+    let initial_bias = layer.bias.clone();
+
+    let input = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
+    let loss_grad = DMatrix::from_row_slice(2, 3, &[0.1, 0.2, 0.3, 0.4, 0.5, 0.6]);
+
+    let mut opt = SGD::new(0.01);
+    let grad_input = layer
+        .backward_update(&input, &loss_grad, &mut opt, 0)
+        .unwrap();
+
+    assert_eq!(grad_input.nrows(), 2);
+    assert_eq!(grad_input.ncols(), 2);
+    let expected_grad_in = &loss_grad * &initial_kernel;
+    assert!((&grad_input - expected_grad_in).norm() < 1e-5);
+
+    assert_ne!(layer.kernel, initial_kernel);
+    assert_ne!(layer.bias, initial_bias);
+
+    let expected_grad_w = (&loss_grad.transpose() * &input) / 2.0;
+    let effective_lr = 0.01;
+    let actual_grad_w = (&initial_kernel - &layer.kernel) / effective_lr;
+    assert!((actual_grad_w - expected_grad_w).norm() < 1e-4);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_conv_layer_edge_cases() {
+    use domain_climate::climate::autoencoder::ConvLayer;
+    use nalgebra::DMatrix;
+
+    let mut layer = ConvLayer::new(2, 3);
+    let initial_kernel = layer.kernel.clone();
+    let initial_bias = layer.bias.clone();
+    let mut opt = SGD::new(0.01);
+
+    let empty_input = DMatrix::zeros(0, 2);
+    let empty_grad = DMatrix::zeros(0, 3);
+    let res = layer.backward_update(&empty_input, &empty_grad, &mut opt, 0);
+    assert!(res.is_ok());
+    assert_eq!(layer.kernel, initial_kernel);
+
+    let input = DMatrix::from_row_slice(1, 2, &[1.0, 2.0]);
+    let nan_grad = DMatrix::from_row_slice(1, 3, &[f32::NAN, 0.0, 1.0]);
+    let res_nan = layer.backward_update(&input, &nan_grad, &mut opt, 0);
+    assert!(res_nan.is_ok());
+    assert_eq!(layer.kernel, initial_kernel);
+    assert_eq!(layer.bias, initial_bias);
+
+    let res_update = layer.update_weights(&mut opt, 0);
+    assert!(res_update.is_ok());
+}
