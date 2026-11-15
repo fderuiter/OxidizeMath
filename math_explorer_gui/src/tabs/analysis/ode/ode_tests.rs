@@ -211,6 +211,7 @@ fn test_generate_custom_ode_and_complex_screenshots() {
 
     let datasets = tool.export_datasets();
     let options = egui_plot::export::ExportOptions::default();
+    let _ = std::fs::create_dir_all("/tmp");
     if let Ok(png) = egui_plot::export::export_custom_png(&datasets, &options) {
         let _ = std::fs::write("/tmp/ast_expression_parser_ode.png", png);
     }

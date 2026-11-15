@@ -309,6 +309,7 @@ mod tests {
             ),
         ];
 
+        let _ = std::fs::create_dir_all("/tmp");
         if let Ok(png) = egui_plot::export::export_custom_png(&ode_datasets, &options) {
             let _ = std::fs::write("/tmp/ode_trace_overlay.png", png);
         }
@@ -477,6 +478,7 @@ mod tests {
             ),
         ];
         let options = egui_plot::export::ExportOptions::default();
+        let _ = std::fs::create_dir_all("/tmp");
         if let Ok(png_data) =
             egui_plot::export::export_custom_png(&gallery_preview_datasets, &options)
         {
