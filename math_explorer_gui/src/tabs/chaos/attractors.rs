@@ -136,6 +136,9 @@ impl InteractiveTool for AttractorPlotter {
     fn name(&self) -> &'static str {
         "Attractor Plotter"
     }
+    fn domain(&self) -> &'static str {
+        "chaos"
+    }
 
     fn save_state(&self) -> Option<String> {
         #[derive(serde::Serialize, serde::Deserialize)]

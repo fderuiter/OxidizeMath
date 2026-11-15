@@ -66,6 +66,39 @@ impl InteractiveTool for BifurcationDiagram {
         "Bifurcation Diagram"
     }
 
+    fn domain(&self) -> &'static str {
+        "chaos"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct BifurcationState {
+            r_min: f64,
+            r_max: f64,
+            steps: usize,
+        }
+        serde_json::to_string(&BifurcationState {
+            r_min: self.r_min,
+            r_max: self.r_max,
+            steps: self.steps,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct BifurcationState {
+            r_min: f64,
+            r_max: f64,
+            steps: usize,
+        }
+        if let Ok(s) = serde_json::from_str::<BifurcationState>(state) {
+            self.r_min = s.r_min;
+            self.r_max = s.r_max;
+            self.steps = s.steps;
+            self.recompute();
+        }
+    }
+
     fn show(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("bifurcation_controls").show(ctx, |ui| {
             ui.heading("Logistic Map");

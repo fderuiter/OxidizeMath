@@ -143,6 +143,51 @@ pub trait InteractiveTool {
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, _state: &str) {}
 
+    /// Domain category of the tool (e.g. "analysis", "biology", "game_theory").
+    fn domain(&self) -> &'static str {
+        ""
+    }
+
+    /// Serializes active parameter preset state to a formatted JSON string with metadata envelope.
+    fn export_preset_json(&self) -> Result<String, String> {
+        if let Some(state_str) = self.save_state() {
+            let config: serde_json::Value = serde_json::from_str(&state_str)
+                .map_err(|e| format!("Serialization error: {}", e))?;
+            let envelope = crate::presets::PresetWrapper {
+                metadata: crate::presets::PresetMetadata {
+                    schema_version: "1.0".to_string(),
+                    title: self.name().to_string(),
+                    domain: self.domain().to_string(),
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                },
+                config,
+            };
+            serde_json::to_string_pretty(&envelope)
+                .map_err(|e| format!("Serialization error: {}", e))
+        } else {
+            Err(format!("Preset export not supported for {}", self.name()))
+        }
+    }
+
+    /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
+    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let envelope: crate::presets::PresetWrapper<serde_json::Value> =
+            serde_json::from_str(json_str)
+                .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
+        let expected_domain = self.domain();
+        if !expected_domain.is_empty() && envelope.metadata.domain != expected_domain {
+            return Err(format!(
+                "Domain mismatch: preset is for domain '{}', but active tool is '{}'",
+                envelope.metadata.domain,
+                expected_domain
+            ));
+        }
+        let config_str = serde_json::to_string(&envelope.config)
+            .map_err(|e| format!("Config serialization error: {}", e))?;
+        self.load_state(&config_str);
+        Ok(())
+    }
+
     /// Optional hook to export tool datasets.
     /// Default implementation extracts datasets recorded from embedded `egui_plot::Plot`s if available.
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -215,6 +260,8 @@ pub struct SimulationFramework {
     pub export_gif_fps: u32,
     pub export_gif_frames: u32,
     pub export_status_message: Option<String>,
+    pub domain: String,
+    pub preset_dialog: crate::presets::PresetDialogState,
 }
 
 impl SimulationFramework {
@@ -244,6 +291,8 @@ impl SimulationFramework {
             export_gif_fps: 15,
             export_gif_frames: 20,
             export_status_message: None,
+            domain: domain.to_string(),
+            preset_dialog: crate::presets::PresetDialogState::default(),
         };
 
         if !framework.available_tools.is_empty() {

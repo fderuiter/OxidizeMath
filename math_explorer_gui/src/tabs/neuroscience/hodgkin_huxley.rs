@@ -18,6 +18,10 @@ pub struct HodgkinHuxleyUnified {
 }
 
 impl UnifiedModel for HodgkinHuxleyUnified {
+    fn domain() -> &'static str {
+        "neuroscience"
+    }
+
     fn new(params: &HashMap<String, f64>) -> Self {
         let g_na = *params.get("g_na").unwrap_or(&120.0);
         let g_k = *params.get("g_k").unwrap_or(&36.0);

@@ -7,11 +7,23 @@ use math_explorer::pure_math::differential_geometry::surface::{
 use nalgebra::Point3;
 use std::f64::consts::PI;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum SurfaceType {
     Sphere,
     Torus,
     KleinBottle,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SurfaceViewerState {
+    surface_type: SurfaceType,
+    sphere_radius: f64,
+    torus_major_radius: f64,
+    torus_minor_radius: f64,
+    klein_radius: f64,
+    u_resolution: usize,
+    v_resolution: usize,
+    camera: crate::framework::Camera3D,
 }
 
 pub struct SurfaceViewer {
@@ -106,6 +118,37 @@ impl InteractiveTool for SurfaceViewer {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Surface Viewer"
+    }
+
+    fn domain(&self) -> &'static str {
+        "geometry_topology"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&SurfaceViewerState {
+            surface_type: self.surface_type,
+            sphere_radius: self.sphere_radius,
+            torus_major_radius: self.torus_major_radius,
+            torus_minor_radius: self.torus_minor_radius,
+            klein_radius: self.klein_radius,
+            u_resolution: self.u_resolution,
+            v_resolution: self.v_resolution,
+            camera: self.camera,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(loaded) = serde_json::from_str::<SurfaceViewerState>(state) {
+            self.surface_type = loaded.surface_type;
+            self.sphere_radius = loaded.sphere_radius;
+            self.torus_major_radius = loaded.torus_major_radius;
+            self.torus_minor_radius = loaded.torus_minor_radius;
+            self.klein_radius = loaded.klein_radius;
+            self.u_resolution = loaded.u_resolution;
+            self.v_resolution = loaded.v_resolution;
+            self.camera = loaded.camera;
+        }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
