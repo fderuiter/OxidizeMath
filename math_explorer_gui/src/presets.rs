@@ -35,6 +35,8 @@ pub enum OdePreset {
     HarmonicOscillator,
     /// Logistic population growth model.
     LogisticGrowth,
+    /// Custom dynamic user equation.
+    Custom,
 }
 
 impl OdePreset {
@@ -44,6 +46,7 @@ impl OdePreset {
             OdePreset::Exponential => "y' = k*y (Exponential)",
             OdePreset::HarmonicOscillator => "y'' = -k*y (Harmonic Oscillator)",
             OdePreset::LogisticGrowth => "y' = r*y*(1 - y/K) (Logistic Growth)",
+            OdePreset::Custom => "y' = f(t, y) (Custom Equation)",
         }
     }
 }
@@ -67,6 +70,9 @@ pub struct OdePresetConfig {
     pub ic_y0: f64,
     /// Initial condition y'(0).
     pub ic_v0: f64,
+    /// Custom user equation expression.
+    #[serde(default)]
+    pub custom_expr: String,
 }
 
 /// Configuration struct for Turing Morphogenesis simulation parameters.
@@ -352,14 +358,11 @@ mod tests {
             value: 42.5,
             name: "Test Simulation".to_string(),
         };
-
         let json = tool.to_json_string().unwrap();
         assert!(json.contains("test_domain"));
         assert!(json.contains("42.5"));
-
         tool.value = 0.0;
         tool.name = "Cleared".to_string();
-
         tool.from_json_str(&json).unwrap();
         assert_eq!(tool.value, 42.5);
         assert_eq!(tool.name, "Test Simulation");
@@ -371,10 +374,8 @@ mod tests {
             value: 10.0,
             name: "Original".to_string(),
         };
-
         let result = tool.from_json_str("INVALID JSON CONTENT {");
         assert!(result.is_err());
-        // Value should remain unaltered
         assert_eq!(tool.value, 10.0);
         assert_eq!(tool.name, "Original");
     }
@@ -385,7 +386,6 @@ mod tests {
             value: 10.0,
             name: "Original".to_string(),
         };
-
         let wrong_domain_json = r#"{
             "metadata": {
                 "schema_version": "1.0",
@@ -398,7 +398,6 @@ mod tests {
                 "name": "Changed"
             }
         }"#;
-
         let result = tool.from_json_str(wrong_domain_json);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Domain mismatch"));
@@ -446,6 +445,7 @@ mod tests {
             param_cap_k: 10.0,
             ic_y0: 1.5,
             ic_v0: -0.5,
+            custom_expr: String::new(),
         };
 
         let wrapper = PresetWrapper {

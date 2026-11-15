@@ -2426,6 +2426,7 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "diagnostics",
+ "num-complex",
  "thiserror 2.0.21",
  "verified_engine",
 ]

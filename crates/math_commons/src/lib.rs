@@ -20,6 +20,8 @@
 //! assert_eq!(red, [255, 0, 0]);
 //! ```
 
+#[allow(missing_docs)]
+pub mod ast;
 pub mod constants;
 #[allow(missing_docs)]
 pub mod error;

@@ -1,7 +1,9 @@
 mod export_ui;
+pub mod math_input;
 pub mod trace_overlay;
 mod ui;
 
+pub use math_input::*;
 pub use trace_overlay::*;
 
 use crate::accessibility::AccessibleHoverText;

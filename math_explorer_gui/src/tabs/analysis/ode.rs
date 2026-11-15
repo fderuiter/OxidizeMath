@@ -1,72 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
+use crate::framework::{InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager};
 use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialogState};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
-use math_explorer::pure_math::analysis::ode::{
-    OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
-};
 
-#[derive(Clone, Debug)]
-struct ExponentialOde { k: f64 }
-
-impl OdeSystem<VecState> for ExponentialOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.k * state.0[0];
-    }
-}
-
-#[derive(Clone, Debug)]
-struct HarmonicOscillatorOde { k: f64 }
-
-impl OdeSystem<VecState> for HarmonicOscillatorOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = state.0[1];
-        out.0[1] = -self.k * state.0[0];
-    }
-}
-
-#[derive(Clone, Debug)]
-struct LogisticGrowthOde { r: f64, cap_k: f64 }
-
-impl OdeSystem<VecState> for LogisticGrowthOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.r * state.0[0] * (1.0 - state.0[0] / self.cap_k);
-    }
-}
-
-fn eval_ode_final_state(preset: OdePreset, dt: f64, total_time: f64, p_map: &std::collections::HashMap<String, f64>) -> f64 {
-    let y0 = p_map.get("y0").copied().unwrap_or(1.0);
-    let v0 = p_map.get("v0").copied().unwrap_or(0.0);
-    let k = p_map.get("k").copied().unwrap_or(1.0);
-    let r = p_map.get("r").copied().unwrap_or(1.0);
-    let cap_k = p_map.get("cap_k").copied().unwrap_or(10.0);
-    let steps = (total_time / dt).ceil() as usize;
-    match preset {
-        OdePreset::Exponential => {
-            let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), ExponentialOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-        OdePreset::HarmonicOscillator => {
-            let init = VecState(vec![y0, v0]);
-            let mut model = OdeModel::new(init.clone(), HarmonicOscillatorOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-        OdePreset::LogisticGrowth => {
-            let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), LogisticGrowthOde { r, cap_k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-    }
-}
+mod models;
+use models::*;
 
 // ----------------------------------------------------------------------------
 // Tool Implementation
@@ -85,6 +25,7 @@ pub struct OdeSolverTool {
     y_series: Vec<f64>,
     v_series: Vec<f64>,
     diverged: bool,
+    math_input: MathExpressionInputBar,
     // Dialog & Presets
     dialog_state: PresetDialogState,
     snapshot_manager: TraceSnapshotManager,
@@ -107,6 +48,17 @@ impl Default for OdeSolverTool {
             y_series: Vec::new(),
             v_series: Vec::new(),
             diverged: false,
+            math_input: MathExpressionInputBar::new(
+                "y'",
+                "-k * y * sin(t)",
+                vec![
+                    ("y' = -k*y*sin(t) (Non-linear Sine)", "-k * y * sin(t)"),
+                    ("y' = k*y (Exponential)", "k * y"),
+                    ("y' = r*y*(1 - y/cap_k) (Logistic)", "r * y * (1 - y / cap_k)"),
+                    ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
+                    ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
+                ],
+            ),
             dialog_state: PresetDialogState::default(),
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
@@ -122,6 +74,7 @@ impl OdeSolverTool {
         match self.preset {
             OdePreset::Exponential | OdePreset::HarmonicOscillator => format!(r"k={:.2}, \Delta t={:.2}", self.param_k, self.dt),
             OdePreset::LogisticGrowth => format!(r"r={:.2}, K={:.2}, \Delta t={:.2}", self.param_r, self.param_cap_k, self.dt),
+            OdePreset::Custom => format!(r"k={:.2}, \Delta t={:.2}", self.param_k, self.dt),
         }
     }
     #[must_use]
@@ -135,83 +88,37 @@ impl OdeSolverTool {
             OdePreset::Exponential => { self.param_k = 1.0; self.ic_y0 = 1.0; }
             OdePreset::HarmonicOscillator => { self.param_k = 1.0; self.ic_y0 = 1.0; self.ic_v0 = 0.0; }
             OdePreset::LogisticGrowth => { self.param_r = 1.0; self.param_cap_k = 10.0; self.ic_y0 = 1.0; }
+            OdePreset::Custom => { self.param_k = 1.0; self.ic_y0 = 1.0; self.math_input.set_expression("-k * y * sin(t)"); }
         }
         self.dt = 0.05;
         self.total_time = 10.0;
         self.recalculate();
     }
 
-    #[allow(clippy::too_many_lines)]
     fn recalculate(&mut self) {
-        self.time_series.clear();
-        self.y_series.clear();
-        self.v_series.clear();
-        self.diverged = false;
-
-        if self.dt <= 0.0 || self.total_time <= 0.0 || !self.dt.is_finite() || !self.total_time.is_finite() {
-            return;
-        }
-
-        let num_steps = (self.total_time / self.dt).ceil() as usize;
-
-        match self.preset {
-            OdePreset::Exponential => {
-                let init_state = VecState(vec![self.ic_y0]);
-                let dynamics = ExponentialOde { k: self.param_k };
-                let solver = RungeKutta4::new(&init_state);
-                let mut model = OdeModel::new(init_state, dynamics, solver);
-                for i in 0..=num_steps {
-                    let y = model.get_state().0[0];
-                    if !y.is_finite() {
-                        self.diverged = true;
-                        break;
-                    }
-                    self.time_series.push(i as f64 * self.dt);
-                    self.y_series.push(y);
-                    model.step(self.dt);
-                }
-            }
-            OdePreset::HarmonicOscillator => {
-                let init_state = VecState(vec![self.ic_y0, self.ic_v0]);
-                let dynamics = HarmonicOscillatorOde { k: self.param_k };
-                let solver = RungeKutta4::new(&init_state);
-                let mut model = OdeModel::new(init_state, dynamics, solver);
-                for i in 0..=num_steps {
-                    let y = model.get_state().0[0];
-                    let v = model.get_state().0[1];
-                    if !y.is_finite() || !v.is_finite() {
-                        self.diverged = true;
-                        break;
-                    }
-                    self.time_series.push(i as f64 * self.dt);
-                    self.y_series.push(y);
-                    self.v_series.push(v);
-                    model.step(self.dt);
-                }
-            }
-            OdePreset::LogisticGrowth => {
-                let init_state = VecState(vec![self.ic_y0]);
-                let dynamics = LogisticGrowthOde { r: self.param_r, cap_k: self.param_cap_k };
-                let solver = RungeKutta4::new(&init_state);
-                let mut model = OdeModel::new(init_state, dynamics, solver);
-                for i in 0..=num_steps {
-                    let y = model.get_state().0[0];
-                    if !y.is_finite() {
-                        self.diverged = true;
-                        break;
-                    }
-                    self.time_series.push(i as f64 * self.dt);
-                    self.y_series.push(y);
-                    model.step(self.dt);
-                }
-            }
-        }
+        let res = run_simulation(OdeSimConfig {
+            preset: self.preset,
+            dt: self.dt,
+            total_time: self.total_time,
+            k: self.param_k,
+            r: self.param_r,
+            cap_k: self.param_cap_k,
+            y0: self.ic_y0,
+            v0: self.ic_v0,
+            custom_expr: self.math_input.expr(),
+        });
+        self.time_series = res.time_series;
+        self.y_series = res.y_series;
+        self.v_series = res.v_series;
+        self.diverged = res.diverged;
         self.last_param_summary = self.param_summary();
     }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct OdeState {
+    #[serde(default)]
+    preset: Option<OdePreset>,
     dt: f64,
     total_time: f64,
     param_k: f64,
@@ -219,6 +126,8 @@ struct OdeState {
     param_cap_k: f64,
     ic_y0: f64,
     ic_v0: f64,
+    #[serde(default)]
+    custom_expr: String,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
 }
@@ -233,12 +142,8 @@ impl InteractiveTool for OdeSolverTool {
             let mut plot_points_y = Vec::new();
             let mut plot_points_v = Vec::new();
             for (i, &t) in self.time_series.iter().enumerate() {
-                if let Some(&y) = self.y_series.get(i) {
-                    plot_points_y.push([t, y]);
-                }
-                if let Some(&v) = self.v_series.get(i) {
-                    plot_points_v.push([t, v]);
-                }
+                if let Some(&y) = self.y_series.get(i) { plot_points_y.push([t, y]); }
+                if let Some(&v) = self.v_series.get(i) { plot_points_v.push([t, v]); }
             }
             datasets.push(("y(t)".to_string(), plot_points_y));
             if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
@@ -251,27 +156,21 @@ impl InteractiveTool for OdeSolverTool {
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&OdeState {
-            dt: self.dt,
-            total_time: self.total_time,
-            param_k: self.param_k,
-            param_r: self.param_r,
-            param_cap_k: self.param_cap_k,
-            ic_y0: self.ic_y0,
-            ic_v0: self.ic_v0,
+            preset: Some(self.preset),
+            dt: self.dt, total_time: self.total_time, param_k: self.param_k,
+            param_r: self.param_r, param_cap_k: self.param_cap_k, ic_y0: self.ic_y0,
+            ic_v0: self.ic_v0, custom_expr: self.math_input.raw_text.clone(),
             snapshot_manager: self.snapshot_manager.clone(),
-        })
-        .ok()
+        }).ok()
     }
 
     fn load_state(&mut self, state: &str) {
         if let Ok(s) = serde_json::from_str::<OdeState>(state) {
-            self.dt = s.dt;
-            self.total_time = s.total_time;
-            self.param_k = s.param_k;
-            self.param_r = s.param_r;
-            self.param_cap_k = s.param_cap_k;
-            self.ic_y0 = s.ic_y0;
-            self.ic_v0 = s.ic_v0;
+            if let Some(p) = s.preset { self.preset = p; }
+            self.dt = s.dt; self.total_time = s.total_time; self.param_k = s.param_k;
+            self.param_r = s.param_r; self.param_cap_k = s.param_cap_k;
+            self.ic_y0 = s.ic_y0; self.ic_v0 = s.ic_v0;
+            if !s.custom_expr.is_empty() { self.math_input.set_expression(&s.custom_expr); }
             self.snapshot_manager = s.snapshot_manager;
             self.recalculate();
         }
@@ -280,17 +179,12 @@ impl InteractiveTool for OdeSolverTool {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         let mut changed = false;
-
         let mut plot_points_y = Vec::new();
         let mut plot_points_v = Vec::new();
 
         for (i, &t) in self.time_series.iter().enumerate() {
-            if let Some(&y) = self.y_series.get(i) {
-                plot_points_y.push([t, y]);
-            }
-            if let Some(&v) = self.v_series.get(i) {
-                plot_points_v.push([t, v]);
-            }
+            if let Some(&y) = self.y_series.get(i) { plot_points_y.push([t, y]); }
+            if let Some(&v) = self.v_series.get(i) { plot_points_v.push([t, v]); }
         }
 
         egui::SidePanel::left("ode_controls").show(ctx, |ui| {
@@ -303,17 +197,25 @@ impl InteractiveTool for OdeSolverTool {
                     if ui.selectable_value(&mut self.preset, OdePreset::Exponential, OdePreset::Exponential.name()).changed()
                         || ui.selectable_value(&mut self.preset, OdePreset::HarmonicOscillator, OdePreset::HarmonicOscillator.name()).changed()
                         || ui.selectable_value(&mut self.preset, OdePreset::LogisticGrowth, OdePreset::LogisticGrowth.name()).changed()
+                        || ui.selectable_value(&mut self.preset, OdePreset::Custom, OdePreset::Custom.name()).changed()
                     {
                         changed = true;
                     }
                 });
 
+            if self.preset == OdePreset::Custom {
+                ui.add_space(6.0);
+                if self.math_input.ui(ui) {
+                    changed = true;
+                }
+            }
+
             ui.add_space(10.0);
             ui.heading("Parameters");
             match self.preset {
-                OdePreset::Exponential => {
+                OdePreset::Exponential | OdePreset::Custom => {
                     ui.horizontal(|ui| {
-                        ui.label("k (Rate):");
+                        ui.label("k (Rate / Parameter):");
                         if ui.add(egui::DragValue::new(&mut self.param_k).speed(0.1)).changed() { changed = true; }
                     });
                 }
@@ -382,7 +284,7 @@ impl InteractiveTool for OdeSolverTool {
             self.dialog_state = dialog_state;
 
             let params = match self.preset {
-                OdePreset::Exponential => vec![("k".to_string(), self.param_k), ("y0".to_string(), self.ic_y0)],
+                OdePreset::Exponential | OdePreset::Custom => vec![("k".to_string(), self.param_k), ("y0".to_string(), self.ic_y0)],
                 OdePreset::HarmonicOscillator => vec![
                     ("k".to_string(), self.param_k),
                     ("y0".to_string(), self.ic_y0),
@@ -398,9 +300,10 @@ impl InteractiveTool for OdeSolverTool {
             let current_preset = self.preset;
             let current_dt = self.dt;
             let current_total_time = self.total_time;
+            let custom_expr = self.math_input.expr().cloned();
 
-            self.sensitivity_engine.compute(&params, |p_map| {
-                eval_ode_final_state(current_preset, current_dt, current_total_time, p_map)
+            self.sensitivity_engine.compute(&params, move |p_map| {
+                eval_ode_final_state(current_preset, current_dt, current_total_time, p_map, custom_expr.as_ref())
             });
 
             crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "ode_tool");
@@ -481,6 +384,7 @@ impl InteractivePreset for OdeSolverTool {
             preset: self.preset, dt: self.dt, total_time: self.total_time,
             param_k: self.param_k, param_r: self.param_r, param_cap_k: self.param_cap_k,
             ic_y0: self.ic_y0, ic_v0: self.ic_v0,
+            custom_expr: self.math_input.raw_text.clone(),
         }
     }
 
@@ -488,6 +392,7 @@ impl InteractivePreset for OdeSolverTool {
         self.preset = config.preset; self.dt = config.dt; self.total_time = config.total_time;
         self.param_k = config.param_k; self.param_r = config.param_r; self.param_cap_k = config.param_cap_k;
         self.ic_y0 = config.ic_y0; self.ic_v0 = config.ic_v0;
+        if !config.custom_expr.is_empty() { self.math_input.set_expression(&config.custom_expr); }
         self.recalculate();
         Ok(())
     }
