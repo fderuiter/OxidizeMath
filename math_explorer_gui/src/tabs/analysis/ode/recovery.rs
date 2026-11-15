@@ -134,6 +134,13 @@ pub fn clamp_ode_parameters(
                 *param_cap_k = param_cap_k.clamp(0.1, 100.0);
             }
         }
+        OdePreset::Custom => {
+            if !param_k.is_finite() {
+                *param_k = 1.0;
+            } else {
+                *param_k = param_k.clamp(-10.0, 10.0);
+            }
+        }
     }
 }
 
