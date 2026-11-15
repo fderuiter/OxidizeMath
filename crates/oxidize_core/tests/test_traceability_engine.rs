@@ -1,5 +1,7 @@
 //! Tests for oxidize_core TraceabilityEngine.
 
+#![cfg(not(target_arch = "wasm32"))]
+
 use oxidize_core::traceability::TraceabilityEngine;
 use oxidize_core::vfs::DefaultVfs;
 
