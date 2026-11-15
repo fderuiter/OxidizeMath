@@ -301,3 +301,28 @@ impl RectElement for BoxElem {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_box_spread_and_box_elem_construction() {
+        let spread = BoxSpread::new(1.0, 2.0, 3.0, 4.0, 5.0);
+        assert_eq!(spread.lower_whisker, 1.0);
+        assert_eq!(spread.upper_whisker, 5.0);
+
+        let elem = BoxElem::new(0.0, spread.clone())
+            .name("TestBox")
+            .box_width(0.8)
+            .whisker_width(0.4)
+            .stroke(Stroke::new(1.0_f32, Color32::RED))
+            .fill(Color32::BLUE);
+
+        assert_eq!(elem.name, "TestBox");
+        assert_eq!(elem.box_width, 0.8);
+        assert_eq!(elem.whisker_width, 0.4);
+        assert_eq!(elem.stroke.color, Color32::RED);
+        assert_eq!(elem.fill, Color32::BLUE);
+    }
+}

@@ -83,3 +83,24 @@ pub fn check_staged_duplicates() {
         println!("These warnings are non-blocking.");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_file_lengths() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
+        let members = vec!["crates/pure_math".to_string()];
+        let violations = check_file_lengths(&members);
+        // files should not exceed 500 lines limit in pure_math
+        assert!(violations.is_empty(), "Violations: {:?}", violations);
+    }
+
+    #[test]
+    fn test_check_staged_duplicates_run() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
+        // Should execute git diff without panic
+        check_staged_duplicates();
+    }
+}

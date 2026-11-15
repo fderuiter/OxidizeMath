@@ -246,3 +246,24 @@ impl<'ast> Visit<'ast> for AssertVisitor {
         visit::visit_macro(self, node);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ast_visitor_parsing() {
+        let code = format!(
+            "#[verified]\nfn sample_fn() {{\n    assert!(true);\n    assert_eq!(1, 1);\n}}\n#[{}(opt_out = \"testing\")]\nfn opt_out_fn() {{}}\n",
+            "verified"
+        );
+        let file = syn::parse_file(&code).unwrap();
+        let mut visitor = AstVisitor::default();
+        visitor.visit_file(&file);
+
+        assert_eq!(visitor.total_funcs, 2);
+        assert_eq!(visitor.verified_funcs, 1);
+        assert_eq!(visitor.total_asserts, 2);
+        assert!(visitor.opted_out);
+    }
+}

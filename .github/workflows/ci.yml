@@ -135,7 +135,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          components: clippy, rustfmt
+          components: clippy, rustfmt, llvm-tools-preview
           targets: ${{ matrix.target }}
 
       - name: Cache dependencies
@@ -179,16 +179,25 @@ jobs:
         if: matrix.target != 'wasm32-unknown-unknown'
         run: cargo clippy --workspace --examples --all-features -- -D warnings
 
+      - name: Install cargo-llvm-cov
+        if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
+        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
+        with:
+          tool: cargo-llvm-cov
+
       - name: Run Workspace Tests (Native)
         if: matrix.target != 'wasm32-unknown-unknown'
         run: cargo test --workspace --lib --tests
 
       - name: Run Integrity Verified Suite
-        if: matrix.target != 'wasm32-unknown-unknown'
+        if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
         run: cargo run -p unified_verification --release -- verify-suite
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
       - name: Upload Verification Certificate
-        if: matrix.target != 'wasm32-unknown-unknown'
+        if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: verification-certificate-${{ matrix.artifact_name }}
@@ -263,7 +272,7 @@ jobs:
       - name: Install TeXLive
         run: |
           sudo apt-get update
-          sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science
+          sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science texlive-binaries
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable

@@ -309,12 +309,10 @@ mod tests {
             ),
         ];
 
-        let tmp_ode = std::env::temp_dir().join("ode_trace_overlay.png");
-        let tmp_sir = std::env::temp_dir().join("sir_trace_overlay.png");
-
-        if let Ok(png) = egui_plot::export::export_custom_png(&ode_datasets, &options) {
-            let _ = std::fs::write(&tmp_ode, &png);
-            let _ = std::fs::write("/tmp/ode_trace_overlay.png", &png);
+        let ode_png = egui_plot::export::export_custom_png(&ode_datasets, &options);
+        assert!(ode_png.is_ok());
+        if let Ok(png) = ode_png {
+            let _ = std::fs::write("/tmp/ode_trace_overlay.png", png);
         }
 
         // SIR trace overlay datasets
@@ -348,13 +346,11 @@ mod tests {
             ),
         ];
 
-        if let Ok(png) = egui_plot::export::export_custom_png(&sir_datasets, &options) {
-            let _ = std::fs::write(&tmp_sir, &png);
-            let _ = std::fs::write("/tmp/sir_trace_overlay.png", &png);
+        let sir_png = egui_plot::export::export_custom_png(&sir_datasets, &options);
+        assert!(sir_png.is_ok());
+        if let Ok(png) = sir_png {
+            let _ = std::fs::write("/tmp/sir_trace_overlay.png", png);
         }
-
-        assert!(tmp_ode.exists());
-        assert!(tmp_sir.exists());
     }
 
     #[test]
@@ -481,14 +477,11 @@ mod tests {
                     .collect(),
             ),
         ];
-        let tmp_preview = std::env::temp_dir().join("starter_gallery_preview.png");
         let options = egui_plot::export::ExportOptions::default();
-        if let Ok(png_data) =
-            egui_plot::export::export_custom_png(&gallery_preview_datasets, &options)
-        {
-            let _ = std::fs::write(&tmp_preview, &png_data);
-            let _ = std::fs::write("/tmp/starter_gallery_preview.png", &png_data);
+        let preview_png = egui_plot::export::export_custom_png(&gallery_preview_datasets, &options);
+        assert!(preview_png.is_ok());
+        if let Ok(png_data) = preview_png {
+            let _ = std::fs::write("/tmp/starter_gallery_preview.png", png_data);
         }
-        assert!(tmp_preview.exists());
     }
 }
