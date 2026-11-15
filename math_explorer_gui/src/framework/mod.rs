@@ -18,7 +18,10 @@ pub struct ToolMetadata {
 inventory::collect!(ToolMetadata);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InputMode { Mouse, Touch }
+pub enum InputMode {
+    Mouse,
+    Touch,
+}
 
 /// Event context provided to interaction hooks.
 #[allow(missing_docs)]

@@ -7,7 +7,7 @@ pub use types::{SessionLifecycleState, WorkspaceEnvelope};
 use crate::app::AppState;
 use crate::app::MathExplorerApp;
 use eframe::egui;
-use federated_registry::{global_registry, Severity, TelemetryEvent};
+use io::{file_name_str, handle_transition_error, notify};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 
@@ -451,35 +451,19 @@ impl WorkspaceSessionManager {
         if let Some((msg, is_error)) = self.toast() {
             let mut dismiss = false;
             ui.horizontal(|ui| {
-                let (color, icon) = if *is_error { (egui::Color32::RED, "⚠️") } else { (egui::Color32::LIGHT_GREEN, "ℹ️") };
+                let (color, icon) = if *is_error {
+                    (egui::Color32::RED, "⚠️")
+                } else {
+                    (egui::Color32::LIGHT_GREEN, "ℹ️")
+                };
                 ui.label(egui::RichText::new(format!("{} {}", icon, msg)).color(color));
-                if ui.small_button("✖").clicked() { dismiss = true; }
+                if ui.small_button("✖").clicked() {
+                    dismiss = true;
+                }
             });
-            if dismiss { self.clear_toast(); }
+            if dismiss {
+                self.clear_toast();
+            }
         }
     }
-}
-
-fn file_name_str(path: &std::path::Path) -> &str {
-    path.file_name().and_then(|n| n.to_str()).unwrap_or("workspace.mws")
-}
-
-fn handle_transition_error(mgr: &mut WorkspaceSessionManager, ctx: &egui::Context, op: &str) {
-    let err = format!("Invalid state transition: received {op} result while in {:?}", mgr.lifecycle_state);
-    notify(mgr, ctx, err, true);
-    mgr.lifecycle_state = SessionLifecycleState::Error;
-}
-
-fn notify(mgr: &mut WorkspaceSessionManager, ctx: &egui::Context, msg: String, is_err: bool) {
-    mgr.set_toast(&msg, is_err);
-    let (sev, aria) = if is_err { (Severity::Error, "aria_live_assertive_message") } else { (Severity::Info, "aria_live_message") };
-    log_telemetry(msg, sev, ctx, aria);
-}
-
-fn log_telemetry(msg: String, severity: Severity, ctx: &egui::Context, aria_key: &str) {
-    global_registry().emit(TelemetryEvent {
-        source: "WorkspaceSessionManager".to_string(),
-        severity, message: msg.clone(), metadata: std::collections::HashMap::new(), thread_name: None,
-    });
-    ctx.data_mut(|d| { d.insert_temp(egui::Id::new(aria_key), msg); });
 }
