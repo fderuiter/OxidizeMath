@@ -192,6 +192,9 @@ jobs:
       - name: Run Integrity Verified Suite
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
         run: cargo run -p unified_verification --release -- verify-suite
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
       - name: Upload Verification Certificate
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
