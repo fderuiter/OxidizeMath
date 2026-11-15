@@ -10,11 +10,16 @@ use math_explorer::pure_math::graph_theory::parameters::network_metrics::{
 use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum MetricType {
     DegreeCentrality,
     ClosenessCentrality,
     ClusteringCoefficient,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NetworkMetricsState {
+    selected_metric: MetricType,
 }
 
 pub struct NetworkMetricsTool {
@@ -117,6 +122,24 @@ impl InteractiveTool for NetworkMetricsTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Network Metrics"
+    }
+
+    fn domain(&self) -> &'static str {
+        "graph_theory"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&NetworkMetricsState {
+            selected_metric: self.selected_metric,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(loaded) = serde_json::from_str::<NetworkMetricsState>(state) {
+            self.selected_metric = loaded.selected_metric;
+            self.compute_metrics();
+        }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]

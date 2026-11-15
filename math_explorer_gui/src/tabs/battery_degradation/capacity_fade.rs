@@ -25,6 +25,37 @@ impl InteractiveTool for CapacityFadeTool {
     fn name(&self) -> &'static str {
         "Capacity Fade"
     }
+    fn domain(&self) -> &'static str {
+        "battery_degradation"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct CapacityFadeState {
+            dod: f64,
+            temperature: f64,
+            cycles_to_simulate: f64,
+        }
+        serde_json::to_string(&CapacityFadeState {
+            dod: self.dod,
+            temperature: self.temperature,
+            cycles_to_simulate: self.cycles_to_simulate,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct CapacityFadeState {
+            dod: f64,
+            temperature: f64,
+            cycles_to_simulate: f64,
+        }
+        if let Ok(s) = serde_json::from_str::<CapacityFadeState>(state) {
+            self.dod = s.dod;
+            self.temperature = s.temperature;
+            self.cycles_to_simulate = s.cycles_to_simulate;
+        }
+    }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {

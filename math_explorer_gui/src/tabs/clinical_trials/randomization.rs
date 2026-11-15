@@ -5,7 +5,7 @@ use math_explorer::applied::clinical_trials::design::{
     AllocationStrategy, BlockRandomizer, Group, SimpleRandomizer,
 };
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum RandomizationType {
     Simple,
     Block,
@@ -35,6 +35,39 @@ impl InteractiveTool for RandomizationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Randomization"
+    }
+    fn domain(&self) -> &'static str {
+        "clinical_trials"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct RandomizationState {
+            randomization_type: RandomizationType,
+            n_subjects: usize,
+            block_size: usize,
+        }
+        serde_json::to_string(&RandomizationState {
+            randomization_type: self.randomization_type,
+            n_subjects: self.n_subjects,
+            block_size: self.block_size,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct RandomizationState {
+            randomization_type: RandomizationType,
+            n_subjects: usize,
+            block_size: usize,
+        }
+        if let Ok(s) = serde_json::from_str::<RandomizationState>(state) {
+            self.randomization_type = s.randomization_type;
+            self.n_subjects = s.n_subjects;
+            self.block_size = s.block_size;
+            self.assignments.clear();
+            self.error_message = None;
+        }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]

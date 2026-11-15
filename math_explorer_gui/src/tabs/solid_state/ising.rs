@@ -132,6 +132,46 @@ impl InteractiveTool for IsingModelTool {
     fn name(&self) -> &'static str {
         "Ising Model"
     }
+    fn domain(&self) -> &'static str {
+        "solid_state"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct IsingState {
+            temperature: f64,
+            j_coupling: f64,
+            h_field: f64,
+            running: bool,
+            steps_per_frame: usize,
+        }
+        serde_json::to_string(&IsingState {
+            temperature: self.temperature,
+            j_coupling: self.j_coupling,
+            h_field: self.h_field,
+            running: self.running,
+            steps_per_frame: self.steps_per_frame,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct IsingState {
+            temperature: f64,
+            j_coupling: f64,
+            h_field: f64,
+            running: bool,
+            steps_per_frame: usize,
+        }
+        if let Ok(s) = serde_json::from_str::<IsingState>(state) {
+            self.temperature = s.temperature;
+            self.j_coupling = s.j_coupling;
+            self.h_field = s.h_field;
+            self.running = s.running;
+            self.steps_per_frame = s.steps_per_frame;
+            self.dirty = true;
+        }
+    }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {

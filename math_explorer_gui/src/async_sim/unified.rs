@@ -36,6 +36,14 @@ pub trait UnifiedModel: Send + 'static + scientific_metadata::theory::TheoryDesc
     where
         Self: Sized;
 
+    /// Return the domain category of the model.
+    fn domain() -> &'static str
+    where
+        Self: Sized,
+    {
+        ""
+    }
+
     /// Return presets that the model supports.
     fn presets() -> Vec<(&'static str, HashMap<String, f64>)>
     where
@@ -418,6 +426,23 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
     fn name(&self) -> &'static str {
         M::name()
+    }
+    fn domain(&self) -> &'static str {
+        M::domain()
+    }
+
+    fn save_state(&self) -> Option<String> {
+        let params = self.params.read().ok()?.clone();
+        serde_json::to_string(&params).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(params) = serde_json::from_str::<HashMap<String, f64>>(state) {
+            if let Ok(mut p) = self.params.write() {
+                *p = params;
+            }
+            let _ = self.controller.send_command(SimCommand::Reset);
+        }
     }
 
     fn show(&mut self, ctx: &egui::Context) {

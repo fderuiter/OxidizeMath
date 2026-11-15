@@ -174,6 +174,10 @@ impl ExplorerTab for MriTab {
         "MRI Physics"
     }
 
+    fn domain(&self) -> &'static str {
+        "physics"
+    }
+
     fn save_state(&self) -> Option<String> {
         #[derive(serde::Serialize, serde::Deserialize)]
         struct MriState {
