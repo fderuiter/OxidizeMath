@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::super::*;
+use super::*;
+use crate::presets::OdePreset;
 use eframe::egui;
 
 #[test]
@@ -148,10 +149,17 @@ fn test_ode_divergence_and_recovery_telemetry() {
     let events = federated_registry::global_registry().try_recv_all();
     let div_event = events
         .iter()
-        .find(|e| e.source == "OdeSolverTool" && e.severity == federated_registry::Severity::Error)
+        .find(|e| {
+            e.source == "OdeSolverTool"
+                && e.severity == federated_registry::Severity::Error
+                && e.metadata.get("preset").is_some_and(|s| s.contains("Exponential"))
+        })
         .expect("Divergence telemetry event should be emitted");
 
-    assert_eq!(div_event.metadata.get("diverged_variable"), Some(&"y(t)".to_string()));
+    assert_eq!(
+        div_event.metadata.get("diverged_variable"),
+        Some(&"y(t)".to_string())
+    );
     assert!(div_event.metadata.contains_key("t_diverged"));
     assert!(div_event.metadata.contains_key("step_count"));
 

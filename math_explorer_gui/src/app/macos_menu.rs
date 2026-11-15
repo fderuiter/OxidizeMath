@@ -39,7 +39,6 @@ fn build_edit_menu() -> Submenu {
     edit_menu.append(&redo_item).unwrap();
     edit_menu
 }
-
 fn build_split_submenu() -> Submenu {
     let split_submenu = Submenu::new("Split Layout", true);
     let split_single = MenuItem::with_id(
@@ -137,11 +136,21 @@ fn build_view_menu(app: &MathExplorerApp) -> Submenu {
 
 fn build_appearance_menu() -> Submenu {
     let appearance_menu = Submenu::new("Appearance", true);
-    let dark_item = MenuItem::with_id(MenuId::new("theme_dark"), "Dark", true, None);
-    let light_item = MenuItem::with_id(MenuId::new("theme_light"), "Light", true, None);
+    let dark_item = MenuItem::with_id(
+        MenuId::new("theme_dark"),
+        ThemeMode::Dark.name(),
+        true,
+        None,
+    );
+    let light_item = MenuItem::with_id(
+        MenuId::new("theme_light"),
+        ThemeMode::Light.name(),
+        true,
+        None,
+    );
     let hc_item = MenuItem::with_id(
         MenuId::new("theme_high_contrast"),
-        "High Contrast",
+        ThemeMode::HighContrast.name(),
         true,
         None,
     );
@@ -154,6 +163,7 @@ fn build_appearance_menu() -> Submenu {
 pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
     let menu = Menu::new();
 
+    // App Menu
     let app_menu = Submenu::new("Math Explorer", true);
     app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
     menu.append(&app_menu).unwrap();

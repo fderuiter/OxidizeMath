@@ -2,6 +2,7 @@ use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::InteractiveTool;
 use eframe::egui;
+use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
 use std::sync::Arc;
@@ -289,7 +290,7 @@ impl InteractiveTool for IsingModelTool {
                 let h = self.lattice.height();
                 for y in 0..h {
                     for x in 0..w {
-                        self.lattice.set(x, y, spins[y * w + x]);
+                        self.lattice.set(x, y, spins[flatten_2d_index(x, y, w)]);
                     }
                 }
             }

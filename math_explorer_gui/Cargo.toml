@@ -50,7 +50,7 @@ console_error_panic_hook = { workspace = true }
 getrandom = { workspace = true, features = ["js"] }
 wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
-web-sys = { workspace = true, features = ["Window", "Document", "HtmlCanvasElement", "Element", "Node", "Worker", "MessageEvent", "DedicatedWorkerGlobalScope", "ErrorEvent"] }
+web-sys = { workspace = true, features = ["Window", "Document", "HtmlCanvasElement", "Element", "Node", "Worker", "WorkerOptions", "WorkerType", "MessageEvent", "DedicatedWorkerGlobalScope", "ErrorEvent"] }
 
 [target.wasm32-unknown-unknown.dependencies]
 wasm-bindgen-futures = { workspace = true }

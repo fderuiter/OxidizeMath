@@ -84,57 +84,61 @@ impl SimulationFramework {
                         });
                     }
 
-                    ui.separator();
-                    ui.label(egui::RichText::new("⚙ Presets:").strong());
-
-                    if ui
-                        .button("Import Preset JSON")
-                        .on_hover_text("Import parameter preset from a JSON file")
-                        .clicked()
-                    {
-                        self.preset_dialog.trigger_import();
-                    }
-
-                    if ui
-                        .button("Export Preset JSON")
-                        .on_hover_text("Export current parameter preset to a JSON file")
-                        .clicked()
-                    {
-                        if let Some(tool) = &self.active_tool {
-                            match tool.export_preset_json() {
-                                Ok(json_str) => {
-                                    let filename = format!("{}_preset.json", file_slug);
-                                    self.preset_dialog.trigger_export(json_str, &filename);
-                                }
-                                Err(err) => {
-                                    federated_registry::global_registry().emit(
-                                        federated_registry::TelemetryEvent {
-                                            source: "PresetSerialization".to_string(),
-                                            severity: federated_registry::Severity::Warning,
-                                            message: err.clone(),
-                                            metadata: std::collections::HashMap::new(),
-                                            thread_name: None,
-                                        },
-                                    );
-                                    self.preset_dialog.toast_error = Some(err);
-                                }
-                            }
-                        }
-                    }
-
-                    if let Some(ref err) = self.preset_dialog.toast_error {
-                        ui.separator();
-                        ui.colored_label(egui::Color32::RED, format!("⚠️ {}", err));
-                        if ui
-                            .small_button("✖")
-                            .on_hover_text("Dismiss warning")
-                            .clicked()
-                        {
-                            self.preset_dialog.toast_error = None;
-                        }
-                    }
+                    self.render_preset_action_bar_controls(ui, &file_slug);
                 });
             });
+    }
+
+    fn render_preset_action_bar_controls(&mut self, ui: &mut egui::Ui, file_slug: &str) {
+        ui.separator();
+        ui.label(egui::RichText::new("⚙ Presets:").strong());
+
+        if ui
+            .button("Import Preset JSON")
+            .on_hover_text("Import parameter preset from a JSON file")
+            .clicked()
+        {
+            self.preset_dialog.trigger_import();
+        }
+
+        if ui
+            .button("Export Preset JSON")
+            .on_hover_text("Export current parameter preset to a JSON file")
+            .clicked()
+        {
+            if let Some(tool) = &self.active_tool {
+                match tool.export_preset_json() {
+                    Ok(json_str) => {
+                        let filename = format!("{}_preset.json", file_slug);
+                        self.preset_dialog.trigger_export(json_str, &filename);
+                    }
+                    Err(err) => {
+                        federated_registry::global_registry().emit(
+                            federated_registry::TelemetryEvent {
+                                source: "PresetSerialization".to_string(),
+                                severity: federated_registry::Severity::Warning,
+                                message: err.clone(),
+                                metadata: std::collections::HashMap::new(),
+                                thread_name: None,
+                            },
+                        );
+                        self.preset_dialog.toast_error = Some(err);
+                    }
+                }
+            }
+        }
+
+        if let Some(ref err) = self.preset_dialog.toast_error {
+            ui.separator();
+            ui.colored_label(egui::Color32::RED, format!("⚠️ {}", err));
+            if ui
+                .small_button("✖")
+                .on_hover_text("Dismiss warning")
+                .clicked()
+            {
+                self.preset_dialog.toast_error = None;
+            }
+        }
     }
 
     fn render_modal_aspect_combo(&mut self, ui: &mut egui::Ui, id_source: &str) {
