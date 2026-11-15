@@ -36,6 +36,10 @@ pub struct PlotMemory {
     /// Persisted imported datasets overlaid on the plot.
     pub imported_datasets: Vec<crate::export::ImportedDataset>,
 
+    /// Persisted callout annotations overlaid on the plot.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub callouts: Vec<crate::SavedCallout>,
+
     /// Toggle logarithmic scale transformation on X-axis.
     #[cfg_attr(feature = "serde", serde(default))]
     pub log_x: bool,
