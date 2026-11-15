@@ -8,17 +8,32 @@ use math_explorer::pure_math::differential_geometry::surface::{
 use nalgebra::Point3;
 use std::f64::consts::PI;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum SurfaceType {
     Sphere,
     Torus,
     KleinBottle,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum CurvatureType {
     Gaussian,
     Mean,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CurvatureHeatmapState {
+    surface_type: SurfaceType,
+    curvature_type: CurvatureType,
+    sphere_radius: f64,
+    torus_major_radius: f64,
+    torus_minor_radius: f64,
+    klein_radius: f64,
+    u_resolution: usize,
+    v_resolution: usize,
+    pitch: f32,
+    yaw: f32,
+    zoom: f32,
 }
 
 pub struct CurvatureHeatmap {
@@ -170,6 +185,43 @@ impl InteractiveTool for CurvatureHeatmap {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Curvature Heatmap"
+    }
+
+    fn domain(&self) -> &'static str {
+        "geometry_topology"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&CurvatureHeatmapState {
+            surface_type: self.surface_type,
+            curvature_type: self.curvature_type,
+            sphere_radius: self.sphere_radius,
+            torus_major_radius: self.torus_major_radius,
+            torus_minor_radius: self.torus_minor_radius,
+            klein_radius: self.klein_radius,
+            u_resolution: self.u_resolution,
+            v_resolution: self.v_resolution,
+            pitch: self.pitch,
+            yaw: self.yaw,
+            zoom: self.zoom,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(loaded) = serde_json::from_str::<CurvatureHeatmapState>(state) {
+            self.surface_type = loaded.surface_type;
+            self.curvature_type = loaded.curvature_type;
+            self.sphere_radius = loaded.sphere_radius;
+            self.torus_major_radius = loaded.torus_major_radius;
+            self.torus_minor_radius = loaded.torus_minor_radius;
+            self.klein_radius = loaded.klein_radius;
+            self.u_resolution = loaded.u_resolution;
+            self.v_resolution = loaded.v_resolution;
+            self.pitch = loaded.pitch;
+            self.yaw = loaded.yaw;
+            self.zoom = loaded.zoom;
+        }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
