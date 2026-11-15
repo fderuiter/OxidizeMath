@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::app::{AppState, ThemeMode, WorkspaceEnvelope};
+use crate::app::{AppState, WorkspaceEnvelope};
 
 #[test]
 fn test_callout_creation() {
@@ -114,14 +114,7 @@ fn test_workspace_envelope_serialization() {
     let app_state = AppState {
         selected_tab: 0,
         selected_tab_name: Some("ODE Solvers".to_string()),
-        show_info: true,
-        show_warnings: true,
-        show_errors: true,
-        show_diagnostics_panel: true,
-        theme: ThemeMode::Dark,
-        tab_states: std::collections::HashMap::new(),
-        viewport_layout: crate::app::ViewportLayout::Single,
-        pane_tabs: vec![0, 1, 2, 3],
+        ..Default::default()
     };
 
     let envelope = WorkspaceEnvelope {

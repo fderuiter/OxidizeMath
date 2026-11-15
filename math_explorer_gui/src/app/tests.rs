@@ -382,12 +382,10 @@ fn test_history_stack_max_depth_capping() {
             show_diagnostics_panel: true,
             theme: ThemeMode::Dark,
             tab_states: std::collections::HashMap::new(),
-            viewport_layout: ViewportLayout::Single,
-            pane_tabs: Vec::new(),
+            ..Default::default()
         };
         mgr.push_undo(state);
     }
-
     let mut popped = 0;
     while mgr.pop_undo().is_some() {
         popped += 1;
@@ -409,8 +407,7 @@ fn test_continuous_slider_drag_coalescing() {
         show_diagnostics_panel: true,
         theme: ThemeMode::Dark,
         tab_states: std::collections::HashMap::new(),
-        viewport_layout: ViewportLayout::Single,
-        pane_tabs: Vec::new(),
+        ..Default::default()
     };
     mgr.track_state_changes(&ctx, state0.clone());
 
@@ -448,8 +445,7 @@ fn test_workspace_envelope_history_preservation() {
         show_diagnostics_panel: true,
         theme: ThemeMode::Dark,
         tab_states: std::collections::HashMap::new(),
-        viewport_layout: ViewportLayout::Single,
-        pane_tabs: Vec::new(),
+        ..Default::default()
     };
     let state1 = AppState {
         selected_tab: 1,
@@ -460,8 +456,7 @@ fn test_workspace_envelope_history_preservation() {
         show_diagnostics_panel: true,
         theme: ThemeMode::Light,
         tab_states: std::collections::HashMap::new(),
-        viewport_layout: ViewportLayout::Single,
-        pane_tabs: Vec::new(),
+        ..Default::default()
     };
 
     mgr1.push_undo(state0.clone());

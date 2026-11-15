@@ -81,6 +81,9 @@ jobs:
       - name: Check File Lengths (500 lines limit)
         run: cargo run -p unified_verification --release -- check-file-lengths
 
+      - name: Check Crate Documentation
+        run: cargo run -p unified_verification --release -- check-docs
+
       - name: Build Documentation
         env:
           RUSTDOCFLAGS: -D warnings

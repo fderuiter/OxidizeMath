@@ -19,6 +19,7 @@ fn make_dummy_state(tab: usize, theme: ThemeMode) -> AppState {
         tab_states: HashMap::new(),
         viewport_layout: crate::app::ViewportLayout::Single,
         pane_tabs: vec![tab, 1, 2, 3],
+        ..Default::default()
     }
 }
 
