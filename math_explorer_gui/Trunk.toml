@@ -1,6 +1,7 @@
 [build]
-target = "wasm32-unknown-unknown"
+target = "index.html"
 rustflags = ["-C", "target-feature=+atomics,+bulk-memory"]
+filehash = false
 
 [serve]
 headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp" }

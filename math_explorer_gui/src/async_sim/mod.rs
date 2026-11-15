@@ -225,7 +225,9 @@ impl SimulationController {
 
         let mut opt_worker = None;
         // Try to initialize a Web Worker
-        if let Ok(worker) = web_sys::Worker::new("worker.js") {
+        let worker_opts = web_sys::WorkerOptions::new();
+        worker_opts.set_type(web_sys::WorkerType::Module);
+        if let Ok(worker) = web_sys::Worker::new_with_options("worker.js", &worker_opts) {
             let msg = js_sys::Object::new();
             let _ = js_sys::Reflect::set(
                 &msg,
