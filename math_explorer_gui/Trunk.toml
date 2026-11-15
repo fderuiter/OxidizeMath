@@ -2,7 +2,16 @@
 target = "index.html"
 filehash = false
 public_url = "./"
-rustflags = ["-C", "target-feature=+atomics,+bulk-memory"]
+rustflags = ["-C", "target-feature=+atomics,+bulk-memory", "-C", "strip=debuginfo"]
+wasm-opt = "z"
 
 [serve]
 headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp" }
+
+[[hooks]]
+stage = "post_build"
+command = "bash"
+command_arguments = [
+    "-c",
+    "for f in \"$TRUNK_STAGING_DIR\"/*.wasm \"$TRUNK_STAGING_DIR\"/*.js \"$TRUNK_STAGING_DIR\"/*.html \"$TRUNK_STAGING_DIR\"/*.css; do if [ -f \"$f\" ]; then gzip -k -9 -f \"$f\" && brotli -k -9 -f \"$f\"; fi; done"
+]

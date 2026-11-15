@@ -211,9 +211,29 @@ jobs:
         if: matrix.target == 'wasm32-unknown-unknown'
         run: cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
 
-      - name: Build GUI for WASM
+      - name: Install cargo-binstall
         if: matrix.target == 'wasm32-unknown-unknown'
-        run: cargo build -p math_explorer_gui --target wasm32-unknown-unknown --verbose
+        uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
+
+      - name: Install WASM Tools and Compression Utilities
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binaryen brotli
+          cargo binstall --no-confirm trunk
+
+      - name: Build Web Application
+        if: matrix.target == 'wasm32-unknown-unknown'
+        working-directory: math_explorer_gui
+        run: trunk build --release
+
+      - name: Pre-compress Web Distribution Assets
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: bash scripts/compress_dist.sh math_explorer_gui/dist
+
+      - name: Verify WebAssembly Size Budget
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: bash scripts/verify_wasm_budget.sh math_explorer_gui/dist
 
       - name: Code Signing (Windows)
         if: runner.os == 'Windows'
