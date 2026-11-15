@@ -193,19 +193,25 @@ pub fn eval_ode_final_state(
         OdePreset::Exponential => {
             let init = VecState(vec![y0]);
             let mut model = OdeModel::new(init.clone(), ExponentialOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
+            for _ in 0..steps {
+                model.step(dt);
+            }
             model.state.0[0]
         }
         OdePreset::HarmonicOscillator => {
             let init = VecState(vec![y0, v0]);
             let mut model = OdeModel::new(init.clone(), HarmonicOscillatorOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
+            for _ in 0..steps {
+                model.step(dt);
+            }
             model.state.0[0]
         }
         OdePreset::LogisticGrowth => {
             let init = VecState(vec![y0]);
             let mut model = OdeModel::new(init.clone(), LogisticGrowthOde { r, cap_k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
+            for _ in 0..steps {
+                model.step(dt);
+            }
             model.state.0[0]
         }
         OdePreset::Custom => {
@@ -213,7 +219,9 @@ pub fn eval_ode_final_state(
                 let init = VecState(vec![y0]);
                 let dynamics = DynamicAstOde { expr: expr.clone(), params: p_map.clone() };
                 let mut model = OdeModel::new(init.clone(), dynamics, RungeKutta4::new(&init));
-                for _ in 0..steps { model.step(dt); }
+                for _ in 0..steps {
+                    model.step(dt);
+                }
                 model.state.0[0]
             } else {
                 f64::NAN

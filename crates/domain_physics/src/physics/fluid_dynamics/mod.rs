@@ -3,7 +3,6 @@
 //! This module implements the fundamental Conservation Laws of Fluid Dynamics:
 //! * **Mass**: Continuity Equation.
 //! * **Momentum**: Navier-Stokes and Euler Equations.
-//! * **Energy**: (Planned).
 //!
 //! It uses a **Strategy Pattern** to switch between flow regimes (Viscous vs. Inviscid)
 //! and analyzing flow characteristics (Laminar vs. Turbulent).

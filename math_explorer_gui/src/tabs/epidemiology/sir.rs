@@ -145,6 +145,9 @@ impl InteractiveTool for SirTool {
     fn name(&self) -> &'static str {
         "SIR Model"
     }
+    fn domain(&self) -> &'static str {
+        "epidemiology"
+    }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut datasets = egui_plot::get_last_plot_datasets();

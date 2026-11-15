@@ -143,53 +143,6 @@ pub fn calculate_taylor_tool_life(
     ToolLife::new(result)
 }
 
-/// Estimates Fault Lifetime using a Modified Taylor's Equation.
-///
-/// Used in predictive maintenance (Prognostics) for CNC machines.
-/// It models the relationship between cutting speed and tool life.
-///
-/// The standard Taylor's Tool Life Equation is $V T^n = C$.
-/// This implementation calculates $T$ (Time) given $V$ (Velocity).
-///
-/// $$ T = \left( \frac{C}{V} \right)^{1/n} $$
-///
-/// # Arguments
-///
-/// * `cutting_speed` ($V$) - The cutting speed in m/min.
-/// * `constant_c` ($C$) - A material-specific constant (e.g., depends on the workpiece and tool).
-/// * `exponent_n` ($n$) - Exponent depending on tool material (e.g., 0.1 for HSS, 0.25 for Carbide).
-///
-/// # Returns
-///
-/// * `f64` - Estimated Tool life ($T$) in minutes.
-///
-/// # Example
-///
-/// ```
-/// use domain_applied::applied::engineering::taylor_tool_life;
-///
-/// // High Speed Steel (HSS) tool cutting steel
-/// let v = 40.0; // 40 m/min
-/// let c = 100.0;
-/// let n = 0.1;
-///
-/// #[allow(deprecated)]
-/// let life = taylor_tool_life(v, c, n);
-/// // Expecting (100/40)^(1/0.1) = 2.5^10 = 9536.7...
-/// assert!(life > 9000.0);
-/// ```
-#[deprecated(
-    since = "0.2.0",
-    note = "Use `calculate_taylor_tool_life` with semantic types instead to prevent primitive obsession."
-)]
-#[verified_engine::verified]
-pub fn taylor_tool_life(cutting_speed: f64, constant_c: f64, exponent_n: f64) -> f64 {
-    if cutting_speed <= 0.0 || exponent_n == 0.0 {
-        return 0.0;
-    }
-    (constant_c / cutting_speed).powf(1.0 / exponent_n)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

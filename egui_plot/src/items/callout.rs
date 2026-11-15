@@ -203,6 +203,57 @@ impl PlotItem for Callout {
     }
 }
 
+/// A serializable representation of a user callout annotation stored in [`crate::PlotMemory`].
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub struct SavedCallout {
+    /// Target plot coordinate [x, y].
+    pub point: [f64; 2],
+    /// Callout text label (limited to 128 characters).
+    pub label: String,
+    /// Screen pixel offset [dx, dy] for label placement and leader line.
+    pub offset: [f32; 2],
+}
+
+impl SavedCallout {
+    /// Create a new saved callout annotation, truncating the label to 128 characters.
+    pub fn new(point: [f64; 2], label: impl Into<String>, offset: [f32; 2]) -> Self {
+        let mut label = label.into();
+        if label.trim().is_empty() {
+            label = format!("({:.2}, {:.2})", point[0], point[1]);
+        }
+        if label.chars().count() > 128 {
+            label = label.chars().take(128).collect();
+        }
+        Self {
+            point,
+            label,
+            offset,
+        }
+    }
+
+    /// Convert this saved callout into a renderable [`Callout`] plot item.
+    pub fn to_callout(&self) -> Callout {
+        let label = if self.label.trim().is_empty() {
+            format!("({:.2}, {:.2})", self.point[0], self.point[1])
+        } else if self.label.chars().count() > 128 {
+            self.label.chars().take(128).collect()
+        } else {
+            self.label.clone()
+        };
+
+        Callout::new(self.point, label)
+            .offset(Vec2::new(self.offset[0], self.offset[1]))
+            .leader_stroke(Stroke::new(1.5_f32, Color32::TRANSPARENT))
+            .frame(
+                Color32::from_rgba_unmultiplied(28, 32, 40, 230),
+                Stroke::new(1.0_f32, Color32::from_gray(180)),
+            )
+            .corner_radius(CornerRadius::same(4))
+            .name(&self.label)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,5 +348,27 @@ mod tests {
                 assert!(shapes.iter().any(|s| matches!(s, Shape::Text(_))));
             });
         });
+    }
+
+    #[test]
+    fn test_saved_callout_creation_and_truncation() {
+        let long_label = "A".repeat(200);
+        let saved = SavedCallout::new([1.5, -2.5], long_label, [15.0, -25.0]);
+        assert_eq!(saved.point, [1.5, -2.5]);
+        assert_eq!(saved.label.len(), 128);
+        assert_eq!(saved.offset, [15.0, -25.0]);
+
+        // Empty label defaults to coordinate string
+        let empty_saved = SavedCallout::new([3.0, 4.0], "", [10.0, 10.0]);
+        assert_eq!(empty_saved.label, "(3.00, 4.00)");
+    }
+
+    #[test]
+    fn test_saved_callout_to_callout() {
+        let saved = SavedCallout::new([10.0, 20.0], "Equilibrium", [30.0, -30.0]);
+        let callout = saved.to_callout();
+        assert_eq!(callout.target_point, PlotPoint::new(10.0, 20.0));
+        assert_eq!(callout.label_offset, vec2(30.0, -30.0));
+        assert_ne!(callout.frame_fill, Color32::TRANSPARENT);
     }
 }

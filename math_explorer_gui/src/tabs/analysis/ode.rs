@@ -1,11 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::framework::{InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager};
-use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialogState};
+use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 
+mod annotations;
 mod models;
+
 use models::*;
 
 // ----------------------------------------------------------------------------
@@ -26,11 +28,10 @@ pub struct OdeSolverTool {
     v_series: Vec<f64>,
     diverged: bool,
     math_input: MathExpressionInputBar,
-    // Dialog & Presets
-    dialog_state: PresetDialogState,
     snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     last_param_summary: String,
+    pub show_annotations: bool,
 }
 
 impl Default for OdeSolverTool {
@@ -59,10 +60,10 @@ impl Default for OdeSolverTool {
                     ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
                 ],
             ),
-            dialog_state: PresetDialogState::default(),
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
+            show_annotations: true,
         };
         tool.recalculate();
         tool
@@ -130,11 +131,25 @@ struct OdeState {
     custom_expr: String,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
+    #[serde(default = "default_annotations_enabled")]
+    show_annotations: bool,
+}
+
+fn default_annotations_enabled() -> bool {
+    true
 }
 
 impl InteractiveTool for OdeSolverTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str { "ODE Solvers" }
+    fn domain(&self) -> &'static str { "analysis" }
+
+    fn export_preset_json(&self) -> Result<String, String> { self.to_json_string() }
+    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let res = self.from_json_str(json_str);
+        if res.is_ok() { self.recalculate(); }
+        res
+    }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut datasets = egui_plot::get_last_plot_datasets();
@@ -161,7 +176,9 @@ impl InteractiveTool for OdeSolverTool {
             param_r: self.param_r, param_cap_k: self.param_cap_k, ic_y0: self.ic_y0,
             ic_v0: self.ic_v0, custom_expr: self.math_input.raw_text.clone(),
             snapshot_manager: self.snapshot_manager.clone(),
-        }).ok()
+            show_annotations: self.show_annotations,
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
@@ -172,6 +189,7 @@ impl InteractiveTool for OdeSolverTool {
             self.ic_y0 = s.ic_y0; self.ic_v0 = s.ic_v0;
             if !s.custom_expr.is_empty() { self.math_input.set_expression(&s.custom_expr); }
             self.snapshot_manager = s.snapshot_manager;
+            self.show_annotations = s.show_annotations;
             self.recalculate();
         }
     }
@@ -261,6 +279,9 @@ impl InteractiveTool for OdeSolverTool {
                 if ui.add(egui::DragValue::new(&mut self.total_time).speed(1.0).range(1.0..=100.0)).changed() { changed = true; }
             });
 
+            ui.add_space(5.0);
+            ui.checkbox(&mut self.show_annotations, "Show Annotations");
+
             ui.add_space(10.0);
             let param_summary = self.param_summary();
             let is_harmonic = self.preset == OdePreset::HarmonicOscillator;
@@ -276,12 +297,6 @@ impl InteractiveTool for OdeSolverTool {
                 }
                 Some((label, param_summary, series))
             });
-
-            let mut dialog_state = std::mem::take(&mut self.dialog_state);
-            if crate::presets::render_preset_buttons(&mut dialog_state, ui, self) {
-                changed = true;
-            }
-            self.dialog_state = dialog_state;
 
             let params = match self.preset {
                 OdePreset::Exponential | OdePreset::Custom => vec![("k".to_string(), self.param_k), ("y0".to_string(), self.ic_y0)],
@@ -350,6 +365,9 @@ impl InteractiveTool for OdeSolverTool {
                         let line_v = Line::new("y'(t)", PlotPoints::new(plot_points_v))
                             .color(egui::Color32::LIGHT_RED);
                         plot_ui.line(line_v);
+                    }
+                    if self.show_annotations && !self.diverged {
+                        annotations::render_ode_callouts(plot_ui, self);
                     }
                     self.snapshot_manager.render_on_plot(plot_ui);
                 });
