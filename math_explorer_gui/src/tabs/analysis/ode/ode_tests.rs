@@ -210,9 +210,12 @@ fn test_generate_custom_ode_and_complex_screenshots() {
     tool.recalculate();
 
     let datasets = tool.export_datasets();
+    let tmp_ode = std::env::temp_dir().join("ast_expression_parser_ode.png");
+    let tmp_complex = std::env::temp_dir().join("ast_expression_parser_complex.png");
     let options = egui_plot::export::ExportOptions::default();
     if let Ok(png) = egui_plot::export::export_custom_png(&datasets, &options) {
-        let _ = std::fs::write("/tmp/ast_expression_parser_ode.png", png);
+        let _ = std::fs::write(&tmp_ode, &png);
+        let _ = std::fs::write("/tmp/ast_expression_parser_ode.png", &png);
     }
 
     // Complex conformal mapping datasets: w = z^3 - 1/z
@@ -241,11 +244,12 @@ fn test_generate_custom_ode_and_complex_screenshots() {
     }
 
     if let Ok(png) = egui_plot::export::export_custom_png(&complex_datasets, &options) {
-        let _ = std::fs::write("/tmp/ast_expression_parser_complex.png", png);
+        let _ = std::fs::write(&tmp_complex, &png);
+        let _ = std::fs::write("/tmp/ast_expression_parser_complex.png", &png);
     }
 
-    assert!(std::path::Path::new("/tmp/ast_expression_parser_ode.png").exists());
-    assert!(std::path::Path::new("/tmp/ast_expression_parser_complex.png").exists());
+    assert!(tmp_ode.exists());
+    assert!(tmp_complex.exists());
 }
 
 #[test]
