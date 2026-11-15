@@ -211,8 +211,9 @@ fn test_generate_custom_ode_and_complex_screenshots() {
 
     let datasets = tool.export_datasets();
     let options = egui_plot::export::ExportOptions::default();
-    let _ = std::fs::create_dir_all("/tmp");
-    if let Ok(png) = egui_plot::export::export_custom_png(&datasets, &options) {
+    let ode_png = egui_plot::export::export_custom_png(&datasets, &options);
+    assert!(ode_png.is_ok());
+    if let Ok(png) = ode_png {
         let _ = std::fs::write("/tmp/ast_expression_parser_ode.png", png);
     }
 
@@ -241,12 +242,11 @@ fn test_generate_custom_ode_and_complex_screenshots() {
         }
     }
 
-    if let Ok(png) = egui_plot::export::export_custom_png(&complex_datasets, &options) {
+    let complex_png = egui_plot::export::export_custom_png(&complex_datasets, &options);
+    assert!(complex_png.is_ok());
+    if let Ok(png) = complex_png {
         let _ = std::fs::write("/tmp/ast_expression_parser_complex.png", png);
     }
-
-    assert!(std::path::Path::new("/tmp/ast_expression_parser_ode.png").exists());
-    assert!(std::path::Path::new("/tmp/ast_expression_parser_complex.png").exists());
 }
 
 #[test]
