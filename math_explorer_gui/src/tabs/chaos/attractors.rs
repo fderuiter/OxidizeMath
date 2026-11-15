@@ -1,12 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::accessibility::AccessibleTheoryHover;
+use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SolverExecutionState {
@@ -18,6 +20,10 @@ pub enum SolverExecutionState {
         diverged_at_step: usize,
     },
 }
+
+#[path = "attractors/runner.rs"]
+mod runner;
+pub use runner::*;
 
 pub struct AttractorPlotter {
     system: LorenzSystem,
@@ -33,12 +39,33 @@ pub struct AttractorPlotter {
     max_points: usize,
 
     camera: crate::framework::Camera3D,
+    params: Arc<std::sync::RwLock<AttractorSharedParams>>,
+    worker: BackgroundWorker<AttractorRunner>,
 }
 
 impl Default for AttractorPlotter {
     fn default() -> Self {
         let initial_state = LorenzState::new(1.0, 1.0, 1.0);
         let system = LorenzBuilder::new().build(initial_state);
+        let sigma = system.sigma;
+        let rho = system.rho;
+        let beta = system.beta;
+        let params = Arc::new(std::sync::RwLock::new(AttractorSharedParams {
+            sigma,
+            rho,
+            beta,
+            dt: 0.01,
+            simulation_speed: 5,
+            max_points: 2000,
+        }));
+        let runner = AttractorRunner {
+            system: LorenzBuilder::new().sigma(sigma).rho(rho).beta(beta).build(initial_state),
+            params: Arc::clone(&params),
+            history: VecDeque::with_capacity(2000),
+            step_count: 0,
+            execution_state: SolverExecutionState::Ready,
+        };
+        let worker = BackgroundWorker::new(runner);
 
         Self {
             system,
@@ -49,6 +76,8 @@ impl Default for AttractorPlotter {
             history: VecDeque::with_capacity(2000),
             max_points: 2000,
             camera: crate::framework::Camera3D::new(0.0, 0.0, 1.0),
+            params,
+            worker,
         }
     }
 }
@@ -85,10 +114,19 @@ impl AttractorPlotter {
             return Err("Cannot resume simulation: system parameters are non-finite.");
         }
         self.execution_state = SolverExecutionState::Running;
+        let _ = self.worker.send_command(SimCommand::Start);
         Ok(())
     }
 
     pub fn on_slider_changed(&mut self) {
+        if let Ok(mut p) = self.params.write() {
+            p.sigma = self.system.sigma;
+            p.rho = self.system.rho;
+            p.beta = self.system.beta;
+            p.dt = self.dt;
+            p.simulation_speed = self.simulation_speed;
+            p.max_points = self.max_points;
+        }
         if self.diverged() && self.is_finite_state() {
             self.execution_state = SolverExecutionState::Ready;
         }
@@ -107,6 +145,15 @@ impl AttractorPlotter {
         self.history.clear();
         self.step_count = 0;
         self.execution_state = SolverExecutionState::Ready;
+        let _ = self.worker.send_command(SimCommand::Reset);
+        if let Ok(mut p) = self.params.write() {
+            p.sigma = sigma;
+            p.rho = rho;
+            p.beta = beta;
+            p.dt = self.dt;
+            p.simulation_speed = self.simulation_speed;
+            p.max_points = self.max_points;
+        }
     }
 
     pub fn reset_parameters(&mut self) {
@@ -217,9 +264,38 @@ impl InteractiveTool for AttractorPlotter {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         // --- Simulation ---
+        let current_vec = self.system.state.vec;
+        if (!current_vec.x.is_finite()
+            || !current_vec.y.is_finite()
+            || !current_vec.z.is_finite())
+            && !self.diverged()
+        {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: current_vec,
+                diverged_at_step: self.step_count,
+            };
+        }
+
         if !self.is_paused() {
-            self.step_simulation();
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
             ctx.request_repaint();
+        } else if self.worker.is_running() {
+            let _ = self.worker.send_command(SimCommand::Pause);
+        }
+
+        if let Some(snapshot) = self.worker.update() {
+            if let Some(data) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
+            {
+                self.history = data.history.clone();
+                self.system.state.vec = data.current_vec;
+                self.step_count = data.step_count;
+                self.execution_state = data.execution_state;
+            }
         }
 
         // --- UI ---
@@ -251,6 +327,7 @@ impl InteractiveTool for AttractorPlotter {
                             let _ = self.try_resume();
                         } else {
                             self.execution_state = SolverExecutionState::Paused;
+                            let _ = self.worker.send_command(SimCommand::Pause);
                         }
                     }
                     if ui.button("↻ Reset").clicked() {
@@ -346,130 +423,5 @@ impl scientific_metadata::theory::TheoryDescribable for AttractorPlotter {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_attractor_divergence_detection() {
-        let mut plotter = AttractorPlotter::default();
-        assert!(!plotter.diverged());
-        assert!(!plotter.is_paused());
-        assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
-
-        // Introduce a non-finite state
-        plotter.system.state.vec.x = f64::NAN;
-
-        let ctx = egui::Context::default();
-        let _ = ctx.run(egui::RawInput::default(), |ctx| plotter.show(ctx));
-
-        assert!(plotter.diverged() && plotter.is_paused());
-        match plotter.execution_state {
-            SolverExecutionState::Diverged { invalid_vec, diverged_at_step } => {
-                assert!(invalid_vec.x.is_nan() && diverged_at_step == 0);
-            }
-            _ => panic!("Expected Diverged execution state"),
-        }
-
-        // Verify history contains no non-finite values
-        assert!(plotter.history.iter().all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
-
-        // Reset clears diverged flag cleanly and restores Ready
-        plotter.reset();
-        assert!(!plotter.diverged() && !plotter.is_paused());
-        assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
-        assert_eq!(plotter.step_count, 0);
-    }
-
-    #[test]
-    fn test_attractor_reset_parameters() {
-        let mut plotter = AttractorPlotter::default();
-        plotter.system.sigma = f64::NAN;
-        plotter.execution_state = SolverExecutionState::Diverged {
-            invalid_vec: Vector3::new(f64::NAN, 1.0, 1.0),
-            diverged_at_step: 10,
-        };
-
-        plotter.reset_parameters();
-        assert!(!plotter.diverged());
-        assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
-        assert_eq!(plotter.step_count, 0);
-        assert_eq!(plotter.system.sigma, 10.0);
-    }
-
-    #[test]
-    fn test_attractor_transition_validation_non_finite_rejection() {
-        let mut plotter = AttractorPlotter::default();
-        plotter.system.state.vec.x = f64::NAN;
-
-        let ctx = egui::Context::default();
-        let _ = ctx.run(egui::RawInput::default(), |ctx| plotter.show(ctx));
-
-        assert!(plotter.diverged() && plotter.is_paused());
-
-        // Resume attempt must fail while coordinates are non-finite
-        assert!(plotter.try_resume().is_err() && plotter.diverged());
-
-        // Slider modifications must remain inert while state is non-finite
-        plotter.system.sigma = 15.0;
-        plotter.on_slider_changed();
-        assert!(plotter.diverged());
-
-        plotter.dt = 0.02;
-        plotter.on_slider_changed();
-        assert!(plotter.diverged());
-
-        // Explicit reset restores Ready state and finite coordinates
-        plotter.reset();
-        assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
-        assert!(!plotter.diverged() && !plotter.is_paused() && plotter.is_finite_state());
-
-        // Resume now succeeds
-        assert!(plotter.try_resume().is_ok());
-        assert_eq!(plotter.execution_state, SolverExecutionState::Running);
-    }
-
-    #[test]
-    fn test_attractor_parameter_sanitization_and_rejection() {
-        let mut plotter = AttractorPlotter::default();
-        plotter.system.sigma = f64::NAN;
-        plotter.dt = f64::NAN;
-
-        // try_resume must reject non-finite parameters
-        assert!(plotter.try_resume().is_err());
-
-        // Reset sanitizes non-finite parameters to default values
-        plotter.reset();
-        assert_eq!(plotter.system.sigma, 10.0);
-        assert_eq!(plotter.dt, 0.01);
-        assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
-    }
-
-    #[test]
-    fn test_attractor_step_counting_and_divergence_metadata() {
-        let mut plotter = AttractorPlotter::default();
-        assert_eq!(plotter.step_count, 0);
-
-        plotter.step_simulation();
-        assert_eq!(plotter.execution_state, SolverExecutionState::Running);
-        assert_eq!(plotter.step_count, plotter.simulation_speed);
-
-        let datasets = plotter.export_datasets();
-        let options = egui_plot::export::ExportOptions::default();
-        if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
-            let _ = std::fs::write("/tmp/attractor_plotter_trajectory.png", png_data);
-        }
-
-        // Force divergence during stepping
-        plotter.system.state.vec.y = f64::INFINITY;
-        plotter.step_simulation();
-
-        assert!(plotter.diverged());
-        match plotter.execution_state {
-            SolverExecutionState::Diverged { invalid_vec, diverged_at_step } => {
-                assert!(invalid_vec.y.is_infinite());
-                assert_eq!(diverged_at_step, plotter.simulation_speed);
-            }
-            _ => panic!("Expected Diverged execution state"),
-        }
-    }
-}
+#[path = "attractors/tests.rs"]
+mod tests;

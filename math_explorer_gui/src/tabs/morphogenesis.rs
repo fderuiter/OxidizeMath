@@ -1,4 +1,6 @@
-use crate::async_sim::{SimCommand, SimulationController, SimulationRunner, StateSnapshot};
+use crate::async_sim::{
+    BackgroundWorker, SimCommand, SimulationRunner, StateSnapshot,
+};
 use crate::presets::{InteractivePreset, MorphogenesisPresetConfig, PresetDialogState};
 use crate::tabs::ExplorerTab;
 use eframe::egui;
@@ -71,7 +73,7 @@ impl SimulationRunner for MorphogenesisRunner {
 
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct MorphogenesisTab {
-    controller: SimulationController,
+    controller: BackgroundWorker<MorphogenesisRunner>,
     params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     width: usize,
     height: usize,
@@ -125,7 +127,7 @@ impl Default for MorphogenesisTab {
             height,
         };
 
-        let mut controller = SimulationController::new(runner);
+        let mut controller = BackgroundWorker::new(runner);
         let _ = controller.send_command(SimCommand::Start);
 
         Self {
@@ -438,7 +440,7 @@ impl InteractivePreset for MorphogenesisTab {
                 width: self.width,
                 height: self.height,
             };
-            self.controller = SimulationController::new(runner);
+            self.controller = BackgroundWorker::new(runner);
             if !self.paused {
                 let _ = self.controller.send_command(SimCommand::Start);
             }
