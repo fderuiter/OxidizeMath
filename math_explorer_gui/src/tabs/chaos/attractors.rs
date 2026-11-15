@@ -16,17 +16,12 @@ pub use runner::*;
 
 pub struct AttractorPlotter {
     system: LorenzSystem,
-
-    // Simulation Control
     execution_state: SolverExecutionState,
     step_count: usize,
     simulation_speed: usize,
     dt: f64,
-
-    // Visualization
     history: VecDeque<Vector3<f64>>, // Store as Vector3 for easier math
     max_points: usize,
-
     camera: crate::framework::Camera3D,
     params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     worker: BackgroundWorker<AttractorRunner>,
