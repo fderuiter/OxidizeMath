@@ -1,7 +1,7 @@
 # Math Explorer
 
-![CI/CD](https://github.com/fderuiter/math-explorer/actions/workflows/rust.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)
+![CI/CD](https://github.com/fderuiter/OxidizeMath/actions/workflows/ci.yml/badge.svg)
+![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)
 ![License](https://img.shields.io/badge/license-AGPL-blue.svg)
 ![Coverage](https://img.shields.io/badge/coverage-33.3%25-yellow)
 

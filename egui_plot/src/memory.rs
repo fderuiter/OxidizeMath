@@ -36,6 +36,10 @@ pub struct PlotMemory {
     /// Persisted imported datasets overlaid on the plot.
     pub imported_datasets: Vec<crate::export::ImportedDataset>,
 
+    /// Persisted callout annotations overlaid on the plot.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub callouts: Vec<crate::SavedCallout>,
+
     /// Toggle logarithmic scale transformation on X-axis.
     #[cfg_attr(feature = "serde", serde(default))]
     pub log_x: bool,
@@ -70,10 +74,6 @@ pub struct PlotMemory {
 
     /// Last right-click position captured in plot coordinates.
     pub last_right_click_coord: Option<[f64; 2]>,
-
-    /// Persisted callout annotations overlaid on the plot canvas.
-    #[cfg_attr(feature = "serde", serde(default))]
-    pub callouts: Vec<CanvasCallout>,
 }
 
 /// Persisted canvas callout annotation data.
@@ -83,6 +83,22 @@ pub struct CanvasCallout {
     pub target_point: [f64; 2],
     pub label_offset: [f32; 2],
     pub text: String,
+}
+
+impl From<CanvasCallout> for crate::SavedCallout {
+    fn from(c: CanvasCallout) -> Self {
+        Self::new(c.target_point, c.text, c.label_offset)
+    }
+}
+
+impl From<crate::SavedCallout> for CanvasCallout {
+    fn from(s: crate::SavedCallout) -> Self {
+        Self {
+            target_point: s.point,
+            label_offset: s.offset,
+            text: s.label,
+        }
+    }
 }
 
 #[cfg(feature = "serde")]

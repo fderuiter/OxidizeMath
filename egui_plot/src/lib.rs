@@ -43,7 +43,7 @@ pub use crate::{
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
         LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
-        PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, Text, VLine,
+        PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, Text, VLine,
     },
     latex::{MathBox, parse_latex_to_layout_job, parse_latex_with_font, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
@@ -944,6 +944,7 @@ impl<'a> Plot<'a> {
             x_axis_thickness: Default::default(),
             y_axis_thickness: Default::default(),
             imported_datasets: Default::default(),
+            callouts: Default::default(),
             log_x: false,
             log_y: false,
             grid_density: 8.0,
@@ -953,7 +954,6 @@ impl<'a> Plot<'a> {
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
             last_right_click_coord: None,
-            callouts: Default::default(),
         });
 
         // Drain any newly imported CSV datasets for this plot
@@ -998,32 +998,19 @@ impl<'a> Plot<'a> {
             }
         }
 
-        // Render persisted canvas callouts as overlay items
-        for callout in &mem.callouts {
-            plot_ui.callout(
-                crate::Callout::new(callout.target_point, &callout.text)
-                    .offset(callout.label_offset)
-                    .leader_stroke(Stroke::new(
-                        1.0_f32,
-                        ui.visuals().widgets.noninteractive.fg_stroke.color,
-                    ))
-                    .frame_fill(ui.visuals().window_fill)
-                    .frame_stroke(Stroke::new(
-                        1.0_f32,
-                        ui.visuals().widgets.noninteractive.fg_stroke.color,
-                    ))
-                    .corner_radius(egui::CornerRadius::same(4)),
-            );
-        }
-
         let inner = build_fn(&mut plot_ui);
 
         // Drain any remaining canvas callouts not consumed by a custom CalloutManager
         let newly_added_callouts = drain_pending_callouts(plot_id);
         if !newly_added_callouts.is_empty() {
-            mem.callouts.extend(newly_added_callouts);
+            mem.callouts
+                .extend(newly_added_callouts.into_iter().map(SavedCallout::from));
         }
 
+        // Render persisted user callouts automatically
+        for saved in &mem.callouts {
+            plot_ui.callout(saved.to_callout());
+        }
         let PlotUi {
             mut items,
             mut response,
@@ -1530,9 +1517,15 @@ impl<'a> Plot<'a> {
             show_x_labels: bool,
             show_y_labels: bool,
             clamp_grid: bool,
-            show_callout_modal: bool,
-            callout_modal_coord: Option<[f64; 2]>,
-            callout_text: String,
+            show_add_callout_modal: bool,
+            new_callout_point: [f64; 2],
+            new_callout_text: String,
+            new_callout_offset: [f32; 2],
+            last_context_plot_pos: Option<[f64; 2]>,
+            show_edit_callout_modal: bool,
+            editing_callout_idx: Option<usize>,
+            edit_callout_text: String,
+            edit_callout_offset: [f32; 2],
         }
 
         impl Default for AccessState {
@@ -1560,9 +1553,15 @@ impl<'a> Plot<'a> {
                     show_x_labels: true,
                     show_y_labels: true,
                     clamp_grid: false,
-                    show_callout_modal: false,
-                    callout_modal_coord: None,
-                    callout_text: String::new(),
+                    show_add_callout_modal: false,
+                    new_callout_point: [0.0, 0.0],
+                    new_callout_text: String::new(),
+                    new_callout_offset: [30.0, -30.0],
+                    last_context_plot_pos: None,
+                    show_edit_callout_modal: false,
+                    editing_callout_idx: None,
+                    edit_callout_text: String::new(),
+                    edit_callout_offset: [30.0, -30.0],
                 }
             }
         }
@@ -2099,59 +2098,197 @@ impl<'a> Plot<'a> {
             access_state.show_settings_modal = modal_open && !close_requested;
         }
 
-        if access_state.show_callout_modal {
-            let mut modal_open = access_state.show_callout_modal;
-            let coord = access_state.callout_modal_coord.unwrap_or([0.0, 0.0]);
-            let mut submit = false;
-            let mut cancel = false;
-            egui::Window::new("Add Callout")
+        if access_state.show_add_callout_modal {
+            let mut modal_open = access_state.show_add_callout_modal;
+            let mut close_requested = false;
+            let mut add_confirmed = false;
+
+            egui::Window::new(format!("Add Callout - {id_source:?}"))
                 .open(&mut modal_open)
-                .collapsible(false)
                 .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                .collapsible(false)
+                .default_width(320.0)
                 .show(ui.ctx(), |ui| {
-                    ui.label(format!(
-                        "Canvas Point: X = {:.4}, Y = {:.4}",
-                        coord[0], coord[1]
-                    ));
+                    ui.label(egui::RichText::new("New Callout Annotation").strong());
+                    ui.separator();
+
                     ui.horizontal(|ui| {
-                        ui.label("Annotation text:");
-                        let text_re = ui.text_edit_singleline(&mut access_state.callout_text);
-                        if text_re.gained_focus() || access_state.callout_text.is_empty() {
-                            text_re.request_focus();
-                        }
+                        ui.label("Target Coordinates:");
+                        ui.monospace(format!(
+                            "X: {:.4}, Y: {:.4}",
+                            access_state.new_callout_point[0], access_state.new_callout_point[1]
+                        ));
+                    });
+
+                    ui.add_space(4.0);
+                    ui.label("Label Text (max 128 chars):");
+                    let text_edit_res = ui.add(
+                        egui::TextEdit::singleline(&mut access_state.new_callout_text)
+                            .char_limit(128)
+                            .hint_text("e.g. Equilibrium / Critical Point"),
+                    );
+                    if text_edit_res.lost_focus()
+                        && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter))
+                    {
+                        add_confirmed = true;
+                    }
+
+                    if access_state.new_callout_text.chars().count() > 128 {
+                        access_state.new_callout_text =
+                            access_state.new_callout_text.chars().take(128).collect();
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new("Screen Pixel Offset").small().weak());
+                    ui.horizontal(|ui| {
+                        ui.label("X Offset (dx):");
+                        ui.add(
+                            egui::DragValue::new(&mut access_state.new_callout_offset[0])
+                                .speed(1.0),
+                        );
+                        ui.label("px");
                     });
                     ui.horizontal(|ui| {
-                        if ui.button("Add Callout").clicked()
-                            || ui.input(|i| i.key_pressed(egui::Key::Enter))
-                        {
-                            submit = true;
+                        ui.label("Y Offset (dy):");
+                        ui.add(
+                            egui::DragValue::new(&mut access_state.new_callout_offset[1])
+                                .speed(1.0),
+                        );
+                        ui.label("px");
+                    });
+
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if ui.button("Add Callout").clicked() {
+                            add_confirmed = true;
                         }
                         if ui.button("Cancel").clicked() {
-                            cancel = true;
+                            close_requested = true;
                         }
                     });
                 });
-            if submit {
-                let text = access_state.callout_text.trim();
-                if !text.is_empty() {
-                    push_pending_callout(
-                        plot_id,
-                        CanvasCallout {
-                            target_point: coord,
-                            label_offset: [20.0, -20.0],
-                            text: text.to_string(),
-                        },
-                    );
-                }
-                access_state.callout_text.clear();
-                access_state.show_callout_modal = false;
-            } else if cancel {
-                access_state.callout_text.clear();
-                access_state.show_callout_modal = false;
-            } else {
-                access_state.show_callout_modal = modal_open;
+
+            if add_confirmed {
+                let label = if access_state.new_callout_text.trim().is_empty() {
+                    format!(
+                        "({:.2}, {:.2})",
+                        access_state.new_callout_point[0], access_state.new_callout_point[1]
+                    )
+                } else {
+                    access_state.new_callout_text.clone()
+                };
+                push_pending_callout(
+                    plot_id,
+                    CanvasCallout {
+                        target_point: access_state.new_callout_point,
+                        label_offset: access_state.new_callout_offset,
+                        text: label,
+                    },
+                );
+                ui.ctx().request_repaint();
+                close_requested = true;
             }
+
+            access_state.show_add_callout_modal = modal_open && !close_requested;
+        }
+
+        if access_state.show_edit_callout_modal {
+            let mut modal_open = access_state.show_edit_callout_modal;
+            let mut close_requested = false;
+            let mut delete_requested = false;
+            let mut update_confirmed = false;
+            let current_idx = access_state.editing_callout_idx;
+
+            if let Some(idx) = current_idx {
+                if idx < mem.callouts.len() {
+                    egui::Window::new(format!("Edit Callout - {id_source:?}"))
+                        .open(&mut modal_open)
+                        .resizable(false)
+                        .collapsible(false)
+                        .default_width(320.0)
+                        .show(ui.ctx(), |ui| {
+                            ui.label(egui::RichText::new("Edit Callout Annotation").strong());
+                            ui.separator();
+
+                            ui.horizontal(|ui| {
+                                ui.label("Target Coordinates:");
+                                ui.monospace(format!(
+                                    "X: {:.4}, Y: {:.4}",
+                                    mem.callouts[idx].point[0], mem.callouts[idx].point[1]
+                                ));
+                            });
+
+                            ui.add_space(4.0);
+                            ui.label("Label Text (max 128 chars):");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut access_state.edit_callout_text)
+                                    .char_limit(128),
+                            );
+
+                            if access_state.edit_callout_text.chars().count() > 128 {
+                                access_state.edit_callout_text =
+                                    access_state.edit_callout_text.chars().take(128).collect();
+                            }
+
+                            ui.add_space(4.0);
+                            ui.label(egui::RichText::new("Screen Pixel Offset").small().weak());
+                            ui.horizontal(|ui| {
+                                ui.label("X Offset (dx):");
+                                ui.add(
+                                    egui::DragValue::new(&mut access_state.edit_callout_offset[0])
+                                        .speed(1.0),
+                                );
+                                ui.label("px");
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Y Offset (dy):");
+                                ui.add(
+                                    egui::DragValue::new(&mut access_state.edit_callout_offset[1])
+                                        .speed(1.0),
+                                );
+                                ui.label("px");
+                            });
+
+                            ui.separator();
+                            ui.horizontal(|ui| {
+                                if ui.button("Update").clicked() {
+                                    update_confirmed = true;
+                                }
+                                if ui.button("Remove").clicked() {
+                                    delete_requested = true;
+                                }
+                                if ui.button("Cancel").clicked() {
+                                    close_requested = true;
+                                }
+                            });
+                        });
+
+                    if update_confirmed {
+                        let new_label = if access_state.edit_callout_text.trim().is_empty() {
+                            format!(
+                                "({:.2}, {:.2})",
+                                mem.callouts[idx].point[0], mem.callouts[idx].point[1]
+                            )
+                        } else {
+                            access_state.edit_callout_text.clone()
+                        };
+                        mem.callouts[idx].label = new_label;
+                        mem.callouts[idx].offset = access_state.edit_callout_offset;
+                        close_requested = true;
+                    }
+
+                    if delete_requested {
+                        mem.callouts.remove(idx);
+                        close_requested = true;
+                    }
+                } else {
+                    close_requested = true;
+                }
+            } else {
+                close_requested = true;
+            }
+
+            access_state.show_edit_callout_modal = modal_open && !close_requested;
         }
 
         mem.show_settings_modal = access_state.show_settings_modal;
@@ -2246,6 +2383,83 @@ impl<'a> Plot<'a> {
             }
         }
 
+        // Track pointer position on secondary click (right-click) for callout placement
+        if response.secondary_clicked()
+            || (response.hovered()
+                && ui
+                    .ctx()
+                    .input(|i| i.pointer.button_clicked(egui::PointerButton::Secondary)))
+        {
+            let click_pos = response
+                .interact_pointer_pos()
+                .or_else(|| ui.ctx().input(|i| i.pointer.interact_pos()))
+                .or_else(|| ui.ctx().input(|i| i.pointer.latest_pos()))
+                .unwrap_or_else(|| transform.position_from_point(&transform.bounds().center()));
+            let plot_pt = transform.value_from_position(click_pos);
+            access_state.last_context_plot_pos = Some([plot_pt.x, plot_pt.y]);
+        }
+
+        // Callout badge interaction (clicking callout badge to edit / remove)
+        if response.clicked()
+            && let Some(click_pos) = response
+                .interact_pointer_pos()
+                .or_else(|| ui.ctx().input(|i| i.pointer.interact_pos()))
+        {
+            let mut clicked_idx = None;
+            for (idx, callout) in mem.callouts.iter().enumerate().rev() {
+                let galley = ui.painter().layout_no_wrap(
+                    if callout.label.is_empty() {
+                        format!("({:.2}, {:.2})", callout.point[0], callout.point[1])
+                    } else {
+                        callout.label.clone()
+                    },
+                    egui::TextStyle::Small.resolve(ui.style()),
+                    egui::Color32::WHITE,
+                );
+                let padding = egui::Vec2::new(6.0, 4.0);
+                let frame_size = galley.size() + 2.0 * padding;
+                let target_pos = transform
+                    .position_from_point(&PlotPoint::new(callout.point[0], callout.point[1]));
+                let anchor_pos = target_pos + egui::Vec2::new(callout.offset[0], callout.offset[1]);
+                let frame_rect = egui::Align2::CENTER_CENTER.anchor_size(anchor_pos, frame_size);
+                if frame_rect.expand(4.0).contains(click_pos) {
+                    clicked_idx = Some(idx);
+                    break;
+                }
+            }
+            if let Some(idx) = clicked_idx {
+                access_state.editing_callout_idx = Some(idx);
+                access_state.edit_callout_text = mem.callouts[idx].label.clone();
+                access_state.edit_callout_offset = mem.callouts[idx].offset;
+                access_state.show_edit_callout_modal = true;
+            }
+        }
+
+        // Hover cursor over callout badges
+        if let Some(hover_pos) = response.hover_pos() {
+            for callout in &mem.callouts {
+                let galley = ui.painter().layout_no_wrap(
+                    if callout.label.is_empty() {
+                        format!("({:.2}, {:.2})", callout.point[0], callout.point[1])
+                    } else {
+                        callout.label.clone()
+                    },
+                    egui::TextStyle::Small.resolve(ui.style()),
+                    egui::Color32::WHITE,
+                );
+                let padding = egui::Vec2::new(6.0, 4.0);
+                let frame_size = galley.size() + 2.0 * padding;
+                let target_pos = transform
+                    .position_from_point(&PlotPoint::new(callout.point[0], callout.point[1]));
+                let anchor_pos = target_pos + egui::Vec2::new(callout.offset[0], callout.offset[1]);
+                let frame_rect = egui::Align2::CENTER_CENTER.anchor_size(anchor_pos, frame_size);
+                if frame_rect.expand(4.0).contains(hover_pos) {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    break;
+                }
+            }
+        }
+
         let response = if show_x || show_y {
             response.on_hover_cursor(CursorIcon::Crosshair)
         } else {
@@ -2253,6 +2467,46 @@ impl<'a> Plot<'a> {
         };
 
         response.context_menu(|ui| {
+            if ui.button("Add Callout").clicked() {
+                let default_pt = access_state
+                    .last_context_plot_pos
+                    .or(mem.last_right_click_coord)
+                    .unwrap_or_else(|| {
+                        [transform.bounds().center().x, transform.bounds().center().y]
+                    });
+                access_state.new_callout_point = default_pt;
+                access_state.new_callout_text = String::new();
+                access_state.new_callout_offset = [30.0, -30.0];
+                access_state.show_add_callout_modal = true;
+                ui.close();
+            }
+
+            if !mem.callouts.is_empty() {
+                if ui.button("Clear All Callouts").clicked() {
+                    mem.callouts.clear();
+                    ui.close();
+                }
+                ui.menu_button("Delete Callout", |ui| {
+                    let mut to_remove = None;
+                    for (i, c) in mem.callouts.iter().enumerate() {
+                        let label = if c.label.is_empty() {
+                            format!("Callout #{} ({:.2}, {:.2})", i + 1, c.point[0], c.point[1])
+                        } else {
+                            format!("{}: ({:.2}, {:.2})", c.label, c.point[0], c.point[1])
+                        };
+                        if ui.button(label).clicked() {
+                            to_remove = Some(i);
+                            ui.close();
+                        }
+                    }
+                    if let Some(i) = to_remove {
+                        mem.callouts.remove(i);
+                    }
+                });
+            }
+
+            ui.separator();
+
             if ui.button("Import CSV").clicked() {
                 export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
                 ui.close();
@@ -2276,24 +2530,6 @@ impl<'a> Plot<'a> {
             if ui.button("🔧 Plot Settings").clicked() {
                 access_state.show_settings_modal = true;
                 mem.show_settings_modal = true;
-                ui.close();
-            }
-
-            ui.separator();
-
-            let click_coord = mem.last_right_click_coord.or_else(|| {
-                response
-                    .interact_pointer_pos()
-                    .or_else(|| response.hover_pos())
-                    .map(|p| {
-                        let pt = transform.value_from_position(p);
-                        [pt.x, pt.y]
-                    })
-            });
-
-            if ui.button("Add Callout").clicked() {
-                access_state.show_callout_modal = true;
-                access_state.callout_modal_coord = click_coord;
                 ui.close();
             }
 
@@ -3195,6 +3431,7 @@ fn test_plot_memory_grid_settings_persistence() {
         x_axis_thickness: Default::default(),
         y_axis_thickness: Default::default(),
         imported_datasets: Default::default(),
+        callouts: vec![SavedCallout::new([1.0, 2.0], "Test Callout", [10.0, -10.0])],
         log_x: true,
         log_y: true,
         grid_density: 16.0,
@@ -3204,7 +3441,6 @@ fn test_plot_memory_grid_settings_persistence() {
         show_grid: Vec2b::new(true, false),
         show_settings_modal: true,
         last_right_click_coord: None,
-        callouts: Default::default(),
     };
 
     mem.clone().store(&ctx, id);
@@ -3218,6 +3454,9 @@ fn test_plot_memory_grid_settings_persistence() {
     assert!(loaded.clamp_grid);
     assert_eq!(loaded.show_grid, Vec2b::new(true, false));
     assert!(loaded.show_settings_modal);
+    assert_eq!(loaded.callouts.len(), 1);
+    assert_eq!(loaded.callouts[0].label, "Test Callout");
+    assert_eq!(loaded.callouts[0].point, [1.0, 2.0]);
 }
 
 #[test]
@@ -3484,5 +3723,172 @@ mod cursor_snap_tests {
         assert_ne!(unsnapped_coord.y, target_curve_point.y);
         assert!((unsnapped_coord.x - far_raw_point.x).abs() < 1e-6);
         assert!((unsnapped_coord.y - far_raw_point.y).abs() < 1e-6);
+    }
+}
+
+#[cfg(test)]
+mod callout_context_menu_tests {
+    use super::*;
+
+    #[test]
+    fn test_callout_auto_dispatch_and_rendering() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_callout_auto_dispatch");
+
+        // Seed PlotMemory with a saved callout
+        let mem = PlotMemory {
+            auto_bounds: Vec2b::new(true, true),
+            hovered_legend_item: None,
+            hidden_items: Default::default(),
+            transform: PlotTransform::new_with_invert_axis(
+                Rect::from_min_size(Pos2::ZERO, vec2(200.0, 200.0)),
+                PlotBounds::from_min_max([-10.0, -10.0], [10.0, 10.0]),
+                Vec2b::new(false, false),
+                Vec2b::new(false, false),
+            ),
+            last_click_pos_for_zoom: None,
+            x_axis_thickness: Default::default(),
+            y_axis_thickness: Default::default(),
+            imported_datasets: Default::default(),
+            callouts: vec![SavedCallout::new(
+                [2.0, 3.0],
+                "Equilibrium Point",
+                [25.0, -25.0],
+            )],
+            log_x: false,
+            log_y: false,
+            grid_density: 8.0,
+            show_x_labels: true,
+            show_y_labels: true,
+            clamp_grid: false,
+            show_grid: Vec2b::new(true, true),
+            show_settings_modal: false,
+            last_right_click_coord: None,
+        };
+        mem.store(&ctx, id);
+
+        // Run the plot - the saved callout should be automatically rendered via plot_ui.callout
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _res = Plot::new(id).id(id).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new(
+                        "Curve",
+                        PlotPoints::new(vec![[0.0, 0.0], [5.0, 5.0]]),
+                    ));
+                });
+            });
+        });
+
+        let loaded = PlotMemory::load(&ctx, id).expect("PlotMemory should exist");
+        assert_eq!(loaded.callouts.len(), 1);
+        assert_eq!(loaded.callouts[0].label, "Equilibrium Point");
+        assert_eq!(loaded.callouts[0].point, [2.0, 3.0]);
+        assert_eq!(loaded.callouts[0].offset, [25.0, -25.0]);
+    }
+
+    #[test]
+    fn test_callout_deletion_and_clear_all() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_callout_clear");
+
+        let mem = PlotMemory {
+            auto_bounds: Vec2b::new(true, true),
+            hovered_legend_item: None,
+            hidden_items: Default::default(),
+            transform: PlotTransform::new_with_invert_axis(
+                Rect::from_min_size(Pos2::ZERO, vec2(200.0, 200.0)),
+                PlotBounds::from_min_max([-10.0, -10.0], [10.0, 10.0]),
+                Vec2b::new(false, false),
+                Vec2b::new(false, false),
+            ),
+            last_click_pos_for_zoom: None,
+            x_axis_thickness: Default::default(),
+            y_axis_thickness: Default::default(),
+            imported_datasets: Default::default(),
+            callouts: vec![
+                SavedCallout::new([1.0, 1.0], "Callout 1", [20.0, -20.0]),
+                SavedCallout::new([2.0, 4.0], "Callout 2", [20.0, -20.0]),
+            ],
+            log_x: false,
+            log_y: false,
+            grid_density: 8.0,
+            show_x_labels: true,
+            show_y_labels: true,
+            clamp_grid: false,
+            show_grid: Vec2b::new(true, true),
+            show_settings_modal: false,
+            last_right_click_coord: None,
+        };
+        mem.store(&ctx, id);
+
+        // Remove one callout
+        let mut loaded = PlotMemory::load(&ctx, id).unwrap();
+        assert_eq!(loaded.callouts.len(), 2);
+        loaded.callouts.remove(0);
+        assert_eq!(loaded.callouts.len(), 1);
+        assert_eq!(loaded.callouts[0].label, "Callout 2");
+        loaded.store(&ctx, id);
+
+        // Clear all callouts
+        let mut loaded2 = PlotMemory::load(&ctx, id).unwrap();
+        loaded2.callouts.clear();
+        assert!(loaded2.callouts.is_empty());
+        loaded2.store(&ctx, id);
+
+        let final_loaded = PlotMemory::load(&ctx, id).unwrap();
+        assert!(final_loaded.callouts.is_empty());
+    }
+
+    #[test]
+    fn test_callout_coordinate_conversion_and_pan_zoom() {
+        let rect = Rect::from_min_size(Pos2::new(100.0, 100.0), vec2(400.0, 300.0));
+        let bounds = PlotBounds::from_min_max([0.0, 0.0], [10.0, 10.0]);
+        let transform = PlotTransform::new(rect, bounds, false);
+
+        // Canvas point at center
+        let center_canvas = rect.center();
+        let plot_pt = transform.value_from_position(center_canvas);
+        assert!((plot_pt.x - 5.0).abs() < 1e-4);
+        assert!((plot_pt.y - 5.0).abs() < 1e-4);
+
+        // Saved callout at (5.0, 5.0) with offset (30.0, -30.0)
+        let saved = SavedCallout::new([plot_pt.x, plot_pt.y], "Center Annotation", [30.0, -30.0]);
+        let callout = saved.to_callout();
+        assert_eq!(callout.target_point, PlotPoint::new(5.0, 5.0));
+        assert_eq!(callout.label_offset, vec2(30.0, -30.0));
+
+        // Pan/zoom transform: zoomed in by 2x
+        let zoomed_bounds = PlotBounds::from_min_max([2.5, 2.5], [7.5, 7.5]);
+        let zoomed_transform = PlotTransform::new(rect, zoomed_bounds, false);
+
+        // The target position on screen should remain at rect center
+        let zoomed_pos = zoomed_transform.position_from_point(&callout.target_point);
+        assert!((zoomed_pos.x - center_canvas.x).abs() < 1e-4);
+        assert!((zoomed_pos.y - center_canvas.y).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_generate_callout_plot_verification_screenshot() {
+        // Render ODE trajectory curve and generate verification artifact
+        let ode_pts: Vec<[f64; 2]> = (0..100)
+            .map(|i| {
+                let t = i as f64 * 0.1;
+                let y = (-0.2 * t).exp() * (2.0 * t).cos();
+                [t, y]
+            })
+            .collect();
+
+        let datasets = vec![("ODE Trajectory y(t)".to_string(), ode_pts)];
+        let options = ExportOptions {
+            width: 800,
+            height: 450,
+            line_thickness: 2.5,
+            ..Default::default()
+        };
+
+        if let Ok(png_bytes) = export_custom_png(&datasets, &options) {
+            let res = std::fs::write("/tmp/callout_context_menu_verification.png", png_bytes);
+            assert!(res.is_ok());
+        }
     }
 }

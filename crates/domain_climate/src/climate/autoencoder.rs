@@ -40,11 +40,6 @@ pub struct ConvLayer {
     pub kernel: DMatrix<f32>,
     /// The bias vector.
     pub bias: DVector<f32>,
-    // Store dimensions for clarity
-    #[allow(dead_code)]
-    in_channels: usize,
-    #[allow(dead_code)]
-    out_channels: usize,
 }
 
 impl ConvLayer {
@@ -67,12 +62,7 @@ impl ConvLayer {
         let bias = DVector::from_fn(out_channels, |_, _| {
             oxidize_core::rng::OxidizeRng::default().r#gen::<f32>() * 2.0 - 1.0
         });
-        Self {
-            kernel,
-            bias,
-            in_channels,
-            out_channels,
-        }
+        Self { kernel, bias }
     }
 
     /// Updates the weights of the layer using the provided optimizer.
