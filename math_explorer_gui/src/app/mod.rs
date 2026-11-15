@@ -1,4 +1,7 @@
+#[cfg(target_os = "macos")]
+mod macos_menu;
 mod session;
+mod split_view;
 mod theme;
 mod ui_panels;
 
@@ -6,10 +9,15 @@ mod ui_panels;
 mod tests;
 #[cfg(test)]
 mod tests_diagnostics;
+#[cfg(test)]
+mod tests_split_view;
 
+#[cfg(target_os = "macos")]
+use macos_menu::setup_macos_menu;
 #[allow(unused_imports)]
 pub use session::WorkspaceEnvelope;
 pub use session::WorkspaceSessionManager;
+pub use split_view::{SplitLayoutMode, SplitViewState};
 pub use theme::ThemeMode;
 
 use crate::tabs::ExplorerTab;
@@ -18,6 +26,14 @@ use federated_registry::{global_registry, Severity, TelemetryEvent};
 
 fn default_true() -> bool {
     true
+}
+
+fn default_secondary_tab() -> usize {
+    1
+}
+
+fn default_split_ratio() -> f32 {
+    0.5
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
@@ -32,11 +48,42 @@ pub struct AppState {
     #[serde(default)]
     pub theme: ThemeMode,
     pub tab_states: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub split_layout_mode: SplitLayoutMode,
+    #[serde(default = "default_secondary_tab")]
+    pub secondary_tab: usize,
+    #[serde(default)]
+    pub secondary_tab_name: Option<String>,
+    #[serde(default = "default_split_ratio")]
+    pub split_ratio: f32,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            selected_tab: 0,
+            selected_tab_name: None,
+            show_info: true,
+            show_warnings: true,
+            show_errors: true,
+            show_diagnostics_panel: true,
+            theme: ThemeMode::Dark,
+            tab_states: std::collections::HashMap::new(),
+            split_layout_mode: SplitLayoutMode::Single,
+            secondary_tab: 1,
+            secondary_tab_name: None,
+            split_ratio: 0.5,
+        }
+    }
 }
 
 pub struct MathExplorerApp {
     tabs: Vec<Box<dyn ExplorerTab>>,
     selected_tab: usize,
+    pub split_layout_mode: SplitLayoutMode,
+    pub secondary_tab: usize,
+    pub split_ratio: f32,
+    split_view_state: SplitViewState,
     diagnostic_events: Vec<TelemetryEvent>,
     pub show_diagnostics_panel: bool,
     show_info: bool,
@@ -55,6 +102,10 @@ impl Default for MathExplorerApp {
         Self {
             tabs,
             selected_tab: 0,
+            split_layout_mode: SplitLayoutMode::Single,
+            secondary_tab: 1,
+            split_ratio: 0.5,
+            split_view_state: SplitViewState::new(),
             diagnostic_events: Vec::new(),
             show_diagnostics_panel: true,
             show_info: true,
@@ -68,6 +119,12 @@ impl Default for MathExplorerApp {
 }
 
 impl MathExplorerApp {
+    /// Swaps the primary and secondary pane active tabs immediately.
+    pub fn swap_panes(&mut self) {
+        if self.tabs.len() > 1 {
+            std::mem::swap(&mut self.selected_tab, &mut self.secondary_tab);
+        }
+    }
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
 
@@ -95,6 +152,10 @@ impl MathExplorerApp {
             .tabs
             .get(self.selected_tab)
             .map(|t| t.name().to_string());
+        let secondary_tab_name = self
+            .tabs
+            .get(self.secondary_tab)
+            .map(|t| t.name().to_string());
         AppState {
             selected_tab: self.selected_tab,
             selected_tab_name,
@@ -104,6 +165,10 @@ impl MathExplorerApp {
             show_diagnostics_panel: self.show_diagnostics_panel,
             theme: self.theme,
             tab_states,
+            split_layout_mode: self.split_layout_mode,
+            secondary_tab: self.secondary_tab,
+            secondary_tab_name,
+            split_ratio: self.split_ratio.clamp(0.20, 0.80),
         }
     }
 
@@ -114,6 +179,8 @@ impl MathExplorerApp {
         self.show_errors = app_state.show_errors;
         self.show_diagnostics_panel = app_state.show_diagnostics_panel;
         self.theme = app_state.theme;
+        self.split_layout_mode = app_state.split_layout_mode;
+        self.split_ratio = app_state.split_ratio.clamp(0.20, 0.80);
 
         for tab in &mut self.tabs {
             if let Some(tab_str) = app_state.tab_states.get(tab.name()) {
@@ -129,6 +196,16 @@ impl MathExplorerApp {
             }
         } else if app_state.selected_tab < self.tabs.len() {
             self.selected_tab = app_state.selected_tab;
+        }
+
+        if let Some(tab_name) = &app_state.secondary_tab_name {
+            if let Some(idx) = self.tabs.iter().position(|t| t.name() == tab_name) {
+                self.secondary_tab = idx;
+            } else if app_state.secondary_tab < self.tabs.len() {
+                self.secondary_tab = app_state.secondary_tab;
+            }
+        } else if app_state.secondary_tab < self.tabs.len() {
+            self.secondary_tab = app_state.secondary_tab;
         }
     }
 
@@ -336,6 +413,14 @@ impl eframe::App for MathExplorerApp {
                     ctx.set_visuals(self.theme.visuals());
                 } else if event.id.0 == "view_toggle_diagnostics" {
                     self.show_diagnostics_panel = !self.show_diagnostics_panel;
+                } else if event.id.0 == "view_split_single" {
+                    self.split_layout_mode = SplitLayoutMode::Single;
+                } else if event.id.0 == "view_split_horizontal" {
+                    self.split_layout_mode = SplitLayoutMode::Horizontal;
+                } else if event.id.0 == "view_split_vertical" {
+                    self.split_layout_mode = SplitLayoutMode::Vertical;
+                } else if event.id.0 == "view_split_swap" {
+                    self.swap_panes();
                 }
             }
         }
@@ -353,15 +438,24 @@ impl eframe::App for MathExplorerApp {
             ui_panels::render_main_menu(self, ctx, ui);
         });
 
-        // Render Active Tab
-        if let Some(tab) = self.tabs.get_mut(self.selected_tab) {
-            tab.show(ctx, frame);
-        } else {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                ui.centered_and_justified(|ui| {
-                    ui.label("No module selected.");
-                });
-            });
+        // Render Active Tab(s)
+        match self.split_layout_mode {
+            SplitLayoutMode::Single => {
+                if let Some(tab) = self.tabs.get_mut(self.selected_tab) {
+                    tab.show(ctx, frame);
+                } else {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.centered_and_justified(|ui| {
+                            ui.label("No module selected.");
+                        });
+                    });
+                }
+            }
+            SplitLayoutMode::Horizontal | SplitLayoutMode::Vertical => {
+                let mut split_state = std::mem::take(&mut self.split_view_state);
+                split_state.render_split(self, ctx, frame);
+                self.split_view_state = split_state;
+            }
         }
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
@@ -379,82 +473,4 @@ impl eframe::App for MathExplorerApp {
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(5)
     }
-}
-
-#[cfg(target_os = "macos")]
-fn setup_macos_menu(app: &MathExplorerApp) {
-    use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
-    let menu = Menu::new();
-
-    // App Menu
-    let app_menu = Submenu::new("Math Explorer", true);
-    app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
-    menu.append(&app_menu).unwrap();
-
-    // File Menu
-    let file_menu = Submenu::new("File", true);
-    let open_item = MenuItem::with_id(
-        MenuId::new("file_open"),
-        "Open Workspace Session...",
-        true,
-        None,
-    );
-    let save_item = MenuItem::with_id(
-        MenuId::new("file_save"),
-        "Save Workspace Session",
-        true,
-        None,
-    );
-    let save_as_item = MenuItem::with_id(
-        MenuId::new("file_save_as"),
-        "Save Workspace Session As...",
-        true,
-        None,
-    );
-    file_menu.append(&open_item).unwrap();
-    file_menu.append(&save_item).unwrap();
-    file_menu.append(&save_as_item).unwrap();
-    menu.append(&file_menu).unwrap();
-
-    // Edit Menu
-    let edit_menu = Submenu::new("Edit", true);
-    let undo_item = MenuItem::with_id(MenuId::new("edit_undo"), "Undo", true, None);
-    let redo_item = MenuItem::with_id(MenuId::new("edit_redo"), "Redo", true, None);
-    edit_menu.append(&undo_item).unwrap();
-    edit_menu.append(&redo_item).unwrap();
-    menu.append(&edit_menu).unwrap();
-
-    // View Menu
-    let view_menu = Submenu::new("View", true);
-    for (i, name) in app.tab_names().into_iter().enumerate() {
-        let item = MenuItem::with_id(MenuId::new(format!("tab_{}", i)), name, true, None);
-        view_menu.append(&item).unwrap();
-    }
-    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
-    let diag_item = CheckMenuItem::with_id(
-        MenuId::new("view_toggle_diagnostics"),
-        "Issues & Diagnostics Panel",
-        true,
-        app.show_diagnostics_panel,
-        None,
-    );
-    view_menu.append(&diag_item).unwrap();
-    menu.append(&view_menu).unwrap();
-
-    // Appearance Menu
-    let appearance_menu = Submenu::new("Appearance", true);
-    let dark_item = MenuItem::with_id(MenuId::new("theme_dark"), "Dark", true, None);
-    let light_item = MenuItem::with_id(MenuId::new("theme_light"), "Light", true, None);
-    let hc_item = MenuItem::with_id(
-        MenuId::new("theme_high_contrast"),
-        "High Contrast",
-        true,
-        None,
-    );
-    appearance_menu.append(&dark_item).unwrap();
-    appearance_menu.append(&light_item).unwrap();
-    appearance_menu.append(&hc_item).unwrap();
-    menu.append(&appearance_menu).unwrap();
-
-    menu.init_for_nsapp();
 }

@@ -1,5 +1,5 @@
 #[cfg(not(target_os = "macos"))]
-use crate::app::{MathExplorerApp, ThemeMode};
+use crate::app::{MathExplorerApp, SplitLayoutMode, ThemeMode};
 use eframe::egui;
 use federated_registry::{Severity, TelemetryEvent};
 
@@ -239,6 +239,59 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
         });
 
         ui.menu_button("View", |ui| {
+            ui.label(egui::RichText::new("Layout Mode").strong());
+            if ui
+                .radio_value(
+                    &mut app.split_layout_mode,
+                    SplitLayoutMode::Single,
+                    SplitLayoutMode::Single.label(),
+                )
+                .clicked()
+            {
+                ui.close();
+            }
+            if ui
+                .radio_value(
+                    &mut app.split_layout_mode,
+                    SplitLayoutMode::Horizontal,
+                    SplitLayoutMode::Horizontal.label(),
+                )
+                .clicked()
+            {
+                ui.close();
+            }
+            if ui
+                .radio_value(
+                    &mut app.split_layout_mode,
+                    SplitLayoutMode::Vertical,
+                    SplitLayoutMode::Vertical.label(),
+                )
+                .clicked()
+            {
+                ui.close();
+            }
+
+            if app.split_layout_mode != SplitLayoutMode::Single {
+                ui.separator();
+                if ui.button("⇄ Swap Panes").clicked() {
+                    app.swap_panes();
+                    ui.close();
+                }
+
+                ui.separator();
+                ui.menu_button("Secondary Module", |ui| {
+                    let mut secondary = app.secondary_tab;
+                    for (i, tab_name) in app.tab_names().into_iter().enumerate() {
+                        if ui.radio_value(&mut secondary, i, tab_name).clicked() {
+                            app.secondary_tab = i;
+                            ui.close();
+                        }
+                    }
+                });
+            }
+
+            ui.separator();
+            ui.label(egui::RichText::new("Primary Module").strong());
             let mut selected = app.selected_tab;
             let tab_names = app.tab_names();
             for (i, tab_name) in tab_names.into_iter().enumerate() {
