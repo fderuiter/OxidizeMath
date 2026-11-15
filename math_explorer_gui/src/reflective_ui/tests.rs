@@ -177,7 +177,8 @@ fn test_render_formula_with_export() {
         &datasets,
         &egui_plot::export::ExportOptions::default(),
     ) {
-        let _ = std::fs::write("/tmp/reflective_ui_latex_pipeline.png", bytes);
+        let _ = std::fs::write("/tmp/reflective_ui_latex_pipeline.png", &bytes);
+        let _ = std::fs::write("/tmp/mathbox_formula_rendering.png", bytes);
     }
 }
 

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::framework::{InteractiveTool, TraceSeries};
+use scientific_metadata::theory::TheoryDescribable;
 
 #[test]
 fn test_ode_divergence_detection() {
@@ -359,4 +360,27 @@ fn test_ode_annotations_toggle_and_rendering() {
     if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
         let _ = std::fs::write("/tmp/ode_solver_trajectory.png", png_data);
     }
+}
+
+#[test]
+fn test_ode_presets_theory_metadata() {
+    let mut tool = OdeSolverTool::default();
+
+    // 1. Exponential
+    tool.preset = OdePreset::Exponential;
+    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{dy}{dt} = k y".to_string()));
+    assert!(tool.theory_citation().contains("Perko"));
+    assert!(!tool.theory_description().is_empty());
+
+    // 2. Harmonic Oscillator
+    tool.preset = OdePreset::HarmonicOscillator;
+    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{d^2 y}{dt^2} = -k y".to_string()));
+    assert!(tool.theory_citation().contains("Goldstein"));
+    assert!(!tool.theory_description().is_empty());
+
+    // 3. Logistic Growth
+    tool.preset = OdePreset::LogisticGrowth;
+    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{dy}{dt} = r y (1 - \frac{y}{K})".to_string()));
+    assert!(tool.theory_citation().contains("Lotka") || tool.theory_citation().contains("Verhulst"));
+    assert!(!tool.theory_description().is_empty());
 }

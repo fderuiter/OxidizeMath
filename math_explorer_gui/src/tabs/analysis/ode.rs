@@ -196,22 +196,12 @@ impl OdeSolverTool {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct OdeState {
-    dt: f64,
-    total_time: f64,
-    param_k: f64,
-    param_r: f64,
-    param_cap_k: f64,
-    ic_y0: f64,
-    ic_v0: f64,
-    #[serde(default)]
-    snapshot_manager: TraceSnapshotManager,
-    #[serde(default = "default_annotations_enabled")]
-    show_annotations: bool,
+    dt: f64, total_time: f64, param_k: f64, param_r: f64, param_cap_k: f64, ic_y0: f64, ic_v0: f64,
+    #[serde(default)] snapshot_manager: TraceSnapshotManager,
+    #[serde(default = "default_annotations_enabled")] show_annotations: bool,
 }
 
-fn default_annotations_enabled() -> bool {
-    true
-}
+fn default_annotations_enabled() -> bool { true }
 
 impl InteractiveTool for OdeSolverTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
@@ -231,12 +221,8 @@ impl InteractiveTool for OdeSolverTool {
             let mut plot_points_y = Vec::new();
             let mut plot_points_v = Vec::new();
             for (i, &t) in self.time_series.iter().enumerate() {
-                if let Some(&y) = self.y_series.get(i) {
-                    plot_points_y.push([t, y]);
-                }
-                if let Some(&v) = self.v_series.get(i) {
-                    plot_points_v.push([t, v]);
-                }
+                if let Some(&y) = self.y_series.get(i) { plot_points_y.push([t, y]); }
+                if let Some(&v) = self.v_series.get(i) { plot_points_v.push([t, v]); }
             }
             datasets.push(("y(t)".to_string(), plot_points_y));
             if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
@@ -249,17 +235,10 @@ impl InteractiveTool for OdeSolverTool {
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&OdeState {
-            dt: self.dt,
-            total_time: self.total_time,
-            param_k: self.param_k,
-            param_r: self.param_r,
-            param_cap_k: self.param_cap_k,
-            ic_y0: self.ic_y0,
-            ic_v0: self.ic_v0,
-            snapshot_manager: self.snapshot_manager.clone(),
-            show_annotations: self.show_annotations,
-        })
-        .ok()
+            dt: self.dt, total_time: self.total_time, param_k: self.param_k, param_r: self.param_r,
+            param_cap_k: self.param_cap_k, ic_y0: self.ic_y0, ic_v0: self.ic_v0,
+            snapshot_manager: self.snapshot_manager.clone(), show_annotations: self.show_annotations,
+        }).ok()
     }
 
     fn load_state(&mut self, state: &str) {
@@ -457,14 +436,34 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
     fn theory_description(&self) -> String {
         match self.preset {
-            OdePreset::Exponential => r"Exponential model: $\frac{dy}{dt} = k y$".into(),
-            OdePreset::HarmonicOscillator => r"Harmonic oscillator: $\frac{d^2 y}{dt^2} = -k y$".into(),
-            OdePreset::LogisticGrowth => r"Logistic growth: $\frac{dy}{dt} = r y (1 - \frac{y}{K})$".into(),
+            OdePreset::Exponential => "First-order linear ordinary differential equation describing exponential growth or decay proportional to current quantity.".into(),
+            OdePreset::HarmonicOscillator => "Second-order ordinary differential equation modeling simple harmonic motion under a Hooke's law restoring force.".into(),
+            OdePreset::LogisticGrowth => "Nonlinear ordinary differential equation modeling density-dependent population growth with an environmental carrying capacity.".into(),
         }
     }
     fn phonetic_description(&self) -> String { "Ordinary differential equations theory".into() }
-    fn theory_citation(&self) -> String { "Differential Equations and Dynamical Systems (Perko, 2001)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_citation(&self) -> String {
+        match self.preset {
+            OdePreset::Exponential => "Differential Equations and Dynamical Systems (Perko, 2001)".into(),
+            OdePreset::HarmonicOscillator => "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into(),
+            OdePreset::LogisticGrowth => "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into(),
+        }
+    }
+    fn theory_latex_equation(&self) -> Option<String> {
+        let eq = match self.preset {
+            OdePreset::Exponential => r"\frac{dy}{dt} = k y",
+            OdePreset::HarmonicOscillator => r"\frac{d^2 y}{dt^2} = -k y",
+            OdePreset::LogisticGrowth => r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
+        };
+        Some(eq.into())
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Exponential".into(), "First-order linear ODE representing exponential growth or decay".into());
+        map.insert("Harmonic Oscillator".into(), "Second-order linear ODE representing simple harmonic motion".into());
+        map.insert("Logistic Growth".into(), "Nonlinear first-order ODE modeling population growth with carrying capacity".into());
+        map
+    }
 }
 
 impl InteractivePreset for OdeSolverTool {

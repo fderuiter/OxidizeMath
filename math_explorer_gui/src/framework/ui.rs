@@ -25,7 +25,8 @@ impl SimulationFramework {
                         use crate::reflective_ui::render_theory_summary_with_export;
 
                         let theory_desc = theory.theory_description();
-                        render_theory_summary_with_export(ui, &theory_desc, Some(&theory_desc))
+                        let latex_eq = theory.theory_latex_equation();
+                        render_theory_summary_with_export(ui, &theory_desc, latex_eq.as_deref())
                             .accessible_hover_text("Theoretical background description");
 
                         ui.separator();
