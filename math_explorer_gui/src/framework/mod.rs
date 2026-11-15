@@ -1,8 +1,10 @@
+pub mod callout_overlay;
 mod export_ui;
 pub mod math_input;
 pub mod trace_overlay;
 mod ui;
 
+pub use callout_overlay::*;
 pub use math_input::*;
 pub use trace_overlay::*;
 

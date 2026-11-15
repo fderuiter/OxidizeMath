@@ -5,6 +5,7 @@ use std::env;
 use std::process::Command;
 mod api_drift;
 mod ast_visitor;
+mod doc_audit;
 mod entropy_guard;
 mod policy_audit;
 mod profile;
@@ -73,6 +74,11 @@ fn main() {
         }
         "lint-workflows" => {
             if !workflow_linter::lint_workflows() {
+                std::process::exit(1);
+            }
+        }
+        "check-docs" => {
+            if !doc_audit::run_doc_audit(&args[2..]) {
                 std::process::exit(1);
             }
         }

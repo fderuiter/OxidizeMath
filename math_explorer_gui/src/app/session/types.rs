@@ -52,4 +52,7 @@ pub struct WorkspaceEnvelope {
     /// Recent redo history snapshots.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub history_redo_stack: Vec<AppState>,
+    /// Persisted plot callout annotations.
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "callouts")]
+    pub callout_manager: Option<crate::framework::CalloutManager>,
 }

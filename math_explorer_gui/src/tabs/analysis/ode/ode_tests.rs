@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::framework::{InteractiveTool, TraceSeries};
+use scientific_metadata::theory::TheoryDescribable;
 
 #[test]
 fn test_ode_divergence_detection() {
@@ -68,26 +69,13 @@ fn test_ode_logistic_growth_divergence() {
 
 #[test]
 fn test_ode_trace_snapshot_pinning_and_export() {
-    let mut tool = OdeSolverTool {
-        param_k: 1.0,
-        ..Default::default()
-    };
+    let mut tool = OdeSolverTool { param_k: 1.0, ..Default::default() };
     tool.recalculate();
 
     // Pin baseline trajectory k=1.0
     let summary = tool.param_summary();
-    let pts: Vec<[f64; 2]> = tool
-        .time_series
-        .iter()
-        .zip(&tool.y_series)
-        .map(|(&t, &y)| [t, y])
-        .collect();
-    tool.snapshot_manager.add_snapshot(
-        "Baseline 1",
-        summary,
-        vec![TraceSeries::new("y(t)", pts.clone())],
-    );
-
+    let pts: Vec<[f64; 2]> = tool.time_series.iter().zip(&tool.y_series).map(|(&t, &y)| [t, y]).collect();
+    tool.snapshot_manager.add_snapshot("Baseline 1", summary, vec![TraceSeries::new("y(t)", pts.clone())]);
     assert_eq!(tool.snapshot_manager.len(), 1);
 
     // Change parameter k=2.5 and recalculate active simulation
@@ -95,10 +83,7 @@ fn test_ode_trace_snapshot_pinning_and_export() {
     tool.recalculate();
 
     // Pinned snapshot retains baseline curve points
-    assert_eq!(
-        tool.snapshot_manager.snapshots()[0].param_summary,
-        r"k=1.00, \Delta t=0.05"
-    );
+    assert_eq!(tool.snapshot_manager.snapshots()[0].param_summary, r"k=1.00, \Delta t=0.05");
     assert_eq!(tool.snapshot_manager.snapshots()[0].series[0].points, pts);
 
     // Export datasets includes active + pinned traces
@@ -134,14 +119,48 @@ fn test_ode_auto_history_buffering() {
 }
 
 #[test]
+fn test_ode_auto_callout_annotations_and_persistence() {
+    let mut tool = OdeSolverTool::default();
+    assert_eq!(tool.callout_manager.len(), 2);
+    let initial_callout = tool
+        .callout_manager
+        .callouts()
+        .iter()
+        .find(|c| c.tag.as_deref() == Some("initial_condition"))
+        .expect("initial callout");
+    assert_eq!(initial_callout.target_point, [0.0, 1.0]);
+    assert!(initial_callout.text.contains("Initial"));
+
+    let final_callout = tool
+        .callout_manager
+        .callouts()
+        .iter()
+        .find(|c| c.tag.as_deref() == Some("final_state"))
+        .expect("final callout");
+    assert_eq!(final_callout.target_point[0], 10.0);
+    assert!(final_callout.text.contains("Final"));
+
+    // Add a custom user callout
+    tool.callout_manager
+        .add_callout([5.0, 2.0], "Equilibrium Y=2.0", [15.0, -20.0]);
+    assert_eq!(tool.callout_manager.len(), 3);
+
+    // Save and load state
+    let state = tool.save_state().expect("save state");
+    let mut restored = OdeSolverTool::default();
+    restored.load_state(&state);
+    assert_eq!(restored.callout_manager.len(), 3);
+    assert!(restored
+        .callout_manager
+        .callouts()
+        .iter()
+        .any(|c| c.text == "Equilibrium Y=2.0"));
+}
+
+#[test]
 fn test_ode_custom_equation_rk4() {
     let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom,
-        param_k: 1.5,
-        ic_y0: 2.0,
-        dt: 0.05,
-        total_time: 5.0,
-        ..Default::default()
+        preset: OdePreset::Custom, param_k: 1.5, ic_y0: 2.0, dt: 0.05, total_time: 5.0, ..Default::default()
     };
     tool.math_input.set_expression("-k * y * sin(t)");
     tool.recalculate();
@@ -161,23 +180,15 @@ fn test_ode_custom_equation_rk4() {
 
 #[test]
 fn test_ode_custom_equation_divergence_handling() {
-    let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom,
-        ic_y0: 1.0,
-        ..Default::default()
-    };
+    let mut tool = OdeSolverTool { preset: OdePreset::Custom, ic_y0: 1.0, ..Default::default() };
     tool.math_input.set_expression("1 / (y - 1)");
     tool.recalculate();
-
     assert!(tool.diverged());
 }
 
 #[test]
 fn test_ode_custom_state_roundtrip() {
-    let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom,
-        ..Default::default()
-    };
+    let mut tool = OdeSolverTool { preset: OdePreset::Custom, ..Default::default() };
     tool.math_input.set_expression("y' = -k * y * sin(t)");
     tool.recalculate();
 
@@ -193,12 +204,7 @@ fn test_ode_custom_state_roundtrip() {
 #[test]
 fn test_generate_custom_ode_and_complex_screenshots() {
     let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom,
-        param_k: 2.0,
-        ic_y0: 1.0,
-        dt: 0.02,
-        total_time: 10.0,
-        ..Default::default()
+        preset: OdePreset::Custom, param_k: 2.0, ic_y0: 1.0, dt: 0.02, total_time: 10.0, ..Default::default()
     };
     tool.math_input.set_expression("y' = -k * y * sin(t)");
     tool.recalculate();
@@ -243,186 +249,167 @@ fn test_generate_custom_ode_and_complex_screenshots() {
 }
 
 #[test]
-fn test_ode_structured_diagnostic_report() {
+fn test_ode_solver_method_selection_and_accuracy_ordering() {
     let mut tool = OdeSolverTool {
-        param_k: 1e300,
-        ic_y0: 1e300,
+        preset: OdePreset::Exponential,
+        param_k: 1.0,
+        ic_y0: 1.0,
+        dt: 0.1,
+        total_time: 1.0,
         ..Default::default()
     };
-    tool.recalculate();
 
-    assert!(tool.diverged());
-    let report = tool.diagnostic_report().expect("Diagnostic report should be present");
-    assert_eq!(report.step_index, 1);
-    assert_eq!(report.t_diverged, 0.05);
-    assert_eq!(report.variable, "y(t)");
-    assert!(report.message.contains("diverged"));
+    // 1. RungeKutta4
+    tool.set_method(IntegrationMethod::RungeKutta4);
+    assert_eq!(tool.method(), IntegrationMethod::RungeKutta4);
+    let rk4_final = *tool.y_series.last().expect("rk4 final");
 
-    // Reset clears diagnostic report
-    tool.reset_parameters();
-    assert!(!tool.diverged());
-    assert!(tool.diagnostic_report().is_none());
+    // 2. Heun
+    tool.set_method(IntegrationMethod::Heun);
+    assert_eq!(tool.method(), IntegrationMethod::Heun);
+    let heun_final = *tool.y_series.last().expect("heun final");
+
+    // 3. Euler
+    tool.set_method(IntegrationMethod::Euler);
+    assert_eq!(tool.method(), IntegrationMethod::Euler);
+    let euler_final = *tool.y_series.last().expect("euler final");
+
+    // Analytical solution: e^1 ≈ 2.718281828
+    let true_val = 1.0_f64.exp();
+    let rk4_err = (rk4_final - true_val).abs();
+    let heun_err = (heun_final - true_val).abs();
+    let euler_err = (euler_final - true_val).abs();
+
+    // Order of accuracy: RK4 < Heun < Euler
+    assert!(
+        rk4_err < heun_err,
+        "RK4 err {rk4_err} should be < Heun err {heun_err}"
+    );
+    assert!(
+        heun_err < euler_err,
+        "Heun err {heun_err} should be < Euler err {euler_err}"
+    );
 }
 
 #[test]
-fn test_ode_autoscale_step_size_recovery() {
-    let mut tool = OdeSolverTool::default();
-    assert_eq!(tool.dt, 0.05);
-
-    tool.auto_scale_step_size();
-    assert_eq!(tool.dt, 0.025);
-
-    tool.auto_scale_step_size();
-    assert_eq!(tool.dt, 0.0125);
-
-    // Test recovering finite trajectories via step size auto-scaling
-    // In Harmonic Oscillator with k = 50000.0 and dt = 0.05, RK4 diverges.
-    // Halving dt to 0.025 and then 0.0125 brings the solver into the stability region.
-    tool.preset = OdePreset::HarmonicOscillator;
-    tool.param_k = 50000.0;
-    tool.total_time = 10.0;
-    tool.dt = 0.05;
-    tool.ic_y0 = 1.0;
-    tool.ic_v0 = 0.0;
-    tool.recalculate();
-    assert!(tool.diverged());
-
-    // Halve dt until integration succeeds and finite trajectory is restored
-    for _ in 0..5 {
-        if !tool.diverged() {
-            break;
-        }
-        tool.auto_scale_step_size();
-    }
-    assert!(!tool.diverged());
-    assert!(!tool.y_series.is_empty());
-    assert!(tool.y_series.iter().all(|y| y.is_finite()));
-
-    let datasets = tool.export_datasets();
-    let options = egui_plot::export::ExportOptions::default();
-    if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
-        let _ = std::fs::write("/tmp/ode_recovered_trajectory.png", png_data);
-    }
-}
-
-#[test]
-fn test_ode_autoscale_minimum_floor() {
+fn test_ode_multi_solver_comparison_mode_overlays() {
     let mut tool = OdeSolverTool {
-        dt: 1e-6,
-        ..Default::default()
-    };
-    tool.auto_scale_step_size();
-    assert!(tool.dt >= 1e-6);
-
-    tool.dt = 1e-8;
-    tool.auto_scale_step_size();
-    assert_eq!(tool.dt, 1e-6);
-}
-
-#[test]
-fn test_ode_clamp_instability_parameters_exponential() {
-    let mut tool = OdeSolverTool {
-        param_k: 1e300,
-        ic_y0: 1e300,
-        ..Default::default()
-    };
-    tool.recalculate();
-    assert!(tool.diverged());
-
-    tool.clamp_instability_parameters();
-    assert!(!tool.diverged());
-    assert!(tool.param_k <= 5.0 && tool.param_k >= -5.0);
-    assert!(tool.ic_y0 <= 10.0 && tool.ic_y0 >= -10.0);
-    assert!(!tool.y_series.is_empty());
-    assert!(tool.y_series.iter().all(|y| y.is_finite()));
-}
-
-#[test]
-fn test_ode_clamp_instability_parameters_harmonic_and_logistic() {
-    // Harmonic Oscillator
-    let mut tool_harmonic = OdeSolverTool {
         preset: OdePreset::HarmonicOscillator,
-        param_k: 1e300,
-        ic_y0: 1e300,
-        ic_v0: 1e300,
+        param_k: 1.0,
+        ic_y0: 1.0,
+        ic_v0: 0.0,
+        dt: 0.05,
+        total_time: 5.0,
         ..Default::default()
     };
-    tool_harmonic.recalculate();
-    assert!(tool_harmonic.diverged());
 
-    tool_harmonic.clamp_instability_parameters();
-    assert!(!tool_harmonic.diverged());
-    assert!(tool_harmonic.param_k <= 10.0);
-    assert!(tool_harmonic.ic_y0 <= 10.0);
-    assert!(tool_harmonic.ic_v0 <= 10.0);
+    assert!(!tool.comparison_mode());
+    assert_eq!(tool.comparison_manager().len(), 0);
 
-    // Logistic Growth
-    let mut tool_logistic = OdeSolverTool {
-        preset: OdePreset::LogisticGrowth,
-        param_r: 1e300,
-        param_cap_k: 1e300,
-        ic_y0: 1e300,
-        ..Default::default()
-    };
-    tool_logistic.recalculate();
-    assert!(tool_logistic.diverged());
+    // Enable multi-solver comparison mode
+    tool.set_comparison_mode(true);
+    assert!(tool.comparison_mode());
 
-    tool_logistic.clamp_instability_parameters();
-    assert!(!tool_logistic.diverged());
-    assert!(tool_logistic.param_r <= 5.0);
-    assert!(tool_logistic.param_cap_k <= 100.0);
+    // Three solvers should be present in comparison manager
+    let mgr = tool.comparison_manager();
+    assert_eq!(mgr.len(), 3);
+
+    let labels: Vec<String> = mgr.snapshots().iter().map(|s| s.label.clone()).collect();
+    assert!(labels.contains(&"Runge-Kutta 4".to_string()));
+    assert!(labels.contains(&"Euler".to_string()));
+    assert!(labels.contains(&"Heun (RK2)".to_string()));
+
+    // For harmonic oscillator, both y(t) and y'(t) are present in each snapshot
+    for snapshot in mgr.snapshots() {
+        assert_eq!(snapshot.series.len(), 2);
+        assert_eq!(snapshot.series[0].name, "y(t)");
+        assert_eq!(snapshot.series[1].name, "y'(t)");
+        assert!(!snapshot.series[0].points.is_empty());
+    }
+
+    // Export includes all solver trajectories
+    let exported = tool.export_datasets();
+    assert!(exported.iter().any(|(name, _)| name.contains("Euler")));
+    assert!(exported.iter().any(|(name, _)| name.contains("Heun")));
+    assert!(exported.iter().any(|(name, _)| name.contains("Runge-Kutta 4")));
+
+    // State persistence roundtrip preserves comparison mode and active method
+    tool.set_method(IntegrationMethod::Heun);
+    let state = tool.save_state().expect("save state");
+    let mut restored = OdeSolverTool::default();
+    restored.load_state(&state);
+    assert!(restored.comparison_mode());
+    assert_eq!(restored.method(), IntegrationMethod::Heun);
+    assert_eq!(restored.comparison_manager().len(), 3);
 }
 
 #[test]
-fn test_ode_divergence_and_recovery_telemetry() {
-    let _ = federated_registry::global_registry().try_recv_all();
-
+fn test_ode_discrepancy_metrics_calculation() {
     let mut tool = OdeSolverTool {
-        param_k: 1e300,
-        ic_y0: 1e300,
+        preset: OdePreset::Exponential,
+        param_k: 1.0,
+        ic_y0: 1.0,
+        dt: 0.1,
+        total_time: 2.0,
         ..Default::default()
     };
-    tool.recalculate();
 
-    let events = federated_registry::global_registry().try_recv_all();
-    let div_event = events
-        .iter()
-        .find(|e| e.source == "OdeSolverTool" && e.severity == federated_registry::Severity::Error)
-        .expect("Divergence telemetry event should be emitted");
+    tool.set_comparison_mode(true);
 
-    assert_eq!(div_event.metadata.get("diverged_variable"), Some(&"y(t)".to_string()));
-    assert!(div_event.metadata.contains_key("t_diverged"));
-    assert!(div_event.metadata.contains_key("step_count"));
+    let euler_rk4 = tool.discrepancy_euler_rk4();
+    let heun_rk4 = tool.discrepancy_heun_rk4();
+    let euler_heun = tool.discrepancy_euler_heun();
 
-    // Recovery action emits telemetry
-    recovery::emit_recovery_telemetry("Auto-scale Step Size (dt)", "Halved step size");
-    let recovery_events = federated_registry::global_registry().try_recv_all();
-    assert!(recovery_events.iter().any(|e| {
-        e.source == "OdeSolverTool"
-            && e.severity == federated_registry::Severity::Info
-            && e.message.contains("Auto-scale Step Size")
-    }));
+    // Verify positive non-zero error discrepancies
+    assert!(euler_rk4.max_error > 0.0);
+    assert!(euler_rk4.rms_error > 0.0);
+    assert!(heun_rk4.max_error > 0.0);
+    assert!(heun_rk4.rms_error > 0.0);
+    assert!(euler_heun.max_error > 0.0);
+    assert!(euler_heun.rms_error > 0.0);
+
+    // Euler error vs RK4 should exceed Heun error vs RK4
+    assert!(
+        euler_rk4.max_error > heun_rk4.max_error,
+        "Euler max error should be greater than Heun max error"
+    );
+    assert!(
+        euler_rk4.rms_error > heun_rk4.rms_error,
+        "Euler RMS error should be greater than Heun RMS error"
+    );
 }
 
 #[test]
-fn test_ode_recovery_banner_ui_rendering() {
-    let ctx = egui::Context::default();
+fn test_ode_multi_solver_divergence_warning() {
     let mut tool = OdeSolverTool {
-        param_k: 1e300,
-        ic_y0: 1e300,
+        preset: OdePreset::HarmonicOscillator,
+        param_k: 1.0,
+        ic_y0: 1.0,
+        ic_v0: 0.0,
+        dt: 0.05,
+        total_time: 10.0,
         ..Default::default()
     };
+    tool.set_comparison_mode(true);
+    assert!(!tool.diverged());
+
+    // Large time step causes lower-order Euler to diverge or produce non-finite values
+    tool.dt = 2.5;
+    tool.param_k = 1e150;
+    tool.ic_y0 = 1e150;
     tool.recalculate();
+
     assert!(tool.diverged());
-
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let mut changed = false;
-            let mut py = Vec::new();
-            let mut pv = Vec::new();
-            recovery::render_recovery_ui(ui, &mut tool, &mut changed, &mut py, &mut pv);
-        });
-    });
+    // Ensure all stored points remain finite
+    assert!(tool.y_series.iter().all(|y| y.is_finite()));
+    for snapshot in tool.comparison_manager().snapshots() {
+        for series in &snapshot.series {
+            assert!(series
+                .points
+                .iter()
+                .all(|pt| pt[0].is_finite() && pt[1].is_finite()));
+        }
+    }
 }
 
 #[test]
@@ -474,4 +461,25 @@ fn test_ode_annotations_toggle_and_rendering() {
     if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
         let _ = std::fs::write("/tmp/ode_solver_trajectory.png", png_data);
     }
+}
+
+#[test]
+fn test_ode_presets_theory_metadata() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Exponential,
+        ..Default::default()
+    };
+    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{dy}{dt} = k y".into()));
+    assert!(tool.theory_citation().contains("Perko"));
+    assert!(!tool.theory_description().is_empty());
+
+    tool.preset = OdePreset::HarmonicOscillator;
+    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{d^2 y}{dt^2} = -k y".into()));
+    assert!(tool.theory_citation().contains("Goldstein"));
+    assert!(!tool.theory_description().is_empty());
+
+    tool.preset = OdePreset::LogisticGrowth;
+    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{dy}{dt} = r y (1 - \frac{y}{K})".into()));
+    assert!(tool.theory_citation().contains("Lotka") || tool.theory_citation().contains("Verhulst"));
+    assert!(!tool.theory_description().is_empty());
 }

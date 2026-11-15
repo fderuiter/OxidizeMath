@@ -1,4 +1,6 @@
 #![doc = include_str!("../README.md")]
+mod papers;
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -250,52 +252,7 @@ fn verify_records() {
 }
 
 fn compile_papers() {
-    println!("=== Compiling Papers with pdflatex ===");
-
-    let check = Command::new("pdflatex").arg("--version").output();
-    match check {
-        Ok(output) if output.status.success() => {}
-        _ => {
-            eprintln!("Error: pdflatex is not installed or not in PATH.");
-            eprintln!("Please install TeXLive to compile academic papers:");
-            eprintln!(
-                "sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science"
-            );
-            exit(1);
-        }
-    }
-
-    let papers_dir = std::path::Path::new("papers");
-    let output_dir = std::path::Path::new("papers/output");
-
-    if !output_dir.exists() {
-        fs::create_dir_all(output_dir).unwrap();
-    }
-
-    for entry in fs::read_dir(papers_dir).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.is_file() && path.extension().is_some_and(|ext| ext == "tex") {
-            println!("Compiling {:?}", path);
-            let status = Command::new("pdflatex")
-                .env("TEXINPUTS", "papers//:")
-                .arg("-interaction=nonstopmode")
-                .arg("-halt-on-error")
-                .arg("-output-directory")
-                .arg(output_dir)
-                .arg(&path)
-                .status();
-
-            match status {
-                Ok(s) if s.success() => println!("Successfully compiled {:?}", path),
-                _ => {
-                    eprintln!("Failed to compile {:?}", path);
-                    exit(1);
-                }
-            }
-        }
-    }
-    println!("=== All papers compiled successfully ===");
+    papers::compile_papers();
 }
 
 fn traceability() {

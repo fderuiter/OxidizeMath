@@ -3,11 +3,10 @@
 //! ODE model definitions and evaluation helpers.
 
 use super::OdeSolverTool;
-use crate::framework::TraceSnapshotManager;
 use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig};
 use math_commons::ast::Expr;
 use math_explorer::pure_math::analysis::ode::{
-    OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
+    Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
 };
 use std::collections::HashMap;
 
@@ -57,7 +56,8 @@ impl OdeSystem<VecState> for LogisticGrowthOde {
         out
     }
     fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.r * state.0[0] * (1.0 - state.0[0] / self.cap_k);
+        let y = state.0[0];
+        out.0[0] = self.r * y * (1.0 - y / self.cap_k);
     }
 }
 
@@ -81,6 +81,7 @@ impl OdeSystem<VecState> for DynamicAstOde {
 
 pub fn eval_ode_final_state(
     preset: OdePreset,
+    method: IntegrationMethod,
     dt: f64,
     total_time: f64,
     p_map: &HashMap<String, f64>,
@@ -96,37 +97,24 @@ pub fn eval_ode_final_state(
     match preset {
         OdePreset::Exponential => {
             let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), ExponentialOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps {
-                model.step(dt);
-            }
-            model.state.0[0]
+            step_model(init, ExponentialOde { k }, method, steps, dt)
         }
         OdePreset::HarmonicOscillator => {
             let init = VecState(vec![y0, v0]);
-            let mut model = OdeModel::new(init.clone(), HarmonicOscillatorOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps {
-                model.step(dt);
-            }
-            model.state.0[0]
+            step_model(init, HarmonicOscillatorOde { k }, method, steps, dt)
         }
         OdePreset::LogisticGrowth => {
             let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), LogisticGrowthOde { r, cap_k }, RungeKutta4::new(&init));
-            for _ in 0..steps {
-                model.step(dt);
-            }
-            model.state.0[0]
+            step_model(init, LogisticGrowthOde { r, cap_k }, method, steps, dt)
         }
         OdePreset::Custom => {
             if let Some(expr) = custom_expr {
                 let init = VecState(vec![y0]);
-                let dynamics = DynamicAstOde { expr: expr.clone(), params: p_map.clone() };
-                let mut model = OdeModel::new(init.clone(), dynamics, RungeKutta4::new(&init));
-                for _ in 0..steps {
-                    model.step(dt);
-                }
-                model.state.0[0]
+                let dynamics = DynamicAstOde {
+                    expr: expr.clone(),
+                    params: p_map.clone(),
+                };
+                step_model(init, dynamics, method, steps, dt)
             } else {
                 f64::NAN
             }
@@ -134,41 +122,73 @@ pub fn eval_ode_final_state(
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct OdeState {
-    #[serde(default)]
-    pub preset: Option<OdePreset>,
-    pub dt: f64,
-    pub total_time: f64,
-    pub param_k: f64,
-    pub param_r: f64,
-    pub param_cap_k: f64,
-    pub ic_y0: f64,
-    pub ic_v0: f64,
-    #[serde(default)]
-    pub custom_expr: String,
-    #[serde(default)]
-    pub snapshot_manager: TraceSnapshotManager,
-    #[serde(default = "default_annotations_enabled")]
-    pub show_annotations: bool,
-}
-
-pub fn default_annotations_enabled() -> bool {
-    true
+fn step_model<D: OdeSystem<VecState> + Clone>(
+    init: VecState,
+    dyn_sys: D,
+    method: IntegrationMethod,
+    steps: usize,
+    dt: f64,
+) -> f64 {
+    match method {
+        IntegrationMethod::RungeKutta4 => {
+            let mut model = OdeModel::new(init.clone(), dyn_sys, RungeKutta4::new(&init));
+            for _ in 0..steps {
+                model.step(dt);
+            }
+            model.state.0[0]
+        }
+        IntegrationMethod::Euler => {
+            let mut model = OdeModel::new(init.clone(), dyn_sys, Euler::new(&init));
+            for _ in 0..steps {
+                model.step(dt);
+            }
+            model.state.0[0]
+        }
+        IntegrationMethod::Heun => {
+            let mut model = OdeModel::new(init.clone(), dyn_sys, Heun::new(&init));
+            for _ in 0..steps {
+                model.step(dt);
+            }
+            model.state.0[0]
+        }
+    }
 }
 
 impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
     fn theory_description(&self) -> String {
         match self.preset {
-            OdePreset::Exponential => r"Exponential model: $\frac{dy}{dt} = k y$".into(),
-            OdePreset::HarmonicOscillator => r"Harmonic oscillator: $\frac{d^2 y}{dt^2} = -k y$".into(),
-            OdePreset::LogisticGrowth => r"Logistic growth: $\frac{dy}{dt} = r y (1 - \frac{y}{K})$".into(),
-            OdePreset::Custom => r"Custom user-defined ordinary differential equation: $y' = f(t, y)$".into(),
+            OdePreset::Exponential => "First-order linear ordinary differential equation describing exponential growth or decay proportional to current quantity.".into(),
+            OdePreset::HarmonicOscillator => "Second-order ordinary differential equation modeling simple harmonic motion under a Hooke's law restoring force.".into(),
+            OdePreset::LogisticGrowth => "Nonlinear ordinary differential equation modeling density-dependent population growth with an environmental carrying capacity.".into(),
+            OdePreset::Custom => "Custom user-defined ordinary differential equation: y' = f(t, y)".into(),
         }
     }
     fn phonetic_description(&self) -> String { "Ordinary differential equations theory".into() }
-    fn theory_citation(&self) -> String { "Differential Equations and Dynamical Systems (Perko, 2001)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_citation(&self) -> String {
+        match self.preset {
+            OdePreset::Exponential => "Differential Equations and Dynamical Systems (Perko, 2001)".into(),
+            OdePreset::HarmonicOscillator => "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into(),
+            OdePreset::LogisticGrowth => "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into(),
+            OdePreset::Custom => "Differential Equations and Dynamical Systems (Perko, 2001)".into(),
+        }
+    }
+    fn theory_latex_equation(&self) -> Option<String> {
+        let eq = match self.preset {
+            OdePreset::Exponential => r"\frac{dy}{dt} = k y",
+            OdePreset::HarmonicOscillator => r"\frac{d^2 y}{dt^2} = -k y",
+            OdePreset::LogisticGrowth => r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
+            OdePreset::Custom => return None,
+        };
+        Some(eq.into())
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Exponential".into(), "First-order linear ODE representing exponential growth or decay".into());
+        map.insert("Harmonic Oscillator".into(), "Second-order linear ODE representing simple harmonic motion".into());
+        map.insert("Logistic Growth".into(), "Nonlinear first-order ODE modeling population growth with carrying capacity".into());
+        map.insert("Custom".into(), "Custom user-defined ordinary differential equation".into());
+        map
+    }
 }
 
 impl InteractivePreset for OdeSolverTool {

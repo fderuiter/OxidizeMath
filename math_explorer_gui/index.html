@@ -3,6 +3,10 @@
 <head>
     <meta charset="utf-8">
     <title>Math Explorer GUI</title>
+    <script src="coi-serviceworker.min.js"></script>
+    <link data-trunk rel="copy-file" href="coi-serviceworker.min.js"/>
+    <link data-trunk rel="rust" href="Cargo.toml" data-bin="math_explorer_gui" data-wasm-opt="0"/>
+    <link data-trunk rel="copy-file" href="worker.js"/>
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
         canvas { display: block; width: 100%; height: 100%; }
@@ -12,3 +16,4 @@
     <canvas id="the_canvas_id" role="application" aria-label="Math Explorer Application"></canvas>
 </body>
 </html>
+

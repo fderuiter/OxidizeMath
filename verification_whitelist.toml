@@ -13,3 +13,13 @@ identifier = "diverged"
 [[dead_code]]
 file = "math_explorer_gui/src/tabs/analysis/ode.rs"
 identifier = "diverged"
+
+[doc_verification]
+# Workspace crates exempt from mandatory architectural headings during documentation migration
+allowlist = [
+    "crates/diagnostics",
+    "egui_plot",
+    "apps/xtask",
+    "math_explorer",
+    "math_explorer_gui",
+]
