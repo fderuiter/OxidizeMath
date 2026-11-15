@@ -1,5 +1,6 @@
 [build]
-target = "wasm32-unknown-unknown"
+target = "index.html"
+filehash = false
 rustflags = ["-C", "target-feature=+atomics,+bulk-memory"]
 
 [serve]
