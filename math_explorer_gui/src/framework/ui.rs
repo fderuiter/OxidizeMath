@@ -158,11 +158,37 @@ impl SimulationFramework {
                             )
                         });
                     }
+                    if ui
+                        .button("🎨")
+                        .accessible_hover_text("Toggle Starter Gallery")
+                        .clicked()
+                    {
+                        self.show_starter_gallery = !self.show_starter_gallery;
+                        ctx.data_mut(|d| {
+                            d.insert_temp(
+                                egui::Id::new("SHOW_STARTER_GALLERY"),
+                                self.show_starter_gallery,
+                            )
+                        });
+                    }
                 });
                 self.render_search_bar(ui);
                 ui.separator();
                 self.render_filtered_tools(ui);
                 ui.separator();
+                if ui
+                    .button("🎨 Starter Gallery")
+                    .accessible_hover_text("Toggle empty-state starter template gallery")
+                    .clicked()
+                {
+                    self.show_starter_gallery = !self.show_starter_gallery;
+                    ctx.data_mut(|d| {
+                        d.insert_temp(
+                            egui::Id::new("SHOW_STARTER_GALLERY"),
+                            self.show_starter_gallery,
+                        )
+                    });
+                }
                 if ui
                     .checkbox(&mut self.show_theory_portal, "Theory Context Portal")
                     .changed()

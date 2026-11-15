@@ -200,6 +200,12 @@ impl InteractiveTool for AttractorPlotter {
         }
     }
 
+    fn apply_preset_json(&mut self, _json_str: &str) -> Result<(), String> {
+        self.reset_parameters();
+        self.execution_state = SolverExecutionState::Running;
+        Ok(())
+    }
+
     fn step_simulation(&mut self) {
         if !self.diverged() {
             if self.execution_state == SolverExecutionState::Ready {
@@ -245,6 +251,10 @@ impl InteractiveTool for AttractorPlotter {
         // --- UI ---
         egui::SidePanel::left("attractor_controls").show(ctx, |ui| {
             ui.heading("Lorenz Attractor");
+            if ui.button("🎨 Starter Gallery").clicked() {
+                let cur = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")).unwrap_or(false));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur));
+            }
             ui.separator();
 
             ui.collapsing("Parameters", |ui| {
