@@ -6,7 +6,16 @@ use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use super::SolverExecutionState;
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SolverExecutionState {
+    Ready,
+    Running,
+    Paused,
+    Diverged {
+        invalid_vec: Vector3<f64>,
+        diverged_at_step: usize,
+    },
+}
 
 #[allow(missing_docs)]
 pub struct AttractorSharedParams {
