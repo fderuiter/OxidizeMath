@@ -204,3 +204,66 @@ fn test_traceability_failure_screenshot_generation() {
         let _ = std::fs::write("/tmp/traceability_failure_state.png", png_data);
     }
 }
+
+#[test]
+fn test_traceability_online_document_links() {
+    let url_tex = TraceabilityTab::paper_url("partitions_implementation.tex");
+    assert_eq!(
+        url_tex,
+        Some("https://fderuiter.github.io/OxidizeMath/partitions_implementation.pdf".to_string())
+    );
+
+    let url_prefixed = TraceabilityTab::paper_url("papers/cera_framework.tex");
+    assert_eq!(
+        url_prefixed,
+        Some("https://fderuiter.github.io/OxidizeMath/cera_framework.pdf".to_string())
+    );
+
+    let url_pdf = TraceabilityTab::paper_url("win_ratio.pdf");
+    assert_eq!(
+        url_pdf,
+        Some("https://fderuiter.github.io/OxidizeMath/win_ratio.pdf".to_string())
+    );
+
+    assert_eq!(TraceabilityTab::paper_url("spec:transformer_v1"), None);
+
+    let mut tab = TraceabilityTab {
+        papers: HashMap::new(),
+        orphaned_papers: vec!["papers/chaos_theory.tex".to_string()],
+        unlinked_code: Vec::new(),
+        invalid_links: Vec::new(),
+        repo_path: None,
+        report_rx: None,
+        state: TraceabilityScanState::Ready,
+    };
+    tab.papers.insert(
+        "partitions_implementation.tex".to_string(),
+        PaperStatus {
+            name: "partitions_implementation.tex".to_string(),
+            linked_code: vec!["crates/pure_math/src/partitions.rs".to_string()],
+        },
+    );
+
+    assert_eq!(
+        tab.online_document_url("partitions_implementation.tex"),
+        Some("https://fderuiter.github.io/OxidizeMath/partitions_implementation.pdf".to_string())
+    );
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        let mut frame = eframe::Frame::_new_kittest();
+        tab.show(ctx, &mut frame);
+    });
+
+    let sample_datasets = vec![
+        (
+            "Hosted Papers".to_string(),
+            vec![[0.0, 0.0], [1.0, 28.0]],
+        ),
+    ];
+    let options = egui_plot::export::ExportOptions::default();
+    if let Ok(png_data) = egui_plot::export::export_custom_png(&sample_datasets, &options) {
+        let _ = std::fs::write("/tmp/traceability_paper_links.png", png_data);
+    }
+}
+

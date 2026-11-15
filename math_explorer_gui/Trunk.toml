@@ -1,7 +1,8 @@
 [build]
 target = "index.html"
-rustflags = ["-C", "target-feature=+atomics,+bulk-memory"]
 filehash = false
+public_url = "./"
+rustflags = ["-C", "target-feature=+atomics,+bulk-memory"]
 
 [serve]
 headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp" }

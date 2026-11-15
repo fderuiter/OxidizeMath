@@ -65,3 +65,58 @@ pub fn spawn_save_direct(
         });
     }
 }
+
+pub fn file_name_str(path: &std::path::Path) -> &str {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("workspace.mws")
+}
+
+pub fn handle_transition_error(
+    mgr: &mut super::WorkspaceSessionManager,
+    ctx: &eframe::egui::Context,
+    op: &str,
+) {
+    let err = format!(
+        "Invalid state transition: received {op} result while in {:?}",
+        mgr.lifecycle_state
+    );
+    notify(mgr, ctx, err, true);
+    mgr.lifecycle_state = super::SessionLifecycleState::Error;
+}
+
+pub fn notify(
+    mgr: &mut super::WorkspaceSessionManager,
+    ctx: &eframe::egui::Context,
+    msg: String,
+    is_err: bool,
+) {
+    mgr.set_toast(&msg, is_err);
+    let (sev, aria) = if is_err {
+        (
+            federated_registry::Severity::Error,
+            "aria_live_assertive_message",
+        )
+    } else {
+        (federated_registry::Severity::Info, "aria_live_message")
+    };
+    log_telemetry(msg, sev, ctx, aria);
+}
+
+pub fn log_telemetry(
+    msg: String,
+    severity: federated_registry::Severity,
+    ctx: &eframe::egui::Context,
+    aria_key: &str,
+) {
+    federated_registry::global_registry().emit(federated_registry::TelemetryEvent {
+        source: "WorkspaceSessionManager".to_string(),
+        severity,
+        message: msg.clone(),
+        metadata: std::collections::HashMap::new(),
+        thread_name: None,
+    });
+    ctx.data_mut(|d| {
+        d.insert_temp(eframe::egui::Id::new(aria_key), msg);
+    });
+}
