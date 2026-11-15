@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use math_commons::math_kernel::types::flatten_2d_index;
 
 #[test]
 fn test_attention_maps_tool_default_and_recalculate() {
@@ -167,7 +168,7 @@ fn test_generate_attention_heatmap_screenshots() {
         for r in 0..nrows {
             for _dy in 0..cell_size {
                 for c in 0..ncols {
-                    let color = pixels[r * ncols + c];
+                    let color = pixels[flatten_2d_index(c, r, ncols)];
                     for _dx in 0..cell_size {
                         data.push(color.r());
                         data.push(color.g());
