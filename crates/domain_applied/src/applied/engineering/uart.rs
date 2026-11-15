@@ -102,58 +102,9 @@ pub fn calculate_uart_throughput(
     (baud_rate.value() as f64 * data_bits.value() as f64) / total_bits.value() as f64
 }
 
-/// Calculates the Effective UART Throughput.
-///
-/// In real-world communications, the "Baud Rate" is not the actual data transfer rate.
-/// Overhead from start bits, stop bits, and parity bits reduces the effective throughput.
-///
-/// $$ \text{Eff. Speed} = \frac{\text{Baud Rate} \times \text{Data Bits}}{\text{Total Bits per Frame}} $$
-///
-/// # Arguments
-///
-/// * `baud_rate` - Symbols per second (e.g., 9600, 115200).
-/// * `data_bits` - Number of payload bits (usually 8).
-/// * `total_bits` - Total bits including start, stop, and parity (usually 10: 1 start + 8 data + 1 stop).
-///
-/// # Returns
-///
-/// * `f64` - Effective bits per second.
-///
-/// # Example
-///
-/// ```
-/// use domain_applied::applied::engineering::uart_effective_throughput;
-///
-/// // Standard 9600 8N1
-/// #[allow(deprecated)]
-/// let throughput = uart_effective_throughput(9600, 8, 10);
-/// assert_eq!(throughput, 7680.0);
-/// ```
-#[deprecated(
-    since = "0.2.0",
-    note = "Use `calculate_uart_throughput` with semantic types instead to prevent primitive obsession."
-)]
-#[verified_engine::verified]
-pub fn uart_effective_throughput(baud_rate: u32, data_bits: u32, total_bits: u32) -> f64 {
-    if total_bits == 0 {
-        return 0.0;
-    }
-    (baud_rate as f64 * data_bits as f64) / total_bits as f64
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_uart() {
-        // 9600 baud, 8N1 (1 start + 8 data + 1 stop = 10 bits)
-        // 9600 * 0.8 = 7680
-        #[allow(deprecated)]
-        let eff = uart_effective_throughput(9600, 8, 10);
-        assert_eq!(eff, 7680.0);
-    }
 
     #[test]
     #[verified_engine::verified]

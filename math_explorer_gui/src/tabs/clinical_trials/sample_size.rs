@@ -5,7 +5,7 @@ use math_explorer::applied::clinical_trials::sample_size::{
     calculate_sample_size_means, calculate_sample_size_proportions,
 };
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum CalculationMode {
     Means,
     Proportions,
@@ -62,6 +62,54 @@ impl InteractiveTool for SampleSizeCalculatorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Sample Size Calculator"
+    }
+    fn domain(&self) -> &'static str {
+        "clinical_trials"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct SampleSizeState {
+            mode: CalculationMode,
+            alpha: f64,
+            power: f64,
+            delta: f64,
+            sigma: f64,
+            p1: f64,
+            p2: f64,
+        }
+        serde_json::to_string(&SampleSizeState {
+            mode: self.mode,
+            alpha: self.alpha,
+            power: self.power,
+            delta: self.delta,
+            sigma: self.sigma,
+            p1: self.p1,
+            p2: self.p2,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct SampleSizeState {
+            mode: CalculationMode,
+            alpha: f64,
+            power: f64,
+            delta: f64,
+            sigma: f64,
+            p1: f64,
+            p2: f64,
+        }
+        if let Ok(s) = serde_json::from_str::<SampleSizeState>(state) {
+            self.mode = s.mode;
+            self.alpha = s.alpha;
+            self.power = s.power;
+            self.delta = s.delta;
+            self.sigma = s.sigma;
+            self.p1 = s.p1;
+            self.p2 = s.p2;
+            self.recalculate();
+        }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]

@@ -1,0 +1,178 @@
+#![cfg(target_os = "macos")]
+
+use super::{MathExplorerApp, ThemeMode, ViewportLayout};
+use eframe::egui;
+use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+
+pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
+    let menu = Menu::new();
+
+    // App Menu
+    let app_menu = Submenu::new("Math Explorer", true);
+    app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
+    menu.append(&app_menu).unwrap();
+
+    // File Menu
+    let file_menu = Submenu::new("File", true);
+    let open_item = MenuItem::with_id(
+        MenuId::new("file_open"),
+        "Open Workspace Session...",
+        true,
+        None,
+    );
+    let save_item = MenuItem::with_id(
+        MenuId::new("file_save"),
+        "Save Workspace Session",
+        true,
+        None,
+    );
+    let save_as_item = MenuItem::with_id(
+        MenuId::new("file_save_as"),
+        "Save Workspace Session As...",
+        true,
+        None,
+    );
+    file_menu.append(&open_item).unwrap();
+    file_menu.append(&save_item).unwrap();
+    file_menu.append(&save_as_item).unwrap();
+    menu.append(&file_menu).unwrap();
+
+    // Edit Menu
+    let edit_menu = Submenu::new("Edit", true);
+    let undo_item = MenuItem::with_id(MenuId::new("edit_undo"), "Undo", true, None);
+    let redo_item = MenuItem::with_id(MenuId::new("edit_redo"), "Redo", true, None);
+    edit_menu.append(&undo_item).unwrap();
+    edit_menu.append(&redo_item).unwrap();
+    menu.append(&edit_menu).unwrap();
+
+    // View Menu
+    let view_menu = Submenu::new("View", true);
+    let palette_item =
+        MenuItem::with_id(MenuId::new("cmd_palette"), "Command Palette...", true, None);
+    view_menu.append(&palette_item).unwrap();
+    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
+
+    let layout_menu = Submenu::new("Viewport Layout", true);
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_single"),
+            "Single",
+            true,
+            None,
+        ))
+        .unwrap();
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_split_h"),
+            "Split Horizontal",
+            true,
+            None,
+        ))
+        .unwrap();
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_split_v"),
+            "Split Vertical",
+            true,
+            None,
+        ))
+        .unwrap();
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_quad"),
+            "2x2 Quad Grid",
+            true,
+            None,
+        ))
+        .unwrap();
+    view_menu.append(&layout_menu).unwrap();
+    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    for (i, name) in app.tab_names().into_iter().enumerate() {
+        let item = MenuItem::with_id(MenuId::new(format!("tab_{}", i)), name, true, None);
+        view_menu.append(&item).unwrap();
+    }
+    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    let diag_item = CheckMenuItem::with_id(
+        MenuId::new("view_toggle_diagnostics"),
+        "Issues & Diagnostics Panel",
+        true,
+        app.show_diagnostics_panel,
+        None,
+    );
+    view_menu.append(&diag_item).unwrap();
+    menu.append(&view_menu).unwrap();
+
+    // Appearance Menu
+    let appearance_menu = Submenu::new("Appearance", true);
+    let dark_item = MenuItem::with_id(MenuId::new("theme_dark"), "Dark", true, None);
+    let light_item = MenuItem::with_id(MenuId::new("theme_light"), "Light", true, None);
+    let hc_item = MenuItem::with_id(
+        MenuId::new("theme_high_contrast"),
+        "High Contrast",
+        true,
+        None,
+    );
+    appearance_menu.append(&dark_item).unwrap();
+    appearance_menu.append(&light_item).unwrap();
+    appearance_menu.append(&hc_item).unwrap();
+    menu.append(&appearance_menu).unwrap();
+
+    menu.init_for_nsapp();
+}
+
+pub(super) fn handle_macos_menu_events(app: &mut MathExplorerApp, ctx: &egui::Context) {
+    if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
+        match event.id.0.as_str() {
+            "file_open" => app.session_manager.trigger_open(),
+            "file_save" => {
+                let state = app.get_app_state();
+                let env_json = app.session_manager.create_envelope(state);
+                app.session_manager.trigger_save(env_json);
+            }
+            "file_save_as" => {
+                let state = app.get_app_state();
+                let env_json = app.session_manager.create_envelope(state);
+                app.session_manager.trigger_save_as(env_json);
+            }
+            "edit_undo" => app.undo(),
+            "edit_redo" => app.redo(),
+            "cmd_palette" => {
+                app.command_palette.toggle();
+                let status_msg = if app.command_palette.is_open {
+                    "Command palette opened"
+                } else {
+                    "Command palette closed"
+                };
+                ctx.data_mut(|d| {
+                    d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
+                });
+            }
+            "help_commands" => app.show_help_menu = !app.show_help_menu,
+            "theme_dark" => {
+                app.theme = ThemeMode::Dark;
+                ctx.set_visuals(app.theme.visuals());
+            }
+            "theme_light" => {
+                app.theme = ThemeMode::Light;
+                ctx.set_visuals(app.theme.visuals());
+            }
+            "theme_high_contrast" => {
+                app.theme = ThemeMode::HighContrast;
+                ctx.set_visuals(app.theme.visuals());
+            }
+            "view_toggle_diagnostics" => {
+                app.show_diagnostics_panel = !app.show_diagnostics_panel;
+            }
+            "layout_single" => app.viewport_layout = ViewportLayout::Single,
+            "layout_split_h" => app.viewport_layout = ViewportLayout::SplitHorizontal,
+            "layout_split_v" => app.viewport_layout = ViewportLayout::SplitVertical,
+            "layout_quad" => app.viewport_layout = ViewportLayout::QuadGrid,
+            other if other.starts_with("tab_") => {
+                if let Ok(idx) = other[4..].parse::<usize>() {
+                    app.selected_tab = idx;
+                }
+            }
+            _ => {}
+        }
+    }
+}

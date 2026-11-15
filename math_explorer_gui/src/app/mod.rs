@@ -1,3 +1,5 @@
+#[cfg(target_os = "macos")]
+mod macos_menu;
 mod session;
 mod theme;
 mod ui_panels;
@@ -5,6 +7,8 @@ mod viewport;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_command_palette;
 #[cfg(test)]
 mod tests_diagnostics;
 #[cfg(test)]
@@ -16,6 +20,7 @@ pub use session::WorkspaceSessionManager;
 pub use theme::ThemeMode;
 pub use viewport::ViewportLayout;
 
+use crate::command_palette::CommandPalette;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
@@ -50,8 +55,9 @@ pub struct MathExplorerApp {
     show_info: bool,
     show_warnings: bool,
     show_errors: bool,
-    show_help_menu: bool,
+    pub(super) show_help_menu: bool,
     pub theme: ThemeMode,
+    pub command_palette: CommandPalette,
     pub session_manager: WorkspaceSessionManager,
     pub viewport_layout: ViewportLayout,
     pub pane_tabs: Vec<usize>,
@@ -73,6 +79,7 @@ impl Default for MathExplorerApp {
             show_errors: true,
             show_help_menu: false,
             theme: ThemeMode::Dark,
+            command_palette: CommandPalette::default(),
             session_manager: WorkspaceSessionManager::new(),
             viewport_layout: ViewportLayout::Single,
             pane_tabs: vec![0, 1, 2, 3],
@@ -97,7 +104,7 @@ impl MathExplorerApp {
         }
 
         #[cfg(target_os = "macos")]
-        ui_panels::setup_macos_menu(&app);
+        macos_menu::setup_macos_menu(&app);
 
         app
     }
@@ -213,7 +220,6 @@ impl MathExplorerApp {
     }
 
     /// Returns the names of all registered tabs.
-    #[allow(dead_code)]
     pub fn tab_names(&self) -> Vec<&'static str> {
         self.tabs.iter().map(|t| t.name()).collect()
     }
@@ -279,6 +285,29 @@ impl eframe::App for MathExplorerApp {
         } else {
             egui::Modifiers::CTRL
         };
+
+        let palette_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
+            ctx,
+            "Command Palette",
+            "Open command palette to quickly switch simulation tabs",
+            egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::K),
+            true,
+            "Global",
+            None,
+            None,
+        );
+
+        if palette_triggered {
+            self.command_palette.toggle();
+            let status_msg = if self.command_palette.is_open {
+                "Command palette opened"
+            } else {
+                "Command palette closed"
+            };
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
+            });
+        }
 
         let slash_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
             ctx,
@@ -359,50 +388,7 @@ impl eframe::App for MathExplorerApp {
         }
 
         #[cfg(target_os = "macos")]
-        {
-            if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
-                if event.id.0 == "file_open" {
-                    self.session_manager.trigger_open();
-                } else if event.id.0 == "file_save" {
-                    let state = self.get_app_state();
-                    let env_json = self.session_manager.create_envelope(state);
-                    self.session_manager.trigger_save(env_json);
-                } else if event.id.0 == "file_save_as" {
-                    let state = self.get_app_state();
-                    let env_json = self.session_manager.create_envelope(state);
-                    self.session_manager.trigger_save_as(env_json);
-                } else if event.id.0 == "edit_undo" {
-                    self.undo();
-                } else if event.id.0 == "edit_redo" {
-                    self.redo();
-                } else if event.id.0.starts_with("tab_") {
-                    if let Ok(idx) = event.id.0[4..].parse::<usize>() {
-                        self.selected_tab = idx;
-                    }
-                } else if event.id.0 == "help_commands" {
-                    self.show_help_menu = !self.show_help_menu;
-                } else if event.id.0 == "theme_dark" {
-                    self.theme = ThemeMode::Dark;
-                    ctx.set_visuals(self.theme.visuals());
-                } else if event.id.0 == "theme_light" {
-                    self.theme = ThemeMode::Light;
-                    ctx.set_visuals(self.theme.visuals());
-                } else if event.id.0 == "theme_high_contrast" {
-                    self.theme = ThemeMode::HighContrast;
-                    ctx.set_visuals(self.theme.visuals());
-                } else if event.id.0 == "view_toggle_diagnostics" {
-                    self.show_diagnostics_panel = !self.show_diagnostics_panel;
-                } else if event.id.0 == "layout_single" {
-                    self.viewport_layout = ViewportLayout::Single;
-                } else if event.id.0 == "layout_split_h" {
-                    self.viewport_layout = ViewportLayout::SplitHorizontal;
-                } else if event.id.0 == "layout_split_v" {
-                    self.viewport_layout = ViewportLayout::SplitVertical;
-                } else if event.id.0 == "layout_quad" {
-                    self.viewport_layout = ViewportLayout::QuadGrid;
-                }
-            }
-        }
+        macos_menu::handle_macos_menu_events(self, ctx);
 
         #[cfg(target_os = "macos")]
         if self.session_manager.toast().is_some() {
@@ -433,6 +419,20 @@ impl eframe::App for MathExplorerApp {
         }
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
+
+        // Render Command Palette Overlay
+        if let Some(new_tab_idx) = self.command_palette.show(ctx, &self.tabs) {
+            if new_tab_idx < self.tabs.len() {
+                self.selected_tab = new_tab_idx;
+                let tab_name = self.tabs[new_tab_idx].name();
+                ctx.data_mut(|d| {
+                    d.insert_temp(
+                        egui::Id::new("aria_live_message"),
+                        format!("Switched to tab {}", tab_name),
+                    );
+                });
+            }
+        }
 
         let current_app_state = self.get_app_state();
         self.session_manager
