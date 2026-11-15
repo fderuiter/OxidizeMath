@@ -3,6 +3,7 @@ mod macos_menu;
 mod session;
 mod theme;
 mod ui_panels;
+mod viewport;
 
 #[cfg(test)]
 mod tests;
@@ -11,11 +12,14 @@ mod tests_command_palette;
 #[cfg(test)]
 mod tests_diagnostics;
 #[cfg(test)]
+mod tests_multi_pane;
+#[cfg(test)]
 mod tests_session_lifecycle;
 
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 pub use theme::ThemeMode;
+pub use viewport::ViewportLayout;
 
 use crate::command_palette::CommandPalette;
 use crate::tabs::ExplorerTab;
@@ -38,20 +42,27 @@ pub struct AppState {
     #[serde(default)]
     pub theme: ThemeMode,
     pub tab_states: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub viewport_layout: ViewportLayout,
+    #[serde(default)]
+    pub pane_tabs: Vec<usize>,
 }
 
 pub struct MathExplorerApp {
     tabs: Vec<Box<dyn ExplorerTab>>,
-    selected_tab: usize,
+    pub selected_tab: usize,
     diagnostic_events: Vec<TelemetryEvent>,
     pub show_diagnostics_panel: bool,
     show_info: bool,
     show_warnings: bool,
     show_errors: bool,
-    show_help_menu: bool,
+    pub(super) show_help_menu: bool,
     pub theme: ThemeMode,
     pub command_palette: CommandPalette,
     pub session_manager: WorkspaceSessionManager,
+    pub viewport_layout: ViewportLayout,
+    pub pane_tabs: Vec<usize>,
+    pane_contexts: [egui::Context; 4],
 }
 
 impl Default for MathExplorerApp {
@@ -71,6 +82,14 @@ impl Default for MathExplorerApp {
             theme: ThemeMode::Dark,
             command_palette: CommandPalette::default(),
             session_manager: WorkspaceSessionManager::new(),
+            viewport_layout: ViewportLayout::Single,
+            pane_tabs: vec![0, 1, 2, 3],
+            pane_contexts: [
+                egui::Context::default(),
+                egui::Context::default(),
+                egui::Context::default(),
+                egui::Context::default(),
+            ],
         }
     }
 }
@@ -91,6 +110,16 @@ impl MathExplorerApp {
         app
     }
 
+    /// Sets the assigned tab index for a specific pane.
+    pub fn set_pane_tab(&mut self, pane_idx: usize, tab_idx: usize) {
+        if pane_idx < self.pane_tabs.len() && tab_idx < self.tabs.len() {
+            self.pane_tabs[pane_idx] = tab_idx;
+            if pane_idx == 0 {
+                self.selected_tab = tab_idx;
+            }
+        }
+    }
+
     /// Extracts current application state into an `AppState` struct.
     pub fn get_app_state(&self) -> AppState {
         let mut tab_states = std::collections::HashMap::new();
@@ -103,6 +132,10 @@ impl MathExplorerApp {
             .tabs
             .get(self.selected_tab)
             .map(|t| t.name().to_string());
+        let mut pane_tabs = self.pane_tabs.clone();
+        if self.viewport_layout == ViewportLayout::Single && !pane_tabs.is_empty() {
+            pane_tabs[0] = self.selected_tab;
+        }
         AppState {
             selected_tab: self.selected_tab,
             selected_tab_name,
@@ -112,6 +145,8 @@ impl MathExplorerApp {
             show_diagnostics_panel: self.show_diagnostics_panel,
             theme: self.theme,
             tab_states,
+            viewport_layout: self.viewport_layout,
+            pane_tabs,
         }
     }
 
@@ -122,6 +157,7 @@ impl MathExplorerApp {
         self.show_errors = app_state.show_errors;
         self.show_diagnostics_panel = app_state.show_diagnostics_panel;
         self.theme = app_state.theme;
+        self.viewport_layout = app_state.viewport_layout;
 
         for tab in &mut self.tabs {
             if let Some(tab_str) = app_state.tab_states.get(tab.name()) {
@@ -137,6 +173,26 @@ impl MathExplorerApp {
             }
         } else if app_state.selected_tab < self.tabs.len() {
             self.selected_tab = app_state.selected_tab;
+        }
+
+        if app_state.pane_tabs.is_empty() {
+            self.pane_tabs = vec![self.selected_tab, 1, 2, 3];
+        } else {
+            self.pane_tabs = app_state.pane_tabs;
+        }
+        while self.pane_tabs.len() < 4 {
+            let next_idx = self.pane_tabs.len().min(self.tabs.len().saturating_sub(1));
+            self.pane_tabs.push(next_idx);
+        }
+        for idx in &mut self.pane_tabs {
+            if *idx >= self.tabs.len() {
+                *idx = 0;
+            }
+        }
+        if self.viewport_layout == ViewportLayout::Single {
+            self.pane_tabs[0] = self.selected_tab;
+        } else if let Some(&first) = self.pane_tabs.first() {
+            self.selected_tab = first;
         }
     }
 
@@ -192,60 +248,6 @@ impl MathExplorerApp {
             self.session_manager.push_undo_preserving_redo(current);
             self.apply_app_state(next);
             self.session_manager.set_is_restoring(true);
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    fn handle_macos_menu_events(&mut self, ctx: &egui::Context) {
-        if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
-            match event.id.0.as_str() {
-                "file_open" => self.session_manager.trigger_open(),
-                "file_save" => {
-                    let state = self.get_app_state();
-                    let env_json = self.session_manager.create_envelope(state);
-                    self.session_manager.trigger_save(env_json);
-                }
-                "file_save_as" => {
-                    let state = self.get_app_state();
-                    let env_json = self.session_manager.create_envelope(state);
-                    self.session_manager.trigger_save_as(env_json);
-                }
-                "edit_undo" => self.undo(),
-                "edit_redo" => self.redo(),
-                "cmd_palette" => {
-                    self.command_palette.toggle();
-                    let status_msg = if self.command_palette.is_open {
-                        "Command palette opened"
-                    } else {
-                        "Command palette closed"
-                    };
-                    ctx.data_mut(|d| {
-                        d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
-                    });
-                }
-                "help_commands" => self.show_help_menu = !self.show_help_menu,
-                "theme_dark" => {
-                    self.theme = ThemeMode::Dark;
-                    ctx.set_visuals(self.theme.visuals());
-                }
-                "theme_light" => {
-                    self.theme = ThemeMode::Light;
-                    ctx.set_visuals(self.theme.visuals());
-                }
-                "theme_high_contrast" => {
-                    self.theme = ThemeMode::HighContrast;
-                    ctx.set_visuals(self.theme.visuals());
-                }
-                "view_toggle_diagnostics" => {
-                    self.show_diagnostics_panel = !self.show_diagnostics_panel;
-                }
-                other if other.starts_with("tab_") => {
-                    if let Ok(idx) = other[4..].parse::<usize>() {
-                        self.selected_tab = idx;
-                    }
-                }
-                _ => {}
-            }
         }
     }
 }
@@ -387,7 +389,7 @@ impl eframe::App for MathExplorerApp {
         }
 
         #[cfg(target_os = "macos")]
-        self.handle_macos_menu_events(ctx);
+        macos_menu::handle_macos_menu_events(self, ctx);
 
         #[cfg(target_os = "macos")]
         if self.session_manager.toast().is_some() {
@@ -402,15 +404,19 @@ impl eframe::App for MathExplorerApp {
             ui_panels::render_main_menu(self, ctx, ui);
         });
 
-        // Render Active Tab
-        if let Some(tab) = self.tabs.get_mut(self.selected_tab) {
-            tab.show(ctx, frame);
-        } else {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                ui.centered_and_justified(|ui| {
-                    ui.label("No module selected.");
+        // Render Active Tab or Multi-Pane Viewports
+        if self.viewport_layout == ViewportLayout::Single {
+            if let Some(tab) = self.tabs.get_mut(self.selected_tab) {
+                tab.show(ctx, frame);
+            } else {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.centered_and_justified(|ui| {
+                        ui.label("No module selected.");
+                    });
                 });
-            });
+            }
+        } else {
+            viewport::render_multi_pane_manager(self, ctx, frame);
         }
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
