@@ -1,12 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::accessibility::AccessibleTheoryHover;
+use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::InteractiveTool;
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
 use egui_plot::{Callout, Line, Plot, PlotPoints};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SolverExecutionState {
@@ -18,6 +20,10 @@ pub enum SolverExecutionState {
         diverged_at_step: usize,
     },
 }
+
+#[path = "attractors/runner.rs"]
+mod runner;
+pub use runner::*;
 
 pub struct AttractorPlotter {
     system: LorenzSystem,
@@ -33,7 +39,8 @@ pub struct AttractorPlotter {
     max_points: usize,
 
     camera: crate::framework::Camera3D,
-
+    params: Arc<std::sync::RwLock<AttractorSharedParams>>,
+    worker: BackgroundWorker<AttractorRunner>,
     pub show_annotations: bool,
 }
 
@@ -41,6 +48,25 @@ impl Default for AttractorPlotter {
     fn default() -> Self {
         let initial_state = LorenzState::new(1.0, 1.0, 1.0);
         let system = LorenzBuilder::new().build(initial_state);
+        let sigma = system.sigma;
+        let rho = system.rho;
+        let beta = system.beta;
+        let params = Arc::new(std::sync::RwLock::new(AttractorSharedParams {
+            sigma,
+            rho,
+            beta,
+            dt: 0.01,
+            simulation_speed: 5,
+            max_points: 2000,
+        }));
+        let runner = AttractorRunner {
+            system: LorenzBuilder::new().sigma(sigma).rho(rho).beta(beta).build(initial_state),
+            params: Arc::clone(&params),
+            history: VecDeque::with_capacity(2000),
+            step_count: 0,
+            execution_state: SolverExecutionState::Ready,
+        };
+        let worker = BackgroundWorker::new(runner);
 
         Self {
             system,
@@ -51,6 +77,8 @@ impl Default for AttractorPlotter {
             history: VecDeque::with_capacity(2000),
             max_points: 2000,
             camera: crate::framework::Camera3D::new(0.0, 0.0, 1.0),
+            params,
+            worker,
             show_annotations: true,
         }
     }
@@ -88,10 +116,19 @@ impl AttractorPlotter {
             return Err("Cannot resume simulation: system parameters are non-finite.");
         }
         self.execution_state = SolverExecutionState::Running;
+        let _ = self.worker.send_command(SimCommand::Start);
         Ok(())
     }
 
     pub fn on_slider_changed(&mut self) {
+        if let Ok(mut p) = self.params.write() {
+            p.sigma = self.system.sigma;
+            p.rho = self.system.rho;
+            p.beta = self.system.beta;
+            p.dt = self.dt;
+            p.simulation_speed = self.simulation_speed;
+            p.max_points = self.max_points;
+        }
         if self.diverged() && self.is_finite_state() {
             self.execution_state = SolverExecutionState::Ready;
         }
@@ -110,6 +147,15 @@ impl AttractorPlotter {
         self.history.clear();
         self.step_count = 0;
         self.execution_state = SolverExecutionState::Ready;
+        let _ = self.worker.send_command(SimCommand::Reset);
+        if let Ok(mut p) = self.params.write() {
+            p.sigma = sigma;
+            p.rho = rho;
+            p.beta = beta;
+            p.dt = self.dt;
+            p.simulation_speed = self.simulation_speed;
+            p.max_points = self.max_points;
+        }
     }
 
     pub fn reset_parameters(&mut self) {
@@ -243,9 +289,38 @@ impl InteractiveTool for AttractorPlotter {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         // --- Simulation ---
+        let current_vec = self.system.state.vec;
+        if (!current_vec.x.is_finite()
+            || !current_vec.y.is_finite()
+            || !current_vec.z.is_finite())
+            && !self.diverged()
+        {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: current_vec,
+                diverged_at_step: self.step_count,
+            };
+        }
+
         if !self.is_paused() {
-            self.step_simulation();
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
             ctx.request_repaint();
+        } else if self.worker.is_running() {
+            let _ = self.worker.send_command(SimCommand::Pause);
+        }
+
+        if let Some(snapshot) = self.worker.update() {
+            if let Some(data) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
+            {
+                self.history = data.history.clone();
+                self.system.state.vec = data.current_vec;
+                self.step_count = data.step_count;
+                self.execution_state = data.execution_state;
+            }
         }
 
         // --- UI ---
@@ -281,6 +356,7 @@ impl InteractiveTool for AttractorPlotter {
                             let _ = self.try_resume();
                         } else {
                             self.execution_state = SolverExecutionState::Paused;
+                            let _ = self.worker.send_command(SimCommand::Pause);
                         }
                     }
                     if ui.button("↻ Reset").clicked() {

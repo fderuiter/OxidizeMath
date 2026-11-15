@@ -124,3 +124,113 @@ fn test_reward_plots_runner_batch_training() {
     assert_eq!(data_reset.episodes_trained, 0);
     assert!(data_reset.rewards_per_episode.is_empty());
 }
+
+#[test]
+fn test_background_worker_generic_adapter() {
+    use crate::tabs::ai::reward_plots::RewardPlotsRunner;
+
+    let runner = RewardPlotsRunner::new();
+    let mut worker = BackgroundWorker::new(runner);
+
+    assert_eq!(worker.state(), SimWorkerState::Ready);
+    assert!(!worker.is_running());
+
+    // Send start command
+    assert!(worker.send_command(SimCommand::Start).is_ok());
+    assert!(worker.is_running());
+
+    // Send pause command
+    assert!(worker.send_command(SimCommand::Pause).is_ok());
+    assert!(!worker.is_running());
+
+    // Deref access to controller
+    assert_eq!(worker.state(), SimWorkerState::Ready);
+}
+
+#[test]
+fn test_ising_runner_offload() {
+    use crate::tabs::solid_state::ising::{IsingRunner, IsingSharedParams};
+    use math_explorer::physics::stat_mech::ising::SpinLattice;
+
+    let params = Arc::new(std::sync::RwLock::new(IsingSharedParams {
+        temperature: 2.269,
+        j_coupling: 1.0,
+        h_field: 0.0,
+        steps_per_frame: 500,
+    }));
+    let mut runner = IsingRunner {
+        lattice: SpinLattice::new(20, 20, Some(42)),
+        params: Arc::clone(&params),
+    };
+
+    let snap_before = runner.get_snapshot();
+    assert_eq!(snap_before.width, 20);
+    assert_eq!(snap_before.height, 20);
+    assert_eq!(snap_before.pixels.read().unwrap().len(), 400);
+
+    runner.step();
+
+    let snap_after = runner.get_snapshot();
+    assert_eq!(snap_after.pixels.read().unwrap().len(), 400);
+    assert_eq!(snap_after.custom_data.len(), 2); // m_avg, energy
+
+    let datasets = vec![(
+        "Ising Magnetization".to_string(),
+        vec![
+            [0.0, snap_before.custom_data[0]],
+            [1.0, snap_after.custom_data[0]],
+        ],
+    )];
+    let options = egui_plot::export::ExportOptions::default();
+    if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
+        let _ = std::fs::write("/tmp/ising_simulation.png", png_data);
+    }
+}
+
+#[test]
+fn test_mri_runner_offload() {
+    use crate::tabs::mri::{MriRunner, MriSharedParams, MriSnapshot};
+    use math_explorer::physics::mri::bloch::BlochSimulator;
+    use math_explorer::pure_math::analysis::ode::RungeKutta4;
+    use nalgebra::Vector3;
+    use std::collections::VecDeque;
+
+    let initial_m = Vector3::new(1.0, 0.0, 0.0);
+    let simulator = BlochSimulator::new(initial_m, 1.0);
+    let solver = RungeKutta4::new(&initial_m);
+    let params = Arc::new(std::sync::RwLock::new(MriSharedParams {
+        t1: 1.0,
+        t2: 0.1,
+        b_field: Vector3::new(0.0, 0.0, 1.0),
+        time_scale: 1.0,
+    }));
+
+    let mut runner = MriRunner {
+        simulator,
+        solver,
+        params,
+        current_time: 0.0,
+        history: VecDeque::new(),
+        max_history: 1000,
+    };
+
+    assert_eq!(runner.current_time, 0.0);
+    runner.step();
+    assert!(runner.current_time > 0.0);
+
+    let snap = runner.get_snapshot();
+    let data = snap
+        .structured_data
+        .as_ref()
+        .and_then(|d| d.downcast_ref::<MriSnapshot>())
+        .expect("Snapshot must contain MriSnapshot");
+
+    assert!(!data.history.is_empty());
+
+    let points: Vec<[f64; 2]> = data.history.iter().map(|(t, m)| [*t, m.x]).collect();
+    let datasets = vec![("MRI Transverse Decay Mx".to_string(), points)];
+    let options = egui_plot::export::ExportOptions::default();
+    if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
+        let _ = std::fs::write("/tmp/mri_simulation.png", png_data);
+    }
+}

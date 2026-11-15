@@ -1,8 +1,11 @@
 use crate::accessibility::AccessibleHoverText;
+use crate::async_sim::{BackgroundWorker, SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::{InputMode, InteractiveTool};
 use eframe::egui;
 use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorldEnv, Move};
 use math_explorer::ai::reinforcement_learning::{algorithms::TabularQAgent, MarkovDecisionProcess};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, PartialEq)]
 enum HeatmapView {
@@ -13,11 +16,125 @@ enum HeatmapView {
     Right,
 }
 
+#[derive(Clone)]
+#[allow(missing_docs)]
+pub struct QTableSnapshot {
+    pub episodes_trained: u32,
+    pub q_values: HashMap<(GridState, Move), f64>,
+}
+
+#[allow(missing_docs)]
+pub struct QTableRunner {
+    pub env: GridWorldEnv,
+    pub agent: TabularQAgent<GridState, Move>,
+    pub episodes_trained: u32,
+    pub target_episodes: u32,
+    pub is_training: bool,
+}
+
+impl SimulationRunner for QTableRunner {
+    fn process_command(&mut self, cmd: SimCommand) {
+        match cmd {
+            SimCommand::TrainEpisodes(count) => {
+                self.target_episodes = self.episodes_trained + count as u32;
+                self.is_training = true;
+            }
+            SimCommand::Start => {
+                if self.episodes_trained < self.target_episodes {
+                    self.is_training = true;
+                }
+            }
+            SimCommand::Pause => {
+                self.is_training = false;
+            }
+            SimCommand::Reset => {
+                self.agent = TabularQAgent::new(
+                    math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+                    math_commons::primitives::UnitInterval::new(0.9).unwrap(),
+                    math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+                    None,
+                );
+                self.episodes_trained = 0;
+                self.target_episodes = 0;
+                self.is_training = false;
+            }
+            _ => {}
+        }
+    }
+
+    fn step(&mut self) {
+        if self.is_training && self.episodes_trained < self.target_episodes {
+            let batch = (self.target_episodes - self.episodes_trained).min(50);
+            for _ in 0..batch {
+                let mut current_state = self.env.start;
+                let mut steps = 0;
+
+                while !self.env.is_terminal(&current_state) && steps < 100 {
+                    let actions = self.env.actions(&current_state);
+                    if actions.is_empty() {
+                        break;
+                    }
+
+                    if let Some(action) = self.agent.select_action(&current_state, &actions) {
+                        let next_state = self.env.step(&current_state, &action);
+                        let reward = self.env.reward(&current_state, &action, &next_state);
+                        let next_actions = self.env.actions(&next_state);
+
+                        self.agent
+                            .update(&current_state, &action, reward, &next_state, &next_actions);
+
+                        current_state = next_state;
+                    }
+                    steps += 1;
+                }
+                self.episodes_trained += 1;
+            }
+            if self.episodes_trained >= self.target_episodes {
+                self.is_training = false;
+            }
+        }
+    }
+
+    fn get_snapshot(&self) -> StateSnapshot {
+        let mut q_values = HashMap::new();
+        for x in 0..self.env.width {
+            for y in 0..self.env.height {
+                let state = GridState { x, y };
+                for action in [Move::Up, Move::Down, Move::Left, Move::Right] {
+                    let q = self.agent.get_q_value(&state, &action);
+                    q_values.insert((state, action), q);
+                }
+            }
+        }
+        let snapshot = QTableSnapshot {
+            episodes_trained: self.episodes_trained,
+            q_values,
+        };
+        StateSnapshot {
+            width: self.env.width as usize,
+            height: self.env.height as usize,
+            pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
+            custom_data: vec![self.episodes_trained as f64],
+            structured_data: Some(Box::new(snapshot)),
+        }
+    }
+
+    fn get_steps_per_frame(&self) -> usize {
+        20
+    }
+
+    fn is_complete(&self) -> bool {
+        !self.is_training || self.episodes_trained >= self.target_episodes
+    }
+}
+
 pub struct QTableInspectorTool {
     env: GridWorldEnv,
     agent: TabularQAgent<GridState, Move>,
+    cached_q_values: HashMap<(GridState, Move), f64>,
     episodes_trained: u32,
     view: HeatmapView,
+    worker: BackgroundWorker<QTableRunner>,
 }
 
 impl Default for QTableInspectorTool {
@@ -30,18 +147,46 @@ impl Default for QTableInspectorTool {
             traps: vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }],
             gamma: 0.9,
         };
-        let agent = TabularQAgent::new(math_commons::primitives::UnitInterval::new(0.1).unwrap(), math_commons::primitives::UnitInterval::new(0.9).unwrap(), math_commons::primitives::UnitInterval::new(0.1).unwrap(), None);
+        let agent = TabularQAgent::new(
+            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+            math_commons::primitives::UnitInterval::new(0.9).unwrap(),
+            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+            None,
+        );
+        let runner = QTableRunner {
+            env: GridWorldEnv {
+                width: 5,
+                height: 5,
+                start: GridState { x: 0, y: 0 },
+                goal: GridState { x: 4, y: 4 },
+                traps: vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }],
+                gamma: 0.9,
+            },
+            agent: TabularQAgent::new(
+                math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+                math_commons::primitives::UnitInterval::new(0.9).unwrap(),
+                math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+                None,
+            ),
+            episodes_trained: 0,
+            target_episodes: 0,
+            is_training: false,
+        };
+        let worker = BackgroundWorker::new(runner);
         Self {
             env,
             agent,
+            cached_q_values: HashMap::new(),
             episodes_trained: 0,
             view: HeatmapView::MaxQ,
+            worker,
         }
     }
 }
 
 impl QTableInspectorTool {
-    fn train(&mut self, episodes: u32) {
+    #[cfg(test)]
+    pub fn train(&mut self, episodes: u32) {
         for _ in 0..episodes {
             let mut current_state = self.env.start;
             let mut steps = 0;
@@ -66,6 +211,22 @@ impl QTableInspectorTool {
             }
         }
         self.episodes_trained += episodes;
+        for x in 0..self.env.width {
+            for y in 0..self.env.height {
+                let state = GridState { x, y };
+                for action in [Move::Up, Move::Down, Move::Left, Move::Right] {
+                    self.cached_q_values
+                        .insert((state, action), self.agent.get_q_value(&state, &action));
+                }
+            }
+        }
+    }
+
+    fn get_q(&self, state: &GridState, action: &Move) -> f64 {
+        self.cached_q_values
+            .get(&(*state, *action))
+            .copied()
+            .unwrap_or_else(|| self.agent.get_q_value(state, action))
     }
 
     fn get_q_value_for_view(&self, state: &GridState) -> f64 {
@@ -73,7 +234,7 @@ impl QTableInspectorTool {
             HeatmapView::MaxQ => {
                 let mut max_q = f64::NEG_INFINITY;
                 for action in [Move::Up, Move::Down, Move::Left, Move::Right] {
-                    let q = self.agent.get_q_value(state, &action);
+                    let q = self.get_q(state, &action);
                     if q > max_q {
                         max_q = q;
                     }
@@ -84,56 +245,93 @@ impl QTableInspectorTool {
                     max_q
                 }
             }
-            HeatmapView::Up => self.agent.get_q_value(state, &Move::Up),
-            HeatmapView::Down => self.agent.get_q_value(state, &Move::Down),
-            HeatmapView::Left => self.agent.get_q_value(state, &Move::Left),
-            HeatmapView::Right => self.agent.get_q_value(state, &Move::Right),
+            HeatmapView::Up => self.get_q(state, &Move::Up),
+            HeatmapView::Down => self.get_q(state, &Move::Down),
+            HeatmapView::Left => self.get_q(state, &Move::Left),
+            HeatmapView::Right => self.get_q(state, &Move::Right),
         }
     }
 }
 
 impl InteractiveTool for QTableInspectorTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Q-Table Inspector"
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
+        if let Some(snapshot) = self.worker.update() {
+            if let Some(data) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<QTableSnapshot>())
+            {
+                self.cached_q_values = data.q_values.clone();
+                self.episodes_trained = data.episodes_trained;
+            }
+        }
+        if self.worker.is_running() {
+            ctx.request_repaint();
+        }
+
         let input_mode = ctx.data(|d| {
             d.get_temp(egui::Id::new("INPUT_MODE"))
                 .unwrap_or(InputMode::Mouse)
         });
         let touch_min = 44.0;
-        let legend_size = if input_mode == InputMode::Touch { 15.0_f32.max(touch_min) } else { 15.0 };
-        let cell_size = if input_mode == InputMode::Touch { 60.0_f32.max(touch_min) } else { 60.0 };
+        let legend_size = if input_mode == InputMode::Touch {
+            15.0_f32.max(touch_min)
+        } else {
+            15.0
+        };
+        let cell_size = if input_mode == InputMode::Touch {
+            60.0_f32.max(touch_min)
+        } else {
+            60.0
+        };
 
         egui::SidePanel::left("q_table_controls").show(ctx, |ui| {
             ui.heading("Training Controls");
             ui.separator();
 
             ui.label(format!("Episodes Trained: {}", self.episodes_trained));
+            if self.worker.is_running() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(60, 160, 240),
+                    "⏳ Training in background...",
+                );
+            }
 
             if ui
                 .button("▶ Train 100 Episodes")
-                .accessible_hover_text("Train the agent for 100 episodes instantly")
+                .accessible_hover_text("Train the agent for 100 episodes in the background")
                 .clicked()
             {
-                self.train(100);
+                let _ = self.worker.send_command(SimCommand::TrainEpisodes(100));
             }
             if ui
                 .button("▶ Train 1000 Episodes")
-                .accessible_hover_text("Train the agent for 1000 episodes instantly")
+                .accessible_hover_text("Train the agent for 1000 episodes in the background")
                 .clicked()
             {
-                self.train(1000);
+                let _ = self.worker.send_command(SimCommand::TrainEpisodes(1000));
             }
             if ui
                 .button("↻ Reset Agent")
                 .accessible_hover_text("Clear the Q-table and reset the agent's knowledge")
                 .clicked()
             {
-                self.agent = TabularQAgent::new(math_commons::primitives::UnitInterval::new(0.1).unwrap(), math_commons::primitives::UnitInterval::new(0.9).unwrap(), math_commons::primitives::UnitInterval::new(0.1).unwrap(), None);
+                let _ = self.worker.send_command(SimCommand::Reset);
+                self.agent = TabularQAgent::new(
+                    math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+                    math_commons::primitives::UnitInterval::new(0.9).unwrap(),
+                    math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+                    None,
+                );
+                self.cached_q_values.clear();
                 self.episodes_trained = 0;
             }
 
@@ -266,3 +464,8 @@ impl scientific_metadata::theory::TheoryDescribable for QTableInspectorTool {
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+#[cfg(test)]
+#[path = "q_table_inspector/tests.rs"]
+mod tests;
+
