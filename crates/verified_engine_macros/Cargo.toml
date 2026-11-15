@@ -12,6 +12,7 @@ syn = { workspace = true, features = ["full", "fold", "visit-mut", "visit"] }
 proc-macro = true
 [dev-dependencies]
 approx = { workspace = true }
+scientific_metadata = { path = "../scientific_metadata" }
 
 [lints]
 workspace = true

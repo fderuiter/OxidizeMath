@@ -642,9 +642,6 @@
       "signature": "pub fn calculate_taylor_tool_life (cutting_speed : CuttingSpeed , constant_c : MaterialConstant , exponent_n : ToolExponent ,) -> ToolLife"
     },
     {
-      "signature": "pub fn taylor_tool_life (cutting_speed : f64 , constant_c : f64 , exponent_n : f64) -> f64"
-    },
-    {
       "signature": "pub struct CuttingSpeed"
     },
     {
@@ -660,9 +657,6 @@
   "crates/domain_applied/src/applied/engineering/uart.rs": [
     {
       "signature": "pub fn calculate_uart_throughput (baud_rate : BaudRate , data_bits : DataBits , total_bits : TotalBits ,) -> f64"
-    },
-    {
-      "signature": "pub fn uart_effective_throughput (baud_rate : u32 , data_bits : u32 , total_bits : u32) -> f64"
     },
     {
       "signature": "pub struct BaudRate"
@@ -1862,6 +1856,12 @@
   ],
   "crates/domain_physics/src/physics/medical/radar_gating/gating.rs": [
     {
+      "signature": "pub enum BeamState"
+    },
+    {
+      "signature": "pub enum GatingError"
+    },
+    {
       "signature": "pub struct GatingLogic"
     }
   ],
@@ -2336,24 +2336,10 @@
   ],
   "crates/oxidize_core/src/boundary.rs": [
     {
-      "signature": "pub struct BounceBackBoundary"
-    },
-    {
       "signature": "pub struct NeumannBoundary"
     },
     {
-      "signature": "pub struct PeriodicBoundary"
-    },
-    {
       "signature": "pub trait BoundaryCondition"
-    }
-  ],
-  "crates/oxidize_core/src/double_buffer.rs": [
-    {
-      "signature": "pub trait DoubleBufferedSimulationModel"
-    },
-    {
-      "signature": "pub trait DoubleBufferedState"
     }
   ],
   "crates/oxidize_core/src/grid.rs": [

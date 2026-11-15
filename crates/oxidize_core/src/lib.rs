@@ -200,8 +200,6 @@ pub mod ast_visitor;
 #[allow(missing_docs)]
 pub mod boundary;
 #[allow(missing_docs)]
-pub mod double_buffer;
-#[allow(missing_docs)]
 pub mod grid;
 #[allow(missing_docs)]
 pub mod iteration;

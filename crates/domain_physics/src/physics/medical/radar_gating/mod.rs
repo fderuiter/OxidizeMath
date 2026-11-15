@@ -54,7 +54,7 @@ pub mod tracking;
 pub use clutter::EllipticalFilter;
 pub use czt::SpatialCztConfig;
 pub use czt::chirp_z_transform;
-pub use gating::GatingLogic;
+pub use gating::{BeamState, GatingError, GatingLogic};
 pub use geometry::{AngleFftConfig, SensorToPatientTransform, SphericalPoint};
 pub use math_commons::constants::C;
 pub use mimo::Beamformer;

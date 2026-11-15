@@ -189,6 +189,11 @@ impl OdeSolverTool {
             }
         });
 
+        ui.add_space(5.0);
+        if ui.checkbox(&mut self.show_annotations, "Show Annotations").changed() {
+            changed = true;
+        }
+
         if self.comparison_mode {
             self.render_discrepancy_panel(ui);
         }
@@ -346,6 +351,9 @@ impl OdeSolverTool {
                     }
                 } else {
                     self.comparison_manager.render_on_plot(plot_ui);
+                }
+                if self.show_annotations && !self.diverged {
+                    super::annotations::render_ode_callouts(plot_ui, self);
                 }
                 self.snapshot_manager.render_on_plot(plot_ui);
             });

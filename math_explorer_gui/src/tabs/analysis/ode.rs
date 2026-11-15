@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod annotations;
 pub mod comparison;
 pub mod systems;
 pub mod ui;
@@ -39,6 +40,7 @@ pub struct OdeSolverTool {
     pub(crate) comparison_manager: TraceSnapshotManager,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
     pub(crate) last_param_summary: String,
+    pub show_annotations: bool,
 }
 
 impl Default for OdeSolverTool {
@@ -66,6 +68,7 @@ impl Default for OdeSolverTool {
             comparison_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
+            show_annotations: true,
         };
         tool.recalculate();
         tool
@@ -265,6 +268,10 @@ impl OdeSolverTool {
     }
 }
 
+fn default_annotations_enabled() -> bool {
+    true
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct OdeState {
     dt: f64,
@@ -280,6 +287,8 @@ struct OdeState {
     method: IntegrationMethod,
     #[serde(default)]
     comparison_mode: bool,
+    #[serde(default = "default_annotations_enabled")]
+    show_annotations: bool,
 }
 
 impl InteractiveTool for OdeSolverTool {
@@ -327,6 +336,7 @@ impl InteractiveTool for OdeSolverTool {
             snapshot_manager: self.snapshot_manager.clone(),
             method: self.method,
             comparison_mode: self.comparison_mode,
+            show_annotations: self.show_annotations,
         })
         .ok()
     }
@@ -343,6 +353,7 @@ impl InteractiveTool for OdeSolverTool {
             self.snapshot_manager = s.snapshot_manager;
             self.method = s.method;
             self.comparison_mode = s.comparison_mode;
+            self.show_annotations = s.show_annotations;
             self.recalculate();
         }
     }
