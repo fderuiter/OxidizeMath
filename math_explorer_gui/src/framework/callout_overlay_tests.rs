@@ -120,6 +120,8 @@ fn test_workspace_envelope_serialization() {
         show_diagnostics_panel: true,
         theme: ThemeMode::Dark,
         tab_states: std::collections::HashMap::new(),
+        viewport_layout: crate::app::ViewportLayout::Single,
+        pane_tabs: vec![0, 1, 2, 3],
     };
 
     let envelope = WorkspaceEnvelope {
