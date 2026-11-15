@@ -1,6 +1,6 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::{
-    SimCommand, SimWorkerState, SimulationController, SimulationRunner, StateSnapshot,
+    BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner, StateSnapshot,
 };
 use crate::framework::InteractiveTool;
 use eframe::egui;
@@ -117,7 +117,7 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
 
 #[allow(missing_docs)]
 pub struct UnifiedSimTool<M: UnifiedModel> {
-    controller: SimulationController,
+    controller: BackgroundWorker<UnifiedSimRunner<M>>,
     params: Arc<RwLock<HashMap<String, f64>>>,
     param_metadata: Vec<(String, ParameterConstraint)>,
     steps_per_frame: usize,
@@ -150,7 +150,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         let params = Arc::new(RwLock::new(initial_params.clone()));
         let runner = UnifiedSimRunner::<M>::new(Arc::clone(&params));
-        let controller = SimulationController::new(runner);
+        let controller = BackgroundWorker::new(runner);
 
         let temp_model = M::new(&initial_params);
 
@@ -179,7 +179,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             || self.controller.state() == SimWorkerState::Terminated
         {
             let runner = UnifiedSimRunner::<M>::new(Arc::clone(&self.params));
-            self.controller = SimulationController::new(runner);
+            self.controller = BackgroundWorker::new(runner);
         } else {
             let _ = self.controller.send_command(SimCommand::Reset);
         }

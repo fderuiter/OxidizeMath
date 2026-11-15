@@ -1,8 +1,84 @@
 use crate::accessibility::AccessibleHoverText;
+use crate::async_sim::{BackgroundWorker, SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
+use std::sync::Arc;
+
+#[allow(missing_docs)]
+pub struct IsingSharedParams {
+    pub temperature: f64,
+    pub j_coupling: f64,
+    pub h_field: f64,
+    pub steps_per_frame: usize,
+}
+
+#[allow(missing_docs)]
+pub struct IsingRunner {
+    pub lattice: SpinLattice,
+    pub params: Arc<std::sync::RwLock<IsingSharedParams>>,
+}
+
+impl SimulationRunner for IsingRunner {
+    fn process_command(&mut self, cmd: SimCommand) {
+        match cmd {
+            SimCommand::Reset => {
+                self.lattice = SpinLattice::new(100, 100, None);
+            }
+            SimCommand::SetSpeed(speed) => {
+                if let Ok(mut p) = self.params.write() {
+                    p.steps_per_frame = speed;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn step(&mut self) {
+        let (temp, j, h, steps) = {
+            let p = self.params.read().unwrap();
+            (p.temperature, p.j_coupling, p.h_field, p.steps_per_frame)
+        };
+        let j_scale = if j.abs() < 1e-6 { 1.0 } else { j.abs() };
+        let t_phys = temp * j_scale / KB;
+        self.lattice.evolve(steps, t_phys, j, h);
+    }
+
+    fn get_snapshot(&self) -> StateSnapshot {
+        let width = self.lattice.width();
+        let height = self.lattice.height();
+        let spins_vec: Vec<i8> = self.lattice.spins().to_vec();
+        let mut pixels = Vec::with_capacity(width * height);
+        for &s in &spins_vec {
+            pixels.push(if s > 0 {
+                egui::Color32::from_rgb(200, 50, 50)
+            } else {
+                egui::Color32::from_rgb(50, 50, 200)
+            });
+        }
+        let (j, h) = {
+            let p = self.params.read().unwrap();
+            (p.j_coupling, p.h_field)
+        };
+        let m = self.lattice.magnetization();
+        let max_m = (width * height) as f64;
+        let m_avg = m as f64 / max_m;
+        let energy = self.lattice.hamiltonian(j, h);
+
+        StateSnapshot {
+            width,
+            height,
+            pixels: Arc::new(std::sync::RwLock::new(pixels)),
+            custom_data: vec![m_avg, energy],
+            structured_data: Some(Box::new(spins_vec)),
+        }
+    }
+
+    fn get_steps_per_frame(&self) -> usize {
+        1
+    }
+}
 
 pub struct IsingModelTool {
     lattice: SpinLattice,
@@ -14,20 +90,39 @@ pub struct IsingModelTool {
     texture: Option<egui::TextureHandle>,
     pixels: Vec<egui::Color32>,
     dirty: bool,
+    params: Arc<std::sync::RwLock<IsingSharedParams>>,
+    worker: BackgroundWorker<IsingRunner>,
 }
 
 impl Default for IsingModelTool {
     fn default() -> Self {
+        let temperature = 2.269;
+        let j_coupling = 1.0;
+        let h_field = 0.0;
+        let steps_per_frame = 5000;
+        let params = Arc::new(std::sync::RwLock::new(IsingSharedParams {
+            temperature,
+            j_coupling,
+            h_field,
+            steps_per_frame,
+        }));
+        let runner = IsingRunner {
+            lattice: SpinLattice::new(100, 100, None),
+            params: Arc::clone(&params),
+        };
+        let worker = BackgroundWorker::new(runner);
         Self {
             lattice: SpinLattice::new(100, 100, None),
-            temperature: 2.269, // Near Critical Temp for J=1
-            j_coupling: 1.0,
-            h_field: 0.0,
+            temperature,
+            j_coupling,
+            h_field,
             running: false,
-            steps_per_frame: 5000,
+            steps_per_frame,
             texture: None,
             pixels: Vec::new(),
             dirty: true,
+            params,
+            worker,
         }
     }
 }
@@ -92,6 +187,7 @@ impl InteractiveTool for IsingModelTool {
                     .add(egui::Slider::new(&mut self.temperature, 0.1..=10.0).text("Temperature (T) - K (relative)"))
                     .changed()
                 {
+                    self.params.write().unwrap().temperature = self.temperature;
                     self.dirty = true;
                 }
                 ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
@@ -100,6 +196,7 @@ impl InteractiveTool for IsingModelTool {
                     .add(egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"))
                     .changed()
                 {
+                    self.params.write().unwrap().j_coupling = self.j_coupling;
                     self.dirty = true;
                 }
                 ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
@@ -108,6 +205,7 @@ impl InteractiveTool for IsingModelTool {
                     .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
                     .changed()
                 {
+                    self.params.write().unwrap().h_field = self.h_field;
                     self.dirty = true;
                 }
 
@@ -121,6 +219,7 @@ impl InteractiveTool for IsingModelTool {
                     )
                     .changed()
                 {
+                    self.params.write().unwrap().steps_per_frame = self.steps_per_frame;
                     self.dirty = true;
                 }
 
@@ -141,6 +240,11 @@ impl InteractiveTool for IsingModelTool {
                         .clicked()
                     {
                         self.running = !self.running;
+                        if self.running {
+                            let _ = self.worker.send_command(SimCommand::Start);
+                        } else {
+                            let _ = self.worker.send_command(SimCommand::Pause);
+                        }
                     }
 
                     if ui
@@ -149,6 +253,7 @@ impl InteractiveTool for IsingModelTool {
                         .clicked()
                     {
                         self.lattice = SpinLattice::new(100, 100, None);
+                        let _ = self.worker.send_command(SimCommand::Reset);
                         self.dirty = true;
                     }
                 });
@@ -164,35 +269,31 @@ impl InteractiveTool for IsingModelTool {
                 ui.label(format!("Energy: {:.3}", energy));
             });
 
-        // Simulation Update
+        // Simulation Update via Background Worker
         if self.running {
-            // Convert dimensionless T to physical T if needed.
-            // The `evolve` method takes T. `SpinLattice` uses `beta = 1.0 / (KB * temperature)`.
-            // So if `self.temperature` is dimensionless (relative to J/KB), pass `self.temperature * J / KB`?
-            // The example in `ising.rs` says: `let temp = 1.0 * j_coupling / KB;`
-            // So if `self.temperature` is meant to be in units of J/kB, then pass `self.temperature / KB`?
-            // Wait.
-            // Beta = 1 / (KB * T_phys).
-            // We want Beta * J = 1/T_dim.
-            // So 1 / (KB * T_phys) * J = 1/T_dim.
-            // T_phys = T_dim * J / KB.
-            // Let's assume J=1 for the unit scale. Then T_phys = T_dim / KB.
-            // If the slider `self.temperature` is T_dim (e.g., 2.269), then pass `self.temperature / KB`.
-            // Wait, if J != 1, then T_c shifts. T_c is roughly 2.269 J/kB.
-            // So T_phys = T_dim * |J| / KB.
-            // Let's implement that logic to keep the slider meaning consistent relative to J.
-            // If J=0, use 1.0 as scale fallback to avoid div by zero or weirdness.
-            let j_scale = if self.j_coupling.abs() < 1e-6 {
-                1.0
-            } else {
-                self.j_coupling.abs()
-            };
-            let t_phys = self.temperature * j_scale / KB;
-
-            self.lattice
-                .evolve(self.steps_per_frame, t_phys, self.j_coupling, self.h_field);
-            self.dirty = true;
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
             ctx.request_repaint();
+        } else if self.worker.is_running() {
+            let _ = self.worker.send_command(SimCommand::Pause);
+        }
+
+        if let Some(snapshot) = self.worker.update() {
+            if let Some(spins) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<Vec<i8>>())
+            {
+                let w = self.lattice.width();
+                let h = self.lattice.height();
+                for y in 0..h {
+                    for x in 0..w {
+                        self.lattice.set(x, y, spins[y * w + x]);
+                    }
+                }
+            }
+            self.dirty = true;
         }
 
         // Visualization
