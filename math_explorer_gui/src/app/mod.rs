@@ -194,6 +194,60 @@ impl MathExplorerApp {
             self.session_manager.set_is_restoring(true);
         }
     }
+
+    #[cfg(target_os = "macos")]
+    fn handle_macos_menu_events(&mut self, ctx: &egui::Context) {
+        if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
+            match event.id.0.as_str() {
+                "file_open" => self.session_manager.trigger_open(),
+                "file_save" => {
+                    let state = self.get_app_state();
+                    let env_json = self.session_manager.create_envelope(state);
+                    self.session_manager.trigger_save(env_json);
+                }
+                "file_save_as" => {
+                    let state = self.get_app_state();
+                    let env_json = self.session_manager.create_envelope(state);
+                    self.session_manager.trigger_save_as(env_json);
+                }
+                "edit_undo" => self.undo(),
+                "edit_redo" => self.redo(),
+                "cmd_palette" => {
+                    self.command_palette.toggle();
+                    let status_msg = if self.command_palette.is_open {
+                        "Command palette opened"
+                    } else {
+                        "Command palette closed"
+                    };
+                    ctx.data_mut(|d| {
+                        d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
+                    });
+                }
+                "help_commands" => self.show_help_menu = !self.show_help_menu,
+                "theme_dark" => {
+                    self.theme = ThemeMode::Dark;
+                    ctx.set_visuals(self.theme.visuals());
+                }
+                "theme_light" => {
+                    self.theme = ThemeMode::Light;
+                    ctx.set_visuals(self.theme.visuals());
+                }
+                "theme_high_contrast" => {
+                    self.theme = ThemeMode::HighContrast;
+                    ctx.set_visuals(self.theme.visuals());
+                }
+                "view_toggle_diagnostics" => {
+                    self.show_diagnostics_panel = !self.show_diagnostics_panel;
+                }
+                other if other.starts_with("tab_") => {
+                    if let Ok(idx) = other[4..].parse::<usize>() {
+                        self.selected_tab = idx;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 impl eframe::App for MathExplorerApp {
@@ -333,52 +387,7 @@ impl eframe::App for MathExplorerApp {
         }
 
         #[cfg(target_os = "macos")]
-        {
-            if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
-                if event.id.0 == "file_open" {
-                    self.session_manager.trigger_open();
-                } else if event.id.0 == "file_save" {
-                    let state = self.get_app_state();
-                    let env_json = self.session_manager.create_envelope(state);
-                    self.session_manager.trigger_save(env_json);
-                } else if event.id.0 == "file_save_as" {
-                    let state = self.get_app_state();
-                    let env_json = self.session_manager.create_envelope(state);
-                    self.session_manager.trigger_save_as(env_json);
-                } else if event.id.0 == "edit_undo" {
-                    self.undo();
-                } else if event.id.0 == "edit_redo" {
-                    self.redo();
-                } else if event.id.0.starts_with("tab_") {
-                    if let Ok(idx) = event.id.0[4..].parse::<usize>() {
-                        self.selected_tab = idx;
-                    }
-                } else if event.id.0 == "cmd_palette" {
-                    self.command_palette.toggle();
-                    let status_msg = if self.command_palette.is_open {
-                        "Command palette opened"
-                    } else {
-                        "Command palette closed"
-                    };
-                    ctx.data_mut(|d| {
-                        d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
-                    });
-                } else if event.id.0 == "help_commands" {
-                    self.show_help_menu = !self.show_help_menu;
-                } else if event.id.0 == "theme_dark" {
-                    self.theme = ThemeMode::Dark;
-                    ctx.set_visuals(self.theme.visuals());
-                } else if event.id.0 == "theme_light" {
-                    self.theme = ThemeMode::Light;
-                    ctx.set_visuals(self.theme.visuals());
-                } else if event.id.0 == "theme_high_contrast" {
-                    self.theme = ThemeMode::HighContrast;
-                    ctx.set_visuals(self.theme.visuals());
-                } else if event.id.0 == "view_toggle_diagnostics" {
-                    self.show_diagnostics_panel = !self.show_diagnostics_panel;
-                }
-            }
-        }
+        self.handle_macos_menu_events(ctx);
 
         #[cfg(target_os = "macos")]
         if self.session_manager.toast().is_some() {

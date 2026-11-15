@@ -2336,13 +2336,7 @@
   ],
   "crates/oxidize_core/src/boundary.rs": [
     {
-      "signature": "pub struct BounceBackBoundary"
-    },
-    {
       "signature": "pub struct NeumannBoundary"
-    },
-    {
-      "signature": "pub struct PeriodicBoundary"
     },
     {
       "signature": "pub trait BoundaryCondition"
