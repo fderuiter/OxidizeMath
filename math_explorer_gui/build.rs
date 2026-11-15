@@ -1,4 +1,4 @@
-//! Legacy crate.
+//! Build script for dynamic tab discovery in math_explorer_gui.
 use std::env;
 use std::fs;
 use std::path::Path;

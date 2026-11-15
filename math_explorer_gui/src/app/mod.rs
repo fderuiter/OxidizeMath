@@ -186,6 +186,49 @@ impl MathExplorerApp {
             self.session_manager.set_is_restoring(true);
         }
     }
+
+    #[cfg(target_os = "macos")]
+    fn handle_macos_menu_events(&mut self, ctx: &egui::Context) {
+        if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
+            match event.id.0.as_str() {
+                "file_open" => self.session_manager.trigger_open(),
+                "file_save" => {
+                    let state = self.get_app_state();
+                    let env_json = self.session_manager.create_envelope(state);
+                    self.session_manager.trigger_save(env_json);
+                }
+                "file_save_as" => {
+                    let state = self.get_app_state();
+                    let env_json = self.session_manager.create_envelope(state);
+                    self.session_manager.trigger_save_as(env_json);
+                }
+                "edit_undo" => self.undo(),
+                "edit_redo" => self.redo(),
+                "help_commands" => self.show_help_menu = !self.show_help_menu,
+                "theme_dark" => {
+                    self.theme = ThemeMode::Dark;
+                    ctx.set_visuals(self.theme.visuals());
+                }
+                "theme_light" => {
+                    self.theme = ThemeMode::Light;
+                    ctx.set_visuals(self.theme.visuals());
+                }
+                "theme_high_contrast" => {
+                    self.theme = ThemeMode::HighContrast;
+                    ctx.set_visuals(self.theme.visuals());
+                }
+                "view_toggle_diagnostics" => {
+                    self.show_diagnostics_panel = !self.show_diagnostics_panel;
+                }
+                other if other.starts_with("tab_") => {
+                    if let Ok(idx) = other[4..].parse::<usize>() {
+                        self.selected_tab = idx;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 impl eframe::App for MathExplorerApp {
@@ -302,42 +345,7 @@ impl eframe::App for MathExplorerApp {
         }
 
         #[cfg(target_os = "macos")]
-        {
-            if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
-                if event.id.0 == "file_open" {
-                    self.session_manager.trigger_open();
-                } else if event.id.0 == "file_save" {
-                    let state = self.get_app_state();
-                    let env_json = self.session_manager.create_envelope(state);
-                    self.session_manager.trigger_save(env_json);
-                } else if event.id.0 == "file_save_as" {
-                    let state = self.get_app_state();
-                    let env_json = self.session_manager.create_envelope(state);
-                    self.session_manager.trigger_save_as(env_json);
-                } else if event.id.0 == "edit_undo" {
-                    self.undo();
-                } else if event.id.0 == "edit_redo" {
-                    self.redo();
-                } else if event.id.0.starts_with("tab_") {
-                    if let Ok(idx) = event.id.0[4..].parse::<usize>() {
-                        self.selected_tab = idx;
-                    }
-                } else if event.id.0 == "help_commands" {
-                    self.show_help_menu = !self.show_help_menu;
-                } else if event.id.0 == "theme_dark" {
-                    self.theme = ThemeMode::Dark;
-                    ctx.set_visuals(self.theme.visuals());
-                } else if event.id.0 == "theme_light" {
-                    self.theme = ThemeMode::Light;
-                    ctx.set_visuals(self.theme.visuals());
-                } else if event.id.0 == "theme_high_contrast" {
-                    self.theme = ThemeMode::HighContrast;
-                    ctx.set_visuals(self.theme.visuals());
-                } else if event.id.0 == "view_toggle_diagnostics" {
-                    self.show_diagnostics_panel = !self.show_diagnostics_panel;
-                }
-            }
-        }
+        self.handle_macos_menu_events(ctx);
 
         #[cfg(target_os = "macos")]
         if self.session_manager.toast().is_some() {
@@ -381,16 +389,8 @@ impl eframe::App for MathExplorerApp {
 }
 
 #[cfg(target_os = "macos")]
-fn setup_macos_menu(app: &MathExplorerApp) {
-    use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
-    let menu = Menu::new();
-
-    // App Menu
-    let app_menu = Submenu::new("Math Explorer", true);
-    app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
-    menu.append(&app_menu).unwrap();
-
-    // File Menu
+fn create_macos_file_menu() -> muda::Submenu {
+    use muda::{MenuId, MenuItem, Submenu};
     let file_menu = Submenu::new("File", true);
     let open_item = MenuItem::with_id(
         MenuId::new("file_open"),
@@ -413,7 +413,39 @@ fn setup_macos_menu(app: &MathExplorerApp) {
     file_menu.append(&open_item).unwrap();
     file_menu.append(&save_item).unwrap();
     file_menu.append(&save_as_item).unwrap();
-    menu.append(&file_menu).unwrap();
+    file_menu
+}
+
+#[cfg(target_os = "macos")]
+fn create_macos_appearance_menu() -> muda::Submenu {
+    use muda::{MenuId, MenuItem, Submenu};
+    let appearance_menu = Submenu::new("Appearance", true);
+    let dark_item = MenuItem::with_id(MenuId::new("theme_dark"), "Dark", true, None);
+    let light_item = MenuItem::with_id(MenuId::new("theme_light"), "Light", true, None);
+    let hc_item = MenuItem::with_id(
+        MenuId::new("theme_high_contrast"),
+        "High Contrast",
+        true,
+        None,
+    );
+    appearance_menu.append(&dark_item).unwrap();
+    appearance_menu.append(&light_item).unwrap();
+    appearance_menu.append(&hc_item).unwrap();
+    appearance_menu
+}
+
+#[cfg(target_os = "macos")]
+fn setup_macos_menu(app: &MathExplorerApp) {
+    use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+    let menu = Menu::new();
+
+    // App Menu
+    let app_menu = Submenu::new("Math Explorer", true);
+    app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
+    menu.append(&app_menu).unwrap();
+
+    // File Menu
+    menu.append(&create_macos_file_menu()).unwrap();
 
     // Edit Menu
     let edit_menu = Submenu::new("Edit", true);
@@ -441,19 +473,7 @@ fn setup_macos_menu(app: &MathExplorerApp) {
     menu.append(&view_menu).unwrap();
 
     // Appearance Menu
-    let appearance_menu = Submenu::new("Appearance", true);
-    let dark_item = MenuItem::with_id(MenuId::new("theme_dark"), "Dark", true, None);
-    let light_item = MenuItem::with_id(MenuId::new("theme_light"), "Light", true, None);
-    let hc_item = MenuItem::with_id(
-        MenuId::new("theme_high_contrast"),
-        "High Contrast",
-        true,
-        None,
-    );
-    appearance_menu.append(&dark_item).unwrap();
-    appearance_menu.append(&light_item).unwrap();
-    appearance_menu.append(&hc_item).unwrap();
-    menu.append(&appearance_menu).unwrap();
+    menu.append(&create_macos_appearance_menu()).unwrap();
 
     menu.init_for_nsapp();
 }

@@ -18,7 +18,7 @@ use super::{Cursor, LabelFormatter, PlotBounds, PlotTransform};
 
 pub use bar::Bar;
 pub use box_elem::{BoxElem, BoxSpread};
-pub use callout::Callout;
+pub use callout::{Callout, SavedCallout};
 pub use values::{
     ClosestElem, LineStyle, MarkerShape, Orientation, PlotGeometry, PlotPoint, PlotPoints,
 };

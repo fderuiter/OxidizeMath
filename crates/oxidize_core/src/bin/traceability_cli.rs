@@ -1,4 +1,4 @@
-//! Legacy crate.
+//! CLI tool for verifying codebase traceability and semantic integrity.
 #[cfg(not(target_arch = "wasm32"))]
 use oxidize_core::traceability::TraceabilityEngine;
 #[cfg(not(target_arch = "wasm32"))]
