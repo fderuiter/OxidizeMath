@@ -297,6 +297,14 @@ impl SimulationModel for LorenzSystem {
                     dt,
                 );
             }
+            pure_math::pure_math::analysis::ode::IntegrationMethod::Heun => {
+                let mut solver = pure_math::pure_math::analysis::ode::Heun::new(&self.state.vec);
+                <Self as pure_math::pure_math::analysis::ode::TimeStepper<Vector3<f64>>>::step_with(
+                    self,
+                    &mut solver,
+                    dt,
+                );
+            }
             pure_math::pure_math::analysis::ode::IntegrationMethod::RungeKutta4 => {
                 <Self as pure_math::pure_math::analysis::ode::TimeStepper<Vector3<f64>>>::step(
                     self, dt,

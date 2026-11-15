@@ -2746,6 +2746,9 @@
       "signature": "pub struct Euler < State >"
     },
     {
+      "signature": "pub struct Heun < State >"
+    },
+    {
       "signature": "pub struct RungeKutta4 < State >"
     }
   ],

@@ -1,5 +1,6 @@
 [build]
 target = "index.html"
+filehash = false
 public_url = "./"
 rustflags = ["-C", "target-feature=+atomics,+bulk-memory", "-C", "strip=debuginfo"]
 wasm-opt = "z"

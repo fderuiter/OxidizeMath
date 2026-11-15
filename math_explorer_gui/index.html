@@ -3,7 +3,10 @@
 <head>
     <meta charset="utf-8">
     <title>Math Explorer GUI</title>
-    <link data-trunk rel="rust" data-wasm-opt="z" />
+    <script src="coi-serviceworker.min.js"></script>
+    <link data-trunk rel="copy-file" href="coi-serviceworker.min.js"/>
+    <link data-trunk rel="rust" href="Cargo.toml" data-bin="math_explorer_gui" data-wasm-opt="z"/>
+    <link data-trunk rel="copy-file" href="worker.js"/>
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
         canvas { display: block; width: 100%; height: 100%; }
