@@ -1,4 +1,4 @@
-//! Conservation Laws: Mass, Momentum, and Energy.
+//! Conservation Laws: Mass and Momentum.
 //!
 //! Implements the core Partial Differential Equations (PDEs) of Fluid Dynamics.
 
