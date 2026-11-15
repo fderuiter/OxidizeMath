@@ -44,6 +44,75 @@ fn test_cortical_thickness() {
 
     let thickness = cortical_thickness(&v_w, &v_p, &white_surface, &pial_surface);
     assert!((thickness - 2.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
+    assert_eq!(thickness, 2.0);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_cortical_thickness_exact_distance_equivalence() {
+    let mut white_verts = Vec::new();
+    let mut pial_verts = Vec::new();
+    for i in 0..50 {
+        let x = (i as f64) * 0.2;
+        let y = ((i * 7) % 13) as f64 * 0.3;
+        white_verts.push([x, y, 0.0]);
+        pial_verts.push([x, y, 2.5]);
+    }
+    let white_surface = Surface {
+        vertices: white_verts,
+    };
+    let pial_surface = Surface {
+        vertices: pial_verts,
+    };
+
+    let naive_dist = |pt: &[f64; 3], surf: &Surface| -> f64 {
+        surf.vertices
+            .iter()
+            .map(|v| {
+                let dx = pt[0] - v[0];
+                let dy = pt[1] - v[1];
+                let dz = pt[2] - v[2];
+                (dx * dx + dy * dy + dz * dz).sqrt()
+            })
+            .fold(f64::INFINITY, f64::min)
+    };
+
+    for i in (0..50).step_by(5) {
+        let v_w = white_surface.vertices[i];
+        let v_p = pial_surface.vertices[i];
+        let expected = 0.5 * (naive_dist(&v_w, &pial_surface) + naive_dist(&v_p, &white_surface));
+        let actual = cortical_thickness(&v_w, &v_p, &white_surface, &pial_surface);
+        assert_eq!(expected, actual);
+    }
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_cortical_thickness_sparse_expansion() {
+    // Surfaces with sparse vertex distributions that require expanding neighboring cell search radii
+    let white_surface = Surface {
+        vertices: vec![[0.0, 0.0, 0.0], [50.0, 50.0, 50.0]],
+    };
+    let pial_surface = Surface {
+        vertices: vec![[0.0, 3.0, 0.0], [50.0, 53.0, 50.0]],
+    };
+    let v_w = [25.0, 25.0, 25.0];
+    let v_p = [25.0, 28.0, 25.0];
+
+    let thickness = cortical_thickness(&v_w, &v_p, &white_surface, &pial_surface);
+    let naive_dist = |pt: &[f64; 3], surf: &Surface| -> f64 {
+        surf.vertices
+            .iter()
+            .map(|v| {
+                let dx = pt[0] - v[0];
+                let dy = pt[1] - v[1];
+                let dz = pt[2] - v[2];
+                (dx * dx + dy * dy + dz * dz).sqrt()
+            })
+            .fold(f64::INFINITY, f64::min)
+    };
+    let expected = 0.5 * (naive_dist(&v_w, &pial_surface) + naive_dist(&v_p, &white_surface));
+    assert_eq!(thickness, expected);
 }
 
 #[test]
