@@ -16,17 +16,12 @@ pub use runner::*;
 
 pub struct AttractorPlotter {
     system: LorenzSystem,
-
-    // Simulation Control
     execution_state: SolverExecutionState,
     step_count: usize,
     simulation_speed: usize,
     dt: f64,
-
-    // Visualization
     history: VecDeque<Vector3<f64>>, // Store as Vector3 for easier math
     max_points: usize,
-
     camera: crate::framework::Camera3D,
     params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     worker: BackgroundWorker<AttractorRunner>,
@@ -480,13 +475,6 @@ inventory::submit! {
         tags: &[],
         build: || Box::new(AttractorPlotter::default()),
     }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for AttractorPlotter {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
 
 #[cfg(test)]

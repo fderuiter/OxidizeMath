@@ -1,5 +1,7 @@
 #![doc = include_str!("../README.md")]
 
+#[allow(missing_docs)]
+pub mod ast;
 pub mod constants;
 #[allow(missing_docs)]
 pub mod error;

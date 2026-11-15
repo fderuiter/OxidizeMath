@@ -339,8 +339,7 @@ fn test_view_menu_toggle_diagnostics_panel() {
         show_diagnostics_panel: true,
         theme: ThemeMode::Dark,
         tab_states: std::collections::HashMap::new(),
-        viewport_layout: ViewportLayout::Single,
-        pane_tabs: Vec::new(),
+        ..Default::default()
     });
     assert!(app.show_diagnostics_panel);
 }

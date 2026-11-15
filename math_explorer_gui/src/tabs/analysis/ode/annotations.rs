@@ -85,6 +85,7 @@ fn render_preset_asymptote_callout(
                 plot_ui.callout(callout_eq);
             }
         }
+        OdePreset::Custom => {}
     }
 }
 

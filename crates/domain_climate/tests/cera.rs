@@ -49,7 +49,19 @@ fn test_cera_integration() {
     // 4. Train the model
     // This will print the loss for each epoch to the console.
     let mut trainer = CeraTrainer::new(&mut cera);
-    trainer.train(&control_inputs, &control_targets, &warm_inputs);
+    let losses = trainer.train(&control_inputs, &control_targets, &warm_inputs);
+
+    // Verify that training decreases loss values across successive training epochs
+    assert!(
+        losses.len() >= 2,
+        "Training should record at least 2 epoch losses"
+    );
+    assert!(
+        losses.last().unwrap() < losses.first().unwrap(),
+        "Final epoch loss ({:?}) must be lower than initial epoch loss ({:?})",
+        losses.last(),
+        losses.first()
+    );
 
     // 5. Generate test data and make a prediction
     let n_test_samples = 4;
