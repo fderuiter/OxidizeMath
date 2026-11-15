@@ -102,17 +102,17 @@ impl HeatmapTexture {
         self.dirty = true;
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn texture(&self) -> Option<&egui::TextureHandle> {
         self.texture.as_ref()
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn buffer_capacity(&self) -> usize {
         self.pixels_buffer.capacity()
     }
@@ -296,22 +296,22 @@ impl Default for AttentionMapsTool {
 }
 
 impl AttentionMapsTool {
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn weights_texture(&self) -> &HeatmapTexture {
         &self.weights_texture
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn output_texture(&self) -> &HeatmapTexture {
         &self.output_texture
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn attention_weights(&self) -> &DMatrix<f64> {
         &self.attention_weights
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn output_matrix(&self) -> &DMatrix<f64> {
         &self.output_matrix
     }
