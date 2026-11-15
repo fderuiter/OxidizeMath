@@ -108,6 +108,31 @@ impl TraceabilityTab {
         self.state.error()
     }
 
+    #[allow(missing_docs)]
+    pub fn paper_url(name: &str) -> Option<String> {
+        let clean = name.strip_prefix("papers/").unwrap_or(name);
+        if let Some(stem) = clean.strip_suffix(".tex") {
+            Some(format!(
+                "https://fderuiter.github.io/OxidizeMath/{}.pdf",
+                stem
+            ))
+        } else if clean.ends_with(".pdf") {
+            Some(format!("https://fderuiter.github.io/OxidizeMath/{}", clean))
+        } else if !clean.starts_with("spec:") && !clean.starts_with("registry:") {
+            Some(format!(
+                "https://fderuiter.github.io/OxidizeMath/{}.pdf",
+                clean
+            ))
+        } else {
+            None
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub fn online_document_url(&self, name: &str) -> Option<String> {
+        Self::paper_url(name)
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     pub fn refresh(&mut self) {
         self.papers.clear();
@@ -352,7 +377,12 @@ impl ExplorerTab for TraceabilityTab {
                         egui::RichText::new("Orphaned Papers (No Code)").color(egui::Color32::RED),
                     );
                     for p in &self.orphaned_papers {
-                        ui.label(p);
+                        ui.horizontal(|ui| {
+                            ui.label(p);
+                            if let Some(url) = Self::paper_url(p) {
+                                ui.hyperlink_to("📄 View PDF", &url);
+                            }
+                        });
                     }
                 }
 
@@ -386,6 +416,11 @@ impl ExplorerTab for TraceabilityTab {
 
                 for p in papers {
                     ui.collapsing(&p.name, |ui| {
+                        if let Some(url) = Self::paper_url(&p.name) {
+                            ui.horizontal(|ui| {
+                                ui.hyperlink_to("📄 View PDF Online", &url);
+                            });
+                        }
                         if p.linked_code.is_empty() {
                             ui.label(
                                 egui::RichText::new("No implementation found")
