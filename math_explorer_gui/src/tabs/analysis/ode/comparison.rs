@@ -1,9 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::systems::{ExponentialOde, HarmonicOscillatorOde, LogisticGrowthOde};
+use super::systems::{DynamicAstOde, ExponentialOde, HarmonicOscillatorOde, LogisticGrowthOde};
 use super::OdeSolverTool;
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
+use math_commons::ast::Expr;
 use math_explorer::pure_math::analysis::ode::{
     Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, Solver, TimeStepper, VecState,
 };
@@ -39,6 +40,7 @@ pub fn simulate_preset(
     param_cap_k: f64,
     ic_y0: f64,
     ic_v0: f64,
+    custom_expr: Option<&Expr>,
 ) -> SolverTrajectory {
     let mut traj = SolverTrajectory {
         method,
@@ -49,18 +51,7 @@ pub fn simulate_preset(
         divergence_info: None,
     };
 
-    if dt <= 0.0 || total_time <= 0.0 || !dt.is_finite() || !total_time.is_finite() {
-        return traj;
-    }
-
-    if !ic_y0.is_finite() {
-        traj.diverged = true;
-        traj.divergence_info = Some((0.0, 0, "y(t)".to_string()));
-        return traj;
-    }
-    if preset == OdePreset::HarmonicOscillator && !ic_v0.is_finite() {
-        traj.diverged = true;
-        traj.divergence_info = Some((0.0, 0, "y'(t)".to_string()));
+    if !validate_initial_state(&mut traj, preset, dt, total_time, ic_y0, ic_v0) {
         return traj;
     }
 
@@ -90,9 +81,76 @@ pub fn simulate_preset(
             };
             run_step_loop(&mut traj, init_state, dynamics, method, dt, num_steps);
         }
+        OdePreset::Custom => {
+            run_custom_ode(
+                &mut traj,
+                custom_expr,
+                ic_y0,
+                param_k,
+                param_r,
+                param_cap_k,
+                method,
+                dt,
+                num_steps,
+            );
+        }
     }
 
     traj
+}
+
+fn validate_initial_state(
+    traj: &mut SolverTrajectory,
+    preset: OdePreset,
+    dt: f64,
+    total_time: f64,
+    ic_y0: f64,
+    ic_v0: f64,
+) -> bool {
+    if dt <= 0.0 || total_time <= 0.0 || !dt.is_finite() || !total_time.is_finite() {
+        return false;
+    }
+    if !ic_y0.is_finite() {
+        traj.diverged = true;
+        traj.divergence_info = Some((0.0, 0, "y(t)".to_string()));
+        return false;
+    }
+    if preset == OdePreset::HarmonicOscillator && !ic_v0.is_finite() {
+        traj.diverged = true;
+        traj.divergence_info = Some((0.0, 0, "y'(t)".to_string()));
+        return false;
+    }
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_custom_ode(
+    traj: &mut SolverTrajectory,
+    expr: Option<&Expr>,
+    ic_y0: f64,
+    param_k: f64,
+    param_r: f64,
+    param_cap_k: f64,
+    method: IntegrationMethod,
+    dt: f64,
+    num_steps: usize,
+) {
+    if let Some(expr) = expr {
+        let mut p_map = std::collections::HashMap::new();
+        p_map.insert("k".to_string(), param_k);
+        p_map.insert("r".to_string(), param_r);
+        p_map.insert("cap_k".to_string(), param_cap_k);
+        p_map.insert("K".to_string(), param_cap_k);
+        let init_state = VecState(vec![ic_y0]);
+        let dynamics = DynamicAstOde {
+            expr: expr.clone(),
+            params: p_map,
+        };
+        run_step_loop(traj, init_state, dynamics, method, dt, num_steps);
+    } else {
+        traj.diverged = true;
+        traj.divergence_info = Some((0.0, 0, "y(t)".to_string()));
+    }
 }
 
 fn run_step_loop<D: OdeSystem<VecState> + Clone>(
@@ -189,6 +247,7 @@ impl OdeSolverTool {
             return;
         }
 
+        let custom_expr = self.math_input.expr();
         let rk4 = simulate_preset(
             self.preset,
             IntegrationMethod::RungeKutta4,
@@ -199,6 +258,7 @@ impl OdeSolverTool {
             self.param_cap_k,
             self.ic_y0,
             self.ic_v0,
+            custom_expr,
         );
         let euler = simulate_preset(
             self.preset,
@@ -210,6 +270,7 @@ impl OdeSolverTool {
             self.param_cap_k,
             self.ic_y0,
             self.ic_v0,
+            custom_expr,
         );
         let heun = simulate_preset(
             self.preset,
@@ -221,6 +282,7 @@ impl OdeSolverTool {
             self.param_cap_k,
             self.ic_y0,
             self.ic_v0,
+            custom_expr,
         );
 
         if rk4.diverged || euler.diverged || heun.diverged {

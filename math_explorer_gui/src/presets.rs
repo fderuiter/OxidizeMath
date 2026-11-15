@@ -37,6 +37,8 @@ pub enum OdePreset {
     HarmonicOscillator,
     /// Logistic population growth model.
     LogisticGrowth,
+    /// Custom dynamic user equation.
+    Custom,
 }
 
 impl OdePreset {
@@ -46,6 +48,7 @@ impl OdePreset {
             OdePreset::Exponential => "y' = k*y (Exponential)",
             OdePreset::HarmonicOscillator => "y'' = -k*y (Harmonic Oscillator)",
             OdePreset::LogisticGrowth => "y' = r*y*(1 - y/K) (Logistic Growth)",
+            OdePreset::Custom => "y' = f(t, y) (Custom Equation)",
         }
     }
 }
@@ -69,6 +72,9 @@ pub struct OdePresetConfig {
     pub ic_y0: f64,
     /// Initial condition y'(0).
     pub ic_v0: f64,
+    /// Custom user equation expression.
+    #[serde(default)]
+    pub custom_expr: String,
 }
 
 /// Configuration struct for Turing Morphogenesis simulation parameters.

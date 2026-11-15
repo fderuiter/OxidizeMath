@@ -119,18 +119,137 @@ fn test_ode_auto_history_buffering() {
 
     for i in 1..=7 {
         let old_summary = tool.param_summary();
-        let pts: Vec<[f64; 2]> = tool.time_series.iter().zip(&tool.y_series).map(|(&t, &y)| [t, y]).collect();
-        tool.snapshot_manager.push_history_run(old_summary, vec![TraceSeries::new("y(t)", pts)]);
+        let pts: Vec<[f64; 2]> = tool
+            .time_series
+            .iter()
+            .zip(&tool.y_series)
+            .map(|(&t, &y)| [t, y])
+            .collect();
+        tool.snapshot_manager
+            .push_history_run(old_summary, vec![TraceSeries::new("y(t)", pts)]);
         tool.param_k = i as f64 * 0.5;
         tool.recalculate();
     }
 
     assert_eq!(tool.snapshot_manager.history_len(), 5);
-    assert!(tool.snapshot_manager.history_runs()[0].param_summary.contains("k=1.00"));
-    assert!(tool.snapshot_manager.history_runs()[4].param_summary.contains("k=3.00"));
+    assert!(tool.snapshot_manager.history_runs()[0]
+        .param_summary
+        .contains("k=1.00"));
+    assert!(tool.snapshot_manager.history_runs()[4]
+        .param_summary
+        .contains("k=3.00"));
 
     let exported = tool.export_datasets();
     assert!(exported.iter().any(|(name, _)| name.contains("Run")));
+}
+
+#[test]
+fn test_ode_custom_equation_rk4() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        param_k: 1.5,
+        ic_y0: 2.0,
+        dt: 0.05,
+        total_time: 5.0,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("-k * y * sin(t)");
+    tool.recalculate();
+
+    assert!(!tool.diverged());
+    assert!(!tool.y_series.is_empty());
+    assert_eq!(tool.time_series.len(), tool.y_series.len());
+    assert!(tool.y_series.iter().all(|y| y.is_finite()));
+
+    // Verify changing k produces different trajectory
+    let original_final_y = *tool.y_series.last().unwrap();
+    tool.param_k = 3.0;
+    tool.recalculate();
+    let new_final_y = *tool.y_series.last().unwrap();
+    assert_ne!(original_final_y, new_final_y);
+}
+
+#[test]
+fn test_ode_custom_equation_divergence_handling() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: 1.0,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("1 / (y - 1)");
+    tool.recalculate();
+
+    assert!(tool.diverged());
+}
+
+#[test]
+fn test_ode_custom_state_roundtrip() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("y' = -k * y * sin(t)");
+    tool.recalculate();
+
+    let state = tool.save_state().expect("save state");
+    let mut restored = OdeSolverTool::default();
+    restored.load_state(&state);
+
+    assert_eq!(restored.preset, OdePreset::Custom);
+    assert_eq!(restored.math_input.raw_text, "y' = -k * y * sin(t)");
+    assert!(!restored.diverged());
+}
+
+#[test]
+fn test_generate_custom_ode_and_complex_screenshots() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        param_k: 2.0,
+        ic_y0: 1.0,
+        dt: 0.02,
+        total_time: 10.0,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("y' = -k * y * sin(t)");
+    tool.recalculate();
+
+    let datasets = tool.export_datasets();
+    let options = egui_plot::export::ExportOptions::default();
+    if let Ok(png) = egui_plot::export::export_custom_png(&datasets, &options) {
+        let _ = std::fs::write("/tmp/ast_expression_parser_ode.png", png);
+    }
+
+    // Complex conformal mapping datasets: w = z^3 - 1/z
+    let expr = math_commons::ast::parse("z^3 - 1/z").expect("parse complex");
+    let mut complex_datasets = Vec::new();
+    let grid_density = 10;
+    let grid_min = -2.0;
+    let grid_max = 2.0;
+    let step = (grid_max - grid_min) / (grid_density as f64 - 1.0);
+    let resolution = 40;
+
+    for i in 0..grid_density {
+        let x = grid_min + (i as f64) * step;
+        let mut pts = Vec::with_capacity(resolution);
+        for j in 0..resolution {
+            let y = grid_min + (grid_max - grid_min) * (j as f64) / (resolution as f64 - 1.0);
+            let z = num_complex::Complex64::new(x, y);
+            let w = expr.eval_complex_z(z);
+            if w.re.is_finite() && w.im.is_finite() && w.norm() < 20.0 {
+                pts.push([w.re, w.im]);
+            }
+        }
+        if !pts.is_empty() {
+            complex_datasets.push((format!("Re(z)={x:.2}"), pts));
+        }
+    }
+
+    if let Ok(png) = egui_plot::export::export_custom_png(&complex_datasets, &options) {
+        let _ = std::fs::write("/tmp/ast_expression_parser_complex.png", png);
+    }
+
+    assert!(std::path::Path::new("/tmp/ast_expression_parser_ode.png").exists());
+    assert!(std::path::Path::new("/tmp/ast_expression_parser_complex.png").exists());
 }
 
 #[test]
@@ -166,8 +285,14 @@ fn test_ode_solver_method_selection_and_accuracy_ordering() {
     let euler_err = (euler_final - true_val).abs();
 
     // Order of accuracy: RK4 < Heun < Euler
-    assert!(rk4_err < heun_err, "RK4 err {rk4_err} should be < Heun err {heun_err}");
-    assert!(heun_err < euler_err, "Heun err {heun_err} should be < Euler err {euler_err}");
+    assert!(
+        rk4_err < heun_err,
+        "RK4 err {rk4_err} should be < Heun err {heun_err}"
+    );
+    assert!(
+        heun_err < euler_err,
+        "Heun err {heun_err} should be < Euler err {euler_err}"
+    );
 }
 
 #[test]
@@ -283,7 +408,10 @@ fn test_ode_multi_solver_divergence_warning() {
     assert!(tool.y_series.iter().all(|y| y.is_finite()));
     for snapshot in tool.comparison_manager().snapshots() {
         for series in &snapshot.series {
-            assert!(series.points.iter().all(|pt| pt[0].is_finite() && pt[1].is_finite()));
+            assert!(series
+                .points
+                .iter()
+                .all(|pt| pt[0].is_finite() && pt[1].is_finite()));
         }
     }
 }

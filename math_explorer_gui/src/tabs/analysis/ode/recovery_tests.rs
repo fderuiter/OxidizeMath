@@ -149,7 +149,11 @@ fn test_ode_divergence_and_recovery_telemetry() {
     let events = federated_registry::global_registry().try_recv_all();
     let div_event = events
         .iter()
-        .find(|e| e.source == "OdeSolverTool" && e.severity == federated_registry::Severity::Error)
+        .find(|e| {
+            e.source == "OdeSolverTool"
+                && e.severity == federated_registry::Severity::Error
+                && e.metadata.get("preset").is_some_and(|s| s.contains("Exponential"))
+        })
         .expect("Divergence telemetry event should be emitted");
 
     assert_eq!(

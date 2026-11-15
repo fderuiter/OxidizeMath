@@ -1,6 +1,8 @@
 #[cfg(target_os = "macos")]
 mod macos_menu;
 mod session;
+mod split_view;
+mod state;
 mod theme;
 mod ui_panels;
 mod viewport;
@@ -15,9 +17,13 @@ mod tests_diagnostics;
 mod tests_multi_pane;
 #[cfg(test)]
 mod tests_session_lifecycle;
+#[cfg(test)]
+mod tests_split_view;
 
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
+pub use split_view::{SplitLayoutMode, SplitViewState};
+pub use state::AppState;
 pub use theme::ThemeMode;
 pub use viewport::ViewportLayout;
 
@@ -26,31 +32,13 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
 
-fn default_true() -> bool {
-    true
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub struct AppState {
-    pub selected_tab: usize,
-    pub selected_tab_name: Option<String>,
-    pub show_info: bool,
-    pub show_warnings: bool,
-    pub show_errors: bool,
-    #[serde(default = "default_true")]
-    pub show_diagnostics_panel: bool,
-    #[serde(default)]
-    pub theme: ThemeMode,
-    pub tab_states: std::collections::HashMap<String, String>,
-    #[serde(default)]
-    pub viewport_layout: ViewportLayout,
-    #[serde(default)]
-    pub pane_tabs: Vec<usize>,
-}
-
 pub struct MathExplorerApp {
     tabs: Vec<Box<dyn ExplorerTab>>,
     pub selected_tab: usize,
+    pub split_layout_mode: SplitLayoutMode,
+    pub secondary_tab: usize,
+    pub split_ratio: f32,
+    split_view_state: SplitViewState,
     diagnostic_events: Vec<TelemetryEvent>,
     pub show_diagnostics_panel: bool,
     show_info: bool,
@@ -73,6 +61,10 @@ impl Default for MathExplorerApp {
         Self {
             tabs,
             selected_tab: 0,
+            split_layout_mode: SplitLayoutMode::Single,
+            secondary_tab: 1,
+            split_ratio: 0.5,
+            split_view_state: SplitViewState::new(),
             diagnostic_events: Vec::new(),
             show_diagnostics_panel: true,
             show_info: true,
@@ -95,6 +87,16 @@ impl Default for MathExplorerApp {
 }
 
 impl MathExplorerApp {
+    /// Swaps the primary and secondary pane active tabs immediately.
+    pub fn swap_panes(&mut self) {
+        if self.tabs.len() > 1 {
+            std::mem::swap(&mut self.selected_tab, &mut self.secondary_tab);
+            if self.pane_tabs.len() > 1 {
+                self.pane_tabs.swap(0, 1);
+            }
+        }
+    }
+
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
 
@@ -132,6 +134,10 @@ impl MathExplorerApp {
             .tabs
             .get(self.selected_tab)
             .map(|t| t.name().to_string());
+        let secondary_tab_name = self
+            .tabs
+            .get(self.secondary_tab)
+            .map(|t| t.name().to_string());
         let mut pane_tabs = self.pane_tabs.clone();
         if self.viewport_layout == ViewportLayout::Single && !pane_tabs.is_empty() {
             pane_tabs[0] = self.selected_tab;
@@ -145,6 +151,10 @@ impl MathExplorerApp {
             show_diagnostics_panel: self.show_diagnostics_panel,
             theme: self.theme,
             tab_states,
+            split_layout_mode: self.split_layout_mode,
+            secondary_tab: self.secondary_tab,
+            secondary_tab_name,
+            split_ratio: self.split_ratio.clamp(0.20, 0.80),
             viewport_layout: self.viewport_layout,
             pane_tabs,
         }
@@ -157,6 +167,8 @@ impl MathExplorerApp {
         self.show_errors = app_state.show_errors;
         self.show_diagnostics_panel = app_state.show_diagnostics_panel;
         self.theme = app_state.theme;
+        self.split_layout_mode = app_state.split_layout_mode;
+        self.split_ratio = app_state.split_ratio.clamp(0.20, 0.80);
         self.viewport_layout = app_state.viewport_layout;
 
         for tab in &mut self.tabs {
@@ -173,6 +185,16 @@ impl MathExplorerApp {
             }
         } else if app_state.selected_tab < self.tabs.len() {
             self.selected_tab = app_state.selected_tab;
+        }
+
+        if let Some(tab_name) = &app_state.secondary_tab_name {
+            if let Some(idx) = self.tabs.iter().position(|t| t.name() == tab_name) {
+                self.secondary_tab = idx;
+            } else if app_state.secondary_tab < self.tabs.len() {
+                self.secondary_tab = app_state.secondary_tab;
+            }
+        } else if app_state.secondary_tab < self.tabs.len() {
+            self.secondary_tab = app_state.secondary_tab;
         }
 
         if app_state.pane_tabs.is_empty() {
@@ -404,19 +426,21 @@ impl eframe::App for MathExplorerApp {
             ui_panels::render_main_menu(self, ctx, ui);
         });
 
-        // Render Active Tab or Multi-Pane Viewports
-        if self.viewport_layout == ViewportLayout::Single {
-            if let Some(tab) = self.tabs.get_mut(self.selected_tab) {
-                tab.show(ctx, frame);
-            } else {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    ui.centered_and_justified(|ui| {
-                        ui.label("No module selected.");
-                    });
-                });
-            }
-        } else {
+        // Render Active Tab(s) or Multi-Pane Viewports
+        if self.split_layout_mode != SplitLayoutMode::Single {
+            let mut split_state = std::mem::take(&mut self.split_view_state);
+            split_state.render_split(self, ctx, frame);
+            self.split_view_state = split_state;
+        } else if self.viewport_layout != ViewportLayout::Single {
             viewport::render_multi_pane_manager(self, ctx, frame);
+        } else if let Some(tab) = self.tabs.get_mut(self.selected_tab) {
+            tab.show(ctx, frame);
+        } else {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.label("No module selected.");
+                });
+            });
         }
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);

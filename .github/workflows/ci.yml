@@ -9,6 +9,7 @@ concurrency:
 on:
   push:
     branches: [ "main", "master" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
@@ -80,6 +81,9 @@ jobs:
 
       - name: Check File Lengths (500 lines limit)
         run: cargo run -p unified_verification --release -- check-file-lengths
+
+      - name: Check Crate Documentation
+        run: cargo run -p unified_verification --release -- check-docs
 
       - name: Build Documentation
         env:
@@ -253,6 +257,40 @@ jobs:
           name: compiled_papers
           path: papers/output/*.pdf
           retention-days: 7
+
+      - name: Upload Papers Release Bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: papers-release-bundle
+          path: |
+            papers/output/papers-bundle.tar.gz
+            papers/output/SHA256SUMS
+
+      - name: Setup Pages
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request'
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+
+      - name: Upload Pages Artifact
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: papers/output
+
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request'
+    needs: compile-papers
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
 
   feature-matrix:
     name: Domain Tests (${{ matrix.feature || 'core-only' }})

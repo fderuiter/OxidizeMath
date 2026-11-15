@@ -136,6 +136,7 @@ fn test_ode_preset_config_roundtrip() {
         param_cap_k: 10.0,
         ic_y0: 1.5,
         ic_v0: -0.5,
+        custom_expr: String::new(),
     };
 
     let wrapper = PresetWrapper {

@@ -2291,6 +2291,53 @@
       "signature": "pub struct TelemetryEvent"
     }
   ],
+  "crates/math_commons/src/ast/eval.rs": [
+    {
+      "signature": "pub enum EvalError"
+    }
+  ],
+  "crates/math_commons/src/ast/expr.rs": [
+    {
+      "signature": "pub enum BinaryOp"
+    },
+    {
+      "signature": "pub enum Expr"
+    },
+    {
+      "signature": "pub enum Func"
+    },
+    {
+      "signature": "pub enum UnaryOp"
+    }
+  ],
+  "crates/math_commons/src/ast/lexer.rs": [
+    {
+      "signature": "pub enum TokenKind"
+    },
+    {
+      "signature": "pub fn tokenize (input : & str) -> Result < Vec < Token > , LexError >"
+    },
+    {
+      "signature": "pub struct LexError"
+    },
+    {
+      "signature": "pub struct Span"
+    },
+    {
+      "signature": "pub struct Token"
+    }
+  ],
+  "crates/math_commons/src/ast/parser.rs": [
+    {
+      "signature": "pub enum ParseError"
+    },
+    {
+      "signature": "pub fn parse (input : & str) -> Result < Expr , ParseError >"
+    },
+    {
+      "signature": "pub fn parse_equation (input : & str) -> Result < (Option < String > , Expr) , ParseError >"
+    }
+  ],
   "crates/math_commons/src/error.rs": [
     {
       "signature": "pub enum MathError"

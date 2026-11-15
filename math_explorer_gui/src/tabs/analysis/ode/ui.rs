@@ -55,20 +55,35 @@ impl OdeSolverTool {
                             OdePreset::LogisticGrowth.name(),
                         )
                         .changed()
+                    || ui
+                        .selectable_value(
+                            &mut self.preset,
+                            OdePreset::Custom,
+                            OdePreset::Custom.name(),
+                        )
+                        .changed()
                 {
                     changed = true;
                 }
             });
 
-        let (latex_eq, plain_eq) = match self.preset {
-            OdePreset::Exponential => (r"\frac{dy}{dt} = k y", "dy/dt = k*y"),
-            OdePreset::HarmonicOscillator => (r"\frac{d^2 y}{dt^2} = -k y", "d^2y/dt^2 = -k*y"),
-            OdePreset::LogisticGrowth => (
-                r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
-                "dy/dt = r*y*(1 - y/K)",
-            ),
-        };
-        crate::reflective_ui::render_formula_with_export(ui, latex_eq, Some(plain_eq));
+        if self.preset == OdePreset::Custom {
+            ui.add_space(6.0);
+            if self.math_input.ui(ui) {
+                changed = true;
+            }
+        } else {
+            let (latex_eq, plain_eq) = match self.preset {
+                OdePreset::Exponential => (r"\frac{dy}{dt} = k y", "dy/dt = k*y"),
+                OdePreset::HarmonicOscillator => (r"\frac{d^2 y}{dt^2} = -k y", "d^2y/dt^2 = -k*y"),
+                OdePreset::LogisticGrowth => (
+                    r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
+                    "dy/dt = r*y*(1 - y/K)",
+                ),
+                OdePreset::Custom => unreachable!(),
+            };
+            crate::reflective_ui::render_formula_with_export(ui, latex_eq, Some(plain_eq));
+        }
 
         changed
     }
@@ -78,9 +93,9 @@ impl OdeSolverTool {
         ui.add_space(10.0);
         ui.heading("Parameters");
         match self.preset {
-            OdePreset::Exponential => {
+            OdePreset::Exponential | OdePreset::Custom => {
                 ui.horizontal(|ui| {
-                    ui.label("k (Rate):");
+                    ui.label("k (Rate / Parameter):");
                     if ui
                         .add(egui::DragValue::new(&mut self.param_k).speed(0.1))
                         .changed()
@@ -246,7 +261,7 @@ impl OdeSolverTool {
 
     fn run_sensitivity_analysis(&mut self) {
         let params = match self.preset {
-            OdePreset::Exponential => vec![
+            OdePreset::Exponential | OdePreset::Custom => vec![
                 ("k".to_string(), self.param_k),
                 ("y0".to_string(), self.ic_y0),
             ],
@@ -266,14 +281,16 @@ impl OdeSolverTool {
         let current_method = self.method;
         let current_dt = self.dt;
         let current_total_time = self.total_time;
+        let custom_expr = self.math_input.expr().cloned();
 
-        self.sensitivity_engine.compute(&params, |p_map| {
+        self.sensitivity_engine.compute(&params, move |p_map| {
             eval_ode_final_state(
                 current_preset,
                 current_method,
                 current_dt,
                 current_total_time,
                 p_map,
+                custom_expr.as_ref(),
             )
         });
     }
