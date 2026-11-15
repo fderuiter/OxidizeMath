@@ -1,9 +1,13 @@
+#[cfg(target_os = "macos")]
+mod macos_menu;
 mod session;
 mod theme;
 mod ui_panels;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_command_palette;
 #[cfg(test)]
 mod tests_diagnostics;
 
@@ -12,6 +16,7 @@ pub use session::WorkspaceEnvelope;
 pub use session::WorkspaceSessionManager;
 pub use theme::ThemeMode;
 
+use crate::command_palette::CommandPalette;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
@@ -44,6 +49,7 @@ pub struct MathExplorerApp {
     show_errors: bool,
     show_help_menu: bool,
     pub theme: ThemeMode,
+    pub command_palette: CommandPalette,
     pub session_manager: WorkspaceSessionManager,
 }
 
@@ -62,6 +68,7 @@ impl Default for MathExplorerApp {
             show_errors: true,
             show_help_menu: false,
             theme: ThemeMode::Dark,
+            command_palette: CommandPalette::default(),
             session_manager: WorkspaceSessionManager::new(),
         }
     }
@@ -78,7 +85,7 @@ impl MathExplorerApp {
         }
 
         #[cfg(target_os = "macos")]
-        setup_macos_menu(&app);
+        macos_menu::setup_macos_menu(&app);
 
         app
     }
@@ -205,6 +212,17 @@ impl MathExplorerApp {
                 }
                 "edit_undo" => self.undo(),
                 "edit_redo" => self.redo(),
+                "cmd_palette" => {
+                    self.command_palette.toggle();
+                    let status_msg = if self.command_palette.is_open {
+                        "Command palette opened"
+                    } else {
+                        "Command palette closed"
+                    };
+                    ctx.data_mut(|d| {
+                        d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
+                    });
+                }
                 "help_commands" => self.show_help_menu = !self.show_help_menu,
                 "theme_dark" => {
                     self.theme = ThemeMode::Dark;
@@ -266,6 +284,29 @@ impl eframe::App for MathExplorerApp {
         } else {
             egui::Modifiers::CTRL
         };
+
+        let palette_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
+            ctx,
+            "Command Palette",
+            "Open command palette to quickly switch simulation tabs",
+            egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::K),
+            true,
+            "Global",
+            None,
+            None,
+        );
+
+        if palette_triggered {
+            self.command_palette.toggle();
+            let status_msg = if self.command_palette.is_open {
+                "Command palette opened"
+            } else {
+                "Command palette closed"
+            };
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
+            });
+        }
 
         let slash_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
             ctx,
@@ -374,6 +415,20 @@ impl eframe::App for MathExplorerApp {
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
 
+        // Render Command Palette Overlay
+        if let Some(new_tab_idx) = self.command_palette.show(ctx, &self.tabs) {
+            if new_tab_idx < self.tabs.len() {
+                self.selected_tab = new_tab_idx;
+                let tab_name = self.tabs[new_tab_idx].name();
+                ctx.data_mut(|d| {
+                    d.insert_temp(
+                        egui::Id::new("aria_live_message"),
+                        format!("Switched to tab {}", tab_name),
+                    );
+                });
+            }
+        }
+
         let current_app_state = self.get_app_state();
         self.session_manager
             .track_state_changes(ctx, current_app_state);
@@ -387,94 +442,4 @@ impl eframe::App for MathExplorerApp {
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(5)
     }
-}
-
-#[cfg(target_os = "macos")]
-fn create_macos_file_menu() -> muda::Submenu {
-    use muda::{MenuId, MenuItem, Submenu};
-    let file_menu = Submenu::new("File", true);
-    let open_item = MenuItem::with_id(
-        MenuId::new("file_open"),
-        "Open Workspace Session...",
-        true,
-        None,
-    );
-    let save_item = MenuItem::with_id(
-        MenuId::new("file_save"),
-        "Save Workspace Session",
-        true,
-        None,
-    );
-    let save_as_item = MenuItem::with_id(
-        MenuId::new("file_save_as"),
-        "Save Workspace Session As...",
-        true,
-        None,
-    );
-    file_menu.append(&open_item).unwrap();
-    file_menu.append(&save_item).unwrap();
-    file_menu.append(&save_as_item).unwrap();
-    file_menu
-}
-
-#[cfg(target_os = "macos")]
-fn create_macos_appearance_menu() -> muda::Submenu {
-    use muda::{MenuId, MenuItem, Submenu};
-    let appearance_menu = Submenu::new("Appearance", true);
-    let dark_item = MenuItem::with_id(MenuId::new("theme_dark"), "Dark", true, None);
-    let light_item = MenuItem::with_id(MenuId::new("theme_light"), "Light", true, None);
-    let hc_item = MenuItem::with_id(
-        MenuId::new("theme_high_contrast"),
-        "High Contrast",
-        true,
-        None,
-    );
-    appearance_menu.append(&dark_item).unwrap();
-    appearance_menu.append(&light_item).unwrap();
-    appearance_menu.append(&hc_item).unwrap();
-    appearance_menu
-}
-
-#[cfg(target_os = "macos")]
-fn setup_macos_menu(app: &MathExplorerApp) {
-    use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
-    let menu = Menu::new();
-
-    // App Menu
-    let app_menu = Submenu::new("Math Explorer", true);
-    app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
-    menu.append(&app_menu).unwrap();
-
-    // File Menu
-    menu.append(&create_macos_file_menu()).unwrap();
-
-    // Edit Menu
-    let edit_menu = Submenu::new("Edit", true);
-    let undo_item = MenuItem::with_id(MenuId::new("edit_undo"), "Undo", true, None);
-    let redo_item = MenuItem::with_id(MenuId::new("edit_redo"), "Redo", true, None);
-    edit_menu.append(&undo_item).unwrap();
-    edit_menu.append(&redo_item).unwrap();
-    menu.append(&edit_menu).unwrap();
-
-    // View Menu
-    let view_menu = Submenu::new("View", true);
-    for (i, name) in app.tab_names().into_iter().enumerate() {
-        let item = MenuItem::with_id(MenuId::new(format!("tab_{}", i)), name, true, None);
-        view_menu.append(&item).unwrap();
-    }
-    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
-    let diag_item = CheckMenuItem::with_id(
-        MenuId::new("view_toggle_diagnostics"),
-        "Issues & Diagnostics Panel",
-        true,
-        app.show_diagnostics_panel,
-        None,
-    );
-    view_menu.append(&diag_item).unwrap();
-    menu.append(&view_menu).unwrap();
-
-    // Appearance Menu
-    menu.append(&create_macos_appearance_menu()).unwrap();
-
-    menu.init_for_nsapp();
 }

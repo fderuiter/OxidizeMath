@@ -239,6 +239,27 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
         });
 
         ui.menu_button("View", |ui| {
+            let cmd_shortcut = if cfg!(target_os = "macos") {
+                "Cmd+K"
+            } else {
+                "Ctrl+K"
+            };
+            if ui
+                .add(egui::Button::new("🔍 Command Palette...").shortcut_text(cmd_shortcut))
+                .clicked()
+            {
+                app.command_palette.toggle();
+                let status_msg = if app.command_palette.is_open {
+                    "Command palette opened"
+                } else {
+                    "Command palette closed"
+                };
+                ctx.data_mut(|d| {
+                    d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
+                });
+                ui.close();
+            }
+            ui.separator();
             let mut selected = app.selected_tab;
             let tab_names = app.tab_names();
             for (i, tab_name) in tab_names.into_iter().enumerate() {
