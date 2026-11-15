@@ -14,6 +14,11 @@ mod utils;
 mod vulnerabilities;
 mod workflow_linter;
 use utils::{check_file_lengths, check_staged_duplicates};
+
+#[cfg(test)]
+/// Test mutex to synchronize tests that modify process working directory.
+pub static DIR_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -275,12 +280,15 @@ fn verify_suite(args: &[String]) {
     println!("Gathering native execution coverage...");
 
     let output = report::get_llvm_cov_output();
-    let cov_json: serde_json::Value = if output.status.success() {
-        serde_json::from_slice(&output.stdout).expect("Failed to parse coverage JSON")
-    } else {
-        println!("Warning: llvm-cov failed, using empty coverage.");
-        serde_json::json!({})
-    };
+    if !output.status.success() {
+        eprintln!(
+            "Error running cargo llvm-cov:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        std::process::exit(1);
+    }
+    let cov_json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("Failed to parse coverage JSON");
 
     let rs_files = report::collect_rs_files();
     let (native_lines_total, native_lines_covered) = report::parse_coverage(&cov_json);

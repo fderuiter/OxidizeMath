@@ -36,36 +36,39 @@ fn to_channel_u8(v: f64) -> u8 {
     v as u8
 }
 
+fn color_high_contrast(normalized: f64) -> egui::Color32 {
+    egui::Color32::from_rgb(
+        scale_channel_255(normalized),
+        scale_channel_255(normalized),
+        to_channel_u8((1.0 - normalized) * 40.0),
+    )
+}
+
+fn color_dark(normalized: f64) -> egui::Color32 {
+    egui::Color32::from_rgb(
+        scale_channel_255(normalized),
+        to_channel_u8(normalized * 200.0),
+        to_channel_u8((1.0 - normalized) * 200.0 + 55.0),
+    )
+}
+
+fn color_light(normalized: f64) -> egui::Color32 {
+    egui::Color32::from_rgb(
+        to_channel_u8((1.0 - normalized * 0.9) * 240.0),
+        to_channel_u8((1.0 - normalized * 0.8) * 245.0),
+        scale_channel_255(1.0 - normalized * 0.5),
+    )
+}
+
 pub fn compute_attention_cell_color(
     normalized: f64,
     theme_mode: ThemeContrastMode,
 ) -> egui::Color32 {
     let normalized = normalized.clamp(0.0, 1.0);
     match theme_mode {
-        ThemeContrastMode::HighContrast => {
-            // High contrast mode: stark separation with black base and vivid yellow peak
-            egui::Color32::from_rgb(
-                scale_channel_255(normalized),
-                scale_channel_255(normalized),
-                to_channel_u8((1.0 - normalized) * 40.0),
-            )
-        }
-        ThemeContrastMode::Dark => {
-            // Dark mode: Dark blue (low) -> Yellow (high) matching original visual accuracy
-            egui::Color32::from_rgb(
-                scale_channel_255(normalized),
-                to_channel_u8(normalized * 200.0),
-                to_channel_u8((1.0 - normalized) * 200.0 + 55.0),
-            )
-        }
-        ThemeContrastMode::Light => {
-            // Light mode: Light cyan/blue (low) -> Deep navy/indigo (high) for high contrast on light bg
-            egui::Color32::from_rgb(
-                to_channel_u8((1.0 - normalized * 0.9) * 240.0),
-                to_channel_u8((1.0 - normalized * 0.8) * 245.0),
-                scale_channel_255(1.0 - normalized * 0.5),
-            )
-        }
+        ThemeContrastMode::HighContrast => color_high_contrast(normalized),
+        ThemeContrastMode::Dark => color_dark(normalized),
+        ThemeContrastMode::Light => color_light(normalized),
     }
 }
 

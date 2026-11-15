@@ -189,20 +189,23 @@ pub fn check_unverified_modules(members: &[String]) -> Vec<String> {
     unverified_modules
 }
 
-fn save_report(report: &IntegrityReport, avg_cov: f64) {
+fn save_report(report: &IntegrityReport, native_cov: f64) {
+    if cfg!(test) {
+        return;
+    }
     let json_report = serde_json::to_string_pretty(&report).unwrap();
     fs::write("Verification_Certificate.json", json_report).unwrap();
     println!("Generated Verification_Certificate.json");
 
     if let Ok(mut readme) = fs::read_to_string("README.md") {
-        let badge_color = if avg_cov >= 90.0 {
+        let badge_color = if native_cov >= 90.0 {
             "brightgreen"
         } else {
             "yellow"
         };
         let new_badge = format!(
             "![Coverage](https://img.shields.io/badge/coverage-{:.1}%25-{})",
-            avg_cov, badge_color
+            native_cov, badge_color
         );
         let badge_re = Regex::new(r"!\[Coverage\]\(.*?\)").unwrap();
         readme = badge_re.replace(&readme, new_badge.as_str()).to_string();
@@ -272,9 +275,11 @@ pub fn print_report(
         }
     }
 
-    let avg_cov = (native_cov_pct + wasm_cov_pct) / 2.0;
-    if avg_cov < 20.0 {
-        println!("Coverage {:.2}% is below threshold of 20.0%", avg_cov);
+    if native_cov_pct < 50.0 {
+        println!(
+            "Coverage {:.2}% is below threshold of 50.0%",
+            native_cov_pct
+        );
         passed = false;
     }
 
@@ -287,6 +292,85 @@ pub fn print_report(
         passed,
     };
 
-    save_report(&report, avg_cov);
+    save_report(&report, native_cov_pct);
     passed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_coverage_empty_and_valid() {
+        let (tot, cov) = parse_coverage(&serde_json::json!({}));
+        assert_eq!(tot, 0.0);
+        assert_eq!(cov, 0.0);
+
+        let data = serde_json::json!({
+            "data": [{
+                "files": [
+                    {
+                        "summary": {
+                            "lines": {
+                                "count": 100,
+                                "covered": 80
+                            }
+                        }
+                    },
+                    {
+                        "summary": {
+                            "lines": {
+                                "count": 50,
+                                "covered": 20
+                            }
+                        }
+                    }
+                ]
+            }]
+        });
+        let (tot2, cov2) = parse_coverage(&data);
+        assert_eq!(tot2, 150.0);
+        assert_eq!(cov2, 100.0);
+    }
+
+    #[test]
+    fn test_print_report_threshold_enforcement() {
+        let metrics = FileMetrics {
+            wasm_paths: 0,
+            wasm_covered: 0,
+            total_funcs: 10.0,
+            total_asserts: 10.0,
+            verified_funcs: 5.0,
+            verified_asserts: 5.0,
+            unverified_funcs: 5.0,
+            unverified_asserts: 5.0,
+            opt_outs: Vec::new(),
+        };
+
+        // Coverage below 50.0% should fail
+        let passed_low = print_report(49.9, 100.0, &metrics, &[]);
+        assert!(!passed_low, "Coverage below 50.0% must fail");
+
+        // Coverage at or above 50.0% with valid density should pass
+        let passed_high = print_report(55.0, 100.0, &metrics, &[]);
+        assert!(passed_high, "Coverage at or above 50.0% should pass");
+        let _ = fs::remove_file("Verification_Certificate.json");
+    }
+
+    #[test]
+    fn test_collect_rs_files_and_unverified_modules() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
+        let files = collect_rs_files();
+        assert!(!files.is_empty());
+        for f in &files {
+            assert!(f.extension().and_then(|s| s.to_str()) == Some("rs"));
+            let p_str = f.to_string_lossy().replace("\\", "/");
+            assert!(!p_str.contains("/target/"));
+            assert!(!p_str.contains("/egui_plot/"));
+        }
+
+        let unverified = check_unverified_modules(&["crates/pure_math".to_string()]);
+        // pure_math has theory_verification! so it should not be unverified
+        assert!(!unverified.iter().any(|u| u.contains("crates/pure_math")));
+    }
 }

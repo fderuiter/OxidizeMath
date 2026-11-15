@@ -3604,9 +3604,10 @@ mod cursor_snap_tests {
             ..Default::default()
         };
 
-        if let Ok(png_bytes) = export_custom_png(&datasets, &options) {
-            let res = std::fs::write("/tmp/snap_tooltip_verification.png", png_bytes);
-            assert!(res.is_ok());
+        let png_res = export_custom_png(&datasets, &options);
+        assert!(png_res.is_ok());
+        if let Ok(png_bytes) = png_res {
+            let _ = std::fs::write("/tmp/snap_tooltip_verification.png", png_bytes);
         }
     }
 
@@ -3886,9 +3887,10 @@ mod callout_context_menu_tests {
             ..Default::default()
         };
 
-        if let Ok(png_bytes) = export_custom_png(&datasets, &options) {
-            let res = std::fs::write("/tmp/callout_context_menu_verification.png", png_bytes);
-            assert!(res.is_ok());
+        let png_res = export_custom_png(&datasets, &options);
+        assert!(png_res.is_ok());
+        if let Ok(png_bytes) = png_res {
+            let _ = std::fs::write("/tmp/callout_context_menu_verification.png", png_bytes);
         }
     }
 }
