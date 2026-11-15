@@ -1,3 +1,4 @@
+#[cfg(not(target_os = "macos"))]
 use crate::app::{MathExplorerApp, ThemeMode, ViewportLayout};
 use eframe::egui;
 use federated_registry::{Severity, TelemetryEvent};

@@ -26,6 +26,16 @@ impl ThemeContrastMode {
     }
 }
 
+#[inline(always)]
+fn scale_channel_255(v: f64) -> u8 {
+    (v * 255.0) as u8
+}
+
+#[inline(always)]
+fn to_channel_u8(v: f64) -> u8 {
+    v as u8
+}
+
 pub fn compute_attention_cell_color(
     normalized: f64,
     theme_mode: ThemeContrastMode,
@@ -35,25 +45,25 @@ pub fn compute_attention_cell_color(
         ThemeContrastMode::HighContrast => {
             // High contrast mode: stark separation with black base and vivid yellow peak
             egui::Color32::from_rgb(
-                (normalized * 255.0) as u8,
-                (normalized * 255.0) as u8,
-                ((1.0 - normalized) * 40.0) as u8,
+                scale_channel_255(normalized),
+                scale_channel_255(normalized),
+                to_channel_u8((1.0 - normalized) * 40.0),
             )
         }
         ThemeContrastMode::Dark => {
             // Dark mode: Dark blue (low) -> Yellow (high) matching original visual accuracy
             egui::Color32::from_rgb(
-                (normalized * 255.0) as u8,
-                (normalized * 200.0) as u8,
-                ((1.0 - normalized) * 200.0 + 55.0) as u8,
+                scale_channel_255(normalized),
+                to_channel_u8(normalized * 200.0),
+                to_channel_u8((1.0 - normalized) * 200.0 + 55.0),
             )
         }
         ThemeContrastMode::Light => {
             // Light mode: Light cyan/blue (low) -> Deep navy/indigo (high) for high contrast on light bg
             egui::Color32::from_rgb(
-                ((1.0 - normalized * 0.9) * 240.0) as u8,
-                ((1.0 - normalized * 0.8) * 245.0) as u8,
-                ((1.0 - normalized * 0.5) * 255.0) as u8,
+                to_channel_u8((1.0 - normalized * 0.9) * 240.0),
+                to_channel_u8((1.0 - normalized * 0.8) * 245.0),
+                scale_channel_255(1.0 - normalized * 0.5),
             )
         }
     }

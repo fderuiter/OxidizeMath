@@ -4,15 +4,7 @@ use super::{MathExplorerApp, ThemeMode, ViewportLayout};
 use eframe::egui;
 use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 
-pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
-    let menu = Menu::new();
-
-    // App Menu
-    let app_menu = Submenu::new("Math Explorer", true);
-    app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
-    menu.append(&app_menu).unwrap();
-
-    // File Menu
+fn build_file_menu() -> Submenu {
     let file_menu = Submenu::new("File", true);
     let open_item = MenuItem::with_id(
         MenuId::new("file_open"),
@@ -35,28 +27,24 @@ pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
     file_menu.append(&open_item).unwrap();
     file_menu.append(&save_item).unwrap();
     file_menu.append(&save_as_item).unwrap();
-    menu.append(&file_menu).unwrap();
+    file_menu
+}
 
-    // Edit Menu
+fn build_edit_menu() -> Submenu {
     let edit_menu = Submenu::new("Edit", true);
     let undo_item = MenuItem::with_id(MenuId::new("edit_undo"), "Undo", true, None);
     let redo_item = MenuItem::with_id(MenuId::new("edit_redo"), "Redo", true, None);
     edit_menu.append(&undo_item).unwrap();
     edit_menu.append(&redo_item).unwrap();
-    menu.append(&edit_menu).unwrap();
+    edit_menu
+}
 
-    // View Menu
-    let view_menu = Submenu::new("View", true);
-    let palette_item =
-        MenuItem::with_id(MenuId::new("cmd_palette"), "Command Palette...", true, None);
-    view_menu.append(&palette_item).unwrap();
-    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
-
+fn build_viewport_layout_menu() -> Submenu {
     let layout_menu = Submenu::new("Viewport Layout", true);
     layout_menu
         .append(&MenuItem::with_id(
             MenuId::new("layout_single"),
-            "Single",
+            ViewportLayout::Single.name(),
             true,
             None,
         ))
@@ -64,7 +52,7 @@ pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
     layout_menu
         .append(&MenuItem::with_id(
             MenuId::new("layout_split_h"),
-            "Split Horizontal",
+            ViewportLayout::SplitHorizontal.name(),
             true,
             None,
         ))
@@ -72,7 +60,7 @@ pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
     layout_menu
         .append(&MenuItem::with_id(
             MenuId::new("layout_split_v"),
-            "Split Vertical",
+            ViewportLayout::SplitVertical.name(),
             true,
             None,
         ))
@@ -80,12 +68,22 @@ pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
     layout_menu
         .append(&MenuItem::with_id(
             MenuId::new("layout_quad"),
-            "2x2 Quad Grid",
+            ViewportLayout::QuadGrid.name(),
             true,
             None,
         ))
         .unwrap();
-    view_menu.append(&layout_menu).unwrap();
+    layout_menu
+}
+
+fn build_view_menu(app: &MathExplorerApp) -> Submenu {
+    let view_menu = Submenu::new("View", true);
+    let palette_item =
+        MenuItem::with_id(MenuId::new("cmd_palette"), "Command Palette...", true, None);
+    view_menu.append(&palette_item).unwrap();
+    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
+
+    view_menu.append(&build_viewport_layout_menu()).unwrap();
     view_menu.append(&PredefinedMenuItem::separator()).unwrap();
     for (i, name) in app.tab_names().into_iter().enumerate() {
         let item = MenuItem::with_id(MenuId::new(format!("tab_{}", i)), name, true, None);
@@ -100,22 +98,47 @@ pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
         None,
     );
     view_menu.append(&diag_item).unwrap();
-    menu.append(&view_menu).unwrap();
+    view_menu
+}
 
-    // Appearance Menu
+fn build_appearance_menu() -> Submenu {
     let appearance_menu = Submenu::new("Appearance", true);
-    let dark_item = MenuItem::with_id(MenuId::new("theme_dark"), "Dark", true, None);
-    let light_item = MenuItem::with_id(MenuId::new("theme_light"), "Light", true, None);
+    let dark_item = MenuItem::with_id(
+        MenuId::new("theme_dark"),
+        ThemeMode::Dark.name(),
+        true,
+        None,
+    );
+    let light_item = MenuItem::with_id(
+        MenuId::new("theme_light"),
+        ThemeMode::Light.name(),
+        true,
+        None,
+    );
     let hc_item = MenuItem::with_id(
         MenuId::new("theme_high_contrast"),
-        "High Contrast",
+        ThemeMode::HighContrast.name(),
         true,
         None,
     );
     appearance_menu.append(&dark_item).unwrap();
     appearance_menu.append(&light_item).unwrap();
     appearance_menu.append(&hc_item).unwrap();
-    menu.append(&appearance_menu).unwrap();
+    appearance_menu
+}
+
+pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
+    let menu = Menu::new();
+
+    // App Menu
+    let app_menu = Submenu::new("Math Explorer", true);
+    app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
+    menu.append(&app_menu).unwrap();
+
+    menu.append(&build_file_menu()).unwrap();
+    menu.append(&build_edit_menu()).unwrap();
+    menu.append(&build_view_menu(app)).unwrap();
+    menu.append(&build_appearance_menu()).unwrap();
 
     menu.init_for_nsapp();
 }
