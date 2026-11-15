@@ -1,10 +1,10 @@
+#![cfg(target_os = "macos")]
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::app::MathExplorerApp;
+use super::{MathExplorerApp, SplitLayoutMode};
+use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 
-#[cfg(target_os = "macos")]
-pub fn setup_macos_menu(app: &MathExplorerApp) {
-    use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
     let menu = Menu::new();
 
     // App Menu
@@ -47,20 +47,28 @@ pub fn setup_macos_menu(app: &MathExplorerApp) {
 
     // View Menu
     let view_menu = Submenu::new("View", true);
+    let palette_item =
+        MenuItem::with_id(MenuId::new("cmd_palette"), "Command Palette...", true, None);
+    view_menu.append(&palette_item).unwrap();
+    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
 
     // Split View Submenu
     let split_submenu = Submenu::new("Split Layout", true);
-    let split_single =
-        MenuItem::with_id(MenuId::new("view_split_single"), "Single View", true, None);
+    let split_single = MenuItem::with_id(
+        MenuId::new("view_split_single"),
+        SplitLayoutMode::Single.label(),
+        true,
+        None,
+    );
     let split_horiz = MenuItem::with_id(
         MenuId::new("view_split_horizontal"),
-        "Horizontal Split",
+        SplitLayoutMode::Horizontal.label(),
         true,
         None,
     );
     let split_vert = MenuItem::with_id(
         MenuId::new("view_split_vertical"),
-        "Vertical Split",
+        SplitLayoutMode::Vertical.label(),
         true,
         None,
     );

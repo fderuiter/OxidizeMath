@@ -134,7 +134,7 @@ pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
 
 /// Renders the top menu bar in the UI.
 #[cfg(not(target_os = "macos"))]
-#[allow(clippy::too_many_lines, dead_code)]
+#[allow(clippy::too_many_lines)]
 pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
     let modifiers = if cfg!(target_os = "macos") {
         egui::Modifiers::MAC_CMD
@@ -239,6 +239,27 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
         });
 
         ui.menu_button("View", |ui| {
+            let cmd_shortcut = if cfg!(target_os = "macos") {
+                "Cmd+K"
+            } else {
+                "Ctrl+K"
+            };
+            if ui
+                .add(egui::Button::new("🔍 Command Palette...").shortcut_text(cmd_shortcut))
+                .clicked()
+            {
+                app.command_palette.toggle();
+                let status_msg = if app.command_palette.is_open {
+                    "Command palette opened"
+                } else {
+                    "Command palette closed"
+                };
+                ctx.data_mut(|d| {
+                    d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
+                });
+                ui.close();
+            }
+            ui.separator();
             ui.label(egui::RichText::new("Layout Mode").strong());
             if ui
                 .radio_value(

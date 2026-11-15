@@ -1,6 +1,7 @@
-//! Legacy crate.
+//! Build script for virtual file system code generation in oxidize_core.
 #[path = "src/path_utils.rs"]
-mod path_utils;
+/// Path utilities.
+pub mod path_utils;
 
 use std::env;
 use std::fs;
