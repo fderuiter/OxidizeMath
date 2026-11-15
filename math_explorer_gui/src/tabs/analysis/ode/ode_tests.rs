@@ -132,3 +132,346 @@ fn test_ode_auto_history_buffering() {
     let exported = tool.export_datasets();
     assert!(exported.iter().any(|(name, _)| name.contains("Run")));
 }
+
+#[test]
+fn test_ode_custom_equation_rk4() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        param_k: 1.5,
+        ic_y0: 2.0,
+        dt: 0.05,
+        total_time: 5.0,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("-k * y * sin(t)");
+    tool.recalculate();
+
+    assert!(!tool.diverged());
+    assert!(!tool.y_series.is_empty());
+    assert_eq!(tool.time_series.len(), tool.y_series.len());
+    assert!(tool.y_series.iter().all(|y| y.is_finite()));
+
+    // Verify changing k produces different trajectory
+    let original_final_y = *tool.y_series.last().unwrap();
+    tool.param_k = 3.0;
+    tool.recalculate();
+    let new_final_y = *tool.y_series.last().unwrap();
+    assert_ne!(original_final_y, new_final_y);
+}
+
+#[test]
+fn test_ode_custom_equation_divergence_handling() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: 1.0,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("1 / (y - 1)");
+    tool.recalculate();
+
+    assert!(tool.diverged());
+}
+
+#[test]
+fn test_ode_custom_state_roundtrip() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("y' = -k * y * sin(t)");
+    tool.recalculate();
+
+    let state = tool.save_state().expect("save state");
+    let mut restored = OdeSolverTool::default();
+    restored.load_state(&state);
+
+    assert_eq!(restored.preset, OdePreset::Custom);
+    assert_eq!(restored.math_input.raw_text, "y' = -k * y * sin(t)");
+    assert!(!restored.diverged());
+}
+
+#[test]
+fn test_generate_custom_ode_and_complex_screenshots() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        param_k: 2.0,
+        ic_y0: 1.0,
+        dt: 0.02,
+        total_time: 10.0,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("y' = -k * y * sin(t)");
+    tool.recalculate();
+
+    let datasets = tool.export_datasets();
+    let options = egui_plot::export::ExportOptions::default();
+    if let Ok(png) = egui_plot::export::export_custom_png(&datasets, &options) {
+        let _ = std::fs::write("/tmp/ast_expression_parser_ode.png", png);
+    }
+
+    // Complex conformal mapping datasets: w = z^3 - 1/z
+    let expr = math_commons::ast::parse("z^3 - 1/z").expect("parse complex");
+    let mut complex_datasets = Vec::new();
+    let grid_density = 10;
+    let grid_min = -2.0;
+    let grid_max = 2.0;
+    let step = (grid_max - grid_min) / (grid_density as f64 - 1.0);
+    let resolution = 40;
+
+    for i in 0..grid_density {
+        let x = grid_min + (i as f64) * step;
+        let mut pts = Vec::with_capacity(resolution);
+        for j in 0..resolution {
+            let y = grid_min + (grid_max - grid_min) * (j as f64) / (resolution as f64 - 1.0);
+            let z = num_complex::Complex64::new(x, y);
+            let w = expr.eval_complex_z(z);
+            if w.re.is_finite() && w.im.is_finite() && w.norm() < 20.0 {
+                pts.push([w.re, w.im]);
+            }
+        }
+        if !pts.is_empty() {
+            complex_datasets.push((format!("Re(z)={x:.2}"), pts));
+        }
+    }
+
+    if let Ok(png) = egui_plot::export::export_custom_png(&complex_datasets, &options) {
+        let _ = std::fs::write("/tmp/ast_expression_parser_complex.png", png);
+    }
+
+    assert!(std::path::Path::new("/tmp/ast_expression_parser_ode.png").exists());
+    assert!(std::path::Path::new("/tmp/ast_expression_parser_complex.png").exists());
+}
+
+#[test]
+fn test_ode_structured_diagnostic_report() {
+    let mut tool = OdeSolverTool {
+        param_k: 1e300,
+        ic_y0: 1e300,
+        ..Default::default()
+    };
+    tool.recalculate();
+
+    assert!(tool.diverged());
+    let report = tool.diagnostic_report().expect("Diagnostic report should be present");
+    assert_eq!(report.step_index, 1);
+    assert_eq!(report.t_diverged, 0.05);
+    assert_eq!(report.variable, "y(t)");
+    assert!(report.message.contains("diverged"));
+
+    // Reset clears diagnostic report
+    tool.reset_parameters();
+    assert!(!tool.diverged());
+    assert!(tool.diagnostic_report().is_none());
+}
+
+#[test]
+fn test_ode_autoscale_step_size_recovery() {
+    let mut tool = OdeSolverTool::default();
+    assert_eq!(tool.dt, 0.05);
+
+    tool.auto_scale_step_size();
+    assert_eq!(tool.dt, 0.025);
+
+    tool.auto_scale_step_size();
+    assert_eq!(tool.dt, 0.0125);
+
+    // Test recovering finite trajectories via step size auto-scaling
+    // In Harmonic Oscillator with k = 50000.0 and dt = 0.05, RK4 diverges.
+    // Halving dt to 0.025 and then 0.0125 brings the solver into the stability region.
+    tool.preset = OdePreset::HarmonicOscillator;
+    tool.param_k = 50000.0;
+    tool.total_time = 10.0;
+    tool.dt = 0.05;
+    tool.ic_y0 = 1.0;
+    tool.ic_v0 = 0.0;
+    tool.recalculate();
+    assert!(tool.diverged());
+
+    // Halve dt until integration succeeds and finite trajectory is restored
+    for _ in 0..5 {
+        if !tool.diverged() {
+            break;
+        }
+        tool.auto_scale_step_size();
+    }
+    assert!(!tool.diverged());
+    assert!(!tool.y_series.is_empty());
+    assert!(tool.y_series.iter().all(|y| y.is_finite()));
+
+    let datasets = tool.export_datasets();
+    let options = egui_plot::export::ExportOptions::default();
+    if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
+        let _ = std::fs::write("/tmp/ode_recovered_trajectory.png", png_data);
+    }
+}
+
+#[test]
+fn test_ode_autoscale_minimum_floor() {
+    let mut tool = OdeSolverTool {
+        dt: 1e-6,
+        ..Default::default()
+    };
+    tool.auto_scale_step_size();
+    assert!(tool.dt >= 1e-6);
+
+    tool.dt = 1e-8;
+    tool.auto_scale_step_size();
+    assert_eq!(tool.dt, 1e-6);
+}
+
+#[test]
+fn test_ode_clamp_instability_parameters_exponential() {
+    let mut tool = OdeSolverTool {
+        param_k: 1e300,
+        ic_y0: 1e300,
+        ..Default::default()
+    };
+    tool.recalculate();
+    assert!(tool.diverged());
+
+    tool.clamp_instability_parameters();
+    assert!(!tool.diverged());
+    assert!(tool.param_k <= 5.0 && tool.param_k >= -5.0);
+    assert!(tool.ic_y0 <= 10.0 && tool.ic_y0 >= -10.0);
+    assert!(!tool.y_series.is_empty());
+    assert!(tool.y_series.iter().all(|y| y.is_finite()));
+}
+
+#[test]
+fn test_ode_clamp_instability_parameters_harmonic_and_logistic() {
+    // Harmonic Oscillator
+    let mut tool_harmonic = OdeSolverTool {
+        preset: OdePreset::HarmonicOscillator,
+        param_k: 1e300,
+        ic_y0: 1e300,
+        ic_v0: 1e300,
+        ..Default::default()
+    };
+    tool_harmonic.recalculate();
+    assert!(tool_harmonic.diverged());
+
+    tool_harmonic.clamp_instability_parameters();
+    assert!(!tool_harmonic.diverged());
+    assert!(tool_harmonic.param_k <= 10.0);
+    assert!(tool_harmonic.ic_y0 <= 10.0);
+    assert!(tool_harmonic.ic_v0 <= 10.0);
+
+    // Logistic Growth
+    let mut tool_logistic = OdeSolverTool {
+        preset: OdePreset::LogisticGrowth,
+        param_r: 1e300,
+        param_cap_k: 1e300,
+        ic_y0: 1e300,
+        ..Default::default()
+    };
+    tool_logistic.recalculate();
+    assert!(tool_logistic.diverged());
+
+    tool_logistic.clamp_instability_parameters();
+    assert!(!tool_logistic.diverged());
+    assert!(tool_logistic.param_r <= 5.0);
+    assert!(tool_logistic.param_cap_k <= 100.0);
+}
+
+#[test]
+fn test_ode_divergence_and_recovery_telemetry() {
+    let _ = federated_registry::global_registry().try_recv_all();
+
+    let mut tool = OdeSolverTool {
+        param_k: 1e300,
+        ic_y0: 1e300,
+        ..Default::default()
+    };
+    tool.recalculate();
+
+    let events = federated_registry::global_registry().try_recv_all();
+    let div_event = events
+        .iter()
+        .find(|e| e.source == "OdeSolverTool" && e.severity == federated_registry::Severity::Error)
+        .expect("Divergence telemetry event should be emitted");
+
+    assert_eq!(div_event.metadata.get("diverged_variable"), Some(&"y(t)".to_string()));
+    assert!(div_event.metadata.contains_key("t_diverged"));
+    assert!(div_event.metadata.contains_key("step_count"));
+
+    // Recovery action emits telemetry
+    recovery::emit_recovery_telemetry("Auto-scale Step Size (dt)", "Halved step size");
+    let recovery_events = federated_registry::global_registry().try_recv_all();
+    assert!(recovery_events.iter().any(|e| {
+        e.source == "OdeSolverTool"
+            && e.severity == federated_registry::Severity::Info
+            && e.message.contains("Auto-scale Step Size")
+    }));
+}
+
+#[test]
+fn test_ode_recovery_banner_ui_rendering() {
+    let ctx = egui::Context::default();
+    let mut tool = OdeSolverTool {
+        param_k: 1e300,
+        ic_y0: 1e300,
+        ..Default::default()
+    };
+    tool.recalculate();
+    assert!(tool.diverged());
+
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let mut changed = false;
+            let mut py = Vec::new();
+            let mut pv = Vec::new();
+            recovery::render_recovery_ui(ui, &mut tool, &mut changed, &mut py, &mut pv);
+        });
+    });
+}
+
+#[test]
+fn test_ode_annotations_toggle_and_rendering() {
+    let mut tool = OdeSolverTool::default();
+    assert!(tool.show_annotations);
+
+    // Toggle off and on
+    tool.show_annotations = false;
+    assert!(!tool.show_annotations);
+    tool.show_annotations = true;
+
+    // Test serialization roundtrip with show_annotations
+    tool.show_annotations = false;
+    let saved = tool.save_state().expect("save state");
+    let mut restored = OdeSolverTool::default();
+    restored.load_state(&saved);
+    assert!(!restored.show_annotations);
+
+    // Test rendering with each preset
+    let ctx = egui::Context::default();
+
+    // 1. Exponential
+    tool.show_annotations = true;
+    tool.preset = OdePreset::Exponential;
+    tool.param_k = -0.5;
+    tool.recalculate();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+
+    // 2. Harmonic Oscillator
+    tool.preset = OdePreset::HarmonicOscillator;
+    tool.recalculate();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+
+    // 3. Logistic Growth
+    tool.preset = OdePreset::LogisticGrowth;
+    tool.param_cap_k = 12.0;
+    tool.ic_y0 = 2.0;
+    tool.recalculate();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+
+    // Disable annotations and ensure clean rendering
+    tool.show_annotations = false;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+
+    // Export plot screenshot for verification
+    let datasets = tool.export_datasets();
+    let options = egui_plot::export::ExportOptions::default();
+    if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
+        let _ = std::fs::write("/tmp/ode_solver_trajectory.png", png_data);
+    }
+}

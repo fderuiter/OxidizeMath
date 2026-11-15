@@ -7,14 +7,19 @@ pub mod async_sim;
 #[allow(missing_docs)]
 pub mod camera;
 #[allow(missing_docs)]
+pub mod command_palette;
+#[allow(missing_docs)]
 pub mod framework;
 #[cfg(test)]
 mod framework_tests;
+#[cfg(test)]
+mod interactive_tools_tests;
 pub mod presets;
 #[allow(missing_docs)]
 pub mod reflective_ui;
 #[allow(missing_docs)]
 pub mod sensitivity;
+pub mod starter_gallery;
 mod tabs;
 
 use app::MathExplorerApp;

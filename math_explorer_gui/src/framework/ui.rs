@@ -24,7 +24,8 @@ impl SimulationFramework {
                         use crate::accessibility::AccessibleHoverText;
                         use crate::reflective_ui::render_theory_summary_with_export;
 
-                        render_theory_summary_with_export(ui, &theory.theory_description(), None)
+                        let theory_desc = theory.theory_description();
+                        render_theory_summary_with_export(ui, &theory_desc, Some(&theory_desc))
                             .accessible_hover_text("Theoretical background description");
 
                         ui.separator();
@@ -157,11 +158,37 @@ impl SimulationFramework {
                             )
                         });
                     }
+                    if ui
+                        .button("🎨")
+                        .accessible_hover_text("Toggle Starter Gallery")
+                        .clicked()
+                    {
+                        self.show_starter_gallery = !self.show_starter_gallery;
+                        ctx.data_mut(|d| {
+                            d.insert_temp(
+                                egui::Id::new("SHOW_STARTER_GALLERY"),
+                                self.show_starter_gallery,
+                            )
+                        });
+                    }
                 });
                 self.render_search_bar(ui);
                 ui.separator();
                 self.render_filtered_tools(ui);
                 ui.separator();
+                if ui
+                    .button("🎨 Starter Gallery")
+                    .accessible_hover_text("Toggle empty-state starter template gallery")
+                    .clicked()
+                {
+                    self.show_starter_gallery = !self.show_starter_gallery;
+                    ctx.data_mut(|d| {
+                        d.insert_temp(
+                            egui::Id::new("SHOW_STARTER_GALLERY"),
+                            self.show_starter_gallery,
+                        )
+                    });
+                }
                 if ui
                     .checkbox(&mut self.show_theory_portal, "Theory Context Portal")
                     .changed()
@@ -229,5 +256,44 @@ impl SimulationFramework {
                 }
             });
         });
+    }
+
+    pub(super) fn show_starter_gallery_if_open(&mut self, ctx: &egui::Context, id_source: &str) {
+        if self.show_starter_gallery {
+            let cards = crate::starter_gallery::get_starter_cards_for_domain(
+                id_source,
+                &self.available_tools,
+            );
+            let mut is_open = self.show_starter_gallery;
+            if let Some(card) = crate::starter_gallery::show_starter_gallery_overlay(
+                ctx,
+                id_source,
+                &cards,
+                &mut is_open,
+            ) {
+                if let Some(tool_name) = card.tool_name {
+                    if let Some(pos) = self
+                        .available_tools
+                        .iter()
+                        .position(|t| t.name == tool_name)
+                    {
+                        self.select_tool(pos);
+                    }
+                }
+                if let Some(preset_json) = card.preset_json {
+                    if let Some(tool) = &mut self.active_tool {
+                        let _ = tool.apply_preset_json(preset_json);
+                    }
+                }
+                is_open = false;
+            }
+            self.show_starter_gallery = is_open;
+            ctx.data_mut(|d| {
+                d.insert_temp(
+                    egui::Id::new("SHOW_STARTER_GALLERY"),
+                    self.show_starter_gallery,
+                )
+            });
+        }
     }
 }

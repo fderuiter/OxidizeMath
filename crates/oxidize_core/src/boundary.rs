@@ -6,28 +6,6 @@ pub trait BoundaryCondition {
 }
 
 #[allow(missing_docs)]
-pub struct PeriodicBoundary;
-impl BoundaryCondition for PeriodicBoundary {
-    fn resolve(&self, x: isize, y: isize, width: usize, height: usize) -> Option<usize> {
-        let x_mod = x.rem_euclid(width as isize) as usize;
-        let y_mod = y.rem_euclid(height as isize) as usize;
-        Some(y_mod * width + x_mod)
-    }
-}
-
-#[allow(missing_docs)]
-pub struct BounceBackBoundary;
-impl BoundaryCondition for BounceBackBoundary {
-    fn resolve(&self, x: isize, y: isize, width: usize, height: usize) -> Option<usize> {
-        if x < 0 || y < 0 || x >= width as isize || y >= height as isize {
-            None // Signifies an out-of-bounds that requires bounce-back
-        } else {
-            Some((y as usize) * width + (x as usize))
-        }
-    }
-}
-
-#[allow(missing_docs)]
 pub struct NeumannBoundary;
 impl BoundaryCondition for NeumannBoundary {
     fn resolve(&self, x: isize, y: isize, width: usize, height: usize) -> Option<usize> {
@@ -48,5 +26,51 @@ impl BoundaryCondition for NeumannBoundary {
         }
 
         Some((y_clamped as usize) * width + (x_clamped as usize))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_neumann_boundary_interior() {
+        let bc = NeumannBoundary;
+        assert_eq!(bc.resolve(0, 0, 4, 3), Some(0));
+        assert_eq!(bc.resolve(1, 1, 4, 3), Some(5));
+        assert_eq!(bc.resolve(3, 2, 4, 3), Some(11));
+    }
+
+    #[test]
+    fn test_neumann_boundary_negative_coordinates() {
+        let bc = NeumannBoundary;
+        // Clamping negative x: (-1, 2) -> (0, 2) => 2 * 4 + 0 = 8
+        assert_eq!(bc.resolve(-1, 2, 4, 3), Some(8));
+        // Clamping negative y: (2, -3) -> (2, 0) => 0 * 4 + 2 = 2
+        assert_eq!(bc.resolve(2, -3, 4, 3), Some(2));
+        // Clamping both negative: (-5, -10) -> (0, 0) => 0
+        assert_eq!(bc.resolve(-5, -10, 4, 3), Some(0));
+    }
+
+    #[test]
+    fn test_neumann_boundary_exceeding_coordinates() {
+        let bc = NeumannBoundary;
+        // Clamping exceeding x: (4, 1) -> (3, 1) => 1 * 4 + 3 = 7
+        assert_eq!(bc.resolve(4, 1, 4, 3), Some(7));
+        assert_eq!(bc.resolve(10, 1, 4, 3), Some(7));
+        // Clamping exceeding y: (2, 3) -> (2, 2) => 2 * 4 + 2 = 10
+        assert_eq!(bc.resolve(2, 3, 4, 3), Some(10));
+        assert_eq!(bc.resolve(2, 20, 4, 3), Some(10));
+        // Clamping both exceeding: (10, 15) -> (3, 2) => 2 * 4 + 3 = 11
+        assert_eq!(bc.resolve(10, 15, 4, 3), Some(11));
+    }
+
+    #[test]
+    fn test_neumann_boundary_mixed_clamping() {
+        let bc = NeumannBoundary;
+        // Negative x, exceeding y: (-2, 10) -> (0, 2) => 2 * 4 + 0 = 8
+        assert_eq!(bc.resolve(-2, 10, 4, 3), Some(8));
+        // Exceeding x, negative y: (10, -5) -> (3, 0) => 0 * 4 + 3 = 3
+        assert_eq!(bc.resolve(10, -5, 4, 3), Some(3));
     }
 }

@@ -4,7 +4,7 @@ use math_explorer::pure_math::statistics::kelly::{
     expected_value, kelly_fraction, variants, UnitInterval, Odds,
 };
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum OddsFormat {
     Decimal,
     American,
@@ -39,6 +39,53 @@ impl InteractiveTool for BetSizeCalculatorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Bet Size Calculator"
+    }
+    fn domain(&self) -> &'static str {
+        "financial_math"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct BetSizeState {
+            probability_input: f64,
+            odds_format: OddsFormat,
+            decimal_odds: f64,
+            american_odds: f64,
+            fractional_numerator: f64,
+            fractional_denominator: f64,
+            bankroll: f64,
+        }
+        serde_json::to_string(&BetSizeState {
+            probability_input: self.probability_input,
+            odds_format: self.odds_format,
+            decimal_odds: self.decimal_odds,
+            american_odds: self.american_odds,
+            fractional_numerator: self.fractional_numerator,
+            fractional_denominator: self.fractional_denominator,
+            bankroll: self.bankroll,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct BetSizeState {
+            probability_input: f64,
+            odds_format: OddsFormat,
+            decimal_odds: f64,
+            american_odds: f64,
+            fractional_numerator: f64,
+            fractional_denominator: f64,
+            bankroll: f64,
+        }
+        if let Ok(s) = serde_json::from_str::<BetSizeState>(state) {
+            self.probability_input = s.probability_input;
+            self.odds_format = s.odds_format;
+            self.decimal_odds = s.decimal_odds;
+            self.american_odds = s.american_odds;
+            self.fractional_numerator = s.fractional_numerator;
+            self.fractional_denominator = s.fractional_denominator;
+            self.bankroll = s.bankroll;
+        }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]

@@ -642,9 +642,6 @@
       "signature": "pub fn calculate_taylor_tool_life (cutting_speed : CuttingSpeed , constant_c : MaterialConstant , exponent_n : ToolExponent ,) -> ToolLife"
     },
     {
-      "signature": "pub fn taylor_tool_life (cutting_speed : f64 , constant_c : f64 , exponent_n : f64) -> f64"
-    },
-    {
       "signature": "pub struct CuttingSpeed"
     },
     {
@@ -660,9 +657,6 @@
   "crates/domain_applied/src/applied/engineering/uart.rs": [
     {
       "signature": "pub fn calculate_uart_throughput (baud_rate : BaudRate , data_bits : DataBits , total_bits : TotalBits ,) -> f64"
-    },
-    {
-      "signature": "pub fn uart_effective_throughput (baud_rate : u32 , data_bits : u32 , total_bits : u32) -> f64"
     },
     {
       "signature": "pub struct BaudRate"
@@ -1862,6 +1856,12 @@
   ],
   "crates/domain_physics/src/physics/medical/radar_gating/gating.rs": [
     {
+      "signature": "pub enum BeamState"
+    },
+    {
+      "signature": "pub enum GatingError"
+    },
+    {
       "signature": "pub struct GatingLogic"
     }
   ],
@@ -2291,6 +2291,53 @@
       "signature": "pub struct TelemetryEvent"
     }
   ],
+  "crates/math_commons/src/ast/eval.rs": [
+    {
+      "signature": "pub enum EvalError"
+    }
+  ],
+  "crates/math_commons/src/ast/expr.rs": [
+    {
+      "signature": "pub enum BinaryOp"
+    },
+    {
+      "signature": "pub enum Expr"
+    },
+    {
+      "signature": "pub enum Func"
+    },
+    {
+      "signature": "pub enum UnaryOp"
+    }
+  ],
+  "crates/math_commons/src/ast/lexer.rs": [
+    {
+      "signature": "pub enum TokenKind"
+    },
+    {
+      "signature": "pub fn tokenize (input : & str) -> Result < Vec < Token > , LexError >"
+    },
+    {
+      "signature": "pub struct LexError"
+    },
+    {
+      "signature": "pub struct Span"
+    },
+    {
+      "signature": "pub struct Token"
+    }
+  ],
+  "crates/math_commons/src/ast/parser.rs": [
+    {
+      "signature": "pub enum ParseError"
+    },
+    {
+      "signature": "pub fn parse (input : & str) -> Result < Expr , ParseError >"
+    },
+    {
+      "signature": "pub fn parse_equation (input : & str) -> Result < (Option < String > , Expr) , ParseError >"
+    }
+  ],
   "crates/math_commons/src/error.rs": [
     {
       "signature": "pub enum MathError"
@@ -2336,24 +2383,10 @@
   ],
   "crates/oxidize_core/src/boundary.rs": [
     {
-      "signature": "pub struct BounceBackBoundary"
-    },
-    {
       "signature": "pub struct NeumannBoundary"
     },
     {
-      "signature": "pub struct PeriodicBoundary"
-    },
-    {
       "signature": "pub trait BoundaryCondition"
-    }
-  ],
-  "crates/oxidize_core/src/double_buffer.rs": [
-    {
-      "signature": "pub trait DoubleBufferedSimulationModel"
-    },
-    {
-      "signature": "pub trait DoubleBufferedState"
     }
   ],
   "crates/oxidize_core/src/grid.rs": [

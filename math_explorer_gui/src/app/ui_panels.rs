@@ -1,5 +1,5 @@
 #[cfg(not(target_os = "macos"))]
-use crate::app::{MathExplorerApp, ThemeMode};
+use crate::app::{MathExplorerApp, SplitLayoutMode, ThemeMode, ViewportLayout};
 use eframe::egui;
 use federated_registry::{Severity, TelemetryEvent};
 
@@ -134,7 +134,7 @@ pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
 
 /// Renders the top menu bar in the UI.
 #[cfg(not(target_os = "macos"))]
-#[allow(clippy::too_many_lines, dead_code)]
+#[allow(clippy::too_many_lines)]
 pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
     let modifiers = if cfg!(target_os = "macos") {
         egui::Modifiers::MAC_CMD
@@ -239,11 +239,129 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
         });
 
         ui.menu_button("View", |ui| {
+            let cmd_shortcut = if cfg!(target_os = "macos") {
+                "Cmd+K"
+            } else {
+                "Ctrl+K"
+            };
+            if ui
+                .add(egui::Button::new("🔍 Command Palette...").shortcut_text(cmd_shortcut))
+                .clicked()
+            {
+                app.command_palette.toggle();
+                let status_msg = if app.command_palette.is_open {
+                    "Command palette opened"
+                } else {
+                    "Command palette closed"
+                };
+                ctx.data_mut(|d| {
+                    d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
+                });
+                ui.close();
+            }
+            ui.separator();
+            ui.label(egui::RichText::new("Layout Mode").strong());
+            if ui
+                .radio_value(
+                    &mut app.split_layout_mode,
+                    SplitLayoutMode::Single,
+                    SplitLayoutMode::Single.label(),
+                )
+                .clicked()
+            {
+                ui.close();
+            }
+            if ui
+                .radio_value(
+                    &mut app.split_layout_mode,
+                    SplitLayoutMode::Horizontal,
+                    SplitLayoutMode::Horizontal.label(),
+                )
+                .clicked()
+            {
+                ui.close();
+            }
+            if ui
+                .radio_value(
+                    &mut app.split_layout_mode,
+                    SplitLayoutMode::Vertical,
+                    SplitLayoutMode::Vertical.label(),
+                )
+                .clicked()
+            {
+                ui.close();
+            }
+
+            if app.split_layout_mode != SplitLayoutMode::Single {
+                ui.separator();
+                if ui.button("⇄ Swap Panes").clicked() {
+                    app.swap_panes();
+                    ui.close();
+                }
+
+                ui.separator();
+                ui.menu_button("Secondary Module", |ui| {
+                    let mut secondary = app.secondary_tab;
+                    for (i, tab_name) in app.tab_names().into_iter().enumerate() {
+                        if ui.radio_value(&mut secondary, i, tab_name).clicked() {
+                            app.secondary_tab = i;
+                            ui.close();
+                        }
+                    }
+                });
+            }
+
+            ui.separator();
+            ui.menu_button("Viewport Layout", |ui| {
+                for layout in [
+                    ViewportLayout::Single,
+                    ViewportLayout::SplitHorizontal,
+                    ViewportLayout::SplitVertical,
+                    ViewportLayout::QuadGrid,
+                ] {
+                    if ui
+                        .radio_value(&mut app.viewport_layout, layout, layout.name())
+                        .clicked()
+                    {
+                        ui.close();
+                    }
+                }
+            });
+
+            if app.viewport_layout != ViewportLayout::Single {
+                ui.menu_button("Pane Assignments", |ui| {
+                    let pane_count = app.viewport_layout.pane_count();
+                    let pane_labels = app.viewport_layout.pane_labels();
+                    let tab_names = app.tab_names();
+
+                    for pane_idx in 0..pane_count {
+                        let label = pane_labels.get(pane_idx).copied().unwrap_or("Pane");
+                        let assigned = app.pane_tabs.get(pane_idx).copied().unwrap_or(0);
+                        let assigned_name = tab_names.get(assigned).copied().unwrap_or("Unknown");
+
+                        ui.menu_button(format!("{}: {}", label, assigned_name), |ui| {
+                            for (tab_idx, tab_name) in tab_names.iter().enumerate() {
+                                if ui
+                                    .selectable_label(assigned == tab_idx, *tab_name)
+                                    .clicked()
+                                {
+                                    app.set_pane_tab(pane_idx, tab_idx);
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+
+            ui.separator();
+            ui.label(egui::RichText::new("Primary Module").strong());
             let mut selected = app.selected_tab;
             let tab_names = app.tab_names();
             for (i, tab_name) in tab_names.into_iter().enumerate() {
                 if ui.radio_value(&mut selected, i, tab_name).clicked() {
                     app.selected_tab = i;
+                    app.pane_tabs[0] = i;
                     ui.close();
                 }
             }

@@ -2408,6 +2408,7 @@ dependencies = [
  "domain_physics",
  "eframe",
  "egui",
+ "federated_registry",
  "math_commons",
  "math_explorer",
  "nalgebra 0.34.2",
@@ -2426,6 +2427,7 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "diagnostics",
+ "num-complex",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -4448,6 +4450,7 @@ dependencies = [
  "approx",
  "proc-macro2",
  "quote",
+ "scientific_metadata",
  "syn 2.0.119",
 ]
 

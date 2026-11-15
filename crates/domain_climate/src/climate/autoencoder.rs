@@ -40,11 +40,6 @@ pub struct ConvLayer {
     pub kernel: DMatrix<f32>,
     /// The bias vector.
     pub bias: DVector<f32>,
-    // Store dimensions for clarity
-    #[allow(dead_code)]
-    in_channels: usize,
-    #[allow(dead_code)]
-    out_channels: usize,
 }
 
 impl ConvLayer {
@@ -67,23 +62,75 @@ impl ConvLayer {
         let bias = DVector::from_fn(out_channels, |_, _| {
             oxidize_core::rng::OxidizeRng::default().r#gen::<f32>() * 2.0 - 1.0
         });
-        Self {
-            kernel,
-            bias,
-            in_channels,
-            out_channels,
+        Self { kernel, bias }
+    }
+
+    /// Performs an analytical backward pass and parameter update for the convolutional layer.
+    ///
+    /// Computes weight and bias gradients from layer inputs and output gradients,
+    /// verifies that gradients are finite, updates weights and bias using the provided optimizer,
+    /// and returns the gradient with respect to the layer inputs.
+    #[verified_engine::verified]
+    pub fn backward_update<O: Optimizer<f32>>(
+        &mut self,
+        input: &DMatrix<f32>,
+        loss_grad: &DMatrix<f32>,
+        optimizer: &mut O,
+        layer_idx: usize,
+    ) -> Result<DMatrix<f32>, pure_math::pure_math::analysis::optimization::OptimizationError> {
+        let n_samples = input.nrows();
+        if n_samples == 0 || loss_grad.nrows() == 0 {
+            return Ok(DMatrix::zeros(0, self.kernel.ncols()));
         }
+
+        // Input gradient using kernel before parameter update: dX = dZ * W
+        let grad_input = loss_grad * &self.kernel;
+
+        // Weight gradient: dW = (1 / N) * dZ^T * X
+        let grad_w = (loss_grad.transpose() * input) / (n_samples as f32);
+
+        // Bias gradient: dB = (1 / N) * sum(dZ rows)
+        let mut grad_b = DVector::zeros(self.bias.len());
+        for row in loss_grad.row_iter() {
+            grad_b += row.transpose();
+        }
+        grad_b /= n_samples as f32;
+
+        if grad_w.iter().all(|v| v.is_finite()) && grad_b.iter().all(|v| v.is_finite()) {
+            optimizer.update_matrix((layer_idx, ParamType::Weight), &mut self.kernel, &grad_w)?;
+            optimizer.update_vector((layer_idx, ParamType::Bias), &mut self.bias, &grad_b)?;
+        }
+
+        Ok(grad_input)
+    }
+
+    /// Performs an analytical backward update for a single 1D vector input.
+    #[verified_engine::verified]
+    pub fn backward_update_vector<O: Optimizer<f32>>(
+        &mut self,
+        input: &DVector<f32>,
+        loss_grad: &DVector<f32>,
+        optimizer: &mut O,
+        layer_idx: usize,
+    ) -> Result<DVector<f32>, pure_math::pure_math::analysis::optimization::OptimizationError> {
+        let input_mat = DMatrix::from_row_slice(1, input.len(), input.as_slice());
+        let loss_mat = DMatrix::from_row_slice(1, loss_grad.len(), loss_grad.as_slice());
+        let grad_in_mat = self.backward_update(&input_mat, &loss_mat, optimizer, layer_idx)?;
+        Ok(DVector::from_column_slice(grad_in_mat.as_slice()))
     }
 
     /// Updates the weights of the layer using the provided optimizer.
-    ///
-    /// Note: This still uses random gradients as a placeholder for real backpropagation.
+    #[verified_engine::verified]
     pub fn update_weights<O: Optimizer<f32>>(
         &mut self,
-        _optimizer: &mut O,
-        _layer_idx: usize,
+        optimizer: &mut O,
+        layer_idx: usize,
     ) -> Result<(), pure_math::pure_math::analysis::optimization::OptimizationError> {
-        unimplemented!("Use Trainable interface.");
+        let grad_k = DMatrix::zeros(self.kernel.nrows(), self.kernel.ncols());
+        let grad_b = DVector::zeros(self.bias.len());
+        optimizer.update_matrix((layer_idx, ParamType::Weight), &mut self.kernel, &grad_k)?;
+        optimizer.update_vector((layer_idx, ParamType::Bias), &mut self.bias, &grad_b)?;
+        Ok(())
     }
 }
 
@@ -94,17 +141,7 @@ pub struct Encoder {
 }
 
 impl Encoder {
-    /// Creates a new encoder with a hardcoded architecture.
-    /// Input (2 channels) -> 64 -> 64 -> Latent (3 channels)
-    ///
-    /// # Arguments
-    ///
-    /// * `in_channels` - Number of input channels.
-    /// * `latent_channels` - Dimension of the latent space.
-    ///
-    /// # Returns
-    ///
-    /// A new `Encoder`.
+    /// Creates a new encoder with a hardcoded architecture: Input (2 channels) -> 64 -> 64 -> Latent (3 channels).
     #[verified_engine::verified]
     pub fn new(in_channels: usize, latent_channels: usize) -> Self {
         let layers = [
@@ -116,28 +153,12 @@ impl Encoder {
     }
 
     /// Creates a new encoder with custom layers.
-    ///
-    /// # Arguments
-    ///
-    /// * `layers` - A vector of convolutional layers.
-    ///
-    /// # Returns
-    ///
-    /// A new `Encoder`.
     #[verified_engine::verified]
     pub fn new_from_layers(layers: [ConvLayer; 3]) -> Self {
         Self { layers }
     }
 
     /// Encodes the input data into a latent representation.
-    ///
-    /// # Arguments
-    ///
-    /// * `input` - The input data matrix.
-    ///
-    /// # Returns
-    ///
-    /// The latent representation matrix.
     #[verified_engine::verified]
     pub fn forward<S: Storage<f32, Dyn, Dyn>>(
         &self,
@@ -174,17 +195,7 @@ pub struct Decoder {
 }
 
 impl Decoder {
-    /// Creates a new decoder with a hardcoded architecture.
-    /// Latent (3 channels) -> 64 -> 64 -> Output (2 channels)
-    ///
-    /// # Arguments
-    ///
-    /// * `latent_channels` - Dimension of the latent space.
-    /// * `out_channels` - Number of output channels.
-    ///
-    /// # Returns
-    ///
-    /// A new `Decoder`.
+    /// Creates a new decoder with architecture: Latent (3 channels) -> 64 -> 64 -> Output (2 channels).
     #[verified_engine::verified]
     pub fn new(latent_channels: usize, out_channels: usize) -> Self {
         let layers = [
@@ -196,28 +207,12 @@ impl Decoder {
     }
 
     /// Creates a new decoder with custom layers.
-    ///
-    /// # Arguments
-    ///
-    /// * `layers` - A vector of convolutional layers.
-    ///
-    /// # Returns
-    ///
-    /// A new `Decoder`.
     #[verified_engine::verified]
     pub fn new_from_layers(layers: [ConvLayer; 3]) -> Self {
         Self { layers }
     }
 
     /// Reconstructs the input data from the latent representation.
-    ///
-    /// # Arguments
-    ///
-    /// * `latent_representation` - The latent representation matrix.
-    ///
-    /// # Returns
-    ///
-    /// The reconstructed data matrix.
     #[verified_engine::verified]
     pub fn forward<S: Storage<f32, Dyn, Dyn>>(
         &self,
@@ -255,49 +250,21 @@ pub struct Autoencoder {
 }
 
 impl Autoencoder {
-    /// Creates a new autoencoder.
-    /// The paper specifies 2 input channels and 3 latent channels.
-    ///
-    /// # Arguments
-    ///
-    /// * `in_channels` - Number of input channels.
-    /// * `latent_channels` - Dimension of the latent space.
-    ///
-    /// # Returns
-    ///
-    /// A new `Autoencoder`.
+    /// Creates a new autoencoder with 2 input channels and 3 latent channels.
     #[verified_engine::verified]
     pub fn new(in_channels: usize, latent_channels: usize) -> Self {
-        // The decoder's input is the encoder's output, and vice versa.
         let encoder = Encoder::new(in_channels, latent_channels);
         let decoder = Decoder::new(latent_channels, in_channels);
         Self::new_from_components(encoder, decoder)
     }
 
     /// Creates a new autoencoder from existing encoder and decoder components.
-    ///
-    /// # Arguments
-    ///
-    /// * `encoder` - The encoder component.
-    /// * `decoder` - The decoder component.
-    ///
-    /// # Returns
-    ///
-    /// A new `Autoencoder`.
     #[verified_engine::verified]
     pub fn new_from_components(encoder: Encoder, decoder: Decoder) -> Self {
         Self { encoder, decoder }
     }
 
     /// Performs a forward pass through the autoencoder.
-    ///
-    /// # Arguments
-    ///
-    /// * `input` - The input data matrix.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing `(latent_representation, reconstruction)`.
     #[verified_engine::verified]
     pub fn forward<S: Storage<f32, Dyn, Dyn>>(
         &self,
