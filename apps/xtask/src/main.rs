@@ -435,4 +435,14 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_xtask_helpers() {
+        print_help();
+        assert_eq!(extract_md_links("[d](README.md)"), vec!["README.md"]);
+        let mut md = Vec::new();
+        collect_md_files(Path::new("."), &mut md);
+        assert!(!md.is_empty());
+        check_markdown_links();
+    }
 }

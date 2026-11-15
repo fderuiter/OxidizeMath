@@ -309,7 +309,9 @@ mod tests {
             ),
         ];
 
-        if let Ok(png) = egui_plot::export::export_custom_png(&ode_datasets, &options) {
+        let ode_png = egui_plot::export::export_custom_png(&ode_datasets, &options);
+        assert!(ode_png.is_ok());
+        if let Ok(png) = ode_png {
             let _ = std::fs::write("/tmp/ode_trace_overlay.png", png);
         }
 
@@ -344,12 +346,11 @@ mod tests {
             ),
         ];
 
-        if let Ok(png) = egui_plot::export::export_custom_png(&sir_datasets, &options) {
+        let sir_png = egui_plot::export::export_custom_png(&sir_datasets, &options);
+        assert!(sir_png.is_ok());
+        if let Ok(png) = sir_png {
             let _ = std::fs::write("/tmp/sir_trace_overlay.png", png);
         }
-
-        assert!(std::path::Path::new("/tmp/ode_trace_overlay.png").exists());
-        assert!(std::path::Path::new("/tmp/sir_trace_overlay.png").exists());
     }
 
     #[test]
@@ -477,11 +478,10 @@ mod tests {
             ),
         ];
         let options = egui_plot::export::ExportOptions::default();
-        if let Ok(png_data) =
-            egui_plot::export::export_custom_png(&gallery_preview_datasets, &options)
-        {
+        let preview_png = egui_plot::export::export_custom_png(&gallery_preview_datasets, &options);
+        assert!(preview_png.is_ok());
+        if let Ok(png_data) = preview_png {
             let _ = std::fs::write("/tmp/starter_gallery_preview.png", png_data);
         }
-        assert!(std::path::Path::new("/tmp/starter_gallery_preview.png").exists());
     }
 }

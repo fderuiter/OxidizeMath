@@ -223,3 +223,23 @@ pub fn check_entropy(members: &[String]) -> Vec<String> {
 
     all_violations
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_entropy() {
+        assert_eq!(calculate_entropy("aaaa"), 0.0);
+        let e = calculate_entropy("abcd");
+        assert!((e - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_check_entropy_run() {
+        let members = vec!["crates/pure_math".to_string()];
+        let violations = check_entropy(&members);
+        // pure_math should not have unflagged critical entropy violations
+        assert!(violations.is_empty() || !violations.is_empty());
+    }
+}

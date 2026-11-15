@@ -12,6 +12,8 @@ pub mod command_palette;
 pub mod framework;
 #[cfg(test)]
 mod framework_tests;
+#[cfg(test)]
+mod interactive_tools_tests;
 pub mod presets;
 #[allow(missing_docs)]
 pub mod reflective_ui;

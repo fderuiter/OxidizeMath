@@ -200,3 +200,26 @@ impl RectElement for Bar {
         crate::format_number(self.value, decimals)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bar_construction_and_builders() {
+        let bar = Bar::new(10.0, 50.0)
+            .name("TestBar")
+            .width(0.75)
+            .base_offset(5.0)
+            .stroke(Stroke::new(2.0_f32, Color32::GREEN))
+            .fill(Color32::YELLOW);
+
+        assert_eq!(bar.argument, 10.0);
+        assert_eq!(bar.value, 50.0);
+        assert_eq!(bar.name, "TestBar");
+        assert_eq!(bar.bar_width, 0.75);
+        assert_eq!(bar.base_offset, Some(5.0));
+        assert_eq!(bar.stroke.color, Color32::GREEN);
+        assert_eq!(bar.fill, Color32::YELLOW);
+    }
+}
