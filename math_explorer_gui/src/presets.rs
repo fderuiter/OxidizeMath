@@ -1,10 +1,10 @@
 //! Presets module providing uniform Serde JSON export and import traits
 //! and configuration models for Math Explorer simulation tools.
 
-use serde::{Deserialize, Serialize};
-use std::sync::mpsc::{channel, Receiver};
 use crate::framework::InteractiveTool;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
+use serde::{Deserialize, Serialize};
+use std::sync::mpsc::{channel, Receiver};
 
 /// Metadata included in exported preset JSON files.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -364,4 +364,3 @@ pub fn render_preset_buttons<T: InteractivePreset>(
 #[cfg(test)]
 #[path = "presets/tests.rs"]
 mod tests;
-

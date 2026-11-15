@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use super::GraphEditorTool;
 use eframe::egui::Pos2;
 use std::collections::HashMap;

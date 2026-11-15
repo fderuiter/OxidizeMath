@@ -122,8 +122,7 @@ pub trait ExplorerTab {
         if !expected_domain.is_empty() && envelope.metadata.domain != expected_domain {
             return Err(format!(
                 "Domain mismatch: preset is for domain '{}', but active tool is '{}'",
-                envelope.metadata.domain,
-                expected_domain
+                envelope.metadata.domain, expected_domain
             ));
         }
         let config_str = serde_json::to_string(&envelope.config)

@@ -2,6 +2,7 @@ use super::*;
 use eframe::egui;
 
 impl SimulationFramework {
+    #[allow(clippy::too_many_lines)]
     pub(super) fn show_export_action_bar(&mut self, ctx: &egui::Context, id_source: &str) {
         if self.active_tool.is_none() {
             return;
@@ -66,6 +67,21 @@ impl SimulationFramework {
                             }
                         }
                         self.show_export_modal = true;
+                    }
+
+                    ui.separator();
+                    if ui
+                        .button("🎨 Starter Gallery")
+                        .on_hover_text("Toggle starter template gallery overlay")
+                        .clicked()
+                    {
+                        self.show_starter_gallery = !self.show_starter_gallery;
+                        ctx.data_mut(|d| {
+                            d.insert_temp(
+                                egui::Id::new("SHOW_STARTER_GALLERY"),
+                                self.show_starter_gallery,
+                            )
+                        });
                     }
 
                     ui.separator();

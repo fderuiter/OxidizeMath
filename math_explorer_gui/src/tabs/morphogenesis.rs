@@ -80,6 +80,7 @@ pub struct MorphogenesisTab {
     dialog_state: PresetDialogState,
     pixels: Vec<egui::Color32>,
     dirty: bool,
+    pub show_starter_gallery: bool,
 }
 
 impl Default for MorphogenesisTab {
@@ -138,6 +139,7 @@ impl Default for MorphogenesisTab {
             dialog_state: PresetDialogState::default(),
             pixels: Vec::new(),
             dirty: true,
+            show_starter_gallery: true,
         }
     }
 }
@@ -152,12 +154,15 @@ impl ExplorerTab for MorphogenesisTab {
         struct MorphoState {
             dt: f64,
             paused: bool,
+            #[serde(default)]
+            show_starter_gallery: bool,
         }
 
         let dt = self.params.read().unwrap().dt;
         serde_json::to_string(&MorphoState {
             dt,
             paused: self.paused,
+            show_starter_gallery: self.show_starter_gallery,
         })
         .ok()
     }
@@ -172,6 +177,8 @@ impl ExplorerTab for MorphogenesisTab {
         if let Ok(s) = serde_json::from_str::<MorphoState>(state) {
             self.params.write().unwrap().dt = s.dt;
             self.paused = s.paused;
+            // Saved session bypasses empty-state gallery
+            self.show_starter_gallery = false;
             if self.paused {
                 let _ = self.controller.send_command(SimCommand::Pause);
             } else {
@@ -204,6 +211,23 @@ impl ExplorerTab for MorphogenesisTab {
 
         self.draw_controls(ctx);
         self.draw_canvas(ctx);
+
+        if self.show_starter_gallery {
+            let cards = crate::starter_gallery::get_starter_cards_for_domain("biology", &[]);
+            let mut is_open = self.show_starter_gallery;
+            if let Some(card) = crate::starter_gallery::show_starter_gallery_overlay(
+                ctx,
+                "morphogenesis",
+                &cards,
+                &mut is_open,
+            ) {
+                if let Some(preset_json) = card.preset_json {
+                    let _ = self.from_json_str(preset_json);
+                }
+                is_open = false;
+            }
+            self.show_starter_gallery = is_open;
+        }
     }
 }
 
@@ -211,6 +235,9 @@ impl MorphogenesisTab {
     fn draw_controls(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("morphogenesis_controls").show(ctx, |ui| {
             ui.heading("Morphogenesis Controls");
+            if ui.button("🎨 Starter Gallery").clicked() {
+                self.show_starter_gallery = !self.show_starter_gallery;
+            }
             ui.separator();
 
             let mut params = self.params.write().unwrap();
