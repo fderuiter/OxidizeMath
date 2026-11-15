@@ -1,5 +1,4 @@
-#[cfg(not(target_os = "macos"))]
-use crate::app::{MathExplorerApp, ThemeMode};
+use crate::app::{MathExplorerApp, ThemeMode, ViewportLayout};
 use eframe::egui;
 use federated_registry::{Severity, TelemetryEvent};
 
@@ -260,11 +259,56 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 ui.close();
             }
             ui.separator();
+
+            ui.menu_button("Viewport Layout", |ui| {
+                for layout in [
+                    ViewportLayout::Single,
+                    ViewportLayout::SplitHorizontal,
+                    ViewportLayout::SplitVertical,
+                    ViewportLayout::QuadGrid,
+                ] {
+                    if ui
+                        .radio_value(&mut app.viewport_layout, layout, layout.name())
+                        .clicked()
+                    {
+                        ui.close();
+                    }
+                }
+            });
+
+            if app.viewport_layout != ViewportLayout::Single {
+                ui.menu_button("Pane Assignments", |ui| {
+                    let pane_count = app.viewport_layout.pane_count();
+                    let pane_labels = app.viewport_layout.pane_labels();
+                    let tab_names = app.tab_names();
+
+                    for pane_idx in 0..pane_count {
+                        let label = pane_labels.get(pane_idx).copied().unwrap_or("Pane");
+                        let assigned = app.pane_tabs.get(pane_idx).copied().unwrap_or(0);
+                        let assigned_name = tab_names.get(assigned).copied().unwrap_or("Unknown");
+
+                        ui.menu_button(format!("{}: {}", label, assigned_name), |ui| {
+                            for (tab_idx, tab_name) in tab_names.iter().enumerate() {
+                                if ui
+                                    .selectable_label(assigned == tab_idx, *tab_name)
+                                    .clicked()
+                                {
+                                    app.set_pane_tab(pane_idx, tab_idx);
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+
+            ui.separator();
             let mut selected = app.selected_tab;
             let tab_names = app.tab_names();
             for (i, tab_name) in tab_names.into_iter().enumerate() {
                 if ui.radio_value(&mut selected, i, tab_name).clicked() {
                     app.selected_tab = i;
+                    app.pane_tabs[0] = i;
                     ui.close();
                 }
             }
