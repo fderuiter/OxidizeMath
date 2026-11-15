@@ -1,6 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::systems::{ExponentialOde, HarmonicOscillatorOde, LogisticGrowthOde};
+use super::OdeSolverTool;
+use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
 use math_explorer::pure_math::analysis::ode::{
     Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, Solver, TimeStepper, VecState,
@@ -15,6 +17,7 @@ pub struct SolverTrajectory {
     pub y_series: Vec<f64>,
     pub v_series: Vec<f64>,
     pub diverged: bool,
+    pub divergence_info: Option<(f64, usize, String)>,
 }
 
 /// Quantitative discrepancy metrics between two numerical solvers.
@@ -43,14 +46,21 @@ pub fn simulate_preset(
         y_series: Vec::new(),
         v_series: Vec::new(),
         diverged: false,
+        divergence_info: None,
     };
 
     if dt <= 0.0 || total_time <= 0.0 || !dt.is_finite() || !total_time.is_finite() {
         return traj;
     }
 
-    if !ic_y0.is_finite() || (preset == OdePreset::HarmonicOscillator && !ic_v0.is_finite()) {
+    if !ic_y0.is_finite() {
         traj.diverged = true;
+        traj.divergence_info = Some((0.0, 0, "y(t)".to_string()));
+        return traj;
+    }
+    if preset == OdePreset::HarmonicOscillator && !ic_v0.is_finite() {
+        traj.diverged = true;
+        traj.divergence_info = Some((0.0, 0, "y'(t)".to_string()));
         return traj;
     }
 
@@ -124,9 +134,14 @@ fn execute_steps<D, S>(
     let has_v = model.state.0.len() > 1;
     for i in 0..=num_steps {
         let y = model.get_state().0[0];
-        let v_finite = !has_v || model.get_state().0[1].is_finite();
-        if !y.is_finite() || !v_finite {
+        if !y.is_finite() {
             traj.diverged = true;
+            traj.divergence_info = Some((i as f64 * dt, i, "y(t)".to_string()));
+            break;
+        }
+        if has_v && !model.get_state().0[1].is_finite() {
+            traj.diverged = true;
+            traj.divergence_info = Some((i as f64 * dt, i, "y'(t)".to_string()));
             break;
         }
         traj.time_series.push(i as f64 * dt);
@@ -164,5 +179,81 @@ pub fn compute_discrepancy(a: &SolverTrajectory, b: &SolverTrajectory) -> Solver
     SolverDiscrepancy {
         max_error: max_err,
         rms_error,
+    }
+}
+
+impl OdeSolverTool {
+    pub(super) fn recalculate_comparison(&mut self) {
+        self.comparison_manager.clear();
+        if !self.comparison_mode {
+            return;
+        }
+
+        let rk4 = simulate_preset(
+            self.preset,
+            IntegrationMethod::RungeKutta4,
+            self.dt,
+            self.total_time,
+            self.param_k,
+            self.param_r,
+            self.param_cap_k,
+            self.ic_y0,
+            self.ic_v0,
+        );
+        let euler = simulate_preset(
+            self.preset,
+            IntegrationMethod::Euler,
+            self.dt,
+            self.total_time,
+            self.param_k,
+            self.param_r,
+            self.param_cap_k,
+            self.ic_y0,
+            self.ic_v0,
+        );
+        let heun = simulate_preset(
+            self.preset,
+            IntegrationMethod::Heun,
+            self.dt,
+            self.total_time,
+            self.param_k,
+            self.param_r,
+            self.param_cap_k,
+            self.ic_y0,
+            self.ic_v0,
+        );
+
+        if rk4.diverged || euler.diverged || heun.diverged {
+            self.diverged = true;
+        }
+
+        self.discrepancy_euler_rk4 = compute_discrepancy(&euler, &rk4);
+        self.discrepancy_heun_rk4 = compute_discrepancy(&heun, &rk4);
+        self.discrepancy_euler_heun = compute_discrepancy(&euler, &heun);
+
+        self.populate_comparison_snapshots(&[rk4, euler, heun]);
+    }
+
+    pub(super) fn populate_comparison_snapshots(&mut self, trajs: &[SolverTrajectory]) {
+        for traj in trajs {
+            let pts_y: Vec<[f64; 2]> = traj
+                .time_series
+                .iter()
+                .zip(&traj.y_series)
+                .map(|(&t, &y)| [t, y])
+                .collect();
+            let mut series = vec![TraceSeries::new("y(t)", pts_y)];
+            if self.preset == OdePreset::HarmonicOscillator && !traj.v_series.is_empty() {
+                let pts_v: Vec<[f64; 2]> = traj
+                    .time_series
+                    .iter()
+                    .zip(&traj.v_series)
+                    .map(|(&t, &v)| [t, v])
+                    .collect();
+                series.push(TraceSeries::new("y'(t)", pts_v));
+            }
+            self.comparison_manager
+                .add_snapshot(traj.method.name(), "", series);
+        }
     }
 }

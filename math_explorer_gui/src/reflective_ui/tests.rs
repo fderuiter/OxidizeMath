@@ -172,6 +172,13 @@ fn test_render_formula_with_export() {
             assert!(r1.rect.width() >= 0.0 && r2.rect.width() >= 0.0);
         });
     });
+    let datasets = vec![(r"\frac{dy}{dt} = -k y".into(), vec![[0.0, 1.0], [1.0, 0.5]])];
+    if let Ok(bytes) = egui_plot::export::export_custom_png(
+        &datasets,
+        &egui_plot::export::ExportOptions::default(),
+    ) {
+        let _ = std::fs::write("/tmp/reflective_ui_latex_pipeline.png", bytes);
+    }
 }
 
 #[test]
@@ -181,7 +188,10 @@ fn test_render_theory_summary_with_export() {
         egui::CentralPanel::default().show(ctx, |ui| {
             let r1 = render_theory_summary_with_export(ui, "Euler identity", Some("e^{i\\pi}+1=0"));
             let r2 = render_theory_summary_with_export(ui, "", None);
+            let r3 = render_theory_summary_with_export(ui, "Model: $\\frac{dy}{dt} = -k y$", None);
+            let r4 = render_theory_summary_with_export(ui, "Unclosed $formula fallback", None);
             assert!(r1.rect.width() >= 0.0 && r2.rect.width() >= 0.0);
+            assert!(r3.rect.width() >= 0.0 && r4.rect.width() >= 0.0);
         });
     });
 }

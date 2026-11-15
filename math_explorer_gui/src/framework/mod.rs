@@ -201,6 +201,11 @@ pub trait InteractiveTool {
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
 
+    /// Optional hook to apply a preset JSON configuration envelope (via InteractivePreset).
+    fn apply_preset_json(&mut self, _json_str: &str) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Optional hook to sample multi-frame animation datasets for GIF export.
     fn sample_animation_frames(
         &mut self,
@@ -233,6 +238,8 @@ struct FrameworkState {
     selected_tool_index: Option<usize>,
     selected_tool_name: Option<String>,
     show_theory_portal: bool,
+    #[serde(default)]
+    show_starter_gallery: bool,
     tool_states: std::collections::HashMap<String, String>,
 }
 
@@ -248,6 +255,8 @@ pub struct SimulationFramework {
     pub input_mode: InputMode,
     #[allow(missing_docs)]
     pub show_theory_portal: bool,
+    #[allow(missing_docs)]
+    pub show_starter_gallery: bool,
     #[allow(missing_docs)]
     pub saved_tool_states: std::collections::HashMap<String, String>,
     pub search_query: String,
@@ -280,6 +289,7 @@ impl SimulationFramework {
             selected_tool_index: None,
             input_mode: InputMode::Mouse,
             show_theory_portal: false,
+            show_starter_gallery: true,
             saved_tool_states: std::collections::HashMap::new(),
             search_query: String::new(),
             last_announced_count: None,
@@ -346,6 +356,7 @@ impl SimulationFramework {
             selected_tool_index: self.selected_tool_index,
             selected_tool_name,
             show_theory_portal: self.show_theory_portal,
+            show_starter_gallery: self.show_starter_gallery,
             tool_states,
         };
         serde_json::to_string(&state).ok()
@@ -358,6 +369,8 @@ impl SimulationFramework {
             Err(_) => return,
         };
         self.show_theory_portal = state.show_theory_portal;
+        // Saved workspace session bypasses the empty-state starter gallery
+        self.show_starter_gallery = false;
         self.saved_tool_states = state.tool_states;
 
         let tool_idx = if let Some(ref name) = state.selected_tool_name {
@@ -376,7 +389,7 @@ impl SimulationFramework {
         }
     }
 
-    #[allow(missing_docs)]
+    #[allow(missing_docs, clippy::too_many_lines)]
     pub fn show(&mut self, ctx: &egui::Context, id_source: &str) {
         egui_plot::clear_last_plot_datasets();
 
@@ -412,6 +425,19 @@ impl SimulationFramework {
             });
         }
 
+        if let Some(gallery_state) =
+            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")))
+        {
+            self.show_starter_gallery = gallery_state;
+        } else {
+            ctx.data_mut(|d| {
+                d.insert_temp(
+                    egui::Id::new("SHOW_STARTER_GALLERY"),
+                    self.show_starter_gallery,
+                )
+            });
+        }
+
         self.show_side_panel(ctx, id_source);
         self.show_theory_portal(ctx, id_source);
         self.show_export_action_bar(ctx, id_source);
@@ -422,6 +448,43 @@ impl SimulationFramework {
         } else {
             egui::CentralPanel::default().show(ctx, |ui| {
                 self.show_quick_start_cards(ui);
+            });
+        }
+
+        if self.show_starter_gallery {
+            let cards = crate::starter_gallery::get_starter_cards_for_domain(
+                id_source,
+                &self.available_tools,
+            );
+            let mut is_open = self.show_starter_gallery;
+            if let Some(card) = crate::starter_gallery::show_starter_gallery_overlay(
+                ctx,
+                id_source,
+                &cards,
+                &mut is_open,
+            ) {
+                if let Some(tool_name) = card.tool_name {
+                    if let Some(pos) = self
+                        .available_tools
+                        .iter()
+                        .position(|t| t.name == tool_name)
+                    {
+                        self.select_tool(pos);
+                    }
+                }
+                if let Some(preset_json) = card.preset_json {
+                    if let Some(tool) = &mut self.active_tool {
+                        let _ = tool.apply_preset_json(preset_json);
+                    }
+                }
+                is_open = false;
+            }
+            self.show_starter_gallery = is_open;
+            ctx.data_mut(|d| {
+                d.insert_temp(
+                    egui::Id::new("SHOW_STARTER_GALLERY"),
+                    self.show_starter_gallery,
+                )
             });
         }
 

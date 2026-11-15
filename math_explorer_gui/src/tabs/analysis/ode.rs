@@ -2,15 +2,19 @@
 
 mod annotations;
 pub mod comparison;
+pub mod recovery;
 pub mod systems;
 pub mod ui;
 
-use comparison::{compute_discrepancy, simulate_preset, SolverDiscrepancy, SolverTrajectory};
+use comparison::{simulate_preset, SolverDiscrepancy};
 
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
 use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig};
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
+
+pub use recovery::OdeDiagnosticReport;
+use recovery::clamp_ode_parameters;
 
 // ----------------------------------------------------------------------------
 // Tool Implementation
@@ -30,6 +34,7 @@ pub struct OdeSolverTool {
     pub y_series: Vec<f64>,
     pub v_series: Vec<f64>,
     pub(crate) diverged: bool,
+    pub(crate) diagnostic_report: Option<OdeDiagnosticReport>,
     pub(crate) comparison_mode: bool,
     pub(crate) discrepancy_euler_rk4: SolverDiscrepancy,
     pub(crate) discrepancy_heun_rk4: SolverDiscrepancy,
@@ -57,6 +62,7 @@ impl Default for OdeSolverTool {
             y_series: Vec::new(),
             v_series: Vec::new(),
             diverged: false,
+            diagnostic_report: None,
             comparison_mode: false,
             discrepancy_euler_rk4: SolverDiscrepancy::default(),
             discrepancy_heun_rk4: SolverDiscrepancy::default(),
@@ -89,6 +95,33 @@ impl OdeSolverTool {
     #[allow(dead_code)]
     pub fn diverged(&self) -> bool {
         self.diverged
+    }
+
+    #[must_use]
+    pub fn diagnostic_report(&self) -> Option<&OdeDiagnosticReport> {
+        self.diagnostic_report.as_ref()
+    }
+
+    pub fn auto_scale_step_size(&mut self) {
+        let min_dt = 1e-6;
+        self.dt = if !self.dt.is_finite() || self.dt <= 0.0 {
+            0.05
+        } else {
+            (self.dt * 0.5).max(min_dt)
+        };
+        self.recalculate();
+    }
+
+    pub fn clamp_instability_parameters(&mut self) {
+        clamp_ode_parameters(
+            self.preset,
+            &mut self.param_k,
+            &mut self.param_r,
+            &mut self.param_cap_k,
+            &mut self.ic_y0,
+            &mut self.ic_v0,
+        );
+        self.recalculate();
     }
 
     #[cfg(test)]
@@ -166,6 +199,7 @@ impl OdeSolverTool {
         self.y_series.clear();
         self.v_series.clear();
         self.diverged = false;
+        self.diagnostic_report = None;
 
         self.recalculate_active();
         self.recalculate_comparison();
@@ -188,79 +222,26 @@ impl OdeSolverTool {
         self.y_series = active_traj.y_series;
         self.v_series = active_traj.v_series;
         self.diverged = active_traj.diverged;
-    }
 
-    fn recalculate_comparison(&mut self) {
-        self.comparison_manager.clear();
-        if !self.comparison_mode {
-            return;
-        }
-
-        let rk4 = simulate_preset(
-            self.preset,
-            IntegrationMethod::RungeKutta4,
-            self.dt,
-            self.total_time,
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-            self.ic_y0,
-            self.ic_v0,
-        );
-        let euler = simulate_preset(
-            self.preset,
-            IntegrationMethod::Euler,
-            self.dt,
-            self.total_time,
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-            self.ic_y0,
-            self.ic_v0,
-        );
-        let heun = simulate_preset(
-            self.preset,
-            IntegrationMethod::Heun,
-            self.dt,
-            self.total_time,
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-            self.ic_y0,
-            self.ic_v0,
-        );
-
-        if rk4.diverged || euler.diverged || heun.diverged {
+        if let Some((t_div, step_idx, var_name)) = active_traj.divergence_info {
             self.diverged = true;
-        }
-
-        self.discrepancy_euler_rk4 = compute_discrepancy(&euler, &rk4);
-        self.discrepancy_heun_rk4 = compute_discrepancy(&heun, &rk4);
-        self.discrepancy_euler_heun = compute_discrepancy(&euler, &heun);
-
-        self.populate_comparison_snapshots(&[rk4, euler, heun]);
-    }
-
-    fn populate_comparison_snapshots(&mut self, trajs: &[SolverTrajectory]) {
-        for traj in trajs {
-            let pts_y: Vec<[f64; 2]> = traj
-                .time_series
-                .iter()
-                .zip(&traj.y_series)
-                .map(|(&t, &y)| [t, y])
-                .collect();
-            let mut series = vec![TraceSeries::new("y(t)", pts_y)];
-            if self.preset == OdePreset::HarmonicOscillator && !traj.v_series.is_empty() {
-                let pts_v: Vec<[f64; 2]> = traj
-                    .time_series
-                    .iter()
-                    .zip(&traj.v_series)
-                    .map(|(&t, &v)| [t, v])
-                    .collect();
-                series.push(TraceSeries::new("y'(t)", pts_v));
-            }
-            self.comparison_manager
-                .add_snapshot(traj.method.name(), "", series);
+            let report = OdeDiagnosticReport::new(
+                t_div,
+                step_idx,
+                var_name.clone(),
+                format!(
+                    "Simulation diverged at t={:.4}s (step {}) in variable {}",
+                    t_div, step_idx, var_name
+                ),
+            );
+            self.diagnostic_report = Some(report);
+            recovery::emit_divergence_telemetry(
+                t_div,
+                step_idx,
+                &var_name,
+                self.preset.name(),
+                self.dt,
+            );
         }
     }
 }
@@ -309,6 +290,10 @@ impl InteractiveTool for OdeSolverTool {
             self.recalculate();
         }
         res
+    }
+
+    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        self.import_preset_json(json_str)
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -415,13 +400,21 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
     fn theory_description(&self) -> String {
-        "Theoretical context not available.".into()
+        match self.preset {
+            OdePreset::Exponential => r"Exponential model: $\frac{dy}{dt} = k y$".into(),
+            OdePreset::HarmonicOscillator => {
+                r"Harmonic oscillator: $\frac{d^2 y}{dt^2} = -k y$".into()
+            }
+            OdePreset::LogisticGrowth => {
+                r"Logistic growth: $\frac{dy}{dt} = r y (1 - \frac{y}{K})$".into()
+            }
+        }
     }
     fn phonetic_description(&self) -> String {
-        "Theoretical context not available.".into()
+        "Ordinary differential equations theory".into()
     }
     fn theory_citation(&self) -> String {
-        "Uncited".into()
+        "Differential Equations and Dynamical Systems (Perko, 2001)".into()
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
@@ -467,3 +460,6 @@ impl InteractivePreset for OdeSolverTool {
 
 #[cfg(test)]
 mod ode_tests;
+
+#[cfg(test)]
+mod recovery_tests;

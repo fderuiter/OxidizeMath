@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::recovery;
 use super::systems::eval_ode_final_state;
 use super::OdeSolverTool;
 use crate::framework::TraceSeries;
@@ -58,6 +59,17 @@ impl OdeSolverTool {
                     changed = true;
                 }
             });
+
+        let (latex_eq, plain_eq) = match self.preset {
+            OdePreset::Exponential => (r"\frac{dy}{dt} = k y", "dy/dt = k*y"),
+            OdePreset::HarmonicOscillator => (r"\frac{d^2 y}{dt^2} = -k y", "d^2y/dt^2 = -k*y"),
+            OdePreset::LogisticGrowth => (
+                r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
+                "dy/dt = r*y*(1 - y/K)",
+            ),
+        };
+        crate::reflective_ui::render_formula_with_export(ui, latex_eq, Some(plain_eq));
+
         changed
     }
 
@@ -222,6 +234,17 @@ impl OdeSolverTool {
             Some((label, param_summary, series))
         });
 
+        render_starter_gallery_button(ui);
+        self.run_sensitivity_analysis();
+
+        crate::sensitivity::render_sensitivity_panel_ui(
+            ui,
+            &self.sensitivity_engine,
+            "ode_tool",
+        );
+    }
+
+    fn run_sensitivity_analysis(&mut self) {
         let params = match self.preset {
             OdePreset::Exponential => vec![
                 ("k".to_string(), self.param_k),
@@ -253,12 +276,6 @@ impl OdeSolverTool {
                 p_map,
             )
         });
-
-        crate::sensitivity::render_sensitivity_panel_ui(
-            ui,
-            &self.sensitivity_engine,
-            "ode_tool",
-        );
     }
 
     pub(super) fn render_discrepancy_panel(&self, ui: &mut egui::Ui) {
@@ -301,28 +318,20 @@ impl OdeSolverTool {
     pub(super) fn render_plot_canvas(
         &mut self,
         ui: &mut egui::Ui,
-        plot_points_y: Vec<[f64; 2]>,
-        plot_points_v: Vec<[f64; 2]>,
+        mut plot_points_y: Vec<[f64; 2]>,
+        mut plot_points_v: Vec<[f64; 2]>,
         changed: &mut bool,
     ) {
         ui.heading("Solution Trajectory");
 
         if self.diverged {
-            ui.group(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(
-                            "⚠️ Solver Divergence Warning: Non-finite state detected (NaN or Inf). Integration terminated.",
-                        )
-                        .color(egui::Color32::RED)
-                        .strong(),
-                    );
-                    if ui.button("↻ Reset Parameters").clicked() {
-                        self.reset_parameters();
-                        *changed = true;
-                    }
-                });
-            });
+            recovery::render_recovery_ui(
+                ui,
+                self,
+                changed,
+                &mut plot_points_y,
+                &mut plot_points_v,
+            );
         }
 
         let line_y = Line::new("y(t)", PlotPoints::new(plot_points_y))
@@ -351,3 +360,20 @@ impl OdeSolverTool {
             });
     }
 }
+
+fn render_starter_gallery_button(ui: &mut egui::Ui) {
+    if ui
+        .button("🎨 Starter Gallery")
+        .on_hover_text("Open Starter Template Gallery")
+        .clicked()
+    {
+        let cur = ui.ctx().data(|d| {
+            d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY"))
+                .unwrap_or(false)
+        });
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur);
+        });
+    }
+}
+
