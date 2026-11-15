@@ -3,14 +3,70 @@ use eframe::egui;
 use oxidize_core::vfs::VirtualFileSystem;
 use std::collections::HashMap;
 
+#[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum TraceabilityScanState {
+    #[default]
+    Idle,
+    Scanning,
+    Ready,
+    Failed(String),
+}
+
+#[allow(missing_docs, dead_code)]
+impl TraceabilityScanState {
+    #[allow(missing_docs)]
+    pub fn is_idle(&self) -> bool {
+        matches!(self, Self::Idle)
+    }
+
+    #[allow(missing_docs)]
+    pub fn is_scanning(&self) -> bool {
+        matches!(self, Self::Scanning)
+    }
+
+    #[allow(missing_docs)]
+    pub fn is_ready(&self) -> bool {
+        matches!(self, Self::Ready)
+    }
+
+    #[allow(missing_docs)]
+    pub fn is_failed(&self) -> bool {
+        matches!(self, Self::Failed(_))
+    }
+
+    #[allow(missing_docs)]
+    pub fn error(&self) -> Option<&str> {
+        match self {
+            Self::Failed(err) => Some(err.as_str()),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for TraceabilityScanState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Idle => write!(f, "Idle"),
+            Self::Scanning => write!(f, "Scanning"),
+            Self::Ready => write!(f, "Ready"),
+            Self::Failed(err) => write!(f, "Failed: {}", err),
+        }
+    }
+}
+
 pub struct TraceabilityTab {
     papers: HashMap<String, PaperStatus>,
     orphaned_papers: Vec<String>,
     unlinked_code: Vec<String>,
     invalid_links: Vec<(String, String)>, // code_file, paper_name
     repo_path: Option<String>,
-    report_rx: Option<std::sync::mpsc::Receiver<oxidize_core::traceability::TraceabilityReport>>,
-    is_loading: bool,
+    report_rx: Option<
+        std::sync::mpsc::Receiver<
+            Result<oxidize_core::traceability::TraceabilityReport, String>,
+        >,
+    >,
+    pub state: TraceabilityScanState,
 }
 
 #[derive(Clone)]
@@ -28,21 +84,37 @@ impl Default for TraceabilityTab {
             invalid_links: Vec::new(),
             repo_path: None,
             report_rx: None,
-            is_loading: false,
+            state: TraceabilityScanState::Idle,
         };
         tab.refresh();
         tab
     }
 }
 
+#[allow(missing_docs, dead_code)]
 impl TraceabilityTab {
+    #[allow(missing_docs)]
+    pub fn retry(&mut self) {
+        self.refresh();
+    }
+
+    #[allow(missing_docs)]
+    pub fn state(&self) -> &TraceabilityScanState {
+        &self.state
+    }
+
+    #[allow(missing_docs)]
+    pub fn error_message(&self) -> Option<&str> {
+        self.state.error()
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn refresh(&mut self) {
+    pub fn refresh(&mut self) {
         self.papers.clear();
         self.orphaned_papers.clear();
         self.unlinked_code.clear();
         self.invalid_links.clear();
-        self.is_loading = true;
+        self.state = TraceabilityScanState::Scanning;
 
         let base_dir = match &self.repo_path {
             Some(p) => format!("{}/", p),
@@ -79,9 +151,11 @@ impl TraceabilityTab {
                     all_dirs.push(dir.as_str());
                 }
 
-                if let Ok(report) = engine.scan_repository(&all_dirs, &papers_dir, false).await {
-                    let _ = tx.send(report);
-                }
+                let res = match engine.scan_repository(&all_dirs, &papers_dir, false).await {
+                    Ok(report) => Ok(report),
+                    Err(e) => Err(e.to_string()),
+                };
+                let _ = tx.send(res);
             });
         });
 
@@ -102,9 +176,11 @@ impl TraceabilityTab {
                 all_dirs.push(dir.as_str());
             }
 
-            if let Ok(report) = engine.scan_repository(&all_dirs, &papers_dir, false).await {
-                let _ = tx.send(report);
-            }
+            let res = match engine.scan_repository(&all_dirs, &papers_dir, false).await {
+                Ok(report) => Ok(report),
+                Err(e) => Err(e.to_string()),
+            };
+            let _ = tx.send(res);
         });
     }
 }
@@ -140,25 +216,40 @@ impl ExplorerTab for TraceabilityTab {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if let Some(rx) = &self.report_rx {
-            if let Ok(report) = rx.try_recv() {
-                self.orphaned_papers = report.orphaned_papers;
-                self.unlinked_code = report.unlinked_code;
-                self.invalid_links = report.invalid_links;
+            match rx.try_recv() {
+                Ok(Ok(report)) => {
+                    self.orphaned_papers = report.orphaned_papers;
+                    self.unlinked_code = report.unlinked_code;
+                    self.invalid_links = report.invalid_links;
 
-                for (paper_name, linked_code) in report.paper_coverage {
-                    self.papers.insert(
-                        paper_name.clone(),
-                        PaperStatus {
-                            name: paper_name,
-                            linked_code,
-                        },
-                    );
+                    for (paper_name, linked_code) in report.paper_coverage {
+                        self.papers.insert(
+                            paper_name.clone(),
+                            PaperStatus {
+                                name: paper_name,
+                                linked_code,
+                            },
+                        );
+                    }
+                    self.state = TraceabilityScanState::Ready;
+                    self.report_rx = None;
                 }
-                self.is_loading = false;
-                self.report_rx = None;
-            } else if self.is_loading {
-                ctx.request_repaint();
+                Ok(Err(err)) => {
+                    self.state = TraceabilityScanState::Failed(err);
+                    self.report_rx = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.state = TraceabilityScanState::Failed(
+                        "Worker thread disconnected unexpectedly".to_string(),
+                    );
+                    self.report_rx = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
+        }
+
+        if self.state.is_scanning() {
+            ctx.request_repaint();
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -186,10 +277,52 @@ impl ExplorerTab for TraceabilityTab {
             });
             ui.separator();
 
-            if self.is_loading {
-                ui.spinner();
-                ui.label("Scanning repository via Virtual File System...");
-                return;
+            let mut retry_clicked = false;
+            let mut new_path_picked = None;
+            match &self.state {
+                TraceabilityScanState::Scanning => {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label("Scanning repository via Virtual File System...");
+                    });
+                    return;
+                }
+                TraceabilityScanState::Failed(err) => {
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("⚠️ Scan Failed: {}", err))
+                                    .color(egui::Color32::RED)
+                                    .strong(),
+                            );
+                            ui.horizontal(|ui| {
+                                if ui.button("Retry").clicked() {
+                                    retry_clicked = true;
+                                }
+                                #[cfg(not(target_arch = "wasm32"))]
+                                {
+                                    if ui.button("Select Codebase Directory...").clicked() {
+                                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                            new_path_picked = Some(path.display().to_string());
+                                        }
+                                    }
+                                }
+                            });
+                        });
+                    });
+                    if let Some(path) = new_path_picked {
+                        self.repo_path = Some(path);
+                        self.refresh();
+                    } else if retry_clicked {
+                        self.refresh();
+                    }
+                    return;
+                }
+                TraceabilityScanState::Idle => {
+                    ui.label("Traceability scan is idle. Click Refresh to scan.");
+                    return;
+                }
+                TraceabilityScanState::Ready => {}
             }
 
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -265,4 +398,9 @@ impl ExplorerTab for TraceabilityTab {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "traceability/tests.rs"]
+mod tests;
+
 // [cite:essay]
