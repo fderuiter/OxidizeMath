@@ -1,7 +1,9 @@
+pub mod callout_overlay;
 mod export_ui;
 pub mod trace_overlay;
 mod ui;
 
+pub use callout_overlay::*;
 pub use trace_overlay::*;
 
 use crate::accessibility::AccessibleHoverText;

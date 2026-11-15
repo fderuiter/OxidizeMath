@@ -23,6 +23,9 @@ pub struct WorkspaceEnvelope {
     /// Recent redo history snapshots.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub history_redo_stack: Vec<AppState>,
+    /// Persisted plot callout annotations.
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "callouts")]
+    pub callout_manager: Option<crate::framework::CalloutManager>,
 }
 
 /// Manages non-blocking file dialog operations, active workspace file path tracking, and envelope parsing.
@@ -47,6 +50,8 @@ pub struct WorkspaceSessionManager {
     is_dragging: bool,
     /// Flag indicating an active undo/redo restoration.
     is_restoring: bool,
+    /// Active callout manager instance.
+    callout_manager: Option<crate::framework::CalloutManager>,
 }
 
 impl Default for WorkspaceSessionManager {
@@ -62,6 +67,7 @@ impl Default for WorkspaceSessionManager {
             last_committed_state: None,
             is_dragging: false,
             is_restoring: false,
+            callout_manager: None,
         }
     }
 }
@@ -111,10 +117,7 @@ impl WorkspaceSessionManager {
 
     /// Pushes an application state snapshot onto the undo stack.
     pub fn push_undo(&mut self, state: AppState) {
-        if self.is_restoring {
-            return;
-        }
-        if self.undo_stack.last() == Some(&state) {
+        if self.is_restoring || self.undo_stack.last() == Some(&state) {
             return;
         }
         self.undo_stack.push(state);
@@ -185,8 +188,21 @@ impl WorkspaceSessionManager {
             app_state,
             history_undo_stack: self.undo_stack.clone(),
             history_redo_stack: self.redo_stack.clone(),
+            callout_manager: self.callout_manager.clone(),
         };
         serde_json::to_string_pretty(&envelope).unwrap_or_default()
+    }
+
+    /// Sets the active callout manager for workspace session persistence.
+    #[allow(dead_code)]
+    pub fn set_callout_manager(&mut self, manager: Option<crate::framework::CalloutManager>) {
+        self.callout_manager = manager;
+    }
+
+    /// Returns a reference to the active callout manager if set.
+    #[allow(dead_code)]
+    pub fn callout_manager(&self) -> Option<&crate::framework::CalloutManager> {
+        self.callout_manager.as_ref()
     }
 
     /// Validates and parses workspace session content from a JSON string.
@@ -214,14 +230,16 @@ impl WorkspaceSessionManager {
             }
             self.undo_stack = envelope.history_undo_stack;
             self.redo_stack = envelope.history_redo_stack;
+            self.callout_manager = envelope.callout_manager;
             self.last_committed_state = Some(envelope.app_state.clone());
             self.is_restoring = true;
             Ok(envelope.app_state)
         } else {
-            let state: AppState = serde_json::from_str(json_str)
-                .map_err(|e| format!("Corrupted workspace state JSON: {}", e))?;
             self.undo_stack.clear();
             self.redo_stack.clear();
+            self.callout_manager = None;
+            let state: AppState = serde_json::from_str(json_str)
+                .map_err(|e| format!("Corrupted workspace state JSON: {}", e))?;
             self.last_committed_state = Some(state.clone());
             self.is_restoring = true;
             Ok(state)
@@ -240,14 +258,10 @@ impl WorkspaceSessionManager {
                     .add_filter("Workspace Session (*.mws, *.json)", &["mws", "json"])
                     .pick_file()
                 {
-                    match std::fs::read_to_string(&path) {
-                        Ok(content) => {
-                            let _ = tx.send(Ok((path, content)));
-                        }
-                        Err(e) => {
-                            let _ = tx.send(Err(format!("Failed to read workspace file: {}", e)));
-                        }
-                    }
+                    let res = std::fs::read_to_string(&path)
+                        .map(|c| (path, c))
+                        .map_err(|e| format!("Failed to read workspace file: {}", e));
+                    let _ = tx.send(res);
                 }
             });
         }
@@ -267,14 +281,10 @@ impl WorkspaceSessionManager {
                     .add_filter("Workspace Session (*.mws, *.json)", &["mws", "json"])
                     .save_file()
                 {
-                    match std::fs::write(&path, envelope_json) {
-                        Ok(_) => {
-                            let _ = tx.send(Ok(path));
-                        }
-                        Err(e) => {
-                            let _ = tx.send(Err(format!("Failed to write workspace file: {}", e)));
-                        }
-                    }
+                    let res = std::fs::write(&path, envelope_json)
+                        .map(|_| path)
+                        .map_err(|e| format!("Failed to write workspace file: {}", e));
+                    let _ = tx.send(res);
                 }
             });
         }
@@ -447,12 +457,11 @@ impl WorkspaceSessionManager {
         if let Some((msg, is_error)) = self.toast() {
             let mut dismiss = false;
             ui.horizontal(|ui| {
-                let color = if *is_error {
-                    egui::Color32::RED
+                let (color, icon) = if *is_error {
+                    (egui::Color32::RED, "⚠️")
                 } else {
-                    egui::Color32::LIGHT_GREEN
+                    (egui::Color32::LIGHT_GREEN, "ℹ️")
                 };
-                let icon = if *is_error { "⚠️" } else { "ℹ️" };
                 ui.label(egui::RichText::new(format!("{} {}", icon, msg)).color(color));
                 if ui.small_button("✖").clicked() {
                     dismiss = true;

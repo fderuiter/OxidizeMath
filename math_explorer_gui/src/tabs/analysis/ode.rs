@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
+use crate::framework::{CalloutManager, InteractiveTool, TraceSeries, TraceSnapshotManager};
 use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialogState};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
@@ -10,60 +10,44 @@ use math_explorer::pure_math::analysis::ode::{
 
 #[derive(Clone, Debug)]
 struct ExponentialOde { k: f64 }
-
 impl OdeSystem<VecState> for ExponentialOde {
     fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.k * state.0[0];
-    }
+    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) { out.0[0] = self.k * state.0[0]; }
 }
 
 #[derive(Clone, Debug)]
 struct HarmonicOscillatorOde { k: f64 }
-
 impl OdeSystem<VecState> for HarmonicOscillatorOde {
     fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = state.0[1];
-        out.0[1] = -self.k * state.0[0];
-    }
+    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) { out.0[0] = state.0[1]; out.0[1] = -self.k * state.0[0]; }
 }
 
 #[derive(Clone, Debug)]
 struct LogisticGrowthOde { r: f64, cap_k: f64 }
-
 impl OdeSystem<VecState> for LogisticGrowthOde {
     fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.r * state.0[0] * (1.0 - state.0[0] / self.cap_k);
-    }
+    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) { out.0[0] = self.r * state.0[0] * (1.0 - state.0[0] / self.cap_k); }
 }
 
 fn eval_ode_final_state(preset: OdePreset, dt: f64, total_time: f64, p_map: &std::collections::HashMap<String, f64>) -> f64 {
-    let y0 = p_map.get("y0").copied().unwrap_or(1.0);
-    let v0 = p_map.get("v0").copied().unwrap_or(0.0);
-    let k = p_map.get("k").copied().unwrap_or(1.0);
-    let r = p_map.get("r").copied().unwrap_or(1.0);
-    let cap_k = p_map.get("cap_k").copied().unwrap_or(10.0);
+    let (y0, v0) = (p_map.get("y0").copied().unwrap_or(1.0), p_map.get("v0").copied().unwrap_or(0.0));
+    let (k, r, cap_k) = (p_map.get("k").copied().unwrap_or(1.0), p_map.get("r").copied().unwrap_or(1.0), p_map.get("cap_k").copied().unwrap_or(10.0));
     let steps = (total_time / dt).ceil() as usize;
     match preset {
         OdePreset::Exponential => {
-            let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), ExponentialOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
+            let mut m = OdeModel::new(VecState(vec![y0]), ExponentialOde { k }, RungeKutta4::new(&VecState(vec![y0])));
+            for _ in 0..steps { m.step(dt); }
+            m.state.0[0]
         }
         OdePreset::HarmonicOscillator => {
-            let init = VecState(vec![y0, v0]);
-            let mut model = OdeModel::new(init.clone(), HarmonicOscillatorOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
+            let mut m = OdeModel::new(VecState(vec![y0, v0]), HarmonicOscillatorOde { k }, RungeKutta4::new(&VecState(vec![y0, v0])));
+            for _ in 0..steps { m.step(dt); }
+            m.state.0[0]
         }
         OdePreset::LogisticGrowth => {
-            let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), LogisticGrowthOde { r, cap_k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
+            let mut m = OdeModel::new(VecState(vec![y0]), LogisticGrowthOde { r, cap_k }, RungeKutta4::new(&VecState(vec![y0])));
+            for _ in 0..steps { m.step(dt); }
+            m.state.0[0]
         }
     }
 }
@@ -88,6 +72,7 @@ pub struct OdeSolverTool {
     // Dialog & Presets
     dialog_state: PresetDialogState,
     snapshot_manager: TraceSnapshotManager,
+    pub callout_manager: CalloutManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     last_param_summary: String,
 }
@@ -109,6 +94,7 @@ impl Default for OdeSolverTool {
             diverged: false,
             dialog_state: PresetDialogState::default(),
             snapshot_manager: TraceSnapshotManager::new(),
+            callout_manager: CalloutManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
         };
@@ -207,20 +193,37 @@ impl OdeSolverTool {
             }
         }
         self.last_param_summary = self.param_summary();
+        if !self.diverged && !self.y_series.is_empty() {
+            self.callout_manager.set_auto_callout(
+                "initial_condition",
+                [0.0, self.ic_y0],
+                format!("Initial (0, {:.2})", self.ic_y0),
+                [-25.0, -25.0],
+            );
+            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last()) {
+                self.callout_manager.set_auto_callout(
+                    "final_state",
+                    [last_t, last_y],
+                    format!("Final ({:.2}, {:.2})", last_t, last_y),
+                    [25.0, -25.0],
+                );
+            }
+        } else if self.diverged {
+            self.callout_manager.clear_auto();
+        }
     }
+
+    #[allow(dead_code)]
+    pub fn callout_manager(&self) -> &CalloutManager { &self.callout_manager }
+    #[allow(dead_code)]
+    pub fn callout_manager_mut(&mut self) -> &mut CalloutManager { &mut self.callout_manager }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct OdeState {
-    dt: f64,
-    total_time: f64,
-    param_k: f64,
-    param_r: f64,
-    param_cap_k: f64,
-    ic_y0: f64,
-    ic_v0: f64,
-    #[serde(default)]
-    snapshot_manager: TraceSnapshotManager,
+    dt: f64, total_time: f64, param_k: f64, param_r: f64, param_cap_k: f64, ic_y0: f64, ic_v0: f64,
+    #[serde(default)] snapshot_manager: TraceSnapshotManager,
+    #[serde(default)] callout_manager: CalloutManager,
 }
 
 impl InteractiveTool for OdeSolverTool {
@@ -233,12 +236,8 @@ impl InteractiveTool for OdeSolverTool {
             let mut plot_points_y = Vec::new();
             let mut plot_points_v = Vec::new();
             for (i, &t) in self.time_series.iter().enumerate() {
-                if let Some(&y) = self.y_series.get(i) {
-                    plot_points_y.push([t, y]);
-                }
-                if let Some(&v) = self.v_series.get(i) {
-                    plot_points_v.push([t, v]);
-                }
+                if let Some(&y) = self.y_series.get(i) { plot_points_y.push([t, y]); }
+                if let Some(&v) = self.v_series.get(i) { plot_points_v.push([t, v]); }
             }
             datasets.push(("y(t)".to_string(), plot_points_y));
             if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
@@ -251,28 +250,20 @@ impl InteractiveTool for OdeSolverTool {
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&OdeState {
-            dt: self.dt,
-            total_time: self.total_time,
-            param_k: self.param_k,
-            param_r: self.param_r,
-            param_cap_k: self.param_cap_k,
-            ic_y0: self.ic_y0,
-            ic_v0: self.ic_v0,
+            dt: self.dt, total_time: self.total_time, param_k: self.param_k,
+            param_r: self.param_r, param_cap_k: self.param_cap_k, ic_y0: self.ic_y0, ic_v0: self.ic_v0,
             snapshot_manager: self.snapshot_manager.clone(),
-        })
-        .ok()
+            callout_manager: self.callout_manager.clone(),
+        }).ok()
     }
 
     fn load_state(&mut self, state: &str) {
         if let Ok(s) = serde_json::from_str::<OdeState>(state) {
-            self.dt = s.dt;
-            self.total_time = s.total_time;
-            self.param_k = s.param_k;
-            self.param_r = s.param_r;
-            self.param_cap_k = s.param_cap_k;
-            self.ic_y0 = s.ic_y0;
-            self.ic_v0 = s.ic_v0;
+            self.dt = s.dt; self.total_time = s.total_time; self.param_k = s.param_k;
+            self.param_r = s.param_r; self.param_cap_k = s.param_cap_k;
+            self.ic_y0 = s.ic_y0; self.ic_v0 = s.ic_v0;
             self.snapshot_manager = s.snapshot_manager;
+            self.callout_manager = s.callout_manager;
             self.recalculate();
         }
     }
@@ -375,6 +366,10 @@ impl InteractiveTool for OdeSolverTool {
                 Some((label, param_summary, series))
             });
 
+            if self.callout_manager.render_ui(ui) {
+                changed = true;
+            }
+
             let mut dialog_state = std::mem::take(&mut self.dialog_state);
             if crate::presets::render_preset_buttons(&mut dialog_state, ui, self) {
                 changed = true;
@@ -449,6 +444,7 @@ impl InteractiveTool for OdeSolverTool {
                         plot_ui.line(line_v);
                     }
                     self.snapshot_manager.render_on_plot(plot_ui);
+                    self.callout_manager.render_on_plot(plot_ui);
                 });
         });
     }

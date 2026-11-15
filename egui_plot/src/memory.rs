@@ -67,6 +67,22 @@ pub struct PlotMemory {
     /// Toggle visibility of plot settings modal window.
     #[cfg_attr(feature = "serde", serde(default))]
     pub show_settings_modal: bool,
+
+    /// Last right-click position captured in plot coordinates.
+    pub last_right_click_coord: Option<[f64; 2]>,
+
+    /// Persisted callout annotations overlaid on the plot canvas.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub callouts: Vec<CanvasCallout>,
+}
+
+/// Persisted canvas callout annotation data.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq)]
+pub struct CanvasCallout {
+    pub target_point: [f64; 2],
+    pub label_offset: [f32; 2],
+    pub text: String,
 }
 
 #[cfg(feature = "serde")]

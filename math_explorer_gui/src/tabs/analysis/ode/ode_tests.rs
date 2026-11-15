@@ -132,3 +132,43 @@ fn test_ode_auto_history_buffering() {
     let exported = tool.export_datasets();
     assert!(exported.iter().any(|(name, _)| name.contains("Run")));
 }
+
+#[test]
+fn test_ode_auto_callout_annotations_and_persistence() {
+    let mut tool = OdeSolverTool::default();
+    assert_eq!(tool.callout_manager.len(), 2);
+    let initial_callout = tool
+        .callout_manager
+        .callouts()
+        .iter()
+        .find(|c| c.tag.as_deref() == Some("initial_condition"))
+        .expect("initial callout");
+    assert_eq!(initial_callout.target_point, [0.0, 1.0]);
+    assert!(initial_callout.text.contains("Initial"));
+
+    let final_callout = tool
+        .callout_manager
+        .callouts()
+        .iter()
+        .find(|c| c.tag.as_deref() == Some("final_state"))
+        .expect("final callout");
+    assert_eq!(final_callout.target_point[0], 10.0);
+    assert!(final_callout.text.contains("Final"));
+
+    // Add a custom user callout
+    tool.callout_manager
+        .add_callout([5.0, 2.0], "Equilibrium Y=2.0", [15.0, -20.0]);
+    assert_eq!(tool.callout_manager.len(), 3);
+
+    // Save and load state
+    let state = tool.save_state().expect("save state");
+    let mut restored = OdeSolverTool::default();
+    restored.load_state(&state);
+    assert_eq!(restored.callout_manager.len(), 3);
+    assert!(restored
+        .callout_manager
+        .callouts()
+        .iter()
+        .any(|c| c.text == "Equilibrium Y=2.0"));
+}
+
