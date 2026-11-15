@@ -311,16 +311,14 @@ pub fn render_formula_with_export(
     let is_latex_empty = latex_str.trim().is_empty();
     let is_plain_empty = plain_text.trim().is_empty();
 
-    let formula_job = egui_plot::parse_latex_to_layout_job(
-        latex_str,
-        egui::TextStyle::Body,
-        ui,
-        ui.visuals().text_color(),
-    );
-
     let response = ui
         .horizontal_wrapped(|ui| {
-            ui.add(egui::Label::new(formula_job).wrap());
+            egui_plot::render_math_label(
+                ui,
+                latex_str,
+                egui::TextStyle::Body,
+                ui.visuals().text_color(),
+            );
             if ui
                 .add_enabled(!is_latex_empty, egui::Button::new("📋 LaTeX"))
                 .on_hover_text("Copy LaTeX formula")
@@ -378,16 +376,27 @@ pub fn render_theory_summary_with_export(
     let is_plain_empty = plain_text.trim().is_empty();
     let is_latex_empty = latex_text.trim().is_empty();
 
-    let summary_job = egui_plot::parse_latex_to_layout_job(
-        latex_text,
-        egui::TextStyle::Body,
-        ui,
-        ui.visuals().text_color(),
-    );
-
     let response = ui
         .horizontal_wrapped(|ui| {
-            ui.add(egui::Label::new(summary_job).wrap());
+            if let Some(latex) = latex_str {
+                if !plain_text.is_empty() && plain_text != latex {
+                    ui.label(plain_text);
+                }
+                egui_plot::render_math_label(
+                    ui,
+                    latex,
+                    egui::TextStyle::Body,
+                    ui.visuals().text_color(),
+                );
+            } else {
+                let summary_job = egui_plot::parse_latex_to_layout_job(
+                    latex_text,
+                    egui::TextStyle::Body,
+                    ui,
+                    ui.visuals().text_color(),
+                );
+                ui.add(egui::Label::new(summary_job).wrap());
+            }
             if ui
                 .add_enabled(!is_plain_empty, egui::Button::new("📋 Text"))
                 .on_hover_text("Copy text summary")
@@ -405,6 +414,16 @@ pub fn render_theory_summary_with_export(
         })
         .response;
 
+    attach_theory_context_menu(response, plain_text, latex_text)
+}
+
+fn attach_theory_context_menu(
+    response: egui::Response,
+    plain_text: &str,
+    latex_text: &str,
+) -> egui::Response {
+    let is_plain_empty = plain_text.trim().is_empty();
+    let is_latex_empty = latex_text.trim().is_empty();
     response.context_menu(|ui| {
         if ui
             .add_enabled(!is_plain_empty, egui::Button::new("Copy Plain Text"))
