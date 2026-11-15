@@ -1862,6 +1862,12 @@
   ],
   "crates/domain_physics/src/physics/medical/radar_gating/gating.rs": [
     {
+      "signature": "pub enum BeamState"
+    },
+    {
+      "signature": "pub enum GatingError"
+    },
+    {
       "signature": "pub struct GatingLogic"
     }
   ],
