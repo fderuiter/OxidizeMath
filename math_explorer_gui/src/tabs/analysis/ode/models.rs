@@ -3,7 +3,7 @@
 //! ODE model definitions and evaluation helpers.
 
 use super::OdeSolverTool;
-use crate::framework::TraceSnapshotManager;
+use crate::framework::{CalloutManager, TraceSnapshotManager};
 use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig};
 use math_commons::ast::Expr;
 use math_explorer::pure_math::analysis::ode::{
@@ -149,6 +149,8 @@ pub struct OdeState {
     pub custom_expr: String,
     #[serde(default)]
     pub snapshot_manager: TraceSnapshotManager,
+    #[serde(default)]
+    pub callout_manager: CalloutManager,
     #[serde(default = "default_annotations_enabled")]
     pub show_annotations: bool,
 }

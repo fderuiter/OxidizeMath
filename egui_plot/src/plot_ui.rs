@@ -30,6 +30,11 @@ impl<'a> PlotUi<'a> {
         &self.ctx
     }
 
+    /// Returns the unique ID of the current plot.
+    pub fn plot_id(&self) -> egui::Id {
+        self.plot_id
+    }
+
     /// The plot bounds as they were in the last frame. If called on the first frame and the bounds were not
     /// further specified in the plot builder, this will return bounds centered on the origin. The bounds do
     /// not change until the plot is drawn.

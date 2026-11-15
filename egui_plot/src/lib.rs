@@ -47,7 +47,7 @@ pub use crate::{
     },
     latex::{MathBox, parse_latex_to_layout_job, parse_latex_with_font, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
-    memory::PlotMemory,
+    memory::{CanvasCallout, PlotMemory},
     plot_ui::PlotUi,
     transform::{PlotBounds, PlotTransform},
 };
@@ -953,6 +953,7 @@ impl<'a> Plot<'a> {
             clamp_grid: false,
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
+            last_right_click_coord: None,
         });
 
         // Drain any newly imported CSV datasets for this plot
@@ -998,6 +999,13 @@ impl<'a> Plot<'a> {
         }
 
         let inner = build_fn(&mut plot_ui);
+
+        // Drain any remaining canvas callouts not consumed by a custom CalloutManager
+        let newly_added_callouts = drain_pending_callouts(plot_id);
+        if !newly_added_callouts.is_empty() {
+            mem.callouts
+                .extend(newly_added_callouts.into_iter().map(SavedCallout::from));
+        }
 
         // Render persisted user callouts automatically
         for saved in &mem.callouts {
@@ -1181,8 +1189,23 @@ impl<'a> Plot<'a> {
             }
         }
 
+        if response.secondary_clicked() || response.clicked_by(PointerButton::Secondary) {
+            let click_pos = response
+                .interact_pointer_pos()
+                .or_else(|| response.hover_pos());
+            if let Some(pos) = click_pos {
+                let pt = mem.transform.value_from_position(pos);
+                mem.last_right_click_coord = Some([pt.x, pt.y]);
+            }
+        }
+
+        let is_dragging_callout = ui.ctx().data(|d| {
+            d.get_temp::<bool>(plot_id.with("dragging_callout"))
+                .unwrap_or(false)
+        });
+
         // Dragging
-        if allow_drag.any() && response.dragged_by(PointerButton::Primary) {
+        if allow_drag.any() && !is_dragging_callout && response.dragged_by(PointerButton::Primary) {
             response = response.on_hover_cursor(CursorIcon::Grabbing);
             let mut delta = -response.drag_delta();
             if !allow_drag.x {
@@ -2146,12 +2169,23 @@ impl<'a> Plot<'a> {
                 });
 
             if add_confirmed {
-                let callout = SavedCallout::new(
-                    access_state.new_callout_point,
-                    access_state.new_callout_text.clone(),
-                    access_state.new_callout_offset,
+                let label = if access_state.new_callout_text.trim().is_empty() {
+                    format!(
+                        "({:.2}, {:.2})",
+                        access_state.new_callout_point[0], access_state.new_callout_point[1]
+                    )
+                } else {
+                    access_state.new_callout_text.clone()
+                };
+                push_pending_callout(
+                    plot_id,
+                    CanvasCallout {
+                        target_point: access_state.new_callout_point,
+                        label_offset: access_state.new_callout_offset,
+                        text: label,
+                    },
                 );
-                mem.callouts.push(callout);
+                ui.ctx().request_repaint();
                 close_requested = true;
             }
 
@@ -2434,9 +2468,12 @@ impl<'a> Plot<'a> {
 
         response.context_menu(|ui| {
             if ui.button("Add Callout").clicked() {
-                let default_pt = access_state.last_context_plot_pos.unwrap_or_else(|| {
-                    [transform.bounds().center().x, transform.bounds().center().y]
-                });
+                let default_pt = access_state
+                    .last_context_plot_pos
+                    .or(mem.last_right_click_coord)
+                    .unwrap_or_else(|| {
+                        [transform.bounds().center().x, transform.bounds().center().y]
+                    });
                 access_state.new_callout_point = default_pt;
                 access_state.new_callout_text = String::new();
                 access_state.new_callout_offset = [30.0, -30.0];
@@ -3321,6 +3358,27 @@ pub fn get_last_plot_datasets() -> Vec<(String, Vec<[f64; 2]>)> {
     LAST_PLOT_DATASETS.with(|d| d.borrow().clone())
 }
 
+static PENDING_CANVAS_CALLOUTS: std::sync::Mutex<
+    Option<std::collections::HashMap<Id, Vec<CanvasCallout>>>,
+> = std::sync::Mutex::new(None);
+
+/// Queue a callout created from canvas interactions for a specific plot.
+pub fn push_pending_callout(plot_id: Id, callout: CanvasCallout) {
+    let mut guard = PENDING_CANVAS_CALLOUTS.lock().unwrap();
+    let map = guard.get_or_insert_with(std::collections::HashMap::new);
+    map.entry(plot_id).or_default().push(callout);
+}
+
+/// Drains any pending canvas callouts created for a specific plot.
+pub fn drain_pending_callouts(plot_id: Id) -> Vec<CanvasCallout> {
+    let mut guard = PENDING_CANVAS_CALLOUTS.lock().unwrap();
+    if let Some(map) = guard.as_mut() {
+        map.remove(&plot_id).unwrap_or_default()
+    } else {
+        Vec::new()
+    }
+}
+
 #[test]
 fn test_logarithmic_grid_spacer_positive_and_non_positive_bounds() {
     let spacer = logarithmic_grid_spacer();
@@ -3382,6 +3440,7 @@ fn test_plot_memory_grid_settings_persistence() {
         clamp_grid: true,
         show_grid: Vec2b::new(true, false),
         show_settings_modal: true,
+        last_right_click_coord: None,
     };
 
     mem.clone().store(&ctx, id);
@@ -3398,6 +3457,25 @@ fn test_plot_memory_grid_settings_persistence() {
     assert_eq!(loaded.callouts.len(), 1);
     assert_eq!(loaded.callouts[0].label, "Test Callout");
     assert_eq!(loaded.callouts[0].point, [1.0, 2.0]);
+}
+
+#[test]
+fn test_canvas_callout_queue_and_drain() {
+    let id = Id::new("test_callout_plot_id");
+    let callout = CanvasCallout {
+        target_point: [2.5, 4.0],
+        label_offset: [15.0, -20.0],
+        text: "Test Point".to_string(),
+    };
+    push_pending_callout(id, callout.clone());
+    let drained = drain_pending_callouts(id);
+    assert_eq!(drained.len(), 1);
+    assert_eq!(drained[0].target_point, [2.5, 4.0]);
+    assert_eq!(drained[0].label_offset, [15.0, -20.0]);
+    assert_eq!(drained[0].text, "Test Point");
+
+    // Second drain should be empty
+    assert!(drain_pending_callouts(id).is_empty());
 }
 
 #[test]
@@ -3685,6 +3763,7 @@ mod callout_context_menu_tests {
             clamp_grid: false,
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
+            last_right_click_coord: None,
         };
         mem.store(&ctx, id);
 
@@ -3738,6 +3817,7 @@ mod callout_context_menu_tests {
             clamp_grid: false,
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
+            last_right_click_coord: None,
         };
         mem.store(&ctx, id);
 

@@ -20,7 +20,7 @@ pub struct AttractorPlotter {
     step_count: usize,
     simulation_speed: usize,
     dt: f64,
-    history: VecDeque<Vector3<f64>>, // Store as Vector3 for easier math
+    history: VecDeque<Vector3<f64>>,
     max_points: usize,
     camera: crate::framework::Camera3D,
     params: Arc<std::sync::RwLock<AttractorSharedParams>>,

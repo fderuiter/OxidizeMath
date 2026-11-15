@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::{InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager};
+use crate::framework::{CalloutManager, InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager};
 use crate::presets::{InteractivePreset, OdePreset};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
@@ -25,23 +25,17 @@ pub use recovery::{
 
 pub struct OdeSolverTool {
     pub(crate) preset: OdePreset,
-    pub(crate) dt: f64,
-    pub(crate) total_time: f64,
-    pub(crate) param_k: f64,
-    pub(crate) param_r: f64,
-    pub(crate) param_cap_k: f64,
-    pub(crate) ic_y0: f64,
-    pub(crate) ic_v0: f64,
-    pub(crate) time_series: Vec<f64>,
-    pub(crate) y_series: Vec<f64>,
-    pub(crate) v_series: Vec<f64>,
+    pub(crate) dt: f64, pub(crate) total_time: f64,
+    pub(crate) param_k: f64, pub(crate) param_r: f64, pub(crate) param_cap_k: f64,
+    pub(crate) ic_y0: f64, pub(crate) ic_v0: f64,
+    pub(crate) time_series: Vec<f64>, pub(crate) y_series: Vec<f64>, pub(crate) v_series: Vec<f64>,
     pub(crate) diverged: bool,
     pub(crate) math_input: MathExpressionInputBar,
     pub(crate) diagnostic_report: Option<OdeDiagnosticReport>,
     pub(crate) snapshot_manager: TraceSnapshotManager,
+    pub callout_manager: CalloutManager,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
-    pub(crate) last_param_summary: String,
-    pub show_annotations: bool,
+    pub(crate) last_param_summary: String, pub show_annotations: bool,
 }
 
 impl Default for OdeSolverTool {
@@ -65,10 +59,9 @@ impl Default for OdeSolverTool {
                 ],
             ),
             diagnostic_report: None,
-            snapshot_manager: TraceSnapshotManager::new(),
+            snapshot_manager: TraceSnapshotManager::new(), callout_manager: CalloutManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
-            last_param_summary: String::new(),
-            show_annotations: true,
+            last_param_summary: String::new(), show_annotations: true,
         };
         tool.recalculate();
         tool
@@ -97,10 +90,7 @@ impl OdeSolverTool {
     }
 
     pub fn clamp_instability_parameters(&mut self) {
-        clamp_ode_parameters(
-            self.preset, &mut self.param_k, &mut self.param_r,
-            &mut self.param_cap_k, &mut self.ic_y0, &mut self.ic_v0,
-        );
+        clamp_ode_parameters(self.preset, &mut self.param_k, &mut self.param_r, &mut self.param_cap_k, &mut self.ic_y0, &mut self.ic_v0);
         self.recalculate();
     }
 
@@ -111,8 +101,7 @@ impl OdeSolverTool {
             OdePreset::LogisticGrowth => { self.param_r = 1.0; self.param_cap_k = 10.0; self.ic_y0 = 1.0; }
             OdePreset::Custom => { self.param_k = 1.0; self.ic_y0 = 1.0; self.math_input.set_expression("-k * y * sin(t)"); }
         }
-        self.dt = 0.05;
-        self.total_time = 10.0;
+        self.dt = 0.05; self.total_time = 10.0;
         self.recalculate();
     }
 
@@ -228,9 +217,26 @@ impl OdeSolverTool {
             recovery::emit_divergence_telemetry(t_div, step_idx, &var_name, self.preset.name(), self.dt);
         }
         self.last_param_summary = self.param_summary();
+        if !self.diverged && !self.y_series.is_empty() {
+            self.callout_manager.set_auto_callout(
+                "initial_condition",
+                [0.0, self.ic_y0],
+                format!("Initial (0, {:.2})", self.ic_y0),
+                [-25.0, -25.0],
+            );
+            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last()) {
+                self.callout_manager.set_auto_callout(
+                    "final_state",
+                    [last_t, last_y],
+                    format!("Final ({:.2}, {:.2})", last_t, last_y),
+                    [25.0, -25.0],
+                );
+            }
+        } else if self.diverged {
+            self.callout_manager.clear_auto();
+        }
     }
 }
-
 impl InteractiveTool for OdeSolverTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str { "ODE Solvers" }
@@ -268,6 +274,7 @@ impl InteractiveTool for OdeSolverTool {
             param_r: self.param_r, param_cap_k: self.param_cap_k, ic_y0: self.ic_y0,
             ic_v0: self.ic_v0, custom_expr: self.math_input.raw_text.clone(),
             snapshot_manager: self.snapshot_manager.clone(),
+            callout_manager: self.callout_manager.clone(),
             show_annotations: self.show_annotations,
         })
         .ok()
@@ -281,6 +288,7 @@ impl InteractiveTool for OdeSolverTool {
             self.ic_y0 = s.ic_y0; self.ic_v0 = s.ic_v0;
             if !s.custom_expr.is_empty() { self.math_input.set_expression(&s.custom_expr); }
             self.snapshot_manager = s.snapshot_manager;
+            self.callout_manager = s.callout_manager;
             self.show_annotations = s.show_annotations;
             self.recalculate();
         }
@@ -402,6 +410,10 @@ impl InteractiveTool for OdeSolverTool {
                 Some((label, param_summary, series))
             });
 
+            if self.callout_manager.render_ui(ui) {
+                changed = true;
+            }
+
             if ui.button("🎨 Starter Gallery").on_hover_text("Open Starter Template Gallery").clicked() {
                 let cur = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")).unwrap_or(false));
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur));
@@ -466,6 +478,7 @@ impl InteractiveTool for OdeSolverTool {
                         annotations::render_ode_callouts(plot_ui, self);
                     }
                     self.snapshot_manager.render_on_plot(plot_ui);
+                    self.callout_manager.render_on_plot(plot_ui);
                 });
         });
     }

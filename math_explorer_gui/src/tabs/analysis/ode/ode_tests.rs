@@ -134,14 +134,48 @@ fn test_ode_auto_history_buffering() {
 }
 
 #[test]
+fn test_ode_auto_callout_annotations_and_persistence() {
+    let mut tool = OdeSolverTool::default();
+    assert_eq!(tool.callout_manager.len(), 2);
+    let initial_callout = tool
+        .callout_manager
+        .callouts()
+        .iter()
+        .find(|c| c.tag.as_deref() == Some("initial_condition"))
+        .expect("initial callout");
+    assert_eq!(initial_callout.target_point, [0.0, 1.0]);
+    assert!(initial_callout.text.contains("Initial"));
+
+    let final_callout = tool
+        .callout_manager
+        .callouts()
+        .iter()
+        .find(|c| c.tag.as_deref() == Some("final_state"))
+        .expect("final callout");
+    assert_eq!(final_callout.target_point[0], 10.0);
+    assert!(final_callout.text.contains("Final"));
+
+    // Add a custom user callout
+    tool.callout_manager
+        .add_callout([5.0, 2.0], "Equilibrium Y=2.0", [15.0, -20.0]);
+    assert_eq!(tool.callout_manager.len(), 3);
+
+    // Save and load state
+    let state = tool.save_state().expect("save state");
+    let mut restored = OdeSolverTool::default();
+    restored.load_state(&state);
+    assert_eq!(restored.callout_manager.len(), 3);
+    assert!(restored
+        .callout_manager
+        .callouts()
+        .iter()
+        .any(|c| c.text == "Equilibrium Y=2.0"));
+}
+
+#[test]
 fn test_ode_custom_equation_rk4() {
     let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom,
-        param_k: 1.5,
-        ic_y0: 2.0,
-        dt: 0.05,
-        total_time: 5.0,
-        ..Default::default()
+        preset: OdePreset::Custom, param_k: 1.5, ic_y0: 2.0, dt: 0.05, total_time: 5.0, ..Default::default()
     };
     tool.math_input.set_expression("-k * y * sin(t)");
     tool.recalculate();
@@ -161,23 +195,15 @@ fn test_ode_custom_equation_rk4() {
 
 #[test]
 fn test_ode_custom_equation_divergence_handling() {
-    let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom,
-        ic_y0: 1.0,
-        ..Default::default()
-    };
+    let mut tool = OdeSolverTool { preset: OdePreset::Custom, ic_y0: 1.0, ..Default::default() };
     tool.math_input.set_expression("1 / (y - 1)");
     tool.recalculate();
-
     assert!(tool.diverged());
 }
 
 #[test]
 fn test_ode_custom_state_roundtrip() {
-    let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom,
-        ..Default::default()
-    };
+    let mut tool = OdeSolverTool { preset: OdePreset::Custom, ..Default::default() };
     tool.math_input.set_expression("y' = -k * y * sin(t)");
     tool.recalculate();
 
@@ -193,12 +219,7 @@ fn test_ode_custom_state_roundtrip() {
 #[test]
 fn test_generate_custom_ode_and_complex_screenshots() {
     let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom,
-        param_k: 2.0,
-        ic_y0: 1.0,
-        dt: 0.02,
-        total_time: 10.0,
-        ..Default::default()
+        preset: OdePreset::Custom, param_k: 2.0, ic_y0: 1.0, dt: 0.02, total_time: 10.0, ..Default::default()
     };
     tool.math_input.set_expression("y' = -k * y * sin(t)");
     tool.recalculate();
