@@ -308,3 +308,45 @@ pub fn check_api_drift() -> bool {
     println!("Public API drift check passed.");
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_date_pattern_parsing() {
+        assert_eq!(
+            find_date_pattern("expires = 2026-12-31"),
+            Some("2026-12-31".to_string())
+        );
+        assert_eq!(find_date_pattern("short"), None);
+        assert_eq!(find_date_pattern("no-date-here-at-all"), None);
+    }
+
+    #[test]
+    fn test_api_item_shim_deserialization() {
+        let json_simple = r#""fn test_function()""#;
+        let item: ApiItem = serde_json::from_str(json_simple).unwrap();
+        assert_eq!(item.signature, "fn test_function()");
+        assert_eq!(item.deprecation_expires, None);
+
+        let json_detailed = r#"{
+            "signature": "fn old_func()",
+            "deprecation_expires": "2026-11-01"
+        }"#;
+        let item2: ApiItem = serde_json::from_str(json_detailed).unwrap();
+        assert_eq!(item2.signature, "fn old_func()");
+        assert_eq!(item2.deprecation_expires, Some("2026-11-01".to_string()));
+    }
+
+    #[test]
+    fn test_check_api_drift_runs() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
+        // Run against repository baseline
+        let passed = check_api_drift();
+        assert!(
+            passed,
+            "Public API drift should match baseline in repository"
+        );
+    }
+}

@@ -296,3 +296,16 @@ pub fn run_policy_audit(members: &[&str]) -> bool {
 
     success
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_policy_audit_workspace_run() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
+        let members = vec!["crates/pure_math"];
+        let success = run_policy_audit(&members);
+        assert!(success, "pure_math should pass policy audit");
+    }
+}

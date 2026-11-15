@@ -109,6 +109,7 @@ mod tests {
 
     #[test]
     fn test_member_shadowing_failure() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
         let temp_dir = env::temp_dir().join("unified_verification_test");
         fs::create_dir_all(&temp_dir).unwrap();
 

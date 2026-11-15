@@ -270,3 +270,28 @@ pub fn run_ast_visitor() -> bool {
     println!("AST visitor finished. Flagged {} patterns.", flags_found);
     true // Non-blocking for third-party crates
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clone_detector_is_a_b_plus_c() {
+        let code = "fn test() { let x = a * b + c; }";
+        let file = syn::parse_file(code).unwrap();
+        if let syn::Item::Fn(f) = &file.items[0] {
+            if let syn::Stmt::Local(l) = &f.block.stmts[0] {
+                if let Some(init) = &l.init {
+                    assert!(CloneDetectorVisitor::is_a_b_plus_c(&init.expr));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_run_clone_detector_execution() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
+        let passed = run_clone_detector();
+        assert!(passed, "First-party code should pass clone detector");
+    }
+}
