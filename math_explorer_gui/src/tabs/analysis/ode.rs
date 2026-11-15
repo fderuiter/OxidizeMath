@@ -199,11 +199,6 @@ impl OdeSolverTool {
             self.callout_manager.clear_auto();
         }
     }
-
-    #[allow(dead_code)]
-    pub fn callout_manager(&self) -> &CalloutManager { &self.callout_manager }
-    #[allow(dead_code)]
-    pub fn callout_manager_mut(&mut self) -> &mut CalloutManager { &mut self.callout_manager }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

@@ -142,6 +142,11 @@ fn test_workspace_envelope_serialization() {
     assert_eq!(restored_mgr.len(), 1);
     assert_eq!(restored_mgr.callouts()[0].text, "Peak");
     assert_eq!(restored_mgr.callouts()[0].target_point, [3.0, 7.0]);
+
+    let mut session_mgr = crate::app::WorkspaceSessionManager::new();
+    session_mgr.set_callout_manager(Some(restored_mgr));
+    assert!(session_mgr.callout_manager().is_some());
+    assert_eq!(session_mgr.callout_manager().unwrap().len(), 1);
 }
 
 #[test]
@@ -162,7 +167,7 @@ fn test_generate_callout_screenshot() {
         ),
         (
             "Callout [Steady State Y=10.0]".to_string(),
-            vec![[3.14, 15.0]],
+            vec![[3.15, 15.0]],
         ),
     ];
     let options = egui_plot::export::ExportOptions::default();

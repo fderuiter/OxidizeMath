@@ -65,7 +65,7 @@ impl WorkspaceSessionManager {
     }
 
     /// Returns the current session lifecycle state.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn lifecycle_state(&self) -> SessionLifecycleState {
         self.lifecycle_state
     }
@@ -144,7 +144,7 @@ impl WorkspaceSessionManager {
     }
 
     /// Returns true if currently in state restoration.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn is_restoring(&self) -> bool {
         self.lifecycle_state == SessionLifecycleState::RestoringHistory
     }
@@ -217,13 +217,13 @@ impl WorkspaceSessionManager {
     }
 
     /// Sets the active callout manager for workspace session persistence.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn set_callout_manager(&mut self, manager: Option<crate::framework::CalloutManager>) {
         self.callout_manager = manager;
     }
 
     /// Returns a reference to the active callout manager if set.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn callout_manager(&self) -> Option<&crate::framework::CalloutManager> {
         self.callout_manager.as_ref()
     }

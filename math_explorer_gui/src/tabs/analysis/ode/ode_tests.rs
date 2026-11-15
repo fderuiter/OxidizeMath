@@ -174,9 +174,11 @@ fn test_ode_auto_callout_annotations_and_persistence() {
 
 #[test]
 fn test_ode_structured_diagnostic_report() {
-    let mut tool = OdeSolverTool::default();
-    tool.param_k = 1e300;
-    tool.ic_y0 = 1e300;
+    let mut tool = OdeSolverTool {
+        param_k: 1e300,
+        ic_y0: 1e300,
+        ..Default::default()
+    };
     tool.recalculate();
 
     assert!(tool.diverged());
@@ -305,9 +307,11 @@ fn test_ode_clamp_instability_parameters_harmonic_and_logistic() {
 fn test_ode_divergence_and_recovery_telemetry() {
     let _ = federated_registry::global_registry().try_recv_all();
 
-    let mut tool = OdeSolverTool::default();
-    tool.param_k = 1e300;
-    tool.ic_y0 = 1e300;
+    let mut tool = OdeSolverTool {
+        param_k: 1e300,
+        ic_y0: 1e300,
+        ..Default::default()
+    };
     tool.recalculate();
 
     let events = federated_registry::global_registry().try_recv_all();
@@ -333,9 +337,11 @@ fn test_ode_divergence_and_recovery_telemetry() {
 #[test]
 fn test_ode_recovery_banner_ui_rendering() {
     let ctx = egui::Context::default();
-    let mut tool = OdeSolverTool::default();
-    tool.param_k = 1e300;
-    tool.ic_y0 = 1e300;
+    let mut tool = OdeSolverTool {
+        param_k: 1e300,
+        ic_y0: 1e300,
+        ..Default::default()
+    };
     tool.recalculate();
     assert!(tool.diverged());
 
