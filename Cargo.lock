@@ -2408,6 +2408,7 @@ dependencies = [
  "domain_physics",
  "eframe",
  "egui",
+ "federated_registry",
  "math_commons",
  "math_explorer",
  "nalgebra 0.34.2",
@@ -4448,6 +4449,7 @@ dependencies = [
  "approx",
  "proc-macro2",
  "quote",
+ "scientific_metadata",
  "syn 2.0.119",
 ]
 

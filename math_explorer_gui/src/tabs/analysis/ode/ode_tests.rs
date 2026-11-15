@@ -310,3 +310,53 @@ fn test_ode_recovery_banner_ui_rendering() {
     });
 }
 
+#[test]
+fn test_ode_annotations_toggle_and_rendering() {
+    let mut tool = OdeSolverTool::default();
+    assert!(tool.show_annotations);
+
+    // Toggle off and on
+    tool.show_annotations = false;
+    assert!(!tool.show_annotations);
+    tool.show_annotations = true;
+
+    // Test serialization roundtrip with show_annotations
+    tool.show_annotations = false;
+    let saved = tool.save_state().expect("save state");
+    let mut restored = OdeSolverTool::default();
+    restored.load_state(&saved);
+    assert!(!restored.show_annotations);
+
+    // Test rendering with each preset
+    let ctx = egui::Context::default();
+
+    // 1. Exponential
+    tool.show_annotations = true;
+    tool.preset = OdePreset::Exponential;
+    tool.param_k = -0.5;
+    tool.recalculate();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+
+    // 2. Harmonic Oscillator
+    tool.preset = OdePreset::HarmonicOscillator;
+    tool.recalculate();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+
+    // 3. Logistic Growth
+    tool.preset = OdePreset::LogisticGrowth;
+    tool.param_cap_k = 12.0;
+    tool.ic_y0 = 2.0;
+    tool.recalculate();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+
+    // Disable annotations and ensure clean rendering
+    tool.show_annotations = false;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+
+    // Export plot screenshot for verification
+    let datasets = tool.export_datasets();
+    let options = egui_plot::export::ExportOptions::default();
+    if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
+        let _ = std::fs::write("/tmp/ode_solver_trajectory.png", png_data);
+    }
+}

@@ -6,8 +6,8 @@ use math_explorer::pure_math::analysis::ode::{
 };
 
 #[derive(Clone, Debug)]
-pub(crate) struct ExponentialOde {
-    pub(crate) k: f64,
+pub struct ExponentialOde {
+    pub k: f64,
 }
 
 impl OdeSystem<VecState> for ExponentialOde {
@@ -22,8 +22,8 @@ impl OdeSystem<VecState> for ExponentialOde {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct HarmonicOscillatorOde {
-    pub(crate) k: f64,
+pub struct HarmonicOscillatorOde {
+    pub k: f64,
 }
 
 impl OdeSystem<VecState> for HarmonicOscillatorOde {
@@ -39,9 +39,9 @@ impl OdeSystem<VecState> for HarmonicOscillatorOde {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct LogisticGrowthOde {
-    pub(crate) r: f64,
-    pub(crate) cap_k: f64,
+pub struct LogisticGrowthOde {
+    pub r: f64,
+    pub cap_k: f64,
 }
 
 impl OdeSystem<VecState> for LogisticGrowthOde {
@@ -55,7 +55,7 @@ impl OdeSystem<VecState> for LogisticGrowthOde {
     }
 }
 
-pub(crate) fn eval_ode_final_state(
+pub fn eval_ode_final_state(
     preset: OdePreset,
     dt: f64,
     total_time: f64,
@@ -78,8 +78,7 @@ pub(crate) fn eval_ode_final_state(
         }
         OdePreset::HarmonicOscillator => {
             let init = VecState(vec![y0, v0]);
-            let mut model =
-                OdeModel::new(init.clone(), HarmonicOscillatorOde { k }, RungeKutta4::new(&init));
+            let mut model = OdeModel::new(init.clone(), HarmonicOscillatorOde { k }, RungeKutta4::new(&init));
             for _ in 0..steps {
                 model.step(dt);
             }
@@ -87,11 +86,7 @@ pub(crate) fn eval_ode_final_state(
         }
         OdePreset::LogisticGrowth => {
             let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(
-                init.clone(),
-                LogisticGrowthOde { r, cap_k },
-                RungeKutta4::new(&init),
-            );
+            let mut model = OdeModel::new(init.clone(), LogisticGrowthOde { r, cap_k }, RungeKutta4::new(&init));
             for _ in 0..steps {
                 model.step(dt);
             }

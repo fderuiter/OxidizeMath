@@ -8,12 +8,16 @@ use math_explorer::pure_math::analysis::ode::{
     OdeModel, RungeKutta4, TimeStepper, VecState,
 };
 
+mod annotations;
 pub mod models;
 pub mod recovery;
 
-use models::{eval_ode_final_state, ExponentialOde, HarmonicOscillatorOde, LogisticGrowthOde};
+use models::*;
 #[allow(unused_imports)]
-pub use recovery::{clamp_ode_parameters, render_recovery_banner, render_recovery_ui, OdeDiagnosticReport, RecoveryAction};
+pub use recovery::{
+    clamp_ode_parameters, render_recovery_banner, render_recovery_ui, OdeDiagnosticReport,
+    RecoveryAction,
+};
 
 // ----------------------------------------------------------------------------
 // Tool Implementation
@@ -38,6 +42,7 @@ pub struct OdeSolverTool {
     snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     last_param_summary: String,
+    pub show_annotations: bool,
 }
 
 impl Default for OdeSolverTool {
@@ -60,6 +65,7 @@ impl Default for OdeSolverTool {
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
+            show_annotations: true,
         };
         tool.recalculate();
         tool
@@ -75,33 +81,21 @@ impl OdeSolverTool {
     }
     #[must_use]
     #[allow(dead_code)]
-    pub fn diverged(&self) -> bool {
-        self.diverged
-    }
+    pub fn diverged(&self) -> bool { self.diverged }
 
     #[must_use]
-    pub fn diagnostic_report(&self) -> Option<&OdeDiagnosticReport> {
-        self.diagnostic_report.as_ref()
-    }
+    pub fn diagnostic_report(&self) -> Option<&OdeDiagnosticReport> { self.diagnostic_report.as_ref() }
 
     pub fn auto_scale_step_size(&mut self) {
         let min_dt = 1e-6;
-        if !self.dt.is_finite() || self.dt <= 0.0 {
-            self.dt = 0.05;
-        } else {
-            self.dt = (self.dt * 0.5).max(min_dt);
-        }
+        self.dt = if !self.dt.is_finite() || self.dt <= 0.0 { 0.05 } else { (self.dt * 0.5).max(min_dt) };
         self.recalculate();
     }
 
     pub fn clamp_instability_parameters(&mut self) {
         clamp_ode_parameters(
-            self.preset,
-            &mut self.param_k,
-            &mut self.param_r,
-            &mut self.param_cap_k,
-            &mut self.ic_y0,
-            &mut self.ic_v0,
+            self.preset, &mut self.param_k, &mut self.param_r,
+            &mut self.param_cap_k, &mut self.ic_y0, &mut self.ic_v0,
         );
         self.recalculate();
     }
@@ -219,6 +213,12 @@ struct OdeState {
     ic_v0: f64,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
+    #[serde(default = "default_annotations_enabled")]
+    show_annotations: bool,
+}
+
+fn default_annotations_enabled() -> bool {
+    true
 }
 
 impl InteractiveTool for OdeSolverTool {
@@ -257,6 +257,7 @@ impl InteractiveTool for OdeSolverTool {
             ic_y0: self.ic_y0,
             ic_v0: self.ic_v0,
             snapshot_manager: self.snapshot_manager.clone(),
+            show_annotations: self.show_annotations,
         })
         .ok()
     }
@@ -271,6 +272,7 @@ impl InteractiveTool for OdeSolverTool {
             self.ic_y0 = s.ic_y0;
             self.ic_v0 = s.ic_v0;
             self.snapshot_manager = s.snapshot_manager;
+            self.show_annotations = s.show_annotations;
             self.recalculate();
         }
     }
@@ -357,6 +359,9 @@ impl InteractiveTool for OdeSolverTool {
                 if ui.add(egui::DragValue::new(&mut self.total_time).speed(1.0).range(1.0..=100.0)).changed() { changed = true; }
             });
 
+            ui.add_space(5.0);
+            ui.checkbox(&mut self.show_annotations, "Show Annotations");
+
             ui.add_space(10.0);
             let param_summary = self.param_summary();
             let is_harmonic = self.preset == OdePreset::HarmonicOscillator;
@@ -433,6 +438,9 @@ impl InteractiveTool for OdeSolverTool {
                         let line_v = Line::new("y'(t)", PlotPoints::new(plot_points_v))
                             .color(egui::Color32::LIGHT_RED);
                         plot_ui.line(line_v);
+                    }
+                    if self.show_annotations && !self.diverged {
+                        annotations::render_ode_callouts(plot_ui, self);
                     }
                     self.snapshot_manager.render_on_plot(plot_ui);
                 });
