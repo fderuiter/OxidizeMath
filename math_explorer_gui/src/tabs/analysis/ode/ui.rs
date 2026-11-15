@@ -23,6 +23,9 @@ impl OdeSolverTool {
         changed |= self.render_initial_condition_inputs(ui);
         changed |= self.render_solver_settings_controls(ui);
         self.render_snapshots_and_sensitivity(ui, plot_points_y, plot_points_v);
+        if self.callout_manager.render_ui(ui) {
+            changed = true;
+        }
         changed
     }
 
@@ -374,6 +377,7 @@ impl OdeSolverTool {
                     super::annotations::render_ode_callouts(plot_ui, self);
                 }
                 self.snapshot_manager.render_on_plot(plot_ui);
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 }

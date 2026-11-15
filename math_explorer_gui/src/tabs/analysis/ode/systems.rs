@@ -56,7 +56,8 @@ impl OdeSystem<VecState> for LogisticGrowthOde {
         out
     }
     fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.r * state.0[0] * (1.0 - state.0[0] / self.cap_k);
+        let y = state.0[0];
+        out.0[0] = self.r * y * (1.0 - y / self.cap_k);
     }
 }
 
@@ -156,15 +157,38 @@ fn step_model<D: OdeSystem<VecState> + Clone>(
 impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
     fn theory_description(&self) -> String {
         match self.preset {
-            OdePreset::Exponential => r"Exponential model: $\frac{dy}{dt} = k y$".into(),
-            OdePreset::HarmonicOscillator => r"Harmonic oscillator: $\frac{d^2 y}{dt^2} = -k y$".into(),
-            OdePreset::LogisticGrowth => r"Logistic growth: $\frac{dy}{dt} = r y (1 - \frac{y}{K})$".into(),
-            OdePreset::Custom => r"Custom user-defined ordinary differential equation: $y' = f(t, y)$".into(),
+            OdePreset::Exponential => "First-order linear ordinary differential equation describing exponential growth or decay proportional to current quantity.".into(),
+            OdePreset::HarmonicOscillator => "Second-order ordinary differential equation modeling simple harmonic motion under a Hooke's law restoring force.".into(),
+            OdePreset::LogisticGrowth => "Nonlinear ordinary differential equation modeling density-dependent population growth with an environmental carrying capacity.".into(),
+            OdePreset::Custom => "Custom user-defined ordinary differential equation: y' = f(t, y)".into(),
         }
     }
     fn phonetic_description(&self) -> String { "Ordinary differential equations theory".into() }
-    fn theory_citation(&self) -> String { "Differential Equations and Dynamical Systems (Perko, 2001)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_citation(&self) -> String {
+        match self.preset {
+            OdePreset::Exponential => "Differential Equations and Dynamical Systems (Perko, 2001)".into(),
+            OdePreset::HarmonicOscillator => "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into(),
+            OdePreset::LogisticGrowth => "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into(),
+            OdePreset::Custom => "Differential Equations and Dynamical Systems (Perko, 2001)".into(),
+        }
+    }
+    fn theory_latex_equation(&self) -> Option<String> {
+        let eq = match self.preset {
+            OdePreset::Exponential => r"\frac{dy}{dt} = k y",
+            OdePreset::HarmonicOscillator => r"\frac{d^2 y}{dt^2} = -k y",
+            OdePreset::LogisticGrowth => r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
+            OdePreset::Custom => return None,
+        };
+        Some(eq.into())
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Exponential".into(), "First-order linear ODE representing exponential growth or decay".into());
+        map.insert("Harmonic Oscillator".into(), "Second-order linear ODE representing simple harmonic motion".into());
+        map.insert("Logistic Growth".into(), "Nonlinear first-order ODE modeling population growth with carrying capacity".into());
+        map.insert("Custom".into(), "Custom user-defined ordinary differential equation".into());
+        map
+    }
 }
 
 impl InteractivePreset for OdeSolverTool {

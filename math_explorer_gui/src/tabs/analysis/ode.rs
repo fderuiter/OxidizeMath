@@ -9,7 +9,7 @@ pub mod ui;
 use comparison::{simulate_preset, SolverDiscrepancy};
 
 use crate::framework::{
-    InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager,
+    CalloutManager, InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager,
 };
 use crate::presets::{InteractivePreset, OdePreset};
 use eframe::egui;
@@ -44,6 +44,7 @@ pub struct OdeSolverTool {
     pub(crate) discrepancy_euler_heun: SolverDiscrepancy,
     pub snapshot_manager: TraceSnapshotManager,
     pub(crate) comparison_manager: TraceSnapshotManager,
+    pub callout_manager: CalloutManager,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
     pub(crate) last_param_summary: String,
     pub show_annotations: bool,
@@ -83,6 +84,7 @@ impl Default for OdeSolverTool {
             discrepancy_euler_heun: SolverDiscrepancy::default(),
             snapshot_manager: TraceSnapshotManager::new(),
             comparison_manager: TraceSnapshotManager::new(),
+            callout_manager: CalloutManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
             show_annotations: true,
@@ -223,6 +225,28 @@ impl OdeSolverTool {
         self.recalculate_active();
         self.recalculate_comparison();
         self.last_param_summary = self.param_summary();
+        self.update_callouts();
+    }
+
+    fn update_callouts(&mut self) {
+        if !self.diverged && !self.y_series.is_empty() {
+            self.callout_manager.set_auto_callout(
+                "initial_condition",
+                [0.0, self.ic_y0],
+                format!("Initial (0, {:.2})", self.ic_y0),
+                [-25.0, -25.0],
+            );
+            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last()) {
+                self.callout_manager.set_auto_callout(
+                    "final_state",
+                    [last_t, last_y],
+                    format!("Final ({:.2}, {:.2})", last_t, last_y),
+                    [25.0, -25.0],
+                );
+            }
+        } else if self.diverged {
+            self.callout_manager.clear_auto();
+        }
     }
 
     fn recalculate_active(&mut self) {
@@ -285,6 +309,8 @@ struct OdeState {
     custom_expr: String,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
+    #[serde(default)]
+    callout_manager: CalloutManager,
     #[serde(default)]
     method: IntegrationMethod,
     #[serde(default)]
@@ -357,6 +383,7 @@ impl InteractiveTool for OdeSolverTool {
             ic_v0: self.ic_v0,
             custom_expr: self.math_input.raw_text.clone(),
             snapshot_manager: self.snapshot_manager.clone(),
+            callout_manager: self.callout_manager.clone(),
             method: self.method,
             comparison_mode: self.comparison_mode,
             show_annotations: self.show_annotations,
@@ -380,6 +407,7 @@ impl InteractiveTool for OdeSolverTool {
                 self.math_input.set_expression(&s.custom_expr);
             }
             self.snapshot_manager = s.snapshot_manager;
+            self.callout_manager = s.callout_manager;
             self.method = s.method;
             self.comparison_mode = s.comparison_mode;
             self.show_annotations = s.show_annotations;

@@ -7,7 +7,7 @@ pub use types::{SessionLifecycleState, WorkspaceEnvelope};
 use crate::app::AppState;
 use crate::app::MathExplorerApp;
 use eframe::egui;
-use federated_registry::{global_registry, Severity, TelemetryEvent};
+use io::{file_name_str, handle_transition_error, notify};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 
@@ -35,6 +35,8 @@ pub struct WorkspaceSessionManager {
     pub(crate) lifecycle_state: SessionLifecycleState,
     /// Number of consecutive quiescent frames observed during history restoration.
     pub(crate) quiescent_frames: usize,
+    /// Active callout manager instance.
+    callout_manager: Option<crate::framework::CalloutManager>,
 }
 
 impl Default for WorkspaceSessionManager {
@@ -51,6 +53,7 @@ impl Default for WorkspaceSessionManager {
             last_committed_state: None,
             lifecycle_state: SessionLifecycleState::Idle,
             quiescent_frames: 0,
+            callout_manager: None,
         }
     }
 }
@@ -210,8 +213,21 @@ impl WorkspaceSessionManager {
             app_state,
             history_undo_stack: self.undo_stack.clone(),
             history_redo_stack: self.redo_stack.clone(),
+            callout_manager: self.callout_manager.clone(),
         };
         serde_json::to_string_pretty(&envelope).unwrap_or_default()
+    }
+
+    /// Sets the active callout manager for workspace session persistence.
+    #[cfg(test)]
+    pub fn set_callout_manager(&mut self, manager: Option<crate::framework::CalloutManager>) {
+        self.callout_manager = manager;
+    }
+
+    /// Returns a reference to the active callout manager if set.
+    #[cfg(test)]
+    pub fn callout_manager(&self) -> Option<&crate::framework::CalloutManager> {
+        self.callout_manager.as_ref()
     }
 
     /// Validates and parses workspace session content from a JSON string.
@@ -238,14 +254,16 @@ impl WorkspaceSessionManager {
             }
             self.undo_stack = envelope.history_undo_stack;
             self.redo_stack = envelope.history_redo_stack;
+            self.callout_manager = envelope.callout_manager;
             self.last_committed_state = Some(envelope.app_state.clone());
             self.set_is_restoring(true);
             Ok(envelope.app_state)
         } else {
-            let state: AppState = serde_json::from_str(json_str)
-                .map_err(|e| format!("Corrupted workspace state JSON: {}", e))?;
             self.undo_stack.clear();
             self.redo_stack.clear();
+            self.callout_manager = None;
+            let state: AppState = serde_json::from_str(json_str)
+                .map_err(|e| format!("Corrupted workspace state JSON: {}", e))?;
             self.last_committed_state = Some(state.clone());
             self.set_is_restoring(true);
             Ok(state)
@@ -435,12 +453,11 @@ impl WorkspaceSessionManager {
         if let Some((msg, is_error)) = self.toast() {
             let mut dismiss = false;
             ui.horizontal(|ui| {
-                let color = if *is_error {
-                    egui::Color32::RED
+                let (color, icon) = if *is_error {
+                    (egui::Color32::RED, "⚠️")
                 } else {
-                    egui::Color32::LIGHT_GREEN
+                    (egui::Color32::LIGHT_GREEN, "ℹ️")
                 };
-                let icon = if *is_error { "⚠️" } else { "ℹ️" };
                 ui.label(egui::RichText::new(format!("{} {}", icon, msg)).color(color));
                 if ui.small_button("✖").clicked() {
                     dismiss = true;
@@ -451,42 +468,4 @@ impl WorkspaceSessionManager {
             }
         }
     }
-}
-
-fn file_name_str(path: &std::path::Path) -> &str {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("workspace.mws")
-}
-
-fn handle_transition_error(mgr: &mut WorkspaceSessionManager, ctx: &egui::Context, op: &str) {
-    let err = format!(
-        "Invalid state transition: received {op} result while in {:?}",
-        mgr.lifecycle_state
-    );
-    notify(mgr, ctx, err, true);
-    mgr.lifecycle_state = SessionLifecycleState::Error;
-}
-
-fn notify(mgr: &mut WorkspaceSessionManager, ctx: &egui::Context, msg: String, is_err: bool) {
-    mgr.set_toast(&msg, is_err);
-    let (sev, aria) = if is_err {
-        (Severity::Error, "aria_live_assertive_message")
-    } else {
-        (Severity::Info, "aria_live_message")
-    };
-    log_telemetry(msg, sev, ctx, aria);
-}
-
-fn log_telemetry(msg: String, severity: Severity, ctx: &egui::Context, aria_key: &str) {
-    global_registry().emit(TelemetryEvent {
-        source: "WorkspaceSessionManager".to_string(),
-        severity,
-        message: msg.clone(),
-        metadata: std::collections::HashMap::new(),
-        thread_name: None,
-    });
-    ctx.data_mut(|d| {
-        d.insert_temp(egui::Id::new(aria_key), msg);
-    });
 }

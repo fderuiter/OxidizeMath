@@ -100,6 +100,7 @@ pub struct ParameterConstraint {
 /// assert_eq!(pendulum.theory_description(), "Simple pendulum of length 2.00 meters");
 /// assert_eq!(pendulum.phonetic_description(), "Simple pendulum");
 /// assert_eq!(pendulum.theory_citation(), "Landau, L. D., & Lifshitz, E. M. (1976). Mechanics.");
+/// assert_eq!(pendulum.theory_latex_equation(), None);
 /// assert_eq!(pendulum.theory_parameters()["length"].min, 0.1);
 /// assert_eq!(pendulum.get_parameter("length"), Some(2.0));
 /// pendulum.set_parameter("length", 3.5);
@@ -134,6 +135,13 @@ pub trait TheoryDescribable {
     ///
     /// If the parameter name is unrecognized, this call is a no-op.
     fn set_parameter(&mut self, _name: &str, _value: f64) {}
+
+    /// Returns an optional LaTeX formula string representing the model's governing equation.
+    ///
+    /// By default, returns `None` to maintain backwards compatibility for models without explicit equations.
+    fn theory_latex_equation(&self) -> Option<String> {
+        None
+    }
 }
 
 /// A macro active within user interface contexts to fetch the theoretical description of a model.
@@ -240,5 +248,36 @@ mod tests {
 
         let desc_ref = theory_verification!(&model);
         assert_eq!(desc_ref, "Verified test description");
+    }
+
+    #[test]
+    fn test_theory_latex_equation_default_and_override() {
+        let model = MockModel::new();
+        assert_eq!(model.theory_latex_equation(), None);
+
+        struct ModelWithEq;
+        impl TheoryDescribable for ModelWithEq {
+            fn theory_description(&self) -> String {
+                "Description".into()
+            }
+            fn phonetic_description(&self) -> String {
+                "Description".into()
+            }
+            fn theory_citation(&self) -> String {
+                "Citation".into()
+            }
+            fn available_descriptions(&self) -> HashMap<String, String> {
+                HashMap::new()
+            }
+            fn theory_latex_equation(&self) -> Option<String> {
+                Some(r"E = m c^2".into())
+            }
+        }
+
+        let model_eq = ModelWithEq;
+        assert_eq!(
+            model_eq.theory_latex_equation(),
+            Some("E = m c^2".to_string())
+        );
     }
 }
