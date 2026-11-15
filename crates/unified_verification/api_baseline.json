@@ -2348,14 +2348,6 @@
       "signature": "pub trait BoundaryCondition"
     }
   ],
-  "crates/oxidize_core/src/double_buffer.rs": [
-    {
-      "signature": "pub trait DoubleBufferedSimulationModel"
-    },
-    {
-      "signature": "pub trait DoubleBufferedState"
-    }
-  ],
   "crates/oxidize_core/src/grid.rs": [
     {
       "signature": "pub struct Grid2D < T >"
