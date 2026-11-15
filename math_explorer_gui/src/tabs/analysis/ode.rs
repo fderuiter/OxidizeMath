@@ -96,16 +96,10 @@ impl Default for OdeSolverTool {
     fn default() -> Self {
         let mut tool = Self {
             preset: OdePreset::Exponential,
-            dt: 0.05,
-            total_time: 10.0,
-            param_k: 1.0,
-            param_r: 1.0,
-            param_cap_k: 10.0,
-            ic_y0: 1.0,
-            ic_v0: 0.0,
-            time_series: Vec::new(),
-            y_series: Vec::new(),
-            v_series: Vec::new(),
+            dt: 0.05, total_time: 10.0,
+            param_k: 1.0, param_r: 1.0, param_cap_k: 10.0,
+            ic_y0: 1.0, ic_v0: 0.0,
+            time_series: Vec::new(), y_series: Vec::new(), v_series: Vec::new(),
             diverged: false,
             dialog_state: PresetDialogState::default(),
             snapshot_manager: TraceSnapshotManager::new(),
@@ -265,16 +259,16 @@ impl InteractiveTool for OdeSolverTool {
 
     fn load_state(&mut self, state: &str) {
         if let Ok(s) = serde_json::from_str::<OdeState>(state) {
-            self.dt = s.dt;
-            self.total_time = s.total_time;
-            self.param_k = s.param_k;
-            self.param_r = s.param_r;
-            self.param_cap_k = s.param_cap_k;
-            self.ic_y0 = s.ic_y0;
-            self.ic_v0 = s.ic_v0;
+            self.dt = s.dt; self.total_time = s.total_time;
+            self.param_k = s.param_k; self.param_r = s.param_r; self.param_cap_k = s.param_cap_k;
+            self.ic_y0 = s.ic_y0; self.ic_v0 = s.ic_v0;
             self.snapshot_manager = s.snapshot_manager;
             self.recalculate();
         }
+    }
+
+    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        self.from_json_str(json_str)
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -380,19 +374,15 @@ impl InteractiveTool for OdeSolverTool {
                 changed = true;
             }
             self.dialog_state = dialog_state;
+            if ui.button("🎨 Starter Gallery").on_hover_text("Open Starter Template Gallery").clicked() {
+                let cur = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")).unwrap_or(false));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur));
+            }
 
             let params = match self.preset {
                 OdePreset::Exponential => vec![("k".to_string(), self.param_k), ("y0".to_string(), self.ic_y0)],
-                OdePreset::HarmonicOscillator => vec![
-                    ("k".to_string(), self.param_k),
-                    ("y0".to_string(), self.ic_y0),
-                    ("v0".to_string(), self.ic_v0),
-                ],
-                OdePreset::LogisticGrowth => vec![
-                    ("r".to_string(), self.param_r),
-                    ("cap_k".to_string(), self.param_cap_k),
-                    ("y0".to_string(), self.ic_y0),
-                ],
+                OdePreset::HarmonicOscillator => vec![("k".to_string(), self.param_k), ("y0".to_string(), self.ic_y0), ("v0".to_string(), self.ic_v0)],
+                OdePreset::LogisticGrowth => vec![("r".to_string(), self.param_r), ("cap_k".to_string(), self.param_cap_k), ("y0".to_string(), self.ic_y0)],
             };
 
             let current_preset = self.preset;

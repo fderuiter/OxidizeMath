@@ -15,6 +15,7 @@ pub mod presets;
 pub mod reflective_ui;
 #[allow(missing_docs)]
 pub mod sensitivity;
+pub mod starter_gallery;
 mod tabs;
 
 use app::MathExplorerApp;

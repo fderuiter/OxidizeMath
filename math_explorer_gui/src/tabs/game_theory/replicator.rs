@@ -298,6 +298,10 @@ impl InteractiveTool for ReplicatorDynamicsTool {
         "Replicator Dynamics"
     }
 
+    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        self.from_json_str(json_str)
+    }
+
     fn show(&mut self, ctx: &egui::Context) {
         // Animation Logic
         if self.is_playing && !self.trajectory.is_empty() {

@@ -52,6 +52,52 @@ impl Default for PotentialFlowTool {
 }
 
 use crate::framework::InteractiveTool;
+use crate::presets::InteractivePreset;
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct PotentialFlowPresetConfig {
+    pub preset_type: String,
+    pub grid_size: usize,
+    pub view_range: f64,
+}
+
+impl InteractivePreset for PotentialFlowTool {
+    type Config = PotentialFlowPresetConfig;
+
+    fn domain(&self) -> &'static str {
+        "fluid_dynamics"
+    }
+
+    fn title(&self) -> String {
+        "Potential Flow - Cylinder Vector Field".to_string()
+    }
+
+    fn export_config(&self) -> Self::Config {
+        PotentialFlowPresetConfig {
+            preset_type: "CylinderFlow".to_string(),
+            grid_size: self.grid_size,
+            view_range: self.view_range,
+        }
+    }
+
+    fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
+        self.grid_size = config.grid_size;
+        self.view_range = config.view_range;
+        if config.preset_type == "SourceSink" {
+            let mut field = PotentialFlowField::new();
+            field.add(Box::new(Source::new(10.0, -3.0, 0.0)));
+            field.add(Box::new(Source::new(-10.0, 3.0, 0.0)));
+            self.field = field;
+        } else {
+            let mut field = PotentialFlowField::new();
+            field.add(Box::new(UniformFlow::new(10.0, 0.0)));
+            let kappa = 2.0 * PI * 10.0 * 2.0 * 2.0;
+            field.add(Box::new(Doublet::new(kappa, 0.0, 0.0)));
+            self.field = field;
+        }
+        Ok(())
+    }
+}
 
 impl InteractiveTool for PotentialFlowTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
@@ -59,10 +105,18 @@ impl InteractiveTool for PotentialFlowTool {
         "Potential Flow"
     }
 
+    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        self.from_json_str(json_str)
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("potential_flow_controls").show(ctx, |ui| {
             ui.heading("Potential Flow Controls");
+            if ui.button("🎨 Starter Gallery").clicked() {
+                let cur = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")).unwrap_or(false));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur));
+            }
             ui.separator();
 
             ui.collapsing("Add Element", |ui| {
