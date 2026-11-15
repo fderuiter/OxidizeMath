@@ -5,68 +5,14 @@ use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialog
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::{
-    OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
+    OdeModel, RungeKutta4, TimeStepper, VecState,
 };
 
-#[derive(Clone, Debug)]
-struct ExponentialOde { k: f64 }
+mod annotations;
+mod models;
 
-impl OdeSystem<VecState> for ExponentialOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.k * state.0[0];
-    }
-}
+use models::*;
 
-#[derive(Clone, Debug)]
-struct HarmonicOscillatorOde { k: f64 }
-
-impl OdeSystem<VecState> for HarmonicOscillatorOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = state.0[1];
-        out.0[1] = -self.k * state.0[0];
-    }
-}
-
-#[derive(Clone, Debug)]
-struct LogisticGrowthOde { r: f64, cap_k: f64 }
-
-impl OdeSystem<VecState> for LogisticGrowthOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.r * state.0[0] * (1.0 - state.0[0] / self.cap_k);
-    }
-}
-
-fn eval_ode_final_state(preset: OdePreset, dt: f64, total_time: f64, p_map: &std::collections::HashMap<String, f64>) -> f64 {
-    let y0 = p_map.get("y0").copied().unwrap_or(1.0);
-    let v0 = p_map.get("v0").copied().unwrap_or(0.0);
-    let k = p_map.get("k").copied().unwrap_or(1.0);
-    let r = p_map.get("r").copied().unwrap_or(1.0);
-    let cap_k = p_map.get("cap_k").copied().unwrap_or(10.0);
-    let steps = (total_time / dt).ceil() as usize;
-    match preset {
-        OdePreset::Exponential => {
-            let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), ExponentialOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-        OdePreset::HarmonicOscillator => {
-            let init = VecState(vec![y0, v0]);
-            let mut model = OdeModel::new(init.clone(), HarmonicOscillatorOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-        OdePreset::LogisticGrowth => {
-            let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), LogisticGrowthOde { r, cap_k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-    }
-}
 
 // ----------------------------------------------------------------------------
 // Tool Implementation
@@ -90,6 +36,7 @@ pub struct OdeSolverTool {
     snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     last_param_summary: String,
+    pub show_annotations: bool,
 }
 
 impl Default for OdeSolverTool {
@@ -111,6 +58,7 @@ impl Default for OdeSolverTool {
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
+            show_annotations: true,
         };
         tool.recalculate();
         tool
@@ -221,6 +169,12 @@ struct OdeState {
     ic_v0: f64,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
+    #[serde(default = "default_annotations_enabled")]
+    show_annotations: bool,
+}
+
+fn default_annotations_enabled() -> bool {
+    true
 }
 
 impl InteractiveTool for OdeSolverTool {
@@ -259,6 +213,7 @@ impl InteractiveTool for OdeSolverTool {
             ic_y0: self.ic_y0,
             ic_v0: self.ic_v0,
             snapshot_manager: self.snapshot_manager.clone(),
+            show_annotations: self.show_annotations,
         })
         .ok()
     }
@@ -273,6 +228,7 @@ impl InteractiveTool for OdeSolverTool {
             self.ic_y0 = s.ic_y0;
             self.ic_v0 = s.ic_v0;
             self.snapshot_manager = s.snapshot_manager;
+            self.show_annotations = s.show_annotations;
             self.recalculate();
         }
     }
@@ -358,6 +314,9 @@ impl InteractiveTool for OdeSolverTool {
                 ui.label("Total Time:");
                 if ui.add(egui::DragValue::new(&mut self.total_time).speed(1.0).range(1.0..=100.0)).changed() { changed = true; }
             });
+
+            ui.add_space(5.0);
+            ui.checkbox(&mut self.show_annotations, "Show Annotations");
 
             ui.add_space(10.0);
             let param_summary = self.param_summary();
@@ -447,6 +406,9 @@ impl InteractiveTool for OdeSolverTool {
                         let line_v = Line::new("y'(t)", PlotPoints::new(plot_points_v))
                             .color(egui::Color32::LIGHT_RED);
                         plot_ui.line(line_v);
+                    }
+                    if self.show_annotations && !self.diverged {
+                        annotations::render_ode_callouts(plot_ui, self);
                     }
                     self.snapshot_manager.render_on_plot(plot_ui);
                 });

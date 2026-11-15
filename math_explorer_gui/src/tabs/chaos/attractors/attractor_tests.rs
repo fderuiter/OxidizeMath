@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use eframe::egui;
 
 #[test]
 fn test_attractor_divergence_detection() {
@@ -17,20 +18,14 @@ fn test_attractor_divergence_detection() {
 
     assert!(plotter.diverged() && plotter.is_paused());
     match plotter.execution_state {
-        SolverExecutionState::Diverged {
-            invalid_vec,
-            diverged_at_step,
-        } => {
+        SolverExecutionState::Diverged { invalid_vec, diverged_at_step } => {
             assert!(invalid_vec.x.is_nan() && diverged_at_step == 0);
         }
         _ => panic!("Expected Diverged execution state"),
     }
 
     // Verify history contains no non-finite values
-    assert!(plotter
-        .history
-        .iter()
-        .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+    assert!(plotter.history.iter().all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
 
     // Reset clears diverged flag cleanly and restores Ready
     plotter.reset();
@@ -124,13 +119,61 @@ fn test_attractor_step_counting_and_divergence_metadata() {
 
     assert!(plotter.diverged());
     match plotter.execution_state {
-        SolverExecutionState::Diverged {
-            invalid_vec,
-            diverged_at_step,
-        } => {
+        SolverExecutionState::Diverged { invalid_vec, diverged_at_step } => {
             assert!(invalid_vec.y.is_infinite());
             assert_eq!(diverged_at_step, plotter.simulation_speed);
         }
         _ => panic!("Expected Diverged execution state"),
     }
+}
+
+#[test]
+fn test_attractor_annotations_toggle_and_fixed_points() {
+    let mut plotter = AttractorPlotter::default();
+    assert!(plotter.show_annotations);
+
+    // Toggle off
+    plotter.show_annotations = false;
+    assert!(!plotter.show_annotations);
+
+    // Toggle on
+    plotter.show_annotations = true;
+    assert!(plotter.show_annotations);
+
+    // Verify fixed point coordinates for standard Lorenz parameters (rho=28, beta=8/3)
+    let rho = plotter.system.rho;
+    let beta = plotter.system.beta;
+    assert!(rho > 1.0 && beta > 0.0);
+    let x = (beta * (rho - 1.0)).sqrt();
+    let z = rho - 1.0;
+    // For standard parameters: x ~ 8.485, z = 27.0
+    assert!((x - (8.0 / 3.0 * 27.0_f64).sqrt()).abs() < 1e-10);
+    assert_eq!(z, 27.0);
+
+    // Verify 3D projection produces finite 2D canvas coordinates
+    let c_pos = plotter.project(Vector3::new(x, x, z));
+    let c_neg = plotter.project(Vector3::new(-x, -x, z));
+    assert!(c_pos[0].is_finite() && c_pos[1].is_finite());
+    assert!(c_neg[0].is_finite() && c_neg[1].is_finite());
+
+    // Test UI rendering runs cleanly with annotations enabled and disabled
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| plotter.show(ctx));
+
+    plotter.show_annotations = false;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| plotter.show(ctx));
+}
+
+#[test]
+fn test_attractor_state_serialization_roundtrip_with_annotations() {
+    let plotter = AttractorPlotter {
+        show_annotations: false,
+        ..Default::default()
+    };
+
+    let saved = plotter.save_state().expect("save_state should succeed");
+    let mut restored = AttractorPlotter::default();
+    restored.load_state(&saved);
+
+    assert!(!restored.show_annotations);
 }

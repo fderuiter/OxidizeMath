@@ -3,8 +3,8 @@
 use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::InteractiveTool;
-use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
+use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
+use egui_plot::{Callout, Line, Plot, PlotPoints};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
@@ -41,6 +41,7 @@ pub struct AttractorPlotter {
     camera: crate::framework::Camera3D,
     params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     worker: BackgroundWorker<AttractorRunner>,
+    pub show_annotations: bool,
 }
 
 impl Default for AttractorPlotter {
@@ -78,6 +79,7 @@ impl Default for AttractorPlotter {
             camera: crate::framework::Camera3D::new(0.0, 0.0, 1.0),
             params,
             worker,
+            show_annotations: true,
         }
     }
 }
@@ -190,6 +192,12 @@ impl InteractiveTool for AttractorPlotter {
             dt: f64,
             simulation_speed: usize,
             paused: bool,
+            #[serde(default = "default_annotations_enabled")]
+            show_annotations: bool,
+        }
+
+        fn default_annotations_enabled() -> bool {
+            true
         }
 
         serde_json::to_string(&AttractorState {
@@ -199,6 +207,7 @@ impl InteractiveTool for AttractorPlotter {
             dt: self.dt,
             simulation_speed: self.simulation_speed,
             paused: self.is_paused(),
+            show_annotations: self.show_annotations,
         })
         .ok()
     }
@@ -212,6 +221,12 @@ impl InteractiveTool for AttractorPlotter {
             dt: f64,
             simulation_speed: usize,
             paused: bool,
+            #[serde(default = "default_annotations_enabled")]
+            show_annotations: bool,
+        }
+
+        fn default_annotations_enabled() -> bool {
+            true
         }
 
         if let Ok(s) = serde_json::from_str::<AttractorState>(state) {
@@ -220,6 +235,7 @@ impl InteractiveTool for AttractorPlotter {
             self.system.beta = s.beta;
             self.dt = s.dt;
             self.simulation_speed = s.simulation_speed;
+            self.show_annotations = s.show_annotations;
             self.reset();
             if s.paused {
                 self.execution_state = SolverExecutionState::Paused;
@@ -353,6 +369,9 @@ impl InteractiveTool for AttractorPlotter {
             });
 
             ui.separator();
+            ui.checkbox(&mut self.show_annotations, "Show Fixed Points");
+
+            ui.separator();
             let state = self.system.state.vec;
             ui.label(format!("X: {:.2}", state.x));
             ui.label(format!("Y: {:.2}", state.y));
@@ -394,6 +413,52 @@ impl InteractiveTool for AttractorPlotter {
                         Line::new("Trajectory", PlotPoints::new(points))
                             .color(egui::Color32::from_rgb(100, 200, 255)),
                     );
+
+                    if self.show_annotations
+                        && self.system.rho > 1.0
+                        && self.system.beta > 0.0
+                        && self.system.rho.is_finite()
+                        && self.system.beta.is_finite()
+                    {
+                        let x = (self.system.beta * (self.system.rho - 1.0)).sqrt();
+                        let z = self.system.rho - 1.0;
+                        if x.is_finite() && z.is_finite() {
+                            let c_pos = self.project(Vector3::new(x, x, z));
+                            let c_neg = self.project(Vector3::new(-x, -x, z));
+
+                            let visuals = plot_ui.ctx().style().visuals.clone();
+                            let bg_fill = Color32::from_rgba_unmultiplied(
+                                visuals.window_fill().r(),
+                                visuals.window_fill().g(),
+                                visuals.window_fill().b(),
+                                230,
+                            );
+                            let frame_stroke = visuals.widgets.noninteractive.bg_stroke;
+
+                            let callout_pos = Callout::new(
+                                c_pos,
+                                format!("Fixed Point C+ ({:.1}, {:.1}, {:.1})", x, x, z),
+                            )
+                            .offset(Vec2::new(35.0, -25.0))
+                            .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(231, 76, 60)))
+                            .frame(bg_fill, frame_stroke)
+                            .corner_radius(CornerRadius::same(4))
+                            .text_color(visuals.text_color());
+
+                            let callout_neg = Callout::new(
+                                c_neg,
+                                format!("Fixed Point C- ({:.1}, {:.1}, {:.1})", -x, -x, z),
+                            )
+                            .offset(Vec2::new(-35.0, 25.0))
+                            .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(155, 89, 182)))
+                            .frame(bg_fill, frame_stroke)
+                            .corner_radius(CornerRadius::same(4))
+                            .text_color(visuals.text_color());
+
+                            plot_ui.callout(callout_pos);
+                            plot_ui.callout(callout_neg);
+                        }
+                    }
                 })
                 .response;
             
@@ -423,5 +488,4 @@ impl scientific_metadata::theory::TheoryDescribable for AttractorPlotter {
 }
 
 #[cfg(test)]
-#[path = "attractors/tests.rs"]
-mod tests;
+mod attractor_tests;
