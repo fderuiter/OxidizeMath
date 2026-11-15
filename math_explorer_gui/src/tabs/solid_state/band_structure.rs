@@ -31,6 +31,49 @@ impl InteractiveTool for BandStructureTool {
     fn name(&self) -> &'static str {
         "Band Structure"
     }
+    fn domain(&self) -> &'static str {
+        "solid_state"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct BandStructureState {
+            e0: f64,
+            t: f64,
+            a: f64,
+            hbar: f64,
+            m: f64,
+            show_free_electron: bool,
+        }
+        serde_json::to_string(&BandStructureState {
+            e0: self.e0,
+            t: self.t,
+            a: self.a,
+            hbar: self.hbar,
+            m: self.m,
+            show_free_electron: self.show_free_electron,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct BandStructureState {
+            e0: f64,
+            t: f64,
+            a: f64,
+            hbar: f64,
+            m: f64,
+            show_free_electron: bool,
+        }
+        if let Ok(s) = serde_json::from_str::<BandStructureState>(state) {
+            self.e0 = s.e0;
+            self.t = s.t;
+            self.a = s.a;
+            self.hbar = s.hbar;
+            self.m = s.m;
+            self.show_free_electron = s.show_free_electron;
+        }
+    }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {

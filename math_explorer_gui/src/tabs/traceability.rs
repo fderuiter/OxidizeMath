@@ -190,6 +190,10 @@ impl ExplorerTab for TraceabilityTab {
         "Traceability Portal"
     }
 
+    fn domain(&self) -> &'static str {
+        "traceability"
+    }
+
     fn save_state(&self) -> Option<String> {
         #[derive(serde::Serialize, serde::Deserialize)]
         struct TraceabilityState {

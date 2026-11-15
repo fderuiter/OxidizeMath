@@ -59,10 +59,41 @@ impl VietorisRipsTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct VietorisRipsState {
+    radius: f64,
+    points: Vec<[f64; 2]>,
+}
+
 impl InteractiveTool for VietorisRipsTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Vietoris-Rips Complex"
+    }
+
+    fn domain(&self) -> &'static str {
+        "geometry_topology"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        let pts = self.points.iter().map(|p| [p.x, p.y]).collect();
+        serde_json::to_string(&VietorisRipsState {
+            radius: self.radius,
+            points: pts,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(loaded) = serde_json::from_str::<VietorisRipsState>(state) {
+            self.radius = loaded.radius;
+            self.points = loaded
+                .points
+                .into_iter()
+                .map(|[x, y]| Point2D::new(x, y))
+                .collect();
+            self.update_complex();
+        }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]

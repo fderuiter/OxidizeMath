@@ -117,6 +117,42 @@ impl InteractiveTool for BankrollGrowthTool {
     fn name(&self) -> &'static str {
         "Bankroll Growth"
     }
+    fn domain(&self) -> &'static str {
+        "financial_math"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct BankrollState {
+            initial_bankroll: f64,
+            probability: f64,
+            odds: f64,
+            num_bets: usize,
+        }
+        serde_json::to_string(&BankrollState {
+            initial_bankroll: self.initial_bankroll,
+            probability: self.probability,
+            odds: self.odds,
+            num_bets: self.num_bets,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct BankrollState {
+            initial_bankroll: f64,
+            probability: f64,
+            odds: f64,
+            num_bets: usize,
+        }
+        if let Ok(s) = serde_json::from_str::<BankrollState>(state) {
+            self.initial_bankroll = s.initial_bankroll;
+            self.probability = s.probability;
+            self.odds = s.odds;
+            self.num_bets = s.num_bets;
+            self.recalculate();
+        }
+    }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {

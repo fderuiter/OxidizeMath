@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
-use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialogState};
+use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::{
@@ -32,8 +32,6 @@ pub struct OdeSolverTool {
     y_series: Vec<f64>,
     v_series: Vec<f64>,
     diverged: bool,
-    // Dialog & Presets
-    dialog_state: PresetDialogState,
     snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     last_param_summary: String,
@@ -43,10 +41,18 @@ pub struct OdeSolverTool {
 impl Default for OdeSolverTool {
     fn default() -> Self {
         let mut tool = Self {
-            preset: OdePreset::Exponential, dt: 0.05, total_time: 10.0,
-            param_k: 1.0, param_r: 1.0, param_cap_k: 10.0, ic_y0: 1.0, ic_v0: 0.0,
-            time_series: Vec::new(), y_series: Vec::new(), v_series: Vec::new(),
-            diverged: false, dialog_state: PresetDialogState::default(),
+            preset: OdePreset::Exponential,
+            dt: 0.05,
+            total_time: 10.0,
+            param_k: 1.0,
+            param_r: 1.0,
+            param_cap_k: 10.0,
+            ic_y0: 1.0,
+            ic_v0: 0.0,
+            time_series: Vec::new(),
+            y_series: Vec::new(),
+            v_series: Vec::new(),
+            diverged: false,
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
@@ -172,6 +178,14 @@ fn default_annotations_enabled() -> bool {
 impl InteractiveTool for OdeSolverTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str { "ODE Solvers" }
+    fn domain(&self) -> &'static str { "analysis" }
+
+    fn export_preset_json(&self) -> Result<String, String> { self.to_json_string() }
+    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let res = self.from_json_str(json_str);
+        if res.is_ok() { self.recalculate(); }
+        res
+    }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut datasets = egui_plot::get_last_plot_datasets();
@@ -332,12 +346,6 @@ impl InteractiveTool for OdeSolverTool {
                 }
                 Some((label, param_summary, series))
             });
-
-            let mut dialog_state = std::mem::take(&mut self.dialog_state);
-            if crate::presets::render_preset_buttons(&mut dialog_state, ui, self) {
-                changed = true;
-            }
-            self.dialog_state = dialog_state;
 
             let params = match self.preset {
                 OdePreset::Exponential => vec![("k".to_string(), self.param_k), ("y0".to_string(), self.ic_y0)],

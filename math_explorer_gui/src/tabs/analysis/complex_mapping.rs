@@ -5,7 +5,7 @@ use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::complex::mapping::conformal_scale_factor;
 use num_complex::Complex64;
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum MappingFunction {
     ZSquared,
     Exponential,
@@ -78,6 +78,45 @@ impl InteractiveTool for ComplexMappingTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Complex Mapping"
+    }
+    fn domain(&self) -> &'static str {
+        "analysis"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct ComplexMappingState {
+            function: MappingFunction,
+            grid_min: f64,
+            grid_max: f64,
+            grid_density: usize,
+            inspection_point: [f64; 2],
+        }
+        serde_json::to_string(&ComplexMappingState {
+            function: self.function,
+            grid_min: self.grid_min,
+            grid_max: self.grid_max,
+            grid_density: self.grid_density,
+            inspection_point: self.inspection_point,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct ComplexMappingState {
+            function: MappingFunction,
+            grid_min: f64,
+            grid_max: f64,
+            grid_density: usize,
+            inspection_point: [f64; 2],
+        }
+        if let Ok(s) = serde_json::from_str::<ComplexMappingState>(state) {
+            self.function = s.function;
+            self.grid_min = s.grid_min;
+            self.grid_max = s.grid_max;
+            self.grid_density = s.grid_density;
+            self.inspection_point = s.inspection_point;
+        }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]

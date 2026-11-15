@@ -20,13 +20,24 @@ pub struct PotentialFlowTool {
     new_element_angle: f64,
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum ElementType {
     Uniform,
     Source,
     Sink,
     Vortex,
     Doublet,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PotentialFlowState {
+    grid_size: usize,
+    view_range: f64,
+    selected_element_type: ElementType,
+    new_element_strength: f64,
+    new_element_x: f64,
+    new_element_y: f64,
+    new_element_angle: f64,
 }
 
 impl Default for PotentialFlowTool {
@@ -57,6 +68,35 @@ impl InteractiveTool for PotentialFlowTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Potential Flow"
+    }
+
+    fn domain(&self) -> &'static str {
+        "fluid_dynamics"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&PotentialFlowState {
+            grid_size: self.grid_size,
+            view_range: self.view_range,
+            selected_element_type: self.selected_element_type,
+            new_element_strength: self.new_element_strength,
+            new_element_x: self.new_element_x,
+            new_element_y: self.new_element_y,
+            new_element_angle: self.new_element_angle,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(loaded) = serde_json::from_str::<PotentialFlowState>(state) {
+            self.grid_size = loaded.grid_size;
+            self.view_range = loaded.view_range;
+            self.selected_element_type = loaded.selected_element_type;
+            self.new_element_strength = loaded.new_element_strength;
+            self.new_element_x = loaded.new_element_x;
+            self.new_element_y = loaded.new_element_y;
+            self.new_element_angle = loaded.new_element_angle;
+        }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]

@@ -17,10 +17,35 @@ impl Default for BeamProfilingTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BeamProfilingState {
+    incident_fluence: f64,
+    mu: f64,
+}
+
 impl InteractiveTool for BeamProfilingTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Beam Profiling"
+    }
+
+    fn domain(&self) -> &'static str {
+        "medical"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&BeamProfilingState {
+            incident_fluence: self.incident_fluence,
+            mu: self.mu,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(loaded) = serde_json::from_str::<BeamProfilingState>(state) {
+            self.incident_fluence = loaded.incident_fluence;
+            self.mu = loaded.mu;
+        }
     }
 
     fn show(&mut self, ctx: &egui::Context) {
