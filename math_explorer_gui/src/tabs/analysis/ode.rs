@@ -5,68 +5,15 @@ use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialog
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::{
-    OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
+    OdeModel, RungeKutta4, TimeStepper, VecState,
 };
 
-#[derive(Clone, Debug)]
-struct ExponentialOde { k: f64 }
+pub mod models;
+pub mod recovery;
 
-impl OdeSystem<VecState> for ExponentialOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.k * state.0[0];
-    }
-}
-
-#[derive(Clone, Debug)]
-struct HarmonicOscillatorOde { k: f64 }
-
-impl OdeSystem<VecState> for HarmonicOscillatorOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = state.0[1];
-        out.0[1] = -self.k * state.0[0];
-    }
-}
-
-#[derive(Clone, Debug)]
-struct LogisticGrowthOde { r: f64, cap_k: f64 }
-
-impl OdeSystem<VecState> for LogisticGrowthOde {
-    fn derivative(&self, t: f64, state: &VecState) -> VecState { let mut out = VecState(vec![0.0; state.0.len()]); self.derivative_in_place(t, state, &mut out); out }
-    fn derivative_in_place(&self, _t: f64, state: &VecState, out: &mut VecState) {
-        out.0[0] = self.r * state.0[0] * (1.0 - state.0[0] / self.cap_k);
-    }
-}
-
-fn eval_ode_final_state(preset: OdePreset, dt: f64, total_time: f64, p_map: &std::collections::HashMap<String, f64>) -> f64 {
-    let y0 = p_map.get("y0").copied().unwrap_or(1.0);
-    let v0 = p_map.get("v0").copied().unwrap_or(0.0);
-    let k = p_map.get("k").copied().unwrap_or(1.0);
-    let r = p_map.get("r").copied().unwrap_or(1.0);
-    let cap_k = p_map.get("cap_k").copied().unwrap_or(10.0);
-    let steps = (total_time / dt).ceil() as usize;
-    match preset {
-        OdePreset::Exponential => {
-            let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), ExponentialOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-        OdePreset::HarmonicOscillator => {
-            let init = VecState(vec![y0, v0]);
-            let mut model = OdeModel::new(init.clone(), HarmonicOscillatorOde { k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-        OdePreset::LogisticGrowth => {
-            let init = VecState(vec![y0]);
-            let mut model = OdeModel::new(init.clone(), LogisticGrowthOde { r, cap_k }, RungeKutta4::new(&init));
-            for _ in 0..steps { model.step(dt); }
-            model.state.0[0]
-        }
-    }
-}
+use models::{eval_ode_final_state, ExponentialOde, HarmonicOscillatorOde, LogisticGrowthOde};
+#[allow(unused_imports)]
+pub use recovery::{clamp_ode_parameters, render_recovery_banner, render_recovery_ui, OdeDiagnosticReport, RecoveryAction};
 
 // ----------------------------------------------------------------------------
 // Tool Implementation
@@ -85,6 +32,7 @@ pub struct OdeSolverTool {
     y_series: Vec<f64>,
     v_series: Vec<f64>,
     diverged: bool,
+    diagnostic_report: Option<OdeDiagnosticReport>,
     // Dialog & Presets
     dialog_state: PresetDialogState,
     snapshot_manager: TraceSnapshotManager,
@@ -107,6 +55,7 @@ impl Default for OdeSolverTool {
             y_series: Vec::new(),
             v_series: Vec::new(),
             diverged: false,
+            diagnostic_report: None,
             dialog_state: PresetDialogState::default(),
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
@@ -130,6 +79,33 @@ impl OdeSolverTool {
         self.diverged
     }
 
+    #[must_use]
+    pub fn diagnostic_report(&self) -> Option<&OdeDiagnosticReport> {
+        self.diagnostic_report.as_ref()
+    }
+
+    pub fn auto_scale_step_size(&mut self) {
+        let min_dt = 1e-6;
+        if !self.dt.is_finite() || self.dt <= 0.0 {
+            self.dt = 0.05;
+        } else {
+            self.dt = (self.dt * 0.5).max(min_dt);
+        }
+        self.recalculate();
+    }
+
+    pub fn clamp_instability_parameters(&mut self) {
+        clamp_ode_parameters(
+            self.preset,
+            &mut self.param_k,
+            &mut self.param_r,
+            &mut self.param_cap_k,
+            &mut self.ic_y0,
+            &mut self.ic_v0,
+        );
+        self.recalculate();
+    }
+
     pub fn reset_parameters(&mut self) {
         match self.preset {
             OdePreset::Exponential => { self.param_k = 1.0; self.ic_y0 = 1.0; }
@@ -147,12 +123,14 @@ impl OdeSolverTool {
         self.y_series.clear();
         self.v_series.clear();
         self.diverged = false;
+        self.diagnostic_report = None;
 
         if self.dt <= 0.0 || self.total_time <= 0.0 || !self.dt.is_finite() || !self.total_time.is_finite() {
             return;
         }
 
         let num_steps = (self.total_time / self.dt).ceil() as usize;
+        let mut divergence_info = None;
 
         match self.preset {
             OdePreset::Exponential => {
@@ -163,7 +141,7 @@ impl OdeSolverTool {
                 for i in 0..=num_steps {
                     let y = model.get_state().0[0];
                     if !y.is_finite() {
-                        self.diverged = true;
+                        divergence_info = Some((i as f64 * self.dt, i, "y(t)".to_string()));
                         break;
                     }
                     self.time_series.push(i as f64 * self.dt);
@@ -179,8 +157,12 @@ impl OdeSolverTool {
                 for i in 0..=num_steps {
                     let y = model.get_state().0[0];
                     let v = model.get_state().0[1];
-                    if !y.is_finite() || !v.is_finite() {
-                        self.diverged = true;
+                    if !y.is_finite() {
+                        divergence_info = Some((i as f64 * self.dt, i, "y(t)".to_string()));
+                        break;
+                    }
+                    if !v.is_finite() {
+                        divergence_info = Some((i as f64 * self.dt, i, "y'(t)".to_string()));
                         break;
                     }
                     self.time_series.push(i as f64 * self.dt);
@@ -197,7 +179,7 @@ impl OdeSolverTool {
                 for i in 0..=num_steps {
                     let y = model.get_state().0[0];
                     if !y.is_finite() {
-                        self.diverged = true;
+                        divergence_info = Some((i as f64 * self.dt, i, "y(t)".to_string()));
                         break;
                     }
                     self.time_series.push(i as f64 * self.dt);
@@ -206,6 +188,22 @@ impl OdeSolverTool {
                 }
             }
         }
+
+        if let Some((t_div, step_idx, var_name)) = divergence_info {
+            self.diverged = true;
+            let report = OdeDiagnosticReport::new(
+                t_div,
+                step_idx,
+                var_name.clone(),
+                format!(
+                    "Simulation diverged at t={:.4}s (step {}) in variable {}",
+                    t_div, step_idx, var_name
+                ),
+            );
+            self.diagnostic_report = Some(report);
+            recovery::emit_divergence_telemetry(t_div, step_idx, &var_name, self.preset.name(), self.dt);
+        }
+
         self.last_param_summary = self.param_summary();
     }
 }
@@ -419,19 +417,7 @@ impl InteractiveTool for OdeSolverTool {
             ui.heading("Solution Trajectory");
 
             if self.diverged {
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new("⚠️ Solver Divergence Warning: Non-finite state detected (NaN or Inf). Integration terminated.")
-                                .color(egui::Color32::RED)
-                                .strong(),
-                        );
-                        if ui.button("↻ Reset Parameters").clicked() {
-                            self.reset_parameters();
-                            changed = true;
-                        }
-                    });
-                });
+                recovery::render_recovery_ui(ui, self, &mut changed, &mut plot_points_y, &mut plot_points_v);
             }
 
             let line_y = Line::new("y(t)", PlotPoints::new(plot_points_y)).color(egui::Color32::LIGHT_BLUE);
