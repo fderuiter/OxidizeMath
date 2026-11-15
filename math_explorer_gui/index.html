@@ -1,19 +1,309 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Math Explorer GUI</title>
     <script src="coi-serviceworker.min.js"></script>
     <link data-trunk rel="copy-file" href="coi-serviceworker.min.js"/>
     <link data-trunk rel="rust" href="Cargo.toml" data-bin="math_explorer_gui" data-wasm-opt="0"/>
     <link data-trunk rel="copy-file" href="worker.js"/>
     <style>
-        html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
-        canvas { display: block; width: 100%; height: 100%; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            background-color: #121214;
+            color: #e2e8f0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Loading indicator styles */
+        #loading_indicator {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #121214;
+            color: #e2e8f0;
+            z-index: 1000;
+            user-select: none;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.12);
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 24px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 0 0 8px 0;
+            letter-spacing: -0.01em;
+        }
+
+        .loading-subtitle {
+            font-size: 0.95rem;
+            color: #94a3b8;
+            margin: 0;
+        }
+
+        /* Error boundary / recovery container styles */
+        #error_container {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(10, 10, 12, 0.96);
+            backdrop-filter: blur(8px);
+            z-index: 2000;
+            padding: 24px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        .error-card {
+            background-color: #1a1a1f;
+            border: 1px solid #2d2d38;
+            border-radius: 12px;
+            padding: 32px;
+            max-width: 680px;
+            width: 100%;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        .error-icon-wrapper {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background-color: rgba(239, 68, 68, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            color: #ef4444;
+            font-size: 28px;
+            line-height: 1;
+        }
+
+        .error-title {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin: 0 0 12px 0;
+            color: #f87171;
+        }
+
+        .error-message {
+            font-size: 1rem;
+            line-height: 1.5;
+            color: #cbd5e1;
+            margin: 0 0 24px 0;
+        }
+
+        .instructions-card {
+            background-color: #121215;
+            border: 1px solid #262630;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: left;
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 24px;
+        }
+
+        .instructions-card h2 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #f1f5f9;
+            margin: 0 0 14px 0;
+        }
+
+        .browser-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .browser-item h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #93c5fd;
+            margin: 0 0 6px 0;
+        }
+
+        .browser-item ol {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 0.875rem;
+            color: #94a3b8;
+            line-height: 1.5;
+        }
+
+        .browser-item ol li strong {
+            color: #e2e8f0;
+        }
+
+        .additional-info {
+            margin-top: 14px;
+            font-size: 0.85rem;
+            color: #64748b;
+            line-height: 1.4;
+            border-top: 1px solid #262630;
+            padding-top: 12px;
+        }
+
+        .additional-info a {
+            color: #60a5fa;
+            text-decoration: underline;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            width: 100%;
+        }
+
+        .reload-btn {
+            background-color: #2563eb;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 24px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+
+        .reload-btn:hover {
+            background-color: #1d4ed8;
+        }
+
+        .reload-btn:focus-visible {
+            outline: 2px solid #60a5fa;
+            outline-offset: 2px;
+        }
+
+        .error-details {
+            margin-top: 16px;
+            padding: 10px;
+            background-color: #0c0c0e;
+            border: 1px solid #262630;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #fca5a5;
+            width: 100%;
+            box-sizing: border-box;
+            word-break: break-all;
+            text-align: left;
+        }
+
+        /* Fallback for noscript */
+        noscript .noscript-banner {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #121214;
+            color: #f87171;
+            padding: 24px;
+            text-align: center;
+            z-index: 3000;
+        }
     </style>
 </head>
 <body>
+    <noscript>
+        <div class="noscript-banner">
+            <h2>JavaScript Required</h2>
+            <p>Math Explorer requires JavaScript and WebGL to run in your browser. Please enable JavaScript to continue.</p>
+        </div>
+    </noscript>
+
+    <!-- Visual loading indicator while WebAssembly and shaders compile -->
+    <div id="loading_indicator" role="status" aria-live="polite" aria-busy="true">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="loading-title">Loading Math Explorer...</div>
+        <p class="loading-subtitle">Initializing WebAssembly &amp; graphics engine</p>
+    </div>
+
+    <!-- WebGL error boundary shown if hardware acceleration or WebGL fails -->
+    <div id="error_container" role="alert" aria-live="assertive">
+        <div class="error-card">
+            <div class="error-icon-wrapper" aria-hidden="true">&#9888;</div>
+            <h1 class="error-title">WebGL Initialization Failed</h1>
+            <p class="error-message">
+                Math Explorer requires WebGL and hardware acceleration to render mathematics and interactive simulations. Your browser was unable to initialize a WebGL rendering context.
+            </p>
+            <div class="instructions-card">
+                <h2>Enable Hardware Acceleration &amp; WebGL</h2>
+                <div class="browser-grid">
+                    <div class="browser-item">
+                        <h3>Google Chrome / Microsoft Edge / Brave</h3>
+                        <ol>
+                            <li>Open <strong>Settings</strong> (&vellip; &rarr; Settings).</li>
+                            <li>Navigate to <strong>System</strong> (or <em>System and performance</em>).</li>
+                            <li>Toggle on <strong>Use graphics acceleration when available</strong> (or <em>Use hardware acceleration</em>).</li>
+                            <li>Relaunch your browser and refresh this page.</li>
+                        </ol>
+                    </div>
+                    <div class="browser-item">
+                        <h3>Mozilla Firefox</h3>
+                        <ol>
+                            <li>Open <strong>Settings</strong> &rarr; <strong>General</strong>.</li>
+                            <li>Under <strong>Performance</strong>, uncheck <em>Use recommended performance settings</em>.</li>
+                            <li>Check <strong>Use hardware acceleration when available</strong>.</li>
+                            <li>Restart Firefox and refresh this page.</li>
+                        </ol>
+                    </div>
+                    <div class="browser-item">
+                        <h3>Apple Safari</h3>
+                        <ol>
+                            <li>Open <strong>Safari Settings</strong> &rarr; <strong>Advanced</strong> &rarr; check <em>Show features for web developers</em>.</li>
+                            <li>In the <strong>Develop</strong> menu, open <em>Experimental Features</em> and verify <strong>WebGL</strong> is enabled.</li>
+                        </ol>
+                    </div>
+                </div>
+                <div class="additional-info">
+                    Additional checks: Verify your graphics drivers are current, test WebGL compatibility at <a href="https://get.webgl.org" target="_blank" rel="noopener noreferrer">get.webgl.org</a>, and ensure browser extensions or privacy modes are not blocking WebGL contexts.
+                </div>
+            </div>
+            <div class="action-buttons">
+                <button type="button" class="reload-btn" onclick="window.location.reload()">Reload Page</button>
+            </div>
+            <pre id="error_details" class="error-details" style="display: none;"></pre>
+        </div>
+    </div>
+
     <canvas id="the_canvas_id" role="application" aria-label="Math Explorer Application"></canvas>
 </body>
 </html>
-

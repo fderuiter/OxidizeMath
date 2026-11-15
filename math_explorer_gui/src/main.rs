@@ -48,6 +48,33 @@ fn main() -> eframe::Result {
 }
 
 #[cfg(target_arch = "wasm32")]
+fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) {
+    accessibility::announce_status_with_priority(
+        "WebGL initialization failed. Please enable hardware acceleration in your browser settings.",
+        "assertive",
+    );
+
+    if let Some(doc) = document {
+        if let Some(loading) = doc.get_element_by_id("loading_indicator") {
+            loading.remove();
+        }
+
+        if let Some(canvas) = doc.get_element_by_id("the_canvas_id") {
+            let _ = canvas.set_attribute("style", "display: none;");
+        }
+
+        if let Some(error_container) = doc.get_element_by_id("error_container") {
+            let _ = error_container.set_attribute("style", "display: flex;");
+        }
+
+        if let Some(details_el) = doc.get_element_by_id("error_details") {
+            details_el.set_text_content(Some(error_info));
+            let _ = details_el.set_attribute("style", "display: block;");
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 // theory_verification!
 fn main() {
     console_error_panic_hook::set_once();
@@ -56,15 +83,33 @@ fn main() {
     accessibility::init_accessibility_bridge();
     wasm_bindgen_futures::spawn_local(async {
         use wasm_bindgen::JsCast;
-        let document = web_sys::window().unwrap().document().unwrap();
-        let canvas = document
-            .get_element_by_id("the_canvas_id")
-            .unwrap()
-            .dyn_into::<web_sys::HtmlCanvasElement>()
-            .unwrap();
+
+        let window = web_sys::window();
+        let document = window.as_ref().and_then(|w| w.document());
+
+        let Some(ref doc) = document else {
+            eprintln!("Failed to obtain DOM Document during initialization.");
+            return;
+        };
+
+        let canvas_el = doc.get_element_by_id("the_canvas_id");
+        let canvas = match canvas_el.and_then(|el| el.dyn_into::<web_sys::HtmlCanvasElement>().ok())
+        {
+            Some(canvas) => canvas,
+            None => {
+                eprintln!("Canvas element with id 'the_canvas_id' not found or invalid.");
+                handle_webgl_failure(
+                    Some(doc),
+                    "Canvas element 'the_canvas_id' not found in DOM.",
+                );
+                return;
+            }
+        };
+
         let runner = eframe::WebRunner::new();
         let web_options = eframe::WebOptions::default();
-        runner
+
+        let start_res = runner
             .start(
                 canvas,
                 web_options,
@@ -73,8 +118,20 @@ fn main() {
                     Ok(Box::new(MathExplorerApp::new(cc)))
                 }),
             )
-            .await
-            .expect("failed to start eframe");
+            .await;
+
+        match start_res {
+            Ok(()) => {
+                if let Some(loading) = doc.get_element_by_id("loading_indicator") {
+                    loading.remove();
+                }
+            }
+            Err(err) => {
+                let err_msg = format!("{err:?}");
+                eprintln!("Failed to start eframe WebRunner: {err_msg}");
+                handle_webgl_failure(Some(doc), &err_msg);
+            }
+        }
     });
 }
 // theory_verification!
