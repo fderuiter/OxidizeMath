@@ -93,7 +93,7 @@ mod tests {
     fn test_relu_prime_scalar_behavior() {
         assert_eq!(relu_prime(-5.0), 0.0);
         assert_eq!(relu_prime(0.0), 0.0);
-        assert_eq!(relu_prime(3.14), 1.0);
+        assert_eq!(relu_prime(3.5), 1.0);
     }
 
     #[test]
