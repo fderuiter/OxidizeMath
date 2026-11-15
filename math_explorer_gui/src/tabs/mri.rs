@@ -1,5 +1,6 @@
 // @explorer_feature = "physics"
 use crate::accessibility::AccessibleHoverText;
+use crate::async_sim::{BackgroundWorker, SimCommand, SimulationRunner, StateSnapshot};
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, PlotPoints};
@@ -7,10 +8,95 @@ use math_explorer::physics::mri::bloch::BlochSimulator;
 use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
+use std::sync::Arc;
+
+#[allow(missing_docs)]
+pub struct MriSharedParams {
+    pub t1: f64,
+    pub t2: f64,
+    pub b_field: Vector3<f64>,
+    pub time_scale: f64,
+}
+
+#[derive(Clone)]
+#[allow(missing_docs)]
+pub struct MriSnapshot {
+    pub current_time: f64,
+    pub magnetization: Vector3<f64>,
+    pub history: VecDeque<(f64, Vector3<f64>)>,
+}
+
+#[allow(missing_docs)]
+pub struct MriRunner {
+    pub simulator: BlochSimulator,
+    pub solver: RungeKutta4<Vector3<f64>>,
+    pub params: Arc<std::sync::RwLock<MriSharedParams>>,
+    pub current_time: f64,
+    pub history: VecDeque<(f64, Vector3<f64>)>,
+    pub max_history: usize,
+}
+
+impl SimulationRunner for MriRunner {
+    fn process_command(&mut self, cmd: SimCommand) {
+        if let SimCommand::Reset = cmd {
+            self.simulator.magnetization = Vector3::new(self.simulator.m0, 0.0, 0.0);
+            self.current_time = 0.0;
+            self.history.clear();
+        }
+    }
+
+    fn step(&mut self) {
+        let (t1, t2, b_field, time_scale) = {
+            let p = self.params.read().unwrap();
+            (p.t1, p.t2, p.b_field, p.time_scale)
+        };
+        self.simulator.t1 = t1;
+        self.simulator.t2 = t2;
+        self.simulator.b_field = b_field;
+
+        let dt = 0.001;
+        let steps = time_scale.ceil() as usize;
+
+        for _ in 0..steps {
+            TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
+            self.current_time += dt;
+
+            if self.history.len() >= self.max_history {
+                self.history.pop_front();
+            }
+            self.history
+                .push_back((self.current_time, self.simulator.magnetization));
+        }
+    }
+
+    fn get_snapshot(&self) -> StateSnapshot {
+        let snapshot = MriSnapshot {
+            current_time: self.current_time,
+            magnetization: self.simulator.magnetization,
+            history: self.history.clone(),
+        };
+        StateSnapshot {
+            width: 0,
+            height: 0,
+            pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
+            custom_data: vec![
+                self.current_time,
+                self.simulator.magnetization.x,
+                self.simulator.magnetization.y,
+                self.simulator.magnetization.z,
+            ],
+            structured_data: Some(Box::new(snapshot)),
+        }
+    }
+
+    fn get_steps_per_frame(&self) -> usize {
+        1
+    }
+}
 
 pub struct MriTab {
     simulator: BlochSimulator,
-    solver: RungeKutta4<Vector3<f64>>,
+    _solver: RungeKutta4<Vector3<f64>>,
 
     // Simulation Control
     paused: bool,
@@ -19,7 +105,10 @@ pub struct MriTab {
 
     // Visualization
     history: VecDeque<(f64, Vector3<f64>)>,
-    max_history: usize,
+    _max_history: usize,
+
+    params: Arc<std::sync::RwLock<MriSharedParams>>,
+    worker: BackgroundWorker<MriRunner>,
 }
 
 impl Default for MriTab {
@@ -37,14 +126,35 @@ impl Default for MriTab {
         // Initialize solver with the initial state shape
         let solver = RungeKutta4::new(&initial_m);
 
+        let params = Arc::new(std::sync::RwLock::new(MriSharedParams {
+            t1: 1.0,
+            t2: 0.1,
+            b_field: Vector3::new(0.0, 0.0, 1.0),
+            time_scale: 1.0,
+        }));
+
+        let runner_simulator = BlochSimulator::new(initial_m, m0);
+        let runner_solver = RungeKutta4::new(&initial_m);
+        let runner = MriRunner {
+            simulator: runner_simulator,
+            solver: runner_solver,
+            params: Arc::clone(&params),
+            current_time: 0.0,
+            history: VecDeque::new(),
+            max_history: math_commons::registry::MAX_ITERATIONS,
+        };
+        let worker = BackgroundWorker::new(runner);
+
         Self {
             simulator,
-            solver,
+            _solver: solver,
             paused: true,
             time_scale: 1.0,
             current_time: 0.0,
             history: VecDeque::new(),
-            max_history: math_commons::registry::MAX_ITERATIONS,
+            _max_history: math_commons::registry::MAX_ITERATIONS,
+            params,
+            worker,
         }
     }
 }
@@ -52,11 +162,10 @@ impl Default for MriTab {
 impl MriTab {
     /// Resets the simulation to the initial state defined by current parameters
     fn reset(&mut self) {
-        // Reset to M0 aligned with Z, or some initial excitation state?
-        // Let's reset to "Just excited 90 degrees to X"
         self.simulator.magnetization = Vector3::new(self.simulator.m0, 0.0, 0.0);
         self.current_time = 0.0;
         self.history.clear();
+        let _ = self.worker.send_command(SimCommand::Reset);
     }
 }
 
@@ -93,6 +202,12 @@ impl ExplorerTab for MriTab {
         if let Ok(s) = serde_json::from_str::<MriState>(state) {
             self.paused = s.paused;
             self.time_scale = s.time_scale;
+            self.params.write().unwrap().time_scale = self.time_scale;
+            if self.paused {
+                let _ = self.worker.send_command(SimCommand::Pause);
+            } else {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
         }
     }
 
@@ -100,26 +215,24 @@ impl ExplorerTab for MriTab {
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // --- Simulation Step ---
         if !self.paused {
-            // Use a fixed internal time step for numerical stability
-            // But run multiple steps per frame if time_scale is high
-            let dt = 0.001;
-            let steps = (self.time_scale).ceil() as usize;
-
-            for _ in 0..steps {
-                // Step the physics using the RK4 solver
-                TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
-                self.current_time += dt;
-
-                // Record history (decimated if needed, but here every step for smoothness)
-                if self.history.len() >= self.max_history {
-                    self.history.pop_front();
-                }
-                self.history
-                    .push_back((self.current_time, self.simulator.magnetization));
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
             }
-
-            // Request a repaint to keep the animation loop running
             ctx.request_repaint();
+        } else if self.worker.is_running() {
+            let _ = self.worker.send_command(SimCommand::Pause);
+        }
+
+        if let Some(snapshot) = self.worker.update() {
+            if let Some(data) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<MriSnapshot>())
+            {
+                self.current_time = data.current_time;
+                self.simulator.magnetization = data.magnetization;
+                self.history = data.history.clone();
+            }
         }
 
         // --- GUI Layout ---
@@ -128,9 +241,13 @@ impl ExplorerTab for MriTab {
             ui.separator();
 
             ui.collapsing("Relaxation Parameters", |ui| {
-                ui.add(egui::Slider::new(&mut self.simulator.t1, 0.1..=5.0).logarithmic(true).text("Longitudinal (T1) [s]"));
+                if ui.add(egui::Slider::new(&mut self.simulator.t1, 0.1..=5.0).logarithmic(true).text("Longitudinal (T1) [s]")).changed() {
+                    self.params.write().unwrap().t1 = self.simulator.t1;
+                }
 
-                ui.add(egui::Slider::new(&mut self.simulator.t2, 0.01..=2.0).logarithmic(true).text("Transverse (T2) [s]"));
+                if ui.add(egui::Slider::new(&mut self.simulator.t2, 0.01..=2.0).logarithmic(true).text("Transverse (T2) [s]")).changed() {
+                    self.params.write().unwrap().t2 = self.simulator.t2;
+                }
 
                 if self.simulator.t2 > self.simulator.t1 {
                     ui.colored_label(egui::Color32::RED, "Warning: T2 > T1 is unphysical!");
@@ -141,15 +258,21 @@ impl ExplorerTab for MriTab {
                 ui.label("Main Field (B0) [T]");
                 ui.horizontal(|ui| {
                     ui.label("Bz");
-                    ui.add(egui::DragValue::new(&mut self.simulator.b_field.z).speed(0.01));
+                    if ui.add(egui::DragValue::new(&mut self.simulator.b_field.z).speed(0.01)).changed() {
+                        self.params.write().unwrap().b_field.z = self.simulator.b_field.z;
+                    }
                 });
 
                 ui.label("Gradients / RF (B1) [T]");
                 ui.horizontal(|ui| {
                     ui.label("Bx");
-                    ui.add(egui::DragValue::new(&mut self.simulator.b_field.x).speed(0.001));
+                    if ui.add(egui::DragValue::new(&mut self.simulator.b_field.x).speed(0.001)).changed() {
+                        self.params.write().unwrap().b_field.x = self.simulator.b_field.x;
+                    }
                     ui.label("By");
-                    ui.add(egui::DragValue::new(&mut self.simulator.b_field.y).speed(0.001));
+                    if ui.add(egui::DragValue::new(&mut self.simulator.b_field.y).speed(0.001)).changed() {
+                        self.params.write().unwrap().b_field.y = self.simulator.b_field.y;
+                    }
                 });
             });
 
@@ -167,6 +290,11 @@ impl ExplorerTab for MriTab {
                     .clicked()
                 {
                     self.paused = !self.paused;
+                    if self.paused {
+                        let _ = self.worker.send_command(SimCommand::Pause);
+                    } else {
+                        let _ = self.worker.send_command(SimCommand::Start);
+                    }
                 }
                 if ui
                     .button("↻ Reset (90° Pulse)")
@@ -177,7 +305,9 @@ impl ExplorerTab for MriTab {
                 }
             });
 
-            ui.add(egui::Slider::new(&mut self.time_scale, 1.0..=100.0).logarithmic(true).text("Time Scale (Speed)"));
+            if ui.add(egui::Slider::new(&mut self.time_scale, 1.0..=100.0).logarithmic(true).text("Time Scale (Speed)")).changed() {
+                self.params.write().unwrap().time_scale = self.time_scale;
+            }
 
             ui.separator();
             ui.label(format!("Time: {:.3} s", self.current_time));
@@ -212,3 +342,34 @@ impl ExplorerTab for MriTab {
 }
 
 // [cite:graph_parameters_rust]
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mri_tab_initial_state() {
+        let tab = MriTab::default();
+        assert!(tab.paused);
+        assert_eq!(tab.time_scale, 1.0);
+        assert_eq!(tab.current_time, 0.0);
+    }
+
+    #[test]
+    fn test_mri_worker_simulation_step() {
+        let mut tab = MriTab::default();
+        let _ = tab.worker.send_command(SimCommand::Start);
+        let mut stepped = false;
+        for _ in 0..50 {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            if let Some(snap) = tab.worker.update() {
+                if snap.custom_data.first().copied().unwrap_or(0.0) > 0.0 {
+                    stepped = true;
+                    break;
+                }
+            }
+        }
+        assert!(stepped);
+    }
+}
+

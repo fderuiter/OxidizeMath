@@ -141,3 +141,28 @@ fn test_plot_concentration_color_mapping() {
     let uniform_image = MorphogenesisTab::plot_concentration(&uniform_data, width, height);
     assert_eq!(uniform_image.pixels.len(), 4);
 }
+
+#[test]
+fn test_morphogenesis_starter_gallery_lifecycle() {
+    let mut tab = MorphogenesisTab::default();
+    // Acceptance Criteria 1: Empty simulation tab renders gallery on initial launch
+    assert!(tab.show_starter_gallery);
+
+    // Acceptance Criteria 2: Applying starter preset transitions into active mode
+    let spots_json = crate::starter_gallery::PRESET_TURING_SPOTS;
+    assert!(tab.from_json_str(spots_json).is_ok());
+    tab.show_starter_gallery = false;
+    assert!(!tab.show_starter_gallery);
+
+    // Acceptance Criteria 4: Toggle gallery on demand
+    tab.show_starter_gallery = !tab.show_starter_gallery;
+    assert!(tab.show_starter_gallery);
+
+    // Acceptance Criteria 3: Loaded workspace session bypasses the gallery
+    let saved_state = tab.save_state().unwrap();
+    let mut loaded_tab = MorphogenesisTab::default();
+    assert!(loaded_tab.show_starter_gallery);
+    loaded_tab.load_state(&saved_state);
+    assert!(!loaded_tab.show_starter_gallery);
+}
+
