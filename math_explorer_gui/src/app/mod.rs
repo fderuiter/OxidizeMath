@@ -6,10 +6,11 @@ mod ui_panels;
 mod tests;
 #[cfg(test)]
 mod tests_diagnostics;
+#[cfg(test)]
+mod tests_session_lifecycle;
 
 #[allow(unused_imports)]
-pub use session::WorkspaceEnvelope;
-pub use session::WorkspaceSessionManager;
+pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 pub use theme::ThemeMode;
 
 use crate::tabs::ExplorerTab;
@@ -182,7 +183,7 @@ impl MathExplorerApp {
         }
         if let Some(next) = self.session_manager.pop_redo() {
             let current = self.get_app_state();
-            self.session_manager.push_undo(current);
+            self.session_manager.push_undo_preserving_redo(current);
             self.apply_app_state(next);
             self.session_manager.set_is_restoring(true);
         }
