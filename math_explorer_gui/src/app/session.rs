@@ -66,6 +66,7 @@ impl WorkspaceSessionManager {
 
     /// Returns the current session lifecycle state.
     #[cfg(test)]
+    #[must_use]
     pub fn lifecycle_state(&self) -> SessionLifecycleState {
         self.lifecycle_state
     }
@@ -145,6 +146,7 @@ impl WorkspaceSessionManager {
 
     /// Returns true if currently in state restoration.
     #[cfg(test)]
+    #[must_use]
     pub fn is_restoring(&self) -> bool {
         self.lifecycle_state == SessionLifecycleState::RestoringHistory
     }

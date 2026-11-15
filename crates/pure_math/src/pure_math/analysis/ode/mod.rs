@@ -30,10 +30,26 @@ pub enum IntegrationMethod {
     RungeKutta4,
     /// Forward Euler method.
     Euler,
+    /// Heun's method (Runge-Kutta 2nd order).
+    Heun,
+}
+
+impl IntegrationMethod {
+    /// Array containing all supported integration methods.
+    pub const ALL: [Self; 3] = [Self::RungeKutta4, Self::Euler, Self::Heun];
+
+    /// Returns the human-readable display name of the integration method.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::RungeKutta4 => "Runge-Kutta 4",
+            Self::Euler => "Euler",
+            Self::Heun => "Heun (RK2)",
+        }
+    }
 }
 
 pub use model::OdeModel;
-pub use solvers::{Euler, RungeKutta4};
+pub use solvers::{Euler, Heun, RungeKutta4};
 pub use state::{ArrayState, VecState};
 pub use stepper::TimeStepper;
 pub use traits::{OdeSystem, Solver, SolverExt, VectorOperations};

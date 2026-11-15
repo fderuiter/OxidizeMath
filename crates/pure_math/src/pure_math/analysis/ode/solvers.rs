@@ -93,6 +93,62 @@ impl<State: VectorOperations> Solver<State> for Euler<State> {
     }
 }
 
+/// Heun's Method Solver (Explicit Trapezoidal Rule / Runge-Kutta 2nd Order).
+///
+/// A second-order predictor-corrector numerical integrator.
+/// Maintains internal scratch buffers to prevent heap allocations during step execution.
+///
+/// # Parse, Don't Validate
+/// This solver requires an example state during initialization to pre-allocate buffers.
+/// This requirement guarantees that uninitialized states cannot occur during simulation.
+#[derive(Debug, Clone)]
+pub struct Heun<State> {
+    k: State,
+    tmp: State,
+    initial_state: State,
+}
+
+impl<State: Clone> Heun<State> {
+    /// Creates a new Heun solver.
+    ///
+    /// # Arguments
+    /// * `example_state` - A reference to a state vector used to size scratch buffers.
+    #[verified_engine::verified]
+    pub fn new(example_state: &State) -> Self {
+        Self {
+            k: example_state.clone(),
+            tmp: example_state.clone(),
+            initial_state: example_state.clone(),
+        }
+    }
+}
+
+impl<State: VectorOperations> Solver<State> for Heun<State> {
+    #[verified_engine::verified]
+    fn step<S>(&mut self, system: &S, t: f64, state: &mut State, dt: f64)
+    where
+        S: OdeSystem<State> + ?Sized,
+    {
+        // Copy current state to initial_state buffer to retain y_n
+        self.initial_state.copy_from(state);
+
+        // k1 = f(t, y_n)
+        system.derivative_in_place(t, &self.initial_state, &mut self.k);
+
+        // Predictor step: tmp = y_n + dt * k1
+        self.tmp.copy_from_scaled(&self.initial_state, &self.k, dt);
+
+        // Accumulate first stage: state = y_n + 0.5 * dt * k1
+        state.scale_add(&self.k, dt * 0.5);
+
+        // Corrector step: k2 = f(t + dt, tmp)
+        system.derivative_in_place(t + dt, &self.tmp, &mut self.k);
+
+        // Accumulate second stage: state += 0.5 * dt * k2
+        state.scale_add(&self.k, dt * 0.5);
+    }
+}
+
 /// Runge-Kutta 4th Order Solver.
 ///
 /// A classic fixed-step integrator for ODEs.
