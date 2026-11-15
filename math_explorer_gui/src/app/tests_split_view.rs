@@ -78,6 +78,7 @@ fn test_split_ratio_clamping() {
         secondary_tab: 1,
         secondary_tab_name: None,
         split_ratio: 0.05,
+        ..Default::default()
     };
     app.apply_app_state(state_low);
     assert!((app.split_ratio - 0.20).abs() < 1e-4);
@@ -96,6 +97,7 @@ fn test_split_ratio_clamping() {
         secondary_tab: 1,
         secondary_tab_name: None,
         split_ratio: 0.95,
+        ..Default::default()
     };
     app.apply_app_state(state_high);
     assert!((app.split_ratio - 0.80).abs() < 1e-4);

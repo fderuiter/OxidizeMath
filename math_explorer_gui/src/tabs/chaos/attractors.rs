@@ -10,17 +10,6 @@ use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum SolverExecutionState {
-    Ready,
-    Running,
-    Paused,
-    Diverged {
-        invalid_vec: Vector3<f64>,
-        diverged_at_step: usize,
-    },
-}
-
 #[path = "attractors/runner.rs"]
 mod runner;
 pub use runner::*;

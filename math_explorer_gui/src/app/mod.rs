@@ -5,6 +5,7 @@ mod split_view;
 mod state;
 mod theme;
 mod ui_panels;
+mod viewport;
 
 #[cfg(test)]
 mod tests;
@@ -12,6 +13,8 @@ mod tests;
 mod tests_command_palette;
 #[cfg(test)]
 mod tests_diagnostics;
+#[cfg(test)]
+mod tests_multi_pane;
 #[cfg(test)]
 mod tests_session_lifecycle;
 #[cfg(test)]
@@ -22,6 +25,7 @@ pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionMana
 pub use split_view::{SplitLayoutMode, SplitViewState};
 pub use state::AppState;
 pub use theme::ThemeMode;
+pub use viewport::ViewportLayout;
 
 use crate::command_palette::CommandPalette;
 use crate::tabs::ExplorerTab;
@@ -30,7 +34,7 @@ use federated_registry::{global_registry, Severity, TelemetryEvent};
 
 pub struct MathExplorerApp {
     tabs: Vec<Box<dyn ExplorerTab>>,
-    selected_tab: usize,
+    pub selected_tab: usize,
     pub split_layout_mode: SplitLayoutMode,
     pub secondary_tab: usize,
     pub split_ratio: f32,
@@ -40,10 +44,13 @@ pub struct MathExplorerApp {
     show_info: bool,
     show_warnings: bool,
     show_errors: bool,
-    show_help_menu: bool,
+    pub(super) show_help_menu: bool,
     pub theme: ThemeMode,
     pub command_palette: CommandPalette,
     pub session_manager: WorkspaceSessionManager,
+    pub viewport_layout: ViewportLayout,
+    pub pane_tabs: Vec<usize>,
+    pane_contexts: [egui::Context; 4],
 }
 
 impl Default for MathExplorerApp {
@@ -67,6 +74,14 @@ impl Default for MathExplorerApp {
             theme: ThemeMode::Dark,
             command_palette: CommandPalette::default(),
             session_manager: WorkspaceSessionManager::new(),
+            viewport_layout: ViewportLayout::Single,
+            pane_tabs: vec![0, 1, 2, 3],
+            pane_contexts: [
+                egui::Context::default(),
+                egui::Context::default(),
+                egui::Context::default(),
+                egui::Context::default(),
+            ],
         }
     }
 }
@@ -76,8 +91,12 @@ impl MathExplorerApp {
     pub fn swap_panes(&mut self) {
         if self.tabs.len() > 1 {
             std::mem::swap(&mut self.selected_tab, &mut self.secondary_tab);
+            if self.pane_tabs.len() > 1 {
+                self.pane_tabs.swap(0, 1);
+            }
         }
     }
+
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
 
@@ -91,6 +110,16 @@ impl MathExplorerApp {
         macos_menu::setup_macos_menu(&app);
 
         app
+    }
+
+    /// Sets the assigned tab index for a specific pane.
+    pub fn set_pane_tab(&mut self, pane_idx: usize, tab_idx: usize) {
+        if pane_idx < self.pane_tabs.len() && tab_idx < self.tabs.len() {
+            self.pane_tabs[pane_idx] = tab_idx;
+            if pane_idx == 0 {
+                self.selected_tab = tab_idx;
+            }
+        }
     }
 
     /// Extracts current application state into an `AppState` struct.
@@ -109,6 +138,10 @@ impl MathExplorerApp {
             .tabs
             .get(self.secondary_tab)
             .map(|t| t.name().to_string());
+        let mut pane_tabs = self.pane_tabs.clone();
+        if self.viewport_layout == ViewportLayout::Single && !pane_tabs.is_empty() {
+            pane_tabs[0] = self.selected_tab;
+        }
         AppState {
             selected_tab: self.selected_tab,
             selected_tab_name,
@@ -122,6 +155,8 @@ impl MathExplorerApp {
             secondary_tab: self.secondary_tab,
             secondary_tab_name,
             split_ratio: self.split_ratio.clamp(0.20, 0.80),
+            viewport_layout: self.viewport_layout,
+            pane_tabs,
         }
     }
 
@@ -134,6 +169,7 @@ impl MathExplorerApp {
         self.theme = app_state.theme;
         self.split_layout_mode = app_state.split_layout_mode;
         self.split_ratio = app_state.split_ratio.clamp(0.20, 0.80);
+        self.viewport_layout = app_state.viewport_layout;
 
         for tab in &mut self.tabs {
             if let Some(tab_str) = app_state.tab_states.get(tab.name()) {
@@ -159,6 +195,26 @@ impl MathExplorerApp {
             }
         } else if app_state.secondary_tab < self.tabs.len() {
             self.secondary_tab = app_state.secondary_tab;
+        }
+
+        if app_state.pane_tabs.is_empty() {
+            self.pane_tabs = vec![self.selected_tab, 1, 2, 3];
+        } else {
+            self.pane_tabs = app_state.pane_tabs;
+        }
+        while self.pane_tabs.len() < 4 {
+            let next_idx = self.pane_tabs.len().min(self.tabs.len().saturating_sub(1));
+            self.pane_tabs.push(next_idx);
+        }
+        for idx in &mut self.pane_tabs {
+            if *idx >= self.tabs.len() {
+                *idx = 0;
+            }
+        }
+        if self.viewport_layout == ViewportLayout::Single {
+            self.pane_tabs[0] = self.selected_tab;
+        } else if let Some(&first) = self.pane_tabs.first() {
+            self.selected_tab = first;
         }
     }
 
@@ -214,72 +270,6 @@ impl MathExplorerApp {
             self.session_manager.push_undo_preserving_redo(current);
             self.apply_app_state(next);
             self.session_manager.set_is_restoring(true);
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    fn handle_macos_menu_events(&mut self, ctx: &egui::Context) {
-        if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
-            match event.id.0.as_str() {
-                "file_open" => self.session_manager.trigger_open(),
-                "file_save" => {
-                    let state = self.get_app_state();
-                    let env_json = self.session_manager.create_envelope(state);
-                    self.session_manager.trigger_save(env_json);
-                }
-                "file_save_as" => {
-                    let state = self.get_app_state();
-                    let env_json = self.session_manager.create_envelope(state);
-                    self.session_manager.trigger_save_as(env_json);
-                }
-                "edit_undo" => self.undo(),
-                "edit_redo" => self.redo(),
-                "cmd_palette" => {
-                    self.command_palette.toggle();
-                    let status_msg = if self.command_palette.is_open {
-                        "Command palette opened"
-                    } else {
-                        "Command palette closed"
-                    };
-                    ctx.data_mut(|d| {
-                        d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
-                    });
-                }
-                "help_commands" => self.show_help_menu = !self.show_help_menu,
-                "theme_dark" => {
-                    self.theme = ThemeMode::Dark;
-                    ctx.set_visuals(self.theme.visuals());
-                }
-                "theme_light" => {
-                    self.theme = ThemeMode::Light;
-                    ctx.set_visuals(self.theme.visuals());
-                }
-                "theme_high_contrast" => {
-                    self.theme = ThemeMode::HighContrast;
-                    ctx.set_visuals(self.theme.visuals());
-                }
-                "view_toggle_diagnostics" => {
-                    self.show_diagnostics_panel = !self.show_diagnostics_panel;
-                }
-                "view_split_single" => {
-                    self.split_layout_mode = SplitLayoutMode::Single;
-                }
-                "view_split_horizontal" => {
-                    self.split_layout_mode = SplitLayoutMode::Horizontal;
-                }
-                "view_split_vertical" => {
-                    self.split_layout_mode = SplitLayoutMode::Vertical;
-                }
-                "view_split_swap" => {
-                    self.swap_panes();
-                }
-                other if other.starts_with("tab_") => {
-                    if let Ok(idx) = other[4..].parse::<usize>() {
-                        self.selected_tab = idx;
-                    }
-                }
-                _ => {}
-            }
         }
     }
 }
@@ -421,7 +411,7 @@ impl eframe::App for MathExplorerApp {
         }
 
         #[cfg(target_os = "macos")]
-        self.handle_macos_menu_events(ctx);
+        macos_menu::handle_macos_menu_events(self, ctx);
 
         #[cfg(target_os = "macos")]
         if self.session_manager.toast().is_some() {
@@ -436,24 +426,21 @@ impl eframe::App for MathExplorerApp {
             ui_panels::render_main_menu(self, ctx, ui);
         });
 
-        // Render Active Tab(s)
-        match self.split_layout_mode {
-            SplitLayoutMode::Single => {
-                if let Some(tab) = self.tabs.get_mut(self.selected_tab) {
-                    tab.show(ctx, frame);
-                } else {
-                    egui::CentralPanel::default().show(ctx, |ui| {
-                        ui.centered_and_justified(|ui| {
-                            ui.label("No module selected.");
-                        });
-                    });
-                }
-            }
-            SplitLayoutMode::Horizontal | SplitLayoutMode::Vertical => {
-                let mut split_state = std::mem::take(&mut self.split_view_state);
-                split_state.render_split(self, ctx, frame);
-                self.split_view_state = split_state;
-            }
+        // Render Active Tab(s) or Multi-Pane Viewports
+        if self.split_layout_mode != SplitLayoutMode::Single {
+            let mut split_state = std::mem::take(&mut self.split_view_state);
+            split_state.render_split(self, ctx, frame);
+            self.split_view_state = split_state;
+        } else if self.viewport_layout != ViewportLayout::Single {
+            viewport::render_multi_pane_manager(self, ctx, frame);
+        } else if let Some(tab) = self.tabs.get_mut(self.selected_tab) {
+            tab.show(ctx, frame);
+        } else {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.label("No module selected.");
+                });
+            });
         }
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);

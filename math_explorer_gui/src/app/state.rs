@@ -2,6 +2,7 @@
 
 use super::split_view::SplitLayoutMode;
 use super::theme::ThemeMode;
+use super::viewport::ViewportLayout;
 
 fn default_true() -> bool {
     true
@@ -35,6 +36,10 @@ pub struct AppState {
     pub secondary_tab_name: Option<String>,
     #[serde(default = "default_split_ratio")]
     pub split_ratio: f32,
+    #[serde(default)]
+    pub viewport_layout: ViewportLayout,
+    #[serde(default)]
+    pub pane_tabs: Vec<usize>,
 }
 
 impl Default for AppState {
@@ -52,6 +57,8 @@ impl Default for AppState {
             secondary_tab: 1,
             secondary_tab_name: None,
             split_ratio: 0.5,
+            viewport_layout: ViewportLayout::Single,
+            pane_tabs: vec![0, 1, 2, 3],
         }
     }
 }
