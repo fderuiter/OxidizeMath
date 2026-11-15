@@ -2,9 +2,7 @@ pub mod callout_overlay;
 mod export_ui;
 pub mod trace_overlay;
 mod ui;
-
-pub use callout_overlay::*;
-pub use trace_overlay::*;
+pub use {callout_overlay::*, trace_overlay::*};
 
 use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
@@ -20,10 +18,7 @@ pub struct ToolMetadata {
 inventory::collect!(ToolMetadata);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InputMode {
-    Mouse,
-    Touch,
-}
+pub enum InputMode { Mouse, Touch }
 
 /// Event context provided to interaction hooks.
 #[allow(missing_docs)]
@@ -145,6 +140,50 @@ pub trait InteractiveTool {
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, _state: &str) {}
 
+    /// Domain category of the tool (e.g. "analysis", "biology", "game_theory").
+    fn domain(&self) -> &'static str {
+        ""
+    }
+
+    /// Serializes active parameter preset state to a formatted JSON string with metadata envelope.
+    fn export_preset_json(&self) -> Result<String, String> {
+        if let Some(state_str) = self.save_state() {
+            let config: serde_json::Value = serde_json::from_str(&state_str)
+                .map_err(|e| format!("Serialization error: {}", e))?;
+            let envelope = crate::presets::PresetWrapper {
+                metadata: crate::presets::PresetMetadata {
+                    schema_version: "1.0".to_string(),
+                    title: self.name().to_string(),
+                    domain: self.domain().to_string(),
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                },
+                config,
+            };
+            serde_json::to_string_pretty(&envelope)
+                .map_err(|e| format!("Serialization error: {}", e))
+        } else {
+            Err(format!("Preset export not supported for {}", self.name()))
+        }
+    }
+
+    /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
+    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let envelope: crate::presets::PresetWrapper<serde_json::Value> =
+            serde_json::from_str(json_str)
+                .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
+        let expected_domain = self.domain();
+        if !expected_domain.is_empty() && envelope.metadata.domain != expected_domain {
+            return Err(format!(
+                "Domain mismatch: preset is for domain '{}', but active tool is '{}'",
+                envelope.metadata.domain, expected_domain
+            ));
+        }
+        let config_str = serde_json::to_string(&envelope.config)
+            .map_err(|e| format!("Config serialization error: {}", e))?;
+        self.load_state(&config_str);
+        Ok(())
+    }
+
     /// Optional hook to export tool datasets.
     /// Default implementation extracts datasets recorded from embedded `egui_plot::Plot`s if available.
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -158,6 +197,11 @@ pub trait InteractiveTool {
 
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
+
+    /// Optional hook to apply a preset JSON configuration envelope (via InteractivePreset).
+    fn apply_preset_json(&mut self, _json_str: &str) -> Result<(), String> {
+        Ok(())
+    }
 
     /// Optional hook to sample multi-frame animation datasets for GIF export.
     fn sample_animation_frames(
@@ -191,6 +235,8 @@ struct FrameworkState {
     selected_tool_index: Option<usize>,
     selected_tool_name: Option<String>,
     show_theory_portal: bool,
+    #[serde(default)]
+    show_starter_gallery: bool,
     tool_states: std::collections::HashMap<String, String>,
 }
 
@@ -207,6 +253,8 @@ pub struct SimulationFramework {
     #[allow(missing_docs)]
     pub show_theory_portal: bool,
     #[allow(missing_docs)]
+    pub show_starter_gallery: bool,
+    #[allow(missing_docs)]
     pub saved_tool_states: std::collections::HashMap<String, String>,
     pub search_query: String,
     last_announced_count: Option<usize>,
@@ -217,6 +265,8 @@ pub struct SimulationFramework {
     pub export_gif_fps: u32,
     pub export_gif_frames: u32,
     pub export_status_message: Option<String>,
+    pub domain: String,
+    pub preset_dialog: crate::presets::PresetDialogState,
 }
 
 impl SimulationFramework {
@@ -236,6 +286,7 @@ impl SimulationFramework {
             selected_tool_index: None,
             input_mode: InputMode::Mouse,
             show_theory_portal: false,
+            show_starter_gallery: true,
             saved_tool_states: std::collections::HashMap::new(),
             search_query: String::new(),
             last_announced_count: None,
@@ -246,6 +297,8 @@ impl SimulationFramework {
             export_gif_fps: 15,
             export_gif_frames: 20,
             export_status_message: None,
+            domain: domain.to_string(),
+            preset_dialog: crate::presets::PresetDialogState::default(),
         };
 
         if !framework.available_tools.is_empty() {
@@ -300,6 +353,7 @@ impl SimulationFramework {
             selected_tool_index: self.selected_tool_index,
             selected_tool_name,
             show_theory_portal: self.show_theory_portal,
+            show_starter_gallery: self.show_starter_gallery,
             tool_states,
         };
         serde_json::to_string(&state).ok()
@@ -312,6 +366,8 @@ impl SimulationFramework {
             Err(_) => return,
         };
         self.show_theory_portal = state.show_theory_portal;
+        // Saved workspace session bypasses the empty-state starter gallery
+        self.show_starter_gallery = false;
         self.saved_tool_states = state.tool_states;
 
         let tool_idx = if let Some(ref name) = state.selected_tool_name {
@@ -330,7 +386,7 @@ impl SimulationFramework {
         }
     }
 
-    #[allow(missing_docs)]
+    #[allow(missing_docs, clippy::too_many_lines)]
     pub fn show(&mut self, ctx: &egui::Context, id_source: &str) {
         egui_plot::clear_last_plot_datasets();
 
@@ -366,6 +422,19 @@ impl SimulationFramework {
             });
         }
 
+        if let Some(gallery_state) =
+            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")))
+        {
+            self.show_starter_gallery = gallery_state;
+        } else {
+            ctx.data_mut(|d| {
+                d.insert_temp(
+                    egui::Id::new("SHOW_STARTER_GALLERY"),
+                    self.show_starter_gallery,
+                )
+            });
+        }
+
         self.show_side_panel(ctx, id_source);
         self.show_theory_portal(ctx, id_source);
         self.show_export_action_bar(ctx, id_source);
@@ -376,6 +445,43 @@ impl SimulationFramework {
         } else {
             egui::CentralPanel::default().show(ctx, |ui| {
                 self.show_quick_start_cards(ui);
+            });
+        }
+
+        if self.show_starter_gallery {
+            let cards = crate::starter_gallery::get_starter_cards_for_domain(
+                id_source,
+                &self.available_tools,
+            );
+            let mut is_open = self.show_starter_gallery;
+            if let Some(card) = crate::starter_gallery::show_starter_gallery_overlay(
+                ctx,
+                id_source,
+                &cards,
+                &mut is_open,
+            ) {
+                if let Some(tool_name) = card.tool_name {
+                    if let Some(pos) = self
+                        .available_tools
+                        .iter()
+                        .position(|t| t.name == tool_name)
+                    {
+                        self.select_tool(pos);
+                    }
+                }
+                if let Some(preset_json) = card.preset_json {
+                    if let Some(tool) = &mut self.active_tool {
+                        let _ = tool.apply_preset_json(preset_json);
+                    }
+                }
+                is_open = false;
+            }
+            self.show_starter_gallery = is_open;
+            ctx.data_mut(|d| {
+                d.insert_temp(
+                    egui::Id::new("SHOW_STARTER_GALLERY"),
+                    self.show_starter_gallery,
+                )
             });
         }
 

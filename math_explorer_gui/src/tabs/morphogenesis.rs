@@ -1,4 +1,6 @@
-use crate::async_sim::{SimCommand, SimulationController, SimulationRunner, StateSnapshot};
+use crate::async_sim::{
+    BackgroundWorker, SimCommand, SimulationRunner, StateSnapshot,
+};
 use crate::presets::{InteractivePreset, MorphogenesisPresetConfig, PresetDialogState};
 use crate::tabs::ExplorerTab;
 use eframe::egui;
@@ -71,7 +73,7 @@ impl SimulationRunner for MorphogenesisRunner {
 
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct MorphogenesisTab {
-    controller: SimulationController,
+    controller: BackgroundWorker<MorphogenesisRunner>,
     params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     width: usize,
     height: usize,
@@ -80,6 +82,7 @@ pub struct MorphogenesisTab {
     dialog_state: PresetDialogState,
     pixels: Vec<egui::Color32>,
     dirty: bool,
+    pub show_starter_gallery: bool,
 }
 
 impl Default for MorphogenesisTab {
@@ -125,7 +128,7 @@ impl Default for MorphogenesisTab {
             height,
         };
 
-        let mut controller = SimulationController::new(runner);
+        let mut controller = BackgroundWorker::new(runner);
         let _ = controller.send_command(SimCommand::Start);
 
         Self {
@@ -138,6 +141,7 @@ impl Default for MorphogenesisTab {
             dialog_state: PresetDialogState::default(),
             pixels: Vec::new(),
             dirty: true,
+            show_starter_gallery: true,
         }
     }
 }
@@ -152,12 +156,15 @@ impl ExplorerTab for MorphogenesisTab {
         struct MorphoState {
             dt: f64,
             paused: bool,
+            #[serde(default)]
+            show_starter_gallery: bool,
         }
 
         let dt = self.params.read().unwrap().dt;
         serde_json::to_string(&MorphoState {
             dt,
             paused: self.paused,
+            show_starter_gallery: self.show_starter_gallery,
         })
         .ok()
     }
@@ -172,6 +179,8 @@ impl ExplorerTab for MorphogenesisTab {
         if let Ok(s) = serde_json::from_str::<MorphoState>(state) {
             self.params.write().unwrap().dt = s.dt;
             self.paused = s.paused;
+            // Saved session bypasses empty-state gallery
+            self.show_starter_gallery = false;
             if self.paused {
                 let _ = self.controller.send_command(SimCommand::Pause);
             } else {
@@ -179,6 +188,18 @@ impl ExplorerTab for MorphogenesisTab {
             }
             self.dirty = true;
         }
+    }
+
+    fn domain(&self) -> &'static str {
+        "biology"
+    }
+
+    fn export_preset_json(&self) -> Result<String, String> {
+        self.to_json_string()
+    }
+
+    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        self.from_json_str(json_str)
     }
 
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -192,6 +213,23 @@ impl ExplorerTab for MorphogenesisTab {
 
         self.draw_controls(ctx);
         self.draw_canvas(ctx);
+
+        if self.show_starter_gallery {
+            let cards = crate::starter_gallery::get_starter_cards_for_domain("biology", &[]);
+            let mut is_open = self.show_starter_gallery;
+            if let Some(card) = crate::starter_gallery::show_starter_gallery_overlay(
+                ctx,
+                "morphogenesis",
+                &cards,
+                &mut is_open,
+            ) {
+                if let Some(preset_json) = card.preset_json {
+                    let _ = self.from_json_str(preset_json);
+                }
+                is_open = false;
+            }
+            self.show_starter_gallery = is_open;
+        }
     }
 }
 
@@ -199,6 +237,9 @@ impl MorphogenesisTab {
     fn draw_controls(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("morphogenesis_controls").show(ctx, |ui| {
             ui.heading("Morphogenesis Controls");
+            if ui.button("🎨 Starter Gallery").clicked() {
+                self.show_starter_gallery = !self.show_starter_gallery;
+            }
             ui.separator();
 
             let mut params = self.params.write().unwrap();
@@ -438,7 +479,7 @@ impl InteractivePreset for MorphogenesisTab {
                 width: self.width,
                 height: self.height,
             };
-            self.controller = SimulationController::new(runner);
+            self.controller = BackgroundWorker::new(runner);
             if !self.paused {
                 let _ = self.controller.send_command(SimCommand::Start);
             }

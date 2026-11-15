@@ -17,7 +17,7 @@ struct GizmoHandle {
     depth: f32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[allow(missing_docs)]
 pub struct Camera3D {
     #[allow(missing_docs)]

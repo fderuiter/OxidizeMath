@@ -1,41 +1,26 @@
+mod io;
+mod shortcuts;
+mod types;
+
+pub use types::{SessionLifecycleState, WorkspaceEnvelope};
+
 use crate::app::AppState;
 use crate::app::MathExplorerApp;
 use eframe::egui;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Receiver};
-
-/// Metadata envelope wrapping application state for versioned workspace session persistence.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct WorkspaceEnvelope {
-    /// Schema version for envelope serialization format (e.g. "1.0").
-    pub schema_version: String,
-    /// Application version emitting the envelope.
-    pub app_version: String,
-    /// ISO 8601 creation or export timestamp string.
-    pub timestamp: String,
-    /// Wrapped application state payload.
-    pub app_state: AppState,
-    /// Recent undo history snapshots.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub history_undo_stack: Vec<AppState>,
-    /// Recent redo history snapshots.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub history_redo_stack: Vec<AppState>,
-    /// Persisted plot callout annotations.
-    #[serde(default, skip_serializing_if = "Option::is_none", alias = "callouts")]
-    pub callout_manager: Option<crate::framework::CalloutManager>,
-}
+use std::sync::mpsc::{channel, Receiver, TryRecvError};
 
 /// Manages non-blocking file dialog operations, active workspace file path tracking, and envelope parsing.
 pub struct WorkspaceSessionManager {
     /// Active workspace file path for direct single-keystroke saves (`Cmd+S`).
     active_file_path: Option<PathBuf>,
     /// Channel receiver for pending file open dialog operations.
-    open_rx: Option<Receiver<Result<(PathBuf, String), String>>>,
+    pub(crate) open_rx: Option<Receiver<Result<(PathBuf, String), String>>>,
     /// Channel receiver for pending file save-as dialog operations.
-    save_as_rx: Option<Receiver<Result<PathBuf, String>>>,
+    pub(crate) save_as_rx: Option<Receiver<Result<PathBuf, String>>>,
+    /// Channel receiver for pending direct save operations.
+    pub(crate) save_rx: Option<Receiver<Result<PathBuf, String>>>,
     /// Inline UI toast message and error flag.
     toast: Option<(String, bool)>,
     /// Undo history stack.
@@ -46,10 +31,10 @@ pub struct WorkspaceSessionManager {
     max_history_depth: usize,
     /// Last committed state snapshot for diff tracking.
     last_committed_state: Option<AppState>,
-    /// Flag indicating an active drag interaction for coalescing continuous slider edits.
-    is_dragging: bool,
-    /// Flag indicating an active undo/redo restoration.
-    is_restoring: bool,
+    /// Explicit session lifecycle state.
+    pub(crate) lifecycle_state: SessionLifecycleState,
+    /// Number of consecutive quiescent frames observed during history restoration.
+    pub(crate) quiescent_frames: usize,
     /// Active callout manager instance.
     callout_manager: Option<crate::framework::CalloutManager>,
 }
@@ -60,13 +45,14 @@ impl Default for WorkspaceSessionManager {
             active_file_path: None,
             open_rx: None,
             save_as_rx: None,
+            save_rx: None,
             toast: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             max_history_depth: 50,
             last_committed_state: None,
-            is_dragging: false,
-            is_restoring: false,
+            lifecycle_state: SessionLifecycleState::Idle,
+            quiescent_frames: 0,
             callout_manager: None,
         }
     }
@@ -76,6 +62,12 @@ impl WorkspaceSessionManager {
     /// Creates a new workspace session manager instance.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Returns the current session lifecycle state.
+    #[allow(dead_code)]
+    pub fn lifecycle_state(&self) -> SessionLifecycleState {
+        self.lifecycle_state
     }
 
     /// Returns a reference to the active workspace file path if set.
@@ -96,6 +88,9 @@ impl WorkspaceSessionManager {
     /// Clears the active toast notification message.
     pub fn clear_toast(&mut self) {
         self.toast = None;
+        if self.lifecycle_state == SessionLifecycleState::Error {
+            self.lifecycle_state = SessionLifecycleState::Idle;
+        }
     }
 
     /// Returns the active toast notification message if present.
@@ -115,14 +110,22 @@ impl WorkspaceSessionManager {
 
     /// Pushes an application state snapshot onto the undo stack.
     pub fn push_undo(&mut self, state: AppState) {
-        if self.is_restoring || self.undo_stack.last() == Some(&state) {
+        if self.lifecycle_state == SessionLifecycleState::RestoringHistory {
+            return;
+        }
+        self.push_undo_preserving_redo(state);
+        self.redo_stack.clear();
+    }
+
+    /// Pushes an application state snapshot onto the undo stack without clearing redo history.
+    pub fn push_undo_preserving_redo(&mut self, state: AppState) {
+        if self.undo_stack.last() == Some(&state) {
             return;
         }
         self.undo_stack.push(state);
         if self.undo_stack.len() > self.max_history_depth {
             self.undo_stack.remove(0);
         }
-        self.redo_stack.clear();
     }
 
     /// Pushes an application state snapshot onto the redo stack.
@@ -140,16 +143,36 @@ impl WorkspaceSessionManager {
         self.redo_stack.pop()
     }
 
+    /// Returns true if currently in state restoration.
+    #[allow(dead_code)]
+    pub fn is_restoring(&self) -> bool {
+        self.lifecycle_state == SessionLifecycleState::RestoringHistory
+    }
+
     /// Sets the restoration flag to avoid recording snapshots during undo/redo state restoration.
     pub fn set_is_restoring(&mut self, restoring: bool) {
-        self.is_restoring = restoring;
+        if restoring {
+            self.lifecycle_state = SessionLifecycleState::RestoringHistory;
+            self.quiescent_frames = 0;
+        } else if self.lifecycle_state == SessionLifecycleState::RestoringHistory {
+            self.lifecycle_state = SessionLifecycleState::Idle;
+            self.quiescent_frames = 0;
+        }
     }
 
     /// Tracks application state changes and updates the history buffer.
     pub fn track_state_changes(&mut self, ctx: &egui::Context, current_state: AppState) {
-        if self.is_restoring {
-            self.last_committed_state = Some(current_state);
-            self.is_restoring = false;
+        if self.lifecycle_state == SessionLifecycleState::RestoringHistory {
+            if self.last_committed_state.as_ref() == Some(&current_state) {
+                self.quiescent_frames += 1;
+                if self.quiescent_frames >= 2 {
+                    self.lifecycle_state = SessionLifecycleState::Idle;
+                    self.quiescent_frames = 0;
+                }
+            } else {
+                self.last_committed_state = Some(current_state);
+                self.quiescent_frames = 0;
+            }
             return;
         }
 
@@ -157,20 +180,22 @@ impl WorkspaceSessionManager {
             if &current_state != last_state {
                 let pointer_down = ctx.input(|i| i.pointer.any_down());
                 if pointer_down {
-                    if !self.is_dragging {
+                    if self.lifecycle_state != SessionLifecycleState::DragEditing {
                         self.push_undo(last_state.clone());
-                        self.is_dragging = true;
+                        self.lifecycle_state = SessionLifecycleState::DragEditing;
                     }
                 } else {
-                    if !self.is_dragging {
+                    if self.lifecycle_state != SessionLifecycleState::DragEditing {
                         self.push_undo(last_state.clone());
                     } else {
-                        self.is_dragging = false;
+                        self.lifecycle_state = SessionLifecycleState::Idle;
                     }
                 }
                 self.last_committed_state = Some(current_state);
-            } else if !ctx.input(|i| i.pointer.any_down()) {
-                self.is_dragging = false;
+            } else if !ctx.input(|i| i.pointer.any_down())
+                && self.lifecycle_state == SessionLifecycleState::DragEditing
+            {
+                self.lifecycle_state = SessionLifecycleState::Idle;
             }
         } else {
             self.last_committed_state = Some(current_state);
@@ -204,7 +229,6 @@ impl WorkspaceSessionManager {
     }
 
     /// Validates and parses workspace session content from a JSON string.
-    /// Supports both versioned `WorkspaceEnvelope` payloads and legacy/raw `AppState` JSON.
     pub fn parse_envelope(&mut self, json_str: &str) -> Result<AppState, String> {
         let val: serde_json::Value = serde_json::from_str(json_str)
             .map_err(|e| format!("Invalid workspace file format: {}", e))?;
@@ -230,7 +254,7 @@ impl WorkspaceSessionManager {
             self.redo_stack = envelope.history_redo_stack;
             self.callout_manager = envelope.callout_manager;
             self.last_committed_state = Some(envelope.app_state.clone());
-            self.is_restoring = true;
+            self.set_is_restoring(true);
             Ok(envelope.app_state)
         } else {
             self.undo_stack.clear();
@@ -239,182 +263,100 @@ impl WorkspaceSessionManager {
             let state: AppState = serde_json::from_str(json_str)
                 .map_err(|e| format!("Corrupted workspace state JSON: {}", e))?;
             self.last_committed_state = Some(state.clone());
-            self.is_restoring = true;
+            self.set_is_restoring(true);
             Ok(state)
         }
     }
 
+    fn is_dialog_busy(&self) -> bool {
+        self.lifecycle_state == SessionLifecycleState::AwaitingFileDialog
+            || self.open_rx.is_some()
+            || self.save_as_rx.is_some()
+            || self.save_rx.is_some()
+    }
+
     /// Triggers a non-blocking background file picker for opening a workspace session file.
     pub fn trigger_open(&mut self) {
+        if self.is_dialog_busy() {
+            return;
+        }
+        self.lifecycle_state = SessionLifecycleState::AwaitingFileDialog;
         let (tx, rx) = channel();
         self.open_rx = Some(rx);
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            std::thread::spawn(move || {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Workspace Session (*.mws, *.json)", &["mws", "json"])
-                    .pick_file()
-                {
-                    let res = std::fs::read_to_string(&path)
-                        .map(|c| (path, c))
-                        .map_err(|e| format!("Failed to read workspace file: {}", e));
-                    let _ = tx.send(res);
-                }
-            });
-        }
+        io::spawn_open_dialog(tx);
     }
 
     /// Triggers a non-blocking background file dialog for saving a workspace session file to a new path.
     pub fn trigger_save_as(&mut self, envelope_json: String) {
+        if self.is_dialog_busy() {
+            return;
+        }
+        self.lifecycle_state = SessionLifecycleState::AwaitingFileDialog;
         let (tx, rx) = channel();
         self.save_as_rx = Some(rx);
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let default_name = "workspace.mws".to_string();
-            std::thread::spawn(move || {
-                if let Some(path) = rfd::FileDialog::new()
-                    .set_file_name(&default_name)
-                    .add_filter("Workspace Session (*.mws, *.json)", &["mws", "json"])
-                    .save_file()
-                {
-                    let res = std::fs::write(&path, envelope_json)
-                        .map(|_| path)
-                        .map_err(|e| format!("Failed to write workspace file: {}", e));
-                    let _ = tx.send(res);
-                }
-            });
-        }
+        io::spawn_save_as_dialog(tx, envelope_json);
     }
 
     /// Saves the workspace session state directly if an active file path exists, or prompts Save As otherwise.
     pub fn trigger_save(&mut self, envelope_json: String) {
         if let Some(path) = self.active_file_path().cloned() {
-            #[cfg(not(target_arch = "wasm32"))]
+            if self.lifecycle_state == SessionLifecycleState::AwaitingFileDialog
+                || self.lifecycle_state == SessionLifecycleState::Saving
+                || self.save_rx.is_some()
             {
-                let path_clone = path.clone();
-                std::thread::spawn(move || {
-                    let _ = std::fs::write(path_clone, envelope_json);
-                });
+                return;
             }
-            let file_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("workspace.mws");
-            self.set_toast(format!("Workspace session saved to {}", file_name), false);
+            self.lifecycle_state = SessionLifecycleState::Saving;
+            let (tx, rx) = channel();
+            self.save_rx = Some(rx);
+            io::spawn_save_direct(tx, path, envelope_json);
         } else {
             self.trigger_save_as(envelope_json);
         }
     }
 
-    fn reg_shortcut(
-        ctx: &egui::Context,
-        name: &str,
-        cat: &str,
-        k: egui::Key,
-        m: egui::Modifiers,
-    ) -> bool {
-        egui_plot::commands::CommandRegistryData::register_and_check(
-            ctx,
-            name,
-            "",
-            egui_plot::commands::CommandTrigger::Shortcut(m, k),
-            true,
-            cat,
-            None,
-            None,
-        )
-    }
-
-    /// Registers global workspace session keyboard shortcuts and checks for user triggers.
-    pub fn register_and_check_shortcuts(&mut self, ctx: &egui::Context, app: &mut MathExplorerApp) {
-        let modifiers = if cfg!(target_os = "macos") {
-            egui::Modifiers::MAC_CMD
-        } else {
-            egui::Modifiers::CTRL
-        };
-        let shift_modifiers = modifiers | egui::Modifiers::SHIFT;
-
-        let (undo, redo) = Self::check_history_shortcuts(ctx, modifiers, shift_modifiers);
-        let (open, save_as, save) = Self::check_file_shortcuts(ctx, modifiers, shift_modifiers);
-
-        if undo {
-            app.undo();
-        } else if redo {
-            app.redo();
-        } else if open {
-            self.trigger_open();
-        } else if save_as {
-            let state = app.get_app_state();
-            let env_json = self.create_envelope(state);
-            self.trigger_save_as(env_json);
-        } else if save {
-            let state = app.get_app_state();
-            let env_json = self.create_envelope(state);
-            self.trigger_save(env_json);
-        }
-    }
-
-    fn check_history_shortcuts(
-        ctx: &egui::Context,
-        m: egui::Modifiers,
-        sm: egui::Modifiers,
-    ) -> (bool, bool) {
-        let undo = Self::reg_shortcut(ctx, "Undo", "Edit", egui::Key::Z, m);
-        let redo_shift = Self::reg_shortcut(ctx, "Redo", "Edit", egui::Key::Z, sm);
-        let redo_ctrl_y = !cfg!(target_os = "macos")
-            && Self::reg_shortcut(ctx, "Redo (Ctrl+Y)", "Edit", egui::Key::Y, m);
-
-        (undo, redo_shift || redo_ctrl_y)
-    }
-
-    fn check_file_shortcuts(
-        ctx: &egui::Context,
-        m: egui::Modifiers,
-        sm: egui::Modifiers,
-    ) -> (bool, bool, bool) {
-        let open = Self::reg_shortcut(ctx, "Open Workspace Session...", "File", egui::Key::O, m);
-        let save_as = Self::reg_shortcut(
-            ctx,
-            "Save Workspace Session As...",
-            "File",
-            egui::Key::S,
-            sm,
-        );
-        let save = Self::reg_shortcut(ctx, "Save Workspace Session", "File", egui::Key::S, m);
-
-        (open, save_as, save)
-    }
-
     /// Polls pending background file open channel.
     fn poll_open(&mut self, app: &mut MathExplorerApp, ctx: &egui::Context) {
         if let Some(rx) = &self.open_rx {
-            if let Ok(res) = rx.try_recv() {
-                self.open_rx = None;
-                match res {
-                    Ok((path, content)) => match self.parse_envelope(&content) {
-                        Ok(app_state) => {
-                            app.apply_app_state(app_state);
-                            self.set_active_file_path(Some(path.clone()));
-                            let file_name = path
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("workspace.mws");
-                            let msg = format!("Loaded workspace session from {}", file_name);
-                            self.set_toast(&msg, false);
-                            log_telemetry(msg, Severity::Info, ctx, "aria_live_message");
-                        }
+            match rx.try_recv() {
+                Ok(res) => {
+                    self.open_rx = None;
+                    if self.lifecycle_state != SessionLifecycleState::AwaitingFileDialog {
+                        handle_transition_error(self, ctx, "open");
+                        return;
+                    }
+                    self.lifecycle_state = SessionLifecycleState::Loading;
+                    match res {
+                        Ok((path, content)) => match self.parse_envelope(&content) {
+                            Ok(app_state) => {
+                                app.apply_app_state(app_state);
+                                self.set_active_file_path(Some(path.clone()));
+                                let name = file_name_str(&path);
+                                notify(
+                                    self,
+                                    ctx,
+                                    format!("Loaded workspace session from {name}"),
+                                    false,
+                                );
+                            }
+                            Err(err) => {
+                                notify(self, ctx, err, true);
+                                self.lifecycle_state = SessionLifecycleState::Error;
+                            }
+                        },
                         Err(err) => {
-                            self.set_toast(&err, true);
-                            log_telemetry(err, Severity::Error, ctx, "aria_live_assertive_message");
+                            notify(self, ctx, err, true);
+                            self.lifecycle_state = SessionLifecycleState::Error;
                         }
-                    },
-                    Err(err) => {
-                        self.set_toast(&err, true);
-                        log_telemetry(err, Severity::Error, ctx, "aria_live_assertive_message");
                     }
                 }
+                Err(TryRecvError::Disconnected) => {
+                    self.open_rx = None;
+                    if self.lifecycle_state == SessionLifecycleState::AwaitingFileDialog {
+                        self.lifecycle_state = SessionLifecycleState::Idle;
+                    }
+                }
+                Err(TryRecvError::Empty) => {}
             }
         }
     }
@@ -422,24 +364,77 @@ impl WorkspaceSessionManager {
     /// Polls pending background file save-as channel.
     fn poll_save_as(&mut self, ctx: &egui::Context) {
         if let Some(rx) = &self.save_as_rx {
-            if let Ok(res) = rx.try_recv() {
-                self.save_as_rx = None;
-                match res {
-                    Ok(path) => {
-                        self.set_active_file_path(Some(path.clone()));
-                        let file_name = path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("workspace.mws");
-                        let msg = format!("Exported workspace session to {}", file_name);
-                        self.set_toast(&msg, false);
-                        log_telemetry(msg, Severity::Info, ctx, "aria_live_message");
+            match rx.try_recv() {
+                Ok(res) => {
+                    self.save_as_rx = None;
+                    if self.lifecycle_state != SessionLifecycleState::AwaitingFileDialog {
+                        handle_transition_error(self, ctx, "save-as");
+                        return;
                     }
-                    Err(err) => {
-                        self.set_toast(&err, true);
-                        log_telemetry(err, Severity::Error, ctx, "aria_live_assertive_message");
+                    self.lifecycle_state = SessionLifecycleState::Saving;
+                    match res {
+                        Ok(path) => {
+                            self.set_active_file_path(Some(path.clone()));
+                            let name = file_name_str(&path);
+                            notify(
+                                self,
+                                ctx,
+                                format!("Exported workspace session to {name}"),
+                                false,
+                            );
+                            self.lifecycle_state = SessionLifecycleState::Idle;
+                        }
+                        Err(err) => {
+                            notify(self, ctx, err, true);
+                            self.lifecycle_state = SessionLifecycleState::Error;
+                        }
                     }
                 }
+                Err(TryRecvError::Disconnected) => {
+                    self.save_as_rx = None;
+                    if self.lifecycle_state == SessionLifecycleState::AwaitingFileDialog {
+                        self.lifecycle_state = SessionLifecycleState::Idle;
+                    }
+                }
+                Err(TryRecvError::Empty) => {}
+            }
+        }
+    }
+
+    /// Polls pending background direct save channel.
+    fn poll_save(&mut self, ctx: &egui::Context) {
+        if let Some(rx) = &self.save_rx {
+            match rx.try_recv() {
+                Ok(res) => {
+                    self.save_rx = None;
+                    if self.lifecycle_state != SessionLifecycleState::Saving {
+                        handle_transition_error(self, ctx, "save");
+                        return;
+                    }
+                    match res {
+                        Ok(path) => {
+                            let name = file_name_str(&path);
+                            notify(
+                                self,
+                                ctx,
+                                format!("Workspace session saved to {name}"),
+                                false,
+                            );
+                            self.lifecycle_state = SessionLifecycleState::Idle;
+                        }
+                        Err(err) => {
+                            notify(self, ctx, err, true);
+                            self.lifecycle_state = SessionLifecycleState::Error;
+                        }
+                    }
+                }
+                Err(TryRecvError::Disconnected) => {
+                    self.save_rx = None;
+                    if self.lifecycle_state == SessionLifecycleState::Saving {
+                        self.lifecycle_state = SessionLifecycleState::Idle;
+                    }
+                }
+                Err(TryRecvError::Empty) => {}
             }
         }
     }
@@ -448,6 +443,7 @@ impl WorkspaceSessionManager {
     pub fn poll(&mut self, app: &mut MathExplorerApp, ctx: &egui::Context) {
         self.poll_open(app, ctx);
         self.poll_save_as(ctx);
+        self.poll_save(ctx);
     }
 
     /// Renders any active workspace toast notification message in the UI.
@@ -455,32 +451,35 @@ impl WorkspaceSessionManager {
         if let Some((msg, is_error)) = self.toast() {
             let mut dismiss = false;
             ui.horizontal(|ui| {
-                let (color, icon) = if *is_error {
-                    (egui::Color32::RED, "⚠️")
-                } else {
-                    (egui::Color32::LIGHT_GREEN, "ℹ️")
-                };
+                let (color, icon) = if *is_error { (egui::Color32::RED, "⚠️") } else { (egui::Color32::LIGHT_GREEN, "ℹ️") };
                 ui.label(egui::RichText::new(format!("{} {}", icon, msg)).color(color));
-                if ui.small_button("✖").clicked() {
-                    dismiss = true;
-                }
+                if ui.small_button("✖").clicked() { dismiss = true; }
             });
-            if dismiss {
-                self.clear_toast();
-            }
+            if dismiss { self.clear_toast(); }
         }
     }
+}
+
+fn file_name_str(path: &std::path::Path) -> &str {
+    path.file_name().and_then(|n| n.to_str()).unwrap_or("workspace.mws")
+}
+
+fn handle_transition_error(mgr: &mut WorkspaceSessionManager, ctx: &egui::Context, op: &str) {
+    let err = format!("Invalid state transition: received {op} result while in {:?}", mgr.lifecycle_state);
+    notify(mgr, ctx, err, true);
+    mgr.lifecycle_state = SessionLifecycleState::Error;
+}
+
+fn notify(mgr: &mut WorkspaceSessionManager, ctx: &egui::Context, msg: String, is_err: bool) {
+    mgr.set_toast(&msg, is_err);
+    let (sev, aria) = if is_err { (Severity::Error, "aria_live_assertive_message") } else { (Severity::Info, "aria_live_message") };
+    log_telemetry(msg, sev, ctx, aria);
 }
 
 fn log_telemetry(msg: String, severity: Severity, ctx: &egui::Context, aria_key: &str) {
     global_registry().emit(TelemetryEvent {
         source: "WorkspaceSessionManager".to_string(),
-        severity,
-        message: msg.clone(),
-        metadata: std::collections::HashMap::new(),
-        thread_name: None,
+        severity, message: msg.clone(), metadata: std::collections::HashMap::new(), thread_name: None,
     });
-    ctx.data_mut(|d| {
-        d.insert_temp(egui::Id::new(aria_key), msg);
-    });
+    ctx.data_mut(|d| { d.insert_temp(egui::Id::new(aria_key), msg); });
 }

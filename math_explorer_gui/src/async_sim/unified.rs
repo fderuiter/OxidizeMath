@@ -1,6 +1,6 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::{
-    SimCommand, SimWorkerState, SimulationController, SimulationRunner, StateSnapshot,
+    BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner, StateSnapshot,
 };
 use crate::framework::InteractiveTool;
 use eframe::egui;
@@ -35,6 +35,14 @@ pub trait UnifiedModel: Send + 'static + scientific_metadata::theory::TheoryDesc
     fn name() -> &'static str
     where
         Self: Sized;
+
+    /// Return the domain category of the model.
+    fn domain() -> &'static str
+    where
+        Self: Sized,
+    {
+        ""
+    }
 
     /// Return presets that the model supports.
     fn presets() -> Vec<(&'static str, HashMap<String, f64>)>
@@ -109,7 +117,7 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
 
 #[allow(missing_docs)]
 pub struct UnifiedSimTool<M: UnifiedModel> {
-    controller: SimulationController,
+    controller: BackgroundWorker<UnifiedSimRunner<M>>,
     params: Arc<RwLock<HashMap<String, f64>>>,
     param_metadata: Vec<(String, ParameterConstraint)>,
     steps_per_frame: usize,
@@ -142,7 +150,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         let params = Arc::new(RwLock::new(initial_params.clone()));
         let runner = UnifiedSimRunner::<M>::new(Arc::clone(&params));
-        let controller = SimulationController::new(runner);
+        let controller = BackgroundWorker::new(runner);
 
         let temp_model = M::new(&initial_params);
 
@@ -171,7 +179,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             || self.controller.state() == SimWorkerState::Terminated
         {
             let runner = UnifiedSimRunner::<M>::new(Arc::clone(&self.params));
-            self.controller = SimulationController::new(runner);
+            self.controller = BackgroundWorker::new(runner);
         } else {
             let _ = self.controller.send_command(SimCommand::Reset);
         }
@@ -418,6 +426,23 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
     fn name(&self) -> &'static str {
         M::name()
+    }
+    fn domain(&self) -> &'static str {
+        M::domain()
+    }
+
+    fn save_state(&self) -> Option<String> {
+        let params = self.params.read().ok()?.clone();
+        serde_json::to_string(&params).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(params) = serde_json::from_str::<HashMap<String, f64>>(state) {
+            if let Ok(mut p) = self.params.write() {
+                *p = params;
+            }
+            let _ = self.controller.send_command(SimCommand::Reset);
+        }
     }
 
     fn show(&mut self, ctx: &egui::Context) {

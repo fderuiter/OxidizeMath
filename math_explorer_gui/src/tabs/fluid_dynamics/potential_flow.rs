@@ -20,13 +20,24 @@ pub struct PotentialFlowTool {
     new_element_angle: f64,
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum ElementType {
     Uniform,
     Source,
     Sink,
     Vortex,
     Doublet,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PotentialFlowState {
+    grid_size: usize,
+    view_range: f64,
+    selected_element_type: ElementType,
+    new_element_strength: f64,
+    new_element_x: f64,
+    new_element_y: f64,
+    new_element_angle: f64,
 }
 
 impl Default for PotentialFlowTool {
@@ -52,6 +63,52 @@ impl Default for PotentialFlowTool {
 }
 
 use crate::framework::InteractiveTool;
+use crate::presets::InteractivePreset;
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct PotentialFlowPresetConfig {
+    pub preset_type: String,
+    pub grid_size: usize,
+    pub view_range: f64,
+}
+
+impl InteractivePreset for PotentialFlowTool {
+    type Config = PotentialFlowPresetConfig;
+
+    fn domain(&self) -> &'static str {
+        "fluid_dynamics"
+    }
+
+    fn title(&self) -> String {
+        "Potential Flow - Cylinder Vector Field".to_string()
+    }
+
+    fn export_config(&self) -> Self::Config {
+        PotentialFlowPresetConfig {
+            preset_type: "CylinderFlow".to_string(),
+            grid_size: self.grid_size,
+            view_range: self.view_range,
+        }
+    }
+
+    fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
+        self.grid_size = config.grid_size;
+        self.view_range = config.view_range;
+        if config.preset_type == "SourceSink" {
+            let mut field = PotentialFlowField::new();
+            field.add(Box::new(Source::new(10.0, -3.0, 0.0)));
+            field.add(Box::new(Source::new(-10.0, 3.0, 0.0)));
+            self.field = field;
+        } else {
+            let mut field = PotentialFlowField::new();
+            field.add(Box::new(UniformFlow::new(10.0, 0.0)));
+            let kappa = 2.0 * PI * 10.0 * 2.0 * 2.0;
+            field.add(Box::new(Doublet::new(kappa, 0.0, 0.0)));
+            self.field = field;
+        }
+        Ok(())
+    }
+}
 
 impl InteractiveTool for PotentialFlowTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
@@ -59,10 +116,55 @@ impl InteractiveTool for PotentialFlowTool {
         "Potential Flow"
     }
 
+    fn domain(&self) -> &'static str {
+        "fluid_dynamics"
+    }
+
+    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        self.from_json_str(json_str)
+    }
+
+    fn export_preset_json(&self) -> Result<String, String> {
+        self.to_json_string()
+    }
+
+    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        self.from_json_str(json_str)
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&PotentialFlowState {
+            grid_size: self.grid_size,
+            view_range: self.view_range,
+            selected_element_type: self.selected_element_type,
+            new_element_strength: self.new_element_strength,
+            new_element_x: self.new_element_x,
+            new_element_y: self.new_element_y,
+            new_element_angle: self.new_element_angle,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(loaded) = serde_json::from_str::<PotentialFlowState>(state) {
+            self.grid_size = loaded.grid_size;
+            self.view_range = loaded.view_range;
+            self.selected_element_type = loaded.selected_element_type;
+            self.new_element_strength = loaded.new_element_strength;
+            self.new_element_x = loaded.new_element_x;
+            self.new_element_y = loaded.new_element_y;
+            self.new_element_angle = loaded.new_element_angle;
+        }
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("potential_flow_controls").show(ctx, |ui| {
             ui.heading("Potential Flow Controls");
+            if ui.button("🎨 Starter Gallery").clicked() {
+                let cur = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")).unwrap_or(false));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur));
+            }
             ui.separator();
 
             ui.collapsing("Add Element", |ui| {
