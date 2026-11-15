@@ -11,15 +11,9 @@ use math_explorer::pure_math::graph_theory::{
 use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct GraphSnapshot {
-    pub node_positions: HashMap<usize, Pos2>,
-    pub edges: Vec<(usize, usize, f64)>,
-    pub selected_node: Option<usize>,
-    pub next_node_id: usize,
-}
-
-const MAX_SNAPSHOTS: usize = 50;
+mod snapshot;
+#[allow(unused_imports)]
+pub use snapshot::{GraphSnapshot, SerializedGraphState, MAX_SNAPSHOTS};
 
 #[derive(PartialEq, Default)]
 enum EditorMode {
@@ -50,6 +44,41 @@ impl InteractiveTool for GraphEditorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Graph Editor"
+    }
+
+    fn domain(&self) -> &'static str {
+        "graph_theory"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        let node_pos = self
+            .node_positions
+            .iter()
+            .map(|(&id, &p)| (id, (p.x, p.y)))
+            .collect();
+        serde_json::to_string(&SerializedGraphState {
+            node_positions: node_pos,
+            edges: self.edges.clone(),
+            selected_node: self.selected_node,
+            next_node_id: self.next_node_id,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(loaded) = serde_json::from_str::<SerializedGraphState>(state) {
+            self.node_positions = loaded
+                .node_positions
+                .into_iter()
+                .map(|(id, (x, y))| (id, Pos2::new(x, y)))
+                .collect();
+            self.edges = loaded.edges;
+            self.selected_node = loaded.selected_node;
+            self.next_node_id = loaded.next_node_id;
+            self.undo_stack.clear();
+            self.redo_stack.clear();
+            self.rebuild_graph();
+        }
     }
 
     fn show_ui(&mut self, ui: &mut egui::Ui) {
@@ -352,56 +381,6 @@ impl GraphEditorTool {
             self.selected_node = None;
             self.next_node_id = 0;
         }
-    }
-
-    pub fn push_undo_snapshot(&mut self) {
-        let snapshot = GraphSnapshot {
-            node_positions: self.node_positions.clone(),
-            edges: self.edges.clone(),
-            selected_node: self.selected_node,
-            next_node_id: self.next_node_id,
-        };
-        self.undo_stack.push(snapshot);
-        if self.undo_stack.len() > MAX_SNAPSHOTS {
-            self.undo_stack.remove(0);
-        }
-        self.redo_stack.clear();
-    }
-
-    pub fn undo(&mut self) {
-        if let Some(previous_state) = self.undo_stack.pop() {
-            let current_state = GraphSnapshot {
-                node_positions: self.node_positions.clone(),
-                edges: self.edges.clone(),
-                selected_node: self.selected_node,
-                next_node_id: self.next_node_id,
-            };
-            self.redo_stack.push(current_state);
-            self.restore_snapshot(previous_state);
-        }
-    }
-
-    pub fn redo(&mut self) {
-        if let Some(next_state) = self.redo_stack.pop() {
-            let current_state = GraphSnapshot {
-                node_positions: self.node_positions.clone(),
-                edges: self.edges.clone(),
-                selected_node: self.selected_node,
-                next_node_id: self.next_node_id,
-            };
-            self.undo_stack.push(current_state);
-            self.restore_snapshot(next_state);
-        }
-    }
-
-    fn restore_snapshot(&mut self, snapshot: GraphSnapshot) {
-        self.node_positions = snapshot.node_positions;
-        self.edges = snapshot.edges;
-        self.selected_node = snapshot
-            .selected_node
-            .filter(|id| self.node_positions.contains_key(id));
-        self.next_node_id = snapshot.next_node_id;
-        self.rebuild_graph();
     }
 
     fn show_layout_toolbar(&mut self, ui: &mut egui::Ui) {

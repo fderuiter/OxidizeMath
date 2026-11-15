@@ -378,9 +378,16 @@ pub fn render_theory_summary_with_export(
     let is_plain_empty = plain_text.trim().is_empty();
     let is_latex_empty = latex_text.trim().is_empty();
 
+    let summary_job = egui_plot::parse_latex_to_layout_job(
+        latex_text,
+        egui::TextStyle::Body,
+        ui,
+        ui.visuals().text_color(),
+    );
+
     let response = ui
         .horizontal_wrapped(|ui| {
-            ui.add(egui::Label::new(text).wrap());
+            ui.add(egui::Label::new(summary_job).wrap());
             if ui
                 .add_enabled(!is_plain_empty, egui::Button::new("📋 Text"))
                 .on_hover_text("Copy text summary")
