@@ -32,7 +32,11 @@ impl InteractiveTool for BeamProfilingTool {
             ui.add(egui::Slider::new(&mut self.mu, 0.0..=1.0).text("Attenuation Coeff. (mu)"));
 
             ui.separator();
-            ui.label("Formula: D(d) = mu * Psi_0 * exp(-mu * d)");
+            crate::reflective_ui::render_formula_with_export(
+                ui,
+                r"D(d) = \mu \Psi_0 e^{-\mu d}",
+                Some("D(d) = mu * Psi_0 * exp(-mu * d)"),
+            );
 
             ui.add_space(10.0);
             ui.label("TERMA (Total Energy Released per Mass) represents the primary energy fluence released into the medium at a point, before accounting for secondary electron transport (scatter).");
@@ -71,8 +75,10 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for BeamProfilingTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        "TERMA depth dose: $D(d) = \\mu \\Psi_0 e^{-\\mu d}$ represents the primary energy fluence released into the medium at depth $d$.".into()
+    }
+    fn phonetic_description(&self) -> String { "TERMA beam profiling theory".into() }
+    fn theory_citation(&self) -> String { "The Physics of Radiation Therapy (Khan, 2014)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

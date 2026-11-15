@@ -1,4 +1,5 @@
 use crate::framework::InteractiveTool;
+use crate::reflective_ui::render_formula_with_export;
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, PlotPoints};
 use math_explorer::ai::deep_learning_theory::calculus::{
@@ -86,19 +87,47 @@ impl InteractiveTool for ActivationFunctionsTool {
             ui.label("Math Info");
             match self.selected_function {
                 ActivationFunction::ReLU => {
-                    ui.label("f(x) = max(0, x)");
-                    ui.label("f'(x) = 1 if x > 0 else 0");
+                    render_formula_with_export(
+                        ui,
+                        r"f(x) = \max(0, x)",
+                        Some("f(x) = max(0, x)"),
+                    );
+                    render_formula_with_export(
+                        ui,
+                        r"f'(x) = 1 \text{ if } x > 0 \text{ else } 0",
+                        Some("f'(x) = 1 if x > 0 else 0"),
+                    );
                 }
                 ActivationFunction::Sigmoid => {
-                    ui.label("f(x) = 1 / (1 + e^(-x))");
-                    ui.label("f'(x) = f(x) * (1 - f(x))");
+                    render_formula_with_export(
+                        ui,
+                        r"f(x) = \frac{1}{1 + e^{-x}}",
+                        Some("f(x) = 1 / (1 + e^(-x))"),
+                    );
+                    render_formula_with_export(
+                        ui,
+                        r"f'(x) = f(x)(1 - f(x))",
+                        Some("f'(x) = f(x) * (1 - f(x))"),
+                    );
                 }
                 ActivationFunction::Tanh => {
-                    ui.label("f(x) = tanh(x)");
-                    ui.label("f'(x) = 1 - tanh^2(x)");
+                    render_formula_with_export(
+                        ui,
+                        r"f(x) = \tanh(x)",
+                        Some("f(x) = tanh(x)"),
+                    );
+                    render_formula_with_export(
+                        ui,
+                        r"f'(x) = 1 - \tanh^2(x)",
+                        Some("f'(x) = 1 - tanh^2(x)"),
+                    );
                 }
                 ActivationFunction::Gelu => {
-                    ui.label("f(x) ≈ 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))");
+                    render_formula_with_export(
+                        ui,
+                        r"f(x) \approx 0.5x(1 + \tanh(\sqrt{2/\pi}(x + 0.044715x^3)))",
+                        Some("f(x) ≈ 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))"),
+                    );
                 }
             }
         });
@@ -160,8 +189,15 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for ActivationFunctionsTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        match self.selected_function {
+            ActivationFunction::ReLU => "Rectified Linear Unit: $f(x) = \\max(0, x)$".into(),
+            ActivationFunction::Sigmoid => "Sigmoid activation function: $f(x) = \\frac{1}{1 + e^{-x}}$".into(),
+            ActivationFunction::Tanh => "Hyperbolic tangent: $f(x) = \\tanh(x)$".into(),
+            ActivationFunction::Gelu => "Gaussian Error Linear Unit: $f(x) \\approx 0.5x(1 + \\tanh(\\sqrt{2/\\pi}(x + 0.044715x^3)))$".into(),
+        }
+    }
+    fn phonetic_description(&self) -> String { "Activation functions theory".into() }
+    fn theory_citation(&self) -> String { "Deep Learning (Goodfellow et al., 2016)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

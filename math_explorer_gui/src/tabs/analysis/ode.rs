@@ -40,11 +40,8 @@ impl OdeSystem<VecState> for LogisticGrowthOde {
 }
 
 fn eval_ode_final_state(preset: OdePreset, dt: f64, total_time: f64, p_map: &std::collections::HashMap<String, f64>) -> f64 {
-    let y0 = p_map.get("y0").copied().unwrap_or(1.0);
-    let v0 = p_map.get("v0").copied().unwrap_or(0.0);
-    let k = p_map.get("k").copied().unwrap_or(1.0);
-    let r = p_map.get("r").copied().unwrap_or(1.0);
-    let cap_k = p_map.get("cap_k").copied().unwrap_or(10.0);
+    let (y0, v0) = (p_map.get("y0").copied().unwrap_or(1.0), p_map.get("v0").copied().unwrap_or(0.0));
+    let (k, r, cap_k) = (p_map.get("k").copied().unwrap_or(1.0), p_map.get("r").copied().unwrap_or(1.0), p_map.get("cap_k").copied().unwrap_or(10.0));
     let steps = (total_time / dt).ceil() as usize;
     match preset {
         OdePreset::Exponential => {
@@ -95,19 +92,10 @@ pub struct OdeSolverTool {
 impl Default for OdeSolverTool {
     fn default() -> Self {
         let mut tool = Self {
-            preset: OdePreset::Exponential,
-            dt: 0.05,
-            total_time: 10.0,
-            param_k: 1.0,
-            param_r: 1.0,
-            param_cap_k: 10.0,
-            ic_y0: 1.0,
-            ic_v0: 0.0,
-            time_series: Vec::new(),
-            y_series: Vec::new(),
-            v_series: Vec::new(),
-            diverged: false,
-            dialog_state: PresetDialogState::default(),
+            preset: OdePreset::Exponential, dt: 0.05, total_time: 10.0,
+            param_k: 1.0, param_r: 1.0, param_cap_k: 10.0, ic_y0: 1.0, ic_v0: 0.0,
+            time_series: Vec::new(), y_series: Vec::new(), v_series: Vec::new(),
+            diverged: false, dialog_state: PresetDialogState::default(),
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
@@ -308,6 +296,13 @@ impl InteractiveTool for OdeSolverTool {
                     }
                 });
 
+            let (latex_eq, plain_eq) = match self.preset {
+                OdePreset::Exponential => (r"\frac{dy}{dt} = k y", "dy/dt = k*y"),
+                OdePreset::HarmonicOscillator => (r"\frac{d^2 y}{dt^2} = -k y", "d^2y/dt^2 = -k*y"),
+                OdePreset::LogisticGrowth => (r"\frac{dy}{dt} = r y (1 - \frac{y}{K})", "dy/dt = r*y*(1 - y/K)"),
+            };
+            crate::reflective_ui::render_formula_with_export(ui, latex_eq, Some(plain_eq));
+
             ui.add_space(10.0);
             ui.heading("Parameters");
             match self.preset {
@@ -383,16 +378,8 @@ impl InteractiveTool for OdeSolverTool {
 
             let params = match self.preset {
                 OdePreset::Exponential => vec![("k".to_string(), self.param_k), ("y0".to_string(), self.ic_y0)],
-                OdePreset::HarmonicOscillator => vec![
-                    ("k".to_string(), self.param_k),
-                    ("y0".to_string(), self.ic_y0),
-                    ("v0".to_string(), self.ic_v0),
-                ],
-                OdePreset::LogisticGrowth => vec![
-                    ("r".to_string(), self.param_r),
-                    ("cap_k".to_string(), self.param_cap_k),
-                    ("y0".to_string(), self.ic_y0),
-                ],
+                OdePreset::HarmonicOscillator => vec![("k".to_string(), self.param_k), ("y0".to_string(), self.ic_y0), ("v0".to_string(), self.ic_v0)],
+                OdePreset::LogisticGrowth => vec![("r".to_string(), self.param_r), ("cap_k".to_string(), self.param_cap_k), ("y0".to_string(), self.ic_y0)],
             };
 
             let current_preset = self.preset;
@@ -464,9 +451,15 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        match self.preset {
+            OdePreset::Exponential => r"Exponential model: $\frac{dy}{dt} = k y$".into(),
+            OdePreset::HarmonicOscillator => r"Harmonic oscillator: $\frac{d^2 y}{dt^2} = -k y$".into(),
+            OdePreset::LogisticGrowth => r"Logistic growth: $\frac{dy}{dt} = r y (1 - \frac{y}{K})$".into(),
+        }
+    }
+    fn phonetic_description(&self) -> String { "Ordinary differential equations theory".into() }
+    fn theory_citation(&self) -> String { "Differential Equations and Dynamical Systems (Perko, 2001)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
 
