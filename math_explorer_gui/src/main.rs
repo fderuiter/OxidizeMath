@@ -7,6 +7,8 @@ pub mod async_sim;
 #[allow(missing_docs)]
 pub mod camera;
 #[allow(missing_docs)]
+pub mod command_palette;
+#[allow(missing_docs)]
 pub mod framework;
 #[cfg(test)]
 mod framework_tests;

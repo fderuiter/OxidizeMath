@@ -78,4 +78,57 @@ pub trait ExplorerTab {
 
     /// Deserializes and restores the tab's parameter and panel state from a String.
     fn load_state(&mut self, _state: &str) {}
+
+    /// Domain category of the tab.
+    #[allow(dead_code)]
+    fn domain(&self) -> &'static str {
+        ""
+    }
+
+    /// Serializes active preset state to a formatted JSON string with metadata envelope.
+    #[allow(dead_code)]
+    fn export_preset_json(&self) -> Result<String, String> {
+        if let Some(state_str) = self.save_state() {
+            let config: serde_json::Value = serde_json::from_str(&state_str)
+                .map_err(|e| format!("Serialization error: {}", e))?;
+            let domain_str = if self.domain().is_empty() {
+                self.name().to_lowercase().replace(' ', "_")
+            } else {
+                self.domain().to_string()
+            };
+            let envelope = crate::presets::PresetWrapper {
+                metadata: crate::presets::PresetMetadata {
+                    schema_version: "1.0".to_string(),
+                    title: self.name().to_string(),
+                    domain: domain_str,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                },
+                config,
+            };
+            serde_json::to_string_pretty(&envelope)
+                .map_err(|e| format!("Serialization error: {}", e))
+        } else {
+            Err(format!("Preset export not supported for {}", self.name()))
+        }
+    }
+
+    /// Parses and validates a JSON preset string against this tab's domain, applying configuration if valid.
+    #[allow(dead_code)]
+    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let envelope: crate::presets::PresetWrapper<serde_json::Value> =
+            serde_json::from_str(json_str)
+                .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
+        let expected_domain = self.domain();
+        if !expected_domain.is_empty() && envelope.metadata.domain != expected_domain {
+            return Err(format!(
+                "Domain mismatch: preset is for domain '{}', but active tool is '{}'",
+                envelope.metadata.domain,
+                expected_domain
+            ));
+        }
+        let config_str = serde_json::to_string(&envelope.config)
+            .map_err(|e| format!("Config serialization error: {}", e))?;
+        self.load_state(&config_str);
+        Ok(())
+    }
 }

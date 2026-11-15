@@ -102,6 +102,30 @@ impl InteractiveTool for SurvivalAnalysisTool {
     fn name(&self) -> &'static str {
         "Survival Curves (Kaplan-Meier)"
     }
+    fn domain(&self) -> &'static str {
+        "clinical_trials"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct SurvivalState {
+            input_text: String,
+        }
+        serde_json::to_string(&SurvivalState {
+            input_text: self.input_text.clone(),
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct SurvivalState {
+            input_text: String,
+        }
+        if let Ok(s) = serde_json::from_str::<SurvivalState>(state) {
+            self.input_text = s.input_text;
+            self.recalculate();
+        }
+    }
 
     fn show(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("survival_input_panel").show(ctx, |ui| {

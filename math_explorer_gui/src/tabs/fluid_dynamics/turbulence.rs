@@ -4,10 +4,19 @@ use math_explorer::physics::fluid_dynamics::regimes::{
     FlatPlateClassifier, FlowClassifier, FlowRegime, PipeFlowClassifier,
 };
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum Geometry {
     Pipe,
     FlatPlate,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TurbulenceState {
+    density: f64,
+    dynamic_viscosity: f64,
+    velocity: f64,
+    length: f64,
+    geometry: Geometry,
 }
 
 pub struct TurbulenceTool {
@@ -41,6 +50,31 @@ impl InteractiveTool for TurbulenceTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Turbulence / Reynolds Analysis"
+    }
+
+    fn domain(&self) -> &'static str {
+        "fluid_dynamics"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&TurbulenceState {
+            density: self.density,
+            dynamic_viscosity: self.dynamic_viscosity,
+            velocity: self.velocity,
+            length: self.length,
+            geometry: self.geometry,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(loaded) = serde_json::from_str::<TurbulenceState>(state) {
+            self.density = loaded.density;
+            self.dynamic_viscosity = loaded.dynamic_viscosity;
+            self.velocity = loaded.velocity;
+            self.length = loaded.length;
+            self.geometry = loaded.geometry;
+        }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]

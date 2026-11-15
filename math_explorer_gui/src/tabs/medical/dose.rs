@@ -26,10 +26,42 @@ impl Default for DoseCalculationTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct DoseState {
+    amplitude: f64,
+    beta: f64,
+    width: usize,
+    height: usize,
+}
+
 impl InteractiveTool for DoseCalculationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Dose Calculation"
+    }
+
+    fn domain(&self) -> &'static str {
+        "medical"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&DoseState {
+            amplitude: self.amplitude,
+            beta: self.beta,
+            width: self.width,
+            height: self.height,
+        })
+        .ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        if let Ok(loaded) = serde_json::from_str::<DoseState>(state) {
+            self.amplitude = loaded.amplitude;
+            self.beta = loaded.beta;
+            self.width = loaded.width;
+            self.height = loaded.height;
+            self.texture = None;
+        }
     }
 
     fn show(&mut self, ctx: &egui::Context) {

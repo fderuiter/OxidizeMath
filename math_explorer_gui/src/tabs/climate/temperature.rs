@@ -19,6 +19,29 @@ impl InteractiveTool for TemperatureAnomaliesTool {
     fn name(&self) -> &'static str {
         "Temperature Anomalies"
     }
+    fn domain(&self) -> &'static str {
+        "climate"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct TempState {
+            time_series: Vec<[f64; 2]>,
+        }
+        serde_json::to_string(&TempState {
+            time_series: self.time_series.clone(),
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct TempState {
+            time_series: Vec<[f64; 2]>,
+        }
+        if let Ok(s) = serde_json::from_str::<TempState>(state) {
+            self.time_series = s.time_series;
+        }
+    }
 
     fn show(&mut self, ctx: &egui::Context) {
         eframe::egui::CentralPanel::default().show(ctx, |ui| {

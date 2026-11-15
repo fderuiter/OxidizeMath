@@ -31,6 +31,38 @@ impl InteractiveTool for NetworkPropagationTool {
     fn name(&self) -> &'static str {
         "Network Propagation"
     }
+    fn domain(&self) -> &'static str {
+        "epidemiology"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct NetPropState {
+            num_nodes: usize,
+            beta: f64,
+            gamma: f64,
+        }
+        serde_json::to_string(&NetPropState {
+            num_nodes: self.model.num_nodes(),
+            beta: self.model.beta(),
+            gamma: self.model.gamma(),
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct NetPropState {
+            num_nodes: usize,
+            beta: f64,
+            gamma: f64,
+        }
+        if let Ok(s) = serde_json::from_str::<NetPropState>(state) {
+            let _ = self.model.set_num_nodes(s.num_nodes);
+            let _ = self.model.set_beta(s.beta);
+            let _ = self.model.set_gamma(s.gamma);
+            self.reset_network();
+        }
+    }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {

@@ -91,6 +91,8 @@
 //! *   **Bellman Equations**: The fundamental recursive relationship for value functions.
 
 #[allow(missing_docs)]
+pub(crate) mod activation_kernels;
+#[allow(missing_docs)]
 pub mod activations;
 pub mod deep_learning_theory;
 pub mod gaussian_splatting;

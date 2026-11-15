@@ -2,7 +2,7 @@
 use approx::assert_relative_eq;
 use domain_physics::physics::medical::radar_gating::{
     C,
-    gating::GatingLogic,
+    gating::{BeamState, GatingError, GatingLogic},
     geometry::{AngleFftConfig, SphericalPoint},
     physics::FmcwConfig,
     surface::BiQuadraticSurface,
@@ -141,25 +141,143 @@ fn test_kalman_tracking() {
 #[verified_engine::verified]
 fn test_gating_logic() {
     let mut gating = GatingLogic::new(10.0, 1.0, 0.0); // Threshold 10, Hysteresis 1
+    gating.arm().expect("Failed to arm gating logic");
 
     // Start below threshold (Beam ON expected)
     // Case 1: Amplitude 8.0 < 9.0 (10-1).
-    let is_on = gating.evaluate(8.0, 0.0);
+    let is_on = gating.evaluate(8.0, 0.0) == BeamState::BeamActive;
     assert!(is_on);
+    assert!(gating.is_beam_active());
 
     // Case 2: Amplitude rises to 10.5. Inside hysteresis [9, 11]. Should stay ON.
-    let is_on = gating.evaluate(10.5, 0.0);
+    let is_on = gating.evaluate(10.5, 0.0) == BeamState::BeamActive;
     assert!(is_on);
+    assert!(gating.is_beam_active());
 
     // Case 3: Amplitude rises to 11.5 > 11.0 (10+1). Should turn OFF.
-    let is_on = gating.evaluate(11.5, 0.0);
+    let is_on = gating.evaluate(11.5, 0.0) == BeamState::BeamActive;
     assert!(!is_on);
+    assert!(!gating.is_beam_active());
 
     // Case 4: Amplitude falls to 9.5. Inside hysteresis. Should stay OFF.
-    let is_on = gating.evaluate(9.5, 0.0);
+    let is_on = gating.evaluate(9.5, 0.0) == BeamState::BeamActive;
     assert!(!is_on);
+    assert!(!gating.is_beam_active());
 
     // Case 5: Amplitude falls to 8.5 < 9.0. Should turn ON.
-    let is_on = gating.evaluate(8.5, 0.0);
+    let is_on = gating.evaluate(8.5, 0.0) == BeamState::BeamActive;
     assert!(is_on);
+    assert!(gating.is_beam_active());
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_gating_lifecycle_and_unarmed_evaluation() {
+    let mut gating = GatingLogic::new(10.0, 1.0, 0.0);
+
+    // Initial state must be Standby, beam inactive
+    assert_eq!(gating.state(), BeamState::Standby);
+    assert!(!gating.is_beam_active());
+
+    // Criterion 3 & 5: evaluate() in Standby must NOT activate the beam
+    let state = gating.evaluate(8.0, 0.0);
+    assert_eq!(state, BeamState::Standby);
+    assert!(!gating.is_beam_active());
+
+    // Explicit arming transitions to Armed
+    let armed_state = gating.arm().expect("Arming should succeed from Standby");
+    assert_eq!(armed_state, BeamState::Armed);
+    assert_eq!(gating.state(), BeamState::Armed);
+    assert!(!gating.is_beam_active());
+
+    // Idempotent arming when already Armed
+    assert_eq!(gating.arm().unwrap(), BeamState::Armed);
+
+    // First evaluation in target window transitions to BeamActive
+    assert_eq!(gating.evaluate(8.0, 0.0), BeamState::BeamActive);
+    assert!(gating.is_beam_active());
+
+    // Disarm stops radiation immediately and returns to Standby
+    let disarmed = gating.disarm().expect("Disarm should succeed");
+    assert_eq!(disarmed, BeamState::Standby);
+    assert_eq!(gating.state(), BeamState::Standby);
+    assert!(!gating.is_beam_active());
+
+    // Disarming in Standby is idempotent
+    assert_eq!(gating.disarm().unwrap(), BeamState::Standby);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_gating_ieee754_nan_inf_guards() {
+    let mut gating = GatingLogic::new(10.0, 1.0, 0.0);
+    gating.arm().expect("Arming should succeed");
+
+    // Beam is active in target respiratory window
+    assert_eq!(gating.evaluate(8.0, 0.0), BeamState::BeamActive);
+    assert!(gating.is_beam_active());
+
+    // Sensor loss / NaN input triggers immediate SafetyInterlock
+    let tripped = gating.evaluate(f64::NAN, 0.0);
+    assert_eq!(tripped, BeamState::SafetyInterlock);
+    assert_eq!(gating.state(), BeamState::SafetyInterlock);
+    assert!(!gating.is_beam_active());
+
+    // Interlock latches permanently: subsequent evaluations do not clear it
+    assert_eq!(gating.evaluate(8.0, 0.0), BeamState::SafetyInterlock);
+    assert!(!gating.is_beam_active());
+
+    // Direct arming while interlocked is rejected
+    assert_eq!(gating.arm(), Err(GatingError::InterlockLatched));
+    assert_eq!(gating.disarm(), Err(GatingError::InterlockLatched));
+
+    // Reset clears interlock back to Standby
+    assert_eq!(gating.reset_interlock().unwrap(), BeamState::Standby);
+    assert_eq!(gating.state(), BeamState::Standby);
+
+    // Test Infinity input guards
+    gating.arm().unwrap();
+    assert_eq!(
+        gating.evaluate(8.0, f64::INFINITY),
+        BeamState::SafetyInterlock
+    );
+    assert!(!gating.is_beam_active());
+
+    gating.reset_interlock().unwrap();
+    gating.arm().unwrap();
+    assert_eq!(
+        gating.evaluate(8.0, f64::NEG_INFINITY),
+        BeamState::SafetyInterlock
+    );
+    assert!(!gating.is_beam_active());
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_gating_invalid_transitions() {
+    let mut gating = GatingLogic::new(10.0, 1.0, 0.0);
+
+    // Reset interlock when not interlocked fails
+    assert_eq!(gating.reset_interlock(), Err(GatingError::NotInterlocked));
+
+    // Arm to enter ready state
+    gating.arm().unwrap();
+    gating.evaluate(8.0, 0.0); // Now BeamActive
+
+    // Cannot call arm() while BeamActive
+    assert_eq!(
+        gating.arm(),
+        Err(GatingError::InvalidTransition {
+            from: BeamState::BeamActive,
+            to: BeamState::Armed,
+        })
+    );
+
+    // Trigger interlock explicitly
+    assert_eq!(gating.trigger_interlock(), BeamState::SafetyInterlock);
+    assert_eq!(gating.state(), BeamState::SafetyInterlock);
+    assert!(!gating.is_beam_active());
+
+    // Reset back to Standby
+    assert_eq!(gating.reset_interlock().unwrap(), BeamState::Standby);
 }

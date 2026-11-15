@@ -24,6 +24,37 @@ impl InteractiveTool for LifetimeEstimatorTool {
     fn name(&self) -> &'static str {
         "Lifetime Estimator"
     }
+    fn domain(&self) -> &'static str {
+        "battery_degradation"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct LifetimeEstimatorState {
+            target_capacity: f64,
+            dod: f64,
+            cycles_per_day: f64,
+        }
+        serde_json::to_string(&LifetimeEstimatorState {
+            target_capacity: self.target_capacity,
+            dod: self.dod,
+            cycles_per_day: self.cycles_per_day,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct LifetimeEstimatorState {
+            target_capacity: f64,
+            dod: f64,
+            cycles_per_day: f64,
+        }
+        if let Ok(s) = serde_json::from_str::<LifetimeEstimatorState>(state) {
+            self.target_capacity = s.target_capacity;
+            self.dod = s.dod;
+            self.cycles_per_day = s.cycles_per_day;
+        }
+    }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
