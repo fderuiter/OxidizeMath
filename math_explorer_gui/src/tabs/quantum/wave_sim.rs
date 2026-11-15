@@ -31,6 +31,10 @@ pub struct WaveUnified {
 }
 
 impl UnifiedModel for WaveUnified {
+    fn domain() -> &'static str {
+        "quantum"
+    }
+
     fn new(params: &HashMap<String, f64>) -> Self {
         let n_points = 200;
         let x_min = -5.0;

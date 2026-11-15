@@ -8,7 +8,7 @@ pub mod ui;
 use comparison::{compute_discrepancy, simulate_preset, SolverDiscrepancy, SolverTrajectory};
 
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
-use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig, PresetDialogState};
+use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig};
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 
@@ -34,8 +34,6 @@ pub struct OdeSolverTool {
     pub(crate) discrepancy_euler_rk4: SolverDiscrepancy,
     pub(crate) discrepancy_heun_rk4: SolverDiscrepancy,
     pub(crate) discrepancy_euler_heun: SolverDiscrepancy,
-    // Dialog & Presets
-    pub(crate) dialog_state: PresetDialogState,
     pub snapshot_manager: TraceSnapshotManager,
     pub(crate) comparison_manager: TraceSnapshotManager,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
@@ -63,7 +61,6 @@ impl Default for OdeSolverTool {
             discrepancy_euler_rk4: SolverDiscrepancy::default(),
             discrepancy_heun_rk4: SolverDiscrepancy::default(),
             discrepancy_euler_heun: SolverDiscrepancy::default(),
-            dialog_state: PresetDialogState::default(),
             snapshot_manager: TraceSnapshotManager::new(),
             comparison_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
@@ -297,6 +294,21 @@ impl InteractiveTool for OdeSolverTool {
     }
     fn name(&self) -> &'static str {
         "ODE Solvers"
+    }
+    fn domain(&self) -> &'static str {
+        "analysis"
+    }
+
+    fn export_preset_json(&self) -> Result<String, String> {
+        self.to_json_string()
+    }
+
+    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let res = self.from_json_str(json_str);
+        if res.is_ok() {
+            self.recalculate();
+        }
+        res
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {

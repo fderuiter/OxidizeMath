@@ -32,6 +32,46 @@ impl InteractiveTool for CeraTool {
     fn name(&self) -> &'static str {
         "CERA Model"
     }
+    fn domain(&self) -> &'static str {
+        "climate"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct CeraState {
+            in_channels: usize,
+            latent_channels: usize,
+            aligned_channels: usize,
+            num_levels: usize,
+            output_size: usize,
+        }
+        serde_json::to_string(&CeraState {
+            in_channels: self.in_channels,
+            latent_channels: self.latent_channels,
+            aligned_channels: self.aligned_channels,
+            num_levels: self.num_levels,
+            output_size: self.output_size,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct CeraState {
+            in_channels: usize,
+            latent_channels: usize,
+            aligned_channels: usize,
+            num_levels: usize,
+            output_size: usize,
+        }
+        if let Ok(s) = serde_json::from_str::<CeraState>(state) {
+            self.in_channels = s.in_channels;
+            self.latent_channels = s.latent_channels;
+            self.aligned_channels = s.aligned_channels;
+            self.num_levels = s.num_levels;
+            self.output_size = s.output_size;
+            self.prediction_result = None;
+        }
+    }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {

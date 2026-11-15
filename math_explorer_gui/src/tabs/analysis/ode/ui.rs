@@ -21,7 +21,7 @@ impl OdeSolverTool {
         changed |= self.render_parameter_inputs(ui);
         changed |= self.render_initial_condition_inputs(ui);
         changed |= self.render_solver_settings_controls(ui);
-        changed |= self.render_snapshots_and_sensitivity(ui, plot_points_y, plot_points_v);
+        self.render_snapshots_and_sensitivity(ui, plot_points_y, plot_points_v);
         changed
     }
 
@@ -205,8 +205,7 @@ impl OdeSolverTool {
         ui: &mut egui::Ui,
         plot_points_y: &[[f64; 2]],
         plot_points_v: &[[f64; 2]],
-    ) -> bool {
-        let mut changed = false;
+    ) {
         ui.add_space(10.0);
         let param_summary = self.param_summary();
         let is_harmonic = self.preset == OdePreset::HarmonicOscillator;
@@ -222,12 +221,6 @@ impl OdeSolverTool {
             }
             Some((label, param_summary, series))
         });
-
-        let mut dialog_state = std::mem::take(&mut self.dialog_state);
-        if crate::presets::render_preset_buttons(&mut dialog_state, ui, self) {
-            changed = true;
-        }
-        self.dialog_state = dialog_state;
 
         let params = match self.preset {
             OdePreset::Exponential => vec![
@@ -266,7 +259,6 @@ impl OdeSolverTool {
             &self.sensitivity_engine,
             "ode_tool",
         );
-        changed
     }
 
     pub(super) fn render_discrepancy_panel(&self, ui: &mut egui::Ui) {

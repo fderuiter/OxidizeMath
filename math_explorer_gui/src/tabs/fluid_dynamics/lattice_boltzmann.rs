@@ -16,6 +16,10 @@ pub struct LbmUnified {
 }
 
 impl UnifiedModel for LbmUnified {
+    fn domain() -> &'static str {
+        "fluid_dynamics"
+    }
+
     fn new(params: &HashMap<String, f64>) -> Self {
         let viscosity = *params.get("viscosity").unwrap_or(&0.02);
         let width = 100;

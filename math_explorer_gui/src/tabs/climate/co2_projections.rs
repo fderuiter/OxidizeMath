@@ -19,6 +19,29 @@ impl InteractiveTool for Co2ProjectionsTool {
     fn name(&self) -> &'static str {
         "CO2 Projections"
     }
+    fn domain(&self) -> &'static str {
+        "climate"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct Co2State {
+            reduction_scenario: f64,
+        }
+        serde_json::to_string(&Co2State {
+            reduction_scenario: self.reduction_scenario,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct Co2State {
+            reduction_scenario: f64,
+        }
+        if let Ok(s) = serde_json::from_str::<Co2State>(state) {
+            self.reduction_scenario = s.reduction_scenario;
+        }
+    }
 
     fn show(&mut self, ctx: &egui::Context) {
         eframe::egui::CentralPanel::default().show(ctx, |ui| {

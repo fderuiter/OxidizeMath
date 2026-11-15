@@ -7,7 +7,7 @@ use math_explorer::physics::chaos::fractals::{escape_time_julia, escape_time_man
 use num_complex::Complex;
 use std::collections::HashMap;
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum FractalMode {
     Mandelbrot,
     Julia,
@@ -72,6 +72,53 @@ impl InteractiveTool for FractalViewer {
     
     fn name(&self) -> &'static str {
         "Fractal Viewer"
+    }
+
+    fn domain(&self) -> &'static str {
+        "chaos"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct FractalState {
+            center_re: f64,
+            center_im: f64,
+            zoom: f64,
+            max_iter: u32,
+            mode: FractalMode,
+            julia_re: f64,
+            julia_im: f64,
+        }
+        serde_json::to_string(&FractalState {
+            center_re: self.center.re,
+            center_im: self.center.im,
+            zoom: self.zoom,
+            max_iter: self.max_iter,
+            mode: self.mode,
+            julia_re: self.julia_c.re,
+            julia_im: self.julia_c.im,
+        }).ok()
+    }
+
+    fn load_state(&mut self, state: &str) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct FractalState {
+            center_re: f64,
+            center_im: f64,
+            zoom: f64,
+            max_iter: u32,
+            mode: FractalMode,
+            julia_re: f64,
+            julia_im: f64,
+        }
+        if let Ok(s) = serde_json::from_str::<FractalState>(state) {
+            self.center = Complex::new(s.center_re, s.center_im);
+            self.zoom = s.zoom;
+            self.max_iter = s.max_iter;
+            self.mode = s.mode;
+            self.julia_c = Complex::new(s.julia_re, s.julia_im);
+            self.dirty = true;
+        }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
