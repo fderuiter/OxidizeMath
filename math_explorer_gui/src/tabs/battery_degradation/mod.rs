@@ -34,6 +34,14 @@ impl ExplorerTab for BatteryDegradationTab {
     fn load_state(&mut self, state: &str) {
         self.framework.load_state(state);
     }
+
+    fn domain(&self) -> &'static str {
+        "battery_degradation"
+    }
+
+    fn select_tool_by_name(&mut self, name: &str) -> bool {
+        self.framework.select_tool_by_name(name)
+    }
 }
 
 // [cite:algorithmic_information_rust]
