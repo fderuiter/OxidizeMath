@@ -4821,33 +4821,28 @@ mod floating_zoom_toolbar_tests {
         let ctx = egui::Context::default();
         let id = Id::new("test_aspect_ratio");
 
-        // Frame 1: Initial layout and axis thickness calculation
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                Plot::new(id)
-                    .id(id)
-                    .data_aspect(2.0)
-                    .default_x_bounds(-20.0, 20.0)
-                    .default_y_bounds(-10.0, 10.0)
-                    .show(ui, |plot_ui| {
-                        plot_ui.line(Line::new("dummy", vec![[-20.0, -10.0], [20.0, 10.0]]));
-                    });
-            });
-        });
-
-        // Frame 2: Stable frame with settled axis layout
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                Plot::new(id).id(id).data_aspect(2.0).show(ui, |plot_ui| {
-                    plot_ui.line(Line::new("dummy", vec![[-20.0, -10.0], [20.0, 10.0]]));
+        // Set data_aspect(2.0) and run initial frames so font metrics and axis margins settle
+        let show_plot = |ctx: &egui::Context| {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    Plot::new(id)
+                        .id(id)
+                        .data_aspect(2.0)
+                        .default_x_bounds(-20.0, 20.0)
+                        .default_y_bounds(-10.0, 10.0)
+                        .show(ui, |plot_ui| {
+                            plot_ui.line(Line::new("dummy", vec![[-20.0, -10.0], [20.0, 10.0]]));
+                        });
                 });
             });
-        });
+        };
+        show_plot(&ctx);
+        show_plot(&ctx);
 
         let mem1 = PlotMemory::load(&ctx, id).unwrap();
         let initial_aspect = mem1.transform.bounds().width() / mem1.transform.bounds().height();
 
-        // Frame 3: Zoom In
+        // Zoom In
         ctx.data_mut(|d| d.insert_temp(id.with("zoom_in"), true));
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {

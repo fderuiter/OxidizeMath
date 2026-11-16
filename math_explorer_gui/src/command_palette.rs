@@ -57,6 +57,68 @@ pub fn fuzzy_match_score(text: &str, query: &str) -> Option<usize> {
     }
 }
 
+/// Target tab index and optional tool name selected from the command palette.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaletteSelection {
+    /// Target explorer tab index.
+    pub tab_index: usize,
+    /// Optional tool name to activate within the domain tab.
+    pub tool_name: Option<String>,
+}
+
+impl PaletteSelection {
+    /// Creates a selection pointing to a domain tab.
+    pub fn tab(tab_index: usize) -> Self {
+        Self {
+            tab_index,
+            tool_name: None,
+        }
+    }
+
+    /// Creates a selection pointing to a specific simulation tool within a domain tab.
+    pub fn tool(tab_index: usize, tool_name: impl Into<String>) -> Self {
+        Self {
+            tab_index,
+            tool_name: Some(tool_name.into()),
+        }
+    }
+}
+
+/// Search result item in the command palette representing either a top-level tab or an individual tool.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PaletteItem {
+    Tab {
+        index: usize,
+        name: &'static str,
+    },
+    Tool {
+        tab_index: usize,
+        name: &'static str,
+        domain: &'static str,
+        tags: &'static [&'static str],
+    },
+}
+
+impl PaletteItem {
+    /// Converts this item into a `PaletteSelection`.
+    pub fn to_selection(&self) -> PaletteSelection {
+        match self {
+            PaletteItem::Tab { index, .. } => PaletteSelection::tab(*index),
+            PaletteItem::Tool {
+                tab_index, name, ..
+            } => PaletteSelection::tool(*tab_index, *name),
+        }
+    }
+
+    /// Primary display title of this item.
+    pub fn title(&self) -> &'static str {
+        match self {
+            PaletteItem::Tab { name, .. } => name,
+            PaletteItem::Tool { name, .. } => name,
+        }
+    }
+}
+
 /// Modal command palette providing instant search-driven tab switching and command execution.
 #[derive(Default)]
 pub struct CommandPalette {
@@ -121,31 +183,103 @@ impl CommandPalette {
             .collect()
     }
 
-    /// Processes keyboard shortcuts (Arrow Up/Down, Enter, Escape) for navigating and selecting tabs.
+    /// Filters registered domain tabs and simulation tools using case-insensitive fuzzy and tag matching.
+    pub fn filter_items(&self, tabs: &[Box<dyn crate::tabs::ExplorerTab>]) -> Vec<PaletteItem> {
+        let mut matched: Vec<(PaletteItem, usize, usize)> = Vec::new();
+
+        // 1. Index domain tabs
+        for (idx, tab) in tabs.iter().enumerate() {
+            let tab_name = tab.name();
+            let mut score = fuzzy_match_score(tab_name, &self.query);
+            let domain = tab.domain();
+            if !domain.is_empty() {
+                if let Some(domain_score) = fuzzy_match_score(domain, &self.query) {
+                    score = Some(score.map_or(domain_score, |s| s.min(domain_score)));
+                }
+            }
+            if let Some(s) = score {
+                matched.push((
+                    PaletteItem::Tab {
+                        index: idx,
+                        name: tab_name,
+                    },
+                    s,
+                    0,
+                ));
+            }
+        }
+
+        // 2. Index simulation tools registered in inventory
+        for meta in inventory::iter::<crate::framework::ToolMetadata> {
+            let mut score = fuzzy_match_score(meta.name, &self.query);
+            for &tag in meta.tags {
+                if let Some(tag_score) = fuzzy_match_score(tag, &self.query) {
+                    score = Some(score.map_or(tag_score, |s| s.min(tag_score)));
+                }
+            }
+
+            if let Some(s) = score {
+                // Find matching tab index for this tool's domain, safely falling back to 0
+                let tab_index = tabs
+                    .iter()
+                    .position(|t| !t.domain().is_empty() && t.domain() == meta.domain)
+                    .or_else(|| {
+                        tabs.iter().position(|t| {
+                            let t_name = t.name().to_lowercase().replace(' ', "_");
+                            t_name.contains(meta.domain)
+                        })
+                    })
+                    .unwrap_or(0);
+
+                matched.push((
+                    PaletteItem::Tool {
+                        tab_index,
+                        name: meta.name,
+                        domain: meta.domain,
+                        tags: meta.tags,
+                    },
+                    s,
+                    1,
+                ));
+            }
+        }
+
+        // Sort by match score ascending (lower score = higher relevance / better match).
+        // On tie, sort tabs before tools (item_type_order 0 vs 1), then deterministically by title.
+        matched.sort_by(|a, b| {
+            a.1.cmp(&b.1)
+                .then_with(|| a.2.cmp(&b.2))
+                .then_with(|| a.0.title().cmp(b.0.title()))
+        });
+
+        matched.into_iter().map(|(item, _, _)| item).collect()
+    }
+
+    /// Processes keyboard shortcuts (Arrow Up/Down, Enter, Escape) for navigating and selecting items.
     pub fn handle_keyboard_inputs(
         &mut self,
         ctx: &egui::Context,
-        filtered_tabs: &[(usize, &'static str)],
-    ) -> (Option<usize>, bool) {
-        let mut selected_tab_index = None;
+        filtered_items: &[PaletteItem],
+    ) -> (Option<PaletteSelection>, bool) {
+        let mut selected_item = None;
         let mut esc_pressed = false;
 
-        if !filtered_tabs.is_empty() {
+        if !filtered_items.is_empty() {
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) {
-                self.selected_index = (self.selected_index + 1) % filtered_tabs.len();
+                self.selected_index = (self.selected_index + 1) % filtered_items.len();
             }
 
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) {
                 if self.selected_index == 0 {
-                    self.selected_index = filtered_tabs.len() - 1;
+                    self.selected_index = filtered_items.len() - 1;
                 } else {
                     self.selected_index -= 1;
                 }
             }
 
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
-                if let Some(&(tab_idx, _)) = filtered_tabs.get(self.selected_index) {
-                    selected_tab_index = Some(tab_idx);
+                if let Some(item) = filtered_items.get(self.selected_index) {
+                    selected_item = Some(item.to_selection());
                 }
             }
         }
@@ -154,7 +288,7 @@ impl CommandPalette {
             esc_pressed = true;
         }
 
-        (selected_tab_index, esc_pressed)
+        (selected_item, esc_pressed)
     }
 
     /// Renders search header and text field with auto-focus behavior.
@@ -166,7 +300,7 @@ impl CommandPalette {
 
         let text_edit_response = ui.add(
             egui::TextEdit::singleline(&mut self.query)
-                .hint_text("Type tab name or domain query (e.g. quantum, fluid, ODE)...")
+                .hint_text("Type tab or tool name (e.g. dijkstra, lorenz, cera, fluid)...")
                 .desired_width(f32::INFINITY),
         );
 
@@ -176,39 +310,49 @@ impl CommandPalette {
         }
     }
 
-    /// Renders vertical scrollable list of filtered simulation domain tabs.
+    /// Renders vertical scrollable list of filtered simulation domain tabs and tools.
     fn render_results_list(
         &mut self,
         ui: &mut egui::Ui,
-        filtered_tabs: &[(usize, &'static str)],
-    ) -> Option<usize> {
-        let mut clicked_tab = None;
+        filtered_items: &[PaletteItem],
+    ) -> Option<PaletteSelection> {
+        let mut clicked_selection = None;
 
         egui::ScrollArea::vertical()
             .max_height(280.0)
             .show(ui, |ui| {
-                if filtered_tabs.is_empty() {
+                if filtered_items.is_empty() {
                     ui.label(
-                        egui::RichText::new("No matching simulation domain tabs found.").italics(),
+                        egui::RichText::new("No matching simulation domain tabs or tools found.")
+                            .italics(),
                     );
                 } else {
-                    for (list_idx, &(tab_idx, tab_name)) in filtered_tabs.iter().enumerate() {
+                    for (list_idx, item) in filtered_items.iter().enumerate() {
                         let is_selected = list_idx == self.selected_index;
-                        let label_text = egui::RichText::new(tab_name).size(14.0).strong();
-                        let response = ui.selectable_label(is_selected, label_text);
+                        let text = match item {
+                            PaletteItem::Tab { name, .. } => {
+                                egui::RichText::new(format!("📁 [Tab] {}", name))
+                                    .size(14.0)
+                                    .strong()
+                            }
+                            PaletteItem::Tool { name, domain, .. } => {
+                                egui::RichText::new(format!("🔧 {}  ({})", name, domain)).size(14.0)
+                            }
+                        };
+                        let response = ui.selectable_label(is_selected, text);
 
                         if is_selected {
                             response.scroll_to_me(Some(egui::Align::Center));
                         }
 
                         if response.clicked() {
-                            clicked_tab = Some(tab_idx);
+                            clicked_selection = Some(item.to_selection());
                         }
                     }
                 }
             });
 
-        clicked_tab
+        clicked_selection
     }
 
     /// Renders footer keyboard hint bar.
@@ -225,30 +369,30 @@ impl CommandPalette {
 
     /// Renders the command palette modal overlay if open.
     ///
-    /// Returns `Some(tab_index)` if a tab was selected (via Enter key or mouse click),
+    /// Returns `Some(PaletteSelection)` if a tab or tool was selected (via Enter key or mouse click),
     /// which also dismisses the command palette.
     pub fn show(
         &mut self,
         ctx: &egui::Context,
         tabs: &[Box<dyn crate::tabs::ExplorerTab>],
-    ) -> Option<usize> {
+    ) -> Option<PaletteSelection> {
         if !self.is_open {
             return None;
         }
 
-        let filtered_tabs = self.filter_tabs(tabs);
+        let filtered_items = self.filter_items(tabs);
 
         if self.query != self.last_query {
             self.selected_index = 0;
             self.last_query = self.query.clone();
-        } else if filtered_tabs.is_empty() {
+        } else if filtered_items.is_empty() {
             self.selected_index = 0;
-        } else if self.selected_index >= filtered_tabs.len() {
-            self.selected_index = filtered_tabs.len() - 1;
+        } else if self.selected_index >= filtered_items.len() {
+            self.selected_index = filtered_items.len() - 1;
         }
 
-        let (kb_selected_tab, esc_pressed) = self.handle_keyboard_inputs(ctx, &filtered_tabs);
-        let mut selected_tab_index = kb_selected_tab;
+        let (kb_selected_item, esc_pressed) = self.handle_keyboard_inputs(ctx, &filtered_items);
+        let mut selected_item = kb_selected_item;
 
         let modal = egui::Modal::new(egui::Id::new("command_palette_modal"))
             .backdrop_color(egui::Color32::from_black_alpha(150));
@@ -260,9 +404,9 @@ impl CommandPalette {
             ui.vertical(|ui| {
                 self.render_header_and_search(ui);
                 ui.add_space(8.0);
-                let mouse_selected = self.render_results_list(ui, &filtered_tabs);
+                let mouse_selected = self.render_results_list(ui, &filtered_items);
                 if mouse_selected.is_some() {
-                    selected_tab_index = mouse_selected;
+                    selected_item = mouse_selected;
                 }
                 ui.add_space(4.0);
                 self.render_footer(ui);
@@ -277,187 +421,14 @@ impl CommandPalette {
                     "Command palette closed".to_string(),
                 );
             });
-        } else if selected_tab_index.is_some() {
+        } else if selected_item.is_some() {
             self.close();
         }
 
-        selected_tab_index
+        selected_item
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct MockTab(&'static str);
-
-    impl crate::tabs::ExplorerTab for MockTab {
-        fn name(&self) -> &'static str {
-            self.0
-        }
-        fn show(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {}
-    }
-
-    fn mock_tabs() -> Vec<Box<dyn crate::tabs::ExplorerTab>> {
-        vec![
-            Box::new(MockTab("Quantum / Spin Visualization")),
-            Box::new(MockTab("Fluid Dynamics / Lattice Boltzmann")),
-            Box::new(MockTab("Analysis / ODE Solver")),
-            Box::new(MockTab("AI / Grid World")),
-        ]
-    }
-
-    #[test]
-    fn test_fuzzy_match_score() {
-        assert!(fuzzy_match_score("Quantum / Spin Visualization", "quantum").is_some());
-        assert!(fuzzy_match_score("Quantum / Spin Visualization", "spin").is_some());
-        assert!(fuzzy_match_score("Quantum / Spin Visualization", "qspin").is_some());
-        assert!(fuzzy_match_score("Quantum / Spin Visualization", "nonexistent").is_none());
-    }
-
-    #[test]
-    fn test_palette_open_close_toggle() {
-        let mut palette = CommandPalette::default();
-        assert!(!palette.is_open);
-
-        palette.open();
-        assert!(palette.is_open);
-        assert!(palette.just_opened);
-
-        palette.close();
-        assert!(!palette.is_open);
-
-        palette.toggle();
-        assert!(palette.is_open);
-    }
-
-    #[test]
-    fn test_palette_filtering_and_selection() {
-        let ctx = egui::Context::default();
-        let tabs = mock_tabs();
-        let mut palette = CommandPalette::default();
-
-        palette.open();
-        palette.query = "quantum".to_string();
-
-        let mut selected = None;
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            selected = palette.show(ctx, &tabs);
-        });
-
-        assert_eq!(selected, None);
-        assert!(palette.is_open);
-
-        // Press enter to select top filtered item
-        let raw_input = egui::RawInput {
-            events: vec![egui::Event::Key {
-                key: egui::Key::Enter,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: egui::Modifiers::NONE,
-            }],
-            ..Default::default()
-        };
-
-        let _ = ctx.run(raw_input, |ctx| {
-            selected = palette.show(ctx, &tabs);
-        });
-
-        assert_eq!(selected, Some(0)); // Quantum is at index 0
-        assert!(!palette.is_open);
-    }
-
-    #[test]
-    fn test_palette_arrow_navigation() {
-        let ctx = egui::Context::default();
-        let tabs = mock_tabs();
-        let mut palette = CommandPalette::default();
-
-        palette.open();
-
-        // Arrow down
-        let raw_input = egui::RawInput {
-            events: vec![egui::Event::Key {
-                key: egui::Key::ArrowDown,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: egui::Modifiers::NONE,
-            }],
-            ..Default::default()
-        };
-
-        let _ = ctx.run(raw_input, |ctx| {
-            let _ = palette.show(ctx, &tabs);
-        });
-
-        assert_eq!(palette.selected_index, 1);
-
-        // Arrow up wraps around or goes back
-        let raw_input = egui::RawInput {
-            events: vec![egui::Event::Key {
-                key: egui::Key::ArrowUp,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: egui::Modifiers::NONE,
-            }],
-            ..Default::default()
-        };
-
-        let _ = ctx.run(raw_input, |ctx| {
-            let _ = palette.show(ctx, &tabs);
-        });
-
-        assert_eq!(palette.selected_index, 0);
-    }
-
-    #[test]
-    fn test_palette_escape_key_closes() {
-        let ctx = egui::Context::default();
-        let tabs = mock_tabs();
-        let mut palette = CommandPalette::default();
-
-        palette.open();
-
-        let raw_input = egui::RawInput {
-            events: vec![egui::Event::Key {
-                key: egui::Key::Escape,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: egui::Modifiers::NONE,
-            }],
-            ..Default::default()
-        };
-
-        let mut selected = None;
-        let _ = ctx.run(raw_input, |ctx| {
-            selected = palette.show(ctx, &tabs);
-        });
-
-        assert_eq!(selected, None);
-        assert!(!palette.is_open);
-        let aria_msg = ctx.data(|d| d.get_temp::<String>(egui::Id::new("aria_live_message")));
-        assert_eq!(aria_msg, Some("Command palette closed".to_string()));
-    }
-
-    #[test]
-    fn test_query_change_resets_selection() {
-        let ctx = egui::Context::default();
-        let tabs = mock_tabs();
-        let mut palette = CommandPalette::default();
-
-        palette.open();
-        palette.selected_index = 2;
-
-        palette.query = "fluid".to_string();
-
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            let _ = palette.show(ctx, &tabs);
-        });
-
-        assert_eq!(palette.selected_index, 0);
-    }
-}
+#[path = "command_palette_tests.rs"]
+mod tests;

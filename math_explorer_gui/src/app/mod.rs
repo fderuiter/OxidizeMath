@@ -1,3 +1,4 @@
+pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
 mod session;
@@ -14,12 +15,16 @@ mod tests_command_palette;
 #[cfg(test)]
 mod tests_diagnostics;
 #[cfg(test)]
+mod tests_domain_bar;
+#[cfg(test)]
 mod tests_multi_pane;
 #[cfg(test)]
 mod tests_session_lifecycle;
 #[cfg(test)]
 mod tests_split_view;
 
+#[allow(unused_imports)]
+pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 pub use split_view::{SplitLayoutMode, SplitViewState};
@@ -33,7 +38,7 @@ use eframe::egui;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
 
 pub struct MathExplorerApp {
-    tabs: Vec<Box<dyn ExplorerTab>>,
+    pub(super) tabs: Vec<Box<dyn ExplorerTab>>,
     pub selected_tab: usize,
     pub split_layout_mode: SplitLayoutMode,
     pub secondary_tab: usize,
@@ -41,9 +46,9 @@ pub struct MathExplorerApp {
     split_view_state: SplitViewState,
     diagnostic_events: Vec<TelemetryEvent>,
     pub show_diagnostics_panel: bool,
-    show_info: bool,
-    show_warnings: bool,
-    show_errors: bool,
+    pub(super) show_info: bool,
+    pub(super) show_warnings: bool,
+    pub(super) show_errors: bool,
     pub(super) show_help_menu: bool,
     pub theme: ThemeMode,
     pub command_palette: CommandPalette,
@@ -51,6 +56,7 @@ pub struct MathExplorerApp {
     pub viewport_layout: ViewportLayout,
     pub pane_tabs: Vec<usize>,
     pane_contexts: [egui::Context; 4],
+    pub is_dragging_divider: bool,
 }
 
 impl Default for MathExplorerApp {
@@ -76,12 +82,8 @@ impl Default for MathExplorerApp {
             session_manager: WorkspaceSessionManager::new(),
             viewport_layout: ViewportLayout::Single,
             pane_tabs: vec![0, 1, 2, 3],
-            pane_contexts: [
-                egui::Context::default(),
-                egui::Context::default(),
-                egui::Context::default(),
-                egui::Context::default(),
-            ],
+            pane_contexts: std::array::from_fn(|_| egui::Context::default()),
+            is_dragging_divider: false,
         }
     }
 }
@@ -118,104 +120,42 @@ impl MathExplorerApp {
             self.pane_tabs[pane_idx] = tab_idx;
             if pane_idx == 0 {
                 self.selected_tab = tab_idx;
+            } else if pane_idx == 1 {
+                self.secondary_tab = tab_idx;
             }
         }
+    }
+
+    /// Sets the authoritative viewport layout preset and synchronizes legacy layout mode.
+    pub fn set_layout(&mut self, layout: ViewportLayout) {
+        self.viewport_layout = layout;
+        self.sync_layout();
+        if !self.pane_tabs.is_empty() {
+            self.pane_tabs[0] = self.selected_tab;
+        }
+        if layout != ViewportLayout::Single && self.pane_tabs.len() > 1 {
+            self.pane_tabs[1] = self.secondary_tab;
+        }
+    }
+
+    /// Synchronizes legacy `split_layout_mode` with current `viewport_layout`.
+    pub fn sync_layout(&mut self) {
+        self.split_layout_mode = match self.viewport_layout {
+            ViewportLayout::Single => SplitLayoutMode::Single,
+            ViewportLayout::SplitHorizontal => SplitLayoutMode::Horizontal,
+            ViewportLayout::SplitVertical => SplitLayoutMode::Vertical,
+            ViewportLayout::QuadGrid => SplitLayoutMode::Single,
+        };
     }
 
     /// Extracts current application state into an `AppState` struct.
     pub fn get_app_state(&self) -> AppState {
-        let mut tab_states = std::collections::HashMap::new();
-        for tab in &self.tabs {
-            if let Some(tab_str) = tab.save_state() {
-                tab_states.insert(tab.name().to_string(), tab_str);
-            }
-        }
-        let selected_tab_name = self
-            .tabs
-            .get(self.selected_tab)
-            .map(|t| t.name().to_string());
-        let secondary_tab_name = self
-            .tabs
-            .get(self.secondary_tab)
-            .map(|t| t.name().to_string());
-        let mut pane_tabs = self.pane_tabs.clone();
-        if self.viewport_layout == ViewportLayout::Single && !pane_tabs.is_empty() {
-            pane_tabs[0] = self.selected_tab;
-        }
-        AppState {
-            selected_tab: self.selected_tab,
-            selected_tab_name,
-            show_info: self.show_info,
-            show_warnings: self.show_warnings,
-            show_errors: self.show_errors,
-            show_diagnostics_panel: self.show_diagnostics_panel,
-            theme: self.theme,
-            tab_states,
-            split_layout_mode: self.split_layout_mode,
-            secondary_tab: self.secondary_tab,
-            secondary_tab_name,
-            split_ratio: self.split_ratio.clamp(0.20, 0.80),
-            viewport_layout: self.viewport_layout,
-            pane_tabs,
-        }
+        AppState::extract(self)
     }
 
     /// Restores application state from an `AppState` struct.
     pub fn apply_app_state(&mut self, app_state: AppState) {
-        self.show_info = app_state.show_info;
-        self.show_warnings = app_state.show_warnings;
-        self.show_errors = app_state.show_errors;
-        self.show_diagnostics_panel = app_state.show_diagnostics_panel;
-        self.theme = app_state.theme;
-        self.split_layout_mode = app_state.split_layout_mode;
-        self.split_ratio = app_state.split_ratio.clamp(0.20, 0.80);
-        self.viewport_layout = app_state.viewport_layout;
-
-        for tab in &mut self.tabs {
-            if let Some(tab_str) = app_state.tab_states.get(tab.name()) {
-                tab.load_state(tab_str);
-            }
-        }
-
-        if let Some(tab_name) = &app_state.selected_tab_name {
-            if let Some(idx) = self.tabs.iter().position(|t| t.name() == tab_name) {
-                self.selected_tab = idx;
-            } else if app_state.selected_tab < self.tabs.len() {
-                self.selected_tab = app_state.selected_tab;
-            }
-        } else if app_state.selected_tab < self.tabs.len() {
-            self.selected_tab = app_state.selected_tab;
-        }
-
-        if let Some(tab_name) = &app_state.secondary_tab_name {
-            if let Some(idx) = self.tabs.iter().position(|t| t.name() == tab_name) {
-                self.secondary_tab = idx;
-            } else if app_state.secondary_tab < self.tabs.len() {
-                self.secondary_tab = app_state.secondary_tab;
-            }
-        } else if app_state.secondary_tab < self.tabs.len() {
-            self.secondary_tab = app_state.secondary_tab;
-        }
-
-        if app_state.pane_tabs.is_empty() {
-            self.pane_tabs = vec![self.selected_tab, 1, 2, 3];
-        } else {
-            self.pane_tabs = app_state.pane_tabs;
-        }
-        while self.pane_tabs.len() < 4 {
-            let next_idx = self.pane_tabs.len().min(self.tabs.len().saturating_sub(1));
-            self.pane_tabs.push(next_idx);
-        }
-        for idx in &mut self.pane_tabs {
-            if *idx >= self.tabs.len() {
-                *idx = 0;
-            }
-        }
-        if self.viewport_layout == ViewportLayout::Single {
-            self.pane_tabs[0] = self.selected_tab;
-        } else if let Some(&first) = self.pane_tabs.first() {
-            self.selected_tab = first;
-        }
+        app_state.apply(self);
     }
 
     /// Serializes the entire application state (selected tab, panel toggles, individual tab states) to JSON.
@@ -245,6 +185,11 @@ impl MathExplorerApp {
     /// Returns the names of all registered tabs.
     pub fn tab_names(&self) -> Vec<&'static str> {
         self.tabs.iter().map(|t| t.name()).collect()
+    }
+
+    /// Selects an active tab by index, synchronizing primary pane and emitting accessibility announcements.
+    pub fn select_tab(&mut self, ctx: &egui::Context, tab_idx: usize) {
+        domain_bar::select_tab(self, ctx, tab_idx);
     }
 
     /// Restores the previous application state from the undo history stack.
@@ -426,13 +371,33 @@ impl eframe::App for MathExplorerApp {
             ui_panels::render_main_menu(self, ctx, ui);
         });
 
+        // Render Persistent Categorized Domain Switcher Bar
+        egui::TopBottomPanel::top("domain_switcher_bar")
+            .exact_height(34.0)
+            .show(ctx, |ui| {
+                domain_bar::render_domain_switcher_bar(self, ctx, ui);
+            });
+
         // Render Active Tab(s) or Multi-Pane Viewports
-        if self.split_layout_mode != SplitLayoutMode::Single {
+        let active_layout = if self.viewport_layout != ViewportLayout::Single {
+            self.sync_layout();
+            self.viewport_layout
+        } else if self.split_layout_mode != SplitLayoutMode::Single {
+            let layout = match self.split_layout_mode {
+                SplitLayoutMode::Horizontal => ViewportLayout::SplitHorizontal,
+                SplitLayoutMode::Vertical => ViewportLayout::SplitVertical,
+                SplitLayoutMode::Single => ViewportLayout::Single,
+            };
+            self.viewport_layout = layout;
+            layout
+        } else {
+            ViewportLayout::Single
+        };
+
+        if active_layout != ViewportLayout::Single {
             let mut split_state = std::mem::take(&mut self.split_view_state);
             split_state.render_split(self, ctx, frame);
             self.split_view_state = split_state;
-        } else if self.viewport_layout != ViewportLayout::Single {
-            viewport::render_multi_pane_manager(self, ctx, frame);
         } else if let Some(tab) = self.tabs.get_mut(self.selected_tab) {
             tab.show(ctx, frame);
         } else {
@@ -446,16 +411,19 @@ impl eframe::App for MathExplorerApp {
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
 
         // Render Command Palette Overlay
-        if let Some(new_tab_idx) = self.command_palette.show(ctx, &self.tabs) {
-            if new_tab_idx < self.tabs.len() {
-                self.selected_tab = new_tab_idx;
-                let tab_name = self.tabs[new_tab_idx].name();
-                ctx.data_mut(|d| {
-                    d.insert_temp(
-                        egui::Id::new("aria_live_message"),
-                        format!("Switched to tab {}", tab_name),
-                    );
-                });
+        if let Some(selection) = self.command_palette.show(ctx, &self.tabs) {
+            if selection.tab_index < self.tabs.len() {
+                self.select_tab(ctx, selection.tab_index);
+                if let Some(tool_name) = &selection.tool_name {
+                    let tab = &mut self.tabs[selection.tab_index];
+                    tab.select_tool_by_name(tool_name);
+                    let tab_name = tab.name();
+                    let msg = format!("Switched to tool {} in tab {}", tool_name, tab_name);
+                    crate::accessibility::announce_status(&msg);
+                    ctx.data_mut(|d| {
+                        d.insert_temp(egui::Id::new("aria_live_message"), msg);
+                    });
+                }
             }
         }
 
