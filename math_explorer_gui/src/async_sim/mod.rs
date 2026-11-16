@@ -242,6 +242,7 @@ impl SimulationController {
             state_rx,
             latest_snapshot: None,
             state: SimWorkerState::Ready,
+            diagnostic_report: None,
             worker: opt_worker,
         }
     }
