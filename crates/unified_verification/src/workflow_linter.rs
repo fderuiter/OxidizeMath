@@ -71,6 +71,52 @@ pub fn validate_concurrency_block(yaml: &Value) -> Result<(), &'static str> {
     Ok(())
 }
 
+pub fn validate_job_timeouts(yaml: &Value) -> Result<(), String> {
+    let jobs = yaml
+        .get("jobs")
+        .ok_or_else(|| "Workflow is missing a 'jobs' block.".to_string())?;
+
+    let jobs_map = jobs
+        .as_object()
+        .ok_or_else(|| "Workflow 'jobs' block must be a mapping.".to_string())?;
+
+    if jobs_map.is_empty() {
+        return Err("Workflow 'jobs' block cannot be empty.".to_string());
+    }
+
+    for (job_name, job_val) in jobs_map {
+        let job_obj = job_val
+            .as_object()
+            .ok_or_else(|| format!("Job '{}' must be a mapping.", job_name))?;
+
+        let timeout = job_obj
+            .get("timeout-minutes")
+            .ok_or_else(|| format!("Job '{}' is missing a 'timeout-minutes' setting.", job_name))?;
+
+        let is_positive_integer = match timeout {
+            Value::Number(n) => {
+                if let Some(val) = n.as_i64() {
+                    val > 0
+                } else if let Some(val) = n.as_u64() {
+                    val > 0
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
+
+        if !is_positive_integer {
+            return Err(format!(
+                "Job '{}' has an invalid 'timeout-minutes' value (must be a positive integer).",
+                job_name
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 pub fn lint_workflows() -> bool {
     let workflows_dir = Path::new(".github/workflows");
     if !workflows_dir.exists() {
@@ -111,6 +157,11 @@ pub fn lint_workflows() -> bool {
                 }
 
                 if let Err(msg) = validate_concurrency_block(&yaml) {
+                    eprintln!("Error in {}: {}", path_str, msg);
+                    all_passed = false;
+                }
+
+                if let Err(msg) = validate_job_timeouts(&yaml) {
                     eprintln!("Error in {}: {}", path_str, msg);
                     all_passed = false;
                 }
@@ -281,6 +332,143 @@ concurrency: "   "
         assert_eq!(
             validate_concurrency_str(yaml),
             Err("Workflow 'concurrency' block cannot be empty.".to_string())
+        );
+    }
+
+    fn validate_timeout_str(content: &str) -> Result<(), String> {
+        let yaml: Value =
+            serde_saphyr::from_str(content).map_err(|e| format!("Invalid YAML syntax: {}", e))?;
+        validate_job_timeouts(&yaml)
+    }
+
+    #[test]
+    fn test_valid_job_timeouts() {
+        let yaml = r#"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+"#;
+        assert!(validate_timeout_str(yaml).is_ok());
+    }
+
+    #[test]
+    fn test_missing_job_timeouts() {
+        let yaml = r#"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+"#;
+        assert_eq!(
+            validate_timeout_str(yaml),
+            Err("Job 'test' is missing a 'timeout-minutes' setting.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_non_numeric_timeout_string() {
+        let yaml = r#"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: "15"
+"#;
+        assert_eq!(
+            validate_timeout_str(yaml),
+            Err(
+                "Job 'test' has an invalid 'timeout-minutes' value (must be a positive integer)."
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_non_numeric_timeout_bool() {
+        let yaml = r#"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: true
+"#;
+        assert_eq!(
+            validate_timeout_str(yaml),
+            Err(
+                "Job 'test' has an invalid 'timeout-minutes' value (must be a positive integer)."
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_negative_timeout() {
+        let yaml = r#"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: -10
+"#;
+        assert_eq!(
+            validate_timeout_str(yaml),
+            Err(
+                "Job 'test' has an invalid 'timeout-minutes' value (must be a positive integer)."
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_zero_timeout() {
+        let yaml = r#"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 0
+"#;
+        assert_eq!(
+            validate_timeout_str(yaml),
+            Err(
+                "Job 'test' has an invalid 'timeout-minutes' value (must be a positive integer)."
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_float_timeout() {
+        let yaml = r#"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15.5
+"#;
+        assert_eq!(
+            validate_timeout_str(yaml),
+            Err(
+                "Job 'test' has an invalid 'timeout-minutes' value (must be a positive integer)."
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_missing_jobs_block_for_timeouts() {
+        let yaml = r#"
+name: CI
+concurrency: ci-run
+"#;
+        assert_eq!(
+            validate_timeout_str(yaml),
+            Err("Workflow is missing a 'jobs' block.".to_string())
         );
     }
 }
