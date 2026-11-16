@@ -1,6 +1,8 @@
 // @explorer_feature = "physics"
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::{BackgroundWorker, SimCommand, SimulationRunner, StateSnapshot};
+use crate::async_sim::{
+    BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner, StateSnapshot,
+};
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, PlotPoints};
@@ -9,6 +11,15 @@ use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct MriState {
+    #[serde(default)]
+    state: Option<SimWorkerState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    paused: Option<bool>,
+    time_scale: f64,
+}
 
 #[allow(missing_docs)]
 pub struct MriSharedParams {
@@ -99,7 +110,6 @@ pub struct MriTab {
     _solver: RungeKutta4<Vector3<f64>>,
 
     // Simulation Control
-    paused: bool,
     time_scale: f64,
     current_time: f64,
 
@@ -108,7 +118,7 @@ pub struct MriTab {
     _max_history: usize,
 
     params: Arc<std::sync::RwLock<MriSharedParams>>,
-    worker: BackgroundWorker<MriRunner>,
+    pub worker: BackgroundWorker<MriRunner>,
 }
 
 impl Default for MriTab {
@@ -148,7 +158,6 @@ impl Default for MriTab {
         Self {
             simulator,
             _solver: solver,
-            paused: true,
             time_scale: 1.0,
             current_time: 0.0,
             history: VecDeque::new(),
@@ -160,12 +169,40 @@ impl Default for MriTab {
 }
 
 impl MriTab {
+    #[allow(missing_docs)]
+    pub fn restart_worker(&mut self) {
+        let mut runner_simulator =
+            BlochSimulator::new(self.simulator.magnetization, self.simulator.m0);
+        runner_simulator.set_relaxation(self.simulator.t1, self.simulator.t2);
+        runner_simulator.set_b_field(self.simulator.b_field);
+        let runner = MriRunner {
+            simulator: runner_simulator,
+            solver: RungeKutta4::new(&self.simulator.magnetization),
+            params: Arc::clone(&self.params),
+            current_time: self.current_time,
+            history: self.history.clone(),
+            max_history: math_commons::registry::MAX_ITERATIONS,
+        };
+        self.worker = BackgroundWorker::new(runner);
+    }
+
+    #[allow(missing_docs)]
+    pub fn retry(&mut self) {
+        self.restart_worker();
+    }
+
     /// Resets the simulation to the initial state defined by current parameters
     fn reset(&mut self) {
         self.simulator.magnetization = Vector3::new(self.simulator.m0, 0.0, 0.0);
         self.current_time = 0.0;
         self.history.clear();
-        let _ = self.worker.send_command(SimCommand::Reset);
+        if self.worker.state() == SimWorkerState::Faulted
+            || self.worker.state() == SimWorkerState::Terminated
+        {
+            self.retry();
+        } else {
+            let _ = self.worker.send_command(SimCommand::Reset);
+        }
     }
 }
 
@@ -179,50 +216,39 @@ impl ExplorerTab for MriTab {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct MriState {
-            paused: bool,
-            time_scale: f64,
-        }
-
         serde_json::to_string(&MriState {
-            paused: self.paused,
+            state: Some(self.worker.state()),
+            paused: None,
             time_scale: self.time_scale,
         })
         .ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct MriState {
-            paused: bool,
-            time_scale: f64,
-        }
-
         if let Ok(s) = serde_json::from_str::<MriState>(state) {
-            self.paused = s.paused;
             self.time_scale = s.time_scale;
-            self.params.write().unwrap().time_scale = self.time_scale;
-            if self.paused {
+            if let Ok(mut p) = self.params.write() {
+                p.time_scale = self.time_scale;
+            }
+            let target_state = s.state.unwrap_or_else(|| {
+                if s.paused.unwrap_or(false) {
+                    SimWorkerState::Ready
+                } else {
+                    SimWorkerState::Running
+                }
+            });
+            if target_state == SimWorkerState::Running {
+                if !self.worker.is_running() {
+                    let _ = self.worker.send_command(SimCommand::Start);
+                }
+            } else if self.worker.is_running() {
                 let _ = self.worker.send_command(SimCommand::Pause);
-            } else {
-                let _ = self.worker.send_command(SimCommand::Start);
             }
         }
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // --- Simulation Step ---
-        if !self.paused {
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-            ctx.request_repaint();
-        } else if self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-        }
-
         if let Some(snapshot) = self.worker.update() {
             if let Some(data) = snapshot
                 .structured_data
@@ -235,10 +261,27 @@ impl ExplorerTab for MriTab {
             }
         }
 
+        if matches!(
+            self.worker.state(),
+            SimWorkerState::Running | SimWorkerState::Stepping
+        ) {
+            ctx.request_repaint();
+        }
+
         // --- GUI Layout ---
         egui::SidePanel::left("controls_panel").show(ctx, |ui| {
             ui.heading("MRI Physics Control");
             ui.separator();
+
+            if self.worker.state() == SimWorkerState::Faulted {
+                ui.group(|ui| {
+                    ui.colored_label(egui::Color32::RED, "⚠ Worker Faulted: Simulation thread disconnected.");
+                    if ui.button("🔄 Retry").accessible_hover_text("Restart background worker").clicked() {
+                        self.retry();
+                    }
+                });
+                ui.separator();
+            }
 
             ui.collapsing("Relaxation Parameters", |ui| {
                 if ui.add(egui::Slider::new(&mut self.simulator.t1, 0.1..=5.0).logarithmic(true).text("Longitudinal (T1) [s]")).changed() {
@@ -280,17 +323,24 @@ impl ExplorerTab for MriTab {
 
             ui.heading("Simulation");
             ui.horizontal(|ui| {
+                let is_running = self.worker.state().is_running();
+                let can_toggle = matches!(
+                    self.worker.state(),
+                    SimWorkerState::Ready | SimWorkerState::Running
+                );
                 if ui
-                    .button(if self.paused { "▶ Play" } else { "⏸ Pause" })
-                    .accessible_hover_text(if self.paused {
-                        "Start the simulation"
-                    } else {
+                    .add_enabled(
+                        can_toggle,
+                        egui::Button::new(if is_running { "⏸ Pause" } else { "▶ Play" }),
+                    )
+                    .accessible_hover_text(if is_running {
                         "Pause the simulation"
+                    } else {
+                        "Start the simulation"
                     })
                     .clicked()
                 {
-                    self.paused = !self.paused;
-                    if self.paused {
+                    if is_running {
                         let _ = self.worker.send_command(SimCommand::Pause);
                     } else {
                         let _ = self.worker.send_command(SimCommand::Start);
@@ -344,32 +394,6 @@ impl ExplorerTab for MriTab {
 // [cite:graph_parameters_rust]
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_mri_tab_initial_state() {
-        let tab = MriTab::default();
-        assert!(tab.paused);
-        assert_eq!(tab.time_scale, 1.0);
-        assert_eq!(tab.current_time, 0.0);
-    }
-
-    #[test]
-    fn test_mri_worker_simulation_step() {
-        let mut tab = MriTab::default();
-        let _ = tab.worker.send_command(SimCommand::Start);
-        let mut stepped = false;
-        for _ in 0..50 {
-            std::thread::sleep(std::time::Duration::from_millis(20));
-            if let Some(snap) = tab.worker.update() {
-                if snap.custom_data.first().copied().unwrap_or(0.0) > 0.0 {
-                    stepped = true;
-                    break;
-                }
-            }
-        }
-        assert!(stepped);
-    }
-}
+#[path = "mri/tests.rs"]
+mod tests;
 

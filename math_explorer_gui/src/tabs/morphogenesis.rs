@@ -1,3 +1,4 @@
+use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::{InteractivePreset, PresetDialogState};
@@ -10,17 +11,27 @@ use math_explorer::biology::diffusion::FiniteDifference2D;
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use std::sync::Arc;
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct MorphoState {
+    dt: f64,
+    #[serde(default)]
+    state: Option<SimWorkerState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    paused: Option<bool>,
+    #[serde(default)]
+    show_starter_gallery: bool,
+}
+
 #[path = "morphogenesis/runner.rs"]
 mod runner_impl;
 pub use runner_impl::*;
 
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct MorphogenesisTab {
-    controller: BackgroundWorker<MorphogenesisRunner>,
+    pub worker: BackgroundWorker<MorphogenesisRunner>,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     width: usize,
     height: usize,
-    paused: bool,
     texture: Option<egui::TextureHandle>,
     dialog_state: PresetDialogState,
     pixels: Vec<egui::Color32>,
@@ -28,58 +39,75 @@ pub struct MorphogenesisTab {
     pub show_starter_gallery: bool,
 }
 
+impl MorphogenesisTab {
+    pub(crate) fn create_runner(
+        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        width: usize,
+        height: usize,
+    ) -> MorphogenesisRunner {
+        use math_explorer::biology::morphogenesis::DiffusionCoeff;
+        use math_explorer::math_kernel::types::{Dimension, StepSize};
+        let (a, b, d_u, d_v) = {
+            let p = params.read().unwrap();
+            (p.a, p.b, p.d_u, p.d_v)
+        };
+        let kinetics = SchnakenbergKinetics { a, b };
+        let diffusion = FiniteDifference2D::new(
+            Dimension(width),
+            Dimension(height),
+            StepSize(1.0),
+            StepSize(1.0),
+        );
+        let mut system = TuringSystem::new_with_kinetics(
+            Dimension(width * height),
+            DiffusionCoeff(d_u),
+            DiffusionCoeff(d_v),
+            kinetics,
+            diffusion,
+        );
+        Self::initialize_system(&mut system, width, height);
+        MorphogenesisRunner {
+            system,
+            params: Arc::clone(params),
+            width,
+            height,
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub fn restart_worker(&mut self) {
+        let runner = Self::create_runner(&self.params, self.width, self.height);
+        self.worker = BackgroundWorker::new(runner);
+        self.dirty = true;
+    }
+
+    #[allow(missing_docs)]
+    pub fn retry(&mut self) {
+        self.restart_worker();
+    }
+}
+
 impl Default for MorphogenesisTab {
     fn default() -> Self {
         let width = 100;
         let height = 100;
-        let a = 0.1;
-        let b = 0.9;
-        let d_u = 1.0;
-        let d_v = 100.0;
-        let dt = 0.05;
-
-        let kinetics = SchnakenbergKinetics { a, b };
-        let diffusion = FiniteDifference2D::new(
-            math_explorer::math_kernel::types::Dimension(width),
-            math_explorer::math_kernel::types::Dimension(height),
-            math_explorer::math_kernel::types::StepSize(1.0),
-            math_explorer::math_kernel::types::StepSize(1.0),
-        );
-
-        let mut system = TuringSystem::new_with_kinetics(
-            math_explorer::math_kernel::types::Dimension(width * height),
-            math_explorer::biology::morphogenesis::DiffusionCoeff(d_u),
-            math_explorer::biology::morphogenesis::DiffusionCoeff(d_v),
-            kinetics,
-            diffusion,
-        );
-
-        Self::initialize_system(&mut system, width, height);
-
         let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
-            a,
-            b,
-            d_u,
-            d_v,
-            dt,
+            a: 0.1,
+            b: 0.9,
+            d_u: 1.0,
+            d_v: 100.0,
+            dt: 0.05,
         }));
 
-        let runner = MorphogenesisRunner {
-            system,
-            params: Arc::clone(&params),
-            width,
-            height,
-        };
-
-        let mut controller = BackgroundWorker::new(runner);
-        let _ = controller.send_command(SimCommand::Start);
+        let runner = Self::create_runner(&params, width, height);
+        let mut worker = BackgroundWorker::new(runner);
+        let _ = worker.send_command(SimCommand::Start);
 
         Self {
-            controller,
+            worker,
             params,
             width,
             height,
-            paused: false,
             texture: None,
             dialog_state: PresetDialogState::default(),
             pixels: Vec::new(),
@@ -95,39 +123,30 @@ impl ExplorerTab for MorphogenesisTab {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct MorphoState {
-            dt: f64,
-            paused: bool,
-            #[serde(default)]
-            show_starter_gallery: bool,
-        }
-
-        let dt = self.params.read().unwrap().dt;
         serde_json::to_string(&MorphoState {
-            dt,
-            paused: self.paused,
+            dt: self.params.read().unwrap().dt,
+            state: Some(self.worker.state()),
+            paused: None,
             show_starter_gallery: self.show_starter_gallery,
         })
         .ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct MorphoState {
-            dt: f64,
-            paused: bool,
-        }
-
         if let Ok(s) = serde_json::from_str::<MorphoState>(state) {
             self.params.write().unwrap().dt = s.dt;
-            self.paused = s.paused;
-            // Saved session bypasses empty-state gallery
             self.show_starter_gallery = false;
-            if self.paused {
-                let _ = self.controller.send_command(SimCommand::Pause);
-            } else {
-                let _ = self.controller.send_command(SimCommand::Start);
+            let target = s.state.unwrap_or_else(|| {
+                if s.paused.unwrap_or(false) {
+                    SimWorkerState::Ready
+                } else {
+                    SimWorkerState::Running
+                }
+            });
+            if target == SimWorkerState::Running && !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            } else if target != SimWorkerState::Running && self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Pause);
             }
             self.dirty = true;
         }
@@ -146,11 +165,14 @@ impl ExplorerTab for MorphogenesisTab {
     }
 
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.controller.update().is_some() {
+        if self.worker.update().is_some() {
             self.dirty = true;
         }
 
-        if !self.paused {
+        if matches!(
+            self.worker.state(),
+            SimWorkerState::Running | SimWorkerState::Stepping
+        ) {
             ctx.request_repaint();
         }
 
@@ -178,12 +200,12 @@ impl ExplorerTab for MorphogenesisTab {
 
 impl FiniteStateGuard for MorphogenesisTab {
     fn is_finite_state(&self) -> bool {
-        self.controller.state() != SimWorkerState::Faulted
-            && self.controller.diagnostic_report().is_none()
+        self.worker.state() != SimWorkerState::Faulted
+            && self.worker.diagnostic_report().is_none()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.controller.diagnostic_report()
+        self.worker.diagnostic_report()
     }
 
     fn diverged(&self) -> bool {
@@ -222,38 +244,61 @@ impl FiniteStateGuard for MorphogenesisTab {
 
 impl MorphogenesisTab {
     pub(crate) fn reset_system(&mut self) {
-        let (a, b, d_u, d_v, _dt) = {
-            let p = self.params.read().unwrap();
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
-        };
-        let kinetics = SchnakenbergKinetics { a, b };
-        let diffusion = FiniteDifference2D::new(
-            math_explorer::math_kernel::types::Dimension(self.width),
-            math_explorer::math_kernel::types::Dimension(self.height),
-            math_explorer::math_kernel::types::StepSize(1.0),
-            math_explorer::math_kernel::types::StepSize(1.0),
-        );
-        let mut system = TuringSystem::new_with_kinetics(
-            math_explorer::math_kernel::types::Dimension(self.width * self.height),
-            math_explorer::biology::morphogenesis::DiffusionCoeff(d_u),
-            math_explorer::biology::morphogenesis::DiffusionCoeff(d_v),
-            kinetics,
-            diffusion,
-        );
-        Self::initialize_system(&mut system, self.width, self.height);
-        let runner = MorphogenesisRunner {
-            system,
-            params: Arc::clone(&self.params),
-            width: self.width,
-            height: self.height,
-        };
-        self.controller = BackgroundWorker::new(runner);
-        let _ = self.controller.send_command(SimCommand::Start);
-        self.paused = false;
+        let runner = Self::create_runner(&self.params, self.width, self.height);
+        self.worker = BackgroundWorker::new(runner);
+        let _ = self.worker.send_command(SimCommand::Start);
         self.dirty = true;
     }
 
-    #[allow(clippy::too_many_lines)]
+    fn draw_parameter_sliders(&self, ui: &mut egui::Ui) {
+        let mut params = self.params.write().unwrap();
+        ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
+        ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
+        ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
+        ui.add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"));
+    }
+
+    fn draw_presets(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.label("Presets:");
+        if ui.button("Spots").clicked() {
+            if let Ok(mut p) = self.params.write() {
+                (p.a, p.b, p.d_u, p.d_v) = (0.1, 0.9, 1.0, 100.0);
+            }
+        }
+        if ui.button("Stripes").clicked() {
+            if let Ok(mut p) = self.params.write() {
+                (p.a, p.b, p.d_u, p.d_v) = (0.14, 0.86, 1.0, 50.0);
+            }
+        }
+
+        let mut dialog_state = std::mem::take(&mut self.dialog_state);
+        crate::presets::render_preset_buttons(&mut dialog_state, ui, self);
+        self.dialog_state = dialog_state;
+    }
+
+    fn draw_divergence_recovery(&mut self, ui: &mut egui::Ui) {
+        if self.diverged() && self.worker.state() != SimWorkerState::Faulted {
+            if let Some(action) = crate::framework::recovery::render_recovery_banner(
+                ui,
+                self.diagnostic_report(),
+            ) {
+                match action {
+                    crate::framework::recovery::RecoveryAction::AutoScaleStepSize => {
+                        self.auto_scale_step_size();
+                    }
+                    crate::framework::recovery::RecoveryAction::ClampParameters => {
+                        self.clamp_parameters();
+                    }
+                    crate::framework::recovery::RecoveryAction::ResetParameters => {
+                        self.reset_parameters();
+                    }
+                }
+            }
+            ui.separator();
+        }
+    }
+
     fn draw_controls(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("morphogenesis_controls").show(ctx, |ui| {
             ui.heading("Morphogenesis Controls");
@@ -262,79 +307,61 @@ impl MorphogenesisTab {
             }
             ui.separator();
 
-            if self.diverged() {
-                if let Some(action) = crate::framework::recovery::render_recovery_banner(
-                    ui,
-                    self.diagnostic_report(),
-                ) {
-                    match action {
-                        crate::framework::recovery::RecoveryAction::AutoScaleStepSize => {
-                            self.auto_scale_step_size();
-                        }
-                        crate::framework::recovery::RecoveryAction::ClampParameters => {
-                            self.clamp_parameters();
-                        }
-                        crate::framework::recovery::RecoveryAction::ResetParameters => {
-                            self.reset_parameters();
-                        }
+            if self.worker.state() == SimWorkerState::Faulted {
+                ui.group(|ui| {
+                    ui.colored_label(egui::Color32::RED, "⚠ Worker Faulted: Simulation thread disconnected.");
+                    if ui.button("🔄 Retry").accessible_hover_text("Restart background worker").clicked() {
+                        self.retry();
                     }
-                }
+                });
                 ui.separator();
             }
 
-            let mut params = self.params.write().unwrap();
-            ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
-            ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
-            ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
-            ui.add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"));
+            self.draw_divergence_recovery(ui);
 
+            self.draw_parameter_sliders(ui);
             ui.separator();
 
             ui.horizontal(|ui| {
+                let is_running = self.worker.state().is_running();
+                let can_toggle = matches!(
+                    self.worker.state(),
+                    SimWorkerState::Ready | SimWorkerState::Running
+                );
                 if ui
-                    .button(if self.paused { "▶ Resume" } else { "⏸ Pause" })
+                    .add_enabled(
+                        can_toggle,
+                        egui::Button::new(if is_running { "⏸ Pause" } else { "▶ Resume" }),
+                    )
                     .clicked()
                 {
-                    self.paused = !self.paused;
-                    if self.paused {
-                        let _ = self.controller.send_command(SimCommand::Pause);
+                    if is_running {
+                        let _ = self.worker.send_command(SimCommand::Pause);
                     } else {
-                        let _ = self.controller.send_command(SimCommand::Start);
+                        let _ = self.worker.send_command(SimCommand::Start);
                     }
                 }
 
                 if ui.button("↻ Reset").clicked() {
-                    let _ = self.controller.send_command(SimCommand::Reset);
+                    if self.worker.state() == SimWorkerState::Faulted
+                        || self.worker.state() == SimWorkerState::Terminated
+                    {
+                        self.retry();
+                    } else {
+                        let _ = self.worker.send_command(SimCommand::Reset);
+                    }
                     self.dirty = true;
                 }
             });
 
-            ui.separator();
-            ui.label("Presets:");
-            if ui.button("Spots").clicked() {
-                params.a = 0.1;
-                params.b = 0.9;
-                params.d_u = 1.0;
-                params.d_v = 100.0;
-            }
-            if ui.button("Stripes").clicked() {
-                params.a = 0.14;
-                params.b = 0.86;
-                params.d_u = 1.0;
-                params.d_v = 50.0;
-            }
-            drop(params);
-
-            let mut dialog_state = std::mem::take(&mut self.dialog_state);
-            crate::presets::render_preset_buttons(&mut dialog_state, ui, self);
-            self.dialog_state = dialog_state;
+            self.draw_presets(ui);
         });
     }
 
     fn draw_canvas(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.dirty || self.texture.is_none() {
-                if let Some(snapshot) = self.controller.latest_snapshot() {
+                if let Some(snapshot) = self.worker.latest_snapshot() {
                     if let Ok(snapshot_pixels) = snapshot.pixels.try_read() {
                         if !snapshot_pixels.is_empty() {
                             let num_pixels = snapshot.width * snapshot.height;
@@ -351,7 +378,6 @@ impl MorphogenesisTab {
                                 pixels: self.pixels.clone(),
                                 ..Default::default()
                             };
-
                             let texture_opts = egui::TextureOptions::NEAREST;
                             if let Some(texture) = &mut self.texture {
                                 texture.set(image, texture_opts);
@@ -362,7 +388,6 @@ impl MorphogenesisTab {
                                     texture_opts,
                                 ));
                             }
-
                             self.dirty = false;
                         }
                     }
@@ -390,6 +415,7 @@ impl MorphogenesisTab {
             }
         });
     }
+
     pub(crate) fn initialize_system(
         system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
         width: usize,

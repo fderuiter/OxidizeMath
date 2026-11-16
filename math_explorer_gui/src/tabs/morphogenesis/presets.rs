@@ -62,37 +62,15 @@ impl InteractivePreset for MorphogenesisTab {
         if config.width != self.width || config.height != self.height {
             self.width = config.width;
             self.height = config.height;
-            let kinetics = SchnakenbergKinetics {
-                a: config.a,
-                b: config.b,
-            };
-            let diffusion = FiniteDifference2D::new(
-                math_explorer::math_kernel::types::Dimension(self.width),
-                math_explorer::math_kernel::types::Dimension(self.height),
-                math_explorer::math_kernel::types::StepSize(1.0),
-                math_explorer::math_kernel::types::StepSize(1.0),
-            );
-            let mut system = TuringSystem::new_with_kinetics(
-                math_explorer::math_kernel::types::Dimension(self.width * self.height),
-                math_explorer::biology::morphogenesis::DiffusionCoeff(config.d_u),
-                math_explorer::biology::morphogenesis::DiffusionCoeff(config.d_v),
-                kinetics,
-                diffusion,
-            );
-            Self::initialize_system(&mut system, self.width, self.height);
-            let runner = MorphogenesisRunner {
-                system,
-                params: Arc::clone(&self.params),
-                width: self.width,
-                height: self.height,
-            };
-            self.controller = BackgroundWorker::new(runner);
-            if !self.paused {
-                let _ = self.controller.send_command(SimCommand::Start);
+            let was_running = self.worker.is_running();
+            let runner = Self::create_runner(&self.params, self.width, self.height);
+            self.worker = BackgroundWorker::new(runner);
+            if was_running {
+                let _ = self.worker.send_command(SimCommand::Start);
             }
             self.dirty = true;
         } else {
-            let _ = self.controller.send_command(SimCommand::Reset);
+            let _ = self.worker.send_command(SimCommand::Reset);
             self.dirty = true;
         }
         Ok(())
