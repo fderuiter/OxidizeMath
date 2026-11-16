@@ -23,7 +23,7 @@ fn test_morphogenesis_render_lifecycle_and_dirty_tracking() {
 
     // Allow worker thread to generate the initial snapshot
     for _ in 0..100 {
-        if tab.controller.update().is_some() {
+        if tab.worker.update().is_some() {
             break;
         }
         thread::sleep(Duration::from_millis(5));
@@ -43,11 +43,10 @@ fn test_morphogenesis_render_lifecycle_and_dirty_tracking() {
     let initial_tex_id = tab.texture.as_ref().unwrap().id();
 
     // 2. Pause simulation to test stationary/idle frame
-    tab.paused = true;
-    let _ = tab.controller.send_command(SimCommand::Pause);
+    let _ = tab.worker.send_command(SimCommand::Pause);
 
     // Drain any pending updates from the worker before pause settled
-    while tab.controller.update().is_some() {}
+    while tab.worker.update().is_some() {}
     tab.dirty = false;
 
     // Run idle frame: does not mark dirty and reuses persistent buffer and texture
@@ -69,7 +68,7 @@ fn test_morphogenesis_render_lifecycle_and_dirty_tracking() {
     assert_eq!(tab.texture.as_ref().unwrap().id(), initial_tex_id);
 
     // 4. Reset simulation sets dirty flag
-    let _ = tab.controller.send_command(SimCommand::Reset);
+    let _ = tab.worker.send_command(SimCommand::Reset);
     tab.dirty = true;
     assert!(tab.dirty);
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
@@ -86,7 +85,7 @@ fn test_morphogenesis_grid_resize_and_buffer_safety() {
 
     // Initial render
     for _ in 0..100 {
-        if tab.controller.update().is_some() {
+        if tab.worker.update().is_some() {
             break;
         }
         thread::sleep(Duration::from_millis(5));
@@ -106,7 +105,7 @@ fn test_morphogenesis_grid_resize_and_buffer_safety() {
 
     // Wait for resized runner to produce a snapshot
     for _ in 0..100 {
-        if tab.controller.update().is_some() {
+        if tab.worker.update().is_some() {
             break;
         }
         thread::sleep(Duration::from_millis(5));
@@ -164,5 +163,103 @@ fn test_morphogenesis_starter_gallery_lifecycle() {
     assert!(loaded_tab.show_starter_gallery);
     loaded_tab.load_state(&saved_state);
     assert!(!loaded_tab.show_starter_gallery);
+}
+
+fn get_repaint_delay(output: &egui::FullOutput) -> std::time::Duration {
+    output.viewport_output.get(&egui::ViewportId::ROOT).unwrap().repaint_delay
+}
+
+#[test]
+fn test_morphogenesis_fault_halts_repaints_and_recovers() {
+    let ctx = egui::Context::default();
+    let mut tab = MorphogenesisTab {
+        show_starter_gallery: false,
+        ..Default::default()
+    };
+
+    // Allow worker thread to generate initial snapshot
+    for _ in 0..100 {
+        if tab.worker.update().is_some() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    // Initial render pass uploads texture and clears dirty flag
+    let mut frame = eframe::Frame::_new_kittest();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        tab.show(ctx, &mut frame);
+    });
+
+    // 1. Paused state: repaints halted
+    let _ = tab.worker.send_command(SimCommand::Pause);
+    thread::sleep(Duration::from_millis(20));
+    while tab.worker.update().is_some() {}
+    tab.dirty = false;
+
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        tab.show(ctx, &mut frame);
+    });
+    let output_paused = ctx.run(egui::RawInput::default(), |ctx| {
+        tab.show(ctx, &mut frame);
+    });
+    assert_ne!(get_repaint_delay(&output_paused), std::time::Duration::ZERO);
+
+    // 2. Running state: repaints requested
+    let _ = tab.worker.send_command(SimCommand::Start);
+    let output_running = ctx.run(egui::RawInput::default(), |ctx| {
+        tab.show(ctx, &mut frame);
+    });
+    assert_eq!(tab.worker.state(), SimWorkerState::Running);
+    assert_eq!(get_repaint_delay(&output_running), std::time::Duration::ZERO);
+
+    // Pause running worker
+    let _ = tab.worker.send_command(SimCommand::Pause);
+    thread::sleep(Duration::from_millis(20));
+    while tab.worker.update().is_some() {}
+
+    // 3. Faulted state: repaints halted
+    tab.worker.set_state_for_test(SimWorkerState::Faulted);
+    assert_eq!(tab.worker.state(), SimWorkerState::Faulted);
+
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        tab.show(ctx, &mut frame);
+    });
+    let output_faulted = ctx.run(egui::RawInput::default(), |ctx| {
+        tab.show(ctx, &mut frame);
+    });
+    assert_ne!(get_repaint_delay(&output_faulted), std::time::Duration::ZERO);
+
+    // 4. Retry recovery restores communication and sets state to Ready
+    tab.retry();
+    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
+}
+
+#[test]
+fn test_morphogenesis_save_and_load_state_compatibility() {
+    let tab = MorphogenesisTab::default();
+    // Default is running
+    assert_eq!(tab.worker.state(), SimWorkerState::Running);
+
+    // Save state serializes SimWorkerState
+    let saved = tab.save_state().expect("save_state should succeed");
+    assert!(saved.contains("\"state\":\"Running\""));
+    assert!(!saved.contains("\"paused\""));
+
+    let mut loaded = MorphogenesisTab::default();
+    loaded.load_state(&saved);
+    assert_eq!(loaded.worker.state(), SimWorkerState::Running);
+
+    // Load legacy JSON with "paused": true
+    let legacy_paused = r#"{"dt":0.02,"paused":true,"show_starter_gallery":false}"#;
+    loaded.load_state(legacy_paused);
+    assert_eq!(loaded.worker.state(), SimWorkerState::Ready);
+    assert_eq!(loaded.params.read().unwrap().dt, 0.02);
+
+    // Load legacy JSON with "paused": false
+    let legacy_running = r#"{"dt":0.08,"paused":false,"show_starter_gallery":false}"#;
+    loaded.load_state(legacy_running);
+    assert_eq!(loaded.worker.state(), SimWorkerState::Running);
+    assert_eq!(loaded.params.read().unwrap().dt, 0.08);
 }
 

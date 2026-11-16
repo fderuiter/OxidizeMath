@@ -16,12 +16,17 @@ env:
 
 jobs:
   build:
-    name: Build WebAssembly Demo
+    name: Build Web Application and Academic Papers
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install TeXLive and WASM Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science texlive-binaries binaryen brotli
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
@@ -38,6 +43,14 @@ jobs:
         working-directory: math_explorer_gui
         run: trunk build --release
 
+      - name: Compile Academic Papers
+        run: cargo run -p xtask -- compile-papers
+
+      - name: Stage Academic Papers
+        run: |
+          mkdir -p math_explorer_gui/dist/papers
+          cp -r papers/output/* math_explorer_gui/dist/papers/
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
@@ -47,7 +60,7 @@ jobs:
     name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

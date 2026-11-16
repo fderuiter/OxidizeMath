@@ -73,10 +73,6 @@ pub enum LoraError {
 pub enum IsosurfaceError {
     /// The grid dimensions are too small (must be at least 2x2x2).
     InvalidGrid(String),
-    /// Deprecated: use `Math` instead.
-    #[deprecated(since = "0.1.0", note = "Use `Math` instead")]
-    #[allow(missing_docs)]
-    DataMismatch { expected: usize, actual: usize },
     /// Wrapped centralized mathematical error.
     Math(math_commons::error::MathError),
 }

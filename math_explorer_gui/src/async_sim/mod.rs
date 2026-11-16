@@ -9,69 +9,10 @@ pub mod state;
 pub use state::*;
 
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
+pub use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
-
-#[allow(missing_docs)]
-pub enum SimCommand {
-    #[allow(missing_docs)]
-    Start,
-    #[allow(missing_docs)]
-    Pause,
-    #[allow(missing_docs)]
-    Reset,
-    #[allow(missing_docs)]
-    SetSpeed(usize),
-    #[allow(missing_docs)]
-    TrainEpisodes(usize),
-    #[allow(missing_docs)]
-    ApplyBrush {
-        #[allow(missing_docs)]
-        cx: i32,
-        #[allow(missing_docs)]
-        cy: i32,
-        #[allow(missing_docs)]
-        r: i32,
-        #[allow(missing_docs)]
-        is_obstacle: bool,
-    },
-    #[allow(missing_docs)]
-    ClearObstacles,
-    #[allow(missing_docs)]
-    Custom(String),
-}
-
-impl SimCommand {
-    #[allow(missing_docs)]
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Start => "Start",
-            Self::Pause => "Pause",
-            Self::Reset => "Reset",
-            Self::SetSpeed(_) => "SetSpeed",
-            Self::TrainEpisodes(_) => "TrainEpisodes",
-            Self::ApplyBrush { .. } => "ApplyBrush",
-            Self::ClearObstacles => "ClearObstacles",
-            Self::Custom(_) => "Custom",
-        }
-    }
-}
-
-#[allow(missing_docs)]
-pub struct StateSnapshot {
-    #[allow(missing_docs)]
-    pub width: usize,
-    #[allow(missing_docs)]
-    pub height: usize,
-    #[allow(missing_docs)]
-    pub pixels: Arc<std::sync::RwLock<Vec<eframe::egui::Color32>>>,
-    #[allow(missing_docs)]
-    pub custom_data: Vec<f64>,
-    #[allow(missing_docs)]
-    pub structured_data: Option<Box<dyn std::any::Any + Send>>,
-}
 
 #[allow(missing_docs)]
 pub enum SimStateUpdate {
@@ -79,6 +20,8 @@ pub enum SimStateUpdate {
     Snapshot(StateSnapshot),
     #[allow(missing_docs)]
     Status(WorkerStatusEvent),
+    #[allow(missing_docs)]
+    Divergence(crate::framework::recovery::DiagnosticReport),
 }
 
 #[allow(missing_docs)]
@@ -95,6 +38,14 @@ pub trait SimulationRunner: Send + 'static {
     fn is_complete(&self) -> bool {
         false
     }
+    #[allow(missing_docs)]
+    fn is_finite_state(&self) -> bool {
+        true
+    }
+    #[allow(missing_docs)]
+    fn diagnostic_report(&self) -> Option<crate::framework::recovery::DiagnosticReport> {
+        None
+    }
 }
 
 #[allow(missing_docs)]
@@ -103,6 +54,7 @@ pub struct SimulationController {
     state_rx: Receiver<SimStateUpdate>,
     latest_snapshot: Option<StateSnapshot>,
     state: SimWorkerState,
+    diagnostic_report: Option<crate::framework::recovery::DiagnosticReport>,
     #[cfg(target_arch = "wasm32")]
     worker: Option<web_sys::Worker>,
 }
@@ -175,11 +127,34 @@ impl SimulationController {
                 }
 
                 if state.is_running() {
+                    let mut diverged = false;
                     for _ in 0..steps_per_frame {
                         runner.step();
+                        if !runner.is_finite_state() {
+                            diverged = true;
+                            break;
+                        }
                         if runner.is_complete() {
                             break;
                         }
+                    }
+                    if diverged {
+                        state = SimWorkerState::Faulted;
+                        let report = runner.diagnostic_report().unwrap_or_else(|| {
+                            crate::framework::recovery::DiagnosticReport::new(
+                                0.0,
+                                0,
+                                "state",
+                                "Non-finite floating-point state encountered",
+                            )
+                        });
+                        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Faulted(
+                            report.message.clone(),
+                        )));
+                        let _ = state_tx.send(SimStateUpdate::Divergence(report));
+                        let snapshot = runner.get_snapshot();
+                        let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
+                        continue;
                     }
                     let is_done = runner.is_complete();
                     let snapshot = runner.get_snapshot();
@@ -206,6 +181,7 @@ impl SimulationController {
             state_rx,
             latest_snapshot: None,
             state: SimWorkerState::Ready,
+            diagnostic_report: None,
         }
     }
 
@@ -266,6 +242,7 @@ impl SimulationController {
             state_rx,
             latest_snapshot: None,
             state: SimWorkerState::Ready,
+            diagnostic_report: None,
             worker: opt_worker,
         }
     }
@@ -273,6 +250,12 @@ impl SimulationController {
     #[allow(missing_docs)]
     pub fn state(&self) -> SimWorkerState {
         self.state
+    }
+
+    #[cfg(test)]
+    #[allow(missing_docs)]
+    pub fn set_state_for_test(&mut self, state: SimWorkerState) {
+        self.state = state;
     }
 
     #[allow(missing_docs)]
@@ -287,6 +270,10 @@ impl SimulationController {
                 current_state: self.state,
                 command: cmd.name(),
             });
+        }
+
+        if matches!(cmd, SimCommand::Reset) {
+            self.diagnostic_report = None;
         }
 
         let cmd_target_state = match cmd {
@@ -328,6 +315,11 @@ impl SimulationController {
     }
 
     #[allow(missing_docs)]
+    pub fn diagnostic_report(&self) -> Option<&crate::framework::recovery::DiagnosticReport> {
+        self.diagnostic_report.as_ref()
+    }
+
+    #[allow(missing_docs)]
     pub fn update(&mut self) -> Option<&StateSnapshot> {
         let mut disconnected = false;
         let mut received_new_snapshot = false;
@@ -341,6 +333,9 @@ impl SimulationController {
                     }
                     SimStateUpdate::Status(event) => {
                         self.state = event.to_state();
+                    }
+                    SimStateUpdate::Divergence(report) => {
+                        self.diagnostic_report = Some(report);
                     }
                 },
                 Err(mpsc::TryRecvError::Empty) => break,
@@ -384,6 +379,12 @@ impl<T: SimulationRunner> BackgroundWorker<T> {
     #[allow(missing_docs)]
     pub fn state(&self) -> SimWorkerState {
         self.controller.state()
+    }
+
+    #[cfg(test)]
+    #[allow(missing_docs)]
+    pub fn set_state_for_test(&mut self, state: SimWorkerState) {
+        self.controller.set_state_for_test(state);
     }
 
     #[allow(missing_docs)]

@@ -19,6 +19,8 @@ fn main() {
     match args[1].as_str() {
         "setup" => setup(),
         "lint-all" | "lint" => lint_all(),
+        "check-cargo-docs" | "check-workspace-docs" => check_cargo_docs(),
+        "check-docs" => check_docs(),
         "test-features" => test_features(&args[2..]),
         "verify-suite" => verify_suite(&args[2..]),
         "verify-records" => verify_records(),
@@ -27,6 +29,7 @@ fn main() {
         "check-file-lengths" => check_file_lengths(),
         "check-staged-duplicates" => check_staged_duplicates(),
         "check-markdown-links" => check_markdown_links(),
+        "lint-workflows" => lint_workflows(),
         "regenerate-baseline" => regenerate_baseline(),
         _ => {
             println!("Unknown command");
@@ -38,6 +41,8 @@ fn main() {
 fn print_help() {
     println!("Usage: xtask <command> [args...]\n");
     println!("Active Quality Gates:");
+    println!("  check-cargo-docs         - Verify workspace documentation builds without warnings");
+    println!("  check-docs               - Run crate documentation audit");
     println!(
         "  check-file-lengths       - Run centralized verification suite for file-length constraints"
     );
@@ -46,8 +51,9 @@ fn print_help() {
     );
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!(
-        "  lint-all                 - Run format, clippy, file-length, duplicate, doc, and doctest checks"
+        "  lint-all                 - Run format, clippy, file-length, duplicate, doc, doctest, workflow, and traceability checks"
     );
+    println!("  lint-workflows           - Lint CI workflow definitions");
     println!("  test-features            - Run tests across feature combinations");
     println!("  traceability             - Generate traceability report");
     println!("  verify-records           - Verify verification records");
@@ -105,17 +111,22 @@ fn lint_all() {
     check_file_lengths();
 
     println!("\n--- Step 5: Cargo Doc Verification ---");
-    run_cmd_with_env(
-        "cargo",
-        &["doc", "--workspace", "--no-deps", "--all-features"],
-        &[("RUSTDOCFLAGS", "-D warnings")],
-    );
+    check_cargo_docs();
 
     println!("\n--- Step 6: Doc Tests ---");
     run_cmd("cargo", &["test", "--doc", "--workspace", "--all-features"]);
 
     println!("\n--- Step 7: Markdown Documentation Links ---");
     check_markdown_links();
+
+    println!("\n--- Step 8: CI Workflow Linting ---");
+    lint_workflows();
+
+    println!("\n--- Step 9: Crate Documentation Audit ---");
+    check_docs();
+
+    println!("\n--- Step 10: Traceability Check ---");
+    traceability();
 
     println!("\n=== All Lint Checks Passed Successfully ===");
 }
@@ -236,8 +247,7 @@ fn verify_suite(args: &[String]) {
     run_cmd("cargo", &cmd_args);
 }
 
-fn verify_records() {
-    println!("=== Verify Records ===");
+fn run_verification(subcmd: &str) {
     run_cmd(
         "cargo",
         &[
@@ -246,9 +256,14 @@ fn verify_records() {
             "unified_verification",
             "--release",
             "--",
-            "verify-records",
+            subcmd,
         ],
     );
+}
+
+fn verify_records() {
+    println!("=== Verify Records ===");
+    run_verification("verify-records");
 }
 
 fn compile_papers() {
@@ -257,60 +272,40 @@ fn compile_papers() {
 
 fn traceability() {
     println!("=== Traceability Report ===");
-    run_cmd(
+    run_verification("traceability");
+}
+
+fn lint_workflows() {
+    println!("=== Lint CI Workflows ===");
+    run_verification("lint-workflows");
+}
+
+fn check_docs() {
+    println!("=== Check Crate Documentation ===");
+    run_verification("check-docs");
+}
+
+fn check_cargo_docs() {
+    println!("=== Cargo Doc Verification ===");
+    run_cmd_with_env(
         "cargo",
-        &[
-            "run",
-            "-p",
-            "unified_verification",
-            "--release",
-            "--",
-            "traceability",
-        ],
+        &["doc", "--workspace", "--no-deps"],
+        &[("RUSTDOCFLAGS", "-D warnings")],
     );
 }
 
 fn check_file_lengths() {
     println!("=== Check File Lengths ===");
-    run_cmd(
-        "cargo",
-        &[
-            "run",
-            "-p",
-            "unified_verification",
-            "--release",
-            "--",
-            "check-file-lengths",
-        ],
-    );
+    run_verification("check-file-lengths");
 }
+
 fn check_staged_duplicates() {
-    run_cmd(
-        "cargo",
-        &[
-            "run",
-            "-p",
-            "unified_verification",
-            "--release",
-            "--",
-            "check-staged-duplicates",
-        ],
-    );
+    run_verification("check-staged-duplicates");
 }
 
 fn regenerate_baseline() {
     println!("=== Regenerate Public API Baseline ===");
-    run_cmd(
-        "cargo",
-        &[
-            "run",
-            "-p",
-            "unified_verification",
-            "--release",
-            "--",
-            "regenerate-baseline",
-        ],
-    );
+    run_verification("regenerate-baseline");
 }
 
 fn check_markdown_links() {
@@ -444,5 +439,20 @@ mod tests {
         collect_md_files(Path::new("."), &mut md);
         assert!(!md.is_empty());
         check_markdown_links();
+    }
+
+    #[test]
+    fn test_verification_gates() {
+        let output = Command::new("cargo")
+            .args(["run", "-p", "xtask", "--", "--help"])
+            .output()
+            .expect("failed to execute xtask --help");
+        assert!(output.status.success());
+        let help = String::from_utf8_lossy(&output.stdout);
+        assert!(help.contains("lint-workflows"));
+        assert!(help.contains("check-docs"));
+        assert!(help.contains("check-cargo-docs"));
+        assert!(help.contains("traceability"));
+        assert!(help.contains("lint-all"));
     }
 }

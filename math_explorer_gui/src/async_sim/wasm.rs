@@ -151,11 +151,35 @@ pub async fn run_simulation_worker(handle: u32) {
         }
 
         if state.is_running() {
+            let mut diverged = false;
             for _ in 0..steps_per_frame {
                 runner.step();
+                if !runner.is_finite_state() {
+                    diverged = true;
+                    break;
+                }
                 if runner.is_complete() {
                     break;
                 }
+            }
+            if diverged {
+                state = SimWorkerState::Faulted;
+                let report = runner.diagnostic_report().unwrap_or_else(|| {
+                    crate::framework::recovery::DiagnosticReport::new(
+                        0.0,
+                        0,
+                        "state",
+                        "Non-finite floating-point state encountered",
+                    )
+                });
+                let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Faulted(
+                    report.message.clone(),
+                )));
+                let _ = state_tx.send(SimStateUpdate::Divergence(report));
+                let snapshot = runner.get_snapshot();
+                let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
+                yield_to_event_loop().await;
+                continue;
             }
             let is_done = runner.is_complete();
             let snapshot = runner.get_snapshot();

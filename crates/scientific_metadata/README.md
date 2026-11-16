@@ -16,7 +16,7 @@ By isolating these contracts into a lightweight, standalone library, mathematica
   - Literature citations for underlying mathematical formulations.
   - Dynamic parameter querying and modification (`get_parameter`, `set_parameter`).
   - Parameter boundary constraints (`min`, `max`, `step`) for UI controls and numerical validity guards.
-  - The `theory_description!` macro (and deprecated `theory_verification!` alias) for fetching theory descriptions in UI contexts.
+  * The `theory_description!` macro for fetching theory descriptions in UI contexts.
 - **`citation_registry`**: Provides `CitationRegistry`, a thread-safe global catalog for storing and looking up academic citations across the workspace.
 
 ---

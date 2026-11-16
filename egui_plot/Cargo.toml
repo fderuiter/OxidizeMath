@@ -100,8 +100,9 @@ arboard = "3.4"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
 js-sys = { workspace = true }
-web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url"] }
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url", "Navigator", "Clipboard", "ClipboardItem"] }
 
 [lints.rust]
 missing_docs = "warn"

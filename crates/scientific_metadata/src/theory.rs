@@ -174,20 +174,6 @@ macro_rules! theory_description {
 }
 
 pub use crate::theory_description;
-#[allow(deprecated)]
-pub use crate::theory_verification;
-
-/// Deprecated compatibility alias for [`theory_description!`].
-#[deprecated(
-    since = "0.4.0",
-    note = "Use `theory_description!` instead to avoid naming conflicts with `pure_math::theory_verification!`"
-)]
-#[macro_export]
-macro_rules! theory_verification {
-    ($obj:expr) => {
-        $crate::theory_description!($obj)
-    };
-}
 
 #[cfg(test)]
 mod tests {
@@ -236,17 +222,6 @@ mod tests {
         assert_eq!(desc, "Verified test description");
 
         let desc_ref = theory_description!(&model);
-        assert_eq!(desc_ref, "Verified test description");
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn test_deprecated_theory_verification_macro_alias() {
-        let model = MockModel::new();
-        let desc = theory_verification!(model);
-        assert_eq!(desc, "Verified test description");
-
-        let desc_ref = theory_verification!(&model);
         assert_eq!(desc_ref, "Verified test description");
     }
 
