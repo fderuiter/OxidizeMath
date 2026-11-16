@@ -70,7 +70,6 @@ impl Default for AttractorPlotter {
 
 impl AttractorPlotter {
     #[must_use]
-    #[allow(dead_code)]
     pub fn diverged(&self) -> bool {
         matches!(self.execution_state, SolverExecutionState::Diverged { .. })
     }

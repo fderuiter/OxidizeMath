@@ -8,15 +8,6 @@ struct SimpleState {
     data: Vec<f64>,
 }
 
-impl SimpleState {
-    #[allow(dead_code)]
-    fn new(size: usize) -> Self {
-        Self {
-            data: vec![0.0; size],
-        }
-    }
-}
-
 impl VectorOperations for SimpleState {
     fn scale_add(&mut self, other: &Self, scale: f64) {
         for (a, b) in self.data.iter_mut().zip(other.data.iter()) {
