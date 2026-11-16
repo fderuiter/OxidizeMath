@@ -348,7 +348,7 @@ impl OdeSolverTool {
     ) {
         ui.heading("Solution Trajectory");
 
-        if self.diverged {
+        if self.diverged() {
             recovery::render_recovery_ui(
                 ui,
                 self,
@@ -377,7 +377,7 @@ impl OdeSolverTool {
                 } else {
                     self.comparison_manager.render_on_plot(plot_ui);
                 }
-                if self.show_annotations && !self.diverged {
+                if self.show_annotations && !self.diverged() {
                     super::annotations::render_ode_callouts(plot_ui, self);
                 }
                 self.snapshot_manager.render_on_plot(plot_ui);
