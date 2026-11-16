@@ -1,120 +1,15 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use super::{UnifiedModel, UnifiedSimRunner};
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::{
-    BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot,
-};
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui::{ColorImage, TextureOptions};
+use egui_plot::{Line, Plot, PlotImage, PlotPoint, PlotPoints};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-
-#[allow(missing_docs)]
-pub trait UnifiedModel: Send + 'static + scientific_metadata::theory::TheoryDescribable {
-    /// Initialize the model given the starting parameters.
-    fn new(params: &HashMap<String, f64>) -> Self
-    where
-        Self: Sized;
-
-    /// Step the simulation forward one tick.
-    fn step(&mut self, params: &HashMap<String, f64>);
-
-    /// Extract a visual snapshot of the state.
-    fn get_snapshot(&self) -> StateSnapshot;
-
-    /// Process any custom commands (e.g. ApplyBrush). Default is no-op.
-    fn process_command(&mut self, _cmd: SimCommand, _params: &HashMap<String, f64>) {}
-
-    /// Return parameter definitions for automatic UI generation.
-    fn parameters() -> HashMap<String, ParameterConstraint>
-    where
-        Self: Sized;
-
-    /// The name of the tool.
-    fn name() -> &'static str
-    where
-        Self: Sized;
-
-    /// Return the domain category of the model.
-    fn domain() -> &'static str
-    where
-        Self: Sized,
-    {
-        ""
-    }
-
-    /// Return presets that the model supports.
-    fn presets() -> Vec<(&'static str, HashMap<String, f64>)>
-    where
-        Self: Sized,
-    {
-        Vec::new()
-    }
-
-    /// Return custom actions that the model supports.
-    fn custom_actions() -> Vec<&'static str>
-    where
-        Self: Sized,
-    {
-        Vec::new()
-    }
-
-    /// Allow the model to draw custom visualization in the central panel.
-    /// Return true if custom rendering was performed.
-    fn custom_central_panel(_ui: &mut eframe::egui::Ui, _snapshot: Option<&StateSnapshot>) -> bool
-    where
-        Self: Sized,
-    {
-        false
-    }
-
-    /// Returns true if the model has diverged numerically.
-    fn diverged(&self) -> bool {
-        false
-    }
-
-    /// Returns the diagnostic report if diverged.
-    fn diagnostic_report(&self) -> Option<crate::async_sim::recovery::DiagnosticReport> {
-        None
-    }
-
-    /// Default parameters for baseline configuration.
-    fn default_parameters() -> HashMap<String, f64>
-    where
-        Self: Sized,
-    {
-        Self::parameters()
-            .into_iter()
-            .map(|(n, c)| (n, (c.min + c.max) / 2.0))
-            .collect()
-    }
-
-    /// Clamp parameters to stable bounds.
-    fn clamp_parameters(params: &mut HashMap<String, f64>)
-    where
-        Self: Sized,
-    {
-        for (name, constraint) in Self::parameters() {
-            if let Some(val) = params.get_mut(&name) {
-                *val = if !val.is_finite() {
-                    (constraint.min + constraint.max) / 2.0
-                } else {
-                    val.clamp(constraint.min, constraint.max)
-                };
-            }
-        }
-    }
-
-    /// Telemetry tool source name.
-    fn tool_source() -> &'static str
-    where
-        Self: Sized,
-    {
-        Self::name()
-    }
-}
-
-pub use super::unified_runner::UnifiedSimRunner;
 
 #[allow(missing_docs)]
 pub struct UnifiedSimTool<M: UnifiedModel> {
@@ -175,16 +70,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.controller.state()
     }
 
-    #[allow(missing_docs)]
-    pub fn is_diverged(&self) -> bool {
-        self.controller.is_diverged()
-    }
-
-    #[allow(missing_docs)]
-    pub fn diagnostic_report(&self) -> Option<&crate::async_sim::recovery::DiagnosticReport> {
-        self.controller.diagnostic_report()
-    }
-
     fn reset_simulation(&mut self) {
         if self.controller.state() == SimWorkerState::Faulted
             || self.controller.state() == SimWorkerState::Terminated
@@ -193,6 +78,51 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             self.controller = BackgroundWorker::new(runner);
         } else {
             let _ = self.controller.send_command(SimCommand::Reset);
+        }
+    }
+
+    fn handle_recovery_action(&mut self, action: crate::framework::recovery::RecoveryAction) {
+        use crate::framework::recovery::RecoveryAction;
+        match action {
+            RecoveryAction::AutoScaleStepSize => {
+                let mut p = self.params.write().unwrap();
+                if let Some(dt) = p.get_mut("dt") {
+                    *dt = (*dt * 0.5).max(1e-4);
+                } else if let Some(visc) = p.get_mut("viscosity") {
+                    *visc = (*visc * 0.5).max(0.00333);
+                }
+                drop(p);
+                self.reset_simulation();
+            }
+            RecoveryAction::ClampParameters => {
+                let mut p = self.params.write().unwrap();
+                for (name, c) in &self.param_metadata {
+                    if let Some(v) = p.get_mut(name) {
+                        *v = if !v.is_finite() {
+                            (c.min + c.max) / 2.0
+                        } else {
+                            v.clamp(c.min, c.max)
+                        };
+                    }
+                }
+                drop(p);
+                self.reset_simulation();
+            }
+            RecoveryAction::ResetParameters => {
+                let mut p = self.params.write().unwrap();
+                for (name, c) in &self.param_metadata {
+                    let d = match name.as_str() {
+                        "viscosity" => 0.02,
+                        "dt" => 0.05,
+                        "potential_type" => 0.0,
+                        _ => (c.min + c.max) / 2.0,
+                    };
+                    p.insert(name.clone(), d);
+                }
+                drop(p);
+                self.reset_simulation();
+                let _ = self.controller.send_command(SimCommand::Start);
+            }
         }
     }
 
@@ -271,6 +201,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.heading(M::name());
             ui.separator();
 
+            if state == SimWorkerState::Faulted || self.controller.diagnostic_report().is_some() {
+                if let Some(action) = crate::framework::recovery::render_recovery_banner(
+                    ui,
+                    self.controller.diagnostic_report(),
+                ) {
+                    self.handle_recovery_action(action);
+                }
+                ui.separator();
+            }
+
             ui.horizontal(|ui| {
                 ui.label("Status:");
                 let (status_text, color) = match state {
@@ -286,24 +226,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.separator();
 
             let run_pause_enabled =
-                matches!(state, SimWorkerState::Ready | SimWorkerState::Running)
-                    && !self.controller.is_diverged();
+                matches!(state, SimWorkerState::Ready | SimWorkerState::Running);
             let button_text = if state.is_running() {
                 "⏸ Pause"
             } else {
                 "▶ Run"
             };
-            let tooltip_text = if self.controller.is_diverged() {
-                "Simulation diverged. Trigger recovery or reset before resuming."
-            } else {
-                match state {
-                    SimWorkerState::Running => "Pause simulation",
-                    SimWorkerState::Ready => "Start simulation",
-                    SimWorkerState::Faulted => {
-                        "Worker thread faulted. Click Reset to restore simulation."
-                    }
-                    _ => "Simulation worker unavailable",
+            let tooltip_text = match state {
+                SimWorkerState::Running => "Pause simulation",
+                SimWorkerState::Ready => "Start simulation",
+                SimWorkerState::Faulted => {
+                    "Worker thread faulted. Click Reset to restore simulation."
                 }
+                _ => "Simulation worker unavailable",
             };
 
             if ui
@@ -350,37 +285,64 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ctx: &egui::Context,
         texture: &egui::TextureHandle,
     ) {
-        crate::async_sim::unified_plot::draw_image_plot_helper(
-            M::name(),
-            ui,
-            ctx,
-            texture,
-            |cmd| {
-                let _ = self.controller.send_command(cmd);
-            },
-        );
+        let width = texture.size()[0] as f32;
+        let height = texture.size()[1] as f32;
+
+        Plot::new(format!("{}_plot_img", M::name()))
+            .data_aspect(1.0)
+            .view_aspect(1.0)
+            .show_grid(false)
+            .show_axes([false, false])
+            .allow_drag(false)
+            .allow_zoom(false)
+            .allow_scroll(false)
+            .show(ui, |plot_ui| {
+                plot_ui.image(PlotImage::new(
+                    format!("{}_image", M::name()),
+                    texture.id(),
+                    PlotPoint::new(width as f64 / 2.0, height as f64 / 2.0),
+                    [width, height],
+                ));
+
+                if plot_ui.response().hovered()
+                    && ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
+                {
+                    if let Some(pos) = plot_ui.pointer_coordinate() {
+                        let grid_x = pos.x.round() as i32;
+                        let grid_y = pos.y.round() as i32;
+                        let _ = self.controller.send_command(SimCommand::ApplyBrush {
+                            cx: grid_x,
+                            cy: grid_y,
+                            r: 2,
+                            is_obstacle: ctx.input(|i| i.pointer.primary_down()),
+                        });
+                    }
+                }
+            });
     }
 
     fn draw_line_plot(&self, ui: &mut egui::Ui, snapshot: &StateSnapshot) {
-        crate::async_sim::unified_plot::draw_line_plot_helper(M::name(), ui, snapshot);
+        if snapshot.custom_data.is_empty() {
+            return;
+        }
+        let mut points = Vec::new();
+        for i in (0..snapshot.custom_data.len()).step_by(2) {
+            if i + 1 < snapshot.custom_data.len() {
+                points.push([snapshot.custom_data[i], snapshot.custom_data[i + 1]]);
+            }
+        }
+        let line = Line::new(M::name(), PlotPoints::from_iter(points))
+            .color(egui::Color32::from_rgb(100, 200, 255));
+
+        Plot::new(format!("{}_plot_line", M::name()))
+            .view_aspect(2.0)
+            .show(ui, |plot_ui| {
+                plot_ui.line(line);
+            });
     }
 
     fn draw_central_panel(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(report) = self.controller.diagnostic_report().cloned() {
-                if let Some(action) =
-                    crate::async_sim::recovery::render_recovery_banner(ui, Some(&report))
-                {
-                    crate::async_sim::recovery::apply_recovery_action_helper::<M>(
-                        action,
-                        &self.params,
-                        &mut self.controller,
-                        &mut self.steps_per_frame,
-                    );
-                }
-                ui.add_space(8.0);
-            }
-
             if M::custom_central_panel(ui, self.controller.latest_snapshot()) {
                 return;
             }

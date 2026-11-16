@@ -1,81 +1,18 @@
-pub mod recovery;
 #[cfg(test)]
 mod runner_tests;
 #[cfg(test)]
 mod tests;
 #[allow(missing_docs)]
 pub mod unified;
-pub mod unified_plot;
-pub mod unified_runner;
-pub use recovery::*;
 
 pub mod state;
 pub use state::*;
 
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
+pub use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
-
-#[allow(missing_docs)]
-pub enum SimCommand {
-    #[allow(missing_docs)]
-    Start,
-    #[allow(missing_docs)]
-    Pause,
-    #[allow(missing_docs)]
-    Reset,
-    #[allow(missing_docs)]
-    SetSpeed(usize),
-    #[allow(missing_docs)]
-    TrainEpisodes(usize),
-    #[allow(missing_docs)]
-    ApplyBrush {
-        #[allow(missing_docs)]
-        cx: i32,
-        #[allow(missing_docs)]
-        cy: i32,
-        #[allow(missing_docs)]
-        r: i32,
-        #[allow(missing_docs)]
-        is_obstacle: bool,
-    },
-    #[allow(missing_docs)]
-    ClearObstacles,
-    #[allow(missing_docs)]
-    Custom(String),
-}
-
-impl SimCommand {
-    #[allow(missing_docs)]
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Start => "Start",
-            Self::Pause => "Pause",
-            Self::Reset => "Reset",
-            Self::SetSpeed(_) => "SetSpeed",
-            Self::TrainEpisodes(_) => "TrainEpisodes",
-            Self::ApplyBrush { .. } => "ApplyBrush",
-            Self::ClearObstacles => "ClearObstacles",
-            Self::Custom(_) => "Custom",
-        }
-    }
-}
-
-#[allow(missing_docs)]
-pub struct StateSnapshot {
-    #[allow(missing_docs)]
-    pub width: usize,
-    #[allow(missing_docs)]
-    pub height: usize,
-    #[allow(missing_docs)]
-    pub pixels: Arc<std::sync::RwLock<Vec<eframe::egui::Color32>>>,
-    #[allow(missing_docs)]
-    pub custom_data: Vec<f64>,
-    #[allow(missing_docs)]
-    pub structured_data: Option<Box<dyn std::any::Any + Send>>,
-}
 
 #[allow(missing_docs)]
 pub enum SimStateUpdate {
@@ -84,7 +21,7 @@ pub enum SimStateUpdate {
     #[allow(missing_docs)]
     Status(WorkerStatusEvent),
     #[allow(missing_docs)]
-    Diverged(DiagnosticReport),
+    Divergence(crate::framework::recovery::DiagnosticReport),
 }
 
 #[allow(missing_docs)]
@@ -102,11 +39,11 @@ pub trait SimulationRunner: Send + 'static {
         false
     }
     #[allow(missing_docs)]
-    fn diverged(&self) -> bool {
-        false
+    fn is_finite_state(&self) -> bool {
+        true
     }
     #[allow(missing_docs)]
-    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+    fn diagnostic_report(&self) -> Option<crate::framework::recovery::DiagnosticReport> {
         None
     }
 }
@@ -116,8 +53,8 @@ pub struct SimulationController {
     cmd_tx: Sender<SimCommand>,
     state_rx: Receiver<SimStateUpdate>,
     latest_snapshot: Option<StateSnapshot>,
-    diagnostic_report: Option<DiagnosticReport>,
     state: SimWorkerState,
+    diagnostic_report: Option<crate::framework::recovery::DiagnosticReport>,
     #[cfg(target_arch = "wasm32")]
     worker: Option<web_sys::Worker>,
 }
@@ -190,20 +127,33 @@ impl SimulationController {
                 }
 
                 if state.is_running() {
+                    let mut diverged = false;
                     for _ in 0..steps_per_frame {
                         runner.step();
-                        if runner.diverged() || runner.is_complete() {
+                        if !runner.is_finite_state() {
+                            diverged = true;
+                            break;
+                        }
+                        if runner.is_complete() {
                             break;
                         }
                     }
-                    if runner.diverged() {
-                        state = SimWorkerState::Ready;
+                    if diverged {
+                        state = SimWorkerState::Faulted;
+                        let report = runner.diagnostic_report().unwrap_or_else(|| {
+                            crate::framework::recovery::DiagnosticReport::new(
+                                0.0,
+                                0,
+                                "state",
+                                "Non-finite floating-point state encountered",
+                            )
+                        });
+                        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Faulted(
+                            report.message.clone(),
+                        )));
+                        let _ = state_tx.send(SimStateUpdate::Divergence(report));
                         let snapshot = runner.get_snapshot();
-                        let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
-                        if let Some(r) = runner.diagnostic_report() {
-                            let _ = state_tx.send(SimStateUpdate::Diverged(r));
-                        }
-                        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+                        let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
                         continue;
                     }
                     let is_done = runner.is_complete();
@@ -230,8 +180,8 @@ impl SimulationController {
             cmd_tx,
             state_rx,
             latest_snapshot: None,
-            diagnostic_report: None,
             state: SimWorkerState::Ready,
+            diagnostic_report: None,
         }
     }
 
@@ -291,7 +241,6 @@ impl SimulationController {
             cmd_tx,
             state_rx,
             latest_snapshot: None,
-            diagnostic_report: None,
             state: SimWorkerState::Ready,
             worker: opt_worker,
         }
@@ -309,18 +258,15 @@ impl SimulationController {
 
     #[allow(missing_docs)]
     pub fn send_command(&mut self, cmd: SimCommand) -> Result<(), SimCommandError> {
-        if matches!(cmd, SimCommand::Start) && self.is_diverged() {
-            return Ok(());
-        }
-        if matches!(cmd, SimCommand::Reset | SimCommand::Custom(_)) {
-            self.diagnostic_report = None;
-        }
-
         if !self.state.is_command_valid(&cmd) {
             return Err(SimCommandError::InvalidTransition {
                 current_state: self.state,
                 command: cmd.name(),
             });
+        }
+
+        if matches!(cmd, SimCommand::Reset) {
+            self.diagnostic_report = None;
         }
 
         let cmd_target_state = match cmd {
@@ -362,6 +308,11 @@ impl SimulationController {
     }
 
     #[allow(missing_docs)]
+    pub fn diagnostic_report(&self) -> Option<&crate::framework::recovery::DiagnosticReport> {
+        self.diagnostic_report.as_ref()
+    }
+
+    #[allow(missing_docs)]
     pub fn update(&mut self) -> Option<&StateSnapshot> {
         let mut disconnected = false;
         let mut received_new_snapshot = false;
@@ -373,11 +324,11 @@ impl SimulationController {
                         self.latest_snapshot = Some(snapshot);
                         received_new_snapshot = true;
                     }
-                    SimStateUpdate::Diverged(report) => {
-                        self.diagnostic_report = Some(report);
-                    }
                     SimStateUpdate::Status(event) => {
                         self.state = event.to_state();
+                    }
+                    SimStateUpdate::Divergence(report) => {
+                        self.diagnostic_report = Some(report);
                     }
                 },
                 Err(mpsc::TryRecvError::Empty) => break,
@@ -398,25 +349,95 @@ impl SimulationController {
             None
         }
     }
+}
 
+/// Generic background worker wrapper struct that manages offloaded simulation runners
+/// and provides thread-safe channel communication between the UI and compute threads.
+#[allow(missing_docs)]
+pub struct BackgroundWorker<T: SimulationRunner> {
+    controller: SimulationController,
+    _marker: std::marker::PhantomData<fn() -> T>,
+}
+
+impl<T: SimulationRunner> BackgroundWorker<T> {
+    /// Spawns a background worker executing the given simulation runner.
     #[allow(missing_docs)]
-    pub fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.diagnostic_report.as_ref()
+    pub fn new(runner: T) -> Self {
+        Self {
+            controller: SimulationController::new(runner),
+            _marker: std::marker::PhantomData,
+        }
     }
 
     #[allow(missing_docs)]
-    pub fn is_diverged(&self) -> bool {
-        self.diagnostic_report.is_some()
+    pub fn state(&self) -> SimWorkerState {
+        self.controller.state()
     }
 
     #[allow(missing_docs)]
-    pub fn clear_diverged(&mut self) {
-        self.diagnostic_report = None;
+    pub fn is_running(&self) -> bool {
+        self.controller.is_running()
+    }
+
+    #[allow(missing_docs)]
+    pub fn send_command(&mut self, cmd: SimCommand) -> Result<(), SimCommandError> {
+        self.controller.send_command(cmd)
+    }
+
+    #[allow(missing_docs)]
+    pub fn latest_snapshot(&self) -> Option<&StateSnapshot> {
+        self.controller.latest_snapshot()
+    }
+
+    #[allow(missing_docs)]
+    pub fn update(&mut self) -> Option<&StateSnapshot> {
+        self.controller.update()
+    }
+
+    #[allow(missing_docs)]
+    pub fn controller(&self) -> &SimulationController {
+        &self.controller
+    }
+
+    #[allow(missing_docs)]
+    pub fn controller_mut(&mut self) -> &mut SimulationController {
+        &mut self.controller
+    }
+
+    #[allow(missing_docs)]
+    pub fn into_controller(self) -> SimulationController {
+        self.controller
     }
 }
 
-pub mod worker;
-pub use worker::*;
+impl<T: SimulationRunner> std::ops::Deref for BackgroundWorker<T> {
+    type Target = SimulationController;
+
+    fn deref(&self) -> &Self::Target {
+        &self.controller
+    }
+}
+
+impl<T: SimulationRunner> std::ops::DerefMut for BackgroundWorker<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.controller
+    }
+}
+
+impl<T: SimulationRunner> From<SimulationController> for BackgroundWorker<T> {
+    fn from(controller: SimulationController) -> Self {
+        Self {
+            controller,
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T: SimulationRunner> From<BackgroundWorker<T>> for SimulationController {
+    fn from(worker: BackgroundWorker<T>) -> Self {
+        worker.controller
+    }
+}
 // theory_verification!
 
 #[cfg(any(target_arch = "wasm32", test))]

@@ -309,16 +309,40 @@ impl SimulationFramework {
             if let Some(tool) = &self.active_tool {
                 let datasets = tool.export_datasets();
                 match egui_plot::export::export_custom_image(&datasets, &self.export_options) {
-                    Ok(color_img) => match egui_plot::export::copy_image_to_clipboard(&color_img) {
-                        Ok(_) => {
-                            self.export_status_message =
-                                Some("Copied plot image to clipboard!".to_string());
+                    Ok(color_img) => {
+                        let ctx = ui.ctx().clone();
+                        let status_id = egui::Id::new("framework_export_clipboard_status");
+                        match egui_plot::export::copy_image_to_clipboard_with_callback(
+                            &color_img,
+                            move |res| {
+                                ctx.data_mut(|d| {
+                                    let msg = match res {
+                                        Ok(_) => "Copied plot image to clipboard!".to_string(),
+                                        Err(e) => format!("Clipboard copy failed: {e}"),
+                                    };
+                                    d.insert_temp(status_id, msg);
+                                });
+                                ctx.request_repaint();
+                            },
+                        ) {
+                            Ok(_) => {
+                                #[cfg(not(target_arch = "wasm32"))]
+                                {
+                                    self.export_status_message =
+                                        Some("Copied plot image to clipboard!".to_string());
+                                }
+                                #[cfg(target_arch = "wasm32")]
+                                {
+                                    self.export_status_message =
+                                        Some("Copying plot image to clipboard...".to_string());
+                                }
+                            }
+                            Err(e) => {
+                                self.export_status_message =
+                                    Some(format!("Clipboard copy failed: {e}"));
+                            }
                         }
-                        Err(e) => {
-                            self.export_status_message =
-                                Some(format!("Clipboard copy failed: {e}"));
-                        }
-                    },
+                    }
                     Err(e) => {
                         self.export_status_message = Some(format!("Render failed: {e}"));
                     }
@@ -328,6 +352,10 @@ impl SimulationFramework {
     }
 
     fn render_export_modal_actions(&mut self, ui: &mut egui::Ui) {
+        let status_id = egui::Id::new("framework_export_clipboard_status");
+        if let Some(msg) = ui.ctx().data_mut(|d| d.remove_temp::<String>(status_id)) {
+            self.export_status_message = Some(msg);
+        }
         let base_w = self.export_options.width.max(1);
         let base_h = self.export_options.height.max(1);
         let calc_w = (base_w as f32 * self.export_options.scale).round() as u32;

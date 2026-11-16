@@ -1,7 +1,6 @@
-use crate::async_sim::{
-    BackgroundWorker, SimCommand, SimulationRunner, StateSnapshot,
-};
-use crate::presets::{InteractivePreset, MorphogenesisPresetConfig, PresetDialogState};
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::presets::{InteractivePreset, PresetDialogState};
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use eframe::egui::ColorImage;
@@ -11,70 +10,14 @@ use math_explorer::biology::diffusion::FiniteDifference2D;
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use std::sync::Arc;
 
-#[allow(missing_docs)]
-pub struct MorphogenesisSharedParams {
-    pub a: f64,
-    pub b: f64,
-    pub d_u: f64,
-    pub d_v: f64,
-    pub dt: f64,
-}
-
-#[allow(missing_docs)]
-pub struct MorphogenesisRunner {
-    pub(crate) system: TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
-    pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
-    pub(crate) width: usize,
-    pub(crate) height: usize,
-}
-
-impl SimulationRunner for MorphogenesisRunner {
-    fn process_command(&mut self, cmd: SimCommand) {
-        match cmd {
-            SimCommand::Reset => {
-                MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
-            }
-            SimCommand::Custom(ref s) if s == "reinit" => {
-                MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
-            }
-            _ => {}
-        }
-    }
-
-    fn step(&mut self) {
-        let (a, b, d_u, d_v, dt) = {
-            let p = self.params.read().unwrap();
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
-        };
-        self.system.kinetics.a = a;
-        self.system.kinetics.b = b;
-        self.system.diffusion_coeffs[0] = d_u;
-        self.system.diffusion_coeffs[1] = d_v;
-        self.system.step(dt);
-    }
-
-    fn get_snapshot(&self) -> StateSnapshot {
-        let image =
-            MorphogenesisTab::plot_concentration(self.system.u(), self.width, self.height);
-        let pixels: Vec<egui::Color32> = image.pixels;
-        StateSnapshot {
-            width: self.width,
-            height: self.height,
-            pixels: Arc::new(std::sync::RwLock::new(pixels)),
-            custom_data: Vec::new(),
-            structured_data: None,
-        }
-    }
-
-    fn get_steps_per_frame(&self) -> usize {
-        1
-    }
-}
+#[path = "morphogenesis/runner.rs"]
+mod runner_impl;
+pub use runner_impl::*;
 
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct MorphogenesisTab {
     controller: BackgroundWorker<MorphogenesisRunner>,
-    params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+    pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     width: usize,
     height: usize,
     paused: bool,
@@ -233,7 +176,84 @@ impl ExplorerTab for MorphogenesisTab {
     }
 }
 
+impl FiniteStateGuard for MorphogenesisTab {
+    fn is_finite_state(&self) -> bool {
+        self.controller.state() != SimWorkerState::Faulted
+            && self.controller.diagnostic_report().is_none()
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        self.controller.diagnostic_report()
+    }
+
+    fn diverged(&self) -> bool {
+        !self.is_finite_state()
+    }
+
+    fn auto_scale_step_size(&mut self) {
+        let mut p = self.params.write().unwrap();
+        p.dt = (p.dt * 0.5).max(1e-4);
+        drop(p);
+        self.reset_system();
+    }
+
+    fn clamp_parameters(&mut self) {
+        let mut p = self.params.write().unwrap();
+        p.a = p.a.clamp(0.0, 1.0);
+        p.b = p.b.clamp(0.0, 2.0);
+        p.d_u = p.d_u.clamp(0.1, 5.0);
+        p.d_v = p.d_v.clamp(10.0, 200.0);
+        p.dt = p.dt.clamp(0.001, 0.1);
+        drop(p);
+        self.reset_system();
+    }
+
+    fn reset_parameters(&mut self) {
+        let mut p = self.params.write().unwrap();
+        p.a = 0.1;
+        p.b = 0.9;
+        p.d_u = 1.0;
+        p.d_v = 100.0;
+        p.dt = 0.05;
+        drop(p);
+        self.reset_system();
+    }
+}
+
 impl MorphogenesisTab {
+    pub(crate) fn reset_system(&mut self) {
+        let (a, b, d_u, d_v, _dt) = {
+            let p = self.params.read().unwrap();
+            (p.a, p.b, p.d_u, p.d_v, p.dt)
+        };
+        let kinetics = SchnakenbergKinetics { a, b };
+        let diffusion = FiniteDifference2D::new(
+            math_explorer::math_kernel::types::Dimension(self.width),
+            math_explorer::math_kernel::types::Dimension(self.height),
+            math_explorer::math_kernel::types::StepSize(1.0),
+            math_explorer::math_kernel::types::StepSize(1.0),
+        );
+        let mut system = TuringSystem::new_with_kinetics(
+            math_explorer::math_kernel::types::Dimension(self.width * self.height),
+            math_explorer::biology::morphogenesis::DiffusionCoeff(d_u),
+            math_explorer::biology::morphogenesis::DiffusionCoeff(d_v),
+            kinetics,
+            diffusion,
+        );
+        Self::initialize_system(&mut system, self.width, self.height);
+        let runner = MorphogenesisRunner {
+            system,
+            params: Arc::clone(&self.params),
+            width: self.width,
+            height: self.height,
+        };
+        self.controller = BackgroundWorker::new(runner);
+        let _ = self.controller.send_command(SimCommand::Start);
+        self.paused = false;
+        self.dirty = true;
+    }
+
+    #[allow(clippy::too_many_lines)]
     fn draw_controls(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("morphogenesis_controls").show(ctx, |ui| {
             ui.heading("Morphogenesis Controls");
@@ -241,6 +261,26 @@ impl MorphogenesisTab {
                 self.show_starter_gallery = !self.show_starter_gallery;
             }
             ui.separator();
+
+            if self.diverged() {
+                if let Some(action) = crate::framework::recovery::render_recovery_banner(
+                    ui,
+                    self.diagnostic_report(),
+                ) {
+                    match action {
+                        crate::framework::recovery::RecoveryAction::AutoScaleStepSize => {
+                            self.auto_scale_step_size();
+                        }
+                        crate::framework::recovery::RecoveryAction::ClampParameters => {
+                            self.clamp_parameters();
+                        }
+                        crate::framework::recovery::RecoveryAction::ResetParameters => {
+                            self.reset_parameters();
+                        }
+                    }
+                }
+                ui.separator();
+            }
 
             let mut params = self.params.write().unwrap();
             ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
@@ -369,22 +409,38 @@ impl MorphogenesisTab {
         }
     }
 
-    fn plot_concentration(data: &[f64], width: usize, height: usize) -> ColorImage {
+    pub(crate) fn plot_concentration(data: &[f64], width: usize, height: usize) -> ColorImage {
         let num_pixels = width * height;
         let mut pixels = Vec::with_capacity(num_pixels);
 
         let (min, max) = data
             .iter()
             .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), &val| {
-                (min.min(val), max.max(val))
+                if val.is_finite() {
+                    (min.min(val), max.max(val))
+                } else {
+                    (min, max)
+                }
             });
+
+        let (min, max) = if min.is_finite() && max.is_finite() && max >= min {
+            (min, max)
+        } else {
+            (0.0, 1.0)
+        };
 
         let range = max - min;
         let inv_range = if range > 1e-6 { 1.0 / range } else { 1.0 };
 
         for &val in data {
-            let norm = (val - min) * inv_range;
-            let rgb = heatmap_color(norm);
+            let safe_val = if val.is_finite() { val } else { min };
+            let norm = (safe_val - min) * inv_range;
+            let safe_norm = if norm.is_finite() {
+                norm.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let rgb = heatmap_color(safe_norm);
             pixels.push(egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]));
         }
 
@@ -396,101 +452,9 @@ impl MorphogenesisTab {
     }
 }
 
-struct SimpleRng {
-    state: u64,
-}
-
-impl SimpleRng {
-    fn new(seed: u64) -> Self {
-        Self { state: seed }
-    }
-
-    fn next_f64(&mut self) -> f64 {
-        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let x = self.state;
-        let x = x ^ x >> 18;
-        let rot = (x >> 27) as u32;
-        let val = (x as u32).rotate_right(rot);
-        (val as f64) / (u32::MAX as f64)
-    }
-
-    fn range(&mut self, min: f64, max: f64) -> f64 {
-        min + self.next_f64() * (max - min)
-    }
-}
-
-impl InteractivePreset for MorphogenesisTab {
-    type Config = MorphogenesisPresetConfig;
-
-    fn domain(&self) -> &'static str {
-        "biology"
-    }
-
-    fn title(&self) -> String {
-        "Turing Morphogenesis Simulation".to_string()
-    }
-
-    fn export_config(&self) -> Self::Config {
-        let p = self.params.read().unwrap();
-        MorphogenesisPresetConfig {
-            a: p.a,
-            b: p.b,
-            d_u: p.d_u,
-            d_v: p.d_v,
-            dt: p.dt,
-            width: self.width,
-            height: self.height,
-        }
-    }
-
-    fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
-        {
-            let mut p = self.params.write().unwrap();
-            p.a = config.a;
-            p.b = config.b;
-            p.d_u = config.d_u;
-            p.d_v = config.d_v;
-            p.dt = config.dt;
-        }
-        if config.width != self.width || config.height != self.height {
-            self.width = config.width;
-            self.height = config.height;
-            let kinetics = SchnakenbergKinetics {
-                a: config.a,
-                b: config.b,
-            };
-            let diffusion = FiniteDifference2D::new(
-                math_explorer::math_kernel::types::Dimension(self.width),
-                math_explorer::math_kernel::types::Dimension(self.height),
-                math_explorer::math_kernel::types::StepSize(1.0),
-                math_explorer::math_kernel::types::StepSize(1.0),
-            );
-            let mut system = TuringSystem::new_with_kinetics(
-                math_explorer::math_kernel::types::Dimension(self.width * self.height),
-                math_explorer::biology::morphogenesis::DiffusionCoeff(config.d_u),
-                math_explorer::biology::morphogenesis::DiffusionCoeff(config.d_v),
-                kinetics,
-                diffusion,
-            );
-            Self::initialize_system(&mut system, self.width, self.height);
-            let runner = MorphogenesisRunner {
-                system,
-                params: Arc::clone(&self.params),
-                width: self.width,
-                height: self.height,
-            };
-            self.controller = BackgroundWorker::new(runner);
-            if !self.paused {
-                let _ = self.controller.send_command(SimCommand::Start);
-            }
-            self.dirty = true;
-        } else {
-            let _ = self.controller.send_command(SimCommand::Reset);
-            self.dirty = true;
-        }
-        Ok(())
-    }
-}
+#[path = "morphogenesis/presets.rs"]
+mod presets_impl;
+pub use presets_impl::*;
 
 #[cfg(test)]
 #[path = "morphogenesis/tests.rs"]

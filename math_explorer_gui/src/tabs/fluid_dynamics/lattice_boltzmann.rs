@@ -1,23 +1,47 @@
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::{SimCommand, StateSnapshot};
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use eframe::egui::Color32;
-use math_commons::math_kernel::types::flatten_2d_index;
 use math_commons::math_kernel::colormap::heatmap_color;
-use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     BgkCollision, LatticeBoltzmannD2Q9,
 };
-use std::cell::RefCell;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct LbmUnified {
-    solver: LatticeBoltzmannD2Q9<BgkCollision>,
-    step_count: usize,
-    diverged: bool,
-    diagnostic_report: Option<crate::async_sim::recovery::DiagnosticReport>,
-    last_valid_pixels: RefCell<Vec<Color32>>,
+    pub(crate) solver: LatticeBoltzmannD2Q9<BgkCollision>,
+    pub(crate) diverged: bool,
+    pub(crate) diagnostic_report: Option<DiagnosticReport>,
+    pub(crate) step_count: usize,
+}
+
+impl FiniteStateGuard for LbmUnified {
+    fn is_finite_state(&self) -> bool {
+        if self.diverged {
+            return false;
+        }
+        self.solver.state.velocity_x().iter().all(|&v| v.is_finite())
+            && self.solver.state.velocity_y().iter().all(|&v| v.is_finite())
+            && self.solver.state.density().iter().all(|&v| v.is_finite())
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        self.diagnostic_report.as_ref()
+    }
+
+    fn diverged(&self) -> bool {
+        self.diverged || !FiniteStateGuard::is_finite_state(self)
+    }
+
+    fn reset_parameters(&mut self) {
+        self.diverged = false;
+        self.diagnostic_report = None;
+        self.step_count = 0;
+    }
 }
 
 impl UnifiedModel for LbmUnified {
@@ -49,10 +73,9 @@ impl UnifiedModel for LbmUnified {
 
         Self {
             solver,
-            step_count: 0,
             diverged: false,
             diagnostic_report: None,
-            last_valid_pixels: RefCell::new(Vec::new()),
+            step_count: 0,
         }
     }
 
@@ -60,32 +83,30 @@ impl UnifiedModel for LbmUnified {
         if self.diverged {
             return;
         }
-        self.step_count += 1;
         let viscosity = *params.get("viscosity").unwrap_or(&0.02);
-
-        // Finite-state parameter check
         if !viscosity.is_finite() || viscosity <= 0.0 {
-            self.trigger_divergence(viscosity, "viscosity");
+            self.diverged = true;
+            self.diagnostic_report = Some(DiagnosticReport::new(
+                self.step_count as f64,
+                self.step_count,
+                "viscosity",
+                format!("Invalid non-finite viscosity: {}", viscosity),
+            ));
             return;
         }
-
-        let tau = 3.0 * viscosity + 0.5;
-        if !tau.is_finite() || tau <= 0.5 {
-            self.trigger_divergence(viscosity, "viscosity (tau <= 0.5)");
-            return;
-        }
-
-        self.solver.collision_model.tau = tau;
+        self.step_count += 1;
+        self.solver.collision_model.tau = 3.0 * viscosity + 0.5;
         self.solver.set_inlet(0, 0, 2, self.solver.height(), 0.1, 0.0);
         self.solver.step();
 
-        // Evaluate f64::is_finite() during every numerical step
-        let is_finite = self.solver.state.velocity_x().iter().all(|v| v.is_finite())
-            && self.solver.state.velocity_y().iter().all(|v| v.is_finite())
-            && self.solver.state.density().iter().all(|d| d.is_finite());
-
-        if !is_finite {
-            self.trigger_divergence(viscosity, "velocity (u)");
+        if !FiniteStateGuard::is_finite_state(self) {
+            self.diverged = true;
+            self.diagnostic_report = Some(DiagnosticReport::new(
+                self.step_count as f64,
+                self.step_count,
+                "velocity",
+                "Non-finite velocity detected in Lattice Boltzmann grid cells.",
+            ));
         }
     }
 
@@ -93,32 +114,26 @@ impl UnifiedModel for LbmUnified {
         let width = self.solver.width();
         let height = self.solver.height();
 
-        let pixels = if self.diverged && !self.last_valid_pixels.borrow().is_empty() {
-            self.last_valid_pixels.borrow().clone()
-        } else {
-            let mut px = vec![Color32::BLACK; width * height];
-            for y in 0..height {
-                for x in 0..width {
-                    let pixel_idx = flatten_2d_index(x, y, width);
-                    if self.solver.is_obstacle(x, height - 1 - y) {
-                        px[pixel_idx] = Color32::from_gray(50);
+        let mut pixels = vec![Color32::BLACK; width * height];
+        for y in 0..height {
+            for x in 0..width {
+                let pixel_idx = flatten_2d_index(x, y, width);
+                if self.solver.is_obstacle(x, height - 1 - y) {
+                    pixels[pixel_idx] = Color32::from_gray(50);
+                } else {
+                    let v = self.solver.get_velocity_magnitude(x, height - 1 - y);
+                    let safe_v = if v.is_finite() { v } else { 0.0 };
+                    let normalized_v = (safe_v * 1000.0 / 255.0).clamp(0.0, 1.0);
+                    let safe_norm = if normalized_v.is_finite() {
+                        normalized_v
                     } else {
-                        let v = self.solver.get_velocity_magnitude(x, height - 1 - y);
-                        let normalized_v = if v.is_finite() {
-                            (v * 1000.0 / 255.0).clamp(0.0, 1.0)
-                        } else {
-                            0.0
-                        };
-                        let rgb = heatmap_color(normalized_v);
-                        px[pixel_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
-                    }
+                        0.0
+                    };
+                    let rgb = heatmap_color(safe_norm);
+                    pixels[pixel_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
                 }
             }
-            if !self.diverged {
-                *self.last_valid_pixels.borrow_mut() = px.clone();
-            }
-            px
-        };
+        }
 
         StateSnapshot {
             width,
@@ -129,15 +144,12 @@ impl UnifiedModel for LbmUnified {
         }
     }
 
-    fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
+    fn process_command(&mut self, cmd: SimCommand, _params: &HashMap<String, f64>) {
         match cmd {
             SimCommand::Reset => {
-                *self = Self::new(params);
-            }
-            SimCommand::Custom(ref action) if action == "ClampParameters" => {
-                let mut clamped_params = params.clone();
-                Self::clamp_parameters(&mut clamped_params);
-                *self = Self::new(&clamped_params);
+                self.diverged = false;
+                self.diagnostic_report = None;
+                self.step_count = 0;
             }
             SimCommand::ApplyBrush { cx, cy, r, is_obstacle } => {
                 let width = self.solver.width() as i32;
@@ -164,63 +176,17 @@ impl UnifiedModel for LbmUnified {
         vec!["Clear Obstacles"]
     }
 
-    fn diverged(&self) -> bool {
-        self.diverged
-    }
-
-    fn diagnostic_report(&self) -> Option<crate::async_sim::recovery::DiagnosticReport> {
-        self.diagnostic_report.clone()
-    }
-
-    fn default_parameters() -> HashMap<String, f64> {
-        let mut map = HashMap::new();
-        map.insert("viscosity".to_string(), 0.02);
-        map
-    }
-
-    fn clamp_parameters(params: &mut HashMap<String, f64>) {
-        if let Some(v) = params.get_mut("viscosity") {
-            *v = if !v.is_finite() || *v < 0.01 { 0.02 } else { v.clamp(0.01, 0.5) };
-        }
-    }
-
-    fn tool_source() -> &'static str {
-        "LatticeBoltzmannTool"
-    }
-
     fn parameters() -> HashMap<String, ParameterConstraint> {
         let mut map = HashMap::new();
+
+        // We will just hardcode constraint based on tau [0.51, 2.0] -> visc = (tau-0.5)/3.0
+        // visc min = 0.00333, max = 0.5
         map.insert("viscosity".to_string(), ParameterConstraint { min: 0.00333, max: 0.5, step: 0.01 });
         map
     }
 
     fn name() -> &'static str {
         "Lattice Boltzmann (Demo)"
-    }
-}
-
-impl LbmUnified {
-    fn trigger_divergence(&mut self, viscosity: f64, var_name: &str) {
-        self.diverged = true;
-        let t_div = self.step_count as f64 * 0.01;
-        let report = crate::async_sim::recovery::DiagnosticReport::new(
-            t_div,
-            self.step_count,
-            var_name,
-            format!(
-                "Lattice Boltzmann numerical divergence: non-finite state encountered in {} at step {}",
-                var_name, self.step_count
-            ),
-        );
-        crate::async_sim::recovery::emit_divergence_telemetry(
-            "LatticeBoltzmannTool",
-            t_div,
-            self.step_count,
-            var_name,
-            "Lattice Boltzmann (Demo)",
-            viscosity,
-        );
-        self.diagnostic_report = Some(report);
     }
 }
 

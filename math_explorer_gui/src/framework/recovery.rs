@@ -1,27 +1,26 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use eframe::egui;
-use std::collections::HashMap;
 
-/// Available one-click recovery remedies for continuum physics solver divergence.
+/// Available one-click recovery remedies for solver divergence.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RecoveryAction {
-    /// Halve step size / speed and re-integrate.
+    /// Halve step size (dt) to restore numerical stability.
     AutoScaleStepSize,
-    /// Clamp instability rate parameters and fields to stable bounds.
+    /// Clamp instability rate parameters and initial conditions to stable bounds.
     ClampParameters,
     /// Reset parameters to baseline configuration.
     ResetParameters,
 }
 
-/// Structured diagnostic report generated when a continuum physics simulation encounters non-finite states.
+/// Structured diagnostic report generated when a simulation encounters non-finite states.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DiagnosticReport {
-    /// Time $t_{\text{diverged}}$ at which divergence occurred.
+    /// Time $t_{\text{diverged}}$ or elapsed time at which divergence occurred.
     pub t_diverged: f64,
     /// Step index at which the solver diverged.
     pub step_index: usize,
-    /// Name of the variable that became non-finite (e.g., "velocity (u)" or "psi(x)").
+    /// Name of the variable that became non-finite.
     pub variable: String,
     /// Detailed diagnostic description of the failure.
     pub message: String,
@@ -44,29 +43,64 @@ impl DiagnosticReport {
     }
 }
 
+/// Trait defining finite-state validation and diagnostic reporting for simulation tools and solvers.
+pub trait FiniteStateGuard {
+    /// Validates whether the current state consists solely of finite numerical values.
+    fn is_finite_state(&self) -> bool {
+        true
+    }
+
+    /// Validates the current state and returns an error diagnostic report if non-finite values are detected.
+    fn validate_state(&self) -> Result<(), DiagnosticReport> {
+        if self.is_finite_state() {
+            Ok(())
+        } else {
+            Err(DiagnosticReport::new(
+                0.0,
+                0,
+                "state",
+                "Non-finite floating-point state encountered.",
+            ))
+        }
+    }
+
+    /// Returns the diagnostic report if the solver has diverged.
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        None
+    }
+
+    /// Returns whether the simulation state has diverged.
+    fn diverged(&self) -> bool {
+        !self.is_finite_state() || self.diagnostic_report().is_some()
+    }
+
+    /// Halve step size (dt) to restore stability.
+    fn auto_scale_step_size(&mut self) {}
+
+    /// Clamp parameters to stable bounds.
+    fn clamp_parameters(&mut self) {}
+
+    /// Restore baseline parameters and resume simulation.
+    fn reset_parameters(&mut self) {}
+}
+
 /// Publishes a structured divergence telemetry event to the global registry.
 pub fn emit_divergence_telemetry(
     source: &str,
     t_div: f64,
     step_idx: usize,
     var_name: &str,
-    preset: &str,
-    dt: f64,
+    message: &str,
 ) {
-    let mut metadata = HashMap::new();
+    let mut metadata = std::collections::HashMap::new();
     metadata.insert("t_diverged".to_string(), format!("{:.4}", t_div));
     metadata.insert("step_count".to_string(), step_idx.to_string());
     metadata.insert("diverged_variable".to_string(), var_name.to_string());
-    metadata.insert("preset".to_string(), preset.to_string());
-    metadata.insert("dt".to_string(), format!("{:.6}", dt));
 
     federated_registry::global_registry().emit(federated_registry::TelemetryEvent {
         source: source.to_string(),
         severity: federated_registry::Severity::Error,
-        message: format!(
-            "Solver divergence: non-finite state encountered at t={:.4} (step {}) in variable {}",
-            t_div, step_idx, var_name
-        ),
+        message: message.to_string(),
         metadata,
         thread_name: None,
     });
@@ -74,7 +108,7 @@ pub fn emit_divergence_telemetry(
 
 /// Publishes a structured recovery action telemetry event to the global registry.
 pub fn emit_recovery_telemetry(source: &str, action_name: &str, details: &str) {
-    let mut metadata = HashMap::new();
+    let mut metadata = std::collections::HashMap::new();
     metadata.insert("action".to_string(), action_name.to_string());
     metadata.insert("details".to_string(), details.to_string());
 
@@ -87,24 +121,37 @@ pub fn emit_recovery_telemetry(source: &str, action_name: &str, details: &str) {
     });
 }
 
-fn render_recovery_action_buttons(ui: &mut egui::Ui) -> Option<RecoveryAction> {
+/// Renders the recovery action buttons inside a horizontal layout.
+pub fn render_recovery_action_buttons(ui: &mut egui::Ui) -> Option<RecoveryAction> {
     let mut chosen_action = None;
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Recovery Actions:").italics());
 
         if ui
             .button("Auto-scale Step Size (dt)")
-            .on_hover_text("Halve step size or speed and resume simulation")
+            .on_hover_text("Halve step size (dt) and recalculate simulation trajectory")
             .clicked()
         {
+            emit_recovery_telemetry(
+                "FiniteStateGuard",
+                "Auto-scale Step Size (dt)",
+                "Halved step size",
+            );
             chosen_action = Some(RecoveryAction::AutoScaleStepSize);
         }
 
         if ui
             .button("Clamp Instability Parameters")
-            .on_hover_text("Restrict parameters and fields to stable bounds")
+            .on_hover_text(
+                "Restrict rate parameters and initial conditions to pre-configured stable bounds",
+            )
             .clicked()
         {
+            emit_recovery_telemetry(
+                "FiniteStateGuard",
+                "Clamp Instability Parameters",
+                "Clamped rate parameters and ICs to stable bounds",
+            );
             chosen_action = Some(RecoveryAction::ClampParameters);
         }
 
@@ -113,6 +160,11 @@ fn render_recovery_action_buttons(ui: &mut egui::Ui) -> Option<RecoveryAction> {
             .on_hover_text("Restore default baseline configuration")
             .clicked()
         {
+            emit_recovery_telemetry(
+                "FiniteStateGuard",
+                "Reset All Parameters",
+                "Restored default baseline configuration",
+            );
             chosen_action = Some(RecoveryAction::ResetParameters);
         }
     });
@@ -120,6 +172,7 @@ fn render_recovery_action_buttons(ui: &mut egui::Ui) -> Option<RecoveryAction> {
 }
 
 /// Renders the interactive diagnostic recovery banner offering one-click remedies.
+/// Matches the ADR 0008 visual design with diagnostic context and recovery actions.
 pub fn render_recovery_banner(
     ui: &mut egui::Ui,
     report: Option<&DiagnosticReport>,
@@ -167,61 +220,4 @@ pub fn render_recovery_banner(
         });
 
     chosen_action
-}
-
-/// Helper that applies one-click recovery remedies to a UnifiedSimTool.
-pub fn apply_recovery_action_helper<M: crate::async_sim::unified::UnifiedModel>(
-    action: RecoveryAction,
-    params: &std::sync::Arc<std::sync::RwLock<HashMap<String, f64>>>,
-    controller: &mut crate::async_sim::BackgroundWorker<
-        crate::async_sim::unified::UnifiedSimRunner<M>,
-    >,
-    steps_per_frame: &mut usize,
-) {
-    match action {
-        RecoveryAction::ResetParameters => {
-            let default_params = M::default_parameters();
-            if let Ok(mut lock) = params.write() {
-                *lock = default_params;
-            }
-            emit_recovery_telemetry(
-                M::tool_source(),
-                "Reset All Parameters",
-                "Restored default baseline configuration",
-            );
-            if controller.state() == crate::async_sim::SimWorkerState::Faulted
-                || controller.state() == crate::async_sim::SimWorkerState::Terminated
-            {
-                let runner = crate::async_sim::unified::UnifiedSimRunner::<M>::new(
-                    std::sync::Arc::clone(params),
-                );
-                *controller = crate::async_sim::BackgroundWorker::new(runner);
-            } else {
-                let _ = controller.send_command(crate::async_sim::SimCommand::Reset);
-            }
-        }
-        RecoveryAction::ClampParameters => {
-            if let Ok(mut lock) = params.write() {
-                M::clamp_parameters(&mut lock);
-            }
-            emit_recovery_telemetry(
-                M::tool_source(),
-                "Clamp Instability Parameters",
-                "Clamped parameters to stable bounds",
-            );
-            let _ = controller.send_command(crate::async_sim::SimCommand::Custom(
-                "ClampParameters".to_string(),
-            ));
-        }
-        RecoveryAction::AutoScaleStepSize => {
-            *steps_per_frame = (*steps_per_frame / 2).max(1);
-            emit_recovery_telemetry(
-                M::tool_source(),
-                "Auto-scale Step Size (dt)",
-                "Halved step size",
-            );
-            let _ =
-                controller.send_command(crate::async_sim::SimCommand::SetSpeed(*steps_per_frame));
-        }
-    }
 }

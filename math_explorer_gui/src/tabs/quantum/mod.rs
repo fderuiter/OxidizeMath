@@ -6,9 +6,6 @@ pub mod clebsch;
 pub mod spin_viz;
 pub mod wave_sim;
 
-#[cfg(test)]
-mod recovery_tests;
-
 
 pub struct QuantumTab {
     framework: crate::framework::SimulationFramework,
