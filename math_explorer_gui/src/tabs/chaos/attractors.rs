@@ -161,6 +161,10 @@ impl AttractorPlotter {
     }
 }
 
+const fn default_annotations_enabled() -> bool {
+    true
+}
+
 impl InteractiveTool for AttractorPlotter {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -171,20 +175,16 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
+        #[derive(serde::Serialize)]
         struct AttractorState {
             sigma: f64,
             rho: f64,
             beta: f64,
             dt: f64,
             simulation_speed: usize,
-            paused: bool,
+            execution_state: SolverExecutionState,
             #[serde(default = "default_annotations_enabled")]
             show_annotations: bool,
-        }
-
-        fn default_annotations_enabled() -> bool {
-            true
         }
 
         serde_json::to_string(&AttractorState {
@@ -193,27 +193,24 @@ impl InteractiveTool for AttractorPlotter {
             beta: self.system.beta,
             dt: self.dt,
             simulation_speed: self.simulation_speed,
-            paused: self.is_paused(),
+            execution_state: self.execution_state,
             show_annotations: self.show_annotations,
         })
         .ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
+        #[derive(serde::Deserialize)]
         struct AttractorState {
             sigma: f64,
             rho: f64,
             beta: f64,
             dt: f64,
             simulation_speed: usize,
-            paused: bool,
+            #[serde(default)]
+            execution_state: Option<SolverExecutionState>,
             #[serde(default = "default_annotations_enabled")]
             show_annotations: bool,
-        }
-
-        fn default_annotations_enabled() -> bool {
-            true
         }
 
         if let Ok(s) = serde_json::from_str::<AttractorState>(state) {
@@ -224,8 +221,25 @@ impl InteractiveTool for AttractorPlotter {
             self.simulation_speed = s.simulation_speed;
             self.show_annotations = s.show_annotations;
             self.reset();
-            if s.paused {
-                self.execution_state = SolverExecutionState::Paused;
+            let execution_state = s.execution_state.unwrap_or_else(|| {
+                let legacy_paused = serde_json::from_str::<serde_json::Value>(state)
+                    .ok()
+                    .and_then(|v| v.get("paused").and_then(|p| p.as_bool()))
+                    .unwrap_or(false);
+                if legacy_paused {
+                    SolverExecutionState::Paused
+                } else {
+                    SolverExecutionState::Ready
+                }
+            });
+            self.execution_state = execution_state;
+            if let SolverExecutionState::Diverged {
+                invalid_vec,
+                diverged_at_step,
+            } = execution_state
+            {
+                self.system.state.vec = invalid_vec;
+                self.step_count = diverged_at_step;
             }
         }
     }
