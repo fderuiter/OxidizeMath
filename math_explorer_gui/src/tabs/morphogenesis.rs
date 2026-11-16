@@ -112,7 +112,7 @@ impl Default for MorphogenesisTab {
             dialog_state: PresetDialogState::default(),
             pixels: Vec::new(),
             dirty: true,
-            show_starter_gallery: true,
+            show_starter_gallery: false,
         }
     }
 }
