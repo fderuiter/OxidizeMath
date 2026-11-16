@@ -1,3 +1,4 @@
+// @explorer_feature = "biology"
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};

@@ -85,6 +85,38 @@ pub trait ExplorerTab {
         ""
     }
 
+    /// Academic domain category of the tab for top navigation bar grouping.
+    fn academic_domain(&self) -> &'static str {
+        match self.name() {
+            "Analysis & Calculus"
+            | "Financial Math"
+            | "Geometry & Topology"
+            | "Graph Theory"
+            | "Number Theory" => "Pure Math",
+
+            "Chaos Theory"
+            | "Fluid Dynamics"
+            | "Medical Physics"
+            | "MRI Physics"
+            | "Quantum Mechanics"
+            | "Solid State Physics" => "Physics",
+
+            "Battery Degradation"
+            | "Clinical Trials"
+            | "Favoritism"
+            | "Game Theory"
+            | "Traceability Portal" => "Applied Math",
+
+            "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
+
+            "Climate" => "Climate",
+
+            "Artificial Intelligence" => "AI",
+
+            _ => "Applied Math",
+        }
+    }
+
     /// Serializes active preset state to a formatted JSON string with metadata envelope.
     #[allow(dead_code)]
     fn export_preset_json(&self) -> Result<String, String> {
