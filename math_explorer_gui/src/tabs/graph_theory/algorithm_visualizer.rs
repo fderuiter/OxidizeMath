@@ -361,7 +361,7 @@ inventory::submit! {
     crate::framework::ToolMetadata {
         name: "AlgorithmVisualizerTool",
         domain: "graph_theory",
-        tags: &[],
+        tags: &["dijkstra", "bfs", "dfs", "algorithm"],
         build: || Box::new(AlgorithmVisualizerTool::default()),
     }
 }

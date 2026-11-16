@@ -2,7 +2,9 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use super::*;
-use crate::app::viewport::{calculate_pane_rects, filter_raw_input_for_pane};
+use crate::app::viewport::{
+    calculate_pane_rects, calculate_pane_rects_with_ratio, filter_raw_input_for_pane,
+};
 use eframe::egui;
 use eframe::App;
 
@@ -265,6 +267,134 @@ fn test_multi_pane_frame_rendering_quad_grid() {
         "2x2 Quad Grid: 4 Viewports",
         &["TL: Pane 1", "TR: Pane 2", "BL: Pane 3", "BR: Pane 4"],
     );
+}
+
+#[test]
+fn test_multi_pane_frame_rendering_split_vertical() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let mut frame = eframe::Frame::_new_kittest();
+
+    app.set_layout(ViewportLayout::SplitVertical);
+    app.set_pane_tab(0, 0);
+    if app.tabs.len() > 1 {
+        app.set_pane_tab(1, 1);
+    }
+
+    let raw_input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1000.0, 800.0),
+        )),
+        ..Default::default()
+    };
+
+    let output = ctx.run(raw_input, |ctx| {
+        app.update(ctx, &mut frame);
+    });
+
+    assert!(!output.shapes.is_empty());
+
+    // Generate verification screenshot for Split Vertical
+    generate_verification_screenshot(
+        "/tmp/viewport_split_vertical.png",
+        "Split Vertical: 2 Viewports",
+        &["Top: Analysis", "Bottom: Chaos"],
+    );
+}
+
+#[test]
+fn test_quad_grid_selection_overrides_active_split_layout() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let mut frame = eframe::Frame::_new_kittest();
+
+    // Activate dual horizontal split
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    assert_eq!(app.viewport_layout, ViewportLayout::SplitHorizontal);
+    assert_eq!(app.split_layout_mode, SplitLayoutMode::Horizontal);
+
+    // Select quad grid preset - must immediately transition to 4 quadrants
+    app.set_layout(ViewportLayout::QuadGrid);
+    assert_eq!(app.viewport_layout, ViewportLayout::QuadGrid);
+    assert_eq!(app.split_layout_mode, SplitLayoutMode::Single);
+
+    let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1200.0, 800.0));
+    let output = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen),
+            ..Default::default()
+        },
+        |ctx| {
+            app.update(ctx, &mut frame);
+        },
+    );
+    assert!(
+        !output.shapes.is_empty(),
+        "Quad grid must render canvas display"
+    );
+}
+
+#[test]
+fn test_divider_drag_ratio_adjustments_and_clamping() {
+    let total_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 800.0));
+
+    // Test default 0.50 ratio
+    let (rects_50, divider_50) =
+        calculate_pane_rects_with_ratio(ViewportLayout::SplitHorizontal, total_rect, 0.50);
+    assert_eq!(rects_50.len(), 2);
+    assert!(divider_50.is_some());
+    let div = divider_50.unwrap();
+    assert!((div.center().x - 500.0).abs() < 1.0);
+
+    // Test 0.30 ratio
+    let (rects_30, divider_30) =
+        calculate_pane_rects_with_ratio(ViewportLayout::SplitHorizontal, total_rect, 0.30);
+    assert_eq!(rects_30.len(), 2);
+    let div_30 = divider_30.unwrap();
+    assert!((div_30.center().x - 300.0).abs() < 1.0);
+
+    // Test lower bound clamping at 0.20
+    let (rects_min, divider_min) =
+        calculate_pane_rects_with_ratio(ViewportLayout::SplitHorizontal, total_rect, 0.05);
+    assert_eq!(rects_min.len(), 2);
+    let div_min = divider_min.unwrap();
+    assert!((div_min.center().x - 200.0).abs() < 1.0);
+
+    // Test upper bound clamping at 0.80
+    let (rects_max, divider_max) =
+        calculate_pane_rects_with_ratio(ViewportLayout::SplitHorizontal, total_rect, 0.95);
+    assert_eq!(rects_max.len(), 2);
+    let div_max = divider_max.unwrap();
+    assert!((div_max.center().x - 800.0).abs() < 1.0);
+}
+
+#[test]
+fn test_legacy_saved_state_restores_split_ratio_and_layout() {
+    let legacy_json = r#"{
+        "selected_tab": 0,
+        "selected_tab_name": null,
+        "show_info": true,
+        "show_warnings": true,
+        "show_errors": true,
+        "show_diagnostics_panel": true,
+        "theme": "Dark",
+        "tab_states": {},
+        "split_layout_mode": "Horizontal",
+        "secondary_tab": 1,
+        "split_ratio": 0.65
+    }"#;
+
+    let mut app = MathExplorerApp::default();
+    app.load_state_from_json(legacy_json);
+
+    assert_eq!(app.viewport_layout, ViewportLayout::SplitHorizontal);
+    assert_eq!(app.split_layout_mode, SplitLayoutMode::Horizontal);
+    assert!((app.split_ratio - 0.65).abs() < 1e-4);
+    assert_eq!(app.pane_tabs[0], 0);
+    assert_eq!(app.pane_tabs[1], 1);
 }
 
 fn generate_verification_screenshot(path: &str, _title: &str, labels: &[&str]) {

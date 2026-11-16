@@ -253,7 +253,7 @@ inventory::submit! {
     crate::framework::ToolMetadata {
         name: "CeraTool",
         domain: "climate",
-        tags: &[],
+        tags: &["cera", "climate"],
         build: || Box::new(CeraTool::default()),
     }
 }
