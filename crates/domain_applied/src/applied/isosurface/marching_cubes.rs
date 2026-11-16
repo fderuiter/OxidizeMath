@@ -78,7 +78,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
     /// # Errors
     ///
     /// Returns an [`IsosurfaceError`] if the associated grid dimensions are invalid
-    /// (e.g., less than 2x2x2) or if the data buffer length does not match the dimensions.
+    /// (e.g., less than 2x2x2) or if data length mismatches (via [`IsosurfaceError::Math`]).
     ///
     /// # Examples
     ///
@@ -462,7 +462,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
 /// # Returns
 ///
 /// Returns `Ok(Mesh)` containing the generated triangles on success, or
-/// an `IsosurfaceError` if the grid is invalid or data length mismatches.
+/// an `IsosurfaceError` (e.g. `IsosurfaceError::Math`) if the grid is invalid or data length mismatches.
 ///
 /// # Examples
 ///

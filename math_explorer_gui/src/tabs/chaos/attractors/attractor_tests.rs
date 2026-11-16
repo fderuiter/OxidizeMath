@@ -177,3 +177,118 @@ fn test_attractor_state_serialization_roundtrip_with_annotations() {
 
     assert!(!restored.show_annotations);
 }
+
+#[test]
+fn test_attractor_execution_state_roundtrip_all_variants() {
+    // 1. Ready
+    let plotter = AttractorPlotter {
+        execution_state: SolverExecutionState::Ready,
+        ..Default::default()
+    };
+    let saved = plotter.save_state().expect("save_state should succeed");
+    let mut restored = AttractorPlotter::default();
+    restored.load_state(&saved);
+    assert_eq!(restored.execution_state, SolverExecutionState::Ready);
+
+    // 2. Running
+    let plotter = AttractorPlotter {
+        execution_state: SolverExecutionState::Running,
+        ..Default::default()
+    };
+    let saved = plotter.save_state().expect("save_state should succeed");
+    let mut restored = AttractorPlotter::default();
+    restored.load_state(&saved);
+    assert_eq!(restored.execution_state, SolverExecutionState::Running);
+
+    // 3. Paused
+    let plotter = AttractorPlotter {
+        execution_state: SolverExecutionState::Paused,
+        ..Default::default()
+    };
+    let saved = plotter.save_state().expect("save_state should succeed");
+    let mut restored = AttractorPlotter::default();
+    restored.load_state(&saved);
+    assert_eq!(restored.execution_state, SolverExecutionState::Paused);
+
+    // 4. Diverged with non-finite coordinates (NaN, Infinity, -Infinity)
+    let invalid_vec = Vector3::new(f64::NAN, f64::INFINITY, f64::NEG_INFINITY);
+    let plotter = AttractorPlotter {
+        execution_state: SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step: 123,
+        },
+        step_count: 123,
+        ..Default::default()
+    };
+    let saved = plotter.save_state().expect("save_state should succeed");
+    let mut restored = AttractorPlotter::default();
+    restored.load_state(&saved);
+
+    assert!(restored.diverged());
+    assert!(restored.is_paused());
+    assert_eq!(restored.step_count, 123);
+    match restored.execution_state {
+        SolverExecutionState::Diverged {
+            invalid_vec: restored_vec,
+            diverged_at_step,
+        } => {
+            assert!(restored_vec.x.is_nan());
+            assert_eq!(restored_vec.y, f64::INFINITY);
+            assert_eq!(restored_vec.z, f64::NEG_INFINITY);
+            assert_eq!(diverged_at_step, 123);
+        }
+        _ => panic!("Expected Diverged state"),
+    }
+    // Verify non-finite state coordinates were preserved on system.state.vec
+    assert!(restored.system.state.vec.x.is_nan());
+    assert_eq!(restored.system.state.vec.y, f64::INFINITY);
+    assert_eq!(restored.system.state.vec.z, f64::NEG_INFINITY);
+
+    // Illegal resumption must be rejected
+    assert!(restored.try_resume().is_err());
+
+    // Verify divergence warning banner renders cleanly without crashing
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| restored.show(ctx));
+}
+
+#[test]
+fn test_attractor_legacy_session_backward_compatibility() {
+    // Legacy file with paused = true
+    let legacy_paused_json = r#"{
+        "sigma": 15.5,
+        "rho": 35.0,
+        "beta": 3.25,
+        "dt": 0.005,
+        "simulation_speed": 8,
+        "paused": true,
+        "show_annotations": false
+    }"#;
+    let mut plotter = AttractorPlotter::default();
+    plotter.load_state(legacy_paused_json);
+
+    assert_eq!(plotter.execution_state, SolverExecutionState::Paused);
+    assert_eq!(plotter.system.sigma, 15.5);
+    assert_eq!(plotter.system.rho, 35.0);
+    assert_eq!(plotter.system.beta, 3.25);
+    assert_eq!(plotter.dt, 0.005);
+    assert_eq!(plotter.simulation_speed, 8);
+    assert!(!plotter.show_annotations);
+
+    // Legacy file with paused = false
+    let legacy_running_json = r#"{
+        "sigma": 10.0,
+        "rho": 28.0,
+        "beta": 2.6666666666666665,
+        "dt": 0.01,
+        "simulation_speed": 5,
+        "paused": false,
+        "show_annotations": true
+    }"#;
+    let mut plotter2 = AttractorPlotter::default();
+    plotter2.load_state(legacy_running_json);
+
+    assert_eq!(plotter2.execution_state, SolverExecutionState::Ready);
+    assert_eq!(plotter2.system.sigma, 10.0);
+    assert!(plotter2.show_annotations);
+}

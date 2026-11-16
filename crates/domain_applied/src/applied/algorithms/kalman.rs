@@ -10,19 +10,6 @@ pub enum KalmanError {
     #[error("Failed to invert innovation covariance matrix (singular)")]
     #[allow(missing_docs)]
     MatrixInversionError,
-    #[deprecated(since = "0.1.0", note = "Use `Math` instead")]
-    #[error(
-        "Dimension mismatch: state size {state_size} does not match covariance dimensions {cov_rows}x{cov_cols}"
-    )]
-    #[allow(missing_docs)]
-    DimensionMismatch {
-        #[allow(missing_docs)]
-        state_size: usize,
-        #[allow(missing_docs)]
-        cov_rows: usize,
-        #[allow(missing_docs)]
-        cov_cols: usize,
-    },
     #[allow(missing_docs)]
     #[error("Mathematical error: {0}")]
     Math(#[from] math_commons::error::MathError),
@@ -170,7 +157,7 @@ impl<T: RealField + Copy, M: KalmanSystem<T>> KalmanFilterBuilder<T, M> {
     /// Builds the `KalmanFilter`, validating dimensions.
     ///
     /// # Errors
-    /// Returns `KalmanError::DimensionMismatch` if state and covariance dimensions do not align.
+    /// Returns `KalmanError::Math` if state and covariance dimensions do not align.
     /// Returns `KalmanError::InitializationError` if state or covariance are missing.
     #[verified_engine::verified]
     pub fn build(self) -> Result<KalmanFilter<T, M>, KalmanError> {

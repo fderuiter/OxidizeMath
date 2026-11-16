@@ -71,6 +71,86 @@ pub fn validate_concurrency_block(yaml: &Value) -> Result<(), &'static str> {
     Ok(())
 }
 
+pub fn validate_job_timeouts(yaml: &Value) -> Result<(), String> {
+    let jobs = match yaml.get("jobs") {
+        Some(Value::Object(map)) => map,
+        Some(_) => return Err("Workflow 'jobs' block must be a mapping.".to_string()),
+        None => return Err("Workflow is missing a 'jobs' block.".to_string()),
+    };
+
+    for (job_name, job_val) in jobs {
+        let job_map = match job_val {
+            Value::Object(map) => map,
+            _ => return Err(format!("Job '{}' must be a mapping.", job_name)),
+        };
+
+        match job_map.get("timeout-minutes") {
+            Some(Value::Number(num)) if num.as_u64().unwrap_or(0) > 0 => {}
+            Some(_) => {
+                return Err(format!(
+                    "Job '{}' timeout-minutes must be a positive integer.",
+                    job_name
+                ));
+            }
+            None => {
+                return Err(format!(
+                    "Job '{}' is missing a 'timeout-minutes' specification.",
+                    job_name
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn is_pinned_commit_hash(action_ref: &str) -> bool {
+    let trimmed = action_ref.trim();
+    if trimmed.starts_with("./") {
+        return true;
+    }
+    match trimmed.rsplit_once('@') {
+        Some((_action, ref_part)) => {
+            let ref_trimmed = ref_part.trim();
+            ref_trimmed.len() == 40 && ref_trimmed.chars().all(|c| c.is_ascii_hexdigit())
+        }
+        None => false,
+    }
+}
+
+pub fn validate_action_pinning(yaml: &Value) -> Result<(), String> {
+    let jobs = match yaml.get("jobs") {
+        Some(Value::Object(map)) => map,
+        Some(_) => return Err("Workflow 'jobs' block must be a mapping.".to_string()),
+        None => return Ok(()),
+    };
+
+    for (job_name, job_val) in jobs {
+        let Some(steps) = job_val.get("steps").and_then(|s| s.as_array()) else {
+            continue;
+        };
+
+        for step in steps {
+            if let Some(uses_val) = step.get("uses") {
+                let Some(uses_str) = uses_val.as_str() else {
+                    return Err(format!(
+                        "Job '{}' contains a step with an invalid 'uses' attribute.",
+                        job_name
+                    ));
+                };
+                if !is_pinned_commit_hash(uses_str) {
+                    return Err(format!(
+                        "Action '{}' in job '{}' must be pinned to a 40-character commit hash.",
+                        uses_str, job_name
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn lint_workflows() -> bool {
     let workflows_dir = Path::new(".github/workflows");
     if !workflows_dir.exists() {
@@ -114,13 +194,23 @@ pub fn lint_workflows() -> bool {
                     eprintln!("Error in {}: {}", path_str, msg);
                     all_passed = false;
                 }
+
+                if let Err(msg) = validate_job_timeouts(&yaml) {
+                    eprintln!("Error in {}: {}", path_str, msg);
+                    all_passed = false;
+                }
+
+                if let Err(msg) = validate_action_pinning(&yaml) {
+                    eprintln!("Error in {}: {}", path_str, msg);
+                    all_passed = false;
+                }
             }
         }
     }
 
     if all_passed {
         println!(
-            "All workflows passed linting (read-only permissions and concurrency controls enforced)."
+            "All workflows passed linting (read-only permissions, concurrency controls, job timeouts, and action pinning enforced)."
         );
     }
 
@@ -281,6 +371,108 @@ concurrency: "   "
         assert_eq!(
             validate_concurrency_str(yaml),
             Err("Workflow 'concurrency' block cannot be empty.".to_string())
+        );
+    }
+
+    fn validate_timeouts_str(content: &str) -> Result<(), String> {
+        let yaml: Value =
+            serde_saphyr::from_str(content).map_err(|e| format!("Invalid YAML syntax: {}", e))?;
+        validate_job_timeouts(&yaml)
+    }
+
+    fn validate_action_str(content: &str) -> Result<(), String> {
+        let yaml: Value =
+            serde_saphyr::from_str(content).map_err(|e| format!("Invalid YAML syntax: {}", e))?;
+        validate_action_pinning(&yaml)
+    }
+
+    #[test]
+    fn test_valid_job_timeouts() {
+        let yaml = "jobs:\n  build:\n    timeout-minutes: 15\n  test:\n    timeout-minutes: 30\n";
+        assert!(validate_timeouts_str(yaml).is_ok());
+    }
+
+    #[test]
+    fn test_missing_job_timeout() {
+        let yaml = "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n";
+        assert_eq!(
+            validate_timeouts_str(yaml),
+            Err("Job 'deploy' is missing a 'timeout-minutes' specification.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_invalid_job_timeout_zero() {
+        let yaml = "jobs:\n  test:\n    timeout-minutes: 0\n";
+        assert_eq!(
+            validate_timeouts_str(yaml),
+            Err("Job 'test' timeout-minutes must be a positive integer.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_invalid_job_timeout_string() {
+        let yaml = "jobs:\n  test:\n    timeout-minutes: \"15\"\n";
+        assert_eq!(
+            validate_timeouts_str(yaml),
+            Err("Job 'test' timeout-minutes must be a positive integer.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_invalid_job_timeout_negative() {
+        let yaml = "jobs:\n  test:\n    timeout-minutes: -10\n";
+        assert_eq!(
+            validate_timeouts_str(yaml),
+            Err("Job 'test' timeout-minutes must be a positive integer.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_valid_action_pinning_commit_hash() {
+        let yaml = "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n";
+        assert!(validate_action_str(yaml).is_ok());
+    }
+
+    #[test]
+    fn test_valid_action_pinning_local_action() {
+        let yaml = "jobs:\n  test:\n    steps:\n      - uses: ./.github/actions/local-test\n";
+        assert!(validate_action_str(yaml).is_ok());
+    }
+
+    #[test]
+    fn test_invalid_action_pinning_tag() {
+        let yaml = "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n";
+        assert_eq!(
+            validate_action_str(yaml),
+            Err("Action 'actions/checkout@v4' in job 'test' must be pinned to a 40-character commit hash.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_invalid_action_pinning_branch() {
+        let yaml = "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@main\n";
+        assert_eq!(
+            validate_action_str(yaml),
+            Err("Action 'actions/checkout@main' in job 'test' must be pinned to a 40-character commit hash.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_invalid_action_pinning_missing_ref() {
+        let yaml = "jobs:\n  test:\n    steps:\n      - uses: actions/checkout\n";
+        assert_eq!(
+            validate_action_str(yaml),
+            Err("Action 'actions/checkout' in job 'test' must be pinned to a 40-character commit hash.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_invalid_action_pinning_non_hex_sha() {
+        let yaml = "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\n";
+        assert_eq!(
+            validate_action_str(yaml),
+            Err("Action 'actions/checkout@zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz' in job 'test' must be pinned to a 40-character commit hash.".to_string())
         );
     }
 }
