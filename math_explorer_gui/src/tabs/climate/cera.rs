@@ -1,4 +1,5 @@
 use crate::accessibility::AccessibleHoverText;
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard, RecoveryAction};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::climate::cera::Cera;
@@ -6,12 +7,14 @@ use math_explorer::climate::config::CeraConfig;
 use nalgebra::DMatrix;
 
 pub struct CeraTool {
-    in_channels: usize,
-    latent_channels: usize,
-    aligned_channels: usize,
-    num_levels: usize,
-    output_size: usize,
-    prediction_result: Option<Result<Vec<f64>, String>>,
+    pub(crate) in_channels: usize,
+    pub(crate) latent_channels: usize,
+    pub(crate) aligned_channels: usize,
+    pub(crate) num_levels: usize,
+    pub(crate) output_size: usize,
+    pub(crate) prediction_result: Option<Result<Vec<f64>, String>>,
+    pub(crate) diverged: bool,
+    pub(crate) diagnostic_report: Option<DiagnosticReport>,
 }
 
 impl Default for CeraTool {
@@ -23,7 +26,44 @@ impl Default for CeraTool {
             num_levels: 10,
             output_size: 5,
             prediction_result: None,
+            diverged: false,
+            diagnostic_report: None,
         }
+    }
+}
+
+impl FiniteStateGuard for CeraTool {
+    fn is_finite_state(&self) -> bool {
+        !self.diverged
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        self.diagnostic_report.as_ref()
+    }
+
+    fn diverged(&self) -> bool {
+        self.diverged
+    }
+
+    fn clamp_parameters(&mut self) {
+        self.in_channels = self.in_channels.clamp(1, 10);
+        self.latent_channels = self.latent_channels.clamp(1, 20);
+        self.aligned_channels = self.aligned_channels.clamp(1, self.latent_channels);
+        self.num_levels = self.num_levels.clamp(1, 50);
+        self.output_size = self.output_size.clamp(1, 20);
+        self.diverged = false;
+        self.diagnostic_report = None;
+    }
+
+    fn reset_parameters(&mut self) {
+        self.in_channels = 2;
+        self.latent_channels = 4;
+        self.aligned_channels = 2;
+        self.num_levels = 10;
+        self.output_size = 5;
+        self.prediction_result = None;
+        self.diverged = false;
+        self.diagnostic_report = None;
     }
 }
 
@@ -70,6 +110,8 @@ impl InteractiveTool for CeraTool {
             self.num_levels = s.num_levels;
             self.output_size = s.output_size;
             self.prediction_result = None;
+            self.diverged = false;
+            self.diagnostic_report = None;
         }
     }
 
@@ -79,11 +121,34 @@ impl InteractiveTool for CeraTool {
             self.show_ui(ui);
         });
     }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_ui(&mut self, ui: &mut egui::Ui) {
         ui.label(
             "Configure CERA (Climate-invariant Encoding through Representation Alignment) Model:",
         );
+
+        if self.diverged {
+            if let Some(action) = crate::framework::recovery::render_recovery_banner(
+                ui,
+                self.diagnostic_report.as_ref(),
+            ) {
+                match action {
+                    RecoveryAction::AutoScaleStepSize => {
+                        self.num_levels = (self.num_levels / 2).max(1);
+                        self.diverged = false;
+                        self.diagnostic_report = None;
+                    }
+                    RecoveryAction::ClampParameters => {
+                        self.clamp_parameters();
+                    }
+                    RecoveryAction::ResetParameters => {
+                        self.reset_parameters();
+                    }
+                }
+            }
+            ui.separator();
+        }
 
         ui.horizontal(|ui| {
             ui.add(egui::Slider::new(&mut self.in_channels, 1..=10).text("Input Channels:"));
@@ -134,11 +199,25 @@ impl InteractiveTool for CeraTool {
                     });
                     let prediction = model.predict(&inputs);
 
-                    let mut result_vec = Vec::new();
-                    for val in prediction.iter() {
-                        result_vec.push(*val as f64);
+                    let has_non_finite = prediction.iter().any(|v| !v.is_finite());
+                    if has_non_finite {
+                        self.diverged = true;
+                        self.diagnostic_report = Some(DiagnosticReport::new(
+                            0.0,
+                            0,
+                            "prediction",
+                            "CERA neural network output diverged: non-finite prediction value detected.",
+                        ));
+                        self.prediction_result = None;
+                    } else {
+                        self.diverged = false;
+                        self.diagnostic_report = None;
+                        let mut result_vec = Vec::new();
+                        for val in prediction.iter() {
+                            result_vec.push(*val as f64);
+                        }
+                        self.prediction_result = Some(Ok(result_vec));
                     }
-                    self.prediction_result = Some(Ok(result_vec));
                 }
                 Err(e) => {
                     self.prediction_result = Some(Err(e));
@@ -148,18 +227,20 @@ impl InteractiveTool for CeraTool {
 
         ui.separator();
 
-        match &self.prediction_result {
-            Some(Ok(predictions)) => {
-                ui.label("Prediction Results:");
-                for (i, val) in predictions.iter().enumerate() {
-                    ui.label(format!("Output {}: {:.4}", i, val));
+        if !self.diverged {
+            match &self.prediction_result {
+                Some(Ok(predictions)) => {
+                    ui.label("Prediction Results:");
+                    for (i, val) in predictions.iter().enumerate() {
+                        ui.label(format!("Output {}: {:.4}", i, val));
+                    }
                 }
-            }
-            Some(Err(err)) => {
-                ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
-            }
-            None => {
-                ui.label("Click 'Run Prediction' to test the model with random inputs.");
+                Some(Err(err)) => {
+                    ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
+                }
+                None => {
+                    ui.label("Click 'Run Prediction' to test the model with random inputs.");
+                }
             }
         }
     }

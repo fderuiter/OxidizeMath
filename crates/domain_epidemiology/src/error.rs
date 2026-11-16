@@ -12,18 +12,6 @@ pub enum EpidemiologyError {
     /// Missing Parameter (e.g., required field not set in builder).
     #[allow(missing_docs)]
     MissingParameter { name: String },
-    /// Deprecated: use `Math` variant instead.
-    #[deprecated(since = "0.1.0", note = "Use `Math` instead")]
-    DimensionMismatch {
-        #[allow(missing_docs)]
-        f_rows: usize,
-        #[allow(missing_docs)]
-        f_cols: usize,
-        #[allow(missing_docs)]
-        v_rows: usize,
-        #[allow(missing_docs)]
-        v_cols: usize,
-    },
     /// Wrapped centralized mathematical error.
     Math(math_commons::error::MathError),
 }

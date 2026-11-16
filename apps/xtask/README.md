@@ -9,9 +9,13 @@ These commands run automated checks in git hooks or CI.
 
 | Command | Operational Role | Status |
 |---|---|---|
+| `check-cargo-docs` | Verifies workspace documentation builds without warnings. | Active |
+| `check-docs` | Runs crate documentation audit. | Active |
 | `check-file-lengths` | Verifies file-length constraints. | Active |
+| `check-markdown-links` | Check all internal relative markdown documentation links | Active |
 | `check-staged-duplicates` | Checks for duplicated files in staging. | Active |
-| `lint-all` | Runs formatting, clippy, file-length, and staged duplicate checks. | Active |
+| `lint-all` | Runs formatting, clippy, file-length, duplicate, doc, doctest, workflow, and traceability checks. | Active |
+| `lint-workflows` | Validates CI workflow definitions. | Active |
 | `test-features` | Runs tests for various cargo features. | Active |
 | `traceability` | Generates and checks the traceability report. | Active |
 | `verify-records` | Verifies structural records. | Active |
