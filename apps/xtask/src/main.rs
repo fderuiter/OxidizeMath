@@ -19,6 +19,8 @@ fn main() {
     match args[1].as_str() {
         "setup" => setup(),
         "lint-all" | "lint" => lint_all(),
+        "check-cargo-docs" | "check-workspace-docs" => check_cargo_docs(),
+        "check-docs" => check_docs(),
         "test-features" => test_features(&args[2..]),
         "verify-suite" => verify_suite(&args[2..]),
         "verify-records" => verify_records(),
@@ -28,7 +30,6 @@ fn main() {
         "check-staged-duplicates" => check_staged_duplicates(),
         "check-markdown-links" => check_markdown_links(),
         "lint-workflows" => lint_workflows(),
-        "check-docs" => check_docs(),
         "regenerate-baseline" => regenerate_baseline(),
         _ => {
             println!("Unknown command");
@@ -40,6 +41,7 @@ fn main() {
 fn print_help() {
     println!("Usage: xtask <command> [args...]\n");
     println!("Active Quality Gates:");
+    println!("  check-cargo-docs         - Verify workspace documentation builds without warnings");
     println!("  check-docs               - Run crate documentation audit");
     println!(
         "  check-file-lengths       - Run centralized verification suite for file-length constraints"
@@ -109,11 +111,7 @@ fn lint_all() {
     check_file_lengths();
 
     println!("\n--- Step 5: Cargo Doc Verification ---");
-    run_cmd_with_env(
-        "cargo",
-        &["doc", "--workspace", "--no-deps", "--all-features"],
-        &[("RUSTDOCFLAGS", "-D warnings")],
-    );
+    check_cargo_docs();
 
     println!("\n--- Step 6: Doc Tests ---");
     run_cmd("cargo", &["test", "--doc", "--workspace", "--all-features"]);
@@ -287,6 +285,15 @@ fn check_docs() {
     run_verification("check-docs");
 }
 
+fn check_cargo_docs() {
+    println!("=== Cargo Doc Verification ===");
+    run_cmd_with_env(
+        "cargo",
+        &["doc", "--workspace", "--no-deps"],
+        &[("RUSTDOCFLAGS", "-D warnings")],
+    );
+}
+
 fn check_file_lengths() {
     println!("=== Check File Lengths ===");
     run_verification("check-file-lengths");
@@ -444,6 +451,7 @@ mod tests {
         let help = String::from_utf8_lossy(&output.stdout);
         assert!(help.contains("lint-workflows"));
         assert!(help.contains("check-docs"));
+        assert!(help.contains("check-cargo-docs"));
         assert!(help.contains("traceability"));
         assert!(help.contains("lint-all"));
     }
