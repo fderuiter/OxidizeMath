@@ -163,12 +163,21 @@ pub fn vietoris_rips_complex(
     cloud: &PointCloud,
     radius: f64,
 ) -> Result<SimplicialComplex, TdaError> {
+    let dist = cloud.distance_matrix();
+    vietoris_rips_from_distances(&dist, radius)
+}
+
+/// Builds a Vietoris-Rips simplicial complex from a precomputed distance matrix.
+#[verified_engine::verified]
+pub(crate) fn vietoris_rips_from_distances(
+    dist: &[Vec<f64>],
+    radius: f64,
+) -> Result<SimplicialComplex, TdaError> {
     if radius < 0.0 || !radius.is_finite() {
         return Err(TdaError::InvalidRadius { value: radius });
     }
 
-    let n = cloud.size();
-    let dist = cloud.distance_matrix();
+    let n = dist.len();
     let mut complex = SimplicialComplex::new();
 
     // Add all vertices (0-simplices)
@@ -333,5 +342,19 @@ mod tests {
         assert_eq!(complex.count_simplices(0), 4); // 4 vertices
         assert_eq!(complex.count_simplices(1), 6); // 4 sides + 2 diagonals
         assert_eq!(complex.count_simplices(2), 4); // 4 triangles
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_vietoris_rips_from_distances() {
+        let dist = vec![
+            vec![0.0, 1.0, 2.0],
+            vec![1.0, 0.0, 1.0],
+            vec![2.0, 1.0, 0.0],
+        ];
+        let complex = vietoris_rips_from_distances(&dist, 1.0).unwrap();
+        assert_eq!(complex.count_simplices(0), 3);
+        assert_eq!(complex.count_simplices(1), 2);
+        assert_eq!(complex.count_simplices(2), 0);
     }
 }
