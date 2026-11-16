@@ -35,12 +35,12 @@ pub fn conv1d<S: Storage<f32, Dyn, Dyn>>(
     );
 
     // The core operation is `output = input * kernel^T + bias`
-    let mut output = input * kernel.transpose();
+    let kernel_t = kernel.transpose();
+    let mut output = input * &kernel_t;
 
     // Add bias to each row
-    output
-        .row_iter_mut()
-        .for_each(|mut row| row += bias.transpose());
+    let bias_t = bias.transpose();
+    output.row_iter_mut().for_each(|mut row| row += &bias_t);
 
     output
 }
@@ -82,9 +82,8 @@ pub fn conv_transpose1d<S: Storage<f32, Dyn, Dyn>>(
     let mut output = input * kernel;
 
     // Add bias to each row
-    output
-        .row_iter_mut()
-        .for_each(|mut row| row += bias.transpose());
+    let bias_t = bias.transpose();
+    output.row_iter_mut().for_each(|mut row| row += &bias_t);
 
     output
 }
@@ -140,5 +139,148 @@ mod tests {
         assert!(
             (output - expected_output).abs().max() < math_commons::registry::TOLERANCE_FAST_F32
         );
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_conv1d_multi_row_batch() {
+        let data: Vec<f32> = (0..18).map(|x| (x as f32) * 0.5).collect();
+        let input = DMatrix::from_row_slice(6, 3, &data);
+        let kernel = DMatrix::from_row_slice(
+            4,
+            3,
+            &[
+                0.5, -0.2, 0.1, 0.3, 0.8, -0.4, -0.1, 0.6, 0.9, 1.0, -0.5, 0.2,
+            ],
+        );
+        let bias = DVector::from_vec(vec![0.25, -0.5, 1.2, -0.1]);
+
+        let output = conv1d(&input, &kernel, &bias);
+        assert_eq!(output.nrows(), 6);
+        assert_eq!(output.ncols(), 4);
+
+        let kernel_t = kernel.transpose();
+        for i in 0..6 {
+            let expected_row = input.row(i) * &kernel_t + bias.transpose();
+            let actual_row = output.row(i);
+            assert!(
+                (actual_row - expected_row).abs().max()
+                    < math_commons::registry::TOLERANCE_FAST_F32
+            );
+        }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_conv_transpose1d_multi_row_batch() {
+        let data: Vec<f32> = (0..20).map(|x| (x as f32) * 0.25).collect();
+        let input = DMatrix::from_row_slice(5, 4, &data);
+        let kernel = DMatrix::from_row_slice(
+            4,
+            3,
+            &[
+                0.2, -0.3, 0.5, 0.7, 0.1, -0.4, -0.6, 0.8, 0.2, 0.4, -0.1, 0.9,
+            ],
+        );
+        let bias = DVector::from_vec(vec![0.3, -0.2, 0.7]);
+
+        let output = conv_transpose1d(&input, &kernel, &bias);
+        assert_eq!(output.nrows(), 5);
+        assert_eq!(output.ncols(), 3);
+
+        for i in 0..5 {
+            let expected_row = input.row(i) * &kernel + bias.transpose();
+            let actual_row = output.row(i);
+            assert!(
+                (actual_row - expected_row).abs().max()
+                    < math_commons::registry::TOLERANCE_FAST_F32
+            );
+        }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_conv1d_edge_cases() {
+        let input_zero_rows = DMatrix::<f32>::zeros(0, 3);
+        let kernel = DMatrix::from_row_slice(2, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let bias = DVector::from_vec(vec![0.5, -0.5]);
+        let out_zero_rows = conv1d(&input_zero_rows, &kernel, &bias);
+        assert_eq!(out_zero_rows.nrows(), 0);
+        assert_eq!(out_zero_rows.ncols(), 2);
+
+        let input_zero_cols = DMatrix::<f32>::zeros(3, 0);
+        let kernel_zero_in = DMatrix::<f32>::zeros(2, 0);
+        let out_zero_cols = conv1d(&input_zero_cols, &kernel_zero_in, &bias);
+        assert_eq!(out_zero_cols.nrows(), 3);
+        assert_eq!(out_zero_cols.ncols(), 2);
+        for i in 0..3 {
+            assert!(
+                (out_zero_cols.row(i) - bias.transpose()).abs().max()
+                    < math_commons::registry::TOLERANCE_FAST_F32
+            );
+        }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_conv_transpose1d_edge_cases() {
+        let input_zero_rows = DMatrix::<f32>::zeros(0, 4);
+        let kernel = DMatrix::from_row_slice(4, 2, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
+        let bias = DVector::from_vec(vec![0.1, -0.2]);
+        let out_zero_rows = conv_transpose1d(&input_zero_rows, &kernel, &bias);
+        assert_eq!(out_zero_rows.nrows(), 0);
+        assert_eq!(out_zero_rows.ncols(), 2);
+
+        let input_zero_cols = DMatrix::<f32>::zeros(3, 0);
+        let kernel_zero_in = DMatrix::<f32>::zeros(0, 2);
+        let out_zero_cols = conv_transpose1d(&input_zero_cols, &kernel_zero_in, &bias);
+        assert_eq!(out_zero_cols.nrows(), 3);
+        assert_eq!(out_zero_cols.ncols(), 2);
+        for i in 0..3 {
+            assert!(
+                (out_zero_cols.row(i) - bias.transpose()).abs().max()
+                    < math_commons::registry::TOLERANCE_FAST_F32
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Input channels must match kernel input channels.")]
+    #[verified_engine::verified]
+    fn test_conv1d_input_channel_mismatch_panics() {
+        let input = DMatrix::<f32>::zeros(2, 4);
+        let kernel = DMatrix::<f32>::zeros(3, 5);
+        let bias = DVector::<f32>::zeros(3);
+        let _ = conv1d(&input, &kernel, &bias);
+    }
+
+    #[test]
+    #[should_panic(expected = "Kernel output channels must match bias length.")]
+    #[verified_engine::verified]
+    fn test_conv1d_bias_mismatch_panics() {
+        let input = DMatrix::<f32>::zeros(2, 4);
+        let kernel = DMatrix::<f32>::zeros(3, 4);
+        let bias = DVector::<f32>::zeros(2);
+        let _ = conv1d(&input, &kernel, &bias);
+    }
+
+    #[test]
+    #[should_panic(expected = "Input channels must match kernel output channels.")]
+    #[verified_engine::verified]
+    fn test_conv_transpose1d_input_channel_mismatch_panics() {
+        let input = DMatrix::<f32>::zeros(2, 4);
+        let kernel = DMatrix::<f32>::zeros(3, 5);
+        let bias = DVector::<f32>::zeros(5);
+        let _ = conv_transpose1d(&input, &kernel, &bias);
+    }
+
+    #[test]
+    #[should_panic(expected = "Kernel input channels must match bias length.")]
+    #[verified_engine::verified]
+    fn test_conv_transpose1d_bias_mismatch_panics() {
+        let input = DMatrix::<f32>::zeros(2, 4);
+        let kernel = DMatrix::<f32>::zeros(4, 5);
+        let bias = DVector::<f32>::zeros(3);
+        let _ = conv_transpose1d(&input, &kernel, &bias);
     }
 }

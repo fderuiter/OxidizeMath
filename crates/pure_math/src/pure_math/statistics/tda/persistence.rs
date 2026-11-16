@@ -1,6 +1,6 @@
 //! Persistence computation and barcode generation.
 
-use super::complex::vietoris_rips_complex;
+use super::complex::vietoris_rips_from_distances;
 use super::core::PointCloud;
 use super::homology::{betti_number_0, betti_number_1};
 use crate::error::TdaError;
@@ -227,6 +227,7 @@ pub fn compute_persistence(
         return Err(TdaError::InvalidRadius { value: 0.0 });
     }
 
+    let dist = cloud.distance_matrix();
     let mut barcode = PersistenceBarcode::new();
 
     // Track previous Betti numbers
@@ -238,7 +239,7 @@ pub fn compute_persistence(
     let mut hole_births: Vec<f64> = Vec::new();
 
     for &radius in radii {
-        let complex = vietoris_rips_complex(cloud, radius)?;
+        let complex = vietoris_rips_from_distances(&dist, radius)?;
         let beta0 = betti_number_0(&complex)?;
         let beta1 = betti_number_1(&complex)?;
 
@@ -310,6 +311,7 @@ pub fn compute_persistence(
 
 #[cfg(test)]
 mod tests {
+    use super::super::complex::vietoris_rips_complex;
     use super::*;
     use crate::pure_math::statistics::tda::core::Point2D;
 
@@ -447,5 +449,47 @@ mod tests {
 
         // At least one component should have significant persistence
         assert!(!significant_components.is_empty());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_compute_persistence_invalid_radius() {
+        let points = vec![Point2D::new(0.0, 0.0), Point2D::new(1.0, 0.0)];
+        let cloud = PointCloud::new(points).unwrap();
+
+        assert!(matches!(
+            compute_persistence(&cloud, &[]),
+            Err(TdaError::InvalidRadius { .. })
+        ));
+        assert!(matches!(
+            compute_persistence(&cloud, &[-1.0]),
+            Err(TdaError::InvalidRadius { .. })
+        ));
+        assert!(matches!(
+            compute_persistence(&cloud, &[f64::NAN]),
+            Err(TdaError::InvalidRadius { .. })
+        ));
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_compute_persistence_barcode_parity() {
+        let points = vec![
+            Point2D::new(0.0, 0.0),
+            Point2D::new(1.0, 0.0),
+            Point2D::new(0.0, 1.0),
+            Point2D::new(1.0, 1.0),
+        ];
+        let cloud = PointCloud::new(points).unwrap();
+        let radii = [0.0, 0.5, 1.0, 1.5, 2.0];
+        let barcode = compute_persistence(&cloud, &radii).unwrap();
+
+        let mut b0_sequence = Vec::new();
+        for &r in &radii {
+            let c = vietoris_rips_complex(&cloud, r).unwrap();
+            b0_sequence.push(betti_number_0(&c).unwrap());
+        }
+        assert_eq!(b0_sequence, vec![4, 4, 1, 1, 1]);
+        assert_eq!(barcode.intervals.len(), 5);
     }
 }

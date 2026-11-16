@@ -1,6 +1,6 @@
 use crate::framework::InteractiveTool;
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints, Points, Polygon};
+use egui_plot::{Line, Plot, PlotPoint, Points, Polygon};
 use math_explorer::pure_math::statistics::tda::{
     core::{Point2D, PointCloud},
     vietoris_rips_complex, SimplicialComplex,
@@ -12,6 +12,9 @@ pub struct VietorisRipsTool {
     points: Vec<Point2D>,
     complex: SimplicialComplex,
     error_msg: Option<String>,
+    cached_triangles: Vec<[PlotPoint; 3]>,
+    cached_edges: Vec<[PlotPoint; 2]>,
+    cached_vertices: Vec<PlotPoint>,
 }
 
 impl Default for VietorisRipsTool {
@@ -21,6 +24,9 @@ impl Default for VietorisRipsTool {
             points: Vec::new(),
             complex: SimplicialComplex::new(),
             error_msg: None,
+            cached_triangles: Vec::new(),
+            cached_edges: Vec::new(),
+            cached_vertices: Vec::new(),
         };
         tool.generate_points(20);
         tool.update_complex();
@@ -29,6 +35,12 @@ impl Default for VietorisRipsTool {
 }
 
 impl VietorisRipsTool {
+    fn clear_cache(&mut self) {
+        self.cached_triangles.clear();
+        self.cached_edges.clear();
+        self.cached_vertices.clear();
+    }
+
     fn generate_points(&mut self, count: usize) {
         let mut rng = oxidize_core::rng::OxidizeRng::default();
 
@@ -45,14 +57,50 @@ impl VietorisRipsTool {
         match PointCloud::new(self.points.clone()) {
             Ok(cloud) => match vietoris_rips_complex(&cloud, self.radius) {
                 Ok(complex) => {
+                    let triangles = complex.get_simplices(2);
+                    self.cached_triangles = triangles
+                        .into_iter()
+                        .map(|t| {
+                            let p0 = &self.points[t.vertices[0]];
+                            let p1 = &self.points[t.vertices[1]];
+                            let p2 = &self.points[t.vertices[2]];
+                            [
+                                PlotPoint::new(p0.x, p0.y),
+                                PlotPoint::new(p1.x, p1.y),
+                                PlotPoint::new(p2.x, p2.y),
+                            ]
+                        })
+                        .collect();
+
+                    let edges = complex.get_simplices(1);
+                    self.cached_edges = edges
+                        .into_iter()
+                        .map(|e| {
+                            let p0 = &self.points[e.vertices[0]];
+                            let p1 = &self.points[e.vertices[1]];
+                            [
+                                PlotPoint::new(p0.x, p0.y),
+                                PlotPoint::new(p1.x, p1.y),
+                            ]
+                        })
+                        .collect();
+
+                    self.cached_vertices = self
+                        .points
+                        .iter()
+                        .map(|p| PlotPoint::new(p.x, p.y))
+                        .collect();
+
                     self.complex = complex;
                     self.error_msg = None;
                 }
                 Err(e) => {
+                    self.clear_cache();
                     self.error_msg = Some(format!("Error building complex: {:?}", e));
                 }
             },
             Err(e) => {
+                self.clear_cache();
                 self.error_msg = Some(format!("Error building point cloud: {:?}", e));
             }
         }
@@ -156,44 +204,26 @@ impl InteractiveTool for VietorisRipsTool {
 
             plot.show(ui, |plot_ui| {
                 // Draw 2-simplices (triangles)
-                let triangles = self.complex.get_simplices(2);
-                for t in triangles {
-                    let p0 = &self.points[t.vertices[0]];
-                    let p1 = &self.points[t.vertices[1]];
-                    let p2 = &self.points[t.vertices[2]];
-
-                    let points = vec![[p0.x, p0.y], [p1.x, p1.y], [p2.x, p2.y]];
-
+                for t in &self.cached_triangles {
                     plot_ui.polygon(
-                        Polygon::new("Triangle", PlotPoints::new(points))
+                        Polygon::new("Triangle", &t[..])
                             .fill_color(egui::Color32::from_rgba_unmultiplied(100, 150, 250, 50))
                             .stroke(egui::Stroke::new(0.0_f32, egui::Color32::TRANSPARENT)),
                     );
                 }
 
                 // Draw 1-simplices (edges)
-                let edges = self.complex.get_simplices(1);
-                for e in edges {
-                    let p0 = &self.points[e.vertices[0]];
-                    let p1 = &self.points[e.vertices[1]];
-
-                    let points = vec![[p0.x, p0.y], [p1.x, p1.y]];
-
+                for e in &self.cached_edges {
                     plot_ui.line(
-                        Line::new("Edge", PlotPoints::new(points))
+                        Line::new("Edge", &e[..])
                             .color(egui::Color32::from_rgb(150, 150, 150))
                             .width(1.5_f32),
                     );
                 }
 
                 // Draw 0-simplices (vertices)
-                let mut vertex_coords = Vec::new();
-                for p in &self.points {
-                    vertex_coords.push([p.x, p.y]);
-                }
-
                 plot_ui.points(
-                    Points::new("Vertices", PlotPoints::new(vertex_coords))
+                    Points::new("Vertices", &self.cached_vertices[..])
                         .color(egui::Color32::from_rgb(50, 50, 200))
                         .radius(4.0_f32),
                 );
@@ -219,4 +249,88 @@ impl scientific_metadata::theory::TheoryDescribable for VietorisRipsTool {
     fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
     fn theory_citation(&self) -> String { "Uncited".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui_plot::PlotPoints;
+
+    #[test]
+    fn test_vietoris_rips_default_initialization() {
+        let tool = VietorisRipsTool::default();
+        assert_eq!(tool.cached_vertices.len(), tool.points.len());
+        assert_eq!(tool.cached_vertices.len(), 20);
+        assert_eq!(tool.cached_edges.len(), tool.complex.count_simplices(1));
+        assert_eq!(tool.cached_triangles.len(), tool.complex.count_simplices(2));
+        assert!(tool.error_msg.is_none());
+    }
+
+    #[test]
+    fn test_vietoris_rips_parameter_updates() {
+        let mut tool = VietorisRipsTool::default();
+
+        // Expanding radius connects all points in [0, 10] x [0, 10]
+        tool.radius = 15.0;
+        tool.update_complex();
+        assert_eq!(tool.cached_edges.len(), tool.complex.count_simplices(1));
+        assert_eq!(tool.cached_triangles.len(), tool.complex.count_simplices(2));
+        assert_eq!(tool.cached_vertices.len(), tool.points.len());
+        assert!(!tool.cached_edges.is_empty());
+        assert!(!tool.cached_triangles.is_empty());
+
+        // Shrinking radius to 0.0 results in 0 edges and 0 triangles
+        tool.radius = 0.0;
+        tool.update_complex();
+        assert_eq!(tool.cached_edges.len(), 0);
+        assert_eq!(tool.cached_triangles.len(), 0);
+        assert_eq!(tool.cached_vertices.len(), tool.points.len());
+    }
+
+    #[test]
+    fn test_vietoris_rips_error_state_cache_clearing() {
+        let mut tool = VietorisRipsTool::default();
+        assert!(!tool.cached_vertices.is_empty());
+
+        // Invalid negative radius causes vietoris_rips_complex error and clears cache
+        tool.radius = -1.0;
+        tool.update_complex();
+        assert!(tool.error_msg.is_some());
+        assert!(tool.cached_triangles.is_empty());
+        assert!(tool.cached_edges.is_empty());
+        assert!(tool.cached_vertices.is_empty());
+
+        // Empty points causes PointCloud error and clears cache
+        let mut tool2 = VietorisRipsTool::default();
+        tool2.points.clear();
+        tool2.update_complex();
+        assert!(tool2.error_msg.is_some());
+        assert!(tool2.cached_triangles.is_empty());
+        assert!(tool2.cached_edges.is_empty());
+        assert!(tool2.cached_vertices.is_empty());
+    }
+
+    #[test]
+    fn test_vietoris_rips_borrowed_plot_points_slice_variants() {
+        let mut tool = VietorisRipsTool::default();
+        tool.radius = 15.0;
+        tool.update_complex();
+
+        let v_slice: &[PlotPoint] = &tool.cached_vertices[..];
+        let v_plot: PlotPoints<'_> = v_slice.into();
+        assert!(matches!(v_plot, PlotPoints::Borrowed(_)));
+        assert_eq!(v_plot.points().len(), tool.cached_vertices.len());
+
+        let edge = tool.cached_edges.first().expect("edges should not be empty with radius 15.0");
+        let e_slice: &[PlotPoint] = &edge[..];
+        let e_plot: PlotPoints<'_> = e_slice.into();
+        assert!(matches!(e_plot, PlotPoints::Borrowed(_)));
+        assert_eq!(e_plot.points().len(), 2);
+
+        let triangle = tool.cached_triangles.first().expect("triangles should not be empty with radius 15.0");
+        let t_slice: &[PlotPoint] = &triangle[..];
+        let t_plot: PlotPoints<'_> = t_slice.into();
+        assert!(matches!(t_plot, PlotPoints::Borrowed(_)));
+        assert_eq!(t_plot.points().len(), 3);
+    }
 }
