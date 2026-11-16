@@ -1,5 +1,6 @@
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::{SimCommand, StateSnapshot};
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, PlotPoints};
 use scientific_metadata::theory::ParameterConstraint;
@@ -20,7 +21,7 @@ pub struct WaveData {
 }
 
 pub struct WaveUnified {
-    psi: QuantumState,
+    pub(crate) psi: QuantumState,
     hamiltonian: QuantumOperator,
     potential: DVector<f64>,
     x_axis: Vec<f64>,
@@ -28,6 +29,32 @@ pub struct WaveUnified {
     n_points: usize,
     x_min: f64,
     x_max: f64,
+    pub(crate) diverged: bool,
+    pub(crate) diagnostic_report: Option<DiagnosticReport>,
+    pub(crate) step_count: usize,
+}
+
+impl FiniteStateGuard for WaveUnified {
+    fn is_finite_state(&self) -> bool {
+        if self.diverged {
+            return false;
+        }
+        self.psi.vector.iter().all(|c| c.re.is_finite() && c.im.is_finite())
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        self.diagnostic_report.as_ref()
+    }
+
+    fn diverged(&self) -> bool {
+        self.diverged || !FiniteStateGuard::is_finite_state(self)
+    }
+
+    fn reset_parameters(&mut self) {
+        self.diverged = false;
+        self.diagnostic_report = None;
+        self.step_count = 0;
+    }
 }
 
 impl UnifiedModel for WaveUnified {
@@ -50,26 +77,73 @@ impl UnifiedModel for WaveUnified {
             n_points,
             x_min,
             x_max,
+            diverged: false,
+            diagnostic_report: None,
+            step_count: 0,
         };
         sim.init_system(potential_type);
         sim
     }
 
-    fn step(&mut self, _params: &HashMap<String, f64>) {
-        let dt = 0.05;
+    fn step(&mut self, params: &HashMap<String, f64>) {
+        if self.diverged {
+            return;
+        }
+        let dt = *params.get("dt").unwrap_or(&0.05);
+        if !dt.is_finite() || dt <= 0.0 {
+            self.diverged = true;
+            self.diagnostic_report = Some(DiagnosticReport::new(
+                self.time,
+                self.step_count,
+                "dt",
+                format!("Invalid non-finite time step dt: {}", dt),
+            ));
+            return;
+        }
+        self.step_count += 1;
         self.psi = evolve_state(&self.psi, &self.hamiltonian, dt, 1.0);
         self.time += dt;
+
+        if !self.psi.vector.iter().all(|c| c.re.is_finite() && c.im.is_finite()) {
+            self.diverged = true;
+            self.diagnostic_report = Some(DiagnosticReport::new(
+                self.time,
+                self.step_count,
+                "psi",
+                "Non-finite wave packet amplitude detected during time evolution.",
+            ));
+            return;
+        }
+
         self.psi = self.psi.normalize();
+
+        if !self.psi.vector.iter().all(|c| c.re.is_finite() && c.im.is_finite()) {
+            self.diverged = true;
+            self.diagnostic_report = Some(DiagnosticReport::new(
+                self.time,
+                self.step_count,
+                "psi_norm",
+                "Wave function normalization diverged: non-finite norm encountered.",
+            ));
+        }
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
         let prob_density = self.psi.probability_density();
-        
+        let safe_prob: Vec<f64> = prob_density
+            .iter()
+            .map(|&p| if p.is_finite() { p } else { 0.0 })
+            .collect();
+        let safe_potential: Vec<f64> = self.potential
+            .iter()
+            .map(|&v| if v.is_finite() { v } else { 0.0 })
+            .collect();
+
         let structured_data = Box::new(WaveData {
             time: self.time,
             x_axis: self.x_axis.clone(),
-            prob_density: prob_density.iter().copied().collect(),
-            potential: self.potential.iter().copied().collect(),
+            prob_density: safe_prob,
+            potential: safe_potential,
         }) as Box<dyn Any + Send>;
 
         StateSnapshot {
@@ -83,6 +157,9 @@ impl UnifiedModel for WaveUnified {
 
     fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
         if let SimCommand::Reset = cmd {
+            self.diverged = false;
+            self.diagnostic_report = None;
+            self.step_count = 0;
             let potential_type = *params.get("potential_type").unwrap_or(&0.0);
             self.init_system(potential_type);
         }
@@ -92,6 +169,7 @@ impl UnifiedModel for WaveUnified {
         let mut map = HashMap::new();
         // 0.0 for Infinite Well, 1.0 for Harmonic Oscillator
         map.insert("potential_type".to_string(), ParameterConstraint { min: 0.0, max: 1.0, step: 1.0 });
+        map.insert("dt".to_string(), ParameterConstraint { min: 0.001, max: 0.1, step: 0.005 });
         map
     }
 
