@@ -180,8 +180,10 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for LossLandscapeTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        "Mean squared error loss landscape over parameter space $(w, b)$: $L(w, b) = \\frac{1}{2n}\\sum_{i=1}^n (w x_i + b - y_i)^2$. The geometric curvature of the landscape is governed by the Hessian matrix $H = \\nabla^2 L$.".into()
+    }
+    fn phonetic_description(&self) -> String { "Loss landscape and mean squared error optimization theory".into() }
+    fn theory_citation(&self) -> String { "Visualizing the Loss Landscape of Neural Nets (Li et al., 2018); Deep Learning (Goodfellow et al., 2016)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

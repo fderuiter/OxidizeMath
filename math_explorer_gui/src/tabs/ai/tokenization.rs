@@ -211,8 +211,14 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for TokenizationTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        let mode = if self.use_subword { "Character/subword" } else { "Word" };
+        format!(
+            "{} tokenization mapping sequence tokens $t_i$ to discrete vocabulary indices and continuous vector representations $E(t_i) \\in \\mathbb{{R}}^{{d_{{\\text{{model}}}}}}$ with dimension $d_{{\\text{{model}}}} = {}$.",
+            mode, self.d_model
+        )
+    }
+    fn phonetic_description(&self) -> String { "Tokenization and embedding space theory".into() }
+    fn theory_citation(&self) -> String { "Attention Is All You Need (Vaswani et al., 2017)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

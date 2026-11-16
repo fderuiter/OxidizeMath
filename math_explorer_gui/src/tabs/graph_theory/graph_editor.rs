@@ -459,9 +459,14 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for GraphEditorTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Combinatorial graph structure $G = (V, E)$ with $|V| = {}$ nodes and $|E| = {}$ edges under force-directed spring-electrical embedding $F = F_{{\\text{{attr}}}} + F_{{\\text{{rep}}}}.$",
+            self.node_positions.len(), self.edges.len()
+        )
+    }
+    fn phonetic_description(&self) -> String { "Combinatorial graph theory and force-directed network embedding".into() }
+    fn theory_citation(&self) -> String { "Graph Drawing by Force-Directed Placement (Fruchterman & Reingold, 1991)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
 

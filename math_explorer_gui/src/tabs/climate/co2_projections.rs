@@ -90,8 +90,13 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for Co2ProjectionsTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Atmospheric carbon cycle mass balance model projecting CO2 concentration trajectories under an annual emissions reduction rate of {:.1}%: $C(t) = C_0 + \\int_0^t (E(t') - S(t')) dt'$.",
+            self.reduction_scenario
+        )
+    }
+    fn phonetic_description(&self) -> String { "Atmospheric carbon dioxide projection and emissions scenario theory".into() }
+    fn theory_citation(&self) -> String { "IPCC Sixth Assessment Report: The Physical Science Basis (IPCC, 2021)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

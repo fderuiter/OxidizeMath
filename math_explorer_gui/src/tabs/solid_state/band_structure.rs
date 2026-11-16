@@ -170,8 +170,23 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for BandStructureTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        let model_str = if self.show_free_electron {
+            format!("parabolic free-electron dispersion $E(k) = \\frac{{\\hbar^2 k^2}}{{2m}}$ with effective mass $m = {:.2}$", self.m)
+        } else {
+            format!("1D tight-binding nearest-neighbor dispersion $E(k) = E_0 - 2t \\cos(ka)$ with $E_0 = {:.2}$, hopping $t = {:.2}$, lattice constant $a = {:.2}$", self.e0, self.t, self.a)
+        };
+        format!(
+            "Solid state electronic band structure dispersion relation in the first Brillouin zone $[-\\pi/a, \\pi/a]$: {}.",
+            model_str
+        )
+    }
+    fn phonetic_description(&self) -> String { "Electronic band structure and tight-binding dispersion theory".into() }
+    fn theory_citation(&self) -> String { "Introduction to Solid State Physics (Kittel, 2004); Solid State Physics (Ashcroft & Mermin, 1976)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("TightBinding".into(), "E(k) = E_0 - 2t cos(ka) atomic orbital overlap model".into());
+        map.insert("FreeElectron".into(), "E(k) = hbar^2 k^2 / (2m) parabolic free Fermi gas dispersion".into());
+        map
+    }
 }

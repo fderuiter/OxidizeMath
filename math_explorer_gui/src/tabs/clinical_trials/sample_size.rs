@@ -247,8 +247,24 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for SampleSizeCalculatorTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        match self.mode {
+            CalculationMode::Means => format!(
+                "Two-sample hypothesis test sample size for means: $N = \\frac{{2 (Z_{{\\alpha/2}} + Z_\\beta)^2 \\sigma^2}}{{\\delta^2}}$ with significance $\\alpha = {:.3}$, power $1-\\beta = {:.2}$, effect size $\\delta = {:.2}$, $\\sigma = {:.2}$.",
+                self.alpha, self.power, self.delta, self.sigma
+            ),
+            CalculationMode::Proportions => format!(
+                "Two-sample hypothesis test sample size for proportions: $N = \\frac{{(Z_{{\\alpha/2}} \\sqrt{{2\\bar{{p}}(1-\\bar{{p}})}} + Z_\\beta \\sqrt{{p_1(1-p_1) + p_2(1-p_2)}})^2}}{{(p_1 - p_2)^2}}$ with $\\alpha = {:.3}$, power $1-\\beta = {:.2}$, $p_1 = {:.2}$, $p_2 = {:.2}$.",
+                self.alpha, self.power, self.p1, self.p2
+            ),
+        }
+    }
+    fn phonetic_description(&self) -> String { "Clinical trial sample size and statistical power theory".into() }
+    fn theory_citation(&self) -> String { "Sample Size Calculations in Clinical Research (Chow et al., 2017)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Means".into(), "Normal approximation for difference between two independent continuous means".into());
+        map.insert("Proportions".into(), "Normal approximation with pooled variance for binary outcome proportions".into());
+        map
+    }
 }

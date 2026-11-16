@@ -327,8 +327,17 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for PotentialFlowTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        "Two-dimensional incompressible irrotational potential flow governed by Laplace's equation $\\nabla^2 \\phi = 0$ for velocity potential $\\phi$, where fluid velocity is given by $\\vec{V} = \\nabla \\phi = (u, v)$ with linear superposition of elementary solutions.".into()
+    }
+    fn phonetic_description(&self) -> String { "Incompressible irrotational potential flow and Laplace equation theory".into() }
+    fn theory_citation(&self) -> String { "Elementary Fluid Dynamics (Acheson, 1990); An Introduction to Fluid Dynamics (Batchelor, 1967)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Uniform".into(), "Uniform freestream flow phi = U (x cos(alpha) + y sin(alpha))".into());
+        map.insert("Source/Sink".into(), "Radial flow phi = (m / 2 pi) ln(r)".into());
+        map.insert("Vortex".into(), "Circulation flow phi = (Gamma / 2 pi) theta".into());
+        map.insert("Doublet".into(), "Source-sink dipole limit phi = (mu / 2 pi) cos(theta) / r".into());
+        map
+    }
 }

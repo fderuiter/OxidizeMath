@@ -281,8 +281,13 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Kelly criterion optimal wagering fraction: $f^* = \\frac{{b p - q}}{{b}}$ where $p = {:.1}\\%$ is win probability, $q = 1 - p$, and decimal odds $b = {:.2}$, maximizing expected asymptotic logarithmic bankroll growth.",
+            self.probability_input, self.decimal_odds
+        )
+    }
+    fn phonetic_description(&self) -> String { "Kelly criterion optimal bet sizing theory".into() }
+    fn theory_citation(&self) -> String { "A New Interpretation of Information Rate (Kelly, 1956)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

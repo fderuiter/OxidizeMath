@@ -199,8 +199,13 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for SurvivalAnalysisTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Kaplan-Meier non-parametric maximum likelihood estimator of survival function $S(t) = \\prod_{{t_i \\le t}} \\left(1 - \\frac{{d_i}}{{n_i}}\\right)$ accounting for right-censored time-to-event data across {} observations.",
+            self.observations.len()
+        )
+    }
+    fn phonetic_description(&self) -> String { "Kaplan-Meier non-parametric survival analysis theory".into() }
+    fn theory_citation(&self) -> String { "Nonparametric Estimation from Incomplete Observations (Kaplan & Meier, 1958)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

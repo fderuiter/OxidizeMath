@@ -338,8 +338,27 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for CurvatureHeatmap {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        let surf_name = match self.surface_type {
+            SurfaceType::Sphere => "sphere",
+            SurfaceType::Torus => "torus",
+            SurfaceType::KleinBottle => "Klein bottle",
+        };
+        let curv_formula = match self.curvature_type {
+            CurvatureType::Gaussian => "Gaussian curvature $K = \\kappa_1 \\kappa_2 = \\frac{LN - M^2}{EG - F^2}$ (an intrinsic invariant by Gauss's Theorema Egregium)",
+            CurvatureType::Mean => "mean curvature $H = \\frac{\\kappa_1 + \\kappa_2}{2} = \\frac{EN - 2FM + GL}{2(EG - F^2)}$",
+        };
+        format!(
+            "Differential geometry surface analysis evaluating {} on a parametric {}.",
+            curv_formula, surf_name
+        )
+    }
+    fn phonetic_description(&self) -> String { "Differential geometry surface curvature and Gauss-Bonnet theory".into() }
+    fn theory_citation(&self) -> String { "Differential Geometry of Curves and Surfaces (do Carmo, 2016)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Gaussian".into(), "K = kappa_1 * kappa_2 intrinsic curvature invariant under isometries".into());
+        map.insert("Mean".into(), "H = (kappa_1 + kappa_2) / 2 extrinsic curvature related to minimal surfaces".into());
+        map
+    }
 }

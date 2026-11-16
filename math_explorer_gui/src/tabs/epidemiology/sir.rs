@@ -276,9 +276,15 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for SirTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        let r0 = self.beta / self.gamma;
+        format!(
+            "Kermack-McKendrick SIR compartmental epidemic model: $\\frac{{dS}}{{dt}} = -\\frac{{\\beta S I}}{{N}}$, $\\frac{{dI}}{{dt}} = \\frac{{\\beta S I}}{{N}} - \\gamma I$, $\\frac{{dR}}{{dt}} = \\gamma I$. Transmission rate $\\beta = {:.3}$, recovery rate $\\gamma = {:.3}$, basic reproduction number $R_0 = {:.2}$.",
+            self.beta, self.gamma, r0
+        )
+    }
+    fn phonetic_description(&self) -> String { "Kermack-McKendrick SIR compartmental epidemic model theory".into() }
+    fn theory_citation(&self) -> String { "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
 

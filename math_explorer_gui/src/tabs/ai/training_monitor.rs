@@ -298,9 +298,14 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for TrainingMonitorTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Neural network training dynamics for a two-layer MLP with hidden dimension {} and learning rate $\\alpha = {:.4}$: gradient descent update $\\theta_{{t+1}} = \\theta_t - \\alpha \\nabla L(\\theta_t)$ tracking empirical risk minimization.",
+            self.hidden_dim, self.learning_rate
+        )
+    }
+    fn phonetic_description(&self) -> String { "Neural network training monitor and optimization theory".into() }
+    fn theory_citation(&self) -> String { "Adam: A Method for Stochastic Optimization (Kingma & Ba, 2014); Deep Learning (Goodfellow et al., 2016)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
 

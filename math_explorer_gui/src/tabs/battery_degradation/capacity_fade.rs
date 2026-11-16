@@ -159,8 +159,13 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for CapacityFadeTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Lithium-ion capacity fade power-law degradation: remaining capacity $C(N) = C_0 \\left(1 - 0.3 (N / N_{{70}})^z\\right)$ at {:.1}% depth of discharge and {:.1}°C operating temperature.",
+            self.dod, self.temperature
+        )
+    }
+    fn phonetic_description(&self) -> String { "Battery capacity fade power-law degradation theory".into() }
+    fn theory_citation(&self) -> String { "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

@@ -365,10 +365,29 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for ComplexMappingTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        let fn_desc = match self.function {
+            MappingFunction::ZSquared => "quadratic power map $w = z^2$",
+            MappingFunction::Exponential => "entire exponential map $w = e^z$",
+            MappingFunction::Sine => "complex trigonometric map $w = \\sin(z)$",
+            MappingFunction::Inverse => "inversion map $w = 1/z$",
+            MappingFunction::Custom => "custom holomorphic map $w = f(z)$",
+        };
+        format!(
+            "Conformal complex mapping {} preserving angles and orientation under Cauchy-Riemann equations with local scaling factor $|f'(z)|$.",
+            fn_desc
+        )
+    }
+    fn phonetic_description(&self) -> String { "Conformal complex mapping and Cauchy-Riemann equations theory".into() }
+    fn theory_citation(&self) -> String { "Visual Complex Analysis (Needham, 1997); Complex Analysis (Ahlfors, 1979)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("ZSquared".into(), "w = z^2 doubling angles at the origin".into());
+        map.insert("Exponential".into(), "w = e^z mapping vertical lines to circles".into());
+        map.insert("Sine".into(), "w = sin(z) mapping strips to upper half-plane".into());
+        map.insert("Inverse".into(), "w = 1/z conformal inversion through unit circle".into());
+        map
+    }
 }
 
 #[cfg(test)]

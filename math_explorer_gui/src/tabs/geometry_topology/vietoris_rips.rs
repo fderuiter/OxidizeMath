@@ -215,8 +215,13 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for VietorisRipsTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Topological Data Analysis (TDA) via Vietoris-Rips simplicial filtration: a $k$-simplex $\\sigma = [v_0, \\dots, v_k]$ is included if pairwise distance $d(v_i, v_j) \\le 2\\epsilon$ with filtration parameter $\\epsilon = {:.2}$ across {} vertices.",
+            self.radius, self.points.len()
+        )
+    }
+    fn phonetic_description(&self) -> String { "Vietoris-Rips simplicial complex and topological data analysis theory".into() }
+    fn theory_citation(&self) -> String { "Computational Topology: An Introduction (Edelsbrunner & Harer, 2010)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

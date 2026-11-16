@@ -153,8 +153,13 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for LifetimeEstimatorTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Battery cycle lifetime estimator modeling cycles-to-failure $N_{{70}}(D) = \\alpha D^\\beta$ for target capacity {:.1}% at {:.1}% depth of discharge.",
+            self.target_capacity, self.dod
+        )
+    }
+    fn phonetic_description(&self) -> String { "Battery lifetime estimator and power-law cycle life theory".into() }
+    fn theory_citation(&self) -> String { "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

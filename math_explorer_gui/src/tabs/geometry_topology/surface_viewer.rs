@@ -264,8 +264,24 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for SurfaceViewer {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        let surf_desc = match self.surface_type {
+            SurfaceType::Sphere => "sphere $S^2$: $\\vec{r}(u, v) = (R \\sin u \\cos v, R \\sin u \\sin v, R \\cos u)$",
+            SurfaceType::Torus => "torus $T^2$: $\\vec{r}(u, v) = ((R + r \\cos v)\\cos u, (R + r \\cos v)\\sin u, r \\sin v)$",
+            SurfaceType::KleinBottle => "non-orientable Klein bottle embedded in 3D: $\\chi(M) = 0$",
+        };
+        format!(
+            "Parametric 2-manifold surface representation: {}.",
+            surf_desc
+        )
+    }
+    fn phonetic_description(&self) -> String { "Parametric 2-manifold differential geometry theory".into() }
+    fn theory_citation(&self) -> String { "Differential Geometry of Curves and Surfaces (do Carmo, 2016)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Sphere".into(), "Compact orientable manifold of genus 0 with Euler characteristic 2".into());
+        map.insert("Torus".into(), "Compact orientable manifold of genus 1 with Euler characteristic 0".into());
+        map.insert("KleinBottle".into(), "Non-orientable closed surface with Euler characteristic 0".into());
+        map
+    }
 }

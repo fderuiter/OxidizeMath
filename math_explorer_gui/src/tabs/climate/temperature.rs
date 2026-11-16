@@ -78,8 +78,10 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for TemperatureAnomaliesTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        "Global surface temperature anomalies relative to the 1951-1980 climatological baseline: $\\Delta T(t) = T(t) - T_{\\text{baseline}}$, tracking global warming trends and radiative forcing.".into()
+    }
+    fn phonetic_description(&self) -> String { "Global surface temperature anomalies and baseline climate theory".into() }
+    fn theory_citation(&self) -> String { "Improvements in the GISTEMP Uncertainty Analysis (Lenssen et al., 2019)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

@@ -257,10 +257,22 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for BankrollGrowthTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        let f_kelly = (self.probability * self.odds - 1.0) / (self.odds - 1.0);
+        format!(
+            "Capital compounding trajectory under Kelly criterion betting: $W_T = W_0 \\prod_{{t=1}}^T (1 + f R_t)$ with initial capital $W_0 = {:.1}$, win probability $p = {:.2}$, decimal odds $b = {:.2}$, and optimal fraction $f^* = {:.3}$.",
+            self.initial_bankroll, self.probability, self.odds, f_kelly
+        )
+    }
+    fn phonetic_description(&self) -> String { "Kelly criterion bankroll growth and geometric compounding theory".into() }
+    fn theory_citation(&self) -> String { "A New Interpretation of Information Rate (Kelly, 1956); The Kelly Capital Growth Investment Criterion (MacLean et al., 2011)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Full Kelly".into(), "Maximizes expected logarithmic growth rate".into());
+        map.insert("Half Kelly".into(), "Reduces variance and drawdowns by half while retaining 75% of growth rate".into());
+        map.insert("Quarter Kelly".into(), "Conservative wagering for high volatility protection".into());
+        map
+    }
 }
 
 #[cfg(test)]

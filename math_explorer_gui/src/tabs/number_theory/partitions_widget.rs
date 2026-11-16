@@ -195,8 +195,18 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for PartitionsWidget {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Number theoretic partition functions, colored partitions, and Eisenstein series q-series expansions calculated to precision order $O(q^{{{}}})$: Euler generating function $P(q) = \\prod_{{n=1}}^\\infty \\frac{{1}}{{1 - q^n}}$.",
+            self.precision
+        )
+    }
+    fn phonetic_description(&self) -> String { "Integer partition functions and Eisenstein series theory".into() }
+    fn theory_citation(&self) -> String { "On Eisenstein series, color partition and divisor function (Pushpa & Vasuki, 2022); The Theory of Partitions (Andrews, 1976)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("PStar".into(), "Unrestricted partition counting function generating series".into());
+        map.insert("Eisenstein".into(), "Modular forms and divisor sum Eisenstein series components".into());
+        map
+    }
 }

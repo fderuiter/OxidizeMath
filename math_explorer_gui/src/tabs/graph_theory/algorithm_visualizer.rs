@@ -367,10 +367,26 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        let algo_str = match self.selected_algorithm {
+            Algorithm::Dijkstra => "Dijkstra shortest path algorithm via priority relaxation $d(v) = \\min(d(v), d(u) + w(u, v))$",
+            Algorithm::Bfs => "Breadth-First Search level-order queue traversal computing unweighted shortest path distances",
+            Algorithm::Dfs => "Depth-First Search recursive stack traversal exploring graph connectivity and cycles",
+        };
+        format!(
+            "Graph traversal and pathfinding analysis executing {} across $|V| = {}$ nodes and $|E| = {}$ edges.",
+            algo_str, self.node_positions.len(), self.edges.len()
+        )
+    }
+    fn phonetic_description(&self) -> String { "Graph search and shortest path algorithm theory".into() }
+    fn theory_citation(&self) -> String { "A Note on Two Problems in Connexion with Graphs (Dijkstra, 1959); Introduction to Algorithms (Cormen et al., 2022)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Dijkstra".into(), "Greedy shortest path in non-negatively weighted graphs".into());
+        map.insert("BFS".into(), "Queue-based breadth traversal finding minimum hop counts".into());
+        map.insert("DFS".into(), "Stack-based depth exploration identifying connected components".into());
+        map
+    }
 }
 
 #[cfg(test)]

@@ -278,10 +278,21 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for RiemannIntegrationTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Numerical approximation of the definite integral $\\int_a^b f(x) dx$ for {} using composite trapezoidal rule: $T_n = \\sum_{{i=1}}^n \\frac{{f(x_{{i-1}}) + f(x_i)}}{{2}} \\Delta x$ with {} steps over interval [{:.2}, {:.2}].",
+            self.preset.name(), self.steps, self.min_x, self.max_x
+        )
+    }
+    fn phonetic_description(&self) -> String { "Riemann integration and composite trapezoidal approximation theory".into() }
+    fn theory_citation(&self) -> String { "Calculus, Vol. 1 (Apostol, 1967); Principles of Mathematical Analysis (Rudin, 1976)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("SinX".into(), "Integral of sin(x) showing oscillatory area cancellation".into());
+        map.insert("XSquared".into(), "Integral of x^2 demonstrating parabolic quadrature".into());
+        map.insert("EToX".into(), "Integral of e^x demonstrating exponential growth integration".into());
+        map
+    }
 }
 
 #[cfg(test)]
