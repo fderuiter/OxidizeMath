@@ -1,4 +1,7 @@
 pub mod callout_overlay;
+pub mod export_queue;
+#[cfg(test)]
+mod export_queue_tests;
 mod export_ui;
 pub mod math_input;
 pub mod recovery;
@@ -8,6 +11,7 @@ pub mod trace_overlay;
 mod ui;
 
 pub use callout_overlay::*;
+pub use export_queue::*;
 pub use math_input::*;
 pub use recovery::*;
 pub use trace_overlay::*;
@@ -278,6 +282,7 @@ pub struct SimulationFramework {
     pub export_status_message: Option<String>,
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
+    pub export_queue: ExportQueue,
 }
 
 impl SimulationFramework {
@@ -310,6 +315,7 @@ impl SimulationFramework {
             export_status_message: None,
             domain: domain.to_string(),
             preset_dialog: crate::presets::PresetDialogState::default(),
+            export_queue: ExportQueue::default(),
         };
 
         if !framework.available_tools.is_empty() {
@@ -466,6 +472,8 @@ impl SimulationFramework {
         {
             self.show_theory_portal = portal_state;
         }
+
+        self.dispatch_pending_exports();
     }
 }
 

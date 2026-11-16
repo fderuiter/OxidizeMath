@@ -37,11 +37,7 @@ impl SimulationFramework {
                         .on_hover_text("Export dataset points to CSV file")
                         .clicked()
                     {
-                        if let Some(tool) = &self.active_tool {
-                            let datasets = tool.export_datasets();
-                            let filename = format!("{}_dataset.csv", file_slug);
-                            egui_plot::export::export_csv_filename(&datasets, &filename);
-                        }
+                        self.queue_export(ExportFormat::Csv);
                     }
 
                     if ui
@@ -49,11 +45,7 @@ impl SimulationFramework {
                         .on_hover_text("Export dataset points to JSON file")
                         .clicked()
                     {
-                        if let Some(tool) = &self.active_tool {
-                            let datasets = tool.export_datasets();
-                            let filename = format!("{}_dataset.json", file_slug);
-                            egui_plot::export::export_json_filename(&datasets, &filename);
-                        }
+                        self.queue_export(ExportFormat::Json);
                     }
 
                     if ui
