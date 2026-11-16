@@ -4821,7 +4821,7 @@ mod floating_zoom_toolbar_tests {
         let ctx = egui::Context::default();
         let id = Id::new("test_aspect_ratio");
 
-        // Set data_aspect(2.0): width / height == 2.0
+        // Frame 1: Initial layout and axis thickness calculation
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 Plot::new(id)
@@ -4835,10 +4835,19 @@ mod floating_zoom_toolbar_tests {
             });
         });
 
+        // Frame 2: Stable frame with settled axis layout
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id).id(id).data_aspect(2.0).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("dummy", vec![[-20.0, -10.0], [20.0, 10.0]]));
+                });
+            });
+        });
+
         let mem1 = PlotMemory::load(&ctx, id).unwrap();
         let initial_aspect = mem1.transform.bounds().width() / mem1.transform.bounds().height();
 
-        // Zoom In
+        // Frame 3: Zoom In
         ctx.data_mut(|d| d.insert_temp(id.with("zoom_in"), true));
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
