@@ -297,7 +297,7 @@ impl SimulationFramework {
             selected_tool_index: None,
             input_mode: InputMode::Mouse,
             show_theory_portal: false,
-            show_starter_gallery: true,
+            show_starter_gallery: false,
             saved_tool_states: std::collections::HashMap::new(),
             search_query: String::new(),
             last_announced_count: None,
@@ -344,6 +344,23 @@ impl SimulationFramework {
             new_tool.theory().theory_citation(),
         );
         self.active_tool = Some(new_tool);
+    }
+
+    /// Selects and activates a tool by name in `available_tools`.
+    /// Matches tool name or tags (case-insensitively). Returns true if found and activated.
+    pub fn select_tool_by_name(&mut self, name: &str) -> bool {
+        let name_trimmed = name.trim();
+        if let Some(index) = self.available_tools.iter().position(|t| {
+            t.name.eq_ignore_ascii_case(name_trimmed)
+                || t.tags
+                    .iter()
+                    .any(|tag| tag.eq_ignore_ascii_case(name_trimmed))
+        }) {
+            self.select_tool(index);
+            true
+        } else {
+            false
+        }
     }
 
     /// Serializes the framework state (selected tool index, active tool state, theory portal state) to JSON.

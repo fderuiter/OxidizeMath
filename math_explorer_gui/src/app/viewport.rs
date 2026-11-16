@@ -52,7 +52,7 @@ impl ViewportLayout {
     }
 }
 
-/// Computes pane bounding rectangles within the available container area.
+/// Computes pane bounding rectangles within the available container area using default equal split.
 pub fn calculate_pane_rects(layout: ViewportLayout, total_rect: egui::Rect) -> Vec<egui::Rect> {
     match layout {
         ViewportLayout::Single => vec![total_rect],
@@ -95,6 +95,56 @@ pub fn calculate_pane_rects(layout: ViewportLayout, total_rect: egui::Rect) -> V
 
             vec![top_left, top_right, bottom_left, bottom_right]
         }
+    }
+}
+
+/// Computes pane bounding rectangles and optional divider bar rectangle respecting split ratio limits.
+pub fn calculate_pane_rects_with_ratio(
+    layout: ViewportLayout,
+    total_rect: egui::Rect,
+    split_ratio: f32,
+) -> (Vec<egui::Rect>, Option<egui::Rect>) {
+    let clamped = split_ratio.clamp(0.20, 0.80);
+    const THICKNESS: f32 = 6.0;
+
+    match layout {
+        ViewportLayout::Single => (vec![total_rect], None),
+        ViewportLayout::SplitHorizontal => {
+            let div_x = total_rect.min.x + total_rect.width() * clamped;
+            let rect_left = egui::Rect::from_min_max(
+                total_rect.min,
+                egui::pos2(div_x - THICKNESS * 0.5, total_rect.max.y),
+            );
+            let divider = egui::Rect::from_min_max(
+                egui::pos2(div_x - THICKNESS * 0.5, total_rect.min.y),
+                egui::pos2(div_x + THICKNESS * 0.5, total_rect.max.y),
+            );
+            let rect_right = egui::Rect::from_min_max(
+                egui::pos2(div_x + THICKNESS * 0.5, total_rect.min.y),
+                total_rect.max,
+            );
+            (vec![rect_left, rect_right], Some(divider))
+        }
+        ViewportLayout::SplitVertical => {
+            let div_y = total_rect.min.y + total_rect.height() * clamped;
+            let rect_top = egui::Rect::from_min_max(
+                total_rect.min,
+                egui::pos2(total_rect.max.x, div_y - THICKNESS * 0.5),
+            );
+            let divider = egui::Rect::from_min_max(
+                egui::pos2(total_rect.min.x, div_y - THICKNESS * 0.5),
+                egui::pos2(total_rect.max.x, div_y + THICKNESS * 0.5),
+            );
+            let rect_bottom = egui::Rect::from_min_max(
+                egui::pos2(total_rect.min.x, div_y + THICKNESS * 0.5),
+                total_rect.max,
+            );
+            (vec![rect_top, rect_bottom], Some(divider))
+        }
+        ViewportLayout::QuadGrid => (
+            calculate_pane_rects(ViewportLayout::QuadGrid, total_rect),
+            None,
+        ),
     }
 }
 
@@ -150,6 +200,13 @@ fn render_pane_header(
     header_ui.strong(label);
     header_ui.separator();
 
+    if app.viewport_layout.pane_count() == 2 && pane_idx == 0 {
+        if header_ui.small_button("⇄ Swap").clicked() {
+            app.swap_panes();
+        }
+        header_ui.separator();
+    }
+
     let mut tab_to_switch = None;
     egui::ComboBox::from_id_salt(format!("header_combo_{}", pane_idx))
         .selected_text(current_tab_name)
@@ -182,14 +239,27 @@ fn render_pane_content(
     let current_assigned = app.pane_tabs.get(pane_idx).copied().unwrap_or(0);
     if let Some(tab) = app.tabs.get_mut(current_assigned) {
         let pane_ctx = &app.pane_contexts[pane_idx];
+        pane_ctx.set_style((*ctx.style()).clone());
         let output = pane_ctx.run(pane_input, |sub_ctx| {
             tab.show(sub_ctx, frame);
         });
 
+        if !output.textures_delta.is_empty() {
+            let main_tex = ctx.tex_manager();
+            let mut writer = main_tex.write();
+            for (id, delta) in output.textures_delta.set {
+                writer.set(id, delta);
+            }
+            for id in output.textures_delta.free {
+                writer.free(id);
+            }
+        }
+
         let should_repaint = output
             .viewport_output
             .values()
-            .any(|v| v.repaint_delay < std::time::Duration::from_millis(500));
+            .any(|v| v.repaint_delay < std::time::Duration::from_millis(500))
+            || pane_ctx.has_requested_repaint();
         if should_repaint {
             ctx.request_repaint();
         }
@@ -202,6 +272,7 @@ fn render_pane_content(
 }
 
 /// Renders the multi-pane viewport manager layout in the central panel.
+#[allow(clippy::too_many_lines)]
 pub fn render_multi_pane_manager(
     app: &mut MathExplorerApp,
     ctx: &egui::Context,
@@ -212,9 +283,84 @@ pub fn render_multi_pane_manager(
 
     egui::CentralPanel::default().show(ctx, |ui| {
         let total_rect = ui.available_rect_before_wrap();
-        let pane_rects = calculate_pane_rects(app.viewport_layout, total_rect);
+        if total_rect.width() < 20.0 || total_rect.height() < 20.0 {
+            return;
+        }
+
+        let (pane_rects, maybe_divider) =
+            calculate_pane_rects_with_ratio(app.viewport_layout, total_rect, app.split_ratio);
+
+        if let Some(divider_rect) = maybe_divider {
+            let hover_pos = ctx.input(|i| i.pointer.hover_pos());
+            let is_hovered = hover_pos.is_some_and(|pos| divider_rect.contains(pos));
+            let is_down = ctx.input(|i| i.pointer.primary_down());
+
+            if is_hovered && ctx.input(|i| i.pointer.any_pressed()) {
+                app.is_dragging_divider = true;
+            }
+            if !is_down {
+                app.is_dragging_divider = false;
+            }
+            app.split_view_state.is_dragging_divider = app.is_dragging_divider;
+
+            if app.is_dragging_divider {
+                let delta = ctx.input(|i| i.pointer.delta());
+                let ratio_delta = match app.viewport_layout {
+                    ViewportLayout::SplitHorizontal if total_rect.width() > 0.0 => {
+                        delta.x / total_rect.width()
+                    }
+                    ViewportLayout::SplitVertical if total_rect.height() > 0.0 => {
+                        delta.y / total_rect.height()
+                    }
+                    _ => 0.0,
+                };
+                app.split_ratio = (app.split_ratio + ratio_delta).clamp(0.20, 0.80);
+            }
+
+            if is_hovered || app.is_dragging_divider {
+                ctx.set_cursor_icon(match app.viewport_layout {
+                    ViewportLayout::SplitHorizontal => egui::CursorIcon::ResizeColumn,
+                    ViewportLayout::SplitVertical => egui::CursorIcon::ResizeRow,
+                    _ => egui::CursorIcon::Default,
+                });
+            }
+
+            let divider_color = if app.is_dragging_divider {
+                egui::Color32::from_rgb(90, 150, 255)
+            } else if is_hovered {
+                egui::Color32::from_rgb(140, 140, 150)
+            } else {
+                egui::Color32::from_gray(50)
+            };
+            ui.painter().rect_filled(divider_rect, 0.0, divider_color);
+
+            let center = divider_rect.center();
+            let handle_color = if app.is_dragging_divider || is_hovered {
+                egui::Color32::WHITE
+            } else {
+                egui::Color32::from_gray(130)
+            };
+            let (p1, p2) = if app.viewport_layout == ViewportLayout::SplitHorizontal {
+                (
+                    center - egui::vec2(0.0, 16.0),
+                    center + egui::vec2(0.0, 16.0),
+                )
+            } else {
+                (
+                    center - egui::vec2(16.0, 0.0),
+                    center + egui::vec2(16.0, 0.0),
+                )
+            };
+            ui.painter()
+                .line_segment([p1, p2], egui::Stroke::new(2.0_f32, handle_color));
+        }
+
         let raw_input = ctx.input(|i| i.raw.clone());
-        let pointer_pos = ctx.input(|i| i.pointer.latest_pos());
+        let pointer_pos = if app.is_dragging_divider {
+            None
+        } else {
+            ctx.input(|i| i.pointer.latest_pos())
+        };
 
         const HEADER_HEIGHT: f32 = 28.0;
 

@@ -144,8 +144,8 @@ fn test_plot_concentration_color_mapping() {
 #[test]
 fn test_morphogenesis_starter_gallery_lifecycle() {
     let mut tab = MorphogenesisTab::default();
-    // Acceptance Criteria 1: Empty simulation tab renders gallery on initial launch
-    assert!(tab.show_starter_gallery);
+    // Acceptance Criteria 1: Empty simulation tab initializes with starter gallery closed
+    assert!(!tab.show_starter_gallery);
 
     // Acceptance Criteria 2: Applying starter preset transitions into active mode
     let spots_json = crate::starter_gallery::PRESET_TURING_SPOTS;
@@ -160,7 +160,8 @@ fn test_morphogenesis_starter_gallery_lifecycle() {
     // Acceptance Criteria 3: Loaded workspace session bypasses the gallery
     let saved_state = tab.save_state().unwrap();
     let mut loaded_tab = MorphogenesisTab::default();
-    assert!(loaded_tab.show_starter_gallery);
+    assert!(!loaded_tab.show_starter_gallery);
+    loaded_tab.show_starter_gallery = true;
     loaded_tab.load_state(&saved_state);
     assert!(!loaded_tab.show_starter_gallery);
 }
