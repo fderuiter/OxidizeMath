@@ -9,6 +9,7 @@ These commands run automated checks in git hooks or CI.
 
 | Command | Operational Role | Status |
 |---|---|---|
+| `check-cargo-docs` | Verifies workspace documentation builds without warnings. | Active |
 | `check-docs` | Runs crate documentation audit. | Active |
 | `check-file-lengths` | Verifies file-length constraints. | Active |
 | `check-markdown-links` | Check all internal relative markdown documentation links | Active |
