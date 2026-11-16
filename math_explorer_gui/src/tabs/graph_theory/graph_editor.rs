@@ -273,8 +273,10 @@ impl InteractiveTool for GraphEditorTool {
         }
     }
 
-    fn draw(&mut self, _ui: &mut egui::Ui, _response: &egui::Response, painter: &egui::Painter) {
+    fn draw(&mut self, ui: &mut egui::Ui, _response: &egui::Response, painter: &egui::Painter) {
         let node_radius = 15.0;
+        let text_color = ui.visuals().text_color();
+        let window_stroke = ui.visuals().window_stroke();
 
         // Draw edges
         for (i, &(u, v, weight)) in self.edges.iter().enumerate() {
@@ -296,7 +298,7 @@ impl InteractiveTool for GraphEditorTool {
                     egui::Align2::CENTER_CENTER,
                     format!("{:.1}", weight),
                     egui::FontId::proportional(12.0),
-                    egui::Color32::WHITE,
+                    text_color,
                 );
             }
         }
@@ -314,7 +316,7 @@ impl InteractiveTool for GraphEditorTool {
                 egui::Color32::LIGHT_BLUE
             };
 
-            painter.circle(pos, node_radius, fill_color, (1.0, egui::Color32::WHITE));
+            painter.circle(pos, node_radius, fill_color, window_stroke);
 
             painter.text(
                 pos,
