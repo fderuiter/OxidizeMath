@@ -17,6 +17,8 @@ pub struct HodgkinHuxleyUnified {
     dt: f64,
 }
 
+impl crate::framework::recovery::FiniteStateGuard for HodgkinHuxleyUnified {}
+
 impl UnifiedModel for HodgkinHuxleyUnified {
     fn domain() -> &'static str {
         "neuroscience"
