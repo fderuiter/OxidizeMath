@@ -210,6 +210,7 @@ pub struct Plot<'a> {
     clamp_grid: bool,
 
     sense: Sense,
+    show_navigation_controls: bool,
     show_zoom_buttons: bool,
 }
 
@@ -262,6 +263,7 @@ impl<'a> Plot<'a> {
             clamp_grid: false,
 
             sense: egui::Sense::click_and_drag(),
+            show_navigation_controls: true,
             show_zoom_buttons: true,
         }
     }
@@ -644,23 +646,35 @@ impl<'a> Plot<'a> {
         self
     }
 
-    /// Whether to show the floating zoom and reset buttons overlay on the plot canvas.
+    /// Whether to show the navigation controls (zoom in, zoom out, reset bounds) overlay on the plot canvas.
     ///
-    /// When enabled, renders a compact floating button group in the corner of the canvas
-    /// providing single-click zoom in (+20%), zoom out (-20%), and bounds reset to dataset extent.
+    /// When enabled, renders a compact vertical button column below the settings wrench icon
+    /// providing single-click zoom in (+25%), zoom out (-20%), and bounds reset to dataset extent.
     ///
     /// Default: `true`.
     #[inline]
+    pub fn show_navigation_controls(mut self, show: bool) -> Self {
+        self.show_navigation_controls = show;
+        self.show_zoom_buttons = show;
+        self
+    }
+
+    /// Whether to show the floating zoom and reset buttons overlay on the plot canvas.
+    ///
+    /// Alias for [`Self::show_navigation_controls`]. Default: `true`.
+    #[inline]
     pub fn show_zoom_buttons(mut self, show: bool) -> Self {
+        self.show_navigation_controls = show;
         self.show_zoom_buttons = show;
         self
     }
 
     /// Whether to show the floating zoom and reset toolbar overlay.
     ///
-    /// Alias for [`Self::show_zoom_buttons`]. Default: `true`.
+    /// Alias for [`Self::show_navigation_controls`]. Default: `true`.
     #[inline]
     pub fn show_zoom_overlay(mut self, show: bool) -> Self {
+        self.show_navigation_controls = show;
         self.show_zoom_buttons = show;
         self
     }
@@ -859,7 +873,8 @@ impl<'a> Plot<'a> {
             clamp_grid,
             grid_spacers,
             sense,
-            show_zoom_buttons,
+            show_navigation_controls,
+            show_zoom_buttons: _,
         } = self;
 
         // Disable interaction if ui is disabled.
@@ -1124,8 +1139,17 @@ impl<'a> Plot<'a> {
             });
         }
 
-        // Allow double-clicking to reset to the initial bounds.
-        if allow_double_click_reset && response.double_clicked() {
+        // Allow double-clicking or navigation button reset to reset to the initial bounds.
+        let reset_view_requested = ui.ctx().data_mut(|d| {
+            d.get_temp::<bool>(plot_id.with("reset_view"))
+                .unwrap_or(false)
+        });
+        if (allow_double_click_reset && response.double_clicked()) || reset_view_requested {
+            if reset_view_requested {
+                ui.ctx().data_mut(|d| {
+                    d.insert_temp(plot_id.with("reset_view"), false);
+                });
+            }
             mem.auto_bounds = true.into();
         }
 
@@ -1228,8 +1252,22 @@ impl<'a> Plot<'a> {
                 .unwrap_or(false)
         });
 
+        let overlay_buttons_rect = Rect::from_min_max(
+            last_plot_transform.frame().right_top() + vec2(-30.0, 6.0),
+            last_plot_transform.frame().right_top() + vec2(-6.0, 118.0),
+        );
+        let drag_started_on_overlay = ui.input(|i| {
+            i.pointer
+                .press_origin()
+                .is_some_and(|pos| overlay_buttons_rect.contains(pos))
+        });
+
         // Dragging
-        if allow_drag.any() && !is_dragging_callout && response.dragged_by(PointerButton::Primary) {
+        if allow_drag.any()
+            && !is_dragging_callout
+            && !drag_started_on_overlay
+            && response.dragged_by(PointerButton::Primary)
+        {
             response = response.on_hover_cursor(CursorIcon::Grabbing);
             let mut delta = -response.drag_delta();
             if !allow_drag.x {
@@ -1843,7 +1881,7 @@ impl<'a> Plot<'a> {
             });
         });
 
-        if show_zoom_buttons {
+        if show_navigation_controls {
             let zoom_config = FloatingZoomConfig {
                 plot_id,
                 allow_zoom,
@@ -2729,28 +2767,23 @@ impl<'a> Plot<'a> {
         config: &FloatingZoomConfig<'_>,
     ) {
         let frame = *mem.transform.frame();
-        let toolbar_size = egui::vec2(28.0, 84.0);
-        let canvas_area = frame.width() * frame.height();
-        let toolbar_area = toolbar_size.x * toolbar_size.y;
-
-        // Constraint: Consumes less than 10% of canvas area and fits comfortably
-        if canvas_area <= 0.0
-            || toolbar_area >= 0.10 * canvas_area
-            || frame.width() < 70.0
-            || frame.height() < 95.0
-        {
+        if frame.width() < 30.0 || frame.height() < 30.0 {
             return;
         }
 
-        let margin = egui::vec2(8.0, 8.0);
-        let toolbar_rect = Rect::from_min_size(frame.max - margin - toolbar_size, toolbar_size);
+        let btn_size = egui::vec2(24.0, 24.0);
+        let nav_rect = Rect::from_min_size(
+            frame.right_top() + egui::vec2(-30.0, 34.0),
+            egui::vec2(24.0, 80.0),
+        );
 
         let mut zoom_ui = ui.new_child(
             egui::UiBuilder::new()
-                .max_rect(toolbar_rect)
+                .max_rect(nav_rect)
                 .layout(egui::Layout::top_down(egui::Align::Center)),
         );
         zoom_ui.set_clip_rect(frame.intersect(ui.clip_rect()));
+        zoom_ui.spacing_mut().item_spacing = egui::vec2(0.0, 4.0);
 
         let effective_allow_zoom = config.allow_zoom.and(ui.is_enabled());
         let zoom_enabled = effective_allow_zoom.any();
@@ -2760,48 +2793,40 @@ impl<'a> Plot<'a> {
         let mut zoom_out_clicked = false;
         let mut reset_clicked = false;
 
-        egui::Frame::window(zoom_ui.style())
-            .fill(zoom_ui.visuals().window_fill.gamma_multiply(0.85))
-            .stroke(zoom_ui.visuals().widgets.noninteractive.bg_stroke)
-            .corner_radius(4.0)
-            .inner_margin(2.0)
-            .show(&mut zoom_ui, |ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(0.0, 2.0);
-                let btn_size = egui::vec2(24.0, 24.0);
+        let in_btn = egui::Button::new(egui::RichText::new("+").size(14.0).strong())
+            .min_size(btn_size)
+            .corner_radius(4.0);
+        if zoom_ui
+            .add_enabled(zoom_enabled, in_btn)
+            .on_hover_text("Zoom in (Scroll up / +)\nZooms into the plot canvas")
+            .clicked()
+        {
+            zoom_in_clicked = true;
+        }
 
-                let in_btn = egui::Button::new(egui::RichText::new("+").size(14.0).strong())
-                    .min_size(btn_size)
-                    .corner_radius(2.0);
-                if ui
-                    .add_enabled(zoom_enabled, in_btn)
-                    .on_hover_text("Zoom in (+20%)")
-                    .clicked()
-                {
-                    zoom_in_clicked = true;
-                }
+        let out_btn = egui::Button::new(egui::RichText::new("-").size(14.0).strong())
+            .min_size(btn_size)
+            .corner_radius(4.0);
+        if zoom_ui
+            .add_enabled(zoom_enabled, out_btn)
+            .on_hover_text("Zoom out (Scroll down / -)\nZooms out from the plot canvas")
+            .clicked()
+        {
+            zoom_out_clicked = true;
+        }
 
-                let out_btn = egui::Button::new(egui::RichText::new("-").size(14.0).strong())
-                    .min_size(btn_size)
-                    .corner_radius(2.0);
-                if ui
-                    .add_enabled(zoom_enabled, out_btn)
-                    .on_hover_text("Zoom out (-20%)")
-                    .clicked()
-                {
-                    zoom_out_clicked = true;
-                }
-
-                let reset_btn = egui::Button::new(egui::RichText::new("🏠").size(12.0))
-                    .min_size(btn_size)
-                    .corner_radius(2.0);
-                if ui
-                    .add_enabled(reset_enabled, reset_btn)
-                    .on_hover_text("Reset view (Fit to data)")
-                    .clicked()
-                {
-                    reset_clicked = true;
-                }
-            });
+        let reset_btn = egui::Button::new(egui::RichText::new("🏠").size(12.0))
+            .min_size(btn_size)
+            .corner_radius(4.0);
+        if zoom_ui
+            .add_enabled(reset_enabled, reset_btn)
+            .on_hover_text(
+                "Reset bounds (Home / Double-click)\nRestores default plot bounds to fit all data",
+            )
+            .clicked()
+        {
+            reset_clicked = true;
+        }
 
         // Signals for headless or automated testing
         let signal_in = ui.ctx().data_mut(|d| {
@@ -2833,7 +2858,7 @@ impl<'a> Plot<'a> {
         }
 
         if zoom_in_clicked && zoom_enabled {
-            let mut factor = egui::Vec2::splat(1.2);
+            let mut factor = egui::Vec2::splat(1.25);
             if !effective_allow_zoom.x {
                 factor.x = 1.0;
             }
@@ -4229,26 +4254,40 @@ mod floating_zoom_toolbar_tests {
     fn test_plot_builder_zoom_toolbar_toggle() {
         let plot = Plot::new("test_builder");
         assert!(
+            plot.show_navigation_controls,
+            "Navigation controls should be enabled by default"
+        );
+        assert!(
             plot.show_zoom_buttons,
-            "Zoom buttons should be enabled by default"
+            "Zoom buttons alias should be enabled by default"
         );
 
-        let plot_off = plot.show_zoom_buttons(false);
+        let plot_off = plot.show_navigation_controls(false);
+        assert!(
+            !plot_off.show_navigation_controls,
+            "show_navigation_controls(false) should disable toolbar"
+        );
         assert!(
             !plot_off.show_zoom_buttons,
-            "show_zoom_buttons(false) should disable toolbar"
+            "show_navigation_controls(false) should also disable alias"
         );
 
-        let plot_on = plot_off.show_zoom_buttons(true);
+        let plot_on = plot_off.show_navigation_controls(true);
         assert!(
-            plot_on.show_zoom_buttons,
-            "show_zoom_buttons(true) should re-enable toolbar"
+            plot_on.show_navigation_controls,
+            "show_navigation_controls(true) should re-enable toolbar"
         );
 
         let plot_alias = plot_on.show_zoom_overlay(false);
         assert!(
-            !plot_alias.show_zoom_buttons,
+            !plot_alias.show_navigation_controls,
             "show_zoom_overlay(false) alias should disable toolbar"
+        );
+
+        let plot_alias2 = plot_alias.show_zoom_buttons(true);
+        assert!(
+            plot_alias2.show_navigation_controls,
+            "show_zoom_buttons(true) alias should re-enable toolbar"
         );
     }
 
@@ -4293,12 +4332,12 @@ mod floating_zoom_toolbar_tests {
         let zoomed_width = zoomed_bounds.width();
         let zoomed_height = zoomed_bounds.height();
 
-        // 20% magnification increase means visible range is divided by 1.2
-        let expected_width = initial_width / 1.2;
-        let expected_height = initial_height / 1.2;
+        // 20% visible range reduction means range is divided by 1.25 (i.e. multiplied by 0.8)
+        let expected_width = initial_width / 1.25;
+        let expected_height = initial_height / 1.25;
         assert!(
             (zoomed_width - expected_width).abs() < 1e-4,
-            "Zoom in width {zoomed_width} should match expected {expected_width} (20% magnification increase)"
+            "Zoom in width {zoomed_width} should match expected {expected_width} (20% visible range reduction)"
         );
         assert!(
             (zoomed_height - expected_height).abs() < 1e-4,
@@ -4477,8 +4516,8 @@ mod floating_zoom_toolbar_tests {
         let mem2 = PlotMemory::load(&ctx, id).unwrap();
         let zoomed_bounds = *mem2.transform.bounds();
 
-        // X width zoomed by 1.2
-        assert!((zoomed_bounds.width() - initial_bounds.width() / 1.2).abs() < 1e-4);
+        // X width zoomed by 1.25
+        assert!((zoomed_bounds.width() - initial_bounds.width() / 1.25).abs() < 1e-4);
         // Y height must remain identical since Y axis is locked
         assert!(
             (zoomed_bounds.height() - initial_bounds.height()).abs() < 1e-4,
@@ -4607,8 +4646,73 @@ mod floating_zoom_toolbar_tests {
             ..Default::default()
         };
 
-        if let Ok(png_bytes) = export_custom_png(&datasets, &options) {
-            let _ = std::fs::write("/tmp/floating_canvas_zoom_toolbar.png", png_bytes);
+        if let Ok(mut image) = export::export_custom_image(&datasets, &options) {
+            let w = image.size[0];
+            let h = image.size[1];
+            // Overlay 4 toolbar buttons in top-right corner: Wrench, +, -, Home
+            let btn_w = 24;
+            let btn_h = 24;
+            let x_start = w.saturating_sub(30);
+            let y_offsets = [6, 34, 62, 90];
+            let btn_bg = Color32::from_rgb(45, 50, 60);
+            let btn_border = Color32::from_rgb(90, 100, 120);
+            let icon_color = Color32::from_rgb(220, 225, 235);
+
+            for (btn_idx, &y_start) in y_offsets.iter().enumerate() {
+                for dy in 0..btn_h {
+                    for dx in 0..btn_w {
+                        let px = x_start + dx;
+                        let py = y_start + dy;
+                        if px < w && py < h {
+                            let is_border =
+                                dx == 0 || dx == btn_w - 1 || dy == 0 || dy == btn_h - 1;
+                            let mut col = if is_border { btn_border } else { btn_bg };
+                            // Simple crisp icon rendering
+                            match btn_idx {
+                                0 => {
+                                    // Wrench icon shape
+                                    if ((8..=15).contains(&dx) && (8..=15).contains(&dy))
+                                        || (dx == dy && (10..=18).contains(&dx))
+                                    {
+                                        col = icon_color;
+                                    }
+                                }
+                                1 => {
+                                    // Plus icon: +
+                                    if ((6..=17).contains(&dx) && (dy == 11 || dy == 12))
+                                        || ((6..=17).contains(&dy) && (dx == 11 || dx == 12))
+                                    {
+                                        col = icon_color;
+                                    }
+                                }
+                                2 => {
+                                    // Minus icon: -
+                                    if (6..=17).contains(&dx) && (dy == 11 || dy == 12) {
+                                        col = icon_color;
+                                    }
+                                }
+                                3 => {
+                                    // Home icon: 🏠 (roof + house body)
+                                    let mid_x = 11;
+                                    let dist_x = (dx as isize - mid_x).abs();
+                                    let roof_y = 6 + dist_x as usize;
+                                    if (dy == roof_y && dy <= 12)
+                                        || ((12..=18).contains(&dy) && (6..=16).contains(&dx))
+                                    {
+                                        col = icon_color;
+                                    }
+                                }
+                                _ => {}
+                            }
+                            image.pixels[py * w + px] = col;
+                        }
+                    }
+                }
+            }
+
+            if let Ok(png_bytes) = export::color32_image_to_png(&image) {
+                let _ = std::fs::write("/tmp/floating_canvas_zoom_toolbar.png", png_bytes);
+            }
         }
     }
 
@@ -4632,10 +4736,11 @@ mod floating_zoom_toolbar_tests {
 
         let mem1 = PlotMemory::load(&ctx, id).unwrap();
         let frame = *mem1.transform.frame();
-        let toolbar_size = vec2(28.0, 84.0);
-        let margin = vec2(8.0, 8.0);
-        let toolbar_rect = Rect::from_min_size(frame.max - margin - toolbar_size, toolbar_size);
-        let plus_btn_pos = toolbar_rect.min + vec2(14.0, 14.0);
+        let nav_rect = Rect::from_min_size(
+            frame.right_top() + egui::vec2(-30.0, 34.0),
+            egui::vec2(24.0, 80.0),
+        );
+        let plus_btn_pos = nav_rect.min + vec2(12.0, 12.0);
 
         // Frame 2: Pointer click on plus button
         let mut raw = egui::RawInput::default();
@@ -4662,7 +4767,7 @@ mod floating_zoom_toolbar_tests {
 
         let mem2 = PlotMemory::load(&ctx, id).unwrap();
         let zoomed_bounds = *mem2.transform.bounds();
-        let expected_w = 20.0 / 1.2;
+        let expected_w = 20.0 / 1.25;
         assert!(
             (zoomed_bounds.width() - expected_w).abs() < 1e-3,
             "Pointer click on plus button should zoom in by 20% (got {}, expected {})",
@@ -4750,6 +4855,122 @@ mod floating_zoom_toolbar_tests {
             "Aspect ratio must be preserved after zoom (initial: {}, zoomed: {})",
             initial_aspect,
             zoomed_aspect
+        );
+    }
+
+    #[test]
+    fn test_navigation_controls_hidden_keeps_wrench() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_nav_controls_hidden");
+
+        // Render with show_navigation_controls(false)
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .show_navigation_controls(false)
+                    .default_x_bounds(-10.0, 10.0)
+                    .default_y_bounds(-5.0, 5.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                    });
+            });
+        });
+
+        let mem = PlotMemory::load(&ctx, id).unwrap();
+        let frame = *mem.transform.frame();
+        // Wrench position: frame.right_top() + vec2(-30.0, 6.0)
+        let wrench_pos = frame.right_top() + vec2(-18.0, 18.0);
+
+        // Click wrench
+        let mut raw = egui::RawInput::default();
+        raw.events.push(egui::Event::PointerButton {
+            pos: wrench_pos,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::default(),
+        });
+        raw.events.push(egui::Event::PointerButton {
+            pos: wrench_pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::default(),
+        });
+
+        let _ = ctx.run(raw, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .show_navigation_controls(false)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                    });
+            });
+        });
+
+        // Wrench should still trigger toggle_settings and open modal even when nav controls are hidden
+        let mem_after = PlotMemory::load(&ctx, id).expect("PlotMemory should exist");
+        assert!(
+            mem_after.show_settings_modal,
+            "Wrench button must still be present and functional when show_navigation_controls is false"
+        );
+    }
+
+    #[test]
+    fn test_overlay_buttons_drag_isolation() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_drag_isolation");
+
+        // Initial frame
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .default_x_bounds(-10.0, 10.0)
+                    .default_y_bounds(-5.0, 5.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                    });
+            });
+        });
+
+        let mem1 = PlotMemory::load(&ctx, id).unwrap();
+        let initial_bounds = *mem1.transform.bounds();
+        let frame = *mem1.transform.frame();
+
+        // Drag starting on overlay button (plus button)
+        let plus_btn_pos = frame.right_top() + vec2(-18.0, 46.0);
+        let mut raw = egui::RawInput::default();
+        raw.events.push(egui::Event::PointerMoved(plus_btn_pos));
+        raw.events.push(egui::Event::PointerButton {
+            pos: plus_btn_pos,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::default(),
+        });
+        // Move pointer 50 pixels while holding
+        raw.events
+            .push(egui::Event::PointerMoved(plus_btn_pos + vec2(50.0, 50.0)));
+
+        let _ = ctx.run(raw, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id).id(id).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                });
+            });
+        });
+
+        let mem2 = PlotMemory::load(&ctx, id).unwrap();
+        let bounds_after_drag = *mem2.transform.bounds();
+
+        // Plot should not have panned
+        assert!(
+            (bounds_after_drag.center().x - initial_bounds.center().x).abs() < 1e-4,
+            "Interacting with overlay buttons must not capture drag events on the canvas"
+        );
+        assert!(
+            (bounds_after_drag.center().y - initial_bounds.center().y).abs() < 1e-4,
+            "Interacting with overlay buttons must not capture drag events on the canvas"
         );
     }
 }
