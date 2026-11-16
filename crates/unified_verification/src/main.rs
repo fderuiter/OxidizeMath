@@ -55,8 +55,14 @@ fn main() {
         "check-entropy" => {
             let (_, members) = oxidize_core::workspace::get_workspace_members();
             let debt = entropy_guard::check_entropy(&members);
+            let has_debt = !debt.is_empty();
             for d in debt {
                 println!("{}", d);
+            }
+            if has_debt {
+                std::process::exit(1);
+            } else {
+                std::process::exit(0);
             }
         }
         "check-file-lengths" => {
@@ -263,6 +269,9 @@ fn verify_suite(args: &[String]) {
     }
 
     let entropy_debt = entropy_guard::check_entropy(&members);
+    if !entropy_debt.is_empty() {
+        passed_security = false;
+    }
 
     if !passed_security {
         eprintln!("Security verification failed!");
