@@ -32,7 +32,13 @@ pub fn render_issues_panel(
             });
             ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {
-                for event in diagnostic_events {
+                if diagnostic_events.is_empty() {
+                    ui.label(egui::RichText::new("No issues or diagnostics logged.").italics());
+                    return;
+                }
+
+                let mut visible_count = 0;
+                for event in &*diagnostic_events {
                     let show = match event.severity {
                         Severity::Info => *show_info,
                         Severity::Warning => *show_warnings,
@@ -41,6 +47,7 @@ pub fn render_issues_panel(
                     if !show {
                         continue;
                     }
+                    visible_count += 1;
 
                     let color = match event.severity {
                         Severity::Info => egui::Color32::LIGHT_BLUE,
@@ -78,6 +85,13 @@ pub fn render_issues_panel(
                             });
                         }
                     });
+                }
+
+                if visible_count == 0 {
+                    ui.label(
+                        egui::RichText::new("No events match the current filter settings.")
+                            .italics(),
+                    );
                 }
             });
         });

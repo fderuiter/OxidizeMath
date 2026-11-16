@@ -4,7 +4,7 @@ use super::*;
 use eframe::App;
 
 #[test]
-fn test_legacy_app_state_deserialization_defaults_to_true() {
+fn test_legacy_app_state_deserialization_defaults_to_false() {
     let legacy_json = r#"{
         "selected_tab": 0,
         "selected_tab_name": null,
@@ -17,7 +17,7 @@ fn test_legacy_app_state_deserialization_defaults_to_true() {
 
     let app_state: AppState =
         serde_json::from_str(legacy_json).expect("Legacy AppState JSON must deserialize");
-    assert!(app_state.show_diagnostics_panel);
+    assert!(!app_state.show_diagnostics_panel);
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn test_legacy_workspace_envelope_deserialization() {
     let state = mgr
         .parse_envelope(legacy_envelope_json)
         .expect("Legacy envelope must parse successfully");
-    assert!(state.show_diagnostics_panel);
+    assert!(!state.show_diagnostics_panel);
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn test_diagnostics_panel_shortcut_toggle() {
     let mut app = MathExplorerApp::default();
     let mut frame = eframe::Frame::_new_kittest();
 
-    assert!(app.show_diagnostics_panel);
+    assert!(!app.show_diagnostics_panel);
 
     // Initial render
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
@@ -99,7 +99,7 @@ fn test_diagnostics_panel_shortcut_toggle() {
         app.update(ctx, &mut frame);
     });
 
-    assert!(!app.show_diagnostics_panel);
+    assert!(app.show_diagnostics_panel);
 
     // Trigger toggle shortcut again to restore
     let raw_input_again = egui::RawInput {
@@ -116,7 +116,7 @@ fn test_diagnostics_panel_shortcut_toggle() {
         app.update(ctx, &mut frame);
     });
 
-    assert!(app.show_diagnostics_panel);
+    assert!(!app.show_diagnostics_panel);
 }
 
 fn find_text_pos(shapes: &[egui::epaint::ClippedShape], target: &str) -> Option<egui::Pos2> {
@@ -322,13 +322,13 @@ fn test_viewport_space_reclamation_when_diagnostics_hidden() {
 #[test]
 fn test_view_menu_toggle_diagnostics_panel() {
     let mut app = MathExplorerApp::default();
-    assert!(app.show_diagnostics_panel);
-
-    app.show_diagnostics_panel = false;
     assert!(!app.show_diagnostics_panel);
 
+    app.show_diagnostics_panel = true;
+    assert!(app.show_diagnostics_panel);
+
     let state = app.get_app_state();
-    assert!(!state.show_diagnostics_panel);
+    assert!(state.show_diagnostics_panel);
 
     app.apply_app_state(AppState {
         selected_tab: 0,
@@ -336,10 +336,103 @@ fn test_view_menu_toggle_diagnostics_panel() {
         show_info: true,
         show_warnings: true,
         show_errors: true,
-        show_diagnostics_panel: true,
+        show_diagnostics_panel: false,
         theme: ThemeMode::Dark,
         tab_states: std::collections::HashMap::new(),
         ..Default::default()
     });
+    assert!(!app.show_diagnostics_panel);
+}
+
+#[test]
+fn test_diagnostics_panel_empty_state_copy() {
+    let ctx = egui::Context::default();
+    let mut events = Vec::new();
+    let (mut err, mut warn, mut info, mut panel) = (true, true, true, true);
+
+    let mut run_panel = |ev: &mut Vec<TelemetryEvent>, i: &mut bool| {
+        ctx.run(egui::RawInput::default(), |ctx| {
+            ui_panels::render_issues_panel(ctx, ev, &mut err, &mut warn, i, &mut panel);
+        })
+    };
+
+    // Case 1: Empty event collection
+    let out = run_panel(&mut events, &mut info);
+    assert!(
+        find_text_pos(&out.shapes, "No issues or diagnostics logged.").is_some(),
+        "Empty state placeholder must be rendered when event collection is empty"
+    );
+
+    // Case 2: Events exist, but filters hide all of them
+    events.push(TelemetryEvent {
+        source: "TestModule".to_string(),
+        severity: Severity::Info,
+        message: "Informational event".to_string(),
+        metadata: std::collections::HashMap::new(),
+        thread_name: None,
+    });
+    info = false;
+    let out_filtered = run_panel(&mut events, &mut info);
+    assert!(
+        find_text_pos(
+            &out_filtered.shapes,
+            "No events match the current filter settings."
+        )
+        .is_some(),
+        "Filter placeholder must be rendered when active filters hide all events"
+    );
+
+    // Case 3: Filters match the event
+    info = true;
+    let out_visible = run_panel(&mut events, &mut info);
+    assert!(
+        find_text_pos(&out_visible.shapes, "No issues or diagnostics logged.").is_none(),
+        "Placeholder must not be rendered when events are displayed"
+    );
+    assert!(
+        find_text_pos(
+            &out_visible.shapes,
+            "No events match the current filter settings."
+        )
+        .is_none(),
+        "Filter placeholder must not be rendered when events are displayed"
+    );
+}
+
+#[test]
+fn test_auto_open_diagnostics_panel_on_error_events() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let mut frame = eframe::Frame::_new_kittest();
+
+    assert!(!app.show_diagnostics_panel);
+
+    let mut emit_and_update = |app: &mut MathExplorerApp, sev: Severity| {
+        global_registry().emit(TelemetryEvent {
+            source: "AutoOpenTest".to_string(),
+            severity: sev,
+            message: "Test notice".to_string(),
+            metadata: std::collections::HashMap::new(),
+            thread_name: None,
+        });
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            app.update(ctx, &mut frame);
+        });
+    };
+
+    emit_and_update(&mut app, Severity::Info);
+    assert!(!app.show_diagnostics_panel);
+
+    emit_and_update(&mut app, Severity::Warning);
+    assert!(!app.show_diagnostics_panel);
+
+    emit_and_update(&mut app, Severity::Error);
+    assert!(app.show_diagnostics_panel);
+
+    app.show_diagnostics_panel = false;
+    assert!(!app.show_diagnostics_panel);
+
+    emit_and_update(&mut app, Severity::Fatal);
     assert!(app.show_diagnostics_panel);
 }
