@@ -66,7 +66,7 @@ impl Default for MathExplorerApp {
             split_ratio: 0.5,
             split_view_state: SplitViewState::new(),
             diagnostic_events: Vec::new(),
-            show_diagnostics_panel: true,
+            show_diagnostics_panel: false,
             show_info: true,
             show_warnings: true,
             show_errors: true,
@@ -388,13 +388,18 @@ impl eframe::App for MathExplorerApp {
 
         // Fetch new events
         let new_events = global_registry().try_recv_all();
+        let mut has_error_or_fatal = false;
         for event in &new_events {
             if matches!(event.severity, Severity::Error | Severity::Fatal) {
+                has_error_or_fatal = true;
                 crate::accessibility::announce_status_with_priority(
                     &format!("{}: {}", event.severity, event.message),
                     "assertive",
                 );
             }
+        }
+        if has_error_or_fatal {
+            self.show_diagnostics_panel = true;
         }
         self.diagnostic_events.extend(new_events);
 

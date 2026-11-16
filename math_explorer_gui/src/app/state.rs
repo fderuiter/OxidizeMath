@@ -4,10 +4,6 @@ use super::split_view::SplitLayoutMode;
 use super::theme::ThemeMode;
 use super::viewport::ViewportLayout;
 
-fn default_true() -> bool {
-    true
-}
-
 fn default_secondary_tab() -> usize {
     1
 }
@@ -23,7 +19,7 @@ pub struct AppState {
     pub show_info: bool,
     pub show_warnings: bool,
     pub show_errors: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub show_diagnostics_panel: bool,
     #[serde(default)]
     pub theme: ThemeMode,
@@ -50,7 +46,7 @@ impl Default for AppState {
             show_info: true,
             show_warnings: true,
             show_errors: true,
-            show_diagnostics_panel: true,
+            show_diagnostics_panel: false,
             theme: ThemeMode::Dark,
             tab_states: std::collections::HashMap::new(),
             split_layout_mode: SplitLayoutMode::Single,
