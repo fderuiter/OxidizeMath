@@ -13,6 +13,20 @@ pub enum RecoveryAction {
     ResetParameters,
 }
 
+/// Available recovery remedies for the centralized framework state guard,
+/// supporting step-back state snapshot rollback.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum StateGuardAction {
+    /// Restore the most recent valid pre-divergence state snapshot and plot data.
+    StepBack,
+    /// Halve step size (dt) and recalculate simulation trajectory from snapshot.
+    AutoScaleStepSize,
+    /// Restrict rate parameters and initial conditions to pre-configured stable bounds.
+    ClampParameters,
+    /// Restore default baseline configuration.
+    ResetParameters,
+}
+
 /// Structured diagnostic report generated when a simulation encounters non-finite states.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DiagnosticReport {
@@ -123,13 +137,44 @@ pub fn emit_recovery_telemetry(source: &str, action_name: &str, details: &str) {
 
 /// Renders the recovery action buttons inside a horizontal layout.
 pub fn render_recovery_action_buttons(ui: &mut egui::Ui) -> Option<RecoveryAction> {
+    match render_state_guard_action_buttons(ui, false) {
+        Some(StateGuardAction::AutoScaleStepSize) => Some(RecoveryAction::AutoScaleStepSize),
+        Some(StateGuardAction::ClampParameters) => Some(RecoveryAction::ClampParameters),
+        Some(StateGuardAction::ResetParameters) => Some(RecoveryAction::ResetParameters),
+        _ => None,
+    }
+}
+
+/// Renders the recovery action buttons supporting Step-Back snapshot rollback inside a horizontal layout.
+pub fn render_state_guard_action_buttons(
+    ui: &mut egui::Ui,
+    has_stepback: bool,
+) -> Option<StateGuardAction> {
     let mut chosen_action = None;
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Recovery Actions:").italics());
 
+        if has_stepback
+            && ui
+                .button("⏮ Step Back")
+                .on_hover_text(
+                    "Restore the most recent valid pre-divergence state snapshot and plot data",
+                )
+                .clicked()
+        {
+            emit_recovery_telemetry(
+                "FiniteStateGuard",
+                "Step Back",
+                "Restored previous valid state snapshot",
+            );
+            chosen_action = Some(StateGuardAction::StepBack);
+        }
+
         if ui
             .button("Auto-scale Step Size (dt)")
-            .on_hover_text("Halve step size (dt) and recalculate simulation trajectory")
+            .on_hover_text(
+                "Halve step size (dt) and recalculate simulation trajectory from snapshot",
+            )
             .clicked()
         {
             emit_recovery_telemetry(
@@ -137,7 +182,7 @@ pub fn render_recovery_action_buttons(ui: &mut egui::Ui) -> Option<RecoveryActio
                 "Auto-scale Step Size (dt)",
                 "Halved step size",
             );
-            chosen_action = Some(RecoveryAction::AutoScaleStepSize);
+            chosen_action = Some(StateGuardAction::AutoScaleStepSize);
         }
 
         if ui
@@ -152,7 +197,7 @@ pub fn render_recovery_action_buttons(ui: &mut egui::Ui) -> Option<RecoveryActio
                 "Clamp Instability Parameters",
                 "Clamped rate parameters and ICs to stable bounds",
             );
-            chosen_action = Some(RecoveryAction::ClampParameters);
+            chosen_action = Some(StateGuardAction::ClampParameters);
         }
 
         if ui
@@ -165,7 +210,7 @@ pub fn render_recovery_action_buttons(ui: &mut egui::Ui) -> Option<RecoveryActio
                 "Reset All Parameters",
                 "Restored default baseline configuration",
             );
-            chosen_action = Some(RecoveryAction::ResetParameters);
+            chosen_action = Some(StateGuardAction::ResetParameters);
         }
     });
     chosen_action
@@ -177,6 +222,20 @@ pub fn render_recovery_banner(
     ui: &mut egui::Ui,
     report: Option<&DiagnosticReport>,
 ) -> Option<RecoveryAction> {
+    match render_state_guard_banner(ui, report, false) {
+        Some(StateGuardAction::AutoScaleStepSize) => Some(RecoveryAction::AutoScaleStepSize),
+        Some(StateGuardAction::ClampParameters) => Some(RecoveryAction::ClampParameters),
+        Some(StateGuardAction::ResetParameters) => Some(RecoveryAction::ResetParameters),
+        _ => None,
+    }
+}
+
+/// Renders the interactive diagnostic recovery banner supporting Step-Back rollback.
+pub fn render_state_guard_banner(
+    ui: &mut egui::Ui,
+    report: Option<&DiagnosticReport>,
+    has_stepback: bool,
+) -> Option<StateGuardAction> {
     let mut chosen_action = None;
 
     egui::Frame::new()
@@ -215,9 +274,86 @@ pub fn render_recovery_banner(
                 }
 
                 ui.add_space(6.0);
-                chosen_action = render_recovery_action_buttons(ui);
+                chosen_action = render_state_guard_action_buttons(ui, has_stepback);
             });
         });
 
     chosen_action
+}
+
+/// Inspects plot datasets for any non-finite floating-point numbers (`NaN`, `+Inf`, `-Inf`).
+/// Returns `Err(DiagnosticReport)` if any non-finite point coordinate is detected.
+pub fn inspect_datasets_for_divergence(
+    datasets: &[(String, Vec<[f64; 2]>)],
+) -> Result<(), DiagnosticReport> {
+    for (name, points) in datasets {
+        for (idx, &[x, y]) in points.iter().enumerate() {
+            if !x.is_finite() || !y.is_finite() {
+                let (var_name, bad_val) = if !y.is_finite() {
+                    (format!("{}.y", name), y)
+                } else {
+                    (format!("{}.x", name), x)
+                };
+                return Err(DiagnosticReport::new(
+                    0.0,
+                    idx,
+                    var_name,
+                    format!(
+                        "Non-finite floating-point value ({}) encountered in plot dataset '{}' at point index {}.",
+                        bad_val, name, idx
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Helper to halve step size / time step numerical parameters in a serialized tool state JSON.
+/// Inspects JSON fields for standard time step keys ("dt", "time_step", "step_size", etc.)
+/// and halves their values.
+pub fn auto_scale_state_json(state_json: &str) -> Option<String> {
+    let mut val: serde_json::Value = serde_json::from_str(state_json).ok()?;
+    let mut modified = false;
+
+    fn halve_step_in_object(obj: &mut serde_json::Map<String, serde_json::Value>) -> bool {
+        let step_keys = [
+            "dt",
+            "time_step",
+            "timestep",
+            "step_size",
+            "stepsize",
+            "h",
+            "delta_t",
+            "viscosity",
+            "num_levels",
+        ];
+        let mut changed = false;
+        for key in step_keys {
+            if let Some(v) = obj.get_mut(key) {
+                if let Some(f) = v.as_f64() {
+                    let halved = f * 0.5;
+                    if let Some(num) = serde_json::Number::from_f64(halved) {
+                        *v = serde_json::Value::Number(num);
+                        changed = true;
+                    }
+                } else if let Some(i) = v.as_i64() {
+                    let halved = (i / 2).max(1);
+                    *v = serde_json::Value::Number(serde_json::Number::from(halved));
+                    changed = true;
+                }
+            }
+        }
+        changed
+    }
+
+    if let serde_json::Value::Object(ref mut map) = val {
+        modified = halve_step_in_object(map);
+    }
+
+    if modified {
+        serde_json::to_string(&val).ok()
+    } else {
+        None
+    }
 }
