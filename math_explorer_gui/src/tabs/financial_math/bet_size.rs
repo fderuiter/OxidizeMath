@@ -291,3 +291,29 @@ impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
     fn theory_citation(&self) -> String { "A New Interpretation of Information Rate (Kelly, 1956)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Kelly Criterion Allocation",
+    "domain": "financial_math",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "win_probability": 0.55,
+    "payout_ratio": 1.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "bet_size_starter",
+        title: "Kelly Criterion Allocation",
+        description: "f* = (bp - q)/b: Optimal leverage fraction maximizing long-term asymptotic capital growth rate.",
+        category: "Risk Management",
+        icon: "⚖️",
+        domain: "financial_math",
+        tool_name: Some("BetSizeCalculatorTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

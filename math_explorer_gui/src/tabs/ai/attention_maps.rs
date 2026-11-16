@@ -482,4 +482,5 @@ inventory::submit! {
 #[cfg(test)]
 #[path = "attention_maps/tests.rs"]
 mod tests;
-
+#[path = "attention_maps/preset.rs"]
+mod preset;

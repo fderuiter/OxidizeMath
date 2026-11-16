@@ -25,6 +25,43 @@ pub struct StarterCard {
     pub preset_json: Option<&'static str>,
 }
 
+/// Federated starter preset registration metadata submitted across tools.
+#[derive(Clone, Copy, Debug)]
+pub struct StarterPresetMetadata {
+    /// Unique identifier for the preset template.
+    pub id: &'static str,
+    /// User-facing display title.
+    pub title: &'static str,
+    /// Concise mathematical description or governing equation.
+    pub description: &'static str,
+    /// Category or domain tag.
+    pub category: &'static str,
+    /// Visual icon or emoji.
+    pub icon: &'static str,
+    /// Target domain string matching the simulation tool domain.
+    pub domain: &'static str,
+    /// Target tool metadata name (if associated with a registered ToolMetadata).
+    pub tool_name: Option<&'static str>,
+    /// Function pointer returning the serialized JSON preset configuration envelope.
+    pub preset_generator: fn() -> &'static str,
+}
+
+impl PartialEq for StarterPresetMetadata {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.title == other.title && self.domain == other.domain
+    }
+}
+
+impl StarterPresetMetadata {
+    /// Generates the JSON preset payload.
+    #[inline]
+    pub fn generate_preset(&self) -> &'static str {
+        (self.preset_generator)()
+    }
+}
+
+inventory::collect!(StarterPresetMetadata);
+
 /// JSON preset envelope for Harmonic Oscillator ODE.
 pub const PRESET_HARMONIC_OSCILLATOR: &str = r#"{
   "metadata": {
@@ -186,139 +223,49 @@ pub const PRESET_HAWK_DOVE: &str = r#"{
 }"#;
 
 /// Returns curated or dynamically generated starter cards for a simulation domain.
-#[allow(clippy::too_many_lines)]
 pub fn get_starter_cards_for_domain(
     domain: &str,
     available_tools: &[&'static ToolMetadata],
 ) -> Vec<StarterCard> {
-    match domain {
-        "analysis" => vec![
-            StarterCard {
-                id: "harmonic_oscillator",
-                title: "Harmonic Oscillator",
-                description: "y'' = -k·y: Second-order differential equation modeling undamped periodic spring motion.",
-                category: "Differential Equations",
-                icon: "〰️",
-                domain: "analysis",
-                tool_name: Some("OdeSolverTool"),
-                preset_json: Some(PRESET_HARMONIC_OSCILLATOR),
-            },
-            StarterCard {
-                id: "logistic_growth",
-                title: "Logistic Growth",
-                description: "y' = r·y·(1 - y/K): Non-linear growth constrained by carrying capacity K.",
-                category: "Population Dynamics",
-                icon: "📈",
-                domain: "analysis",
-                tool_name: Some("OdeSolverTool"),
-                preset_json: Some(PRESET_LOGISTIC_GROWTH),
-            },
-            StarterCard {
-                id: "exponential_decay",
-                title: "Exponential Decay",
-                description: "y' = k·y: First-order differential decay process with constant half-life.",
-                category: "Calculus",
-                icon: "📉",
-                domain: "analysis",
-                tool_name: Some("OdeSolverTool"),
-                preset_json: Some(PRESET_EXPONENTIAL_DECAY),
-            },
-        ],
-        "fluid_dynamics" => vec![
-            StarterCard {
-                id: "vector_field",
-                title: "Vector Field",
-                description: "ψ = U·y·(1 - R²/r²): Potential streamlines and 2D velocity vector field past a cylinder.",
-                category: "Fluid Mechanics",
-                icon: "🌊",
-                domain: "fluid_dynamics",
-                tool_name: Some("PotentialFlowTool"),
-                preset_json: Some(PRESET_VECTOR_FIELD),
-            },
-            StarterCard {
-                id: "source_sink",
-                title: "Source-Sink Pair",
-                description: "ψ = (q/2π)·(θ₁ - θ₂): Superposition of equal source and sink singularities.",
-                category: "Fluid Mechanics",
-                icon: "🔄",
-                domain: "fluid_dynamics",
-                tool_name: Some("PotentialFlowTool"),
-                preset_json: Some(PRESET_SOURCE_SINK),
-            },
-        ],
-        "chaos" => vec![
-            StarterCard {
-                id: "3d_attractor",
-                title: "3D Attractor",
-                description: "ẋ=σ(y-x), ẏ=x(ρ-z)-y, ż=xy-βz: Canonical 3D chaotic strange attractor trajectory.",
-                category: "Chaos Theory",
-                icon: "🦋",
-                domain: "chaos",
-                tool_name: Some("AttractorPlotter"),
-                preset_json: Some(PRESET_3D_ATTRACTOR),
-            },
-            StarterCard {
-                id: "bifurcation",
-                title: "Bifurcation Diagram",
-                description: "x_{n+1} = r·x_n·(1 - x_n): Period-doubling cascade towards deterministic chaos.",
-                category: "Non-Linear Dynamics",
-                icon: "🌿",
-                domain: "chaos",
-                tool_name: Some("BifurcationDiagram"),
-                preset_json: None,
-            },
-        ],
-        "biology" | "morphogenesis" => vec![
-            StarterCard {
-                id: "turing_spots",
-                title: "Turing Spots",
-                description: "∂u/∂t = D_u∇²u + a - u + u²v: Activator-inhibitor reaction-diffusion generating spot morphology.",
-                category: "Reaction-Diffusion",
-                icon: "🐆",
-                domain: "biology",
-                tool_name: None,
-                preset_json: Some(PRESET_TURING_SPOTS),
-            },
-            StarterCard {
-                id: "turing_stripes",
-                title: "Turing Stripes",
-                description: "∂v/∂t = D_v∇²v + b - u²v: Differential diffusion instability yielding labyrinthine stripe patterns.",
-                category: "Morphogenesis",
-                icon: "🦓",
-                domain: "biology",
-                tool_name: None,
-                preset_json: Some(PRESET_TURING_STRIPES),
-            },
-        ],
-        "game_theory" => vec![
-            StarterCard {
-                id: "hawk_dove",
-                title: "Hawk-Dove Dynamics",
-                description: "ẋ_i = x_i((Ax)_i - xᵀAx): Evolutionary game model of conflict and resource competition.",
-                category: "Game Theory",
-                icon: "🦅",
-                domain: "game_theory",
-                tool_name: Some("ReplicatorDynamicsTool"),
-                preset_json: Some(PRESET_HAWK_DOVE),
-            },
-        ],
-        _ => {
-            // Dynamic fallback cards based on available tools in domain
-            available_tools
-                .iter()
-                .map(|meta| StarterCard {
+    let mut cards: Vec<StarterCard> = inventory::iter::<StarterPresetMetadata>
+        .into_iter()
+        .filter(|p| {
+            p.domain == domain
+                || (domain == "biology" && p.domain == "morphogenesis")
+                || (domain == "morphogenesis" && p.domain == "biology")
+        })
+        .map(|p| StarterCard {
+            id: p.id,
+            title: p.title,
+            description: p.description,
+            category: p.category,
+            icon: p.icon,
+            domain: p.domain,
+            tool_name: p.tool_name,
+            preset_json: Some((p.preset_generator)()),
+        })
+        .collect();
+
+    // Dynamic fallback cards based on available tools in domain if no presets submitted
+    if cards.is_empty() {
+        for meta in available_tools {
+            if meta.domain == domain {
+                cards.push(StarterCard {
                     id: meta.name,
                     title: meta.name,
-                    description: "Interactive simulation tool for mathematical exploration and analysis.",
+                    description:
+                        "Interactive simulation tool for mathematical exploration and analysis.",
                     category: meta.domain,
                     icon: "🔬",
                     domain: meta.domain,
                     tool_name: Some(meta.name),
                     preset_json: None,
-                })
-                .collect()
+                });
+            }
         }
     }
+
+    cards
 }
 
 /// Renders the central canvas starter gallery card overlay in an egui Context.
@@ -448,5 +395,91 @@ mod tests {
         let morph_env: PresetWrapper<MorphogenesisPresetConfig> =
             serde_json::from_str(PRESET_TURING_SPOTS).unwrap();
         assert_eq!(morph_env.metadata.domain, "biology");
+    }
+
+    #[test]
+    fn test_all_registered_tools_have_starter_presets() {
+        let tools: Vec<&'static ToolMetadata> =
+            inventory::iter::<ToolMetadata>.into_iter().collect();
+        assert!(
+            tools.len() >= 42,
+            "Expected at least 42 tools, found {}",
+            tools.len()
+        );
+
+        let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
+            .into_iter()
+            .collect();
+        assert!(
+            presets.len() >= tools.len(),
+            "Expected at least as many presets ({}) as tools ({})",
+            presets.len(),
+            tools.len()
+        );
+
+        for tool in &tools {
+            let matching = presets
+                .iter()
+                .filter(|p| p.tool_name == Some(tool.name) && p.domain == tool.domain)
+                .collect::<Vec<_>>();
+            assert!(
+                !matching.is_empty(),
+                "Tool '{}' in domain '{}' has no registered starter preset",
+                tool.name,
+                tool.domain
+            );
+
+            for preset in matching {
+                let payload = (preset.preset_generator)();
+                let parsed: serde_json::Value = serde_json::from_str(payload).unwrap_or_else(|e| {
+                    panic!(
+                        "Invalid JSON payload for tool '{}', preset '{}': {}",
+                        tool.name, preset.title, e
+                    )
+                });
+                assert!(parsed.is_object(), "Payload must be a JSON object");
+                let meta = &parsed["metadata"];
+                assert_eq!(meta["schema_version"], "1.0");
+                assert_eq!(meta["domain"], tool.domain);
+                assert!(parsed["config"].is_object(), "Config must be a JSON object");
+            }
+        }
+    }
+
+    #[test]
+    fn test_starter_cards_for_all_registered_domains() {
+        let mut domains: std::collections::HashSet<&'static str> = std::collections::HashSet::new();
+        for tool in inventory::iter::<ToolMetadata> {
+            domains.insert(tool.domain);
+        }
+        domains.insert("biology");
+
+        for &domain in &domains {
+            let cards = get_starter_cards_for_domain(domain, &[]);
+            assert!(
+                !cards.is_empty(),
+                "get_starter_cards_for_domain returned no cards for domain '{}'",
+                domain
+            );
+            for card in &cards {
+                assert!(!card.title.is_empty());
+                assert!(!card.description.is_empty());
+                assert!(card.preset_json.is_some());
+            }
+        }
+
+        // Generate screenshot artifact of federated preset distribution
+        let datasets = vec![(
+            "Federated Presets Per Domain".to_string(),
+            domains
+                .iter()
+                .enumerate()
+                .map(|(i, &d)| [i as f64, get_starter_cards_for_domain(d, &[]).len() as f64])
+                .collect(),
+        )];
+        let options = egui_plot::export::ExportOptions::default();
+        if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
+            let _ = std::fs::write("/tmp/federated_preset_inventory_preview.png", png_data);
+        }
     }
 }

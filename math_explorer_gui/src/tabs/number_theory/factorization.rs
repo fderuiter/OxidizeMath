@@ -132,3 +132,28 @@ impl scientific_metadata::theory::TheoryDescribable for FactorizationTool {
     fn theory_citation(&self) -> String { "An Introduction to the Theory of Numbers (Hardy & Wright, 2008)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Prime Factorization",
+    "domain": "number_theory",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "target_number": 104729
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "factorization_starter",
+        title: "Prime Factorization",
+        description: "Fundamental theorem of arithmetic decomposition via Pollard rho and trial division heuristics.",
+        category: "Arithmetic",
+        icon: "🔢",
+        domain: "number_theory",
+        tool_name: Some("FactorizationTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

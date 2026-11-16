@@ -76,3 +76,29 @@ impl InteractivePreset for MorphogenesisTab {
         Ok(())
     }
 }
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "turing_spots",
+        title: "Turing Spots",
+        description: "∂u/∂t = D_u∇²u + a - u + u²v: Activator-inhibitor reaction-diffusion generating spot morphology.",
+        category: "Reaction-Diffusion",
+        icon: "🐆",
+        domain: "biology",
+        tool_name: None,
+        preset_generator: || crate::starter_gallery::PRESET_TURING_SPOTS,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "turing_stripes",
+        title: "Turing Stripes",
+        description: "∂v/∂t = D_v∇²v + b - u²v: Differential diffusion instability yielding labyrinthine stripe patterns.",
+        category: "Morphogenesis",
+        icon: "🦓",
+        domain: "biology",
+        tool_name: None,
+        preset_generator: || crate::starter_gallery::PRESET_TURING_STRIPES,
+    }
+}

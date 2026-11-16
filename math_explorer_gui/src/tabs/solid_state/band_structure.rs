@@ -190,3 +190,29 @@ impl scientific_metadata::theory::TheoryDescribable for BandStructureTool {
         map
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Electronic Band Structure",
+    "domain": "solid_state",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "lattice_type": "FCC",
+    "fermi_level": 0.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "band_structure_starter",
+        title: "Electronic Band Structure",
+        description: "Tight-binding dispersion relations E(k) across high-symmetry Brillouin zone lines.",
+        category: "Condensed Matter",
+        icon: "📉",
+        domain: "solid_state",
+        tool_name: Some("BandStructureTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

@@ -210,3 +210,28 @@ impl scientific_metadata::theory::TheoryDescribable for PartitionsWidget {
         map
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Integer Partitions (Hardy-Ramanujan)",
+    "domain": "number_theory",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "target_integer": 25
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "partitions_starter",
+        title: "Integer Partitions (Hardy-Ramanujan)",
+        description: "p(n) integer partition function asymptotic counting and Young Ferrers diagram displays.",
+        category: "Combinatorics",
+        icon: "🧱",
+        domain: "number_theory",
+        tool_name: Some("PartitionsWidget"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

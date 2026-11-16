@@ -341,3 +341,29 @@ impl scientific_metadata::theory::TheoryDescribable for PotentialFlowTool {
         map
     }
 }
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "vector_field",
+        title: "Vector Field",
+        description: "ψ = U·y·(1 - R²/r²): Potential streamlines and 2D velocity vector field past a cylinder.",
+        category: "Fluid Mechanics",
+        icon: "🌊",
+        domain: "fluid_dynamics",
+        tool_name: Some("PotentialFlowTool"),
+        preset_generator: || crate::starter_gallery::PRESET_VECTOR_FIELD,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "source_sink",
+        title: "Source-Sink Pair",
+        description: "ψ = (q/2π)·(θ₁ - θ₂): Superposition of equal source and sink singularities.",
+        category: "Fluid Mechanics",
+        icon: "🔄",
+        domain: "fluid_dynamics",
+        tool_name: Some("PotentialFlowTool"),
+        preset_generator: || crate::starter_gallery::PRESET_SOURCE_SINK,
+    }
+}

@@ -187,3 +187,29 @@ impl scientific_metadata::theory::TheoryDescribable for DoseCalculationTool {
         map
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Percentage Depth Dose (PDD)",
+    "domain": "medical",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "depth_cm": 10.0,
+    "ssd_cm": 100.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "dose_calculation_starter",
+        title: "Percentage Depth Dose (PDD)",
+        description: "Tissue-air ratio and depth attenuation profile for megavoltage photon radiation dosimetry.",
+        category: "Dosimetry",
+        icon: "🎯",
+        domain: "medical",
+        tool_name: Some("DoseCalculationTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

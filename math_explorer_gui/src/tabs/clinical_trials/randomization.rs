@@ -219,3 +219,29 @@ impl scientific_metadata::theory::TheoryDescribable for RandomizationTool {
         map
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Permuted Block Randomization",
+    "domain": "clinical_trials",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "block_size": 4,
+    "total_patients": 100
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "randomization_starter",
+        title: "Permuted Block Randomization",
+        description: "Stratified patient assignment maintaining treatment balance across clinical trial arms.",
+        category: "Biostatistics",
+        icon: "🎲",
+        domain: "clinical_trials",
+        tool_name: Some("RandomizationTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

@@ -222,3 +222,29 @@ impl scientific_metadata::theory::TheoryDescribable for TokenizationTool {
     fn theory_citation(&self) -> String { "Attention Is All You Need (Vaswani et al., 2017)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Byte-Pair Tokenizer",
+    "domain": "ai",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "vocab_size": 1000,
+    "sample_text": "Neural attention mechanisms"
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "tokenization_starter",
+        title: "Byte-Pair Tokenizer",
+        description: "Subword lexical segmentation and token vocabulary mapping for natural language representations.",
+        category: "NLP",
+        icon: "🔤",
+        domain: "ai",
+        tool_name: Some("TokenizationTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

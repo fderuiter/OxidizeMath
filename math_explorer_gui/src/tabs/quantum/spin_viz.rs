@@ -277,3 +277,30 @@ mod tests {
         assert_eq!(viz.sz.matrix, sz_ref.matrix);
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Bloch Sphere Spin State",
+    "domain": "quantum",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "theta": 1.047,
+    "phi": 0.785,
+    "magnetic_b": 1.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "spin_viz_starter",
+        title: "Bloch Sphere Spin State",
+        description: "|ψ⟩ = cos(θ/2)|0⟩ + e^(iφ)sin(θ/2)|1⟩: Qubit pure state spherical coordinates and Larmor precession.",
+        category: "Quantum States",
+        icon: "🌐",
+        domain: "quantum",
+        tool_name: Some("SpinVisualizer"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

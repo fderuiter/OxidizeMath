@@ -136,3 +136,29 @@ impl scientific_metadata::theory::TheoryDescribable for UalbfWidget {
     fn theory_citation(&self) -> String { "Unified Algebraic-Lattice Bipartition Framework for Quasiperfect Numbers (de Ruiter, 2025)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Universal Arithmetic Logic",
+    "domain": "number_theory",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "modulus": 17,
+    "base": 2
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "ualbf_starter",
+        title: "Universal Arithmetic Logic",
+        description: "Bitwise boolean evaluation, modular ring arithmetic, and congruency lattice operations.",
+        category: "Modular Arithmetic",
+        icon: "🧮",
+        domain: "number_theory",
+        tool_name: Some("UalbfWidget"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

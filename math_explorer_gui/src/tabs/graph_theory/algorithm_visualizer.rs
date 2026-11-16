@@ -392,3 +392,29 @@ impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool 
 #[cfg(test)]
 #[path = "algorithm_visualizer_tests.rs"]
 mod algorithm_visualizer_tests;
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Dijkstra Shortest Path",
+    "domain": "graph_theory",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "algorithm": "Dijkstra",
+    "node_count": 12
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "algorithm_visualizer_starter",
+        title: "Dijkstra Shortest Path",
+        description: "Priority-queue shortest path relaxation across weighted undirected graph topologies.",
+        category: "Graph Algorithms",
+        icon: "🛤️",
+        domain: "graph_theory",
+        tool_name: Some("AlgorithmVisualizerTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

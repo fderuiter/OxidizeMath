@@ -297,4 +297,105 @@ impl SimulationFramework {
             });
         }
     }
+
+    #[allow(missing_docs, clippy::too_many_lines)]
+    pub fn show(&mut self, ctx: &egui::Context, id_source: &str) {
+        egui_plot::clear_last_plot_datasets();
+
+        // Display recovery banner when solver divergence is detected
+        if self.is_diverged {
+            egui::TopBottomPanel::top(format!("{}_recovery_banner", id_source)).show(ctx, |ui| {
+                if let Some(action) = render_state_guard_banner(
+                    ui,
+                    self.diagnostic_report.as_ref(),
+                    self.last_valid_snapshot.is_some(),
+                ) {
+                    self.handle_state_guard_action(action);
+                    ui.ctx().request_repaint();
+                }
+            });
+        }
+
+        // Update global input mode
+        ctx.input(|i| {
+            if i.any_touches() || i.multi_touch().is_some() {
+                self.input_mode = InputMode::Touch;
+            } else if i.pointer.is_moving() && !i.any_touches() {
+                // Heuristic: if pointer is moving but no touches, likely mouse
+                self.input_mode = InputMode::Mouse;
+            }
+        });
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("INPUT_MODE"), self.input_mode);
+            d.insert_temp(
+                egui::Id::new("INPUT_MODE_TOUCH"),
+                self.input_mode == InputMode::Touch,
+            );
+            // Clear CMD_REGISTRY at start of frame
+            d.insert_temp(
+                egui::Id::new("CMD_REGISTRY"),
+                egui_plot::commands::CommandRegistryData::default(),
+            );
+        });
+
+        if let Some(portal_state) =
+            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL")))
+        {
+            self.show_theory_portal = portal_state;
+        } else {
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), self.show_theory_portal)
+            });
+        }
+
+        if let Some(gallery_state) =
+            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")))
+        {
+            self.show_starter_gallery = gallery_state;
+        } else {
+            ctx.data_mut(|d| {
+                d.insert_temp(
+                    egui::Id::new("SHOW_STARTER_GALLERY"),
+                    self.show_starter_gallery,
+                )
+            });
+        }
+
+        self.show_side_panel(ctx, id_source);
+        self.show_theory_portal(ctx, id_source);
+        self.show_export_action_bar(ctx, id_source);
+        self.show_export_modal_dialog(ctx, id_source);
+
+        if !self.is_diverged {
+            self.cache_valid_snapshot();
+            if let Some(tool) = &mut self.active_tool {
+                tool.show(ctx);
+            }
+            let _ = self.inspect_runtime_state();
+            if self.is_diverged {
+                ctx.request_repaint();
+            }
+        } else if let Some(tool) = &mut self.active_tool {
+            // Solver execution halted: keep last valid plot data active in egui_plot
+            if let Some(ref snapshot) = self.last_valid_snapshot {
+                egui_plot::clear_last_plot_datasets();
+                egui_plot::append_last_plot_datasets(&snapshot.plot_datasets);
+            }
+            tool.show(ctx);
+        } else {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                self.show_quick_start_cards(ui);
+            });
+        }
+
+        self.show_starter_gallery_if_open(ctx, id_source);
+
+        if let Some(portal_state) =
+            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL")))
+        {
+            self.show_theory_portal = portal_state;
+        }
+
+        self.dispatch_pending_exports();
+    }
 }

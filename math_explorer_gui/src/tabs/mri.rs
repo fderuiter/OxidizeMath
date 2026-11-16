@@ -5,7 +5,7 @@ use crate::async_sim::{
 };
 use crate::tabs::ExplorerTab;
 use eframe::egui;
-use egui_plot::{Legend, Line, Plot, PlotPoints};
+use egui_plot::{Legend, Line, Plot, PlotPoint};
 use math_explorer::physics::mri::bloch::BlochSimulator;
 use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
 use nalgebra::Vector3;
@@ -58,7 +58,7 @@ impl SimulationRunner for MriRunner {
 
     fn step(&mut self) {
         let (t1, t2, b_field, time_scale) = {
-            let p = self.params.read().unwrap();
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.t1, p.t2, p.b_field, p.time_scale)
         };
         self.simulator.t1 = t1;
@@ -116,8 +116,11 @@ pub struct MriTab {
     // Visualization
     history: VecDeque<(f64, Vector3<f64>)>,
     _max_history: usize,
+    pub mx_points: Vec<PlotPoint>,
+    pub my_points: Vec<PlotPoint>,
+    pub mz_points: Vec<PlotPoint>,
 
-    params: Arc<std::sync::RwLock<MriSharedParams>>,
+    pub params: Arc<std::sync::RwLock<MriSharedParams>>,
     pub worker: BackgroundWorker<MriRunner>,
 }
 
@@ -162,6 +165,9 @@ impl Default for MriTab {
             current_time: 0.0,
             history: VecDeque::new(),
             _max_history: math_commons::registry::MAX_ITERATIONS,
+            mx_points: Vec::new(),
+            my_points: Vec::new(),
+            mz_points: Vec::new(),
             params,
             worker,
         }
@@ -171,10 +177,17 @@ impl Default for MriTab {
 impl MriTab {
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
+        let (t1, t2, b_field) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.t1, p.t2, p.b_field)
+        };
+        self.simulator.t1 = t1;
+        self.simulator.t2 = t2;
+        self.simulator.b_field = b_field;
         let mut runner_simulator =
             BlochSimulator::new(self.simulator.magnetization, self.simulator.m0);
-        runner_simulator.set_relaxation(self.simulator.t1, self.simulator.t2);
-        runner_simulator.set_b_field(self.simulator.b_field);
+        runner_simulator.set_relaxation(t1, t2);
+        runner_simulator.set_b_field(b_field);
         let runner = MriRunner {
             simulator: runner_simulator,
             solver: RungeKutta4::new(&self.simulator.magnetization),
@@ -191,11 +204,29 @@ impl MriTab {
         self.restart_worker();
     }
 
+    /// Repopulates cached plot point buffers from history while preserving allocated capacity
+    pub fn update_plot_buffers(&mut self) {
+        self.mx_points.clear();
+        self.my_points.clear();
+        self.mz_points.clear();
+        self.mx_points.reserve(self.history.len());
+        self.my_points.reserve(self.history.len());
+        self.mz_points.reserve(self.history.len());
+        for (t, m) in &self.history {
+            self.mx_points.push(PlotPoint::new(*t, m.x));
+            self.my_points.push(PlotPoint::new(*t, m.y));
+            self.mz_points.push(PlotPoint::new(*t, m.z));
+        }
+    }
+
     /// Resets the simulation to the initial state defined by current parameters
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.simulator.magnetization = Vector3::new(self.simulator.m0, 0.0, 0.0);
         self.current_time = 0.0;
         self.history.clear();
+        self.mx_points.clear();
+        self.my_points.clear();
+        self.mz_points.clear();
         if self.worker.state() == SimWorkerState::Faulted
             || self.worker.state() == SimWorkerState::Terminated
         {
@@ -227,9 +258,7 @@ impl ExplorerTab for MriTab {
     fn load_state(&mut self, state: &str) {
         if let Ok(s) = serde_json::from_str::<MriState>(state) {
             self.time_scale = s.time_scale;
-            if let Ok(mut p) = self.params.write() {
-                p.time_scale = self.time_scale;
-            }
+            self.params.write().unwrap_or_else(|e| e.into_inner()).time_scale = self.time_scale;
             let target_state = s.state.unwrap_or_else(|| {
                 if s.paused.unwrap_or(false) {
                     SimWorkerState::Ready
@@ -258,6 +287,7 @@ impl ExplorerTab for MriTab {
                 self.current_time = data.current_time;
                 self.simulator.magnetization = data.magnetization;
                 self.history = data.history.clone();
+                self.update_plot_buffers();
             }
         }
 
@@ -285,11 +315,11 @@ impl ExplorerTab for MriTab {
 
             ui.collapsing("Relaxation Parameters", |ui| {
                 if ui.add(egui::Slider::new(&mut self.simulator.t1, 0.1..=5.0).logarithmic(true).text("Longitudinal (T1) [s]")).changed() {
-                    self.params.write().unwrap().t1 = self.simulator.t1;
+                    self.params.write().unwrap_or_else(|e| e.into_inner()).t1 = self.simulator.t1;
                 }
 
                 if ui.add(egui::Slider::new(&mut self.simulator.t2, 0.01..=2.0).logarithmic(true).text("Transverse (T2) [s]")).changed() {
-                    self.params.write().unwrap().t2 = self.simulator.t2;
+                    self.params.write().unwrap_or_else(|e| e.into_inner()).t2 = self.simulator.t2;
                 }
 
                 if self.simulator.t2 > self.simulator.t1 {
@@ -302,7 +332,7 @@ impl ExplorerTab for MriTab {
                 ui.horizontal(|ui| {
                     ui.label("Bz");
                     if ui.add(egui::DragValue::new(&mut self.simulator.b_field.z).speed(0.01)).changed() {
-                        self.params.write().unwrap().b_field.z = self.simulator.b_field.z;
+                        self.params.write().unwrap_or_else(|e| e.into_inner()).b_field.z = self.simulator.b_field.z;
                     }
                 });
 
@@ -310,11 +340,11 @@ impl ExplorerTab for MriTab {
                 ui.horizontal(|ui| {
                     ui.label("Bx");
                     if ui.add(egui::DragValue::new(&mut self.simulator.b_field.x).speed(0.001)).changed() {
-                        self.params.write().unwrap().b_field.x = self.simulator.b_field.x;
+                        self.params.write().unwrap_or_else(|e| e.into_inner()).b_field.x = self.simulator.b_field.x;
                     }
                     ui.label("By");
                     if ui.add(egui::DragValue::new(&mut self.simulator.b_field.y).speed(0.001)).changed() {
-                        self.params.write().unwrap().b_field.y = self.simulator.b_field.y;
+                        self.params.write().unwrap_or_else(|e| e.into_inner()).b_field.y = self.simulator.b_field.y;
                     }
                 });
             });
@@ -356,7 +386,7 @@ impl ExplorerTab for MriTab {
             });
 
             if ui.add(egui::Slider::new(&mut self.time_scale, 1.0..=100.0).logarithmic(true).text("Time Scale (Speed)")).changed() {
-                self.params.write().unwrap().time_scale = self.time_scale;
+                self.params.write().unwrap_or_else(|e| e.into_inner()).time_scale = self.time_scale;
             }
 
             ui.separator();
@@ -370,19 +400,15 @@ impl ExplorerTab for MriTab {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Magnetization Vector Evolution");
 
-            let mx: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.x]).collect();
-            let my: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.y]).collect();
-            let mz: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.z]).collect();
-
             Plot::new("bloch_plot")
                 .legend(Legend::default())
                 .x_axis_label("Time (s)")
                 .y_axis_label("Magnetization (M/M0)")
                 .view_aspect(2.0)
                 .show(ui, |plot_ui| {
-                    plot_ui.line(Line::new("Mx (Transverse)", PlotPoints::new(mx)).color(egui::Color32::RED));
-                    plot_ui.line(Line::new("My (Transverse)", PlotPoints::new(my)).color(egui::Color32::GREEN));
-                    plot_ui.line(Line::new("Mz (Longitudinal)", PlotPoints::new(mz)).color(egui::Color32::BLUE));
+                    plot_ui.line(Line::new("Mx (Transverse)", &self.mx_points[..]).color(egui::Color32::RED));
+                    plot_ui.line(Line::new("My (Transverse)", &self.my_points[..]).color(egui::Color32::GREEN));
+                    plot_ui.line(Line::new("Mz (Longitudinal)", &self.mz_points[..]).color(egui::Color32::BLUE));
                 });
 
             ui.label("Observe how Mz recovers to M0 (T1 relaxation) and Mx/My decay to 0 (T2 relaxation).");

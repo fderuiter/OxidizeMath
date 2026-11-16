@@ -107,3 +107,29 @@ impl scientific_metadata::theory::TheoryDescribable for BeamProfilingTool {
     fn theory_citation(&self) -> String { "The Physics of Radiation Therapy (Khan, 2014)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Radiotherapy Beam Profile",
+    "domain": "medical",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "field_width_cm": 10.0,
+    "energy_mev": 6.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "beam_profiling_starter",
+        title: "Radiotherapy Beam Profile",
+        description: "Penumbra profile, beam flatness, and symmetry transverse fluence modeling in radiation therapy.",
+        category: "Medical Physics",
+        icon: "🔦",
+        domain: "medical",
+        tool_name: Some("BeamProfilingTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

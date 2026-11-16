@@ -231,3 +231,30 @@ mod tests {
         }
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Bifurcation Diagram",
+    "domain": "chaos",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "r_min": 2.5,
+    "r_max": 4.0,
+    "iterations": 1000
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "bifurcation",
+        title: "Bifurcation Diagram",
+        description: "x_{n+1} = r·x_n·(1 - x_n): Period-doubling cascade towards deterministic chaos.",
+        category: "Non-Linear Dynamics",
+        icon: "🌿",
+        domain: "chaos",
+        tool_name: Some("BifurcationDiagram"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

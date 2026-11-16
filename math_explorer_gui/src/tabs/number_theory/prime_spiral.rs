@@ -204,3 +204,29 @@ impl scientific_metadata::theory::TheoryDescribable for PrimeSpiralWidget {
     fn theory_citation(&self) -> String { "A Visual Display of Prime Numbers (Ulam, 1964); A visual display of prime numbers (Stein, Ulam, & Wells, 1964)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Ulam Prime Spiral",
+    "domain": "number_theory",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "grid_size": 101,
+    "start_num": 1
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "prime_spiral_starter",
+        title: "Ulam Prime Spiral",
+        description: "2D square spiral lattice revealing quadratic polynomial diagonal prime clustering alignments.",
+        category: "Prime Distributions",
+        icon: "🌀",
+        domain: "number_theory",
+        tool_name: Some("PrimeSpiralWidget"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

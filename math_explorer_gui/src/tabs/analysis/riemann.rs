@@ -394,3 +394,29 @@ mod tests {
         }
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Riemann Sum Approximations",
+    "domain": "analysis",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "partition_count": 20,
+    "method": "Midpoint"
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "riemann_integration_starter",
+        title: "Riemann Sum Approximations",
+        description: "Definite integral partition limits via Darboux upper/lower sums and midpoint quadrature.",
+        category: "Integral Calculus",
+        icon: "📐",
+        domain: "analysis",
+        tool_name: Some("RiemannIntegrationTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

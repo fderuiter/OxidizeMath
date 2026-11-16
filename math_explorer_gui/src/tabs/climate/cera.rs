@@ -269,3 +269,29 @@ impl scientific_metadata::theory::TheoryDescribable for CeraTool {
     fn theory_citation(&self) -> String { "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Energy Balance Model",
+    "domain": "climate",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "albedo": 0.3,
+    "solar_constant": 1361.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "cera_starter",
+        title: "Energy Balance Model",
+        description: "C·dT/dt = S(1 - α) - (A + B·T): Zeroth-order planetary radiative equilibrium and feedback loops.",
+        category: "Climate Modeling",
+        icon: "🌍",
+        domain: "climate",
+        tool_name: Some("CeraTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

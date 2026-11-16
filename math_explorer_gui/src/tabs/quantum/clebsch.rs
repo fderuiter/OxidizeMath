@@ -227,3 +227,29 @@ inventory::submit! {
         build: || Box::new(ClebschGordanTool::default()),
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Clebsch-Gordan Coefficients",
+    "domain": "quantum",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "j1": 1.0,
+    "j2": 1.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "clebsch_gordan_starter",
+        title: "Clebsch-Gordan Coefficients",
+        description: "⟨j₁m₁ j₂m₂ | J M⟩: Angular momentum addition and SU(2) group tensor product decomposition.",
+        category: "Quantum Mechanics",
+        icon: "⚛️",
+        domain: "quantum",
+        tool_name: Some("ClebschGordanTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

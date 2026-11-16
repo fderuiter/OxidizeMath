@@ -7,6 +7,9 @@ pub mod math_input;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
+pub mod state_guard;
+#[cfg(test)]
+mod state_guard_tests;
 pub mod trace_overlay;
 mod ui;
 
@@ -14,6 +17,7 @@ pub use callout_overlay::*;
 pub use export_queue::*;
 pub use math_input::*;
 pub use recovery::*;
+pub use state_guard::*;
 pub use trace_overlay::*;
 
 use crate::accessibility::AccessibleHoverText;
@@ -28,6 +32,7 @@ pub struct ToolMetadata {
 }
 
 inventory::collect!(ToolMetadata);
+pub use crate::starter_gallery::StarterPresetMetadata;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {
@@ -283,6 +288,21 @@ pub struct SimulationFramework {
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
     pub export_queue: ExportQueue,
+
+    /// Cached state snapshot before divergence for step-back rollback.
+    pub last_valid_snapshot: Option<StateSnapshot>,
+    /// Baseline parameters snapshot on tool load.
+    pub baseline_tool_state: Option<String>,
+    /// Last validated finite plot datasets.
+    pub current_valid_plot_datasets: Vec<(String, Vec<[f64; 2]>)>,
+    /// Whether divergence has been detected in the active tool.
+    pub is_diverged: bool,
+    /// Diagnostic report for divergence.
+    pub diagnostic_report: Option<DiagnosticReport>,
+    /// Simulation frame / step counter.
+    pub step_counter: usize,
+    /// Start time of current active session.
+    pub start_time: std::time::Instant,
 }
 
 impl SimulationFramework {
@@ -316,6 +336,13 @@ impl SimulationFramework {
             domain: domain.to_string(),
             preset_dialog: crate::presets::PresetDialogState::default(),
             export_queue: ExportQueue::default(),
+            last_valid_snapshot: None,
+            baseline_tool_state: None,
+            current_valid_plot_datasets: Vec::new(),
+            is_diverged: false,
+            diagnostic_report: None,
+            step_counter: 0,
+            start_time: std::time::Instant::now(),
         };
 
         if !framework.available_tools.is_empty() {
@@ -345,6 +372,18 @@ impl SimulationFramework {
         if let Some(state) = self.saved_tool_states.get(new_tool.name()) {
             new_tool.load_state(state);
         }
+        self.is_diverged = false;
+        self.diagnostic_report = None;
+        self.step_counter = 0;
+        self.baseline_tool_state = new_tool.save_state();
+        let initial_datasets = new_tool.export_datasets();
+        self.current_valid_plot_datasets = initial_datasets.clone();
+        self.last_valid_snapshot = Some(StateSnapshot {
+            tool_state: self.baseline_tool_state.clone(),
+            plot_datasets: initial_datasets,
+            step_index: 0,
+            timestamp: std::time::Instant::now(),
+        });
         scientific_metadata::citation_registry::CitationRegistry::register(
             new_tool.name().to_string(),
             new_tool.theory().theory_citation(),
@@ -418,79 +457,6 @@ impl SimulationFramework {
                 self.select_tool(idx);
             }
         }
-    }
-
-    #[allow(missing_docs, clippy::too_many_lines)]
-    pub fn show(&mut self, ctx: &egui::Context, id_source: &str) {
-        egui_plot::clear_last_plot_datasets();
-
-        // Update global input mode
-        ctx.input(|i| {
-            if i.any_touches() || i.multi_touch().is_some() {
-                self.input_mode = InputMode::Touch;
-            } else if i.pointer.is_moving() && !i.any_touches() {
-                // Heuristic: if pointer is moving but no touches, likely mouse
-                self.input_mode = InputMode::Mouse;
-            }
-        });
-        ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("INPUT_MODE"), self.input_mode);
-            d.insert_temp(
-                egui::Id::new("INPUT_MODE_TOUCH"),
-                self.input_mode == InputMode::Touch,
-            );
-            // Clear CMD_REGISTRY at start of frame
-            d.insert_temp(
-                egui::Id::new("CMD_REGISTRY"),
-                egui_plot::commands::CommandRegistryData::default(),
-            );
-        });
-
-        if let Some(portal_state) =
-            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL")))
-        {
-            self.show_theory_portal = portal_state;
-        } else {
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), self.show_theory_portal)
-            });
-        }
-
-        if let Some(gallery_state) =
-            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")))
-        {
-            self.show_starter_gallery = gallery_state;
-        } else {
-            ctx.data_mut(|d| {
-                d.insert_temp(
-                    egui::Id::new("SHOW_STARTER_GALLERY"),
-                    self.show_starter_gallery,
-                )
-            });
-        }
-
-        self.show_side_panel(ctx, id_source);
-        self.show_theory_portal(ctx, id_source);
-        self.show_export_action_bar(ctx, id_source);
-        self.show_export_modal_dialog(ctx, id_source);
-
-        if let Some(tool) = &mut self.active_tool {
-            tool.show(ctx);
-        } else {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                self.show_quick_start_cards(ui);
-            });
-        }
-
-        self.show_starter_gallery_if_open(ctx, id_source);
-
-        if let Some(portal_state) =
-            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL")))
-        {
-            self.show_theory_portal = portal_state;
-        }
-
-        self.dispatch_pending_exports();
     }
 }
 

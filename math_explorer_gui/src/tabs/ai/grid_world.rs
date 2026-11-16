@@ -307,3 +307,29 @@ mod tests {
         assert_eq!(tool.episodes, 1);
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Grid World RL",
+    "domain": "ai",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "grid_size": 5,
+    "discount_factor": 0.95
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "grid_world_starter",
+        title: "Grid World RL",
+        description: "Markov Decision Process navigation with obstacle avoidance and discount reward propagation.",
+        category: "Reinforcement Learning",
+        icon: "🗺️",
+        domain: "ai",
+        tool_name: Some("GridWorldTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

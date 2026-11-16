@@ -52,3 +52,29 @@ inventory::submit! {
         build: || Box::new(GaussianSplattingTool::default()),
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Gaussian Splatting",
+    "domain": "ai",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "num_points": 500,
+    "splat_scale": 1.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "gaussian_splatting_starter",
+        title: "Gaussian Splatting",
+        description: "3D Gaussian radiance field point rendering with covariance ellipsoids and spherical harmonics.",
+        category: "Neural Rendering",
+        icon: "🎨",
+        domain: "ai",
+        tool_name: Some("Gaussian Splatting"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}
