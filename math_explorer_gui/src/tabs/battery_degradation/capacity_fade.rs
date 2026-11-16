@@ -169,3 +169,29 @@ impl scientific_metadata::theory::TheoryDescribable for CapacityFadeTool {
     fn theory_citation(&self) -> String { "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Capacity Fade",
+    "domain": "battery_degradation",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "initial_capacity": 100.0,
+    "cycle_count": 1000
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "capacity_fade_starter",
+        title: "Capacity Fade",
+        description: "Solid Electrolyte Interphase (SEI) growth kinetics and lithium inventory loss over charge cycling.",
+        category: "Electrochemistry",
+        icon: "🔋",
+        domain: "battery_degradation",
+        tool_name: Some("CapacityFadeTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

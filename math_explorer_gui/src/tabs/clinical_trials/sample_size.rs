@@ -268,3 +268,30 @@ impl scientific_metadata::theory::TheoryDescribable for SampleSizeCalculatorTool
         map
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Statistical Power & Sample Size",
+    "domain": "clinical_trials",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "alpha": 0.05,
+    "power": 0.8,
+    "effect_size": 0.5
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "sample_size_starter",
+        title: "Statistical Power & Sample Size",
+        description: "N = 2(z_α + z_β)²σ² / δ²: Neyman-Pearson hypothesis test sizing for minimum detectable effect.",
+        category: "Trial Design",
+        icon: "👥",
+        domain: "clinical_trials",
+        tool_name: Some("SampleSizeCalculatorTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

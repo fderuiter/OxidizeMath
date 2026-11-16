@@ -449,3 +449,16 @@ impl InteractivePreset for ReplicatorDynamicsTool {
         Ok(())
     }
 }
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "hawk_dove",
+        title: "Hawk-Dove Dynamics",
+        description: "ẋ_i = x_i((Ax)_i - xᵀAx): Evolutionary game model of conflict and resource competition.",
+        category: "Game Theory",
+        icon: "🦅",
+        domain: "game_theory",
+        tool_name: Some("ReplicatorDynamicsTool"),
+        preset_generator: || crate::starter_gallery::PRESET_HAWK_DOVE,
+    }
+}

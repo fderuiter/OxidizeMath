@@ -163,3 +163,29 @@ impl scientific_metadata::theory::TheoryDescribable for LifetimeEstimatorTool {
     fn theory_citation(&self) -> String { "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Battery Lifetime Estimator",
+    "domain": "battery_degradation",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "temperature_c": 25.0,
+    "c_rate": 1.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "lifetime_estimator_starter",
+        title: "Battery Lifetime Estimator",
+        description: "Arrhenius thermal acceleration and C-rate stress damage curves for state-of-health prognosis.",
+        category: "Battery Systems",
+        icon: "⏳",
+        domain: "battery_degradation",
+        tool_name: Some("LifetimeEstimatorTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

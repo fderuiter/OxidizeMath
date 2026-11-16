@@ -274,3 +274,29 @@ impl scientific_metadata::theory::TheoryDescribable for WaveUnified {
         HashMap::new()
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Schr\u00f6dinger Wave Packet",
+    "domain": "quantum",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "barrier_height": 5.0,
+    "packet_energy": 3.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "wave_sim_starter",
+        title: "Schrödinger Wave Packet",
+        description: "iℏ·∂ψ/∂t = -ℏ²/(2m)∇²ψ + V·ψ: 1D quantum Gaussian wave packet tunneling through a potential barrier.",
+        category: "Wave Mechanics",
+        icon: "🌊",
+        domain: "quantum",
+        tool_name: Some("WaveSimulator"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

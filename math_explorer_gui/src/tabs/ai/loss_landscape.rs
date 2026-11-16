@@ -187,3 +187,29 @@ impl scientific_metadata::theory::TheoryDescribable for LossLandscapeTool {
     fn theory_citation(&self) -> String { "Visualizing the Loss Landscape of Neural Nets (Li et al., 2018); Deep Learning (Goodfellow et al., 2016)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Loss Landscape",
+    "domain": "ai",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "surface_type": "Rosenbrock",
+    "learning_rate": 0.01
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "loss_landscape_starter",
+        title: "Loss Landscape",
+        description: "Optimization surface geometry and gradient descent saddle point exploration in weight space.",
+        category: "Optimization",
+        icon: "⛰️",
+        domain: "ai",
+        tool_name: Some("LossLandscapeTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

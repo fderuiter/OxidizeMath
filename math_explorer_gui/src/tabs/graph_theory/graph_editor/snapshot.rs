@@ -73,3 +73,29 @@ impl GraphEditorTool {
         self.rebuild_graph();
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Force-Directed Graph",
+    "domain": "graph_theory",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "damping": 0.85,
+    "repulsion": 50.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "graph_editor_starter",
+        title: "Force-Directed Graph",
+        description: "Spring-electrical equilibrium layout of nodes and edges with interactive adjacency manipulation.",
+        category: "Transformers",
+        icon: "🕸️",
+        domain: "graph_theory",
+        tool_name: Some("GraphEditorTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

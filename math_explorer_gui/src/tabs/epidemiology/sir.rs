@@ -340,3 +340,30 @@ mod tests {
         assert_eq!(plot_points.points().len(), tool.s_points.len());
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Kermack-McKendrick SIR Model",
+    "domain": "epidemiology",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "beta": 0.3,
+    "gamma": 0.1,
+    "population": 10000
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "sir_starter",
+        title: "Kermack-McKendrick SIR Model",
+        description: "dS/dt = -βSI/N, dI/dt = βSI/N - γI: Compartmental epidemic outbreak dynamics and herd immunity.",
+        category: "Compartmental Models",
+        icon: "🦠",
+        domain: "epidemiology",
+        tool_name: Some("SirTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

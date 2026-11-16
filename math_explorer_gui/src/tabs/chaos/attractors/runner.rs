@@ -309,3 +309,16 @@ impl scientific_metadata::theory::TheoryDescribable for super::AttractorPlotter 
     fn theory_citation(&self) -> String { "Deterministic Nonperiodic Flow (Lorenz, 1963); Nonlinear Dynamics and Chaos (Strogatz, 2014)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { self.system.available_descriptions() }
 }
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "3d_attractor",
+        title: "3D Attractor",
+        description: "ẋ=σ(y-x), ẏ=x(ρ-z)-y, ż=xy-βz: Canonical 3D chaotic strange attractor trajectory.",
+        category: "Chaos Theory",
+        icon: "🦋",
+        domain: "chaos",
+        tool_name: Some("AttractorPlotter"),
+        preset_generator: || crate::starter_gallery::PRESET_3D_ATTRACTOR,
+    }
+}

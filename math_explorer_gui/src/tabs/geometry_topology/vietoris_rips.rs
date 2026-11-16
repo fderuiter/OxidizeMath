@@ -339,3 +339,29 @@ mod tests {
         assert_eq!(t_plot.points().len(), 3);
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Persistent Homology",
+    "domain": "geometry_topology",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "max_distance": 2.0,
+    "num_points": 50
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "vietoris_rips_starter",
+        title: "Persistent Homology",
+        description: "Simplicial complex filtration across distance radius ε capturing topological persistence barcodes.",
+        category: "Algebraic Topology",
+        icon: "🕸️",
+        domain: "geometry_topology",
+        tool_name: Some("VietorisRipsTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

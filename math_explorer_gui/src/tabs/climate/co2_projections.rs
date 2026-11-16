@@ -100,3 +100,29 @@ impl scientific_metadata::theory::TheoryDescribable for Co2ProjectionsTool {
     fn theory_citation(&self) -> String { "IPCC Sixth Assessment Report: The Physical Science Basis (IPCC, 2021)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "CO2 Emissions Trajectory",
+    "domain": "climate",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "baseline_ppm": 420.0,
+    "annual_growth": 2.5
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "co2_projections_starter",
+        title: "CO2 Emissions Trajectory",
+        description: "Atmospheric carbon concentration forecasting across shared socioeconomic pathways (SSPs).",
+        category: "Atmospheric Physics",
+        icon: "🏭",
+        domain: "climate",
+        tool_name: Some("Co2ProjectionsTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

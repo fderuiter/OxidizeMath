@@ -255,3 +255,29 @@ impl scientific_metadata::theory::TheoryDescribable for CrystalViewer {
         map
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Bravais Crystal Lattice",
+    "domain": "solid_state",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "structure": "FCC",
+    "unit_cells": 2
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "crystal_viewer_starter",
+        title: "Bravais Crystal Lattice",
+        description: "3D periodic atomic unit cell crystallographic coordinates (FCC, BCC, Diamond cubic structures).",
+        category: "Crystallography",
+        icon: "💎",
+        domain: "solid_state",
+        tool_name: Some("CrystalViewer"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

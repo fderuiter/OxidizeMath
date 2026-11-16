@@ -344,3 +344,29 @@ mod tests {
         assert_eq!(tool.time, 0.0);
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Spike Train Raster & ISI",
+    "domain": "neuroscience",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "firing_rate_hz": 40.0,
+    "refractory_period_ms": 2.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "spike_analysis_starter",
+        title: "Spike Train Raster & ISI",
+        description: "Inter-spike interval (ISI) histogram and Fano factor variance analysis of neural spike trains.",
+        category: "Electrophysiology",
+        icon: "📈",
+        domain: "neuroscience",
+        tool_name: Some("SpikeAnalysisTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

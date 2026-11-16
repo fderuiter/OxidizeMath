@@ -216,3 +216,29 @@ impl TheoryDescribable for LbmUnified {
         LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).available_descriptions()
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "LBM Flow Simulation",
+    "domain": "fluid_dynamics",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "reynolds": 100.0,
+    "relaxation_time": 0.6
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "lattice_boltzmann_starter",
+        title: "LBM Flow Simulation",
+        description: "f_i(x + e_i·dt, t + dt) = f_i(x, t) - (f_i - f_i^eq)/τ: Mesoscopic BGK collision streaming solver.",
+        category: "Computational Fluids",
+        icon: "🌊",
+        domain: "fluid_dynamics",
+        tool_name: Some("LatticeBoltzmannTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}
