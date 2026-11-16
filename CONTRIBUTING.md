@@ -85,6 +85,9 @@ This command executes all workspace quality gates:
 5. **Documentation**: `cargo doc --workspace --no-deps --all-features` (with warnings treated as errors)
 6. **Documentation Tests**: `cargo test --doc --workspace --all-features`
 7. **Markdown Links**: Validates all internal relative markdown links
+8. **CI Workflows**: `cargo run -p unified_verification --release -- lint-workflows` (validates GitHub Actions workflow structure)
+9. **Crate Documentation Audit**: `cargo run -p unified_verification --release -- check-docs` (verifies README files and entrypoint docs)
+10. **Traceability**: `cargo run -p unified_verification --release -- traceability` (validates architectural citations and test mappings)
 
 ### Troubleshooting
 
