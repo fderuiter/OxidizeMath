@@ -1,3 +1,4 @@
+// @explorer_feature = "biology"
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -112,7 +113,7 @@ impl Default for MorphogenesisTab {
             dialog_state: PresetDialogState::default(),
             pixels: Vec::new(),
             dirty: true,
-            show_starter_gallery: true,
+            show_starter_gallery: false,
         }
     }
 }

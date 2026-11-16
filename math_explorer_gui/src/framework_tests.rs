@@ -387,13 +387,13 @@ mod tests {
         let ctx = eframe::egui::Context::default();
         let mut framework = SimulationFramework::new("analysis");
 
-        // Acceptance Criteria 1: Empty simulation tab renders gallery on initial launch
-        assert!(framework.show_starter_gallery);
+        // Acceptance Criteria 1: Empty simulation tab initializes with starter gallery closed
+        assert!(!framework.show_starter_gallery);
 
         let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
             framework.show(ctx, "analysis_test");
         });
-        assert!(framework.show_starter_gallery);
+        assert!(!framework.show_starter_gallery);
 
         // Acceptance Criteria 2: Launching a starter card applies preset model and transitions canvas
         let cards = crate::starter_gallery::get_starter_cards_for_domain(
@@ -421,7 +421,8 @@ mod tests {
         // Acceptance Criteria 3: Loaded workspace sessions bypass the gallery
         let saved_json = framework.save_state().unwrap();
         let mut restored_framework = SimulationFramework::new("analysis");
-        assert!(restored_framework.show_starter_gallery);
+        assert!(!restored_framework.show_starter_gallery);
+        restored_framework.show_starter_gallery = true;
         restored_framework.load_state(&saved_json);
         assert!(!restored_framework.show_starter_gallery);
 
