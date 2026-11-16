@@ -19,6 +19,7 @@ fn main() {
     match args[1].as_str() {
         "setup" => setup(),
         "lint-all" | "lint" => lint_all(),
+        "check-docs" => check_docs(),
         "test-features" => test_features(&args[2..]),
         "verify-suite" => verify_suite(&args[2..]),
         "verify-records" => verify_records(),
@@ -38,6 +39,7 @@ fn main() {
 fn print_help() {
     println!("Usage: xtask <command> [args...]\n");
     println!("Active Quality Gates:");
+    println!("  check-docs               - Verify workspace documentation builds without warnings");
     println!(
         "  check-file-lengths       - Run centralized verification suite for file-length constraints"
     );
@@ -105,11 +107,7 @@ fn lint_all() {
     check_file_lengths();
 
     println!("\n--- Step 5: Cargo Doc Verification ---");
-    run_cmd_with_env(
-        "cargo",
-        &["doc", "--workspace", "--no-deps", "--all-features"],
-        &[("RUSTDOCFLAGS", "-D warnings")],
-    );
+    check_docs();
 
     println!("\n--- Step 6: Doc Tests ---");
     run_cmd("cargo", &["test", "--doc", "--workspace", "--all-features"]);
@@ -267,6 +265,15 @@ fn traceability() {
             "--",
             "traceability",
         ],
+    );
+}
+
+fn check_docs() {
+    println!("=== Cargo Doc Verification ===");
+    run_cmd_with_env(
+        "cargo",
+        &["doc", "--workspace", "--no-deps"],
+        &[("RUSTDOCFLAGS", "-D warnings")],
     );
 }
 

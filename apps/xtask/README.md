@@ -9,6 +9,7 @@ These commands run automated checks in git hooks or CI.
 
 | Command | Operational Role | Status |
 |---|---|---|
+| `check-docs` | Verifies workspace documentation builds without warnings. | Active |
 | `check-file-lengths` | Verifies file-length constraints. | Active |
 | `check-staged-duplicates` | Checks for duplicated files in staging. | Active |
 | `lint-all` | Runs formatting, clippy, file-length, and staged duplicate checks. | Active |
