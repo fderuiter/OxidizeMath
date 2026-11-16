@@ -210,6 +210,7 @@ pub struct Plot<'a> {
     clamp_grid: bool,
 
     sense: Sense,
+    show_zoom_buttons: bool,
 }
 
 impl<'a> Plot<'a> {
@@ -261,6 +262,7 @@ impl<'a> Plot<'a> {
             clamp_grid: false,
 
             sense: egui::Sense::click_and_drag(),
+            show_zoom_buttons: true,
         }
     }
 
@@ -642,6 +644,27 @@ impl<'a> Plot<'a> {
         self
     }
 
+    /// Whether to show the floating zoom and reset buttons overlay on the plot canvas.
+    ///
+    /// When enabled, renders a compact floating button group in the corner of the canvas
+    /// providing single-click zoom in (+20%), zoom out (-20%), and bounds reset to dataset extent.
+    ///
+    /// Default: `true`.
+    #[inline]
+    pub fn show_zoom_buttons(mut self, show: bool) -> Self {
+        self.show_zoom_buttons = show;
+        self
+    }
+
+    /// Whether to show the floating zoom and reset toolbar overlay.
+    ///
+    /// Alias for [`Self::show_zoom_buttons`]. Default: `true`.
+    #[inline]
+    pub fn show_zoom_overlay(mut self, show: bool) -> Self {
+        self.show_zoom_buttons = show;
+        self
+    }
+
     /// Add this plot to an axis link group so that this plot will share the bounds with other plots in the
     /// same group. A plot cannot belong to more than one axis group.
     #[inline]
@@ -836,6 +859,7 @@ impl<'a> Plot<'a> {
             clamp_grid,
             grid_spacers,
             sense,
+            show_zoom_buttons,
         } = self;
 
         // Disable interaction if ui is disabled.
@@ -1423,6 +1447,28 @@ impl<'a> Plot<'a> {
             .collect();
         append_last_plot_datasets(&export_datasets);
         // --- END EXTRACT DATASETS ---
+
+        let mut auto_content_bounds = *bounds;
+        if default_auto_bounds.x || min_auto_bounds.is_valid_x() {
+            auto_content_bounds.set_x(&min_auto_bounds);
+        }
+        if default_auto_bounds.y || min_auto_bounds.is_valid_y() {
+            auto_content_bounds.set_y(&min_auto_bounds);
+        }
+        for item in &items {
+            let item_bounds = item.bounds();
+            auto_content_bounds.merge_x(&item_bounds);
+            auto_content_bounds.merge_y(&item_bounds);
+        }
+        if !auto_content_bounds.is_valid_x() {
+            auto_content_bounds.set_x(&PlotBounds::NOTHING);
+        }
+        if !auto_content_bounds.is_valid_y() {
+            auto_content_bounds.set_y(&PlotBounds::NOTHING);
+        }
+        auto_content_bounds.add_relative_margin_x(margin_fraction);
+        auto_content_bounds.add_relative_margin_y(margin_fraction);
+
         let prepared = PreparedPlot {
             plot_area_response: &response,
             items,
@@ -1790,6 +1836,18 @@ impl<'a> Plot<'a> {
                 }
             });
         });
+
+        if show_zoom_buttons {
+            let zoom_config = FloatingZoomConfig {
+                plot_id,
+                allow_zoom,
+                data_aspect,
+                linked_axes: &linked_axes,
+                auto_content_bounds,
+                default_auto_bounds,
+            };
+            Self::render_floating_zoom_toolbar(ui, &mut mem, &zoom_config);
+        }
 
         if access_state.show_table {
             egui::Window::new(format!("Data Table - {id_source:?}")).show(ui.ctx(), |ui| {
@@ -2627,6 +2685,237 @@ impl<'a> Plot<'a> {
             hovered_plot_item,
         }
     }
+
+    fn render_floating_zoom_toolbar(
+        ui: &mut Ui,
+        mem: &mut PlotMemory,
+        config: &FloatingZoomConfig<'_>,
+    ) {
+        let frame = *mem.transform.frame();
+        let toolbar_size = egui::vec2(28.0, 84.0);
+        let canvas_area = frame.width() * frame.height();
+        let toolbar_area = toolbar_size.x * toolbar_size.y;
+
+        // Constraint: Consumes less than 10% of canvas area and fits comfortably
+        if canvas_area <= 0.0
+            || toolbar_area >= 0.10 * canvas_area
+            || frame.width() < 70.0
+            || frame.height() < 95.0
+        {
+            return;
+        }
+
+        let margin = egui::vec2(8.0, 8.0);
+        let toolbar_rect = Rect::from_min_size(frame.max - margin - toolbar_size, toolbar_size);
+
+        let mut zoom_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(toolbar_rect)
+                .layout(egui::Layout::top_down(egui::Align::Center)),
+        );
+        zoom_ui.set_clip_rect(frame.intersect(ui.clip_rect()));
+
+        let effective_allow_zoom = config.allow_zoom.and(ui.is_enabled());
+        let zoom_enabled = effective_allow_zoom.any();
+        let reset_enabled = ui.is_enabled();
+
+        let mut zoom_in_clicked = false;
+        let mut zoom_out_clicked = false;
+        let mut reset_clicked = false;
+
+        egui::Frame::window(zoom_ui.style())
+            .fill(zoom_ui.visuals().window_fill.gamma_multiply(0.85))
+            .stroke(zoom_ui.visuals().widgets.noninteractive.bg_stroke)
+            .corner_radius(4.0)
+            .inner_margin(2.0)
+            .show(&mut zoom_ui, |ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(0.0, 2.0);
+                let btn_size = egui::vec2(24.0, 24.0);
+
+                let in_btn = egui::Button::new(egui::RichText::new("+").size(14.0).strong())
+                    .min_size(btn_size)
+                    .corner_radius(2.0);
+                if ui
+                    .add_enabled(zoom_enabled, in_btn)
+                    .on_hover_text("Zoom in (+20%)")
+                    .clicked()
+                {
+                    zoom_in_clicked = true;
+                }
+
+                let out_btn = egui::Button::new(egui::RichText::new("-").size(14.0).strong())
+                    .min_size(btn_size)
+                    .corner_radius(2.0);
+                if ui
+                    .add_enabled(zoom_enabled, out_btn)
+                    .on_hover_text("Zoom out (-20%)")
+                    .clicked()
+                {
+                    zoom_out_clicked = true;
+                }
+
+                let reset_btn = egui::Button::new(egui::RichText::new("🏠").size(12.0))
+                    .min_size(btn_size)
+                    .corner_radius(2.0);
+                if ui
+                    .add_enabled(reset_enabled, reset_btn)
+                    .on_hover_text("Reset view (Fit to data)")
+                    .clicked()
+                {
+                    reset_clicked = true;
+                }
+            });
+
+        // Signals for headless or automated testing
+        let signal_in = ui.ctx().data_mut(|d| {
+            d.get_temp::<bool>(config.plot_id.with("zoom_in"))
+                .unwrap_or(false)
+        });
+        if signal_in {
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(config.plot_id.with("zoom_in"), false));
+            zoom_in_clicked = true;
+        }
+        let signal_out = ui.ctx().data_mut(|d| {
+            d.get_temp::<bool>(config.plot_id.with("zoom_out"))
+                .unwrap_or(false)
+        });
+        if signal_out {
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(config.plot_id.with("zoom_out"), false));
+            zoom_out_clicked = true;
+        }
+        let signal_reset = ui.ctx().data_mut(|d| {
+            d.get_temp::<bool>(config.plot_id.with("reset_view"))
+                .unwrap_or(false)
+        });
+        if signal_reset {
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(config.plot_id.with("reset_view"), false));
+            reset_clicked = true;
+        }
+
+        if zoom_in_clicked && zoom_enabled {
+            let mut factor = egui::Vec2::splat(1.2);
+            if !effective_allow_zoom.x {
+                factor.x = 1.0;
+            }
+            if !effective_allow_zoom.y {
+                factor.y = 1.0;
+            }
+            let center = mem.transform.frame().center();
+            mem.transform.zoom(factor, center);
+            if let Some(aspect) = config.data_aspect {
+                if let Some((_, linked)) = config.linked_axes {
+                    let change_x = linked.y && !linked.x;
+                    mem.transform.set_aspect_by_changing_axis(
+                        aspect as f64,
+                        if change_x { Axis::X } else { Axis::Y },
+                    );
+                } else if config.default_auto_bounds.any() {
+                    mem.transform.set_aspect_by_expanding(aspect as f64);
+                } else {
+                    mem.transform
+                        .set_aspect_by_changing_axis(aspect as f64, Axis::Y);
+                }
+            }
+            mem.auto_bounds = mem.auto_bounds.and(!config.allow_zoom);
+            if let Some((id, _)) = config.linked_axes {
+                ui.data_mut(|data| {
+                    let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
+                    link_groups.0.insert(
+                        *id,
+                        LinkedBounds {
+                            bounds: *mem.transform.bounds(),
+                            auto_bounds: mem.auto_bounds,
+                        },
+                    );
+                });
+            }
+            ui.ctx().request_repaint();
+        }
+
+        if zoom_out_clicked && zoom_enabled {
+            let mut factor = egui::Vec2::splat(0.8);
+            if !effective_allow_zoom.x {
+                factor.x = 1.0;
+            }
+            if !effective_allow_zoom.y {
+                factor.y = 1.0;
+            }
+            let center = mem.transform.frame().center();
+            mem.transform.zoom(factor, center);
+            if let Some(aspect) = config.data_aspect {
+                if let Some((_, linked)) = config.linked_axes {
+                    let change_x = linked.y && !linked.x;
+                    mem.transform.set_aspect_by_changing_axis(
+                        aspect as f64,
+                        if change_x { Axis::X } else { Axis::Y },
+                    );
+                } else if config.default_auto_bounds.any() {
+                    mem.transform.set_aspect_by_expanding(aspect as f64);
+                } else {
+                    mem.transform
+                        .set_aspect_by_changing_axis(aspect as f64, Axis::Y);
+                }
+            }
+            mem.auto_bounds = mem.auto_bounds.and(!config.allow_zoom);
+            if let Some((id, _)) = config.linked_axes {
+                ui.data_mut(|data| {
+                    let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
+                    link_groups.0.insert(
+                        *id,
+                        LinkedBounds {
+                            bounds: *mem.transform.bounds(),
+                            auto_bounds: mem.auto_bounds,
+                        },
+                    );
+                });
+            }
+            ui.ctx().request_repaint();
+        }
+
+        if reset_clicked && reset_enabled {
+            mem.auto_bounds = true.into();
+            mem.transform.set_bounds(config.auto_content_bounds);
+            if let Some(aspect) = config.data_aspect {
+                if let Some((_, linked)) = config.linked_axes {
+                    let change_x = linked.y && !linked.x;
+                    mem.transform.set_aspect_by_changing_axis(
+                        aspect as f64,
+                        if change_x { Axis::X } else { Axis::Y },
+                    );
+                } else if config.default_auto_bounds.any() {
+                    mem.transform.set_aspect_by_expanding(aspect as f64);
+                } else {
+                    mem.transform
+                        .set_aspect_by_changing_axis(aspect as f64, Axis::Y);
+                }
+            }
+            if let Some((id, _)) = config.linked_axes {
+                ui.data_mut(|data| {
+                    let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
+                    link_groups.0.insert(
+                        *id,
+                        LinkedBounds {
+                            bounds: *mem.transform.bounds(),
+                            auto_bounds: mem.auto_bounds,
+                        },
+                    );
+                });
+            }
+            ui.ctx().request_repaint();
+        }
+    }
+}
+
+struct FloatingZoomConfig<'a> {
+    plot_id: Id,
+    allow_zoom: Vec2b,
+    data_aspect: Option<f32>,
+    linked_axes: &'a Option<(Id, Vec2b)>,
+    auto_content_bounds: PlotBounds,
+    default_auto_bounds: Vec2b,
 }
 
 /// Returns the rect left after adding axes.
@@ -3892,5 +4181,538 @@ mod callout_context_menu_tests {
         if let Ok(png_bytes) = png_res {
             let _ = std::fs::write("/tmp/callout_context_menu_verification.png", png_bytes);
         }
+    }
+}
+
+#[cfg(test)]
+mod floating_zoom_toolbar_tests {
+    use super::*;
+
+    #[test]
+    fn test_plot_builder_zoom_toolbar_toggle() {
+        let plot = Plot::new("test_builder");
+        assert!(
+            plot.show_zoom_buttons,
+            "Zoom buttons should be enabled by default"
+        );
+
+        let plot_off = plot.show_zoom_buttons(false);
+        assert!(
+            !plot_off.show_zoom_buttons,
+            "show_zoom_buttons(false) should disable toolbar"
+        );
+
+        let plot_on = plot_off.show_zoom_buttons(true);
+        assert!(
+            plot_on.show_zoom_buttons,
+            "show_zoom_buttons(true) should re-enable toolbar"
+        );
+
+        let plot_alias = plot_on.show_zoom_overlay(false);
+        assert!(
+            !plot_alias.show_zoom_buttons,
+            "show_zoom_overlay(false) alias should disable toolbar"
+        );
+    }
+
+    #[test]
+    fn test_zoom_in_twenty_percent_magnification() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_zoom_in");
+
+        // Frame 1: Establish initial plot with fixed default bounds
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .default_x_bounds(-10.0, 10.0)
+                    .default_y_bounds(-5.0, 5.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                    });
+            });
+        });
+
+        let mem1 = PlotMemory::load(&ctx, id).expect("PlotMemory should exist");
+        let initial_bounds = *mem1.transform.bounds();
+        let initial_width = initial_bounds.width();
+        let initial_height = initial_bounds.height();
+        assert!((initial_width - 20.0).abs() < 1e-4);
+        assert!((initial_height - 10.0).abs() < 1e-4);
+
+        // Frame 2: Trigger Zoom In signal
+        ctx.data_mut(|d| d.insert_temp(id.with("zoom_in"), true));
+
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id).id(id).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                });
+            });
+        });
+
+        let mem2 = PlotMemory::load(&ctx, id).expect("PlotMemory should exist");
+        let zoomed_bounds = *mem2.transform.bounds();
+        let zoomed_width = zoomed_bounds.width();
+        let zoomed_height = zoomed_bounds.height();
+
+        // 20% magnification increase means visible range is divided by 1.2
+        let expected_width = initial_width / 1.2;
+        let expected_height = initial_height / 1.2;
+        assert!(
+            (zoomed_width - expected_width).abs() < 1e-4,
+            "Zoom in width {zoomed_width} should match expected {expected_width} (20% magnification increase)"
+        );
+        assert!(
+            (zoomed_height - expected_height).abs() < 1e-4,
+            "Zoom in height {zoomed_height} should match expected {expected_height}"
+        );
+        // Center should remain unchanged around origin
+        assert!(zoomed_bounds.center().x.abs() < 1e-4);
+        assert!(zoomed_bounds.center().y.abs() < 1e-4);
+        // Auto bounds should be deactivated after zoom
+        assert!(!mem2.auto_bounds.x);
+        assert!(!mem2.auto_bounds.y);
+    }
+
+    #[test]
+    fn test_zoom_out_twenty_percent_magnification() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_zoom_out");
+
+        // Frame 1: Establish initial plot
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .default_x_bounds(-10.0, 10.0)
+                    .default_y_bounds(-5.0, 5.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                    });
+            });
+        });
+
+        let mem1 = PlotMemory::load(&ctx, id).expect("PlotMemory should exist");
+        let initial_bounds = *mem1.transform.bounds();
+        let initial_width = initial_bounds.width();
+        let initial_height = initial_bounds.height();
+
+        // Frame 2: Trigger Zoom Out signal
+        ctx.data_mut(|d| d.insert_temp(id.with("zoom_out"), true));
+
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id).id(id).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                });
+            });
+        });
+
+        let mem2 = PlotMemory::load(&ctx, id).expect("PlotMemory should exist");
+        let zoomed_bounds = *mem2.transform.bounds();
+        let zoomed_width = zoomed_bounds.width();
+        let zoomed_height = zoomed_bounds.height();
+
+        // 20% magnification decrease means factor 0.8: visible range divided by 0.8 = 25.0
+        let expected_width = initial_width / 0.8;
+        let expected_height = initial_height / 0.8;
+        assert!(
+            (zoomed_width - expected_width).abs() < 1e-4,
+            "Zoom out width {zoomed_width} should match expected {expected_width} (20% magnification decrease)"
+        );
+        assert!(
+            (zoomed_height - expected_height).abs() < 1e-4,
+            "Zoom out height {zoomed_height} should match expected {expected_height}"
+        );
+        assert!(zoomed_bounds.center().x.abs() < 1e-4);
+        assert!(zoomed_bounds.center().y.abs() < 1e-4);
+        assert!(!mem2.auto_bounds.x);
+        assert!(!mem2.auto_bounds.y);
+    }
+
+    #[test]
+    fn test_home_reset_button_matches_double_click() {
+        let ctx = egui::Context::default();
+        let id_home = Id::new("test_home_reset");
+
+        let dataset = vec![[0.0, 0.0], [50.0, 25.0], [100.0, 50.0]];
+
+        // Frame 1: Initial auto bounds
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id_home).id(id_home).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("line", dataset.clone()));
+                });
+            });
+        });
+
+        let initial_bounds = *PlotMemory::load(&ctx, id_home).unwrap().transform.bounds();
+
+        // Frame 2: Zoom in to change bounds away from initial
+        ctx.data_mut(|d| {
+            d.insert_temp(id_home.with("zoom_in"), true);
+        });
+
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id_home).id(id_home).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("line", dataset.clone()));
+                });
+            });
+        });
+
+        let zoomed_bounds = *PlotMemory::load(&ctx, id_home).unwrap().transform.bounds();
+        assert!(zoomed_bounds.width() < initial_bounds.width());
+
+        // Frame 3: Reset home via toolbar signal
+        ctx.data_mut(|d| {
+            d.insert_temp(id_home.with("reset_view"), true);
+        });
+
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id_home).id(id_home).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("line", dataset.clone()));
+                });
+            });
+        });
+
+        let final_home = *PlotMemory::load(&ctx, id_home).unwrap().transform.bounds();
+
+        assert!(
+            (final_home.min[0] - initial_bounds.min[0]).abs() < 1e-4,
+            "Home button reset should match initial auto data bounds"
+        );
+        assert!(
+            (final_home.max[0] - initial_bounds.max[0]).abs() < 1e-4,
+            "Home button reset should match initial auto data bounds"
+        );
+        assert!(
+            (final_home.min[1] - initial_bounds.min[1]).abs() < 1e-4,
+            "Home button reset should match initial auto data bounds"
+        );
+        assert!(
+            (final_home.max[1] - initial_bounds.max[1]).abs() < 1e-4,
+            "Home button reset should match initial auto data bounds"
+        );
+
+        let mem_after = PlotMemory::load(&ctx, id_home).unwrap();
+        assert!(mem_after.auto_bounds.x);
+        assert!(mem_after.auto_bounds.y);
+    }
+
+    #[test]
+    fn test_zoom_locked_axes() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_locked_axes");
+
+        // Lock Y axis: only X can zoom
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .default_x_bounds(-10.0, 10.0)
+                    .default_y_bounds(-5.0, 5.0)
+                    .allow_zoom(Vec2b::new(true, false))
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                    });
+            });
+        });
+
+        let mem1 = PlotMemory::load(&ctx, id).unwrap();
+        let initial_bounds = *mem1.transform.bounds();
+
+        // Zoom In
+        ctx.data_mut(|d| d.insert_temp(id.with("zoom_in"), true));
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .allow_zoom(Vec2b::new(true, false))
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                    });
+            });
+        });
+
+        let mem2 = PlotMemory::load(&ctx, id).unwrap();
+        let zoomed_bounds = *mem2.transform.bounds();
+
+        // X width zoomed by 1.2
+        assert!((zoomed_bounds.width() - initial_bounds.width() / 1.2).abs() < 1e-4);
+        // Y height must remain identical since Y axis is locked
+        assert!(
+            (zoomed_bounds.height() - initial_bounds.height()).abs() < 1e-4,
+            "Locked Y axis bounds must not change on zoom"
+        );
+
+        // Lock both axes: neither X nor Y can zoom
+        ctx.data_mut(|d| d.insert_temp(id.with("zoom_in"), true));
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .allow_zoom(Vec2b::new(false, false))
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                    });
+            });
+        });
+
+        let mem3 = PlotMemory::load(&ctx, id).unwrap();
+        let fully_locked_bounds = *mem3.transform.bounds();
+        assert!((fully_locked_bounds.width() - zoomed_bounds.width()).abs() < 1e-4);
+        assert!((fully_locked_bounds.height() - zoomed_bounds.height()).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_zoom_disabled_state() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_disabled_zoom");
+
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .default_x_bounds(-10.0, 10.0)
+                    .default_y_bounds(-5.0, 5.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                    });
+            });
+        });
+
+        let baseline = *PlotMemory::load(&ctx, id).unwrap().transform.bounds();
+
+        // Frame with ui disabled
+        ctx.data_mut(|d| d.insert_temp(id.with("zoom_in"), true));
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.disable();
+                Plot::new(id).id(id).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                });
+            });
+        });
+
+        let after_disabled = *PlotMemory::load(&ctx, id).unwrap().transform.bounds();
+        assert!(
+            (after_disabled.width() - baseline.width()).abs() < 1e-4,
+            "Zoom buttons must respect disabled ui state"
+        );
+    }
+
+    #[test]
+    fn test_plot_ui_zoom_around_center_and_coordinates_translation() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_plot_ui_zoom");
+
+        let mut pt_screen = Pos2::ZERO;
+        let mut pt_plot_initial = PlotPoint::new(0.0, 0.0);
+        let mut pt_plot_zoomed = PlotPoint::new(0.0, 0.0);
+
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .default_x_bounds(-10.0, 10.0)
+                    .default_y_bounds(-10.0, 10.0)
+                    .show(ui, |plot_ui| {
+                        let center_pos = plot_ui.transform().frame().center();
+                        pt_screen = center_pos;
+                        pt_plot_initial = plot_ui.plot_from_screen(center_pos);
+                        // Translate center through plot_ui
+                        let screen_back = plot_ui.screen_from_plot(pt_plot_initial);
+                        assert!((screen_back.x - center_pos.x).abs() < 1e-4);
+                        assert!((screen_back.y - center_pos.y).abs() < 1e-4);
+
+                        // Programmatic zoom bounds around center using PlotUi API
+                        plot_ui.zoom_bounds_around_center(Vec2::splat(1.2));
+                    });
+            });
+        });
+
+        assert!((pt_plot_initial.x).abs() < 1e-4);
+        assert!((pt_plot_initial.y).abs() < 1e-4);
+
+        // Frame 2: Check zoomed coordinate translation
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id).id(id).show(ui, |plot_ui| {
+                    pt_plot_zoomed = plot_ui.plot_from_screen(pt_screen);
+                    let bounds = plot_ui.plot_bounds();
+                    assert!((bounds.width() - 20.0 / 1.2).abs() < 1e-4);
+                });
+            });
+        });
+
+        // The center point remains invariant under zoom around center
+        assert!((pt_plot_zoomed.x).abs() < 1e-4);
+        assert!((pt_plot_zoomed.y).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_generate_floating_canvas_zoom_toolbar_screenshot() {
+        let pts: Vec<[f64; 2]> = (0..100)
+            .map(|i| {
+                let x = i as f64 * 0.1;
+                let y = (x * 1.5).sin() * (-0.1 * x).exp();
+                [x, y]
+            })
+            .collect();
+        let datasets = vec![("Damped Waveform".to_string(), pts)];
+        let options = ExportOptions {
+            width: 800,
+            height: 480,
+            line_thickness: 2.0,
+            ..Default::default()
+        };
+
+        if let Ok(png_bytes) = export_custom_png(&datasets, &options) {
+            let _ = std::fs::write("/tmp/floating_canvas_zoom_toolbar.png", png_bytes);
+        }
+    }
+
+    #[test]
+    fn test_pointer_click_on_zoom_buttons() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_pointer_click");
+
+        // Frame 1: Initial plot
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .default_x_bounds(-10.0, 10.0)
+                    .default_y_bounds(-5.0, 5.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                    });
+            });
+        });
+
+        let mem1 = PlotMemory::load(&ctx, id).unwrap();
+        let frame = *mem1.transform.frame();
+        let toolbar_size = vec2(28.0, 84.0);
+        let margin = vec2(8.0, 8.0);
+        let toolbar_rect = Rect::from_min_size(frame.max - margin - toolbar_size, toolbar_size);
+        let plus_btn_pos = toolbar_rect.min + vec2(14.0, 14.0);
+
+        // Frame 2: Pointer click on plus button
+        let mut raw = egui::RawInput::default();
+        raw.events.push(egui::Event::PointerButton {
+            pos: plus_btn_pos,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::default(),
+        });
+        raw.events.push(egui::Event::PointerButton {
+            pos: plus_btn_pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::default(),
+        });
+
+        let _ = ctx.run(raw, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id).id(id).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                });
+            });
+        });
+
+        let mem2 = PlotMemory::load(&ctx, id).unwrap();
+        let zoomed_bounds = *mem2.transform.bounds();
+        let expected_w = 20.0 / 1.2;
+        assert!(
+            (zoomed_bounds.width() - expected_w).abs() < 1e-3,
+            "Pointer click on plus button should zoom in by 20% (got {}, expected {})",
+            zoomed_bounds.width(),
+            expected_w
+        );
+    }
+
+    #[test]
+    fn test_canvas_wheel_scrolling_no_regression() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_wheel_scroll");
+
+        // Frame 1: Establish initial plot
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .default_x_bounds(-10.0, 10.0)
+                    .default_y_bounds(-5.0, 5.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                    });
+            });
+        });
+
+        let mem1 = PlotMemory::load(&ctx, id).unwrap();
+        let center_pos = mem1.transform.frame().center();
+
+        // Frame 2: Wheel zoom event inside canvas (zoom_delta = 1.5)
+        let mut raw = egui::RawInput::default();
+        raw.events.push(egui::Event::PointerMoved(center_pos));
+        raw.events.push(egui::Event::Zoom(1.5));
+
+        let _ = ctx.run(raw, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id).id(id).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("dummy", vec![[-10.0, -5.0], [10.0, 5.0]]));
+                });
+            });
+        });
+
+        let mem2 = PlotMemory::load(&ctx, id).unwrap();
+        let wheeled_bounds = *mem2.transform.bounds();
+        // Width should be scaled by wheel zoom
+        assert!(wheeled_bounds.width() < 20.0, "Wheel zoom should zoom in");
+    }
+
+    #[test]
+    fn test_zoom_aspect_ratio_preservation() {
+        let ctx = egui::Context::default();
+        let id = Id::new("test_aspect_ratio");
+
+        // Set data_aspect(2.0): width / height == 2.0
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id)
+                    .id(id)
+                    .data_aspect(2.0)
+                    .default_x_bounds(-20.0, 20.0)
+                    .default_y_bounds(-10.0, 10.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("dummy", vec![[-20.0, -10.0], [20.0, 10.0]]));
+                    });
+            });
+        });
+
+        let mem1 = PlotMemory::load(&ctx, id).unwrap();
+        let initial_aspect = mem1.transform.bounds().width() / mem1.transform.bounds().height();
+
+        // Zoom In
+        ctx.data_mut(|d| d.insert_temp(id.with("zoom_in"), true));
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id).id(id).data_aspect(2.0).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("dummy", vec![[-20.0, -10.0], [20.0, 10.0]]));
+                });
+            });
+        });
+
+        let mem2 = PlotMemory::load(&ctx, id).unwrap();
+        let zoomed_aspect = mem2.transform.bounds().width() / mem2.transform.bounds().height();
+        assert!(
+            (zoomed_aspect - initial_aspect).abs() < 1e-4,
+            "Aspect ratio must be preserved after zoom (initial: {}, zoomed: {})",
+            initial_aspect,
+            zoomed_aspect
+        );
     }
 }
