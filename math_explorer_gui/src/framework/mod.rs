@@ -297,7 +297,7 @@ impl SimulationFramework {
             selected_tool_index: None,
             input_mode: InputMode::Mouse,
             show_theory_portal: false,
-            show_starter_gallery: true,
+            show_starter_gallery: false,
             saved_tool_states: std::collections::HashMap::new(),
             search_query: String::new(),
             last_announced_count: None,
