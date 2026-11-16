@@ -446,16 +446,27 @@ impl eframe::App for MathExplorerApp {
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
 
         // Render Command Palette Overlay
-        if let Some(new_tab_idx) = self.command_palette.show(ctx, &self.tabs) {
-            if new_tab_idx < self.tabs.len() {
-                self.selected_tab = new_tab_idx;
-                let tab_name = self.tabs[new_tab_idx].name();
-                ctx.data_mut(|d| {
-                    d.insert_temp(
-                        egui::Id::new("aria_live_message"),
-                        format!("Switched to tab {}", tab_name),
-                    );
-                });
+        if let Some(selection) = self.command_palette.show(ctx, &self.tabs) {
+            if selection.tab_index < self.tabs.len() {
+                self.selected_tab = selection.tab_index;
+                let tab = &mut self.tabs[selection.tab_index];
+                let tab_name = tab.name();
+                if let Some(tool_name) = &selection.tool_name {
+                    tab.select_tool_by_name(tool_name);
+                    ctx.data_mut(|d| {
+                        d.insert_temp(
+                            egui::Id::new("aria_live_message"),
+                            format!("Switched to tool {} in tab {}", tool_name, tab_name),
+                        );
+                    });
+                } else {
+                    ctx.data_mut(|d| {
+                        d.insert_temp(
+                            egui::Id::new("aria_live_message"),
+                            format!("Switched to tab {}", tab_name),
+                        );
+                    });
+                }
             }
         }
 
