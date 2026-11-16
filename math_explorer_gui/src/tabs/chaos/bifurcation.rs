@@ -1,5 +1,6 @@
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
 use crate::framework::InteractiveTool;
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use egui_plot::{Plot, PlotPoint, Points};
 use scientific_metadata::theory::TheoryDescribable;
@@ -105,10 +106,20 @@ impl InteractiveTool for BifurcationDiagram {
             ui.separator();
 
             let mut changed = false;
-            changed |= ui.add(egui::Slider::new(&mut self.r_min, 0.0..=4.0).text("Min r"))
+            changed |= ui
+                .add(
+                    AnimatedSlider::new(&mut self.r_min, 0.0..=4.0)
+                        .text("Min r")
+                        .id_salt("bifurcation_r_min"),
+                )
                 .changed();
 
-            changed |= ui.add(egui::Slider::new(&mut self.r_max, self.r_min..=4.0).text("Max r"))
+            changed |= ui
+                .add(
+                    AnimatedSlider::new(&mut self.r_max, self.r_min..=4.0)
+                        .text("Max r")
+                        .id_salt("bifurcation_r_max"),
+                )
                 .changed();
 
             changed |= ui.add(egui::Slider::new(&mut self.steps, 100..=2000).text("Resolution (steps)"))
@@ -178,5 +189,45 @@ mod tests {
         let plot_points: egui_plot::PlotPoints<'_> = slice.into();
         assert!(matches!(plot_points, egui_plot::PlotPoints::Borrowed(_)));
         assert_eq!(plot_points.points().len(), tool.points.len());
+    }
+
+    #[test]
+    fn test_bifurcation_animated_slider_sweep() {
+        use crate::reflective_ui::AnimatedSliderState;
+        let mut tool = BifurcationDiagram::default();
+        let ctx = egui::Context::default();
+        let initial_r_min = tool.r_min;
+
+        // Simulate activating animation on r_min slider
+        let id = egui::Id::new("bifurcation_r_min");
+        ctx.data_mut(|d| {
+            d.insert_temp(
+                id,
+                AnimatedSliderState {
+                    playing: true,
+                    direction: 1.0,
+                },
+            );
+        });
+
+        let raw_input = egui::RawInput {
+            predicted_dt: 0.1,
+            ..Default::default()
+        };
+        let _ = ctx.run(raw_input, |ctx| {
+            tool.show(ctx);
+        });
+
+        // r_min should have increased, and recompute was triggered
+        assert!(tool.r_min > initial_r_min);
+
+        let points_vec: Vec<[f64; 2]> = tool.points.iter().map(|p| [p.x, p.y]).collect();
+        let datasets = vec![("Bifurcation Diagram (Logistic Map)".to_string(), points_vec)];
+        if let Ok(bytes) = egui_plot::export::export_custom_png(
+            &datasets,
+            &egui_plot::export::ExportOptions::default(),
+        ) {
+            let _ = std::fs::write("/tmp/bifurcation_diagram_animated.png", bytes);
+        }
     }
 }

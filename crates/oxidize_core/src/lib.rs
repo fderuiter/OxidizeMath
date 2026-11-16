@@ -113,7 +113,6 @@ pub trait SimulationModel: Sized {
 }
 
 #[cfg(test)]
-#[allow(dead_code)]
 mod tests {
     use super::*;
     use serde::{Deserialize, Serialize};
@@ -136,7 +135,6 @@ mod tests {
     impl ModelState for BooleanMaskState {}
 
     pub struct BooleanMaskSimulation {
-        config: BooleanMaskConfig,
         state: BooleanMaskState,
     }
 
@@ -155,12 +153,15 @@ mod tests {
             config: Self::Config,
             _provider: R,
         ) -> Result<Self, Self::Error> {
+            if config.width == 0 || config.height == 0 {
+                return Err(SimulationError::InitError);
+            }
             let state = BooleanMaskState {
                 grid: vec![false; config.width * config.height],
                 width: config.width,
                 height: config.height,
             };
-            Ok(Self { config, state })
+            Ok(Self { state })
         }
 
         fn step(&mut self) -> Result<(), Self::Error> {
@@ -185,14 +186,37 @@ mod tests {
         let provider = rng::OxidizeRng::new(42);
         let mut sim = BooleanMaskSimulation::initialize(config, provider).unwrap();
 
+        let state = sim.get_state();
+        assert_eq!(state.width, 10);
+        assert_eq!(state.height, 10);
+
         // Initial state should be all false
-        assert!(sim.get_state().grid.iter().all(|&x| !x));
+        assert!(state.grid.iter().all(|&x| !x));
 
         // Step
         sim.step().unwrap();
 
         // State should be all true
         assert!(sim.get_state().grid.iter().all(|&x| x));
+
+        // Zero dimensions should fail initialization with InitError
+        let zero_width_config = BooleanMaskConfig {
+            width: 0,
+            height: 10,
+        };
+        assert!(matches!(
+            BooleanMaskSimulation::initialize(zero_width_config, rng::OxidizeRng::new(42)),
+            Err(SimulationError::InitError)
+        ));
+
+        let zero_height_config = BooleanMaskConfig {
+            width: 10,
+            height: 0,
+        };
+        assert!(matches!(
+            BooleanMaskSimulation::initialize(zero_height_config, rng::OxidizeRng::new(42)),
+            Err(SimulationError::InitError)
+        ));
     }
 }
 #[allow(missing_docs)]

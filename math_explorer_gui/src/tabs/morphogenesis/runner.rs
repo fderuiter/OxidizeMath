@@ -1,0 +1,105 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use super::MorphogenesisTab;
+use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use std::sync::Arc;
+
+#[allow(missing_docs)]
+pub struct MorphogenesisSharedParams {
+    pub a: f64,
+    pub b: f64,
+    pub d_u: f64,
+    pub d_v: f64,
+    pub dt: f64,
+}
+
+#[allow(missing_docs)]
+pub struct MorphogenesisRunner {
+    pub(crate) system: TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+    pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+    pub(crate) width: usize,
+    pub(crate) height: usize,
+}
+
+impl FiniteStateGuard for MorphogenesisRunner {
+    fn is_finite_state(&self) -> bool {
+        self.system.u().iter().all(|&x| x.is_finite()) && self.system.v().iter().all(|&x| x.is_finite())
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        None
+    }
+
+    fn diverged(&self) -> bool {
+        !FiniteStateGuard::is_finite_state(self)
+    }
+}
+
+impl SimulationRunner for MorphogenesisRunner {
+    fn process_command(&mut self, cmd: SimCommand) {
+        match cmd {
+            SimCommand::Reset => {
+                MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
+            }
+            SimCommand::Custom(ref s) if s == "reinit" => {
+                MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
+            }
+            _ => {}
+        }
+    }
+
+    fn is_finite_state(&self) -> bool {
+        FiniteStateGuard::is_finite_state(self)
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        if !FiniteStateGuard::is_finite_state(self) {
+            Some(DiagnosticReport::new(
+                0.0,
+                0,
+                "concentration",
+                "Turing morphogenesis diverged: non-finite concentration encountered.",
+            ))
+        } else {
+            None
+        }
+    }
+
+    fn step(&mut self) {
+        if !FiniteStateGuard::is_finite_state(self) {
+            return;
+        }
+        let (a, b, d_u, d_v, dt) = {
+            let p = self.params.read().unwrap();
+            (p.a, p.b, p.d_u, p.d_v, p.dt)
+        };
+        if !dt.is_finite() || dt <= 0.0 || !a.is_finite() || !b.is_finite() || !d_u.is_finite() || !d_v.is_finite() {
+            return;
+        }
+        self.system.kinetics.a = a;
+        self.system.kinetics.b = b;
+        self.system.diffusion_coeffs[0] = d_u;
+        self.system.diffusion_coeffs[1] = d_v;
+        self.system.step(dt);
+    }
+
+    fn get_snapshot(&self) -> StateSnapshot {
+        let image =
+            MorphogenesisTab::plot_concentration(self.system.u(), self.width, self.height);
+        let pixels: Vec<eframe::egui::Color32> = image.pixels;
+        StateSnapshot {
+            width: self.width,
+            height: self.height,
+            pixels: Arc::new(std::sync::RwLock::new(pixels)),
+            custom_data: Vec::new(),
+            structured_data: None,
+        }
+    }
+
+    fn get_steps_per_frame(&self) -> usize {
+        1
+    }
+}

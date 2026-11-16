@@ -108,6 +108,19 @@ impl<'a> PlotUi<'a> {
         }
     }
 
+    /// Scale the plot bounds around the center of the plot viewport.
+    ///
+    /// Can be useful for implementing programmatic canvas zoom navigation.
+    ///
+    /// The plot bounds are divided by `zoom_factor`, therefore:
+    /// - `zoom_factor < 1.0` zooms out, i.e., increases the visible range to show more data.
+    /// - `zoom_factor > 1.0` zooms in, i.e., reduces the visible range to show more detail.
+    pub fn zoom_bounds_around_center(&mut self, zoom_factor: Vec2) {
+        let center_pos = self.last_plot_transform.frame().center();
+        let center_val = self.last_plot_transform.value_from_position(center_pos);
+        self.zoom_bounds(zoom_factor, center_val);
+    }
+
     /// The pointer position in plot coordinates. Independent of whether the pointer is in the plot area.
     pub fn pointer_coordinate(&self) -> Option<PlotPoint> {
         // We need to subtract the drag delta to keep in sync with the frame-delayed screen transform:

@@ -108,7 +108,6 @@ impl OdeSolverTool {
     }
 
     #[must_use]
-    #[allow(dead_code)]
     pub fn diverged(&self) -> bool {
         self.diverged
     }
@@ -229,7 +228,7 @@ impl OdeSolverTool {
     }
 
     fn update_callouts(&mut self) {
-        if !self.diverged && !self.y_series.is_empty() {
+        if !self.diverged() && !self.y_series.is_empty() {
             self.callout_manager.set_auto_callout(
                 "initial_condition",
                 [0.0, self.ic_y0],
@@ -244,7 +243,7 @@ impl OdeSolverTool {
                     [25.0, -25.0],
                 );
             }
-        } else if self.diverged {
+        } else if self.diverged() {
             self.callout_manager.clear_auto();
         }
     }
