@@ -117,6 +117,12 @@ pub trait ExplorerTab {
         }
     }
 
+    /// Activates a tool within this tab by name.
+    /// Returns true if a matching tool was found and activated.
+    fn select_tool_by_name(&mut self, _name: &str) -> bool {
+        false
+    }
+
     /// Serializes active preset state to a formatted JSON string with metadata envelope.
     #[allow(dead_code)]
     fn export_preset_json(&self) -> Result<String, String> {

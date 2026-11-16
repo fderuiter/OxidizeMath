@@ -485,7 +485,7 @@ inventory::submit! {
     crate::framework::ToolMetadata {
         name: "AttractorPlotter",
         domain: "chaos",
-        tags: &[],
+        tags: &["lorenz", "attractor", "chaos"],
         build: || Box::new(AttractorPlotter::default()),
     }
 }
