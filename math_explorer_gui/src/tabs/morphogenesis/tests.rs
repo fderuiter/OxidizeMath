@@ -165,6 +165,10 @@ fn test_morphogenesis_starter_gallery_lifecycle() {
     assert!(!loaded_tab.show_starter_gallery);
 }
 
+fn get_repaint_delay(output: &egui::FullOutput) -> std::time::Duration {
+    output.viewport_output.get(&egui::ViewportId::ROOT).unwrap().repaint_delay
+}
+
 #[test]
 fn test_morphogenesis_fault_halts_repaints_and_recovers() {
     let ctx = egui::Context::default();
@@ -189,6 +193,7 @@ fn test_morphogenesis_fault_halts_repaints_and_recovers() {
 
     // 1. Paused state: repaints halted
     let _ = tab.worker.send_command(SimCommand::Pause);
+    thread::sleep(Duration::from_millis(20));
     while tab.worker.update().is_some() {}
     tab.dirty = false;
 
@@ -198,12 +203,7 @@ fn test_morphogenesis_fault_halts_repaints_and_recovers() {
     let output_paused = ctx.run(egui::RawInput::default(), |ctx| {
         tab.show(ctx, &mut frame);
     });
-    let delay_paused = output_paused
-        .viewport_output
-        .get(&egui::ViewportId::ROOT)
-        .unwrap()
-        .repaint_delay;
-    assert_ne!(delay_paused, std::time::Duration::ZERO);
+    assert_ne!(get_repaint_delay(&output_paused), std::time::Duration::ZERO);
 
     // 2. Running state: repaints requested
     let _ = tab.worker.send_command(SimCommand::Start);
@@ -211,12 +211,12 @@ fn test_morphogenesis_fault_halts_repaints_and_recovers() {
         tab.show(ctx, &mut frame);
     });
     assert_eq!(tab.worker.state(), SimWorkerState::Running);
-    let delay_running = output_running
-        .viewport_output
-        .get(&egui::ViewportId::ROOT)
-        .unwrap()
-        .repaint_delay;
-    assert_eq!(delay_running, std::time::Duration::ZERO);
+    assert_eq!(get_repaint_delay(&output_running), std::time::Duration::ZERO);
+
+    // Pause running worker
+    let _ = tab.worker.send_command(SimCommand::Pause);
+    thread::sleep(Duration::from_millis(20));
+    while tab.worker.update().is_some() {}
 
     // 3. Faulted state: repaints halted
     tab.worker.set_state_for_test(SimWorkerState::Faulted);
@@ -228,12 +228,7 @@ fn test_morphogenesis_fault_halts_repaints_and_recovers() {
     let output_faulted = ctx.run(egui::RawInput::default(), |ctx| {
         tab.show(ctx, &mut frame);
     });
-    let delay_faulted = output_faulted
-        .viewport_output
-        .get(&egui::ViewportId::ROOT)
-        .unwrap()
-        .repaint_delay;
-    assert_ne!(delay_faulted, std::time::Duration::ZERO);
+    assert_ne!(get_repaint_delay(&output_faulted), std::time::Duration::ZERO);
 
     // 4. Retry recovery restores communication and sets state to Ready
     tab.retry();

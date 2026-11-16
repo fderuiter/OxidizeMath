@@ -5,6 +5,9 @@ use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 use std::sync::{LazyLock, RwLock};
 
+pub mod slider;
+pub use slider::{AnimatedSlider, AnimatedSliderState};
+
 /// Default fallback constraint used when metadata is missing.
 pub static DEFAULT_FALLBACK_CONSTRAINT: ParameterConstraint = ParameterConstraint {
     min: 0.0,
@@ -78,11 +81,11 @@ pub fn render_parameter_slider(
     let mut slider_response = None;
 
     ui.horizontal(|ui| {
-        let slider = egui::Slider::new(value, constraint.min..=constraint.max)
-            .step_by(constraint.step)
-            .text(label);
+        let animated_slider = AnimatedSlider::from_constraint(value, constraint)
+            .text(label)
+            .id_salt(label);
 
-        let slider_resp = ui.add(slider).accessible_hover_text(tooltip);
+        let slider_resp = ui.add(animated_slider).accessible_hover_text(tooltip);
 
         let help_btn = ui
             .add(egui::Button::new("❓").small())

@@ -1,7 +1,8 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use super::{UnifiedModel, UnifiedSimRunner};
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::{
-    BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner, StateSnapshot,
-};
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui::{ColorImage, TextureOptions};
@@ -9,111 +10,6 @@ use egui_plot::{Line, Plot, PlotImage, PlotPoint, PlotPoints};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-
-#[allow(missing_docs)]
-pub trait UnifiedModel: Send + 'static + scientific_metadata::theory::TheoryDescribable {
-    /// Initialize the model given the starting parameters.
-    fn new(params: &HashMap<String, f64>) -> Self
-    where
-        Self: Sized;
-
-    /// Step the simulation forward one tick.
-    fn step(&mut self, params: &HashMap<String, f64>);
-
-    /// Extract a visual snapshot of the state.
-    fn get_snapshot(&self) -> StateSnapshot;
-
-    /// Process any custom commands (e.g. ApplyBrush). Default is no-op.
-    fn process_command(&mut self, _cmd: SimCommand, _params: &HashMap<String, f64>) {}
-
-    /// Return parameter definitions for automatic UI generation.
-    fn parameters() -> HashMap<String, ParameterConstraint>
-    where
-        Self: Sized;
-
-    /// The name of the tool.
-    fn name() -> &'static str
-    where
-        Self: Sized;
-
-    /// Return the domain category of the model.
-    fn domain() -> &'static str
-    where
-        Self: Sized,
-    {
-        ""
-    }
-
-    /// Return presets that the model supports.
-    fn presets() -> Vec<(&'static str, HashMap<String, f64>)>
-    where
-        Self: Sized,
-    {
-        Vec::new()
-    }
-
-    /// Return custom actions that the model supports.
-    fn custom_actions() -> Vec<&'static str>
-    where
-        Self: Sized,
-    {
-        Vec::new()
-    }
-
-    /// Allow the model to draw custom visualization in the central panel.
-    /// Return true if custom rendering was performed.
-    fn custom_central_panel(_ui: &mut eframe::egui::Ui, _snapshot: Option<&StateSnapshot>) -> bool
-    where
-        Self: Sized,
-    {
-        false
-    }
-}
-
-#[allow(missing_docs)]
-pub struct UnifiedSimRunner<M: UnifiedModel> {
-    model: M,
-    params: Arc<RwLock<HashMap<String, f64>>>,
-    steps_per_frame: usize,
-}
-
-impl<M: UnifiedModel> UnifiedSimRunner<M> {
-    #[allow(missing_docs)]
-    pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
-        let initial_params = params.read().unwrap().clone();
-        Self {
-            model: M::new(&initial_params),
-            params,
-            steps_per_frame: 5,
-        }
-    }
-}
-
-impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
-    fn process_command(&mut self, cmd: SimCommand) {
-        let current_params = self.params.read().unwrap().clone();
-        match cmd {
-            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
-            SimCommand::Reset => {
-                self.model = M::new(&current_params);
-            }
-            _ => self.model.process_command(cmd, &current_params),
-        }
-    }
-
-    fn step(&mut self) {
-        let current_params = self.params.read().unwrap().clone();
-        self.model.step(&current_params);
-    }
-
-    fn get_snapshot(&self) -> StateSnapshot {
-        self.model.get_snapshot()
-    }
-
-    fn get_steps_per_frame(&self) -> usize {
-        self.steps_per_frame
-    }
-}
 
 #[allow(missing_docs)]
 pub struct UnifiedSimTool<M: UnifiedModel> {
@@ -182,6 +78,51 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             self.controller = BackgroundWorker::new(runner);
         } else {
             let _ = self.controller.send_command(SimCommand::Reset);
+        }
+    }
+
+    fn handle_recovery_action(&mut self, action: crate::framework::recovery::RecoveryAction) {
+        use crate::framework::recovery::RecoveryAction;
+        match action {
+            RecoveryAction::AutoScaleStepSize => {
+                let mut p = self.params.write().unwrap();
+                if let Some(dt) = p.get_mut("dt") {
+                    *dt = (*dt * 0.5).max(1e-4);
+                } else if let Some(visc) = p.get_mut("viscosity") {
+                    *visc = (*visc * 0.5).max(0.00333);
+                }
+                drop(p);
+                self.reset_simulation();
+            }
+            RecoveryAction::ClampParameters => {
+                let mut p = self.params.write().unwrap();
+                for (name, c) in &self.param_metadata {
+                    if let Some(v) = p.get_mut(name) {
+                        *v = if !v.is_finite() {
+                            (c.min + c.max) / 2.0
+                        } else {
+                            v.clamp(c.min, c.max)
+                        };
+                    }
+                }
+                drop(p);
+                self.reset_simulation();
+            }
+            RecoveryAction::ResetParameters => {
+                let mut p = self.params.write().unwrap();
+                for (name, c) in &self.param_metadata {
+                    let d = match name.as_str() {
+                        "viscosity" => 0.02,
+                        "dt" => 0.05,
+                        "potential_type" => 0.0,
+                        _ => (c.min + c.max) / 2.0,
+                    };
+                    p.insert(name.clone(), d);
+                }
+                drop(p);
+                self.reset_simulation();
+                let _ = self.controller.send_command(SimCommand::Start);
+            }
         }
     }
 
@@ -259,6 +200,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         egui::SidePanel::left(format!("{}_controls", M::name())).show(ctx, |ui| {
             ui.heading(M::name());
             ui.separator();
+
+            if state == SimWorkerState::Faulted || self.controller.diagnostic_report().is_some() {
+                if let Some(action) = crate::framework::recovery::render_recovery_banner(
+                    ui,
+                    self.controller.diagnostic_report(),
+                ) {
+                    self.handle_recovery_action(action);
+                }
+                ui.separator();
+            }
 
             ui.horizontal(|ui| {
                 ui.label("Status:");
