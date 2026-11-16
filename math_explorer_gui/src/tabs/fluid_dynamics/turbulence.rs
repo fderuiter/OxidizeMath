@@ -252,8 +252,24 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for TurbulenceTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        let re = (self.density * self.velocity * self.length) / self.dynamic_viscosity;
+        let geom_str = match self.geometry {
+            Geometry::Pipe => "pipe flow with critical threshold $Re_c \\approx 2300$",
+            Geometry::FlatPlate => "boundary layer over a flat plate with transition threshold $Re_c \\approx 5 \\times 10^5$",
+        };
+        format!(
+            "Fluid flow regime analysis for {} governed by Reynolds number $Re = \\frac{{\\rho v L}}{{\\mu}} = {:.1}$.",
+            geom_str, re
+        )
+    }
+    fn phonetic_description(&self) -> String { "Reynolds number and turbulence flow regime theory".into() }
+    fn theory_citation(&self) -> String { "Turbulent Flows (Pope, 2000); Boundary-Layer Theory (Schlichting & Gersten, 2016)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Laminar".into(), "Viscous forces dominate, smooth streamline flow".into());
+        map.insert("Transitional".into(), "Onset of turbulent spots and velocity fluctuations".into());
+        map.insert("Turbulent".into(), "Inertial forces dominate, chaotic eddy vortex cascades".into());
+        map
+    }
 }

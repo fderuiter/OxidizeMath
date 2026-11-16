@@ -172,8 +172,18 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for DoseCalculationTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Radiation therapy dose distribution computed via point spread function (PSF) kernel convolution: $D(\\vec{{r}}) = \\int \\Phi(\\vec{{r}}') K(\\vec{{r}} - \\vec{{r}}') d^3\\vec{{r}}'$, using an exponential kernel $K(r) = \\frac{{A}}{{r^2}} e^{{-\\beta r}}$ with amplitude $A = {:.2}$ and attenuation coefficient $\\beta = {:.2}$.",
+            self.amplitude, self.beta
+        )
+    }
+    fn phonetic_description(&self) -> String { "Radiation therapy dose calculation and convolution kernel theory".into() }
+    fn theory_citation(&self) -> String { "The Physics of Radiation Therapy (Khan, 2014); Convolution/superposition dose calculation (Mackie et al., 1985)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("amplitude".into(), "Kernel primary energy fluence scaling factor A".into());
+        map.insert("beta".into(), "Radial dose attenuation and scattering decay coefficient beta".into());
+        map
+    }
 }

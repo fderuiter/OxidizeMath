@@ -459,9 +459,11 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for QTableInspectorTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        "Q-learning temporal difference control: $Q(s, a) \\leftarrow Q(s, a) + \\alpha \\left[ r + \\gamma \\max_{a'} Q(s', a') - Q(s, a) \\right]$, converging to the optimal action-value function satisfying the Bellman optimality equation.".into()
+    }
+    fn phonetic_description(&self) -> String { "Q-learning and Bellman optimality equation theory".into() }
+    fn theory_citation(&self) -> String { "Reinforcement Learning: An Introduction (Sutton & Barto, 2018)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
 

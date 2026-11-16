@@ -232,9 +232,14 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for SpinVisualizer {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Quantum spin-1/2 state $|\\psi\\rangle = \\alpha |0\\rangle + \\beta |1\\rangle$ on the Bloch sphere evolved under Zeeman interaction Hamiltonian $H = -\\vec{{\\mu}} \\cdot \\vec{{B}} = -\\frac{{g \\mu_B}}{{\\hbar}} \\vec{{S}} \\cdot \\vec{{B}}$ with magnetic field $\\vec{{B}} = [{:.2}, {:.2}, {:.2}]$.",
+            self.b_field[0], self.b_field[1], self.b_field[2]
+        )
+    }
+    fn phonetic_description(&self) -> String { "Quantum spin-1/2 Bloch sphere dynamics and Zeeman effect theory".into() }
+    fn theory_citation(&self) -> String { "Principles of Quantum Mechanics (Shankar, 2012); Quantum Mechanics: Concepts and Applications (Zettili, 2009)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
 

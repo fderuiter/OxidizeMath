@@ -259,8 +259,13 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for CeraTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Climate-Equivariant Representation Architecture (CERA) aligning atmospheric fields across climate regimes with {} input channels, {} latent channels, and {} vertical pressure levels.",
+            self.in_channels, self.latent_channels, self.num_levels
+        )
+    }
+    fn phonetic_description(&self) -> String { "Climate-Equivariant Representation Architecture theory".into() }
+    fn theory_citation(&self) -> String { "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

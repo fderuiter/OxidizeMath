@@ -194,8 +194,13 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for PrimeSpiralWidget {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Ulam prime spiral mapping natural numbers along a rectangular 2D spiral of size {}x{}, visualizing diagonal clustering of prime numbers along quadratic polynomials $f(n) = 4n^2 + bn + c$.",
+            self.grid_size, self.grid_size
+        )
+    }
+    fn phonetic_description(&self) -> String { "Ulam prime spiral and quadratic prime polynomial theory".into() }
+    fn theory_citation(&self) -> String { "A Visual Display of Prime Numbers (Ulam, 1964); A visual display of prime numbers (Stein, Ulam, & Wells, 1964)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

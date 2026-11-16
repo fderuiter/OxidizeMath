@@ -200,8 +200,22 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for RandomizationTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        let scheme = match self.randomization_type {
+            RandomizationType::Simple => "simple Bernoulli randomization with equal allocation probability $P(\\text{Treatment}) = 0.5$",
+            RandomizationType::Block => "permuted block randomization with block size guaranteeing periodic balance",
+        };
+        format!(
+            "Clinical trial subject allocation using {} for $N = {}$ subjects to eliminate selection bias and balance prognostic factors.",
+            scheme, self.n_subjects
+        )
+    }
+    fn phonetic_description(&self) -> String { "Clinical trial randomization allocation theory".into() }
+    fn theory_citation(&self) -> String { "Randomization in Clinical Trials: Theory and Practice (Rosenberger & Lachin, 2015)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Simple".into(), "Independent coin-toss allocation with potential small-sample imbalance".into());
+        map.insert("Block".into(), "Permuted block allocation ensuring exact balance at block boundaries".into());
+        map
+    }
 }

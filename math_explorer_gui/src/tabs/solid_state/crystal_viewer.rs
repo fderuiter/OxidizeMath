@@ -234,8 +234,24 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for CrystalViewer {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        let (sys_name, formula) = match self.system {
+            CrystalSystemEnum::SimpleCubic => ("Simple Cubic (SC)", "1 atom per unit cell, coordination number 6, packing fraction $\\pi/6 \\approx 0.52$"),
+            CrystalSystemEnum::BodyCenteredCubic => ("Body-Centered Cubic (BCC)", "2 atoms per unit cell, coordination number 8, packing fraction $\\sqrt{3}\\pi/8 \\approx 0.68$"),
+            CrystalSystemEnum::FaceCenteredCubic => ("Face-Centered Cubic (FCC)", "4 atoms per unit cell, coordination number 12, close-packed fraction $\\pi/(3\\sqrt{2}) \\approx 0.74$"),
+        };
+        format!(
+            "Crystallographic Bravais lattice geometry for {} with lattice constant $a = {:.2}\\,\\text{{\\AA}}$: {}.",
+            sys_name, self.lattice_constant, formula
+        )
+    }
+    fn phonetic_description(&self) -> String { "Crystallographic Bravais lattice and unit cell geometry theory".into() }
+    fn theory_citation(&self) -> String { "Introduction to Solid State Physics (Kittel, 2004); Solid State Physics (Ashcroft & Mermin, 1976)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("SimpleCubic".into(), "Primitive cubic lattice with basis at (0,0,0)".into());
+        map.insert("BCC".into(), "Body-centered lattice with basis at (0,0,0) and (1/2, 1/2, 1/2)".into());
+        map.insert("FCC".into(), "Face-centered close-packed cubic lattice".into());
+        map
+    }
 }

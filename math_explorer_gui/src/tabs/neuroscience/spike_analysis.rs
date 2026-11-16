@@ -279,9 +279,14 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for SpikeAnalysisTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Hodgkin-Huxley action potential kinetics and inter-spike interval (ISI) statistical distribution under injected current $I_{{ext}} = {:.1}\\,\\mu\\text{{A/cm}}^2$: $C_m \\frac{{dV}}{{dt}} = I_{{ext}} - \\bar{{g}}_{{Na}} m^3 h (V - E_{{Na}}) - \\bar{{g}}_K n^4 (V - E_K) - g_L (V - E_L)$ with detection threshold {:.1}\\,\\text{{mV}}.",
+            self.input_current, self.spike_threshold
+        )
+    }
+    fn phonetic_description(&self) -> String { "Hodgkin-Huxley action potential spike train and inter-spike interval theory".into() }
+    fn theory_citation(&self) -> String { "A Quantitative Description of Membrane Current and Its Application to Conduction and Excitation in Nerve (Hodgkin & Huxley, 1952); Neuronal Dynamics (Gerstner et al., 2014)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
 

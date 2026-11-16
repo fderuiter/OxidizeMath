@@ -260,8 +260,24 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for NetworkMetricsTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn theory_description(&self) -> String {
+        let metric_str = match self.selected_metric {
+            MetricType::DegreeCentrality => "degree centrality $C_D(v) = \\frac{\\deg(v)}{|V|-1}$",
+            MetricType::ClosenessCentrality => "closeness centrality $C_C(v) = \\frac{|V|-1}{\\sum_{u \\neq v} d(v, u)}$",
+            MetricType::ClusteringCoefficient => "Watts-Strogatz local clustering coefficient $C_v = \\frac{2 e_v}{k_v(k_v-1)}$",
+        };
+        format!(
+            "Complex network topological parameter analysis computing {}.",
+            metric_str
+        )
+    }
+    fn phonetic_description(&self) -> String { "Network metrics and graph centrality theory".into() }
+    fn theory_citation(&self) -> String { "Collective Dynamics of 'Small-World' Networks (Watts & Strogatz, 1998); Networks (Newman, 2010)".into() }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("DegreeCentrality".into(), "Normalized count of incident edges per vertex".into());
+        map.insert("ClosenessCentrality".into(), "Reciprocal of average geodesic distance to all reachable vertices".into());
+        map.insert("ClusteringCoefficient".into(), "Fraction of neighbor pairs that are mutually connected".into());
+        map
+    }
 }

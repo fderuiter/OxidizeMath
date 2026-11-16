@@ -207,8 +207,10 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for NetworkPropagationTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        "Stochastic contact network epidemic propagation: infection transmission across graph edges with per-contact probability $\\beta$, recovery rate $\\gamma$, and state transitions $S \\to I \\to R$ conditioned on local node degree.".into()
+    }
+    fn phonetic_description(&self) -> String { "Network epidemic propagation and contact graph theory".into() }
+    fn theory_citation(&self) -> String { "Epidemic processes in complex networks (Pastor-Satorras et al., 2015); Networks (Newman, 2010)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

@@ -315,13 +315,13 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for RewardPlotsTool {
     fn theory_description(&self) -> String {
-        "Theoretical context not available.".into()
+        "Reinforcement learning episodic return: cumulative discounted reward $G_t = \\sum_{k=0}^{\\infty} \\gamma^k R_{t+k+1}$, illustrating policy convergence and variance reduction across training episodes.".into()
     }
     fn phonetic_description(&self) -> String {
-        "Theoretical context not available.".into()
+        "Reinforcement learning episodic reward and return theory".into()
     }
     fn theory_citation(&self) -> String {
-        "Uncited".into()
+        "Reinforcement Learning: An Introduction (Sutton & Barto, 2018)".into()
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()

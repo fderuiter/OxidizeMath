@@ -125,8 +125,10 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for FactorizationTool {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        "Integer factorization into unique prime powers by the Fundamental Theorem of Arithmetic: $n = \\prod_{i=1}^k p_i^{a_i}$, with deterministic trial division and probabilistic Miller-Rabin primality certification.".into()
+    }
+    fn phonetic_description(&self) -> String { "Fundamental Theorem of Arithmetic prime factorization theory".into() }
+    fn theory_citation(&self) -> String { "An Introduction to the Theory of Numbers (Hardy & Wright, 2008)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }

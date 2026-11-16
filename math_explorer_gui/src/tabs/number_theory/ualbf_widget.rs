@@ -126,8 +126,13 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for UalbfWidget {
-    fn theory_description(&self) -> String { "Theoretical context not available.".into() }
-    fn phonetic_description(&self) -> String { "Theoretical context not available.".into() }
-    fn theory_citation(&self) -> String { "Uncited".into() }
+    fn theory_description(&self) -> String {
+        format!(
+            "Unified Algebraic-Lattice Bipartition Framework (UALBF) for establishing lower bounds on hypothetical quasiperfect numbers, searching prime base $p \\le {}$ with maximum exponent {}.",
+            self.limit_p, self.max_exponent
+        )
+    }
+    fn phonetic_description(&self) -> String { "Unified Algebraic-Lattice Bipartition Framework for quasiperfect numbers theory".into() }
+    fn theory_citation(&self) -> String { "Unified Algebraic-Lattice Bipartition Framework for Quasiperfect Numbers (de Ruiter, 2025)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
