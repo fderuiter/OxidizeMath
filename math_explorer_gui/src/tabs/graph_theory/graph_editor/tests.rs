@@ -110,6 +110,7 @@ fn test_drag_node_saves_one_snapshot() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn test_canvas_draw_resolves_dynamic_theme_colors() {
     let mut tool = GraphEditorTool::default();
     tool.node_positions.insert(0, Pos2::new(10.0, 10.0));
