@@ -32,6 +32,14 @@ impl ExplorerTab for GameTheoryTab {
     fn load_state(&mut self, state: &str) {
         self.framework.load_state(state);
     }
+
+    fn domain(&self) -> &'static str {
+        "game_theory"
+    }
+
+    fn select_tool_by_name(&mut self, name: &str) -> bool {
+        self.framework.select_tool_by_name(name)
+    }
 }
 
 // [cite:graph_parameters_rust]
