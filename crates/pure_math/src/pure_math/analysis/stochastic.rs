@@ -56,7 +56,6 @@ pub struct GillespieSolver<R> {
     rng: R,
     /// Reusable buffer for propensities to avoid allocation per step.
     buffer: Vec<f64>,
-    is_first_step: bool,
 }
 
 impl<R: Rng> GillespieSolver<R> {
@@ -65,11 +64,15 @@ impl<R: Rng> GillespieSolver<R> {
     /// This allows for deterministic simulations by passing a seeded RNG.
     #[verified_engine::verified]
     pub fn new(rng: R) -> Self {
+        Self::with_capacity(rng, 16)
+    }
+
+    /// Creates a new solver with the provided random number generator and buffer capacity.
+    #[verified_engine::verified]
+    pub fn with_capacity(rng: R, capacity: usize) -> Self {
         Self {
             rng,
-            // Pre-allocate space for a reasonable number of reactions
-            buffer: Vec::with_capacity(16),
-            is_first_step: true,
+            buffer: Vec::with_capacity(capacity),
         }
     }
 
@@ -82,20 +85,9 @@ impl<R: Rng> GillespieSolver<R> {
     where
         S: StochasticSystem<State>,
     {
-        let _guard = if self.is_first_step {
-            let mut temp = Vec::new();
-            system.propensities(state, &mut temp);
-            self.buffer.reserve_exact(temp.len());
-            self.buffer.extend(temp);
-            self.is_first_step = false;
-            AllocationLockGuard::lock()
-        } else {
-            let guard = AllocationLockGuard::lock();
-            // Reuse internal buffer
-            self.buffer.clear();
-            system.propensities(state, &mut self.buffer);
-            guard
-        };
+        let _guard = AllocationLockGuard::lock();
+        self.buffer.clear();
+        system.propensities(state, &mut self.buffer);
 
         let rates = &self.buffer;
 
@@ -195,6 +187,91 @@ mod tests {
         // With k=0.1, mean lifetime is 10.0. In 10.0 time units, approx 1/e remain.
         assert!(state.x < 100);
         assert!(state.x > 0);
+        Ok(())
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_gillespie_solver_verified_run() -> Result<(), StochasticError> {
+        let rng = oxidize_core::rng::OxidizeRng::default();
+        let mut solver = GillespieSolver::new(rng);
+        let model = DecayModel { k: 0.1 };
+        let mut state = DecayState { x: 100 };
+
+        let (result, _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            solver.step(&model, &mut state)
+        });
+
+        let dt = result?;
+        assert!(dt > 0.0);
+        assert_eq!(state.x, 99);
+        Ok(())
+    }
+
+    struct MultiReactionModel {
+        num_reactions: usize,
+    }
+
+    struct MultiState {
+        counts: [i32; 32],
+    }
+
+    impl StochasticSystem<MultiState> for MultiReactionModel {
+        #[verified_engine::verified]
+        fn propensities(&self, _state: &MultiState, out: &mut Vec<f64>) {
+            for _ in 0..self.num_reactions {
+                out.push(1.0);
+            }
+        }
+
+        #[verified_engine::verified]
+        fn react(
+            &self,
+            state: &mut MultiState,
+            reaction_index: usize,
+        ) -> Result<(), StochasticError> {
+            if reaction_index < state.counts.len() {
+                state.counts[reaction_index] += 1;
+                Ok(())
+            } else {
+                Err(StochasticError::InvalidReactionIndex(reaction_index))
+            }
+        }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_gillespie_solver_with_capacity() -> Result<(), StochasticError> {
+        let n_reactions = 32;
+        let rng = oxidize_core::rng::OxidizeRng::default();
+        let mut solver = GillespieSolver::with_capacity(rng, n_reactions);
+        let model = MultiReactionModel {
+            num_reactions: n_reactions,
+        };
+        let mut state = MultiState { counts: [0; 32] };
+
+        let (result, _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            solver.step(&model, &mut state)
+        });
+
+        let dt = result?;
+        assert!(dt > 0.0);
+        assert_eq!(state.counts.iter().sum::<i32>(), 1);
+        Ok(())
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_gillespie_solver_zero_propensity() -> Result<(), StochasticError> {
+        let rng = oxidize_core::rng::OxidizeRng::default();
+        let mut solver = GillespieSolver::new(rng);
+        let model = DecayModel { k: 0.1 };
+        let mut state = DecayState { x: 0 };
+
+        let initial_x = state.x;
+        let dt = solver.step(&model, &mut state)?;
+        assert_eq!(dt, f64::INFINITY);
+        assert_eq!(state.x, initial_x);
         Ok(())
     }
 }
