@@ -34,10 +34,10 @@ pub use crate::{
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
     export::{
         AspectRatioOption, ExportFrame, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
-        color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard, export_csv,
-        export_custom_gif, export_custom_image, export_custom_png, export_custom_svg, export_json,
-        export_svg, export_svg_filename, parse_csv, save_file_dialog, trigger_import_csv,
-        trigger_import_csv_for_plot,
+        color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard,
+        copy_image_to_clipboard_with_callback, export_csv, export_custom_gif, export_custom_image,
+        export_custom_png, export_custom_svg, export_json, export_svg, export_svg_filename,
+        parse_csv, save_file_dialog, trigger_import_csv, trigger_import_csv_for_plot,
     },
     fit::{FitResult, FitType, fit_dataset},
     items::{
@@ -1579,6 +1579,12 @@ impl<'a> Plot<'a> {
                 ..Default::default()
             });
 
+        if let Some(msg) =
+            ui.data_mut(|d| d.remove_temp::<String>(plot_id.with("async_clipboard_status")))
+        {
+            access_state.status_message = Some(msg);
+        }
+
         if ui.ctx().data_mut(|d| {
             d.get_temp::<bool>(plot_id.with("toggle_settings"))
                 .unwrap_or(false)
@@ -2008,10 +2014,41 @@ impl<'a> Plot<'a> {
                         if ui.button("📋 Copy to Clipboard").clicked() {
                             match export::export_custom_image(&export_datasets, &options) {
                                 Ok(color_img) => {
-                                    match export::copy_image_to_clipboard(&color_img) {
+                                    let ctx = ui.ctx().clone();
+                                    let target_id = plot_id;
+                                    match export::copy_image_to_clipboard_with_callback(
+                                        &color_img,
+                                        move |res| {
+                                            ctx.data_mut(|d| {
+                                                let msg = match res {
+                                                    Ok(_) => "Copied plot image to clipboard!"
+                                                        .to_string(),
+                                                    Err(e) => {
+                                                        format!("Clipboard copy failed: {e}")
+                                                    }
+                                                };
+                                                d.insert_temp(
+                                                    target_id.with("async_clipboard_status"),
+                                                    msg,
+                                                );
+                                            });
+                                            ctx.request_repaint();
+                                        },
+                                    ) {
                                         Ok(_) => {
-                                            access_state.status_message =
-                                                Some("Copied plot image to clipboard!".to_string());
+                                            #[cfg(not(target_arch = "wasm32"))]
+                                            {
+                                                access_state.status_message = Some(
+                                                    "Copied plot image to clipboard!".to_string(),
+                                                );
+                                            }
+                                            #[cfg(target_arch = "wasm32")]
+                                            {
+                                                access_state.status_message = Some(
+                                                    "Copying plot image to clipboard..."
+                                                        .to_string(),
+                                                );
+                                            }
                                         }
                                         Err(e) => {
                                             access_state.status_message =
