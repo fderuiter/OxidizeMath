@@ -1,5 +1,7 @@
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::{BackgroundWorker, SimCommand, SimulationRunner, StateSnapshot};
+use crate::async_sim::{
+    BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner, StateSnapshot,
+};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -81,18 +83,54 @@ impl SimulationRunner for IsingRunner {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct IsingState {
+    temperature: f64,
+    j_coupling: f64,
+    h_field: f64,
+    #[serde(default)]
+    state: Option<SimWorkerState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    running: Option<bool>,
+    steps_per_frame: usize,
+}
+
 pub struct IsingModelTool {
     lattice: SpinLattice,
     temperature: f64,
     j_coupling: f64,
     h_field: f64,
-    running: bool,
     steps_per_frame: usize,
     texture: Option<egui::TextureHandle>,
     pixels: Vec<egui::Color32>,
     dirty: bool,
     params: Arc<std::sync::RwLock<IsingSharedParams>>,
-    worker: BackgroundWorker<IsingRunner>,
+    pub worker: BackgroundWorker<IsingRunner>,
+}
+
+impl IsingModelTool {
+    #[allow(missing_docs)]
+    pub fn restart_worker(&mut self) {
+        let w = self.lattice.width();
+        let h = self.lattice.height();
+        let mut lattice = SpinLattice::new(w, h, None);
+        for y in 0..h {
+            for x in 0..w {
+                lattice.set(x, y, self.lattice.get(x, y));
+            }
+        }
+        let runner = IsingRunner {
+            lattice,
+            params: Arc::clone(&self.params),
+        };
+        self.worker = BackgroundWorker::new(runner);
+        self.dirty = true;
+    }
+
+    #[allow(missing_docs)]
+    pub fn retry(&mut self) {
+        self.restart_worker();
+    }
 }
 
 impl Default for IsingModelTool {
@@ -117,7 +155,6 @@ impl Default for IsingModelTool {
             temperature,
             j_coupling,
             h_field,
-            running: false,
             steps_per_frame,
             texture: None,
             pixels: Vec::new(),
@@ -138,38 +175,42 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct IsingState {
-            temperature: f64,
-            j_coupling: f64,
-            h_field: f64,
-            running: bool,
-            steps_per_frame: usize,
-        }
         serde_json::to_string(&IsingState {
             temperature: self.temperature,
             j_coupling: self.j_coupling,
             h_field: self.h_field,
-            running: self.running,
+            state: Some(self.worker.state()),
+            running: None,
             steps_per_frame: self.steps_per_frame,
         }).ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct IsingState {
-            temperature: f64,
-            j_coupling: f64,
-            h_field: f64,
-            running: bool,
-            steps_per_frame: usize,
-        }
         if let Ok(s) = serde_json::from_str::<IsingState>(state) {
             self.temperature = s.temperature;
             self.j_coupling = s.j_coupling;
             self.h_field = s.h_field;
-            self.running = s.running;
             self.steps_per_frame = s.steps_per_frame;
+            if let Ok(mut p) = self.params.write() {
+                p.temperature = self.temperature;
+                p.j_coupling = self.j_coupling;
+                p.h_field = self.h_field;
+                p.steps_per_frame = self.steps_per_frame;
+            }
+            let target_state = s.state.unwrap_or_else(|| {
+                if s.running.unwrap_or(false) {
+                    SimWorkerState::Running
+                } else {
+                    SimWorkerState::Ready
+                }
+            });
+            if target_state == SimWorkerState::Running {
+                if !self.worker.is_running() {
+                    let _ = self.worker.send_command(SimCommand::Start);
+                }
+            } else if self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
             self.dirty = true;
         }
     }
@@ -183,6 +224,23 @@ impl InteractiveTool for IsingModelTool {
             .show(ctx, |ui| {
                 ui.heading("Ising Model Controls");
                 ui.separator();
+
+                if self.worker.state() == SimWorkerState::Faulted {
+                    ui.group(|ui| {
+                        ui.colored_label(
+                            egui::Color32::RED,
+                            "⚠ Simulation worker faulted. Channel disconnected or worker crashed.",
+                        );
+                        if ui
+                            .button("🔄 Retry")
+                            .accessible_hover_text("Restart the simulation worker")
+                            .clicked()
+                        {
+                            self.retry();
+                        }
+                    });
+                    ui.separator();
+                }
 
                 if ui
                     .add(egui::Slider::new(&mut self.temperature, 0.1..=10.0).text("Temperature (T) - K (relative)"))
@@ -227,24 +285,27 @@ impl InteractiveTool for IsingModelTool {
                 ui.separator();
 
                 ui.horizontal(|ui| {
+                    let is_running = self.worker.state().is_running();
+                    let can_toggle = matches!(
+                        self.worker.state(),
+                        SimWorkerState::Ready | SimWorkerState::Running
+                    );
                     if ui
-                        .button(if self.running {
-                            "⏸ Pause"
-                        } else {
-                            "▶ Play"
-                        })
-                        .accessible_hover_text(if self.running {
+                        .add_enabled(
+                            can_toggle,
+                            egui::Button::new(if is_running { "⏸ Pause" } else { "▶ Play" }),
+                        )
+                        .accessible_hover_text(if is_running {
                             "Pause the Ising model simulation"
                         } else {
                             "Resume the Ising model simulation"
                         })
                         .clicked()
                     {
-                        self.running = !self.running;
-                        if self.running {
-                            let _ = self.worker.send_command(SimCommand::Start);
-                        } else {
+                        if is_running {
                             let _ = self.worker.send_command(SimCommand::Pause);
+                        } else {
+                            let _ = self.worker.send_command(SimCommand::Start);
                         }
                     }
 
@@ -254,7 +315,13 @@ impl InteractiveTool for IsingModelTool {
                         .clicked()
                     {
                         self.lattice = SpinLattice::new(100, 100, None);
-                        let _ = self.worker.send_command(SimCommand::Reset);
+                        if self.worker.state() == SimWorkerState::Faulted
+                            || self.worker.state() == SimWorkerState::Terminated
+                        {
+                            self.restart_worker();
+                        } else {
+                            let _ = self.worker.send_command(SimCommand::Reset);
+                        }
                         self.dirty = true;
                     }
                 });
@@ -271,15 +338,6 @@ impl InteractiveTool for IsingModelTool {
             });
 
         // Simulation Update via Background Worker
-        if self.running {
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-            ctx.request_repaint();
-        } else if self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-        }
-
         if let Some(snapshot) = self.worker.update() {
             if let Some(spins) = snapshot
                 .structured_data
@@ -295,6 +353,13 @@ impl InteractiveTool for IsingModelTool {
                 }
             }
             self.dirty = true;
+        }
+
+        if matches!(
+            self.worker.state(),
+            SimWorkerState::Running | SimWorkerState::Stepping
+        ) {
+            ctx.request_repaint();
         }
 
         // Visualization
@@ -340,84 +405,8 @@ impl InteractiveTool for IsingModelTool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ising_model_initial_state() {
-        let tool = IsingModelTool::default();
-        assert!(tool.dirty);
-        assert!(tool.texture.is_none());
-        assert!(tool.pixels.is_empty());
-    }
-
-    #[test]
-    fn test_ising_model_render_lifecycle_and_dirty_tracking() {
-        let ctx = egui::Context::default();
-        let mut tool = IsingModelTool::default();
-
-        // 1. Initial render pass initializes texture and pixel buffer, then clears dirty flag.
-        assert!(tool.dirty);
-        assert!(tool.texture.is_none());
-
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            tool.show(ctx);
-        });
-
-        assert!(!tool.dirty);
-        assert!(tool.texture.is_some());
-        assert_eq!(tool.pixels.len(), 100 * 100);
-
-        // Verify pixel buffer content matches lattice spins
-        for (pixel, &s) in tool.pixels.iter().zip(tool.lattice.spins().iter()) {
-            let expected = if s > 0 {
-                egui::Color32::from_rgb(200, 50, 50)
-            } else {
-                egui::Color32::from_rgb(50, 50, 200)
-            };
-            assert_eq!(*pixel, expected);
-        }
-
-        let initial_pixels_cap = tool.pixels.capacity();
-        let initial_tex_id = tool.texture.as_ref().unwrap().id();
-
-        // 2. Idle frame does not mark dirty and reuses persistent pixel buffer and texture.
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            tool.show(ctx);
-        });
-
-        assert!(!tool.dirty);
-        assert_eq!(tool.pixels.capacity(), initial_pixels_cap);
-        assert_eq!(tool.texture.as_ref().unwrap().id(), initial_tex_id);
-
-        // 3. Simulating running state sets dirty during evolution and clears it upon texture upload.
-        tool.running = true;
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            tool.show(ctx);
-        });
-
-        assert!(!tool.dirty);
-        assert_eq!(tool.pixels.capacity(), initial_pixels_cap);
-        assert_eq!(tool.texture.as_ref().unwrap().id(), initial_tex_id);
-
-        // 4. Manually setting dirty flag causes texture update and re-clearing.
-        tool.running = false;
-        tool.dirty = true;
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            tool.show(ctx);
-        });
-        assert!(!tool.dirty);
-
-        // 5. Lattice reset marks dirty and retains existing texture handle for reuse.
-        tool.lattice = SpinLattice::new(100, 100, None);
-        tool.dirty = true;
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            tool.show(ctx);
-        });
-        assert!(!tool.dirty);
-        assert_eq!(tool.texture.as_ref().unwrap().id(), initial_tex_id);
-    }
-}
+#[path = "ising/tests.rs"]
+mod tests;
 
 // [cite:clinical_trials_statistics]
 

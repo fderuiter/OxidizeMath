@@ -1,5 +1,6 @@
+use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::{
-    BackgroundWorker, SimCommand, SimulationRunner, StateSnapshot,
+    BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner, StateSnapshot,
 };
 use crate::presets::{InteractivePreset, MorphogenesisPresetConfig, PresetDialogState};
 use crate::tabs::ExplorerTab;
@@ -10,6 +11,17 @@ use math_commons::math_kernel::colormap::heatmap_color;
 use math_explorer::biology::diffusion::FiniteDifference2D;
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use std::sync::Arc;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct MorphoState {
+    dt: f64,
+    #[serde(default)]
+    state: Option<SimWorkerState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    paused: Option<bool>,
+    #[serde(default)]
+    show_starter_gallery: bool,
+}
 
 #[allow(missing_docs)]
 pub struct MorphogenesisSharedParams {
@@ -30,14 +42,8 @@ pub struct MorphogenesisRunner {
 
 impl SimulationRunner for MorphogenesisRunner {
     fn process_command(&mut self, cmd: SimCommand) {
-        match cmd {
-            SimCommand::Reset => {
-                MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
-            }
-            SimCommand::Custom(ref s) if s == "reinit" => {
-                MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
-            }
-            _ => {}
+        if matches!(cmd, SimCommand::Reset | SimCommand::Custom(_)) {
+            MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
         }
     }
 
@@ -56,11 +62,10 @@ impl SimulationRunner for MorphogenesisRunner {
     fn get_snapshot(&self) -> StateSnapshot {
         let image =
             MorphogenesisTab::plot_concentration(self.system.u(), self.width, self.height);
-        let pixels: Vec<egui::Color32> = image.pixels;
         StateSnapshot {
             width: self.width,
             height: self.height,
-            pixels: Arc::new(std::sync::RwLock::new(pixels)),
+            pixels: Arc::new(std::sync::RwLock::new(image.pixels)),
             custom_data: Vec::new(),
             structured_data: None,
         }
@@ -73,11 +78,10 @@ impl SimulationRunner for MorphogenesisRunner {
 
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct MorphogenesisTab {
-    controller: BackgroundWorker<MorphogenesisRunner>,
+    pub worker: BackgroundWorker<MorphogenesisRunner>,
     params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     width: usize,
     height: usize,
-    paused: bool,
     texture: Option<egui::TextureHandle>,
     dialog_state: PresetDialogState,
     pixels: Vec<egui::Color32>,
@@ -85,58 +89,75 @@ pub struct MorphogenesisTab {
     pub show_starter_gallery: bool,
 }
 
+impl MorphogenesisTab {
+    fn create_runner(
+        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        width: usize,
+        height: usize,
+    ) -> MorphogenesisRunner {
+        use math_explorer::biology::morphogenesis::DiffusionCoeff;
+        use math_explorer::math_kernel::types::{Dimension, StepSize};
+        let (a, b, d_u, d_v) = {
+            let p = params.read().unwrap();
+            (p.a, p.b, p.d_u, p.d_v)
+        };
+        let kinetics = SchnakenbergKinetics { a, b };
+        let diffusion = FiniteDifference2D::new(
+            Dimension(width),
+            Dimension(height),
+            StepSize(1.0),
+            StepSize(1.0),
+        );
+        let mut system = TuringSystem::new_with_kinetics(
+            Dimension(width * height),
+            DiffusionCoeff(d_u),
+            DiffusionCoeff(d_v),
+            kinetics,
+            diffusion,
+        );
+        Self::initialize_system(&mut system, width, height);
+        MorphogenesisRunner {
+            system,
+            params: Arc::clone(params),
+            width,
+            height,
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub fn restart_worker(&mut self) {
+        let runner = Self::create_runner(&self.params, self.width, self.height);
+        self.worker = BackgroundWorker::new(runner);
+        self.dirty = true;
+    }
+
+    #[allow(missing_docs)]
+    pub fn retry(&mut self) {
+        self.restart_worker();
+    }
+}
+
 impl Default for MorphogenesisTab {
     fn default() -> Self {
         let width = 100;
         let height = 100;
-        let a = 0.1;
-        let b = 0.9;
-        let d_u = 1.0;
-        let d_v = 100.0;
-        let dt = 0.05;
-
-        let kinetics = SchnakenbergKinetics { a, b };
-        let diffusion = FiniteDifference2D::new(
-            math_explorer::math_kernel::types::Dimension(width),
-            math_explorer::math_kernel::types::Dimension(height),
-            math_explorer::math_kernel::types::StepSize(1.0),
-            math_explorer::math_kernel::types::StepSize(1.0),
-        );
-
-        let mut system = TuringSystem::new_with_kinetics(
-            math_explorer::math_kernel::types::Dimension(width * height),
-            math_explorer::biology::morphogenesis::DiffusionCoeff(d_u),
-            math_explorer::biology::morphogenesis::DiffusionCoeff(d_v),
-            kinetics,
-            diffusion,
-        );
-
-        Self::initialize_system(&mut system, width, height);
-
         let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
-            a,
-            b,
-            d_u,
-            d_v,
-            dt,
+            a: 0.1,
+            b: 0.9,
+            d_u: 1.0,
+            d_v: 100.0,
+            dt: 0.05,
         }));
 
-        let runner = MorphogenesisRunner {
-            system,
-            params: Arc::clone(&params),
-            width,
-            height,
-        };
-
-        let mut controller = BackgroundWorker::new(runner);
-        let _ = controller.send_command(SimCommand::Start);
+        let runner = Self::create_runner(&params, width, height);
+        let mut worker = BackgroundWorker::new(runner);
+        let _ = worker.send_command(SimCommand::Start);
 
         Self {
-            controller,
+            worker,
             params,
             width,
             height,
-            paused: false,
             texture: None,
             dialog_state: PresetDialogState::default(),
             pixels: Vec::new(),
@@ -152,39 +173,31 @@ impl ExplorerTab for MorphogenesisTab {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct MorphoState {
-            dt: f64,
-            paused: bool,
-            #[serde(default)]
-            show_starter_gallery: bool,
-        }
-
         let dt = self.params.read().unwrap().dt;
         serde_json::to_string(&MorphoState {
             dt,
-            paused: self.paused,
+            state: Some(self.worker.state()),
+            paused: None,
             show_starter_gallery: self.show_starter_gallery,
         })
         .ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct MorphoState {
-            dt: f64,
-            paused: bool,
-        }
-
         if let Ok(s) = serde_json::from_str::<MorphoState>(state) {
             self.params.write().unwrap().dt = s.dt;
-            self.paused = s.paused;
-            // Saved session bypasses empty-state gallery
             self.show_starter_gallery = false;
-            if self.paused {
-                let _ = self.controller.send_command(SimCommand::Pause);
-            } else {
-                let _ = self.controller.send_command(SimCommand::Start);
+            let target = s.state.unwrap_or_else(|| {
+                if s.paused.unwrap_or(false) {
+                    SimWorkerState::Ready
+                } else {
+                    SimWorkerState::Running
+                }
+            });
+            if target == SimWorkerState::Running && !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            } else if target != SimWorkerState::Running && self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Pause);
             }
             self.dirty = true;
         }
@@ -203,11 +216,14 @@ impl ExplorerTab for MorphogenesisTab {
     }
 
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.controller.update().is_some() {
+        if self.worker.update().is_some() {
             self.dirty = true;
         }
 
-        if !self.paused {
+        if matches!(
+            self.worker.state(),
+            SimWorkerState::Running | SimWorkerState::Stepping
+        ) {
             ctx.request_repaint();
         }
 
@@ -234,6 +250,33 @@ impl ExplorerTab for MorphogenesisTab {
 }
 
 impl MorphogenesisTab {
+    fn draw_parameter_sliders(&self, ui: &mut egui::Ui) {
+        let mut params = self.params.write().unwrap();
+        ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
+        ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
+        ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
+        ui.add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"));
+    }
+
+    fn draw_presets(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.label("Presets:");
+        if ui.button("Spots").clicked() {
+            if let Ok(mut p) = self.params.write() {
+                (p.a, p.b, p.d_u, p.d_v) = (0.1, 0.9, 1.0, 100.0);
+            }
+        }
+        if ui.button("Stripes").clicked() {
+            if let Ok(mut p) = self.params.write() {
+                (p.a, p.b, p.d_u, p.d_v) = (0.14, 0.86, 1.0, 50.0);
+            }
+        }
+
+        let mut dialog_state = std::mem::take(&mut self.dialog_state);
+        crate::presets::render_preset_buttons(&mut dialog_state, ui, self);
+        self.dialog_state = dialog_state;
+    }
+
     fn draw_controls(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("morphogenesis_controls").show(ctx, |ui| {
             ui.heading("Morphogenesis Controls");
@@ -242,59 +285,59 @@ impl MorphogenesisTab {
             }
             ui.separator();
 
-            let mut params = self.params.write().unwrap();
-            ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
-            ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
-            ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
-            ui.add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"));
+            if self.worker.state() == SimWorkerState::Faulted {
+                ui.group(|ui| {
+                    ui.colored_label(egui::Color32::RED, "⚠ Worker Faulted: Simulation thread disconnected.");
+                    if ui.button("🔄 Retry").accessible_hover_text("Restart background worker").clicked() {
+                        self.retry();
+                    }
+                });
+                ui.separator();
+            }
 
+            self.draw_parameter_sliders(ui);
             ui.separator();
 
             ui.horizontal(|ui| {
+                let is_running = self.worker.state().is_running();
+                let can_toggle = matches!(
+                    self.worker.state(),
+                    SimWorkerState::Ready | SimWorkerState::Running
+                );
                 if ui
-                    .button(if self.paused { "▶ Resume" } else { "⏸ Pause" })
+                    .add_enabled(
+                        can_toggle,
+                        egui::Button::new(if is_running { "⏸ Pause" } else { "▶ Resume" }),
+                    )
                     .clicked()
                 {
-                    self.paused = !self.paused;
-                    if self.paused {
-                        let _ = self.controller.send_command(SimCommand::Pause);
+                    if is_running {
+                        let _ = self.worker.send_command(SimCommand::Pause);
                     } else {
-                        let _ = self.controller.send_command(SimCommand::Start);
+                        let _ = self.worker.send_command(SimCommand::Start);
                     }
                 }
 
                 if ui.button("↻ Reset").clicked() {
-                    let _ = self.controller.send_command(SimCommand::Reset);
+                    if self.worker.state() == SimWorkerState::Faulted
+                        || self.worker.state() == SimWorkerState::Terminated
+                    {
+                        self.retry();
+                    } else {
+                        let _ = self.worker.send_command(SimCommand::Reset);
+                    }
                     self.dirty = true;
                 }
             });
 
-            ui.separator();
-            ui.label("Presets:");
-            if ui.button("Spots").clicked() {
-                params.a = 0.1;
-                params.b = 0.9;
-                params.d_u = 1.0;
-                params.d_v = 100.0;
-            }
-            if ui.button("Stripes").clicked() {
-                params.a = 0.14;
-                params.b = 0.86;
-                params.d_u = 1.0;
-                params.d_v = 50.0;
-            }
-            drop(params);
-
-            let mut dialog_state = std::mem::take(&mut self.dialog_state);
-            crate::presets::render_preset_buttons(&mut dialog_state, ui, self);
-            self.dialog_state = dialog_state;
+            self.draw_presets(ui);
         });
     }
 
     fn draw_canvas(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.dirty || self.texture.is_none() {
-                if let Some(snapshot) = self.controller.latest_snapshot() {
+                if let Some(snapshot) = self.worker.latest_snapshot() {
                     if let Ok(snapshot_pixels) = snapshot.pixels.try_read() {
                         if !snapshot_pixels.is_empty() {
                             let num_pixels = snapshot.width * snapshot.height;
@@ -311,7 +354,6 @@ impl MorphogenesisTab {
                                 pixels: self.pixels.clone(),
                                 ..Default::default()
                             };
-
                             let texture_opts = egui::TextureOptions::NEAREST;
                             if let Some(texture) = &mut self.texture {
                                 texture.set(image, texture_opts);
@@ -322,7 +364,6 @@ impl MorphogenesisTab {
                                     texture_opts,
                                 ));
                             }
-
                             self.dirty = false;
                         }
                     }
@@ -396,26 +437,18 @@ impl MorphogenesisTab {
     }
 }
 
-struct SimpleRng {
-    state: u64,
-}
+struct SimpleRng(u64);
 
 impl SimpleRng {
     fn new(seed: u64) -> Self {
-        Self { state: seed }
-    }
-
-    fn next_f64(&mut self) -> f64 {
-        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let x = self.state;
-        let x = x ^ x >> 18;
-        let rot = (x >> 27) as u32;
-        let val = (x as u32).rotate_right(rot);
-        (val as f64) / (u32::MAX as f64)
+        Self(seed)
     }
 
     fn range(&mut self, min: f64, max: f64) -> f64 {
-        min + self.next_f64() * (max - min)
+        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let x = self.0 ^ (self.0 >> 18);
+        let val = (x as u32).rotate_right((x >> 27) as u32);
+        min + ((val as f64) / (u32::MAX as f64)) * (max - min)
     }
 }
 
@@ -433,59 +466,27 @@ impl InteractivePreset for MorphogenesisTab {
     fn export_config(&self) -> Self::Config {
         let p = self.params.read().unwrap();
         MorphogenesisPresetConfig {
-            a: p.a,
-            b: p.b,
-            d_u: p.d_u,
-            d_v: p.d_v,
-            dt: p.dt,
-            width: self.width,
-            height: self.height,
+            a: p.a, b: p.b, d_u: p.d_u, d_v: p.d_v, dt: p.dt, width: self.width, height: self.height,
         }
     }
 
     fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
         {
             let mut p = self.params.write().unwrap();
-            p.a = config.a;
-            p.b = config.b;
-            p.d_u = config.d_u;
-            p.d_v = config.d_v;
-            p.dt = config.dt;
+            (p.a, p.b, p.d_u, p.d_v, p.dt) = (config.a, config.b, config.d_u, config.d_v, config.dt);
         }
         if config.width != self.width || config.height != self.height {
             self.width = config.width;
             self.height = config.height;
-            let kinetics = SchnakenbergKinetics {
-                a: config.a,
-                b: config.b,
-            };
-            let diffusion = FiniteDifference2D::new(
-                math_explorer::math_kernel::types::Dimension(self.width),
-                math_explorer::math_kernel::types::Dimension(self.height),
-                math_explorer::math_kernel::types::StepSize(1.0),
-                math_explorer::math_kernel::types::StepSize(1.0),
-            );
-            let mut system = TuringSystem::new_with_kinetics(
-                math_explorer::math_kernel::types::Dimension(self.width * self.height),
-                math_explorer::biology::morphogenesis::DiffusionCoeff(config.d_u),
-                math_explorer::biology::morphogenesis::DiffusionCoeff(config.d_v),
-                kinetics,
-                diffusion,
-            );
-            Self::initialize_system(&mut system, self.width, self.height);
-            let runner = MorphogenesisRunner {
-                system,
-                params: Arc::clone(&self.params),
-                width: self.width,
-                height: self.height,
-            };
-            self.controller = BackgroundWorker::new(runner);
-            if !self.paused {
-                let _ = self.controller.send_command(SimCommand::Start);
+            let was_running = self.worker.is_running();
+            let runner = Self::create_runner(&self.params, self.width, self.height);
+            self.worker = BackgroundWorker::new(runner);
+            if was_running {
+                let _ = self.worker.send_command(SimCommand::Start);
             }
             self.dirty = true;
         } else {
-            let _ = self.controller.send_command(SimCommand::Reset);
+            let _ = self.worker.send_command(SimCommand::Reset);
             self.dirty = true;
         }
         Ok(())

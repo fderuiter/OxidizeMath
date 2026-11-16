@@ -275,6 +275,12 @@ impl SimulationController {
         self.state
     }
 
+    #[cfg(test)]
+    #[allow(missing_docs)]
+    pub fn set_state_for_test(&mut self, state: SimWorkerState) {
+        self.state = state;
+    }
+
     #[allow(missing_docs)]
     pub fn is_running(&self) -> bool {
         self.state.is_running()
@@ -384,6 +390,12 @@ impl<T: SimulationRunner> BackgroundWorker<T> {
     #[allow(missing_docs)]
     pub fn state(&self) -> SimWorkerState {
         self.controller.state()
+    }
+
+    #[cfg(test)]
+    #[allow(missing_docs)]
+    pub fn set_state_for_test(&mut self, state: SimWorkerState) {
+        self.controller.set_state_for_test(state);
     }
 
     #[allow(missing_docs)]
