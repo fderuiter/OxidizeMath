@@ -153,9 +153,19 @@ pub async fn run_simulation_worker(handle: u32) {
         if state.is_running() {
             for _ in 0..steps_per_frame {
                 runner.step();
-                if runner.is_complete() {
+                if runner.diverged() || runner.is_complete() {
                     break;
                 }
+            }
+            if runner.diverged() {
+                state = SimWorkerState::Ready;
+                let snapshot = runner.get_snapshot();
+                let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
+                if let Some(r) = runner.diagnostic_report() {
+                    let _ = state_tx.send(SimStateUpdate::Diverged(r));
+                }
+                let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+                continue;
             }
             let is_done = runner.is_complete();
             let snapshot = runner.get_snapshot();

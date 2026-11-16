@@ -6,6 +6,9 @@ pub mod lattice_boltzmann;
 pub mod potential_flow;
 pub mod turbulence;
 
+#[cfg(test)]
+mod recovery_tests;
+
 
 pub struct FluidDynamicsTab {
     framework: crate::framework::SimulationFramework,

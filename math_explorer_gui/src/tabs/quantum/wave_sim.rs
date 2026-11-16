@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::{SimCommand, StateSnapshot};
 use eframe::egui;
@@ -9,6 +11,7 @@ use math_explorer::physics::quantum::{
 use nalgebra::DVector;
 use num_complex::Complex;
 use std::any::Any;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -20,14 +23,18 @@ pub struct WaveData {
 }
 
 pub struct WaveUnified {
-    psi: QuantumState,
-    hamiltonian: QuantumOperator,
-    potential: DVector<f64>,
-    x_axis: Vec<f64>,
-    time: f64,
-    n_points: usize,
-    x_min: f64,
-    x_max: f64,
+    pub(crate) psi: QuantumState,
+    pub(crate) hamiltonian: QuantumOperator,
+    pub(crate) potential: DVector<f64>,
+    pub(crate) x_axis: Vec<f64>,
+    pub(crate) time: f64,
+    pub(crate) step_count: usize,
+    pub(crate) n_points: usize,
+    pub(crate) x_min: f64,
+    pub(crate) x_max: f64,
+    pub(crate) diverged: bool,
+    pub(crate) diagnostic_report: Option<crate::async_sim::recovery::DiagnosticReport>,
+    pub(crate) last_valid_prob_density: RefCell<Vec<f64>>,
 }
 
 impl UnifiedModel for WaveUnified {
@@ -47,28 +54,69 @@ impl UnifiedModel for WaveUnified {
             potential: DVector::zeros(n_points),
             x_axis: Vec::new(),
             time: 0.0,
+            step_count: 0,
             n_points,
             x_min,
             x_max,
+            diverged: false,
+            diagnostic_report: None,
+            last_valid_prob_density: RefCell::new(Vec::new()),
         };
         sim.init_system(potential_type);
         sim
     }
 
     fn step(&mut self, _params: &HashMap<String, f64>) {
+        if self.diverged {
+            return;
+        }
+        self.step_count += 1;
         let dt = 0.05;
-        self.psi = evolve_state(&self.psi, &self.hamiltonian, dt, 1.0);
+
+        // Check if current wave amplitudes or potential are finite before evolution
+        let current_finite = self.psi.vector.iter().all(|c| c.re.is_finite() && c.im.is_finite());
+        if !current_finite {
+            self.trigger_divergence(dt, "psi(x)");
+            return;
+        }
+
+        let next_psi = evolve_state(&self.psi, &self.hamiltonian, dt, 1.0);
+        let norm = next_psi.norm();
+
+        // Evaluate f64::is_finite() during every numerical step
+        let is_finite = norm.is_finite()
+            && norm > 0.0
+            && next_psi.vector.iter().all(|c| c.re.is_finite() && c.im.is_finite());
+
+        if !is_finite {
+            self.trigger_divergence(dt, "psi(x)");
+            return;
+        }
+
+        self.psi = next_psi.normalize();
         self.time += dt;
-        self.psi = self.psi.normalize();
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let prob_density = self.psi.probability_density();
-        
+        let prob_density: Vec<f64> = if self.diverged && !self.last_valid_prob_density.borrow().is_empty() {
+            self.last_valid_prob_density.borrow().clone()
+        } else {
+            let p: Vec<f64> = self.psi.probability_density().iter().copied().collect();
+            let all_finite = p.iter().all(|val| val.is_finite());
+            if all_finite {
+                *self.last_valid_prob_density.borrow_mut() = p.clone();
+                p
+            } else if !self.last_valid_prob_density.borrow().is_empty() {
+                self.last_valid_prob_density.borrow().clone()
+            } else {
+                vec![0.0; self.n_points]
+            }
+        };
+
         let structured_data = Box::new(WaveData {
             time: self.time,
             x_axis: self.x_axis.clone(),
-            prob_density: prob_density.iter().copied().collect(),
+            prob_density,
             potential: self.potential.iter().copied().collect(),
         }) as Box<dyn Any + Send>;
 
@@ -82,10 +130,45 @@ impl UnifiedModel for WaveUnified {
     }
 
     fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
-        if let SimCommand::Reset = cmd {
-            let potential_type = *params.get("potential_type").unwrap_or(&0.0);
-            self.init_system(potential_type);
+        match cmd {
+            SimCommand::Reset => {
+                let potential_type = *params.get("potential_type").unwrap_or(&0.0);
+                self.init_system(potential_type);
+                self.diverged = false;
+                self.diagnostic_report = None;
+            }
+            SimCommand::Custom(ref action) if action == "ClampParameters" => {
+                let potential_type = params.get("potential_type").copied().unwrap_or(0.0).clamp(0.0, 1.0);
+                self.init_system(potential_type);
+                self.diverged = false;
+                self.diagnostic_report = None;
+            }
+            _ => {}
         }
+    }
+
+    fn diverged(&self) -> bool {
+        self.diverged
+    }
+
+    fn diagnostic_report(&self) -> Option<crate::async_sim::recovery::DiagnosticReport> {
+        self.diagnostic_report.clone()
+    }
+
+    fn default_parameters() -> HashMap<String, f64> {
+        let mut map = HashMap::new();
+        map.insert("potential_type".to_string(), 0.0);
+        map
+    }
+
+    fn clamp_parameters(params: &mut HashMap<String, f64>) {
+        if let Some(p) = params.get_mut("potential_type") {
+            *p = if !p.is_finite() { 0.0 } else { p.clamp(0.0, 1.0) };
+        }
+    }
+
+    fn tool_source() -> &'static str {
+        "WaveSimulator"
     }
 
     fn parameters() -> HashMap<String, ParameterConstraint> {
@@ -170,6 +253,28 @@ impl WaveUnified {
 
         self.psi = gaussian_wavepacket(&self.x_axis, x0, k0, sigma);
         self.time = 0.0;
+    }
+
+    fn trigger_divergence(&mut self, dt: f64, var_name: &str) {
+        self.diverged = true;
+        let report = crate::async_sim::recovery::DiagnosticReport::new(
+            self.time,
+            self.step_count,
+            var_name,
+            format!(
+                "Quantum wave packet dispersion failure: non-finite wave amplitude at t={:.4}s (step {})",
+                self.time, self.step_count
+            ),
+        );
+        crate::async_sim::recovery::emit_divergence_telemetry(
+            "WaveSimulator",
+            self.time,
+            self.step_count,
+            var_name,
+            "Wave Simulator",
+            dt,
+        );
+        self.diagnostic_report = Some(report);
     }
 }
 

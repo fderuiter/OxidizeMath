@@ -1,11 +1,10 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::{
-    BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner, StateSnapshot,
+    BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot,
 };
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui::{ColorImage, TextureOptions};
-use egui_plot::{Line, Plot, PlotImage, PlotPoint, PlotPoints};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -68,52 +67,54 @@ pub trait UnifiedModel: Send + 'static + scientific_metadata::theory::TheoryDesc
     {
         false
     }
-}
 
-#[allow(missing_docs)]
-pub struct UnifiedSimRunner<M: UnifiedModel> {
-    model: M,
-    params: Arc<RwLock<HashMap<String, f64>>>,
-    steps_per_frame: usize,
-}
-
-impl<M: UnifiedModel> UnifiedSimRunner<M> {
-    #[allow(missing_docs)]
-    pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
-        let initial_params = params.read().unwrap().clone();
-        Self {
-            model: M::new(&initial_params),
-            params,
-            steps_per_frame: 5,
-        }
+    /// Returns true if the model has diverged numerically.
+    fn diverged(&self) -> bool {
+        false
     }
-}
 
-impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
-    fn process_command(&mut self, cmd: SimCommand) {
-        let current_params = self.params.read().unwrap().clone();
-        match cmd {
-            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
-            SimCommand::Reset => {
-                self.model = M::new(&current_params);
+    /// Returns the diagnostic report if diverged.
+    fn diagnostic_report(&self) -> Option<crate::async_sim::recovery::DiagnosticReport> {
+        None
+    }
+
+    /// Default parameters for baseline configuration.
+    fn default_parameters() -> HashMap<String, f64>
+    where
+        Self: Sized,
+    {
+        Self::parameters()
+            .into_iter()
+            .map(|(n, c)| (n, (c.min + c.max) / 2.0))
+            .collect()
+    }
+
+    /// Clamp parameters to stable bounds.
+    fn clamp_parameters(params: &mut HashMap<String, f64>)
+    where
+        Self: Sized,
+    {
+        for (name, constraint) in Self::parameters() {
+            if let Some(val) = params.get_mut(&name) {
+                *val = if !val.is_finite() {
+                    (constraint.min + constraint.max) / 2.0
+                } else {
+                    val.clamp(constraint.min, constraint.max)
+                };
             }
-            _ => self.model.process_command(cmd, &current_params),
         }
     }
 
-    fn step(&mut self) {
-        let current_params = self.params.read().unwrap().clone();
-        self.model.step(&current_params);
-    }
-
-    fn get_snapshot(&self) -> StateSnapshot {
-        self.model.get_snapshot()
-    }
-
-    fn get_steps_per_frame(&self) -> usize {
-        self.steps_per_frame
+    /// Telemetry tool source name.
+    fn tool_source() -> &'static str
+    where
+        Self: Sized,
+    {
+        Self::name()
     }
 }
+
+pub use super::unified_runner::UnifiedSimRunner;
 
 #[allow(missing_docs)]
 pub struct UnifiedSimTool<M: UnifiedModel> {
@@ -172,6 +173,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     #[allow(missing_docs)]
     pub fn state(&self) -> SimWorkerState {
         self.controller.state()
+    }
+
+    #[allow(missing_docs)]
+    pub fn is_diverged(&self) -> bool {
+        self.controller.is_diverged()
+    }
+
+    #[allow(missing_docs)]
+    pub fn diagnostic_report(&self) -> Option<&crate::async_sim::recovery::DiagnosticReport> {
+        self.controller.diagnostic_report()
     }
 
     fn reset_simulation(&mut self) {
@@ -275,19 +286,24 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.separator();
 
             let run_pause_enabled =
-                matches!(state, SimWorkerState::Ready | SimWorkerState::Running);
+                matches!(state, SimWorkerState::Ready | SimWorkerState::Running)
+                    && !self.controller.is_diverged();
             let button_text = if state.is_running() {
                 "⏸ Pause"
             } else {
                 "▶ Run"
             };
-            let tooltip_text = match state {
-                SimWorkerState::Running => "Pause simulation",
-                SimWorkerState::Ready => "Start simulation",
-                SimWorkerState::Faulted => {
-                    "Worker thread faulted. Click Reset to restore simulation."
+            let tooltip_text = if self.controller.is_diverged() {
+                "Simulation diverged. Trigger recovery or reset before resuming."
+            } else {
+                match state {
+                    SimWorkerState::Running => "Pause simulation",
+                    SimWorkerState::Ready => "Start simulation",
+                    SimWorkerState::Faulted => {
+                        "Worker thread faulted. Click Reset to restore simulation."
+                    }
+                    _ => "Simulation worker unavailable",
                 }
-                _ => "Simulation worker unavailable",
             };
 
             if ui
@@ -334,64 +350,37 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ctx: &egui::Context,
         texture: &egui::TextureHandle,
     ) {
-        let width = texture.size()[0] as f32;
-        let height = texture.size()[1] as f32;
-
-        Plot::new(format!("{}_plot_img", M::name()))
-            .data_aspect(1.0)
-            .view_aspect(1.0)
-            .show_grid(false)
-            .show_axes([false, false])
-            .allow_drag(false)
-            .allow_zoom(false)
-            .allow_scroll(false)
-            .show(ui, |plot_ui| {
-                plot_ui.image(PlotImage::new(
-                    format!("{}_image", M::name()),
-                    texture.id(),
-                    PlotPoint::new(width as f64 / 2.0, height as f64 / 2.0),
-                    [width, height],
-                ));
-
-                if plot_ui.response().hovered()
-                    && ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
-                {
-                    if let Some(pos) = plot_ui.pointer_coordinate() {
-                        let grid_x = pos.x.round() as i32;
-                        let grid_y = pos.y.round() as i32;
-                        let _ = self.controller.send_command(SimCommand::ApplyBrush {
-                            cx: grid_x,
-                            cy: grid_y,
-                            r: 2,
-                            is_obstacle: ctx.input(|i| i.pointer.primary_down()),
-                        });
-                    }
-                }
-            });
+        crate::async_sim::unified_plot::draw_image_plot_helper(
+            M::name(),
+            ui,
+            ctx,
+            texture,
+            |cmd| {
+                let _ = self.controller.send_command(cmd);
+            },
+        );
     }
 
     fn draw_line_plot(&self, ui: &mut egui::Ui, snapshot: &StateSnapshot) {
-        if snapshot.custom_data.is_empty() {
-            return;
-        }
-        let mut points = Vec::new();
-        for i in (0..snapshot.custom_data.len()).step_by(2) {
-            if i + 1 < snapshot.custom_data.len() {
-                points.push([snapshot.custom_data[i], snapshot.custom_data[i + 1]]);
-            }
-        }
-        let line = Line::new(M::name(), PlotPoints::from_iter(points))
-            .color(egui::Color32::from_rgb(100, 200, 255));
-
-        Plot::new(format!("{}_plot_line", M::name()))
-            .view_aspect(2.0)
-            .show(ui, |plot_ui| {
-                plot_ui.line(line);
-            });
+        crate::async_sim::unified_plot::draw_line_plot_helper(M::name(), ui, snapshot);
     }
 
     fn draw_central_panel(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
+            if let Some(report) = self.controller.diagnostic_report().cloned() {
+                if let Some(action) =
+                    crate::async_sim::recovery::render_recovery_banner(ui, Some(&report))
+                {
+                    crate::async_sim::recovery::apply_recovery_action_helper::<M>(
+                        action,
+                        &self.params,
+                        &mut self.controller,
+                        &mut self.steps_per_frame,
+                    );
+                }
+                ui.add_space(8.0);
+            }
+
             if M::custom_central_panel(ui, self.controller.latest_snapshot()) {
                 return;
             }

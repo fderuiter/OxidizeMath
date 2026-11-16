@@ -1,9 +1,13 @@
+pub mod recovery;
 #[cfg(test)]
 mod runner_tests;
 #[cfg(test)]
 mod tests;
 #[allow(missing_docs)]
 pub mod unified;
+pub mod unified_plot;
+pub mod unified_runner;
+pub use recovery::*;
 
 pub mod state;
 pub use state::*;
@@ -79,6 +83,8 @@ pub enum SimStateUpdate {
     Snapshot(StateSnapshot),
     #[allow(missing_docs)]
     Status(WorkerStatusEvent),
+    #[allow(missing_docs)]
+    Diverged(DiagnosticReport),
 }
 
 #[allow(missing_docs)]
@@ -95,6 +101,14 @@ pub trait SimulationRunner: Send + 'static {
     fn is_complete(&self) -> bool {
         false
     }
+    #[allow(missing_docs)]
+    fn diverged(&self) -> bool {
+        false
+    }
+    #[allow(missing_docs)]
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        None
+    }
 }
 
 #[allow(missing_docs)]
@@ -102,6 +116,7 @@ pub struct SimulationController {
     cmd_tx: Sender<SimCommand>,
     state_rx: Receiver<SimStateUpdate>,
     latest_snapshot: Option<StateSnapshot>,
+    diagnostic_report: Option<DiagnosticReport>,
     state: SimWorkerState,
     #[cfg(target_arch = "wasm32")]
     worker: Option<web_sys::Worker>,
@@ -177,9 +192,19 @@ impl SimulationController {
                 if state.is_running() {
                     for _ in 0..steps_per_frame {
                         runner.step();
-                        if runner.is_complete() {
+                        if runner.diverged() || runner.is_complete() {
                             break;
                         }
+                    }
+                    if runner.diverged() {
+                        state = SimWorkerState::Ready;
+                        let snapshot = runner.get_snapshot();
+                        let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
+                        if let Some(r) = runner.diagnostic_report() {
+                            let _ = state_tx.send(SimStateUpdate::Diverged(r));
+                        }
+                        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+                        continue;
                     }
                     let is_done = runner.is_complete();
                     let snapshot = runner.get_snapshot();
@@ -205,6 +230,7 @@ impl SimulationController {
             cmd_tx,
             state_rx,
             latest_snapshot: None,
+            diagnostic_report: None,
             state: SimWorkerState::Ready,
         }
     }
@@ -265,6 +291,7 @@ impl SimulationController {
             cmd_tx,
             state_rx,
             latest_snapshot: None,
+            diagnostic_report: None,
             state: SimWorkerState::Ready,
             worker: opt_worker,
         }
@@ -282,6 +309,13 @@ impl SimulationController {
 
     #[allow(missing_docs)]
     pub fn send_command(&mut self, cmd: SimCommand) -> Result<(), SimCommandError> {
+        if matches!(cmd, SimCommand::Start) && self.is_diverged() {
+            return Ok(());
+        }
+        if matches!(cmd, SimCommand::Reset | SimCommand::Custom(_)) {
+            self.diagnostic_report = None;
+        }
+
         if !self.state.is_command_valid(&cmd) {
             return Err(SimCommandError::InvalidTransition {
                 current_state: self.state,
@@ -339,6 +373,9 @@ impl SimulationController {
                         self.latest_snapshot = Some(snapshot);
                         received_new_snapshot = true;
                     }
+                    SimStateUpdate::Diverged(report) => {
+                        self.diagnostic_report = Some(report);
+                    }
                     SimStateUpdate::Status(event) => {
                         self.state = event.to_state();
                     }
@@ -361,95 +398,25 @@ impl SimulationController {
             None
         }
     }
-}
 
-/// Generic background worker wrapper struct that manages offloaded simulation runners
-/// and provides thread-safe channel communication between the UI and compute threads.
-#[allow(missing_docs)]
-pub struct BackgroundWorker<T: SimulationRunner> {
-    controller: SimulationController,
-    _marker: std::marker::PhantomData<fn() -> T>,
-}
-
-impl<T: SimulationRunner> BackgroundWorker<T> {
-    /// Spawns a background worker executing the given simulation runner.
     #[allow(missing_docs)]
-    pub fn new(runner: T) -> Self {
-        Self {
-            controller: SimulationController::new(runner),
-            _marker: std::marker::PhantomData,
-        }
+    pub fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        self.diagnostic_report.as_ref()
     }
 
     #[allow(missing_docs)]
-    pub fn state(&self) -> SimWorkerState {
-        self.controller.state()
+    pub fn is_diverged(&self) -> bool {
+        self.diagnostic_report.is_some()
     }
 
     #[allow(missing_docs)]
-    pub fn is_running(&self) -> bool {
-        self.controller.is_running()
-    }
-
-    #[allow(missing_docs)]
-    pub fn send_command(&mut self, cmd: SimCommand) -> Result<(), SimCommandError> {
-        self.controller.send_command(cmd)
-    }
-
-    #[allow(missing_docs)]
-    pub fn latest_snapshot(&self) -> Option<&StateSnapshot> {
-        self.controller.latest_snapshot()
-    }
-
-    #[allow(missing_docs)]
-    pub fn update(&mut self) -> Option<&StateSnapshot> {
-        self.controller.update()
-    }
-
-    #[allow(missing_docs)]
-    pub fn controller(&self) -> &SimulationController {
-        &self.controller
-    }
-
-    #[allow(missing_docs)]
-    pub fn controller_mut(&mut self) -> &mut SimulationController {
-        &mut self.controller
-    }
-
-    #[allow(missing_docs)]
-    pub fn into_controller(self) -> SimulationController {
-        self.controller
+    pub fn clear_diverged(&mut self) {
+        self.diagnostic_report = None;
     }
 }
 
-impl<T: SimulationRunner> std::ops::Deref for BackgroundWorker<T> {
-    type Target = SimulationController;
-
-    fn deref(&self) -> &Self::Target {
-        &self.controller
-    }
-}
-
-impl<T: SimulationRunner> std::ops::DerefMut for BackgroundWorker<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.controller
-    }
-}
-
-impl<T: SimulationRunner> From<SimulationController> for BackgroundWorker<T> {
-    fn from(controller: SimulationController) -> Self {
-        Self {
-            controller,
-            _marker: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<T: SimulationRunner> From<BackgroundWorker<T>> for SimulationController {
-    fn from(worker: BackgroundWorker<T>) -> Self {
-        worker.controller
-    }
-}
+pub mod worker;
+pub use worker::*;
 // theory_verification!
 
 #[cfg(any(target_arch = "wasm32", test))]
