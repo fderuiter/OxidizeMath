@@ -1,7 +1,7 @@
 #![cfg(target_os = "macos")]
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{MathExplorerApp, SplitLayoutMode, ThemeMode, ViewportLayout};
+use super::{MathExplorerApp, ThemeMode, ViewportLayout};
 use eframe::egui;
 use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 
@@ -39,34 +39,6 @@ fn build_edit_menu() -> Submenu {
     edit_menu.append(&redo_item).unwrap();
     edit_menu
 }
-fn build_split_submenu() -> Submenu {
-    let split_submenu = Submenu::new("Split Layout", true);
-    let split_single = MenuItem::with_id(
-        MenuId::new("view_split_single"),
-        SplitLayoutMode::Single.label(),
-        true,
-        None,
-    );
-    let split_horiz = MenuItem::with_id(
-        MenuId::new("view_split_horizontal"),
-        SplitLayoutMode::Horizontal.label(),
-        true,
-        None,
-    );
-    let split_vert = MenuItem::with_id(
-        MenuId::new("view_split_vertical"),
-        SplitLayoutMode::Vertical.label(),
-        true,
-        None,
-    );
-    let split_swap = MenuItem::with_id(MenuId::new("view_split_swap"), "Swap Panes", true, None);
-    split_submenu.append(&split_single).unwrap();
-    split_submenu.append(&split_horiz).unwrap();
-    split_submenu.append(&split_vert).unwrap();
-    split_submenu.append(&split_swap).unwrap();
-    split_submenu
-}
-
 fn build_layout_submenu() -> Submenu {
     let layout_menu = Submenu::new("Viewport Layout", true);
     layout_menu
@@ -102,6 +74,17 @@ fn build_layout_submenu() -> Submenu {
         ))
         .unwrap();
     layout_menu
+        .append(&PredefinedMenuItem::separator())
+        .unwrap();
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_swap"),
+            "Swap Panes",
+            true,
+            None,
+        ))
+        .unwrap();
+    layout_menu
 }
 
 fn build_view_menu(app: &MathExplorerApp) -> Submenu {
@@ -109,9 +92,6 @@ fn build_view_menu(app: &MathExplorerApp) -> Submenu {
     let palette_item =
         MenuItem::with_id(MenuId::new("cmd_palette"), "Command Palette...", true, None);
     view_menu.append(&palette_item).unwrap();
-    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
-
-    view_menu.append(&build_split_submenu()).unwrap();
     view_menu.append(&PredefinedMenuItem::separator()).unwrap();
 
     view_menu.append(&build_layout_submenu()).unwrap();
@@ -200,14 +180,15 @@ fn handle_file_event(app: &mut MathExplorerApp, id: &str) -> bool {
 
 fn handle_view_layout_event(app: &mut MathExplorerApp, id: &str) -> bool {
     match id {
-        "view_split_single" => app.split_layout_mode = SplitLayoutMode::Single,
-        "view_split_horizontal" => app.split_layout_mode = SplitLayoutMode::Horizontal,
-        "view_split_vertical" => app.split_layout_mode = SplitLayoutMode::Vertical,
-        "view_split_swap" => app.swap_panes(),
-        "layout_single" => app.viewport_layout = ViewportLayout::Single,
-        "layout_split_h" => app.viewport_layout = ViewportLayout::SplitHorizontal,
-        "layout_split_v" => app.viewport_layout = ViewportLayout::SplitVertical,
-        "layout_quad" => app.viewport_layout = ViewportLayout::QuadGrid,
+        "view_split_single" | "layout_single" => app.set_layout(ViewportLayout::Single),
+        "view_split_horizontal" | "layout_split_h" => {
+            app.set_layout(ViewportLayout::SplitHorizontal);
+        }
+        "view_split_vertical" | "layout_split_v" => {
+            app.set_layout(ViewportLayout::SplitVertical);
+        }
+        "layout_quad" => app.set_layout(ViewportLayout::QuadGrid),
+        "view_split_swap" | "layout_swap" => app.swap_panes(),
         _ => return false,
     }
     true
