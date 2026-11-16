@@ -1,3 +1,4 @@
+pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
 mod session;
@@ -14,12 +15,16 @@ mod tests_command_palette;
 #[cfg(test)]
 mod tests_diagnostics;
 #[cfg(test)]
+mod tests_domain_bar;
+#[cfg(test)]
 mod tests_multi_pane;
 #[cfg(test)]
 mod tests_session_lifecycle;
 #[cfg(test)]
 mod tests_split_view;
 
+#[allow(unused_imports)]
+pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 pub use split_view::{SplitLayoutMode, SplitViewState};
@@ -247,6 +252,11 @@ impl MathExplorerApp {
         self.tabs.iter().map(|t| t.name()).collect()
     }
 
+    /// Selects an active tab by index, synchronizing primary pane and emitting accessibility announcements.
+    pub fn select_tab(&mut self, ctx: &egui::Context, tab_idx: usize) {
+        domain_bar::select_tab(self, ctx, tab_idx);
+    }
+
     /// Restores the previous application state from the undo history stack.
     pub fn undo(&mut self) {
         if !self.session_manager.can_undo() {
@@ -426,6 +436,13 @@ impl eframe::App for MathExplorerApp {
             ui_panels::render_main_menu(self, ctx, ui);
         });
 
+        // Render Persistent Categorized Domain Switcher Bar
+        egui::TopBottomPanel::top("domain_switcher_bar")
+            .exact_height(34.0)
+            .show(ctx, |ui| {
+                domain_bar::render_domain_switcher_bar(self, ctx, ui);
+            });
+
         // Render Active Tab(s) or Multi-Pane Viewports
         if self.split_layout_mode != SplitLayoutMode::Single {
             let mut split_state = std::mem::take(&mut self.split_view_state);
@@ -448,23 +465,15 @@ impl eframe::App for MathExplorerApp {
         // Render Command Palette Overlay
         if let Some(selection) = self.command_palette.show(ctx, &self.tabs) {
             if selection.tab_index < self.tabs.len() {
-                self.selected_tab = selection.tab_index;
-                let tab = &mut self.tabs[selection.tab_index];
-                let tab_name = tab.name();
+                self.select_tab(ctx, selection.tab_index);
                 if let Some(tool_name) = &selection.tool_name {
+                    let tab = &mut self.tabs[selection.tab_index];
                     tab.select_tool_by_name(tool_name);
+                    let tab_name = tab.name();
+                    let msg = format!("Switched to tool {} in tab {}", tool_name, tab_name);
+                    crate::accessibility::announce_status(&msg);
                     ctx.data_mut(|d| {
-                        d.insert_temp(
-                            egui::Id::new("aria_live_message"),
-                            format!("Switched to tool {} in tab {}", tool_name, tab_name),
-                        );
-                    });
-                } else {
-                    ctx.data_mut(|d| {
-                        d.insert_temp(
-                            egui::Id::new("aria_live_message"),
-                            format!("Switched to tab {}", tab_name),
-                        );
+                        d.insert_temp(egui::Id::new("aria_live_message"), msg);
                     });
                 }
             }

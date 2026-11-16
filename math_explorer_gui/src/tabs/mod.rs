@@ -85,6 +85,38 @@ pub trait ExplorerTab {
         ""
     }
 
+    /// Academic domain category of the tab for top navigation bar grouping.
+    fn academic_domain(&self) -> &'static str {
+        match self.name() {
+            "Analysis & Calculus"
+            | "Financial Math"
+            | "Geometry & Topology"
+            | "Graph Theory"
+            | "Number Theory" => "Pure Math",
+
+            "Chaos Theory"
+            | "Fluid Dynamics"
+            | "Medical Physics"
+            | "MRI Physics"
+            | "Quantum Mechanics"
+            | "Solid State Physics" => "Physics",
+
+            "Battery Degradation"
+            | "Clinical Trials"
+            | "Favoritism"
+            | "Game Theory"
+            | "Traceability Portal" => "Applied Math",
+
+            "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
+
+            "Climate" => "Climate",
+
+            "Artificial Intelligence" => "AI",
+
+            _ => "Applied Math",
+        }
+    }
+
     /// Activates a tool within this tab by name.
     /// Returns true if a matching tool was found and activated.
     fn select_tool_by_name(&mut self, _name: &str) -> bool {
