@@ -199,6 +199,13 @@ mod tests {
                 );
                 let _ = stream.write_all(response.as_bytes());
                 let _ = stream.flush();
+                let _ = stream.shutdown(std::net::Shutdown::Write);
+                let mut drain = [0u8; 512];
+                while let Ok(n) = stream.read(&mut drain) {
+                    if n == 0 {
+                        break;
+                    }
+                }
             }
         });
 
