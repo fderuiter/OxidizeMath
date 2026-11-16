@@ -1,11 +1,15 @@
 pub mod callout_overlay;
 mod export_ui;
 pub mod math_input;
+pub mod recovery;
+#[cfg(test)]
+mod recovery_tests;
 pub mod trace_overlay;
 mod ui;
 
 pub use callout_overlay::*;
 pub use math_input::*;
+pub use recovery::*;
 pub use trace_overlay::*;
 
 use crate::accessibility::AccessibleHoverText;

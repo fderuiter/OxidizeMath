@@ -5,7 +5,7 @@ use super::systems::eval_ode_final_state;
 use super::OdeSolverTool;
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
-use crate::reflective_ui::render_copyable_metric;
+use crate::reflective_ui::{render_copyable_metric, AnimatedSlider};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
@@ -97,46 +97,50 @@ impl OdeSolverTool {
         ui.heading("Parameters");
         match self.preset {
             OdePreset::Exponential | OdePreset::Custom => {
-                ui.horizontal(|ui| {
-                    ui.label("k (Rate / Parameter):");
-                    if ui
-                        .add(egui::DragValue::new(&mut self.param_k).speed(0.1))
-                        .changed()
-                    {
-                        changed = true;
-                    }
-                });
+                if ui
+                    .add(
+                        AnimatedSlider::new(&mut self.param_k, -5.0..=5.0)
+                            .text("k (Rate / Parameter)")
+                            .id_salt("ode_param_k_exp"),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
             }
             OdePreset::HarmonicOscillator => {
-                ui.horizontal(|ui| {
-                    ui.label("k (Spring Constant):");
-                    if ui
-                        .add(egui::DragValue::new(&mut self.param_k).speed(0.1))
-                        .changed()
-                    {
-                        changed = true;
-                    }
-                });
+                if ui
+                    .add(
+                        AnimatedSlider::new(&mut self.param_k, 0.1..=10.0)
+                            .text("k (Spring Constant)")
+                            .id_salt("ode_param_k_osc"),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
             }
             OdePreset::LogisticGrowth => {
-                ui.horizontal(|ui| {
-                    ui.label("r (Growth Rate):");
-                    if ui
-                        .add(egui::DragValue::new(&mut self.param_r).speed(0.1))
-                        .changed()
-                    {
-                        changed = true;
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("K (Carrying Capacity):");
-                    if ui
-                        .add(egui::DragValue::new(&mut self.param_cap_k).speed(0.1))
-                        .changed()
-                    {
-                        changed = true;
-                    }
-                });
+                if ui
+                    .add(
+                        AnimatedSlider::new(&mut self.param_r, 0.0..=5.0)
+                            .text("r (Growth Rate)")
+                            .id_salt("ode_param_r"),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+                if ui
+                    .add(
+                        AnimatedSlider::new(&mut self.param_cap_k, 1.0..=100.0)
+                            .text("K (Carrying Capacity)")
+                            .id_salt("ode_param_cap_k"),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
             }
         }
         changed
@@ -344,7 +348,7 @@ impl OdeSolverTool {
     ) {
         ui.heading("Solution Trajectory");
 
-        if self.diverged {
+        if self.diverged() {
             recovery::render_recovery_ui(
                 ui,
                 self,
@@ -373,7 +377,7 @@ impl OdeSolverTool {
                 } else {
                     self.comparison_manager.render_on_plot(plot_ui);
                 }
-                if self.show_annotations && !self.diverged {
+                if self.show_annotations && !self.diverged() {
                     super::annotations::render_ode_callouts(plot_ui, self);
                 }
                 self.snapshot_manager.render_on_plot(plot_ui);

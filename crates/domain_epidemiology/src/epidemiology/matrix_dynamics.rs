@@ -7,7 +7,7 @@ use nalgebra::DMatrix;
 ///
 /// # Returns
 /// * `Ok(f64)`: The spectral radius (R0).
-/// * `Err(EpidemiologyError)`: If dimensions mismatch or V is singular.
+/// * `Err(EpidemiologyError)`: `EpidemiologyError::Math` if dimensions mismatch or `EpidemiologyError::SingularTransitionMatrix` if V is singular.
 #[verified_engine::verified]
 pub fn calculate_r0_matrix(
     f_mat: &DMatrix<f64>,

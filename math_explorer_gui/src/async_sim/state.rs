@@ -1,4 +1,63 @@
-use super::SimCommand;
+use std::sync::Arc;
+
+#[allow(missing_docs)]
+pub enum SimCommand {
+    #[allow(missing_docs)]
+    Start,
+    #[allow(missing_docs)]
+    Pause,
+    #[allow(missing_docs)]
+    Reset,
+    #[allow(missing_docs)]
+    SetSpeed(usize),
+    #[allow(missing_docs)]
+    TrainEpisodes(usize),
+    #[allow(missing_docs)]
+    ApplyBrush {
+        #[allow(missing_docs)]
+        cx: i32,
+        #[allow(missing_docs)]
+        cy: i32,
+        #[allow(missing_docs)]
+        r: i32,
+        #[allow(missing_docs)]
+        is_obstacle: bool,
+    },
+    #[allow(missing_docs)]
+    ClearObstacles,
+    #[allow(missing_docs)]
+    Custom(String),
+}
+
+impl SimCommand {
+    #[allow(missing_docs)]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Start => "Start",
+            Self::Pause => "Pause",
+            Self::Reset => "Reset",
+            Self::SetSpeed(_) => "SetSpeed",
+            Self::TrainEpisodes(_) => "TrainEpisodes",
+            Self::ApplyBrush { .. } => "ApplyBrush",
+            Self::ClearObstacles => "ClearObstacles",
+            Self::Custom(_) => "Custom",
+        }
+    }
+}
+
+#[allow(missing_docs)]
+pub struct StateSnapshot {
+    #[allow(missing_docs)]
+    pub width: usize,
+    #[allow(missing_docs)]
+    pub height: usize,
+    #[allow(missing_docs)]
+    pub pixels: Arc<std::sync::RwLock<Vec<eframe::egui::Color32>>>,
+    #[allow(missing_docs)]
+    pub custom_data: Vec<f64>,
+    #[allow(missing_docs)]
+    pub structured_data: Option<Box<dyn std::any::Any + Send>>,
+}
 
 #[allow(missing_docs)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

@@ -91,10 +91,6 @@ pub use traits::{DiffusionModel, ReactionModel};
 /// Errors related to Reaction-Diffusion systems.
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum ReactionDiffusionError {
-    #[deprecated(since = "0.1.0", note = "Use `Math` instead")]
-    #[error("Dimension mismatch: expected {expected} diffusion coefficients, but got {got}")]
-    #[allow(missing_docs)]
-    DimensionMismatch { expected: usize, got: usize },
     #[allow(missing_docs)]
     #[error("Mathematical error: {0}")]
     Math(#[from] math_commons::error::MathError),
