@@ -1,6 +1,6 @@
 # Math Explorer Crate
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![License](https://img.shields.io/badge/license-AGPL-blue.svg)
 ![Language](https://img.shields.io/badge/language-Rust-orange.svg)
 ![Crate](https://img.shields.io/crates/v/math_explorer.svg)
 
