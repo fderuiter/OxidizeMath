@@ -335,3 +335,29 @@ mod tests {
         assert!(tool.accuracy_history.is_empty());
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Training Monitor",
+    "domain": "ai",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "max_epochs": 50,
+    "batch_size": 32
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "training_monitor_starter",
+        title: "Training Monitor",
+        description: "Live loss curve tracking, learning rate schedules, and validation perplexity convergence metrics.",
+        category: "Deep Learning",
+        icon: "📈",
+        domain: "ai",
+        tool_name: Some("TrainingMonitorTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

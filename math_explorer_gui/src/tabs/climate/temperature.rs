@@ -85,3 +85,29 @@ impl scientific_metadata::theory::TheoryDescribable for TemperatureAnomaliesTool
     fn theory_citation(&self) -> String { "Improvements in the GISTEMP Uncertainty Analysis (Lenssen et al., 2019)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Global Temperature Anomalies",
+    "domain": "climate",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "smoothing_years": 5,
+    "baseline_start": 1951
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "temperature_anomalies_starter",
+        title: "Global Temperature Anomalies",
+        description: "Zonal surface temperature variance relative to 1951-1980 climatological baseline means.",
+        category: "Climatology",
+        icon: "🌡️",
+        domain: "climate",
+        tool_name: Some("TemperatureAnomaliesTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

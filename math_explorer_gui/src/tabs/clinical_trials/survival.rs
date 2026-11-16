@@ -209,3 +209,29 @@ impl scientific_metadata::theory::TheoryDescribable for SurvivalAnalysisTool {
     fn theory_citation(&self) -> String { "Nonparametric Estimation from Incomplete Observations (Kaplan & Meier, 1958)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Kaplan-Meier Survival",
+    "domain": "clinical_trials",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "time_horizon_months": 24,
+    "hazard_ratio": 0.7
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "survival_analysis_starter",
+        title: "Kaplan-Meier Survival",
+        description: "Ŝ(t) = ∏(1 - d_i/n_i): Non-parametric product-limit estimator for time-to-event censorship data.",
+        category: "Survival Models",
+        icon: "⏱️",
+        domain: "clinical_trials",
+        tool_name: Some("SurvivalAnalysisTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

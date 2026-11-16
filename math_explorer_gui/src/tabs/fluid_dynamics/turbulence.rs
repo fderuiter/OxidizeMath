@@ -273,3 +273,29 @@ impl scientific_metadata::theory::TheoryDescribable for TurbulenceTool {
         map
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Kolmogorov Turbulence Cascade",
+    "domain": "fluid_dynamics",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "viscosity": 0.001,
+    "energy_dissipation": 0.1
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "turbulence_starter",
+        title: "Kolmogorov Turbulence Cascade",
+        description: "E(k) = C_K ε^(2/3) k^(-5/3): Inertial subrange kinetic energy spectrum and vortex dissipation.",
+        category: "Turbulent Flow",
+        icon: "🌪️",
+        domain: "fluid_dynamics",
+        tool_name: Some("TurbulenceTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

@@ -426,3 +426,29 @@ mod tests {
         assert_eq!(w_zero, Complex64::new(1e6, 1e6));
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Conformal Mapping",
+    "domain": "analysis",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "function": "z^2",
+    "grid_bound": 2.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "complex_mapping_starter",
+        title: "Conformal Mapping",
+        description: "w = f(z): Complex holomorphic functions mapping orthogonal grid coordinate contours.",
+        category: "Complex Analysis",
+        icon: "🌀",
+        domain: "analysis",
+        tool_name: Some("ComplexMappingTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

@@ -201,3 +201,32 @@ impl scientific_metadata::theory::TheoryDescribable for ActivationFunctionsTool 
     fn theory_citation(&self) -> String { "Deep Learning (Goodfellow et al., 2016)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Activation Functions",
+    "domain": "ai",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "active_function": "GELU",
+    "input_range": [
+      -3.0,
+      3.0
+    ]
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "activation_functions_starter",
+        title: "Activation Functions",
+        description: "Comparison of non-linear activations: ReLU, GELU, Sigmoid, and Swish functions.",
+        category: "Neural Architectures",
+        icon: "⚡",
+        domain: "ai",
+        tool_name: Some("ActivationFunctionsTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

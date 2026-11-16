@@ -28,6 +28,7 @@ pub struct ToolMetadata {
 }
 
 inventory::collect!(ToolMetadata);
+pub use crate::starter_gallery::StarterPresetMetadata;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {

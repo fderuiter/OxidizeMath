@@ -230,3 +230,33 @@ impl scientific_metadata::theory::TheoryDescribable for NeuralNetworkVizTool {
     fn theory_citation(&self) -> String { "A Quantitative Description of Membrane Current and Its Application to Conduction and Excitation in Nerve (Hodgkin & Huxley, 1952); Theoretical Neuroscience (Dayan & Abbott, 2001)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Spiking Neural Circuit",
+    "domain": "neuroscience",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "layers": [
+      4,
+      8,
+      2
+    ],
+    "activation": "ReLU"
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "neural_network_viz_starter",
+        title: "Spiking Neural Circuit",
+        description: "Multi-layer synaptic weight propagation and receptive field neuron activation patterns.",
+        category: "Neural Circuits",
+        icon: "⚡",
+        domain: "neuroscience",
+        tool_name: Some("NeuralNetworkVizTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

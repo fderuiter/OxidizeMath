@@ -399,3 +399,29 @@ inventory::submit! {
         build: || Box::new(FractalViewer::default()),
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Mandelbrot Explorer",
+    "domain": "chaos",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "max_iterations": 150,
+    "zoom": 1.0
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "fractal_viewer_starter",
+        title: "Mandelbrot Explorer",
+        description: "z_{n+1} = z_n^2 + c: Complex quadratic polynomial iteration and boundary fractal escape times.",
+        category: "Fractals",
+        icon: "❄️",
+        domain: "chaos",
+        tool_name: Some("FractalViewer"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

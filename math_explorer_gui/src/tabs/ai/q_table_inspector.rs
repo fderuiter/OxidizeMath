@@ -470,4 +470,5 @@ impl scientific_metadata::theory::TheoryDescribable for QTableInspectorTool {
 #[cfg(test)]
 #[path = "q_table_inspector/tests.rs"]
 mod tests;
-
+#[path = "q_table_inspector/preset.rs"]
+mod preset;

@@ -215,3 +215,42 @@ impl InteractivePreset for OdeSolverTool {
         Ok(())
     }
 }
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "harmonic_oscillator",
+        title: "Harmonic Oscillator",
+        description: "y'' = -k·y: Second-order differential equation modeling undamped periodic spring motion.",
+        category: "Differential Equations",
+        icon: "〰️",
+        domain: "analysis",
+        tool_name: Some("OdeSolverTool"),
+        preset_generator: || crate::starter_gallery::PRESET_HARMONIC_OSCILLATOR,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "logistic_growth",
+        title: "Logistic Growth",
+        description: "y' = r·y·(1 - y/K): Non-linear growth constrained by carrying capacity K.",
+        category: "Population Dynamics",
+        icon: "📈",
+        domain: "analysis",
+        tool_name: Some("OdeSolverTool"),
+        preset_generator: || crate::starter_gallery::PRESET_LOGISTIC_GROWTH,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "exponential_decay",
+        title: "Exponential Decay",
+        description: "y' = k·y: First-order differential decay process with constant half-life.",
+        category: "Calculus",
+        icon: "📉",
+        domain: "analysis",
+        tool_name: Some("OdeSolverTool"),
+        preset_generator: || crate::starter_gallery::PRESET_EXPONENTIAL_DECAY,
+    }
+}

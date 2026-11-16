@@ -309,3 +309,29 @@ mod tests {
         assert_eq!(plot_points.points().len(), tool.full_kelly_points.len());
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Geometric Bankroll Growth",
+    "domain": "financial_math",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "initial_bankroll": 10000.0,
+    "time_steps": 100
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "bankroll_growth_starter",
+        title: "Geometric Bankroll Growth",
+        description: "Log-wealth expectation maximizing capital trajectory under continuous compound yield.",
+        category: "Portfolio Theory",
+        icon: "💰",
+        domain: "financial_math",
+        tool_name: Some("BankrollGrowthTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

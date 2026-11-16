@@ -285,3 +285,30 @@ impl scientific_metadata::theory::TheoryDescribable for SurfaceViewer {
         map
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Parametric Surface Viewer",
+    "domain": "geometry_topology",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "u_steps": 40,
+    "v_steps": 40,
+    "surface": "Enneper"
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "surface_viewer_starter",
+        title: "Parametric Surface Viewer",
+        description: "r(u, v) = [x(u, v), y(u, v), z(u, v)]: 3D manifold mesh generation and normal vector rendering.",
+        category: "Differential Geometry",
+        icon: "🔮",
+        domain: "geometry_topology",
+        tool_name: Some("SurfaceViewer"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

@@ -362,3 +362,29 @@ impl scientific_metadata::theory::TheoryDescribable for CurvatureHeatmap {
         map
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Gaussian Curvature Heatmap",
+    "domain": "geometry_topology",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "grid_resolution": 30,
+    "surface_type": "Torus"
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "curvature_heatmap_starter",
+        title: "Gaussian Curvature Heatmap",
+        description: "K = κ₁·κ₂: Intrinsic differential Gaussian and mean curvature distribution across manifolds.",
+        category: "Differential Geometry",
+        icon: "🌐",
+        domain: "geometry_topology",
+        tool_name: Some("CurvatureHeatmap"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

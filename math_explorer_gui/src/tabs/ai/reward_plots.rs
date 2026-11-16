@@ -327,3 +327,29 @@ impl scientific_metadata::theory::TheoryDescribable for RewardPlotsTool {
         std::collections::HashMap::new()
     }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Reward Trajectory",
+    "domain": "ai",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "episodes": 200,
+    "smoothing_window": 10
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "reward_plots_starter",
+        title: "Reward Trajectory",
+        description: "Episode cumulative return and moving average reward learning dynamics across training episodes.",
+        category: "Reinforcement Learning",
+        icon: "🎯",
+        domain: "ai",
+        tool_name: Some("RewardPlotsTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}

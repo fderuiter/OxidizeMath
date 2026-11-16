@@ -214,3 +214,29 @@ impl scientific_metadata::theory::TheoryDescribable for NetworkPropagationTool {
     fn theory_citation(&self) -> String { "Epidemic processes in complex networks (Pastor-Satorras et al., 2015); Networks (Newman, 2010)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
 }
+
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Graph Epidemic Spread",
+    "domain": "epidemiology",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "infection_prob": 0.15,
+    "recovery_prob": 0.05
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "network_propagation_starter",
+        title: "Graph Epidemic Spread",
+        description: "Stochastic infection contagion percolation across scale-free contact networks.",
+        category: "Network Epidemiology",
+        icon: "🕸️",
+        domain: "epidemiology",
+        tool_name: Some("NetworkPropagationTool"),
+        preset_generator: || STARTER_PRESET_JSON,
+    }
+}
