@@ -53,12 +53,24 @@ fn main() {
             }
         }
         "check-entropy" => {
-            let debt = entropy_guard::check_entropy(&[]);
+            let custom_paths: Vec<String> = if args.len() > 2 {
+                args[2..].to_vec()
+            } else {
+                Vec::new()
+            };
+            let debt = entropy_guard::check_entropy(&custom_paths);
             let has_debt = !debt.is_empty();
             for d in debt {
                 println!("{}", d);
             }
             if has_debt {
+                std::process::exit(1);
+            } else {
+                std::process::exit(0);
+            }
+        }
+        "check-vulnerabilities" => {
+            if !vulnerabilities::check_osv_vulnerabilities() {
                 std::process::exit(1);
             } else {
                 std::process::exit(0);

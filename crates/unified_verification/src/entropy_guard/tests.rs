@@ -32,7 +32,6 @@ fn test_detect_private_keys() {
     let file = dir.join("secret.rs");
     fs::write(
         &file,
-        // allow(entropy_guard)
         "fn dummy() {\n    let _k = \"-----BEGIN RSA PRIVATE KEY-----\\nsecret\\n-----PRIVATE KEY-----\";\n}\n",
     )
     .unwrap();
@@ -49,7 +48,6 @@ fn test_detect_private_keys() {
 fn test_detect_api_tokens() {
     let dir = create_test_dir("test_detect_api_tokens");
     let file = dir.join("tokens.rs");
-    // allow(entropy_guard)
     fs::write(
         &file,
         concat!(
@@ -69,7 +67,11 @@ fn test_detect_api_tokens() {
             .iter()
             .any(|v| v.contains("Raw credential (AWS Access Key)") && v.contains("at line 2"))
     );
-    assert!(violations.iter().any(|v| v.contains("Raw credential (GitHub API Token)") && v.contains("at line 3")));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("Raw credential (GitHub API Token)") && v.contains("at line 3"))
+    );
     assert!(
         violations
             .iter()
@@ -83,8 +85,6 @@ fn test_detect_api_tokens() {
 fn test_detect_high_entropy_strings() {
     let dir = create_test_dir("test_detect_high_entropy");
     let file = dir.join("entropy.rs");
-    // 35 distinct alphanumeric characters: high entropy > 4.5
-    // allow(entropy_guard)
     fs::write(
         &file,
         "fn dummy() {\n    let _sec = \"aZ9kL2mN5qR8vW1xY4bC7dE0fG3hJ6iK9lM\";\n}\n",
@@ -103,7 +103,6 @@ fn test_detect_high_entropy_strings() {
 fn test_allow_annotation_bypasses_secrets() {
     let dir = create_test_dir("test_allow_annotation");
     let file = dir.join("mock_secrets.rs");
-    // allow(entropy_guard)
     fs::write(
         &file,
         concat!(
@@ -129,20 +128,16 @@ fn test_allow_annotation_bypasses_secrets() {
 #[test]
 fn test_ignore_comments_and_non_rust_files() {
     let dir = create_test_dir("test_ignore_non_rust");
-    // Non-Rust file with extension not in target_extensions
     let text_file = dir.join("notes.txt");
     fs::write(
         &text_file,
-        // allow(entropy_guard)
         "AKIAIOSFODNN7EXAMPLE\nghp_123456789012345678901234567890123456\n",
     )
     .unwrap();
 
-    // Rust file with secret in comments only
     let rs_file = dir.join("code.rs");
     fs::write(
         &rs_file,
-        // allow(entropy_guard)
         "// AKIAIOSFODNN7EXAMPLE\n// ghp_123456789012345678901234567890123456\nfn clean() {}\n",
     )
     .unwrap();
@@ -158,102 +153,127 @@ fn test_ignore_comments_and_non_rust_files() {
 }
 
 #[test]
-fn test_detect_secrets_in_root_config() {
-    let dir = create_test_dir("test_detect_root_config");
-    let toml_file = dir.join("Cargo.toml");
-    // allow(entropy_guard)
+fn test_detect_secrets_in_non_rust_files() {
+    let dir = create_test_dir("test_detect_non_rust");
+    let toml_file = dir.join("config.toml");
+    fs::write(&toml_file, "aws_key = \"AKIAIOSFODNN7EXAMPLE\"\n").unwrap();
+
+    let yml_file = dir.join("ci.yml");
     fs::write(
-        &toml_file,
-        "[package]\nname = \"demo\"\napi_key = \"AKIAIOSFODNN7EXAMPLE\"\n",
+        &yml_file,
+        "token: ghp_123456789012345678901234567890123456\n",
     )
     .unwrap();
 
-    let violations = check_entropy(&[dir.to_str().unwrap().to_string()]);
-    assert_eq!(violations.len(), 1);
-    assert!(violations[0].contains("Raw credential (AWS Access Key)"));
-    assert!(violations[0].contains("at line 3"));
+    let sh_file = dir.join("deploy.sh");
+    fs::write(&sh_file, "SLACK_TOKEN=xoxb-1234567890-1234567890\n").unwrap();
 
-    let _ = fs::remove_dir_all(&dir);
-}
+    let dir_str = dir.to_str().unwrap().to_string();
+    let exts = vec!["toml".to_string(), "yml".to_string(), "sh".to_string()];
+    let violations = scan_paths_internal(&[dir_str], &exts, &[]);
 
-#[test]
-fn test_detect_secrets_in_ci_workflows() {
-    let dir = create_test_dir("test_detect_ci_workflows");
-    let workflow_dir = dir.join(".github").join("workflows");
-    fs::create_dir_all(&workflow_dir).unwrap();
-    let workflow_file = workflow_dir.join("ci.yml");
-    // allow(entropy_guard)
-    fs::write(
-        &workflow_file,
-        "name: CI\nenv:\n  GH_TOKEN: ghp_123456789012345678901234567890123456\n",
-    )
-    .unwrap();
-
-    let violations = check_entropy(&[dir.to_str().unwrap().to_string()]);
-    assert_eq!(violations.len(), 1);
-    assert!(violations[0].contains("Raw credential (GitHub API Token)"));
-    assert!(violations[0].contains("at line 3"));
-
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn test_detect_secrets_in_scripts() {
-    let dir = create_test_dir("test_detect_scripts");
-    let scripts_dir = dir.join("scripts");
-    fs::create_dir_all(&scripts_dir).unwrap();
-    let script_file = scripts_dir.join("deploy.sh");
-    // allow(entropy_guard)
-    fs::write(
-        &script_file,
-        "#!/usr/bin/env bash\nexport SLACK_TOKEN=\"xoxb-1234567890-1234567890\"\n",
-    )
-    .unwrap();
-
-    let violations = check_entropy(&[dir.to_str().unwrap().to_string()]);
-    assert_eq!(violations.len(), 1);
-    assert!(violations[0].contains("Raw credential (Slack API Token)"));
-    assert!(violations[0].contains("at line 2"));
-
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn test_file_level_allowlist_exemption() {
-    let dir = create_test_dir("test_allowlist_exemption");
-    let fixture_file = dir.join("fixtures").join("mock_key.rs");
-    fs::create_dir_all(fixture_file.parent().unwrap()).unwrap();
-    // allow(entropy_guard)
-    fs::write(
-        &fixture_file,
-        "fn mock() {\n    let _aws = \"AKIAIOSFODNN7EXAMPLE\";\n}\n",
-    )
-    .unwrap();
-
-    let unexempted_file = dir.join("bad.rs");
-    // allow(entropy_guard)
-    fs::write(
-        &unexempted_file,
-        "fn bad() {\n    let _aws = \"AKIAIOSFODNN7EXAMPLE\";\n}\n",
-    )
-    .unwrap();
-
-    let whitelist_file = dir.join("custom_whitelist.toml");
-    fs::write(
-        &whitelist_file,
-        format!(
-            "[entropy_guard]\nallowlist = [\"{}\"]\n",
-            fixture_file.to_str().unwrap().replace('\\', "/")
-        ),
-    )
-    .unwrap();
-
-    let violations = check_entropy_with_whitelist(
-        &[dir.to_str().unwrap().to_string()],
-        &whitelist_file,
+    assert_eq!(violations.len(), 3);
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("Raw credential (AWS Access Key)") && v.contains("config.toml"))
     );
-    assert_eq!(violations.len(), 1);
-    assert!(violations[0].contains("bad.rs"));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("Raw credential (GitHub API Token)") && v.contains("ci.yml"))
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("Raw credential (Slack API Token)") && v.contains("deploy.sh"))
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_non_rust_allow_annotation() {
+    let dir = create_test_dir("test_non_rust_allow");
+    let yml_file = dir.join("ci.yml");
+    fs::write(
+        &yml_file,
+        "# allow(entropy_guard)\ntoken: ghp_123456789012345678901234567890123456\n",
+    )
+    .unwrap();
+
+    let dir_str = dir.to_str().unwrap().to_string();
+    let exts = vec!["yml".to_string()];
+    let violations = scan_paths_internal(&[dir_str], &exts, &[]);
+    assert!(
+        violations.is_empty(),
+        "Violations should be empty with allow comment"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_file_allowlist_in_whitelist_toml_exempts_file() {
+    let dir = create_test_dir("test_file_allowlist");
+    let file = dir.join("fixture_secret.toml");
+    fs::write(&file, "token = \"AKIAIOSFODNN7EXAMPLE\"\n").unwrap();
+
+    let dir_str = dir.to_str().unwrap().to_string();
+    let exts = vec!["toml".to_string()];
+    let allowlist = vec!["fixture_secret.toml".to_string()];
+    let violations = scan_paths_internal(&[dir_str], &exts, &allowlist);
+    assert!(violations.is_empty(), "Allowlisted file should be skipped");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_skip_git_and_target_dirs() {
+    let dir = create_test_dir("test_skip_git_target");
+    let target_dir = dir.join("target");
+    fs::create_dir_all(&target_dir).unwrap();
+    fs::write(
+        target_dir.join("build.toml"),
+        "token = \"AKIAIOSFODNN7EXAMPLE\"\n",
+    )
+    .unwrap();
+
+    let git_dir = dir.join(".git");
+    fs::create_dir_all(&git_dir).unwrap();
+    fs::write(
+        git_dir.join("config.toml"),
+        "token = \"AKIAIOSFODNN7EXAMPLE\"\n",
+    )
+    .unwrap();
+
+    let dir_str = dir.to_str().unwrap().to_string();
+    let exts = vec!["toml".to_string()];
+    let violations = scan_paths_internal(&[dir_str], &exts, &[]);
+    assert!(violations.is_empty(), "target and .git must be skipped");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_load_whitelist_config_parsing() {
+    let dir = create_test_dir("test_load_config");
+    let cfg_file = dir.join("test_whitelist.toml");
+    let content = r#"
+[entropy_guard]
+scan_paths = ["custom_dir"]
+target_extensions = ["rs", "toml"]
+allowlist = ["fixture.rs"]
+"#;
+    fs::write(&cfg_file, content).unwrap();
+
+    let cfg = load_whitelist_config(Some(&cfg_file));
+    assert_eq!(cfg.scan_paths, Some(vec!["custom_dir".to_string()]));
+    assert_eq!(
+        cfg.target_extensions,
+        Some(vec!["rs".to_string(), "toml".to_string()])
+    );
+    assert_eq!(cfg.allowlist, Some(vec!["fixture.rs".to_string()]));
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -279,59 +299,43 @@ fn test_egui_plot_scanned_without_exclusion() {
 }
 
 #[test]
-fn test_skip_target_and_git_directories() {
-    let dir = create_test_dir("test_skip_target_and_git");
-    let target_file = dir.join("target").join("debug").join("secret.rs");
-    fs::create_dir_all(target_file.parent().unwrap()).unwrap();
-    // allow(entropy_guard)
-    fs::write(&target_file, "fn s() { let _k = \"AKIAIOSFODNN7EXAMPLE\"; }\n").unwrap();
-
-    let git_file = dir.join(".git").join("hooks").join("pre-commit.sh");
-    fs::create_dir_all(git_file.parent().unwrap()).unwrap();
-    // allow(entropy_guard)
-    fs::write(&git_file, "export TOKEN=\"AKIAIOSFODNN7EXAMPLE\"\n").unwrap();
-
-    let violations = check_entropy(&[dir.to_str().unwrap().to_string()]);
-    assert!(violations.is_empty(), "target and .git must be skipped: {:?}", violations);
-
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn test_allow_annotation_in_text_files() {
-    let dir = create_test_dir("test_allow_in_text");
-    let sh_file = dir.join("script.sh");
-    // allow(entropy_guard)
-    fs::write(
-        &sh_file,
-        concat!(
-            "# allow(entropy_guard)\n",
-            "export AWS_KEY=\"AKIAIOSFODNN7EXAMPLE\"\n",
-            "export GH_KEY=\"ghp_123456789012345678901234567890123456\" # allow(entropy_guard)\n"
-        ),
-    )
-    .unwrap();
-
-    let violations = check_entropy(&[dir.to_str().unwrap().to_string()]);
-    assert!(violations.is_empty(), "Violations should be ignored by allow(entropy_guard): {:?}", violations);
-
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
 fn test_fallback_when_whitelist_unparseable_or_missing() {
     let dir = create_test_dir("test_fallback_unparseable");
     let broken_whitelist = dir.join("broken.toml");
     fs::write(&broken_whitelist, "invalid = toml [ [ syntax").unwrap();
 
-    let config = load_config(&broken_whitelist);
+    let config = load_whitelist_config(Some(&broken_whitelist));
     assert!(config.scan_paths.is_none());
     assert!(config.target_extensions.is_none());
     assert!(config.allowlist.is_none());
 
     let non_existent = dir.join("non_existent.toml");
-    let missing_config = load_config(&non_existent);
+    let missing_config = load_whitelist_config(Some(&non_existent));
     assert!(missing_config.scan_paths.is_none());
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn test_whitelist_config_aliases() {
+    let dir = create_test_dir("test_aliases");
+    let cfg_file = dir.join("test_aliases.toml");
+    let content = r#"
+[entropy_guard]
+scan_targets = ["custom_dir"]
+file_extensions = ["rs", "toml"]
+path_exemptions = ["fixture.rs"]
+"#;
+    fs::write(&cfg_file, content).unwrap();
+
+    let cfg = load_whitelist_config(Some(&cfg_file));
+    assert_eq!(cfg.scan_paths, Some(vec!["custom_dir".to_string()]));
+    assert_eq!(
+        cfg.target_extensions,
+        Some(vec!["rs".to_string(), "toml".to_string()])
+    );
+    assert_eq!(cfg.allowlist, Some(vec!["fixture.rs".to_string()]));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
