@@ -69,6 +69,13 @@ fn main() {
                 std::process::exit(0);
             }
         }
+        "check-vulnerabilities" => {
+            if !vulnerabilities::check_osv_vulnerabilities() {
+                std::process::exit(1);
+            } else {
+                std::process::exit(0);
+            }
+        }
         "check-file-lengths" => {
             let (_, members) = oxidize_core::workspace::get_workspace_members();
             let debt = check_file_lengths(&members);
