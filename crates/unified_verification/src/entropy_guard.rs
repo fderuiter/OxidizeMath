@@ -1,9 +1,64 @@
 use regex::Regex;
-use std::collections::HashMap;
+use serde::Deserialize;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::path::{Path, PathBuf};
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 use walkdir::WalkDir;
+
+pub const DEFAULT_SCAN_PATHS: &[&str] = &[
+    ".github",
+    "apps",
+    "crates",
+    "egui_plot",
+    "math_explorer",
+    "math_explorer_gui",
+    "scripts",
+    ".",
+];
+
+pub const DEFAULT_EXTENSIONS: &[&str] = &["rs", "toml", "yml", "yaml", "sh"];
+
+#[derive(Deserialize, Debug, Clone, Default)]
+pub struct WhitelistConfig {
+    pub entropy_guard: Option<EntropyGuardConfig>,
+}
+
+#[derive(Deserialize, Debug, Clone, Default)]
+pub struct EntropyGuardConfig {
+    #[serde(alias = "paths", alias = "scan_targets", alias = "targets")]
+    pub scan_paths: Option<Vec<String>>,
+    #[serde(alias = "file_extensions", alias = "extensions")]
+    pub target_extensions: Option<Vec<String>>,
+    #[serde(alias = "exemptions", alias = "path_exemptions")]
+    pub allowlist: Option<Vec<String>>,
+}
+
+pub fn load_config(whitelist_path: &Path) -> EntropyGuardConfig {
+    if let Ok(content) = fs::read_to_string(whitelist_path) {
+        if let Ok(config) = toml::from_str::<WhitelistConfig>(&content) {
+            return config.entropy_guard.unwrap_or_default();
+        }
+    }
+    EntropyGuardConfig::default()
+}
+
+pub fn is_allowlisted(path: &Path, allowlist: &[String]) -> bool {
+    let path_str = path.to_string_lossy().replace('\\', "/");
+    let norm_path = path_str.trim_start_matches("./");
+    for item in allowlist {
+        let norm_item = item.replace('\\', "/");
+        let norm_item = norm_item.trim_start_matches("./");
+        if norm_path == norm_item
+            || norm_path.ends_with(&format!("/{}", norm_item))
+            || norm_path.starts_with(&format!("{}/", norm_item))
+        {
+            return true;
+        }
+    }
+    false
+}
 
 struct SecurityVisitor<'a> {
     aliases: HashMap<String, String>,
@@ -61,7 +116,7 @@ fn resolve_path(p: &syn::Path, mappings: &HashMap<String, String>) -> String {
     parts.join("::")
 }
 
-fn calculate_entropy(s: &str) -> f64 {
+pub fn calculate_entropy(s: &str) -> f64 {
     let mut counts = HashMap::new();
     for c in s.chars() {
         *counts.entry(c).or_insert(0) += 1;
@@ -85,8 +140,6 @@ impl<'a, 'ast> Visit<'ast> for SecurityVisitor<'a> {
     fn visit_expr_call(&mut self, i: &'ast syn::ExprCall) {
         if let syn::Expr::Path(p) = &*i.func {
             let resolved = resolve_path(&p.path, &self.aliases);
-            // The .start() method on proc_macro2::Span requires the "span-locations" feature.
-            // This is why proc-macro2 is explicitly included in Cargo.toml and ignored by cargo-machete.
             let line = i.func.span().start().line;
 
             if resolved.contains("thread_rng")
@@ -112,7 +165,6 @@ impl<'a, 'ast> Visit<'ast> for SecurityVisitor<'a> {
 
     fn visit_lit_str(&mut self, lit: &'ast syn::LitStr) {
         let value = lit.value();
-        // See previous comment regarding proc-macro2 and span-locations feature.
         let line = lit.span().start().line;
 
         if (value.contains("-----BEGIN ") && value.contains("PRIVATE KEY-----"))
@@ -145,7 +197,130 @@ impl<'a, 'ast> Visit<'ast> for SecurityVisitor<'a> {
     }
 }
 
+fn is_line_ignored(lines: &[&str], line_num: usize) -> bool {
+    if line_num > 0 && line_num <= lines.len() {
+        if lines[line_num - 1].contains("allow(entropy_guard)") {
+            return true;
+        }
+        if line_num > 1 && lines[line_num - 2].contains("allow(entropy_guard)") {
+            return true;
+        }
+    }
+    false
+}
+
+fn scan_text_file(
+    path: &Path,
+    content: &str,
+    aws_re: &Regex,
+    gh_re: &Regex,
+    slack_re: &Regex,
+    all_violations: &mut Vec<String>,
+) {
+    let lines: Vec<&str> = content.lines().collect();
+    for (idx, line) in lines.iter().enumerate() {
+        let line_num = idx + 1;
+        if is_line_ignored(&lines, line_num) {
+            continue;
+        }
+
+        let kind = if (line.contains("-----BEGIN ") && line.contains("PRIVATE KEY-----"))
+            || (line.contains("-----BEGIN RSA ") && line.contains("PRIVATE KEY-----"))
+        {
+            Some("Private Key")
+        } else if aws_re.is_match(line) {
+            Some("AWS Access Key")
+        } else if gh_re.is_match(line) {
+            Some("GitHub API Token")
+        } else if slack_re.is_match(line) {
+            Some("Slack API Token")
+        } else {
+            None
+        };
+
+        if let Some(secret_kind) = kind {
+            let msg = format!(
+                "Raw credential ({}) found in {} at line {}",
+                secret_kind,
+                path.display(),
+                line_num
+            );
+            println!("[WARNING] {}", msg);
+            all_violations.push(msg);
+        }
+    }
+}
+
+fn scan_rust_file(
+    path: &Path,
+    content: &str,
+    aws_re: &Regex,
+    gh_re: &Regex,
+    slack_re: &Regex,
+    all_violations: &mut Vec<String>,
+) {
+    if let Ok(ast) = syn::parse_file(content) {
+        let mut visitor = SecurityVisitor {
+            aliases: HashMap::new(),
+            entropy_violations: Vec::new(),
+            secret_warnings: Vec::new(),
+            aws_re,
+            gh_re,
+            slack_re,
+        };
+        visitor.visit_file(&ast);
+        let lines: Vec<&str> = content.lines().collect();
+
+        for (name, line_num) in visitor.entropy_violations {
+            if !is_line_ignored(&lines, line_num) {
+                let msg = format!(
+                    "Entropy Guard Violation: Prohibited pattern '{}' found in {} at line {}",
+                    name,
+                    path.display(),
+                    line_num
+                );
+                println!("[WARNING] {}", msg);
+                all_violations.push(msg);
+            }
+        }
+
+        for (kind, line_num) in visitor.secret_warnings {
+            if !is_line_ignored(&lines, line_num) {
+                let msg = format!(
+                    "Raw credential ({}) found in {} at line {}",
+                    kind,
+                    path.display(),
+                    line_num
+                );
+                println!("[WARNING] {}", msg);
+                all_violations.push(msg);
+            }
+        }
+    }
+}
+
+fn process_file(
+    path: &Path,
+    ext: &str,
+    aws_re: &Regex,
+    gh_re: &Regex,
+    slack_re: &Regex,
+    violations: &mut Vec<String>,
+) {
+    if let Ok(content) = fs::read_to_string(path) {
+        if ext == "rs" {
+            scan_rust_file(path, &content, aws_re, gh_re, slack_re, violations);
+        } else {
+            scan_text_file(path, &content, aws_re, gh_re, slack_re, violations);
+        }
+    }
+}
+
 pub fn check_entropy(members: &[String]) -> Vec<String> {
+    check_entropy_with_whitelist(members, Path::new("verification_whitelist.toml"))
+}
+
+pub fn check_entropy_with_whitelist(targets: &[String], whitelist_path: &Path) -> Vec<String> {
     println!("Running Entropy Guard and Secrets Scanner...");
     let mut all_violations = Vec::new();
 
@@ -153,89 +328,69 @@ pub fn check_entropy(members: &[String]) -> Vec<String> {
     let gh_re = Regex::new(r"ghp_[a-zA-Z0-9]{36,40}|github_pat_[a-zA-Z0-9_]{82}").unwrap();
     let slack_re = Regex::new(r"xoxb-[a-zA-Z0-9-]{10,}").unwrap();
 
-    for dir in members {
-        if !std::path::Path::new(dir).exists() {
+    let config = load_config(whitelist_path);
+    let scan_paths: Vec<String> = if !targets.is_empty() {
+        targets.to_vec()
+    } else {
+        config.scan_paths.unwrap_or_else(|| {
+            DEFAULT_SCAN_PATHS.iter().map(|s| s.to_string()).collect()
+        })
+    };
+
+    let target_extensions: HashSet<String> = config
+        .target_extensions
+        .unwrap_or_else(|| DEFAULT_EXTENSIONS.iter().map(|s| s.to_string()).collect())
+        .into_iter()
+        .map(|ext| ext.trim_start_matches('.').to_string())
+        .collect();
+
+    let allowlist = config.allowlist.unwrap_or_default();
+    let mut visited_paths: HashSet<PathBuf> = HashSet::new();
+
+    for dir in &scan_paths {
+        let root_path = Path::new(dir);
+        if !root_path.exists() {
             continue;
         }
-        for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
-            let path_str = entry.path().to_string_lossy().replace("\\", "/");
-            if path_str.contains("/target/")
-                || path_str.contains("/egui_plot/")
-                || path_str.starts_with("egui_plot/")
-            {
-                continue;
-            }
-            if entry.path().extension().and_then(|s| s.to_str()) == Some("rs") {
-                if let Ok(content) = fs::read_to_string(entry.path()) {
-                    if let Ok(ast) = syn::parse_file(&content) {
-                        let mut visitor = SecurityVisitor {
-                            aliases: HashMap::new(),
-                            entropy_violations: Vec::new(),
-                            secret_warnings: Vec::new(),
-                            aws_re: &aws_re,
-                            gh_re: &gh_re,
-                            slack_re: &slack_re,
-                        };
-                        visitor.visit_file(&ast);
 
-                        let lines: Vec<&str> = content.lines().collect();
-
-                        for (name, line_num) in visitor.entropy_violations {
-                            let mut ignored = false;
-                            if line_num > 0 && line_num <= lines.len() {
-                                let target_line = lines[line_num - 1];
-                                if target_line.contains("allow(entropy_guard)") {
-                                    ignored = true;
-                                }
-                                if !ignored && line_num > 1 {
-                                    let prev_line = lines[line_num - 2];
-                                    if prev_line.contains("allow(entropy_guard)") {
-                                        ignored = true;
-                                    }
-                                }
-                            }
-
-                            if !ignored {
-                                let msg = format!(
-                                    "Entropy Guard Violation: Prohibited pattern '{}' found in {} at line {}",
-                                    name,
-                                    entry.path().display(),
-                                    line_num
-                                );
-                                all_violations.push(msg.clone());
-                                println!("[WARNING] {}", msg);
-                            }
-                        }
-
-                        for (kind, line_num) in visitor.secret_warnings {
-                            let mut ignored = false;
-                            if line_num > 0 && line_num <= lines.len() {
-                                let target_line = lines[line_num - 1];
-                                if target_line.contains("allow(entropy_guard)") {
-                                    ignored = true;
-                                }
-                                if !ignored && line_num > 1 {
-                                    let prev_line = lines[line_num - 2];
-                                    if prev_line.contains("allow(entropy_guard)") {
-                                        ignored = true;
-                                    }
-                                }
-                            }
-
-                            if !ignored {
-                                let msg = format!(
-                                    "Raw credential ({}) found in {} at line {}",
-                                    kind,
-                                    entry.path().display(),
-                                    line_num
-                                );
-                                all_violations.push(msg.clone());
-                                println!("[WARNING] {}", msg);
-                            }
-                        }
+        for entry in WalkDir::new(root_path)
+            .into_iter()
+            .filter_entry(|e| {
+                if e.file_type().is_dir() {
+                    let name = e.file_name().to_string_lossy();
+                    if name == "target" || name == ".git" {
+                        return false;
                     }
                 }
+                true
+            })
+            .filter_map(|e| e.ok())
+        {
+            if !entry.file_type().is_file() {
+                continue;
             }
+
+            let path = entry.path();
+            let path_str = path.to_string_lossy().replace('\\', "/");
+            if path_str.contains("/target/") || path_str.contains("/.git/") {
+                continue;
+            }
+
+            if is_allowlisted(path, &allowlist) {
+                continue;
+            }
+
+            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+            if !target_extensions.contains(ext) {
+                continue;
+            }
+
+            let key = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+            if !visited_paths.insert(key) {
+                continue;
+            }
+
+            process_file(path, ext, &aws_re, &gh_re, &slack_re, &mut all_violations);
         }
     }
 
@@ -243,164 +398,4 @@ pub fn check_entropy(members: &[String]) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static TEST_DIR_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-    fn create_test_dir(prefix: &str) -> PathBuf {
-        let n = TEST_DIR_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("{}_{}_{}", prefix, std::process::id(), n));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn test_calculate_entropy() {
-        assert_eq!(calculate_entropy("aaaa"), 0.0);
-        let e = calculate_entropy("abcd");
-        assert!((e - 2.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_check_entropy_run() {
-        let members = vec!["crates/pure_math".to_string()];
-        let violations = check_entropy(&members);
-        // pure_math should not have unflagged critical entropy violations
-        assert!(violations.is_empty() || !violations.is_empty());
-    }
-
-    #[test]
-    fn test_detect_private_keys() {
-        let dir = create_test_dir("test_detect_private_keys");
-        let file = dir.join("secret.rs");
-        fs::write(
-            &file,
-            // allow(entropy_guard)
-            "fn dummy() {\n    let _k = \"-----BEGIN RSA PRIVATE KEY-----\\nsecret\\n-----PRIVATE KEY-----\";\n}\n",
-        )
-        .unwrap();
-
-        let violations = check_entropy(&[dir.to_str().unwrap().to_string()]);
-        assert_eq!(violations.len(), 1);
-        assert!(violations[0].contains("Raw credential (Private Key)"));
-        assert!(violations[0].contains("at line 2"));
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_detect_api_tokens() {
-        let dir = create_test_dir("test_detect_api_tokens");
-        let file = dir.join("tokens.rs");
-        // allow(entropy_guard)
-        fs::write(
-            &file,
-            concat!(
-                "fn dummy() {\n",
-                "    let _aws = \"AKIAIOSFODNN7EXAMPLE\";\n",
-                "    let _gh = \"ghp_123456789012345678901234567890123456\";\n",
-                "    let _slack = \"xoxb-1234567890-1234567890\";\n",
-                "}\n"
-            ),
-        )
-        .unwrap();
-
-        let violations = check_entropy(&[dir.to_str().unwrap().to_string()]);
-        assert_eq!(violations.len(), 3);
-        assert!(
-            violations
-                .iter()
-                .any(|v| v.contains("Raw credential (AWS Access Key)") && v.contains("at line 2"))
-        );
-        assert!(violations.iter().any(|v| v.contains("Raw credential (GitHub API Token)") && v.contains("at line 3")));
-        assert!(
-            violations
-                .iter()
-                .any(|v| v.contains("Raw credential (Slack API Token)") && v.contains("at line 4"))
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_detect_high_entropy_strings() {
-        let dir = create_test_dir("test_detect_high_entropy");
-        let file = dir.join("entropy.rs");
-        // 35 distinct alphanumeric characters: high entropy > 4.5
-        // allow(entropy_guard)
-        fs::write(
-            &file,
-            "fn dummy() {\n    let _sec = \"aZ9kL2mN5qR8vW1xY4bC7dE0fG3hJ6iK9lM\";\n}\n",
-        )
-        .unwrap();
-
-        let violations = check_entropy(&[dir.to_str().unwrap().to_string()]);
-        assert_eq!(violations.len(), 1);
-        assert!(violations[0].contains("Raw credential (High-Entropy Secret)"));
-        assert!(violations[0].contains("at line 2"));
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_allow_annotation_bypasses_secrets() {
-        let dir = create_test_dir("test_allow_annotation");
-        let file = dir.join("mock_secrets.rs");
-        // allow(entropy_guard)
-        fs::write(
-            &file,
-            concat!(
-                "fn dummy() {\n",
-                "    // allow(entropy_guard)\n",
-                "    let _aws = \"AKIAIOSFODNN7EXAMPLE\";\n",
-                "    let _gh = \"ghp_123456789012345678901234567890123456\"; // allow(entropy_guard)\n",
-                "}\n"
-            ),
-        )
-        .unwrap();
-
-        let violations = check_entropy(&[dir.to_str().unwrap().to_string()]);
-        assert!(
-            violations.is_empty(),
-            "Violations should be empty when allow(entropy_guard) is present: {:?}",
-            violations
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_ignore_comments_and_non_rust_files() {
-        let dir = create_test_dir("test_ignore_non_rust");
-        // Non-Rust file
-        let text_file = dir.join("notes.txt");
-        fs::write(
-            &text_file,
-            // allow(entropy_guard)
-            "AKIAIOSFODNN7EXAMPLE\nghp_123456789012345678901234567890123456\n",
-        )
-        .unwrap();
-
-        // Rust file with secret in comments only
-        let rs_file = dir.join("code.rs");
-        fs::write(
-            &rs_file,
-            // allow(entropy_guard)
-            "// AKIAIOSFODNN7EXAMPLE\n// ghp_123456789012345678901234567890123456\nfn clean() {}\n",
-        )
-        .unwrap();
-
-        let violations = check_entropy(&[dir.to_str().unwrap().to_string()]);
-        assert!(
-            violations.is_empty(),
-            "Comments and non-Rust files should not trigger violations: {:?}",
-            violations
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-}
+mod tests;

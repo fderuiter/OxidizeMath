@@ -7,3 +7,25 @@ allowlist = [
     "math_explorer",
     "math_explorer_gui",
 ]
+
+[entropy_guard]
+scan_paths = [
+    ".github",
+    "apps",
+    "crates",
+    "egui_plot",
+    "math_explorer",
+    "math_explorer_gui",
+    "scripts",
+    ".",
+]
+target_extensions = [
+    "rs",
+    "toml",
+    "yml",
+    "yaml",
+    "sh",
+]
+allowlist = [
+    "crates/unified_verification/src/entropy_guard/tests.rs",
+]

@@ -53,8 +53,7 @@ fn main() {
             }
         }
         "check-entropy" => {
-            let (_, members) = oxidize_core::workspace::get_workspace_members();
-            let debt = entropy_guard::check_entropy(&members);
+            let debt = entropy_guard::check_entropy(&[]);
             let has_debt = !debt.is_empty();
             for d in debt {
                 println!("{}", d);
@@ -268,7 +267,7 @@ fn verify_suite(args: &[String]) {
         passed_security = false;
     }
 
-    let entropy_debt = entropy_guard::check_entropy(&members);
+    let entropy_debt = entropy_guard::check_entropy(&[]);
     if !entropy_debt.is_empty() {
         passed_security = false;
     }
