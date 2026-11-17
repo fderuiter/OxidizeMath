@@ -3,10 +3,12 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' blob:;">
     <title>Math Explorer GUI</title>
     <script src="coi-serviceworker.min.js"></script>
     <link data-trunk rel="copy-file" href="coi-serviceworker.min.js"/>
+    <script src="reload.js"></script>
+    <link data-trunk rel="copy-file" href="reload.js"/>
     <link data-trunk rel="rust" href="Cargo.toml" data-bin="math_explorer_gui" data-wasm-opt="z"/>
     <link data-trunk rel="copy-file" href="worker.js"/>
     <style>
@@ -299,7 +301,7 @@
                 </div>
             </div>
             <div class="action-buttons">
-                <button type="button" class="reload-btn" onclick="window.location.reload()">Reload Page</button>
+                <button type="button" class="reload-btn">Reload Page</button>
             </div>
             <pre id="error_details" class="error-details" style="display: none;"></pre>
         </div>

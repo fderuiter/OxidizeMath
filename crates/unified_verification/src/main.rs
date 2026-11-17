@@ -53,13 +53,24 @@ fn main() {
             }
         }
         "check-entropy" => {
-            let (_, members) = oxidize_core::workspace::get_workspace_members();
-            let debt = entropy_guard::check_entropy(&members);
+            let custom_paths: Vec<String> = if args.len() > 2 {
+                args[2..].to_vec()
+            } else {
+                Vec::new()
+            };
+            let debt = entropy_guard::check_entropy(&custom_paths);
             let has_debt = !debt.is_empty();
             for d in debt {
                 println!("{}", d);
             }
             if has_debt {
+                std::process::exit(1);
+            } else {
+                std::process::exit(0);
+            }
+        }
+        "check-vulnerabilities" => {
+            if !vulnerabilities::check_osv_vulnerabilities() {
                 std::process::exit(1);
             } else {
                 std::process::exit(0);
@@ -85,11 +96,6 @@ fn main() {
         }
         "check-docs" => {
             if !doc_audit::run_doc_audit(&args[2..]) {
-                std::process::exit(1);
-            }
-        }
-        "check-vulnerabilities" => {
-            if !vulnerabilities::check_osv_vulnerabilities() {
                 std::process::exit(1);
             }
         }
@@ -273,7 +279,7 @@ fn verify_suite(args: &[String]) {
         passed_security = false;
     }
 
-    let entropy_debt = entropy_guard::check_entropy(&members);
+    let entropy_debt = entropy_guard::check_entropy(&[]);
     if !entropy_debt.is_empty() {
         passed_security = false;
     }
