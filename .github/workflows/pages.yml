@@ -43,6 +43,9 @@ jobs:
         working-directory: math_explorer_gui
         run: trunk build --release
 
+      - name: Pre-compress Web Distribution Assets
+        run: bash scripts/compress_dist.sh math_explorer_gui/dist
+
       - name: Verify WebAssembly Size Budget
         run: bash scripts/verify_wasm_budget.sh math_explorer_gui/dist
 
