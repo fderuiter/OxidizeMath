@@ -273,10 +273,12 @@ mod tests {
 
     #[test]
     fn test_vietoris_rips_parameter_updates() {
-        let mut tool = VietorisRipsTool::default();
+        let mut tool = VietorisRipsTool {
+            radius: 15.0,
+            ..Default::default()
+        };
 
         // Expanding radius connects all points in [0, 10] x [0, 10]
-        tool.radius = 15.0;
         tool.update_complex();
         assert_eq!(tool.cached_edges.len(), tool.complex.count_simplices(1));
         assert_eq!(tool.cached_triangles.len(), tool.complex.count_simplices(2));
@@ -317,8 +319,10 @@ mod tests {
 
     #[test]
     fn test_vietoris_rips_borrowed_plot_points_slice_variants() {
-        let mut tool = VietorisRipsTool::default();
-        tool.radius = 15.0;
+        let mut tool = VietorisRipsTool {
+            radius: 15.0,
+            ..Default::default()
+        };
         tool.update_complex();
 
         let v_slice: &[PlotPoint] = &tool.cached_vertices[..];

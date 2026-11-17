@@ -175,10 +175,12 @@ fn test_query_change_resets_selection() {
 #[test]
 fn test_palette_tool_indexing_and_fuzzy_match() {
     let tabs = mock_tabs();
-    let mut palette = CommandPalette::default();
+    let mut palette = CommandPalette {
+        query: "dijkstra".to_string(),
+        ..Default::default()
+    };
 
     // 1. Dijkstra (via tag on AlgorithmVisualizerTool)
-    palette.query = "dijkstra".to_string();
     let items = palette.filter_items(&tabs);
     assert!(
         !items.is_empty(),
@@ -205,7 +207,7 @@ fn test_palette_tool_indexing_and_fuzzy_match() {
         }
         _ => panic!(
             "Expected Lorenz query to match AttractorPlotter, found {:?}",
-            &items[0]
+            items[0]
         ),
     }
 
@@ -222,7 +224,7 @@ fn test_palette_tool_indexing_and_fuzzy_match() {
         }
         _ => panic!(
             "Expected CERA query to match CeraTool, found {:?}",
-            &items[0]
+            items[0]
         ),
     }
 }
@@ -262,11 +264,13 @@ fn test_palette_keyboard_tool_selection() {
 #[test]
 fn test_palette_score_ranking_tabs_vs_tools() {
     let tabs = mock_tabs();
-    let mut palette = CommandPalette::default();
-
     // Query that matches both tab name and tool
     // "ode" matches tab "Analysis / ODE Solver" (substring pos) and "OdeSolverTool" (prefix)
-    palette.query = "ode".to_string();
+    let palette = CommandPalette {
+        query: "ode".to_string(),
+        ..Default::default()
+    };
+
     let items = palette.filter_items(&tabs);
     assert!(!items.is_empty());
     // Exact prefix match on OdeSolverTool has score 1, while "Analysis / ODE Solver" substring has score > 10.
@@ -284,8 +288,10 @@ fn test_palette_domain_fallback_safely_defaults_to_zero() {
     // Create tabs without matching domains
     let tabs: Vec<Box<dyn crate::tabs::ExplorerTab>> =
         vec![Box::new(MockTab("General Simulation"))];
-    let mut palette = CommandPalette::default();
-    palette.query = "dijkstra".to_string();
+    let palette = CommandPalette {
+        query: "dijkstra".to_string(),
+        ..Default::default()
+    };
     let items = palette.filter_items(&tabs);
     assert!(!items.is_empty());
     match &items[0] {
