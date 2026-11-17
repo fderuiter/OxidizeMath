@@ -15,7 +15,7 @@ pub struct WhitelistConfig {
 
 #[derive(Deserialize, Debug, Clone, Default)]
 pub struct EntropyGuardConfig {
-    #[serde(default, alias = "targets", alias = "paths")]
+    #[serde(default, alias = "targets", alias = "paths", alias = "scan_targets")]
     pub scan_paths: Option<Vec<String>>,
     #[serde(default, alias = "extensions", alias = "file_extensions")]
     pub target_extensions: Option<Vec<String>>,
