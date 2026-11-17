@@ -1,17 +1,17 @@
 // External reload button handler for Math Explorer GUI error boundary
 (function () {
-    function initReloadButton() {
-        var reloadBtn = document.querySelector('.reload-btn');
-        if (reloadBtn) {
-            reloadBtn.addEventListener('click', function () {
+    function attachReloadHandler() {
+        const reloadButton = document.querySelector('.reload-btn');
+        if (reloadButton) {
+            reloadButton.addEventListener('click', () => {
                 window.location.reload();
             });
         }
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initReloadButton);
+        document.addEventListener('DOMContentLoaded', attachReloadHandler);
     } else {
-        initReloadButton();
+        attachReloadHandler();
     }
 })();

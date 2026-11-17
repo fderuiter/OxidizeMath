@@ -21,6 +21,7 @@ fn main() {
         "lint-all" | "lint" => lint_all(),
         "check-cargo-docs" | "check-workspace-docs" => check_cargo_docs(),
         "check-docs" => check_docs(),
+        "check-entropy" => check_entropy(),
         "test-features" => test_features(&args[2..]),
         "verify-suite" => verify_suite(&args[2..]),
         "verify-records" => verify_records(),
@@ -29,6 +30,7 @@ fn main() {
         "check-file-lengths" => check_file_lengths(),
         "check-staged-duplicates" => check_staged_duplicates(),
         "check-markdown-links" => check_markdown_links(),
+        "check-vulnerabilities" => check_vulnerabilities(),
         "lint-workflows" => lint_workflows(),
         "regenerate-baseline" => regenerate_baseline(),
         _ => {
@@ -43,6 +45,7 @@ fn print_help() {
     println!("Active Quality Gates:");
     println!("  check-cargo-docs         - Verify workspace documentation builds without warnings");
     println!("  check-docs               - Run crate documentation audit");
+    println!("  check-entropy            - Scan codebase for high entropy strings and secrets");
     println!(
         "  check-file-lengths       - Run centralized verification suite for file-length constraints"
     );
@@ -50,8 +53,9 @@ fn print_help() {
         "  check-markdown-links     - Check all internal relative markdown documentation links"
     );
     println!("  check-staged-duplicates  - Run staged duplicates check");
+    println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
     println!(
-        "  lint-all                 - Run format, clippy, file-length, duplicate, doc, doctest, workflow, and traceability checks"
+        "  lint-all                 - Run format, clippy, file-length, duplicate, doc, doctest, workflow, traceability, entropy, and vulnerability checks"
     );
     println!("  lint-workflows           - Lint CI workflow definitions");
     println!("  test-features            - Run tests across feature combinations");
@@ -127,6 +131,12 @@ fn lint_all() {
 
     println!("\n--- Step 10: Traceability Check ---");
     traceability();
+
+    println!("\n--- Step 11: Entropy and Secret Scanning ---");
+    check_entropy();
+
+    println!("\n--- Step 12: Dependency Vulnerability Check ---");
+    check_vulnerabilities();
 
     println!("\n=== All Lint Checks Passed Successfully ===");
 }
@@ -299,6 +309,16 @@ fn check_file_lengths() {
     run_verification("check-file-lengths");
 }
 
+fn check_entropy() {
+    println!("=== Check Entropy and Secrets ===");
+    run_verification("check-entropy");
+}
+
+fn check_vulnerabilities() {
+    println!("=== Check Dependency Vulnerabilities ===");
+    run_verification("check-vulnerabilities");
+}
+
 fn check_staged_duplicates() {
     run_verification("check-staged-duplicates");
 }
@@ -454,5 +474,7 @@ mod tests {
         assert!(help.contains("check-cargo-docs"));
         assert!(help.contains("traceability"));
         assert!(help.contains("lint-all"));
+        assert!(help.contains("check-entropy"));
+        assert!(help.contains("check-vulnerabilities"));
     }
 }
