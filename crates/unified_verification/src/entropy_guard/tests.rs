@@ -277,3 +277,65 @@ allowlist = ["fixture.rs"]
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn test_egui_plot_scanned_without_exclusion() {
+    let dir = create_test_dir("test_egui_plot_scan");
+    let egui_plot_file = dir.join("egui_plot").join("src").join("lib.rs");
+    fs::create_dir_all(egui_plot_file.parent().unwrap()).unwrap();
+    // allow(entropy_guard)
+    fs::write(
+        &egui_plot_file,
+        "fn plot_dummy() {\n    let _aws = \"AKIAIOSFODNN7EXAMPLE\";\n}\n",
+    )
+    .unwrap();
+
+    let violations = check_entropy(&[dir.to_str().unwrap().to_string()]);
+    assert_eq!(violations.len(), 1);
+    assert!(violations[0].contains("Raw credential (AWS Access Key)"));
+    assert!(violations[0].contains("egui_plot"));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_fallback_when_whitelist_unparseable_or_missing() {
+    let dir = create_test_dir("test_fallback_unparseable");
+    let broken_whitelist = dir.join("broken.toml");
+    fs::write(&broken_whitelist, "invalid = toml [ [ syntax").unwrap();
+
+    let config = load_whitelist_config(Some(&broken_whitelist));
+    assert!(config.scan_paths.is_none());
+    assert!(config.target_extensions.is_none());
+    assert!(config.allowlist.is_none());
+
+    let non_existent = dir.join("non_existent.toml");
+    let missing_config = load_whitelist_config(Some(&non_existent));
+    assert!(missing_config.scan_paths.is_none());
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_whitelist_config_aliases() {
+    let dir = create_test_dir("test_aliases");
+    let cfg_file = dir.join("test_aliases.toml");
+    let content = r#"
+[entropy_guard]
+scan_targets = ["custom_dir"]
+file_extensions = ["rs", "toml"]
+path_exemptions = ["fixture.rs"]
+"#;
+    fs::write(&cfg_file, content).unwrap();
+
+    let cfg = load_whitelist_config(Some(&cfg_file));
+    assert_eq!(cfg.scan_paths, Some(vec!["custom_dir".to_string()]));
+    assert_eq!(
+        cfg.target_extensions,
+        Some(vec!["rs".to_string(), "toml".to_string()])
+    );
+    assert_eq!(cfg.allowlist, Some(vec!["fixture.rs".to_string()]));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
