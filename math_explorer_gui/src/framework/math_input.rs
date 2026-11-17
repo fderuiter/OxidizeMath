@@ -24,6 +24,10 @@ pub struct MathExpressionInputBar {
     pub latex_cache: String,
     /// Available presets as (Name, Equation String) pairs.
     pub presets: Vec<(&'static str, &'static str)>,
+    /// Tracks whether an error was previously present so correction can be announced.
+    pub had_error: bool,
+    /// Last announced error message to prevent duplicate announcements on static frames.
+    pub last_announced_error: Option<String>,
 }
 
 impl MathExpressionInputBar {
@@ -41,6 +45,12 @@ impl MathExpressionInputBar {
             parsed_expr: Err(ParseError::EmptyExpression),
             latex_cache: String::new(),
             presets,
+            had_error: false,
+            last_announced_error: if initial_expr.trim().is_empty() {
+                Some("Syntax Error: Empty expression".to_string())
+            } else {
+                None
+            },
         };
         bar.reparse();
         bar
@@ -134,7 +144,14 @@ impl MathExpressionInputBar {
                 });
 
                 ui.add_space(4.0);
-                render_status_row(ui, &self.parsed_expr, &self.latex_cache, &self.raw_text);
+                render_status_row(
+                    ui,
+                    &self.parsed_expr,
+                    &self.latex_cache,
+                    &self.raw_text,
+                    &mut self.had_error,
+                    &mut self.last_announced_error,
+                );
             });
         });
 
@@ -167,9 +184,21 @@ fn render_presets(
     selected_preset
 }
 
-fn render_status_row(ui: &mut egui::Ui, parsed: &Result<Expr, ParseError>, latex: &str, raw: &str) {
+fn render_status_row(
+    ui: &mut egui::Ui,
+    parsed: &Result<Expr, ParseError>,
+    latex: &str,
+    raw: &str,
+    had_error: &mut bool,
+    last_announced_error: &mut Option<String>,
+) {
     match parsed {
         Ok(_) => {
+            if *had_error {
+                crate::accessibility::announce_status("Mathematical expression is valid");
+                *had_error = false;
+                *last_announced_error = None;
+            }
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Preview:").weak());
                 let preview_str = if !latex.is_empty() { latex } else { raw };
@@ -182,6 +211,12 @@ fn render_status_row(ui: &mut egui::Ui, parsed: &Result<Expr, ParseError>, latex
             });
         }
         Err(err) => {
+            let err_msg = format!("Syntax Error: {err}");
+            if last_announced_error.as_deref() != Some(&err_msg) {
+                crate::accessibility::announce_status_with_priority(&err_msg, "assertive");
+                *had_error = true;
+                *last_announced_error = Some(err_msg);
+            }
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new(format!("⚠️ Syntax Error: {err}"))
@@ -190,5 +225,71 @@ fn render_status_row(ui: &mut egui::Ui, parsed: &Result<Expr, ParseError>, latex
                 );
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_and_recovery_announcements() {
+        crate::accessibility::clear_test_announcements();
+
+        let mut bar = MathExpressionInputBar::new("y'", "sin(t)", vec![]);
+        let ctx = egui::Context::default();
+
+        // Initial valid render: no announcements should be dispatched
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                bar.ui(ui);
+            });
+        });
+        assert_eq!(crate::accessibility::all_announcements().len(), 0);
+
+        // Enter invalid syntax: should trigger assertive announcement
+        bar.set_expression("1 +");
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                bar.ui(ui);
+            });
+        });
+        let announcements = crate::accessibility::all_announcements();
+        assert_eq!(announcements.len(), 1);
+        assert_eq!(announcements[0].1, "assertive");
+        assert!(announcements[0].0.starts_with("Syntax Error:"));
+
+        // Subsequent frame with unchanged error: should NOT re-announce
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                bar.ui(ui);
+            });
+        });
+        assert_eq!(crate::accessibility::all_announcements().len(), 1);
+
+        // Correct invalid expression to valid: should trigger polite validation announcement
+        bar.set_expression("1 + 2");
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                bar.ui(ui);
+            });
+        });
+        let announcements = crate::accessibility::all_announcements();
+        assert_eq!(announcements.len(), 2);
+        assert_eq!(
+            announcements[1],
+            (
+                "Mathematical expression is valid".to_string(),
+                "polite".to_string()
+            )
+        );
+
+        // Subsequent valid frames: should NOT re-announce
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                bar.ui(ui);
+            });
+        });
+        assert_eq!(crate::accessibility::all_announcements().len(), 2);
     }
 }
