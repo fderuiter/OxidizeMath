@@ -1,7 +1,7 @@
 use super::physics::{Hamiltonian, QuadraticHamiltonian};
 use super::types::{Density, MFGConfig, Position};
 use math_commons::math_kernel::types::StepSize;
-use nalgebra::DMatrix;
+use nalgebra::{DMatrix, DVector};
 use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
 
 /// Strategy trait for solving Mean Field Games.
@@ -101,6 +101,7 @@ impl<H: Hamiltonian> MFGSolver for FixedPointSolver<H> {
         }
 
         let stepper = FusedStencilStepper::new(StepSize(config.dx));
+        let mut scratch = DVector::zeros(nx);
 
         for _iter in 0..self.iterations {
             // 1. Solve HJB Backward
@@ -111,12 +112,9 @@ impl<H: Hamiltonian> MFGSolver for FixedPointSolver<H> {
 
             // Backward in time
             for n in (0..nt).rev() {
-                let u_next = u.column(n + 1).clone_owned();
-                let mut u_curr = u.column(n).clone_owned();
-
                 stepper.step_1d_slice(
-                    u_next.as_slice(),
-                    u_curr.as_mut_slice(),
+                    u.column(n + 1).as_slice(),
+                    scratch.as_mut_slice(),
                     config.dt,
                     -1.0, // Backward
                     |i, prev, curr, next, ops| {
@@ -129,20 +127,19 @@ impl<H: Hamiltonian> MFGSolver for FixedPointSolver<H> {
                 );
 
                 // Boundary conditions (Neumann 0)
-                u_curr[0] = u_curr[1];
-                u_curr[nx - 1] = u_curr[nx - 2];
-                u.column_mut(n).copy_from(&u_curr);
+                scratch[0] = scratch[1];
+                scratch[nx - 1] = scratch[nx - 2];
+                u.column_mut(n).copy_from(&scratch);
             }
 
             // 2. Solve Fokker-Planck Forward
             for n in 0..nt {
-                let m_curr = m.column(n).clone_owned();
-                let mut m_next = m.column(n + 1).clone_owned();
-                let u_curr = u.column(n).clone_owned();
+                let u_col = u.column(n);
+                let u_curr = u_col.as_slice();
 
                 stepper.step_1d_slice(
-                    m_curr.as_slice(),
-                    m_next.as_mut_slice(),
+                    m.column(n).as_slice(),
+                    scratch.as_mut_slice(),
                     config.dt,
                     1.0, // Forward
                     |i, prev, curr, next, ops| {
@@ -157,16 +154,16 @@ impl<H: Hamiltonian> MFGSolver for FixedPointSolver<H> {
                 );
 
                 // Boundary conditions
-                m_next[0] = m_next[1];
-                m_next[nx - 1] = m_next[nx - 2];
+                scratch[0] = scratch[1];
+                scratch[nx - 1] = scratch[nx - 2];
 
                 // Normalize mass to prevent explosion/vanishing
-                let sum: f64 = m_next.sum();
+                let sum: f64 = scratch.sum();
                 if sum > math_commons::registry::TOLERANCE_STANDARD {
-                    m_next.scale_mut(1.0 / sum);
+                    scratch.scale_mut(1.0 / sum);
                 }
 
-                m.column_mut(n + 1).copy_from(&m_next);
+                m.column_mut(n + 1).copy_from(&scratch);
             }
         }
 
