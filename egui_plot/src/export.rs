@@ -1157,8 +1157,17 @@ pub type ExportFrame = DatasetFrame;
 
 /// Trigger cross-platform file saving dialog or browser download action.
 pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _filter_ext: &[&str]) {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(test)]
     {
+        let _ = (filename, content, _filter_name, _filter_ext);
+    }
+
+    #[cfg(all(not(test), not(target_arch = "wasm32")))]
+    {
+        if std::env::var_os("CI").is_some() || std::env::var_os("RUST_TEST_THREADS").is_some() {
+            return;
+        }
+
         let builder = rfd::FileDialog::new()
             .set_file_name(filename)
             .add_filter(_filter_name, _filter_ext);
@@ -1167,7 +1176,7 @@ pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _fil
         }
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(not(test), target_arch = "wasm32"))]
     {
         use wasm_bindgen::JsCast as _;
         use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};

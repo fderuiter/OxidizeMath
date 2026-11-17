@@ -164,7 +164,7 @@ jobs:
 
       - name: Run Clippy (Native)
         if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo clippy --workspace --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Check Workspace Benchmarks (Native)
         if: matrix.target != 'wasm32-unknown-unknown'
