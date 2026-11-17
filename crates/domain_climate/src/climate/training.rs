@@ -4,7 +4,7 @@ use crate::climate::autoencoder::AutoencoderModel;
 use crate::climate::cera::Cera;
 use crate::climate::loss::{cera_loss, earth_movers_distance, mse_loss};
 use crate::climate::predictor::PredictorModel;
-use nalgebra::DMatrix;
+use nalgebra::{DMatrix, Dyn, Matrix, Storage};
 use pure_math::pure_math::analysis::optimization::{ModelOptimizer as Optimizer, SGD};
 
 use pure_math::pure_math::analysis::optimization::Trainable;
@@ -37,11 +37,16 @@ impl<'a, A: AutoencoderModel + Trainable<f32>, P: PredictorModel + Trainable<f32
 
 /// Computes analytical Mean Squared Error gradients and average input for reconstruction batches.
 #[verified_engine::verified]
-fn compute_reconstruction_gradients(
-    control_input: &DMatrix<f32>,
-    control_recon: &DMatrix<f32>,
-    warm_input: &DMatrix<f32>,
-    warm_recon: &DMatrix<f32>,
+fn compute_reconstruction_gradients<
+    S1: Storage<f32, Dyn, Dyn>,
+    S2: Storage<f32, Dyn, Dyn>,
+    S3: Storage<f32, Dyn, Dyn>,
+    S4: Storage<f32, Dyn, Dyn>,
+>(
+    control_input: &Matrix<f32, Dyn, Dyn, S1>,
+    control_recon: &Matrix<f32, Dyn, Dyn, S2>,
+    warm_input: &Matrix<f32, Dyn, Dyn, S3>,
+    warm_recon: &Matrix<f32, Dyn, Dyn, S4>,
     in_channels: usize,
 ) -> (nalgebra::DVector<f32>, nalgebra::DVector<f32>) {
     let input_rows = control_input.nrows();
@@ -66,10 +71,14 @@ fn compute_reconstruction_gradients(
 
 /// Computes analytical Mean Squared Error gradients and average input for prediction batches.
 #[verified_engine::verified]
-fn compute_prediction_gradients(
-    predictor_input: &DMatrix<f32>,
-    prediction: &DMatrix<f32>,
-    targets: &DMatrix<f32>,
+fn compute_prediction_gradients<
+    S1: Storage<f32, Dyn, Dyn>,
+    S2: Storage<f32, Dyn, Dyn>,
+    S3: Storage<f32, Dyn, Dyn>,
+>(
+    predictor_input: &Matrix<f32, Dyn, Dyn, S1>,
+    prediction: &Matrix<f32, Dyn, Dyn, S2>,
+    targets: &Matrix<f32, Dyn, Dyn, S3>,
     pred_in_dim: usize,
     output_size: usize,
     lambda_pred: f32,
@@ -231,9 +240,9 @@ impl<
                 // --- Calculate analytical loss gradients ---
                 let in_channels = self.model.config.in_channels;
                 let (ae_input, ae_loss_grad) = compute_reconstruction_gradients(
-                    &control_input_batch.clone_owned(),
+                    &control_input_batch,
                     &control_recon,
-                    &warm_input_batch.clone_owned(),
+                    &warm_input_batch,
                     &warm_recon,
                     in_channels,
                 );
@@ -243,7 +252,7 @@ impl<
                 let (pred_input_vec, pred_loss_grad) = compute_prediction_gradients(
                     &predictor_input,
                     &prediction,
-                    &control_target_batch.clone_owned(),
+                    &control_target_batch,
                     pred_in_dim,
                     output_size,
                     self.model.config.lambda_pred,
@@ -266,5 +275,66 @@ impl<
             }
         }
         epoch_losses
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nalgebra::DMatrix;
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_compute_reconstruction_gradients_owned_and_sliced() {
+        let control_input =
+            DMatrix::from_row_slice(4, 2, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
+        let control_recon = DMatrix::from_row_slice(2, 2, &[1.1, 2.1, 2.9, 3.9]);
+        let warm_input = DMatrix::from_row_slice(4, 2, &[2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]);
+        let warm_recon = DMatrix::from_row_slice(2, 2, &[1.9, 3.2, 4.1, 4.8]);
+
+        let control_slice = control_input.rows(0, 2);
+        let warm_slice = warm_input.rows(0, 2);
+
+        // Test with borrowed slices
+        let (in_slice, grad_slice) = compute_reconstruction_gradients(
+            &control_slice,
+            &control_recon,
+            &warm_slice,
+            &warm_recon,
+            2,
+        );
+
+        // Test with owned matrices
+        let control_owned = control_slice.clone_owned();
+        let warm_owned = warm_slice.clone_owned();
+        let (in_owned, grad_owned) = compute_reconstruction_gradients(
+            &control_owned,
+            &control_recon,
+            &warm_owned,
+            &warm_recon,
+            2,
+        );
+
+        assert_eq!(in_slice, in_owned);
+        assert_eq!(grad_slice, grad_owned);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_compute_prediction_gradients_owned_and_sliced() {
+        let pred_in = DMatrix::from_row_slice(2, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let prediction = DMatrix::from_row_slice(2, 2, &[0.5, 1.5, 2.5, 3.5]);
+        let full_targets = DMatrix::from_row_slice(4, 2, &[0.6, 1.4, 2.4, 3.6, 9.0, 9.0, 9.0, 9.0]);
+        let target_slice = full_targets.rows(0, 2);
+        let target_owned = target_slice.clone_owned();
+
+        let (in_slice, grad_slice) =
+            compute_prediction_gradients(&pred_in, &prediction, &target_slice, 3, 2, 0.1);
+
+        let (in_owned, grad_owned) =
+            compute_prediction_gradients(&pred_in, &prediction, &target_owned, 3, 2, 0.1);
+
+        assert_eq!(in_slice, in_owned);
+        assert_eq!(grad_slice, grad_owned);
     }
 }
