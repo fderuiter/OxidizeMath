@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::accessibility::{announce_status, AccessibleHoverText};
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 use std::ops::RangeInclusive;
@@ -116,27 +117,93 @@ impl<'a> AnimatedSlider<'a> {
 }
 
 impl<'a> egui::Widget for AnimatedSlider<'a> {
+    #[allow(clippy::too_many_lines)]
     fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
         let id = self
             .id_salt
             .unwrap_or_else(|| ui.make_persistent_id(self.label));
         let mut state: AnimatedSliderState =
             ui.ctx().data_mut(|d| d.get_temp(id)).unwrap_or_default();
+        let was_playing = state.playing;
 
         let mut changed = false;
 
         let response = ui
             .horizontal(|ui| {
                 let button_text = if state.playing { "⏸" } else { "▶" };
-                let play_btn = ui.button(button_text).on_hover_text(if state.playing {
-                    "Pause animation"
+                let button_label = if state.playing {
+                    if self.label.is_empty() {
+                        "Pause animation".to_string()
+                    } else {
+                        format!("Pause animation for {}", self.label)
+                    }
+                } else if self.label.is_empty() {
+                    "Play animation".to_string()
                 } else {
-                    "Play animation"
+                    format!("Play animation for {}", self.label)
+                };
+
+                let play_info = egui::WidgetInfo::selected(
+                    egui::WidgetType::Button,
+                    ui.is_enabled(),
+                    state.playing,
+                    &button_label,
+                );
+
+                let play_btn_resp = ui.button(button_text);
+                play_btn_resp.widget_info({
+                    let play_info = play_info.clone();
+                    move || play_info.clone()
                 });
+                ui.ctx().data_mut(|d| {
+                    d.insert_temp(id.with("play_button_info"), play_info);
+                });
+
+                let play_btn = play_btn_resp.accessible_hover_text(&button_label);
 
                 if play_btn.clicked() {
                     state.playing = !state.playing;
                     changed = true;
+                    let (announcement, next_label) = if state.playing {
+                        (
+                            if self.label.is_empty() {
+                                "Play animation".to_string()
+                            } else {
+                                format!("Play animation for {}", self.label)
+                            },
+                            if self.label.is_empty() {
+                                "Pause animation".to_string()
+                            } else {
+                                format!("Pause animation for {}", self.label)
+                            },
+                        )
+                    } else {
+                        (
+                            if self.label.is_empty() {
+                                "Pause animation".to_string()
+                            } else {
+                                format!("Pause animation for {}", self.label)
+                            },
+                            if self.label.is_empty() {
+                                "Play animation".to_string()
+                            } else {
+                                format!("Play animation for {}", self.label)
+                            },
+                        )
+                    };
+                    announce_status(&announcement);
+                    ui.ctx().data_mut(|d| {
+                        d.insert_temp(egui::Id::new("aria_live_message"), announcement);
+                        d.insert_temp(
+                            id.with("play_button_info"),
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::Button,
+                                ui.is_enabled(),
+                                state.playing,
+                                next_label,
+                            ),
+                        );
+                    });
                 }
 
                 let mut slider = egui::Slider::new(self.value, self.min..=self.max);
@@ -154,8 +221,31 @@ impl<'a> egui::Widget for AnimatedSlider<'a> {
 
                 if play_btn.clicked() {
                     // Manual button click takes precedence.
-                } else if slider_resp.dragged() || slider_resp.lost_focus() {
+                } else if (slider_resp.dragged() || slider_resp.lost_focus()) && was_playing {
                     state.playing = false;
+                    let announcement = if self.label.is_empty() {
+                        "Pause animation".to_string()
+                    } else {
+                        format!("Pause animation for {}", self.label)
+                    };
+                    let next_label = if self.label.is_empty() {
+                        "Play animation".to_string()
+                    } else {
+                        format!("Play animation for {}", self.label)
+                    };
+                    announce_status(&announcement);
+                    ui.ctx().data_mut(|d| {
+                        d.insert_temp(egui::Id::new("aria_live_message"), announcement);
+                        d.insert_temp(
+                            id.with("play_button_info"),
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::Button,
+                                ui.is_enabled(),
+                                false,
+                                next_label,
+                            ),
+                        );
+                    });
                 }
 
                 slider_resp

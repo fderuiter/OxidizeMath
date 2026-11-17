@@ -15,7 +15,7 @@ impl ThemeContrastMode {
     pub fn from_visuals(visuals: &egui::Visuals) -> Self {
         if visuals.dark_mode
             && visuals.extreme_bg_color == egui::Color32::BLACK
-            && visuals.selection.bg_fill == egui::Color32::YELLOW
+            && visuals.selection.bg_fill == egui::Color32::from_rgb(0, 90, 158)
         {
             ThemeContrastMode::HighContrast
         } else if visuals.dark_mode {
