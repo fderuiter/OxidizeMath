@@ -135,6 +135,10 @@ fn test_theme_contrast_adaptation() {
     ctx.set_visuals(egui::Visuals::light());
     texture.update_if_needed(&ctx, &matrix, "test");
     assert_eq!(texture.last_theme, Some(ThemeContrastMode::Light));
+
+    ctx.set_visuals(crate::app::ThemeMode::HighContrast.visuals());
+    texture.update_if_needed(&ctx, &matrix, "test");
+    assert_eq!(texture.last_theme, Some(ThemeContrastMode::HighContrast));
 }
 
 #[test]
