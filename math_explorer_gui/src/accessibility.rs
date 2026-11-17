@@ -49,12 +49,35 @@ pub fn announce_status_with_priority(message: &str, priority: &str) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[allow(missing_docs)]
-pub fn announce_status(_message: &str) {}
+static LAST_ANNOUNCED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(missing_docs)]
-pub fn announce_status_with_priority(_message: &str, _priority: &str) {}
+pub fn announce_status(message: &str) {
+    announce_status_with_priority(message, "polite");
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(missing_docs)]
+pub fn announce_status_with_priority(message: &str, _priority: &str) {
+    if let Ok(mut lock) = LAST_ANNOUNCED.lock() {
+        *lock = Some(message.to_string());
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(missing_docs)]
+pub fn get_last_announced() -> Option<String> {
+    LAST_ANNOUNCED.lock().ok().and_then(|lock| lock.clone())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(missing_docs)]
+pub fn clear_last_announced() {
+    if let Ok(mut lock) = LAST_ANNOUNCED.lock() {
+        *lock = None;
+    }
+}
 
 #[allow(missing_docs)]
 pub trait AccessibleHoverText {
@@ -67,11 +90,35 @@ impl AccessibleHoverText for Response {
         let text_into = text.into();
         let text_str = text_into.text().to_string();
 
-        if self.hovered() || self.has_focus() {
-            announce_status(&text_str);
+        let is_active = self.hovered() || self.has_focus();
+        let dismiss_id = self.id.with("tooltip_dismissed");
+        let mut dismissed = self
+            .ctx
+            .data(|d| d.get_temp::<bool>(dismiss_id))
+            .unwrap_or(false);
+
+        if is_active {
+            if self.ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape)) {
+                dismissed = true;
+                self.ctx.data_mut(|d| d.insert_temp(dismiss_id, true));
+            }
+        } else if dismissed {
+            dismissed = false;
+            self.ctx.data_mut(|d| d.insert_temp(dismiss_id, false));
         }
 
-        self.on_hover_text(text_into)
+        if is_active && !dismissed {
+            announce_status(&text_str);
+            self.ctx.data_mut(|d| {
+                d.insert_temp(eframe::egui::Id::new("aria_live_message"), text_str);
+            });
+        }
+
+        if !dismissed {
+            self.on_hover_text(text_into)
+        } else {
+            self
+        }
     }
 }
 
@@ -86,11 +133,35 @@ impl AccessibleTheoryHover for Response {
         let raw_text = theory.theory_description();
         let speech_text = theory.phonetic_description();
 
-        if self.hovered() || self.has_focus() {
-            announce_status(&speech_text);
+        let is_active = self.hovered() || self.has_focus();
+        let dismiss_id = self.id.with("tooltip_dismissed");
+        let mut dismissed = self
+            .ctx
+            .data(|d| d.get_temp::<bool>(dismiss_id))
+            .unwrap_or(false);
+
+        if is_active {
+            if self.ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape)) {
+                dismissed = true;
+                self.ctx.data_mut(|d| d.insert_temp(dismiss_id, true));
+            }
+        } else if dismissed {
+            dismissed = false;
+            self.ctx.data_mut(|d| d.insert_temp(dismiss_id, false));
         }
 
-        self.on_hover_text(raw_text)
+        if is_active && !dismissed {
+            announce_status(&speech_text);
+            self.ctx.data_mut(|d| {
+                d.insert_temp(eframe::egui::Id::new("aria_live_message"), speech_text);
+            });
+        }
+
+        if !dismissed {
+            self.on_hover_text(raw_text)
+        } else {
+            self
+        }
     }
 }
 // theory_verification!
