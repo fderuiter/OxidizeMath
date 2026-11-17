@@ -338,4 +338,3 @@ path_exemptions = ["fixture.rs"]
 
     let _ = fs::remove_dir_all(&dir);
 }
-
