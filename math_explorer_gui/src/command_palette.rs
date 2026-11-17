@@ -191,7 +191,7 @@ impl CommandPalette {
         for (idx, tab) in tabs.iter().enumerate() {
             let tab_name = tab.name();
             let mut score = fuzzy_match_score(tab_name, &self.query);
-            let domain = tab.domain();
+            let domain = tab.academic_domain();
             if !domain.is_empty() {
                 if let Some(domain_score) = fuzzy_match_score(domain, &self.query) {
                     score = Some(score.map_or(domain_score, |s| s.min(domain_score)));
@@ -222,12 +222,11 @@ impl CommandPalette {
                 // Find matching tab index for this tool's domain, safely falling back to 0
                 let tab_index = tabs
                     .iter()
-                    .position(|t| !t.domain().is_empty() && t.domain() == meta.domain)
-                    .or_else(|| {
-                        tabs.iter().position(|t| {
-                            let t_name = t.name().to_lowercase().replace(' ', "_");
-                            t_name.contains(meta.domain)
-                        })
+                    .position(|t| {
+                        let t_name = t.name().to_lowercase().replace(' ', "_");
+                        let t_clean = t_name.replace('&', "").replace("__", "_");
+                        t_clean.contains(meta.domain)
+                            || (meta.domain == "ai" && t.name() == "Artificial Intelligence")
                     })
                     .unwrap_or(0);
 

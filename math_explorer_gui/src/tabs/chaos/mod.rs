@@ -35,10 +35,6 @@ impl ExplorerTab for ChaosTab {
         self.framework.load_state(state);
     }
 
-    fn domain(&self) -> &'static str {
-        "chaos"
-    }
-
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
     }

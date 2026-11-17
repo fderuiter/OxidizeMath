@@ -142,6 +142,7 @@ pub const IGNORED_ADVISORIES: &[&str] = &[
     "RUSTSEC-2026-0370", // zvariant - unmaintained as standalone crate (merged into zbus)
     "RUSTSEC-2026-0371", // zbus_names - unmaintained as standalone crate (merged into zbus)
     "RUSTSEC-2026-0372", // zvariant_derive - unmaintained as standalone crate (merged into zbus)
+    "RUSTSEC-2026-0543", // chrono - unmaintained
 ];
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -425,7 +426,8 @@ version = "0.1.0"
             "results": [
                 {
                     "vulns": [
-                        { "id": "RUSTSEC-2024-0436" }
+                        { "id": "RUSTSEC-2024-0436" },
+                        { "id": "RUSTSEC-2026-0543" }
                     ]
                 }
             ]
