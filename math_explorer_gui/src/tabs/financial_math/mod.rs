@@ -34,10 +34,6 @@ impl ExplorerTab for FinancialMathTab {
         self.framework.load_state(state);
     }
 
-    fn domain(&self) -> &'static str {
-        "financial_math"
-    }
-
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
     }

@@ -59,10 +59,6 @@ impl ExplorerTab for FavoritismTab {
         "Favoritism"
     }
 
-    fn domain(&self) -> &'static str {
-        "applied"
-    }
-
     fn save_state(&self) -> Option<String> {
         #[derive(serde::Serialize, serde::Deserialize)]
         struct FavoritismState {

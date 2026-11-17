@@ -36,10 +36,6 @@ impl ExplorerTab for NeuroscienceTab {
         self.framework.load_state(state);
     }
 
-    fn domain(&self) -> &'static str {
-        "neuroscience"
-    }
-
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
     }

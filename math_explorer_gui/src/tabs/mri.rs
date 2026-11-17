@@ -242,10 +242,6 @@ impl ExplorerTab for MriTab {
         "MRI Physics"
     }
 
-    fn domain(&self) -> &'static str {
-        "physics"
-    }
-
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&MriState {
             state: Some(self.worker.state()),
