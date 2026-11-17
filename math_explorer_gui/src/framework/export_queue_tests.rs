@@ -139,6 +139,7 @@ mod tests {
     #[test]
     fn test_exported_coordinates_match_click_frame_visual_parameters() {
         let mut framework = SimulationFramework::new("analysis");
+        framework.export_queue.custom_writer = Some(Arc::new(|_, _| {}));
         let ctx = eframe::egui::Context::default();
 
         // Run frame to populate tool rendering
@@ -265,6 +266,7 @@ mod tests {
         egui_plot::clear_last_plot_datasets();
 
         let mut framework = SimulationFramework::new("analysis");
+        framework.export_queue.custom_writer = Some(Arc::new(|_, _| {}));
         // Select RiemannIntegrationTool (which relies on default egui_plot::get_last_plot_datasets())
         framework.select_tool(2);
 

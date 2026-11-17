@@ -51,6 +51,8 @@ impl TimeStep {
 pub struct EulerMaruyama {
     params: OuParams,
     dt: TimeStep,
+    normal: Normal<f64>,
+    diffusion_factor: f64,
 }
 
 impl EulerMaruyama {
@@ -60,6 +62,12 @@ impl EulerMaruyama {
     ///
     /// * `params` - The OU process parameters
     /// * `dt` - The time step for integration
+    ///
+    /// # Panics
+    ///
+    /// Panics if the standard normal distribution (`Normal::new(0.0, 1.0)`) fails to initialize.
+    /// This should theoretically never happen as 0.0 and 1.0 are valid parameters for the mean
+    /// and standard deviation.
     ///
     /// # Example
     ///
@@ -74,7 +82,14 @@ impl EulerMaruyama {
     /// ```
     #[verified_engine::verified]
     pub fn new(params: OuParams, dt: TimeStep) -> Self {
-        Self { params, dt }
+        let normal = Normal::new(0.0, 1.0).unwrap();
+        let diffusion_factor = params.sigma.value() * dt.value().sqrt();
+        Self {
+            params,
+            dt,
+            normal,
+            diffusion_factor,
+        }
     }
 
     /// Performs a single Euler-Maruyama step.
@@ -87,12 +102,6 @@ impl EulerMaruyama {
     /// # Returns
     ///
     /// The next value X_{t+Δt}
-    ///
-    /// # Panics
-    ///
-    /// Panics if the standard normal distribution (`Normal::new(0.0, 1.0)`) fails to initialize.
-    /// This should theoretically never happen as 0.0 and 1.0 are valid parameters for the mean
-    /// and standard deviation.
     ///
     /// # Example
     ///
@@ -115,16 +124,13 @@ impl EulerMaruyama {
     pub fn step<R: Rng>(&self, x_current: f64, rng: &mut R) -> f64 {
         let mu = self.params.mu.value();
         let theta = self.params.theta.value();
-        let sigma = self.params.sigma.value();
         let dt = self.dt.value();
 
         // Drift term: θ(μ - X_t)Δt
         let drift = theta * (mu - x_current) * dt;
 
         // Diffusion term: σ√(Δt)Z where Z ~ N(0,1)
-        let normal = Normal::new(0.0, 1.0).unwrap();
-        let z = normal.sample(rng);
-        let diffusion = sigma * dt.sqrt() * z;
+        let diffusion = self.normal.sample(rng) * self.diffusion_factor;
 
         // X_{t+Δt} = X_t + drift + diffusion
         x_current + drift + diffusion
