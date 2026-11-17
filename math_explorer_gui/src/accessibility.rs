@@ -96,7 +96,7 @@ pub fn init_accessibility_bridge() {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(not(target_arch = "wasm32"), test))]
 thread_local! {
     static TEST_ANNOUNCEMENTS: std::cell::RefCell<Vec<(String, String)>> =
         const { std::cell::RefCell::new(Vec::new()) };
@@ -114,6 +114,12 @@ pub fn announce_status(message: &str) {
 
 #[cfg(target_arch = "wasm32")]
 pub fn announce_status_with_priority(message: &str, priority: &str) {
+    #[cfg(test)]
+    TEST_ANNOUNCEMENTS.with(|a| {
+        a.borrow_mut()
+            .push((message.to_string(), priority.to_string()));
+    });
+
     if let Some(window) = web_sys::window() {
         if let Some(document) = window.document() {
             let is_assertive = priority.eq_ignore_ascii_case("assertive")
@@ -178,19 +184,19 @@ pub fn announce_status_with_priority(message: &str, priority: &str) {
     });
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(not(target_arch = "wasm32"), test))]
 #[allow(dead_code)]
 pub fn last_announcement() -> Option<(String, String)> {
     TEST_ANNOUNCEMENTS.with(|a| a.borrow().last().cloned())
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(not(target_arch = "wasm32"), test))]
 #[allow(dead_code)]
 pub fn all_announcements() -> Vec<(String, String)> {
     TEST_ANNOUNCEMENTS.with(|a| a.borrow().clone())
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(not(target_arch = "wasm32"), test))]
 #[allow(dead_code)]
 pub fn clear_test_announcements() {
     TEST_ANNOUNCEMENTS.with(|a| a.borrow_mut().clear());
