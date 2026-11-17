@@ -14,6 +14,8 @@ pub mod framework;
 mod framework_tests;
 #[cfg(test)]
 mod interactive_tools_tests;
+#[cfg(test)]
+mod markup_tests;
 pub mod presets;
 #[allow(missing_docs)]
 pub mod reflective_ui;
@@ -71,6 +73,14 @@ fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) 
             details_el.set_text_content(Some(error_info));
             let _ = details_el.set_attribute("style", "display: block;");
         }
+
+        use wasm_bindgen::JsCast;
+        if let Some(reload_btn) = doc
+            .get_element_by_id("webgl_reload_button")
+            .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
+        {
+            let _ = reload_btn.focus();
+        }
     }
 }
 
@@ -124,6 +134,13 @@ fn main() {
             Ok(()) => {
                 if let Some(loading) = doc.get_element_by_id("loading_indicator") {
                     loading.remove();
+                }
+
+                if let Some(canvas) = doc
+                    .get_element_by_id("the_canvas_id")
+                    .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
+                {
+                    let _ = canvas.focus();
                 }
             }
             Err(err) => {

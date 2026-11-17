@@ -306,12 +306,14 @@
                 </div>
             </div>
             <div class="action-buttons">
-                <button type="button" class="reload-btn">Reload Page</button>
+                <button type="button" id="webgl_reload_button" class="reload-btn">Reload Page</button>
             </div>
             <pre id="error_details" class="error-details" style="display: none;"></pre>
         </div>
     </div>
 
-    <canvas id="the_canvas_id" role="application" aria-label="Math Explorer Application"></canvas>
+    <canvas id="the_canvas_id" tabindex="0" role="application" aria-label="Math Explorer Application">
+        Math Explorer interactive scientific simulation and mathematical visualization canvas. Your browser does not support the HTML5 canvas element or WebGL.
+    </canvas>
 </body>
 </html>
