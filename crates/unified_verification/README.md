@@ -15,7 +15,7 @@ By consolidating compliance checks into a unified command-line tool, developer w
 - **`check-file-lengths`**: Enforces the 500-line ceiling per source file across workspace members to maintain modularity.
 - **`test-policy-audit`**: Detects unauthorized bypasses such as unapproved `#[allow(dead_code)]` or `#[allow(unused)]` attributes.
 - **`check-entropy`**: Audits sources against the No-Entropy policy, ensuring that all random number generation relies on explicit seeds via `OxidizeRng`.
-- **`check-vulnerabilities`**: Audits dependencies from `Cargo.lock` against the OSV vulnerability database.
+- **`check-vulnerabilities`**: Audits workspace dependencies against known vulnerabilities via OSV database.
 - **`check-duplicates` / `check-staged-duplicates`**: AST-level code clone detector identifying duplicated logic across crates.
 - **`check-api-drift` / `regenerate-baseline`**: Validates public API surface against baseline definitions to prevent accidental breaking changes.
 - **`lint-workflows`**: Validates GitHub Actions workflow configurations.

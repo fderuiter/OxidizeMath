@@ -3,7 +3,14 @@ use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
+#[cfg(not(target_arch = "wasm32"))]
 use toml::Value;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub const BATCH_SIZE: usize = 128;
+#[cfg(not(target_arch = "wasm32"))]
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn check_osv_vulnerabilities() -> bool {
@@ -15,22 +22,11 @@ pub fn check_osv_vulnerabilities() -> bool {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn check_osv_vulnerabilities_with_path_and_url(lock_path: &Path, osv_url: &str) -> bool {
-    let content = match fs::read_to_string(lock_path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Failed to read {}: {}", lock_path.display(), e);
-            return false;
-        }
-    };
+    check_osv_vulnerabilities_with_path_url_and_timeout(lock_path, osv_url, REQUEST_TIMEOUT)
+}
 
-    let parsed: Value = match toml::from_str(&content) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("Failed to parse Cargo.lock: {}", e);
-            return false;
-        }
-    };
-
+#[cfg(not(target_arch = "wasm32"))]
+fn extract_crates_io_packages(parsed: &Value) -> (Vec<serde_json::Value>, Vec<(String, String)>) {
     let mut queries = Vec::new();
     let mut pkg_names = Vec::new();
 
@@ -55,19 +51,25 @@ pub fn check_osv_vulnerabilities_with_path_and_url(lock_path: &Path, osv_url: &s
         }
     }
 
-    if queries.is_empty() {
-        return true;
-    }
+    (queries, pkg_names)
+}
 
+#[cfg(not(target_arch = "wasm32"))]
+fn query_osv_batch(
+    agent: &ureq::Agent,
+    osv_url: &str,
+    queries: &[serde_json::Value],
+) -> Option<serde_json::Value> {
     let req_body = ureq::json!({ "queries": queries });
-    let res = match ureq::post(osv_url)
+    let res = match agent
+        .post(osv_url)
         .set("Content-Type", "application/json")
         .send_json(req_body)
     {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Failed to query remote vulnerability database: {}", e);
-            return false;
+            return None;
         }
     };
 
@@ -76,18 +78,59 @@ pub fn check_osv_vulnerabilities_with_path_and_url(lock_path: &Path, osv_url: &s
             "Remote vulnerability database returned HTTP status {}",
             res.status()
         );
-        return false;
+        return None;
     }
 
-    let res_json: serde_json::Value = match res.into_json() {
-        Ok(j) => j,
+    match res.into_json() {
+        Ok(j) => Some(j),
         Err(e) => {
             eprintln!("Failed to deserialize OSV response JSON: {}", e);
+            None
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn check_osv_vulnerabilities_with_path_url_and_timeout(
+    lock_path: &Path,
+    osv_url: &str,
+    timeout: Duration,
+) -> bool {
+    let content = match fs::read_to_string(lock_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Failed to read {}: {}", lock_path.display(), e);
             return false;
         }
     };
 
-    parse_advisories(&res_json, &pkg_names)
+    let parsed: Value = match toml::from_str(&content) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Failed to parse Cargo.lock: {}", e);
+            return false;
+        }
+    };
+
+    let (queries, pkg_names) = extract_crates_io_packages(&parsed);
+    if queries.is_empty() {
+        return true;
+    }
+
+    let agent: ureq::Agent = ureq::AgentBuilder::new().timeout(timeout).build();
+    let mut all_passed = true;
+
+    for (query_chunk, pkg_chunk) in queries.chunks(BATCH_SIZE).zip(pkg_names.chunks(BATCH_SIZE)) {
+        let Some(res_json) = query_osv_batch(&agent, osv_url, query_chunk) else {
+            return false;
+        };
+
+        if !parse_advisories(&res_json, pkg_chunk) {
+            all_passed = false;
+        }
+    }
+
+    all_passed
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -176,39 +219,53 @@ mod tests {
         }
     }
 
-    fn spawn_mock_server(
+    fn spawn_mock_server_batches(
         status_line: &'static str,
         body: &'static str,
-    ) -> (String, thread::JoinHandle<()>) {
+        expected_requests: usize,
+    ) -> (String, std::sync::Arc<AtomicUsize>, thread::JoinHandle<()>) {
         let listener =
             TcpListener::bind("127.0.0.1:0").expect("Failed to bind mock server TCP listener");
         let addr = listener
             .local_addr()
             .expect("Failed to retrieve local address");
         let url = format!("http://{}", addr);
+        let count = std::sync::Arc::new(AtomicUsize::new(0));
+        let count_clone = count.clone();
 
         let handle = thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 4096];
-                let _ = stream.read(&mut buf);
-                let response = format!(
-                    "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    status_line,
-                    body.len(),
-                    body
-                );
-                let _ = stream.write_all(response.as_bytes());
-                let _ = stream.flush();
-                let _ = stream.shutdown(std::net::Shutdown::Write);
-                let mut drain = [0u8; 512];
-                while let Ok(n) = stream.read(&mut drain) {
-                    if n == 0 {
-                        break;
+            for _ in 0..expected_requests {
+                if let Ok((mut stream, _)) = listener.accept() {
+                    count_clone.fetch_add(1, Ordering::SeqCst);
+                    let mut buf = [0u8; 4096];
+                    let _ = stream.read(&mut buf);
+                    let response = format!(
+                        "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        status_line,
+                        body.len(),
+                        body
+                    );
+                    let _ = stream.write_all(response.as_bytes());
+                    let _ = stream.flush();
+                    let _ = stream.shutdown(std::net::Shutdown::Write);
+                    let mut drain = [0u8; 512];
+                    while let Ok(n) = stream.read(&mut drain) {
+                        if n == 0 {
+                            break;
+                        }
                     }
                 }
             }
         });
 
+        (url, count, handle)
+    }
+
+    fn spawn_mock_server(
+        status_line: &'static str,
+        body: &'static str,
+    ) -> (String, thread::JoinHandle<()>) {
+        let (url, _, handle) = spawn_mock_server_batches(status_line, body, 1);
         (url, handle)
     }
 
@@ -375,5 +432,51 @@ version = "0.1.0"
         });
         let pkg_names = vec![("paste".to_string(), "1.0.15".to_string())];
         assert!(parse_advisories(&res_json, &pkg_names));
+    }
+
+    #[test]
+    fn test_timeout_fails_on_unresponsive_server() {
+        let lock = TempLockFile::new(SAMPLE_LOCK_WITH_CRATES);
+        let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind mock server");
+        let addr = listener.local_addr().expect("Failed to get local address");
+        let url = format!("http://{}", addr);
+
+        let handle = thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                thread::sleep(Duration::from_millis(300));
+            }
+        });
+
+        let passed = check_osv_vulnerabilities_with_path_url_and_timeout(
+            &lock.path,
+            &url,
+            Duration::from_millis(50),
+        );
+        assert!(!passed);
+        let _ = handle.join();
+    }
+
+    #[test]
+    fn test_batch_chunking_with_multiple_batches() {
+        assert_eq!(BATCH_SIZE, 128);
+        assert_eq!(REQUEST_TIMEOUT, Duration::from_secs(30));
+
+        let mut lock_content = String::new();
+        for i in 0..130 {
+            lock_content.push_str(&format!(
+                "[[package]]\nname = \"crate-{}\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n\n",
+                i
+            ));
+        }
+        let lock = TempLockFile::new(&lock_content);
+        let (url, count, handle) = spawn_mock_server_batches("200 OK", r#"{"results":[]}"#, 2);
+
+        assert!(check_osv_vulnerabilities_with_path_and_url(
+            &lock.path, &url
+        ));
+        let _ = handle.join();
+        assert_eq!(count.load(Ordering::SeqCst), 2);
     }
 }

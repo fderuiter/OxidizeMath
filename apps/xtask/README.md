@@ -11,12 +11,12 @@ These commands run automated checks in git hooks or CI.
 |---|---|---|
 | `check-cargo-docs` | Verifies workspace documentation builds without warnings. | Active |
 | `check-docs` | Runs crate documentation audit. | Active |
-| `check-entropy` | Runs entropy guard and secrets scanner. | Active |
+| `check-entropy` | Scans codebase for high entropy strings and secrets. | Active |
 | `check-file-lengths` | Verifies file-length constraints. | Active |
 | `check-markdown-links` | Check all internal relative markdown documentation links | Active |
 | `check-staged-duplicates` | Checks for duplicated files in staging. | Active |
-| `check-vulnerabilities` | Audits dependencies for security vulnerabilities. | Active |
-| `lint-all` | Runs formatting, clippy, file-length, duplicate, doc, doctest, workflow, and traceability checks. | Active |
+| `check-vulnerabilities` | Scans workspace dependencies for known vulnerabilities. | Active |
+| `lint-all` | Runs formatting, clippy, file-length, duplicate, doc, doctest, workflow, traceability, entropy, and vulnerability checks. | Active |
 | `lint-workflows` | Validates CI workflow definitions. | Active |
 | `test-features` | Runs tests for various cargo features. | Active |
 | `traceability` | Generates and checks the traceability report. | Active |
