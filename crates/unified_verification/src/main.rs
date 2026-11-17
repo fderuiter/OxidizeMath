@@ -88,6 +88,11 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        "check-vulnerabilities" => {
+            if !vulnerabilities::check_osv_vulnerabilities() {
+                std::process::exit(1);
+            }
+        }
         _ => {
             eprintln!("Unknown command: {}", args[1]);
             std::process::exit(1);
