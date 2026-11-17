@@ -134,12 +134,17 @@ impl SimulationFramework {
             } else if let Some(ref writer) = self.export_queue.custom_writer {
                 writer(&filename, content.as_bytes());
             } else {
+                #[cfg(not(test))]
                 egui_plot::export::save_file_dialog(
                     &filename,
                     content.as_bytes(),
                     format.filter_name(),
                     &[format.extension()],
                 );
+                #[cfg(test)]
+                {
+                    let _ = (&filename, &content, &format);
+                }
             }
         }
     }
