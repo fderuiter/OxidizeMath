@@ -273,11 +273,12 @@ mod tests {
 
     #[test]
     fn test_vietoris_rips_parameter_updates() {
-        // Expanding radius connects all points in [0, 10] x [0, 10]
         let mut tool = VietorisRipsTool {
             radius: 15.0,
             ..Default::default()
         };
+
+        // Expanding radius connects all points in [0, 10] x [0, 10]
         tool.update_complex();
         assert_eq!(tool.cached_edges.len(), tool.complex.count_simplices(1));
         assert_eq!(tool.cached_triangles.len(), tool.complex.count_simplices(2));
