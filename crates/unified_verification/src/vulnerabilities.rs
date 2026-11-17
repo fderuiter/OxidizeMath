@@ -6,6 +6,11 @@ use std::path::Path;
 use toml::Value;
 
 #[cfg(not(target_arch = "wasm32"))]
+pub const OSV_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+#[cfg(not(target_arch = "wasm32"))]
+pub const OSV_BATCH_SIZE: usize = 128;
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn check_osv_vulnerabilities() -> bool {
     check_osv_vulnerabilities_with_path_and_url(
         Path::new("Cargo.lock"),
@@ -15,6 +20,21 @@ pub fn check_osv_vulnerabilities() -> bool {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn check_osv_vulnerabilities_with_path_and_url(lock_path: &Path, osv_url: &str) -> bool {
+    let timeout = std::env::var("OSV_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(std::time::Duration::from_millis)
+        .unwrap_or(OSV_TIMEOUT);
+    check_osv_vulnerabilities_with_timeout(lock_path, osv_url, timeout)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn check_osv_vulnerabilities_with_timeout(
+    lock_path: &Path,
+    osv_url: &str,
+    timeout: std::time::Duration,
+) -> bool {
+    let agent = ureq::AgentBuilder::new().timeout(timeout).build();
     let content = match fs::read_to_string(lock_path) {
         Ok(c) => c,
         Err(e) => {
@@ -59,35 +79,46 @@ pub fn check_osv_vulnerabilities_with_path_and_url(lock_path: &Path, osv_url: &s
         return true;
     }
 
-    let req_body = ureq::json!({ "queries": queries });
-    let res = match ureq::post(osv_url)
-        .set("Content-Type", "application/json")
-        .send_json(req_body)
+    let mut all_passed = true;
+    for (query_chunk, pkg_chunk) in queries
+        .chunks(OSV_BATCH_SIZE)
+        .zip(pkg_names.chunks(OSV_BATCH_SIZE))
     {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to query remote vulnerability database: {}", e);
+        let req_body = ureq::json!({ "queries": query_chunk });
+        let res = match agent
+            .post(osv_url)
+            .set("Content-Type", "application/json")
+            .send_json(req_body)
+        {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Failed to query remote vulnerability database: {}", e);
+                return false;
+            }
+        };
+
+        if res.status() < 200 || res.status() >= 300 {
+            eprintln!(
+                "Remote vulnerability database returned HTTP status {}",
+                res.status()
+            );
             return false;
         }
-    };
 
-    if res.status() < 200 || res.status() >= 300 {
-        eprintln!(
-            "Remote vulnerability database returned HTTP status {}",
-            res.status()
-        );
-        return false;
+        let res_json: serde_json::Value = match res.into_json() {
+            Ok(j) => j,
+            Err(e) => {
+                eprintln!("Failed to deserialize OSV response JSON: {}", e);
+                return false;
+            }
+        };
+
+        if !parse_advisories(&res_json, pkg_chunk) {
+            all_passed = false;
+        }
     }
 
-    let res_json: serde_json::Value = match res.into_json() {
-        Ok(j) => j,
-        Err(e) => {
-            eprintln!("Failed to deserialize OSV response JSON: {}", e);
-            return false;
-        }
-    };
-
-    parse_advisories(&res_json, &pkg_names)
+    all_passed
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -141,7 +172,7 @@ pub fn check_osv_vulnerabilities() -> bool {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
-    use std::io::{Read, Write};
+    use std::io::{BufRead, BufReader, Read, Write};
     use std::net::TcpListener;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread;
@@ -375,5 +406,86 @@ version = "0.1.0"
         });
         let pkg_names = vec![("paste".to_string(), "1.0.15".to_string())];
         assert!(parse_advisories(&res_json, &pkg_names));
+    }
+
+    #[test]
+    fn test_timeout_behavior_with_unresponsive_server() {
+        let lock = TempLockFile::new(SAMPLE_LOCK_WITH_CRATES);
+        let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind mock server");
+        let addr = listener.local_addr().expect("Failed to get addr");
+        let url = format!("http://{}", addr);
+
+        let handle = thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                thread::sleep(std::time::Duration::from_millis(300));
+            }
+        });
+
+        assert!(!check_osv_vulnerabilities_with_timeout(
+            &lock.path,
+            &url,
+            std::time::Duration::from_millis(50),
+        ));
+        let _ = handle.join();
+    }
+
+    #[test]
+    fn test_batch_chunking_with_multi_package_lockfile() {
+        let mut lock_content = String::new();
+        for i in 0..130 {
+            lock_content.push_str(&format!(
+                "[[package]]\nname = \"pkg-{}\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n\n",
+                i
+            ));
+        }
+        let lock = TempLockFile::new(&lock_content);
+        let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind mock server");
+        let url = format!("http://{}", listener.local_addr().expect("addr"));
+
+        let requests = std::sync::Arc::new(AtomicUsize::new(0));
+        let req_clone = requests.clone();
+        let handle = thread::spawn(move || {
+            for expected_queries in [128, 2] {
+                if let Ok((mut stream, _)) = listener.accept() {
+                    req_clone.fetch_add(1, Ordering::SeqCst);
+                    let mut reader = BufReader::new(&stream);
+                    let mut line = String::new();
+                    let mut len = 0;
+                    while let Ok(n) = reader.read_line(&mut line) {
+                        if n == 0 || line == "\r\n" {
+                            break;
+                        }
+                        if line.to_lowercase().starts_with("content-length:") {
+                            len = line.split(':').nth(1).unwrap().trim().parse().unwrap_or(0);
+                        }
+                        line.clear();
+                    }
+                    let mut body = vec![0u8; len];
+                    let _ = reader.read_exact(&mut body);
+                    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    assert_eq!(json["queries"].as_array().unwrap().len(), expected_queries);
+                    let results: Vec<serde_json::Value> = (0..expected_queries)
+                        .map(|_| serde_json::json!({ "vulns": [] }))
+                        .collect();
+                    let resp = serde_json::json!({ "results": results }).to_string();
+                    let _ = stream.write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            resp.len(),
+                            resp
+                        )
+                        .as_bytes(),
+                    );
+                }
+            }
+        });
+
+        assert!(check_osv_vulnerabilities_with_path_and_url(
+            &lock.path, &url
+        ));
+        let _ = handle.join();
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
     }
 }

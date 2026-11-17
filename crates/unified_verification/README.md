@@ -18,6 +18,7 @@ By consolidating compliance checks into a unified command-line tool, developer w
 - **`check-duplicates` / `check-staged-duplicates`**: AST-level code clone detector identifying duplicated logic across crates.
 - **`check-api-drift` / `regenerate-baseline`**: Validates public API surface against baseline definitions to prevent accidental breaking changes.
 - **`lint-workflows`**: Validates GitHub Actions workflow configurations.
+- **`check-vulnerabilities`**: Audits workspace dependencies against OSV with request timeout and query batching.
 
 ---
 
