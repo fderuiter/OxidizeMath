@@ -395,5 +395,7 @@ impl SimulationFramework {
         {
             self.show_theory_portal = portal_state;
         }
+
+        self.dispatch_pending_exports();
     }
 }

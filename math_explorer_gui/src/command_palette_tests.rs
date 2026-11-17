@@ -175,12 +175,11 @@ fn test_query_change_resets_selection() {
 #[test]
 fn test_palette_tool_indexing_and_fuzzy_match() {
     let tabs = mock_tabs();
+    // 1. Dijkstra (via tag on AlgorithmVisualizerTool)
     let mut palette = CommandPalette {
         query: "dijkstra".to_string(),
         ..Default::default()
     };
-
-    // 1. Dijkstra (via tag on AlgorithmVisualizerTool)
     let items = palette.filter_items(&tabs);
     assert!(
         !items.is_empty(),
@@ -270,7 +269,6 @@ fn test_palette_score_ranking_tabs_vs_tools() {
         query: "ode".to_string(),
         ..Default::default()
     };
-
     let items = palette.filter_items(&tabs);
     assert!(!items.is_empty());
     // Exact prefix match on OdeSolverTool has score 1, while "Analysis / ODE Solver" substring has score > 10.

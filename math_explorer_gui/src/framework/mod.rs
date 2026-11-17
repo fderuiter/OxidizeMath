@@ -1,4 +1,7 @@
 pub mod callout_overlay;
+pub mod export_queue;
+#[cfg(test)]
+mod export_queue_tests;
 mod export_ui;
 pub mod math_input;
 pub mod recovery;
@@ -11,6 +14,7 @@ pub mod trace_overlay;
 mod ui;
 
 pub use callout_overlay::*;
+pub use export_queue::*;
 pub use math_input::*;
 pub use recovery::*;
 pub use state_guard::*;
@@ -283,6 +287,7 @@ pub struct SimulationFramework {
     pub export_status_message: Option<String>,
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
+    pub export_queue: ExportQueue,
 
     /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
@@ -330,6 +335,7 @@ impl SimulationFramework {
             export_status_message: None,
             domain: domain.to_string(),
             preset_dialog: crate::presets::PresetDialogState::default(),
+            export_queue: ExportQueue::default(),
             last_valid_snapshot: None,
             baseline_tool_state: None,
             current_valid_plot_datasets: Vec::new(),
