@@ -40,7 +40,9 @@ impl SimulationRunner for IsingRunner {
     fn process_command(&mut self, cmd: SimCommand) {
         match cmd {
             SimCommand::Reset => {
-                self.lattice = SpinLattice::new(100, 100, None);
+                let w = self.lattice.width();
+                let h = self.lattice.height();
+                self.lattice = SpinLattice::new(w, h, None);
             }
             SimCommand::SetSpeed(speed) => {
                 self.params

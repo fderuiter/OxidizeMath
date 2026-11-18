@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
+use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
@@ -16,16 +16,16 @@ pub use runner::*;
 mod ui;
 
 pub struct AttractorPlotter {
-    system: LorenzSystem,
-    execution_state: SolverExecutionState,
-    step_count: usize,
-    simulation_speed: usize,
-    dt: f64,
-    history: VecDeque<Vector3<f64>>,
-    max_points: usize,
-    camera: crate::framework::Camera3D,
-    params: Arc<std::sync::RwLock<AttractorSharedParams>>,
-    worker: BackgroundWorker<AttractorRunner>,
+    pub(crate) system: LorenzSystem,
+    pub(crate) execution_state: SolverExecutionState,
+    pub(crate) step_count: usize,
+    pub(crate) simulation_speed: usize,
+    pub(crate) dt: f64,
+    pub(crate) history: VecDeque<Vector3<f64>>,
+    pub(crate) max_points: usize,
+    pub(crate) camera: crate::framework::Camera3D,
+    pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
+    pub(crate) worker: BackgroundWorker<AttractorRunner>,
     pub show_annotations: bool,
 }
 
@@ -44,17 +44,7 @@ impl Default for AttractorPlotter {
             simulation_speed: 5,
             max_points: 2000,
         }));
-        let runner = AttractorRunner {
-            system: LorenzBuilder::new()
-                .sigma(sigma)
-                .rho(rho)
-                .beta(beta)
-                .build(initial_state),
-            params: Arc::clone(&params),
-            history: VecDeque::with_capacity(2000),
-            step_count: 0,
-            execution_state: SolverExecutionState::Ready,
-        };
+        let runner = AttractorRunner::from_params(Arc::clone(&params));
         let worker = BackgroundWorker::new(runner);
 
         Self {
@@ -152,6 +142,14 @@ impl AttractorPlotter {
             self.dt = 0.01;
         }
 
+        self.system = LorenzBuilder::new()
+            .sigma(sigma)
+            .rho(rho)
+            .beta(beta)
+            .build(initial_state);
+        self.history.clear();
+        self.step_count = 0;
+        self.execution_state = SolverExecutionState::Ready;
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.sigma = sigma;
@@ -161,35 +159,9 @@ impl AttractorPlotter {
             p.simulation_speed = self.simulation_speed;
             p.max_points = self.max_points;
         }
-
-        self.system = LorenzBuilder::new()
-            .sigma(sigma)
-            .rho(rho)
-            .beta(beta)
-            .build(initial_state);
-        self.history.clear();
-        self.step_count = 0;
-        self.execution_state = SolverExecutionState::Ready;
-
-        if matches!(
-            self.worker.state(),
-            SimWorkerState::Faulted | SimWorkerState::Terminated
-        ) {
-            let runner = AttractorRunner {
-                system: LorenzBuilder::new()
-                    .sigma(sigma)
-                    .rho(rho)
-                    .beta(beta)
-                    .build(initial_state),
-                params: Arc::clone(&self.params),
-                history: VecDeque::with_capacity(self.max_points),
-                step_count: 0,
-                execution_state: SolverExecutionState::Ready,
-            };
-            self.worker = BackgroundWorker::new(runner);
-        } else {
-            let _ = self.worker.send_command(SimCommand::Reset);
-        }
+        let params = Arc::clone(&self.params);
+        self.worker
+            .reset_or_respawn(|| AttractorRunner::from_params(params));
     }
 
     pub fn reset_parameters(&mut self) {
@@ -201,7 +173,7 @@ impl AttractorPlotter {
     }
 
     /// Projects 3D point to 2D screen space based on rotation
-    fn project(&self, p: Vector3<f64>) -> [f64; 2] {
+    pub(crate) fn project(&self, p: Vector3<f64>) -> [f64; 2] {
         let center_offset = Vector3::new(0.0, 0.0, 25.0);
         let p_centered = p - center_offset;
         self.camera
@@ -259,6 +231,7 @@ impl InteractiveTool for AttractorPlotter {
             self.simulation_speed = s.simulation_speed;
             self.show_annotations = s.show_annotations;
             self.reset();
+            let _ = self.worker.update();
             let execution_state = s.execution_state.unwrap_or_else(|| {
                 let legacy_paused = serde_json::from_str::<serde_json::Value>(state)
                     .ok()
@@ -334,9 +307,7 @@ impl InteractiveTool for AttractorPlotter {
 
     fn show(&mut self, ctx: &egui::Context) {
         let current_vec = self.system.state.vec;
-        if (!current_vec.x.is_finite()
-            || !current_vec.y.is_finite()
-            || !current_vec.z.is_finite())
+        if (!current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite())
             && !self.diverged()
         {
             self.execution_state = SolverExecutionState::Diverged {
@@ -345,7 +316,29 @@ impl InteractiveTool for AttractorPlotter {
             };
         }
 
-        if !self.is_paused() {
+        let ui_diverged = self.diverged();
+        let was_paused = self.is_paused();
+        if let Some(snapshot) = self.worker.update() {
+            if !ui_diverged {
+                if let Some(data) = snapshot
+                    .structured_data
+                    .as_ref()
+                    .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
+                {
+                    self.history = data.history.clone();
+                    self.system.state.vec = data.current_vec;
+                    self.step_count = data.step_count;
+                    if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
+                        || !was_paused
+                    {
+                        self.execution_state = data.execution_state;
+                    }
+                }
+            }
+        }
+
+        let worker_faulted = self.worker.state().is_faulted();
+        if !self.is_paused() && !worker_faulted {
             if !self.worker.is_running() {
                 let _ = self.worker.send_command(SimCommand::Start);
             }
@@ -354,29 +347,11 @@ impl InteractiveTool for AttractorPlotter {
             let _ = self.worker.send_command(SimCommand::Pause);
         }
 
-        let was_paused = self.is_paused();
-        if let Some(snapshot) = self.worker.update() {
-            if let Some(data) = snapshot
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
-            {
-                self.history = data.history.clone();
-                self.system.state.vec = data.current_vec;
-                self.step_count = data.step_count;
-                if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
-                    || !was_paused
-                {
-                    self.execution_state = data.execution_state;
-                }
-            }
-        }
-
         if self.worker.state().is_stepping() {
             ctx.request_repaint();
         }
 
-        self.draw_controls(ctx);
+        self.draw_side_panel(ctx);
         self.draw_central_panel(ctx);
     }
 }

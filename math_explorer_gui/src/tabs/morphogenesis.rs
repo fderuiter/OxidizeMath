@@ -1,7 +1,7 @@
 // @explorer_feature = "biology"
-use crate::accessibility::AccessibleHoverText;
+use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard, RecoveryAction};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use crate::presets::{InteractivePreset, PresetDialogState};
 use crate::tabs::ExplorerTab;
@@ -76,6 +76,7 @@ impl MorphogenesisTab {
         }
     }
 
+    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
         let runner = Self::create_runner(&self.params, self.width, self.height);
@@ -83,9 +84,20 @@ impl MorphogenesisTab {
         self.dirty = true;
     }
 
+    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn retry(&mut self) {
         self.restart_worker();
+    }
+
+    /// Resets the worker in place or respawns a disconnected worker in `Ready` state.
+    pub fn reset(&mut self) {
+        let params = Arc::clone(&self.params);
+        let width = self.width;
+        let height = self.height;
+        self.worker
+            .reset_or_respawn(|| Self::create_runner(&params, width, height));
+        self.dirty = true;
     }
 }
 
@@ -233,10 +245,8 @@ impl FiniteStateGuard for MorphogenesisTab {
 
 impl MorphogenesisTab {
     pub(crate) fn reset_system(&mut self) {
-        let runner = Self::create_runner(&self.params, self.width, self.height);
-        self.worker = BackgroundWorker::new(runner);
+        self.reset();
         let _ = self.worker.send_command(SimCommand::Start);
-        self.dirty = true;
     }
 
     fn draw_parameter_sliders(&self, ui: &mut egui::Ui) {
@@ -264,38 +274,27 @@ impl MorphogenesisTab {
         self.dialog_state = dialog_state;
     }
 
-    fn draw_divergence_recovery(&mut self, ui: &mut egui::Ui) {
-        if self.diagnostic_report().is_some() {
-            if let Some(action) =
-                crate::framework::recovery::render_recovery_banner(ui, self.diagnostic_report())
-            {
-                match action {
-                    crate::framework::recovery::RecoveryAction::AutoScaleStepSize => {
-                        self.auto_scale_step_size();
-                    }
-                    crate::framework::recovery::RecoveryAction::ClampParameters => {
-                        self.clamp_parameters();
-                    }
-                    crate::framework::recovery::RecoveryAction::ResetParameters => {
-                        self.reset_parameters();
-                    }
+    fn draw_fault_and_recovery(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if let Some(action) = render_worker_fault_banner(
+            ui,
+            self.worker.state(),
+            self.worker.diagnostic_report(),
+            true,
+        ) {
+            match action {
+                WorkerFaultAction::Reset => self.reset(),
+                WorkerFaultAction::ResetParameters => self.reset_parameters(),
+                WorkerFaultAction::Recovery(RecoveryAction::AutoScaleStepSize) => {
+                    self.auto_scale_step_size();
+                }
+                WorkerFaultAction::Recovery(RecoveryAction::ClampParameters) => {
+                    self.clamp_parameters();
+                }
+                WorkerFaultAction::Recovery(RecoveryAction::ResetParameters) => {
+                    self.reset_parameters();
                 }
             }
-            ui.separator();
-        } else if self.worker.state() == SimWorkerState::Faulted {
-            ui.group(|ui| {
-                ui.colored_label(
-                    egui::Color32::RED,
-                    "⚠ Worker Faulted: Simulation thread disconnected.",
-                );
-                if ui
-                    .button("🔄 Retry")
-                    .accessible_hover_text("Restart background worker")
-                    .clicked()
-                {
-                    self.retry();
-                }
-            });
+            ctx.request_repaint();
             ui.separator();
         }
     }
@@ -308,7 +307,7 @@ impl MorphogenesisTab {
             }
             ui.separator();
 
-            self.draw_divergence_recovery(ui);
+            self.draw_fault_and_recovery(ui, ctx);
             self.draw_parameter_sliders(ui);
             ui.separator();
 
@@ -331,15 +330,8 @@ impl MorphogenesisTab {
                         let _ = self.worker.send_command(SimCommand::Step(1));
                     }
                     PlaybackAction::Reset => {
-                        if matches!(
-                            self.worker.state(),
-                            SimWorkerState::Faulted | SimWorkerState::Terminated
-                        ) {
-                            self.retry();
-                        } else {
-                            let _ = self.worker.send_command(SimCommand::Reset);
-                        }
-                        self.dirty = true;
+                        self.reset();
+                        ctx.request_repaint();
                     }
                 }
             }

@@ -1,12 +1,12 @@
 // @explorer_feature = "physics"
-use crate::accessibility::AccessibleHoverText;
-#[cfg(test)]
-use crate::async_sim::SimulationRunner;
+use crate::async_sim::ui::{
+    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use crate::tabs::ExplorerTab;
 use eframe::egui;
-use egui_plot::{Legend, Line, Plot, PlotPoint};
+use egui_plot::{Legend, Line, Plot, PlotPoint, Points};
 use math_explorer::physics::mri::bloch::BlochSimulator;
 use math_explorer::pure_math::analysis::ode::RungeKutta4;
 use nalgebra::Vector3;
@@ -56,14 +56,7 @@ impl Default for MriTab {
             time_scale: 1.0,
         }));
 
-        let runner = MriRunner {
-            simulator: BlochSimulator::new(initial_m, m0),
-            solver: RungeKutta4::new(&initial_m),
-            params: Arc::clone(&params),
-            current_time: 0.0,
-            history: VecDeque::new(),
-            max_history: math_commons::registry::MAX_ITERATIONS,
-        };
+        let runner = MriRunner::new(Arc::clone(&params), initial_m, m0);
         let worker = BackgroundWorker::new(runner);
 
         Self {
@@ -83,6 +76,7 @@ impl Default for MriTab {
 }
 
 impl MriTab {
+    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
         let (t1, t2, b_field) = {
@@ -96,17 +90,22 @@ impl MriTab {
             BlochSimulator::new(self.simulator.magnetization, self.simulator.m0);
         runner_simulator.set_relaxation(t1, t2);
         runner_simulator.set_b_field(b_field);
+        let mut history = self.history.clone();
+        if history.is_empty() {
+            history.push_back((self.current_time, self.simulator.magnetization));
+        }
         let runner = MriRunner {
             simulator: runner_simulator,
             solver: RungeKutta4::new(&self.simulator.magnetization),
             params: Arc::clone(&self.params),
             current_time: self.current_time,
-            history: self.history.clone(),
+            history,
             max_history: math_commons::registry::MAX_ITERATIONS,
         };
         self.worker = BackgroundWorker::new(runner);
     }
 
+    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn retry(&mut self) {
         self.restart_worker();
@@ -129,23 +128,20 @@ impl MriTab {
 
     /// Resets the simulation to the initial state defined by current parameters
     pub fn reset(&mut self) {
-        self.simulator.magnetization = Vector3::new(self.simulator.m0, 0.0, 0.0);
+        let initial_m = Vector3::new(self.simulator.m0, 0.0, 0.0);
+        self.simulator.magnetization = initial_m;
         self.current_time = 0.0;
         self.history.clear();
         self.mx_points.clear();
         self.my_points.clear();
         self.mz_points.clear();
-        if matches!(
-            self.worker.state(),
-            SimWorkerState::Faulted | SimWorkerState::Terminated
-        ) {
-            self.retry();
-        } else {
-            let _ = self.worker.send_command(SimCommand::Reset);
-        }
+        let params = Arc::clone(&self.params);
+        let m0 = self.simulator.m0;
+        self.worker
+            .reset_or_respawn(|| MriRunner::new(params, initial_m, m0));
     }
 
-    fn draw_relaxation_section(&mut self, ui: &mut egui::Ui) {
+    fn draw_relaxation_controls(&mut self, ui: &mut egui::Ui) {
         ui.collapsing("Relaxation Parameters", |ui| {
             if ui
                 .add(
@@ -173,7 +169,7 @@ impl MriTab {
         });
     }
 
-    fn draw_magnetic_field_section(&mut self, ui: &mut egui::Ui) {
+    fn draw_magnetic_field_controls(&mut self, ui: &mut egui::Ui) {
         ui.collapsing("Magnetic Fields", |ui| {
             ui.label("Main Field (B0) [T]");
             ui.horizontal(|ui| {
@@ -189,7 +185,6 @@ impl MriTab {
                         .z = self.simulator.b_field.z;
                 }
             });
-
             ui.label("Gradients / RF (B1) [T]");
             ui.horizontal(|ui| {
                 ui.label("Bx");
@@ -218,91 +213,91 @@ impl MriTab {
         });
     }
 
-    fn draw_magnetization_readout(&self, ui: &mut egui::Ui) {
-        ui.separator();
-        ui.label(format!("Time: {:.3} s", self.current_time));
-        ui.label(format!("|M|: {:.3}", self.simulator.magnetization.norm()));
-        ui.label(format!("Mx: {:.3}", self.simulator.magnetization.x));
-        ui.label(format!("My: {:.3}", self.simulator.magnetization.y));
-        ui.label(format!("Mz: {:.3}", self.simulator.magnetization.z));
-    }
-
-    fn draw_fault_banner(&mut self, ui: &mut egui::Ui) {
-        if self.worker.state() == SimWorkerState::Faulted {
-            ui.group(|ui| {
-                ui.colored_label(
-                    egui::Color32::RED,
-                    "⚠ Worker Faulted: Simulation thread disconnected.",
-                );
-                if ui
-                    .button("🔄 Retry")
-                    .accessible_hover_text("Restart background worker")
-                    .clicked()
-                {
-                    self.retry();
+    fn draw_playback_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.heading("Simulation");
+        if let Some(action) = PlaybackTransport::from_worker_state(
+            "mri_transport",
+            "MRI Physics",
+            self.worker.state(),
+        )
+        .reset_label("↻ Reset (90° Pulse)")
+        .can_reset(true)
+        .show(ui)
+        {
+            match action {
+                PlaybackAction::Play => {
+                    let _ = self.worker.send_command(SimCommand::Start);
                 }
-            });
-            ui.separator();
+                PlaybackAction::Pause => {
+                    let _ = self.worker.send_command(SimCommand::Pause);
+                }
+                PlaybackAction::Step => {
+                    let _ = self.worker.send_command(SimCommand::Step(1));
+                }
+                PlaybackAction::Reset => {
+                    self.reset();
+                    ctx.request_repaint();
+                }
+            }
+        }
+
+        if ui
+            .add(
+                egui::Slider::new(&mut self.time_scale, 1.0..=100.0)
+                    .logarithmic(true)
+                    .text("Time Scale (Speed)"),
+            )
+            .changed()
+        {
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .time_scale = self.time_scale;
         }
     }
 
-    fn draw_controls(&mut self, ctx: &egui::Context) {
+    fn draw_side_panel(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("controls_panel").show(ctx, |ui| {
             ui.heading("MRI Physics Control");
             ui.separator();
 
-            self.draw_fault_banner(ui);
-            self.draw_relaxation_section(ui);
-            self.draw_magnetic_field_section(ui);
-            ui.separator();
-            ui.heading("Simulation");
-
-            if let Some(action) = PlaybackTransport::from_worker_state(
-                "mri_transport",
-                "MRI Physics",
-                self.worker.state(),
-            )
-            .reset_label("↻ Reset (90° Pulse)")
-            .can_reset(true)
-            .show(ui)
-            {
-                match action {
-                    PlaybackAction::Play => {
-                        let _ = self.worker.send_command(SimCommand::Start);
-                    }
-                    PlaybackAction::Pause => {
-                        let _ = self.worker.send_command(SimCommand::Pause);
-                    }
-                    PlaybackAction::Step => {
-                        let _ = self.worker.send_command(SimCommand::Step(1));
-                    }
-                    PlaybackAction::Reset => {
-                        self.reset();
-                    }
-                }
-            }
-
-            if ui
-                .add(
-                    egui::Slider::new(&mut self.time_scale, 1.0..=100.0)
-                        .logarithmic(true)
-                        .text("Time Scale (Speed)"),
+            if let Some(WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters) =
+                render_worker_fault_banner(
+                    ui,
+                    self.worker.state(),
+                    self.worker.diagnostic_report(),
+                    false,
                 )
-                .changed()
             {
-                self.params
-                    .write()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .time_scale = self.time_scale;
+                self.reset();
+                ctx.request_repaint();
+                ui.separator();
             }
 
-            self.draw_magnetization_readout(ui);
+            self.draw_relaxation_controls(ui);
+            self.draw_magnetic_field_controls(ui);
+            ui.separator();
+            self.draw_playback_controls(ui, ctx);
+
+            ui.separator();
+            ui.label(format!("Time: {:.3} s", self.current_time));
+            ui.label(format!("|M|: {:.3}", self.simulator.magnetization.norm()));
+            ui.label(format!("Mx: {:.3}", self.simulator.magnetization.x));
+            ui.label(format!("My: {:.3}", self.simulator.magnetization.y));
+            ui.label(format!("Mz: {:.3}", self.simulator.magnetization.z));
         });
     }
 
-    fn draw_plot(&self, ctx: &egui::Context) {
+    fn draw_central_panel(&self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Magnetization Vector Evolution");
+
+            if self.mx_points.len() <= 1 {
+                render_empty_plot_guidance(
+                    ui,
+                    "Initial 90° tipped magnetization M = (1, 0, 0) ready — click ▶ Play or ⏭ Step to simulate Bloch relaxation.",
+                );
+            }
 
             Plot::new("bloch_plot")
                 .legend(Legend::default())
@@ -321,6 +316,26 @@ impl MriTab {
                         Line::new("Mz (Longitudinal)", &self.mz_points[..])
                             .color(egui::Color32::BLUE),
                     );
+                    if self.mx_points.len() == 1 {
+                        let mx0 = [self.mx_points[0].x, self.mx_points[0].y];
+                        let my0 = [self.my_points[0].x, self.my_points[0].y];
+                        let mz0 = [self.mz_points[0].x, self.mz_points[0].y];
+                        plot_ui.points(
+                            Points::new("Mx (t=0)", vec![mx0])
+                                .radius(4.5_f32)
+                                .color(egui::Color32::RED),
+                        );
+                        plot_ui.points(
+                            Points::new("My (t=0)", vec![my0])
+                                .radius(4.5_f32)
+                                .color(egui::Color32::GREEN),
+                        );
+                        plot_ui.points(
+                            Points::new("Mz (t=0)", vec![mz0])
+                                .radius(4.5_f32)
+                                .color(egui::Color32::BLUE),
+                        );
+                    }
                 });
 
             ui.label(
@@ -328,6 +343,32 @@ impl MriTab {
             );
             ui.label("Adjust B-fields to see precession.");
         });
+    }
+
+    /// Updates from the background worker and renders the MRI tab UI.
+    pub fn show_ui(&mut self, ctx: &egui::Context) {
+        if let Some(snapshot) = self.worker.update() {
+            if let Some(data) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<MriSnapshot>())
+            {
+                self.current_time = data.current_time;
+                self.simulator.magnetization = data.magnetization;
+                self.history = data.history.clone();
+                self.update_plot_buffers();
+            }
+        }
+
+        if matches!(
+            self.worker.state(),
+            SimWorkerState::Running | SimWorkerState::Stepping
+        ) {
+            ctx.request_repaint();
+        }
+
+        self.draw_side_panel(ctx);
+        self.draw_central_panel(ctx);
     }
 }
 
@@ -370,33 +411,14 @@ impl ExplorerTab for MriTab {
     }
 
     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if let Some(snapshot) = self.worker.update() {
-            if let Some(data) = snapshot
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<MriSnapshot>())
-            {
-                self.current_time = data.current_time;
-                self.simulator.magnetization = data.magnetization;
-                self.history = data.history.clone();
-                self.update_plot_buffers();
-            }
-        }
-
-        if matches!(
-            self.worker.state(),
-            SimWorkerState::Running | SimWorkerState::Stepping
-        ) {
-            ctx.request_repaint();
-        }
-
-        self.draw_controls(ctx);
-        self.draw_plot(ctx);
+        self.show_ui(ctx);
     }
 }
 
 // [cite:graph_parameters_rust]
 
+#[cfg(test)]
+use crate::async_sim::SimulationRunner;
 #[cfg(test)]
 #[path = "mri/tests.rs"]
 mod tests;

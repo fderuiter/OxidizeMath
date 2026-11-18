@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{MorphogenesisTab, SimpleRng};
+use crate::async_sim::ui::render_empty_plot_guidance;
 use eframe::egui;
 use eframe::egui::ColorImage;
 use egui_plot::{Plot, PlotImage, PlotPoint};
@@ -67,6 +68,11 @@ impl MorphogenesisTab {
                             [w, h],
                         ));
                     });
+            } else {
+                render_empty_plot_guidance(
+                    ui,
+                    "Reaction-diffusion grid ready — click ▶ Play or ⏭ Step to evolve Turing patterns.",
+                );
             }
         });
     }

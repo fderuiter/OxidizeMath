@@ -1,9 +1,7 @@
 //! WebAssembly worker integration for async simulation.
 
-use super::{
-    advance_running_frame, drain_worker_commands, take_worker_context, FrameTickOutcome,
-    SimStateUpdate, SimWorkerState, WorkerStatusEvent,
-};
+use super::worker::{advance_running_frame, drain_worker_commands, FrameTickOutcome};
+use super::{take_worker_context, SimStateUpdate, SimWorkerState, WorkerStatusEvent};
 use wasm_bindgen::JsCast;
 
 /// Attempts to spawn a dedicated Web Worker initialized with shared WASM module & memory.
@@ -127,6 +125,7 @@ pub async fn run_simulation_worker(handle: u32) {
 
     let mut state = SimWorkerState::Ready;
     let mut steps_per_frame = runner.get_steps_per_frame();
+    let _ = state_tx.send(SimStateUpdate::Snapshot(runner.get_snapshot()));
     let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
 
     loop {

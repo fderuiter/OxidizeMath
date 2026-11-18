@@ -229,11 +229,11 @@ fn test_worker_panic_transitions_to_faulted_within_one_frame() {
     let panic_flag = Arc::new(AtomicBool::new(false));
     let runner = TestRunner::new(panic_flag.clone());
     let mut controller = SimulationController::new(runner);
+    assert!(controller.update().is_some());
 
-    assert!(controller.send_command(SimCommand::Start).is_ok());
-
-    // Trigger panic in background worker
+    // Trigger panic in background worker on its next step
     panic_flag.store(true, Ordering::SeqCst);
+    assert!(controller.send_command(SimCommand::Start).is_ok());
 
     // Allow background thread to hit the step panic
     std::thread::sleep(Duration::from_millis(50));
@@ -244,11 +244,23 @@ fn test_worker_panic_transitions_to_faulted_within_one_frame() {
     assert!(controller.state().is_faulted());
     assert!(!controller.state().is_running());
 
-    // Commands in Faulted state should be rejected
+    // Non-reset commands in Faulted state must be rejected
     assert!(matches!(
         controller.send_command(SimCommand::Start),
         Err(SimCommandError::InvalidTransition { .. })
     ));
+
+    // Direct Reset on a panicked worker detects channel disconnection
+    assert!(matches!(
+        controller.send_command(SimCommand::Reset),
+        Err(SimCommandError::ChannelDisconnected)
+    ));
+
+    // Respawn helper recovers panicked worker to Ready with a seeded snapshot
+    panic_flag.store(false, Ordering::SeqCst);
+    assert!(controller.reset_or_respawn(|| TestRunner::new(panic_flag.clone())));
+    assert_eq!(controller.state(), SimWorkerState::Ready);
+    assert!(controller.latest_snapshot().is_some());
 }
 
 #[test]
@@ -257,7 +269,9 @@ fn test_update_returns_snapshot_only_on_new_snapshot() {
     let runner = TestRunner::new(panic_flag);
     let mut controller = SimulationController::new(runner);
 
-    // Initial check when paused: no snapshots emitted yet
+    // Seed snapshot is populated immediately and delivered once via update()
+    assert!(controller.latest_snapshot().is_some());
+    assert!(controller.update().is_some());
     assert!(controller.update().is_none());
 
     // Start simulation and wait briefly for a step snapshot

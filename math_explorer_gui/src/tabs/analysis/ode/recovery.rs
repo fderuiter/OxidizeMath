@@ -1,47 +1,67 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::OdeSolverTool;
 use crate::framework::recovery::{
     render_recovery_banner, DiagnosticReport, FiniteStateGuard, RecoveryAction,
 };
 use crate::presets::OdePreset;
 use eframe::egui;
 
-impl FiniteStateGuard for super::OdeSolverTool {
+/// Checks whether an [`OdeSolverTool`] is in a completely finite numerical state.
+pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
+    let params_finite = match tool.preset {
+        OdePreset::Exponential | OdePreset::Custom => tool.param_k.is_finite(),
+        OdePreset::HarmonicOscillator => tool.param_k.is_finite() && tool.ic_v0.is_finite(),
+        OdePreset::LogisticGrowth => tool.param_r.is_finite() && tool.param_cap_k.is_finite(),
+    };
+    !tool.diverged
+        && tool.dt.is_finite()
+        && tool.total_time.is_finite()
+        && tool.ic_y0.is_finite()
+        && params_finite
+        && tool.time_series.iter().all(|t| t.is_finite())
+        && tool.y_series.iter().all(|y| y.is_finite())
+        && tool.v_series.iter().all(|v| v.is_finite())
+}
+
+impl FiniteStateGuard for OdeSolverTool {
     fn is_finite_state(&self) -> bool {
-        !self.diverged
-            && self.time_series.iter().all(|t| t.is_finite())
-            && self.y_series.iter().all(|y| y.is_finite())
-            && self.v_series.iter().all(|v| v.is_finite())
+        is_finite_ode_state(self)
+    }
+
+    fn validate_state(&self) -> Result<(), DiagnosticReport> {
+        if self.is_finite_state() {
+            Ok(())
+        } else {
+            Err(self.diagnostic_report.clone().unwrap_or_else(|| {
+                DiagnosticReport::new(
+                    0.0,
+                    0,
+                    "state",
+                    "Non-finite floating-point state encountered.",
+                )
+            }))
+        }
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        super::OdeSolverTool::diagnostic_report(self)
+        OdeSolverTool::diagnostic_report(self)
     }
 
     fn diverged(&self) -> bool {
-        super::OdeSolverTool::diverged(self) || !FiniteStateGuard::is_finite_state(self)
+        OdeSolverTool::diverged(self)
     }
 
     fn auto_scale_step_size(&mut self) {
-        super::OdeSolverTool::auto_scale_step_size(self);
+        OdeSolverTool::auto_scale_step_size(self);
     }
 
     fn clamp_parameters(&mut self) {
-        if !self.dt.is_finite() || self.dt <= 0.0 {
-            self.dt = 0.05;
-        } else {
-            self.dt = self.dt.clamp(1e-6, 0.1);
-        }
-        if !self.total_time.is_finite() || self.total_time <= 0.0 {
-            self.total_time = 10.0;
-        } else {
-            self.total_time = self.total_time.clamp(0.1, 100.0);
-        }
         self.clamp_instability_parameters();
     }
 
     fn reset_parameters(&mut self) {
-        super::OdeSolverTool::reset_parameters(self);
+        OdeSolverTool::reset_parameters(self);
     }
 }
 
@@ -103,9 +123,24 @@ pub fn clamp_ode_parameters(
     }
 }
 
-/// Applies a centralized `RecoveryAction` via `FiniteStateGuard` and refreshes trajectory plot buffers.
+/// Clamps step size `dt` and `total_time` to valid finite solver bounds.
+pub fn clamp_ode_step_settings(dt: &mut f64, total_time: &mut f64) {
+    if !dt.is_finite() || *dt <= 0.0 {
+        *dt = 0.05;
+    } else {
+        *dt = dt.clamp(1e-6, 0.1);
+    }
+    if !total_time.is_finite() || *total_time <= 0.0 {
+        *total_time = 10.0;
+    } else {
+        *total_time = total_time.clamp(0.1, 100.0);
+    }
+}
+
+/// Applies a centralized [`RecoveryAction`] to [`OdeSolverTool`] via [`FiniteStateGuard`]
+/// and refreshes the active plot point buffers.
 pub fn apply_recovery_action(
-    tool: &mut super::OdeSolverTool,
+    tool: &mut OdeSolverTool,
     action: RecoveryAction,
     changed: &mut bool,
     plot_points_y: &mut Vec<[f64; 2]>,

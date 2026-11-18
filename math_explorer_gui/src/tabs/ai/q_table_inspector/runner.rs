@@ -13,6 +13,26 @@ pub struct QTableSnapshot {
     pub q_values: HashMap<(GridState, Move), f64>,
 }
 
+pub(crate) fn default_grid_env() -> GridWorldEnv {
+    GridWorldEnv {
+        width: 5,
+        height: 5,
+        start: GridState { x: 0, y: 0 },
+        goal: GridState { x: 4, y: 4 },
+        traps: vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }],
+        gamma: 0.9,
+    }
+}
+
+pub(crate) fn default_q_agent() -> TabularQAgent<GridState, Move> {
+    TabularQAgent::new(
+        math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+        math_commons::primitives::UnitInterval::new(0.9).unwrap(),
+        math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+        None,
+    )
+}
+
 #[allow(missing_docs)]
 pub struct QTableRunner {
     pub env: GridWorldEnv,
@@ -22,8 +42,25 @@ pub struct QTableRunner {
     pub is_training: bool,
 }
 
+impl Default for QTableRunner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl QTableRunner {
-    fn train_one_episode(&mut self) {
+    /// Creates an initialized Q-learning background runner.
+    pub fn new() -> Self {
+        Self {
+            env: default_grid_env(),
+            agent: default_q_agent(),
+            episodes_trained: 0,
+            target_episodes: 0,
+            is_training: false,
+        }
+    }
+
+    fn run_one_episode(&mut self) {
         let mut current_state = self.env.start;
         let mut steps = 0;
 
@@ -32,15 +69,12 @@ impl QTableRunner {
             if actions.is_empty() {
                 break;
             }
-
             if let Some(action) = self.agent.select_action(&current_state, &actions) {
                 let next_state = self.env.step(&current_state, &action);
                 let reward = self.env.reward(&current_state, &action, &next_state);
                 let next_actions = self.env.actions(&next_state);
-
                 self.agent
                     .update(&current_state, &action, reward, &next_state, &next_actions);
-
                 current_state = next_state;
             }
             steps += 1;
@@ -65,12 +99,7 @@ impl SimulationRunner for QTableRunner {
                 self.is_training = false;
             }
             SimCommand::Reset => {
-                self.agent = TabularQAgent::new(
-                    math_commons::primitives::UnitInterval::new(0.1).unwrap(),
-                    math_commons::primitives::UnitInterval::new(0.9).unwrap(),
-                    math_commons::primitives::UnitInterval::new(0.1).unwrap(),
-                    None,
-                );
+                self.agent = default_q_agent();
                 self.episodes_trained = 0;
                 self.target_episodes = 0;
                 self.is_training = false;
@@ -83,7 +112,7 @@ impl SimulationRunner for QTableRunner {
         if self.is_training && self.episodes_trained < self.target_episodes {
             let batch = (self.target_episodes - self.episodes_trained).min(50);
             for _ in 0..batch {
-                self.train_one_episode();
+                self.run_one_episode();
             }
             if self.episodes_trained >= self.target_episodes {
                 self.is_training = false;
@@ -92,7 +121,7 @@ impl SimulationRunner for QTableRunner {
     }
 
     fn step_once(&mut self) {
-        self.train_one_episode();
+        self.run_one_episode();
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -125,5 +154,19 @@ impl SimulationRunner for QTableRunner {
 
     fn is_complete(&self) -> bool {
         !self.is_training || self.episodes_trained >= self.target_episodes
+    }
+
+    fn is_finite_state(&self) -> bool {
+        for x in 0..self.env.width {
+            for y in 0..self.env.height {
+                let s = GridState { x, y };
+                for a in [Move::Up, Move::Down, Move::Left, Move::Right] {
+                    if !self.agent.get_q_value(&s, &a).is_finite() {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
     }
 }

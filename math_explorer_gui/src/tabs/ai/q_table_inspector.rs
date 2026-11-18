@@ -1,11 +1,11 @@
 use crate::accessibility::AccessibleHoverText;
+use crate::async_sim::ui::{
+    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::{InputMode, InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
-use math_explorer::ai::reinforcement_learning::algorithms::TabularQAgent;
 use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorldEnv, Move};
-#[cfg(test)]
-use math_explorer::ai::reinforcement_learning::MarkovDecisionProcess;
 use std::collections::HashMap;
 
 #[path = "q_table_inspector/runner.rs"]
@@ -23,115 +23,79 @@ enum HeatmapView {
 
 pub struct QTableInspectorTool {
     env: GridWorldEnv,
-    agent: TabularQAgent<GridState, Move>,
     cached_q_values: HashMap<(GridState, Move), f64>,
     episodes_trained: u32,
     view: HeatmapView,
-    worker: BackgroundWorker<QTableRunner>,
+    pub(crate) worker: BackgroundWorker<QTableRunner>,
 }
 
 impl Default for QTableInspectorTool {
     fn default() -> Self {
-        let env = GridWorldEnv {
-            width: 5,
-            height: 5,
-            start: GridState { x: 0, y: 0 },
-            goal: GridState { x: 4, y: 4 },
-            traps: vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }],
-            gamma: 0.9,
-        };
-        let agent = TabularQAgent::new(
-            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
-            math_commons::primitives::UnitInterval::new(0.9).unwrap(),
-            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
-            None,
-        );
-        let runner = QTableRunner {
-            env: GridWorldEnv {
-                width: 5,
-                height: 5,
-                start: GridState { x: 0, y: 0 },
-                goal: GridState { x: 4, y: 4 },
-                traps: vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }],
-                gamma: 0.9,
-            },
-            agent: TabularQAgent::new(
-                math_commons::primitives::UnitInterval::new(0.1).unwrap(),
-                math_commons::primitives::UnitInterval::new(0.9).unwrap(),
-                math_commons::primitives::UnitInterval::new(0.1).unwrap(),
-                None,
-            ),
-            episodes_trained: 0,
-            target_episodes: 0,
-            is_training: false,
-        };
-        let worker = BackgroundWorker::new(runner);
-        Self {
+        let env = default_grid_env();
+        let worker = BackgroundWorker::new(QTableRunner::new());
+        let mut tool = Self {
             env,
-            agent,
             cached_q_values: HashMap::new(),
             episodes_trained: 0,
             view: HeatmapView::MaxQ,
             worker,
-        }
+        };
+        tool.sync_from_latest();
+        tool
     }
 }
 
 impl QTableInspectorTool {
-    #[cfg(test)]
-    pub fn train(&mut self, episodes: u32) {
-        for _ in 0..episodes {
-            let mut current_state = self.env.start;
-            let mut steps = 0;
-
-            while !self.env.is_terminal(&current_state) && steps < 100 {
-                let actions = self.env.actions(&current_state);
-                if actions.is_empty() {
-                    break;
-                }
-
-                if let Some(action) = self.agent.select_action(&current_state, &actions) {
-                    let next_state = self.env.step(&current_state, &action);
-                    let reward = self.env.reward(&current_state, &action, &next_state);
-                    let next_actions = self.env.actions(&next_state);
-
-                    self.agent
-                        .update(&current_state, &action, reward, &next_state, &next_actions);
-
-                    current_state = next_state;
-                }
-                steps += 1;
-            }
-        }
-        self.episodes_trained += episodes;
-        for x in 0..self.env.width {
-            for y in 0..self.env.height {
-                let state = GridState { x, y };
-                for action in [Move::Up, Move::Down, Move::Left, Move::Right] {
-                    self.cached_q_values
-                        .insert((state, action), self.agent.get_q_value(&state, &action));
-                }
+    fn sync_from_latest(&mut self) {
+        if let Some(snapshot) = self.worker.latest_snapshot() {
+            if let Some(data) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<QTableSnapshot>())
+            {
+                self.cached_q_values = data.q_values.clone();
+                self.episodes_trained = data.episodes_trained;
             }
         }
     }
 
-    fn reset_agent(&mut self) {
-        let _ = self.worker.send_command(SimCommand::Reset);
-        self.agent = TabularQAgent::new(
-            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
-            math_commons::primitives::UnitInterval::new(0.9).unwrap(),
-            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
-            None,
-        );
+    /// Resets the background Q-learning agent in place or respawns a disconnected worker.
+    pub fn reset(&mut self) {
+        self.worker.reset_or_respawn(QTableRunner::new);
         self.cached_q_values.clear();
         self.episodes_trained = 0;
+        self.sync_from_latest();
+    }
+
+    #[cfg(test)]
+    pub fn train(&mut self, episodes: u32) {
+        let target = self.episodes_trained + episodes;
+        let _ = self
+            .worker
+            .send_command(SimCommand::TrainEpisodes(episodes as usize));
+        for _ in 0..200 {
+            if let Some(snap) = self.worker.update() {
+                if let Some(data) = snap
+                    .structured_data
+                    .as_ref()
+                    .and_then(|d| d.downcast_ref::<QTableSnapshot>())
+                {
+                    self.cached_q_values = data.q_values.clone();
+                    self.episodes_trained = data.episodes_trained;
+                    if self.episodes_trained >= target {
+                        break;
+                    }
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
     }
 
     fn get_q(&self, state: &GridState, action: &Move) -> f64 {
         self.cached_q_values
             .get(&(*state, *action))
             .copied()
-            .unwrap_or_else(|| self.agent.get_q_value(state, action))
+            .unwrap_or(0.0)
     }
 
     fn get_q_value_for_view(&self, state: &GridState) -> f64 {
@@ -157,13 +121,45 @@ impl QTableInspectorTool {
         }
     }
 
-    fn draw_controls(&mut self, ctx: &egui::Context, legend_size: f32) {
+    fn handle_transport_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
+        match action {
+            PlaybackAction::Play => {
+                let _ = self.worker.send_command(SimCommand::TrainEpisodes(100));
+            }
+            PlaybackAction::Pause => {
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+            PlaybackAction::Step => {
+                let _ = self.worker.send_command(SimCommand::Step(1));
+            }
+            PlaybackAction::Reset => {
+                self.reset();
+                ctx.request_repaint();
+            }
+        }
+    }
+
+    fn draw_side_panel(&mut self, ctx: &egui::Context, legend_size: f32) {
         egui::SidePanel::left("q_table_controls").show(ctx, |ui| {
             ui.heading("Training Controls");
             ui.separator();
 
+            if let Some(WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters) =
+                render_worker_fault_banner(
+                    ui,
+                    self.worker.state(),
+                    self.worker.diagnostic_report(),
+                    false,
+                )
+            {
+                self.reset();
+                ctx.request_repaint();
+                ui.separator();
+            }
+
+            let state = self.worker.state();
             ui.label(format!("Episodes Trained: {}", self.episodes_trained));
-            if self.worker.is_running() {
+            if state.is_running() {
                 ui.colored_label(
                     egui::Color32::from_rgb(60, 160, 240),
                     "⏳ Training in background...",
@@ -173,32 +169,19 @@ impl QTableInspectorTool {
             if let Some(action) = PlaybackTransport::from_worker_state(
                 "q_table_transport",
                 "Q-Table Inspector",
-                self.worker.state(),
+                state,
             )
             .play_label("▶ Train 100")
             .step_label("⏭ Step Episode")
             .can_reset(true)
             .show(ui)
             {
-                match action {
-                    PlaybackAction::Play => {
-                        let _ = self.worker.send_command(SimCommand::TrainEpisodes(100));
-                    }
-                    PlaybackAction::Pause => {
-                        let _ = self.worker.send_command(SimCommand::Pause);
-                    }
-                    PlaybackAction::Step => {
-                        let _ = self.worker.send_command(SimCommand::Step(1));
-                    }
-                    PlaybackAction::Reset => {
-                        self.reset_agent();
-                    }
-                }
+                self.handle_transport_action(action, ctx);
             }
 
             if ui
                 .add_enabled(
-                    self.worker.state().is_ready(),
+                    state.is_ready(),
                     egui::Button::new("▶ Train 1000 Episodes"),
                 )
                 .accessible_hover_text("Train the agent for 1000 episodes in the background")
@@ -235,14 +218,16 @@ impl QTableInspectorTool {
         }
     }
 
-    fn q_value_bounds(&self) -> (f64, f64) {
+    fn compute_q_bounds(&self) -> (f64, f64) {
         let mut min_q = 0.0_f64;
         let mut max_q = 0.0_f64;
         for x in 0..self.env.width {
             for y in 0..self.env.height {
                 let q = self.get_q_value_for_view(&GridState { x, y });
-                min_q = min_q.min(q);
-                max_q = max_q.max(q);
+                if q.is_finite() {
+                    min_q = min_q.min(q);
+                    max_q = max_q.max(q);
+                }
             }
         }
         if (max_q - min_q).abs() < f64::EPSILON {
@@ -251,9 +236,55 @@ impl QTableInspectorTool {
         (min_q, max_q)
     }
 
+    fn paint_heatmap_cell(
+        &self,
+        painter: &egui::Painter,
+        cell_rect: egui::Rect,
+        state: GridState,
+        min_q: f64,
+        max_q: f64,
+    ) {
+        let q_value = self.get_q_value_for_view(&state);
+        let fill_color = if state == self.env.goal {
+            egui::Color32::GREEN
+        } else if self.env.traps.contains(&state) {
+            egui::Color32::RED
+        } else {
+            let norm = ((q_value - min_q) / (max_q - min_q)).clamp(0.0, 1.0);
+            let high = (norm * 255.0) as u8;
+            let low = 255_u8.saturating_sub(high);
+            egui::Color32::from_rgb(high, high, low)
+        };
+
+        painter.rect_filled(cell_rect, 0.0, fill_color);
+        painter.rect_stroke(
+            cell_rect,
+            0.0,
+            egui::Stroke::new(1.0_f32, egui::Color32::BLACK),
+            egui::StrokeKind::Middle,
+        );
+
+        if state != self.env.goal && !self.env.traps.contains(&state) {
+            painter.text(
+                cell_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                format!("{q_value:.2}"),
+                egui::FontId::proportional(14.0),
+                egui::Color32::BLACK,
+            );
+        }
+    }
+
     fn draw_heatmap(&self, ctx: &egui::Context, cell_size: f32) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Q-Value Heatmap");
+            if self.episodes_trained == 0 {
+                render_empty_plot_guidance(
+                    ui,
+                    "Untrained baseline Q-table (0.00) — click '▶ Train 100' or '⏭ Step Episode' to update state-action values.",
+                );
+            }
+
             let grid_size = egui::vec2(
                 self.env.width as f32 * cell_size,
                 self.env.height as f32 * cell_size,
@@ -263,43 +294,15 @@ impl QTableInspectorTool {
                 .clone()
                 .accessible_hover_text("Q-Table Heatmap Visualization");
             let rect = response.rect;
-            let (min_q, max_q) = self.q_value_bounds();
+            let (min_q, max_q) = self.compute_q_bounds();
 
             for x in 0..self.env.width {
                 for y in 0..self.env.height {
-                    let top_left = rect.min + egui::vec2(x as f32 * cell_size, y as f32 * cell_size);
+                    let top_left =
+                        rect.min + egui::vec2(x as f32 * cell_size, y as f32 * cell_size);
                     let cell_rect =
                         egui::Rect::from_min_size(top_left, egui::vec2(cell_size, cell_size));
-                    let state = GridState { x, y };
-                    let q_value = self.get_q_value_for_view(&state);
-
-                    let fill_color = if state == self.env.goal {
-                        egui::Color32::GREEN
-                    } else if self.env.traps.contains(&state) {
-                        egui::Color32::RED
-                    } else {
-                        let norm = (q_value - min_q) / (max_q - min_q);
-                        let c = (norm * 255.0) as u8;
-                        egui::Color32::from_rgb(c, c, ((1.0 - norm) * 255.0) as u8)
-                    };
-
-                    painter.rect_filled(cell_rect, 0.0, fill_color);
-                    painter.rect_stroke(
-                        cell_rect,
-                        0.0,
-                        egui::Stroke::new(1.0_f32, egui::Color32::BLACK),
-                        egui::StrokeKind::Middle,
-                    );
-
-                    if state != self.env.goal && !self.env.traps.contains(&state) {
-                        painter.text(
-                            cell_rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            format!("{q_value:.2}"),
-                            egui::FontId::proportional(14.0),
-                            egui::Color32::BLACK,
-                        );
-                    }
+                    self.paint_heatmap_cell(&painter, cell_rect, GridState { x, y }, min_q, max_q);
                 }
             }
         });
@@ -348,7 +351,7 @@ impl InteractiveTool for QTableInspectorTool {
             60.0
         };
 
-        self.draw_controls(ctx, legend_size);
+        self.draw_side_panel(ctx, legend_size);
         self.draw_heatmap(ctx, cell_size);
     }
 }

@@ -189,6 +189,25 @@ pub struct AttractorRunner {
 }
 
 impl AttractorRunner {
+    /// Builds a fresh Lorenz runner initialized from shared parameters.
+    pub fn from_params(params: Arc<std::sync::RwLock<AttractorSharedParams>>) -> Self {
+        let (sigma, rho, beta, max_points) = {
+            let p = params.read().unwrap_or_else(|e| e.into_inner());
+            (p.sigma, p.rho, p.beta, p.max_points)
+        };
+        Self {
+            system: LorenzBuilder::new()
+                .sigma(sigma)
+                .rho(rho)
+                .beta(beta)
+                .build(LorenzState::new(1.0, 1.0, 1.0)),
+            params,
+            history: VecDeque::with_capacity(max_points),
+            step_count: 0,
+            execution_state: SolverExecutionState::Ready,
+        }
+    }
+
     fn sync_params(&mut self) -> (f64, usize, usize) {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         self.system.sigma = p.sigma;
@@ -321,10 +340,6 @@ impl SimulationRunner for AttractorRunner {
         1
     }
 
-    fn is_complete(&self) -> bool {
-        matches!(self.execution_state, SolverExecutionState::Diverged { .. })
-    }
-
     fn is_finite_state(&self) -> bool {
         let v = self.system.state.vec;
         !matches!(self.execution_state, SolverExecutionState::Diverged { .. })
@@ -334,16 +349,31 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
-        if self.is_finite_state() {
-            return None;
+        if let SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step,
+        } = self.execution_state
+        {
+            Some(DiagnosticReport::new(
+                diverged_at_step as f64,
+                diverged_at_step,
+                "lorenz_state",
+                format!(
+                    "Non-finite Lorenz state [{:.2}, {:.2}, {:.2}] at step {}",
+                    invalid_vec.x, invalid_vec.y, invalid_vec.z, diverged_at_step
+                ),
+            ))
+        } else if !self.is_finite_state() {
+            let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+            Some(DiagnosticReport::new(
+                self.step_count as f64 * if dt.is_finite() { dt } else { 0.01 },
+                self.step_count,
+                "lorenz_state",
+                "Non-finite Lorenz trajectory coordinates detected",
+            ))
+        } else {
+            None
         }
-        let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
-        Some(DiagnosticReport::new(
-            self.step_count as f64 * if dt.is_finite() { dt } else { 0.01 },
-            self.step_count,
-            "lorenz_state",
-            "Non-finite Lorenz trajectory coordinates detected",
-        ))
     }
 }
 

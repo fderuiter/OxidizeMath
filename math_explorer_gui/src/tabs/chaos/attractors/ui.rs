@@ -2,108 +2,42 @@
 
 use super::{AttractorPlotter, SolverExecutionState};
 use crate::accessibility::AccessibleTheoryHover;
+use crate::async_sim::ui::{
+    render_custom_fault_banner, render_empty_plot_guidance, render_worker_fault_banner,
+    WorkerFaultAction,
+};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
-use egui_plot::{Callout, Line, Plot, PlotPoints};
+use egui_plot::{Callout, Line, Plot, PlotPoints, Points};
 use nalgebra::Vector3;
 
 impl AttractorPlotter {
-    fn draw_simulation_section(&mut self, ui: &mut egui::Ui) {
-        let transport_state = if self.diverged() {
-            SimWorkerState::Faulted
-        } else if self.is_paused() && self.worker.state().is_running() {
-            SimWorkerState::Ready
-        } else {
-            self.worker.state()
-        };
-
-        if let Some(action) = PlaybackTransport::from_worker_state(
-            "attractor_transport",
-            "Attractor Plotter",
-            transport_state,
-        )
-        .can_reset(true)
-        .show(ui)
-        {
-            match action {
-                PlaybackAction::Play => {
-                    let _ = self.try_resume();
-                }
-                PlaybackAction::Pause => {
-                    self.execution_state = SolverExecutionState::Paused;
-                    let _ = self.worker.send_command(SimCommand::Pause);
-                }
-                PlaybackAction::Step => {
-                    self.execution_state = SolverExecutionState::Paused;
-                    let _ = self.worker.send_command(SimCommand::Step(1));
-                }
-                PlaybackAction::Reset => {
-                    self.reset();
-                }
-            }
-        }
-
-        if ui
-            .add(
-                egui::Slider::new(&mut self.simulation_speed, 1..=50).text("Speed (steps/frame)"),
-            )
-            .changed()
-        {
-            self.on_slider_changed();
-        }
-        if ui
-            .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
-            .changed()
-        {
-            self.on_slider_changed();
-        }
-        if ui
-            .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
-            .changed()
-        {
-            self.on_slider_changed();
-        }
-    }
-
-    pub(super) fn draw_controls(&mut self, ctx: &egui::Context) {
+    pub(super) fn draw_side_panel(&mut self, ctx: &egui::Context) {
+        let worker_faulted = self.worker.state() == SimWorkerState::Faulted;
         egui::SidePanel::left("attractor_controls").show(ctx, |ui| {
             ui.heading("Lorenz Attractor");
             if ui.button("🎨 Starter Gallery").clicked() {
-                let cur = ctx.data(|d| {
-                    d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY"))
-                        .unwrap_or(false)
-                });
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur));
+                let id = egui::Id::new("SHOW_STARTER_GALLERY");
+                let cur = ctx.data(|d| d.get_temp::<bool>(id).unwrap_or(false));
+                ctx.data_mut(|d| d.insert_temp(id, !cur));
             }
             ui.separator();
 
-            ui.collapsing("Parameters", |ui| {
-                if ui
-                    .add(egui::Slider::new(&mut self.system.sigma, 0.0..=50.0).text("Prandtl Number (σ)"))
-                    .changed()
-                {
-                    self.on_slider_changed();
+            if worker_faulted && !self.diverged() {
+                if let Some(action) = render_worker_fault_banner(
+                    ui,
+                    self.worker.state(),
+                    self.worker.diagnostic_report(),
+                    false,
+                ) {
+                    self.apply_fault_action(action, ctx);
+                    ui.separator();
                 }
-                if ui
-                    .add(egui::Slider::new(&mut self.system.rho, 0.0..=100.0).text("Rayleigh Number (ρ)"))
-                    .changed()
-                {
-                    self.on_slider_changed();
-                }
-                if ui
-                    .add(egui::Slider::new(&mut self.system.beta, 0.0..=10.0).text("Geometric Factor (β)"))
-                    .changed()
-                {
-                    self.on_slider_changed();
-                }
-            });
+            }
 
-            egui::CollapsingHeader::new("Simulation")
-                .default_open(true)
-                .show(ui, |ui| {
-                    self.draw_simulation_section(ui);
-                });
+            self.draw_parameter_sliders(ui);
+            self.draw_simulation_controls(ui, ctx, worker_faulted);
 
             ui.collapsing("View", |ui| {
                 self.camera.ui(ui);
@@ -111,12 +45,188 @@ impl AttractorPlotter {
 
             ui.separator();
             ui.checkbox(&mut self.show_annotations, "Show Fixed Points");
+
             ui.separator();
             let state = self.system.state.vec;
             ui.label(format!("X: {:.2}", state.x));
             ui.label(format!("Y: {:.2}", state.y));
             ui.label(format!("Z: {:.2}", state.z));
         });
+    }
+
+    fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
+        ui.collapsing("Parameters", |ui| {
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.system.sigma, 0.0..=50.0)
+                        .text("Prandtl Number (σ)"),
+                )
+                .changed()
+            {
+                self.on_slider_changed();
+            }
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.system.rho, 0.0..=100.0)
+                        .text("Rayleigh Number (ρ)"),
+                )
+                .changed()
+            {
+                self.on_slider_changed();
+            }
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.system.beta, 0.0..=10.0)
+                        .text("Geometric Factor (β)"),
+                )
+                .changed()
+            {
+                self.on_slider_changed();
+            }
+        });
+    }
+
+    fn draw_simulation_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        worker_faulted: bool,
+    ) {
+        egui::CollapsingHeader::new("Simulation")
+            .default_open(true)
+            .show(ui, |ui| {
+                let transport_state = if self.diverged() || worker_faulted {
+                    SimWorkerState::Faulted
+                } else if self.worker.state().is_stepping() {
+                    SimWorkerState::Stepping
+                } else if self.is_paused() {
+                    SimWorkerState::Ready
+                } else {
+                    self.worker.state()
+                };
+
+                if let Some(action) = PlaybackTransport::from_worker_state(
+                    "attractor_transport",
+                    "Attractor Plotter",
+                    transport_state,
+                )
+                .can_reset(true)
+                .show(ui)
+                {
+                    match action {
+                        PlaybackAction::Play => {
+                            let _ = self.try_resume();
+                        }
+                        PlaybackAction::Pause => {
+                            self.execution_state = SolverExecutionState::Paused;
+                            let _ = self.worker.send_command(SimCommand::Pause);
+                        }
+                        PlaybackAction::Step => {
+                            self.execution_state = SolverExecutionState::Paused;
+                            let _ = self.worker.send_command(SimCommand::Step(1));
+                        }
+                        PlaybackAction::Reset => {
+                            self.reset();
+                            ctx.request_repaint();
+                        }
+                    }
+                }
+
+                if ui
+                    .add(
+                        egui::Slider::new(&mut self.simulation_speed, 1..=50)
+                            .text("Speed (steps/frame)"),
+                    )
+                    .changed()
+                {
+                    self.on_slider_changed();
+                }
+                if ui
+                    .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
+                    .changed()
+                {
+                    self.on_slider_changed();
+                }
+                if ui
+                    .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
+                    .changed()
+                {
+                    self.on_slider_changed();
+                }
+            });
+    }
+
+    fn apply_fault_action(&mut self, action: WorkerFaultAction, ctx: &egui::Context) {
+        use crate::framework::recovery::RecoveryAction;
+        match action {
+            WorkerFaultAction::Reset => self.reset(),
+            WorkerFaultAction::Recovery(RecoveryAction::AutoScaleStepSize) => {
+                self.dt = if self.dt.is_finite() {
+                    (self.dt * 0.5).max(0.001)
+                } else {
+                    0.005
+                };
+                self.reset();
+            }
+            WorkerFaultAction::Recovery(RecoveryAction::ClampParameters) => {
+                self.system.sigma = if self.system.sigma.is_finite() {
+                    self.system.sigma.clamp(0.0, 50.0)
+                } else {
+                    10.0
+                };
+                self.system.rho = if self.system.rho.is_finite() {
+                    self.system.rho.clamp(0.0, 100.0)
+                } else {
+                    28.0
+                };
+                self.system.beta = if self.system.beta.is_finite() {
+                    self.system.beta.clamp(0.0, 10.0)
+                } else {
+                    8.0 / 3.0
+                };
+                self.dt = if self.dt.is_finite() {
+                    self.dt.clamp(0.001, 0.05)
+                } else {
+                    0.01
+                };
+                self.reset();
+            }
+            WorkerFaultAction::ResetParameters
+            | WorkerFaultAction::Recovery(RecoveryAction::ResetParameters) => {
+                self.reset_parameters();
+            }
+        }
+        ctx.request_repaint();
+    }
+
+    fn draw_central_fault_banner(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if let SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step,
+        } = self.execution_state
+        {
+            let detail = format!(
+                "Step {} | Coordinates: [{:.2}, {:.2}, {:.2}]",
+                diverged_at_step, invalid_vec.x, invalid_vec.y, invalid_vec.z
+            );
+            if let Some(action) = render_custom_fault_banner(
+                ui,
+                "⚠ Solver Divergence Warning: Non-finite state detected. Simulation halted.",
+                Some(&detail),
+                true,
+            ) {
+                self.apply_fault_action(action, ctx);
+            }
+        } else if self.worker.state() == SimWorkerState::Faulted {
+            if let Some(action) = render_worker_fault_banner(
+                ui,
+                self.worker.state(),
+                self.worker.diagnostic_report(),
+                false,
+            ) {
+                self.apply_fault_action(action, ctx);
+            }
+        }
     }
 
     fn draw_fixed_point_callouts(&self, plot_ui: &mut egui_plot::PlotUi<'_>) {
@@ -128,6 +238,7 @@ impl AttractorPlotter {
         {
             return;
         }
+
         let x = (self.system.beta * (self.system.rho - 1.0)).sqrt();
         let z = self.system.rho - 1.0;
         if !x.is_finite() || !z.is_finite() {
@@ -168,39 +279,33 @@ impl AttractorPlotter {
 
     pub(super) fn draw_central_panel(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let SolverExecutionState::Diverged {
-                invalid_vec,
-                diverged_at_step,
-            } = self.execution_state
-            {
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "⚠️ Solver Divergence Warning: Non-finite state detected at step {} (coordinates: [{:.2}, {:.2}, {:.2}]). Simulation halted.",
-                                diverged_at_step, invalid_vec.x, invalid_vec.y, invalid_vec.z
-                            ))
-                            .color(egui::Color32::RED)
-                            .strong(),
-                        );
-                        if ui.button("↻ Reset Parameters").clicked() {
-                            self.reset_parameters();
-                        }
-                        if ui.button("↻ Reset State").clicked() {
-                            self.reset();
-                        }
-                    });
-                });
+            self.draw_central_fault_banner(ui, ctx);
+
+            if self.history.is_empty() && !self.diverged() {
+                render_empty_plot_guidance(
+                    ui,
+                    "Initial Lorenz state (1, 1, 1) ready — click ▶ Play or ⏭ Step to trace the strange attractor.",
+                );
             }
 
             let points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+            let initial_pt = (points.is_empty() && self.is_finite_state())
+                .then(|| self.project(self.system.state.vec));
+
             let response = Plot::new("attractor_plot")
                 .data_aspect(1.0)
                 .show(ui, |plot_ui| {
                     plot_ui.line(
                         Line::new("Trajectory", PlotPoints::new(points))
-                            .color(egui::Color32::from_rgb(100, 200, 255)),
+                            .color(Color32::from_rgb(100, 200, 255)),
                     );
+                    if let Some(pt) = initial_pt {
+                        plot_ui.points(
+                            Points::new("Initial State", vec![pt])
+                                .radius(4.0_f32)
+                                .color(Color32::from_rgb(100, 200, 255)),
+                        );
+                    }
                     self.draw_fixed_point_callouts(plot_ui);
                 })
                 .response;
