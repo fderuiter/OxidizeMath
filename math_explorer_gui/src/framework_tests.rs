@@ -167,6 +167,12 @@ mod tests {
             framework.show(ctx, "test_export_ui");
         });
         assert!(framework.show_export_modal);
+
+        framework.reset_parameters();
+        assert_eq!(
+            framework.active_tool.as_ref().and_then(|t| t.save_state()),
+            framework.baseline_tool_state
+        );
     }
 
     #[test]
@@ -486,3 +492,6 @@ mod tests {
         }
     }
 }
+
+#[path = "framework/toolbar_reset_tests.rs"]
+mod toolbar_reset_tests;

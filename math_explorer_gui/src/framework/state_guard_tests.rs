@@ -304,3 +304,52 @@ fn test_simulation_framework_recovery_banner_ui_and_screenshot() {
         );
     }
 }
+
+#[test]
+fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
+    let mut framework = SimulationFramework::new("analysis");
+    if let Some(pos) = framework
+        .available_tools
+        .iter()
+        .position(|t| t.name.contains("ODE") || t.name.contains("Ode"))
+    {
+        framework.select_tool(pos);
+    }
+
+    let baseline = framework
+        .baseline_tool_state
+        .clone()
+        .expect("baseline state expected");
+    let mut val: serde_json::Value = serde_json::from_str(&baseline).unwrap();
+    if let Some(obj) = val.as_object_mut() {
+        obj.insert("dt".to_string(), serde_json::json!(0.2));
+    }
+    let modified = serde_json::to_string(&val).unwrap();
+
+    framework
+        .active_tool
+        .as_mut()
+        .unwrap()
+        .load_state(&modified);
+    egui_plot::append_last_plot_datasets(&[("Modified Run".to_string(), vec![[0.0, 5.0]])]);
+    framework.current_valid_plot_datasets = vec![("Modified Run".to_string(), vec![[0.0, 5.0]])];
+    framework.cache_valid_snapshot();
+
+    framework.reset_parameters();
+
+    assert!(egui_plot::get_last_plot_datasets().is_empty());
+    assert!(framework.current_valid_plot_datasets.is_empty());
+    let snap = framework
+        .last_valid_snapshot()
+        .expect("last_valid_snapshot must remain populated after reset");
+    assert_eq!(snap.tool_state.as_ref(), Some(&baseline));
+    assert!(snap.plot_datasets.is_empty());
+    assert_eq!(snap.step_index, 0);
+
+    // Subsequent Step-Back must preserve restored baseline rather than reverting to modified state
+    assert!(framework.rollback_step_back());
+    assert_eq!(
+        framework.active_tool.as_ref().unwrap().save_state(),
+        Some(baseline)
+    );
+}
