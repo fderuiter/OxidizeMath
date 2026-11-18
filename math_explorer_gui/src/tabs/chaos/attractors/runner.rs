@@ -192,7 +192,7 @@ impl SimulationRunner for AttractorRunner {
         match cmd {
             SimCommand::Reset => {
                 let (sigma, rho, beta) = {
-                    let p = self.params.read().unwrap();
+                    let p = self.params.read().unwrap_or_else(|e| e.into_inner());
                     (p.sigma, p.rho, p.beta)
                 };
                 self.system = LorenzBuilder::new()
@@ -205,9 +205,10 @@ impl SimulationRunner for AttractorRunner {
                 self.execution_state = SolverExecutionState::Ready;
             }
             SimCommand::SetSpeed(speed) => {
-                if let Ok(mut p) = self.params.write() {
-                    p.simulation_speed = speed;
-                }
+                self.params
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .simulation_speed = speed;
             }
             _ => {}
         }
@@ -218,7 +219,7 @@ impl SimulationRunner for AttractorRunner {
             return;
         }
         let (sigma, rho, beta, dt, simulation_speed, max_points) = {
-            let p = self.params.read().unwrap();
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (
                 p.sigma,
                 p.rho,

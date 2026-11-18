@@ -73,7 +73,7 @@ impl SimulationRunner for MorphogenesisRunner {
             return;
         }
         let (a, b, d_u, d_v, dt) = {
-            let p = self.params.read().unwrap();
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.dt)
         };
         if !dt.is_finite() || dt <= 0.0 || !a.is_finite() || !b.is_finite() || !d_u.is_finite() || !d_v.is_finite() {
