@@ -16,7 +16,6 @@ use pure_math::theory_verification;
 
 theory_verification!(
     module = "lorahub",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
     constants = {
         ALPHA = 32.0;
     },

@@ -80,11 +80,4 @@ pub mod reaction_diffusion;
 // [cite:favorite_child]
 
 use pure_math::theory_verification;
-theory_verification!(
-    module = "biology",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
-    constants = {
-        TEST = 1.0;
-    },
-    test = {}
-);
+theory_verification!(module = "biology", constants = {}, test = {});
