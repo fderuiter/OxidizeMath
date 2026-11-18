@@ -12,7 +12,10 @@ use math_explorer::pure_math::graph_theory::{
 use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
 
+mod keyboard;
 mod snapshot;
+#[allow(unused_imports)]
+pub use keyboard::{TRANSLATE_STEP_NORMAL, TRANSLATE_STEP_SHIFT};
 #[allow(unused_imports)]
 pub use snapshot::{GraphSnapshot, SerializedGraphState, MAX_SNAPSHOTS};
 
@@ -122,20 +125,7 @@ impl InteractiveTool for GraphEditorTool {
     }
 
     fn on_keyboard(&mut self, ctx: &InteractionContext) {
-        let ctrl_or_cmd = ctx.modifiers.command || ctx.modifiers.ctrl || ctx.modifiers.mac_cmd;
-        if ctrl_or_cmd {
-            if ctx.keys_down.contains(&egui::Key::Z) {
-                if ctx.modifiers.shift {
-                    if self.can_redo() {
-                        self.redo();
-                    }
-                } else if self.can_undo() {
-                    self.undo();
-                }
-            } else if ctx.keys_down.contains(&egui::Key::Y) && self.can_redo() {
-                self.redo();
-            }
-        }
+        self.handle_keyboard(ctx);
     }
 
     fn on_hover(&mut self, ctx: &InteractionContext) {
@@ -274,7 +264,8 @@ impl InteractiveTool for GraphEditorTool {
         }
     }
 
-    fn draw(&mut self, ui: &mut egui::Ui, _response: &egui::Response, painter: &egui::Painter) {
+    fn draw(&mut self, ui: &mut egui::Ui, response: &egui::Response, painter: &egui::Painter) {
+        self.configure_canvas_focus(ui, response);
         let node_radius = 15.0;
         let text_color = ui.visuals().text_color();
         let window_stroke = ui.visuals().window_stroke();
@@ -335,6 +326,7 @@ impl GraphEditorTool {
     pub fn can_redo(&self) -> bool { !self.redo_stack.is_empty() }
 
     fn show_undo_redo_toolbar(&mut self, ui: &mut egui::Ui) {
+        self.register_keyboard_commands(ui.ctx());
         let m = if cfg!(target_os = "macos") { egui::Modifiers::MAC_CMD } else { egui::Modifiers::CTRL };
         CommandRegistryData::register(ui.ctx(), "Undo", "Undo the last graph modification", CommandTrigger::Shortcut(m, egui::Key::Z), true, "Graph Editor");
         CommandRegistryData::register(ui.ctx(), "Redo", "Redo the last undone graph modification", CommandTrigger::Shortcut(m | egui::Modifiers::SHIFT, egui::Key::Z), true, "Graph Editor");
