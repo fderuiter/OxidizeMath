@@ -187,6 +187,27 @@ pub struct AttractorRunner {
     pub execution_state: SolverExecutionState,
 }
 
+impl AttractorRunner {
+    /// Builds a fresh Lorenz runner initialized from shared parameters.
+    pub fn from_params(params: Arc<std::sync::RwLock<AttractorSharedParams>>) -> Self {
+        let (sigma, rho, beta, max_points) = {
+            let p = params.read().unwrap_or_else(|e| e.into_inner());
+            (p.sigma, p.rho, p.beta, p.max_points)
+        };
+        Self {
+            system: LorenzBuilder::new()
+                .sigma(sigma)
+                .rho(rho)
+                .beta(beta)
+                .build(LorenzState::new(1.0, 1.0, 1.0)),
+            params,
+            history: VecDeque::with_capacity(max_points),
+            step_count: 0,
+            execution_state: SolverExecutionState::Ready,
+        }
+    }
+}
+
 impl SimulationRunner for AttractorRunner {
     fn process_command(&mut self, cmd: SimCommand) {
         match cmd {
@@ -294,8 +315,28 @@ impl SimulationRunner for AttractorRunner {
         1
     }
 
-    fn is_complete(&self) -> bool {
-        matches!(self.execution_state, SolverExecutionState::Diverged { .. })
+    fn is_finite_state(&self) -> bool {
+        !matches!(self.execution_state, SolverExecutionState::Diverged { .. })
+    }
+
+    fn diagnostic_report(&self) -> Option<crate::framework::recovery::DiagnosticReport> {
+        if let SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step,
+        } = self.execution_state
+        {
+            Some(crate::framework::recovery::DiagnosticReport::new(
+                diverged_at_step as f64,
+                diverged_at_step,
+                "state_vec",
+                format!(
+                    "Non-finite Lorenz state [{:.2}, {:.2}, {:.2}] at step {}",
+                    invalid_vec.x, invalid_vec.y, invalid_vec.z, diverged_at_step
+                ),
+            ))
+        } else {
+            None
+        }
     }
 }
 

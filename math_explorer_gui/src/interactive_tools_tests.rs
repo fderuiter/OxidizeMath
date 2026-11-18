@@ -250,10 +250,8 @@ mod tests {
         feature = "physics"
     ))]
     fn test_hoisted_domain_tools_state_roundtrip_part_2() {
-        let mut alloc_tool: crate::tabs::clinical_trials::randomization::RandomizationTool =
-            Default::default();
         assert_tool_roundtrip(
-            &mut alloc_tool,
+            &mut <crate::tabs::clinical_trials::randomization::RandomizationTool>::default(),
             r#"{"randomization_type":"Block","n_subjects":24,"block_size":6}"#,
         );
         assert_tool_roundtrip(
@@ -266,7 +264,7 @@ mod tests {
         );
         assert_tool_roundtrip(
             &mut crate::tabs::epidemiology::network_propagation::NetworkPropagationTool::default(),
-            r#"{"num_nodes":30,"beta":0.08,"gamma":0.03}"#,
+            r#"{"num_nodes":30,"beta":0.08,"gamma":0.03,"is_running":true,"sim_steps":0}"#,
         );
         assert_tool_roundtrip(
             &mut crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool::default(),

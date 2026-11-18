@@ -7,15 +7,11 @@ use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
-    pub(super) fn draw_model_parameters(&mut self, ui: &mut egui::Ui) {
-        ui.separator();
-        ui.label("Model Parameters");
-
+    fn draw_presets_and_actions(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
         let mut reset_needed = false;
-        let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
-
         let presets = M::presets();
         if !presets.is_empty() {
+            let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
             ui.horizontal(|ui| {
                 ui.label("Presets:");
                 for (name, preset_params) in presets {
@@ -27,6 +23,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     }
                 }
             });
+            drop(params_lock);
             ui.separator();
         }
 
@@ -35,15 +32,27 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.horizontal(|ui| {
                 ui.label("Actions:");
                 for action in custom_actions {
-                    if ui.button(action).clicked() {
-                        let _ = self
+                    if ui.button(action).clicked()
+                        && self
                             .controller
-                            .send_command(SimCommand::Custom(action.to_string()));
+                            .send_command(SimCommand::Custom(action.to_string()))
+                            .is_ok()
+                    {
+                        ctx.request_repaint();
                     }
                 }
             });
             ui.separator();
         }
+        reset_needed
+    }
+
+    pub(super) fn draw_model_parameters(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.separator();
+        ui.label("Model Parameters");
+
+        let mut reset_needed = self.draw_presets_and_actions(ui, ctx);
+        let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
 
         for (name, constraint) in &self.param_metadata {
             if let Some(val) = params_lock.get_mut(name) {
@@ -60,7 +69,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         drop(params_lock);
         self.draw_observable_sensitivity(ui);
         if reset_needed {
-            self.reset_simulation();
+            self.reset_simulation(Some(ctx));
         }
     }
 

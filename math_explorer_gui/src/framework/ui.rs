@@ -374,28 +374,7 @@ impl SimulationFramework {
             );
         });
 
-        if let Some(portal_state) =
-            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL")))
-        {
-            self.show_theory_portal = portal_state;
-        } else {
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), self.show_theory_portal)
-            });
-        }
-
-        if let Some(gallery_state) =
-            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")))
-        {
-            self.show_starter_gallery = gallery_state;
-        } else {
-            ctx.data_mut(|d| {
-                d.insert_temp(
-                    egui::Id::new("SHOW_STARTER_GALLERY"),
-                    self.show_starter_gallery,
-                )
-            });
-        }
+        self.sync_overlays_before_frame(ctx, id_source);
 
         self.show_side_panel(ctx, id_source);
         self.show_theory_portal(ctx, id_source);
@@ -425,12 +404,7 @@ impl SimulationFramework {
         }
 
         self.show_starter_gallery_if_open(ctx, id_source);
-
-        if let Some(portal_state) =
-            ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL")))
-        {
-            self.show_theory_portal = portal_state;
-        }
+        self.sync_overlays_after_frame(ctx, id_source);
 
         self.dispatch_pending_exports_with_ctx(ctx);
     }

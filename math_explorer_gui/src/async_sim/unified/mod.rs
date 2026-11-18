@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod canvas;
 mod controls;
 pub mod tool;
 pub use tool::*;

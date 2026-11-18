@@ -238,7 +238,11 @@ impl UnifiedModel for WaveUnified {
                 }
             }
         }
-        false
+        crate::async_sim::ui::render_empty_plot_guidance(
+            ui,
+            "Wavepacket ready — click ▶ Run in the side panel to evolve ψ(x, t).",
+        );
+        true
     }
 }
 
