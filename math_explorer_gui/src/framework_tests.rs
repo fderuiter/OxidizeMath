@@ -412,9 +412,10 @@ mod tests {
             .unwrap();
         assert!(harmonic_card.preset_json.is_some());
 
+        framework.select_tool_by_name(harmonic_card.tool_name.unwrap());
         if let Some(tool) = &mut framework.active_tool {
             assert!(tool
-                .apply_preset_json(harmonic_card.preset_json.unwrap())
+                .import_preset_json(harmonic_card.preset_json.unwrap())
                 .is_ok());
         }
         framework.show_starter_gallery = false;
@@ -442,9 +443,10 @@ mod tests {
             .iter()
             .find(|c| c.title == "Vector Field")
             .unwrap();
+        fluid_framework.select_tool_by_name(vector_card.tool_name.unwrap());
         if let Some(tool) = &mut fluid_framework.active_tool {
             assert!(tool
-                .apply_preset_json(vector_card.preset_json.unwrap())
+                .import_preset_json(vector_card.preset_json.unwrap())
                 .is_ok());
         }
 
@@ -457,9 +459,10 @@ mod tests {
             .iter()
             .find(|c| c.title == "3D Attractor")
             .unwrap();
+        chaos_framework.select_tool_by_name(attractor_card.tool_name.unwrap());
         if let Some(tool) = &mut chaos_framework.active_tool {
             assert!(tool
-                .apply_preset_json(attractor_card.preset_json.unwrap())
+                .import_preset_json(attractor_card.preset_json.unwrap())
                 .is_ok());
         }
 

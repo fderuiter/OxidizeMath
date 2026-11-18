@@ -15,11 +15,37 @@ pub struct GraphSnapshot {
 pub const MAX_SNAPSHOTS: usize = 50;
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SerializedGraphState {
-    pub node_positions: HashMap<usize, (f32, f32)>,
+    pub node_positions: std::collections::BTreeMap<usize, (f32, f32)>,
     pub edges: Vec<(usize, usize, f64)>,
     pub selected_node: Option<usize>,
     pub next_node_id: usize,
+}
+
+impl SerializedGraphState {
+    pub fn validate(&self) -> Result<(), String> {
+        if !self
+            .node_positions
+            .values()
+            .all(|(x, y)| x.is_finite() && y.is_finite())
+        {
+            return Err("Node coordinates must be finite".to_string());
+        }
+        if !self.edges.iter().all(|&(u, v, w)| {
+            self.node_positions.contains_key(&u)
+                && self.node_positions.contains_key(&v)
+                && w.is_finite()
+        }) {
+            return Err("Edges must reference existing nodes with finite weights".to_string());
+        }
+        if let Some(sel) = self.selected_node {
+            if !self.node_positions.contains_key(&sel) {
+                return Err(format!("selected_node {sel} does not exist"));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl GraphEditorTool {
@@ -77,22 +103,37 @@ impl GraphEditorTool {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Force-Directed Graph",
+    "title": "Interactive Graph Layout",
     "domain": "graph_theory",
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "damping": 0.85,
-    "repulsion": 50.0
+    "node_positions": {
+      "0": [400.0, 160.0],
+      "1": [533.0, 257.0],
+      "2": [482.0, 413.0],
+      "3": [318.0, 413.0],
+      "4": [267.0, 257.0]
+    },
+    "edges": [
+      [0, 1, 1.0],
+      [1, 2, 1.0],
+      [2, 3, 1.0],
+      [3, 4, 1.0],
+      [4, 0, 1.0],
+      [0, 2, 1.0]
+    ],
+    "selected_node": null,
+    "next_node_id": 5
   }
 }"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "graph_editor_starter",
-        title: "Force-Directed Graph",
-        description: "Spring-electrical equilibrium layout of nodes and edges with interactive adjacency manipulation.",
-        category: "Transformers",
+        title: "Interactive Graph Layout",
+        description: "Interactive graph editor with circular, grid, and Fruchterman-Reingold force-directed layouts.",
+        category: "Graph Theory",
         icon: "🕸️",
         domain: "graph_theory",
         tool_name: Some("GraphEditorTool"),

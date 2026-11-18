@@ -20,6 +20,14 @@ impl Default for CapacityFadeTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CapacityFadeState {
+    dod: f64,
+    temperature: f64,
+    cycles_to_simulate: f64,
+}
+
 impl InteractiveTool for CapacityFadeTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -30,31 +38,30 @@ impl InteractiveTool for CapacityFadeTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CapacityFadeState {
-            dod: f64,
-            temperature: f64,
-            cycles_to_simulate: f64,
-        }
         serde_json::to_string(&CapacityFadeState {
             dod: self.dod,
             temperature: self.temperature,
             cycles_to_simulate: self.cycles_to_simulate,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CapacityFadeState {
-            dod: f64,
-            temperature: f64,
-            cycles_to_simulate: f64,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: CapacityFadeState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid capacity fade state: {e}"))?;
+        if !s.dod.is_finite()
+            || !(0.0..=100.0).contains(&s.dod)
+            || !s.temperature.is_finite()
+            || !(-20.0..=60.0).contains(&s.temperature)
+            || !s.cycles_to_simulate.is_finite()
+            || !(100.0..=10_000.0).contains(&s.cycles_to_simulate)
+        {
+            return Err("Capacity fade parameters out of bounds".into());
         }
-        if let Ok(s) = serde_json::from_str::<CapacityFadeState>(state) {
-            self.dod = s.dod;
-            self.temperature = s.temperature;
-            self.cycles_to_simulate = s.cycles_to_simulate;
-        }
+        self.dod = s.dod;
+        self.temperature = s.temperature;
+        self.cycles_to_simulate = s.cycles_to_simulate;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -178,8 +185,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "initial_capacity": 100.0,
-    "cycle_count": 1000
+    "dod": 80.0,
+    "temperature": 25.0,
+    "cycles_to_simulate": 2500.0
   }
 }"#;
 
@@ -187,7 +195,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "capacity_fade_starter",
         title: "Capacity Fade",
-        description: "Solid Electrolyte Interphase (SEI) growth kinetics and lithium inventory loss over charge cycling.",
+        description: "Power-law lithium-ion state-of-health capacity retention curve across charge-discharge cycles.",
         category: "Electrochemistry",
         icon: "🔋",
         domain: "battery_degradation",

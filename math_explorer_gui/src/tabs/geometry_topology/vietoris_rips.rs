@@ -108,6 +108,7 @@ impl VietorisRipsTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct VietorisRipsState {
     radius: f64,
     points: Vec<[f64; 2]>,
@@ -132,16 +133,28 @@ impl InteractiveTool for VietorisRipsTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<VietorisRipsState>(state) {
-            self.radius = loaded.radius;
-            self.points = loaded
-                .points
-                .into_iter()
-                .map(|[x, y]| Point2D::new(x, y))
-                .collect();
-            self.update_complex();
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded: VietorisRipsState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid Vietoris-Rips state: {e}"))?;
+        if !loaded.radius.is_finite() || !(0.0..=15.0).contains(&loaded.radius) {
+            return Err(format!("radius out of [0.0, 15.0]: {}", loaded.radius));
         }
+        if loaded.points.is_empty()
+            || !loaded.points.iter().all(|p| p[0].is_finite() && p[1].is_finite())
+        {
+            return Err("points must be non-empty and finite".to_string());
+        }
+        let pts: Vec<Point2D> = loaded
+            .points
+            .into_iter()
+            .map(|[x, y]| Point2D::new(x, y))
+            .collect();
+        let cloud = PointCloud::new(pts.clone()).map_err(|e| format!("{e:?}"))?;
+        vietoris_rips_complex(&cloud, loaded.radius).map_err(|e| format!("{e:?}"))?;
+        self.radius = loaded.radius;
+        self.points = pts;
+        self.update_complex();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -347,21 +360,25 @@ mod tests {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Persistent Homology",
+    "title": "Vietoris-Rips Filtration",
     "domain": "geometry_topology",
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "max_distance": 2.0,
-    "num_points": 50
+    "radius": 2.2,
+    "points": [
+      [5.0, 8.0], [6.5, 7.6], [7.6, 6.5], [8.0, 5.0],
+      [7.6, 3.5], [6.5, 2.4], [5.0, 2.0], [3.5, 2.4],
+      [2.4, 3.5], [2.0, 5.0], [2.4, 6.5], [3.5, 7.6]
+    ]
   }
 }"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "vietoris_rips_starter",
-        title: "Persistent Homology",
-        description: "Simplicial complex filtration across distance radius ε capturing topological persistence barcodes.",
+        title: "Vietoris-Rips Filtration",
+        description: "Simplicial complex filtration of vertices, edges, and triangles across distance radius ε.",
         category: "Algebraic Topology",
         icon: "🕸️",
         domain: "geometry_topology",

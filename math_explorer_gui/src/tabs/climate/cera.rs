@@ -67,6 +67,16 @@ impl FiniteStateGuard for CeraTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CeraState {
+    in_channels: usize,
+    latent_channels: usize,
+    aligned_channels: usize,
+    num_levels: usize,
+    output_size: usize,
+}
+
 impl InteractiveTool for CeraTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -77,42 +87,36 @@ impl InteractiveTool for CeraTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CeraState {
-            in_channels: usize,
-            latent_channels: usize,
-            aligned_channels: usize,
-            num_levels: usize,
-            output_size: usize,
-        }
         serde_json::to_string(&CeraState {
             in_channels: self.in_channels,
             latent_channels: self.latent_channels,
             aligned_channels: self.aligned_channels,
             num_levels: self.num_levels,
             output_size: self.output_size,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CeraState {
-            in_channels: usize,
-            latent_channels: usize,
-            aligned_channels: usize,
-            num_levels: usize,
-            output_size: usize,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: CeraState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid CERA state: {e}"))?;
+        if !(1..=10).contains(&s.in_channels)
+            || !(1..=20).contains(&s.latent_channels)
+            || !(1..=s.latent_channels).contains(&s.aligned_channels)
+            || !(1..=50).contains(&s.num_levels)
+            || !(1..=20).contains(&s.output_size)
+        {
+            return Err("CERA channel or level parameters out of bounds".into());
         }
-        if let Ok(s) = serde_json::from_str::<CeraState>(state) {
-            self.in_channels = s.in_channels;
-            self.latent_channels = s.latent_channels;
-            self.aligned_channels = s.aligned_channels;
-            self.num_levels = s.num_levels;
-            self.output_size = s.output_size;
-            self.prediction_result = None;
-            self.diverged = false;
-            self.diagnostic_report = None;
-        }
+        self.in_channels = s.in_channels;
+        self.latent_channels = s.latent_channels;
+        self.aligned_channels = s.aligned_channels;
+        self.num_levels = s.num_levels;
+        self.output_size = s.output_size;
+        self.prediction_result = None;
+        self.diverged = false;
+        self.diagnostic_report = None;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -273,21 +277,24 @@ impl scientific_metadata::theory::TheoryDescribable for CeraTool {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Energy Balance Model",
+    "title": "CERA Climate Alignment",
     "domain": "climate",
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "albedo": 0.3,
-    "solar_constant": 1361.0
+    "in_channels": 2,
+    "latent_channels": 4,
+    "aligned_channels": 2,
+    "num_levels": 10,
+    "output_size": 5
   }
 }"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "cera_starter",
-        title: "Energy Balance Model",
-        description: "C·dT/dt = S(1 - α) - (A + B·T): Zeroth-order planetary radiative equilibrium and feedback loops.",
+        title: "CERA Climate Alignment",
+        description: "Climate-invariant multi-level latent representation alignment across atmospheric regimes.",
         category: "Climate Modeling",
         icon: "🌍",
         domain: "climate",

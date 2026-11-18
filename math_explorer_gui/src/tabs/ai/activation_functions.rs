@@ -7,12 +7,21 @@ use math_explorer::ai::deep_learning_theory::calculus::{
 };
 use math_explorer::ai::deep_learning_theory::linear_algebra::Vector;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum ActivationFunction {
     ReLU,
     Sigmoid,
     Tanh,
     Gelu,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActivationFunctionsState {
+    selected_function: ActivationFunction,
+    x_min: f64,
+    x_max: f64,
+    points: usize,
 }
 
 pub struct ActivationFunctionsTool {
@@ -37,6 +46,36 @@ impl InteractiveTool for ActivationFunctionsTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Activation Functions"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&ActivationFunctionsState {
+            selected_function: self.selected_function,
+            x_min: self.x_min,
+            x_max: self.x_max,
+            points: self.points,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: ActivationFunctionsState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid activation state: {e}"))?;
+        if !parsed.x_min.is_finite()
+            || !parsed.x_max.is_finite()
+            || parsed.x_min >= parsed.x_max
+            || !(2..=10_000).contains(&parsed.points)
+        {
+            return Err("Activation plot range and point count must be valid and finite".into());
+        }
+        self.selected_function = parsed.selected_function;
+        self.x_min = parsed.x_min;
+        self.x_max = parsed.x_max;
+        self.points = parsed.points;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -210,11 +249,10 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "active_function": "GELU",
-    "input_range": [
-      -3.0,
-      3.0
-    ]
+    "selected_function": "Gelu",
+    "x_min": -4.0,
+    "x_max": 4.0,
+    "points": 200
   }
 }"#;
 
@@ -222,7 +260,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "activation_functions_starter",
         title: "Activation Functions",
-        description: "Comparison of non-linear activations: ReLU, GELU, Sigmoid, and Swish functions.",
+        description: "Comparison of non-linear activations and derivatives: ReLU, Sigmoid, Tanh, and GELU.",
         category: "Neural Architectures",
         icon: "⚡",
         domain: "ai",

@@ -83,10 +83,81 @@ impl GridWorldTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GridWorldToolState {
+    width: i32,
+    height: i32,
+    gamma: f64,
+    playback_speed: f32,
+    is_playing: bool,
+}
+
 impl InteractiveTool for GridWorldTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Grid World (RL)"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&GridWorldToolState {
+            width: self.env.width,
+            height: self.env.height,
+            gamma: self.env.gamma,
+            playback_speed: self.playback_speed,
+            is_playing: self.is_playing,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: GridWorldToolState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid GridWorld state: {e}"))?;
+        if !(2..=20).contains(&parsed.width)
+            || !(2..=20).contains(&parsed.height)
+            || !parsed.gamma.is_finite()
+            || !(0.0..=1.0).contains(&parsed.gamma)
+            || !parsed.playback_speed.is_finite()
+            || !(1.0..=20.0).contains(&parsed.playback_speed)
+        {
+            return Err("GridWorld dimensions, gamma, or playback_speed out of bounds".into());
+        }
+        let gamma_unit = math_commons::primitives::UnitInterval::new(parsed.gamma)
+            .map_err(|e| format!("Invalid discount factor: {e}"))?;
+        let start = GridState { x: 0, y: 0 };
+        let goal = GridState {
+            x: parsed.width - 1,
+            y: parsed.height - 1,
+        };
+        let traps = vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }]
+            .into_iter()
+            .filter(|t| t.x < parsed.width && t.y < parsed.height && *t != start && *t != goal)
+            .collect();
+        self.env = GridWorldEnv {
+            width: parsed.width,
+            height: parsed.height,
+            start,
+            goal,
+            traps,
+            gamma: parsed.gamma,
+        };
+        self.agent = TabularQAgent::new(
+            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+            gamma_unit,
+            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+            None,
+        );
+        self.current_state = self.env.start;
+        self.episodes = 0;
+        self.total_reward = 0.0;
+        self.steps = 0;
+        self.playback_speed = parsed.playback_speed;
+        self.is_playing = parsed.is_playing;
+        self.last_tick = crate::web_io::PlatformInstant::now();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -316,8 +387,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "grid_size": 5,
-    "discount_factor": 0.95
+    "width": 5,
+    "height": 5,
+    "gamma": 0.95,
+    "playback_speed": 8.0,
+    "is_playing": false
   }
 }"#;
 

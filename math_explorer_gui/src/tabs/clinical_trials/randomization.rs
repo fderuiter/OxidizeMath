@@ -31,6 +31,14 @@ impl Default for RandomizationTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RandomizationState {
+    randomization_type: RandomizationType,
+    n_subjects: usize,
+    block_size: usize,
+}
+
 impl InteractiveTool for RandomizationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -41,33 +49,29 @@ impl InteractiveTool for RandomizationTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct RandomizationState {
-            randomization_type: RandomizationType,
-            n_subjects: usize,
-            block_size: usize,
-        }
         serde_json::to_string(&RandomizationState {
             randomization_type: self.randomization_type,
             n_subjects: self.n_subjects,
             block_size: self.block_size,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct RandomizationState {
-            randomization_type: RandomizationType,
-            n_subjects: usize,
-            block_size: usize,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: RandomizationState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid randomization state: {e}"))?;
+        if !(1..=1000).contains(&s.n_subjects) || !(2..=100).contains(&s.block_size) {
+            return Err("Randomization subject count or block_size out of bounds".into());
         }
-        if let Ok(s) = serde_json::from_str::<RandomizationState>(state) {
-            self.randomization_type = s.randomization_type;
-            self.n_subjects = s.n_subjects;
-            self.block_size = s.block_size;
-            self.assignments.clear();
-            self.error_message = None;
+        if s.randomization_type == RandomizationType::Block {
+            BlockRandomizer::new(s.block_size).map_err(|e| e.to_string())?;
         }
+        self.randomization_type = s.randomization_type;
+        self.n_subjects = s.n_subjects;
+        self.block_size = s.block_size;
+        self.assignments.clear();
+        self.error_message = None;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -228,8 +232,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "block_size": 4,
-    "total_patients": 100
+    "randomization_type": "Block",
+    "n_subjects": 24,
+    "block_size": 4
   }
 }"#;
 
@@ -237,7 +242,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "randomization_starter",
         title: "Permuted Block Randomization",
-        description: "Stratified patient assignment maintaining treatment balance across clinical trial arms.",
+        description: "Simple and permuted block patient allocation maintaining treatment balance across trial arms.",
         category: "Biostatistics",
         icon: "🎲",
         domain: "clinical_trials",

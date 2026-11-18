@@ -26,6 +26,17 @@ impl Default for BandStructureTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BandStructureState {
+    e0: f64,
+    t: f64,
+    a: f64,
+    hbar: f64,
+    m: f64,
+    show_free_electron: bool,
+}
+
 impl InteractiveTool for BandStructureTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -36,15 +47,6 @@ impl InteractiveTool for BandStructureTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BandStructureState {
-            e0: f64,
-            t: f64,
-            a: f64,
-            hbar: f64,
-            m: f64,
-            show_free_electron: bool,
-        }
         serde_json::to_string(&BandStructureState {
             e0: self.e0,
             t: self.t,
@@ -55,24 +57,31 @@ impl InteractiveTool for BandStructureTool {
         }).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BandStructureState {
-            e0: f64,
-            t: f64,
-            a: f64,
-            hbar: f64,
-            m: f64,
-            show_free_electron: bool,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: BandStructureState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid BandStructure state: {e}"))?;
+        if !s.e0.is_finite() || !(-5.0..=5.0).contains(&s.e0) {
+            return Err(format!("e0 out of [-5.0, 5.0]: {}", s.e0));
         }
-        if let Ok(s) = serde_json::from_str::<BandStructureState>(state) {
-            self.e0 = s.e0;
-            self.t = s.t;
-            self.a = s.a;
-            self.hbar = s.hbar;
-            self.m = s.m;
-            self.show_free_electron = s.show_free_electron;
+        if !s.t.is_finite() || !(0.0..=5.0).contains(&s.t) {
+            return Err(format!("t out of [0.0, 5.0]: {}", s.t));
         }
+        if !s.a.is_finite()
+            || !(0.1..=5.0).contains(&s.a)
+            || !s.hbar.is_finite()
+            || !(0.1..=5.0).contains(&s.hbar)
+            || !s.m.is_finite()
+            || !(0.1..=5.0).contains(&s.m)
+        {
+            return Err("a, hbar, and m must be finite in [0.1, 5.0]".to_string());
+        }
+        self.e0 = s.e0;
+        self.t = s.t;
+        self.a = s.a;
+        self.hbar = s.hbar;
+        self.m = s.m;
+        self.show_free_electron = s.show_free_electron;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -199,8 +208,12 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "lattice_type": "FCC",
-    "fermi_level": 0.0
+    "e0": 0.0,
+    "t": 1.0,
+    "a": 1.0,
+    "hbar": 1.0,
+    "m": 1.0,
+    "show_free_electron": true
   }
 }"#;
 
@@ -208,7 +221,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "band_structure_starter",
         title: "Electronic Band Structure",
-        description: "Tight-binding dispersion relations E(k) across high-symmetry Brillouin zone lines.",
+        description: "1D tight-binding E(k) = E₀ - 2t·cos(ka) and free-electron Brillouin zone dispersion.",
         category: "Condensed Matter",
         icon: "📉",
         domain: "solid_state",

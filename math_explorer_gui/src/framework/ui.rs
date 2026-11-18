@@ -159,37 +159,11 @@ impl SimulationFramework {
                             )
                         });
                     }
-                    if ui
-                        .button("🎨")
-                        .accessible_hover_text("Toggle Starter Gallery")
-                        .clicked()
-                    {
-                        self.show_starter_gallery = !self.show_starter_gallery;
-                        ctx.data_mut(|d| {
-                            d.insert_temp(
-                                egui::Id::new("SHOW_STARTER_GALLERY"),
-                                self.show_starter_gallery,
-                            )
-                        });
-                    }
                 });
                 self.render_search_bar(ui);
                 ui.separator();
                 self.render_filtered_tools(ui);
                 ui.separator();
-                if ui
-                    .button("🎨 Starter Gallery")
-                    .accessible_hover_text("Toggle empty-state starter template gallery")
-                    .clicked()
-                {
-                    self.show_starter_gallery = !self.show_starter_gallery;
-                    ctx.data_mut(|d| {
-                        d.insert_temp(
-                            egui::Id::new("SHOW_STARTER_GALLERY"),
-                            self.show_starter_gallery,
-                        )
-                    });
-                }
                 if ui
                     .checkbox(&mut self.show_theory_portal, "Theory Context Portal")
                     .changed()
@@ -201,62 +175,75 @@ impl SimulationFramework {
             });
     }
 
-    pub(super) fn show_quick_start_cards(&mut self, ui: &mut egui::Ui) {
-        if self.available_tools.is_empty() {
-            ui.vertical_centered(|ui| {
-                ui.add_space(40.0);
-                ui.heading("No Tools Available");
-                ui.label("There are currently no interactive tools available for this domain.");
-            });
+    pub(super) fn sync_active_tool_state_after_preset(&mut self) {
+        let Some(tool) = &self.active_tool else {
             return;
+        };
+        egui_plot::clear_last_plot_datasets();
+        let active_state = tool.save_state();
+        if let Some(ref state_str) = active_state {
+            self.saved_tool_states
+                .insert(tool.name().to_string(), state_str.clone());
         }
-
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.vertical(|ui| {
-                ui.add_space(20.0);
-                ui.heading("Quick-Start Launchpad");
-                ui.label("Select a tool below to begin interactive simulation and analysis:");
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(15.0);
-
-                let mut tool_to_select = None;
-
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
-                    for (i, meta) in self.available_tools.iter().enumerate() {
-                        egui::Frame::group(ui.style())
-                            .inner_margin(12.0)
-                            .corner_radius(8.0)
-                            .show(ui, |ui| {
-                                ui.set_width(220.0);
-                                ui.vertical(|ui| {
-                                    ui.heading(meta.name);
-                                    ui.add_space(6.0);
-                                    if !meta.tags.is_empty() {
-                                        ui.horizontal_wrapped(|ui| {
-                                            for tag in meta.tags {
-                                                let text = egui::RichText::new(format!("#{}", tag))
-                                                    .small()
-                                                    .color(ui.visuals().weak_text_color());
-                                                ui.label(text);
-                                            }
-                                        });
-                                        ui.add_space(8.0);
-                                    }
-                                    if ui.button("Launch Tool").clicked() {
-                                        tool_to_select = Some(i);
-                                    }
-                                });
-                            });
-                    }
-                });
-
-                if let Some(idx) = tool_to_select {
-                    self.select_tool(idx);
-                }
-            });
+        self.baseline_tool_state = active_state.clone();
+        self.is_diverged = false;
+        self.diagnostic_report = None;
+        self.step_counter = 0;
+        let datasets = tool.export_datasets();
+        self.current_valid_plot_datasets = datasets.clone();
+        self.last_valid_snapshot = Some(StateSnapshot {
+            tool_state: active_state,
+            plot_datasets: datasets,
+            step_index: 0,
+            timestamp: crate::web_io::PlatformInstant::now(),
         });
+    }
+
+    /// Launches a Starter Gallery card by selecting its target tool, importing
+    /// and validating its preset JSON, updating framework state snapshots, or
+    /// surfacing an error toast + telemetry warning on failure.
+    pub fn apply_starter_card(
+        &mut self,
+        card_title: &str,
+        tool_name: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        if let Some(target_name) = tool_name {
+            if let Some(pos) = self
+                .available_tools
+                .iter()
+                .position(|t| t.name == target_name)
+            {
+                self.select_tool(pos);
+            } else {
+                let err = format!(
+                    "Starter preset '{}' targets unavailable tool '{}'",
+                    card_title, target_name
+                );
+                self.preset_dialog.record_import_error(err.clone());
+                return Err(err);
+            }
+        }
+        let Some(json_str) = preset_json else {
+            return Ok(());
+        };
+        let Some(tool) = &mut self.active_tool else {
+            let err = format!("No active tool available to launch '{}'", card_title);
+            self.preset_dialog.record_import_error(err.clone());
+            return Err(err);
+        };
+        match tool.import_preset_json(json_str) {
+            Ok(()) => {
+                self.preset_dialog.toast_error = None;
+                self.sync_active_tool_state_after_preset();
+                Ok(())
+            }
+            Err(err) => {
+                let msg = format!("Failed to launch '{}': {}", card_title, err);
+                self.preset_dialog.record_import_error(msg.clone());
+                Err(msg)
+            }
+        }
     }
 
     pub(super) fn show_starter_gallery_if_open(&mut self, ctx: &egui::Context, id_source: &str) {
@@ -272,21 +259,9 @@ impl SimulationFramework {
                 &cards,
                 &mut is_open,
             ) {
-                if let Some(tool_name) = card.tool_name {
-                    if let Some(pos) = self
-                        .available_tools
-                        .iter()
-                        .position(|t| t.name == tool_name)
-                    {
-                        self.select_tool(pos);
-                    }
-                }
-                if let Some(preset_json) = card.preset_json {
-                    if let Some(tool) = &mut self.active_tool {
-                        let _ = tool.apply_preset_json(preset_json);
-                    }
-                }
+                let _ = self.apply_starter_card(card.title, card.tool_name, card.preset_json);
                 is_open = false;
+                ctx.request_repaint();
             }
             self.show_starter_gallery = is_open;
             ctx.data_mut(|d| {
@@ -384,7 +359,15 @@ impl SimulationFramework {
             tool.show(ctx);
         } else {
             egui::CentralPanel::default().show(ctx, |ui| {
-                self.show_quick_start_cards(ui);
+                if self.available_tools.is_empty() {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(40.0);
+                        ui.heading("No Tools Available");
+                        ui.label(
+                            "There are currently no interactive tools available for this domain.",
+                        );
+                    });
+                }
             });
         }
 

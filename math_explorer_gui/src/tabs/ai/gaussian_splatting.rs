@@ -2,15 +2,43 @@ use crate::framework::InteractiveTool;
 use eframe::egui;
 
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
-#[derive(Default)]
 pub struct GaussianSplattingTool {
     pub scale: f64,
+}
+
+impl Default for GaussianSplattingTool {
+    fn default() -> Self {
+        Self { scale: 1.0 }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GaussianSplattingState {
+    scale: f64,
 }
 
 impl InteractiveTool for GaussianSplattingTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Gaussian Splatting"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&GaussianSplattingState { scale: self.scale }).ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: GaussianSplattingState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid splatting state: {e}"))?;
+        if !parsed.scale.is_finite() || !(0.1..=10.0).contains(&parsed.scale) {
+            return Err("Gaussian splat scale must be finite within [0.1, 10.0]".into());
+        }
+        self.scale = parsed.scale;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -61,8 +89,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "num_points": 500,
-    "splat_scale": 1.0
+    "scale": 1.5
   }
 }"#;
 
@@ -70,7 +97,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "gaussian_splatting_starter",
         title: "Gaussian Splatting",
-        description: "3D Gaussian radiance field point rendering with covariance ellipsoids and spherical harmonics.",
+        description: "3D Gaussian radiance field scale parameter control and theoretical model overview.",
         category: "Neural Rendering",
         icon: "🎨",
         domain: "ai",

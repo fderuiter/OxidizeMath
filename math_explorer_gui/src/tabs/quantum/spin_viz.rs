@@ -67,10 +67,55 @@ impl SpinVisualizer {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpinVisualizerState {
+    b_field: [f64; 3],
+    paused: bool,
+    camera: crate::framework::Camera3D,
+}
+
 impl InteractiveTool for SpinVisualizer {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Spin Dynamics (Bloch Sphere)"
+    }
+
+    fn domain(&self) -> &'static str {
+        "quantum"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&SpinVisualizerState {
+            b_field: self.b_field,
+            paused: self.paused,
+            camera: self.camera,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded: SpinVisualizerState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid SpinVisualizer state: {e}"))?;
+        if !loaded
+            .b_field
+            .iter()
+            .all(|v| v.is_finite() && (-5.0..=5.0).contains(v))
+        {
+            return Err("b_field components must be finite in [-5.0, 5.0]".to_string());
+        }
+        if !loaded.camera.pitch.is_finite()
+            || !loaded.camera.yaw.is_finite()
+            || !loaded.camera.zoom.is_finite()
+            || !(0.01..=100.0).contains(&loaded.camera.zoom)
+        {
+            return Err("camera pitch/yaw/zoom out of valid range".to_string());
+        }
+        self.b_field = loaded.b_field;
+        self.paused = loaded.paused;
+        self.camera = loaded.camera;
+        self.reset();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -286,9 +331,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "theta": 1.047,
-    "phi": 0.785,
-    "magnetic_b": 1.0
+    "b_field": [1.0, 0.0, 1.0],
+    "paused": false,
+    "camera": {
+      "pitch": 0.5,
+      "yaw": 0.5,
+      "zoom": 1.0
+    }
   }
 }"#;
 
@@ -296,7 +345,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "spin_viz_starter",
         title: "Bloch Sphere Spin State",
-        description: "|ψ⟩ = cos(θ/2)|0⟩ + e^(iφ)sin(θ/2)|1⟩: Qubit pure state spherical coordinates and Larmor precession.",
+        description: "Quantum spin-1/2 state vector on the Bloch sphere evolving under a 3D Zeeman magnetic field.",
         category: "Quantum States",
         icon: "🌐",
         domain: "quantum",

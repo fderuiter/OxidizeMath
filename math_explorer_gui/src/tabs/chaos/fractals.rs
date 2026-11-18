@@ -67,6 +67,18 @@ impl TheoryDescribable for FractalViewer {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FractalState {
+    center_re: f64,
+    center_im: f64,
+    zoom: f64,
+    max_iter: u32,
+    mode: FractalMode,
+    julia_re: f64,
+    julia_im: f64,
+}
+
 impl InteractiveTool for FractalViewer {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     
@@ -79,16 +91,6 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct FractalState {
-            center_re: f64,
-            center_im: f64,
-            zoom: f64,
-            max_iter: u32,
-            mode: FractalMode,
-            julia_re: f64,
-            julia_im: f64,
-        }
         serde_json::to_string(&FractalState {
             center_re: self.center.re,
             center_im: self.center.im,
@@ -97,28 +99,28 @@ impl InteractiveTool for FractalViewer {
             mode: self.mode,
             julia_re: self.julia_c.re,
             julia_im: self.julia_c.im,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct FractalState {
-            center_re: f64,
-            center_im: f64,
-            zoom: f64,
-            max_iter: u32,
-            mode: FractalMode,
-            julia_re: f64,
-            julia_im: f64,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: FractalState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid fractal state: {e}"))?;
+        if ![s.center_re, s.center_im, s.zoom, s.julia_re, s.julia_im]
+            .iter()
+            .all(|v| v.is_finite())
+            || !(0.1..=10_000.0).contains(&s.zoom)
+            || !(10..=math_commons::registry::MAX_ITERATIONS as u32).contains(&s.max_iter)
+        {
+            return Err("Fractal view parameters out of bounds".into());
         }
-        if let Ok(s) = serde_json::from_str::<FractalState>(state) {
-            self.center = Complex::new(s.center_re, s.center_im);
-            self.zoom = s.zoom;
-            self.max_iter = s.max_iter;
-            self.mode = s.mode;
-            self.julia_c = Complex::new(s.julia_re, s.julia_im);
-            self.dirty = true;
-        }
+        self.center = Complex::new(s.center_re, s.center_im);
+        self.zoom = s.zoom;
+        self.max_iter = s.max_iter;
+        self.mode = s.mode;
+        self.julia_c = Complex::new(s.julia_re, s.julia_im);
+        self.dirty = true;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -408,8 +410,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "max_iterations": 150,
-    "zoom": 1.0
+    "center_re": -0.75,
+    "center_im": 0.0,
+    "zoom": 1.0,
+    "max_iter": 150,
+    "mode": "Mandelbrot",
+    "julia_re": -0.4,
+    "julia_im": 0.6
   }
 }"#;
 

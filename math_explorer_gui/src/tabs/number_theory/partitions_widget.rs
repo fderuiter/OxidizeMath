@@ -4,7 +4,7 @@ use eframe::egui;
 use egui_plot::{Bar, BarChart, Plot};
 use math_explorer::pure_math::number_theory::partitions;
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum PartitionFunctionType {
     PStar,
     M,
@@ -14,6 +14,14 @@ enum PartitionFunctionType {
     K,
     L,
     FK,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PartitionsState {
+    precision: usize,
+    selected_function: PartitionFunctionType,
+    f_k_val: usize,
 }
 
 pub struct PartitionsWidget {
@@ -55,6 +63,31 @@ impl InteractiveTool for PartitionsWidget {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Partition Function"
+    }
+    fn domain(&self) -> &'static str {
+        "number_theory"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&PartitionsState {
+            precision: self.precision,
+            selected_function: self.selected_function,
+            f_k_val: self.f_k_val,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: PartitionsState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid partitions state: {e}"))?;
+        if !(1..=200).contains(&parsed.precision) || !(1..=100).contains(&parsed.f_k_val) {
+            return Err("Partition precision or f_k_val out of bounds".into());
+        }
+        self.precision = parsed.precision;
+        self.selected_function = parsed.selected_function;
+        self.f_k_val = parsed.f_k_val;
+        self.calculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -214,20 +247,22 @@ impl scientific_metadata::theory::TheoryDescribable for PartitionsWidget {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Integer Partitions (Hardy-Ramanujan)",
+    "title": "Partition Functions & Q-Series",
     "domain": "number_theory",
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "target_integer": 25
+    "precision": 25,
+    "selected_function": "PStar",
+    "f_k_val": 1
   }
 }"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "partitions_starter",
-        title: "Integer Partitions (Hardy-Ramanujan)",
-        description: "p(n) integer partition function asymptotic counting and Young Ferrers diagram displays.",
+        title: "Partition Functions & Q-Series",
+        description: "Euler and colored partition generating function q-series coefficient expansions.",
         category: "Combinatorics",
         icon: "🧱",
         domain: "number_theory",

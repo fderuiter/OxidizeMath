@@ -26,6 +26,14 @@ impl NetworkPropagationTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NetPropState {
+    num_nodes: usize,
+    beta: f64,
+    gamma: f64,
+}
+
 impl InteractiveTool for NetworkPropagationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -36,32 +44,32 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct NetPropState {
-            num_nodes: usize,
-            beta: f64,
-            gamma: f64,
-        }
         serde_json::to_string(&NetPropState {
             num_nodes: self.model.num_nodes(),
             beta: self.model.beta(),
             gamma: self.model.gamma(),
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct NetPropState {
-            num_nodes: usize,
-            beta: f64,
-            gamma: f64,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: NetPropState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid network propagation state: {e}"))?;
+        if !(10..=200).contains(&s.num_nodes)
+            || !s.beta.is_finite()
+            || !(0.0..=1.0).contains(&s.beta)
+            || !s.gamma.is_finite()
+            || !(0.0..=1.0).contains(&s.gamma)
+        {
+            return Err("Network propagation parameters out of bounds".into());
         }
-        if let Ok(s) = serde_json::from_str::<NetPropState>(state) {
-            let _ = self.model.set_num_nodes(s.num_nodes);
-            let _ = self.model.set_beta(s.beta);
-            let _ = self.model.set_gamma(s.gamma);
-            self.reset_network();
-        }
+        self.model
+            .set_num_nodes(s.num_nodes)
+            .map_err(|e| e.to_string())?;
+        self.model.set_beta(s.beta).map_err(|e| e.to_string())?;
+        self.model.set_gamma(s.gamma).map_err(|e| e.to_string())?;
+        self.reset_network();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -223,8 +231,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "infection_prob": 0.15,
-    "recovery_prob": 0.05
+    "num_nodes": 60,
+    "beta": 0.15,
+    "gamma": 0.05
   }
 }"#;
 
@@ -232,7 +241,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "network_propagation_starter",
         title: "Graph Epidemic Spread",
-        description: "Stochastic infection contagion percolation across scale-free contact networks.",
+        description: "Stochastic SIR contagion propagation across a random geometric contact network.",
         category: "Network Epidemiology",
         icon: "🕸️",
         domain: "epidemiology",

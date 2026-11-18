@@ -256,7 +256,6 @@ impl OdeSolverTool {
             Some((label, param_summary, series))
         });
 
-        render_starter_gallery_button(ui);
         self.run_sensitivity_analysis();
 
         crate::sensitivity::render_sensitivity_panel_ui(
@@ -383,22 +382,6 @@ impl OdeSolverTool {
                 self.snapshot_manager.render_on_plot(plot_ui);
                 self.callout_manager.render_on_plot(plot_ui);
             });
-    }
-}
-
-fn render_starter_gallery_button(ui: &mut egui::Ui) {
-    if ui
-        .button("🎨 Starter Gallery")
-        .on_hover_text("Open Starter Template Gallery")
-        .clicked()
-    {
-        let cur = ui.ctx().data(|d| {
-            d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY"))
-                .unwrap_or(false)
-        });
-        ui.ctx().data_mut(|d| {
-            d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur);
-        });
     }
 }
 

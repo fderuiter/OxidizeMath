@@ -11,7 +11,7 @@ use comparison::{simulate_preset, SolverDiscrepancy};
 use crate::framework::{
     CalloutManager, InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager,
 };
-use crate::presets::{InteractivePreset, OdePreset};
+use crate::presets::OdePreset;
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 
@@ -294,6 +294,7 @@ fn default_annotations_enabled() -> bool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct OdeState {
     #[serde(default)]
     preset: Option<OdePreset>,
@@ -327,22 +328,6 @@ impl InteractiveTool for OdeSolverTool {
     }
     fn domain(&self) -> &'static str {
         "analysis"
-    }
-
-    fn export_preset_json(&self) -> Result<String, String> {
-        self.to_json_string()
-    }
-
-    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let res = self.from_json_str(json_str);
-        if res.is_ok() {
-            self.recalculate();
-        }
-        res
-    }
-
-    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        self.import_preset_json(json_str)
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -390,28 +375,41 @@ impl InteractiveTool for OdeSolverTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<OdeState>(state) {
-            if let Some(p) = s.preset {
-                self.preset = p;
-            }
-            self.dt = s.dt;
-            self.total_time = s.total_time;
-            self.param_k = s.param_k;
-            self.param_r = s.param_r;
-            self.param_cap_k = s.param_cap_k;
-            self.ic_y0 = s.ic_y0;
-            self.ic_v0 = s.ic_v0;
-            if !s.custom_expr.is_empty() {
-                self.math_input.set_expression(&s.custom_expr);
-            }
-            self.snapshot_manager = s.snapshot_manager;
-            self.callout_manager = s.callout_manager;
-            self.method = s.method;
-            self.comparison_mode = s.comparison_mode;
-            self.show_annotations = s.show_annotations;
-            self.recalculate();
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: OdeState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {}", e))?;
+        if !s.dt.is_finite()
+            || s.dt <= 0.0
+            || !s.total_time.is_finite()
+            || s.total_time <= 0.0
+            || !s.param_k.is_finite()
+            || !s.param_r.is_finite()
+            || !s.param_cap_k.is_finite()
+            || !s.ic_y0.is_finite()
+            || !s.ic_v0.is_finite()
+        {
+            return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
         }
+        if let Some(p) = s.preset {
+            self.preset = p;
+        }
+        self.dt = s.dt;
+        self.total_time = s.total_time;
+        self.param_k = s.param_k;
+        self.param_r = s.param_r;
+        self.param_cap_k = s.param_cap_k;
+        self.ic_y0 = s.ic_y0;
+        self.ic_v0 = s.ic_v0;
+        if !s.custom_expr.is_empty() {
+            self.math_input.set_expression(&s.custom_expr);
+        }
+        self.snapshot_manager = s.snapshot_manager;
+        self.callout_manager = s.callout_manager;
+        self.method = s.method;
+        self.comparison_mode = s.comparison_mode;
+        self.show_annotations = s.show_annotations;
+        self.recalculate();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {

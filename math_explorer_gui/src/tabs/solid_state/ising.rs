@@ -85,6 +85,7 @@ impl SimulationRunner for IsingRunner {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct IsingState {
     temperature: f64,
     j_coupling: f64,
@@ -186,35 +187,44 @@ impl InteractiveTool for IsingModelTool {
         }).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<IsingState>(state) {
-            self.temperature = s.temperature;
-            self.j_coupling = s.j_coupling;
-            self.h_field = s.h_field;
-            self.steps_per_frame = s.steps_per_frame;
-            {
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                p.temperature = self.temperature;
-                p.j_coupling = self.j_coupling;
-                p.h_field = self.h_field;
-                p.steps_per_frame = self.steps_per_frame;
-            }
-            let target_state = s.state.unwrap_or_else(|| {
-                if s.running.unwrap_or(false) {
-                    SimWorkerState::Running
-                } else {
-                    SimWorkerState::Ready
-                }
-            });
-            if target_state == SimWorkerState::Running {
-                if !self.worker.is_running() {
-                    let _ = self.worker.send_command(SimCommand::Start);
-                }
-            } else if self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Pause);
-            }
-            self.dirty = true;
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: IsingState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid Ising state: {e}"))?;
+        if !s.temperature.is_finite()
+            || !(0.1..=10.0).contains(&s.temperature)
+            || !s.j_coupling.is_finite()
+            || !(-2.0..=2.0).contains(&s.j_coupling)
+            || !s.h_field.is_finite()
+            || !(-2.0..=2.0).contains(&s.h_field)
+            || !(100..=50_000).contains(&s.steps_per_frame)
+        {
+            return Err("Ising parameters out of valid bounds".to_string());
         }
+        self.temperature = s.temperature;
+        self.j_coupling = s.j_coupling;
+        self.h_field = s.h_field;
+        self.steps_per_frame = s.steps_per_frame;
+        {
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.temperature = self.temperature;
+            p.j_coupling = self.j_coupling;
+            p.h_field = self.h_field;
+            p.steps_per_frame = self.steps_per_frame;
+        }
+        let target_state = s.state.unwrap_or(if s.running.unwrap_or(false) {
+            SimWorkerState::Running
+        } else {
+            SimWorkerState::Ready
+        });
+        if target_state == SimWorkerState::Running {
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+        } else if self.worker.is_running() {
+            let _ = self.worker.send_command(SimCommand::Pause);
+        }
+        self.dirty = true;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -440,8 +450,9 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "temperature": 2.269,
-    "coupling_j": 1.0,
-    "grid_size": 32
+    "j_coupling": 1.0,
+    "h_field": 0.0,
+    "steps_per_frame": 5000
   }
 }"#;
 

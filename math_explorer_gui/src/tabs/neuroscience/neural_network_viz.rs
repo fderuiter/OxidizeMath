@@ -88,10 +88,50 @@ impl NeuralNetworkVizTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NeuralNetworkVizState {
+    external_input: Vec<f64>,
+    dt: f64,
+    is_running: bool,
+}
+
 impl InteractiveTool for NeuralNetworkVizTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Neural Network Viz"
+    }
+    fn domain(&self) -> &'static str {
+        "neuroscience"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&NeuralNetworkVizState {
+            external_input: self.external_input.clone(),
+            dt: self.dt,
+            is_running: self.is_running,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: NeuralNetworkVizState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid neural network viz state: {e}"))?;
+        if parsed.external_input.len() != self.neurons.len()
+            || !parsed
+                .external_input
+                .iter()
+                .all(|v| v.is_finite() && (-10.0..=50.0).contains(v))
+            || !parsed.dt.is_finite()
+            || !(0.001..=0.5).contains(&parsed.dt)
+        {
+            return Err("NeuralNetworkViz external_input or dt out of bounds".into());
+        }
+        self.reset();
+        self.external_input = parsed.external_input;
+        self.dt = parsed.dt;
+        self.is_running = parsed.is_running;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -239,12 +279,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "layers": [
-      4,
-      8,
-      2
-    ],
-    "activation": "ReLU"
+    "external_input": [12.0, 0.0, 0.0, 0.0, 0.0],
+    "dt": 0.05,
+    "is_running": false
   }
 }"#;
 
@@ -252,7 +289,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "neural_network_viz_starter",
         title: "Spiking Neural Circuit",
-        description: "Multi-layer synaptic weight propagation and receptive field neuron activation patterns.",
+        description: "Coupled 5-neuron Hodgkin-Huxley ring circuit with excitatory and inhibitory synaptic currents.",
         category: "Neural Circuits",
         icon: "⚡",
         domain: "neuroscience",

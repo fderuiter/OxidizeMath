@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::async_sim::SimulationRunner;
+use crate::presets::InteractivePreset;
 use std::thread;
 use std::time::Duration;
 

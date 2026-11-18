@@ -18,6 +18,7 @@ impl Default for BeamProfilingTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BeamProfilingState {
     incident_fluence: f64,
     mu: f64,
@@ -41,11 +42,22 @@ impl InteractiveTool for BeamProfilingTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<BeamProfilingState>(state) {
-            self.incident_fluence = loaded.incident_fluence;
-            self.mu = loaded.mu;
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded: BeamProfilingState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid BeamProfiling state: {e}"))?;
+        if !loaded.incident_fluence.is_finite() || !(0.0..=200.0).contains(&loaded.incident_fluence)
+        {
+            return Err(format!(
+                "incident_fluence out of [0.0, 200.0]: {}",
+                loaded.incident_fluence
+            ));
         }
+        if !loaded.mu.is_finite() || !(0.0..=1.0).contains(&loaded.mu) {
+            return Err(format!("mu out of [0.0, 1.0]: {}", loaded.mu));
+        }
+        self.incident_fluence = loaded.incident_fluence;
+        self.mu = loaded.mu;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -111,21 +123,21 @@ impl scientific_metadata::theory::TheoryDescribable for BeamProfilingTool {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Radiotherapy Beam Profile",
+    "title": "Radiotherapy TERMA Depth Profile",
     "domain": "medical",
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "field_width_cm": 10.0,
-    "energy_mev": 6.0
+    "incident_fluence": 100.0,
+    "mu": 0.1
   }
 }"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "beam_profiling_starter",
-        title: "Radiotherapy Beam Profile",
-        description: "Penumbra profile, beam flatness, and symmetry transverse fluence modeling in radiation therapy.",
+        title: "Radiotherapy TERMA Depth Profile",
+        description: "D(d) = μΨ₀e^(-μd): Primary photon energy fluence attenuation depth-dose profile.",
         category: "Medical Physics",
         icon: "🔦",
         domain: "medical",

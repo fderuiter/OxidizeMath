@@ -157,8 +157,18 @@ pub trait InteractiveTool {
         None
     }
 
+    /// Validates and restores tool-specific parameters from a serialized JSON state string.
+    fn try_load_state(&mut self, _state: &str) -> Result<(), String> {
+        Err(format!(
+            "Preset state deserialization not supported for {}",
+            self.name()
+        ))
+    }
+
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
-    fn load_state(&mut self, _state: &str) {}
+    fn load_state(&mut self, state: &str) {
+        let _ = self.try_load_state(state);
+    }
 
     /// Domain category of the tool (e.g. "analysis", "biology", "game_theory").
     fn domain(&self) -> &'static str {
@@ -192,7 +202,10 @@ pub trait InteractiveTool {
             serde_json::from_str(json_str)
                 .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
         let expected_domain = self.domain();
-        if !expected_domain.is_empty() && envelope.metadata.domain != expected_domain {
+        if expected_domain.is_empty() {
+            return Err(format!("Preset import not supported for {}", self.name()));
+        }
+        if envelope.metadata.domain != expected_domain {
             return Err(format!(
                 "Domain mismatch: preset is for domain '{}', but active tool is '{}'",
                 envelope.metadata.domain, expected_domain
@@ -200,8 +213,7 @@ pub trait InteractiveTool {
         }
         let config_str = serde_json::to_string(&envelope.config)
             .map_err(|e| format!("Config serialization error: {}", e))?;
-        self.load_state(&config_str);
-        Ok(())
+        self.try_load_state(&config_str)
     }
 
     /// Optional hook to export tool datasets.
@@ -217,11 +229,6 @@ pub trait InteractiveTool {
 
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
-
-    /// Optional hook to apply a preset JSON configuration envelope (via InteractivePreset).
-    fn apply_preset_json(&mut self, _json_str: &str) -> Result<(), String> {
-        Ok(())
-    }
 
     /// Optional hook to sample multi-frame animation datasets for GIF export.
     fn sample_animation_frames(

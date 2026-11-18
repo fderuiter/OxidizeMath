@@ -35,6 +35,18 @@ impl Default for BetSizeCalculatorTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BetSizeState {
+    probability_input: f64,
+    odds_format: OddsFormat,
+    decimal_odds: f64,
+    american_odds: f64,
+    fractional_numerator: f64,
+    fractional_denominator: f64,
+    bankroll: f64,
+}
+
 impl InteractiveTool for BetSizeCalculatorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -45,16 +57,6 @@ impl InteractiveTool for BetSizeCalculatorTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BetSizeState {
-            probability_input: f64,
-            odds_format: OddsFormat,
-            decimal_odds: f64,
-            american_odds: f64,
-            fractional_numerator: f64,
-            fractional_denominator: f64,
-            bankroll: f64,
-        }
         serde_json::to_string(&BetSizeState {
             probability_input: self.probability_input,
             odds_format: self.odds_format,
@@ -63,29 +65,40 @@ impl InteractiveTool for BetSizeCalculatorTool {
             fractional_numerator: self.fractional_numerator,
             fractional_denominator: self.fractional_denominator,
             bankroll: self.bankroll,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BetSizeState {
-            probability_input: f64,
-            odds_format: OddsFormat,
-            decimal_odds: f64,
-            american_odds: f64,
-            fractional_numerator: f64,
-            fractional_denominator: f64,
-            bankroll: f64,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: BetSizeState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid bet size state: {e}"))?;
+        if ![
+            s.probability_input,
+            s.decimal_odds,
+            s.american_odds,
+            s.fractional_numerator,
+            s.fractional_denominator,
+            s.bankroll,
+        ]
+        .iter()
+        .all(|v| v.is_finite())
+            || !(0.0..=100.0).contains(&s.probability_input)
+            || !(1.01..=1000.0).contains(&s.decimal_odds)
+            || !(-10_000.0..=10_000.0).contains(&s.american_odds)
+            || !(1.0..=1000.0).contains(&s.fractional_numerator)
+            || !(1.0..=1000.0).contains(&s.fractional_denominator)
+            || !(1.0..=1_000_000.0).contains(&s.bankroll)
+        {
+            return Err("Bet size parameters out of bounds".into());
         }
-        if let Ok(s) = serde_json::from_str::<BetSizeState>(state) {
-            self.probability_input = s.probability_input;
-            self.odds_format = s.odds_format;
-            self.decimal_odds = s.decimal_odds;
-            self.american_odds = s.american_odds;
-            self.fractional_numerator = s.fractional_numerator;
-            self.fractional_denominator = s.fractional_denominator;
-            self.bankroll = s.bankroll;
-        }
+        self.probability_input = s.probability_input;
+        self.odds_format = s.odds_format;
+        self.decimal_odds = s.decimal_odds;
+        self.american_odds = s.american_odds;
+        self.fractional_numerator = s.fractional_numerator;
+        self.fractional_denominator = s.fractional_denominator;
+        self.bankroll = s.bankroll;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -300,8 +313,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "win_probability": 0.55,
-    "payout_ratio": 1.0
+    "probability_input": 55.0,
+    "odds_format": "Decimal",
+    "decimal_odds": 2.0,
+    "american_odds": 100.0,
+    "fractional_numerator": 1.0,
+    "fractional_denominator": 1.0,
+    "bankroll": 1000.0
   }
 }"#;
 

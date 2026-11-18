@@ -7,8 +7,8 @@ use math_explorer::ai::reinforcement_learning::{algorithms::TabularQAgent, Marko
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Clone, Copy, PartialEq)]
-enum HeatmapView {
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(super) enum HeatmapView {
     MaxQ,
     Up,
     Down,
@@ -259,6 +259,15 @@ impl InteractiveTool for QTableInspectorTool {
     }
     fn name(&self) -> &'static str {
         "Q-Table Inspector"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+    fn save_state(&self) -> Option<String> {
+        self.save_preset_state()
+    }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.try_load_preset_state(state)
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]

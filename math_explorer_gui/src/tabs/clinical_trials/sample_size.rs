@@ -58,6 +58,18 @@ impl SampleSizeCalculatorTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SampleSizeState {
+    mode: CalculationMode,
+    alpha: f64,
+    power: f64,
+    delta: f64,
+    sigma: f64,
+    p1: f64,
+    p2: f64,
+}
+
 impl InteractiveTool for SampleSizeCalculatorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -68,16 +80,6 @@ impl InteractiveTool for SampleSizeCalculatorTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct SampleSizeState {
-            mode: CalculationMode,
-            alpha: f64,
-            power: f64,
-            delta: f64,
-            sigma: f64,
-            p1: f64,
-            p2: f64,
-        }
         serde_json::to_string(&SampleSizeState {
             mode: self.mode,
             alpha: self.alpha,
@@ -86,30 +88,34 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             sigma: self.sigma,
             p1: self.p1,
             p2: self.p2,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct SampleSizeState {
-            mode: CalculationMode,
-            alpha: f64,
-            power: f64,
-            delta: f64,
-            sigma: f64,
-            p1: f64,
-            p2: f64,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: SampleSizeState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid sample size state: {e}"))?;
+        if ![s.alpha, s.power, s.delta, s.sigma, s.p1, s.p2]
+            .iter()
+            .all(|v| v.is_finite())
+            || !(0.001..=0.20).contains(&s.alpha)
+            || !(0.5..=0.999).contains(&s.power)
+            || !(0.01..=5.0).contains(&s.delta)
+            || !(0.1..=10.0).contains(&s.sigma)
+            || !(0.01..=0.99).contains(&s.p1)
+            || !(0.01..=0.99).contains(&s.p2)
+        {
+            return Err("Sample size parameters out of bounds".into());
         }
-        if let Ok(s) = serde_json::from_str::<SampleSizeState>(state) {
-            self.mode = s.mode;
-            self.alpha = s.alpha;
-            self.power = s.power;
-            self.delta = s.delta;
-            self.sigma = s.sigma;
-            self.p1 = s.p1;
-            self.p2 = s.p2;
-            self.recalculate();
-        }
+        self.mode = s.mode;
+        self.alpha = s.alpha;
+        self.power = s.power;
+        self.delta = s.delta;
+        self.sigma = s.sigma;
+        self.p1 = s.p1;
+        self.p2 = s.p2;
+        self.recalculate();
+        self.result.as_ref().map(|_| ()).map_err(Clone::clone)
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -277,9 +283,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
+    "mode": "Means",
     "alpha": 0.05,
     "power": 0.8,
-    "effect_size": 0.5
+    "delta": 0.5,
+    "sigma": 1.0,
+    "p1": 0.5,
+    "p2": 0.6
   }
 }"#;
 

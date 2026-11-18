@@ -11,6 +11,7 @@ enum Geometry {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TurbulenceState {
     density: f64,
     dynamic_viscosity: f64,
@@ -67,14 +68,32 @@ impl InteractiveTool for TurbulenceTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<TurbulenceState>(state) {
-            self.density = loaded.density;
-            self.dynamic_viscosity = loaded.dynamic_viscosity;
-            self.velocity = loaded.velocity;
-            self.length = loaded.length;
-            self.geometry = loaded.geometry;
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded: TurbulenceState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid turbulence state: {e}"))?;
+        if ![
+            loaded.density,
+            loaded.dynamic_viscosity,
+            loaded.velocity,
+            loaded.length,
+        ]
+        .iter()
+        .all(|v| v.is_finite())
+            || !(0.0..=20_000.0).contains(&loaded.density)
+            || loaded.density <= 0.0
+            || !(1e-6..=10.0).contains(&loaded.dynamic_viscosity)
+            || !(0.0..=1000.0).contains(&loaded.velocity)
+            || !(0.0..=100.0).contains(&loaded.length)
+            || loaded.length <= 0.0
+        {
+            return Err("Turbulence fluid or geometry parameters out of bounds".into());
         }
+        self.density = loaded.density;
+        self.dynamic_viscosity = loaded.dynamic_viscosity;
+        self.velocity = loaded.velocity;
+        self.length = loaded.length;
+        self.geometry = loaded.geometry;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -277,21 +296,24 @@ impl scientific_metadata::theory::TheoryDescribable for TurbulenceTool {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Kolmogorov Turbulence Cascade",
+    "title": "Reynolds Flow Regime Analysis",
     "domain": "fluid_dynamics",
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "viscosity": 0.001,
-    "energy_dissipation": 0.1
+    "density": 1000.0,
+    "dynamic_viscosity": 0.001,
+    "velocity": 1.0,
+    "length": 0.05,
+    "geometry": "Pipe"
   }
 }"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "turbulence_starter",
-        title: "Kolmogorov Turbulence Cascade",
-        description: "E(k) = C_K ε^(2/3) k^(-5/3): Inertial subrange kinetic energy spectrum and vortex dissipation.",
+        title: "Reynolds Flow Regime Analysis",
+        description: "Re = ρvL/μ: Laminar, transitional, and turbulent flow classification in pipe and flat-plate geometries.",
         category: "Turbulent Flow",
         icon: "🌪️",
         domain: "fluid_dynamics",

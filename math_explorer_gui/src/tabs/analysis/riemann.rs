@@ -94,6 +94,15 @@ impl RiemannIntegrationTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RiemannState {
+    preset: FunctionPreset,
+    min_x: f64,
+    max_x: f64,
+    steps: usize,
+}
+
 impl InteractiveTool for RiemannIntegrationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -104,36 +113,31 @@ impl InteractiveTool for RiemannIntegrationTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct RiemannState {
-            preset: FunctionPreset,
-            min_x: f64,
-            max_x: f64,
-            steps: usize,
-        }
         serde_json::to_string(&RiemannState {
             preset: self.preset,
             min_x: self.min_x,
             max_x: self.max_x,
             steps: self.steps,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct RiemannState {
-            preset: FunctionPreset,
-            min_x: f64,
-            max_x: f64,
-            steps: usize,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: RiemannState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid Riemann state: {e}"))?;
+        if !s.min_x.is_finite()
+            || !s.max_x.is_finite()
+            || s.min_x >= s.max_x
+            || !(1..=200).contains(&s.steps)
+        {
+            return Err("Riemann integration interval or partition count invalid".into());
         }
-        if let Ok(s) = serde_json::from_str::<RiemannState>(state) {
-            self.preset = s.preset;
-            self.min_x = s.min_x;
-            self.max_x = s.max_x;
-            self.steps = s.steps;
-            self.recalculate();
-        }
+        self.preset = s.preset;
+        self.min_x = s.min_x;
+        self.max_x = s.max_x;
+        self.steps = s.steps;
+        self.recalculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -398,21 +402,23 @@ mod tests {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Riemann Sum Approximations",
+    "title": "Composite Trapezoidal Integration",
     "domain": "analysis",
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "partition_count": 20,
-    "method": "Midpoint"
+    "preset": "SinX",
+    "min_x": 0.0,
+    "max_x": 3.141592653589793,
+    "steps": 20
   }
 }"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "riemann_integration_starter",
-        title: "Riemann Sum Approximations",
-        description: "Definite integral partition limits via Darboux upper/lower sums and midpoint quadrature.",
+        title: "Composite Trapezoidal Integration",
+        description: "Definite integral numerical quadrature via composite trapezoidal rule partitions.",
         category: "Integral Calculus",
         icon: "📐",
         domain: "analysis",

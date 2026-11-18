@@ -164,6 +164,22 @@ const fn default_annotations_enabled() -> bool {
     true
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AttractorState {
+    sigma: f64,
+    rho: f64,
+    beta: f64,
+    dt: f64,
+    simulation_speed: usize,
+    #[serde(default)]
+    execution_state: Option<SolverExecutionState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    paused: Option<bool>,
+    #[serde(default = "default_annotations_enabled")]
+    show_annotations: bool,
+}
+
 impl InteractiveTool for AttractorPlotter {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -174,78 +190,52 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize)]
-        struct AttractorState {
-            sigma: f64,
-            rho: f64,
-            beta: f64,
-            dt: f64,
-            simulation_speed: usize,
-            execution_state: SolverExecutionState,
-            #[serde(default = "default_annotations_enabled")]
-            show_annotations: bool,
-        }
-
         serde_json::to_string(&AttractorState {
             sigma: self.system.sigma,
             rho: self.system.rho,
             beta: self.system.beta,
             dt: self.dt,
             simulation_speed: self.simulation_speed,
-            execution_state: self.execution_state,
+            execution_state: Some(self.execution_state),
+            paused: None,
             show_annotations: self.show_annotations,
         })
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Deserialize)]
-        struct AttractorState {
-            sigma: f64,
-            rho: f64,
-            beta: f64,
-            dt: f64,
-            simulation_speed: usize,
-            #[serde(default)]
-            execution_state: Option<SolverExecutionState>,
-            #[serde(default = "default_annotations_enabled")]
-            show_annotations: bool,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: AttractorState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid AttractorPlotter state: {}", e))?;
+        if !s.sigma.is_finite()
+            || !s.rho.is_finite()
+            || !s.beta.is_finite()
+            || !s.dt.is_finite()
+            || s.dt <= 0.0
+            || s.simulation_speed == 0
+        {
+            return Err("Attractor parameters must be finite with dt > 0 and simulation_speed > 0".to_string());
         }
-
-        if let Ok(s) = serde_json::from_str::<AttractorState>(state) {
-            self.system.sigma = s.sigma;
-            self.system.rho = s.rho;
-            self.system.beta = s.beta;
-            self.dt = s.dt;
-            self.simulation_speed = s.simulation_speed;
-            self.show_annotations = s.show_annotations;
-            self.reset();
-            let execution_state = s.execution_state.unwrap_or_else(|| {
-                let legacy_paused = serde_json::from_str::<serde_json::Value>(state)
-                    .ok()
-                    .and_then(|v| v.get("paused").and_then(|p| p.as_bool()))
-                    .unwrap_or(false);
-                if legacy_paused {
-                    SolverExecutionState::Paused
-                } else {
-                    SolverExecutionState::Ready
-                }
-            });
-            self.execution_state = execution_state;
-            if let SolverExecutionState::Diverged {
-                invalid_vec,
-                diverged_at_step,
-            } = execution_state
-            {
-                self.system.state.vec = invalid_vec;
-                self.step_count = diverged_at_step;
-            }
+        self.system.sigma = s.sigma;
+        self.system.rho = s.rho;
+        self.system.beta = s.beta;
+        self.dt = s.dt;
+        self.simulation_speed = s.simulation_speed;
+        self.show_annotations = s.show_annotations;
+        self.reset();
+        let execution_state = s.execution_state.unwrap_or(if s.paused.unwrap_or(false) {
+            SolverExecutionState::Paused
+        } else {
+            SolverExecutionState::Ready
+        });
+        self.execution_state = execution_state;
+        if let SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step,
+        } = execution_state
+        {
+            self.system.state.vec = invalid_vec;
+            self.step_count = diverged_at_step;
         }
-    }
-
-    fn apply_preset_json(&mut self, _json_str: &str) -> Result<(), String> {
-        self.reset_parameters();
-        self.execution_state = SolverExecutionState::Running;
         Ok(())
     }
 
@@ -323,10 +313,6 @@ impl InteractiveTool for AttractorPlotter {
         // --- UI ---
         egui::SidePanel::left("attractor_controls").show(ctx, |ui| {
             ui.heading("Lorenz Attractor");
-            if ui.button("🎨 Starter Gallery").clicked() {
-                let cur = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")).unwrap_or(false));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur));
-            }
             ui.separator();
 
             ui.collapsing("Parameters", |ui| {

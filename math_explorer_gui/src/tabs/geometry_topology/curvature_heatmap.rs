@@ -22,6 +22,7 @@ enum CurvatureType {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CurvatureHeatmapState {
     surface_type: SurfaceType,
     curvature_type: CurvatureType,
@@ -208,20 +209,56 @@ impl InteractiveTool for CurvatureHeatmap {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<CurvatureHeatmapState>(state) {
-            self.surface_type = loaded.surface_type;
-            self.curvature_type = loaded.curvature_type;
-            self.sphere_radius = loaded.sphere_radius;
-            self.torus_major_radius = loaded.torus_major_radius;
-            self.torus_minor_radius = loaded.torus_minor_radius;
-            self.klein_radius = loaded.klein_radius;
-            self.u_resolution = loaded.u_resolution;
-            self.v_resolution = loaded.v_resolution;
-            self.pitch = loaded.pitch;
-            self.yaw = loaded.yaw;
-            self.zoom = loaded.zoom;
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded: CurvatureHeatmapState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid curvature state: {e}"))?;
+        if !loaded.sphere_radius.is_finite() || !(0.1..=5.0).contains(&loaded.sphere_radius) {
+            return Err(format!("sphere_radius out of range: {}", loaded.sphere_radius));
         }
+        if !loaded.torus_major_radius.is_finite()
+            || !(1.0..=5.0).contains(&loaded.torus_major_radius)
+        {
+            return Err(format!(
+                "torus_major_radius out of range: {}",
+                loaded.torus_major_radius
+            ));
+        }
+        if !loaded.torus_minor_radius.is_finite()
+            || !(0.1..=2.0).contains(&loaded.torus_minor_radius)
+        {
+            return Err(format!(
+                "torus_minor_radius out of range: {}",
+                loaded.torus_minor_radius
+            ));
+        }
+        if !loaded.klein_radius.is_finite() || !(0.5..=5.0).contains(&loaded.klein_radius) {
+            return Err(format!("klein_radius out of range: {}", loaded.klein_radius));
+        }
+        let max_res = math_commons::registry::MAX_GRID_SIZE;
+        if !(10..=max_res).contains(&loaded.u_resolution)
+            || !(10..=max_res).contains(&loaded.v_resolution)
+        {
+            return Err("Resolution out of valid range".to_string());
+        }
+        if !loaded.pitch.is_finite()
+            || !loaded.yaw.is_finite()
+            || !loaded.zoom.is_finite()
+            || !(0.1..=5.0).contains(&loaded.zoom)
+        {
+            return Err("View parameters out of valid range".to_string());
+        }
+        self.surface_type = loaded.surface_type;
+        self.curvature_type = loaded.curvature_type;
+        self.sphere_radius = loaded.sphere_radius;
+        self.torus_major_radius = loaded.torus_major_radius;
+        self.torus_minor_radius = loaded.torus_minor_radius;
+        self.klein_radius = loaded.klein_radius;
+        self.u_resolution = loaded.u_resolution;
+        self.v_resolution = loaded.v_resolution;
+        self.pitch = loaded.pitch;
+        self.yaw = loaded.yaw;
+        self.zoom = loaded.zoom;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -371,8 +408,17 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "grid_resolution": 30,
-    "surface_type": "Torus"
+    "surface_type": "Torus",
+    "curvature_type": "Gaussian",
+    "sphere_radius": 1.0,
+    "torus_major_radius": 2.0,
+    "torus_minor_radius": 0.6,
+    "klein_radius": 2.0,
+    "u_resolution": 30,
+    "v_resolution": 30,
+    "pitch": 0.5,
+    "yaw": 0.5,
+    "zoom": 1.0
   }
 }"#;
 

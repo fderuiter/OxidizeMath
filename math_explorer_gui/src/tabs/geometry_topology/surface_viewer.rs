@@ -15,6 +15,7 @@ enum SurfaceType {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SurfaceViewerState {
     surface_type: SurfaceType,
     sphere_radius: f64,
@@ -138,17 +139,42 @@ impl InteractiveTool for SurfaceViewer {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<SurfaceViewerState>(state) {
-            self.surface_type = loaded.surface_type;
-            self.sphere_radius = loaded.sphere_radius;
-            self.torus_major_radius = loaded.torus_major_radius;
-            self.torus_minor_radius = loaded.torus_minor_radius;
-            self.klein_radius = loaded.klein_radius;
-            self.u_resolution = loaded.u_resolution;
-            self.v_resolution = loaded.v_resolution;
-            self.camera = loaded.camera;
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded: SurfaceViewerState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid SurfaceViewer state: {e}"))?;
+        if !loaded.sphere_radius.is_finite()
+            || !(0.1..=5.0).contains(&loaded.sphere_radius)
+            || !loaded.torus_major_radius.is_finite()
+            || !(1.0..=5.0).contains(&loaded.torus_major_radius)
+            || !loaded.torus_minor_radius.is_finite()
+            || !(0.1..=2.0).contains(&loaded.torus_minor_radius)
+            || !loaded.klein_radius.is_finite()
+            || !(0.5..=5.0).contains(&loaded.klein_radius)
+        {
+            return Err("Surface radii out of valid bounds".to_string());
         }
+        let max_res = math_commons::registry::MAX_GRID_SIZE;
+        if !(10..=max_res).contains(&loaded.u_resolution)
+            || !(10..=max_res).contains(&loaded.v_resolution)
+        {
+            return Err("Surface resolution out of valid bounds".to_string());
+        }
+        if !loaded.camera.pitch.is_finite()
+            || !loaded.camera.yaw.is_finite()
+            || !loaded.camera.zoom.is_finite()
+            || !(0.01..=100.0).contains(&loaded.camera.zoom)
+        {
+            return Err("Camera parameters out of valid bounds".to_string());
+        }
+        self.surface_type = loaded.surface_type;
+        self.sphere_radius = loaded.sphere_radius;
+        self.torus_major_radius = loaded.torus_major_radius;
+        self.torus_minor_radius = loaded.torus_minor_radius;
+        self.klein_radius = loaded.klein_radius;
+        self.u_resolution = loaded.u_resolution;
+        self.v_resolution = loaded.v_resolution;
+        self.camera = loaded.camera;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -294,9 +320,18 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "u_steps": 40,
-    "v_steps": 40,
-    "surface": "Enneper"
+    "surface_type": "Torus",
+    "sphere_radius": 1.0,
+    "torus_major_radius": 2.0,
+    "torus_minor_radius": 0.6,
+    "klein_radius": 2.0,
+    "u_resolution": 36,
+    "v_resolution": 36,
+    "camera": {
+      "pitch": 0.5,
+      "yaw": 0.5,
+      "zoom": 1.0
+    }
   }
 }"#;
 
@@ -304,7 +339,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "surface_viewer_starter",
         title: "Parametric Surface Viewer",
-        description: "r(u, v) = [x(u, v), y(u, v), z(u, v)]: 3D manifold mesh generation and normal vector rendering.",
+        description: "Parametric 3D wireframe manifold visualization for Sphere, Torus, and Klein Bottle surfaces.",
         category: "Differential Geometry",
         icon: "🔮",
         domain: "geometry_topology",

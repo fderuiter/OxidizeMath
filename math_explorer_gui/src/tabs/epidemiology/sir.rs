@@ -5,6 +5,7 @@ use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::epidemiology::compartmental::SIRModel;
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SirState {
     n: f64,
     i0: f64,
@@ -172,16 +173,28 @@ impl InteractiveTool for SirTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<SirState>(state) {
-            self.n = s.n;
-            self.i0 = s.i0;
-            self.beta = s.beta;
-            self.gamma = s.gamma;
-            self.duration = s.duration;
-            self.snapshot_manager = s.snapshot_manager;
-            self.recalculate();
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: SirState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid SIR state: {e}"))?;
+        if ![s.n, s.i0, s.beta, s.gamma, s.duration]
+            .iter()
+            .all(|v| v.is_finite())
+            || !(100.0..=100_000.0).contains(&s.n)
+            || !(1.0..=s.n).contains(&s.i0)
+            || !(0.0..=5.0).contains(&s.beta)
+            || !(0.0..=1.0).contains(&s.gamma)
+            || !(10.0..=365.0).contains(&s.duration)
+        {
+            return Err("SIR parameters out of bounds".into());
         }
+        self.n = s.n;
+        self.i0 = s.i0;
+        self.beta = s.beta;
+        self.gamma = s.gamma;
+        self.duration = s.duration;
+        self.snapshot_manager = s.snapshot_manager;
+        self.recalculate();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -349,9 +362,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
+    "n": 1000.0,
+    "i0": 10.0,
     "beta": 0.3,
     "gamma": 0.1,
-    "population": 10000
+    "duration": 120.0
   }
 }"#;
 

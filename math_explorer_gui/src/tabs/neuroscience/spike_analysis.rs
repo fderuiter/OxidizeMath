@@ -44,10 +44,51 @@ impl Default for SpikeAnalysisTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpikeAnalysisState {
+    input_current: f64,
+    spike_threshold: f64,
+    simulation_speed: usize,
+    is_running: bool,
+}
+
 impl InteractiveTool for SpikeAnalysisTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Spike Train Analysis"
+    }
+    fn domain(&self) -> &'static str {
+        "neuroscience"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&SpikeAnalysisState {
+            input_current: self.input_current,
+            spike_threshold: self.spike_threshold,
+            simulation_speed: self.simulation_speed,
+            is_running: self.is_running,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: SpikeAnalysisState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid spike analysis state: {e}"))?;
+        if !parsed.input_current.is_finite()
+            || !(0.0..=50.0).contains(&parsed.input_current)
+            || !parsed.spike_threshold.is_finite()
+            || !(-50.0..=20.0).contains(&parsed.spike_threshold)
+            || !(1..=100).contains(&parsed.simulation_speed)
+        {
+            return Err("Spike analysis parameters out of bounds".into());
+        }
+        self.reset();
+        self.input_current = parsed.input_current;
+        self.spike_threshold = parsed.spike_threshold;
+        self.simulation_speed = parsed.simulation_speed;
+        self.is_running = parsed.is_running;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -353,8 +394,10 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "firing_rate_hz": 40.0,
-    "refractory_period_ms": 2.0
+    "input_current": 15.0,
+    "spike_threshold": 0.0,
+    "simulation_speed": 20,
+    "is_running": false
   }
 }"#;
 
@@ -362,7 +405,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "spike_analysis_starter",
         title: "Spike Train Raster & ISI",
-        description: "Inter-spike interval (ISI) histogram and Fano factor variance analysis of neural spike trains.",
+        description: "Hodgkin-Huxley membrane voltage spike raster and inter-spike interval (ISI) histogram analysis.",
         category: "Electrophysiology",
         icon: "📈",
         domain: "neuroscience",

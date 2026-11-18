@@ -54,10 +54,43 @@ impl TokenizationTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TokenizationState {
+    input_text: String,
+    d_model: usize,
+    use_subword: bool,
+}
+
 impl InteractiveTool for TokenizationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Tokenization & Embeddings"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&TokenizationState {
+            input_text: self.input_text.clone(),
+            d_model: self.d_model,
+            use_subword: self.use_subword,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: TokenizationState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid tokenization state: {e}"))?;
+        if !(4..=32).contains(&parsed.d_model) {
+            return Err("d_model must be between 4 and 32".into());
+        }
+        self.input_text = parsed.input_text;
+        self.d_model = parsed.d_model;
+        self.use_subword = parsed.use_subword;
+        self.recalculate_tokens();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -226,21 +259,22 @@ impl scientific_metadata::theory::TheoryDescribable for TokenizationTool {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Byte-Pair Tokenizer",
+    "title": "Tokenization & Embeddings",
     "domain": "ai",
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "vocab_size": 1000,
-    "sample_text": "Neural attention mechanisms"
+    "input_text": "Attention mechanisms map discrete tokens into continuous embeddings.",
+    "d_model": 8,
+    "use_subword": false
   }
 }"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "tokenization_starter",
-        title: "Byte-Pair Tokenizer",
-        description: "Subword lexical segmentation and token vocabulary mapping for natural language representations.",
+        title: "Tokenization & Embeddings",
+        description: "Word and character-level lexical segmentation mapped to d_model pseudo-embedding vectors.",
         category: "NLP",
         icon: "🔤",
         domain: "ai",

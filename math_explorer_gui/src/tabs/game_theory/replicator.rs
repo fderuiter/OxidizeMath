@@ -293,31 +293,16 @@ impl InteractiveTool for ReplicatorDynamicsTool {
         "game_theory"
     }
 
-    fn export_preset_json(&self) -> Result<String, String> {
-        self.to_json_string()
-    }
-
-    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let res = self.from_json_str(json_str);
-        if res.is_ok() {
-            self.run_simulation();
-        }
-        res
-    }
-
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&self.export_config()).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(config) = serde_json::from_str::<ReplicatorPresetConfig>(state) {
-            let _ = self.apply_config(config);
-            self.run_simulation();
-        }
-    }
-
-    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        self.from_json_str(json_str)
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let config: ReplicatorPresetConfig = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid ReplicatorDynamicsTool state: {}", e))?;
+        self.apply_config(config)?;
+        self.run_simulation();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {

@@ -383,17 +383,36 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn save_state(&self) -> Option<String> {
-        let params = self.params.read().ok()?.clone();
-        serde_json::to_string(&params).ok()
+        let params = self.params.read().ok()?;
+        let sorted: std::collections::BTreeMap<&String, &f64> = params.iter().collect();
+        serde_json::to_string(&sorted).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(params) = serde_json::from_str::<HashMap<String, f64>>(state) {
-            if let Ok(mut p) = self.params.write() {
-                *p = params;
-            }
-            let _ = self.controller.send_command(SimCommand::Reset);
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded = serde_json::from_str::<HashMap<String, f64>>(state)
+            .map_err(|e| format!("Invalid parameter map JSON: {}", e))?;
+        if !self.param_metadata.is_empty() && loaded.is_empty() {
+            return Err(format!("Parameter map cannot be empty for {}", M::name()));
         }
+        for (key, &val) in &loaded {
+            let Some((_, constraint)) = self.param_metadata.iter().find(|(n, _)| n == key) else {
+                return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
+            };
+            if !val.is_finite() || val < constraint.min - 1e-9 || val > constraint.max + 1e-9 {
+                return Err(format!(
+                    "Parameter '{}' value {} out of range [{}, {}]",
+                    key, val, constraint.min, constraint.max
+                ));
+            }
+        }
+        if let Ok(mut p) = self.params.write() {
+            for (k, v) in loaded {
+                p.insert(k, v);
+            }
+        }
+        self.texture = None;
+        self.reset_simulation();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {

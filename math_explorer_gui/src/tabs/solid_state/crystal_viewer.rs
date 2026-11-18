@@ -113,6 +113,16 @@ impl CrystalViewer {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CrystalState {
+    system: CrystalSystemEnum,
+    lattice_constant: f64,
+    yaw: f32,
+    pitch: f32,
+    zoom: f32,
+}
+
 impl InteractiveTool for CrystalViewer {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -123,14 +133,6 @@ impl InteractiveTool for CrystalViewer {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CrystalState {
-            system: CrystalSystemEnum,
-            lattice_constant: f64,
-            yaw: f32,
-            pitch: f32,
-            zoom: f32,
-        }
         serde_json::to_string(&CrystalState {
             system: self.system,
             lattice_constant: self.lattice_constant,
@@ -140,22 +142,28 @@ impl InteractiveTool for CrystalViewer {
         }).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CrystalState {
-            system: CrystalSystemEnum,
-            lattice_constant: f64,
-            yaw: f32,
-            pitch: f32,
-            zoom: f32,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: CrystalState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid CrystalViewer state: {e}"))?;
+        if !s.lattice_constant.is_finite() || !(0.5..=5.0).contains(&s.lattice_constant) {
+            return Err(format!(
+                "lattice_constant out of [0.5, 5.0]: {}",
+                s.lattice_constant
+            ));
         }
-        if let Ok(s) = serde_json::from_str::<CrystalState>(state) {
-            self.system = s.system;
-            self.lattice_constant = s.lattice_constant;
-            self.yaw = s.yaw;
-            self.pitch = s.pitch;
-            self.zoom = s.zoom;
+        if !s.yaw.is_finite()
+            || !s.pitch.is_finite()
+            || !s.zoom.is_finite()
+            || !(10.0..=200.0).contains(&s.zoom)
+        {
+            return Err("Camera yaw/pitch/zoom out of valid range".to_string());
         }
+        self.system = s.system;
+        self.lattice_constant = s.lattice_constant;
+        self.yaw = s.yaw;
+        self.pitch = s.pitch;
+        self.zoom = s.zoom;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -264,8 +272,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "structure": "FCC",
-    "unit_cells": 2
+    "system": "FaceCenteredCubic",
+    "lattice_constant": 2.0,
+    "yaw": 0.5,
+    "pitch": 0.5,
+    "zoom": 50.0
   }
 }"#;
 
@@ -273,7 +284,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "crystal_viewer_starter",
         title: "Bravais Crystal Lattice",
-        description: "3D periodic atomic unit cell crystallographic coordinates (FCC, BCC, Diamond cubic structures).",
+        description: "3D periodic unit cell atomic coordinates for Simple Cubic, BCC, and FCC Bravais lattices.",
         category: "Crystallography",
         icon: "💎",
         domain: "solid_state",

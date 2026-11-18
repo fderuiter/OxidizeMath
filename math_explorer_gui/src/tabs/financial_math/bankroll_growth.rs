@@ -112,6 +112,15 @@ impl BankrollGrowthTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BankrollState {
+    initial_bankroll: f64,
+    probability: f64,
+    odds: f64,
+    num_bets: usize,
+}
+
 impl InteractiveTool for BankrollGrowthTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -122,36 +131,37 @@ impl InteractiveTool for BankrollGrowthTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BankrollState {
-            initial_bankroll: f64,
-            probability: f64,
-            odds: f64,
-            num_bets: usize,
-        }
         serde_json::to_string(&BankrollState {
             initial_bankroll: self.initial_bankroll,
             probability: self.probability,
             odds: self.odds,
             num_bets: self.num_bets,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BankrollState {
-            initial_bankroll: f64,
-            probability: f64,
-            odds: f64,
-            num_bets: usize,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: BankrollState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid bankroll state: {e}"))?;
+        if ![s.initial_bankroll, s.probability, s.odds]
+            .iter()
+            .all(|v| v.is_finite())
+            || !(100.0..=10_000.0).contains(&s.initial_bankroll)
+            || !(0.01..=0.99).contains(&s.probability)
+            || !(0.1..=10.0).contains(&s.odds)
+            || !(10..=1000).contains(&s.num_bets)
+        {
+            return Err("Bankroll simulation parameters out of bounds".into());
         }
-        if let Ok(s) = serde_json::from_str::<BankrollState>(state) {
-            self.initial_bankroll = s.initial_bankroll;
-            self.probability = s.probability;
-            self.odds = s.odds;
-            self.num_bets = s.num_bets;
-            self.recalculate();
+        self.initial_bankroll = s.initial_bankroll;
+        self.probability = s.probability;
+        self.odds = s.odds;
+        self.num_bets = s.num_bets;
+        self.recalculate();
+        if let Some(err) = &self.error_msg {
+            return Err(err.clone());
         }
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -318,8 +328,10 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "initial_bankroll": 10000.0,
-    "time_steps": 100
+    "initial_bankroll": 1000.0,
+    "probability": 0.55,
+    "odds": 2.0,
+    "num_bets": 100
   }
 }"#;
 

@@ -12,10 +12,46 @@ pub struct FactorizationTool {
     results: Option<FactorizationResult>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FactorizationState {
+    input_text: String,
+}
+
 impl InteractiveTool for FactorizationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Factorization Tool"
+    }
+    fn domain(&self) -> &'static str {
+        "number_theory"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&FactorizationState {
+            input_text: self.input_text.clone(),
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: FactorizationState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid factorization state: {e}"))?;
+        let trimmed = parsed.input_text.trim();
+        if trimmed.is_empty() {
+            self.input_text = parsed.input_text;
+            self.results = None;
+            return Ok(());
+        }
+        let num = trimmed
+            .parse::<u64>()
+            .map_err(|_| "input_text must be an integer >= 2 or empty".to_string())?;
+        if num < 2 {
+            return Err("Number must be at least 2".into());
+        }
+        self.input_text = parsed.input_text;
+        self.results = Some(Ok((num, is_prime(num), prime_factors(num))));
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -141,7 +177,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "target_number": 104729
+    "input_text": "104729"
   }
 }"#;
 
@@ -149,7 +185,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "factorization_starter",
         title: "Prime Factorization",
-        description: "Fundamental theorem of arithmetic decomposition via Pollard rho and trial division heuristics.",
+        description: "Fundamental theorem of arithmetic prime power decomposition and deterministic primality testing.",
         category: "Arithmetic",
         icon: "🔢",
         domain: "number_theory",

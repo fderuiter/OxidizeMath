@@ -8,13 +8,13 @@ impl SimulationFramework {
             return;
         }
 
-        if let Some(tool) = &mut self.active_tool {
-            if self.preset_dialog.poll_import_tool(tool.as_mut()) {
-                if let Some(state) = tool.save_state() {
-                    self.saved_tool_states
-                        .insert(tool.name().to_string(), state);
-                }
-            }
+        let imported = self
+            .active_tool
+            .as_mut()
+            .is_some_and(|tool| self.preset_dialog.poll_import_tool(tool.as_mut()));
+        if imported {
+            self.sync_active_tool_state_after_preset();
+            ctx.request_repaint();
         }
 
         egui::TopBottomPanel::top(format!("{}_export_bar", id_source))
@@ -89,16 +89,7 @@ impl SimulationFramework {
                     self.preset_dialog.trigger_export(json_str, &filename);
                 }
                 Err(err) => {
-                    federated_registry::global_registry().emit(
-                        federated_registry::TelemetryEvent {
-                            source: "PresetSerialization".to_string(),
-                            severity: federated_registry::Severity::Warning,
-                            message: err.clone(),
-                            metadata: std::collections::HashMap::new(),
-                            thread_name: None,
-                        },
-                    );
-                    self.preset_dialog.toast_error = Some(err);
+                    self.preset_dialog.record_import_error(err);
                 }
             }
         }

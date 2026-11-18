@@ -60,6 +60,14 @@ impl TheoryDescribable for BifurcationDiagram {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BifurcationState {
+    r_min: f64,
+    r_max: f64,
+    steps: usize,
+}
+
 impl InteractiveTool for BifurcationDiagram {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     
@@ -72,32 +80,31 @@ impl InteractiveTool for BifurcationDiagram {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BifurcationState {
-            r_min: f64,
-            r_max: f64,
-            steps: usize,
-        }
         serde_json::to_string(&BifurcationState {
             r_min: self.r_min,
             r_max: self.r_max,
             steps: self.steps,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BifurcationState {
-            r_min: f64,
-            r_max: f64,
-            steps: usize,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: BifurcationState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid bifurcation state: {e}"))?;
+        if !s.r_min.is_finite()
+            || !s.r_max.is_finite()
+            || !(0.0..=4.0).contains(&s.r_min)
+            || !(0.0..=4.0).contains(&s.r_max)
+            || s.r_min >= s.r_max
+            || !(100..=2000).contains(&s.steps)
+        {
+            return Err("Bifurcation r bounds or step count invalid".into());
         }
-        if let Ok(s) = serde_json::from_str::<BifurcationState>(state) {
-            self.r_min = s.r_min;
-            self.r_max = s.r_max;
-            self.steps = s.steps;
-            self.recompute();
-        }
+        self.r_min = s.r_min;
+        self.r_max = s.r_max;
+        self.steps = s.steps;
+        self.recompute();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -242,7 +249,7 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "r_min": 2.5,
     "r_max": 4.0,
-    "iterations": 1000
+    "steps": 800
   }
 }"#;
 

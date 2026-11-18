@@ -14,6 +14,12 @@ impl Default for TemperatureAnomaliesTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TempState {
+    time_series: Vec<[f64; 2]>,
+}
+
 impl InteractiveTool for TemperatureAnomaliesTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -24,23 +30,22 @@ impl InteractiveTool for TemperatureAnomaliesTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct TempState {
-            time_series: Vec<[f64; 2]>,
-        }
         serde_json::to_string(&TempState {
             time_series: self.time_series.clone(),
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct TempState {
-            time_series: Vec<[f64; 2]>,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: TempState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid temperature state: {e}"))?;
+        if s.time_series.is_empty()
+            || !s.time_series.iter().all(|pt| pt[0].is_finite() && pt[1].is_finite())
+        {
+            return Err("Temperature time_series must be non-empty and finite".into());
         }
-        if let Ok(s) = serde_json::from_str::<TempState>(state) {
-            self.time_series = s.time_series;
-        }
+        self.time_series = s.time_series;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -94,8 +99,18 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "smoothing_years": 5,
-    "baseline_start": 1951
+    "time_series": [
+      [1880.0, -0.16],
+      [1900.0, -0.08],
+      [1920.0, -0.27],
+      [1940.0, 0.12],
+      [1960.0, -0.03],
+      [1980.0, 0.26],
+      [2000.0, 0.39],
+      [2010.0, 0.72],
+      [2020.0, 1.02],
+      [2023.0, 1.17]
+    ]
   }
 }"#;
 

@@ -10,6 +10,7 @@ use std::sync::mpsc::{channel, Receiver, TryRecvError};
 
 /// Metadata included in exported preset JSON files.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct PresetMetadata {
     /// Schema version for compatibility checking.
     pub schema_version: String,
@@ -23,6 +24,7 @@ pub struct PresetMetadata {
 
 /// Generic JSON envelope wrapping preset metadata and configuration parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct PresetWrapper<T> {
     /// Metadata header.
     pub metadata: PresetMetadata,
@@ -57,6 +59,7 @@ impl OdePreset {
 
 /// Configuration struct for ODE Solver simulation parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct OdePresetConfig {
     /// System equation type.
     pub preset: OdePreset,
@@ -81,6 +84,7 @@ pub struct OdePresetConfig {
 
 /// Configuration struct for Turing Morphogenesis simulation parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct MorphogenesisPresetConfig {
     /// Reaction kinetic parameter a.
     pub a: f64,
@@ -100,6 +104,7 @@ pub struct MorphogenesisPresetConfig {
 
 /// Configuration struct for Replicator Dynamics evolutionary game parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct ReplicatorPresetConfig {
     /// Payoff matrix (rows x cols).
     pub payoff_matrix: Vec<Vec<f64>>,
@@ -286,13 +291,13 @@ impl PresetDialogState {
         }
     }
 
-    fn record_toast_info(&mut self, msg: String) {
+    pub(crate) fn record_toast_info(&mut self, msg: String) {
         self.toast_error = None;
         crate::accessibility::announce_status(&msg);
         self.toast_info = Some(msg);
     }
 
-    fn record_import_error(&mut self, err: String) {
+    pub(crate) fn record_import_error(&mut self, err: String) {
         self.toast_info = None;
         global_registry().emit(TelemetryEvent {
             source: "PresetSerialization".to_string(),
@@ -395,9 +400,12 @@ pub fn render_preset_buttons<T: InteractivePreset>(
             dialog_state.trigger_import();
         }
         if ui.button("📤 Export Preset JSON").clicked() {
-            if let Ok(json_str) = tool.to_json_string() {
-                let filename = format!("{}_preset.json", tool.domain());
-                dialog_state.trigger_export(json_str, &filename);
+            match tool.to_json_string() {
+                Ok(json_str) => {
+                    let filename = format!("{}_preset.json", tool.domain());
+                    dialog_state.trigger_export(json_str, &filename);
+                }
+                Err(err) => dialog_state.record_import_error(err),
             }
         }
     });

@@ -271,12 +271,42 @@ impl RewardPlotsTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RewardPlotsState {
+    training_steps: usize,
+}
+
 impl InteractiveTool for RewardPlotsTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }
     fn name(&self) -> &'static str {
         "Reward Plots"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&RewardPlotsState {
+            training_steps: self.training_steps,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: RewardPlotsState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid reward plots state: {e}"))?;
+        if !(10..=1000).contains(&parsed.training_steps) {
+            return Err("training_steps must be between 10 and 1000".into());
+        }
+        self.training_steps = parsed.training_steps;
+        let _ = self.controller.send_command(SimCommand::Reset);
+        self.rewards_per_episode.clear();
+        self.episodes_trained = 0;
+        self.target_episodes = 0;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -336,8 +366,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "episodes": 200,
-    "smoothing_window": 10
+    "training_steps": 200
   }
 }"#;
 
@@ -345,7 +374,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "reward_plots_starter",
         title: "Reward Trajectory",
-        description: "Episode cumulative return and moving average reward learning dynamics across training episodes.",
+        description: "Episodic cumulative return trajectory across tabular Q-learning Grid World training episodes.",
         category: "Reinforcement Learning",
         icon: "🎯",
         domain: "ai",

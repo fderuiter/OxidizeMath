@@ -2,7 +2,7 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::presets::{InteractivePreset, PresetDialogState};
+use crate::presets::PresetDialogState;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use eframe::egui::ColorImage;
@@ -34,7 +34,7 @@ pub struct MorphogenesisTab {
     width: usize,
     height: usize,
     texture: Option<egui::TextureHandle>,
-    dialog_state: PresetDialogState,
+    pub(crate) dialog_state: PresetDialogState,
     pixels: Vec<egui::Color32>,
     dirty: bool,
     pub show_starter_gallery: bool,
@@ -177,8 +177,11 @@ impl ExplorerTab for MorphogenesisTab {
                 &cards,
                 &mut is_open,
             ) {
-                if let Some(preset_json) = card.preset_json {
-                    let _ = self.from_json_str(preset_json);
+                if self
+                    .apply_starter_card(card.title, card.preset_json)
+                    .is_ok()
+                {
+                    ctx.request_repaint();
                 }
                 is_open = false;
             }
@@ -286,7 +289,7 @@ impl MorphogenesisTab {
         }
     }
 
-    fn draw_controls(&mut self, ctx: &egui::Context) {
+    pub(crate) fn draw_controls(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("morphogenesis_controls").show(ctx, |ui| {
             ui.heading("Morphogenesis Controls");
             if ui.button("🎨 Starter Gallery").clicked() {
@@ -345,7 +348,7 @@ impl MorphogenesisTab {
         });
     }
 
-    fn draw_canvas(&mut self, ctx: &egui::Context) {
+    pub(crate) fn draw_canvas(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.dirty || self.texture.is_none() {
                 if let Some(snapshot) = self.worker.latest_snapshot() {

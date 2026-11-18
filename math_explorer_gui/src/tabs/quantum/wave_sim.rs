@@ -283,8 +283,8 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "barrier_height": 5.0,
-    "packet_energy": 3.0
+    "potential_type": 1.0,
+    "dt": 0.05
   }
 }"#;
 
@@ -292,7 +292,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "wave_sim_starter",
         title: "Schrödinger Wave Packet",
-        description: "iℏ·∂ψ/∂t = -ℏ²/(2m)∇²ψ + V·ψ: 1D quantum Gaussian wave packet tunneling through a potential barrier.",
+        description: "iℏ·∂ψ/∂t = -ℏ²/(2m)∇²ψ + V·ψ: 1D Gaussian wave packet evolution in infinite-well and harmonic oscillator potentials.",
         category: "Wave Mechanics",
         icon: "🌊",
         domain: "quantum",

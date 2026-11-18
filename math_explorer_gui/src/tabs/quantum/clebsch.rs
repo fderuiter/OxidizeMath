@@ -69,11 +69,62 @@ impl TheoryDescribable for ClebschGordanTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClebschGordanState {
+    j1: f64,
+    m1: f64,
+    j2: f64,
+    m2: f64,
+    j: f64,
+    m: f64,
+}
+
 impl InteractiveTool for ClebschGordanTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     
     fn name(&self) -> &'static str {
         "Clebsch-Gordan"
+    }
+    fn domain(&self) -> &'static str {
+        "quantum"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&ClebschGordanState {
+            j1: self.j1,
+            m1: self.m1,
+            j2: self.j2,
+            m2: self.m2,
+            j: self.j,
+            m: self.m,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: ClebschGordanState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid Clebsch-Gordan state: {e}"))?;
+        if ![parsed.j1, parsed.m1, parsed.j2, parsed.m2, parsed.j, parsed.m]
+            .iter()
+            .all(|v| v.is_finite())
+            || !(0.0..=10.0).contains(&parsed.j1)
+            || !(-10.0..=10.0).contains(&parsed.m1)
+            || !(0.0..=10.0).contains(&parsed.j2)
+            || !(-10.0..=10.0).contains(&parsed.m2)
+            || !(0.0..=20.0).contains(&parsed.j)
+            || !(-20.0..=20.0).contains(&parsed.m)
+        {
+            return Err("Clebsch-Gordan quantum numbers out of bounds".into());
+        }
+        self.j1 = parsed.j1;
+        self.m1 = parsed.m1;
+        self.j2 = parsed.j2;
+        self.m2 = parsed.m2;
+        self.j = parsed.j;
+        self.m = parsed.m;
+        self.calculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -237,7 +288,11 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "j1": 1.0,
-    "j2": 1.0
+    "m1": 1.0,
+    "j2": 0.5,
+    "m2": -0.5,
+    "j": 1.5,
+    "m": 0.5
   }
 }"#;
 

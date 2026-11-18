@@ -14,6 +14,12 @@ impl Default for Co2ProjectionsTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Co2State {
+    reduction_scenario: f64,
+}
+
 impl InteractiveTool for Co2ProjectionsTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -24,23 +30,20 @@ impl InteractiveTool for Co2ProjectionsTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct Co2State {
-            reduction_scenario: f64,
-        }
         serde_json::to_string(&Co2State {
             reduction_scenario: self.reduction_scenario,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct Co2State {
-            reduction_scenario: f64,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: Co2State =
+            serde_json::from_str(state).map_err(|e| format!("Invalid CO2 state: {e}"))?;
+        if !s.reduction_scenario.is_finite() || !(0.0..=1.0).contains(&s.reduction_scenario) {
+            return Err("reduction_scenario must be finite within [0.0, 1.0]".into());
         }
-        if let Ok(s) = serde_json::from_str::<Co2State>(state) {
-            self.reduction_scenario = s.reduction_scenario;
-        }
+        self.reduction_scenario = s.reduction_scenario;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -109,8 +112,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "baseline_ppm": 420.0,
-    "annual_growth": 2.5
+    "reduction_scenario": 0.35
   }
 }"#;
 
@@ -118,7 +120,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "co2_projections_starter",
         title: "CO2 Emissions Trajectory",
-        description: "Atmospheric carbon concentration forecasting across shared socioeconomic pathways (SSPs).",
+        description: "Historical and projected atmospheric CO2 concentration curves under emission reduction scenarios.",
         category: "Atmospheric Physics",
         icon: "🏭",
         domain: "climate",

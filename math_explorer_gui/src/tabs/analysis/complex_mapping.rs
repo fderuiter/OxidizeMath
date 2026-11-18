@@ -123,6 +123,16 @@ impl ComplexMappingTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ComplexMappingState {
+    function: MappingFunction,
+    grid_min: f64,
+    grid_max: f64,
+    grid_density: usize,
+    inspection_point: [f64; 2],
+}
+
 impl InteractiveTool for ComplexMappingTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -133,39 +143,33 @@ impl InteractiveTool for ComplexMappingTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct ComplexMappingState {
-            function: MappingFunction,
-            grid_min: f64,
-            grid_max: f64,
-            grid_density: usize,
-            inspection_point: [f64; 2],
-        }
         serde_json::to_string(&ComplexMappingState {
             function: self.function,
             grid_min: self.grid_min,
             grid_max: self.grid_max,
             grid_density: self.grid_density,
             inspection_point: self.inspection_point,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct ComplexMappingState {
-            function: MappingFunction,
-            grid_min: f64,
-            grid_max: f64,
-            grid_density: usize,
-            inspection_point: [f64; 2],
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: ComplexMappingState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid complex mapping state: {e}"))?;
+        if !s.grid_min.is_finite()
+            || !s.grid_max.is_finite()
+            || s.grid_min >= s.grid_max
+            || !(2..=math_commons::registry::MAX_GRID_SIZE).contains(&s.grid_density)
+            || !s.inspection_point.iter().all(|v| v.is_finite())
+        {
+            return Err("Complex mapping bounds or density out of valid range".into());
         }
-        if let Ok(s) = serde_json::from_str::<ComplexMappingState>(state) {
-            self.function = s.function;
-            self.grid_min = s.grid_min;
-            self.grid_max = s.grid_max;
-            self.grid_density = s.grid_density;
-            self.inspection_point = s.inspection_point;
-        }
+        self.function = s.function;
+        self.grid_min = s.grid_min;
+        self.grid_max = s.grid_max;
+        self.grid_density = s.grid_density;
+        self.inspection_point = s.inspection_point;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -435,8 +439,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "function": "z^2",
-    "grid_bound": 2.0
+    "function": "ZSquared",
+    "grid_min": -2.0,
+    "grid_max": 2.0,
+    "grid_density": 12,
+    "inspection_point": [1.0, 1.0]
   }
 }"#;
 

@@ -97,6 +97,12 @@ impl SurvivalAnalysisTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SurvivalState {
+    input_text: String,
+}
+
 impl InteractiveTool for SurvivalAnalysisTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -107,24 +113,30 @@ impl InteractiveTool for SurvivalAnalysisTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct SurvivalState {
-            input_text: String,
-        }
         serde_json::to_string(&SurvivalState {
             input_text: self.input_text.clone(),
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct SurvivalState {
-            input_text: String,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: SurvivalState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid survival state: {e}"))?;
+        let mut candidate = Self {
+            input_text: s.input_text,
+            observations: Vec::new(),
+            curve: Vec::new(),
+            error_message: None,
+        };
+        candidate.recalculate();
+        if let Some(err) = candidate.error_message {
+            return Err(err);
         }
-        if let Ok(s) = serde_json::from_str::<SurvivalState>(state) {
-            self.input_text = s.input_text;
-            self.recalculate();
+        if candidate.observations.is_empty() {
+            return Err("Survival observations cannot be empty".into());
         }
+        *self = candidate;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -218,8 +230,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "time_horizon_months": 24,
-    "hazard_ratio": 0.7
+    "input_text": "6.0, 1\n6.0, 1\n7.0, 1\n10.0, 1\n13.0, 1\n16.0, 1\n22.0, 1\n23.0, 1\n6.0, 0\n9.0, 0\n10.0, 0\n11.0, 0\n17.0, 0\n20.0, 0\n25.0, 0"
   }
 }"#;
 

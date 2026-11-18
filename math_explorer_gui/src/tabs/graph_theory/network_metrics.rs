@@ -18,6 +18,7 @@ enum MetricType {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct NetworkMetricsState {
     selected_metric: MetricType,
 }
@@ -135,11 +136,12 @@ impl InteractiveTool for NetworkMetricsTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<NetworkMetricsState>(state) {
-            self.selected_metric = loaded.selected_metric;
-            self.compute_metrics();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded: NetworkMetricsState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid NetworkMetrics state: {e}"))?;
+        self.selected_metric = loaded.selected_metric;
+        self.compute_metrics();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -290,8 +292,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "num_nodes": 20,
-    "edge_probability": 0.2
+    "selected_metric": "DegreeCentrality"
   }
 }"#;
 
@@ -299,7 +300,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "network_metrics_starter",
         title: "Network Centrality Metrics",
-        description: "Betweenness, closeness, degree, and eigenvector centrality distributions across complex graphs.",
+        description: "Degree centrality, closeness centrality, local clustering coefficient, and graph diameter.",
         category: "Network Science",
         icon: "📊",
         domain: "graph_theory",

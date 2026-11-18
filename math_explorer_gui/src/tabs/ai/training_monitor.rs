@@ -105,10 +105,46 @@ impl TrainingMonitorTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TrainingMonitorState {
+    learning_rate: f64,
+    hidden_dim: usize,
+    is_training: bool,
+}
+
 impl InteractiveTool for TrainingMonitorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Training Monitor"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&TrainingMonitorState {
+            learning_rate: self.learning_rate,
+            hidden_dim: self.hidden_dim,
+            is_training: self.is_training,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: TrainingMonitorState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid training monitor state: {e}"))?;
+        if !parsed.learning_rate.is_finite()
+            || !(0.001..=0.1).contains(&parsed.learning_rate)
+            || !(2..=64).contains(&parsed.hidden_dim)
+        {
+            return Err("Training monitor learning_rate or hidden_dim out of bounds".into());
+        }
+        self.learning_rate = parsed.learning_rate;
+        self.hidden_dim = parsed.hidden_dim;
+        self.reinit_model();
+        self.is_training = parsed.is_training;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -344,8 +380,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "max_epochs": 50,
-    "batch_size": 32
+    "learning_rate": 0.01,
+    "hidden_dim": 24,
+    "is_training": false
   }
 }"#;
 
@@ -353,7 +390,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "training_monitor_starter",
         title: "Training Monitor",
-        description: "Live loss curve tracking, learning rate schedules, and validation perplexity convergence metrics.",
+        description: "Two-layer MLP spiral classification training monitor tracking live loss and accuracy curves.",
         category: "Deep Learning",
         icon: "📈",
         domain: "ai",

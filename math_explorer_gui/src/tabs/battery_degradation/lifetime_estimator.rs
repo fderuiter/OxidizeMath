@@ -19,6 +19,14 @@ impl Default for LifetimeEstimatorTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LifetimeEstimatorState {
+    target_capacity: f64,
+    dod: f64,
+    cycles_per_day: f64,
+}
+
 impl InteractiveTool for LifetimeEstimatorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -29,31 +37,30 @@ impl InteractiveTool for LifetimeEstimatorTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct LifetimeEstimatorState {
-            target_capacity: f64,
-            dod: f64,
-            cycles_per_day: f64,
-        }
         serde_json::to_string(&LifetimeEstimatorState {
             target_capacity: self.target_capacity,
             dod: self.dod,
             cycles_per_day: self.cycles_per_day,
-        }).ok()
+        })
+        .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct LifetimeEstimatorState {
-            target_capacity: f64,
-            dod: f64,
-            cycles_per_day: f64,
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: LifetimeEstimatorState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid lifetime estimator state: {e}"))?;
+        if !s.target_capacity.is_finite()
+            || !(10.0..=99.0).contains(&s.target_capacity)
+            || !s.dod.is_finite()
+            || !(0.1..=100.0).contains(&s.dod)
+            || !s.cycles_per_day.is_finite()
+            || !(0.1..=10.0).contains(&s.cycles_per_day)
+        {
+            return Err("Lifetime estimator parameters out of bounds".into());
         }
-        if let Ok(s) = serde_json::from_str::<LifetimeEstimatorState>(state) {
-            self.target_capacity = s.target_capacity;
-            self.dod = s.dod;
-            self.cycles_per_day = s.cycles_per_day;
-        }
+        self.target_capacity = s.target_capacity;
+        self.dod = s.dod;
+        self.cycles_per_day = s.cycles_per_day;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -172,8 +179,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "temperature_c": 25.0,
-    "c_rate": 1.0
+    "target_capacity": 80.0,
+    "dod": 60.0,
+    "cycles_per_day": 1.0
   }
 }"#;
 
@@ -181,7 +189,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "lifetime_estimator_starter",
         title: "Battery Lifetime Estimator",
-        description: "Arrhenius thermal acceleration and C-rate stress damage curves for state-of-health prognosis.",
+        description: "Power-law battery cycle life and calendar lifetime estimator from depth-of-discharge usage profiles.",
         category: "Battery Systems",
         icon: "⏳",
         domain: "battery_degradation",
