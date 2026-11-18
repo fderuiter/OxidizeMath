@@ -411,3 +411,58 @@ fn generate_verification_screenshot(path: &str, _title: &str, labels: &[&str]) {
         let _ = std::fs::write(path, png_data);
     }
 }
+
+#[test]
+fn test_lazy_secondary_slots_and_same_domain_quad_isolation() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let mut frame = eframe::Frame::_new_kittest();
+    assert_eq!(app.active_secondary_slot_count(), 0);
+    let Some(epi_idx) = app.tabs.iter().position(|t| t.name() == "Epidemiology") else {
+        return;
+    };
+    for p in 0..4 {
+        app.set_pane_tab(p, epi_idx);
+        let fw = app.pane_tab_mut(p).unwrap().framework_mut().unwrap();
+        assert!(fw.select_tool_by_name("SirTool"));
+        let beta = 0.2 + p as f64 * 0.8;
+        fw.active_tool.as_mut().unwrap().load_state(&format!(
+            r#"{{"n":1000.0,"i0":10.0,"beta":{beta},"gamma":0.1,"duration":100.0}}"#
+        ));
+    }
+    let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1280.0, 900.0));
+    for (layout, expected_slots) in [
+        (ViewportLayout::SplitHorizontal, 1),
+        (ViewportLayout::SplitVertical, 1),
+        (ViewportLayout::QuadGrid, 3),
+    ] {
+        app.set_layout(layout);
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            },
+            |c| app.update(c, &mut frame),
+        );
+        assert_eq!(app.active_secondary_slot_count(), expected_slots);
+    }
+    for p in 0..4 {
+        let state = app
+            .pane_tab(p)
+            .unwrap()
+            .framework()
+            .unwrap()
+            .active_tool
+            .as_ref()
+            .unwrap()
+            .save_state()
+            .unwrap();
+        let expected_beta = format!("\"beta\":{}", 0.2 + p as f64 * 0.8);
+        assert!(
+            state.contains(&expected_beta),
+            "Pane {p} lost beta: {state}"
+        );
+    }
+    app.set_layout(ViewportLayout::Single);
+    assert_eq!(app.active_secondary_slot_count(), 0);
+}

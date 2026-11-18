@@ -28,8 +28,14 @@ fn test_ising_model_render_lifecycle_and_dirty_tracking() {
     assert!(tool.texture.is_some());
     assert_eq!(tool.pixels.len(), 100 * 100);
 
-    // Verify pixel buffer content matches lattice spins
-    for (pixel, &s) in tool.pixels.iter().zip(tool.lattice.spins().iter()) {
+    // Verify pixel buffer content matches worker snapshot spins
+    let spins = tool
+        .worker
+        .latest_snapshot()
+        .and_then(|s| s.structured_data.as_ref())
+        .and_then(|d| d.downcast_ref::<Vec<i8>>())
+        .expect("Seeded worker snapshot must contain spin vector");
+    for (pixel, &s) in tool.pixels.iter().zip(spins.iter()) {
         let expected = if s > 0 {
             egui::Color32::from_rgb(200, 50, 50)
         } else {
@@ -69,8 +75,7 @@ fn test_ising_model_render_lifecycle_and_dirty_tracking() {
     assert!(!tool.dirty);
 
     // 5. Lattice reset marks dirty and retains existing texture handle for reuse.
-    tool.lattice = SpinLattice::new(100, 100, None);
-    tool.dirty = true;
+    tool.reset();
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         tool.show(ctx);
     });

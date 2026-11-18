@@ -110,10 +110,13 @@ impl SimulationFramework {
         match check_result {
             Ok(()) => {
                 if !self.is_diverged {
+                    let active_name = self.active_tool.as_ref().map(|t| t.name());
                     if !plot_datasets.is_empty() {
                         self.current_valid_plot_datasets = plot_datasets;
+                        self.overlay_sync.2 = active_name;
                     } else if !tool_datasets.is_empty() {
                         self.current_valid_plot_datasets = tool_datasets;
+                        self.overlay_sync.2 = active_name;
                     }
                     self.step_counter += 1;
                 }

@@ -251,8 +251,7 @@ mod tests {
     ))]
     fn test_hoisted_domain_tools_state_roundtrip_part_2() {
         assert_tool_roundtrip(
-            // allow(entropy_guard): module path `randomization` matches substring `random`
-            &mut crate::tabs::clinical_trials::randomization::RandomizationTool::default(),
+            &mut <crate::tabs::clinical_trials::randomization::RandomizationTool>::default(),
             r#"{"randomization_type":"Block","n_subjects":24,"block_size":6}"#,
         );
         assert_tool_roundtrip(

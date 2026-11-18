@@ -60,7 +60,6 @@ impl QTableInspectorTool {
             )
         };
         self.env = build_env();
-        self.agent = build_agent();
         self.cached_q_values.clear();
         self.episodes_trained = 0;
         self.view = s.view;
@@ -71,6 +70,7 @@ impl QTableInspectorTool {
             target_episodes: 0,
             is_training: false,
         });
+        self.sync_from_latest();
         Ok(())
     }
 }

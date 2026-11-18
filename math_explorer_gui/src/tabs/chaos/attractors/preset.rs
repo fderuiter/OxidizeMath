@@ -49,6 +49,7 @@ impl AttractorPlotter {
         self.simulation_speed = s.simulation_speed;
         self.show_annotations = s.show_annotations;
         self.reset();
+        let _ = self.worker.update();
         let execution_state = s.execution_state.unwrap_or(if s.paused == Some(true) {
             SolverExecutionState::Paused
         } else {
