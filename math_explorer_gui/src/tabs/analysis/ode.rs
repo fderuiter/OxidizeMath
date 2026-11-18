@@ -15,8 +15,8 @@ use crate::presets::{InteractivePreset, OdePreset};
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 
-pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::recovery::emit_divergence_telemetry;
+pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use recovery::clamp_ode_parameters;
 
 // ----------------------------------------------------------------------------
@@ -73,7 +73,10 @@ impl Default for OdeSolverTool {
                 vec![
                     ("y' = -k*y*sin(t) (Non-linear Sine)", "-k * y * sin(t)"),
                     ("y' = k*y (Exponential)", "k * y"),
-                    ("y' = r*y*(1 - y/cap_k) (Logistic)", "r * y * (1 - y / cap_k)"),
+                    (
+                        "y' = r*y*(1 - y/cap_k) (Logistic)",
+                        "r * y * (1 - y / cap_k)",
+                    ),
                     ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
                     ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
                 ],
@@ -236,7 +239,8 @@ impl OdeSolverTool {
                 format!("Initial (0, {:.2})", self.ic_y0),
                 [-25.0, -25.0],
             );
-            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last()) {
+            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last())
+            {
                 self.callout_manager.set_auto_callout(
                     "final_state",
                     [last_t, last_y],
@@ -274,39 +278,9 @@ impl OdeSolverTool {
                 t_div, step_idx, var_name
             );
             emit_divergence_telemetry("OdeSolverTool", t_div, step_idx, &var_name, &message);
-            self.diagnostic_report = Some(DiagnosticReport::new(
-                t_div, step_idx, var_name, message,
-            ));
+            self.diagnostic_report =
+                Some(DiagnosticReport::new(t_div, step_idx, var_name, message));
         }
-    }
-}
-
-impl FiniteStateGuard for OdeSolverTool {
-    fn is_finite_state(&self) -> bool {
-        !self.diverged
-            && self.time_series.iter().all(|t| t.is_finite())
-            && self.y_series.iter().all(|y| y.is_finite())
-            && self.v_series.iter().all(|v| v.is_finite())
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        OdeSolverTool::diagnostic_report(self)
-    }
-
-    fn diverged(&self) -> bool {
-        OdeSolverTool::diverged(self) || !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn auto_scale_step_size(&mut self) {
-        OdeSolverTool::auto_scale_step_size(self);
-    }
-
-    fn clamp_parameters(&mut self) {
-        self.clamp_instability_parameters();
-    }
-
-    fn reset_parameters(&mut self) {
-        OdeSolverTool::reset_parameters(self);
     }
 }
 
@@ -433,6 +407,11 @@ impl InteractiveTool for OdeSolverTool {
             self.show_annotations = s.show_annotations;
             self.recalculate();
         }
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        FiniteStateGuard::clamp_parameters(self);
+        true
     }
 
     fn show(&mut self, ctx: &egui::Context) {

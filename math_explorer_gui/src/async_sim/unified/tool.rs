@@ -421,6 +421,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         }
     }
 
+    fn clamp_parameters(&mut self) -> bool {
+        self.handle_recovery_action(crate::framework::recovery::RecoveryAction::ClampParameters);
+        true
+    }
+
     fn show(&mut self, ctx: &egui::Context) {
         let has_update = self.controller.update().is_some();
         if has_update || self.controller.state().is_running() {
@@ -444,5 +449,8 @@ impl<M: UnifiedModel> scientific_metadata::theory::TheoryDescribable for Unified
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         self.cached_descs.clone()
+    }
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        self.param_metadata.iter().cloned().collect()
     }
 }

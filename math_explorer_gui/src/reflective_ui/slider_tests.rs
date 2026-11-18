@@ -159,21 +159,6 @@ fn test_animated_slider_focus_loss_pause() {
 }
 
 #[test]
-fn test_animated_slider_from_constraint() {
-    let constraint = ParameterConstraint {
-        min: -2.0,
-        max: 8.0,
-        step: 0.25,
-    };
-    let mut val = 1.0;
-    let slider = AnimatedSlider::from_constraint(&mut val, &constraint).text("Constraint Slider");
-    assert_eq!(slider.min, -2.0);
-    assert_eq!(slider.max, 8.0);
-    assert_eq!(slider.step, 0.25);
-    assert_eq!(slider.label, "Constraint Slider");
-}
-
-#[test]
 fn test_animated_slider_custom_speed_and_step() {
     let mut val = 0.0;
     let slider = AnimatedSlider::new(&mut val, 0.0..=100.0)

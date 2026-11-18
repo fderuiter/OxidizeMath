@@ -144,8 +144,6 @@ pub fn analyze_files(rs_files: &[std::path::PathBuf]) -> FileMetrics {
                     || content.contains("theory_verification!")
                     || block.contains("stochastic_signature_verification!")
                     || content.contains("stochastic_signature_verification!")
-                    || block.contains("empirical_verification!")
-                    || content.contains("empirical_verification!")
                 {
                     m.wasm_covered += 1;
                 }
@@ -172,7 +170,6 @@ pub fn check_unverified_modules(members: &[String]) -> Vec<String> {
                     if let Ok(content) = fs::read_to_string(entry.path()) {
                         if content.contains("theory_verification!")
                             || content.contains("stochastic_signature_verification!")
-                            || content.contains("empirical_verification!")
                         {
                             has_theory = true;
                             break;

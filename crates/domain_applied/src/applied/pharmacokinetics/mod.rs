@@ -120,7 +120,6 @@ use pure_math::theory_verification;
 
 theory_verification!(
     module = "pharmacokinetics",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
     constants = {
         DOSE = 100.0;
     },
