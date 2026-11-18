@@ -308,14 +308,7 @@ fn test_simulation_framework_recovery_banner_ui_and_screenshot() {
 #[test]
 fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
     let mut framework = SimulationFramework::new("analysis");
-    if let Some(pos) = framework
-        .available_tools
-        .iter()
-        .position(|t| t.name.contains("ODE") || t.name.contains("Ode"))
-    {
-        framework.select_tool(pos);
-    }
-
+    let _ = framework.select_tool_by_name("OdeSolverTool");
     let baseline = framework
         .baseline_tool_state
         .clone()
@@ -325,16 +318,12 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
         obj.insert("dt".to_string(), serde_json::json!(0.2));
     }
     let modified = serde_json::to_string(&val).unwrap();
-
-    framework
-        .active_tool
-        .as_mut()
-        .unwrap()
-        .load_state(&modified);
+    load_active(&mut framework, &modified);
     egui_plot::append_last_plot_datasets(&[("Modified Run".to_string(), vec![[0.0, 5.0]])]);
     framework.current_valid_plot_datasets = vec![("Modified Run".to_string(), vec![[0.0, 5.0]])];
     framework.cache_valid_snapshot();
 
+    let before_reset = crate::web_io::PlatformInstant::now();
     framework.reset_parameters();
 
     assert!(egui_plot::get_last_plot_datasets().is_empty());
@@ -345,13 +334,20 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
     assert_eq!(snap.tool_state.as_ref(), Some(&baseline));
     assert!(snap.plot_datasets.is_empty());
     assert_eq!(snap.step_index, 0);
-
+    let zero = std::time::Duration::ZERO;
+    assert_eq!(before_reset.duration_since(snap.timestamp), zero);
+    assert!(snap.timestamp.duration_since(before_reset) >= zero);
     // Subsequent Step-Back must preserve restored baseline rather than reverting to modified state
     assert!(framework.rollback_step_back());
     assert_eq!(
         framework.active_tool.as_ref().unwrap().save_state(),
         Some(baseline)
     );
+
+    let mut empty_fw = SimulationFramework::new("__nonexistent_domain__");
+    assert!(empty_fw.active_tool.is_none());
+    empty_fw.reset_parameters();
+    assert!(empty_fw.last_valid_snapshot().is_none());
 }
 
 fn active_json(fw: &SimulationFramework) -> serde_json::Value {
