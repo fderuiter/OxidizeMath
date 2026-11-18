@@ -15,8 +15,8 @@ use crate::presets::{InteractivePreset, OdePreset};
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 
-pub use recovery::OdeDiagnosticReport;
 use recovery::clamp_ode_parameters;
+pub use recovery::OdeDiagnosticReport;
 
 // ----------------------------------------------------------------------------
 // Tool Implementation
@@ -72,7 +72,10 @@ impl Default for OdeSolverTool {
                 vec![
                     ("y' = -k*y*sin(t) (Non-linear Sine)", "-k * y * sin(t)"),
                     ("y' = k*y (Exponential)", "k * y"),
-                    ("y' = r*y*(1 - y/cap_k) (Logistic)", "r * y * (1 - y / cap_k)"),
+                    (
+                        "y' = r*y*(1 - y/cap_k) (Logistic)",
+                        "r * y * (1 - y / cap_k)",
+                    ),
                     ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
                     ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
                 ],
@@ -235,7 +238,8 @@ impl OdeSolverTool {
                 format!("Initial (0, {:.2})", self.ic_y0),
                 [-25.0, -25.0],
             );
-            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last()) {
+            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last())
+            {
                 self.callout_manager.set_auto_callout(
                     "final_state",
                     [last_t, last_y],
@@ -412,6 +416,21 @@ impl InteractiveTool for OdeSolverTool {
             self.show_annotations = s.show_annotations;
             self.recalculate();
         }
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        if !self.dt.is_finite() || self.dt <= 0.0 {
+            self.dt = 0.05;
+        } else {
+            self.dt = self.dt.clamp(1e-6, 0.1);
+        }
+        if !self.total_time.is_finite() || self.total_time <= 0.0 {
+            self.total_time = 10.0;
+        } else {
+            self.total_time = self.total_time.clamp(0.1, 100.0);
+        }
+        self.clamp_instability_parameters();
+        true
     }
 
     fn show(&mut self, ctx: &egui::Context) {
