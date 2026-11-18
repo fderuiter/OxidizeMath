@@ -1610,6 +1610,7 @@ impl<'a> Plot<'a> {
             editing_callout_idx: Option<usize>,
             edit_callout_text: String,
             edit_callout_offset: [f32; 2],
+            import_toast: Option<(String, bool)>,
         }
 
         impl Default for AccessState {
@@ -1646,6 +1647,7 @@ impl<'a> Plot<'a> {
                     editing_callout_idx: None,
                     edit_callout_text: String::new(),
                     edit_callout_offset: [30.0, -30.0],
+                    import_toast: None,
                 }
             }
         }
@@ -1667,6 +1669,10 @@ impl<'a> Plot<'a> {
             ui.data_mut(|d| d.remove_temp::<String>(plot_id.with("async_clipboard_status")))
         {
             access_state.status_message = Some(msg);
+        }
+
+        if let Some(status) = export::drain_import_status(plot_id) {
+            access_state.import_toast = Some(status);
         }
 
         if ui.ctx().data_mut(|d| {
@@ -1876,6 +1882,23 @@ impl<'a> Plot<'a> {
                         if ui.button("Clear Fit").clicked() {
                             access_state.fit_degree = None;
                         }
+                    }
+                }
+
+                if let Some((ref msg, is_error)) = access_state.import_toast {
+                    ui.separator();
+                    let (color, icon) = if is_error {
+                        (Color32::RED, "⚠️")
+                    } else {
+                        (Color32::LIGHT_GREEN, "ℹ️")
+                    };
+                    ui.colored_label(color, format!("{icon} {msg}"));
+                    if ui
+                        .small_button("✖")
+                        .on_hover_text("Dismiss import notification")
+                        .clicked()
+                    {
+                        access_state.import_toast = None;
                     }
                 }
             });
