@@ -213,19 +213,47 @@ impl SimulationFramework {
 
     /// Coordinates parameter reset to baseline on the active tool.
     pub fn reset_parameters(&mut self) {
-        if let Some(ref baseline_state) = self.baseline_tool_state.clone() {
+        if let Some(baseline_state) = self.baseline_tool_state.clone() {
             if let Some(tool) = &mut self.active_tool {
-                tool.load_state(baseline_state);
+                tool.load_state(&baseline_state);
+            } else if let Some(&meta) = self
+                .selected_tool_index
+                .and_then(|idx| self.available_tools.get(idx))
+            {
+                let mut new_tool = (meta.build)();
+                new_tool.load_state(&baseline_state);
+                self.active_tool = Some(new_tool);
             }
-        } else if let Some(idx) = self.selected_tool_index {
-            let meta = self.available_tools[idx];
+        } else if let Some(&meta) = self
+            .selected_tool_index
+            .and_then(|idx| self.available_tools.get(idx))
+        {
             let new_tool = (meta.build)();
+            self.baseline_tool_state = new_tool.save_state();
             self.active_tool = Some(new_tool);
         }
         egui_plot::clear_last_plot_datasets();
         self.current_valid_plot_datasets.clear();
         self.is_diverged = false;
         self.diagnostic_report = None;
+        self.step_counter = 0;
+        if let Some(tool) = &self.active_tool {
+            let restored_state = tool.save_state();
+            if let Some(ref state) = restored_state {
+                self.saved_tool_states
+                    .insert(tool.name().to_string(), state.clone());
+            } else {
+                self.saved_tool_states.remove(tool.name());
+            }
+            self.last_valid_snapshot = Some(StateSnapshot {
+                tool_state: restored_state,
+                plot_datasets: Vec::new(),
+                step_index: 0,
+                timestamp: std::time::Instant::now(),
+            });
+        } else {
+            self.last_valid_snapshot = None;
+        }
         emit_recovery_telemetry(
             "SimulationFramework",
             "Reset All Parameters",

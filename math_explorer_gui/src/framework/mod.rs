@@ -369,17 +369,19 @@ impl SimulationFramework {
         self.selected_tool_index = Some(index);
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();
+        let factory_baseline_state = new_tool.save_state();
         if let Some(state) = self.saved_tool_states.get(new_tool.name()) {
             new_tool.load_state(state);
         }
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.step_counter = 0;
-        self.baseline_tool_state = new_tool.save_state();
+        self.baseline_tool_state = factory_baseline_state;
+        let active_tool_state = new_tool.save_state();
         let initial_datasets = new_tool.export_datasets();
         self.current_valid_plot_datasets = initial_datasets.clone();
         self.last_valid_snapshot = Some(StateSnapshot {
-            tool_state: self.baseline_tool_state.clone(),
+            tool_state: active_tool_state,
             plot_datasets: initial_datasets,
             step_index: 0,
             timestamp: std::time::Instant::now(),
