@@ -85,19 +85,20 @@ impl InteractiveTool for BifurcationDiagram {
         }).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         #[derive(serde::Serialize, serde::Deserialize)]
         struct BifurcationState {
             r_min: f64,
             r_max: f64,
             steps: usize,
         }
-        if let Ok(s) = serde_json::from_str::<BifurcationState>(state) {
-            self.r_min = s.r_min;
-            self.r_max = s.r_max;
-            self.steps = s.steps;
-            self.recompute();
-        }
+        let s: BifurcationState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid BifurcationDiagram state: {e}"))?;
+        self.r_min = s.r_min;
+        self.r_max = s.r_max;
+        self.steps = s.steps;
+        self.recompute();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -242,7 +243,7 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "r_min": 2.5,
     "r_max": 4.0,
-    "iterations": 1000
+    "steps": 1000
   }
 }"#;
 

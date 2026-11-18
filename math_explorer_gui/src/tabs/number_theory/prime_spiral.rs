@@ -22,10 +22,36 @@ impl Default for PrimeSpiralWidget {
 
 use crate::framework::InteractiveTool;
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PrimeSpiralState {
+    grid_size: usize,
+}
+
 impl InteractiveTool for PrimeSpiralWidget {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Prime Spiral (Ulam Spiral)"
+    }
+    fn domain(&self) -> &'static str {
+        "number_theory"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&PrimeSpiralState {
+            grid_size: self.grid_size,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: PrimeSpiralState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid PrimeSpiralWidget state: {e}"))?;
+        if s.grid_size < 2 || s.grid_size > math_commons::registry::MAX_GRID_SIZE {
+            return Err("Invalid grid_size in PrimeSpiralWidget".to_string());
+        }
+        self.grid_size = s.grid_size;
+        self.texture = None;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -213,8 +239,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "grid_size": 101,
-    "start_num": 1
+    "grid_size": 101
   }
 }"#;
 

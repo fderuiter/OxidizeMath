@@ -292,7 +292,8 @@ impl PresetDialogState {
         self.toast_info = Some(msg);
     }
 
-    fn record_import_error(&mut self, err: String) {
+    /// Records a preset deserialization or import error into toast state, telemetry, and accessibility status.
+    pub(crate) fn record_import_error(&mut self, err: String) {
         self.toast_info = None;
         global_registry().emit(TelemetryEvent {
             source: "PresetSerialization".to_string(),

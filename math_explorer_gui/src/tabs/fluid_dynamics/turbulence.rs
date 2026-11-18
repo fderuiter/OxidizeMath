@@ -67,14 +67,14 @@ impl InteractiveTool for TurbulenceTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<TurbulenceState>(state) {
-            self.density = loaded.density;
-            self.dynamic_viscosity = loaded.dynamic_viscosity;
-            self.velocity = loaded.velocity;
-            self.length = loaded.length;
-            self.geometry = loaded.geometry;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded = serde_json::from_str::<TurbulenceState>(state).map_err(|e| e.to_string())?;
+        self.density = loaded.density;
+        self.dynamic_viscosity = loaded.dynamic_viscosity;
+        self.velocity = loaded.velocity;
+        self.length = loaded.length;
+        self.geometry = loaded.geometry;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -282,8 +282,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "viscosity": 0.001,
-    "energy_dissipation": 0.1
+    "density": 1.225,
+    "dynamic_viscosity": 0.0000181,
+    "velocity": 25.0,
+    "length": 1.0,
+    "geometry": "FlatPlate"
   }
 }"#;
 

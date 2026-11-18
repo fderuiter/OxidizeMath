@@ -378,6 +378,9 @@ impl InteractiveTool for AttentionMapsTool {
     fn name(&self) -> &'static str {
         "Attention Maps"
     }
+    fn domain(&self) -> &'static str { "ai" }
+    fn save_state(&self) -> Option<String> { self.serialize_state() }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> { self.deserialize_state(state) }
 
     fn show(&mut self, ctx: &egui::Context) {
         let input_mode = ctx.data(|d| {

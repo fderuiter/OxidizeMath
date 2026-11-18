@@ -37,10 +37,52 @@ impl Default for LossLandscapeTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct LossLandscapeState {
+    w_min: f64,
+    w_max: f64,
+    b_min: f64,
+    b_max: f64,
+    resolution: usize,
+}
+
 impl InteractiveTool for LossLandscapeTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Loss Landscape"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&LossLandscapeState {
+            w_min: self.w_min,
+            w_max: self.w_max,
+            b_min: self.b_min,
+            b_max: self.b_max,
+            resolution: self.resolution,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: LossLandscapeState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid LossLandscapeTool state: {e}"))?;
+        if !s.w_min.is_finite()
+            || !s.w_max.is_finite()
+            || !s.b_min.is_finite()
+            || !s.b_max.is_finite()
+            || s.resolution < 2
+        {
+            return Err("Invalid bounds or resolution in LossLandscapeTool".to_string());
+        }
+        self.w_min = s.w_min;
+        self.w_max = s.w_max;
+        self.b_min = s.b_min;
+        self.b_max = s.b_max;
+        self.resolution = s.resolution;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -196,8 +238,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "surface_type": "Rosenbrock",
-    "learning_rate": 0.01
+    "w_min": -0.5,
+    "w_max": 4.5,
+    "b_min": -1.5,
+    "b_max": 3.5,
+    "resolution": 25
   }
 }"#;
 

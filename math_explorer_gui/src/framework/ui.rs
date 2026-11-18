@@ -272,20 +272,7 @@ impl SimulationFramework {
                 &cards,
                 &mut is_open,
             ) {
-                if let Some(tool_name) = card.tool_name {
-                    if let Some(pos) = self
-                        .available_tools
-                        .iter()
-                        .position(|t| t.name == tool_name)
-                    {
-                        self.select_tool(pos);
-                    }
-                }
-                if let Some(preset_json) = card.preset_json {
-                    if let Some(tool) = &mut self.active_tool {
-                        let _ = tool.apply_preset_json(preset_json);
-                    }
-                }
+                let _ = self.launch_starter_card(&card);
                 is_open = false;
             }
             self.show_starter_gallery = is_open;

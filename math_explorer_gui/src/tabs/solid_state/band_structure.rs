@@ -55,7 +55,7 @@ impl InteractiveTool for BandStructureTool {
         }).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         #[derive(serde::Serialize, serde::Deserialize)]
         struct BandStructureState {
             e0: f64,
@@ -65,14 +65,14 @@ impl InteractiveTool for BandStructureTool {
             m: f64,
             show_free_electron: bool,
         }
-        if let Ok(s) = serde_json::from_str::<BandStructureState>(state) {
-            self.e0 = s.e0;
-            self.t = s.t;
-            self.a = s.a;
-            self.hbar = s.hbar;
-            self.m = s.m;
-            self.show_free_electron = s.show_free_electron;
-        }
+        let s = serde_json::from_str::<BandStructureState>(state).map_err(|e| e.to_string())?;
+        self.e0 = s.e0;
+        self.t = s.t;
+        self.a = s.a;
+        self.hbar = s.hbar;
+        self.m = s.m;
+        self.show_free_electron = s.show_free_electron;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -199,8 +199,12 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "lattice_type": "FCC",
-    "fermi_level": 0.0
+    "e0": 0.0,
+    "t": 1.5,
+    "a": 1.2,
+    "hbar": 1.0,
+    "m": 1.0,
+    "show_free_electron": true
   }
 }"#;
 

@@ -42,18 +42,19 @@ impl InteractiveTool for LifetimeEstimatorTool {
         }).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         #[derive(serde::Serialize, serde::Deserialize)]
         struct LifetimeEstimatorState {
             target_capacity: f64,
             dod: f64,
             cycles_per_day: f64,
         }
-        if let Ok(s) = serde_json::from_str::<LifetimeEstimatorState>(state) {
-            self.target_capacity = s.target_capacity;
-            self.dod = s.dod;
-            self.cycles_per_day = s.cycles_per_day;
-        }
+        let s: LifetimeEstimatorState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid LifetimeEstimatorTool state: {e}"))?;
+        self.target_capacity = s.target_capacity;
+        self.dod = s.dod;
+        self.cycles_per_day = s.cycles_per_day;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -172,8 +173,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "temperature_c": 25.0,
-    "c_rate": 1.0
+    "target_capacity": 80.0,
+    "dod": 75.0,
+    "cycles_per_day": 1.0
   }
 }"#;
 

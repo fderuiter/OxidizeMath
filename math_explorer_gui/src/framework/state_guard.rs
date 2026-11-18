@@ -249,7 +249,7 @@ impl SimulationFramework {
                 tool_state: restored_state,
                 plot_datasets: Vec::new(),
                 step_index: 0,
-                timestamp: std::time::Instant::now(),
+                timestamp: crate::web_io::PlatformInstant::now(),
             });
         } else {
             self.last_valid_snapshot = None;
@@ -259,6 +259,86 @@ impl SimulationFramework {
             "Reset All Parameters",
             "Restored default baseline configuration",
         );
+    }
+
+    pub(super) fn sync_active_baseline(&mut self) {
+        self.is_diverged = false;
+        self.diagnostic_report = None;
+        self.step_counter = 0;
+        if let Some(tool) = &self.active_tool {
+            let state = tool.save_state();
+            self.baseline_tool_state = state.clone();
+            if let Some(ref s) = state {
+                self.saved_tool_states
+                    .insert(tool.name().to_string(), s.clone());
+            } else {
+                self.saved_tool_states.remove(tool.name());
+            }
+            let datasets = tool.export_datasets();
+            self.current_valid_plot_datasets = datasets.clone();
+            self.last_valid_snapshot = Some(StateSnapshot {
+                tool_state: state,
+                plot_datasets: datasets,
+                step_index: 0,
+                timestamp: crate::web_io::PlatformInstant::now(),
+            });
+        }
+    }
+
+    /// Applies a preset JSON envelope to the active tool, refreshing baseline/snapshot on success
+    /// or recording a toast and telemetry warning on failure.
+    pub fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let res = match &mut self.active_tool {
+            Some(tool) => tool.apply_preset_json(json_str),
+            None => Err("No active tool selected for preset import".to_string()),
+        };
+        match res {
+            Ok(()) => {
+                self.sync_active_baseline();
+                Ok(())
+            }
+            Err(err) => {
+                self.preset_dialog.record_import_error(err.clone());
+                Err(err)
+            }
+        }
+    }
+
+    /// Rebuilds a clean target tool instance for a starter card, applies its preset JSON,
+    /// and synchronizes baseline/reset snapshots.
+    pub fn launch_starter_card(
+        &mut self,
+        card: &crate::starter_gallery::StarterCard,
+    ) -> Result<(), String> {
+        let target_idx = card
+            .tool_name
+            .and_then(|name| self.available_tools.iter().position(|t| t.name == name))
+            .or(self.selected_tool_index);
+        if let Some(idx) = target_idx {
+            if self.selected_tool_index != Some(idx) {
+                if let Some(old_tool) = &self.active_tool {
+                    if let Some(state) = old_tool.save_state() {
+                        self.saved_tool_states
+                            .insert(old_tool.name().to_string(), state);
+                    }
+                }
+            }
+            if let Some(&meta) = self.available_tools.get(idx) {
+                let new_tool = (meta.build)();
+                scientific_metadata::citation_registry::CitationRegistry::register(
+                    new_tool.name().to_string(),
+                    new_tool.theory().theory_citation(),
+                );
+                self.selected_tool_index = Some(idx);
+                self.active_tool = Some(new_tool);
+                self.sync_active_baseline();
+            }
+        }
+        if let Some(preset_json) = card.preset_json {
+            self.apply_preset_json(preset_json)?;
+        }
+        self.show_starter_gallery = false;
+        Ok(())
     }
 
     /// Dispatches a StateGuardAction remedy.

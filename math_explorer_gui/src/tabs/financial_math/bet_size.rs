@@ -66,7 +66,7 @@ impl InteractiveTool for BetSizeCalculatorTool {
         }).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         #[derive(serde::Serialize, serde::Deserialize)]
         struct BetSizeState {
             probability_input: f64,
@@ -77,15 +77,15 @@ impl InteractiveTool for BetSizeCalculatorTool {
             fractional_denominator: f64,
             bankroll: f64,
         }
-        if let Ok(s) = serde_json::from_str::<BetSizeState>(state) {
-            self.probability_input = s.probability_input;
-            self.odds_format = s.odds_format;
-            self.decimal_odds = s.decimal_odds;
-            self.american_odds = s.american_odds;
-            self.fractional_numerator = s.fractional_numerator;
-            self.fractional_denominator = s.fractional_denominator;
-            self.bankroll = s.bankroll;
-        }
+        let s = serde_json::from_str::<BetSizeState>(state).map_err(|e| e.to_string())?;
+        self.probability_input = s.probability_input;
+        self.odds_format = s.odds_format;
+        self.decimal_odds = s.decimal_odds;
+        self.american_odds = s.american_odds;
+        self.fractional_numerator = s.fractional_numerator;
+        self.fractional_denominator = s.fractional_denominator;
+        self.bankroll = s.bankroll;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -300,8 +300,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "win_probability": 0.55,
-    "payout_ratio": 1.0
+    "probability_input": 60.0,
+    "odds_format": "Decimal",
+    "decimal_odds": 2.0,
+    "american_odds": 100.0,
+    "fractional_numerator": 1.0,
+    "fractional_denominator": 1.0,
+    "bankroll": 2500.0
   }
 }"#;
 

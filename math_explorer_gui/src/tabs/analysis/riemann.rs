@@ -119,7 +119,7 @@ impl InteractiveTool for RiemannIntegrationTool {
         }).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         #[derive(serde::Serialize, serde::Deserialize)]
         struct RiemannState {
             preset: FunctionPreset,
@@ -127,13 +127,14 @@ impl InteractiveTool for RiemannIntegrationTool {
             max_x: f64,
             steps: usize,
         }
-        if let Ok(s) = serde_json::from_str::<RiemannState>(state) {
-            self.preset = s.preset;
-            self.min_x = s.min_x;
-            self.max_x = s.max_x;
-            self.steps = s.steps;
-            self.recalculate();
-        }
+        let s: RiemannState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid RiemannIntegrationTool state: {e}"))?;
+        self.preset = s.preset;
+        self.min_x = s.min_x;
+        self.max_x = s.max_x;
+        self.steps = s.steps;
+        self.recalculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -403,8 +404,10 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "partition_count": 20,
-    "method": "Midpoint"
+    "preset": "SinX",
+    "min_x": 0.0,
+    "max_x": 3.141592653589793,
+    "steps": 20
   }
 }"#;
 

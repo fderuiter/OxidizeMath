@@ -89,7 +89,7 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         }).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         #[derive(serde::Serialize, serde::Deserialize)]
         struct SampleSizeState {
             mode: CalculationMode,
@@ -100,16 +100,17 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             p1: f64,
             p2: f64,
         }
-        if let Ok(s) = serde_json::from_str::<SampleSizeState>(state) {
-            self.mode = s.mode;
-            self.alpha = s.alpha;
-            self.power = s.power;
-            self.delta = s.delta;
-            self.sigma = s.sigma;
-            self.p1 = s.p1;
-            self.p2 = s.p2;
-            self.recalculate();
-        }
+        let s: SampleSizeState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SampleSizeCalculatorTool state: {e}"))?;
+        self.mode = s.mode;
+        self.alpha = s.alpha;
+        self.power = s.power;
+        self.delta = s.delta;
+        self.sigma = s.sigma;
+        self.p1 = s.p1;
+        self.p2 = s.p2;
+        self.recalculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -277,9 +278,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
+    "mode": "Means",
     "alpha": 0.05,
-    "power": 0.8,
-    "effect_size": 0.5
+    "power": 0.85,
+    "delta": 0.5,
+    "sigma": 1.0,
+    "p1": 0.5,
+    "p2": 0.65
   }
 }"#;
 

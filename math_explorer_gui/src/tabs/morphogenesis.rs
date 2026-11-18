@@ -178,7 +178,9 @@ impl ExplorerTab for MorphogenesisTab {
                 &mut is_open,
             ) {
                 if let Some(preset_json) = card.preset_json {
-                    let _ = self.from_json_str(preset_json);
+                    if let Err(err) = self.from_json_str(preset_json) {
+                        self.dialog_state.record_import_error(err);
+                    }
                 }
                 is_open = false;
             }

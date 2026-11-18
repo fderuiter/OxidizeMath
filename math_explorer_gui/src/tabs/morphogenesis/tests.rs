@@ -326,3 +326,50 @@ fn test_morphogenesis_poisoned_lock_recovery() {
     });
 }
 
+#[test]
+fn test_turing_stripes_syncs_kinetics_before_reinit_and_surfaces_import_errors() {
+    let mut tab = MorphogenesisTab::default();
+    let _ = tab.worker.send_command(SimCommand::Pause);
+    thread::sleep(Duration::from_millis(20));
+
+    // Verify runner starts with default Schnakenberg kinetics (a=0.1, b=0.9 => v0 = 0.9)
+    let mut runner = MorphogenesisTab::create_runner(&tab.params, 20, 20);
+    assert!((runner.system.kinetics.a - 0.1).abs() < 1e-12);
+    assert!((runner.system.kinetics.b - 0.9).abs() < 1e-12);
+
+    // Launch Turing Stripes preset (a=0.14, b=0.86, d_u=1.0, d_v=50.0, dt=0.02)
+    assert!(tab
+        .from_json_str(crate::starter_gallery::PRESET_TURING_STRIPES)
+        .is_ok());
+    {
+        let p = tab.params.read().unwrap();
+        assert!((p.a - 0.14).abs() < 1e-12);
+        assert!((p.b - 0.86).abs() < 1e-12);
+        assert!((p.d_u - 1.0).abs() < 1e-12);
+        assert!((p.d_v - 50.0).abs() < 1e-12);
+        assert!((p.dt - 0.02).abs() < 1e-12);
+    }
+
+    // SimCommand::Reset must sync SchnakenbergKinetics BEFORE initialize_system computes steady state
+    runner.process_command(SimCommand::Reset);
+    assert!((runner.system.kinetics.a - 0.14).abs() < 1e-12);
+    assert!((runner.system.kinetics.b - 0.86).abs() < 1e-12);
+    assert_eq!(runner.system.diffusion_coeffs, [1.0, 50.0]);
+
+    let v_field = runner.system.v();
+    let mean_v = v_field.iter().sum::<f64>() / v_field.len() as f64;
+    // Steady state v_0 = b / (a + b)^2 = 0.86 / 1.0 = 0.86 (stale kinetics would produce ~0.90)
+    assert!(
+        (mean_v - 0.86).abs() < 0.02,
+        "Expected reinitialized mean v near 0.86, got {}",
+        mean_v
+    );
+
+    // Malformed preset JSON surfaces error in PresetDialogState
+    let err = tab
+        .from_json_str("{bad morphogenesis json")
+        .expect_err("Malformed JSON must fail");
+    tab.dialog_state.record_import_error(err);
+    assert!(tab.dialog_state.toast_error.is_some());
+}
+

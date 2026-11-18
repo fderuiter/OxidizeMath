@@ -8,13 +8,12 @@ impl SimulationFramework {
             return;
         }
 
-        if let Some(tool) = &mut self.active_tool {
-            if self.preset_dialog.poll_import_tool(tool.as_mut()) {
-                if let Some(state) = tool.save_state() {
-                    self.saved_tool_states
-                        .insert(tool.name().to_string(), state);
-                }
-            }
+        let imported = self
+            .active_tool
+            .as_mut()
+            .is_some_and(|tool| self.preset_dialog.poll_import_tool(tool.as_mut()));
+        if imported {
+            self.sync_active_baseline();
         }
 
         egui::TopBottomPanel::top(format!("{}_export_bar", id_source))

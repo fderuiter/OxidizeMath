@@ -353,3 +353,79 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
         Some(baseline)
     );
 }
+
+fn active_saved_state(fw: &SimulationFramework) -> String {
+    fw.active_tool.as_ref().unwrap().save_state().unwrap()
+}
+
+#[test]
+fn test_starter_card_launch_updates_baseline_and_snapshot_for_reset() {
+    let mut fw = SimulationFramework::new("fluid_dynamics");
+    let cards =
+        crate::starter_gallery::get_starter_cards_for_domain("fluid_dynamics", &fw.available_tools);
+    let source_sink = cards
+        .iter()
+        .find(|c| c.title == "Source-Sink Pair")
+        .expect("Source-Sink Pair card expected");
+    let factory_state = (fw
+        .available_tools
+        .iter()
+        .find(|t| t.name == "PotentialFlowTool")
+        .unwrap()
+        .build)()
+    .save_state()
+    .unwrap();
+
+    fw.show_starter_gallery = true;
+    assert!(fw.launch_starter_card(source_sink).is_ok());
+    assert!(!fw.show_starter_gallery);
+
+    let preset_state = active_saved_state(&fw);
+    assert_ne!(preset_state, factory_state);
+    assert_eq!(
+        fw.baseline_tool_state.as_deref(),
+        Some(preset_state.as_str())
+    );
+    assert_eq!(
+        fw.last_valid_snapshot()
+            .and_then(|s| s.tool_state.as_deref()),
+        Some(preset_state.as_str())
+    );
+
+    fw.active_tool.as_mut().unwrap().load_state(&factory_state);
+    assert_eq!(active_saved_state(&fw), factory_state);
+
+    fw.reset_parameters();
+    assert_eq!(active_saved_state(&fw), preset_state);
+    assert_eq!(
+        fw.last_valid_snapshot()
+            .and_then(|s| s.tool_state.as_deref()),
+        Some(preset_state.as_str())
+    );
+}
+
+#[test]
+fn test_apply_preset_json_malformed_surfaces_toast_and_telemetry_warning() {
+    let mut framework = SimulationFramework::new("analysis");
+    assert!(framework.preset_dialog.toast_error.is_none());
+
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let applied = framework.apply_preset_json("{not valid preset json");
+    let err_msg = applied.expect_err("Malformed JSON must return Err");
+    let toast = framework
+        .preset_dialog
+        .toast_error
+        .clone()
+        .expect("toast_error must be populated on malformed preset JSON");
+    assert_eq!(toast, err_msg);
+
+    let events = federated_registry::global_registry().try_recv_all();
+    let warning = events
+        .iter()
+        .rev()
+        .find(|ev| ev.source == "PresetSerialization" && ev.message == toast)
+        .expect("Expected TelemetryEvent from PresetSerialization");
+    assert_eq!(warning.severity, federated_registry::Severity::Warning);
+}

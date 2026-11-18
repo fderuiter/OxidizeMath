@@ -387,13 +387,42 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         serde_json::to_string(&params).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(params) = serde_json::from_str::<HashMap<String, f64>>(state) {
-            if let Ok(mut p) = self.params.write() {
-                *p = params;
-            }
-            let _ = self.controller.send_command(SimCommand::Reset);
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let params: HashMap<String, f64> = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
+        if !self.param_metadata.is_empty() && params.is_empty() {
+            return Err(format!(
+                "Empty parameter configuration for {}; expected parameters: {}",
+                M::name(),
+                self.param_metadata
+                    .iter()
+                    .map(|m| m.0.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
+        for (key, value) in &params {
+            if !self.param_metadata.iter().any(|meta| &meta.0 == key) {
+                return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
+            }
+            if !value.is_finite() {
+                return Err(format!(
+                    "Non-finite value for parameter '{}' in {}",
+                    key,
+                    M::name()
+                ));
+            }
+        }
+        let mut guard = self
+            .params
+            .write()
+            .map_err(|_| format!("Failed to acquire parameter lock for {}", M::name()))?;
+        for (key, value) in params {
+            guard.insert(key, value);
+        }
+        drop(guard);
+        let _ = self.controller.send_command(SimCommand::Reset);
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {

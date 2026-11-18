@@ -88,10 +88,59 @@ impl NeuralNetworkVizTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NeuralNetworkVizState {
+    external_input: Vec<f64>,
+    weights: Vec<Vec<f64>>,
+    dt: f64,
+    is_running: bool,
+}
+
 impl InteractiveTool for NeuralNetworkVizTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Neural Network Viz"
+    }
+    fn domain(&self) -> &'static str {
+        "neuroscience"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&NeuralNetworkVizState {
+            external_input: self.external_input.clone(),
+            weights: self.weights.clone(),
+            dt: self.dt,
+            is_running: self.is_running,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: NeuralNetworkVizState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid NeuralNetworkVizTool state: {e}"))?;
+        let n = s.external_input.len();
+        if n == 0
+            || s.weights.len() != n
+            || s.weights.iter().any(|row| row.len() != n || row.iter().any(|w| !w.is_finite()))
+            || s.external_input.iter().any(|v| !v.is_finite())
+            || !s.dt.is_finite()
+            || s.dt <= 0.0
+        {
+            return Err("Invalid network dimensions or non-finite values in NeuralNetworkVizTool".to_string());
+        }
+        let radius = 100.0;
+        self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
+        self.positions = (0..n)
+            .map(|i| {
+                let angle = i as f32 * TAU / n as f32;
+                [angle.cos() * radius, angle.sin() * radius]
+            })
+            .collect();
+        self.weights = s.weights;
+        self.external_input = s.external_input;
+        self.dt = s.dt;
+        self.is_running = s.is_running;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -239,12 +288,16 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "layers": [
-      4,
-      8,
-      2
+    "external_input": [15.0, 0.0, 0.0, 0.0, 0.0],
+    "weights": [
+      [0.0, -1.0, 0.0, 0.0, 2.0],
+      [2.0, 0.0, -1.0, 0.0, 0.0],
+      [0.0, 2.0, 0.0, -1.0, 0.0],
+      [0.0, 0.0, 2.0, 0.0, -1.0],
+      [-1.0, 0.0, 0.0, 2.0, 0.0]
     ],
-    "activation": "ReLU"
+    "dt": 0.05,
+    "is_running": false
   }
 }"#;
 

@@ -94,7 +94,7 @@ impl InteractiveTool for CeraTool {
         }).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         #[derive(serde::Serialize, serde::Deserialize)]
         struct CeraState {
             in_channels: usize,
@@ -103,16 +103,17 @@ impl InteractiveTool for CeraTool {
             num_levels: usize,
             output_size: usize,
         }
-        if let Ok(s) = serde_json::from_str::<CeraState>(state) {
-            self.in_channels = s.in_channels;
-            self.latent_channels = s.latent_channels;
-            self.aligned_channels = s.aligned_channels;
-            self.num_levels = s.num_levels;
-            self.output_size = s.output_size;
-            self.prediction_result = None;
-            self.diverged = false;
-            self.diagnostic_report = None;
-        }
+        let s: CeraState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid CeraTool state: {e}"))?;
+        self.in_channels = s.in_channels;
+        self.latent_channels = s.latent_channels;
+        self.aligned_channels = s.aligned_channels;
+        self.num_levels = s.num_levels;
+        self.output_size = s.output_size;
+        self.prediction_result = None;
+        self.diverged = false;
+        self.diagnostic_report = None;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -278,8 +279,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "albedo": 0.3,
-    "solar_constant": 1361.0
+    "in_channels": 4,
+    "latent_channels": 8,
+    "aligned_channels": 4,
+    "num_levels": 12,
+    "output_size": 2
   }
 }"#;
 
