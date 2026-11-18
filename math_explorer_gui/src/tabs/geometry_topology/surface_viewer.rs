@@ -228,6 +228,7 @@ impl InteractiveTool for SurfaceViewer {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let surface = self.create_surface();
 
             let grid_lines = self.generate_grid_lines(surface.as_ref());
@@ -239,7 +240,7 @@ impl InteractiveTool for SurfaceViewer {
                         plot_ui.line(
                             Line::new("", PlotPoints::new(line_points))
                                 .name(format!("line_{}", i))
-                                .color(egui::Color32::from_rgb(100, 200, 255)),
+                                .color(palette.series_color(0)),
                         );
                     }
                 })

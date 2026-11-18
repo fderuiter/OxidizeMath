@@ -238,7 +238,8 @@ impl InteractiveTool for CeraTool {
                     }
                 }
                 Some(Err(err)) => {
-                    ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                    ui.colored_label(palette.error, format!("Error: {}", err));
                 }
                 None => {
                     ui.label("Click 'Run Prediction' to test the model with random inputs.");

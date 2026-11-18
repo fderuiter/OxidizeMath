@@ -243,6 +243,7 @@ impl InteractiveTool for GridWorldTool {
                 .accessible_hover_text("Grid World Visualization");
             let rect = response.rect;
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             for x in 0..self.env.width {
                 for y in 0..self.env.height {
                     let top_left =
@@ -251,23 +252,23 @@ impl InteractiveTool for GridWorldTool {
                         egui::Rect::from_min_size(top_left, egui::vec2(cell_size, cell_size));
 
                     let state = GridState { x, y };
-                    let mut fill_color = egui::Color32::from_gray(200);
-
-                    if state == self.env.goal {
-                        fill_color = egui::Color32::GREEN;
+                    let fill_color = if state == self.env.goal {
+                        palette.success
                     } else if self.env.traps.contains(&state) {
-                        fill_color = egui::Color32::RED;
+                        palette.error
                     } else if state == self.current_state {
-                        fill_color = egui::Color32::BLUE;
+                        palette.accent
                     } else if state == self.env.start {
-                        fill_color = egui::Color32::LIGHT_BLUE;
-                    }
+                        palette.info
+                    } else {
+                        palette.surface_fill
+                    };
 
                     painter.rect_filled(cell_rect, 0.0, fill_color);
                     painter.rect_stroke(
                         cell_rect,
                         0.0,
-                        egui::Stroke::new(1.0_f32, egui::Color32::BLACK),
+                        egui::Stroke::new(1.0_f32, palette.graph_edge),
                         egui::StrokeKind::Middle,
                     );
                 }

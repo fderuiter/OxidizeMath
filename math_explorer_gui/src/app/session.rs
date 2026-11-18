@@ -451,12 +451,13 @@ impl WorkspaceSessionManager {
     /// Renders any active workspace toast notification message in the UI.
     pub fn render_toast(&mut self, ui: &mut egui::Ui) {
         if let Some((msg, is_error)) = self.toast() {
+            let palette = super::SemanticPalette::from_visuals(ui.visuals());
             let mut dismiss = false;
             ui.horizontal(|ui| {
                 let (color, icon) = if *is_error {
-                    (egui::Color32::RED, "⚠️")
+                    (palette.error, "⚠️")
                 } else {
-                    (egui::Color32::LIGHT_GREEN, "ℹ️")
+                    (palette.success, "ℹ️")
                 };
                 ui.label(egui::RichText::new(format!("{} {}", icon, msg)).color(color));
                 if ui.small_button("✖").clicked() {

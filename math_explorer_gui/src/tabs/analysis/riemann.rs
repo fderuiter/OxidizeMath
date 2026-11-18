@@ -201,7 +201,8 @@ impl InteractiveTool for RiemannIntegrationTool {
             });
 
             if self.min_x >= self.max_x {
-                ui.colored_label(egui::Color32::RED, "min_x must be < max_x");
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                ui.colored_label(palette.error, "min_x must be < max_x");
             }
 
             ui.add_space(10.0);
@@ -232,12 +233,20 @@ impl InteractiveTool for RiemannIntegrationTool {
             let plot_min = self.min_x - span * 0.1;
             let plot_max = self.max_x + span * 0.1;
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            let fill_base = palette.series_color(1);
+            let poly_fill = egui::Color32::from_rgba_unmultiplied(
+                fill_base.r(),
+                fill_base.g(),
+                fill_base.b(),
+                100,
+            );
             let true_line = Line::new(
                 self.preset.name(),
                 PlotPoints::new(self.cached_true_curve.clone()),
             )
             .name(self.preset.name())
-            .color(egui::Color32::LIGHT_BLUE);
+            .color(palette.series_color(0));
 
             Plot::new("riemann_plot")
                 .view_aspect(2.0)
@@ -246,15 +255,15 @@ impl InteractiveTool for RiemannIntegrationTool {
                 .show(ui, |plot_ui| {
                     plot_ui.line(true_line);
                     for poly in &self.cached_trapezoid_polygons {
-                        let polygon = Polygon::new("", PlotPoints::new(poly.clone()))
-                            .fill_color(egui::Color32::from_rgba_unmultiplied(200, 100, 50, 100));
+                        let polygon =
+                            Polygon::new("", PlotPoints::new(poly.clone())).fill_color(poly_fill);
                         plot_ui.polygon(polygon);
                     }
 
                     // Add a zero line
                     plot_ui.line(
                         Line::new("", PlotPoints::new(vec![[plot_min, 0.0], [plot_max, 0.0]]))
-                            .color(egui::Color32::DARK_GRAY),
+                            .color(palette.graph_edge),
                     );
                 });
         });

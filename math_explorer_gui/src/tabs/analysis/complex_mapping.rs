@@ -214,7 +214,8 @@ impl InteractiveTool for ComplexMappingTool {
             });
 
             if self.grid_min >= self.grid_max {
-                ui.colored_label(egui::Color32::RED, "min must be < max");
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                ui.colored_label(palette.error, "min must be < max");
             }
 
             ui.add_space(10.0);
@@ -249,6 +250,7 @@ impl InteractiveTool for ComplexMappingTool {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Conformal Mapping Visualization");
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.columns(2, |columns| {
                 columns[0].label("z-plane (Input)");
                 Plot::new("z_plane_plot")
@@ -265,7 +267,7 @@ impl InteractiveTool for ComplexMappingTool {
                                 let points = vec![[x, self.grid_min], [x, self.grid_max]];
                                 plot_ui.line(
                                     Line::new("", PlotPoints::new(points))
-                                        .color(egui::Color32::from_rgb(100, 150, 250)),
+                                        .color(palette.series_color(0)),
                                 );
                             }
 
@@ -274,7 +276,7 @@ impl InteractiveTool for ComplexMappingTool {
                                 let points = vec![[self.grid_min, y], [self.grid_max, y]];
                                 plot_ui.line(
                                     Line::new("", PlotPoints::new(points))
-                                        .color(egui::Color32::from_rgb(250, 150, 100)),
+                                        .color(palette.series_color(1)),
                                 );
                             }
                         }
@@ -284,7 +286,7 @@ impl InteractiveTool for ComplexMappingTool {
                                 "",
                                 PlotPoints::new(vec![self.inspection_point]),
                             )
-                            .color(egui::Color32::RED)
+                            .color(palette.error)
                             .radius(5.0_f32),
                         );
                     });
@@ -313,7 +315,7 @@ impl InteractiveTool for ComplexMappingTool {
                                 }
                                 plot_ui.line(
                                     Line::new("", PlotPoints::new(points))
-                                        .color(egui::Color32::from_rgb(100, 150, 250)),
+                                        .color(palette.series_color(0)),
                                 );
                             }
 
@@ -330,7 +332,7 @@ impl InteractiveTool for ComplexMappingTool {
                                 }
                                 plot_ui.line(
                                     Line::new("", PlotPoints::new(points))
-                                        .color(egui::Color32::from_rgb(250, 150, 100)),
+                                        .color(palette.series_color(1)),
                                 );
                             }
                         }
@@ -339,7 +341,7 @@ impl InteractiveTool for ComplexMappingTool {
                         let w0 = self.eval_z(z0);
                         plot_ui.points(
                             egui_plot::Points::new("", PlotPoints::new(vec![[w0.re, w0.im]]))
-                                .color(egui::Color32::RED)
+                                .color(palette.error)
                                 .radius(5.0_f32),
                         );
                     });

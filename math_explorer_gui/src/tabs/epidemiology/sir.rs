@@ -240,22 +240,20 @@ impl InteractiveTool for SirTool {
                 }
             });
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let plot = Plot::new("sir_plot")
                 .view_aspect(2.0)
                 .legend(egui_plot::Legend::default());
 
             plot.show(ui, |plot_ui| {
                 plot_ui.line(
-                    Line::new("Susceptible", &self.s_points[..])
-                        .color(egui::Color32::BLUE),
+                    Line::new("Susceptible", &self.s_points[..]).color(palette.axis_z),
                 );
                 plot_ui.line(
-                    Line::new("Infected", &self.i_points[..])
-                        .color(egui::Color32::RED),
+                    Line::new("Infected", &self.i_points[..]).color(palette.axis_x),
                 );
                 plot_ui.line(
-                    Line::new("Recovered", &self.r_points[..])
-                        .color(egui::Color32::GREEN),
+                    Line::new("Recovered", &self.r_points[..]).color(palette.axis_y),
                 );
                 self.snapshot_manager.render_on_plot(plot_ui);
             });

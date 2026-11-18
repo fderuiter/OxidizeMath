@@ -62,15 +62,18 @@ impl InteractiveTool for Co2ProjectionsTool {
             .y_axis_formatter(|y, _range| format!("{:.1} ppm", y.value))
             .legend(egui_plot::Legend::default());
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         plot.show(ui, |plot_ui| {
             let hist_points = PlotPoints::new(historical);
-            let hist_line = Line::new("Historical CO2", hist_points).width(2.0_f32);
+            let hist_line = Line::new("Historical CO2", hist_points)
+                .width(2.0_f32)
+                .color(palette.series_color(0));
             plot_ui.line(hist_line);
 
             let proj_points = PlotPoints::new(projected);
             let proj_line = Line::new("Projected CO2", proj_points)
                 .width(2.0_f32)
-                .color(egui::Color32::RED);
+                .color(palette.series_color(3));
             plot_ui.line(proj_line);
         });
     }

@@ -153,6 +153,34 @@ fn test_single_pane_startup_allocates_only_primary_catalog() {
 }
 
 #[test]
+fn test_quad_pane_contexts_inherit_active_theme_palette() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    app.set_layout(ViewportLayout::QuadGrid);
+    for p in 0..4 {
+        app.set_pane_tab(p, p % app.tabs.len().max(1));
+    }
+
+    for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::HighContrast] {
+        app.theme = mode;
+        run_screen_events(&ctx, &mut app, Vec::new());
+        for (pane_idx, pane_ctx) in app.pane_contexts.iter().enumerate() {
+            let pane_visuals = &pane_ctx.style().visuals;
+            assert_eq!(
+                ThemeMode::from_visuals(pane_visuals),
+                mode,
+                "pane {pane_idx} did not inherit ThemeMode::{mode:?}"
+            );
+            assert_eq!(
+                SemanticPalette::from_visuals(pane_visuals),
+                mode.palette(),
+                "pane {pane_idx} did not resolve SemanticPalette for {mode:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn test_select_primary_tab_preserves_focused_secondary_pane() {
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();

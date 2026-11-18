@@ -407,9 +407,10 @@ pub fn render_preset_buttons<T: InteractivePreset>(
         changed = true;
     }
 
+    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
     if let Some(ref msg) = dialog_state.toast_info {
         ui.add_space(4.0);
-        ui.colored_label(eframe::egui::Color32::LIGHT_GREEN, format!("ℹ️ {}", msg));
+        ui.colored_label(palette.success, format!("ℹ️ {}", msg));
         if ui.small_button("Dismiss").clicked() {
             dialog_state.toast_info = None;
         }
@@ -417,7 +418,7 @@ pub fn render_preset_buttons<T: InteractivePreset>(
 
     if let Some(ref err) = dialog_state.toast_error {
         ui.add_space(4.0);
-        ui.colored_label(eframe::egui::Color32::RED, format!("⚠️ {}", err));
+        ui.colored_label(palette.error, format!("⚠️ {}", err));
         if ui.small_button("Dismiss Warning").clicked() {
             dialog_state.toast_error = None;
         }

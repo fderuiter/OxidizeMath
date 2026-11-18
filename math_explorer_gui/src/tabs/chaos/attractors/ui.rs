@@ -219,6 +219,7 @@ impl AttractorPlotter {
         let c_pos = self.project(Vector3::new(x, x, z));
         let c_neg = self.project(Vector3::new(-x, -x, z));
         let visuals = plot_ui.ctx().style().visuals.clone();
+        let palette = crate::app::SemanticPalette::from_visuals(&visuals);
         let bg_fill = Color32::from_rgba_unmultiplied(
             visuals.window_fill().r(),
             visuals.window_fill().g(),
@@ -232,7 +233,7 @@ impl AttractorPlotter {
             format!("Fixed Point C+ ({:.1}, {:.1}, {:.1})", x, x, z),
         )
         .offset(Vec2::new(35.0, -25.0))
-        .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(231, 76, 60)))
+        .leader_stroke(Stroke::new(1.5_f32, palette.series_color(3)))
         .frame(bg_fill, frame_stroke)
         .corner_radius(CornerRadius::same(4))
         .text_color(visuals.text_color());
@@ -242,7 +243,7 @@ impl AttractorPlotter {
             format!("Fixed Point C- ({:.1}, {:.1}, {:.1})", -x, -x, z),
         )
         .offset(Vec2::new(-35.0, 25.0))
-        .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(155, 89, 182)))
+        .leader_stroke(Stroke::new(1.5_f32, palette.series_color(4)))
         .frame(bg_fill, frame_stroke)
         .corner_radius(CornerRadius::same(4))
         .text_color(visuals.text_color());
@@ -266,18 +267,16 @@ impl AttractorPlotter {
             let initial_pt = (points.is_empty() && self.is_finite_state())
                 .then(|| self.project(self.system.state.vec));
 
+            let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
             let response = Plot::new("attractor_plot")
                 .data_aspect(1.0)
                 .show(ui, |plot_ui| {
-                    plot_ui.line(
-                        Line::new("Trajectory", PlotPoints::new(points))
-                            .color(Color32::from_rgb(100, 200, 255)),
-                    );
+                    plot_ui.line(Line::new("Trajectory", PlotPoints::new(points)).color(series0));
                     if let Some(pt) = initial_pt {
                         plot_ui.points(
                             Points::new("Initial State", vec![pt])
                                 .radius(4.0_f32)
-                                .color(Color32::from_rgb(100, 200, 255)),
+                                .color(series0),
                         );
                     }
                     self.draw_fixed_point_callouts(plot_ui);

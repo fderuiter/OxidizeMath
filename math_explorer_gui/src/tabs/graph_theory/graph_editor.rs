@@ -277,6 +277,7 @@ impl InteractiveTool for GraphEditorTool {
 
     fn draw(&mut self, ui: &mut egui::Ui, _response: &egui::Response, painter: &egui::Painter) {
         let node_radius = 15.0;
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let text_color = ui.visuals().text_color();
         let window_stroke = ui.visuals().window_stroke();
 
@@ -286,9 +287,9 @@ impl InteractiveTool for GraphEditorTool {
                 (self.node_positions.get(&u), self.node_positions.get(&v))
             {
                 let color = if self.mode == EditorMode::Remove && self.hovered_edge == Some(i) {
-                    egui::Color32::RED
+                    palette.error
                 } else {
-                    egui::Color32::GRAY
+                    palette.graph_edge
                 };
 
                 painter.line_segment([pos_u, pos_v], (2.0, color));
@@ -311,11 +312,11 @@ impl InteractiveTool for GraphEditorTool {
             let is_hovered = self.hovered_node == Some(id);
 
             let fill_color = if self.mode == EditorMode::Remove && is_hovered {
-                egui::Color32::from_rgb(255, 100, 100)
+                palette.error
             } else if is_selected {
-                egui::Color32::GREEN
+                palette.success
             } else {
-                egui::Color32::LIGHT_BLUE
+                palette.series_color(0)
             };
 
             painter.circle(pos, node_radius, fill_color, window_stroke);
@@ -325,7 +326,7 @@ impl InteractiveTool for GraphEditorTool {
                 egui::Align2::CENTER_CENTER,
                 id.to_string(),
                 egui::FontId::proportional(14.0),
-                egui::Color32::BLACK,
+                crate::app::contrasting_text_color(fill_color),
             );
         }
     }

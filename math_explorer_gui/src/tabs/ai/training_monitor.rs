@@ -1,7 +1,6 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::InteractiveTool;
 use eframe::egui;
-use egui::Color32;
 use egui_plot::{Line, Plot, Points};
 use math_explorer::ai::deep_learning_theory::cycle::TrainingLoop;
 use math_explorer::ai::deep_learning_theory::linear_algebra::Vector;
@@ -216,13 +215,14 @@ impl InteractiveTool for TrainingMonitorTool {
                         plot_ui.line(Line::new("Loss", self.loss_history.clone()));
                     });
 
+                let palette = crate::app::SemanticPalette::from_visuals(columns[1].visuals());
                 columns[1].heading("Accuracy History");
                 Plot::new("accuracy_plot")
                     .height(200.0)
                     .show(&mut columns[1], |plot_ui| {
                         plot_ui.line(
                             Line::new("Accuracy", self.accuracy_history.clone())
-                                .color(Color32::GREEN),
+                                .color(palette.success),
                         );
                     });
             });
@@ -230,6 +230,7 @@ impl InteractiveTool for TrainingMonitorTool {
             ui.separator();
 
             // Bottom: Data Visualization
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.heading("Decision Boundary Visualization");
             Plot::new("data_plot").data_aspect(1.0).show(ui, |plot_ui| {
                 // Draw actual data points
@@ -249,12 +250,12 @@ impl InteractiveTool for TrainingMonitorTool {
 
                 plot_ui.points(
                     Points::new("Class 0", class_0_points)
-                        .color(Color32::RED)
+                        .color(palette.axis_x)
                         .radius(4.0_f32),
                 );
                 plot_ui.points(
                     Points::new("Class 1", class_1_points)
-                        .color(Color32::BLUE)
+                        .color(palette.axis_z)
                         .radius(4.0_f32),
                 );
 

@@ -200,12 +200,12 @@ impl UnifiedModel for WaveUnified {
         if let Some(snap) = snapshot_opt {
             if let Some(any_data) = &snap.structured_data {
                 if let Some(wave_data) = any_data.downcast_ref::<WaveData>() {
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                    let psi_color = palette.series_color(0);
+                    let potential_color = palette.series_color(1);
                     ui.label(format!("Time: {:.2}", wave_data.time));
-                    ui.label("White: |ψ(x)|² (Probability)");
-                    ui.colored_label(
-                        egui::Color32::from_rgb(100, 100, 255),
-                        "Blue: V(x) (Potential)",
-                    );
+                    ui.colored_label(psi_color, "━ |ψ(x)|² (Probability Density)");
+                    ui.colored_label(potential_color, "━ V(x) (Potential Barrier)");
 
                     let mut psi_points = Vec::new();
                     let mut v_points = Vec::new();
@@ -226,12 +226,12 @@ impl UnifiedModel for WaveUnified {
                         .show(ui, |plot_ui| {
                             plot_ui.line(
                                 Line::new("Probability |ψ|²", PlotPoints::new(psi_points))
-                                    .color(egui::Color32::WHITE)
+                                    .color(psi_color)
                                     .width(2.0_f32),
                             );
                             plot_ui.line(
                                 Line::new("Potential V(x) (scaled)", PlotPoints::new(v_points))
-                                    .color(egui::Color32::from_rgb(100, 100, 255)),
+                                    .color(potential_color),
                             );
                         });
                     return true;

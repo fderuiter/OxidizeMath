@@ -176,13 +176,14 @@ impl InteractiveTool for BetSizeCalculatorTool {
             }
         };
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         match (prob_result, odds_result) {
             (Ok(prob), Ok(odds)) => {
                 let ev = expected_value(&prob, &odds);
                 ui.label(format!("Expected Value (per $1 staked): ${:.3}", ev));
 
                 if ev > 0.0 {
-                    ui.label(egui::RichText::new("Positive Edge!").color(egui::Color32::GREEN));
+                    ui.label(egui::RichText::new("Positive Edge!").color(palette.success));
 
                     match kelly_fraction(&prob, &odds) {
                         Ok(full_kelly) => {
@@ -235,26 +236,26 @@ impl InteractiveTool for BetSizeCalculatorTool {
                         Err(e) => {
                             ui.label(
                                 egui::RichText::new(format!("Error calculating Kelly: {}", e))
-                                    .color(egui::Color32::RED),
+                                    .color(palette.error),
                             );
                         }
                     }
                 } else {
                     ui.label(
                         egui::RichText::new("No Edge (Negative or Zero EV). Do not bet.")
-                            .color(egui::Color32::RED),
+                            .color(palette.error),
                     );
                 }
             }
             (Err(e), _) => {
                 ui.label(
                     egui::RichText::new(format!("Invalid Probability: {}", e))
-                        .color(egui::Color32::RED),
+                        .color(palette.error),
                 );
             }
             (_, Err(e)) => {
                 ui.label(
-                    egui::RichText::new(format!("Invalid Odds: {}", e)).color(egui::Color32::RED),
+                    egui::RichText::new(format!("Invalid Odds: {}", e)).color(palette.error),
                 );
             }
         }

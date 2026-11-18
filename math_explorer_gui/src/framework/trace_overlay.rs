@@ -24,6 +24,15 @@ pub const SNAPSHOT_PALETTE: &[[u8; 3]] = &[
     [196, 156, 148], // Soft Brown
 ];
 
+fn resolve_trace_color(rgb: [u8; 3], index: usize, visuals: &egui::Visuals) -> egui::Color32 {
+    let raw = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+    if crate::app::contrast_ratio(raw, visuals.extreme_bg_color) >= 3.0 {
+        raw
+    } else {
+        crate::app::SemanticPalette::from_visuals(visuals).series_color(index)
+    }
+}
+
 /// A single named dataset series within a trace snapshot.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TraceSeries {
@@ -215,16 +224,13 @@ impl TraceSnapshotManager {
     }
 
     pub fn render_on_plot(&self, plot_ui: &mut PlotUi) {
-        for run in &self.history_runs {
+        let visuals = plot_ui.ctx().style().visuals.clone();
+        for (idx, run) in self.history_runs.iter().enumerate() {
             if !run.visible {
                 continue;
             }
-            let color = egui::Color32::from_rgba_unmultiplied(
-                run.color_rgb[0],
-                run.color_rgb[1],
-                run.color_rgb[2],
-                160,
-            );
+            let base = resolve_trace_color(run.color_rgb, idx, &visuals);
+            let color = egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 160);
             for series in &run.series {
                 if series.points.is_empty() {
                     continue;
@@ -243,15 +249,11 @@ impl TraceSnapshotManager {
             }
         }
 
-        for snapshot in &self.snapshots {
+        for (idx, snapshot) in self.snapshots.iter().enumerate() {
             if !snapshot.visible {
                 continue;
             }
-            let color = egui::Color32::from_rgb(
-                snapshot.color_rgb[0],
-                snapshot.color_rgb[1],
-                snapshot.color_rgb[2],
-            );
+            let color = resolve_trace_color(snapshot.color_rgb, idx, &visuals);
             for series in &snapshot.series {
                 if series.points.is_empty() {
                     continue;
@@ -348,11 +350,7 @@ impl TraceSnapshotManager {
                                 run.visible = !run.visible;
                                 changed = true;
                             }
-                            let color = egui::Color32::from_rgb(
-                                run.color_rgb[0],
-                                run.color_rgb[1],
-                                run.color_rgb[2],
-                            );
+                            let color = resolve_trace_color(run.color_rgb, idx, ui.visuals());
                             ui.painter().circle_filled(
                                 ui.cursor().min + egui::vec2(6.0, 8.0),
                                 4.0,
@@ -410,11 +408,7 @@ impl TraceSnapshotManager {
                                 snapshot.visible = !snapshot.visible;
                                 changed = true;
                             }
-                            let color = egui::Color32::from_rgb(
-                                snapshot.color_rgb[0],
-                                snapshot.color_rgb[1],
-                                snapshot.color_rgb[2],
-                            );
+                            let color = resolve_trace_color(snapshot.color_rgb, idx, ui.visuals());
                             ui.painter().circle_filled(
                                 ui.cursor().min + egui::vec2(6.0, 8.0),
                                 5.0,

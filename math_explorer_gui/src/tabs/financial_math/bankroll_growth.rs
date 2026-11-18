@@ -203,8 +203,9 @@ impl InteractiveTool for BankrollGrowthTool {
 
             ui.separator();
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             if let Some(ref err) = self.error_msg {
-                ui.colored_label(egui::Color32::RED, err);
+                ui.colored_label(palette.error, err);
             } else {
                 ui.heading("Bankroll Simulation");
 
@@ -214,25 +215,16 @@ impl InteractiveTool for BankrollGrowthTool {
 
                 plot.show(ui, |plot_ui| {
                     plot_ui.line(
-                        Line::new(
-                            "Full Kelly",
-                            &self.full_kelly_points[..],
-                        )
-                        .color(egui::Color32::RED),
+                        Line::new("Full Kelly", &self.full_kelly_points[..])
+                            .color(palette.series_color(3)),
                     );
                     plot_ui.line(
-                        Line::new(
-                            "Half Kelly",
-                            &self.half_kelly_points[..],
-                        )
-                        .color(egui::Color32::YELLOW),
+                        Line::new("Half Kelly", &self.half_kelly_points[..])
+                            .color(palette.series_color(5)),
                     );
                     plot_ui.line(
-                        Line::new(
-                            "Quarter Kelly",
-                            &self.quarter_kelly_points[..],
-                        )
-                        .color(egui::Color32::GREEN),
+                        Line::new("Quarter Kelly", &self.quarter_kelly_points[..])
+                            .color(palette.series_color(2)),
                     );
                 });
             }

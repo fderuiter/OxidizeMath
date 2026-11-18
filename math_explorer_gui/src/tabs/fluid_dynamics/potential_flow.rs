@@ -267,9 +267,10 @@ impl InteractiveTool for PotentialFlowTool {
                         x += step;
                     }
 
-                    plot_ui.arrows(
-                        Arrows::new("Vector Field", origins, tips).color(egui::Color32::LIGHT_BLUE),
-                    );
+                    let arrow_color =
+                        crate::app::SemanticPalette::from_visuals(&plot_ui.ctx().style().visuals)
+                            .series_color(0);
+                    plot_ui.arrows(Arrows::new("Vector Field", origins, tips).color(arrow_color));
                 });
         });
     }

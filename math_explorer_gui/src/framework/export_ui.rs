@@ -158,6 +158,7 @@ impl SimulationFramework {
         let mut clear_status = false;
 
         if let Some(ref mut status) = self.export_queue.status {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             if !status.is_error {
                 let exp = *status.expires_at_time.get_or_insert(now + 3.0);
                 if now > 0.0 && now >= exp {
@@ -165,7 +166,7 @@ impl SimulationFramework {
                 } else {
                     let remaining = (exp - now).max(0.05);
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
-                    ui.colored_label(egui::Color32::LIGHT_GREEN, format!("✓ {}", status.message));
+                    ui.colored_label(palette.success, format!("✓ {}", status.message));
                     if ui
                         .small_button("✖")
                         .on_hover_text("Dismiss notification")
@@ -175,7 +176,7 @@ impl SimulationFramework {
                     }
                 }
             } else {
-                ui.colored_label(egui::Color32::RED, format!("⚠️ {}", status.message));
+                ui.colored_label(palette.error, format!("⚠️ {}", status.message));
                 if ui
                     .small_button("✖")
                     .on_hover_text("Dismiss warning")
@@ -235,9 +236,10 @@ impl SimulationFramework {
             ui.ctx().request_repaint();
         }
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         if let Some(ref msg) = self.preset_dialog.toast_info {
             ui.separator();
-            ui.colored_label(egui::Color32::LIGHT_GREEN, format!("ℹ️ {}", msg));
+            ui.colored_label(palette.success, format!("ℹ️ {}", msg));
             if ui
                 .small_button("✖")
                 .on_hover_text("Dismiss notification")
@@ -249,7 +251,7 @@ impl SimulationFramework {
 
         if let Some(ref err) = self.preset_dialog.toast_error {
             ui.separator();
-            ui.colored_label(egui::Color32::RED, format!("⚠️ {}", err));
+            ui.colored_label(palette.error, format!("⚠️ {}", err));
             if ui
                 .small_button("✖")
                 .on_hover_text("Dismiss warning")
