@@ -13,28 +13,26 @@ pub enum TraceabilityScanState {
     Failed(String),
 }
 
-#[allow(missing_docs, dead_code)]
+#[allow(missing_docs)]
 impl TraceabilityScanState {
-    #[allow(missing_docs)]
-    pub fn is_idle(&self) -> bool {
-        matches!(self, Self::Idle)
-    }
-
     #[allow(missing_docs)]
     pub fn is_scanning(&self) -> bool {
         matches!(self, Self::Scanning)
     }
 
+    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn is_ready(&self) -> bool {
         matches!(self, Self::Ready)
     }
 
+    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn is_failed(&self) -> bool {
         matches!(self, Self::Failed(_))
     }
 
+    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn error(&self) -> Option<&str> {
         match self {
@@ -91,18 +89,15 @@ impl Default for TraceabilityTab {
     }
 }
 
-#[allow(missing_docs, dead_code)]
+#[allow(missing_docs)]
 impl TraceabilityTab {
+    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn retry(&mut self) {
         self.refresh();
     }
 
-    #[allow(missing_docs)]
-    pub fn state(&self) -> &TraceabilityScanState {
-        &self.state
-    }
-
+    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn error_message(&self) -> Option<&str> {
         self.state.error()
@@ -128,6 +123,7 @@ impl TraceabilityTab {
         }
     }
 
+    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn online_document_url(&self, name: &str) -> Option<String> {
         Self::paper_url(name)
