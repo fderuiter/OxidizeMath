@@ -128,12 +128,12 @@ pub fn clamp_ode_step_settings(dt: &mut f64, total_time: &mut f64) {
     if !dt.is_finite() || *dt <= 0.0 {
         *dt = 0.05;
     } else {
-        *dt = dt.clamp(1e-6, 1.0);
+        *dt = dt.clamp(1e-6, 0.1);
     }
     if !total_time.is_finite() || *total_time <= 0.0 {
         *total_time = 10.0;
     } else {
-        *total_time = total_time.clamp(1.0, 100.0);
+        *total_time = total_time.clamp(0.1, 100.0);
     }
 }
 

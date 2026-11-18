@@ -72,7 +72,10 @@ impl Default for OdeSolverTool {
                 vec![
                     ("y' = -k*y*sin(t) (Non-linear Sine)", "-k * y * sin(t)"),
                     ("y' = k*y (Exponential)", "k * y"),
-                    ("y' = r*y*(1 - y/cap_k) (Logistic)", "r * y * (1 - y / cap_k)"),
+                    (
+                        "y' = r*y*(1 - y/cap_k) (Logistic)",
+                        "r * y * (1 - y / cap_k)",
+                    ),
                     ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
                     ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
                 ],
@@ -236,7 +239,8 @@ impl OdeSolverTool {
                 format!("Initial (0, {:.2})", self.ic_y0),
                 [-25.0, -25.0],
             );
-            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last()) {
+            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last())
+            {
                 self.callout_manager.set_auto_callout(
                     "final_state",
                     [last_t, last_y],
@@ -403,6 +407,11 @@ impl InteractiveTool for OdeSolverTool {
             self.show_annotations = s.show_annotations;
             self.recalculate();
         }
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        FiniteStateGuard::clamp_parameters(self);
+        true
     }
 
     fn show(&mut self, ctx: &egui::Context) {

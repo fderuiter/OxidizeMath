@@ -67,8 +67,19 @@ impl FiniteStateGuard for CeraTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CeraState {
+    in_channels: usize,
+    latent_channels: usize,
+    aligned_channels: usize,
+    num_levels: usize,
+    output_size: usize,
+}
+
 impl InteractiveTool for CeraTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "CERA Model"
     }
@@ -77,32 +88,17 @@ impl InteractiveTool for CeraTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CeraState {
-            in_channels: usize,
-            latent_channels: usize,
-            aligned_channels: usize,
-            num_levels: usize,
-            output_size: usize,
-        }
         serde_json::to_string(&CeraState {
             in_channels: self.in_channels,
             latent_channels: self.latent_channels,
             aligned_channels: self.aligned_channels,
             num_levels: self.num_levels,
             output_size: self.output_size,
-        }).ok()
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CeraState {
-            in_channels: usize,
-            latent_channels: usize,
-            aligned_channels: usize,
-            num_levels: usize,
-            output_size: usize,
-        }
         if let Ok(s) = serde_json::from_str::<CeraState>(state) {
             self.in_channels = s.in_channels;
             self.latent_channels = s.latent_channels;
@@ -113,6 +109,11 @@ impl InteractiveTool for CeraTool {
             self.diverged = false;
             self.diagnostic_report = None;
         }
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        FiniteStateGuard::clamp_parameters(self);
+        true
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -140,7 +141,7 @@ impl InteractiveTool for CeraTool {
                         self.diagnostic_report = None;
                     }
                     RecoveryAction::ClampParameters => {
-                        self.clamp_parameters();
+                        FiniteStateGuard::clamp_parameters(self);
                     }
                     RecoveryAction::ResetParameters => {
                         self.reset_parameters();
@@ -159,10 +160,10 @@ impl InteractiveTool for CeraTool {
         });
 
         ui.horizontal(|ui| {
-            ui.add(egui::Slider::new(
-                &mut self.aligned_channels,
-                1..=self.latent_channels,
-            ).text("Aligned Channels:"));
+            ui.add(
+                egui::Slider::new(&mut self.aligned_channels, 1..=self.latent_channels)
+                    .text("Aligned Channels:"),
+            );
         });
 
         ui.horizontal(|ui| {
@@ -194,7 +195,7 @@ impl InteractiveTool for CeraTool {
             match Cera::new(config) {
                 Ok(model) => {
                     let inputs = DMatrix::from_fn(self.num_levels, self.in_channels, |_, _| {
-            // allow(entropy_guard)
+                        // allow(entropy_guard)
                         rand::random::<f32>()
                     });
                     let prediction = model.predict(&inputs);
@@ -248,7 +249,6 @@ impl InteractiveTool for CeraTool {
 
 // [cite:cera_framework]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "CeraTool",
@@ -265,9 +265,15 @@ impl scientific_metadata::theory::TheoryDescribable for CeraTool {
             self.in_channels, self.latent_channels, self.num_levels
         )
     }
-    fn phonetic_description(&self) -> String { "Climate-Equivariant Representation Architecture theory".into() }
-    fn theory_citation(&self) -> String { "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Climate-Equivariant Representation Architecture theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

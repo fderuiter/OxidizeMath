@@ -1,5 +1,8 @@
+mod pane_sync;
+
 use crate::app::MathExplorerApp;
 use eframe::egui;
+use pane_sync::{merge_pane_commands, remap_shape_textures, sync_pane_textures};
 use serde::{Deserialize, Serialize};
 
 /// Supported viewport layout presets.
@@ -243,97 +246,6 @@ fn render_pane_header(
     }
 }
 
-fn sync_pane_textures(
-    ctx: &egui::Context,
-    pane_idx: usize,
-    tex_map: &mut std::collections::HashMap<egui::TextureId, egui::TextureId>,
-    textures_delta: egui::TexturesDelta,
-) {
-    if textures_delta.is_empty() {
-        return;
-    }
-    let main_tex = ctx.tex_manager();
-    let mut writer = main_tex.write();
-    for (sub_id, delta) in textures_delta.set {
-        if sub_id == egui::TextureId::default() {
-            if writer.meta(sub_id).is_some() {
-                writer.set(sub_id, delta);
-            }
-        } else if let Some(&main_id) = tex_map.get(&sub_id) {
-            if writer.meta(main_id).is_some() {
-                writer.set(main_id, delta);
-            }
-        } else if delta.pos.is_none() {
-            let main_id = writer.alloc(
-                format!("pane_{pane_idx}_{sub_id:?}"),
-                delta.image,
-                delta.options,
-            );
-            tex_map.insert(sub_id, main_id);
-        }
-    }
-    for sub_id in textures_delta.free {
-        if sub_id != egui::TextureId::default() {
-            if let Some(main_id) = tex_map.remove(&sub_id) {
-                if writer.meta(main_id).is_some() {
-                    writer.free(main_id);
-                }
-            }
-        }
-    }
-}
-
-fn remap_shape_textures(
-    shape: &mut egui::Shape,
-    tex_map: &std::collections::HashMap<egui::TextureId, egui::TextureId>,
-) {
-    match shape {
-        egui::Shape::Mesh(mesh) => {
-            if let Some(&mapped) = tex_map.get(&mesh.texture_id) {
-                std::sync::Arc::make_mut(mesh).texture_id = mapped;
-            }
-        }
-        egui::Shape::Rect(rect_shape) => {
-            if let Some(brush) = &mut rect_shape.brush {
-                if let Some(&mapped) = tex_map.get(&brush.fill_texture_id) {
-                    std::sync::Arc::make_mut(brush).fill_texture_id = mapped;
-                }
-            }
-        }
-        egui::Shape::Vec(shapes) => {
-            for s in shapes {
-                remap_shape_textures(s, tex_map);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn merge_pane_commands(ctx: &egui::Context, pane_ctx: &egui::Context) {
-    let pane_reg = pane_ctx.data(|d| {
-        d.get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new("CMD_REGISTRY"))
-            .unwrap_or_default()
-    });
-    if pane_reg.commands.is_empty() {
-        return;
-    }
-    ctx.data_mut(|d| {
-        let mut root_reg = d
-            .get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new("CMD_REGISTRY"))
-            .unwrap_or_default();
-        for cmd in pane_reg.commands {
-            if !root_reg
-                .commands
-                .iter()
-                .any(|c| c.name == cmd.name && c.context == cmd.context && c.trigger == cmd.trigger)
-            {
-                root_reg.commands.push(cmd);
-            }
-        }
-        d.insert_temp(egui::Id::new("CMD_REGISTRY"), root_reg);
-    });
-}
-
 fn render_pane_content(
     app: &mut MathExplorerApp,
     ctx: &egui::Context,
@@ -343,9 +255,7 @@ fn render_pane_content(
     content_rect: egui::Rect,
     pane_input: egui::RawInput,
 ) {
-    let current_assigned = app.pane_tabs.get(pane_idx).copied().unwrap_or(0);
-    if let Some(tab) = app.tabs.get_mut(current_assigned) {
-        let pane_ctx = &app.pane_contexts[pane_idx];
+    if let Some((tab, pane_ctx, tex_map)) = app.pane_render_parts_mut(pane_idx) {
         pane_ctx.set_style((*ctx.style()).clone());
         pane_ctx.data_mut(|d| {
             d.insert_temp(
@@ -356,14 +266,10 @@ fn render_pane_content(
         let output = pane_ctx.run(pane_input, |sub_ctx| {
             tab.show(sub_ctx, frame);
         });
+        egui_plot::clear_last_plot_datasets();
         merge_pane_commands(ctx, pane_ctx);
 
-        sync_pane_textures(
-            ctx,
-            pane_idx,
-            &mut app.pane_textures[pane_idx],
-            output.textures_delta,
-        );
+        sync_pane_textures(ctx, pane_idx, tex_map, output.textures_delta);
 
         let should_repaint = output
             .viewport_output
@@ -374,7 +280,6 @@ fn render_pane_content(
             ctx.request_repaint();
         }
 
-        let tex_map = &app.pane_textures[pane_idx];
         for mut clipped_shape in output.shapes {
             if !tex_map.is_empty() {
                 remap_shape_textures(&mut clipped_shape.shape, tex_map);
@@ -476,6 +381,8 @@ pub fn render_multi_pane_manager(
             ctx.input(|i| i.pointer.latest_pos())
         };
 
+        app.update_focused_pane_from_input(ctx, &raw_input, &pane_rects, pointer_pos);
+        let focused_idx = app.active_focused_pane();
         const HEADER_HEIGHT: f32 = 28.0;
 
         for pane_idx in 0..pane_count {
@@ -494,16 +401,28 @@ pub fn render_multi_pane_manager(
                 pane_rect.max,
             );
 
+            let stroke_color = if pane_idx == focused_idx {
+                ui.visuals().selection.stroke.color
+            } else {
+                ui.visuals().widgets.noninteractive.bg_stroke.color
+            };
             ui.painter().rect_stroke(
                 pane_rect,
                 0.0,
-                egui::Stroke::new(1.0_f32, ui.visuals().widgets.noninteractive.bg_stroke.color),
+                egui::Stroke::new(1.0_f32, stroke_color),
                 egui::StrokeKind::Inside,
             );
 
             render_pane_header(app, ctx, ui, pane_idx, header_rect, label);
 
-            let pane_input = filter_raw_input_for_pane(&raw_input, content_rect, pointer_pos);
+            let effective_pos = pointer_pos.or_else(|| {
+                (!app.is_dragging_divider
+                    && !app.command_palette.is_open
+                    && !app.show_help_menu
+                    && pane_idx == app.active_focused_pane())
+                .then(|| content_rect.center())
+            });
+            let pane_input = filter_raw_input_for_pane(&raw_input, content_rect, effective_pos);
             render_pane_content(app, ctx, frame, ui, pane_idx, content_rect, pane_input);
         }
     });
