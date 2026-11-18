@@ -19,6 +19,8 @@ mod tests_domain_bar;
 #[cfg(test)]
 mod tests_multi_pane;
 #[cfg(test)]
+mod tests_secondary_menus;
+#[cfg(test)]
 mod tests_session_lifecycle;
 #[cfg(test)]
 mod tests_split_view;
@@ -56,6 +58,7 @@ pub struct MathExplorerApp {
     pub viewport_layout: ViewportLayout,
     pub pane_tabs: Vec<usize>,
     pane_contexts: [egui::Context; 4],
+    pane_textures: [std::collections::HashMap<egui::TextureId, egui::TextureId>; 4],
     pub is_dragging_divider: bool,
 }
 
@@ -83,6 +86,7 @@ impl Default for MathExplorerApp {
             viewport_layout: ViewportLayout::Single,
             pane_tabs: vec![0, 1, 2, 3],
             pane_contexts: std::array::from_fn(|_| egui::Context::default()),
+            pane_textures: std::array::from_fn(|_| std::collections::HashMap::new()),
             is_dragging_divider: false,
         }
     }
@@ -182,14 +186,14 @@ impl MathExplorerApp {
         }
     }
 
-    /// Returns the names of all registered tabs.
-    pub fn tab_names(&self) -> Vec<&'static str> {
-        self.tabs.iter().map(|t| t.name()).collect()
-    }
-
     /// Selects an active tab by index, synchronizing primary pane and emitting accessibility announcements.
     pub fn select_tab(&mut self, ctx: &egui::Context, tab_idx: usize) {
         domain_bar::select_tab(self, ctx, tab_idx);
+    }
+
+    /// Assigns a simulation module to a specific viewport pane, synchronizing state and announcing the change.
+    pub fn select_pane_tab(&mut self, ctx: &egui::Context, pane_idx: usize, tab_idx: usize) {
+        domain_bar::select_pane_tab(self, ctx, pane_idx, tab_idx);
     }
 
     /// Restores the previous application state from the undo history stack.

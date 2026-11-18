@@ -1,5 +1,10 @@
 #![allow(missing_docs)]
 use domain_applied::applied::grpo::formulas::*;
+use verified_engine::allocator::VerifiedAllocator;
+use verified_engine::engine::VerifiedEngine;
+
+#[global_allocator]
+static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
 #[verified_engine::verified]
@@ -13,6 +18,96 @@ fn test_response_level_advantage() {
 
     let advantage_low = response_level_advantage(&rewards, 1.0);
     assert!(advantage_low < 0.0);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_response_level_advantage_zero_allocations() {
+    let rewards = [1.0, 2.0, 3.0, 4.0, 5.0];
+    let mut out = [0.0; 5];
+
+    let ((), _metrics) = VerifiedEngine::run_verified(|| {
+        for &r in &rewards {
+            let _adv = response_level_advantage(&rewards, r);
+        }
+        normalize_group_advantages(&rewards, &mut out);
+    });
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_advantage_empty_group() {
+    let empty: [f64; 0] = [];
+    assert_eq!(response_level_advantage(&empty, 1.0), 0.0);
+
+    let mut out = [99.0; 3];
+    normalize_group_advantages(&empty, &mut out);
+    assert_eq!(out, [0.0, 0.0, 0.0]);
+
+    let batch = batch_response_level_advantages(&empty);
+    assert!(batch.is_empty());
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_advantage_single_response_group() {
+    let single = [42.0];
+    let adv = response_level_advantage(&single, 42.0);
+    assert!((adv - 0.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
+
+    let mut out = [99.0];
+    normalize_group_advantages(&single, &mut out);
+    assert!((out[0] - 0.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
+
+    let batch = batch_response_level_advantages(&single);
+    assert_eq!(batch.len(), 1);
+    assert!((batch[0] - 0.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_advantage_constant_rewards() {
+    let constant = [3.5, 3.5, 3.5, 3.5];
+    for &r in &constant {
+        let adv = response_level_advantage(&constant, r);
+        assert!((adv - 0.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
+    }
+
+    let mut out = [99.0; 4];
+    normalize_group_advantages(&constant, &mut out);
+    for &val in &out {
+        assert!((val - 0.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
+    }
+
+    let batch = batch_group_advantages(&constant);
+    for &val in &batch {
+        assert!((val - 0.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
+    }
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_advantage_numerical_parity() {
+    let rewards = [1.0, 0.5, 0.2];
+    let adv_0 = response_level_advantage(&rewards, rewards[0]);
+    let adv_1 = response_level_advantage(&rewards, rewards[1]);
+    let adv_2 = response_level_advantage(&rewards, rewards[2]);
+
+    assert!((adv_0 - 1.0722219).abs() < 1e-4);
+    assert!((adv_1 - (-0.1649572)).abs() < 1e-4);
+    assert!((adv_2 - (-0.9072647)).abs() < 1e-4);
+
+    let mut out = [0.0; 3];
+    normalize_group_advantages(&rewards, &mut out);
+    assert!((out[0] - adv_0).abs() < math_commons::registry::TOLERANCE_STANDARD);
+    assert!((out[1] - adv_1).abs() < math_commons::registry::TOLERANCE_STANDARD);
+    assert!((out[2] - adv_2).abs() < math_commons::registry::TOLERANCE_STANDARD);
+
+    let batch = batch_response_level_advantages(&rewards);
+    assert_eq!(batch.len(), 3);
+    for i in 0..3 {
+        assert!((batch[i] - out[i]).abs() < math_commons::registry::TOLERANCE_STANDARD);
+    }
 }
 
 #[test]

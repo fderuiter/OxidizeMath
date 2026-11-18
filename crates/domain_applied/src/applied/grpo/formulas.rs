@@ -1,10 +1,35 @@
-use statrs::statistics::{Data, Distribution};
-
 const EPSILON_NORM: f64 = 1e-8;
 
 // Re-export moved functions to maintain backward compatibility
 pub use super::metrics::pairwise_distance_bleu;
 pub use super::rewards::{binary_reward, composite_reward, repetition_penalty, uncertainty_reward};
+
+/// Computes sample mean and sample standard deviation (with Bessel's correction $N - 1$)
+/// directly over a borrowed slice without heap allocations.
+///
+/// Returns `(0.0, 0.0)` for an empty slice and `(rewards[0], 0.0)` for a single-element slice.
+#[inline]
+fn compute_slice_mean_and_std_dev(rewards: &[f64]) -> (f64, f64) {
+    let n = rewards.len();
+    if n == 0 {
+        return (0.0, 0.0);
+    }
+    let sum: f64 = rewards.iter().sum();
+    let mean = sum / (n as f64);
+    if n == 1 {
+        return (mean, 0.0);
+    }
+    let var = rewards
+        .iter()
+        .map(|&r| {
+            let diff = r - mean;
+            diff * diff
+        })
+        .sum::<f64>()
+        / ((n - 1) as f64);
+    let std_dev = var.max(0.0).sqrt();
+    (mean, std_dev)
+}
 
 /// Calculates the response-level advantage using z-score normalization.
 ///
@@ -18,10 +43,70 @@ pub use super::rewards::{binary_reward, composite_reward, repetition_penalty, un
 /// The response-level advantage for `reward_i`.
 #[verified_engine::verified]
 pub fn response_level_advantage(rewards: &[f64], reward_i: f64) -> f64 {
-    let data = Data::new(rewards.to_vec());
-    let mean = data.mean().unwrap_or(0.0);
-    let std_dev = data.std_dev().unwrap_or(0.0);
+    if rewards.is_empty() {
+        return 0.0;
+    }
+    let (mean, std_dev) = compute_slice_mean_and_std_dev(rewards);
     (reward_i - mean) / (std_dev + EPSILON_NORM)
+}
+
+/// Normalizes a full group of rewards in one pass into a pre-allocated output slice without heap allocations.
+///
+/// This evaluates sample mean and standard deviation once for all responses in $O(G)$ time.
+///
+/// # Arguments
+///
+/// * `rewards` - A slice of scalar rewards for a group of responses.
+/// * `out` - A mutable destination slice to receive the computed advantages.
+#[verified_engine::verified]
+pub fn normalize_group_advantages(rewards: &[f64], out: &mut [f64]) {
+    if rewards.is_empty() {
+        for a in out.iter_mut() {
+            *a = 0.0;
+        }
+        return;
+    }
+    let (mean, std_dev) = compute_slice_mean_and_std_dev(rewards);
+    let denom = std_dev + EPSILON_NORM;
+    let n = rewards.len().min(out.len());
+    for (r, a) in rewards[..n].iter().zip(out[..n].iter_mut()) {
+        *a = (*r - mean) / denom;
+    }
+    for a in out[n..].iter_mut() {
+        *a = 0.0;
+    }
+}
+
+/// Normalizes a full group of rewards in one pass, returning a vector of advantages.
+///
+/// This evaluates sample mean and standard deviation once for all responses in $O(G)$ time.
+///
+/// # Arguments
+///
+/// * `rewards` - A slice of scalar rewards for a group of responses.
+///
+/// # Returns
+///
+/// A `Vec<f64>` containing response-level advantages for the group.
+#[verified_engine::verified]
+pub fn batch_response_level_advantages(rewards: &[f64]) -> Vec<f64> {
+    let mut out = vec![0.0; rewards.len()];
+    normalize_group_advantages(rewards, &mut out);
+    out
+}
+
+/// Convenience alias for [`batch_response_level_advantages`].
+///
+/// # Arguments
+///
+/// * `rewards` - A slice of scalar rewards for a group of responses.
+///
+/// # Returns
+///
+/// A `Vec<f64>` containing response-level advantages for the group.
+#[verified_engine::verified]
+pub fn batch_group_advantages(rewards: &[f64]) -> Vec<f64> {
+    batch_response_level_advantages(rewards)
 }
 
 /// The clipped surrogate objective for the policy update in GRPO.

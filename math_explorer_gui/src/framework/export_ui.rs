@@ -137,6 +137,29 @@ impl SimulationFramework {
         }
     }
 
+    fn export_active_preset_json(&mut self, file_slug: &str) {
+        if let Some(tool) = &self.active_tool {
+            match tool.export_preset_json() {
+                Ok(json_str) => {
+                    let filename = format!("{}_preset.json", file_slug);
+                    self.preset_dialog.trigger_export(json_str, &filename);
+                }
+                Err(err) => {
+                    federated_registry::global_registry().emit(
+                        federated_registry::TelemetryEvent {
+                            source: "PresetSerialization".to_string(),
+                            severity: federated_registry::Severity::Warning,
+                            message: err.clone(),
+                            metadata: std::collections::HashMap::new(),
+                            thread_name: None,
+                        },
+                    );
+                    self.preset_dialog.toast_error = Some(err);
+                }
+            }
+        }
+    }
+
     fn render_preset_action_bar_controls(&mut self, ui: &mut egui::Ui, file_slug: &str) {
         ui.separator();
         ui.label(egui::RichText::new("⚙ Presets:").strong());
@@ -154,25 +177,28 @@ impl SimulationFramework {
             .on_hover_text("Export current parameter preset to a JSON file")
             .clicked()
         {
-            if let Some(tool) = &self.active_tool {
-                match tool.export_preset_json() {
-                    Ok(json_str) => {
-                        let filename = format!("{}_preset.json", file_slug);
-                        self.preset_dialog.trigger_export(json_str, &filename);
-                    }
-                    Err(err) => {
-                        federated_registry::global_registry().emit(
-                            federated_registry::TelemetryEvent {
-                                source: "PresetSerialization".to_string(),
-                                severity: federated_registry::Severity::Warning,
-                                message: err.clone(),
-                                metadata: std::collections::HashMap::new(),
-                                thread_name: None,
-                            },
-                        );
-                        self.preset_dialog.toast_error = Some(err);
-                    }
-                }
+            self.export_active_preset_json(file_slug);
+        }
+
+        if ui
+            .button("↻ Reset Parameters")
+            .accessible_hover_text("Restore default baseline parameters")
+            .clicked()
+        {
+            self.reset_parameters();
+            crate::accessibility::announce_status("Parameters reset to baseline defaults");
+            ui.ctx().request_repaint();
+        }
+
+        if let Some(ref msg) = self.preset_dialog.toast_info {
+            ui.separator();
+            ui.colored_label(egui::Color32::LIGHT_GREEN, format!("ℹ️ {}", msg));
+            if ui
+                .small_button("✖")
+                .on_hover_text("Dismiss notification")
+                .clicked()
+            {
+                self.preset_dialog.toast_info = None;
             }
         }
 
