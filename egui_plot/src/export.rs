@@ -65,6 +65,12 @@ pub struct ExportOptions {
     pub background_color: egui::Color32,
     /// Target aspect ratio option.
     pub aspect_ratio: AspectRatioOption,
+    /// Project X coordinates in base-10 logarithmic space.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub log_x: bool,
+    /// Project Y coordinates in base-10 logarithmic space.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub log_y: bool,
 }
 
 impl Default for ExportOptions {
@@ -77,6 +83,8 @@ impl Default for ExportOptions {
             background_opacity: 1.0,
             background_color: egui::Color32::from_rgb(18, 18, 18),
             aspect_ratio: AspectRatioOption::SixteenNine,
+            log_x: false,
+            log_y: false,
         }
     }
 }
@@ -497,6 +505,127 @@ fn escape_xml(input: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+#[inline]
+fn is_valid_export_point(p: [f64; 2], options: &ExportOptions) -> bool {
+    p[0].is_finite()
+        && p[1].is_finite()
+        && (!options.log_x || p[0] > 0.0)
+        && (!options.log_y || p[1] > 0.0)
+}
+
+#[inline]
+fn transform_export_coord(val: f64, is_log: bool) -> f64 {
+    if is_log {
+        val.log10().clamp(-300.0, 300.0)
+    } else {
+        val
+    }
+}
+
+fn compute_export_bounds(
+    datasets: &[(String, Vec<[f64; 2]>)],
+    options: &ExportOptions,
+    custom_bounds: Option<[f64; 4]>,
+) -> (f64, f64, f64, f64) {
+    let mut data_min_x = f64::INFINITY;
+    let mut data_max_x = -f64::INFINITY;
+    let mut data_min_y = f64::INFINITY;
+    let mut data_max_y = -f64::INFINITY;
+
+    for (_, pts) in datasets {
+        for &p in pts {
+            if is_valid_export_point(p, options) {
+                data_min_x = data_min_x.min(p[0]);
+                data_max_x = data_max_x.max(p[0]);
+                data_min_y = data_min_y.min(p[1]);
+                data_max_y = data_max_y.max(p[1]);
+            }
+        }
+    }
+
+    let (raw_min_x, raw_max_x, raw_min_y, raw_max_y) = if let Some(b) = custom_bounds {
+        let bx0 = if options.log_x && (!b[0].is_finite() || b[0] <= 0.0) {
+            if data_min_x.is_finite() {
+                data_min_x
+            } else {
+                1e-6
+            }
+        } else {
+            b[0]
+        };
+        let bx1 = if options.log_x && (!b[1].is_finite() || b[1] <= bx0) {
+            if data_max_x > bx0 {
+                data_max_x
+            } else {
+                bx0 * 10.0
+            }
+        } else {
+            b[1]
+        };
+        let by0 = if options.log_y && (!b[2].is_finite() || b[2] <= 0.0) {
+            if data_min_y.is_finite() {
+                data_min_y
+            } else {
+                1e-6
+            }
+        } else {
+            b[2]
+        };
+        let by1 = if options.log_y && (!b[3].is_finite() || b[3] <= by0) {
+            if data_max_y > by0 {
+                data_max_y
+            } else {
+                by0 * 10.0
+            }
+        } else {
+            b[3]
+        };
+        (bx0, bx1, by0, by1)
+    } else {
+        (data_min_x, data_max_x, data_min_y, data_max_y)
+    };
+
+    let (mut min_x, mut max_x) = if raw_min_x.is_finite() && raw_max_x.is_finite() {
+        (
+            transform_export_coord(raw_min_x, options.log_x),
+            transform_export_coord(raw_max_x, options.log_x),
+        )
+    } else if options.log_x {
+        (-6.0, 0.0)
+    } else {
+        (-1.0, 1.0)
+    };
+
+    let (mut min_y, mut max_y) = if raw_min_y.is_finite() && raw_max_y.is_finite() {
+        (
+            transform_export_coord(raw_min_y, options.log_y),
+            transform_export_coord(raw_max_y, options.log_y),
+        )
+    } else if options.log_y {
+        (-6.0, 0.0)
+    } else {
+        (-1.0, 1.0)
+    };
+
+    if min_x >= max_x {
+        min_x -= 1.0;
+        max_x += 1.0;
+    }
+    if min_y >= max_y {
+        min_y -= 1.0;
+        max_y += 1.0;
+    }
+
+    let margin_x = (max_x - min_x) * 0.05;
+    let margin_y = (max_y - min_y) * 0.05;
+    (
+        min_x - margin_x,
+        max_x + margin_x,
+        min_y - margin_y,
+        max_y + margin_y,
+    )
+}
+
 /// Render plot datasets into vector SVG XML string.
 pub fn export_custom_svg(
     datasets: &[(String, Vec<[f64; 2]>)],
@@ -525,45 +654,17 @@ pub fn export_custom_svg(
     let bg_a_factor =
         (options.background_color.a() as f32 / 255.0) * options.background_opacity.clamp(0.0, 1.0);
 
-    let mut min_x = f64::INFINITY;
-    let mut max_x = -f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_y = -f64::INFINITY;
-
-    for (_, pts) in datasets {
-        for p in pts {
-            if p[0].is_finite() && p[1].is_finite() {
-                min_x = min_x.min(p[0]);
-                max_x = max_x.max(p[0]);
-                min_y = min_y.min(p[1]);
-                max_y = max_y.max(p[1]);
-            }
-        }
-    }
-
-    if min_x >= max_x {
-        min_x -= 1.0;
-        max_x += 1.0;
-    }
-    if min_y >= max_y {
-        min_y -= 1.0;
-        max_y += 1.0;
-    }
-
-    let margin_x = (max_x - min_x) * 0.05;
-    let margin_y = (max_y - min_y) * 0.05;
-    min_x -= margin_x;
-    max_x += margin_x;
-    min_y -= margin_y;
-    max_y += margin_y;
+    let (min_x, max_x, min_y, max_y) = compute_export_bounds(datasets, options, None);
 
     let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
     let draw_w = (width as f64 - 2.0 * padding).max(1.0);
     let draw_h = (height as f64 - 2.0 * padding).max(1.0);
 
     let to_pixel = |p: [f64; 2]| -> (f64, f64) {
-        let x_norm = (p[0] - min_x) / (max_x - min_x);
-        let y_norm = (p[1] - min_y) / (max_y - min_y);
+        let tx = transform_export_coord(p[0], options.log_x);
+        let ty = transform_export_coord(p[1], options.log_y);
+        let x_norm = (tx - min_x) / (max_x - min_x);
+        let y_norm = (ty - min_y) / (max_y - min_y);
         let px = padding + x_norm * draw_w;
         let py = (height as f64 - padding) - y_norm * draw_h;
         (px, py)
@@ -631,7 +732,7 @@ pub fn export_custom_svg(
         };
 
         for &p in pts {
-            if p[0].is_finite() && p[1].is_finite() {
+            if is_valid_export_point(p, options) {
                 current_segment.push(to_pixel(p));
             } else {
                 flush_segment(&mut current_segment, &mut svg);
@@ -703,50 +804,17 @@ pub fn export_custom_image_with_bounds(
 
     let mut pixels = vec![bg_pixel; width * height];
 
-    let (mut min_x, mut max_x, mut min_y, mut max_y) = if let Some(b) = custom_bounds {
-        (b[0], b[1], b[2], b[3])
-    } else {
-        let mut min_x = f64::INFINITY;
-        let mut max_x = -f64::INFINITY;
-        let mut min_y = f64::INFINITY;
-        let mut max_y = -f64::INFINITY;
-
-        for (_, pts) in datasets {
-            for p in pts {
-                if p[0].is_finite() && p[1].is_finite() {
-                    min_x = min_x.min(p[0]);
-                    max_x = max_x.max(p[0]);
-                    min_y = min_y.min(p[1]);
-                    max_y = max_y.max(p[1]);
-                }
-            }
-        }
-        (min_x, max_x, min_y, max_y)
-    };
-
-    if min_x >= max_x {
-        min_x -= 1.0;
-        max_x += 1.0;
-    }
-    if min_y >= max_y {
-        min_y -= 1.0;
-        max_y += 1.0;
-    }
-
-    let margin_x = (max_x - min_x) * 0.05;
-    let margin_y = (max_y - min_y) * 0.05;
-    min_x -= margin_x;
-    max_x += margin_x;
-    min_y -= margin_y;
-    max_y += margin_y;
+    let (min_x, max_x, min_y, max_y) = compute_export_bounds(datasets, options, custom_bounds);
 
     let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
     let draw_w = (width as f64 - 2.0 * padding).max(1.0);
     let draw_h = (height as f64 - 2.0 * padding).max(1.0);
 
     let to_pixel = |p: [f64; 2]| -> (f64, f64) {
-        let x_norm = (p[0] - min_x) / (max_x - min_x);
-        let y_norm = (p[1] - min_y) / (max_y - min_y);
+        let tx = transform_export_coord(p[0], options.log_x);
+        let ty = transform_export_coord(p[1], options.log_y);
+        let x_norm = (tx - min_x) / (max_x - min_x);
+        let y_norm = (ty - min_y) / (max_y - min_y);
         let px = padding + x_norm * draw_w;
         let py = (height as f64 - padding) - y_norm * draw_h;
         (px, py)
@@ -762,7 +830,7 @@ pub fn export_custom_image_with_bounds(
 
         let mut prev_pixel: Option<(f64, f64)> = None;
         for &p in pts {
-            if !p[0].is_finite() || !p[1].is_finite() {
+            if !is_valid_export_point(p, options) {
                 prev_pixel = None;
                 continue;
             }
@@ -870,8 +938,8 @@ pub fn export_custom_gif(
 
     for frame in frames {
         for (_, pts) in frame {
-            for p in pts {
-                if p[0].is_finite() && p[1].is_finite() {
+            for &p in pts {
+                if is_valid_export_point(p, options) {
                     min_x = min_x.min(p[0]);
                     max_x = max_x.max(p[0]);
                     min_y = min_y.min(p[1]);
@@ -1822,5 +1890,115 @@ mod tests {
         assert_eq!(res_direct.is_ok(), res_cb.is_ok());
         #[cfg(not(target_arch = "wasm32"))]
         assert!(callback_res.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn test_export_custom_svg_logarithmic_spacing_and_splitting() {
+        let datasets = vec![(
+            "Decades".to_string(),
+            vec![
+                [1.0, 1.0],
+                [10.0, 100.0],
+                [0.0, -5.0],
+                [100.0, 10_000.0],
+                [1000.0, 1_000_000.0],
+            ],
+        )];
+        let options = ExportOptions {
+            width: 800,
+            height: 600,
+            log_x: true,
+            log_y: true,
+            ..Default::default()
+        };
+        let svg = export_custom_svg(&datasets, &options).expect("Log SVG export failed");
+        let polylines: Vec<&str> = svg.matches("<polyline ").collect();
+        assert_eq!(polylines.len(), 2, "Non-positive point must split polyline");
+
+        let parse_segment = |tag_start: &str| -> Vec<[f64; 2]> {
+            let p_attr = tag_start.split("points=\"").nth(1).unwrap();
+            let pts_str = p_attr.split('"').next().unwrap();
+            pts_str
+                .split_whitespace()
+                .map(|pair| {
+                    let mut it = pair.split(',');
+                    [
+                        it.next().unwrap().parse::<f64>().unwrap(),
+                        it.next().unwrap().parse::<f64>().unwrap(),
+                    ]
+                })
+                .collect()
+        };
+        let mut chunks = svg.split("<polyline ").skip(1);
+        let seg1 = parse_segment(chunks.next().unwrap());
+        let seg2 = parse_segment(chunks.next().unwrap());
+        let dx1 = seg1[1][0] - seg1[0][0];
+        let dx2 = seg2[1][0] - seg2[0][0];
+        let dy1 = (seg1[1][1] - seg1[0][1]).abs();
+        let dy2 = (seg2[1][1] - seg2[0][1]).abs();
+        assert!(
+            (dx1 - dx2).abs() < 0.05,
+            "Equal X decades in SVG: {dx1} vs {dx2}"
+        );
+        assert!(
+            (dy1 - dy2).abs() < 0.05,
+            "Equal Y decades in SVG: {dy1} vs {dy2}"
+        );
+    }
+
+    #[test]
+    fn test_export_custom_png_and_gif_logarithmic() {
+        let sample_pts: Vec<[f64; 2]> = (0..=30)
+            .map(|i| {
+                let exp = -1.0 + (i as f64) * (4.0 / 30.0);
+                let x = 10.0_f64.powf(exp);
+                let wobble = 1.0 + 0.18 * ((i as f64) * 0.9).sin();
+                [x, 2.5 * x.powf(1.6) * wobble]
+            })
+            .collect();
+        let fit = crate::fit::fit_dataset_scaled(&sample_pts, 1, "PowerLaw", true, true).unwrap();
+        let fit_pts: Vec<[f64; 2]> = (0..=100)
+            .map(|i| {
+                let exp = -1.0 + (i as f64) * (4.0 / 100.0);
+                let x = 10.0_f64.powf(exp);
+                [x, fit.eval(x)]
+            })
+            .collect();
+        let datasets = vec![
+            ("Power-Law Measurements".to_string(), sample_pts.clone()),
+            (format!("Log-Log Fit ({})", fit.formula), fit_pts),
+        ];
+        let options = ExportOptions {
+            width: 960,
+            height: 540,
+            line_thickness: 3.0,
+            background_color: egui::Color32::from_rgb(18, 22, 30),
+            log_x: true,
+            log_y: true,
+            ..Default::default()
+        };
+        let png = export_custom_png(&datasets, &options).expect("Log PNG export failed");
+        assert_eq!(&png[0..8], b"\x89PNG\r\n\x1a\n");
+        let _ = std::fs::write("/tmp/log_space_projection_verification.png", &png);
+        if let Ok(svg_log) = export_custom_svg(&datasets, &options) {
+            let _ = std::fs::write("/tmp/log_space_projection_log.svg", svg_log);
+        }
+        let lin_opts = ExportOptions {
+            log_x: false,
+            log_y: false,
+            ..options
+        };
+        if let Ok(svg_lin) = export_custom_svg(&datasets, &lin_opts) {
+            let _ = std::fs::write("/tmp/log_space_projection_linear.svg", svg_lin);
+        }
+
+        let frames = sample_progressive_frames(&datasets, 3);
+        let gif_opts = ExportOptions {
+            width: 240,
+            height: 135,
+            ..options
+        };
+        let gif = export_custom_gif(&frames, &gif_opts, 10).expect("Log GIF export failed");
+        assert_eq!(&gif[0..6], b"GIF89a");
     }
 }
