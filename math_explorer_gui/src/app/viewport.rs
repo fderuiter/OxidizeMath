@@ -1,4 +1,7 @@
 mod pane_sync;
+mod sash;
+#[cfg(test)]
+mod sash_tests;
 
 use crate::app::MathExplorerApp;
 use eframe::egui;
@@ -306,75 +309,38 @@ pub fn render_multi_pane_manager(
             return;
         }
 
-        let (pane_rects, maybe_divider) =
+        let (mut pane_rects, mut maybe_divider) =
             calculate_pane_rects_with_ratio(app.viewport_layout, total_rect, app.split_ratio);
 
-        if let Some(divider_rect) = maybe_divider {
-            let hover_pos = ctx.input(|i| i.pointer.hover_pos());
-            let is_hovered = hover_pos.is_some_and(|pos| divider_rect.contains(pos));
-            let is_down = ctx.input(|i| i.pointer.primary_down());
-
-            if is_hovered && ctx.input(|i| i.pointer.any_pressed()) {
-                app.is_dragging_divider = true;
+        let sash_state = maybe_divider.map(|divider_rect| {
+            let prev_ratio = app.split_ratio;
+            let state = sash::interact_split_sash(app, ctx, ui, total_rect, divider_rect);
+            if (app.split_ratio - prev_ratio).abs() > 1e-6 {
+                let updated = calculate_pane_rects_with_ratio(
+                    app.viewport_layout,
+                    total_rect,
+                    app.split_ratio,
+                );
+                pane_rects = updated.0;
+                maybe_divider = updated.1;
             }
-            if !is_down {
-                app.is_dragging_divider = false;
-            }
-            app.split_view_state.is_dragging_divider = app.is_dragging_divider;
+            state
+        });
 
-            if app.is_dragging_divider {
-                let delta = ctx.input(|i| i.pointer.delta());
-                let ratio_delta = match app.viewport_layout {
-                    ViewportLayout::SplitHorizontal if total_rect.width() > 0.0 => {
-                        delta.x / total_rect.width()
-                    }
-                    ViewportLayout::SplitVertical if total_rect.height() > 0.0 => {
-                        delta.y / total_rect.height()
-                    }
-                    _ => 0.0,
-                };
-                app.split_ratio = (app.split_ratio + ratio_delta).clamp(0.20, 0.80);
-            }
-
-            if is_hovered || app.is_dragging_divider {
-                ctx.set_cursor_icon(match app.viewport_layout {
-                    ViewportLayout::SplitHorizontal => egui::CursorIcon::ResizeColumn,
-                    ViewportLayout::SplitVertical => egui::CursorIcon::ResizeRow,
-                    _ => egui::CursorIcon::Default,
-                });
-            }
-
-            let divider_color = if app.is_dragging_divider {
-                egui::Color32::from_rgb(90, 150, 255)
-            } else if is_hovered {
-                egui::Color32::from_rgb(140, 140, 150)
-            } else {
-                egui::Color32::from_gray(50)
-            };
-            ui.painter().rect_filled(divider_rect, 0.0, divider_color);
-
-            let center = divider_rect.center();
-            let handle_color = if app.is_dragging_divider || is_hovered {
-                egui::Color32::WHITE
-            } else {
-                egui::Color32::from_gray(130)
-            };
-            let (p1, p2) = if app.viewport_layout == ViewportLayout::SplitHorizontal {
-                (
-                    center - egui::vec2(0.0, 16.0),
-                    center + egui::vec2(0.0, 16.0),
-                )
-            } else {
-                (
-                    center - egui::vec2(16.0, 0.0),
-                    center + egui::vec2(16.0, 0.0),
-                )
-            };
-            ui.painter()
-                .line_segment([p1, p2], egui::Stroke::new(2.0_f32, handle_color));
+        let mut raw_input = ctx.input(|i| i.raw.clone());
+        if sash_state.as_ref().is_some_and(|s| s.consumed_keys) {
+            raw_input
+                .events
+                .retain(|ev| !sash::is_sash_adjustment_event(ev));
         }
-
-        let raw_input = ctx.input(|i| i.raw.clone());
+        let sash_focused = sash_state.as_ref().is_some_and(|s| s.has_focus);
+        if sash_focused {
+            for pane_ctx in &app.pane_contexts {
+                if let Some(fid) = pane_ctx.memory(|m| m.focused()) {
+                    pane_ctx.memory_mut(|m| m.surrender_focus(fid));
+                }
+            }
+        }
         let pointer_pos = if app.is_dragging_divider {
             None
         } else {
@@ -417,6 +383,7 @@ pub fn render_multi_pane_manager(
 
             let effective_pos = pointer_pos.or_else(|| {
                 (!app.is_dragging_divider
+                    && !sash_focused
                     && !app.command_palette.is_open
                     && !app.show_help_menu
                     && pane_idx == app.active_focused_pane())
@@ -424,6 +391,17 @@ pub fn render_multi_pane_manager(
             });
             let pane_input = filter_raw_input_for_pane(&raw_input, content_rect, effective_pos);
             render_pane_content(app, ctx, frame, ui, pane_idx, content_rect, pane_input);
+        }
+
+        if let (Some(divider_rect), Some(state)) = (maybe_divider, sash_state) {
+            sash::paint_split_sash(
+                ui,
+                total_rect,
+                divider_rect,
+                app.viewport_layout,
+                app.is_dragging_divider,
+                &state,
+            );
         }
     });
 }
