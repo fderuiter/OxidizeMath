@@ -13,6 +13,7 @@ mod axis;
 pub mod commands;
 pub mod export;
 pub mod export_modal;
+pub mod file_io;
 pub mod fit;
 mod items;
 pub mod latex;
@@ -1079,8 +1080,9 @@ impl<'a> Plot<'a> {
         }
 
         // --- Legend ---
-        let legend = legend_config
-            .and_then(|config| LegendWidget::try_new(plot_rect, config, &items, &mem.hidden_items));
+        let legend = legend_config.and_then(|config| {
+            LegendWidget::try_new(plot_id, plot_rect, config, &items, &mem.hidden_items)
+        });
         // Don't show hover cursor when hovering over legend.
         if mem.hovered_legend_item.is_some() {
             show_x = false;
@@ -1587,6 +1589,7 @@ impl<'a> Plot<'a> {
             editing_callout_idx: Option<usize>,
             edit_callout_text: String,
             edit_callout_offset: [f32; 2],
+            import_toast: Option<(String, bool)>,
         }
 
         impl Default for AccessState {
@@ -1615,6 +1618,7 @@ impl<'a> Plot<'a> {
                     editing_callout_idx: None,
                     edit_callout_text: String::new(),
                     edit_callout_offset: [30.0, -30.0],
+                    import_toast: None,
                 }
             }
         }
@@ -1633,6 +1637,10 @@ impl<'a> Plot<'a> {
             });
         access_state.log_x = mem.log_x;
         access_state.log_y = mem.log_y;
+
+        if let Some(status) = export::drain_import_status(plot_id) {
+            access_state.import_toast = Some(status);
+        }
 
         if ui.ctx().data_mut(|d| {
             d.get_temp::<bool>(plot_id.with("toggle_settings"))
@@ -1830,6 +1838,23 @@ impl<'a> Plot<'a> {
                         if ui.button("Clear Fit").clicked() {
                             access_state.fit_degree = None;
                         }
+                    }
+                }
+
+                if let Some((ref msg, is_error)) = access_state.import_toast {
+                    ui.separator();
+                    let (color, icon) = if is_error {
+                        (Color32::RED, "⚠️")
+                    } else {
+                        (Color32::LIGHT_GREEN, "ℹ️")
+                    };
+                    ui.colored_label(color, format!("{icon} {msg}"));
+                    if ui
+                        .small_button("✖")
+                        .on_hover_text("Dismiss import notification")
+                        .clicked()
+                    {
+                        access_state.import_toast = None;
                     }
                 }
             });

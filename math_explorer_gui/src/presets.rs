@@ -183,7 +183,8 @@ pub trait InteractivePreset: Sized {
     /// Parses and validates a JSON preset string, applying configuration if valid.
     #[allow(clippy::wrong_self_convention)]
     fn from_json_str(&mut self, json_str: &str) -> Result<(), String> {
-        let envelope: PresetWrapper<Self::Config> = serde_json::from_str(json_str)
+        let cleaned = egui_plot::export::strip_utf8_bom(json_str);
+        let envelope: PresetWrapper<Self::Config> = serde_json::from_str(cleaned)
             .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
         if envelope.metadata.domain != self.domain() {
             return Err(format!(
@@ -222,7 +223,7 @@ impl PresetDialogState {
                     .add_filter("JSON Preset", &["json"])
                     .pick_file()
                 {
-                    let name = crate::web_io::sanitize_download_filename(
+                    let name = egui_plot::export::sanitize_download_filename(
                         &path.to_string_lossy(),
                         "preset.json",
                     );
@@ -240,7 +241,7 @@ impl PresetDialogState {
 
         #[cfg(target_arch = "wasm32")]
         {
-            crate::web_io::open_browser_file_picker(".json,application/json", move |outcome| {
+            egui_plot::export::open_browser_file_picker(".json,application/json", move |outcome| {
                 if let Some(res) = outcome {
                     let _ = tx.send(res);
                 }
@@ -250,7 +251,8 @@ impl PresetDialogState {
 
     /// Spawns file save dialog or triggers browser download to export preset JSON string.
     pub fn trigger_export(&mut self, json_content: String, default_filename: &str) {
-        let filename = crate::web_io::sanitize_download_filename(default_filename, "preset.json");
+        let filename =
+            egui_plot::export::sanitize_download_filename(default_filename, "preset.json");
         let (tx, rx) = channel();
         self.export_rx = Some(rx);
 
@@ -262,7 +264,7 @@ impl PresetDialogState {
                     .add_filter("JSON Preset", &["json"])
                     .save_file()
                 {
-                    let saved_name = crate::web_io::sanitize_download_filename(
+                    let saved_name = egui_plot::export::sanitize_download_filename(
                         &path.to_string_lossy(),
                         &filename,
                     );
@@ -279,10 +281,10 @@ impl PresetDialogState {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let res = crate::web_io::download_browser_file(&filename, json_content.as_bytes())
+            let res = egui_plot::export::download_browser_file(&filename, json_content.as_bytes())
                 .map(|()| filename);
             let _ = tx.send(res);
-            crate::web_io::request_browser_repaint();
+            egui_plot::export::request_browser_repaint();
         }
     }
 

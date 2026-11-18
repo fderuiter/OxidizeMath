@@ -102,7 +102,26 @@ arboard = "3.4"
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 js-sys = { workspace = true }
-web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url", "Navigator", "Clipboard", "ClipboardItem"] }
+web-sys = { workspace = true, features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "HtmlAnchorElement",
+    "HtmlInputElement",
+    "Blob",
+    "BlobPropertyBag",
+    "Url",
+    "Navigator",
+    "Clipboard",
+    "ClipboardItem",
+    "File",
+    "FileList",
+    "FileReader",
+    "Event",
+    "EventTarget",
+    "Node",
+] }
 
 [lints.rust]
 missing_docs = "warn"

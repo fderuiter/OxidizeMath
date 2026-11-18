@@ -233,15 +233,17 @@ impl InteractiveTool for SirTool {
             self.evaluate_sensitivity(ui);
 
             ui.separator();
+            let plot_id = ui.make_persistent_id("sir_plot");
             ui.horizontal(|ui| {
                 ui.heading("Simulation");
                 if ui.button("Import Dataset (CSV)").clicked() {
-                    egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), egui::Id::new("sir_plot"));
+                    egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
                 }
             });
 
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let plot = Plot::new("sir_plot")
+                .id(plot_id)
                 .view_aspect(2.0)
                 .legend(egui_plot::Legend::default());
 

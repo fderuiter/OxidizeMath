@@ -232,7 +232,8 @@ impl WorkspaceSessionManager {
 
     /// Validates and parses workspace session content from a JSON string.
     pub fn parse_envelope(&mut self, json_str: &str) -> Result<AppState, String> {
-        let val: serde_json::Value = serde_json::from_str(json_str)
+        let cleaned = egui_plot::export::strip_utf8_bom(json_str);
+        let val: serde_json::Value = serde_json::from_str(cleaned)
             .map_err(|e| format!("Invalid workspace file format: {}", e))?;
 
         if val.get("schema_version").is_some() {
