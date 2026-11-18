@@ -134,6 +134,18 @@ impl SimulationFramework {
             ui.ctx().request_repaint();
         }
 
+        if let Some(ref msg) = self.preset_dialog.toast_info {
+            ui.separator();
+            ui.colored_label(egui::Color32::LIGHT_GREEN, format!("ℹ️ {}", msg));
+            if ui
+                .small_button("✖")
+                .on_hover_text("Dismiss notification")
+                .clicked()
+            {
+                self.preset_dialog.toast_info = None;
+            }
+        }
+
         if let Some(ref err) = self.preset_dialog.toast_error {
             ui.separator();
             ui.colored_label(egui::Color32::RED, format!("⚠️ {}", err));

@@ -23,6 +23,7 @@ pub mod reflective_ui;
 pub mod sensitivity;
 pub mod starter_gallery;
 mod tabs;
+pub mod web_io;
 
 use app::MathExplorerApp;
 

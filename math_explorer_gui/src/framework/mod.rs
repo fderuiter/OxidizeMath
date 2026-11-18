@@ -302,7 +302,7 @@ pub struct SimulationFramework {
     /// Simulation frame / step counter.
     pub step_counter: usize,
     /// Start time of current active session.
-    pub start_time: std::time::Instant,
+    pub start_time: crate::web_io::PlatformInstant,
 }
 
 impl SimulationFramework {
@@ -342,7 +342,7 @@ impl SimulationFramework {
             is_diverged: false,
             diagnostic_report: None,
             step_counter: 0,
-            start_time: std::time::Instant::now(),
+            start_time: crate::web_io::PlatformInstant::now(),
         };
 
         if !framework.available_tools.is_empty() {
@@ -384,7 +384,7 @@ impl SimulationFramework {
             tool_state: active_tool_state,
             plot_datasets: initial_datasets,
             step_index: 0,
-            timestamp: std::time::Instant::now(),
+            timestamp: crate::web_io::PlatformInstant::now(),
         });
         scientific_metadata::citation_registry::CitationRegistry::register(
             new_tool.name().to_string(),
