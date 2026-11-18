@@ -12,6 +12,7 @@
 mod axis;
 pub mod commands;
 pub mod export;
+pub mod export_modal;
 pub mod fit;
 mod items;
 pub mod latex;
@@ -38,6 +39,11 @@ pub use crate::{
         copy_image_to_clipboard_with_callback, export_csv, export_custom_gif, export_custom_image,
         export_custom_png, export_custom_svg, export_json, export_svg, export_svg_filename,
         parse_csv, save_file_dialog, trigger_import_csv, trigger_import_csv_for_plot,
+    },
+    export_modal::{
+        CallbackExportSource, ExportDataSource, ExportModalBindings, ExportModalConfig,
+        ExportModalState, MODAL_HEADER_TEXT, calculate_target_dimensions, clipboard_status_id,
+        exceeds_max_dimension, poll_clipboard_status, show_export_modal,
     },
     fit::{FitResult, FitType, fit_dataset},
     items::{
@@ -1580,15 +1586,7 @@ impl<'a> Plot<'a> {
         #[derive(Clone)]
         struct AccessState {
             show_table: bool,
-            show_export_modal: bool,
-            export_scale: f32,
-            export_aspect: AspectRatioOption,
-            export_line_thickness: f32,
-            export_bg_opacity: f32,
-            export_bg_dark: bool,
-            export_gif_fps: u32,
-            export_gif_frames: u32,
-            status_message: Option<String>,
+            export_modal: export_modal::ExportModalState,
             focused_item: usize,
             focused_point: usize,
             fit_degree: Option<usize>,
@@ -1616,15 +1614,7 @@ impl<'a> Plot<'a> {
             fn default() -> Self {
                 Self {
                     show_table: false,
-                    show_export_modal: false,
-                    export_scale: 1.0,
-                    export_aspect: AspectRatioOption::SixteenNine,
-                    export_line_thickness: 2.0,
-                    export_bg_opacity: 1.0,
-                    export_bg_dark: true,
-                    export_gif_fps: 15,
-                    export_gif_frames: 20,
-                    status_message: None,
+                    export_modal: export_modal::ExportModalState::default(),
                     focused_item: 0,
                     focused_point: 0,
                     fit_degree: None,
@@ -1662,12 +1652,6 @@ impl<'a> Plot<'a> {
                 clamp_grid: mem.clamp_grid,
                 ..Default::default()
             });
-
-        if let Some(msg) =
-            ui.data_mut(|d| d.remove_temp::<String>(plot_id.with("async_clipboard_status")))
-        {
-            access_state.status_message = Some(msg);
-        }
 
         if ui.ctx().data_mut(|d| {
             d.get_temp::<bool>(plot_id.with("toggle_settings"))
@@ -1772,7 +1756,7 @@ impl<'a> Plot<'a> {
         ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Save PNG").clicked() {
-                    access_state.show_export_modal = true;
+                    access_state.export_modal.open = true;
                 }
                 if ui.button("Export CSV").clicked() {
                     export::export_csv(&export_datasets);
@@ -1909,262 +1893,27 @@ impl<'a> Plot<'a> {
             });
         }
 
-        if access_state.show_export_modal {
-            let mut modal_open = access_state.show_export_modal;
-            let mut close_requested = false;
-            egui::Window::new(format!("Export High-Res Plot - {id_source:?}"))
-                .open(&mut modal_open)
-                .resizable(true)
-                .collapsible(false)
-                .default_width(380.0)
-                .show(ui.ctx(), |ui| {
-                    ui.label(egui::RichText::new("Offscreen Plot Render Settings").strong());
-                    ui.separator();
-
-                    ui.horizontal(|ui| {
-                        ui.label("Resolution Scale:");
-                        ui.selectable_value(&mut access_state.export_scale, 1.0, "1x (1080p)");
-                        ui.selectable_value(&mut access_state.export_scale, 2.0, "2x (4K)");
-                        ui.selectable_value(&mut access_state.export_scale, 4.0, "4x");
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Aspect Ratio:");
-                        egui::ComboBox::from_id_salt(plot_id.with("export_aspect"))
-                            .selected_text(match access_state.export_aspect {
-                                AspectRatioOption::Free => "Custom / Free",
-                                AspectRatioOption::SixteenNine => "16:9 (Widescreen)",
-                                AspectRatioOption::FourThree => "4:3 (Standard)",
-                                AspectRatioOption::OneOne => "1:1 (Square)",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut access_state.export_aspect,
-                                    AspectRatioOption::SixteenNine,
-                                    "16:9 (Widescreen)",
-                                );
-                                ui.selectable_value(
-                                    &mut access_state.export_aspect,
-                                    AspectRatioOption::FourThree,
-                                    "4:3 (Standard)",
-                                );
-                                ui.selectable_value(
-                                    &mut access_state.export_aspect,
-                                    AspectRatioOption::OneOne,
-                                    "1:1 (Square)",
-                                );
-                                ui.selectable_value(
-                                    &mut access_state.export_aspect,
-                                    AspectRatioOption::Free,
-                                    "Custom / Free",
-                                );
-                            });
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Line Thickness:");
-                        ui.add(egui::Slider::new(
-                            &mut access_state.export_line_thickness,
-                            0.5..=10.0,
-                        ));
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Background Opacity:");
-                        ui.add(egui::Slider::new(
-                            &mut access_state.export_bg_opacity,
-                            0.0..=1.0,
-                        ));
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Background Color:");
-                        ui.selectable_value(&mut access_state.export_bg_dark, true, "Dark");
-                        ui.selectable_value(&mut access_state.export_bg_dark, false, "Light");
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("GIF FPS:");
-                        ui.add(egui::Slider::new(&mut access_state.export_gif_fps, 1..=60));
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("GIF Frame Steps:");
-                        ui.add(egui::Slider::new(
-                            &mut access_state.export_gif_frames,
-                            5..=60,
-                        ));
-                    });
-
-                    ui.separator();
-
-                    let base_w = 1920u32;
-                    let base_h = 1080u32;
-                    let calc_w = (base_w as f32 * access_state.export_scale).round() as u32;
-                    let mut calc_h = (base_h as f32 * access_state.export_scale).round() as u32;
-                    if let Some(ratio) = access_state.export_aspect.ratio().filter(|&r| r > 0.0) {
-                        calc_h = (calc_w as f32 / ratio).round() as u32;
-                    }
-
-                    if calc_w > export::MAX_EXPORT_DIMENSION
-                        || calc_h > export::MAX_EXPORT_DIMENSION
-                    {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "⚠️ Capped at max dimension {}x{} px",
-                                export::MAX_EXPORT_DIMENSION,
-                                export::MAX_EXPORT_DIMENSION
-                            ))
-                            .color(Color32::YELLOW),
-                        );
-                    } else {
-                        ui.label(format!("Target Canvas Size: {} x {} px", calc_w, calc_h));
-                    }
-
-                    if let Some(msg) = &access_state.status_message {
-                        ui.label(egui::RichText::new(msg).color(Color32::GREEN));
-                    }
-
-                    ui.separator();
-
-                    let options = export::ExportOptions {
-                        width: base_w,
-                        height: base_h,
-                        scale: access_state.export_scale,
-                        line_thickness: access_state.export_line_thickness,
-                        background_opacity: access_state.export_bg_opacity,
-                        background_color: if access_state.export_bg_dark {
-                            Color32::from_rgb(18, 18, 18)
-                        } else {
-                            Color32::WHITE
-                        },
-                        aspect_ratio: access_state.export_aspect,
-                    };
-
-                    ui.horizontal(|ui| {
-                        if ui.button("💾 Save PNG").clicked() {
-                            match export::export_custom_png(&export_datasets, &options) {
-                                Ok(png_bytes) => {
-                                    export::save_file_dialog(
-                                        "plot.png",
-                                        &png_bytes,
-                                        "PNG Image",
-                                        &["png"],
-                                    );
-                                    access_state.status_message =
-                                        Some("PNG image saved successfully.".to_string());
-                                }
-                                Err(e) => {
-                                    access_state.status_message =
-                                        Some(format!("Export failed: {e}"));
-                                }
-                            }
-                        }
-
-                        if ui.button("💾 Save SVG").clicked() {
-                            match export::export_custom_svg(&export_datasets, &options) {
-                                Ok(svg_text) => {
-                                    export::save_file_dialog(
-                                        "plot.svg",
-                                        svg_text.as_bytes(),
-                                        "SVG Vector Image",
-                                        &["svg"],
-                                    );
-                                    access_state.status_message =
-                                        Some("SVG image saved successfully.".to_string());
-                                }
-                                Err(e) => {
-                                    access_state.status_message =
-                                        Some(format!("Export failed: {e}"));
-                                }
-                            }
-                        }
-
-                        if ui.button("🎬 Save GIF").clicked() {
-                            let sampled_frames = export::sample_progressive_frames(
-                                &export_datasets,
-                                access_state.export_gif_frames as usize,
-                            );
-                            match export::export_custom_gif(
-                                &sampled_frames,
-                                &options,
-                                access_state.export_gif_fps,
-                            ) {
-                                Ok(gif_bytes) => {
-                                    export::save_file_dialog(
-                                        "plot.gif",
-                                        &gif_bytes,
-                                        "GIF Animation",
-                                        &["gif"],
-                                    );
-                                    access_state.status_message =
-                                        Some("GIF animation saved successfully.".to_string());
-                                }
-                                Err(e) => {
-                                    access_state.status_message =
-                                        Some(format!("GIF export failed: {e}"));
-                                }
-                            }
-                        }
-
-                        if ui.button("📋 Copy to Clipboard").clicked() {
-                            match export::export_custom_image(&export_datasets, &options) {
-                                Ok(color_img) => {
-                                    let ctx = ui.ctx().clone();
-                                    let target_id = plot_id;
-                                    match export::copy_image_to_clipboard_with_callback(
-                                        &color_img,
-                                        move |res| {
-                                            ctx.data_mut(|d| {
-                                                let msg = match res {
-                                                    Ok(_) => "Copied plot image to clipboard!"
-                                                        .to_string(),
-                                                    Err(e) => {
-                                                        format!("Clipboard copy failed: {e}")
-                                                    }
-                                                };
-                                                d.insert_temp(
-                                                    target_id.with("async_clipboard_status"),
-                                                    msg,
-                                                );
-                                            });
-                                            ctx.request_repaint();
-                                        },
-                                    ) {
-                                        Ok(_) => {
-                                            #[cfg(not(target_arch = "wasm32"))]
-                                            {
-                                                access_state.status_message = Some(
-                                                    "Copied plot image to clipboard!".to_string(),
-                                                );
-                                            }
-                                            #[cfg(target_arch = "wasm32")]
-                                            {
-                                                access_state.status_message = Some(
-                                                    "Copying plot image to clipboard..."
-                                                        .to_string(),
-                                                );
-                                            }
-                                        }
-                                        Err(e) => {
-                                            access_state.status_message =
-                                                Some(format!("Clipboard copy failed: {e}"));
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    access_state.status_message =
-                                        Some(format!("Render failed: {e}"));
-                                }
-                            }
-                        }
-
-                        if ui.button("Close").clicked() {
-                            close_requested = true;
-                        }
-                    });
-                });
-            access_state.show_export_modal = modal_open && !close_requested;
+        {
+            let export_window_title = format!("Export High-Res Plot - {id_source:?}");
+            let export_config = export_modal::ExportModalConfig {
+                window_title: &export_window_title,
+                id: plot_id,
+                png_filename: "plot.png",
+                svg_filename: "plot.svg",
+                gif_filename: "plot.gif",
+            };
+            let mut export_source = export_modal::CallbackExportSource {
+                datasets_fn: || export_datasets.clone(),
+                sample_frames_fn: |num_frames| {
+                    export::sample_progressive_frames(&export_datasets, num_frames)
+                },
+            };
+            export_modal::show_export_modal(
+                ui.ctx(),
+                access_state.export_modal.bindings(),
+                &export_config,
+                &mut export_source,
+            );
         }
 
         if access_state.show_settings_modal {
@@ -2645,7 +2394,7 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
             if ui.button("Save PNG").clicked() {
-                access_state.show_export_modal = true;
+                access_state.export_modal.open = true;
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {

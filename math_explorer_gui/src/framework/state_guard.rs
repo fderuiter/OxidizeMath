@@ -249,7 +249,7 @@ impl SimulationFramework {
                 tool_state: restored_state,
                 plot_datasets: Vec::new(),
                 step_index: 0,
-                timestamp: std::time::Instant::now(),
+                timestamp: crate::web_io::PlatformInstant::now(),
             });
         } else {
             self.last_valid_snapshot = None;
