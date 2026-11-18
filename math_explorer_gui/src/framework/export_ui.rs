@@ -102,7 +102,7 @@ impl SimulationFramework {
             ui.separator();
             if ui
                 .button("🎨 Starter Gallery")
-                .on_hover_text("Toggle starter template gallery overlay")
+                .accessible_hover_text("Toggle starter template gallery overlay")
                 .clicked()
             {
                 self.show_starter_gallery = !self.show_starter_gallery;
@@ -121,7 +121,7 @@ impl SimulationFramework {
     fn render_dataset_export_buttons(&mut self, ui: &mut egui::Ui) {
         if ui
             .button("Export CSV")
-            .on_hover_text("Export dataset points to CSV file")
+            .accessible_hover_text("Export dataset points to CSV file")
             .clicked()
         {
             self.queue_export(ExportFormat::Csv);
@@ -129,7 +129,7 @@ impl SimulationFramework {
 
         if ui
             .button("Copy CSV")
-            .on_hover_text("Copy dataset points as CSV to clipboard")
+            .accessible_hover_text("Copy dataset points as CSV to clipboard")
             .clicked()
         {
             self.queue_clipboard_export();
@@ -137,7 +137,7 @@ impl SimulationFramework {
 
         if ui
             .button("Export JSON")
-            .on_hover_text("Export dataset points to JSON file")
+            .accessible_hover_text("Export dataset points to JSON file")
             .clicked()
         {
             self.queue_export(ExportFormat::Json);
@@ -145,7 +145,7 @@ impl SimulationFramework {
 
         if ui
             .button("Export PNG Image")
-            .on_hover_text("Configure and render high-resolution PNG figure")
+            .accessible_hover_text("Configure and render high-resolution PNG figure")
             .clicked()
         {
             self.open_export_modal_for_active_tool();
@@ -169,7 +169,7 @@ impl SimulationFramework {
                     ui.colored_label(egui::Color32::LIGHT_GREEN, format!("✓ {}", status.message));
                     if ui
                         .small_button("✖")
-                        .on_hover_text("Dismiss notification")
+                        .accessible_hover_text("Dismiss notification")
                         .clicked()
                     {
                         clear_status = true;
@@ -179,7 +179,7 @@ impl SimulationFramework {
                 ui.colored_label(egui::Color32::RED, format!("⚠️ {}", status.message));
                 if ui
                     .small_button("✖")
-                    .on_hover_text("Dismiss warning")
+                    .accessible_hover_text("Dismiss warning")
                     .clicked()
                 {
                     clear_status = true;
@@ -221,7 +221,7 @@ impl SimulationFramework {
 
         if ui
             .button("Import Preset JSON")
-            .on_hover_text("Import parameter preset from a JSON file")
+            .accessible_hover_text("Import parameter preset from a JSON file")
             .clicked()
         {
             self.preset_dialog.trigger_import();
@@ -229,7 +229,7 @@ impl SimulationFramework {
 
         if ui
             .button("Export Preset JSON")
-            .on_hover_text("Export current parameter preset to a JSON file")
+            .accessible_hover_text("Export current parameter preset to a JSON file")
             .clicked()
         {
             self.export_active_preset_json(file_slug);
@@ -250,7 +250,7 @@ impl SimulationFramework {
             ui.colored_label(egui::Color32::LIGHT_GREEN, format!("ℹ️ {}", msg));
             if ui
                 .small_button("✖")
-                .on_hover_text("Dismiss notification")
+                .accessible_hover_text("Dismiss notification")
                 .clicked()
             {
                 self.preset_dialog.toast_info = None;
@@ -262,7 +262,7 @@ impl SimulationFramework {
             ui.colored_label(egui::Color32::RED, format!("⚠️ {}", err));
             if ui
                 .small_button("✖")
-                .on_hover_text("Dismiss warning")
+                .accessible_hover_text("Dismiss warning")
                 .clicked()
             {
                 self.preset_dialog.toast_error = None;

@@ -3,6 +3,7 @@
 use super::recovery;
 use super::systems::eval_ode_final_state;
 use super::OdeSolverTool;
+use crate::accessibility::AccessibleHoverText;
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
@@ -390,7 +391,7 @@ impl OdeSolverTool {
 fn render_starter_gallery_button(ui: &mut egui::Ui) {
     if ui
         .button("🎨 Starter Gallery")
-        .on_hover_text("Open Starter Template Gallery")
+        .accessible_hover_text("Open Starter Template Gallery")
         .clicked()
     {
         let cur = ui.ctx().data(|d| {
