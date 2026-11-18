@@ -68,12 +68,17 @@ impl FiniteStateGuard for CeraTool {
 }
 
 impl InteractiveTool for CeraTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "CERA Model"
     }
     fn domain(&self) -> &'static str {
         "climate"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -91,7 +96,8 @@ impl InteractiveTool for CeraTool {
             aligned_channels: self.aligned_channels,
             num_levels: self.num_levels,
             output_size: self.output_size,
-        }).ok()
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
@@ -159,10 +165,10 @@ impl InteractiveTool for CeraTool {
         });
 
         ui.horizontal(|ui| {
-            ui.add(egui::Slider::new(
-                &mut self.aligned_channels,
-                1..=self.latent_channels,
-            ).text("Aligned Channels:"));
+            ui.add(
+                egui::Slider::new(&mut self.aligned_channels, 1..=self.latent_channels)
+                    .text("Aligned Channels:"),
+            );
         });
 
         ui.horizontal(|ui| {
@@ -194,7 +200,7 @@ impl InteractiveTool for CeraTool {
             match Cera::new(config) {
                 Ok(model) => {
                     let inputs = DMatrix::from_fn(self.num_levels, self.in_channels, |_, _| {
-            // allow(entropy_guard)
+                        // allow(entropy_guard)
                         rand::random::<f32>()
                     });
                     let prediction = model.predict(&inputs);
@@ -248,7 +254,6 @@ impl InteractiveTool for CeraTool {
 
 // [cite:cera_framework]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "CeraTool",
@@ -265,9 +270,15 @@ impl scientific_metadata::theory::TheoryDescribable for CeraTool {
             self.in_channels, self.latent_channels, self.num_levels
         )
     }
-    fn phonetic_description(&self) -> String { "Climate-Equivariant Representation Architecture theory".into() }
-    fn theory_citation(&self) -> String { "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Climate-Equivariant Representation Architecture theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

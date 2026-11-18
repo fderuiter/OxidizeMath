@@ -1,7 +1,9 @@
 pub mod callout_overlay;
+pub mod export_figure;
 pub mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
+pub mod export_types;
 mod export_ui;
 pub mod math_input;
 pub mod recovery;
@@ -14,7 +16,9 @@ pub mod trace_overlay;
 mod ui;
 
 pub use callout_overlay::*;
+pub use export_figure::*;
 pub use export_queue::*;
+pub use export_types::*;
 pub use math_input::*;
 pub use recovery::*;
 pub use state_guard::*;
@@ -204,10 +208,25 @@ pub trait InteractiveTool {
         Ok(())
     }
 
+    /// Declares which dataset and figure export formats this tool supports.
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot()
+    }
+
     /// Optional hook to export tool datasets.
     /// Default implementation extracts datasets recorded from embedded `egui_plot::Plot`s if available.
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         egui_plot::get_last_plot_datasets()
+    }
+
+    /// Optional hook to extract offscreen drawable plot primitives (`Bar`, `Arrow`, `BoxElem`, `Polyline`, `Points`).
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        egui_plot::get_last_plot_primitives()
+    }
+
+    /// Optional hook for texture-backed tools to expose their rendered 2D raster field for PNG, SVG, and GIF exports.
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        None
     }
 
     /// Optional hook to provide custom figure export options.
@@ -285,6 +304,7 @@ pub struct SimulationFramework {
     pub export_gif_fps: u32,
     pub export_gif_frames: u32,
     pub export_status_message: Option<String>,
+    pub export_status_severity: ExportStatusSeverity,
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
     pub export_queue: ExportQueue,
@@ -333,6 +353,7 @@ impl SimulationFramework {
             export_gif_fps: 15,
             export_gif_frames: 20,
             export_status_message: None,
+            export_status_severity: ExportStatusSeverity::Success,
             domain: domain.to_string(),
             preset_dialog: crate::presets::PresetDialogState::default(),
             export_queue: ExportQueue::default(),
@@ -375,6 +396,7 @@ impl SimulationFramework {
         }
         self.is_diverged = false;
         self.diagnostic_report = None;
+        self.export_status_message = None;
         self.step_counter = 0;
         self.baseline_tool_state = factory_baseline_state;
         let active_tool_state = new_tool.save_state();

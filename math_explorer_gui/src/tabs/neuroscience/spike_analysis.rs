@@ -45,9 +45,14 @@ impl Default for SpikeAnalysisTool {
 }
 
 impl InteractiveTool for SpikeAnalysisTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Spike Train Analysis"
+    }
+    fn step_simulation(&mut self) {
+        Self::step_simulation(self);
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -57,10 +62,16 @@ impl InteractiveTool for SpikeAnalysisTool {
             ui.heading("Configuration");
             ui.separator();
 
-            ui.add(egui::Slider::new(&mut self.input_current, 0.0..=50.0).text("Input Current (µA/cm²) - I_ext"));
+            ui.add(
+                egui::Slider::new(&mut self.input_current, 0.0..=50.0)
+                    .text("Input Current (µA/cm²) - I_ext"),
+            );
 
             let threshold_changed = ui
-                .add(egui::Slider::new(&mut self.spike_threshold, -50.0..=20.0).text("Spike Threshold (mV) - Threshold"))
+                .add(
+                    egui::Slider::new(&mut self.spike_threshold, -50.0..=20.0)
+                        .text("Spike Threshold (mV) - Threshold"),
+                )
                 .changed();
             if threshold_changed {
                 for pt in &mut self.spike_plot_points {
@@ -69,7 +80,10 @@ impl InteractiveTool for SpikeAnalysisTool {
             }
 
             ui.separator();
-            ui.add(egui::Slider::new(&mut self.simulation_speed, 1..=100).text("Simulation Speed (steps/frame)"));
+            ui.add(
+                egui::Slider::new(&mut self.simulation_speed, 1..=100)
+                    .text("Simulation Speed (steps/frame)"),
+            );
 
             ui.separator();
             ui.horizontal(|ui| {
@@ -127,10 +141,11 @@ impl InteractiveTool for SpikeAnalysisTool {
                     .y_axis_label("Membrane Potential (mV)")
                     .show(ui, |plot_ui| {
                         // Voltage Line
-                        plot_ui.line(Line::new(
-                            "Voltage",
-                            &self.history_points[..],
-                        ));
+                        if self.history_points.is_empty() {
+                            plot_ui.line(Line::new("Voltage", vec![[self.time, self.neuron.v()]]));
+                        } else {
+                            plot_ui.line(Line::new("Voltage", &self.history_points[..]));
+                        }
 
                         // Threshold Line
                         plot_ui.hline(
@@ -205,7 +220,8 @@ impl SpikeAnalysisTool {
             self.isis.push_back(isi);
         }
         self.spike_times.push(time);
-        self.spike_plot_points.push(PlotPoint::new(time, self.spike_threshold));
+        self.spike_plot_points
+            .push(PlotPoint::new(time, self.spike_threshold));
 
         // Keep ISI history manageable? Maybe last 1000 intervals.
         if self.isis.len() > 1000 {
@@ -268,7 +284,6 @@ impl SpikeAnalysisTool {
 
 // [cite:dwarf_galaxy_empirical_dependencies]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "SpikeAnalysisTool",
@@ -285,9 +300,15 @@ impl scientific_metadata::theory::TheoryDescribable for SpikeAnalysisTool {
             self.input_current, self.spike_threshold
         )
     }
-    fn phonetic_description(&self) -> String { "Hodgkin-Huxley action potential spike train and inter-spike interval theory".into() }
-    fn theory_citation(&self) -> String { "A Quantitative Description of Membrane Current and Its Application to Conduction and Excitation in Nerve (Hodgkin & Huxley, 1952); Neuronal Dynamics (Gerstner et al., 2014)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Hodgkin-Huxley action potential spike train and inter-spike interval theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "A Quantitative Description of Membrane Current and Its Application to Conduction and Excitation in Nerve (Hodgkin & Huxley, 1952); Neuronal Dynamics (Gerstner et al., 2014)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 #[cfg(test)]
@@ -318,8 +339,14 @@ mod tests {
 
             let spike_slice: &[PlotPoint] = &tool.spike_plot_points[..];
             let spike_plot_points: egui_plot::PlotPoints<'_> = spike_slice.into();
-            assert!(matches!(spike_plot_points, egui_plot::PlotPoints::Borrowed(_)));
-            assert_eq!(spike_plot_points.points().len(), tool.spike_plot_points.len());
+            assert!(matches!(
+                spike_plot_points,
+                egui_plot::PlotPoints::Borrowed(_)
+            ));
+            assert_eq!(
+                spike_plot_points.points().len(),
+                tool.spike_plot_points.len()
+            );
         }
 
         // Test threshold update adjusts existing spike points

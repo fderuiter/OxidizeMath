@@ -80,8 +80,13 @@ impl SimulationRunner for QTableRunner {
                         let reward = self.env.reward(&current_state, &action, &next_state);
                         let next_actions = self.env.actions(&next_state);
 
-                        self.agent
-                            .update(&current_state, &action, reward, &next_state, &next_actions);
+                        self.agent.update(
+                            &current_state,
+                            &action,
+                            reward,
+                            &next_state,
+                            &next_actions,
+                        );
 
                         current_state = next_state;
                     }
@@ -259,6 +264,9 @@ impl InteractiveTool for QTableInspectorTool {
     }
     fn name(&self) -> &'static str {
         "Q-Table Inspector"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -448,7 +456,6 @@ impl InteractiveTool for QTableInspectorTool {
 
 // [cite:graph_parameters_rust]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "QTableInspectorTool",
@@ -462,13 +469,19 @@ impl scientific_metadata::theory::TheoryDescribable for QTableInspectorTool {
     fn theory_description(&self) -> String {
         "Q-learning temporal difference control: $Q(s, a) \\leftarrow Q(s, a) + \\alpha \\left[ r + \\gamma \\max_{a'} Q(s', a') - Q(s, a) \\right]$, converging to the optimal action-value function satisfying the Bellman optimality equation.".into()
     }
-    fn phonetic_description(&self) -> String { "Q-learning and Bellman optimality equation theory".into() }
-    fn theory_citation(&self) -> String { "Reinforcement Learning: An Introduction (Sutton & Barto, 2018)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Q-learning and Bellman optimality equation theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Reinforcement Learning: An Introduction (Sutton & Barto, 2018)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
+#[path = "q_table_inspector/preset.rs"]
+mod preset;
 #[cfg(test)]
 #[path = "q_table_inspector/tests.rs"]
 mod tests;
-#[path = "q_table_inspector/preset.rs"]
-mod preset;

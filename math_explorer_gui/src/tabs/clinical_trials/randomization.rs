@@ -32,12 +32,17 @@ impl Default for RandomizationTool {
 }
 
 impl InteractiveTool for RandomizationTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Randomization"
     }
     fn domain(&self) -> &'static str {
         "clinical_trials"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -51,7 +56,8 @@ impl InteractiveTool for RandomizationTool {
             randomization_type: self.randomization_type,
             n_subjects: self.n_subjects,
             block_size: self.block_size,
-        }).ok()
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
@@ -189,7 +195,6 @@ impl InteractiveTool for RandomizationTool {
 
 // [cite:clinical_trials_statistics]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "RandomizationTool",
@@ -210,12 +215,22 @@ impl scientific_metadata::theory::TheoryDescribable for RandomizationTool {
             scheme, self.n_subjects
         )
     }
-    fn phonetic_description(&self) -> String { "Clinical trial randomization allocation theory".into() }
-    fn theory_citation(&self) -> String { "Randomization in Clinical Trials: Theory and Practice (Rosenberger & Lachin, 2015)".into() }
+    fn phonetic_description(&self) -> String {
+        "Clinical trial randomization allocation theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Randomization in Clinical Trials: Theory and Practice (Rosenberger & Lachin, 2015)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Simple".into(), "Independent coin-toss allocation with potential small-sample imbalance".into());
-        map.insert("Block".into(), "Permuted block allocation ensuring exact balance at block boundaries".into());
+        map.insert(
+            "Simple".into(),
+            "Independent coin-toss allocation with potential small-sample imbalance".into(),
+        );
+        map.insert(
+            "Block".into(),
+            "Permuted block allocation ensuring exact balance at block boundaries".into(),
+        );
         map
     }
 }

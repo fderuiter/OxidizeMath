@@ -2,9 +2,9 @@ use crate::accessibility::AccessibleTheoryHover;
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
-use scientific_metadata::theory::TheoryDescribable;
 use math_explorer::physics::chaos::fractals::{escape_time_julia, escape_time_mandelbrot};
 use num_complex::Complex;
+use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -68,14 +68,37 @@ impl TheoryDescribable for FractalViewer {
 }
 
 impl InteractiveTool for FractalViewer {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
-    
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+
     fn name(&self) -> &'static str {
         "Fractal Viewer"
     }
 
     fn domain(&self) -> &'static str {
         "chaos"
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::raster_only()
+    }
+
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        let (width, height) = (480, 320);
+        let zoom = if self.zoom.is_finite() && self.zoom > 0.0 {
+            self.zoom
+        } else {
+            1.0
+        };
+        let scale_y = 3.0 / zoom;
+        let scale_x = scale_y * (width as f64 / height as f64);
+        Some(self.generate_image(width, height, scale_x, scale_y))
+    }
+
+    fn step_simulation(&mut self) {
+        self.zoom = (self.zoom * 1.06).min(10_000.0);
+        self.dirty = true;
     }
 
     fn save_state(&self) -> Option<String> {
@@ -97,7 +120,8 @@ impl InteractiveTool for FractalViewer {
             mode: self.mode,
             julia_re: self.julia_c.re,
             julia_im: self.julia_c.im,
-        }).ok()
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
@@ -212,9 +236,12 @@ impl InteractiveTool for FractalViewer {
             // Max Iterations
             if ui
                 .add(
-                    egui::Slider::new(&mut self.max_iter, 10..=math_commons::registry::MAX_ITERATIONS as u32)
-                        .logarithmic(true)
-                        .text("Max Iter"),
+                    egui::Slider::new(
+                        &mut self.max_iter,
+                        10..=math_commons::registry::MAX_ITERATIONS as u32,
+                    )
+                    .logarithmic(true)
+                    .text("Max Iter"),
                 )
                 .changed()
             {
@@ -389,7 +416,6 @@ impl FractalViewer {
 }
 
 // [cite:graph_parameters_rust]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {

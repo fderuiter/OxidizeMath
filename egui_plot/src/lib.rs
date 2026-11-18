@@ -12,6 +12,7 @@
 mod axis;
 pub mod commands;
 pub mod export;
+pub mod export_primitives;
 pub mod fit;
 mod items;
 pub mod latex;
@@ -38,6 +39,11 @@ pub use crate::{
         copy_image_to_clipboard_with_callback, export_csv, export_custom_gif, export_custom_image,
         export_custom_png, export_custom_svg, export_json, export_svg, export_svg_filename,
         parse_csv, save_file_dialog, trigger_import_csv, trigger_import_csv_for_plot,
+    },
+    export_primitives::{
+        ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,
+        export_primitives_png, export_primitives_svg, export_raster_gif, export_raster_png,
+        export_raster_svg, get_last_plot_primitives, render_primitives_image,
     },
     fit::{FitResult, FitType, fit_dataset},
     items::{
@@ -1476,14 +1482,18 @@ impl<'a> Plot<'a> {
 
         // --- EXTRACT DATASETS INJECTED ---
         let mut accessible_datasets: Vec<(String, Vec<[f64; 2]>, Color32)> = Vec::new();
+        let mut extracted_primitives: Vec<ExportPrimitive> = Vec::new();
         for item in &items {
             accessible_datasets.push((item.name().to_owned(), item.extract_points(), item.color()));
+            extracted_primitives.extend(item.extract_export_primitives());
         }
         let export_datasets: Vec<(String, Vec<[f64; 2]>)> = accessible_datasets
             .iter()
+            .filter(|(_, p, _)| !p.is_empty())
             .map(|(n, p, _)| (n.clone(), p.clone()))
             .collect();
         append_last_plot_datasets(&export_datasets);
+        append_last_plot_primitives(&extracted_primitives);
         // --- END EXTRACT DATASETS ---
 
         let mut auto_content_bounds = *bounds;
@@ -3695,6 +3705,7 @@ thread_local! {
 /// Clears thread-local record of plot datasets from the current frame.
 pub fn clear_last_plot_datasets() {
     LAST_PLOT_DATASETS.with(|d| d.borrow_mut().clear());
+    clear_last_plot_primitives();
 }
 
 /// Appends datasets captured from an `egui_plot::Plot` widget.

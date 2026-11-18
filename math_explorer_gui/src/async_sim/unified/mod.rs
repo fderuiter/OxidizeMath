@@ -63,6 +63,14 @@ pub trait UnifiedModel:
         Vec::new()
     }
 
+    /// Whether this model produces a 2D raster pixel grid rather than tabular `(X, Y)` series.
+    fn is_raster_model() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
     /// Allow the model to draw custom visualization in the central panel.
     /// Return true if custom rendering was performed.
     fn custom_central_panel(_ui: &mut eframe::egui::Ui, _snapshot: Option<&StateSnapshot>) -> bool

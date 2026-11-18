@@ -17,6 +17,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     params: Arc<RwLock<HashMap<String, f64>>>,
     param_metadata: Vec<(String, ParameterConstraint)>,
     steps_per_frame: usize,
+    fallback_snapshot: StateSnapshot,
     texture: Option<egui::TextureHandle>,
     cached_theory_desc: String,
     cached_phonetic: String,
@@ -49,12 +50,14 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let controller = BackgroundWorker::new(runner);
 
         let temp_model = M::new(&initial_params);
+        let fallback_snapshot = temp_model.get_snapshot();
 
         Self {
             controller,
             params,
             param_metadata,
             steps_per_frame: 5,
+            fallback_snapshot,
             texture: None,
             cached_theory_desc: temp_model.theory_description(),
             cached_phonetic: temp_model.phonetic_description(),
@@ -70,7 +73,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.controller.state()
     }
 
+    fn active_snapshot(&self) -> &StateSnapshot {
+        self.controller
+            .latest_snapshot()
+            .unwrap_or(&self.fallback_snapshot)
+    }
+
     fn reset_simulation(&mut self) {
+        if let Ok(params) = self.params.read() {
+            self.fallback_snapshot = M::new(&params).get_snapshot();
+        }
         if self.controller.state() == SimWorkerState::Faulted
             || self.controller.state() == SimWorkerState::Terminated
         {
@@ -343,28 +355,29 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
     fn draw_central_panel(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            if M::custom_central_panel(ui, self.controller.latest_snapshot()) {
+            let snap_ref = self.active_snapshot();
+            if M::custom_central_panel(ui, Some(snap_ref)) {
                 return;
             }
 
-            let mut has_image = false;
-            if let Some(snapshot) = self.controller.latest_snapshot() {
-                if let Ok(guard) = snapshot.pixels.try_read() {
-                    if !guard.is_empty() {
-                        let image =
-                            ColorImage::new([snapshot.width, snapshot.height], guard.clone());
-                        let texture = ctx.load_texture(M::name(), image, TextureOptions::NEAREST);
-                        self.texture = Some(texture);
-                        has_image = true;
-                    }
+            let mut loaded_image = None;
+            if let Ok(guard) = snap_ref.pixels.try_read() {
+                if !guard.is_empty() && snap_ref.width > 0 && snap_ref.height > 0 {
+                    loaded_image = Some(ColorImage::new(
+                        [snap_ref.width, snap_ref.height],
+                        guard.clone(),
+                    ));
                 }
             }
 
-            if has_image || self.texture.is_some() {
-                if let Some(texture) = self.texture.clone() {
-                    self.draw_image_plot(ui, ctx, &texture);
-                }
-            } else if let Some(snapshot) = self.controller.latest_snapshot() {
+            if let Some(image) = loaded_image {
+                let texture = ctx.load_texture(M::name(), image, TextureOptions::NEAREST);
+                self.texture = Some(texture.clone());
+                self.draw_image_plot(ui, ctx, &texture);
+            } else if let Some(texture) = self.texture.clone() {
+                self.draw_image_plot(ui, ctx, &texture);
+            } else {
+                let snapshot = self.active_snapshot();
                 self.draw_line_plot(ui, snapshot);
             }
         });
@@ -380,6 +393,36 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
     fn domain(&self) -> &'static str {
         M::domain()
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        if M::is_raster_model() {
+            crate::framework::ExportCapabilities::raster_only()
+        } else {
+            crate::framework::ExportCapabilities::plot()
+        }
+    }
+
+    fn export_raster_image(&self) -> Option<ColorImage> {
+        let snapshot = self.active_snapshot();
+        let guard = snapshot.pixels.try_read().ok()?;
+        if guard.is_empty() || snapshot.width == 0 || snapshot.height == 0 {
+            return None;
+        }
+        Some(ColorImage::new(
+            [snapshot.width, snapshot.height],
+            guard.clone(),
+        ))
+    }
+
+    fn step_simulation(&mut self) {
+        if let Ok(params) = self.params.read() {
+            let mut model = M::new(&params);
+            for _ in 0..self.steps_per_frame.max(1) {
+                model.step(&params);
+            }
+            self.fallback_snapshot = model.get_snapshot();
+        }
     }
 
     fn save_state(&self) -> Option<String> {

@@ -55,9 +55,14 @@ impl TokenizationTool {
 }
 
 impl InteractiveTool for TokenizationTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Tokenization & Embeddings"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -200,7 +205,6 @@ impl InteractiveTool for TokenizationTool {
 
 // [cite:algorithmic_information_rust]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "TokenizationTool",
@@ -212,15 +216,25 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for TokenizationTool {
     fn theory_description(&self) -> String {
-        let mode = if self.use_subword { "Character/subword" } else { "Word" };
+        let mode = if self.use_subword {
+            "Character/subword"
+        } else {
+            "Word"
+        };
         format!(
             "{} tokenization mapping sequence tokens $t_i$ to discrete vocabulary indices and continuous vector representations $E(t_i) \\in \\mathbb{{R}}^{{d_{{\\text{{model}}}}}}$ with dimension $d_{{\\text{{model}}}} = {}$.",
             mode, self.d_model
         )
     }
-    fn phonetic_description(&self) -> String { "Tokenization and embedding space theory".into() }
-    fn theory_citation(&self) -> String { "Attention Is All You Need (Vaswani et al., 2017)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Tokenization and embedding space theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Attention Is All You Need (Vaswani et al., 2017)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

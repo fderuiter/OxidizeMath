@@ -20,12 +20,17 @@ impl Default for LifetimeEstimatorTool {
 }
 
 impl InteractiveTool for LifetimeEstimatorTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Lifetime Estimator"
     }
     fn domain(&self) -> &'static str {
         "battery_degradation"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -39,7 +44,8 @@ impl InteractiveTool for LifetimeEstimatorTool {
             target_capacity: self.target_capacity,
             dod: self.dod,
             cycles_per_day: self.cycles_per_day,
-        }).ok()
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
@@ -71,18 +77,27 @@ impl InteractiveTool for LifetimeEstimatorTool {
             ui.group(|ui| {
                 ui.heading("Usage Profile");
                 egui::Grid::new("lifetime_params_grid").show(ui, |ui| {
-                    ui.add(egui::Slider::new(&mut self.dod, 0.1..=100.0).text("Depth of Discharge (DoD): - %"))
-                        .accessible_hover_text("Percentage of battery capacity used per cycle.");
+                    ui.add(
+                        egui::Slider::new(&mut self.dod, 0.1..=100.0)
+                            .text("Depth of Discharge (DoD): - %"),
+                    )
+                    .accessible_hover_text("Percentage of battery capacity used per cycle.");
                     ui.end_row();
 
-                    ui.add(egui::Slider::new(&mut self.target_capacity, 10.0..=99.0).text("Target Capacity (End of Life): - %"))
-                        .accessible_hover_text(
-                            "The threshold capacity to be considered 'end of life'.",
-                        );
+                    ui.add(
+                        egui::Slider::new(&mut self.target_capacity, 10.0..=99.0)
+                            .text("Target Capacity (End of Life): - %"),
+                    )
+                    .accessible_hover_text(
+                        "The threshold capacity to be considered 'end of life'.",
+                    );
                     ui.end_row();
 
-                    ui.add(egui::Slider::new(&mut self.cycles_per_day, 0.1..=10.0).text("Cycles per Day: - cycles"))
-                        .accessible_hover_text("How many charge/discharge cycles happen per day.");
+                    ui.add(
+                        egui::Slider::new(&mut self.cycles_per_day, 0.1..=10.0)
+                            .text("Cycles per Day: - cycles"),
+                    )
+                    .accessible_hover_text("How many charge/discharge cycles happen per day.");
                     ui.end_row();
                 });
             });
@@ -142,7 +157,6 @@ impl InteractiveTool for LifetimeEstimatorTool {
 
 // [cite:algorithmic_information_rust]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "LifetimeEstimatorTool",
@@ -159,9 +173,15 @@ impl scientific_metadata::theory::TheoryDescribable for LifetimeEstimatorTool {
             self.target_capacity, self.dod
         )
     }
-    fn phonetic_description(&self) -> String { "Battery lifetime estimator and power-law cycle life theory".into() }
-    fn theory_citation(&self) -> String { "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Battery lifetime estimator and power-law cycle life theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

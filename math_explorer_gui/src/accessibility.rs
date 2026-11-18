@@ -106,6 +106,16 @@ thread_local! {
 #[allow(missing_docs)]
 pub fn init_accessibility_bridge() {}
 
+thread_local! {
+    static LIVE_REGION: std::cell::RefCell<TwinSlotLiveRegion> =
+        std::cell::RefCell::new(TwinSlotLiveRegion::new());
+}
+
+/// Inspects the thread-local [`TwinSlotLiveRegion`] state backing screen-reader announcements.
+pub fn with_live_region<R>(f: impl FnOnce(&TwinSlotLiveRegion) -> R) -> R {
+    LIVE_REGION.with(|region| f(&region.borrow()))
+}
+
 #[cfg(target_arch = "wasm32")]
 // theory_verification!
 pub fn announce_status(message: &str) {
@@ -118,6 +128,12 @@ pub fn announce_status_with_priority(message: &str, priority: &str) {
     TEST_ANNOUNCEMENTS.with(|a| {
         a.borrow_mut()
             .push((message.to_string(), priority.to_string()));
+    });
+
+    let slot_idx = LIVE_REGION.with(|region| {
+        let mut r = region.borrow_mut();
+        r.dispatch(message);
+        r.active_slot
     });
 
     if let Some(window) = web_sys::window() {
@@ -134,23 +150,7 @@ pub fn announce_status_with_priority(message: &str, priority: &str) {
                 init_accessibility_bridge();
             }
 
-            let slot_idx = if is_assertive {
-                let prev =
-                    ASSERTIVE_SLOT_TOGGLE.fetch_xor(true, std::sync::atomic::Ordering::SeqCst);
-                if prev {
-                    1
-                } else {
-                    0
-                }
-            } else {
-                let prev = POLITE_SLOT_TOGGLE.fetch_xor(true, std::sync::atomic::Ordering::SeqCst);
-                if prev {
-                    1
-                } else {
-                    0
-                }
-            };
-
+            let _ = (&ASSERTIVE_SLOT_TOGGLE, &POLITE_SLOT_TOGGLE);
             let sibling_idx = 1 - slot_idx;
 
             let active_id = format!("{container_id}-slot-{slot_idx}");
@@ -181,6 +181,9 @@ pub fn announce_status(message: &str) {
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(missing_docs)]
 pub fn announce_status_with_priority(message: &str, priority: &str) {
+    LIVE_REGION.with(|region| {
+        region.borrow_mut().dispatch(message);
+    });
     if let Ok(mut lock) = LAST_ANNOUNCED.lock() {
         *lock = Some(message.to_string());
     }
@@ -224,6 +227,9 @@ pub fn clear_test_announcements() {
     if let Ok(mut lock) = LAST_ANNOUNCED.lock() {
         *lock = None;
     }
+    LIVE_REGION.with(|region| {
+        *region.borrow_mut() = TwinSlotLiveRegion::new();
+    });
     TEST_ANNOUNCEMENTS.with(|a| a.borrow_mut().clear());
 }
 

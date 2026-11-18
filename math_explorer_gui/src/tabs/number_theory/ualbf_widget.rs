@@ -25,9 +25,14 @@ impl Default for UalbfWidget {
 use crate::framework::InteractiveTool;
 
 impl InteractiveTool for UalbfWidget {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "UALBF"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -115,7 +120,6 @@ impl InteractiveTool for UalbfWidget {
 
 // [cite:ualbf_quasiperfect]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "UalbfWidget",
@@ -132,9 +136,16 @@ impl scientific_metadata::theory::TheoryDescribable for UalbfWidget {
             self.limit_p, self.max_exponent
         )
     }
-    fn phonetic_description(&self) -> String { "Unified Algebraic-Lattice Bipartition Framework for quasiperfect numbers theory".into() }
-    fn theory_citation(&self) -> String { "Unified Algebraic-Lattice Bipartition Framework for Quasiperfect Numbers (de Ruiter, 2025)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Unified Algebraic-Lattice Bipartition Framework for quasiperfect numbers theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Unified Algebraic-Lattice Bipartition Framework for Quasiperfect Numbers (de Ruiter, 2025)"
+            .into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

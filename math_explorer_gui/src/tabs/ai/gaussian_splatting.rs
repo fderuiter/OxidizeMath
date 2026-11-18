@@ -8,9 +8,14 @@ pub struct GaussianSplattingTool {
 }
 
 impl InteractiveTool for GaussianSplattingTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Gaussian Splatting"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -39,7 +44,10 @@ impl scientific_metadata::theory::TheoryDescribable for GaussianSplattingTool {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("scale".into(), "The scale of the 3D Gaussians representing the scene geometry.".into());
+        map.insert(
+            "scale".into(),
+            "The scale of the 3D Gaussians representing the scene geometry.".into(),
+        );
         map
     }
 }

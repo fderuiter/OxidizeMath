@@ -29,7 +29,12 @@ impl Default for GridWorldTool {
             traps: vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }],
             gamma: 0.9,
         };
-        let agent = TabularQAgent::new(math_commons::primitives::UnitInterval::new(0.1).unwrap(), math_commons::primitives::UnitInterval::new(0.9).unwrap(), math_commons::primitives::UnitInterval::new(0.1).unwrap(), None);
+        let agent = TabularQAgent::new(
+            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+            math_commons::primitives::UnitInterval::new(0.9).unwrap(),
+            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+            None,
+        );
         Self {
             current_state: env.start,
             env,
@@ -84,9 +89,14 @@ impl GridWorldTool {
 }
 
 impl InteractiveTool for GridWorldTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Grid World (RL)"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -116,7 +126,11 @@ impl InteractiveTool for GridWorldTool {
                 {
                     self.step_agent();
                 }
-                let play_pause_label = if self.is_playing { "⏸ Pause" } else { "▶ Play" };
+                let play_pause_label = if self.is_playing {
+                    "⏸ Pause"
+                } else {
+                    "▶ Play"
+                };
                 let play_pause_hover = if self.is_playing {
                     "Pause continuous Q-learning playback"
                 } else {
@@ -153,7 +167,12 @@ impl InteractiveTool for GridWorldTool {
                     .clicked()
                 {
                     self.is_playing = false;
-                    self.agent = TabularQAgent::new(math_commons::primitives::UnitInterval::new(0.1).unwrap(), math_commons::primitives::UnitInterval::new(0.9).unwrap(), math_commons::primitives::UnitInterval::new(0.1).unwrap(), None);
+                    self.agent = TabularQAgent::new(
+                        math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+                        math_commons::primitives::UnitInterval::new(0.9).unwrap(),
+                        math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+                        None,
+                    );
                     self.reset_episode();
                     self.episodes = 0;
                 }
@@ -170,7 +189,11 @@ impl InteractiveTool for GridWorldTool {
                 ui.label(format!("Reward: {:.2}", self.total_reward));
             });
 
-            let cell_size = if input_mode == InputMode::Touch { 44.0 } else { 40.0 };
+            let cell_size = if input_mode == InputMode::Touch {
+                44.0
+            } else {
+                40.0
+            };
             let grid_size = egui::vec2(
                 self.env.width as f32 * cell_size,
                 self.env.height as f32 * cell_size,
@@ -217,7 +240,6 @@ impl InteractiveTool for GridWorldTool {
 
 // [cite:graph_parameters_rust]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "GridWorldTool",
@@ -235,7 +257,8 @@ impl scientific_metadata::theory::TheoryDescribable for GridWorldTool {
         "Reinforcement Learning involves an agent that interacts with its environment to learn optimal actions, aiming to maximize a cumulative reward based on the Bellman equation.".into()
     }
     fn theory_citation(&self) -> String {
-        "Sutton, R. S., & Barto, A. G. (2018). Reinforcement Learning: An Introduction. MIT press.".into()
+        "Sutton, R. S., & Barto, A. G. (2018). Reinforcement Learning: An Introduction. MIT press."
+            .into()
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();

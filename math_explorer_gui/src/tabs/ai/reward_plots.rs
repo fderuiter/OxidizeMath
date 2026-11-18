@@ -251,12 +251,15 @@ impl RewardPlotsTool {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Cumulative Reward over Episodes");
 
-            let points: PlotPoints = self
-                .rewards_per_episode
-                .iter()
-                .enumerate()
-                .map(|(i, &reward)| [i as f64, reward])
-                .collect();
+            let points: PlotPoints = if self.rewards_per_episode.is_empty() {
+                PlotPoints::from(vec![[0.0, 0.0]])
+            } else {
+                self.rewards_per_episode
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &reward)| [i as f64, reward])
+                    .collect()
+            };
 
             let line = Line::new("Episode Reward", points);
 

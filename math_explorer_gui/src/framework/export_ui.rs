@@ -24,33 +24,35 @@ impl SimulationFramework {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     ui.label(egui::RichText::new("📊 Export:").strong());
 
-                    let tool_name = if let Some(tool) = &self.active_tool {
-                        tool.name()
+                    let (tool_name, caps) = if let Some(tool) = &self.active_tool {
+                        (tool.name(), tool.export_capabilities())
                     } else {
-                        "simulation"
+                        ("simulation", ExportCapabilities::none())
                     };
-
                     let file_slug = tool_name.to_lowercase().replace(' ', "_");
 
                     if ui
-                        .button("Export CSV")
+                        .add_enabled(caps.dataset, egui::Button::new("Export CSV"))
                         .on_hover_text("Export dataset points to CSV file")
+                        .on_disabled_hover_text(caps.dataset_disabled_reason)
                         .clicked()
                     {
                         self.queue_export(ExportFormat::Csv);
                     }
 
                     if ui
-                        .button("Export JSON")
+                        .add_enabled(caps.dataset, egui::Button::new("Export JSON"))
                         .on_hover_text("Export dataset points to JSON file")
+                        .on_disabled_hover_text(caps.dataset_disabled_reason)
                         .clicked()
                     {
                         self.queue_export(ExportFormat::Json);
                     }
 
                     if ui
-                        .button("Export PNG Image")
-                        .on_hover_text("Configure and render high-resolution PNG figure")
+                        .add_enabled(caps.figure, egui::Button::new("Export PNG Image"))
+                        .on_hover_text("Configure and render high-resolution figure")
+                        .on_disabled_hover_text(caps.figure_disabled_reason)
                         .clicked()
                     {
                         if let Some(tool) = &self.active_tool {
@@ -77,8 +79,26 @@ impl SimulationFramework {
                     }
 
                     self.render_preset_action_bar_controls(ui, &file_slug);
+                    self.render_inline_export_status(ui);
                 });
             });
+    }
+
+    fn render_inline_export_status(&mut self, ui: &mut egui::Ui) {
+        if self.show_export_modal {
+            return;
+        }
+        if let Some(ref msg) = self.export_status_message {
+            ui.separator();
+            ui.colored_label(self.export_status_severity.color(), msg);
+            if ui
+                .small_button("✖")
+                .on_hover_text("Dismiss export notification")
+                .clicked()
+            {
+                self.export_status_message = None;
+            }
+        }
     }
 
     fn export_active_preset_json(&mut self, file_slug: &str) {
@@ -243,136 +263,117 @@ impl SimulationFramework {
         });
     }
 
-    fn render_modal_save_png(&mut self, ui: &mut egui::Ui) {
-        if ui.button("💾 Save PNG").clicked() {
-            if let Some(tool) = &self.active_tool {
-                let datasets = tool.export_datasets();
-                let file_slug = tool.name().to_lowercase().replace(' ', "_");
-                let filename = format!("{}_figure.png", file_slug);
-                match egui_plot::export::export_custom_png(&datasets, &self.export_options) {
-                    Ok(png_bytes) => {
-                        egui_plot::export::save_file_dialog(
-                            &filename,
-                            &png_bytes,
-                            "PNG Image",
-                            &["png"],
-                        );
-                        self.export_status_message =
-                            Some("PNG image saved successfully.".to_string());
-                    }
-                    Err(e) => {
-                        self.export_status_message = Some(format!("Export failed: {e}"));
-                    }
-                }
-            }
+    fn queue_modal_figure_export(&mut self, ui: &egui::Ui, format: ExportFormat) {
+        let Some(tool) = &self.active_tool else {
+            self.set_export_status(
+                ExportStatusSeverity::Warning,
+                "Export skipped: no active simulation tool selected.",
+            );
+            return;
+        };
+        let caps = tool.export_capabilities();
+        if !caps.figure {
+            self.set_export_status(ExportStatusSeverity::Warning, caps.figure_disabled_reason);
+            return;
+        }
+        self.queue_export(format);
+        ui.ctx().request_repaint();
+    }
+
+    fn render_modal_save_buttons(&mut self, ui: &mut egui::Ui, caps: ExportCapabilities) {
+        if ui
+            .add_enabled(caps.figure, egui::Button::new("💾 Save PNG"))
+            .on_hover_text("Queue high-resolution PNG render after active frame completes")
+            .on_disabled_hover_text(caps.figure_disabled_reason)
+            .clicked()
+        {
+            self.queue_modal_figure_export(ui, ExportFormat::Png);
+        }
+
+        if ui
+            .add_enabled(caps.figure, egui::Button::new("💾 Save SVG"))
+            .on_hover_text("Queue vector SVG render after active frame completes")
+            .on_disabled_hover_text(caps.figure_disabled_reason)
+            .clicked()
+        {
+            self.queue_modal_figure_export(ui, ExportFormat::Svg);
+        }
+
+        if ui
+            .add_enabled(caps.figure, egui::Button::new("🎬 Save GIF"))
+            .on_hover_text("Queue multi-frame GIF animation export after active frame completes")
+            .on_disabled_hover_text(caps.figure_disabled_reason)
+            .clicked()
+        {
+            self.queue_modal_figure_export(ui, ExportFormat::Gif);
         }
     }
 
-    fn render_modal_save_svg(&mut self, ui: &mut egui::Ui) {
-        if ui.button("💾 Save SVG").clicked() {
-            if let Some(tool) = &self.active_tool {
-                let datasets = tool.export_datasets();
-                let file_slug = tool.name().to_lowercase().replace(' ', "_");
-                let filename = format!("{}_figure.svg", file_slug);
-                match egui_plot::export::export_custom_svg(&datasets, &self.export_options) {
-                    Ok(svg_text) => {
-                        egui_plot::export::save_file_dialog(
-                            &filename,
-                            svg_text.as_bytes(),
-                            "SVG Vector Image",
-                            &["svg"],
-                        );
-                        self.export_status_message =
-                            Some("SVG image saved successfully.".to_string());
-                    }
-                    Err(e) => {
-                        self.export_status_message = Some(format!("Export failed: {e}"));
-                    }
-                }
-            }
+    fn render_modal_copy_clipboard(&mut self, ui: &mut egui::Ui, caps: ExportCapabilities) {
+        if !ui
+            .add_enabled(caps.figure, egui::Button::new("📋 Copy to Clipboard"))
+            .on_disabled_hover_text(caps.figure_disabled_reason)
+            .clicked()
+        {
+            return;
         }
-    }
-
-    fn render_modal_save_gif(&mut self, ui: &mut egui::Ui) {
-        if ui.button("🎬 Save GIF").clicked() {
-            if let Some(tool) = &mut self.active_tool {
-                let frames = tool.sample_animation_frames(self.export_gif_frames as usize);
-                let file_slug = tool.name().to_lowercase().replace(' ', "_");
-                let filename = format!("{}_animation.gif", file_slug);
-                match egui_plot::export::export_custom_gif(
-                    &frames,
-                    &self.export_options,
-                    self.export_gif_fps,
+        let Some(tool) = &self.active_tool else {
+            return;
+        };
+        match render_tool_color_image(tool.as_ref(), &self.export_options) {
+            Ok(color_img) => {
+                let ctx = ui.ctx().clone();
+                let status_id = egui::Id::new("framework_export_clipboard_status");
+                match egui_plot::export::copy_image_to_clipboard_with_callback(
+                    &color_img,
+                    move |res| {
+                        ctx.data_mut(|d| {
+                            let item = match res {
+                                Ok(_) => (
+                                    ExportStatusSeverity::Success,
+                                    "Copied plot image to clipboard!".to_string(),
+                                ),
+                                Err(e) => (
+                                    ExportStatusSeverity::Error,
+                                    format!("Clipboard copy failed: {e}"),
+                                ),
+                            };
+                            d.insert_temp(status_id, item);
+                        });
+                        ctx.request_repaint();
+                    },
                 ) {
-                    Ok(gif_bytes) => {
-                        egui_plot::export::save_file_dialog(
-                            &filename,
-                            &gif_bytes,
-                            "GIF Animation",
-                            &["gif"],
+                    Ok(_) => {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        self.set_export_status(
+                            ExportStatusSeverity::Success,
+                            "Copied plot image to clipboard!",
                         );
-                        self.export_status_message =
-                            Some("GIF animation saved successfully.".to_string());
+                        #[cfg(target_arch = "wasm32")]
+                        self.set_export_status(
+                            ExportStatusSeverity::Success,
+                            "Copying plot image to clipboard...",
+                        );
                     }
-                    Err(e) => {
-                        self.export_status_message = Some(format!("GIF export failed: {e}"));
-                    }
+                    Err(e) => self.set_export_status(
+                        ExportStatusSeverity::Error,
+                        format!("Clipboard copy failed: {e}"),
+                    ),
                 }
             }
-        }
-    }
-
-    fn render_modal_copy_clipboard(&mut self, ui: &mut egui::Ui) {
-        if ui.button("📋 Copy to Clipboard").clicked() {
-            if let Some(tool) = &self.active_tool {
-                let datasets = tool.export_datasets();
-                match egui_plot::export::export_custom_image(&datasets, &self.export_options) {
-                    Ok(color_img) => {
-                        let ctx = ui.ctx().clone();
-                        let status_id = egui::Id::new("framework_export_clipboard_status");
-                        match egui_plot::export::copy_image_to_clipboard_with_callback(
-                            &color_img,
-                            move |res| {
-                                ctx.data_mut(|d| {
-                                    let msg = match res {
-                                        Ok(_) => "Copied plot image to clipboard!".to_string(),
-                                        Err(e) => format!("Clipboard copy failed: {e}"),
-                                    };
-                                    d.insert_temp(status_id, msg);
-                                });
-                                ctx.request_repaint();
-                            },
-                        ) {
-                            Ok(_) => {
-                                #[cfg(not(target_arch = "wasm32"))]
-                                {
-                                    self.export_status_message =
-                                        Some("Copied plot image to clipboard!".to_string());
-                                }
-                                #[cfg(target_arch = "wasm32")]
-                                {
-                                    self.export_status_message =
-                                        Some("Copying plot image to clipboard...".to_string());
-                                }
-                            }
-                            Err(e) => {
-                                self.export_status_message =
-                                    Some(format!("Clipboard copy failed: {e}"));
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        self.export_status_message = Some(format!("Render failed: {e}"));
-                    }
-                }
+            Err(e) => {
+                self.set_export_status(ExportStatusSeverity::Error, format!("Render failed: {e}"))
             }
         }
     }
 
     fn render_export_modal_actions(&mut self, ui: &mut egui::Ui) {
         let status_id = egui::Id::new("framework_export_clipboard_status");
-        if let Some(msg) = ui.ctx().data_mut(|d| d.remove_temp::<String>(status_id)) {
-            self.export_status_message = Some(msg);
+        if let Some((sev, msg)) = ui
+            .ctx()
+            .data_mut(|d| d.remove_temp::<(ExportStatusSeverity, String)>(status_id))
+        {
+            self.set_export_status(sev, msg);
         }
         let base_w = self.export_options.width.max(1);
         let base_h = self.export_options.height.max(1);
@@ -403,16 +404,20 @@ impl SimulationFramework {
         }
 
         if let Some(msg) = &self.export_status_message {
-            ui.label(egui::RichText::new(msg).color(egui::Color32::GREEN));
+            ui.label(egui::RichText::new(msg).color(self.export_status_severity.color()));
         }
 
         ui.separator();
 
+        let caps = self
+            .active_tool
+            .as_ref()
+            .map(|t| t.export_capabilities())
+            .unwrap_or_else(ExportCapabilities::none);
+
         ui.horizontal(|ui| {
-            self.render_modal_save_png(ui);
-            self.render_modal_save_svg(ui);
-            self.render_modal_save_gif(ui);
-            self.render_modal_copy_clipboard(ui);
+            self.render_modal_save_buttons(ui, caps);
+            self.render_modal_copy_clipboard(ui, caps);
         });
     }
 

@@ -89,9 +89,14 @@ impl NeuralNetworkVizTool {
 }
 
 impl InteractiveTool for NeuralNetworkVizTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Neural Network Viz"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -209,7 +214,6 @@ impl InteractiveTool for NeuralNetworkVizTool {
 
 // [cite:cera_framework]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "NeuralNetworkVizTool",
@@ -226,9 +230,15 @@ impl scientific_metadata::theory::TheoryDescribable for NeuralNetworkVizTool {
             self.neurons.len()
         )
     }
-    fn phonetic_description(&self) -> String { "Coupled Hodgkin-Huxley neural network and synaptic transmission theory".into() }
-    fn theory_citation(&self) -> String { "A Quantitative Description of Membrane Current and Its Application to Conduction and Excitation in Nerve (Hodgkin & Huxley, 1952); Theoretical Neuroscience (Dayan & Abbott, 2001)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Coupled Hodgkin-Huxley neural network and synaptic transmission theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "A Quantitative Description of Membrane Current and Its Application to Conduction and Excitation in Nerve (Hodgkin & Huxley, 1952); Theoretical Neuroscience (Dayan & Abbott, 2001)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

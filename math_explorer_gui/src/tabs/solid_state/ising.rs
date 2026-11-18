@@ -167,12 +167,54 @@ impl Default for IsingModelTool {
 }
 
 impl InteractiveTool for IsingModelTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Ising Model"
     }
     fn domain(&self) -> &'static str {
         "solid_state"
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::raster_only()
+    }
+
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        let (w, h) = (self.lattice.width(), self.lattice.height());
+        if w == 0 || h == 0 {
+            return None;
+        }
+        let pixels: Vec<egui::Color32> = self
+            .lattice
+            .spins()
+            .iter()
+            .map(|&s| {
+                if s > 0 {
+                    egui::Color32::from_rgb(200, 50, 50)
+                } else {
+                    egui::Color32::from_rgb(50, 50, 200)
+                }
+            })
+            .collect();
+        Some(egui::ColorImage::new([w, h], pixels))
+    }
+
+    fn step_simulation(&mut self) {
+        let j_scale = if self.j_coupling.abs() < 1e-6 {
+            1.0
+        } else {
+            self.j_coupling.abs()
+        };
+        let t_phys = self.temperature * j_scale / KB;
+        self.lattice.evolve(
+            self.steps_per_frame.clamp(100, 5000),
+            t_phys,
+            self.j_coupling,
+            self.h_field,
+        );
+        self.dirty = true;
     }
 
     fn save_state(&self) -> Option<String> {
@@ -183,7 +225,8 @@ impl InteractiveTool for IsingModelTool {
             state: Some(self.worker.state()),
             running: None,
             steps_per_frame: self.steps_per_frame,
-        }).ok()
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
@@ -245,28 +288,46 @@ impl InteractiveTool for IsingModelTool {
                 }
 
                 if ui
-                    .add(egui::Slider::new(&mut self.temperature, 0.1..=10.0).text("Temperature (T) - K (relative)"))
+                    .add(
+                        egui::Slider::new(&mut self.temperature, 0.1..=10.0)
+                            .text("Temperature (T) - K (relative)"),
+                    )
                     .changed()
                 {
-                    self.params.write().unwrap_or_else(|e| e.into_inner()).temperature = self.temperature;
+                    self.params
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .temperature = self.temperature;
                     self.dirty = true;
                 }
                 ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
 
                 if ui
-                    .add(egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"))
+                    .add(
+                        egui::Slider::new(&mut self.j_coupling, -2.0..=2.0)
+                            .text("Coupling Constant (J) - J"),
+                    )
                     .changed()
                 {
-                    self.params.write().unwrap_or_else(|e| e.into_inner()).j_coupling = self.j_coupling;
+                    self.params
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .j_coupling = self.j_coupling;
                     self.dirty = true;
                 }
                 ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
 
                 if ui
-                    .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
+                    .add(
+                        egui::Slider::new(&mut self.h_field, -2.0..=2.0)
+                            .text("External Field (H) - H"),
+                    )
                     .changed()
                 {
-                    self.params.write().unwrap_or_else(|e| e.into_inner()).h_field = self.h_field;
+                    self.params
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .h_field = self.h_field;
                     self.dirty = true;
                 }
 
@@ -280,7 +341,10 @@ impl InteractiveTool for IsingModelTool {
                     )
                     .changed()
                 {
-                    self.params.write().unwrap_or_else(|e| e.into_inner()).steps_per_frame = self.steps_per_frame;
+                    self.params
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .steps_per_frame = self.steps_per_frame;
                     self.dirty = true;
                 }
 
@@ -406,12 +470,14 @@ impl InteractiveTool for IsingModelTool {
     }
 }
 
+#[path = "ising/preset.rs"]
+mod preset;
+
 #[cfg(test)]
 #[path = "ising/tests.rs"]
 mod tests;
 
 // [cite:clinical_trials_statistics]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -419,41 +485,5 @@ inventory::submit! {
         domain: "solid_state",
         tags: &[],
         build: || Box::new(IsingModelTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for IsingModelTool {
-    fn theory_description(&self) -> String {
-        "Two-dimensional square lattice ferromagnetic Ising model governed by Hamiltonian $H = -J \\sum_{\\langle i, j \\rangle} s_i s_j - h \\sum_i s_i$ with Onsager critical temperature $T_c = \\frac{2J}{k_B \\ln(1 + \\sqrt{2})} \\approx 2.269 \\frac{J}{k_B}$.".into()
-    }
-    fn phonetic_description(&self) -> String { "Two-dimensional Ising model ferromagnetic phase transition theory".into() }
-    fn theory_citation(&self) -> String { "Crystal Statistics. I. A Two-Dimensional Model with an Order-Disorder Transition (Onsager, 1944)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "2D Ising Model Ferromagnetism",
-    "domain": "solid_state",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "temperature": 2.269,
-    "coupling_j": 1.0,
-    "grid_size": 32
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "ising_model_starter",
-        title: "2D Ising Model Ferromagnetism",
-        description: "H = -J ∑ s_i·s_j - h ∑ s_i: Monte Carlo Metropolis spin flip dynamics and Curie transition.",
-        category: "Statistical Mechanics",
-        icon: "🧲",
-        domain: "solid_state",
-        tool_name: Some("IsingModelTool"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }
