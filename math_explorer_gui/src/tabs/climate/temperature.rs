@@ -14,6 +14,11 @@ impl Default for TemperatureAnomaliesTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TempState {
+    time_series: Vec<[f64; 2]>,
+}
+
 impl InteractiveTool for TemperatureAnomaliesTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -24,20 +29,13 @@ impl InteractiveTool for TemperatureAnomaliesTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct TempState {
-            time_series: Vec<[f64; 2]>,
-        }
         serde_json::to_string(&TempState {
             time_series: self.time_series.clone(),
-        }).ok()
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct TempState {
-            time_series: Vec<[f64; 2]>,
-        }
         let s: TempState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid TemperatureAnomaliesTool state: {e}"))?;
         if s.time_series.is_empty() {

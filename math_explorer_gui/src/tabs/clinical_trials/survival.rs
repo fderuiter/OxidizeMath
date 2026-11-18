@@ -97,6 +97,11 @@ impl SurvivalAnalysisTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SurvivalState {
+    input_text: String,
+}
+
 impl InteractiveTool for SurvivalAnalysisTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -107,21 +112,15 @@ impl InteractiveTool for SurvivalAnalysisTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct SurvivalState {
-            input_text: String,
-        }
         serde_json::to_string(&SurvivalState {
             input_text: self.input_text.clone(),
-        }).ok()
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct SurvivalState {
-            input_text: String,
-        }
-        let s = serde_json::from_str::<SurvivalState>(state).map_err(|e| e.to_string())?;
+        let s: SurvivalState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SurvivalAnalysisTool state: {e}"))?;
         self.input_text = s.input_text;
         self.recalculate();
         Ok(())

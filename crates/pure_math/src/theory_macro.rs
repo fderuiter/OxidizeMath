@@ -3,7 +3,6 @@
 macro_rules! theory_verification {
     (
         module = $module_name:expr,
-        epsilon = $epsilon:expr,
         constants = {
             $( $const_name:ident = $const_val:expr; )*
         },
@@ -16,7 +15,6 @@ macro_rules! theory_verification {
             use approx::assert_relative_eq;
 
             $(
-                #[allow(dead_code)]
                 const $const_name: f64 = $const_val;
             )*
 
@@ -83,38 +81,6 @@ macro_rules! stochastic_signature_verification {
                         stringify!($stat_name), $stat_name, $min, $max
                     );
                 )*
-            }
-        }
-    };
-}
-
-#[macro_export]
-#[allow(missing_docs)]
-macro_rules! empirical_verification {
-    (
-        module = $module_name:expr,
-        observation_source = $obs:expr,
-        empirical_test = $test_body:block
-    ) => {
-        #[cfg(test)]
-        #[allow(unused_imports, clippy::all)]
-        mod empirical_verification {
-            use super::*;
-
-            #[test]
-            #[$crate::__macro_deps::verified_engine::verified]
-            fn test_empirical_verification() {
-                if !$crate::__macro_deps::oxidize_core::traceability::TraceabilityEngine::<
-                    $crate::__macro_deps::oxidize_core::vfs::DefaultVfs,
-                >::verify_module_registered($module_name)
-                {
-                    panic!(
-                        "Traceability mismatch: module '{}' is not registered to any paper",
-                        $module_name
-                    );
-                }
-
-                $test_body
             }
         }
     };

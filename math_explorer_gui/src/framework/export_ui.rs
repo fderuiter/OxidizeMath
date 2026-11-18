@@ -40,6 +40,14 @@ impl SimulationFramework {
                     }
 
                     if ui
+                        .button("Copy CSV")
+                        .on_hover_text("Copy dataset points as CSV to clipboard")
+                        .clicked()
+                    {
+                        self.queue_clipboard_export();
+                    }
+
+                    if ui
                         .button("Export JSON")
                         .on_hover_text("Export dataset points to JSON file")
                         .clicked()
@@ -60,6 +68,8 @@ impl SimulationFramework {
                         self.show_export_modal = true;
                     }
 
+                    self.render_action_bar_export_status(ctx, ui);
+
                     ui.separator();
                     if ui
                         .button("🎨 Starter Gallery")
@@ -78,6 +88,52 @@ impl SimulationFramework {
                     self.render_preset_action_bar_controls(ui, &file_slug);
                 });
             });
+    }
+
+    fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        let status_id = egui::Id::new("framework_action_bar_clipboard_status");
+        if let Some(async_status) =
+            ctx.data_mut(|d| d.remove_temp::<ActionBarExportStatus>(status_id))
+        {
+            self.export_status_message = Some(async_status.message.clone());
+            self.export_queue.status = Some(async_status);
+        }
+
+        let now = ctx.input(|i| i.time);
+        let mut clear_status = false;
+
+        if let Some(ref mut status) = self.export_queue.status {
+            if !status.is_error {
+                let exp = *status.expires_at_time.get_or_insert(now + 3.0);
+                if now > 0.0 && now >= exp {
+                    clear_status = true;
+                } else {
+                    let remaining = (exp - now).max(0.05);
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
+                    ui.colored_label(egui::Color32::LIGHT_GREEN, format!("✓ {}", status.message));
+                    if ui
+                        .small_button("✖")
+                        .on_hover_text("Dismiss notification")
+                        .clicked()
+                    {
+                        clear_status = true;
+                    }
+                }
+            } else {
+                ui.colored_label(egui::Color32::RED, format!("⚠️ {}", status.message));
+                if ui
+                    .small_button("✖")
+                    .on_hover_text("Dismiss warning")
+                    .clicked()
+                {
+                    clear_status = true;
+                }
+            }
+        }
+
+        if clear_status {
+            self.export_queue.status = None;
+        }
     }
 
     fn export_active_preset_json(&mut self, file_slug: &str) {

@@ -193,21 +193,64 @@ impl SimulationFramework {
         }
     }
 
-    /// Coordinates parameter clamping on the active tool.
+    fn restore_snapshot_plots(&mut self, plot_datasets: Vec<(String, Vec<[f64; 2]>)>) {
+        egui_plot::clear_last_plot_datasets();
+        egui_plot::append_last_plot_datasets(&plot_datasets);
+        self.current_valid_plot_datasets = plot_datasets;
+        self.is_diverged = false;
+        self.diagnostic_report = None;
+    }
+
+    /// Coordinates parameter clamping on the active tool via domain hooks or JSON bounds fallback.
     pub fn clamp_parameters(&mut self) {
-        if let Some(snapshot) = &self.last_valid_snapshot {
-            if let Some(tool) = &mut self.active_tool {
-                if let Some(ref state_str) = snapshot.tool_state {
-                    tool.load_state(state_str);
+        let Some(snapshot) = self.last_valid_snapshot.clone() else {
+            if let (Some(tool), Some(ref base)) = (&mut self.active_tool, &self.baseline_tool_state)
+            {
+                tool.load_state(base);
+            } else if let Some(tool) = &mut self.active_tool {
+                let _ = tool.clamp_parameters();
+            }
+            let valid_plots = self.current_valid_plot_datasets.clone();
+            self.restore_snapshot_plots(valid_plots);
+            emit_recovery_telemetry(
+                "SimulationFramework",
+                "Clamp Instability Parameters",
+                "Fallback to baseline parameters: missing last_valid_snapshot",
+            );
+            return;
+        };
+
+        let mut telemetry_details = "Fallback to baseline parameters: zero snapshot fields changed";
+        if let Some(tool) = &mut self.active_tool {
+            if let Some(ref state_str) = snapshot.tool_state {
+                tool.load_state(state_str);
+            }
+            if tool.clamp_parameters() {
+                telemetry_details =
+                    "Clamped instability parameters via domain hook and restored plot datasets";
+            } else {
+                let constraints = tool.theory().theory_parameters();
+                if let Some(clamped) = snapshot.tool_state.as_deref().and_then(|s| {
+                    super::clamp::clamp_state_json(
+                        s,
+                        self.baseline_tool_state.as_deref(),
+                        &constraints,
+                    )
+                }) {
+                    tool.load_state(&clamped);
+                    telemetry_details =
+                        "Clamped snapshot JSON parameters to stable bounds and restored plot datasets";
+                } else if let Some(ref base) = self.baseline_tool_state {
+                    tool.load_state(base);
                 }
             }
         }
-        self.is_diverged = false;
-        self.diagnostic_report = None;
+
+        self.restore_snapshot_plots(snapshot.plot_datasets);
         emit_recovery_telemetry(
             "SimulationFramework",
             "Clamp Instability Parameters",
-            "Clamped rate parameters to stable bounds",
+            telemetry_details,
         );
     }
 

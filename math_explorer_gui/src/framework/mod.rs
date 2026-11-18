@@ -1,4 +1,7 @@
 pub mod callout_overlay;
+pub mod clamp;
+#[cfg(test)]
+mod clamp_tests;
 pub mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
@@ -14,6 +17,7 @@ pub mod trace_overlay;
 mod ui;
 
 pub use callout_overlay::*;
+pub use clamp::*;
 pub use export_queue::*;
 pub use math_input::*;
 pub use recovery::*;
@@ -165,6 +169,11 @@ pub trait InteractiveTool {
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, state: &str) {
         let _ = self.try_load_state(state);
+    }
+
+    /// Optional hook to clamp unstable parameters to safe bounds, returning true if handled.
+    fn clamp_parameters(&mut self) -> bool {
+        false
     }
 
     /// Domain category of the tool (e.g. "analysis", "biology", "game_theory").

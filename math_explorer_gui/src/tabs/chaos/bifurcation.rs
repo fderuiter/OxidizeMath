@@ -60,6 +60,13 @@ impl TheoryDescribable for BifurcationDiagram {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BifurcationState {
+    r_min: f64,
+    r_max: f64,
+    steps: usize,
+}
+
 impl InteractiveTool for BifurcationDiagram {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     
@@ -72,26 +79,15 @@ impl InteractiveTool for BifurcationDiagram {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BifurcationState {
-            r_min: f64,
-            r_max: f64,
-            steps: usize,
-        }
         serde_json::to_string(&BifurcationState {
             r_min: self.r_min,
             r_max: self.r_max,
             steps: self.steps,
-        }).ok()
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BifurcationState {
-            r_min: f64,
-            r_max: f64,
-            steps: usize,
-        }
         let s: BifurcationState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid BifurcationDiagram state: {e}"))?;
         self.r_min = s.r_min;

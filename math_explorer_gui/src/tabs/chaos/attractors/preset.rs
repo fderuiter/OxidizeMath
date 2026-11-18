@@ -6,47 +6,38 @@ const fn default_annotations_enabled() -> bool {
     true
 }
 
-#[derive(serde::Serialize)]
-struct SerializedAttractorState {
+#[derive(serde::Serialize, serde::Deserialize)]
+struct AttractorState {
     sigma: f64,
     rho: f64,
     beta: f64,
     dt: f64,
     simulation_speed: usize,
-    execution_state: SolverExecutionState,
-    #[serde(default = "default_annotations_enabled")]
-    show_annotations: bool,
-}
-
-#[derive(serde::Deserialize)]
-struct DeserializedAttractorState {
-    sigma: f64,
-    rho: f64,
-    beta: f64,
-    dt: f64,
-    simulation_speed: usize,
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     execution_state: Option<SolverExecutionState>,
     #[serde(default = "default_annotations_enabled")]
     show_annotations: bool,
+    #[serde(skip_serializing, default)]
+    paused: Option<bool>,
 }
 
 impl AttractorPlotter {
     pub(super) fn serialize_state(&self) -> Option<String> {
-        serde_json::to_string(&SerializedAttractorState {
+        serde_json::to_string(&AttractorState {
             sigma: self.system.sigma,
             rho: self.system.rho,
             beta: self.system.beta,
             dt: self.dt,
             simulation_speed: self.simulation_speed,
-            execution_state: self.execution_state,
+            execution_state: Some(self.execution_state),
             show_annotations: self.show_annotations,
+            paused: None,
         })
         .ok()
     }
 
     pub(super) fn deserialize_state(&mut self, state: &str) -> Result<(), String> {
-        let s: DeserializedAttractorState = serde_json::from_str(state)
+        let s: AttractorState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid AttractorPlotter state: {e}"))?;
         if !s.sigma.is_finite() || !s.rho.is_finite() || !s.beta.is_finite() || !s.dt.is_finite() {
             return Err("AttractorPlotter parameters must be finite".to_string());
@@ -58,16 +49,10 @@ impl AttractorPlotter {
         self.simulation_speed = s.simulation_speed;
         self.show_annotations = s.show_annotations;
         self.reset();
-        let execution_state = s.execution_state.unwrap_or_else(|| {
-            let legacy_paused = serde_json::from_str::<serde_json::Value>(state)
-                .ok()
-                .and_then(|v| v.get("paused").and_then(|p| p.as_bool()))
-                .unwrap_or(false);
-            if legacy_paused {
-                SolverExecutionState::Paused
-            } else {
-                SolverExecutionState::Ready
-            }
+        let execution_state = s.execution_state.unwrap_or(if s.paused == Some(true) {
+            SolverExecutionState::Paused
+        } else {
+            SolverExecutionState::Ready
         });
         self.execution_state = execution_state;
         if let SolverExecutionState::Diverged {

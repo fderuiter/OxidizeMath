@@ -13,10 +13,7 @@ use pure_math::theory_verification;
 
 theory_verification!(
     module = "battery_degradation",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
-    constants = {
-        TARGET_CAP = 0.8;
-    },
+    constants = {},
     test = {
         let model = model::PowerLawModel::standard();
         assert_relative_eq!(

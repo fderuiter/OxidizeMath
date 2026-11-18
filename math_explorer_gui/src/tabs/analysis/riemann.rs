@@ -94,6 +94,14 @@ impl RiemannIntegrationTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct RiemannState {
+    preset: FunctionPreset,
+    min_x: f64,
+    max_x: f64,
+    steps: usize,
+}
+
 impl InteractiveTool for RiemannIntegrationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -104,29 +112,16 @@ impl InteractiveTool for RiemannIntegrationTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct RiemannState {
-            preset: FunctionPreset,
-            min_x: f64,
-            max_x: f64,
-            steps: usize,
-        }
         serde_json::to_string(&RiemannState {
             preset: self.preset,
             min_x: self.min_x,
             max_x: self.max_x,
             steps: self.steps,
-        }).ok()
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct RiemannState {
-            preset: FunctionPreset,
-            min_x: f64,
-            max_x: f64,
-            steps: usize,
-        }
         let s: RiemannState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid RiemannIntegrationTool state: {e}"))?;
         self.preset = s.preset;

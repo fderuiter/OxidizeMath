@@ -26,6 +26,16 @@ impl Default for BandStructureTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BandStructureState {
+    e0: f64,
+    t: f64,
+    a: f64,
+    hbar: f64,
+    m: f64,
+    show_free_electron: bool,
+}
+
 impl InteractiveTool for BandStructureTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -36,15 +46,6 @@ impl InteractiveTool for BandStructureTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BandStructureState {
-            e0: f64,
-            t: f64,
-            a: f64,
-            hbar: f64,
-            m: f64,
-            show_free_electron: bool,
-        }
         serde_json::to_string(&BandStructureState {
             e0: self.e0,
             t: self.t,
@@ -52,20 +53,13 @@ impl InteractiveTool for BandStructureTool {
             hbar: self.hbar,
             m: self.m,
             show_free_electron: self.show_free_electron,
-        }).ok()
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BandStructureState {
-            e0: f64,
-            t: f64,
-            a: f64,
-            hbar: f64,
-            m: f64,
-            show_free_electron: bool,
-        }
-        let s = serde_json::from_str::<BandStructureState>(state).map_err(|e| e.to_string())?;
+        let s: BandStructureState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid BandStructureTool state: {e}"))?;
         self.e0 = s.e0;
         self.t = s.t;
         self.a = s.a;

@@ -35,6 +35,17 @@ impl Default for BetSizeCalculatorTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BetSizeState {
+    probability_input: f64,
+    odds_format: OddsFormat,
+    decimal_odds: f64,
+    american_odds: f64,
+    fractional_numerator: f64,
+    fractional_denominator: f64,
+    bankroll: f64,
+}
+
 impl InteractiveTool for BetSizeCalculatorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -45,16 +56,6 @@ impl InteractiveTool for BetSizeCalculatorTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BetSizeState {
-            probability_input: f64,
-            odds_format: OddsFormat,
-            decimal_odds: f64,
-            american_odds: f64,
-            fractional_numerator: f64,
-            fractional_denominator: f64,
-            bankroll: f64,
-        }
         serde_json::to_string(&BetSizeState {
             probability_input: self.probability_input,
             odds_format: self.odds_format,
@@ -63,21 +64,13 @@ impl InteractiveTool for BetSizeCalculatorTool {
             fractional_numerator: self.fractional_numerator,
             fractional_denominator: self.fractional_denominator,
             bankroll: self.bankroll,
-        }).ok()
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BetSizeState {
-            probability_input: f64,
-            odds_format: OddsFormat,
-            decimal_odds: f64,
-            american_odds: f64,
-            fractional_numerator: f64,
-            fractional_denominator: f64,
-            bankroll: f64,
-        }
-        let s = serde_json::from_str::<BetSizeState>(state).map_err(|e| e.to_string())?;
+        let s: BetSizeState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid BetSizeCalculatorTool state: {e}"))?;
         self.probability_input = s.probability_input;
         self.odds_format = s.odds_format;
         self.decimal_odds = s.decimal_odds;

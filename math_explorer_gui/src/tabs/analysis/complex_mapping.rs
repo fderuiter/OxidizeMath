@@ -123,6 +123,15 @@ impl ComplexMappingTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ComplexMappingState {
+    function: MappingFunction,
+    grid_min: f64,
+    grid_max: f64,
+    grid_density: usize,
+    inspection_point: [f64; 2],
+}
+
 impl InteractiveTool for ComplexMappingTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -133,32 +142,17 @@ impl InteractiveTool for ComplexMappingTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct ComplexMappingState {
-            function: MappingFunction,
-            grid_min: f64,
-            grid_max: f64,
-            grid_density: usize,
-            inspection_point: [f64; 2],
-        }
         serde_json::to_string(&ComplexMappingState {
             function: self.function,
             grid_min: self.grid_min,
             grid_max: self.grid_max,
             grid_density: self.grid_density,
             inspection_point: self.inspection_point,
-        }).ok()
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct ComplexMappingState {
-            function: MappingFunction,
-            grid_min: f64,
-            grid_max: f64,
-            grid_density: usize,
-            inspection_point: [f64; 2],
-        }
         let s: ComplexMappingState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid ComplexMappingTool state: {e}"))?;
         self.function = s.function;

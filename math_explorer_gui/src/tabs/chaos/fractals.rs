@@ -67,6 +67,17 @@ impl TheoryDescribable for FractalViewer {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct FractalState {
+    center_re: f64,
+    center_im: f64,
+    zoom: f64,
+    max_iter: u32,
+    mode: FractalMode,
+    julia_re: f64,
+    julia_im: f64,
+}
+
 impl InteractiveTool for FractalViewer {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     
@@ -79,16 +90,6 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct FractalState {
-            center_re: f64,
-            center_im: f64,
-            zoom: f64,
-            max_iter: u32,
-            mode: FractalMode,
-            julia_re: f64,
-            julia_im: f64,
-        }
         serde_json::to_string(&FractalState {
             center_re: self.center.re,
             center_im: self.center.im,
@@ -97,20 +98,11 @@ impl InteractiveTool for FractalViewer {
             mode: self.mode,
             julia_re: self.julia_c.re,
             julia_im: self.julia_c.im,
-        }).ok()
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct FractalState {
-            center_re: f64,
-            center_im: f64,
-            zoom: f64,
-            max_iter: u32,
-            mode: FractalMode,
-            julia_re: f64,
-            julia_im: f64,
-        }
         let s: FractalState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid FractalViewer state: {e}"))?;
         self.center = Complex::new(s.center_re, s.center_im);

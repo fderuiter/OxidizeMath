@@ -31,6 +31,13 @@ impl Default for RandomizationTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct RandomizationState {
+    randomization_type: RandomizationType,
+    n_subjects: usize,
+    block_size: usize,
+}
+
 impl InteractiveTool for RandomizationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -41,26 +48,15 @@ impl InteractiveTool for RandomizationTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct RandomizationState {
-            randomization_type: RandomizationType,
-            n_subjects: usize,
-            block_size: usize,
-        }
         serde_json::to_string(&RandomizationState {
             randomization_type: self.randomization_type,
             n_subjects: self.n_subjects,
             block_size: self.block_size,
-        }).ok()
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct RandomizationState {
-            randomization_type: RandomizationType,
-            n_subjects: usize,
-            block_size: usize,
-        }
         let s: RandomizationState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid RandomizationTool state: {e}"))?;
         self.randomization_type = s.randomization_type;
