@@ -42,6 +42,14 @@ impl SimulationRunner for MorphogenesisRunner {
     fn process_command(&mut self, cmd: SimCommand) {
         match cmd {
             SimCommand::Reset => {
+                let (a, b, d_u, d_v) = {
+                    let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+                    (p.a, p.b, p.d_u, p.d_v)
+                };
+                self.system.kinetics.a = a;
+                self.system.kinetics.b = b;
+                self.system.diffusion_coeffs[0] = d_u;
+                self.system.diffusion_coeffs[1] = d_v;
                 MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
             }
             SimCommand::Custom(ref s) if s == "reinit" => {
