@@ -104,7 +104,8 @@ impl AttractorPlotter {
     }
 
     pub fn on_slider_changed(&mut self) {
-        if let Ok(mut p) = self.params.write() {
+        {
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.sigma = self.system.sigma;
             p.rho = self.system.rho;
             p.beta = self.system.beta;
@@ -131,14 +132,13 @@ impl AttractorPlotter {
         self.step_count = 0;
         self.execution_state = SolverExecutionState::Ready;
         let _ = self.worker.send_command(SimCommand::Reset);
-        if let Ok(mut p) = self.params.write() {
-            p.sigma = sigma;
-            p.rho = rho;
-            p.beta = beta;
-            p.dt = self.dt;
-            p.simulation_speed = self.simulation_speed;
-            p.max_points = self.max_points;
-        }
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.sigma = sigma;
+        p.rho = rho;
+        p.beta = beta;
+        p.dt = self.dt;
+        p.simulation_speed = self.simulation_speed;
+        p.max_points = self.max_points;
     }
 
     pub fn reset_parameters(&mut self) {

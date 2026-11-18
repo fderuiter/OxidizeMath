@@ -19,7 +19,11 @@ mod tests_domain_bar;
 #[cfg(test)]
 mod tests_multi_pane;
 #[cfg(test)]
+mod tests_secondary_menus;
+#[cfg(test)]
 mod tests_session_lifecycle;
+#[cfg(test)]
+mod tests_shortcuts;
 #[cfg(test)]
 mod tests_split_view;
 
@@ -56,6 +60,7 @@ pub struct MathExplorerApp {
     pub viewport_layout: ViewportLayout,
     pub pane_tabs: Vec<usize>,
     pane_contexts: [egui::Context; 4],
+    pane_textures: [std::collections::HashMap<egui::TextureId, egui::TextureId>; 4],
     pub is_dragging_divider: bool,
 }
 
@@ -83,6 +88,7 @@ impl Default for MathExplorerApp {
             viewport_layout: ViewportLayout::Single,
             pane_tabs: vec![0, 1, 2, 3],
             pane_contexts: std::array::from_fn(|_| egui::Context::default()),
+            pane_textures: std::array::from_fn(|_| std::collections::HashMap::new()),
             is_dragging_divider: false,
         }
     }
@@ -182,14 +188,14 @@ impl MathExplorerApp {
         }
     }
 
-    /// Returns the names of all registered tabs.
-    pub fn tab_names(&self) -> Vec<&'static str> {
-        self.tabs.iter().map(|t| t.name()).collect()
-    }
-
     /// Selects an active tab by index, synchronizing primary pane and emitting accessibility announcements.
     pub fn select_tab(&mut self, ctx: &egui::Context, tab_idx: usize) {
         domain_bar::select_tab(self, ctx, tab_idx);
+    }
+
+    /// Assigns a simulation module to a specific viewport pane, synchronizing state and announcing the change.
+    pub fn select_pane_tab(&mut self, ctx: &egui::Context, pane_idx: usize, tab_idx: usize) {
+        domain_bar::select_pane_tab(self, ctx, pane_idx, tab_idx);
     }
 
     /// Restores the previous application state from the undo history stack.
@@ -222,6 +228,13 @@ impl MathExplorerApp {
 impl eframe::App for MathExplorerApp {
     #[allow(clippy::too_many_lines)]
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        ctx.data_mut(|d| {
+            d.insert_temp(
+                egui::Id::new("CMD_REGISTRY"),
+                egui_plot::commands::CommandRegistryData::default(),
+            );
+        });
+
         if ctx.style().visuals != self.theme.visuals() {
             ctx.set_visuals(self.theme.visuals());
         }
@@ -279,13 +292,22 @@ impl eframe::App for MathExplorerApp {
 
         let slash_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
             ctx,
-            "Command Cheatsheet",
-            "Toggle global command cheatsheet modal",
+            "Keyboard Shortcuts",
+            "Toggle keyboard shortcuts modal",
             egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::Slash),
             true,
             "Global",
             None,
             None,
+        );
+
+        egui_plot::commands::CommandRegistryData::register(
+            ctx,
+            "Keyboard Shortcuts",
+            "Toggle keyboard shortcuts modal",
+            egui_plot::commands::CommandTrigger::Key(egui::Key::Questionmark),
+            true,
+            "Global",
         );
 
         let question_triggered = !ctx.wants_keyboard_input()
@@ -297,9 +319,9 @@ impl eframe::App for MathExplorerApp {
         if slash_triggered || question_triggered {
             self.show_help_menu = !self.show_help_menu;
             let status_msg = if self.show_help_menu {
-                "Hotkey overlay opened"
+                "Keyboard shortcuts opened"
             } else {
-                "Hotkey overlay closed"
+                "Keyboard shortcuts closed"
             };
             ctx.data_mut(|d| {
                 d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());

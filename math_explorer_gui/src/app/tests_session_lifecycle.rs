@@ -388,3 +388,57 @@ fn test_session_lifecycle_state_chart_screenshot_generation() {
         let _ = std::fs::write("/tmp/session_lifecycle_transitions.png", png_data);
     }
 }
+
+#[test]
+fn test_browser_style_open_and_direct_save_roundtrip() {
+    let ctx = egui::Context::default();
+    let mut app = crate::app::MathExplorerApp::default();
+    let mut mgr = WorkspaceSessionManager::default();
+
+    let exported_state = make_dummy_state(1, ThemeMode::HighContrast);
+    let envelope_json = mgr.create_envelope(exported_state);
+
+    // Simulate browser file picker delivering picked filename + envelope JSON
+    let (open_tx, open_rx) = channel();
+    mgr.open_rx = Some(open_rx);
+    mgr.lifecycle_state = SessionLifecycleState::AwaitingFileDialog;
+    open_tx
+        .send(Ok((
+            PathBuf::from("browser_session.mws"),
+            envelope_json.clone(),
+        )))
+        .unwrap();
+
+    mgr.poll(&mut app, &ctx);
+    assert_eq!(app.theme, ThemeMode::HighContrast);
+    assert_eq!(
+        mgr.active_file_path(),
+        Some(&PathBuf::from("browser_session.mws"))
+    );
+    assert_eq!(
+        mgr.toast().map(|(msg, is_err)| (msg.as_str(), *is_err)),
+        Some(("Loaded workspace session from browser_session.mws", false))
+    );
+
+    // Settle restoration frames back to Idle (1 adapting frame + 2 consecutive quiescent frames)
+    let current = app.get_app_state();
+    mgr.track_state_changes(&ctx, current.clone());
+    mgr.track_state_changes(&ctx, current.clone());
+    mgr.track_state_changes(&ctx, current);
+    assert_eq!(mgr.lifecycle_state(), SessionLifecycleState::Idle);
+
+    // Simulate direct save completion preserving picked filename
+    let (save_tx, save_rx) = channel();
+    mgr.save_rx = Some(save_rx);
+    mgr.lifecycle_state = SessionLifecycleState::Saving;
+    save_tx
+        .send(Ok(PathBuf::from("browser_session.mws")))
+        .unwrap();
+
+    mgr.poll(&mut app, &ctx);
+    assert_eq!(mgr.lifecycle_state(), SessionLifecycleState::Idle);
+    assert_eq!(
+        mgr.toast().map(|(msg, is_err)| (msg.as_str(), *is_err)),
+        Some(("Workspace session saved to browser_session.mws", false))
+    );
+}

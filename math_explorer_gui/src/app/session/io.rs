@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
-/// Spawns a background thread showing the file picker dialog to open a workspace session.
+// theory_verification!
+
+/// Spawns a file picker dialog (or browser `<input type="file">`) to open a workspace session.
 pub fn spawn_open_dialog(tx: Sender<Result<(PathBuf, String), String>>) {
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -21,9 +23,18 @@ pub fn spawn_open_dialog(tx: Sender<Result<(PathBuf, String), String>>) {
             }
         });
     }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::web_io::open_browser_file_picker(".mws,.json,application/json", move |outcome| {
+            if let Some(res) = outcome {
+                let _ = tx.send(res.map(|(name, content)| (PathBuf::from(name), content)));
+            }
+        });
+    }
 }
 
-/// Spawns a background thread showing the save file dialog to export a workspace session.
+/// Spawns a save file dialog (or triggers browser download) to export a workspace session.
 pub fn spawn_save_as_dialog(tx: Sender<Result<PathBuf, String>>, envelope_json: String) {
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -45,9 +56,18 @@ pub fn spawn_save_as_dialog(tx: Sender<Result<PathBuf, String>>, envelope_json: 
             }
         });
     }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let filename = crate::web_io::sanitize_download_filename("workspace.mws", "workspace.mws");
+        let res = crate::web_io::download_browser_file(&filename, envelope_json.as_bytes())
+            .map(|()| PathBuf::from(filename));
+        let _ = tx.send(res);
+        crate::web_io::request_browser_repaint();
+    }
 }
 
-/// Spawns a background thread to persist a workspace session directly to disk.
+/// Persists a workspace session directly to disk on desktop or triggers a browser download on WebAssembly.
 pub fn spawn_save_direct(
     tx: Sender<Result<PathBuf, String>>,
     path: PathBuf,
@@ -63,6 +83,16 @@ pub fn spawn_save_direct(
                 let _ = tx.send(Err(format!("Failed to write workspace file: {}", e)));
             }
         });
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let filename =
+            crate::web_io::sanitize_download_filename(file_name_str(&path), "workspace.mws");
+        let res = crate::web_io::download_browser_file(&filename, envelope_json.as_bytes())
+            .map(|()| PathBuf::from(filename));
+        let _ = tx.send(res);
+        crate::web_io::request_browser_repaint();
     }
 }
 

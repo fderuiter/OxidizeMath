@@ -105,7 +105,6 @@ use pure_math::theory_verification;
 
 theory_verification!(
     module = "algorithms",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
     constants = {
         WEIGHT = 1.0;
     },

@@ -30,9 +30,10 @@ impl SimulationRunner for IsingRunner {
                 self.lattice = SpinLattice::new(100, 100, None);
             }
             SimCommand::SetSpeed(speed) => {
-                if let Ok(mut p) = self.params.write() {
-                    p.steps_per_frame = speed;
-                }
+                self.params
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .steps_per_frame = speed;
             }
             _ => {}
         }
@@ -40,7 +41,7 @@ impl SimulationRunner for IsingRunner {
 
     fn step(&mut self) {
         let (temp, j, h, steps) = {
-            let p = self.params.read().unwrap();
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.temperature, p.j_coupling, p.h_field, p.steps_per_frame)
         };
         let j_scale = if j.abs() < 1e-6 { 1.0 } else { j.abs() };
@@ -61,7 +62,7 @@ impl SimulationRunner for IsingRunner {
             });
         }
         let (j, h) = {
-            let p = self.params.read().unwrap();
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.j_coupling, p.h_field)
         };
         let m = self.lattice.magnetization();
@@ -191,7 +192,8 @@ impl InteractiveTool for IsingModelTool {
             self.j_coupling = s.j_coupling;
             self.h_field = s.h_field;
             self.steps_per_frame = s.steps_per_frame;
-            if let Ok(mut p) = self.params.write() {
+            {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
                 p.temperature = self.temperature;
                 p.j_coupling = self.j_coupling;
                 p.h_field = self.h_field;
@@ -246,7 +248,7 @@ impl InteractiveTool for IsingModelTool {
                     .add(egui::Slider::new(&mut self.temperature, 0.1..=10.0).text("Temperature (T) - K (relative)"))
                     .changed()
                 {
-                    self.params.write().unwrap().temperature = self.temperature;
+                    self.params.write().unwrap_or_else(|e| e.into_inner()).temperature = self.temperature;
                     self.dirty = true;
                 }
                 ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
@@ -255,7 +257,7 @@ impl InteractiveTool for IsingModelTool {
                     .add(egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"))
                     .changed()
                 {
-                    self.params.write().unwrap().j_coupling = self.j_coupling;
+                    self.params.write().unwrap_or_else(|e| e.into_inner()).j_coupling = self.j_coupling;
                     self.dirty = true;
                 }
                 ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
@@ -264,7 +266,7 @@ impl InteractiveTool for IsingModelTool {
                     .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
                     .changed()
                 {
-                    self.params.write().unwrap().h_field = self.h_field;
+                    self.params.write().unwrap_or_else(|e| e.into_inner()).h_field = self.h_field;
                     self.dirty = true;
                 }
 
@@ -278,7 +280,7 @@ impl InteractiveTool for IsingModelTool {
                     )
                     .changed()
                 {
-                    self.params.write().unwrap().steps_per_frame = self.steps_per_frame;
+                    self.params.write().unwrap_or_else(|e| e.into_inner()).steps_per_frame = self.steps_per_frame;
                     self.dirty = true;
                 }
 

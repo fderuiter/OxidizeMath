@@ -16,7 +16,7 @@ pub struct GridWorldTool {
     steps: u32,
     is_playing: bool,
     playback_speed: f32,
-    last_tick: std::time::Instant,
+    last_tick: crate::web_io::PlatformInstant,
 }
 
 impl Default for GridWorldTool {
@@ -39,7 +39,7 @@ impl Default for GridWorldTool {
             steps: 0,
             is_playing: false,
             playback_speed: 5.0,
-            last_tick: std::time::Instant::now(),
+            last_tick: crate::web_io::PlatformInstant::now(),
         }
     }
 }
@@ -94,7 +94,7 @@ impl InteractiveTool for GridWorldTool {
         if self.is_playing {
             let speed_hz = self.playback_speed.clamp(1.0, 20.0);
             let interval = std::time::Duration::from_secs_f32(1.0 / speed_hz);
-            let now = std::time::Instant::now();
+            let now = crate::web_io::PlatformInstant::now();
             if now.duration_since(self.last_tick) >= interval {
                 self.step_agent();
                 self.last_tick = now;
@@ -129,7 +129,7 @@ impl InteractiveTool for GridWorldTool {
                 {
                     self.is_playing = !self.is_playing;
                     if self.is_playing {
-                        self.last_tick = std::time::Instant::now();
+                        self.last_tick = crate::web_io::PlatformInstant::now();
                     }
                 }
                 if ui

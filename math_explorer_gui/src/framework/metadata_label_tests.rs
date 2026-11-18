@@ -286,22 +286,46 @@ fn test_unified_models_expose_readable_parameter_labels_and_discrete_choices() {
         "wave_labels: {wave_labels:?}"
     );
     assert!(!wave_labels.iter().any(|l| l == "potential_type"));
+}
 
+#[test]
+fn test_hodgkin_huxley_sensitivity_cards_separate_ids_from_display_labels() {
     let hh_ctx = egui::Context::default();
     hh_ctx.enable_accesskit();
     let mut hh_tool = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
+    let _ = hh_ctx.run(compact_input(), |ctx| {
+        use crate::framework::InteractiveTool;
+        hh_tool.show(ctx);
+    });
     let hh_out = hh_ctx.run(compact_input(), |ctx| {
         use crate::framework::InteractiveTool;
         hh_tool.show(ctx);
     });
     let hh_labels = collect_accesskit_labels(&hh_out);
+    for expected_label in [
+        "Baseline Peak Membrane Potential (mV):",
+        "Sodium Conductance (mS/cm²)",
+        "Potassium Conductance (mS/cm²)",
+        "Leak Conductance (mS/cm²)",
+        "External Stimulus Current (µA/cm²)",
+    ] {
+        assert!(
+            hh_labels.iter().any(|l| l.contains(expected_label)),
+            "Expected '{expected_label}' in hh_labels: {hh_labels:?}"
+        );
+    }
+    assert!(
+        !hh_labels
+            .iter()
+            .any(|l| matches!(l.as_str(), "g_na" | "g_k" | "g_l" | "i_ext")),
+        "Sensitivity or slider controls leaked raw snake_case keys: {hh_labels:?}"
+    );
     assert!(
         hh_labels
             .iter()
-            .any(|l| l.contains("Sodium Conductance (mS/cm²)")),
-        "hh_labels: {hh_labels:?}"
+            .any(|l| l.starts_with("dY/dP:") && l != "dY/dP: 0.0000"),
+        "Expected non-zero biophysical sensitivity derivatives: {hh_labels:?}"
     );
-    assert!(!hh_labels.iter().any(|l| l == "g_na" || l == "i_ext"));
 }
 
 #[test]

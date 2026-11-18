@@ -154,12 +154,30 @@ where
 
 /// Renders the collapsible Sensitivity & Perturbation analysis panel in the UI sidebar.
 pub fn render_sensitivity_panel_ui(ui: &mut egui::Ui, engine: &SensitivityEngine, id_source: &str) {
+    render_labeled_sensitivity_panel_ui(ui, engine, id_source, "Baseline Metric");
+}
+
+/// Renders the collapsible Sensitivity & Perturbation analysis panel with an explicit observable label.
+pub fn render_labeled_sensitivity_panel_ui(
+    ui: &mut egui::Ui,
+    engine: &SensitivityEngine,
+    id_source: &str,
+    metric_label: &str,
+) {
+    let baseline_heading = if metric_label.is_empty() || metric_label == "Baseline Metric" {
+        format!("Baseline Metric: {:.4}", engine.baseline_output)
+    } else if metric_label.starts_with("Baseline ") {
+        format!("{}: {:.4}", metric_label, engine.baseline_output)
+    } else {
+        format!("Baseline {}: {:.4}", metric_label, engine.baseline_output)
+    };
+
     ui.add_space(6.0);
     egui::CollapsingHeader::new("Sensitivity & Perturbation Analysis")
         .id_salt(format!("{}_sensitivity_panel", id_source))
         .default_open(true)
         .show(ui, |ui| {
-            ui.label(format!("Baseline Metric: {:.4}", engine.baseline_output));
+            ui.label(baseline_heading);
             ui.label(
                 egui::RichText::new(
                     "Normalized elasticity |(dY/dP) * (P/Y)| via central finite diff (±1% delta)",
@@ -175,45 +193,58 @@ pub fn render_sensitivity_panel_ui(ui: &mut egui::Ui, engine: &SensitivityEngine
             }
 
             for metric in &engine.metrics {
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(&metric.param_name).strong());
-                        if metric.is_high_sensitivity {
-                            ui.colored_label(
-                                egui::Color32::RED,
-                                "⚠️ High Sensitivity (> 2.0 elasticity)",
-                            );
-                        }
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label(format!("dY/dP: {:.4}", metric.partial_derivative));
-                        ui.add_space(10.0);
-                        ui.label(format!("Elasticity: {:.2}", metric.elasticity));
-                    });
-
-                    let progress = (metric.elasticity / 3.0).clamp(0.0, 1.0) as f32;
-                    let color = if metric.elasticity > 2.0 {
-                        egui::Color32::RED
-                    } else if metric.elasticity > 1.0 {
-                        egui::Color32::GOLD
-                    } else {
-                        egui::Color32::GREEN
-                    };
-
-                    let progress_bar = egui::ProgressBar::new(progress)
-                        .fill(color)
-                        .text(format!("{:.2} elasticity", metric.elasticity));
-                    ui.add(progress_bar);
-                });
+                render_sensitivity_metric_card(ui, metric);
                 ui.add_space(2.0);
             }
         });
 }
 
+fn render_sensitivity_metric_card(ui: &mut egui::Ui, metric: &SensitivityMetric) {
+    ui.group(|ui| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(&metric.param_name).strong());
+            if metric.is_high_sensitivity {
+                ui.colored_label(egui::Color32::RED, "⚠️ High Sensitivity (> 2.0 elasticity)");
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label(format!("dY/dP: {:.4}", metric.partial_derivative));
+            ui.add_space(10.0);
+            ui.label(format!("Elasticity: {:.2}", metric.elasticity));
+        });
+
+        let progress = (metric.elasticity / 3.0).clamp(0.0, 1.0) as f32;
+        let color = if metric.elasticity > 2.0 {
+            egui::Color32::RED
+        } else if metric.elasticity > 1.0 {
+            egui::Color32::GOLD
+        } else {
+            egui::Color32::GREEN
+        };
+
+        let progress_bar = egui::ProgressBar::new(progress)
+            .fill(color)
+            .text(format!("{:.2} elasticity", metric.elasticity));
+        ui.add(progress_bar);
+    });
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    pub(crate) fn collect_shape_texts(shapes: &[egui::epaint::Shape], out: &mut Vec<String>) {
+        for shape in shapes {
+            match shape {
+                egui::epaint::Shape::Text(text_shape) => {
+                    out.push(text_shape.galley.text().to_string());
+                }
+                egui::epaint::Shape::Vec(nested) => collect_shape_texts(nested, out),
+                _ => {}
+            }
+        }
+    }
 
     #[test]
     fn test_sensitivity_linear_function() {
@@ -270,5 +301,37 @@ mod tests {
         // 1 baseline evaluation + max 2 params * 2 perturbations = 5 evaluations max
         assert!(call_count <= 5);
         assert_eq!(call_count, 5);
+    }
+
+    #[test]
+    fn test_render_labeled_sensitivity_panel_ui_renders_custom_label() {
+        let ctx = egui::Context::default();
+        let mut engine = SensitivityEngine::new();
+        let params = vec![("g_na".to_string(), 120.0)];
+        engine.compute(&params, |p| p.get("g_na").copied().unwrap_or(0.0) * 0.25);
+
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                render_labeled_sensitivity_panel_ui(
+                    ui,
+                    &engine,
+                    "hh_test",
+                    "Peak Membrane Potential (mV)",
+                );
+            });
+        });
+
+        let raw_shapes: Vec<egui::epaint::Shape> =
+            out.shapes.into_iter().map(|cs| cs.shape).collect();
+        let mut texts = Vec::new();
+        collect_shape_texts(&raw_shapes, &mut texts);
+
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.contains("Baseline Peak Membrane Potential (mV): 30.0000")),
+            "Expected labeled baseline metric in rendered UI texts, got: {:?}",
+            texts
+        );
     }
 }

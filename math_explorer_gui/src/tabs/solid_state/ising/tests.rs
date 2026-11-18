@@ -167,3 +167,78 @@ fn test_ising_save_and_load_state_compatibility() {
     assert_eq!(loaded.temperature, 2.0);
     assert_eq!(loaded.worker.state(), SimWorkerState::Running);
 }
+
+#[test]
+fn test_ising_poisoned_lock_recovery() {
+    let mut tool = IsingModelTool::default();
+
+    // Poison shared parameter RwLock as if a worker thread panicked while holding it
+    let params_clone = Arc::clone(&tool.params);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut guard = params_clone.write().unwrap();
+        guard.temperature = 3.25;
+        guard.steps_per_frame = 200;
+        panic!("simulated worker panic");
+    }));
+    assert!(tool.params.is_poisoned());
+
+    // Runner step, snapshot, and speed command recover inner parameters without panicking
+    let mut runner = IsingRunner {
+        lattice: SpinLattice::new(20, 20, None),
+        params: Arc::clone(&tool.params),
+    };
+    runner.step();
+    let snap = runner.get_snapshot();
+    assert_eq!(snap.width, 20);
+    assert_eq!(snap.height, 20);
+    assert_eq!(snap.custom_data.len(), 2);
+
+    runner.process_command(SimCommand::SetSpeed(350));
+    assert_eq!(
+        tool.params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .steps_per_frame,
+        350
+    );
+
+    // Slider-style parameter writes survive poisoned lock
+    tool.temperature = 1.8;
+    tool.params
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .temperature = tool.temperature;
+    tool.j_coupling = -1.0;
+    tool.params
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .j_coupling = tool.j_coupling;
+    tool.h_field = 0.5;
+    tool.params
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .h_field = tool.h_field;
+    tool.steps_per_frame = 500;
+    tool.params
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .steps_per_frame = tool.steps_per_frame;
+
+    // Worker restart and UI frame execution survive poisoned lock
+    tool.retry();
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        tool.show(ctx);
+    });
+
+    // load_state updates poisoned params cleanly
+    let saved = r#"{"temperature":4.2,"j_coupling":1.5,"h_field":-0.3,"state":"Ready","steps_per_frame":750}"#;
+    tool.load_state(saved);
+    let p = tool.params.read().unwrap_or_else(|e| e.into_inner());
+    assert_eq!(p.temperature, 4.2);
+    assert_eq!(p.j_coupling, 1.5);
+    assert_eq!(p.h_field, -0.3);
+    assert_eq!(p.steps_per_frame, 750);
+}

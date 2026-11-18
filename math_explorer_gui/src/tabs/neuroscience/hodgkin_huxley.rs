@@ -1,9 +1,7 @@
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::StateSnapshot;
+use math_explorer::biology::neuroscience::{HodgkinHuxleyNeuron, HodgkinHuxleyParameters};
 use scientific_metadata::theory::ParameterConstraint;
-use math_explorer::biology::neuroscience::{
-    HodgkinHuxleyNeuron, HodgkinHuxleyParameters,
-};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
@@ -29,7 +27,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         let g_k = *params.get("g_k").unwrap_or(&36.0);
         let g_l = *params.get("g_l").unwrap_or(&0.3);
         let i_ext = *params.get("i_ext").unwrap_or(&10.0);
-        
+
         let hh_params = HodgkinHuxleyParameters {
             g_na,
             g_k,
@@ -38,7 +36,10 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         };
 
         Self {
-            neuron: HodgkinHuxleyNeuron::builder().with_params(hh_params.clone()).build().unwrap_or(HodgkinHuxleyNeuron::new(-65.0)),
+            neuron: HodgkinHuxleyNeuron::builder()
+                .with_params(hh_params.clone())
+                .build()
+                .unwrap_or(HodgkinHuxleyNeuron::new(-65.0)),
             params: hh_params,
             history: VecDeque::new(),
             time: 0.0,
@@ -53,9 +54,9 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         let new_g_l = *params.get("g_l").unwrap_or(&0.3);
         let new_i_ext = *params.get("i_ext").unwrap_or(&10.0);
 
-        let params_changed = self.params.g_na != new_g_na || 
-                             self.params.g_k != new_g_k || 
-                             self.params.g_l != new_g_l;
+        let params_changed = self.params.g_na != new_g_na
+            || self.params.g_k != new_g_k
+            || self.params.g_l != new_g_l;
 
         self.params.g_na = new_g_na;
         self.params.g_k = new_g_k;
@@ -103,10 +104,38 @@ impl UnifiedModel for HodgkinHuxleyUnified {
 
     fn parameters() -> HashMap<String, ParameterConstraint> {
         let mut map = HashMap::new();
-        map.insert("g_na".to_string(), ParameterConstraint { min: 0.0, max: 200.0, step: 1.0 });
-        map.insert("g_k".to_string(), ParameterConstraint { min: 0.0, max: 100.0, step: 1.0 });
-        map.insert("g_l".to_string(), ParameterConstraint { min: 0.0, max: 5.0, step: 0.1 });
-        map.insert("i_ext".to_string(), ParameterConstraint { min: 0.0, max: 50.0, step: 1.0 });
+        map.insert(
+            "g_na".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 200.0,
+                step: 1.0,
+            },
+        );
+        map.insert(
+            "g_k".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 100.0,
+                step: 1.0,
+            },
+        );
+        map.insert(
+            "g_l".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 5.0,
+                step: 0.1,
+            },
+        );
+        map.insert(
+            "i_ext".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 50.0,
+                step: 1.0,
+            },
+        );
         map
     }
 
@@ -123,6 +152,34 @@ impl UnifiedModel for HodgkinHuxleyUnified {
     fn name() -> &'static str {
         "Hodgkin-Huxley Model"
     }
+
+    fn evaluate_observable(params: &HashMap<String, f64>) -> Option<(&'static str, f64)> {
+        let g_na = params.get("g_na").copied().unwrap_or(120.0).max(0.0);
+        let g_k = params.get("g_k").copied().unwrap_or(36.0).max(0.0);
+        let g_l = params.get("g_l").copied().unwrap_or(0.3).max(0.0);
+        let i_ext = params.get("i_ext").copied().unwrap_or(10.0);
+
+        let hh_params = HodgkinHuxleyParameters {
+            g_na,
+            g_k,
+            g_l,
+            ..Default::default()
+        };
+
+        let mut neuron = HodgkinHuxleyNeuron::builder()
+            .with_params(hh_params)
+            .build()
+            .ok()?;
+
+        let dt = 0.01;
+        let mut peak_v = neuron.v();
+        for _ in 0..600 {
+            neuron.update(dt, i_ext);
+            peak_v = peak_v.max(neuron.v());
+        }
+
+        Some(("Peak Membrane Potential (mV)", peak_v))
+    }
 }
 
 inventory::submit! {
@@ -137,19 +194,35 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for HodgkinHuxleyUnified {
     fn theory_description(&self) -> String {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(), 0.0).theory_description()
+        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
+            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
+            0.0,
+        )
+        .theory_description()
     }
-    
+
     fn phonetic_description(&self) -> String {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(), 0.0).phonetic_description()
+        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
+            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
+            0.0,
+        )
+        .phonetic_description()
     }
-    
+
     fn theory_citation(&self) -> String {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(), 0.0).theory_citation()
+        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
+            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
+            0.0,
+        )
+        .theory_citation()
     }
-    
+
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(), 0.0).available_descriptions()
+        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
+            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
+            0.0,
+        )
+        .available_descriptions()
     }
 }
 

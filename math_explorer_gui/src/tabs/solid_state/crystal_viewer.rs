@@ -122,6 +122,15 @@ impl CrystalViewer {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CrystalState {
+    system: CrystalSystemEnum,
+    lattice_constant: f64,
+    yaw: f32,
+    pitch: f32,
+    zoom: f32,
+}
+
 impl InteractiveTool for CrystalViewer {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -132,32 +141,17 @@ impl InteractiveTool for CrystalViewer {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CrystalState {
-            system: CrystalSystemEnum,
-            lattice_constant: f64,
-            yaw: f32,
-            pitch: f32,
-            zoom: f32,
-        }
         serde_json::to_string(&CrystalState {
             system: self.system,
             lattice_constant: self.lattice_constant,
             yaw: self.yaw,
             pitch: self.pitch,
             zoom: self.zoom,
-        }).ok()
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CrystalState {
-            system: CrystalSystemEnum,
-            lattice_constant: f64,
-            yaw: f32,
-            pitch: f32,
-            zoom: f32,
-        }
         if let Ok(s) = serde_json::from_str::<CrystalState>(state) {
             self.system = s.system;
             self.lattice_constant = s.lattice_constant;

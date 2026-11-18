@@ -135,7 +135,8 @@ Submit your tool metadata with the `inventory::submit!` macro at the bottom of t
 ```rust,ignore
 inventory::submit! {
     math_explorer_gui::framework::ToolMetadata {
-        name: "Harmonic Oscillator",
+        id: "HarmonicOscillatorTool",
+        display_name: "Harmonic Oscillator",
         domain: "physics",
         tags: &["mechanics", "differential_equations", "oscillator"],
         build: || Box::new(HarmonicOscillatorTool::default()),
@@ -157,6 +158,29 @@ The `InteractiveTool` trait provides default implementations for normalized inte
 | `on_brush(&mut self, ctx)` | Continuous stroke dragging across canvas | Paint velocity fields or density distributions |
 | `on_keyboard(&mut self, ctx)` | Canvas has keyboard focus and key is pressed | Move player or adjust simulation time scale |
 | `on_gesture(&mut self, ctx)` | Touchscreen multi-touch gesture active | Pinch-to-zoom and canvas rotation |
+
+### Registering Tool Shortcuts for Discovery
+
+Because `on_keyboard` only executes when the simulation canvas holds focus, tools that define keyboard shortcuts must advertise their `CommandMetadata` every frame outside focus guards so hotkeys appear in the **Keyboard Shortcuts** modal (`?` or `Ctrl+/` / `Cmd+/`). Call `egui_plot::commands::CommandRegistryData::register` inside `show_ui` or `show` to record metadata without consuming input events (or `CommandRegistryData::register_and_check` when registering and handling an unguarded shortcut together):
+
+```rust,ignore
+use egui_plot::commands::{CommandRegistryData, CommandTrigger};
+
+// Inside InteractiveTool::show_ui(ui):
+let modifiers = if cfg!(target_os = "macos") {
+    egui::Modifiers::MAC_CMD
+} else {
+    egui::Modifiers::CTRL
+};
+CommandRegistryData::register(
+    ui.ctx(),
+    "Undo",
+    "Undo the last modification",
+    CommandTrigger::Shortcut(modifiers, egui::Key::Z),
+    true,
+    "My Tool",
+);
+```
 
 ## Related References
 

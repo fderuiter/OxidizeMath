@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use crate::async_sim::SimulationRunner;
 use std::thread;
 use std::time::Duration;
 
@@ -262,5 +263,66 @@ fn test_morphogenesis_save_and_load_state_compatibility() {
     loaded.load_state(legacy_running);
     assert_eq!(loaded.worker.state(), SimWorkerState::Running);
     assert_eq!(loaded.params.read().unwrap().dt, 0.08);
+}
+
+#[test]
+fn test_morphogenesis_poisoned_lock_recovery() {
+    let mut tab = MorphogenesisTab::default();
+    let _ = tab.worker.send_command(SimCommand::Pause);
+    thread::sleep(Duration::from_millis(20));
+
+    // Poison shared parameter RwLock
+    let params_clone = Arc::clone(&tab.params);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut guard = params_clone.write().unwrap();
+        guard.a = 0.25;
+        guard.dt = 0.04;
+        panic!("simulated worker panic");
+    }));
+    assert!(tab.params.is_poisoned());
+
+    // Runner creation and stepping recover parameters from poisoned lock
+    let mut runner = MorphogenesisTab::create_runner(&tab.params, 20, 20);
+    assert_eq!(runner.system.kinetics.a, 0.25);
+    runner.step();
+    assert!(FiniteStateGuard::is_finite_state(&runner));
+    let snap = runner.get_snapshot();
+    assert_eq!(snap.width, 20);
+    assert_eq!(snap.height, 20);
+
+    // FiniteStateGuard recovery actions survive poisoned lock
+    {
+        let mut p = tab.params.write().unwrap_or_else(|e| e.into_inner());
+        p.a = 5.0;
+        p.dt = 0.08;
+    }
+    tab.auto_scale_step_size();
+    assert!((tab.params.read().unwrap_or_else(|e| e.into_inner()).dt - 0.04).abs() < 1e-12);
+
+    tab.clamp_parameters();
+    assert_eq!(tab.params.read().unwrap_or_else(|e| e.into_inner()).a, 1.0);
+
+    tab.reset_parameters();
+    assert_eq!(tab.params.read().unwrap_or_else(|e| e.into_inner()).a, 0.1);
+    let _ = tab.worker.send_command(SimCommand::Pause);
+
+    // Preset export/import and save/load state survive poisoned lock
+    let mut cfg = tab.export_config();
+    cfg.a = 0.18;
+    cfg.dt = 0.03;
+    assert!(tab.apply_config(cfg).is_ok());
+    assert_eq!(tab.params.read().unwrap_or_else(|e| e.into_inner()).a, 0.18);
+
+    let saved = tab.save_state().expect("save_state should succeed with poisoned lock");
+    assert!(saved.contains("0.03"));
+    tab.load_state(r#"{"dt":0.02,"state":"Ready","show_starter_gallery":false}"#);
+    assert_eq!(tab.params.read().unwrap_or_else(|e| e.into_inner()).dt, 0.02);
+
+    // UI rendering (including draw_parameter_sliders acquiring write lock) survives poisoned lock
+    let ctx = egui::Context::default();
+    let mut frame = eframe::Frame::_new_kittest();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        tab.show(ctx, &mut frame);
+    });
 }
 

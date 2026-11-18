@@ -372,11 +372,6 @@ impl SimulationFramework {
                 egui::Id::new("INPUT_MODE_TOUCH"),
                 self.input_mode == InputMode::Touch,
             );
-            // Clear CMD_REGISTRY at start of frame
-            d.insert_temp(
-                egui::Id::new("CMD_REGISTRY"),
-                egui_plot::commands::CommandRegistryData::default(),
-            );
         });
 
         if let Some(portal_state) =
@@ -437,6 +432,6 @@ impl SimulationFramework {
             self.show_theory_portal = portal_state;
         }
 
-        self.dispatch_pending_exports();
+        self.dispatch_pending_exports_with_ctx(ctx);
     }
 }

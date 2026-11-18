@@ -1,5 +1,8 @@
+mod pane_sync;
+
 use crate::app::MathExplorerApp;
 use eframe::egui;
+use pane_sync::{merge_pane_commands, remap_shape_textures, sync_pane_textures};
 use serde::{Deserialize, Serialize};
 
 /// Supported viewport layout presets.
@@ -47,6 +50,22 @@ impl ViewportLayout {
                 "Top-Right Pane",
                 "Bottom-Left Pane",
                 "Bottom-Right Pane",
+            ],
+        }
+    }
+
+    /// Returns descriptive pane label prefixes with trailing colons for zero-allocation menu buttons.
+    #[cfg(any(not(target_os = "macos"), test))]
+    pub fn pane_label_prefixes(&self) -> &'static [&'static str] {
+        match self {
+            Self::Single => &["Main Viewport:"],
+            Self::SplitHorizontal => &["Left Pane:", "Right Pane:"],
+            Self::SplitVertical => &["Top Pane:", "Bottom Pane:"],
+            Self::QuadGrid => &[
+                "Top-Left Pane:",
+                "Top-Right Pane:",
+                "Bottom-Left Pane:",
+                "Bottom-Right Pane:",
             ],
         }
     }
@@ -173,6 +192,7 @@ pub fn filter_raw_input_for_pane(
 
 fn render_pane_header(
     app: &mut MathExplorerApp,
+    ctx: &egui::Context,
     ui: &mut egui::Ui,
     pane_idx: usize,
     header_rect: egui::Rect,
@@ -208,22 +228,21 @@ fn render_pane_header(
     }
 
     let mut tab_to_switch = None;
-    egui::ComboBox::from_id_salt(format!("header_combo_{}", pane_idx))
-        .selected_text(current_tab_name)
-        .show_ui(&mut header_ui, |cb_ui| {
-            let tab_names = app.tab_names();
-            for (i, name) in tab_names.into_iter().enumerate() {
-                if cb_ui
-                    .selectable_label(assigned_tab_idx == i, name)
-                    .clicked()
-                {
-                    tab_to_switch = Some(i);
-                }
-            }
+    header_ui.push_id(("pane_header_selector", pane_idx), |selector_ui| {
+        let menu_resp = selector_ui.menu_button((current_tab_name, "▾"), |menu_ui| {
+            tab_to_switch = crate::app::domain_bar::render_domain_module_submenus(
+                menu_ui,
+                &app.tabs,
+                assigned_tab_idx,
+            );
         });
+        crate::app::domain_bar::attach_hover_hint(menu_resp.response, || {
+            format!("Select simulation module for {}", label)
+        });
+    });
 
     if let Some(new_idx) = tab_to_switch {
-        app.set_pane_tab(pane_idx, new_idx);
+        app.select_pane_tab(ctx, pane_idx, new_idx);
     }
 }
 
@@ -240,20 +259,23 @@ fn render_pane_content(
     if let Some(tab) = app.tabs.get_mut(current_assigned) {
         let pane_ctx = &app.pane_contexts[pane_idx];
         pane_ctx.set_style((*ctx.style()).clone());
+        pane_ctx.data_mut(|d| {
+            d.insert_temp(
+                egui::Id::new("CMD_REGISTRY"),
+                egui_plot::commands::CommandRegistryData::default(),
+            );
+        });
         let output = pane_ctx.run(pane_input, |sub_ctx| {
             tab.show(sub_ctx, frame);
         });
+        merge_pane_commands(ctx, pane_ctx);
 
-        if !output.textures_delta.is_empty() {
-            let main_tex = ctx.tex_manager();
-            let mut writer = main_tex.write();
-            for (id, delta) in output.textures_delta.set {
-                writer.set(id, delta);
-            }
-            for id in output.textures_delta.free {
-                writer.free(id);
-            }
-        }
+        sync_pane_textures(
+            ctx,
+            pane_idx,
+            &mut app.pane_textures[pane_idx],
+            output.textures_delta,
+        );
 
         let should_repaint = output
             .viewport_output
@@ -264,7 +286,11 @@ fn render_pane_content(
             ctx.request_repaint();
         }
 
-        for clipped_shape in output.shapes {
+        let tex_map = &app.pane_textures[pane_idx];
+        for mut clipped_shape in output.shapes {
+            if !tex_map.is_empty() {
+                remap_shape_textures(&mut clipped_shape.shape, tex_map);
+            }
             let clip = clipped_shape.clip_rect.intersect(content_rect);
             ui.painter().with_clip_rect(clip).add(clipped_shape.shape);
         }
@@ -387,7 +413,7 @@ pub fn render_multi_pane_manager(
                 egui::StrokeKind::Inside,
             );
 
-            render_pane_header(app, ui, pane_idx, header_rect, label);
+            render_pane_header(app, ctx, ui, pane_idx, header_rect, label);
 
             let pane_input = filter_raw_input_for_pane(&raw_input, content_rect, pointer_pos);
             render_pane_content(app, ctx, frame, ui, pane_idx, content_rect, pane_input);

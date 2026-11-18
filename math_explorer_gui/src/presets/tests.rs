@@ -183,3 +183,105 @@ fn test_morphogenesis_preset_config_roundtrip() {
     assert_eq!(deserialized.config, config);
     assert_eq!(deserialized.metadata.domain, "biology");
 }
+
+#[test]
+fn test_preset_dialog_poll_import_export_and_cancel_cleanup() {
+    let mut tool = DummyTool {
+        value: 1.0,
+        name: "Initial".to_string(),
+    };
+    let exported = DummyTool {
+        value: 77.25,
+        name: "Browser Imported".to_string(),
+    }
+    .to_json_string()
+    .unwrap();
+
+    let mut dialog = PresetDialogState {
+        import_rx: None,
+        export_rx: None,
+        toast_error: Some("Previous warning".to_string()),
+        toast_info: None,
+    };
+
+    // Simulate export completion over channel
+    let (exp_tx, exp_rx) = channel();
+    dialog.export_rx = Some(exp_rx);
+    exp_tx
+        .send(Ok("test_domain_preset.json".to_string()))
+        .unwrap();
+    dialog.poll_export();
+    assert!(dialog.toast_error.is_none());
+    assert_eq!(
+        dialog.toast_info.as_deref(),
+        Some("Exported preset to test_domain_preset.json")
+    );
+
+    let (tx, rx) = channel();
+    dialog.import_rx = Some(rx);
+    tx.send(Ok(("custom_preset.json".to_string(), exported)))
+        .unwrap();
+
+    assert!(dialog.poll_import(&mut tool));
+    assert_eq!(tool.value, 77.25);
+    assert_eq!(tool.name, "Browser Imported");
+    assert!(dialog.toast_error.is_none());
+    assert_eq!(
+        dialog.toast_info.as_deref(),
+        Some("Loaded preset from custom_preset.json")
+    );
+    assert!(dialog.import_rx.is_none());
+
+    // Simulate user canceling the browser file picker (sender dropped)
+    let (cancel_tx, cancel_rx) = channel::<Result<(String, String), String>>();
+    dialog.import_rx = Some(cancel_rx);
+    drop(cancel_tx);
+
+    assert!(!dialog.poll_import(&mut tool));
+    assert!(dialog.import_rx.is_none());
+    assert!(dialog.toast_error.is_none());
+}
+
+#[test]
+fn test_preset_dialog_poll_import_tool_and_read_error() {
+    let mut framework = crate::framework::SimulationFramework::new("chaos");
+    let tool = framework
+        .active_tool
+        .as_mut()
+        .expect("chaos domain should have an active tool");
+
+    let valid_json = tool.export_preset_json().unwrap();
+    let mut dialog = PresetDialogState::default();
+    let (tx, rx) = channel();
+    dialog.import_rx = Some(rx);
+    tx.send(Ok(("lorenz_preset.json".to_string(), valid_json)))
+        .unwrap();
+
+    assert!(dialog.poll_import_tool(tool.as_mut()));
+    assert!(dialog.toast_error.is_none());
+    assert_eq!(
+        dialog.toast_info.as_deref(),
+        Some("Loaded preset from lorenz_preset.json")
+    );
+    assert!(dialog.import_rx.is_none());
+
+    // Simulate FileReader error over channel
+    let (err_tx, err_rx) = channel();
+    dialog.import_rx = Some(err_rx);
+    err_tx
+        .send(Err("Browser failed to read selected file".to_string()))
+        .unwrap();
+    assert!(!dialog.poll_import_tool(tool.as_mut()));
+    assert_eq!(
+        dialog.toast_error.as_deref(),
+        Some("Browser failed to read selected file")
+    );
+    assert!(dialog.toast_info.is_none());
+
+    // Simulate cancel on poll_import_tool
+    let (cancel_tx, cancel_rx) = channel::<Result<(String, String), String>>();
+    dialog.import_rx = Some(cancel_rx);
+    drop(cancel_tx);
+    assert!(!dialog.poll_import_tool(tool.as_mut()));
+    assert!(dialog.import_rx.is_none());
+}
