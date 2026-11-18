@@ -32,15 +32,15 @@ impl NetworkPropagationTool {
             self.sim_steps = 0;
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn sim_steps(&self) -> u64 {
+        self.sim_steps
+    }
 }
 
-fn is_false(v: &bool) -> bool {
-    !*v
-}
-
-#[cfg(test)]
-fn is_zero_u64(v: &u64) -> bool {
-    *v == 0
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -51,9 +51,6 @@ struct NetPropState {
     gamma: f64,
     #[serde(default, skip_serializing_if = "is_false")]
     is_running: bool,
-    #[cfg(test)]
-    #[serde(default, skip_serializing_if = "is_zero_u64")]
-    sim_steps: u64,
 }
 
 impl InteractiveTool for NetworkPropagationTool {
@@ -73,10 +70,13 @@ impl InteractiveTool for NetworkPropagationTool {
             beta: self.model.beta(),
             gamma: self.model.gamma(),
             is_running: self.is_running,
-            #[cfg(test)]
-            sim_steps: self.sim_steps,
         })
         .ok()
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
@@ -90,8 +90,6 @@ impl InteractiveTool for NetworkPropagationTool {
         {
             return Err("Network propagation parameters out of bounds".into());
         }
-        #[cfg(test)]
-        let _ = s.sim_steps;
         self.model
             .set_num_nodes(s.num_nodes)
             .map_err(|e| e.to_string())?;

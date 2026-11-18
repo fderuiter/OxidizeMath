@@ -222,8 +222,6 @@ impl SimulationFramework {
         let Some(tool) = &self.active_tool else {
             return;
         };
-        let prev_plots = egui_plot::get_last_plot_datasets();
-        egui_plot::clear_last_plot_datasets();
         let active_state = tool.save_state();
         if let Some(ref state_str) = active_state {
             self.saved_tool_states
@@ -233,13 +231,8 @@ impl SimulationFramework {
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.step_counter = 0;
-        let mut datasets = tool.export_datasets();
-        if datasets.is_empty() && !prev_plots.is_empty() {
-            egui_plot::append_last_plot_datasets(&prev_plots);
-        } else if datasets.is_empty() {
-            datasets = egui_plot::get_last_plot_datasets();
-        }
-        self.overlay_sync.2 = Some(tool.name());
+        let datasets = persistence::capture_isolated_tool_datasets(tool.as_ref());
+        self.sync_state.datasets_owner_tool = Some(tool.name());
         self.current_valid_plot_datasets = datasets.clone();
         self.last_valid_snapshot = Some(StateSnapshot {
             tool_state: active_state,
@@ -419,7 +412,7 @@ impl SimulationFramework {
             let any = owner.is_some();
             let p = resolve_scoped_overlay(
                 self.show_theory_portal,
-                self.overlay_sync.0,
+                self.sync_state.theory_portal,
                 d.get_temp::<bool>(inst_portal),
                 d.get_temp::<bool>(dom_portal),
                 d.get_temp::<bool>(global_portal),
@@ -428,7 +421,7 @@ impl SimulationFramework {
             );
             let g = resolve_scoped_overlay(
                 self.show_starter_gallery,
-                self.overlay_sync.1,
+                self.sync_state.starter_gallery,
                 d.get_temp::<bool>(inst_gallery),
                 d.get_temp::<bool>(dom_gallery),
                 d.get_temp::<bool>(global_gallery),
@@ -453,8 +446,8 @@ impl SimulationFramework {
             self.show_starter_gallery = g;
         }
         self.write_overlay_keys(ctx, id_source);
-        self.overlay_sync.0 = Some(self.show_theory_portal);
-        self.overlay_sync.1 = Some(self.show_starter_gallery);
+        self.sync_state.theory_portal = Some(self.show_theory_portal);
+        self.sync_state.starter_gallery = Some(self.show_starter_gallery);
     }
 
     fn write_overlay_keys(&self, ctx: &egui::Context, id_source: &str) {

@@ -286,7 +286,7 @@ impl SimulationFramework {
         };
         let mut source = FrameworkExportSource {
             active_tool: &mut self.active_tool,
-            cached_tool_name: self.overlay_sync.2,
+            cached_tool_name: self.sync_state.datasets_owner_tool,
             cached_plot_datasets: &self.current_valid_plot_datasets,
         };
         egui_plot::export_modal::show_export_modal(ctx, bindings, &config, &mut source);
