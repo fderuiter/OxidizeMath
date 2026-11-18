@@ -157,6 +157,7 @@ impl InteractiveTool for NeuralNetworkVizTool {
             let num_neurons = self.neurons.len();
 
             // Draw edges
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             for i in 0..num_neurons {
                 for j in 0..num_neurons {
                     let weight = self.weights[i][j];
@@ -164,14 +165,13 @@ impl InteractiveTool for NeuralNetworkVizTool {
                         let p1 = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
                         let p2 = center + egui::vec2(self.positions[j][0], self.positions[j][1]);
 
-                        let color = if weight > 0.0 {
-                            Color32::from_rgba_premultiplied(0, 255, 0, 100) // Excitatory: green
+                        let base = if weight > 0.0 {
+                            palette.success // Excitatory
                         } else {
-                            Color32::from_rgba_premultiplied(255, 0, 0, 100) // Inhibitory: red
+                            palette.error // Inhibitory
                         };
+                        let color = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
 
-                        // To show direction, we can draw a simple line, but offset slightly
-                        // Here, just draw a line
                         painter.line_segment([p2, p1], (1.0 + weight.abs() as f32, color));
                     }
                 }
@@ -182,17 +182,21 @@ impl InteractiveTool for NeuralNetworkVizTool {
                 let v = self.neurons[i].v() as f32;
                 let p = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
 
-                // Color based on voltage
-                // Resting is ~-65, Spike is ~+40
+                // Color based on voltage: resting (~-65mV) -> spike (~+40mV)
                 let normalized_v = ((v + 65.0) / 105.0).clamp(0.0, 1.0);
+                let low = palette.axis_z;
+                let high = palette.axis_x;
+                let lerp = |a: u8, b: u8| {
+                    (f32::from(a) + (f32::from(b) - f32::from(a)) * normalized_v).round() as u8
+                };
                 let color = Color32::from_rgb(
-                    (normalized_v * 255.0) as u8,
-                    ((1.0 - normalized_v) * 100.0) as u8, // Base blue-ish
-                    255,
+                    lerp(low.r(), high.r()),
+                    lerp(low.g(), high.g()),
+                    lerp(low.b(), high.b()),
                 );
 
                 painter.circle_filled(p, 15.0, color);
-                painter.circle_stroke(p, 15.0, (1.0, Color32::WHITE));
+                painter.circle_stroke(p, 15.0, (1.0, palette.node_stroke));
 
                 // Draw text label
                 painter.text(
@@ -200,7 +204,7 @@ impl InteractiveTool for NeuralNetworkVizTool {
                     egui::Align2::CENTER_CENTER,
                     format!("N{}\n{:.0}mV", i, v),
                     egui::FontId::proportional(10.0),
-                    Color32::WHITE,
+                    crate::app::contrasting_text_color(color),
                 );
             }
         });

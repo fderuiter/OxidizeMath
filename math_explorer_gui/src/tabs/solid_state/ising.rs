@@ -228,9 +228,10 @@ impl InteractiveTool for IsingModelTool {
                 ui.separator();
 
                 if self.worker.state() == SimWorkerState::Faulted {
+                    let err_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
                     ui.group(|ui| {
                         ui.colored_label(
-                            egui::Color32::RED,
+                            err_color,
                             "⚠ Simulation worker faulted. Channel disconnected or worker crashed.",
                         );
                         if ui

@@ -139,21 +139,22 @@ impl InteractiveTool for RandomizationTool {
 
             ui.add_space(10.0);
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             if let Some(ref err) = self.error_message {
-                ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
+                ui.colored_label(palette.error, format!("Error: {}", err));
             } else if self.assignments.is_empty() {
                 ui.vertical_centered(|ui| {
                     ui.add_space(20.0);
                     ui.label(
                         egui::RichText::new("No subjects allocated yet.")
                             .strong()
-                            .color(egui::Color32::DARK_GRAY),
+                            .color(palette.muted_text),
                     );
                     ui.label(
                         egui::RichText::new(
                             "Configure parameters and click 'Allocate Subjects' to begin.",
                         )
-                        .color(egui::Color32::GRAY),
+                        .color(palette.muted_text),
                     );
                 });
             } else {

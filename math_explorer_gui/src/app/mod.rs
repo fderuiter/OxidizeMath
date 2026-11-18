@@ -1,10 +1,11 @@
 pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
+pub mod palette;
 mod session;
 mod split_view;
 mod state;
-mod theme;
+pub mod theme;
 mod ui_panels;
 mod viewport;
 
@@ -31,7 +32,10 @@ pub use domain_bar::AcademicDomain;
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 pub use split_view::{SplitLayoutMode, SplitViewState};
 pub use state::AppState;
-pub use theme::ThemeMode;
+#[allow(unused_imports)]
+pub use theme::{
+    contrast_ratio, contrasting_text_color, relative_luminance, SemanticPalette, ThemeMode,
+};
 pub use viewport::ViewportLayout;
 
 use crate::command_palette::CommandPalette;

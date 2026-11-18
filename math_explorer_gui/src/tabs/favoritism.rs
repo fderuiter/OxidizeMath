@@ -160,8 +160,9 @@ impl ExplorerTab for FavoritismTab {
                     .map(|(i, child)| Bar::new(i as f64, child.score).name(&child.name).width(0.5))
                     .collect();
 
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
                 let chart =
-                    BarChart::new("Favoritism Scores", bars).color(egui::Color32::LIGHT_BLUE);
+                    BarChart::new("Favoritism Scores", bars).color(palette.series_color(0));
 
                 Plot::new("favoritism_plot")
                     .legend(egui_plot::Legend::default())

@@ -134,9 +134,10 @@ impl SimulationFramework {
             ui.ctx().request_repaint();
         }
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         if let Some(ref msg) = self.preset_dialog.toast_info {
             ui.separator();
-            ui.colored_label(egui::Color32::LIGHT_GREEN, format!("ℹ️ {}", msg));
+            ui.colored_label(palette.success, format!("ℹ️ {}", msg));
             if ui
                 .small_button("✖")
                 .on_hover_text("Dismiss notification")
@@ -148,7 +149,7 @@ impl SimulationFramework {
 
         if let Some(ref err) = self.preset_dialog.toast_error {
             ui.separator();
-            ui.colored_label(egui::Color32::RED, format!("⚠️ {}", err));
+            ui.colored_label(palette.error, format!("⚠️ {}", err));
             if ui
                 .small_button("✖")
                 .on_hover_text("Dismiss warning")
@@ -387,6 +388,7 @@ impl SimulationFramework {
             calc_h = (calc_w as f32 / ratio).round() as u32;
         }
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         if calc_w > egui_plot::export::MAX_EXPORT_DIMENSION
             || calc_h > egui_plot::export::MAX_EXPORT_DIMENSION
         {
@@ -396,14 +398,14 @@ impl SimulationFramework {
                     egui_plot::export::MAX_EXPORT_DIMENSION,
                     egui_plot::export::MAX_EXPORT_DIMENSION
                 ))
-                .color(egui::Color32::YELLOW),
+                .color(palette.warning),
             );
         } else {
             ui.label(format!("Target Canvas Size: {} x {} px", calc_w, calc_h));
         }
 
         if let Some(msg) = &self.export_status_message {
-            ui.label(egui::RichText::new(msg).color(egui::Color32::GREEN));
+            ui.label(egui::RichText::new(msg).color(palette.success));
         }
 
         ui.separator();

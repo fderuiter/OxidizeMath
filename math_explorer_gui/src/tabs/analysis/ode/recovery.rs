@@ -185,10 +185,11 @@ pub fn render_recovery_banner(
     report: Option<&OdeDiagnosticReport>,
 ) -> Option<RecoveryAction> {
     let mut chosen_action = None;
+    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
 
     egui::Frame::new()
-        .fill(egui::Color32::from_rgb(45, 20, 20))
-        .stroke(egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(220, 50, 50)))
+        .fill(palette.error_banner_bg)
+        .stroke(egui::Stroke::new(1.5_f32, palette.error_banner_stroke))
         .corner_radius(egui::CornerRadius::same(6))
         .inner_margin(egui::Margin::same(10))
         .show(ui, |ui| {
@@ -196,7 +197,7 @@ pub fn render_recovery_banner(
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new("⚠️ Solver Divergence Warning: Non-finite state detected (NaN or Inf). Integration terminated.")
-                            .color(egui::Color32::from_rgb(255, 100, 100))
+                            .color(palette.error)
                             .strong()
                             .size(13.0),
                     );
@@ -208,7 +209,7 @@ pub fn render_recovery_banner(
                         ui.label(
                             egui::RichText::new("Diagnostic Context: ")
                                 .strong()
-                                .color(egui::Color32::LIGHT_GRAY),
+                                .color(palette.muted_text),
                         );
                         ui.label(
                             egui::RichText::new(format!(
@@ -216,7 +217,7 @@ pub fn render_recovery_banner(
                                 diag.t_diverged, diag.step_index, diag.variable
                             ))
                             .monospace()
-                            .color(egui::Color32::from_rgb(240, 200, 150)),
+                            .color(palette.warning),
                         );
                     });
                 }

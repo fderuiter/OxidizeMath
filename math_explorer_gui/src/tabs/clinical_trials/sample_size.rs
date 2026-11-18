@@ -211,6 +211,7 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             // Results Display
             match &self.result {
                 Ok(n) => {
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new("Required Sample Size per Group:")
@@ -220,14 +221,15 @@ impl InteractiveTool for SampleSizeCalculatorTool {
                         ui.label(
                             egui::RichText::new(n.to_string())
                                 .size(24.0)
-                                .color(egui::Color32::GREEN)
+                                .color(palette.success)
                                 .strong(),
                         );
                     });
                     ui.label(format!("Total participants needed: {}", n * 2));
                 }
                 Err(e) => {
-                    ui.colored_label(egui::Color32::RED, format!("Error: {}", e));
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                    ui.colored_label(palette.error, format!("Error: {}", e));
                 }
             }
         });

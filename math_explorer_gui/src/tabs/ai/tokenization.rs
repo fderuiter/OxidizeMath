@@ -164,19 +164,15 @@ impl InteractiveTool for TokenizationTool {
                         }
                         ui.end_row();
 
+                        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+
                         // Data rows
                         for token in &self.tokens {
                             ui.label(egui::RichText::new(&token.text).monospace());
 
                             for &val in &token.embedding {
-                                // Simple heatmap color mapping
-                                let color = if val < 0.0 {
-                                    egui::Color32::from_rgb((255.0 * val.abs()) as u8, 0, 0)
-                                } else {
-                                    egui::Color32::from_rgb(0, (255.0 * val) as u8, 0)
-                                };
-
-                                let text_color = if val.abs() > 0.5 { egui::Color32::WHITE } else { ui.visuals().text_color() };
+                                let color = embedding_cell_color(val, &palette);
+                                let text_color = crate::app::contrasting_text_color(color);
 
                                 egui::Frame::NONE
                                     .fill(color)
@@ -196,6 +192,28 @@ impl InteractiveTool for TokenizationTool {
             });
         });
     }
+}
+
+fn lerp_channel(a: u8, b: u8, t: f64) -> u8 {
+    (f64::from(a) + (f64::from(b) - f64::from(a)) * t.clamp(0.0, 1.0)).round() as u8
+}
+
+pub(crate) fn embedding_cell_color(
+    val: f64,
+    palette: &crate::app::SemanticPalette,
+) -> egui::Color32 {
+    let base = palette.surface_fill;
+    let target = if val < 0.0 {
+        palette.error
+    } else {
+        palette.success
+    };
+    let t = val.abs().clamp(0.0, 1.0);
+    egui::Color32::from_rgb(
+        lerp_channel(base.r(), target.r(), t),
+        lerp_channel(base.g(), target.g(), t),
+        lerp_channel(base.b(), target.b(), t),
+    )
 }
 
 // [cite:algorithmic_information_rust]

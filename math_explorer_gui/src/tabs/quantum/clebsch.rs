@@ -158,6 +158,7 @@ impl InteractiveTool for ClebschGordanTool {
 
             ui.add_space(20.0);
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new("Result (Amplitude): ")
@@ -167,7 +168,7 @@ impl InteractiveTool for ClebschGordanTool {
                 ui.label(
                     egui::RichText::new(format!("{:.6}", self.result))
                         .size(24.0)
-                        .color(egui::Color32::LIGHT_GREEN),
+                        .color(palette.success),
                 );
             });
 
@@ -181,7 +182,7 @@ impl InteractiveTool for ClebschGordanTool {
             // Use Plot for visualization as requested
             let bar = Bar::new(0.0, self.result).width(0.5).name("Amplitude");
             let chart =
-                BarChart::new("Coefficient Value", vec![bar]).color(egui::Color32::LIGHT_BLUE);
+                BarChart::new("Coefficient Value", vec![bar]).color(palette.series_color(0));
 
             let response = Plot::new("clebsch_plot")
                 .view_aspect(2.0)
@@ -196,7 +197,7 @@ impl InteractiveTool for ClebschGordanTool {
             // Warnings / Info
             if (self.m1 + self.m2 - self.m).abs() > 1e-9 {
                 ui.colored_label(
-                    egui::Color32::RED,
+                    palette.error,
                     "Warning: M must equal m1 + m2 for non-zero result.",
                 );
             }
@@ -205,7 +206,7 @@ impl InteractiveTool for ClebschGordanTool {
             let j_max = self.j1 + self.j2;
             if self.j < j_min || self.j > j_max {
                 ui.colored_label(
-                    egui::Color32::RED,
+                    palette.error,
                     format!(
                         "Warning: J must be in range [{:.1}, {:.1}] (Triangle Inequality).",
                         j_min, j_max

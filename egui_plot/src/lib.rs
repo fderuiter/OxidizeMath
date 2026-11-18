@@ -2009,20 +2009,30 @@ impl<'a> Plot<'a> {
                     if calc_w > export::MAX_EXPORT_DIMENSION
                         || calc_h > export::MAX_EXPORT_DIMENSION
                     {
+                        let warn_color = if ui.visuals().dark_mode {
+                            Color32::from_rgb(245, 194, 66)
+                        } else {
+                            Color32::from_rgb(146, 84, 0)
+                        };
                         ui.label(
                             egui::RichText::new(format!(
                                 "⚠️ Capped at max dimension {}x{} px",
                                 export::MAX_EXPORT_DIMENSION,
                                 export::MAX_EXPORT_DIMENSION
                             ))
-                            .color(Color32::YELLOW),
+                            .color(warn_color),
                         );
                     } else {
                         ui.label(format!("Target Canvas Size: {} x {} px", calc_w, calc_h));
                     }
 
                     if let Some(msg) = &access_state.status_message {
-                        ui.label(egui::RichText::new(msg).color(Color32::GREEN));
+                        let ok_color = if ui.visuals().dark_mode {
+                            Color32::from_rgb(74, 214, 122)
+                        } else {
+                            Color32::from_rgb(15, 115, 54)
+                        };
+                        ui.label(egui::RichText::new(msg).color(ok_color));
                     }
 
                     ui.separator();

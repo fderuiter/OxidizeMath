@@ -174,13 +174,14 @@ pub fn render_sensitivity_panel_ui(ui: &mut egui::Ui, engine: &SensitivityEngine
                 return;
             }
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             for metric in &engine.metrics {
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new(&metric.param_name).strong());
                         if metric.is_high_sensitivity {
                             ui.colored_label(
-                                egui::Color32::RED,
+                                palette.error,
                                 "⚠️ High Sensitivity (> 2.0 elasticity)",
                             );
                         }
@@ -194,11 +195,11 @@ pub fn render_sensitivity_panel_ui(ui: &mut egui::Ui, engine: &SensitivityEngine
 
                     let progress = (metric.elasticity / 3.0).clamp(0.0, 1.0) as f32;
                     let color = if metric.elasticity > 2.0 {
-                        egui::Color32::RED
+                        palette.error
                     } else if metric.elasticity > 1.0 {
-                        egui::Color32::GOLD
+                        palette.warning
                     } else {
-                        egui::Color32::GREEN
+                        palette.success
                     };
 
                     let progress_bar = egui::ProgressBar::new(progress)

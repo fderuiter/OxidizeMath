@@ -142,7 +142,8 @@ impl InteractiveTool for SurvivalAnalysisTool {
             }
 
             if let Some(err) = &self.error_message {
-                ui.colored_label(egui::Color32::RED, err);
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                ui.colored_label(palette.error, err);
             }
 
             ui.separator();

@@ -253,6 +253,23 @@ impl QTableInspectorTool {
     }
 }
 
+fn lerp_q_channel(a: u8, b: u8, t: f64) -> u8 {
+    (f64::from(a) + (f64::from(b) - f64::from(a)) * t.clamp(0.0, 1.0)).round() as u8
+}
+
+pub(crate) fn q_value_cell_color(
+    normalized: f64,
+    palette: &crate::app::SemanticPalette,
+) -> egui::Color32 {
+    let low = palette.axis_z;
+    let high = palette.accent;
+    egui::Color32::from_rgb(
+        lerp_q_channel(low.r(), high.r(), normalized),
+        lerp_q_channel(low.g(), high.g(), normalized),
+        lerp_q_channel(low.b(), high.b(), normalized),
+    )
+}
+
 impl InteractiveTool for QTableInspectorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -294,15 +311,13 @@ impl InteractiveTool for QTableInspectorTool {
         };
 
         egui::SidePanel::left("q_table_controls").show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.heading("Training Controls");
             ui.separator();
 
             ui.label(format!("Episodes Trained: {}", self.episodes_trained));
             if self.worker.is_running() {
-                ui.colored_label(
-                    egui::Color32::from_rgb(60, 160, 240),
-                    "⏳ Training in background...",
-                );
+                ui.colored_label(palette.info, "⏳ Training in background...");
             }
 
             if ui
@@ -343,23 +358,25 @@ impl InteractiveTool for QTableInspectorTool {
             ui.radio_value(&mut self.view, HeatmapView::Left, "Move Left Q-Value");
             ui.radio_value(&mut self.view, HeatmapView::Right, "Move Right Q-Value");
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.separator();
             ui.label("Legend:");
             ui.horizontal(|ui| {
                 ui.label("Goal:");
                 let (response, painter) =
                     ui.allocate_painter(egui::vec2(legend_size, legend_size), egui::Sense::hover());
-                painter.rect_filled(response.rect, 0.0, egui::Color32::GREEN);
+                painter.rect_filled(response.rect, 0.0, palette.success);
             });
             ui.horizontal(|ui| {
                 ui.label("Trap:");
                 let (response, painter) =
                     ui.allocate_painter(egui::vec2(legend_size, legend_size), egui::Sense::hover());
-                painter.rect_filled(response.rect, 0.0, egui::Color32::RED);
+                painter.rect_filled(response.rect, 0.0, palette.error);
             });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.heading("Q-Value Heatmap");
 
             let grid_size = egui::vec2(
@@ -406,32 +423,25 @@ impl InteractiveTool for QTableInspectorTool {
                     let q_value = self.get_q_value_for_view(&state);
 
                     let fill_color = if state == self.env.goal {
-                        egui::Color32::GREEN
+                        palette.success
                     } else if self.env.traps.contains(&state) {
-                        egui::Color32::RED
+                        palette.error
                     } else {
-                        // Normalize Q value to 0..1 for coloring
                         let normalized = (q_value - min_q) / (max_q - min_q);
-
-                        // Map 0 to low-value color (e.g. blue), 1 to high-value color (e.g. yellow)
-                        let r = (normalized * 255.0) as u8;
-                        let g = (normalized * 255.0) as u8;
-                        let b = ((1.0 - normalized) * 255.0) as u8;
-
-                        egui::Color32::from_rgb(r, g, b)
+                        q_value_cell_color(normalized, &palette)
                     };
 
                     painter.rect_filled(cell_rect, 0.0, fill_color);
                     painter.rect_stroke(
                         cell_rect,
                         0.0,
-                        egui::Stroke::new(1.0_f32, egui::Color32::BLACK),
+                        egui::Stroke::new(1.0_f32, palette.graph_edge),
                         egui::StrokeKind::Middle,
                     );
 
                     // Display Q-value text
                     if state != self.env.goal && !self.env.traps.contains(&state) {
-                        let text_color = egui::Color32::BLACK; // or white depending on background
+                        let text_color = crate::app::contrasting_text_color(fill_color);
                         painter.text(
                             cell_rect.center(),
                             egui::Align2::CENTER_CENTER,

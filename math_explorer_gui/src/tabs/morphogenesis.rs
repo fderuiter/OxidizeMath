@@ -295,8 +295,9 @@ impl MorphogenesisTab {
             ui.separator();
 
             if self.worker.state() == SimWorkerState::Faulted {
+                let err_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
                 ui.group(|ui| {
-                    ui.colored_label(egui::Color32::RED, "⚠ Worker Faulted: Simulation thread disconnected.");
+                    ui.colored_label(err_color, "⚠ Worker Faulted: Simulation thread disconnected.");
                     if ui.button("🔄 Retry").accessible_hover_text("Restart background worker").clicked() {
                         self.retry();
                     }

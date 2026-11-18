@@ -211,15 +211,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 ui.separator();
             }
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.horizontal(|ui| {
                 ui.label("Status:");
                 let (status_text, color) = match state {
-                    SimWorkerState::Uninitialized => ("Uninitialized", egui::Color32::GRAY),
-                    SimWorkerState::Ready => ("Ready", egui::Color32::from_rgb(80, 200, 120)),
-                    SimWorkerState::Running => ("Running", egui::Color32::from_rgb(60, 160, 240)),
-                    SimWorkerState::Stepping => ("Stepping", egui::Color32::from_rgb(240, 200, 60)),
-                    SimWorkerState::Faulted => ("Faulted", egui::Color32::RED),
-                    SimWorkerState::Terminated => ("Terminated", egui::Color32::DARK_GRAY),
+                    SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
+                    SimWorkerState::Ready => ("Ready", palette.success),
+                    SimWorkerState::Running => ("Running", palette.info),
+                    SimWorkerState::Stepping => ("Stepping", palette.warning),
+                    SimWorkerState::Faulted => ("Faulted", palette.error),
+                    SimWorkerState::Terminated => ("Terminated", palette.muted_text),
                 };
                 ui.colored_label(color, status_text);
             });
@@ -331,8 +332,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 points.push([snapshot.custom_data[i], snapshot.custom_data[i + 1]]);
             }
         }
-        let line = Line::new(M::name(), PlotPoints::from_iter(points))
-            .color(egui::Color32::from_rgb(100, 200, 255));
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let line =
+            Line::new(M::name(), PlotPoints::from_iter(points)).color(palette.series_color(0));
 
         Plot::new(format!("{}_plot_line", M::name()))
             .view_aspect(2.0)

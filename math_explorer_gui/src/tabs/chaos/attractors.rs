@@ -389,6 +389,7 @@ impl InteractiveTool for AttractorPlotter {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             if let SolverExecutionState::Diverged {
                 invalid_vec,
                 diverged_at_step,
@@ -401,7 +402,7 @@ impl InteractiveTool for AttractorPlotter {
                                 "⚠️ Solver Divergence Warning: Non-finite state detected at step {} (coordinates: [{:.2}, {:.2}, {:.2}]). Simulation halted.",
                                 diverged_at_step, invalid_vec.x, invalid_vec.y, invalid_vec.z
                             ))
-                            .color(egui::Color32::RED)
+                            .color(palette.error)
                             .strong(),
                         );
                         if ui.button("↻ Reset Parameters").clicked() {
@@ -421,7 +422,7 @@ impl InteractiveTool for AttractorPlotter {
                 .show(ui, |plot_ui| {
                     plot_ui.line(
                         Line::new("Trajectory", PlotPoints::new(points))
-                            .color(egui::Color32::from_rgb(100, 200, 255)),
+                            .color(palette.series_color(0)),
                     );
 
                     if self.show_annotations
@@ -437,12 +438,8 @@ impl InteractiveTool for AttractorPlotter {
                             let c_neg = self.project(Vector3::new(-x, -x, z));
 
                             let visuals = plot_ui.ctx().style().visuals.clone();
-                            let bg_fill = Color32::from_rgba_unmultiplied(
-                                visuals.window_fill().r(),
-                                visuals.window_fill().g(),
-                                visuals.window_fill().b(),
-                                230,
-                            );
+                            let wf = visuals.window_fill();
+                            let bg_fill = Color32::from_rgba_unmultiplied(wf.r(), wf.g(), wf.b(), 230);
                             let frame_stroke = visuals.widgets.noninteractive.bg_stroke;
 
                             let callout_pos = Callout::new(
@@ -450,7 +447,7 @@ impl InteractiveTool for AttractorPlotter {
                                 format!("Fixed Point C+ ({:.1}, {:.1}, {:.1})", x, x, z),
                             )
                             .offset(Vec2::new(35.0, -25.0))
-                            .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(231, 76, 60)))
+                            .leader_stroke(Stroke::new(1.5_f32, palette.series_color(3)))
                             .frame(bg_fill, frame_stroke)
                             .corner_radius(CornerRadius::same(4))
                             .text_color(visuals.text_color());
@@ -460,7 +457,7 @@ impl InteractiveTool for AttractorPlotter {
                                 format!("Fixed Point C- ({:.1}, {:.1}, {:.1})", -x, -x, z),
                             )
                             .offset(Vec2::new(-35.0, 25.0))
-                            .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(155, 89, 182)))
+                            .leader_stroke(Stroke::new(1.5_f32, palette.series_color(4)))
                             .frame(bg_fill, frame_stroke)
                             .corner_radius(CornerRadius::same(4))
                             .text_color(visuals.text_color());

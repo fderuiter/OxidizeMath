@@ -296,12 +296,13 @@ impl ExplorerTab for MriTab {
 
         // --- GUI Layout ---
         egui::SidePanel::left("controls_panel").show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.heading("MRI Physics Control");
             ui.separator();
 
             if self.worker.state() == SimWorkerState::Faulted {
                 ui.group(|ui| {
-                    ui.colored_label(egui::Color32::RED, "⚠ Worker Faulted: Simulation thread disconnected.");
+                    ui.colored_label(palette.error, "⚠ Worker Faulted: Simulation thread disconnected.");
                     if ui.button("🔄 Retry").accessible_hover_text("Restart background worker").clicked() {
                         self.retry();
                     }
@@ -319,7 +320,7 @@ impl ExplorerTab for MriTab {
                 }
 
                 if self.simulator.t2 > self.simulator.t1 {
-                    ui.colored_label(egui::Color32::RED, "Warning: T2 > T1 is unphysical!");
+                    ui.colored_label(palette.error, "Warning: T2 > T1 is unphysical!");
                 }
             });
 
@@ -394,6 +395,7 @@ impl ExplorerTab for MriTab {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.heading("Magnetization Vector Evolution");
 
             Plot::new("bloch_plot")
@@ -402,9 +404,9 @@ impl ExplorerTab for MriTab {
                 .y_axis_label("Magnetization (M/M0)")
                 .view_aspect(2.0)
                 .show(ui, |plot_ui| {
-                    plot_ui.line(Line::new("Mx (Transverse)", &self.mx_points[..]).color(egui::Color32::RED));
-                    plot_ui.line(Line::new("My (Transverse)", &self.my_points[..]).color(egui::Color32::GREEN));
-                    plot_ui.line(Line::new("Mz (Longitudinal)", &self.mz_points[..]).color(egui::Color32::BLUE));
+                    plot_ui.line(Line::new("Mx (Transverse)", &self.mx_points[..]).color(palette.axis_x));
+                    plot_ui.line(Line::new("My (Transverse)", &self.my_points[..]).color(palette.axis_y));
+                    plot_ui.line(Line::new("Mz (Longitudinal)", &self.mz_points[..]).color(palette.axis_z));
                 });
 
             ui.label("Observe how Mz recovers to M0 (T1 relaxation) and Mx/My decay to 0 (T2 relaxation).");

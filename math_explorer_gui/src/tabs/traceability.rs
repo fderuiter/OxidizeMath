@@ -313,11 +313,12 @@ impl ExplorerTab for TraceabilityTab {
                     return;
                 }
                 TraceabilityScanState::Failed(err) => {
+                    let err_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
                     egui::Frame::group(ui.style()).show(ui, |ui| {
                         ui.vertical(|ui| {
                             ui.label(
                                 egui::RichText::new(format!("⚠️ Scan Failed: {}", err))
-                                    .color(egui::Color32::RED)
+                                    .color(err_color)
                                     .strong(),
                             );
                             ui.horizontal(|ui| {
@@ -350,6 +351,7 @@ impl ExplorerTab for TraceabilityTab {
                 TraceabilityScanState::Ready => {}
             }
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.collapsing("System Health & Alignment", |ui| {
                     if self.orphaned_papers.is_empty()
@@ -357,12 +359,10 @@ impl ExplorerTab for TraceabilityTab {
                         && self.invalid_links.is_empty()
                     {
                         ui.label(
-                            egui::RichText::new("100% Parity Achieved").color(egui::Color32::GREEN),
+                            egui::RichText::new("100% Parity Achieved").color(palette.success),
                         );
                     } else {
-                        ui.label(
-                            egui::RichText::new("Partial Alignment").color(egui::Color32::YELLOW),
-                        );
+                        ui.label(egui::RichText::new("Partial Alignment").color(palette.warning));
                     }
                     ui.label(format!("Total Papers: {}", self.papers.len()));
                 });
@@ -370,7 +370,7 @@ impl ExplorerTab for TraceabilityTab {
                 if !self.orphaned_papers.is_empty() {
                     ui.add_space(10.0);
                     ui.heading(
-                        egui::RichText::new("Orphaned Papers (No Code)").color(egui::Color32::RED),
+                        egui::RichText::new("Orphaned Papers (No Code)").color(palette.error),
                     );
                     for p in &self.orphaned_papers {
                         ui.horizontal(|ui| {
@@ -386,7 +386,7 @@ impl ExplorerTab for TraceabilityTab {
                     ui.add_space(10.0);
                     ui.heading(
                         egui::RichText::new("Unlinked Code Modules (No Paper)")
-                            .color(egui::Color32::RED),
+                            .color(palette.error),
                     );
                     for c in &self.unlinked_code {
                         ui.label(c);
@@ -397,7 +397,7 @@ impl ExplorerTab for TraceabilityTab {
                     ui.add_space(10.0);
                     ui.heading(
                         egui::RichText::new("Naming Mismatches / Invalid Cites")
-                            .color(egui::Color32::RED),
+                            .color(palette.error),
                     );
                     for (c, p) in &self.invalid_links {
                         ui.label(format!("{} cites invalid paper: {}", c, p));
@@ -419,8 +419,7 @@ impl ExplorerTab for TraceabilityTab {
                         }
                         if p.linked_code.is_empty() {
                             ui.label(
-                                egui::RichText::new("No implementation found")
-                                    .color(egui::Color32::RED),
+                                egui::RichText::new("No implementation found").color(palette.error),
                             );
                         } else {
                             for code in &p.linked_code {

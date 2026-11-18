@@ -127,7 +127,11 @@ impl Camera3D {
         (x2 as f32, y2 as f32, z2 as f32)
     }
 
-    fn gizmo_geometry(&self, rect: egui::Rect) -> (egui::Pos2, f32, f32, [GizmoHandle; 4]) {
+    fn gizmo_geometry(
+        &self,
+        rect: egui::Rect,
+        palette: &crate::app::SemanticPalette,
+    ) -> (egui::Pos2, f32, f32, [GizmoHandle; 4]) {
         let min_dim = rect.width().min(rect.height());
         let scale = (min_dim / 160.0_f32).clamp(0.5_f32, 1.0_f32);
         let margin = 45.0_f32 * scale;
@@ -151,28 +155,28 @@ impl Camera3D {
             GizmoHandle {
                 axis: GizmoAxis::Iso,
                 label: "ISO",
-                color: egui::Color32::from_rgb(180, 180, 180),
+                color: palette.surface_fill,
                 screen_pos: center,
                 depth: -10.0_f32,
             },
             GizmoHandle {
                 axis: GizmoAxis::X,
                 label: "X",
-                color: egui::Color32::from_rgb(235, 65, 65),
+                color: palette.axis_x,
                 screen_pos: pos_x,
                 depth: pz_x,
             },
             GizmoHandle {
                 axis: GizmoAxis::Y,
                 label: "Y",
-                color: egui::Color32::from_rgb(65, 200, 65),
+                color: palette.axis_y,
                 screen_pos: pos_y,
                 depth: pz_y,
             },
             GizmoHandle {
                 axis: GizmoAxis::Z,
                 label: "Z",
-                color: egui::Color32::from_rgb(65, 130, 245),
+                color: palette.axis_z,
                 screen_pos: pos_z,
                 depth: pz_z,
             },
@@ -182,7 +186,8 @@ impl Camera3D {
     }
 
     fn is_inside_gizmo(&self, pos: egui::Pos2, rect: egui::Rect) -> bool {
-        let (center, axis_length, knob_radius, _) = self.gizmo_geometry(rect);
+        let palette = crate::app::ThemeMode::Dark.palette();
+        let (center, axis_length, knob_radius, _) = self.gizmo_geometry(rect, &palette);
         let bg_radius = axis_length + knob_radius + 4.0_f32;
         pos.distance(center) <= bg_radius
     }
@@ -229,14 +234,18 @@ impl Camera3D {
         hovered_axis: Option<GizmoAxis>,
     ) {
         let painter = ui.painter();
+        let visuals = ui.visuals();
+        let palette = crate::app::SemanticPalette::from_visuals(visuals);
         let scale = axis_length / 30.0_f32;
         let bg_radius = axis_length + knob_radius + 4.0_f32;
+        let wf = visuals.window_fill();
+        let backdrop_fill = egui::Color32::from_rgba_unmultiplied(wf.r(), wf.g(), wf.b(), 180);
 
-        painter.circle_filled(center, bg_radius, egui::Color32::from_black_alpha(35));
+        painter.circle_filled(center, bg_radius, backdrop_fill);
         painter.circle_stroke(
             center,
             bg_radius,
-            egui::Stroke::new(1.0_f32, egui::Color32::from_white_alpha(25)),
+            egui::Stroke::new(1.0_f32, palette.graph_edge),
         );
 
         handles.sort_by(|a, b| {
@@ -266,7 +275,7 @@ impl Camera3D {
                 current_radius,
                 egui::Stroke::new(
                     if is_hovered { 2.0_f32 } else { 1.0_f32 },
-                    egui::Color32::WHITE,
+                    palette.node_stroke,
                 ),
             );
 
@@ -281,14 +290,16 @@ impl Camera3D {
                 egui::Align2::CENTER_CENTER,
                 handle.label,
                 egui::FontId::proportional(font_size),
-                egui::Color32::WHITE,
+                crate::app::contrasting_text_color(handle.color),
             );
         }
     }
 
     /// Renders on-canvas interactive orientation gizmo and returns true if clicked.
     pub fn draw_gizmo_overlay(&mut self, response: &egui::Response, ui: &egui::Ui) -> bool {
-        let (center, axis_length, knob_radius, handles) = self.gizmo_geometry(response.rect);
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let (center, axis_length, knob_radius, handles) =
+            self.gizmo_geometry(response.rect, &palette);
         let pointer_pos = ui.input(|i| i.pointer.interact_pos());
         let is_clicked = ui.input(|i| i.pointer.primary_clicked());
 

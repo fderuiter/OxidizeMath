@@ -151,10 +151,11 @@ impl InteractiveTool for TurbulenceTool {
             ui.heading("Results");
             ui.label(format!("Reynolds Number: {:.2}", reynolds_number));
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let (regime_text, color) = match regime {
-                FlowRegime::Laminar => ("Laminar", egui::Color32::GREEN),
-                FlowRegime::Transitional => ("Transitional", egui::Color32::YELLOW),
-                FlowRegime::Turbulent => ("Turbulent", egui::Color32::RED),
+                FlowRegime::Laminar => ("Laminar", palette.success),
+                FlowRegime::Transitional => ("Transitional", palette.warning),
+                FlowRegime::Turbulent => ("Turbulent", palette.error),
             };
             ui.colored_label(color, format!("Regime: {}", regime_text));
 
@@ -222,8 +223,11 @@ impl InteractiveTool for TurbulenceTool {
                             .collect();
 
                         // Line::new requires name as first argument in egui_plot 0.34
-                        plot_ui
-                            .line(Line::new("Streamline", points).color(egui::Color32::LIGHT_BLUE));
+                        let line_color = crate::app::SemanticPalette::from_visuals(
+                            &plot_ui.ctx().style().visuals,
+                        )
+                        .series_color(0);
+                        plot_ui.line(Line::new("Streamline", points).color(line_color));
                     }
                 });
         });

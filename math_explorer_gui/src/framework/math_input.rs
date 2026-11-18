@@ -217,10 +217,11 @@ fn render_status_row(
                 *had_error = true;
                 *last_announced_error = Some(err_msg);
             }
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new(format!("⚠️ Syntax Error: {err}"))
-                        .color(egui::Color32::from_rgb(220, 50, 50))
+                        .color(palette.error)
                         .small(),
                 );
             });

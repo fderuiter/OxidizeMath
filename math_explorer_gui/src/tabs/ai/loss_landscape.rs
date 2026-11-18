@@ -133,19 +133,26 @@ impl InteractiveTool for LossLandscapeTool {
                     0.0
                 };
 
-                // Color map: Blue (low loss) -> Red (high loss)
-                let r = (normalized * 255.0) as u8;
-                let g = ((1.0 - normalized) * 50.0) as u8; // Slight green for depth
-                let b_col = ((1.0 - normalized) * 255.0) as u8;
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                let low = palette.axis_z;
+                let high = palette.axis_x;
+                let lerp = |a: u8, b: u8| {
+                    (f64::from(a) + (f64::from(b) - f64::from(a)) * normalized.clamp(0.0, 1.0))
+                        .round() as u8
+                };
 
-                // Points::new takes (name, series) in this version
                 points.push(
                     egui_plot::Points::new(format!("Loss: {:.4}", loss), vec![[w, b]])
-                        .color(Color32::from_rgb(r, g, b_col))
+                        .color(Color32::from_rgb(
+                            lerp(low.r(), high.r()),
+                            lerp(low.g(), high.g()),
+                            lerp(low.b(), high.b()),
+                        ))
                         .radius(3.0_f32),
                 );
             }
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             Plot::new("loss_landscape_plot")
                 .x_axis_label("Weight (w)")
                 .y_axis_label("Bias (b)")
@@ -158,7 +165,7 @@ impl InteractiveTool for LossLandscapeTool {
                     // Mark the true solution (w=2, b=1)
                     plot_ui.points(
                         Points::new("Global Minima (True Solution)", vec![[2.0, 1.0]])
-                            .color(Color32::GREEN)
+                            .color(palette.success)
                             .radius(6.0_f32)
                             .shape(egui_plot::MarkerShape::Circle),
                     );
