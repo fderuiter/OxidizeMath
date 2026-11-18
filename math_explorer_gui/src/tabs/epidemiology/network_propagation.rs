@@ -44,6 +44,11 @@ impl NetworkPropagationTool {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn sim_steps(&self) -> u64 {
+        self.sim_steps
+    }
+
     fn draw_controls_column(&mut self, ui: &mut egui::Ui) {
         ui.heading("Controls");
         ui.separator();
@@ -141,11 +146,6 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
-#[cfg(test)]
-fn is_zero_u64(value: &u64) -> bool {
-    *value == 0
-}
-
 #[derive(serde::Serialize, serde::Deserialize)]
 struct NetPropState {
     num_nodes: usize,
@@ -153,9 +153,6 @@ struct NetPropState {
     gamma: f64,
     #[serde(default, skip_serializing_if = "is_false")]
     is_running: bool,
-    #[cfg(test)]
-    #[serde(default, skip_deserializing, skip_serializing_if = "is_zero_u64")]
-    sim_steps: u64,
 }
 
 impl InteractiveTool for NetworkPropagationTool {
@@ -175,10 +172,13 @@ impl InteractiveTool for NetworkPropagationTool {
             beta: self.model.beta(),
             gamma: self.model.gamma(),
             is_running: self.is_running,
-            #[cfg(test)]
-            sim_steps: self.sim_steps,
         })
         .ok()
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
     }
 
     fn load_state(&mut self, state: &str) {

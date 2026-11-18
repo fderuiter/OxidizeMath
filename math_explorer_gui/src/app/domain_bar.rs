@@ -96,13 +96,27 @@ pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize
         } else {
             app.set_pane_tab(target_pane, tab_idx);
         }
-        let tab_name = app.tabs[tab_idx].name();
-        let status_msg = format!("Switched to tab {}", tab_name);
-        announce_status(&status_msg);
-        ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("aria_live_message"), status_msg);
-        });
+        announce_tab_switch(ctx, app.tabs[tab_idx].name());
     }
+}
+
+/// Explicitly updates Pane 0's primary simulation module (used by `View -> Primary Module`).
+pub fn select_primary_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize) {
+    if tab_idx < app.tabs.len() {
+        app.selected_tab = tab_idx;
+        if !app.pane_tabs.is_empty() {
+            app.pane_tabs[0] = tab_idx;
+        }
+        announce_tab_switch(ctx, app.tabs[tab_idx].name());
+    }
+}
+
+fn announce_tab_switch(ctx: &egui::Context, tab_name: &str) {
+    let status_msg = format!("Switched to tab {}", tab_name);
+    announce_status(&status_msg);
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new("aria_live_message"), status_msg);
+    });
 }
 
 /// Assigns a simulation module to a specific viewport pane, synchronizing state and emitting accessibility announcements.
