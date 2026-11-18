@@ -105,6 +105,7 @@ impl Camera3D {
             self.zoom = self.zoom.clamp(0.01_f32, 100.0_f32);
         }
 
+        self.register_camera_commands(ui);
         if response.has_focus() {
             self.handle_keyboard_interaction(ui);
         }
@@ -340,44 +341,29 @@ impl Camera3D {
         self.pitch -= pitch_delta;
         self.zoom *= zoom_factor;
         self.zoom = self.zoom.clamp(0.01_f32, 100.0_f32);
-
-        self.register_camera_commands(ui);
     }
 
     fn register_camera_commands(&self, ui: &egui::Ui) {
-        ui.ctx().data_mut(|d| {
-            let mut registry = d
-                .get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new("CMD_REGISTRY"))
-                .unwrap_or_default();
+        let commands = [
+            (egui::Key::W, "Pitch Up", "Rotate camera pitch upwards"),
+            (egui::Key::S, "Pitch Down", "Rotate camera pitch downwards"),
+            (egui::Key::A, "Yaw Left", "Rotate camera yaw left"),
+            (egui::Key::D, "Yaw Right", "Rotate camera yaw right"),
+            (egui::Key::Q, "Zoom Out", "Zoom camera out"),
+            (egui::Key::E, "Zoom In", "Zoom camera in"),
+        ];
 
-            let commands = [
-                (egui::Key::W, "Pitch Up", "Rotate camera pitch upwards"),
-                (egui::Key::S, "Pitch Down", "Rotate camera pitch downwards"),
-                (egui::Key::A, "Yaw Left", "Rotate camera yaw left"),
-                (egui::Key::D, "Yaw Right", "Rotate camera yaw right"),
-                (egui::Key::Q, "Zoom Out", "Zoom camera out"),
-                (egui::Key::E, "Zoom In", "Zoom camera in"),
-            ];
-
-            for (key, name, desc) in commands {
-                if !registry
-                    .commands
-                    .iter()
-                    .any(|c| c.name == name && c.context == "Camera 3D")
-                {
-                    registry
-                        .commands
-                        .push(egui_plot::commands::CommandMetadata {
-                            name: name.to_string(),
-                            description: desc.to_string(),
-                            trigger: egui_plot::commands::CommandTrigger::Key(key),
-                            desktop_only: true,
-                            context: "Camera 3D".to_string(),
-                        });
-                }
-            }
-            d.insert_temp(egui::Id::new("CMD_REGISTRY"), registry);
-        });
+        let ctx = ui.ctx();
+        for (key, name, desc) in commands {
+            egui_plot::commands::CommandRegistryData::register(
+                ctx,
+                name,
+                desc,
+                egui_plot::commands::CommandTrigger::Key(key),
+                true,
+                "Camera 3D",
+            );
+        }
     }
 
     #[allow(missing_docs)]

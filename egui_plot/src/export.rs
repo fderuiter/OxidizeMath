@@ -1128,6 +1128,92 @@ where
     Ok(())
 }
 
+/// Copy UTF-8 text (such as serialized CSV or JSON datasets) to the system clipboard.
+pub fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+        clipboard
+            .set_text(text.to_owned())
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        copy_text_to_clipboard_with_callback(text, |_| {})
+    }
+}
+
+/// Copy UTF-8 text to the system clipboard, invoking `on_complete` upon resolution.
+pub fn copy_text_to_clipboard_with_callback<F>(text: &str, on_complete: F) -> Result<(), String>
+where
+    F: FnOnce(Result<(), String>) + 'static,
+{
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let res = copy_text_to_clipboard(text);
+        on_complete(res.clone());
+        res
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        copy_text_to_clipboard_wasm(text, on_complete)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn copy_text_to_clipboard_wasm<F>(text: &str, on_complete: F) -> Result<(), String>
+where
+    F: FnOnce(Result<(), String>) + 'static,
+{
+    let window = web_sys::window().ok_or_else(|| {
+        "Clipboard API unavailable (no window object). Please use direct file download (Export CSV)."
+            .to_string()
+    })?;
+
+    if !window.is_secure_context() {
+        return Err(
+            "Clipboard API unavailable in insecure context. Please use HTTPS or direct file download (Export CSV)."
+                .to_string(),
+        );
+    }
+
+    let navigator = window.navigator();
+    let clipboard = navigator.clipboard();
+    if clipboard.is_undefined() || clipboard.is_null() {
+        return Err(
+            "Clipboard API is not supported in this browser. Please use direct file download (Export CSV)."
+                .to_string(),
+        );
+    }
+
+    let promise = clipboard.write_text(text);
+
+    wasm_bindgen_futures::spawn_local(async move {
+        let res = match wasm_bindgen_futures::JsFuture::from(promise).await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let err_msg = e
+                    .as_string()
+                    .or_else(|| {
+                        js_sys::Reflect::get(&e, &wasm_bindgen::JsValue::from_str("message"))
+                            .ok()
+                            .and_then(|m| m.as_string())
+                    })
+                    .unwrap_or_else(|| "Unknown error writing text to clipboard".to_string());
+                Err(format!(
+                    "Clipboard write failed: {err_msg}. Please use direct file download (Export CSV)."
+                ))
+            }
+        };
+        on_complete(res);
+    });
+
+    Ok(())
+}
+
 /// Convert an `egui::ColorImage` into PNG encoded bytes.
 pub fn color32_image_to_png(image: &egui::ColorImage) -> Result<Vec<u8>, String> {
     let width = image.width() as u32;
@@ -1704,6 +1790,33 @@ mod tests {
         let callback_res = std::sync::Arc::new(std::sync::Mutex::new(None));
         let res_slot = callback_res.clone();
         let res_cb = copy_image_to_clipboard_with_callback(&img, move |r| {
+            *res_slot.lock().unwrap() = Some(r);
+        });
+        assert_eq!(res_direct.is_ok(), res_cb.is_ok());
+        #[cfg(not(target_arch = "wasm32"))]
+        assert!(callback_res.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn test_copy_text_to_clipboard_callback_invoked() {
+        let datasets = vec![("Series 1".to_string(), vec![[0.0, 1.0], [2.0, 3.0]])];
+        let csv = format_csv(&datasets);
+        let callback_called = std::sync::Arc::new(std::sync::Mutex::new(false));
+        let flag = callback_called.clone();
+        let _ = copy_text_to_clipboard_with_callback(&csv, move |_res| {
+            *flag.lock().unwrap() = true;
+        });
+        #[cfg(not(target_arch = "wasm32"))]
+        assert!(*callback_called.lock().unwrap());
+    }
+
+    #[test]
+    fn test_copy_text_to_clipboard_pipeline_consistency() {
+        let text = "Dataset,X,Y\nTrajectory,0.5,1.25\n";
+        let res_direct = copy_text_to_clipboard(text);
+        let callback_res = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let res_slot = callback_res.clone();
+        let res_cb = copy_text_to_clipboard_with_callback(text, move |r| {
             *res_slot.lock().unwrap() = Some(r);
         });
         assert_eq!(res_direct.is_ok(), res_cb.is_ok());
