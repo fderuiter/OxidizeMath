@@ -251,7 +251,8 @@ impl InteractiveTool for CeraTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "CeraTool",
+        id: "CeraTool",
+        display_name: "CERA Model",
         domain: "climate",
         tags: &["cera", "climate"],
         build: || Box::new(CeraTool::default()),

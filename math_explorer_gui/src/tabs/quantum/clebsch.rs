@@ -56,7 +56,7 @@ impl TheoryDescribable for ClebschGordanTool {
     }
 
     fn theory_citation(&self) -> String {
-        "[cite:quantum_mechanics]".to_string()
+        "Wigner, E. P. (1959). Group Theory and its Application to the Quantum Mechanics of Atomic Spectra. Academic Press; Sakurai, J. J., & Napolitano, J. (2020). Modern Quantum Mechanics (3rd ed.). Cambridge University Press.".to_string()
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
@@ -221,7 +221,8 @@ impl InteractiveTool for ClebschGordanTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "ClebschGordanTool",
+        id: "ClebschGordanTool",
+        display_name: "Clebsch-Gordan",
         domain: "quantum",
         tags: &[],
         build: || Box::new(ClebschGordanTool::default()),

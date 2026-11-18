@@ -159,7 +159,8 @@ impl InteractiveTool for ReplicatorDynamicsTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "ReplicatorDynamicsTool",
+        id: "ReplicatorDynamicsTool",
+        display_name: "Replicator Dynamics",
         domain: "game_theory",
         tags: &[],
         build: || Box::new(ReplicatorDynamicsTool::default()),
