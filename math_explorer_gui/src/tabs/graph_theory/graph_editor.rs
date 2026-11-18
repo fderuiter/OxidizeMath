@@ -4,6 +4,7 @@ use crate::accessibility::AccessibleHoverText;
 use crate::framework::{InteractionContext, InteractiveTool};
 use eframe::egui;
 use eframe::egui::Pos2;
+use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 use math_explorer::pure_math::graph_theory::{
     graph::Graph,
     layout::{circular_layout, force_directed_layout, grid_layout},
@@ -334,6 +335,12 @@ impl GraphEditorTool {
     pub fn can_redo(&self) -> bool { !self.redo_stack.is_empty() }
 
     fn show_undo_redo_toolbar(&mut self, ui: &mut egui::Ui) {
+        let m = if cfg!(target_os = "macos") { egui::Modifiers::MAC_CMD } else { egui::Modifiers::CTRL };
+        CommandRegistryData::register(ui.ctx(), "Undo", "Undo the last graph modification", CommandTrigger::Shortcut(m, egui::Key::Z), true, "Graph Editor");
+        CommandRegistryData::register(ui.ctx(), "Redo", "Redo the last undone graph modification", CommandTrigger::Shortcut(m | egui::Modifiers::SHIFT, egui::Key::Z), true, "Graph Editor");
+        if !cfg!(target_os = "macos") {
+            CommandRegistryData::register(ui.ctx(), "Redo", "Redo the last undone graph modification", CommandTrigger::Shortcut(m, egui::Key::Y), true, "Graph Editor");
+        }
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(self.can_undo(), egui::Button::new("↩ Undo"))

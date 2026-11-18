@@ -96,7 +96,6 @@ use pure_math::theory_verification;
 
 theory_verification!(
     module = "win_ratio",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
     constants = {
         TIE = 0.5;
     },

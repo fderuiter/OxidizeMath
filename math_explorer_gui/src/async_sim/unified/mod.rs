@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod canvas;
 pub mod tool;
 pub use tool::*;
 
@@ -70,6 +71,16 @@ pub trait UnifiedModel:
         Self: Sized,
     {
         false
+    }
+
+    /// Evaluate a fast scalar observable `(metric_label, value)` from `params`
+    /// for parameter sensitivity analysis. Returns `None` when no fast scalar
+    /// observable is available on the UI thread.
+    fn evaluate_observable(_params: &HashMap<String, f64>) -> Option<(&'static str, f64)>
+    where
+        Self: Sized,
+    {
+        None
     }
 }
 

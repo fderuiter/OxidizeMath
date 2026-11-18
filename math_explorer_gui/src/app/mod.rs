@@ -23,6 +23,8 @@ mod tests_secondary_menus;
 #[cfg(test)]
 mod tests_session_lifecycle;
 #[cfg(test)]
+mod tests_shortcuts;
+#[cfg(test)]
 mod tests_split_view;
 
 #[allow(unused_imports)]
@@ -226,6 +228,13 @@ impl MathExplorerApp {
 impl eframe::App for MathExplorerApp {
     #[allow(clippy::too_many_lines)]
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        ctx.data_mut(|d| {
+            d.insert_temp(
+                egui::Id::new("CMD_REGISTRY"),
+                egui_plot::commands::CommandRegistryData::default(),
+            );
+        });
+
         if ctx.style().visuals != self.theme.visuals() {
             ctx.set_visuals(self.theme.visuals());
         }
@@ -283,13 +292,22 @@ impl eframe::App for MathExplorerApp {
 
         let slash_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
             ctx,
-            "Command Cheatsheet",
-            "Toggle global command cheatsheet modal",
+            "Keyboard Shortcuts",
+            "Toggle keyboard shortcuts modal",
             egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::Slash),
             true,
             "Global",
             None,
             None,
+        );
+
+        egui_plot::commands::CommandRegistryData::register(
+            ctx,
+            "Keyboard Shortcuts",
+            "Toggle keyboard shortcuts modal",
+            egui_plot::commands::CommandTrigger::Key(egui::Key::Questionmark),
+            true,
+            "Global",
         );
 
         let question_triggered = !ctx.wants_keyboard_input()
@@ -301,9 +319,9 @@ impl eframe::App for MathExplorerApp {
         if slash_triggered || question_triggered {
             self.show_help_menu = !self.show_help_menu;
             let status_msg = if self.show_help_menu {
-                "Hotkey overlay opened"
+                "Keyboard shortcuts opened"
             } else {
-                "Hotkey overlay closed"
+                "Keyboard shortcuts closed"
             };
             ctx.data_mut(|d| {
                 d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());

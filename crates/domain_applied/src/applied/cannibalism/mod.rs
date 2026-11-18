@@ -16,7 +16,6 @@ use pure_math::theory_verification;
 
 theory_verification!(
     module = "cannibalism",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
     constants = {
         BETA_N = 1.0;
         BETA_C = 0.5;

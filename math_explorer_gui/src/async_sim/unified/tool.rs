@@ -2,14 +2,10 @@
 
 use super::{UnifiedModel, UnifiedSimRunner};
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
-};
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
+use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::InteractiveTool;
 use eframe::egui;
-use egui::{ColorImage, TextureOptions};
-use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -21,7 +17,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     param_metadata: Vec<(String, ParameterConstraint)>,
     steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
-    dirty: bool,
+    pub(super) dirty: bool,
     cached_theory_desc: String,
     cached_phonetic: String,
     cached_citation: String,
@@ -87,7 +83,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     fn handle_recovery_action(
         &mut self,
         action: crate::framework::recovery::RecoveryAction,
-        ctx: &egui::Context,
+        ctx: Option<&egui::Context>,
     ) {
         use crate::framework::recovery::RecoveryAction;
         match action {
@@ -99,7 +95,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     *visc = (*visc * 0.5).max(0.00333);
                 }
                 drop(p);
-                self.reset_simulation(Some(ctx));
+                self.reset_simulation(ctx);
             }
             RecoveryAction::ClampParameters => {
                 let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
@@ -113,7 +109,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     }
                 }
                 drop(p);
-                self.reset_simulation(Some(ctx));
+                self.reset_simulation(ctx);
             }
             RecoveryAction::ResetParameters => {
                 let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
@@ -127,7 +123,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     p.insert(name.clone(), d);
                 }
                 drop(p);
-                self.reset_simulation(Some(ctx));
+                self.reset_simulation(ctx);
                 let _ = self.controller.send_command(SimCommand::Start);
             }
         }
@@ -180,12 +176,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let reset_needed = self.draw_presets_and_actions(ui, ctx);
         let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
 
-        let param_list: Vec<(String, f64)> = self
-            .param_metadata
-            .iter()
-            .filter_map(|(name, _)| params_lock.get(name).map(|v| (name.clone(), *v)))
-            .collect();
-
         for (name, constraint) in &self.param_metadata {
             if let Some(val) = params_lock.get_mut(name) {
                 let slider = egui::Slider::new(val, constraint.min..=constraint.max)
@@ -198,14 +188,46 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
 
-        self.sensitivity_engine
-            .compute(&param_list, |p_map| p_map.values().map(|v| v.abs()).sum());
-        crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, M::name());
-
         drop(params_lock);
+        self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation(Some(ctx));
         }
+    }
+
+    fn draw_observable_sensitivity(&mut self, ui: &mut egui::Ui) {
+        let observable_setup = {
+            let current_params = self.params.read().unwrap_or_else(|e| e.into_inner());
+            M::evaluate_observable(&current_params).map(|(metric_label, baseline_val)| {
+                let param_list: Vec<(String, f64)> = self
+                    .param_metadata
+                    .iter()
+                    .filter_map(|(name, _)| current_params.get(name).map(|v| (name.clone(), *v)))
+                    .collect();
+                (metric_label, baseline_val, param_list)
+            })
+        };
+
+        let Some((metric_label, baseline_val, param_list)) = observable_setup else {
+            return;
+        };
+
+        self.sensitivity_engine.baseline_output = baseline_val;
+        let mut initial_sample = Some(baseline_val);
+        self.sensitivity_engine.compute(&param_list, |p_map| {
+            initial_sample.take().unwrap_or_else(|| {
+                M::evaluate_observable(p_map)
+                    .map(|(_, val)| val)
+                    .unwrap_or(0.0)
+            })
+        });
+
+        crate::sensitivity::render_labeled_sensitivity_panel_ui(
+            ui,
+            &self.sensitivity_engine,
+            M::name(),
+            metric_label,
+        );
     }
 
     fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -217,7 +239,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters => {
                     self.reset_simulation(Some(ctx));
                 }
-                WorkerFaultAction::Recovery(action) => self.handle_recovery_action(action, ctx),
+                WorkerFaultAction::Recovery(action) => {
+                    self.handle_recovery_action(action, Some(ctx));
+                }
             }
             ui.separator();
         }
@@ -293,141 +317,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             self.draw_model_parameters(ui, ctx);
         });
     }
-
-    fn draw_image_plot(
-        &mut self,
-        ui: &mut egui::Ui,
-        ctx: &egui::Context,
-        texture: &egui::TextureHandle,
-    ) {
-        let width = texture.size()[0] as f32;
-        let height = texture.size()[1] as f32;
-
-        Plot::new(format!("{}_plot_img", M::name()))
-            .data_aspect(1.0)
-            .view_aspect(1.0)
-            .show_grid(false)
-            .show_axes([false, false])
-            .allow_drag(false)
-            .allow_zoom(false)
-            .allow_scroll(false)
-            .show(ui, |plot_ui| {
-                plot_ui.image(PlotImage::new(
-                    format!("{}_image", M::name()),
-                    texture.id(),
-                    PlotPoint::new(width as f64 / 2.0, height as f64 / 2.0),
-                    [width, height],
-                ));
-
-                if plot_ui.response().hovered()
-                    && ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
-                {
-                    if let Some(pos) = plot_ui.pointer_coordinate() {
-                        let grid_x = pos.x.round() as i32;
-                        let grid_y = pos.y.round() as i32;
-                        if self
-                            .controller
-                            .send_command(SimCommand::ApplyBrush {
-                                cx: grid_x,
-                                cy: grid_y,
-                                r: 2,
-                                is_obstacle: ctx.input(|i| i.pointer.primary_down()),
-                            })
-                            .is_ok()
-                        {
-                            ctx.request_repaint();
-                        }
-                    }
-                }
-            });
-    }
-
-    fn draw_line_plot(&self, ui: &mut egui::Ui, snapshot: &StateSnapshot) {
-        if snapshot.custom_data.is_empty() {
-            render_empty_plot_guidance(
-                ui,
-                "No trajectory samples yet — click ▶ Run in the side panel to begin.",
-            );
-            return;
-        }
-        let mut points = Vec::new();
-        for i in (0..snapshot.custom_data.len()).step_by(2) {
-            if i + 1 < snapshot.custom_data.len() {
-                points.push([snapshot.custom_data[i], snapshot.custom_data[i + 1]]);
-            }
-        }
-        if points.len() <= 1 {
-            render_empty_plot_guidance(
-                ui,
-                "Initial resting state ready — click ▶ Run to evolve the trajectory over time.",
-            );
-        }
-
-        let color = egui::Color32::from_rgb(100, 200, 255);
-        let initial_pt = (points.len() == 1).then(|| points[0]);
-        let line = Line::new(M::name(), PlotPoints::from_iter(points)).color(color);
-
-        Plot::new(format!("{}_plot_line", M::name()))
-            .view_aspect(2.0)
-            .show(ui, |plot_ui| {
-                plot_ui.line(line);
-                if let Some(pt) = initial_pt {
-                    plot_ui.points(
-                        Points::new(format!("{} (t=0)", M::name()), vec![pt])
-                            .radius(4.5_f32)
-                            .color(color),
-                    );
-                    plot_ui.hline(
-                        HLine::new("Initial Baseline", pt[1])
-                            .style(LineStyle::Dashed { length: 6.0_f32 })
-                            .color(color),
-                    );
-                }
-            });
-    }
-
-    fn refresh_texture_if_dirty(&mut self, ctx: &egui::Context) {
-        if !self.dirty && self.texture.is_some() {
-            return;
-        }
-        let Some(snapshot) = self.controller.latest_snapshot() else {
-            return;
-        };
-        let Ok(guard) = snapshot.pixels.try_read() else {
-            return;
-        };
-        if guard.is_empty() {
-            return;
-        }
-        let image = ColorImage::new([snapshot.width, snapshot.height], guard.clone());
-        if let Some(texture) = &mut self.texture {
-            texture.set(image, TextureOptions::NEAREST);
-        } else {
-            self.texture = Some(ctx.load_texture(M::name(), image, TextureOptions::NEAREST));
-        }
-        self.dirty = false;
-    }
-
-    fn draw_central_panel(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if M::custom_central_panel(ui, self.controller.latest_snapshot()) {
-                return;
-            }
-
-            self.refresh_texture_if_dirty(ctx);
-
-            if let Some(texture) = self.texture.clone() {
-                self.draw_image_plot(ui, ctx, &texture);
-            } else if let Some(snapshot) = self.controller.latest_snapshot() {
-                self.draw_line_plot(ui, snapshot);
-            } else {
-                render_empty_plot_guidance(
-                    ui,
-                    "Simulation ready — click ▶ Run in the side panel to start.",
-                );
-            }
-        });
-    }
 }
 
 impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
@@ -442,17 +331,27 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn save_state(&self) -> Option<String> {
-        let params = self.params.read().ok()?.clone();
+        let params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         serde_json::to_string(&params).ok()
     }
 
     fn load_state(&mut self, state: &str) {
         if let Ok(params) = serde_json::from_str::<HashMap<String, f64>>(state) {
-            if let Ok(mut p) = self.params.write() {
-                *p = params;
-            }
+            *self.params.write().unwrap_or_else(|e| e.into_inner()) = params;
             self.reset_simulation(None);
         }
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        self.handle_recovery_action(
+            crate::framework::recovery::RecoveryAction::ClampParameters,
+            None,
+        );
+        true
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -481,5 +380,8 @@ impl<M: UnifiedModel> scientific_metadata::theory::TheoryDescribable for Unified
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         self.cached_descs.clone()
+    }
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        self.param_metadata.iter().cloned().collect()
     }
 }

@@ -17,7 +17,6 @@ pub struct RlSnapshotData {
     pub rewards_per_episode: Vec<f64>,
     pub episodes_trained: usize,
     pub target_episodes: usize,
-    pub is_training: bool,
 }
 
 #[allow(missing_docs)]
@@ -138,7 +137,6 @@ impl SimulationRunner for RewardPlotsRunner {
             rewards_per_episode: self.rewards_per_episode.clone(),
             episodes_trained: self.episodes_trained,
             target_episodes: self.target_episodes,
-            is_training: self.is_training,
         });
 
         StateSnapshot {
@@ -331,9 +329,6 @@ impl InteractiveTool for RewardPlotsTool {
                 self.rewards_per_episode = data.rewards_per_episode.clone();
                 self.episodes_trained = data.episodes_trained;
                 self.target_episodes = data.target_episodes;
-                if data.is_training {
-                    ctx.request_repaint();
-                }
             }
         }
 
