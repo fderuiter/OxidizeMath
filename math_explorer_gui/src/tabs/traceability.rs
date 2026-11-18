@@ -206,17 +206,17 @@ impl TraceabilityTab {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TraceabilityState {
+    repo_path: Option<String>,
+}
+
 impl ExplorerTab for TraceabilityTab {
     fn name(&self) -> &'static str {
         "Traceability Portal"
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct TraceabilityState {
-            repo_path: Option<String>,
-        }
-
         serde_json::to_string(&TraceabilityState {
             repo_path: self.repo_path.clone(),
         })
@@ -224,11 +224,6 @@ impl ExplorerTab for TraceabilityTab {
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct TraceabilityState {
-            repo_path: Option<String>,
-        }
-
         if let Ok(s) = serde_json::from_str::<TraceabilityState>(state) {
             self.repo_path = s.repo_path;
         }

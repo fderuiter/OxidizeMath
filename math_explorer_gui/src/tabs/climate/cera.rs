@@ -67,6 +67,15 @@ impl FiniteStateGuard for CeraTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CeraState {
+    in_channels: usize,
+    latent_channels: usize,
+    aligned_channels: usize,
+    num_levels: usize,
+    output_size: usize,
+}
+
 impl InteractiveTool for CeraTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -77,32 +86,17 @@ impl InteractiveTool for CeraTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CeraState {
-            in_channels: usize,
-            latent_channels: usize,
-            aligned_channels: usize,
-            num_levels: usize,
-            output_size: usize,
-        }
         serde_json::to_string(&CeraState {
             in_channels: self.in_channels,
             latent_channels: self.latent_channels,
             aligned_channels: self.aligned_channels,
             num_levels: self.num_levels,
             output_size: self.output_size,
-        }).ok()
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CeraState {
-            in_channels: usize,
-            latent_channels: usize,
-            aligned_channels: usize,
-            num_levels: usize,
-            output_size: usize,
-        }
         if let Ok(s) = serde_json::from_str::<CeraState>(state) {
             self.in_channels = s.in_channels;
             self.latent_channels = s.latent_channels;
