@@ -1,88 +1,16 @@
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::{
-    BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner, StateSnapshot,
-};
-use crate::framework::InteractiveTool;
+#[cfg(test)]
+use crate::async_sim::SimulationRunner;
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
+use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
-use math_explorer::physics::stat_mech::KB;
 use std::sync::Arc;
 
-#[allow(missing_docs)]
-pub struct IsingSharedParams {
-    pub temperature: f64,
-    pub j_coupling: f64,
-    pub h_field: f64,
-    pub steps_per_frame: usize,
-}
-
-#[allow(missing_docs)]
-pub struct IsingRunner {
-    pub lattice: SpinLattice,
-    pub params: Arc<std::sync::RwLock<IsingSharedParams>>,
-}
-
-impl SimulationRunner for IsingRunner {
-    fn process_command(&mut self, cmd: SimCommand) {
-        match cmd {
-            SimCommand::Reset => {
-                self.lattice = SpinLattice::new(100, 100, None);
-            }
-            SimCommand::SetSpeed(speed) => {
-                self.params
-                    .write()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .steps_per_frame = speed;
-            }
-            _ => {}
-        }
-    }
-
-    fn step(&mut self) {
-        let (temp, j, h, steps) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.temperature, p.j_coupling, p.h_field, p.steps_per_frame)
-        };
-        let j_scale = if j.abs() < 1e-6 { 1.0 } else { j.abs() };
-        let t_phys = temp * j_scale / KB;
-        self.lattice.evolve(steps, t_phys, j, h);
-    }
-
-    fn get_snapshot(&self) -> StateSnapshot {
-        let width = self.lattice.width();
-        let height = self.lattice.height();
-        let spins_vec: Vec<i8> = self.lattice.spins().to_vec();
-        let mut pixels = Vec::with_capacity(width * height);
-        for &s in &spins_vec {
-            pixels.push(if s > 0 {
-                egui::Color32::from_rgb(200, 50, 50)
-            } else {
-                egui::Color32::from_rgb(50, 50, 200)
-            });
-        }
-        let (j, h) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.j_coupling, p.h_field)
-        };
-        let m = self.lattice.magnetization();
-        let max_m = (width * height) as f64;
-        let m_avg = m as f64 / max_m;
-        let energy = self.lattice.hamiltonian(j, h);
-
-        StateSnapshot {
-            width,
-            height,
-            pixels: Arc::new(std::sync::RwLock::new(pixels)),
-            custom_data: vec![m_avg, energy],
-            structured_data: Some(Box::new(spins_vec)),
-        }
-    }
-
-    fn get_steps_per_frame(&self) -> usize {
-        1
-    }
-}
+#[path = "ising/runner.rs"]
+mod runner;
+pub use runner::*;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct IsingState {
@@ -132,6 +60,175 @@ impl IsingModelTool {
     pub fn retry(&mut self) {
         self.restart_worker();
     }
+
+    fn reset_lattice(&mut self) {
+        self.lattice = SpinLattice::new(100, 100, None);
+        if matches!(
+            self.worker.state(),
+            SimWorkerState::Faulted | SimWorkerState::Terminated
+        ) {
+            self.restart_worker();
+        } else {
+            let _ = self.worker.send_command(SimCommand::Reset);
+        }
+        self.dirty = true;
+    }
+
+    fn draw_parameter_controls(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Slider::new(&mut self.temperature, 0.1..=10.0)
+                    .text("Temperature (T) - K (relative)"),
+            )
+            .changed()
+        {
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .temperature = self.temperature;
+            self.dirty = true;
+        }
+        ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
+
+        if ui
+            .add(
+                egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"),
+            )
+            .changed()
+        {
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .j_coupling = self.j_coupling;
+            self.dirty = true;
+        }
+        ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
+
+        if ui
+            .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
+            .changed()
+        {
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .h_field = self.h_field;
+            self.dirty = true;
+        }
+
+        ui.separator();
+        if ui
+            .add(
+                egui::Slider::new(&mut self.steps_per_frame, 100..=50000)
+                    .text("Simulation Speed (Steps/Frame)")
+                    .logarithmic(true),
+            )
+            .changed()
+        {
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .steps_per_frame = self.steps_per_frame;
+            self.dirty = true;
+        }
+    }
+
+    fn draw_controls(&mut self, ctx: &egui::Context) {
+        egui::SidePanel::left("ising_controls")
+            .resizable(false)
+            .default_width(220.0)
+            .show(ctx, |ui| {
+                ui.heading("Ising Model Controls");
+                ui.separator();
+
+                if self.worker.state() == SimWorkerState::Faulted {
+                    ui.group(|ui| {
+                        ui.colored_label(
+                            egui::Color32::RED,
+                            "⚠ Simulation worker faulted. Channel disconnected or worker crashed.",
+                        );
+                        if ui
+                            .button("🔄 Retry")
+                            .accessible_hover_text("Restart the simulation worker")
+                            .clicked()
+                        {
+                            self.retry();
+                        }
+                    });
+                    ui.separator();
+                }
+
+                self.draw_parameter_controls(ui);
+                ui.separator();
+
+                if let Some(action) = PlaybackTransport::from_worker_state(
+                    "ising_transport",
+                    "Ising Model",
+                    self.worker.state(),
+                )
+                .can_reset(true)
+                .show(ui)
+                {
+                    match action {
+                        PlaybackAction::Play => {
+                            let _ = self.worker.send_command(SimCommand::Start);
+                        }
+                        PlaybackAction::Pause => {
+                            let _ = self.worker.send_command(SimCommand::Pause);
+                        }
+                        PlaybackAction::Step => {
+                            let _ = self.worker.send_command(SimCommand::Step(1));
+                        }
+                        PlaybackAction::Reset => {
+                            self.reset_lattice();
+                        }
+                    }
+                }
+
+                ui.separator();
+                let m = self.lattice.magnetization();
+                let max_m = (self.lattice.width() * self.lattice.height()) as f64;
+                ui.label(format!("Magnetization: {:.3}", m as f64 / max_m));
+                let energy = self.lattice.hamiltonian(self.j_coupling, self.h_field);
+                ui.label(format!("Energy: {:.3}", energy));
+            });
+    }
+
+    fn draw_lattice_canvas(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let width = self.lattice.width();
+            let height = self.lattice.height();
+            let num_pixels = width * height;
+
+            if self.dirty || self.texture.is_none() {
+                if self.pixels.len() != num_pixels {
+                    self.pixels.resize(num_pixels, egui::Color32::BLACK);
+                }
+                for (pixel, &s) in self.pixels.iter_mut().zip(self.lattice.spins().iter()) {
+                    *pixel = if s > 0 {
+                        egui::Color32::from_rgb(200, 50, 50)
+                    } else {
+                        egui::Color32::from_rgb(50, 50, 200)
+                    };
+                }
+                let image = egui::ColorImage {
+                    size: [width, height],
+                    pixels: self.pixels.clone(),
+                    ..Default::default()
+                };
+                let texture_opts = egui::TextureOptions::NEAREST;
+                if let Some(texture) = &mut self.texture {
+                    texture.set(image, texture_opts);
+                } else {
+                    self.texture = Some(ctx.load_texture("ising_lattice", image, texture_opts));
+                }
+                self.dirty = false;
+            }
+
+            if let Some(texture) = &self.texture {
+                ui.image(texture);
+            }
+        });
+    }
 }
 
 impl Default for IsingModelTool {
@@ -167,7 +264,9 @@ impl Default for IsingModelTool {
 }
 
 impl InteractiveTool for IsingModelTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Ising Model"
     }
@@ -183,7 +282,8 @@ impl InteractiveTool for IsingModelTool {
             state: Some(self.worker.state()),
             running: None,
             steps_per_frame: self.steps_per_frame,
-        }).ok()
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
@@ -217,129 +317,9 @@ impl InteractiveTool for IsingModelTool {
         }
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
-        // Controls
-        egui::SidePanel::left("ising_controls")
-            .resizable(false)
-            .default_width(200.0)
-            .show(ctx, |ui| {
-                ui.heading("Ising Model Controls");
-                ui.separator();
+        self.draw_controls(ctx);
 
-                if self.worker.state() == SimWorkerState::Faulted {
-                    ui.group(|ui| {
-                        ui.colored_label(
-                            egui::Color32::RED,
-                            "⚠ Simulation worker faulted. Channel disconnected or worker crashed.",
-                        );
-                        if ui
-                            .button("🔄 Retry")
-                            .accessible_hover_text("Restart the simulation worker")
-                            .clicked()
-                        {
-                            self.retry();
-                        }
-                    });
-                    ui.separator();
-                }
-
-                if ui
-                    .add(egui::Slider::new(&mut self.temperature, 0.1..=10.0).text("Temperature (T) - K (relative)"))
-                    .changed()
-                {
-                    self.params.write().unwrap_or_else(|e| e.into_inner()).temperature = self.temperature;
-                    self.dirty = true;
-                }
-                ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
-
-                if ui
-                    .add(egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"))
-                    .changed()
-                {
-                    self.params.write().unwrap_or_else(|e| e.into_inner()).j_coupling = self.j_coupling;
-                    self.dirty = true;
-                }
-                ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
-
-                if ui
-                    .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
-                    .changed()
-                {
-                    self.params.write().unwrap_or_else(|e| e.into_inner()).h_field = self.h_field;
-                    self.dirty = true;
-                }
-
-                ui.separator();
-
-                if ui
-                    .add(
-                        egui::Slider::new(&mut self.steps_per_frame, 100..=50000)
-                            .text("Simulation Speed (Steps/Frame)")
-                            .logarithmic(true),
-                    )
-                    .changed()
-                {
-                    self.params.write().unwrap_or_else(|e| e.into_inner()).steps_per_frame = self.steps_per_frame;
-                    self.dirty = true;
-                }
-
-                ui.separator();
-
-                ui.horizontal(|ui| {
-                    let is_running = self.worker.state().is_running();
-                    let can_toggle = matches!(
-                        self.worker.state(),
-                        SimWorkerState::Ready | SimWorkerState::Running
-                    );
-                    if ui
-                        .add_enabled(
-                            can_toggle,
-                            egui::Button::new(if is_running { "⏸ Pause" } else { "▶ Play" }),
-                        )
-                        .accessible_hover_text(if is_running {
-                            "Pause the Ising model simulation"
-                        } else {
-                            "Resume the Ising model simulation"
-                        })
-                        .clicked()
-                    {
-                        if is_running {
-                            let _ = self.worker.send_command(SimCommand::Pause);
-                        } else {
-                            let _ = self.worker.send_command(SimCommand::Start);
-                        }
-                    }
-
-                    if ui
-                        .button("🔄 Reset")
-                        .accessible_hover_text("Reset the lattice spin state")
-                        .clicked()
-                    {
-                        self.lattice = SpinLattice::new(100, 100, None);
-                        if self.worker.state() == SimWorkerState::Faulted
-                            || self.worker.state() == SimWorkerState::Terminated
-                        {
-                            self.restart_worker();
-                        } else {
-                            let _ = self.worker.send_command(SimCommand::Reset);
-                        }
-                        self.dirty = true;
-                    }
-                });
-
-                ui.separator();
-
-                let m = self.lattice.magnetization();
-                let max_m = (self.lattice.width() * self.lattice.height()) as f64;
-                let m_avg = m as f64 / max_m;
-                ui.label(format!("Magnetization: {:.3}", m_avg));
-
-                let energy = self.lattice.hamiltonian(self.j_coupling, self.h_field);
-                ui.label(format!("Energy: {:.3}", energy));
-            });
-
-        // Simulation Update via Background Worker
         if let Some(snapshot) = self.worker.update() {
             if let Some(spins) = snapshot
                 .structured_data
@@ -364,45 +344,7 @@ impl InteractiveTool for IsingModelTool {
             ctx.request_repaint();
         }
 
-        // Visualization
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let width = self.lattice.width();
-            let height = self.lattice.height();
-            let num_pixels = width * height;
-
-            if self.dirty || self.texture.is_none() {
-                if self.pixels.len() != num_pixels {
-                    self.pixels.resize(num_pixels, egui::Color32::BLACK);
-                }
-
-                for (pixel, &s) in self.pixels.iter_mut().zip(self.lattice.spins().iter()) {
-                    *pixel = if s > 0 {
-                        egui::Color32::from_rgb(200, 50, 50) // Red (Up)
-                    } else {
-                        egui::Color32::from_rgb(50, 50, 200) // Blue (Down)
-                    };
-                }
-
-                let image = egui::ColorImage {
-                    size: [width, height],
-                    pixels: self.pixels.clone(),
-                    ..Default::default()
-                };
-
-                let texture_opts = egui::TextureOptions::NEAREST; // Pixelated look
-                if let Some(texture) = &mut self.texture {
-                    texture.set(image, texture_opts);
-                } else {
-                    self.texture = Some(ctx.load_texture("ising_lattice", image, texture_opts));
-                }
-
-                self.dirty = false;
-            }
-
-            if let Some(texture) = &self.texture {
-                ui.image(texture); // Show the texture
-            }
-        });
+        self.draw_lattice_canvas(ctx);
     }
 }
 
@@ -411,7 +353,6 @@ impl InteractiveTool for IsingModelTool {
 mod tests;
 
 // [cite:clinical_trials_statistics]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -426,9 +367,15 @@ impl scientific_metadata::theory::TheoryDescribable for IsingModelTool {
     fn theory_description(&self) -> String {
         "Two-dimensional square lattice ferromagnetic Ising model governed by Hamiltonian $H = -J \\sum_{\\langle i, j \\rangle} s_i s_j - h \\sum_i s_i$ with Onsager critical temperature $T_c = \\frac{2J}{k_B \\ln(1 + \\sqrt{2})} \\approx 2.269 \\frac{J}{k_B}$.".into()
     }
-    fn phonetic_description(&self) -> String { "Two-dimensional Ising model ferromagnetic phase transition theory".into() }
-    fn theory_citation(&self) -> String { "Crystal Statistics. I. A Two-Dimensional Model with an Order-Disorder Transition (Onsager, 1944)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Two-dimensional Ising model ferromagnetic phase transition theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Crystal Statistics. I. A Two-Dimensional Model with an Order-Disorder Transition (Onsager, 1944)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

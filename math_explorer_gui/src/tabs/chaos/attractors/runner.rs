@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::framework::recovery::DiagnosticReport;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
@@ -187,9 +188,65 @@ pub struct AttractorRunner {
     pub execution_state: SolverExecutionState,
 }
 
+impl AttractorRunner {
+    fn sync_params(&mut self) -> (f64, usize, usize) {
+        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+        self.system.sigma = p.sigma;
+        self.system.rho = p.rho;
+        self.system.beta = p.beta;
+        (p.dt, p.simulation_speed, p.max_points)
+    }
+
+    fn advance_lorenz_tick(&mut self, dt: f64, max_points: usize) -> bool {
+        let current_vec = self.system.state.vec;
+        if !current_vec.x.is_finite()
+            || !current_vec.y.is_finite()
+            || !current_vec.z.is_finite()
+            || !self.system.sigma.is_finite()
+            || !self.system.rho.is_finite()
+            || !self.system.beta.is_finite()
+            || !dt.is_finite()
+        {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: current_vec,
+                diverged_at_step: self.step_count,
+            };
+            return false;
+        }
+
+        self.system.step(dt);
+        self.step_count += 1;
+
+        let vec = self.system.state.vec;
+        if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: vec,
+                diverged_at_step: self.step_count,
+            };
+            return false;
+        }
+
+        if self.history.len() >= max_points {
+            self.history.pop_front();
+        }
+        self.history.push_back(vec);
+        true
+    }
+}
+
 impl SimulationRunner for AttractorRunner {
     fn process_command(&mut self, cmd: SimCommand) {
         match cmd {
+            SimCommand::Start => {
+                if !matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+                    self.execution_state = SolverExecutionState::Running;
+                }
+            }
+            SimCommand::Pause => {
+                if !matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+                    self.execution_state = SolverExecutionState::Paused;
+                }
+            }
             SimCommand::Reset => {
                 let (sigma, rho, beta) = {
                     let p = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -218,54 +275,24 @@ impl SimulationRunner for AttractorRunner {
         if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
             return;
         }
-        let (sigma, rho, beta, dt, simulation_speed, max_points) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (
-                p.sigma,
-                p.rho,
-                p.beta,
-                p.dt,
-                p.simulation_speed,
-                p.max_points,
-            )
-        };
-        self.system.sigma = sigma;
-        self.system.rho = rho;
-        self.system.beta = beta;
-
+        let (dt, simulation_speed, max_points) = self.sync_params();
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
-
         for _ in 0..simulation_speed {
-            let current_vec = self.system.state.vec;
-            if !current_vec.x.is_finite()
-                || !current_vec.y.is_finite()
-                || !current_vec.z.is_finite()
-            {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: current_vec,
-                    diverged_at_step: self.step_count,
-                };
+            if !self.advance_lorenz_tick(dt, max_points) {
                 break;
             }
+        }
+    }
 
-            self.system.step(dt);
-            self.step_count += 1;
-
-            let vec = self.system.state.vec;
-            if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: vec,
-                    diverged_at_step: self.step_count,
-                };
-                break;
-            }
-
-            if self.history.len() >= max_points {
-                self.history.pop_front();
-            }
-            self.history.push_back(vec);
+    fn step_once(&mut self) {
+        if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            return;
+        }
+        let (dt, _, max_points) = self.sync_params();
+        if self.advance_lorenz_tick(dt, max_points) {
+            self.execution_state = SolverExecutionState::Paused;
         }
     }
 
@@ -297,6 +324,27 @@ impl SimulationRunner for AttractorRunner {
     fn is_complete(&self) -> bool {
         matches!(self.execution_state, SolverExecutionState::Diverged { .. })
     }
+
+    fn is_finite_state(&self) -> bool {
+        let v = self.system.state.vec;
+        !matches!(self.execution_state, SolverExecutionState::Diverged { .. })
+            && v.x.is_finite()
+            && v.y.is_finite()
+            && v.z.is_finite()
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        if self.is_finite_state() {
+            return None;
+        }
+        let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+        Some(DiagnosticReport::new(
+            self.step_count as f64 * if dt.is_finite() { dt } else { 0.01 },
+            self.step_count,
+            "lorenz_state",
+            "Non-finite Lorenz trajectory coordinates detected",
+        ))
+    }
 }
 
 impl scientific_metadata::theory::TheoryDescribable for super::AttractorPlotter {
@@ -306,9 +354,15 @@ impl scientific_metadata::theory::TheoryDescribable for super::AttractorPlotter 
             self.system.sigma, self.system.rho, self.system.beta
         )
     }
-    fn phonetic_description(&self) -> String { "Lorenz strange attractor dynamical system theory".into() }
-    fn theory_citation(&self) -> String { "Deterministic Nonperiodic Flow (Lorenz, 1963); Nonlinear Dynamics and Chaos (Strogatz, 2014)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { self.system.available_descriptions() }
+    fn phonetic_description(&self) -> String {
+        "Lorenz strange attractor dynamical system theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Deterministic Nonperiodic Flow (Lorenz, 1963); Nonlinear Dynamics and Chaos (Strogatz, 2014)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        self.system.available_descriptions()
+    }
 }
 
 inventory::submit! {

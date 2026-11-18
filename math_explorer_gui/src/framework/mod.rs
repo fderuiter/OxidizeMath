@@ -4,6 +4,9 @@ pub mod export_queue;
 mod export_queue_tests;
 mod export_ui;
 pub mod math_input;
+pub mod playback;
+#[cfg(test)]
+mod playback_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
@@ -16,6 +19,7 @@ mod ui;
 pub use callout_overlay::*;
 pub use export_queue::*;
 pub use math_input::*;
+pub use playback::*;
 pub use recovery::*;
 pub use state_guard::*;
 pub use trace_overlay::*;

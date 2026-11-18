@@ -1,10 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::accessibility::AccessibleTheoryHover;
-use crate::async_sim::{BackgroundWorker, SimCommand};
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::InteractiveTool;
-use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
-use egui_plot::{Callout, Line, Plot, PlotPoints};
+use eframe::egui;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
@@ -13,6 +11,9 @@ use std::sync::Arc;
 #[path = "attractors/runner.rs"]
 mod runner;
 pub use runner::*;
+
+#[path = "attractors/ui.rs"]
+mod ui;
 
 pub struct AttractorPlotter {
     system: LorenzSystem,
@@ -44,7 +45,11 @@ impl Default for AttractorPlotter {
             max_points: 2000,
         }));
         let runner = AttractorRunner {
-            system: LorenzBuilder::new().sigma(sigma).rho(rho).beta(beta).build(initial_state),
+            system: LorenzBuilder::new()
+                .sigma(sigma)
+                .rho(rho)
+                .beta(beta)
+                .build(initial_state),
             params: Arc::clone(&params),
             history: VecDeque::with_capacity(2000),
             step_count: 0,
@@ -85,9 +90,13 @@ impl AttractorPlotter {
     #[must_use]
     pub fn is_finite_state(&self) -> bool {
         let v = self.system.state.vec;
-        v.x.is_finite() && v.y.is_finite() && v.z.is_finite()
-            && self.system.sigma.is_finite() && self.system.rho.is_finite()
-            && self.system.beta.is_finite() && self.dt.is_finite()
+        v.x.is_finite()
+            && v.y.is_finite()
+            && v.z.is_finite()
+            && self.system.sigma.is_finite()
+            && self.system.rho.is_finite()
+            && self.system.beta.is_finite()
+            && self.dt.is_finite()
     }
 
     pub fn try_resume(&mut self) -> Result<(), &'static str> {
@@ -95,7 +104,11 @@ impl AttractorPlotter {
         if !v.x.is_finite() || !v.y.is_finite() || !v.z.is_finite() {
             return Err("Cannot resume simulation: state coordinates are non-finite.");
         }
-        if !self.system.sigma.is_finite() || !self.system.rho.is_finite() || !self.system.beta.is_finite() || !self.dt.is_finite() {
+        if !self.system.sigma.is_finite()
+            || !self.system.rho.is_finite()
+            || !self.system.beta.is_finite()
+            || !self.dt.is_finite()
+        {
             return Err("Cannot resume simulation: system parameters are non-finite.");
         }
         self.execution_state = SolverExecutionState::Running;
@@ -120,25 +133,63 @@ impl AttractorPlotter {
 
     pub fn reset(&mut self) {
         let initial_state = LorenzState::new(1.0, 1.0, 1.0);
-        let sigma = if self.system.sigma.is_finite() { self.system.sigma } else { 10.0 };
-        let rho = if self.system.rho.is_finite() { self.system.rho } else { 28.0 };
-        let beta = if self.system.beta.is_finite() { self.system.beta } else { 8.0 / 3.0 };
+        let sigma = if self.system.sigma.is_finite() {
+            self.system.sigma
+        } else {
+            10.0
+        };
+        let rho = if self.system.rho.is_finite() {
+            self.system.rho
+        } else {
+            28.0
+        };
+        let beta = if self.system.beta.is_finite() {
+            self.system.beta
+        } else {
+            8.0 / 3.0
+        };
         if !self.dt.is_finite() || self.dt <= 0.0 {
             self.dt = 0.01;
         }
 
-        self.system = LorenzBuilder::new().sigma(sigma).rho(rho).beta(beta).build(initial_state);
+        {
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.sigma = sigma;
+            p.rho = rho;
+            p.beta = beta;
+            p.dt = self.dt;
+            p.simulation_speed = self.simulation_speed;
+            p.max_points = self.max_points;
+        }
+
+        self.system = LorenzBuilder::new()
+            .sigma(sigma)
+            .rho(rho)
+            .beta(beta)
+            .build(initial_state);
         self.history.clear();
         self.step_count = 0;
         self.execution_state = SolverExecutionState::Ready;
-        let _ = self.worker.send_command(SimCommand::Reset);
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.sigma = sigma;
-        p.rho = rho;
-        p.beta = beta;
-        p.dt = self.dt;
-        p.simulation_speed = self.simulation_speed;
-        p.max_points = self.max_points;
+
+        if matches!(
+            self.worker.state(),
+            SimWorkerState::Faulted | SimWorkerState::Terminated
+        ) {
+            let runner = AttractorRunner {
+                system: LorenzBuilder::new()
+                    .sigma(sigma)
+                    .rho(rho)
+                    .beta(beta)
+                    .build(initial_state),
+                params: Arc::clone(&self.params),
+                history: VecDeque::with_capacity(self.max_points),
+                step_count: 0,
+                execution_state: SolverExecutionState::Ready,
+            };
+            self.worker = BackgroundWorker::new(runner);
+        } else {
+            let _ = self.worker.send_command(SimCommand::Reset);
+        }
     }
 
     pub fn reset_parameters(&mut self) {
@@ -151,12 +202,10 @@ impl AttractorPlotter {
 
     /// Projects 3D point to 2D screen space based on rotation
     fn project(&self, p: Vector3<f64>) -> [f64; 2] {
-        // Center the attractor roughly. Lorenz attractor Z ranges approx 0-50.
-        // Centering it makes rotation look more natural.
         let center_offset = Vector3::new(0.0, 0.0, 25.0);
         let p_centered = p - center_offset;
-
-        self.camera.project(&[p_centered.x, p_centered.y, p_centered.z])
+        self.camera
+            .project(&[p_centered.x, p_centered.y, p_centered.z])
     }
 }
 
@@ -165,7 +214,9 @@ const fn default_annotations_enabled() -> bool {
 }
 
 impl InteractiveTool for AttractorPlotter {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Attractor Plotter"
     }
@@ -250,31 +301,41 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn step_simulation(&mut self) {
-        if !self.diverged() {
-            if self.execution_state == SolverExecutionState::Ready {
-                self.execution_state = SolverExecutionState::Running;
+        if self.diverged() {
+            return;
+        }
+        if self.execution_state == SolverExecutionState::Ready {
+            self.execution_state = SolverExecutionState::Running;
+        }
+        for _ in 0..self.simulation_speed {
+            let current_vec = self.system.state.vec;
+            if !current_vec.x.is_finite()
+                || !current_vec.y.is_finite()
+                || !current_vec.z.is_finite()
+            {
+                self.execution_state = SolverExecutionState::Diverged {
+                    invalid_vec: current_vec,
+                    diverged_at_step: self.step_count,
+                };
+                break;
             }
-            for _ in 0..self.simulation_speed {
-                let current_vec = self.system.state.vec;
-                if !current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite() {
-                    self.execution_state = SolverExecutionState::Diverged { invalid_vec: current_vec, diverged_at_step: self.step_count };
-                    break;
-                }
 
-                self.system.step(self.dt);
-                self.step_count += 1;
+            self.system.step(self.dt);
+            self.step_count += 1;
 
-                let vec = self.system.state.vec;
-                if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
-                    self.execution_state = SolverExecutionState::Diverged { invalid_vec: vec, diverged_at_step: self.step_count };
-                    break;
-                }
-
-                if self.history.len() >= self.max_points {
-                    self.history.pop_front();
-                }
-                self.history.push_back(vec);
+            let vec = self.system.state.vec;
+            if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
+                self.execution_state = SolverExecutionState::Diverged {
+                    invalid_vec: vec,
+                    diverged_at_step: self.step_count,
+                };
+                break;
             }
+
+            if self.history.len() >= self.max_points {
+                self.history.pop_front();
+            }
+            self.history.push_back(vec);
         }
     }
 
@@ -283,9 +344,7 @@ impl InteractiveTool for AttractorPlotter {
         vec![("Trajectory".to_string(), points)]
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show(&mut self, ctx: &egui::Context) {
-        // --- Simulation ---
         let current_vec = self.system.state.vec;
         if (!current_vec.x.is_finite()
             || !current_vec.y.is_finite()
@@ -307,6 +366,7 @@ impl InteractiveTool for AttractorPlotter {
             let _ = self.worker.send_command(SimCommand::Pause);
         }
 
+        let was_paused = self.is_paused();
         if let Some(snapshot) = self.worker.update() {
             if let Some(data) = snapshot
                 .structured_data
@@ -316,168 +376,20 @@ impl InteractiveTool for AttractorPlotter {
                 self.history = data.history.clone();
                 self.system.state.vec = data.current_vec;
                 self.step_count = data.step_count;
-                self.execution_state = data.execution_state;
+                if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
+                    || !was_paused
+                {
+                    self.execution_state = data.execution_state;
+                }
             }
         }
 
-        // --- UI ---
-        egui::SidePanel::left("attractor_controls").show(ctx, |ui| {
-            ui.heading("Lorenz Attractor");
-            if ui.button("🎨 Starter Gallery").clicked() {
-                let cur = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")).unwrap_or(false));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur));
-            }
-            ui.separator();
+        if self.worker.state().is_stepping() {
+            ctx.request_repaint();
+        }
 
-            ui.collapsing("Parameters", |ui| {
-                if ui.add(egui::Slider::new(&mut self.system.sigma, 0.0..=50.0).text("Prandtl Number (σ)")).changed() {
-                    self.on_slider_changed();
-                }
-
-                if ui.add(egui::Slider::new(&mut self.system.rho, 0.0..=100.0).text("Rayleigh Number (ρ)")).changed() {
-                    self.on_slider_changed();
-                }
-
-                if ui.add(egui::Slider::new(&mut self.system.beta, 0.0..=10.0).text("Geometric Factor (β)")).changed() {
-                    self.on_slider_changed();
-                }
-            });
-
-            ui.collapsing("Simulation", |ui| {
-                ui.horizontal(|ui| {
-                    if ui
-                        .button(if self.is_paused() { "▶ Play" } else { "⏸ Pause" })
-                        .clicked()
-                    {
-                        if self.is_paused() {
-                            let _ = self.try_resume();
-                        } else {
-                            self.execution_state = SolverExecutionState::Paused;
-                            let _ = self.worker.send_command(SimCommand::Pause);
-                        }
-                    }
-                    if ui.button("↻ Reset").clicked() {
-                        self.reset();
-                    }
-                });
-
-                if ui.add(egui::Slider::new(&mut self.simulation_speed, 1..=50).text("Speed (steps/frame)")).changed() {
-                    self.on_slider_changed();
-                }
-
-                if ui.add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)")).changed() {
-                    self.on_slider_changed();
-                }
-
-                if ui.add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points")).changed() {
-                    self.on_slider_changed();
-                }
-            });
-
-            ui.collapsing("View", |ui| {
-                self.camera.ui(ui);
-            });
-
-            ui.separator();
-            ui.checkbox(&mut self.show_annotations, "Show Fixed Points");
-
-            ui.separator();
-            let state = self.system.state.vec;
-            ui.label(format!("X: {:.2}", state.x));
-            ui.label(format!("Y: {:.2}", state.y));
-            ui.label(format!("Z: {:.2}", state.z));
-        });
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if let SolverExecutionState::Diverged {
-                invalid_vec,
-                diverged_at_step,
-            } = self.execution_state
-            {
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "⚠️ Solver Divergence Warning: Non-finite state detected at step {} (coordinates: [{:.2}, {:.2}, {:.2}]). Simulation halted.",
-                                diverged_at_step, invalid_vec.x, invalid_vec.y, invalid_vec.z
-                            ))
-                            .color(egui::Color32::RED)
-                            .strong(),
-                        );
-                        if ui.button("↻ Reset Parameters").clicked() {
-                            self.reset_parameters();
-                        }
-                        if ui.button("↻ Reset State").clicked() {
-                            self.reset();
-                        }
-                    });
-                });
-            }
-
-            let points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
-
-            let response = Plot::new("attractor_plot")
-                .data_aspect(1.0)
-                .show(ui, |plot_ui| {
-                    plot_ui.line(
-                        Line::new("Trajectory", PlotPoints::new(points))
-                            .color(egui::Color32::from_rgb(100, 200, 255)),
-                    );
-
-                    if self.show_annotations
-                        && self.system.rho > 1.0
-                        && self.system.beta > 0.0
-                        && self.system.rho.is_finite()
-                        && self.system.beta.is_finite()
-                    {
-                        let x = (self.system.beta * (self.system.rho - 1.0)).sqrt();
-                        let z = self.system.rho - 1.0;
-                        if x.is_finite() && z.is_finite() {
-                            let c_pos = self.project(Vector3::new(x, x, z));
-                            let c_neg = self.project(Vector3::new(-x, -x, z));
-
-                            let visuals = plot_ui.ctx().style().visuals.clone();
-                            let bg_fill = Color32::from_rgba_unmultiplied(
-                                visuals.window_fill().r(),
-                                visuals.window_fill().g(),
-                                visuals.window_fill().b(),
-                                230,
-                            );
-                            let frame_stroke = visuals.widgets.noninteractive.bg_stroke;
-
-                            let callout_pos = Callout::new(
-                                c_pos,
-                                format!("Fixed Point C+ ({:.1}, {:.1}, {:.1})", x, x, z),
-                            )
-                            .offset(Vec2::new(35.0, -25.0))
-                            .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(231, 76, 60)))
-                            .frame(bg_fill, frame_stroke)
-                            .corner_radius(CornerRadius::same(4))
-                            .text_color(visuals.text_color());
-
-                            let callout_neg = Callout::new(
-                                c_neg,
-                                format!("Fixed Point C- ({:.1}, {:.1}, {:.1})", -x, -x, z),
-                            )
-                            .offset(Vec2::new(-35.0, 25.0))
-                            .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(155, 89, 182)))
-                            .frame(bg_fill, frame_stroke)
-                            .corner_radius(CornerRadius::same(4))
-                            .text_color(visuals.text_color());
-
-                            plot_ui.callout(callout_pos);
-                            plot_ui.callout(callout_neg);
-                        }
-                    }
-                })
-                .response;
-            
-            self.camera.handle_interaction(&response, ui);
-            
-            response.accessible_theory_hover(&self.system);
-
-            ui.label("Drag 'Yaw' and 'Pitch' in the side panel to rotate the view.");
-        });
+        self.draw_controls(ctx);
+        self.draw_central_panel(ctx);
     }
 }
 
@@ -491,4 +403,5 @@ inventory::submit! {
 }
 
 #[cfg(test)]
+#[path = "attractors/attractor_tests.rs"]
 mod attractor_tests;

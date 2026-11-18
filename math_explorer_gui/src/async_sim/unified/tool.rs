@@ -3,7 +3,7 @@
 use super::{UnifiedModel, UnifiedSimRunner};
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
-use crate::framework::InteractiveTool;
+use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui::{ColorImage, TextureOptions};
 use egui_plot::{Line, Plot, PlotImage, PlotPoint, PlotPoints};
@@ -37,7 +37,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub fn new() -> Self {
         let param_map = M::parameters();
         let mut param_metadata: Vec<_> = param_map.into_iter().collect();
-        param_metadata.sort_by(|a, b| a.0.cmp(&b.0)); // Sort for consistent UI order
+        param_metadata.sort_by(|a, b| a.0.cmp(&b.0));
 
         let mut initial_params = HashMap::new();
         for (name, constraint) in &param_metadata {
@@ -47,7 +47,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let params = Arc::new(RwLock::new(initial_params.clone()));
         let runner = UnifiedSimRunner::<M>::new(Arc::clone(&params));
         let controller = BackgroundWorker::new(runner);
-
         let temp_model = M::new(&initial_params);
 
         Self {
@@ -71,9 +70,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 
     fn reset_simulation(&mut self) {
-        if self.controller.state() == SimWorkerState::Faulted
-            || self.controller.state() == SimWorkerState::Terminated
-        {
+        if matches!(
+            self.controller.state(),
+            SimWorkerState::Faulted | SimWorkerState::Terminated
+        ) {
             let runner = UnifiedSimRunner::<M>::new(Arc::clone(&self.params));
             self.controller = BackgroundWorker::new(runner);
         } else {
@@ -126,13 +126,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
-    fn draw_model_parameters(&mut self, ui: &mut egui::Ui) {
-        ui.separator();
-        ui.label("Model Parameters");
-
+    fn draw_presets_and_actions(
+        &mut self,
+        ui: &mut egui::Ui,
+        params_lock: &mut HashMap<String, f64>,
+    ) -> bool {
         let mut reset_needed = false;
-        let mut params_lock = self.params.write().unwrap();
-
         let presets = M::presets();
         if !presets.is_empty() {
             ui.horizontal(|ui| {
@@ -163,15 +162,24 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             });
             ui.separator();
         }
+        reset_needed
+    }
+
+    fn draw_model_parameters(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.label("Model Parameters");
+
+        let mut params = self.params.read().unwrap().clone();
+        let reset_needed = self.draw_presets_and_actions(ui, &mut params);
 
         let param_list: Vec<(String, f64)> = self
             .param_metadata
             .iter()
-            .filter_map(|(name, _)| params_lock.get(name).map(|v| (name.clone(), *v)))
+            .filter_map(|(name, _)| params.get(name).map(|v| (name.clone(), *v)))
             .collect();
 
         for (name, constraint) in &self.param_metadata {
-            if let Some(val) = params_lock.get_mut(name) {
+            if let Some(val) = params.get_mut(name) {
                 let slider = egui::Slider::new(val, constraint.min..=constraint.max)
                     .step_by(constraint.step)
                     .text(name);
@@ -182,84 +190,68 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
 
+        *self.params.write().unwrap() = params;
         self.sensitivity_engine
             .compute(&param_list, |p_map| p_map.values().map(|v| v.abs()).sum());
-
         crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, M::name());
-
-        drop(params_lock);
         if reset_needed {
             self.reset_simulation();
         }
     }
 
-    #[allow(clippy::too_many_lines)]
+    fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, state: SimWorkerState) {
+        if state == SimWorkerState::Faulted || self.controller.diagnostic_report().is_some() {
+            if let Some(action) = crate::framework::recovery::render_recovery_banner(
+                ui,
+                self.controller.diagnostic_report(),
+            ) {
+                self.handle_recovery_action(action);
+            }
+            ui.separator();
+        }
+
+        ui.horizontal(|ui| {
+            ui.label("Status:");
+            let (status_text, color) = match state {
+                SimWorkerState::Uninitialized => ("Uninitialized", egui::Color32::GRAY),
+                SimWorkerState::Ready => ("Ready", egui::Color32::from_rgb(80, 200, 120)),
+                SimWorkerState::Running => ("Running", egui::Color32::from_rgb(60, 160, 240)),
+                SimWorkerState::Stepping => ("Stepping", egui::Color32::from_rgb(240, 200, 60)),
+                SimWorkerState::Faulted => ("Faulted", egui::Color32::RED),
+                SimWorkerState::Terminated => ("Terminated", egui::Color32::DARK_GRAY),
+            };
+            ui.colored_label(color, status_text);
+        });
+        ui.separator();
+
+        if let Some(action) =
+            PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
+                .can_reset(true)
+                .show(ui)
+        {
+            match action {
+                PlaybackAction::Play => {
+                    let _ = self.controller.send_command(SimCommand::Start);
+                }
+                PlaybackAction::Pause => {
+                    let _ = self.controller.send_command(SimCommand::Pause);
+                }
+                PlaybackAction::Step => {
+                    let _ = self.controller.send_command(SimCommand::Step(1));
+                }
+                PlaybackAction::Reset => {
+                    self.reset_simulation();
+                }
+            }
+        }
+    }
+
     fn draw_left_panel(&mut self, ctx: &egui::Context) {
         let state = self.controller.state();
-
         egui::SidePanel::left(format!("{}_controls", M::name())).show(ctx, |ui| {
             ui.heading(M::name());
             ui.separator();
-
-            if state == SimWorkerState::Faulted || self.controller.diagnostic_report().is_some() {
-                if let Some(action) = crate::framework::recovery::render_recovery_banner(
-                    ui,
-                    self.controller.diagnostic_report(),
-                ) {
-                    self.handle_recovery_action(action);
-                }
-                ui.separator();
-            }
-
-            ui.horizontal(|ui| {
-                ui.label("Status:");
-                let (status_text, color) = match state {
-                    SimWorkerState::Uninitialized => ("Uninitialized", egui::Color32::GRAY),
-                    SimWorkerState::Ready => ("Ready", egui::Color32::from_rgb(80, 200, 120)),
-                    SimWorkerState::Running => ("Running", egui::Color32::from_rgb(60, 160, 240)),
-                    SimWorkerState::Stepping => ("Stepping", egui::Color32::from_rgb(240, 200, 60)),
-                    SimWorkerState::Faulted => ("Faulted", egui::Color32::RED),
-                    SimWorkerState::Terminated => ("Terminated", egui::Color32::DARK_GRAY),
-                };
-                ui.colored_label(color, status_text);
-            });
-            ui.separator();
-
-            let run_pause_enabled =
-                matches!(state, SimWorkerState::Ready | SimWorkerState::Running);
-            let button_text = if state.is_running() {
-                "⏸ Pause"
-            } else {
-                "▶ Run"
-            };
-            let tooltip_text = match state {
-                SimWorkerState::Running => "Pause simulation",
-                SimWorkerState::Ready => "Start simulation",
-                SimWorkerState::Faulted => {
-                    "Worker thread faulted. Click Reset to restore simulation."
-                }
-                _ => "Simulation worker unavailable",
-            };
-
-            if ui
-                .add_enabled(run_pause_enabled, egui::Button::new(button_text))
-                .accessible_hover_text(tooltip_text)
-                .clicked()
-            {
-                if state.is_running() {
-                    let _ = self.controller.send_command(SimCommand::Pause);
-                } else {
-                    let _ = self.controller.send_command(SimCommand::Start);
-                }
-            }
-
-            if ui
-                .button("↻ Reset")
-                .accessible_hover_text("Reset simulation state")
-                .clicked()
-            {
-                self.reset_simulation();
-            }
+            self.draw_status_and_transport(ui, state);
 
             ui.separator();
             ui.label("Simulation Constants");
@@ -300,7 +292,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 plot_ui.image(PlotImage::new(
                     format!("{}_image", M::name()),
                     texture.id(),
-                    PlotPoint::new(width as f64 / 2.0, height as f64 / 2.0),
+                    PlotPoint::new(f64::from(width) / 2.0, f64::from(height) / 2.0),
                     [width, height],
                 ));
 
@@ -308,11 +300,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     && ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
                 {
                     if let Some(pos) = plot_ui.pointer_coordinate() {
-                        let grid_x = pos.x.round() as i32;
-                        let grid_y = pos.y.round() as i32;
                         let _ = self.controller.send_command(SimCommand::ApplyBrush {
-                            cx: grid_x,
-                            cy: grid_y,
+                            cx: pos.x.round() as i32,
+                            cy: pos.y.round() as i32,
                             r: 2,
                             is_obstacle: ctx.input(|i| i.pointer.primary_down()),
                         });
@@ -398,7 +388,12 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
 
     fn show(&mut self, ctx: &egui::Context) {
         let has_update = self.controller.update().is_some();
-        if has_update || self.controller.state().is_running() {
+        if has_update
+            || matches!(
+                self.controller.state(),
+                SimWorkerState::Running | SimWorkerState::Stepping
+            )
+        {
             ctx.request_repaint();
         }
 

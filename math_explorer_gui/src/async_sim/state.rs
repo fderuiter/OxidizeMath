@@ -7,6 +7,8 @@ pub enum SimCommand {
     #[allow(missing_docs)]
     Pause,
     #[allow(missing_docs)]
+    Step(usize),
+    #[allow(missing_docs)]
     Reset,
     #[allow(missing_docs)]
     SetSpeed(usize),
@@ -35,6 +37,7 @@ impl SimCommand {
         match self {
             Self::Start => "Start",
             Self::Pause => "Pause",
+            Self::Step(_) => "Step",
             Self::Reset => "Reset",
             Self::SetSpeed(_) => "SetSpeed",
             Self::TrainEpisodes(_) => "TrainEpisodes",
@@ -85,6 +88,11 @@ impl SimWorkerState {
     }
 
     #[allow(missing_docs)]
+    pub fn is_stepping(&self) -> bool {
+        matches!(self, Self::Stepping)
+    }
+
+    #[allow(missing_docs)]
     pub fn is_faulted(&self) -> bool {
         matches!(self, Self::Faulted)
     }
@@ -98,10 +106,16 @@ impl SimWorkerState {
     pub fn is_command_valid(&self, cmd: &SimCommand) -> bool {
         match self {
             Self::Ready => !matches!(cmd, SimCommand::Pause),
-            Self::Running => !matches!(cmd, SimCommand::Start | SimCommand::TrainEpisodes(_)),
+            Self::Running => !matches!(
+                cmd,
+                SimCommand::Start | SimCommand::Step(_) | SimCommand::TrainEpisodes(_)
+            ),
             Self::Stepping => !matches!(
                 cmd,
-                SimCommand::Start | SimCommand::Pause | SimCommand::TrainEpisodes(_)
+                SimCommand::Start
+                    | SimCommand::Pause
+                    | SimCommand::Step(_)
+                    | SimCommand::TrainEpisodes(_)
             ),
             Self::Uninitialized | Self::Faulted | Self::Terminated => false,
         }
