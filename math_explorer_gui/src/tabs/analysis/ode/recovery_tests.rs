@@ -1,6 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use crate::framework::recovery::{
+    DiagnosticReport, FiniteStateGuard, RecoveryAction, emit_recovery_telemetry,
+    render_recovery_action_buttons, render_recovery_banner,
+};
 use crate::presets::OdePreset;
 use eframe::egui;
 
@@ -13,17 +17,25 @@ fn test_ode_structured_diagnostic_report() {
     };
     tool.recalculate();
 
-    assert!(tool.diverged());
-    let report = tool.diagnostic_report().expect("Diagnostic report should be present");
+    assert!(FiniteStateGuard::diverged(&tool));
+    assert!(!FiniteStateGuard::is_finite_state(&tool));
+    let err_report = FiniteStateGuard::validate_state(&tool)
+        .expect_err("validate_state should fail when diverged");
+
+    let report: &DiagnosticReport = FiniteStateGuard::diagnostic_report(&tool)
+        .expect("Diagnostic report should be present");
+    assert_eq!(report, &err_report);
     assert_eq!(report.step_index, 1);
     assert_eq!(report.t_diverged, 0.05);
     assert_eq!(report.variable, "y(t)");
     assert!(report.message.contains("diverged"));
 
-    // Reset clears diagnostic report
-    tool.reset_parameters();
-    assert!(!tool.diverged());
-    assert!(tool.diagnostic_report().is_none());
+    // Reset via FiniteStateGuard clears diagnostic report and restores finite state
+    FiniteStateGuard::reset_parameters(&mut tool);
+    assert!(!FiniteStateGuard::diverged(&tool));
+    assert!(FiniteStateGuard::is_finite_state(&tool));
+    assert!(FiniteStateGuard::validate_state(&tool).is_ok());
+    assert!(FiniteStateGuard::diagnostic_report(&tool).is_none());
 }
 
 #[test]
@@ -31,10 +43,10 @@ fn test_ode_autoscale_step_size_recovery() {
     let mut tool = OdeSolverTool::default();
     assert_eq!(tool.dt, 0.05);
 
-    tool.auto_scale_step_size();
+    FiniteStateGuard::auto_scale_step_size(&mut tool);
     assert_eq!(tool.dt, 0.025);
 
-    tool.auto_scale_step_size();
+    FiniteStateGuard::auto_scale_step_size(&mut tool);
     assert_eq!(tool.dt, 0.0125);
 
     // Test recovering finite trajectories via step size auto-scaling
@@ -47,16 +59,17 @@ fn test_ode_autoscale_step_size_recovery() {
     tool.ic_y0 = 1.0;
     tool.ic_v0 = 0.0;
     tool.recalculate();
-    assert!(tool.diverged());
+    assert!(FiniteStateGuard::diverged(&tool));
 
     // Halve dt until integration succeeds and finite trajectory is restored
     for _ in 0..5 {
-        if !tool.diverged() {
+        if !FiniteStateGuard::diverged(&tool) {
             break;
         }
-        tool.auto_scale_step_size();
+        FiniteStateGuard::auto_scale_step_size(&mut tool);
     }
-    assert!(!tool.diverged());
+    assert!(!FiniteStateGuard::diverged(&tool));
+    assert!(FiniteStateGuard::is_finite_state(&tool));
     assert!(!tool.y_series.is_empty());
     assert!(tool.y_series.iter().all(|y| y.is_finite()));
 
@@ -73,12 +86,18 @@ fn test_ode_autoscale_minimum_floor() {
         dt: 1e-6,
         ..Default::default()
     };
-    tool.auto_scale_step_size();
-    assert!(tool.dt >= 1e-6);
+    FiniteStateGuard::auto_scale_step_size(&mut tool);
+    assert_eq!(tool.dt, 1e-6);
 
     tool.dt = 1e-8;
-    tool.auto_scale_step_size();
+    FiniteStateGuard::auto_scale_step_size(&mut tool);
     assert_eq!(tool.dt, 1e-6);
+
+    tool.dt = f64::NAN;
+    assert!(!FiniteStateGuard::is_finite_state(&tool));
+    FiniteStateGuard::auto_scale_step_size(&mut tool);
+    assert_eq!(tool.dt, 0.05);
+    assert!(FiniteStateGuard::is_finite_state(&tool));
 }
 
 #[test]
@@ -89,10 +108,11 @@ fn test_ode_clamp_instability_parameters_exponential() {
         ..Default::default()
     };
     tool.recalculate();
-    assert!(tool.diverged());
+    assert!(FiniteStateGuard::diverged(&tool));
 
-    tool.clamp_instability_parameters();
-    assert!(!tool.diverged());
+    FiniteStateGuard::clamp_parameters(&mut tool);
+    assert!(!FiniteStateGuard::diverged(&tool));
+    assert!(FiniteStateGuard::is_finite_state(&tool));
     assert!(tool.param_k <= 5.0 && tool.param_k >= -5.0);
     assert!(tool.ic_y0 <= 10.0 && tool.ic_y0 >= -10.0);
     assert!(!tool.y_series.is_empty());
@@ -110,10 +130,11 @@ fn test_ode_clamp_instability_parameters_harmonic_and_logistic() {
         ..Default::default()
     };
     tool_harmonic.recalculate();
-    assert!(tool_harmonic.diverged());
+    assert!(FiniteStateGuard::diverged(&tool_harmonic));
 
-    tool_harmonic.clamp_instability_parameters();
-    assert!(!tool_harmonic.diverged());
+    FiniteStateGuard::clamp_parameters(&mut tool_harmonic);
+    assert!(!FiniteStateGuard::diverged(&tool_harmonic));
+    assert!(FiniteStateGuard::is_finite_state(&tool_harmonic));
     assert!(tool_harmonic.param_k <= 10.0);
     assert!(tool_harmonic.ic_y0 <= 10.0);
     assert!(tool_harmonic.ic_v0 <= 10.0);
@@ -127,35 +148,89 @@ fn test_ode_clamp_instability_parameters_harmonic_and_logistic() {
         ..Default::default()
     };
     tool_logistic.recalculate();
-    assert!(tool_logistic.diverged());
+    assert!(FiniteStateGuard::diverged(&tool_logistic));
 
-    tool_logistic.clamp_instability_parameters();
-    assert!(!tool_logistic.diverged());
+    FiniteStateGuard::clamp_parameters(&mut tool_logistic);
+    assert!(!FiniteStateGuard::diverged(&tool_logistic));
+    assert!(FiniteStateGuard::is_finite_state(&tool_logistic));
     assert!(tool_logistic.param_r <= 5.0);
     assert!(tool_logistic.param_cap_k <= 100.0);
 }
 
 #[test]
-fn test_ode_divergence_and_recovery_telemetry() {
-    let _ = federated_registry::global_registry().try_recv_all();
-
-    let mut tool = OdeSolverTool {
-        param_k: 1e300,
-        ic_y0: 1e300,
+fn test_ode_clamp_nan_and_inf_parameters_and_initial_conditions() {
+    // Exponential with NaN/Inf
+    let mut exp_tool = OdeSolverTool {
+        preset: OdePreset::Exponential,
+        param_k: f64::NAN,
+        ic_y0: f64::INFINITY,
+        dt: f64::NAN,
+        total_time: f64::INFINITY,
         ..Default::default()
     };
-    tool.recalculate();
+    assert!(!FiniteStateGuard::is_finite_state(&exp_tool));
+    FiniteStateGuard::clamp_parameters(&mut exp_tool);
+    assert!(FiniteStateGuard::is_finite_state(&exp_tool));
+    assert_eq!(exp_tool.param_k, 1.0);
+    assert_eq!(exp_tool.ic_y0, 1.0);
+    assert_eq!(exp_tool.dt, 0.05);
+    assert_eq!(exp_tool.total_time, 10.0);
 
-    let events = federated_registry::global_registry().try_recv_all();
-    let div_event = events
-        .iter()
-        .find(|e| {
+    // Harmonic Oscillator with -Inf/NaN
+    let mut osc_tool = OdeSolverTool {
+        preset: OdePreset::HarmonicOscillator,
+        param_k: f64::NEG_INFINITY,
+        ic_y0: f64::NAN,
+        ic_v0: f64::INFINITY,
+        ..Default::default()
+    };
+    assert!(!FiniteStateGuard::is_finite_state(&osc_tool));
+    FiniteStateGuard::clamp_parameters(&mut osc_tool);
+    assert!(FiniteStateGuard::is_finite_state(&osc_tool));
+    assert_eq!(osc_tool.param_k, 1.0);
+    assert_eq!(osc_tool.ic_y0, 1.0);
+    assert_eq!(osc_tool.ic_v0, 0.0);
+
+    // Logistic Growth with Inf/NaN
+    let mut log_tool = OdeSolverTool {
+        preset: OdePreset::LogisticGrowth,
+        param_r: f64::INFINITY,
+        param_cap_k: f64::NAN,
+        ic_y0: f64::NEG_INFINITY,
+        ..Default::default()
+    };
+    assert!(!FiniteStateGuard::is_finite_state(&log_tool));
+    FiniteStateGuard::clamp_parameters(&mut log_tool);
+    assert!(FiniteStateGuard::is_finite_state(&log_tool));
+    assert_eq!(log_tool.param_r, 1.0);
+    assert_eq!(log_tool.param_cap_k, 10.0);
+    assert_eq!(log_tool.ic_y0, 1.0);
+}
+
+#[test]
+fn test_ode_divergence_and_recovery_telemetry() {
+    let mut found_div_event = None;
+    for _ in 0..5 {
+        let _ = federated_registry::global_registry().try_recv_all();
+        let mut tool = OdeSolverTool {
+            param_k: 1e300,
+            ic_y0: 1e300,
+            ..Default::default()
+        };
+        tool.recalculate();
+
+        let events = federated_registry::global_registry().try_recv_all();
+        if let Some(ev) = events.into_iter().find(|e| {
             e.source == "OdeSolverTool"
                 && e.severity == federated_registry::Severity::Error
-                && e.metadata.get("preset").is_some_and(|s| s.contains("Exponential"))
-        })
-        .expect("Divergence telemetry event should be emitted");
+                && e.message.contains("Simulation diverged")
+        }) {
+            found_div_event = Some(ev);
+            break;
+        }
+    }
 
+    let div_event = found_div_event.expect("Divergence telemetry event should be emitted");
     assert_eq!(
         div_event.metadata.get("diverged_variable"),
         Some(&"y(t)".to_string())
@@ -163,18 +238,25 @@ fn test_ode_divergence_and_recovery_telemetry() {
     assert!(div_event.metadata.contains_key("t_diverged"));
     assert!(div_event.metadata.contains_key("step_count"));
 
-    // Recovery action emits telemetry
-    recovery::emit_recovery_telemetry("Auto-scale Step Size (dt)", "Halved step size");
-    let recovery_events = federated_registry::global_registry().try_recv_all();
-    assert!(recovery_events.iter().any(|e| {
-        e.source == "OdeSolverTool"
-            && e.severity == federated_registry::Severity::Info
-            && e.message.contains("Auto-scale Step Size")
-    }));
+    // Centralized recovery telemetry helper emits expected event
+    let mut found_recovery = false;
+    for _ in 0..5 {
+        emit_recovery_telemetry("OdeSolverTool", "Auto-scale Step Size (dt)", "Halved step size");
+        let recovery_events = federated_registry::global_registry().try_recv_all();
+        if recovery_events.iter().any(|e| {
+            e.source == "OdeSolverTool"
+                && e.severity == federated_registry::Severity::Info
+                && e.message.contains("Auto-scale Step Size")
+        }) {
+            found_recovery = true;
+            break;
+        }
+    }
+    assert!(found_recovery, "Recovery telemetry event should be emitted");
 }
 
 #[test]
-fn test_ode_recovery_banner_ui_rendering() {
+fn test_ode_recovery_banner_ui_rendering_and_actions() {
     let ctx = egui::Context::default();
     let mut tool = OdeSolverTool {
         param_k: 1e300,
@@ -182,7 +264,7 @@ fn test_ode_recovery_banner_ui_rendering() {
         ..Default::default()
     };
     tool.recalculate();
-    assert!(tool.diverged());
+    assert!(FiniteStateGuard::diverged(&tool));
 
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -190,6 +272,23 @@ fn test_ode_recovery_banner_ui_rendering() {
             let mut py = Vec::new();
             let mut pv = Vec::new();
             recovery::render_recovery_ui(ui, &mut tool, &mut changed, &mut py, &mut pv);
+            assert!(render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(&tool)).is_none());
+            assert!(render_recovery_action_buttons(ui).is_none());
         });
     });
+
+    // Verify apply_recovery_action updates tool via FiniteStateGuard and refreshes plot buffers
+    let mut changed = false;
+    let mut py = Vec::new();
+    let mut pv = Vec::new();
+    recovery::apply_recovery_action(
+        &mut tool,
+        RecoveryAction::ClampParameters,
+        &mut changed,
+        &mut py,
+        &mut pv,
+    );
+    assert!(changed);
+    assert!(!FiniteStateGuard::diverged(&tool));
+    assert!(!py.is_empty());
 }

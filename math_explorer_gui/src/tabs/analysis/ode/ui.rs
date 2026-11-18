@@ -3,6 +3,7 @@
 use super::recovery;
 use super::systems::eval_ode_final_state;
 use super::OdeSolverTool;
+use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
 use crate::reflective_ui::{render_copyable_metric, AnimatedSlider};
@@ -348,7 +349,7 @@ impl OdeSolverTool {
     ) {
         ui.heading("Solution Trajectory");
 
-        if self.diverged() {
+        if FiniteStateGuard::diverged(self) {
             recovery::render_recovery_ui(
                 ui,
                 self,

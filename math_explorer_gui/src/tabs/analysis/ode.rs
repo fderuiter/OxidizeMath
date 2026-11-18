@@ -8,6 +8,9 @@ pub mod ui;
 
 use comparison::{simulate_preset, SolverDiscrepancy};
 
+use crate::framework::recovery::{
+    DiagnosticReport, FiniteStateGuard, emit_divergence_telemetry,
+};
 use crate::framework::{
     CalloutManager, InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager,
 };
@@ -15,8 +18,7 @@ use crate::presets::{InteractivePreset, OdePreset};
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 
-pub use recovery::OdeDiagnosticReport;
-use recovery::clamp_ode_parameters;
+use recovery::{clamp_ode_parameters, clamp_ode_step_settings};
 
 // ----------------------------------------------------------------------------
 // Tool Implementation
@@ -37,7 +39,7 @@ pub struct OdeSolverTool {
     pub v_series: Vec<f64>,
     pub(crate) diverged: bool,
     pub(crate) math_input: MathExpressionInputBar,
-    pub(crate) diagnostic_report: Option<OdeDiagnosticReport>,
+    pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) comparison_mode: bool,
     pub(crate) discrepancy_euler_rk4: SolverDiscrepancy,
     pub(crate) discrepancy_heun_rk4: SolverDiscrepancy,
@@ -109,11 +111,11 @@ impl OdeSolverTool {
 
     #[must_use]
     pub fn diverged(&self) -> bool {
-        self.diverged
+        self.diverged || !FiniteStateGuard::is_finite_state(self)
     }
 
     #[must_use]
-    pub fn diagnostic_report(&self) -> Option<&OdeDiagnosticReport> {
+    pub fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
         self.diagnostic_report.as_ref()
     }
 
@@ -136,6 +138,7 @@ impl OdeSolverTool {
             &mut self.ic_y0,
             &mut self.ic_v0,
         );
+        clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
         self.recalculate();
     }
 
@@ -268,24 +271,55 @@ impl OdeSolverTool {
 
         if let Some((t_div, step_idx, var_name)) = active_traj.divergence_info {
             self.diverged = true;
-            let report = OdeDiagnosticReport::new(
-                t_div,
-                step_idx,
-                var_name.clone(),
-                format!(
-                    "Simulation diverged at t={:.4}s (step {}) in variable {}",
-                    t_div, step_idx, var_name
-                ),
+            let message = format!(
+                "Simulation diverged at t={:.4}s (step {}) in variable {}",
+                t_div, step_idx, var_name
             );
-            self.diagnostic_report = Some(report);
-            recovery::emit_divergence_telemetry(
-                t_div,
-                step_idx,
-                &var_name,
-                self.preset.name(),
-                self.dt,
-            );
+            emit_divergence_telemetry("OdeSolverTool", t_div, step_idx, &var_name, &message);
+            self.diagnostic_report =
+                Some(DiagnosticReport::new(t_div, step_idx, var_name, message));
         }
+    }
+}
+
+impl FiniteStateGuard for OdeSolverTool {
+    fn is_finite_state(&self) -> bool {
+        recovery::is_finite_ode_state(self)
+    }
+
+    fn validate_state(&self) -> Result<(), DiagnosticReport> {
+        if self.is_finite_state() {
+            Ok(())
+        } else {
+            Err(self.diagnostic_report.clone().unwrap_or_else(|| {
+                DiagnosticReport::new(
+                    0.0,
+                    0,
+                    "state",
+                    "Non-finite floating-point state encountered.",
+                )
+            }))
+        }
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        OdeSolverTool::diagnostic_report(self)
+    }
+
+    fn diverged(&self) -> bool {
+        OdeSolverTool::diverged(self)
+    }
+
+    fn auto_scale_step_size(&mut self) {
+        OdeSolverTool::auto_scale_step_size(self);
+    }
+
+    fn clamp_parameters(&mut self) {
+        self.clamp_instability_parameters();
+    }
+
+    fn reset_parameters(&mut self) {
+        OdeSolverTool::reset_parameters(self);
     }
 }
 
