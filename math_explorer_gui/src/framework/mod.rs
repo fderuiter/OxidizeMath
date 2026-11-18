@@ -304,7 +304,7 @@ pub struct SimulationFramework {
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
     pub(super) instance_id: u64,
-    pub(super) overlay_sync: (Option<bool>, Option<bool>),
+    pub(super) overlay_sync: (Option<bool>, Option<bool>, Option<&'static str>),
 }
 
 impl SimulationFramework {
@@ -346,7 +346,7 @@ impl SimulationFramework {
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
             instance_id: ui::next_framework_id(),
-            overlay_sync: (None, None),
+            overlay_sync: (None, None, None),
         };
 
         if !framework.available_tools.is_empty() {
@@ -388,7 +388,8 @@ impl SimulationFramework {
         if !prev_datasets.is_empty() {
             egui_plot::append_last_plot_datasets(&prev_datasets);
         }
-        self.current_valid_plot_datasets = initial_datasets.clone();
+        (self.overlay_sync.2, self.current_valid_plot_datasets) =
+            (Some(new_tool.name()), initial_datasets.clone());
         self.last_valid_snapshot = Some(StateSnapshot {
             tool_state: active_tool_state,
             plot_datasets: initial_datasets,
@@ -476,7 +477,8 @@ impl SimulationFramework {
                         if !prev.is_empty() {
                             egui_plot::append_last_plot_datasets(&prev);
                         }
-                        self.current_valid_plot_datasets = refreshed.clone();
+                        (self.overlay_sync.2, self.current_valid_plot_datasets) =
+                            (Some(tool.name()), refreshed.clone());
                         self.last_valid_snapshot = Some(StateSnapshot {
                             tool_state: tool.save_state(),
                             plot_datasets: refreshed,

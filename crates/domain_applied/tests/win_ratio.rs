@@ -64,7 +64,6 @@ fn test_matched_pairs() {
 #[verified_engine::verified]
 fn test_unmatched_pairs() {
     let (group1, group2) = get_test_data();
-    #[allow(deprecated)]
     let mut analysis = WinRatioAnalysis::new();
     for _ in 0..group1[0].len() {
         analysis = analysis.add_strategy(Box::new(HigherIsBetter));

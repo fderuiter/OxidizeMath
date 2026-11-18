@@ -413,7 +413,7 @@ impl SimulationFramework {
         self.show_starter_gallery_if_open(ctx, id_source);
         self.sync_overlays_after_frame(ctx, id_source);
 
-        self.dispatch_pending_exports();
+        self.dispatch_pending_exports_with_ctx(ctx);
     }
 
     fn sync_overlays_before_frame(&mut self, ctx: &egui::Context, id_source: &str) {
@@ -468,10 +468,8 @@ impl SimulationFramework {
             self.show_starter_gallery = g;
         }
         self.write_overlay_keys(ctx, id_source);
-        self.overlay_sync = (
-            Some(self.show_theory_portal),
-            Some(self.show_starter_gallery),
-        );
+        self.overlay_sync.0 = Some(self.show_theory_portal);
+        self.overlay_sync.1 = Some(self.show_starter_gallery);
     }
 
     fn write_overlay_keys(&self, ctx: &egui::Context, id_source: &str) {

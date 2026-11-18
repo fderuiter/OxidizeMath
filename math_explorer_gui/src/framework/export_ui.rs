@@ -24,12 +24,7 @@ impl SimulationFramework {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     ui.label(egui::RichText::new("📊 Export:").strong());
 
-                    let tool_name = if let Some(tool) = &self.active_tool {
-                        tool.name()
-                    } else {
-                        "simulation"
-                    };
-
+                    let tool_name = self.active_tool.as_ref().map_or("simulation", |t| t.name());
                     let file_slug = tool_name.to_lowercase().replace(' ', "_");
 
                     if ui
@@ -38,6 +33,14 @@ impl SimulationFramework {
                         .clicked()
                     {
                         self.queue_export(ExportFormat::Csv);
+                    }
+
+                    if ui
+                        .button("Copy CSV")
+                        .on_hover_text("Copy dataset points as CSV to clipboard")
+                        .clicked()
+                    {
+                        self.queue_clipboard_export();
                     }
 
                     if ui
@@ -61,6 +64,8 @@ impl SimulationFramework {
                         self.show_export_modal = true;
                     }
 
+                    self.render_action_bar_export_status(ctx, ui);
+
                     ui.separator();
                     if ui
                         .button("🎨 Starter Gallery")
@@ -79,6 +84,46 @@ impl SimulationFramework {
                     self.render_preset_action_bar_controls(ui, &file_slug);
                 });
             });
+    }
+
+    fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        self.poll_action_bar_clipboard_status(ctx);
+
+        let now = ctx.input(|i| i.time);
+        let mut clear_status = false;
+
+        if let Some(ref mut status) = self.export_queue.status {
+            if !status.is_error {
+                let exp = *status.expires_at_time.get_or_insert(now + 3.0);
+                if now > 0.0 && now >= exp {
+                    clear_status = true;
+                } else {
+                    let remaining = (exp - now).max(0.05);
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
+                    ui.colored_label(egui::Color32::LIGHT_GREEN, format!("✓ {}", status.message));
+                    if ui
+                        .small_button("✖")
+                        .on_hover_text("Dismiss notification")
+                        .clicked()
+                    {
+                        clear_status = true;
+                    }
+                }
+            } else {
+                ui.colored_label(egui::Color32::RED, format!("⚠️ {}", status.message));
+                if ui
+                    .small_button("✖")
+                    .on_hover_text("Dismiss warning")
+                    .clicked()
+                {
+                    clear_status = true;
+                }
+            }
+        }
+
+        if clear_status {
+            self.export_queue.status = None;
+        }
     }
 
     fn export_active_preset_json(&mut self, file_slug: &str) {
@@ -334,7 +379,8 @@ impl SimulationFramework {
                 match egui_plot::export::export_custom_image(&datasets, &self.export_options) {
                     Ok(color_img) => {
                         let ctx = ui.ctx().clone();
-                        let status_id = egui::Id::new("framework_export_clipboard_status");
+                        let status_id =
+                            egui::Id::new(("framework_export_clipboard_status", self.instance_id));
                         match egui_plot::export::copy_image_to_clipboard_with_callback(
                             &color_img,
                             move |res| {
@@ -349,16 +395,12 @@ impl SimulationFramework {
                             },
                         ) {
                             Ok(_) => {
-                                #[cfg(not(target_arch = "wasm32"))]
-                                {
-                                    self.export_status_message =
-                                        Some("Copied plot image to clipboard!".to_string());
-                                }
-                                #[cfg(target_arch = "wasm32")]
-                                {
-                                    self.export_status_message =
-                                        Some("Copying plot image to clipboard...".to_string());
-                                }
+                                let msg = if cfg!(target_arch = "wasm32") {
+                                    "Copying plot image to clipboard..."
+                                } else {
+                                    "Copied plot image to clipboard!"
+                                };
+                                self.export_status_message = Some(msg.to_string());
                             }
                             Err(e) => {
                                 self.export_status_message =
@@ -375,7 +417,7 @@ impl SimulationFramework {
     }
 
     fn render_export_modal_actions(&mut self, ui: &mut egui::Ui) {
-        let status_id = egui::Id::new("framework_export_clipboard_status");
+        let status_id = egui::Id::new(("framework_export_clipboard_status", self.instance_id));
         if let Some(msg) = ui.ctx().data_mut(|d| d.remove_temp::<String>(status_id)) {
             self.export_status_message = Some(msg);
         }
