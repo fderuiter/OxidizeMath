@@ -367,7 +367,8 @@ impl InteractiveTool for CurvatureHeatmap {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "CurvatureHeatmap",
+        id: "CurvatureHeatmap",
+        display_name: "Curvature Heatmap",
         domain: "geometry_topology",
         tags: &[],
         build: || Box::new(CurvatureHeatmap::default()),

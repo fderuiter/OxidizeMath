@@ -99,12 +99,12 @@ fn test_all_registered_tools_have_starter_presets() {
     for tool in &tools {
         let matching: Vec<_> = presets
             .iter()
-            .filter(|p| p.tool_name == Some(tool.name) && p.domain == tool.domain)
+            .filter(|p| p.tool_name == Some(tool.id) && p.domain == tool.domain)
             .collect();
         assert!(
             !matching.is_empty(),
             "Tool '{}' in domain '{}' has no registered starter preset",
-            tool.name,
+            tool.id,
             tool.domain
         );
         for preset in matching {
@@ -112,7 +112,7 @@ fn test_all_registered_tools_have_starter_presets() {
                 .unwrap_or_else(|e| {
                     panic!(
                         "Invalid JSON payload for tool '{}', preset '{}': {}",
-                        tool.name, preset.title, e
+                        tool.id, preset.title, e
                     )
                 });
             assert_eq!(parsed["metadata"]["schema_version"], "1.0");
@@ -213,27 +213,27 @@ fn test_all_52_tools_export_and_import_preset_roundtrip() {
             tool.domain(),
             meta.domain,
             "Tool '{}' domain() mismatch",
-            meta.name
+            meta.id
         );
         let starter = presets
             .iter()
-            .find(|p| p.tool_name == Some(meta.name))
+            .find(|p| p.tool_name == Some(meta.id))
             .expect("starter preset exists");
         tool.import_preset_json(starter.generate_preset())
-            .unwrap_or_else(|e| panic!("Tool '{}' starter import failed: {}", meta.name, e));
+            .unwrap_or_else(|e| panic!("Tool '{}' starter import failed: {}", meta.id, e));
 
         let exported = tool
             .export_preset_json()
-            .unwrap_or_else(|e| panic!("Tool '{}' export_preset_json failed: {}", meta.name, e));
+            .unwrap_or_else(|e| panic!("Tool '{}' export_preset_json failed: {}", meta.id, e));
         let mut restored = (meta.build)();
         restored
             .import_preset_json(&exported)
-            .unwrap_or_else(|e| panic!("Tool '{}' roundtrip import failed: {}", meta.name, e));
+            .unwrap_or_else(|e| panic!("Tool '{}' roundtrip import failed: {}", meta.id, e));
         assert_eq!(
             restored.save_state(),
             tool.save_state(),
             "Tool '{}' state differed after export/import roundtrip",
-            meta.name
+            meta.id
         );
     }
 
@@ -251,27 +251,27 @@ fn test_all_52_tools_reject_unknown_fields_and_wrong_domain() {
         let mut tool = (meta.build)();
         let exported = tool
             .export_preset_json()
-            .unwrap_or_else(|e| panic!("Tool '{}' export failed: {}", meta.name, e));
+            .unwrap_or_else(|e| panic!("Tool '{}' export failed: {}", meta.id, e));
 
         let bad_cfg = inject_unknown_config_field(&exported);
         assert!(
             tool.import_preset_json(&bad_cfg).is_err(),
             "Tool '{}' must reject unknown config field",
-            meta.name
+            meta.id
         );
 
         let bad_meta = inject_unknown_metadata_field(&exported);
         assert!(
             tool.import_preset_json(&bad_meta).is_err(),
             "Tool '{}' must reject unknown metadata field",
-            meta.name
+            meta.id
         );
 
         let wrong_dom = replace_preset_domain(&exported, "wrong_domain_contract_test");
         assert!(
             tool.import_preset_json(&wrong_dom).is_err(),
             "Tool '{}' must reject wrong metadata.domain",
-            meta.name
+            meta.id
         );
     }
 
@@ -345,7 +345,7 @@ fn test_single_starter_gallery_button_per_simulation_view() {
     let mut seen_domains = std::collections::HashSet::new();
     for meta in inventory::iter::<ToolMetadata> {
         if seen_domains.insert(meta.domain) {
-            checks.push((meta.domain, meta.name));
+            checks.push((meta.domain, meta.id));
         }
     }
 

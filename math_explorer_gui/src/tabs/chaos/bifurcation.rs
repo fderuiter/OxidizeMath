@@ -47,7 +47,7 @@ impl TheoryDescribable for BifurcationDiagram {
     }
 
     fn theory_citation(&self) -> String {
-        "[cite:algorithmic_information_rust]".to_string()
+        "May, R. M. (1976). Simple mathematical models with very complicated dynamics. Nature, 261(5560), 459-467; Feigenbaum, M. J. (1978). Quantitative universality for a class of nonlinear transformations. Journal of Statistical Physics, 19(1), 25-52.".to_string()
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
@@ -171,7 +171,8 @@ impl InteractiveTool for BifurcationDiagram {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "BifurcationDiagram",
+        id: "BifurcationDiagram",
+        display_name: "Bifurcation Diagram",
         domain: "chaos",
         tags: &[],
         build: || Box::new(BifurcationDiagram::default()),

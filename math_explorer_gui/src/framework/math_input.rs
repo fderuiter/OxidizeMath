@@ -47,7 +47,10 @@ impl MathExpressionInputBar {
             presets,
             had_error: false,
             last_announced_error: if initial_expr.trim().is_empty() {
-                Some("Syntax Error: Empty expression".to_string())
+                Some(format!(
+                    "Syntax Error: {}",
+                    ParseError::EmptyExpression.user_message()
+                ))
             } else {
                 None
             },
@@ -77,7 +80,10 @@ impl MathExpressionInputBar {
     /// Returns the current syntax error message, if any.
     #[must_use]
     pub fn error_message(&self) -> Option<String> {
-        self.parsed_expr.as_ref().err().map(|e| e.to_string())
+        self.parsed_expr
+            .as_ref()
+            .err()
+            .map(|e| e.user_message_for_input(self.raw_text.trim()))
     }
 
     /// Internal method to reparse raw text into AST and update LaTeX cache.
@@ -211,7 +217,8 @@ fn render_status_row(
             });
         }
         Err(err) => {
-            let err_msg = format!("Syntax Error: {err}");
+            let detail = err.user_message_for_input(raw.trim());
+            let err_msg = format!("Syntax Error: {detail}");
             if last_announced_error.as_deref() != Some(&err_msg) {
                 crate::accessibility::announce_status_with_priority(&err_msg, "assertive");
                 *had_error = true;
@@ -219,7 +226,7 @@ fn render_status_row(
             }
             ui.horizontal(|ui| {
                 ui.label(
-                    egui::RichText::new(format!("⚠️ Syntax Error: {err}"))
+                    egui::RichText::new(format!("⚠️ Syntax Error: {detail}"))
                         .color(egui::Color32::from_rgb(220, 50, 50))
                         .small(),
                 );
@@ -291,5 +298,39 @@ mod tests {
             });
         });
         assert_eq!(crate::accessibility::all_announcements().len(), 2);
+    }
+
+    #[test]
+    fn test_plain_language_error_messages_have_no_debug_spans_or_eof() {
+        for invalid in ["1 +", "(1 + 2", "1 + @", "sin("] {
+            crate::accessibility::clear_test_announcements();
+            let mut bar = MathExpressionInputBar::new("y'", invalid, vec![]);
+            let msg = bar
+                .error_message()
+                .expect("expected syntax error message for invalid input");
+            assert!(
+                !msg.contains("Span {"),
+                "leaked raw Span struct in '{msg}' for '{invalid}'"
+            );
+            assert!(
+                !msg.contains("<EOF>"),
+                "leaked <EOF> token in '{msg}' for '{invalid}'"
+            );
+            assert!(
+                msg.contains("character ") || msg.contains("end of expression"),
+                "expected 1-indexed character position or 'end of expression' in '{msg}'"
+            );
+
+            let ctx = egui::Context::default();
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    bar.ui(ui);
+                });
+            });
+            for (announced, _) in crate::accessibility::all_announcements() {
+                assert!(!announced.contains("Span {"));
+                assert!(!announced.contains("<EOF>"));
+            }
+        }
     }
 }

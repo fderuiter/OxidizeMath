@@ -285,14 +285,14 @@ pub fn get_starter_cards_for_domain(
         for meta in available_tools {
             if meta.domain == domain {
                 cards.push(StarterCard {
-                    id: meta.name,
-                    title: meta.name,
+                    id: meta.id,
+                    title: meta.display_name,
                     description:
                         "Interactive simulation tool for mathematical exploration and analysis.",
                     category: meta.domain,
                     icon: "🔬",
                     domain: meta.domain,
-                    tool_name: Some(meta.name),
+                    tool_name: Some(meta.id),
                     preset_json: None,
                 });
             }

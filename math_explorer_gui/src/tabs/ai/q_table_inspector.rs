@@ -340,7 +340,8 @@ impl InteractiveTool for QTableInspectorTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "QTableInspectorTool",
+        id: "QTableInspectorTool",
+        display_name: "Q-Table Inspector",
         domain: "ai",
         tags: &[],
         build: || Box::new(QTableInspectorTool::default()),

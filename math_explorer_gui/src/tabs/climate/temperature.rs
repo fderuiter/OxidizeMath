@@ -75,7 +75,8 @@ impl InteractiveTool for TemperatureAnomaliesTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "TemperatureAnomaliesTool",
+        id: "TemperatureAnomaliesTool",
+        display_name: "Temperature Anomalies",
         domain: "climate",
         tags: &[],
         build: || Box::new(TemperatureAnomaliesTool::default()),

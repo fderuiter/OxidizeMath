@@ -315,7 +315,8 @@ impl PotentialFlowTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "PotentialFlowTool",
+        id: "PotentialFlowTool",
+        display_name: "Potential Flow",
         domain: "fluid_dynamics",
         tags: &[],
         build: || Box::new(PotentialFlowTool::default()),

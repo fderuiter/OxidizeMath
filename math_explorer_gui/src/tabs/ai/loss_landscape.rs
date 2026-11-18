@@ -217,7 +217,8 @@ impl InteractiveTool for LossLandscapeTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "LossLandscapeTool",
+        id: "LossLandscapeTool",
+        display_name: "Loss Landscape",
         domain: "ai",
         tags: &[],
         build: || Box::new(LossLandscapeTool::default()),

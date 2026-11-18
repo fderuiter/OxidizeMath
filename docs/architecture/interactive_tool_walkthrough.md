@@ -192,7 +192,8 @@ const STARTER_PRESET_JSON: &str = r#"{
 
 inventory::submit! {
     math_explorer_gui::framework::ToolMetadata {
-        name: "HarmonicOscillatorTool",
+        id: "HarmonicOscillatorTool",
+        display_name: "Harmonic Oscillator",
         domain: "physics",
         tags: &["mechanics", "differential_equations", "oscillator"],
         build: || Box::new(HarmonicOscillatorTool::default()),

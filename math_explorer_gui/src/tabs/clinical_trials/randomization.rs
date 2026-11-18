@@ -196,7 +196,8 @@ impl InteractiveTool for RandomizationTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "RandomizationTool",
+        id: "RandomizationTool",
+        display_name: "Randomization",
         domain: "clinical_trials",
         tags: &[],
         build: || Box::new(RandomizationTool::default()),

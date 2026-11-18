@@ -254,7 +254,8 @@ impl InteractiveTool for NetworkMetricsTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "NetworkMetricsTool",
+        id: "NetworkMetricsTool",
+        display_name: "Network Metrics",
         domain: "graph_theory",
         tags: &[],
         build: || Box::new(NetworkMetricsTool::default()),

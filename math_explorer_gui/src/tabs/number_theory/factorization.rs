@@ -153,7 +153,8 @@ impl InteractiveTool for FactorizationTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "FactorizationTool",
+        id: "FactorizationTool",
+        display_name: "Factorization Tool",
         domain: "number_theory",
         tags: &[],
         build: || Box::new(FactorizationTool::default()),

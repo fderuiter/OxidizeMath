@@ -245,7 +245,8 @@ impl InteractiveTool for SampleSizeCalculatorTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "SampleSizeCalculatorTool",
+        id: "SampleSizeCalculatorTool",
+        display_name: "Sample Size Calculator",
         domain: "clinical_trials",
         tags: &[],
         build: || Box::new(SampleSizeCalculatorTool::default()),

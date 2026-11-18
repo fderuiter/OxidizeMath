@@ -239,7 +239,8 @@ impl InteractiveTool for NetworkPropagationTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "NetworkPropagationTool",
+        id: "NetworkPropagationTool",
+        display_name: "Network Propagation",
         domain: "epidemiology",
         tags: &[],
         build: || Box::new(NetworkPropagationTool::default()),
