@@ -48,6 +48,44 @@ fn find_reset_button_center(output: &egui::FullOutput) -> egui::Pos2 {
     )
 }
 
+fn click_toolbar_button(
+    ctx: &egui::Context,
+    framework: &mut SimulationFramework,
+    screen_rect: egui::Rect,
+    center: egui::Pos2,
+    id_source: &str,
+) -> egui::FullOutput {
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![
+                egui::Event::PointerMoved(center),
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            ..Default::default()
+        },
+        |ctx| framework.show(ctx, id_source),
+    );
+    ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![egui::Event::PointerButton {
+                pos: center,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        },
+        |ctx| framework.show(ctx, id_source),
+    )
+}
+
 #[test]
 fn test_toolbar_reset_button_click_restores_baseline_and_requests_repaint() {
     let ctx = egui::Context::default();
@@ -83,34 +121,12 @@ fn test_toolbar_reset_button_click_restores_baseline_and_requests_repaint() {
     let center = find_reset_button_center(&first_out);
 
     crate::accessibility::clear_test_announcements();
-    let _ = ctx.run(
-        egui::RawInput {
-            screen_rect: Some(screen_rect),
-            events: vec![
-                egui::Event::PointerMoved(center),
-                egui::Event::PointerButton {
-                    pos: center,
-                    button: egui::PointerButton::Primary,
-                    pressed: true,
-                    modifiers: egui::Modifiers::NONE,
-                },
-            ],
-            ..Default::default()
-        },
-        |ctx| framework.show(ctx, "toolbar_reset_click_test"),
-    );
-    let click_out = ctx.run(
-        egui::RawInput {
-            screen_rect: Some(screen_rect),
-            events: vec![egui::Event::PointerButton {
-                pos: center,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers: egui::Modifiers::NONE,
-            }],
-            ..Default::default()
-        },
-        |ctx| framework.show(ctx, "toolbar_reset_click_test"),
+    let click_out = click_toolbar_button(
+        &ctx,
+        &mut framework,
+        screen_rect,
+        center,
+        "toolbar_reset_click_test",
     );
 
     assert_eq!(
