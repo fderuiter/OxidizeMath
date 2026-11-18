@@ -1,3 +1,4 @@
+#[cfg(any(not(target_os = "macos"), test))]
 use crate::app::{MathExplorerApp, ThemeMode, ViewportLayout};
 use eframe::egui;
 use federated_registry::{Severity, TelemetryEvent};
@@ -184,7 +185,8 @@ fn render_pane_assignments_submenu(
 }
 
 /// Renders the top menu bar in the UI.
-#[allow(clippy::too_many_lines, dead_code)]
+#[cfg(any(not(target_os = "macos"), test))]
+#[allow(clippy::too_many_lines)]
 pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
     let modifiers = if cfg!(target_os = "macos") {
         egui::Modifiers::MAC_CMD

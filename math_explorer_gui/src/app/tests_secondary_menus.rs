@@ -315,6 +315,15 @@ fn run_full_app_frame(
     texts
 }
 
+fn hover_full_app_frame(
+    ctx: &egui::Context,
+    app: &mut MathExplorerApp,
+    frame: &mut eframe::Frame,
+    pos: egui::Pos2,
+) -> Vec<(String, egui::Rect)> {
+    run_full_app_frame(ctx, app, frame, vec![egui::Event::PointerMoved(pos)])
+}
+
 #[test]
 fn test_split_viewport_pane_header_flyout_assigns_biology_module() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
@@ -338,12 +347,7 @@ fn test_split_viewport_pane_header_flyout_assigns_biology_module() {
 
     // Click 1: open Right Pane header flyout menu and verify domain categories (no flat list)
     let _ = run_full_app_frame(&ctx, &mut app, &mut frame, click_events(right_selector_pos));
-    let texts = run_full_app_frame(
-        &ctx,
-        &mut app,
-        &mut frame,
-        vec![egui::Event::PointerMoved(right_selector_pos)],
-    );
+    let texts = hover_full_app_frame(&ctx, &mut app, &mut frame, right_selector_pos);
     let bio_pos = texts
         .iter()
         .find(|(t, r)| t == "Biology" && r.min.x >= 600.0)
@@ -358,18 +362,8 @@ fn test_split_viewport_pane_header_flyout_assigns_biology_module() {
     );
 
     // Hover Biology domain submenu, then Click 2 on Morphogenesis
-    let _ = run_full_app_frame(
-        &ctx,
-        &mut app,
-        &mut frame,
-        vec![egui::Event::PointerMoved(bio_pos)],
-    );
-    let texts = run_full_app_frame(
-        &ctx,
-        &mut app,
-        &mut frame,
-        vec![egui::Event::PointerMoved(bio_pos)],
-    );
+    let _ = hover_full_app_frame(&ctx, &mut app, &mut frame, bio_pos);
+    let texts = hover_full_app_frame(&ctx, &mut app, &mut frame, bio_pos);
     let morph_pos = find_text_pos(&texts, "Morphogenesis");
     let _ = run_full_app_frame(&ctx, &mut app, &mut frame, click_events(morph_pos));
 

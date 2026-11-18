@@ -52,6 +52,7 @@ impl ViewportLayout {
     }
 
     /// Returns descriptive pane label prefixes with trailing colons for zero-allocation menu buttons.
+    #[cfg(any(not(target_os = "macos"), test))]
     pub fn pane_label_prefixes(&self) -> &'static [&'static str] {
         match self {
             Self::Single => &["Main Viewport:"],
