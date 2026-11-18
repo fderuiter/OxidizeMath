@@ -242,3 +242,56 @@ fn test_widget_info_and_polite_announcements() {
         msg.contains("Spin Visualizer") && msg.contains("step completed") && prio == "polite"
     }));
 }
+
+#[test]
+fn test_playback_transport_registers_frame_commands() {
+    use egui_plot::commands::{CommandRegistryData, CommandTrigger};
+
+    let ready_ctx = egui::Context::default();
+    let _ = ready_ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let _ = PlaybackTransport::from_worker_state(
+                "cmd_sim",
+                "Wave Simulator",
+                SimWorkerState::Ready,
+            )
+            .show(ui);
+        });
+    });
+    let ready_cmds = ready_ctx
+        .data(|d| d.get_temp::<CommandRegistryData>(egui::Id::new("CMD_REGISTRY")))
+        .unwrap_or_default()
+        .commands;
+    assert!(ready_cmds.iter().any(|c| {
+        c.context == "Simulation Playback"
+            && c.name == "Play / Pause"
+            && c.trigger == CommandTrigger::Key(egui::Key::Space)
+    }));
+    assert!(ready_cmds.iter().any(|c| {
+        c.context == "Simulation Playback"
+            && c.name == "Step Forward"
+            && c.trigger == CommandTrigger::Key(egui::Key::Period)
+    }));
+
+    let running_ctx = egui::Context::default();
+    let _ = running_ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let _ = PlaybackTransport::from_worker_state(
+                "cmd_sim",
+                "Wave Simulator",
+                SimWorkerState::Running,
+            )
+            .show(ui);
+        });
+    });
+    let running_cmds = running_ctx
+        .data(|d| d.get_temp::<CommandRegistryData>(egui::Id::new("CMD_REGISTRY")))
+        .unwrap_or_default()
+        .commands;
+    assert!(running_cmds
+        .iter()
+        .any(|c| c.context == "Simulation Playback" && c.name == "Play / Pause"));
+    assert!(!running_cmds
+        .iter()
+        .any(|c| c.context == "Simulation Playback" && c.name == "Step Forward"));
+}

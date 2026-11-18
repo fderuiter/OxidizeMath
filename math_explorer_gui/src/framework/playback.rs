@@ -153,8 +153,11 @@ impl<'a> PlaybackTransport<'a> {
             }
         });
 
-        if action.is_none() && ui_enabled {
-            action = self.check_keyboard_shortcuts(ui);
+        if ui_enabled {
+            self.register_shortcut_metadata(ui.ctx());
+            if action.is_none() {
+                action = self.check_keyboard_shortcuts(ui);
+            }
         }
 
         if let Some(triggered) = action {
@@ -162,6 +165,30 @@ impl<'a> PlaybackTransport<'a> {
         }
 
         action
+    }
+
+    fn register_shortcut_metadata(&self, ctx: &egui::Context) {
+        use egui_plot::commands::{CommandRegistryData, CommandTrigger};
+        if self.can_toggle {
+            CommandRegistryData::register(
+                ctx,
+                "Play / Pause",
+                "Toggle simulation playback or pause",
+                CommandTrigger::Key(egui::Key::Space),
+                true,
+                "Simulation Playback",
+            );
+        }
+        if self.can_step {
+            CommandRegistryData::register(
+                ctx,
+                "Step Forward",
+                "Advance paused simulation by one deterministic step",
+                CommandTrigger::Key(egui::Key::Period),
+                true,
+                "Simulation Playback",
+            );
+        }
     }
 
     fn render_toggle_button(

@@ -213,6 +213,19 @@ const fn default_annotations_enabled() -> bool {
     true
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct AttractorState {
+    sigma: f64,
+    rho: f64,
+    beta: f64,
+    dt: f64,
+    simulation_speed: usize,
+    #[serde(default)]
+    execution_state: Option<SolverExecutionState>,
+    #[serde(default = "default_annotations_enabled")]
+    show_annotations: bool,
+}
+
 impl InteractiveTool for AttractorPlotter {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -225,44 +238,19 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize)]
-        struct AttractorState {
-            sigma: f64,
-            rho: f64,
-            beta: f64,
-            dt: f64,
-            simulation_speed: usize,
-            execution_state: SolverExecutionState,
-            #[serde(default = "default_annotations_enabled")]
-            show_annotations: bool,
-        }
-
         serde_json::to_string(&AttractorState {
             sigma: self.system.sigma,
             rho: self.system.rho,
             beta: self.system.beta,
             dt: self.dt,
             simulation_speed: self.simulation_speed,
-            execution_state: self.execution_state,
+            execution_state: Some(self.execution_state),
             show_annotations: self.show_annotations,
         })
         .ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Deserialize)]
-        struct AttractorState {
-            sigma: f64,
-            rho: f64,
-            beta: f64,
-            dt: f64,
-            simulation_speed: usize,
-            #[serde(default)]
-            execution_state: Option<SolverExecutionState>,
-            #[serde(default = "default_annotations_enabled")]
-            show_annotations: bool,
-        }
-
         if let Ok(s) = serde_json::from_str::<AttractorState>(state) {
             self.system.sigma = s.sigma;
             self.system.rho = s.rho;

@@ -290,6 +290,7 @@ fn test_state_display_and_helpers() {
 
     assert!(SimWorkerState::Ready.is_ready());
     assert!(SimWorkerState::Running.is_running());
+    assert!(SimWorkerState::Stepping.is_stepping());
     assert!(SimWorkerState::Faulted.is_faulted());
     assert!(SimWorkerState::Terminated.is_terminated());
 }
@@ -312,124 +313,97 @@ fn test_domain_simulation_tools_initialization() {
 }
 
 #[test]
-#[cfg(not(target_arch = "wasm32"))]
-fn test_step_command_advances_once_and_returns_to_ready() {
-    crate::accessibility::clear_test_announcements();
+fn test_unified_model_observable_hook_and_voltage_derivatives() {
+    use crate::async_sim::unified::UnifiedModel;
+    use crate::sensitivity::SensitivityEngine;
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+    use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+    use crate::tabs::quantum::wave_sim::WaveUnified;
+    use std::collections::HashMap;
 
-    let steps = Arc::new(AtomicUsize::new(0));
-    let runner = MockRunner {
-        step_count: Arc::clone(&steps),
-        steps_per_frame: 5,
-        max_steps: 1000,
+    let lbm_params = HashMap::from([("viscosity".to_string(), 0.02)]);
+    assert!(LbmUnified::evaluate_observable(&lbm_params).is_none());
+
+    let wave_params = HashMap::from([
+        ("dt".to_string(), 0.05),
+        ("potential_type".to_string(), 0.0),
+    ]);
+    assert!(WaveUnified::evaluate_observable(&wave_params).is_none());
+
+    // Verify negative conductance perturbations near zero clamp cleanly instead of failing builder
+    let zero_perturbation = HashMap::from([
+        ("g_na".to_string(), -0.01),
+        ("g_k".to_string(), -0.01),
+        ("g_l".to_string(), -0.01),
+        ("i_ext".to_string(), 10.0),
+    ]);
+    let clamped_obs = HodgkinHuxleyUnified::evaluate_observable(&zero_perturbation);
+    assert!(clamped_obs.is_some());
+
+    let baseline_params = vec![
+        ("g_k".to_string(), 36.0),
+        ("g_l".to_string(), 0.3),
+        ("g_na".to_string(), 120.0),
+        ("i_ext".to_string(), 10.0),
+    ];
+    let mut engine = SensitivityEngine::new();
+    let eval_hh = |p_map: &HashMap<String, f64>| {
+        HodgkinHuxleyUnified::evaluate_observable(p_map)
+            .map(|(_, v)| v)
+            .unwrap_or(0.0)
     };
-    let mut controller = SimulationController::new(runner);
-    assert_eq!(controller.state(), SimWorkerState::Ready);
+    engine.compute(&baseline_params, eval_hh);
+    engine.compute(&baseline_params, eval_hh);
 
-    assert!(controller.send_command(SimCommand::Step(1)).is_ok());
-    for _ in 0..40 {
-        thread::sleep(Duration::from_millis(10));
-        if controller.update().is_some() && controller.state() == SimWorkerState::Ready {
-            break;
-        }
-    }
-
-    assert_eq!(steps.load(Ordering::SeqCst), 1);
-    assert_eq!(controller.state(), SimWorkerState::Ready);
-    assert_eq!(controller.latest_snapshot().unwrap().custom_data, vec![1.0]);
-    assert!(crate::accessibility::all_announcements()
-        .iter()
-        .any(|(msg, prio)| msg == "Simulation step completed" && prio == "polite"));
-
-    assert!(controller.send_command(SimCommand::Step(3)).is_ok());
-    for _ in 0..40 {
-        thread::sleep(Duration::from_millis(10));
-        if controller.update().is_some() && controller.state() == SimWorkerState::Ready {
-            break;
-        }
-    }
-    assert_eq!(steps.load(Ordering::SeqCst), 4);
-    assert_eq!(controller.state(), SimWorkerState::Ready);
+    assert!(engine.baseline_output > 20.0);
+    let g_k_deriv = engine.metrics[0].partial_derivative;
+    let g_na_deriv = engine.metrics[2].partial_derivative;
+    assert!(
+        g_k_deriv < 0.0,
+        "Potassium conductance should oppose peak depolarization"
+    );
+    assert!(
+        g_na_deriv > 0.0,
+        "Sodium conductance should raise peak depolarization"
+    );
+    assert!(
+        (g_na_deriv - 1.0).abs() > 1e-2,
+        "Must not equal synthetic slider-sum derivative"
+    );
 }
 
 #[test]
-fn test_step_command_rejected_in_non_ready_states() {
-    let panic_flag = Arc::new(AtomicBool::new(false));
-    let mut controller = SimulationController::new(TestRunner::new(panic_flag));
+fn test_unified_sim_tool_panel_gating() {
+    use crate::async_sim::unified::UnifiedSimTool;
+    use crate::framework::InteractiveTool;
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+    use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+    use crate::tabs::quantum::wave_sim::WaveUnified;
 
-    for invalid_state in [
-        SimWorkerState::Running,
-        SimWorkerState::Stepping,
-        SimWorkerState::Faulted,
-        SimWorkerState::Terminated,
-        SimWorkerState::Uninitialized,
-    ] {
-        controller.set_state_for_test(invalid_state);
-        let err = controller.send_command(SimCommand::Step(1));
-        assert_eq!(
-            err,
-            Err(SimCommandError::InvalidTransition {
-                current_state: invalid_state,
-                command: "Step",
-            })
-        );
-    }
-}
+    let render_texts = |tool: &mut dyn InteractiveTool| -> Vec<String> {
+        let ctx = eframe::egui::Context::default();
+        let out = ctx.run(eframe::egui::RawInput::default(), |ctx| tool.show(ctx));
+        let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+        let mut texts = Vec::new();
+        crate::sensitivity::tests::collect_shape_texts(&shapes, &mut texts);
+        texts
+    };
 
-#[cfg(not(target_arch = "wasm32"))]
-struct DivergingStepRunner {
-    value: f64,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl SimulationRunner for DivergingStepRunner {
-    fn process_command(&mut self, cmd: SimCommand) {
-        if matches!(cmd, SimCommand::Reset) {
-            self.value = 0.0;
-        }
-    }
-
-    fn step(&mut self) {
-        self.value = f64::NAN;
-    }
-
-    fn get_snapshot(&self) -> StateSnapshot {
-        StateSnapshot {
-            width: 1,
-            height: 1,
-            pixels: Arc::new(std::sync::RwLock::new(vec![eframe::egui::Color32::BLACK])),
-            custom_data: vec![self.value],
-            structured_data: None,
-        }
-    }
-
-    fn get_steps_per_frame(&self) -> usize {
-        1
-    }
-
-    fn is_finite_state(&self) -> bool {
-        self.value.is_finite()
-    }
-}
-
-#[test]
-#[cfg(not(target_arch = "wasm32"))]
-fn test_step_divergence_transitions_to_faulted_and_emits_diagnostic() {
-    crate::accessibility::clear_test_announcements();
-
-    let mut controller = SimulationController::new(DivergingStepRunner { value: 0.0 });
-    assert!(controller.send_command(SimCommand::Step(1)).is_ok());
-
-    for _ in 0..40 {
-        thread::sleep(Duration::from_millis(10));
-        let _ = controller.update();
-        if controller.state() == SimWorkerState::Faulted {
-            break;
-        }
-    }
-
-    assert_eq!(controller.state(), SimWorkerState::Faulted);
-    assert!(controller.diagnostic_report().is_some());
-    assert!(crate::accessibility::all_announcements()
+    let lbm_texts = render_texts(&mut UnifiedSimTool::<LbmUnified>::new());
+    assert!(!lbm_texts
         .iter()
-        .any(|(msg, prio)| msg.contains("faulted") && prio == "polite"));
+        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+
+    let wave_texts = render_texts(&mut UnifiedSimTool::<WaveUnified>::new());
+    assert!(!wave_texts
+        .iter()
+        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+
+    let hh_texts = render_texts(&mut UnifiedSimTool::<HodgkinHuxleyUnified>::new());
+    assert!(hh_texts
+        .iter()
+        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+    assert!(hh_texts
+        .iter()
+        .any(|t| t.contains("Baseline Peak Membrane Potential (mV):")));
 }

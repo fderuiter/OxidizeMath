@@ -293,9 +293,13 @@ impl<'a> PlotUi<'a> {
             .iter()
             .map(|item| (item.name().to_owned(), item.extract_points()))
             .collect();
-        if let Ok(png_bytes) =
-            crate::export::export_custom_png(&datasets, &crate::export::ExportOptions::default())
-        {
+        let log_axis = self.last_plot_transform.log_axis();
+        let options = crate::export::ExportOptions {
+            log_x: log_axis.x,
+            log_y: log_axis.y,
+            ..Default::default()
+        };
+        if let Ok(png_bytes) = crate::export::export_custom_png(&datasets, &options) {
             crate::export::save_file_dialog("plot.png", &png_bytes, "PNG Image", &["png"]);
         }
     }
@@ -312,9 +316,13 @@ impl<'a> PlotUi<'a> {
             .iter()
             .map(|item| (item.name().to_owned(), item.extract_points()))
             .collect();
-        if let Ok(svg_text) =
-            crate::export::export_custom_svg(&datasets, &crate::export::ExportOptions::default())
-        {
+        let log_axis = self.last_plot_transform.log_axis();
+        let options = crate::export::ExportOptions {
+            log_x: log_axis.x,
+            log_y: log_axis.y,
+            ..Default::default()
+        };
+        if let Ok(svg_text) = crate::export::export_custom_svg(&datasets, &options) {
             crate::export::save_file_dialog(
                 "plot.svg",
                 svg_text.as_bytes(),

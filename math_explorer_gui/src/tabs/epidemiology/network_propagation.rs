@@ -8,6 +8,8 @@ pub struct NetworkPropagationTool {
     model: NetworkEpidemicModel,
     rng: oxidize_core::rng::OxidizeRng,
     is_running: bool,
+    #[cfg(test)]
+    sim_steps: u64,
 }
 
 impl Default for NetworkPropagationTool {
@@ -16,6 +18,8 @@ impl Default for NetworkPropagationTool {
             model: NetworkEpidemicModel::new(50, 0.05, 0.02),
             rng: oxidize_core::rng::OxidizeRng::default(),
             is_running: false,
+            #[cfg(test)]
+            sim_steps: 0,
         }
     }
 }
@@ -25,11 +29,19 @@ impl NetworkPropagationTool {
         self.rng = oxidize_core::rng::OxidizeRng::default();
         self.model.initialize_geometric_graph_with_rng(&mut self.rng);
         self.is_running = false;
+        #[cfg(test)]
+        {
+            self.sim_steps = 0;
+        }
     }
 
     pub(crate) fn step_once(&mut self) {
         self.is_running = false;
         self.model.step_with_rng(&mut self.rng);
+        #[cfg(test)]
+        {
+            self.sim_steps = self.sim_steps.saturating_add(1);
+        }
     }
 
     fn draw_controls_column(&mut self, ui: &mut egui::Ui) {
@@ -125,6 +137,27 @@ impl NetworkPropagationTool {
     }
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[cfg(test)]
+fn is_zero_u64(value: &u64) -> bool {
+    *value == 0
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NetPropState {
+    num_nodes: usize,
+    beta: f64,
+    gamma: f64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    is_running: bool,
+    #[cfg(test)]
+    #[serde(default, skip_deserializing, skip_serializing_if = "is_zero_u64")]
+    sim_steps: u64,
+}
+
 impl InteractiveTool for NetworkPropagationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -137,32 +170,24 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct NetPropState {
-            num_nodes: usize,
-            beta: f64,
-            gamma: f64,
-        }
         serde_json::to_string(&NetPropState {
             num_nodes: self.model.num_nodes(),
             beta: self.model.beta(),
             gamma: self.model.gamma(),
+            is_running: self.is_running,
+            #[cfg(test)]
+            sim_steps: self.sim_steps,
         })
         .ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct NetPropState {
-            num_nodes: usize,
-            beta: f64,
-            gamma: f64,
-        }
         if let Ok(s) = serde_json::from_str::<NetPropState>(state) {
             let _ = self.model.set_num_nodes(s.num_nodes);
             let _ = self.model.set_beta(s.beta);
             let _ = self.model.set_gamma(s.gamma);
             self.reset_network();
+            self.is_running = s.is_running;
         }
     }
 
@@ -175,6 +200,10 @@ impl InteractiveTool for NetworkPropagationTool {
     fn show_ui(&mut self, ui: &mut egui::Ui) {
         if self.is_running {
             self.model.step_with_rng(&mut self.rng);
+            #[cfg(test)]
+            {
+                self.sim_steps = self.sim_steps.saturating_add(1);
+            }
             ui.ctx().request_repaint();
         }
 

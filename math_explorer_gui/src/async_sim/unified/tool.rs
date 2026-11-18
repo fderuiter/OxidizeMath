@@ -85,7 +85,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         use crate::framework::recovery::RecoveryAction;
         match action {
             RecoveryAction::AutoScaleStepSize => {
-                let mut p = self.params.write().unwrap();
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
                 if let Some(dt) = p.get_mut("dt") {
                     *dt = (*dt * 0.5).max(1e-4);
                 } else if let Some(visc) = p.get_mut("viscosity") {
@@ -95,7 +95,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 self.reset_simulation();
             }
             RecoveryAction::ClampParameters => {
-                let mut p = self.params.write().unwrap();
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
                 for (name, c) in &self.param_metadata {
                     if let Some(v) = p.get_mut(name) {
                         *v = if !v.is_finite() {
@@ -109,7 +109,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 self.reset_simulation();
             }
             RecoveryAction::ResetParameters => {
-                let mut p = self.params.write().unwrap();
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
                 for (name, c) in &self.param_metadata {
                     let d = match name.as_str() {
                         "viscosity" => 0.02,
@@ -169,14 +169,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ui.separator();
         ui.label("Model Parameters");
 
-        let mut params = self.params.read().unwrap().clone();
+        let mut params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let reset_needed = self.draw_presets_and_actions(ui, &mut params);
-
-        let param_list: Vec<(String, f64)> = self
-            .param_metadata
-            .iter()
-            .filter_map(|(name, _)| params.get(name).map(|v| (name.clone(), *v)))
-            .collect();
 
         for (name, constraint) in &self.param_metadata {
             if let Some(val) = params.get_mut(name) {
@@ -190,13 +188,46 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
 
-        *self.params.write().unwrap() = params;
-        self.sensitivity_engine
-            .compute(&param_list, |p_map| p_map.values().map(|v| v.abs()).sum());
-        crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, M::name());
+        *self.params.write().unwrap_or_else(|e| e.into_inner()) = params;
+        self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation();
         }
+    }
+
+    fn draw_observable_sensitivity(&mut self, ui: &mut egui::Ui) {
+        let observable_setup = {
+            let current_params = self.params.read().unwrap_or_else(|e| e.into_inner());
+            M::evaluate_observable(&current_params).map(|(metric_label, baseline_val)| {
+                let param_list: Vec<(String, f64)> = self
+                    .param_metadata
+                    .iter()
+                    .filter_map(|(name, _)| current_params.get(name).map(|v| (name.clone(), *v)))
+                    .collect();
+                (metric_label, baseline_val, param_list)
+            })
+        };
+
+        let Some((metric_label, baseline_val, param_list)) = observable_setup else {
+            return;
+        };
+
+        self.sensitivity_engine.baseline_output = baseline_val;
+        let mut initial_sample = Some(baseline_val);
+        self.sensitivity_engine.compute(&param_list, |p_map| {
+            initial_sample.take().unwrap_or_else(|| {
+                M::evaluate_observable(p_map)
+                    .map(|(_, val)| val)
+                    .unwrap_or(0.0)
+            })
+        });
+
+        crate::sensitivity::render_labeled_sensitivity_panel_ui(
+            ui,
+            &self.sensitivity_engine,
+            M::name(),
+            metric_label,
+        );
     }
 
     fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, state: SimWorkerState) {
@@ -386,6 +417,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         }
     }
 
+    fn clamp_parameters(&mut self) -> bool {
+        self.handle_recovery_action(crate::framework::recovery::RecoveryAction::ClampParameters);
+        true
+    }
+
     fn show(&mut self, ctx: &egui::Context) {
         let has_update = self.controller.update().is_some();
         if has_update
@@ -414,5 +450,8 @@ impl<M: UnifiedModel> scientific_metadata::theory::TheoryDescribable for Unified
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         self.cached_descs.clone()
+    }
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        self.param_metadata.iter().cloned().collect()
     }
 }

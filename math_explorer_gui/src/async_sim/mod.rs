@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod runner_tests;
 #[cfg(test)]
+mod step_tests;
+#[cfg(test)]
 mod tests;
 #[allow(missing_docs)]
 pub mod unified;
