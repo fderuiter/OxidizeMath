@@ -13,7 +13,7 @@ pub struct StateSnapshot {
     /// Step or frame index when this snapshot was captured.
     pub step_index: usize,
     /// Instant when this snapshot was created.
-    pub timestamp: std::time::Instant,
+    pub timestamp: crate::web_io::PlatformInstant,
 }
 
 impl StateSnapshot {
@@ -50,7 +50,7 @@ impl SimulationFramework {
                 tool_state,
                 plot_datasets: datasets,
                 step_index: self.step_counter,
-                timestamp: std::time::Instant::now(),
+                timestamp: crate::web_io::PlatformInstant::now(),
             };
 
             // Memory guardrail: enforce <= 2 megabytes per active tool

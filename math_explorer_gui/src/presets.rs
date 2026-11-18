@@ -4,7 +4,9 @@
 use crate::framework::InteractiveTool;
 use federated_registry::{global_registry, Severity, TelemetryEvent};
 use serde::{Deserialize, Serialize};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{channel, Receiver, TryRecvError};
+
+// theory_verification!
 
 /// Metadata included in exported preset JSON files.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -197,29 +199,36 @@ pub trait InteractivePreset: Sized {
 /// UI helper state for non-blocking file operations and user warnings/toasts.
 #[derive(Default)]
 pub struct PresetDialogState {
-    /// Pending channel receiver for imported file JSON string content.
-    import_rx: Option<Receiver<Result<String, String>>>,
-    /// Inline toast error message to show user on file import failure.
+    /// Pending channel receiver for imported file `(filename, json_content)`.
+    import_rx: Option<Receiver<Result<(String, String), String>>>,
+    /// Pending channel receiver for exported preset `filename`.
+    export_rx: Option<Receiver<Result<String, String>>>,
+    /// Inline toast error message to show user on file import/export failure.
     pub toast_error: Option<String>,
+    /// Inline toast info message to show user on file import/export success.
+    pub toast_info: Option<String>,
 }
 
 impl PresetDialogState {
-    /// Spawns background thread for file pick dialog and returns imported JSON content over channel.
+    /// Spawns background thread or browser file picker dialog and returns imported JSON content over channel.
     pub fn trigger_import(&mut self) {
-        let (_tx, rx) = channel();
+        let (tx, rx) = channel();
         self.import_rx = Some(rx);
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let tx = _tx;
             std::thread::spawn(move || {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("JSON Preset", &["json"])
                     .pick_file()
                 {
+                    let name = crate::web_io::sanitize_download_filename(
+                        &path.to_string_lossy(),
+                        "preset.json",
+                    );
                     match std::fs::read_to_string(path) {
                         Ok(content) => {
-                            let _ = tx.send(Ok(content));
+                            let _ = tx.send(Ok((name, content)));
                         }
                         Err(e) => {
                             let _ = tx.send(Err(format!("Failed to read file: {}", e)));
@@ -228,63 +237,116 @@ impl PresetDialogState {
                 }
             });
         }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            crate::web_io::open_browser_file_picker(".json,application/json", move |outcome| {
+                if let Some(res) = outcome {
+                    let _ = tx.send(res);
+                }
+            });
+        }
     }
 
-    /// Spawns background thread for file save dialog to write exported JSON string.
-    pub fn trigger_export(&self, json_content: String, default_filename: &str) {
+    /// Spawns file save dialog or triggers browser download to export preset JSON string.
+    pub fn trigger_export(&mut self, json_content: String, default_filename: &str) {
+        let filename = crate::web_io::sanitize_download_filename(default_filename, "preset.json");
+        let (tx, rx) = channel();
+        self.export_rx = Some(rx);
+
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let filename = default_filename.to_string();
             std::thread::spawn(move || {
                 if let Some(path) = rfd::FileDialog::new()
                     .set_file_name(&filename)
                     .add_filter("JSON Preset", &["json"])
                     .save_file()
                 {
-                    let _ = std::fs::write(path, json_content);
+                    let saved_name = crate::web_io::sanitize_download_filename(
+                        &path.to_string_lossy(),
+                        &filename,
+                    );
+                    match std::fs::write(path, json_content) {
+                        Ok(()) => {
+                            let _ = tx.send(Ok(saved_name));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Err(format!("Failed to write file: {}", e)));
+                        }
+                    }
                 }
             });
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let _ = (json_content, default_filename);
+            let res = crate::web_io::download_browser_file(&filename, json_content.as_bytes())
+                .map(|()| filename);
+            let _ = tx.send(res);
+            crate::web_io::request_browser_repaint();
+        }
+    }
+
+    fn record_toast_info(&mut self, msg: String) {
+        self.toast_error = None;
+        crate::accessibility::announce_status(&msg);
+        self.toast_info = Some(msg);
+    }
+
+    fn record_import_error(&mut self, err: String) {
+        self.toast_info = None;
+        global_registry().emit(TelemetryEvent {
+            source: "PresetSerialization".to_string(),
+            severity: Severity::Warning,
+            message: err.clone(),
+            metadata: std::collections::HashMap::new(),
+            thread_name: None,
+        });
+        crate::accessibility::announce_status_with_priority(&err, "assertive");
+        self.toast_error = Some(err);
+    }
+
+    /// Polls pending export channel and updates toast state when an export completes.
+    pub fn poll_export(&mut self) {
+        if let Some(rx) = &self.export_rx {
+            match rx.try_recv() {
+                Ok(Ok(name)) => {
+                    self.export_rx = None;
+                    self.record_toast_info(format!("Exported preset to {name}"));
+                }
+                Ok(Err(err)) => {
+                    self.export_rx = None;
+                    self.record_import_error(err);
+                }
+                Err(TryRecvError::Disconnected) => {
+                    self.export_rx = None;
+                }
+                Err(TryRecvError::Empty) => {}
+            }
         }
     }
 
     /// Polls pending import channel and applies imported preset JSON to the target tool if ready.
     pub fn poll_import<T: InteractivePreset>(&mut self, tool: &mut T) -> bool {
+        self.poll_export();
         let mut loaded = false;
         if let Some(rx) = &self.import_rx {
-            if let Ok(res) = rx.try_recv() {
-                self.import_rx = None;
-                match res {
-                    Ok(json_str) => match tool.from_json_str(&json_str) {
-                        Ok(()) => {
-                            self.toast_error = None;
+            match rx.try_recv() {
+                Ok(res) => {
+                    self.import_rx = None;
+                    match res
+                        .and_then(|(name, json_str)| tool.from_json_str(&json_str).map(|()| name))
+                    {
+                        Ok(name) => {
+                            self.record_toast_info(format!("Loaded preset from {name}"));
                             loaded = true;
                         }
-                        Err(err) => {
-                            global_registry().emit(TelemetryEvent {
-                                source: "PresetSerialization".to_string(),
-                                severity: Severity::Warning,
-                                message: err.clone(),
-                                metadata: std::collections::HashMap::new(),
-                                thread_name: None,
-                            });
-                            self.toast_error = Some(err);
-                        }
-                    },
-                    Err(err) => {
-                        global_registry().emit(TelemetryEvent {
-                            source: "PresetSerialization".to_string(),
-                            severity: Severity::Warning,
-                            message: err.clone(),
-                            metadata: std::collections::HashMap::new(),
-                            thread_name: None,
-                        });
-                        self.toast_error = Some(err);
+                        Err(err) => self.record_import_error(err),
                     }
                 }
+                Err(TryRecvError::Disconnected) => {
+                    self.import_rx = None;
+                }
+                Err(TryRecvError::Empty) => {}
             }
         }
         loaded
@@ -292,38 +354,26 @@ impl PresetDialogState {
 
     /// Polls pending import channel and applies imported preset JSON to an InteractiveTool if ready.
     pub fn poll_import_tool(&mut self, tool: &mut dyn InteractiveTool) -> bool {
+        self.poll_export();
         let mut loaded = false;
         if let Some(rx) = &self.import_rx {
-            if let Ok(res) = rx.try_recv() {
-                self.import_rx = None;
-                match res {
-                    Ok(json_str) => match tool.import_preset_json(&json_str) {
-                        Ok(()) => {
-                            self.toast_error = None;
+            match rx.try_recv() {
+                Ok(res) => {
+                    self.import_rx = None;
+                    match res.and_then(|(name, json_str)| {
+                        tool.import_preset_json(&json_str).map(|()| name)
+                    }) {
+                        Ok(name) => {
+                            self.record_toast_info(format!("Loaded preset from {name}"));
                             loaded = true;
                         }
-                        Err(err) => {
-                            global_registry().emit(TelemetryEvent {
-                                source: "PresetSerialization".to_string(),
-                                severity: Severity::Warning,
-                                message: err.clone(),
-                                metadata: std::collections::HashMap::new(),
-                                thread_name: None,
-                            });
-                            self.toast_error = Some(err);
-                        }
-                    },
-                    Err(err) => {
-                        global_registry().emit(TelemetryEvent {
-                            source: "PresetSerialization".to_string(),
-                            severity: Severity::Warning,
-                            message: err.clone(),
-                            metadata: std::collections::HashMap::new(),
-                            thread_name: None,
-                        });
-                        self.toast_error = Some(err);
+                        Err(err) => self.record_import_error(err),
                     }
                 }
+                Err(TryRecvError::Disconnected) => {
+                    self.import_rx = None;
+                }
+                Err(TryRecvError::Empty) => {}
             }
         }
         loaded
@@ -354,6 +404,14 @@ pub fn render_preset_buttons<T: InteractivePreset>(
 
     if dialog_state.poll_import(tool) {
         changed = true;
+    }
+
+    if let Some(ref msg) = dialog_state.toast_info {
+        ui.add_space(4.0);
+        ui.colored_label(eframe::egui::Color32::LIGHT_GREEN, format!("ℹ️ {}", msg));
+        if ui.small_button("Dismiss").clicked() {
+            dialog_state.toast_info = None;
+        }
     }
 
     if let Some(ref err) = dialog_state.toast_error {
