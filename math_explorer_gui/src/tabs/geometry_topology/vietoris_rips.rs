@@ -96,12 +96,12 @@ impl VietorisRipsTool {
                 }
                 Err(e) => {
                     self.clear_cache();
-                    self.error_msg = Some(format!("Error building complex: {:?}", e));
+                    self.error_msg = Some(format!("Error building complex: {e}"));
                 }
             },
             Err(e) => {
                 self.clear_cache();
-                self.error_msg = Some(format!("Error building point cloud: {:?}", e));
+                self.error_msg = Some(format!("Error building point cloud: {e}"));
             }
         }
     }
@@ -240,7 +240,8 @@ impl InteractiveTool for VietorisRipsTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "VietorisRipsTool",
+        id: "VietorisRipsTool",
+        display_name: "Vietoris-Rips Complex",
         domain: "geometry_topology",
         tags: &[],
         build: || Box::new(VietorisRipsTool::default()),

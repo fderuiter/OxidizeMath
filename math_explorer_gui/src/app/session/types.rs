@@ -21,6 +21,21 @@ pub enum SessionLifecycleState {
     Error,
 }
 
+impl SessionLifecycleState {
+    /// Returns a plain-language description of the current lifecycle state for user-facing messages.
+    pub fn user_label(&self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::DragEditing => "editing parameters",
+            Self::RestoringHistory => "restoring history",
+            Self::AwaitingFileDialog => "awaiting file selection",
+            Self::Saving => "saving workspace",
+            Self::Loading => "loading workspace",
+            Self::Error => "in an error state",
+        }
+    }
+}
+
 impl std::fmt::Display for SessionLifecycleState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

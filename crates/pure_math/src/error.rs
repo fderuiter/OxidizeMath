@@ -359,7 +359,26 @@ impl std::error::Error for ZipError {}
 impl std::fmt::Display for TdaError {
     #[verified_engine::verified]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            Self::EmptyPointCloud => write!(f, "point cloud cannot be empty"),
+            Self::InvalidRadius { value } => {
+                write!(
+                    f,
+                    "filtration radius must be non-negative and finite (got {value})"
+                )
+            }
+            Self::InvalidDimension { dimension } => {
+                write!(f, "invalid homology dimension {dimension}")
+            }
+            Self::InsufficientPoints { required, actual } => {
+                write!(
+                    f,
+                    "insufficient points (required at least {required}, got {actual})"
+                )
+            }
+            Self::InvalidSimplex { reason } => write!(f, "invalid simplex: {reason}"),
+            Self::MatrixError { reason } => write!(f, "matrix computation failed: {reason}"),
+        }
     }
 }
 

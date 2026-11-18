@@ -1,3 +1,4 @@
+// [cite:quantum_mechanics]
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::{SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -173,6 +174,24 @@ impl UnifiedModel for WaveUnified {
         map
     }
 
+    fn parameter_label(name: &str) -> String {
+        match name {
+            "potential_type" => "Potential Profile".to_string(),
+            "dt" => "Time Step (Δt)".to_string(),
+            other => other.to_string(),
+        }
+    }
+
+    fn parameter_choices(name: &str) -> &'static [(&'static str, f64)] {
+        match name {
+            "potential_type" => &[
+                ("Infinite Potential Well", 0.0),
+                ("Harmonic Oscillator", 1.0),
+            ],
+            _ => &[],
+        }
+    }
+
     fn name() -> &'static str {
         "Wave Simulator"
     }
@@ -257,7 +276,8 @@ impl WaveUnified {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "WaveSimulator",
+        id: "WaveSimulator",
+        display_name: "Wave Simulator",
         domain: "quantum",
         tags: &[],
         build: || Box::new(UnifiedSimTool::<WaveUnified>::new()),
@@ -266,16 +286,25 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for WaveUnified {
     fn theory_description(&self) -> String {
-        "Quantum wave simulation [cite:quantum_mechanics]".to_string()
+        "Time-dependent 1D Schrödinger wave packet evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ for infinite well and harmonic oscillator potentials.".to_string()
     }
     fn phonetic_description(&self) -> String {
-        "Quantum wave simulation".to_string()
+        "Time-dependent one-dimensional Schrodinger wave packet simulation".to_string()
     }
     fn theory_citation(&self) -> String {
-        "[cite:quantum_mechanics]".to_string()
+        "Schrödinger, E. (1926). An Undulatory Theory of the Mechanics of Atoms and Molecules. Physical Review, 28(6), 1049-1070; Griffiths, D. J., & Schroeter, D. F. (2018). Introduction to Quantum Mechanics (3rd ed.). Cambridge University Press.".to_string()
     }
     fn available_descriptions(&self) -> HashMap<String, String> {
-        HashMap::new()
+        let mut map = HashMap::new();
+        map.insert(
+            "potential_type".to_string(),
+            "Selects between an infinite square well (V = 0 inside walls) and a quadratic harmonic potential V(x) = 0.5 x².".to_string(),
+        );
+        map.insert(
+            "dt".to_string(),
+            "Integration time step Δt controlling unitary wave-packet propagation per tick.".to_string(),
+        );
+        map
     }
 }
 

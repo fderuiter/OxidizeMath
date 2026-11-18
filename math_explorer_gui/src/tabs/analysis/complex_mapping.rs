@@ -353,7 +353,8 @@ impl InteractiveTool for ComplexMappingTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "ComplexMappingTool",
+        id: "ComplexMappingTool",
+        display_name: "Complex Mapping",
         domain: "analysis",
         tags: &[],
         build: || Box::new(ComplexMappingTool::default()),

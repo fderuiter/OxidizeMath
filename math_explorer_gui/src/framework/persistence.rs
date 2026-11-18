@@ -37,7 +37,7 @@ impl SimulationFramework {
         let selected_tool_name = self.selected_tool_index.and_then(|idx| {
             self.available_tools
                 .get(idx)
-                .map(|meta| meta.name.to_string())
+                .map(|meta| meta.id.to_string())
         });
 
         let state = FrameworkState {
@@ -62,9 +62,13 @@ impl SimulationFramework {
         self.saved_tool_states = state.tool_states;
 
         let tool_idx = if let Some(ref name) = state.selected_tool_name {
+            let trimmed = name.trim();
             self.available_tools
                 .iter()
-                .position(|m| m.name == *name)
+                .position(|m| {
+                    m.id.eq_ignore_ascii_case(trimmed)
+                        || m.display_name.eq_ignore_ascii_case(trimmed)
+                })
                 .or(state.selected_tool_index)
         } else {
             state.selected_tool_index
@@ -73,10 +77,15 @@ impl SimulationFramework {
         if let Some(idx) = tool_idx {
             if idx < self.available_tools.len() {
                 if self.selected_tool_index == Some(idx) && self.active_tool.is_some() {
+                    let meta = self.available_tools[idx];
                     self.is_diverged = false;
                     self.diagnostic_report = None;
                     if let Some(tool) = &mut self.active_tool {
-                        if let Some(saved) = self.saved_tool_states.get(tool.name()) {
+                        if let Some(saved) = self
+                            .saved_tool_states
+                            .get(tool.name())
+                            .or_else(|| self.saved_tool_states.get(meta.id))
+                        {
                             tool.load_state(saved);
                         }
                         let refreshed = capture_isolated_tool_datasets(tool.as_ref());

@@ -128,7 +128,7 @@ fn test_simulation_framework_auto_scale_step_size_halves_dt_and_restarts() {
     if let Some(pos) = framework
         .available_tools
         .iter()
-        .position(|t| t.name.contains("ODE"))
+        .position(|t| t.display_name.contains("ODE") || t.id.contains("Ode"))
     {
         framework.select_tool(pos);
     }
@@ -311,7 +311,7 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
     if let Some(pos) = framework
         .available_tools
         .iter()
-        .position(|t| t.name.contains("ODE") || t.name.contains("Ode"))
+        .position(|t| t.display_name.contains("ODE") || t.id.contains("Ode"))
     {
         framework.select_tool(pos);
     }

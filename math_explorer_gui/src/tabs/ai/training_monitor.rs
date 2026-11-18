@@ -291,7 +291,8 @@ fn argmax(v: &Vector) -> usize {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "TrainingMonitorTool",
+        id: "TrainingMonitorTool",
+        display_name: "Training Monitor",
         domain: "ai",
         tags: &[],
         build: || Box::new(TrainingMonitorTool::default()),

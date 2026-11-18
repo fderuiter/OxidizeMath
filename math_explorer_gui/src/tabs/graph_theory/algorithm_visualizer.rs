@@ -409,7 +409,8 @@ impl InteractiveTool for AlgorithmVisualizerTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "AlgorithmVisualizerTool",
+        id: "AlgorithmVisualizerTool",
+        display_name: "Algorithm Visualizer",
         domain: "graph_theory",
         tags: &["dijkstra", "bfs", "dfs", "algorithm"],
         build: || Box::new(AlgorithmVisualizerTool::default()),

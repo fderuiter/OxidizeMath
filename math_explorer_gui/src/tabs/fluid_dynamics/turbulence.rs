@@ -248,7 +248,8 @@ impl TurbulenceTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "TurbulenceTool",
+        id: "TurbulenceTool",
+        display_name: "Turbulence / Reynolds Analysis",
         domain: "fluid_dynamics",
         tags: &[],
         build: || Box::new(TurbulenceTool::default()),
