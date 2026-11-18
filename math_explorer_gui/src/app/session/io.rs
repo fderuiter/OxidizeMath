@@ -112,8 +112,8 @@ pub fn handle_transition_error(
     op: &str,
 ) {
     let err = format!(
-        "Invalid state transition: received {op} result while in {:?}",
-        mgr.lifecycle_state
+        "Invalid state transition: received {op} result while {}",
+        mgr.lifecycle_state.user_label()
     );
     notify(mgr, ctx, err, true);
     mgr.lifecycle_state = super::SessionLifecycleState::Error;

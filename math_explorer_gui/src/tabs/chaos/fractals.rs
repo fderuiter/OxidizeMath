@@ -57,7 +57,7 @@ impl TheoryDescribable for FractalViewer {
     }
 
     fn theory_citation(&self) -> String {
-        "[cite:graph_parameters_rust]".to_string()
+        "Mandelbrot, B. B. (1982). The Fractal Geometry of Nature. W. H. Freeman; Julia, G. (1918). Mémoire sur l'itération des fonctions rationnelles. Journal de Mathématiques Pures et Appliquées, 8, 47-245.".to_string()
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
@@ -385,7 +385,8 @@ impl FractalViewer {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "FractalViewer",
+        id: "FractalViewer",
+        display_name: "Fractal Viewer",
         domain: "chaos",
         tags: &[],
         build: || Box::new(FractalViewer::default()),

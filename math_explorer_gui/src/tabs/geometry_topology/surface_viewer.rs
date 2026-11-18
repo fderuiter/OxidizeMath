@@ -256,7 +256,8 @@ impl InteractiveTool for SurfaceViewer {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "SurfaceViewer",
+        id: "SurfaceViewer",
+        display_name: "Surface Viewer",
         domain: "geometry_topology",
         tags: &[],
         build: || Box::new(SurfaceViewer::default()),

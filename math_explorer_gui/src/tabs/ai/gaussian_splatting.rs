@@ -46,7 +46,8 @@ impl scientific_metadata::theory::TheoryDescribable for GaussianSplattingTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "Gaussian Splatting",
+        id: "Gaussian Splatting",
+        display_name: "Gaussian Splatting",
         domain: "ai",
         tags: &["ai", "graphics"],
         build: || Box::new(GaussianSplattingTool::default()),
