@@ -41,7 +41,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         let mut initial_params = HashMap::new();
         for (name, constraint) in &param_metadata {
-            initial_params.insert(name.clone(), (constraint.min + constraint.max) / 2.0);
+            let default_val = M::parameter_choices(name)
+                .first()
+                .map_or((constraint.min + constraint.max) / 2.0, |&(_, v)| v);
+            initial_params.insert(name.clone(), default_val);
         }
 
         let params = Arc::new(RwLock::new(initial_params.clone()));
@@ -167,18 +170,22 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let param_list: Vec<(String, f64)> = self
             .param_metadata
             .iter()
-            .filter_map(|(name, _)| params_lock.get(name).map(|v| (name.clone(), *v)))
+            .filter_map(|(name, _)| {
+                params_lock
+                    .get(name)
+                    .map(|v| (M::parameter_label(name), *v))
+            })
             .collect();
 
         for (name, constraint) in &self.param_metadata {
             if let Some(val) = params_lock.get_mut(name) {
-                let slider = egui::Slider::new(val, constraint.min..=constraint.max)
-                    .step_by(constraint.step)
-                    .text(name);
-                let mut resp = ui.add(slider);
-                if let Some(desc) = self.cached_descs.get(name) {
-                    resp = resp.accessible_hover_text(desc);
-                }
+                reset_needed |= Self::draw_single_parameter(
+                    ui,
+                    name,
+                    constraint,
+                    val,
+                    self.cached_descs.get(name),
+                );
             }
         }
 
@@ -190,6 +197,53 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         drop(params_lock);
         if reset_needed {
             self.reset_simulation();
+        }
+    }
+
+    fn draw_single_parameter(
+        ui: &mut egui::Ui,
+        name: &str,
+        constraint: &ParameterConstraint,
+        val: &mut f64,
+        hover_desc: Option<&String>,
+    ) -> bool {
+        let label = M::parameter_label(name);
+        let choices = M::parameter_choices(name);
+        if !choices.is_empty() {
+            let current_label = choices
+                .iter()
+                .min_by(|a, b| {
+                    (a.1 - *val)
+                        .abs()
+                        .partial_cmp(&(b.1 - *val).abs())
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map_or(label.as_str(), |(l, _)| *l);
+            let mut changed = false;
+            let combo_resp = egui::ComboBox::from_label(&label)
+                .selected_text(current_label)
+                .show_ui(ui, |ui| {
+                    for &(choice_label, choice_val) in choices {
+                        let selected = (*val - choice_val).abs() < 1e-6;
+                        if ui.selectable_label(selected, choice_label).clicked() && !selected {
+                            *val = choice_val;
+                            changed = true;
+                        }
+                    }
+                });
+            if let Some(desc) = hover_desc {
+                let _ = combo_resp.response.accessible_hover_text(desc);
+            }
+            changed
+        } else {
+            let slider = egui::Slider::new(val, constraint.min..=constraint.max)
+                .step_by(constraint.step)
+                .text(label);
+            let resp = ui.add(slider);
+            if let Some(desc) = hover_desc {
+                let _ = resp.accessible_hover_text(desc);
+            }
+            false
         }
     }
 

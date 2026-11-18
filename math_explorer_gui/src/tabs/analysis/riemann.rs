@@ -270,7 +270,8 @@ impl InteractiveTool for RiemannIntegrationTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "RiemannIntegrationTool",
+        id: "RiemannIntegrationTool",
+        display_name: "Riemann Integration",
         domain: "analysis",
         tags: &[],
         build: || Box::new(RiemannIntegrationTool::default()),

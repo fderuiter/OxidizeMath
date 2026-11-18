@@ -162,7 +162,8 @@ impl InteractiveTool for BandStructureTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "BandStructureTool",
+        id: "BandStructureTool",
+        display_name: "Band Structure",
         domain: "solid_state",
         tags: &[],
         build: || Box::new(BandStructureTool::default()),

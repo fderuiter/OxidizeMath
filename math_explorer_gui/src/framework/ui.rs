@@ -1,6 +1,38 @@
 use super::*;
 use eframe::egui;
 
+pub(crate) fn format_theory_context_key(key: &str) -> String {
+    match key.trim() {
+        "g_na" => "Sodium Conductance".to_string(),
+        "g_k" => "Potassium Conductance".to_string(),
+        "g_l" => "Leak Conductance".to_string(),
+        "i_ext" => "External Stimulus Current".to_string(),
+        "potential_type" => "Potential Profile".to_string(),
+        "dt" => "Time Step".to_string(),
+        "params" => "Model Parameters".to_string(),
+        "viscosity" => "Kinematic Viscosity".to_string(),
+        other if other.contains('_') => other
+            .split('_')
+            .filter(|s| !s.is_empty())
+            .map(|w| {
+                let mut chars = w.chars();
+                match chars.next() {
+                    Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+        other => {
+            let mut chars = other.chars();
+            match chars.next() {
+                Some(c) if c.is_lowercase() => format!("{}{}", c.to_uppercase(), chars.as_str()),
+                _ => other.to_string(),
+            }
+        }
+    }
+}
+
 impl SimulationFramework {
     pub(super) fn show_theory_portal(&self, ctx: &egui::Context, id_source: &str) {
         if !self.show_theory_portal {
@@ -34,16 +66,21 @@ impl SimulationFramework {
                         render_theory_summary_with_export(ui, &theory.theory_citation(), None)
                             .accessible_hover_text("Academic citations");
 
-                        let available = theory.available_descriptions();
-                        if !available.is_empty() {
+                        let mut entries: Vec<(String, String)> = theory
+                            .available_descriptions()
+                            .into_iter()
+                            .filter(|(k, _)| !k.trim().eq_ignore_ascii_case("default"))
+                            .collect();
+                        entries.sort_by(|a, b| a.0.cmp(&b.0));
+                        if !entries.is_empty() {
                             ui.separator();
                             ui.heading("Additional Context");
-                            for (key, desc) in available {
-                                let context_entry = format!("{}: {}", key, desc);
+                            for (key, desc) in entries {
+                                let label = format_theory_context_key(&key);
+                                let context_entry = format!("{label}: {desc}");
                                 render_theory_summary_with_export(ui, &context_entry, None)
                                     .accessible_hover_text(format!(
-                                        "Additional context for {}",
-                                        key
+                                        "Additional context for {label}"
                                     ));
                             }
                         }
@@ -81,7 +118,8 @@ impl SimulationFramework {
                 if query.is_empty() {
                     true
                 } else {
-                    meta.name.to_lowercase().contains(&query)
+                    meta.display_name.to_lowercase().contains(&query)
+                        || meta.id.to_lowercase().contains(&query)
                         || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
                 }
             })
@@ -114,14 +152,17 @@ impl SimulationFramework {
                 for &(i, meta) in &filtered_tools {
                     ui.horizontal(|ui| {
                         let is_selected = self.selected_tool_index == Some(i);
-                        if ui.selectable_label(is_selected, meta.name).clicked() {
+                        if ui
+                            .selectable_label(is_selected, meta.display_name)
+                            .clicked()
+                        {
                             tool_to_select = Some(i);
                         }
                         let tool_help_btn = ui
                             .add(egui::Button::new("❓").small())
                             .accessible_hover_text(format!(
                                 "Open Theory Context Portal for {}",
-                                meta.name
+                                meta.display_name
                             ));
                         if tool_help_btn.clicked() {
                             open_portal_for_tool = Some(i);
@@ -231,7 +272,7 @@ impl SimulationFramework {
                             .show(ui, |ui| {
                                 ui.set_width(220.0);
                                 ui.vertical(|ui| {
-                                    ui.heading(meta.name);
+                                    ui.heading(meta.display_name);
                                     ui.add_space(6.0);
                                     if !meta.tags.is_empty() {
                                         ui.horizontal_wrapped(|ui| {
@@ -276,7 +317,7 @@ impl SimulationFramework {
                     if let Some(pos) = self
                         .available_tools
                         .iter()
-                        .position(|t| t.name == tool_name)
+                        .position(|t| t.id == tool_name || t.display_name == tool_name)
                     {
                         self.select_tool(pos);
                     }

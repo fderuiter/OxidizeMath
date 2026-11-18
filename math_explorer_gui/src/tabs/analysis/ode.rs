@@ -450,7 +450,8 @@ impl InteractiveTool for OdeSolverTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "OdeSolverTool",
+        id: "OdeSolverTool",
+        display_name: "ODE Solvers",
         domain: "analysis",
         tags: &[],
         build: || Box::new(OdeSolverTool::default()),

@@ -422,8 +422,15 @@ impl eframe::App for MathExplorerApp {
                 if let Some(tool_name) = &selection.tool_name {
                     let tab = &mut self.tabs[selection.tab_index];
                     tab.select_tool_by_name(tool_name);
+                    let display_label = inventory::iter::<crate::framework::ToolMetadata>
+                        .into_iter()
+                        .find(|m| {
+                            m.id.eq_ignore_ascii_case(tool_name)
+                                || m.display_name.eq_ignore_ascii_case(tool_name)
+                        })
+                        .map_or(tool_name.as_str(), |m| m.display_name);
                     let tab_name = tab.name();
-                    let msg = format!("Switched to tool {} in tab {}", tool_name, tab_name);
+                    let msg = format!("Switched to tool {} in tab {}", display_label, tab_name);
                     crate::accessibility::announce_status(&msg);
                     ctx.data_mut(|d| {
                         d.insert_temp(egui::Id::new("aria_live_message"), msg);

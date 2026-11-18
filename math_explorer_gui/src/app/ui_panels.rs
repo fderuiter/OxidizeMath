@@ -122,17 +122,7 @@ pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
                             ui.label(egui::RichText::new(&cmd.name).strong());
                             ui.label(&cmd.description);
 
-                            let trigger_str = match &cmd.trigger {
-                                egui_plot::commands::CommandTrigger::Key(k) => {
-                                    format!("Key: {:?}", k)
-                                }
-                                egui_plot::commands::CommandTrigger::Shortcut(m, k) => {
-                                    format!("Shortcut: {:?} + {:?}", m, k)
-                                }
-                                egui_plot::commands::CommandTrigger::AltClick => {
-                                    "Alt-Click".to_string()
-                                }
-                            };
+                            let trigger_str = format_command_trigger(&cmd.trigger);
                             ui.label(egui::RichText::new(trigger_str).code());
 
                             if cmd.desktop_only {
@@ -142,6 +132,29 @@ pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
                     }
                 }
             });
+    }
+}
+
+fn format_command_trigger(trigger: &egui_plot::commands::CommandTrigger) -> String {
+    match trigger {
+        egui_plot::commands::CommandTrigger::Key(k) => format!("Key: {}", k.name()),
+        egui_plot::commands::CommandTrigger::Shortcut(m, k) => {
+            let mut parts = Vec::new();
+            if m.mac_cmd || (cfg!(target_os = "macos") && m.command) {
+                parts.push("Cmd");
+            } else if m.ctrl || m.command {
+                parts.push("Ctrl");
+            }
+            if m.alt {
+                parts.push("Alt");
+            }
+            if m.shift {
+                parts.push("Shift");
+            }
+            parts.push(k.name());
+            format!("Shortcut: {}", parts.join("+"))
+        }
+        egui_plot::commands::CommandTrigger::AltClick => "Alt+Click".to_string(),
     }
 }
 

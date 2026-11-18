@@ -186,7 +186,8 @@ mod tests {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "PrimeSpiralWidget",
+        id: "PrimeSpiralWidget",
+        display_name: "Prime Spiral (Ulam Spiral)",
         domain: "number_theory",
         tags: &[],
         build: || Box::new(PrimeSpiralWidget::default()),

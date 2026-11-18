@@ -191,7 +191,8 @@ impl InteractiveTool for SurvivalAnalysisTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "SurvivalAnalysisTool",
+        id: "SurvivalAnalysisTool",
+        display_name: "Survival Curves (Kaplan-Meier)",
         domain: "clinical_trials",
         tags: &[],
         build: || Box::new(SurvivalAnalysisTool::default()),

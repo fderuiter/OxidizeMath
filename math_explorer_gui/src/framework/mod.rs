@@ -4,6 +4,8 @@ pub mod export_queue;
 mod export_queue_tests;
 mod export_ui;
 pub mod math_input;
+#[cfg(test)]
+mod metadata_label_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
@@ -25,7 +27,8 @@ use eframe::egui;
 use scientific_metadata::theory::TheoryDescribable;
 
 pub struct ToolMetadata {
-    pub name: &'static str,
+    pub id: &'static str,
+    pub display_name: &'static str,
     pub domain: &'static str,
     pub tags: &'static [&'static str],
     pub build: fn() -> Box<dyn InteractiveTool>,
@@ -313,8 +316,8 @@ impl SimulationFramework {
             .filter(|t| t.domain == domain)
             .collect();
 
-        // Sort by name for deterministic order
-        available_tools.sort_by_key(|t| t.name);
+        // Sort by display name (then id) for deterministic order
+        available_tools.sort_by_key(|t| (t.display_name, t.id));
 
         let mut framework = Self {
             available_tools,
@@ -370,7 +373,11 @@ impl SimulationFramework {
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();
         let factory_baseline_state = new_tool.save_state();
-        if let Some(state) = self.saved_tool_states.get(new_tool.name()) {
+        if let Some(state) = self
+            .saved_tool_states
+            .get(new_tool.name())
+            .or_else(|| self.saved_tool_states.get(meta.id))
+        {
             new_tool.load_state(state);
         }
         self.is_diverged = false;
@@ -393,12 +400,12 @@ impl SimulationFramework {
         self.active_tool = Some(new_tool);
     }
 
-    /// Selects and activates a tool by name in `available_tools`.
-    /// Matches tool name or tags (case-insensitively). Returns true if found and activated.
+    /// Selects and activates a tool by ID, display name, or tag in `available_tools` (case-insensitively).
     pub fn select_tool_by_name(&mut self, name: &str) -> bool {
         let name_trimmed = name.trim();
         if let Some(index) = self.available_tools.iter().position(|t| {
-            t.name.eq_ignore_ascii_case(name_trimmed)
+            t.id.eq_ignore_ascii_case(name_trimmed)
+                || t.display_name.eq_ignore_ascii_case(name_trimmed)
                 || t.tags
                     .iter()
                     .any(|tag| tag.eq_ignore_ascii_case(name_trimmed))
@@ -421,7 +428,7 @@ impl SimulationFramework {
         let selected_tool_name = self.selected_tool_index.and_then(|idx| {
             self.available_tools
                 .get(idx)
-                .map(|meta| meta.name.to_string())
+                .map(|meta| meta.id.to_string())
         });
 
         let state = FrameworkState {
@@ -446,9 +453,13 @@ impl SimulationFramework {
         self.saved_tool_states = state.tool_states;
 
         let tool_idx = if let Some(ref name) = state.selected_tool_name {
+            let trimmed = name.trim();
             self.available_tools
                 .iter()
-                .position(|m| m.name == *name)
+                .position(|m| {
+                    m.id.eq_ignore_ascii_case(trimmed)
+                        || m.display_name.eq_ignore_ascii_case(trimmed)
+                })
                 .or(state.selected_tool_index)
         } else {
             state.selected_tool_index
