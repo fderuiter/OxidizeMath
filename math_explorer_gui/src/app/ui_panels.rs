@@ -371,7 +371,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 if let Some(tab_idx) =
                     crate::app::domain_bar::render_domain_module_submenus(ui, &app.tabs, selected)
                 {
-                    app.select_tab(ctx, tab_idx);
+                    crate::app::domain_bar::select_primary_tab(app, ctx, tab_idx);
                     ui.close();
                 }
             });
