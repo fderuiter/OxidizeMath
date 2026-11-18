@@ -1,11 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::recovery::{FiniteStateGuard, RecoveryAction, render_recovery_banner};
+use super::OdeSolverTool;
+use crate::framework::recovery::{
+    render_recovery_banner, DiagnosticReport, FiniteStateGuard, RecoveryAction,
+};
 use crate::presets::OdePreset;
 use eframe::egui;
 
-/// Checks whether an [`super::OdeSolverTool`] is in a completely finite numerical state.
-pub(super) fn is_finite_ode_state(tool: &super::OdeSolverTool) -> bool {
+/// Checks whether an [`OdeSolverTool`] is in a completely finite numerical state.
+pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
     let params_finite = match tool.preset {
         OdePreset::Exponential | OdePreset::Custom => tool.param_k.is_finite(),
         OdePreset::HarmonicOscillator => tool.param_k.is_finite() && tool.ic_v0.is_finite(),
@@ -19,6 +22,47 @@ pub(super) fn is_finite_ode_state(tool: &super::OdeSolverTool) -> bool {
         && tool.time_series.iter().all(|t| t.is_finite())
         && tool.y_series.iter().all(|y| y.is_finite())
         && tool.v_series.iter().all(|v| v.is_finite())
+}
+
+impl FiniteStateGuard for OdeSolverTool {
+    fn is_finite_state(&self) -> bool {
+        is_finite_ode_state(self)
+    }
+
+    fn validate_state(&self) -> Result<(), DiagnosticReport> {
+        if self.is_finite_state() {
+            Ok(())
+        } else {
+            Err(self.diagnostic_report.clone().unwrap_or_else(|| {
+                DiagnosticReport::new(
+                    0.0,
+                    0,
+                    "state",
+                    "Non-finite floating-point state encountered.",
+                )
+            }))
+        }
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        OdeSolverTool::diagnostic_report(self)
+    }
+
+    fn diverged(&self) -> bool {
+        OdeSolverTool::diverged(self)
+    }
+
+    fn auto_scale_step_size(&mut self) {
+        OdeSolverTool::auto_scale_step_size(self);
+    }
+
+    fn clamp_parameters(&mut self) {
+        self.clamp_instability_parameters();
+    }
+
+    fn reset_parameters(&mut self) {
+        OdeSolverTool::reset_parameters(self);
+    }
 }
 
 /// Clamps solver parameters and initial conditions to stable, finite bounds.
@@ -93,10 +137,10 @@ pub fn clamp_ode_step_settings(dt: &mut f64, total_time: &mut f64) {
     }
 }
 
-/// Applies a centralized [`RecoveryAction`] to [`super::OdeSolverTool`] via [`FiniteStateGuard`]
+/// Applies a centralized [`RecoveryAction`] to [`OdeSolverTool`] via [`FiniteStateGuard`]
 /// and refreshes the active plot point buffers.
 pub fn apply_recovery_action(
-    tool: &mut super::OdeSolverTool,
+    tool: &mut OdeSolverTool,
     action: RecoveryAction,
     changed: &mut bool,
     plot_points_y: &mut Vec<[f64; 2]>,

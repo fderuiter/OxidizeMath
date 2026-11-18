@@ -378,7 +378,7 @@ impl OdeSolverTool {
                 } else {
                     self.comparison_manager.render_on_plot(plot_ui);
                 }
-                if self.show_annotations && !self.diverged() {
+                if self.show_annotations && !FiniteStateGuard::diverged(self) {
                     super::annotations::render_ode_callouts(plot_ui, self);
                 }
                 self.snapshot_manager.render_on_plot(plot_ui);
