@@ -186,6 +186,23 @@ impl SimulationFramework {
         self.export_queue.push(format);
     }
 
+    /// Resolves export datasets for the active tool, falling back to `current_valid_plot_datasets`
+    /// when thread-local plot datasets were cleared prior to modal rendering or across panes.
+    pub(crate) fn export_datasets_with_fallback(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let Some(tool) = &self.active_tool else {
+            return Vec::new();
+        };
+        let datasets = tool.export_datasets();
+        if datasets.is_empty()
+            && self.overlay_sync.2 == Some(tool.name())
+            && !self.current_valid_plot_datasets.is_empty()
+        {
+            self.current_valid_plot_datasets.clone()
+        } else {
+            datasets
+        }
+    }
+
     /// Queues a dataset export request with an explicit destination target.
     pub fn queue_export_with_target(&mut self, format: ExportFormat, target: ExportTarget) {
         self.export_queue.push_target(format, target);
@@ -203,6 +220,16 @@ impl SimulationFramework {
             is_error,
             expires_at_time: None,
         });
+    }
+
+    pub(super) fn poll_action_bar_clipboard_status(&mut self, ctx: &egui::Context) {
+        let status_id = egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
+        if let Some(async_status) =
+            ctx.data_mut(|d| d.remove_temp::<ActionBarExportStatus>(status_id))
+        {
+            self.export_status_message = Some(async_status.message.clone());
+            self.export_queue.status = Some(async_status);
+        }
     }
 
     fn dispatch_file_request(&mut self, file_slug: &str, format: ExportFormat, content: String) {
@@ -243,7 +270,8 @@ impl SimulationFramework {
             #[cfg(not(test))]
             {
                 if let Some(egui_ctx) = ctx.cloned() {
-                    let status_id = egui::Id::new("framework_action_bar_clipboard_status");
+                    let status_id =
+                        egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
                     egui_plot::export::copy_text_to_clipboard_with_callback(&content, move |cb| {
                         egui_ctx.data_mut(|d| {
                             let status = match cb {
@@ -309,9 +337,7 @@ impl SimulationFramework {
 
         let requests = self.export_queue.drain_requests();
 
-        let (tool_name, datasets) = if let Some(tool) = &self.active_tool {
-            (tool.name(), tool.export_datasets())
-        } else {
+        let Some(tool_name) = self.active_tool.as_ref().map(|t| t.name()) else {
             self.set_action_bar_status(
                 "No active simulation tool available for export.".to_string(),
                 true,
@@ -321,6 +347,7 @@ impl SimulationFramework {
             }
             return;
         };
+        let datasets = self.export_datasets_with_fallback();
 
         let has_points = datasets.iter().any(|(_, pts)| !pts.is_empty());
         if !has_points {

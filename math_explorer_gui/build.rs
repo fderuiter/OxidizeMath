@@ -31,17 +31,31 @@ fn main() {
 
     generated_code.push_str("\n#[allow(clippy::vec_init_then_push)]\n");
     generated_code
-        .push_str("pub fn instantiate_tabs() -> Vec<Box<dyn crate::tabs::ExplorerTab>> {\n");
-    generated_code.push_str("    let mut tabs: Vec<Box<dyn crate::tabs::ExplorerTab>> = vec![];\n");
+        .push_str("fn tab_constructors() -> Vec<fn() -> Box<dyn crate::tabs::ExplorerTab>> {\n");
+    generated_code.push_str(
+        "    let mut builders: Vec<fn() -> Box<dyn crate::tabs::ExplorerTab>> = vec![];\n",
+    );
 
     for (instantiation, feature, _) in &discovered_tabs {
         if let Some(feat) = feature {
             generated_code.push_str(&format!("    #[cfg(feature = \"{}\")]\n", feat));
         }
-        generated_code.push_str(&format!("    tabs.push(Box::new({}));\n", instantiation));
+        generated_code.push_str(&format!(
+            "    builders.push(|| Box::new({}));\n",
+            instantiation
+        ));
     }
 
-    generated_code.push_str("    tabs\n");
+    generated_code.push_str("    builders\n");
+    generated_code.push_str("}\n\n");
+    generated_code
+        .push_str("pub fn instantiate_tabs() -> Vec<Box<dyn crate::tabs::ExplorerTab>> {\n");
+    generated_code.push_str("    tab_constructors().into_iter().map(|build| build()).collect()\n");
+    generated_code.push_str("}\n\n");
+    generated_code.push_str(
+        "pub fn instantiate_tab(index: usize) -> Option<Box<dyn crate::tabs::ExplorerTab>> {\n",
+    );
+    generated_code.push_str("    tab_constructors().get(index).map(|build| build())\n");
     generated_code.push_str("}\n");
 
     fs::write(&dest_path, generated_code).unwrap();

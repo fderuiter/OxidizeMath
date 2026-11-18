@@ -1,21 +1,42 @@
 use super::*;
 use eframe::egui;
 
-struct FrameworkExportSource<'a>(&'a mut Option<Box<dyn InteractiveTool>>);
+struct FrameworkExportSource<'a> {
+    active_tool: &'a mut Option<Box<dyn InteractiveTool>>,
+    cached_tool_name: Option<&'static str>,
+    cached_plot_datasets: &'a [(String, Vec<[f64; 2]>)],
+}
 
 impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
     fn export_datasets(&mut self) -> Vec<egui_plot::export::ExportDataset> {
-        self.0
-            .as_ref()
-            .map(|tool| tool.export_datasets())
-            .unwrap_or_default()
+        let Some(tool) = self.active_tool.as_ref() else {
+            return Vec::new();
+        };
+        let datasets = tool.export_datasets();
+        if datasets.is_empty()
+            && self.cached_tool_name == Some(tool.name())
+            && !self.cached_plot_datasets.is_empty()
+        {
+            self.cached_plot_datasets.to_vec()
+        } else {
+            datasets
+        }
     }
 
     fn sample_gif_frames(&mut self, num_frames: usize) -> Vec<egui_plot::export::DatasetFrame> {
-        self.0
-            .as_mut()
-            .map(|tool| tool.sample_animation_frames(num_frames))
-            .unwrap_or_default()
+        let step_count = num_frames.max(1);
+        let Some(tool) = self.active_tool.as_mut() else {
+            return Vec::new();
+        };
+        let frames = tool.sample_animation_frames(step_count);
+        if frames.is_empty()
+            && self.cached_tool_name == Some(tool.name())
+            && !self.cached_plot_datasets.is_empty()
+        {
+            egui_plot::export::sample_progressive_frames(self.cached_plot_datasets, step_count)
+        } else {
+            frames
+        }
     }
 }
 
@@ -39,8 +60,8 @@ impl SimulationFramework {
         )
     }
 
-    pub(super) fn export_modal_scope_id(id_source: &str) -> egui::Id {
-        egui::Id::new(id_source).with("framework_export")
+    pub(super) fn export_modal_scope_id(&self, id_source: &str) -> egui::Id {
+        egui::Id::new(("framework_export", id_source, self.instance_id))
     }
 
     pub(super) fn show_export_action_bar(&mut self, ctx: &egui::Context, id_source: &str) {
@@ -132,13 +153,7 @@ impl SimulationFramework {
     }
 
     fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        let status_id = egui::Id::new("framework_action_bar_clipboard_status");
-        if let Some(async_status) =
-            ctx.data_mut(|d| d.remove_temp::<ActionBarExportStatus>(status_id))
-        {
-            self.export_status_message = Some(async_status.message.clone());
-            self.export_queue.status = Some(async_status);
-        }
+        self.poll_action_bar_clipboard_status(ctx);
 
         let now = ctx.input(|i| i.time);
         let mut clear_status = false;
@@ -262,9 +277,10 @@ impl SimulationFramework {
             .map_or("simulation", |tool| tool.name());
         let (png_filename, svg_filename, gif_filename) = Self::export_filenames_for_tool(tool_name);
         let window_title = format!("Export High-Res Plot - {id_source}");
+        let scope_id = self.export_modal_scope_id(id_source);
         let config = egui_plot::export_modal::ExportModalConfig {
             window_title: &window_title,
-            id: Self::export_modal_scope_id(id_source),
+            id: scope_id,
             png_filename: &png_filename,
             svg_filename: &svg_filename,
             gif_filename: &gif_filename,
@@ -277,7 +293,11 @@ impl SimulationFramework {
             gif_frames: &mut self.export_gif_frames,
             status_message: &mut self.export_status_message,
         };
-        let mut source = FrameworkExportSource(&mut self.active_tool);
+        let mut source = FrameworkExportSource {
+            active_tool: &mut self.active_tool,
+            cached_tool_name: self.overlay_sync.2,
+            cached_plot_datasets: &self.current_valid_plot_datasets,
+        };
         egui_plot::export_modal::show_export_modal(ctx, bindings, &config, &mut source);
     }
 }

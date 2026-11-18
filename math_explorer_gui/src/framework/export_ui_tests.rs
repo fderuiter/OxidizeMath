@@ -228,11 +228,13 @@ fn test_framework_unified_modal_gif_sampling_and_close_button() {
 #[test]
 fn test_framework_polls_scoped_clipboard_status_when_modal_closed() {
     let ctx = egui::Context::default();
-    let mut framework = SimulationFramework::new("non_existent_domain_xyz");
-    assert!(!framework.show_export_modal);
+    let mut framework_a = SimulationFramework::new("non_existent_domain_xyz");
+    let framework_b = SimulationFramework::new("non_existent_domain_xyz");
+    assert!(!framework_a.show_export_modal);
 
-    let scope_a = SimulationFramework::export_modal_scope_id("pane_a");
-    let scope_b = SimulationFramework::export_modal_scope_id("pane_b");
+    let scope_a = framework_a.export_modal_scope_id("shared_domain");
+    let scope_b = framework_b.export_modal_scope_id("shared_domain");
+    assert_ne!(scope_a, scope_b);
     ctx.data_mut(|d| {
         d.insert_temp(
             egui_plot::clipboard_status_id(scope_a),
@@ -245,11 +247,11 @@ fn test_framework_polls_scoped_clipboard_status_when_modal_closed() {
     });
 
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        framework.show(ctx, "pane_a");
+        framework_a.show(ctx, "shared_domain");
     });
 
     assert_eq!(
-        framework.export_status_message.as_deref(),
+        framework_a.export_status_message.as_deref(),
         Some("Copied plot image to clipboard!")
     );
     assert!(ctx
