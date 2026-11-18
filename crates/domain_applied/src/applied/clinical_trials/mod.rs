@@ -87,7 +87,6 @@ use pure_math::theory_verification;
 
 theory_verification!(
     module = "clinical_trials",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
     constants = {
         ALPHA = 0.05;
     },

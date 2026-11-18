@@ -32,7 +32,6 @@ use pure_math::theory_verification;
 
 theory_verification!(
     module = "solid_state",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
     constants = {
         DUMMY = 1.0;
     },
