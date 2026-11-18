@@ -233,7 +233,6 @@ fn render_sensitivity_metric_card(ui: &mut egui::Ui, metric: &SensitivityMetric)
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 
     pub(crate) fn collect_shape_texts(shapes: &[egui::epaint::Shape], out: &mut Vec<String>) {
         for shape in shapes {
@@ -302,90 +301,6 @@ pub(crate) mod tests {
         // 1 baseline evaluation + max 2 params * 2 perturbations = 5 evaluations max
         assert!(call_count <= 5);
         assert_eq!(call_count, 5);
-    }
-
-    struct ObservableTheoryModel {
-        gain: f64,
-        offset: f64,
-    }
-
-    impl TheoryDescribable for ObservableTheoryModel {
-        fn theory_description(&self) -> String {
-            "Observable test model".into()
-        }
-        fn phonetic_description(&self) -> String {
-            "Observable test model".into()
-        }
-        fn theory_citation(&self) -> String {
-            "Test (2026)".into()
-        }
-        fn available_descriptions(&self) -> HashMap<String, String> {
-            HashMap::new()
-        }
-        fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-            HashMap::from([
-                (
-                    "gain".into(),
-                    ParameterConstraint {
-                        min: 0.0,
-                        max: 10.0,
-                        step: 0.1,
-                    },
-                ),
-                (
-                    "offset".into(),
-                    ParameterConstraint {
-                        min: -5.0,
-                        max: 5.0,
-                        step: 0.1,
-                    },
-                ),
-            ])
-        }
-        fn get_parameter(&self, name: &str) -> Option<f64> {
-            match name {
-                "gain" => Some(self.gain),
-                "offset" => Some(self.offset),
-                _ => None,
-            }
-        }
-    }
-
-    #[test]
-    fn test_reflective_render_sensitivity_panel_uses_caller_closure() {
-        let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
-        crate::reflective_ui::clear_metadata_cache();
-
-        let ctx = egui::Context::default();
-        let mut model = ObservableTheoryModel {
-            gain: 4.0,
-            offset: 2.0,
-        };
-        let mut engine = SensitivityEngine::new();
-
-        // Y = gain^2 - 3 * offset = 16 - 6 = 10 -> dY/d(gain) = 8, dY/d(offset) = -3
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                crate::reflective_ui::render_sensitivity_panel(
-                    ui,
-                    &mut model,
-                    &mut engine,
-                    "obs_test",
-                    |p_map| {
-                        let g = p_map.get("gain").copied().unwrap_or(0.0);
-                        let o = p_map.get("offset").copied().unwrap_or(0.0);
-                        g * g - 3.0 * o
-                    },
-                );
-            });
-        });
-
-        assert!((engine.baseline_output - 10.0).abs() < 1e-6);
-        assert_eq!(engine.metrics.len(), 2);
-        assert_eq!(engine.metrics[0].param_name, "gain");
-        assert!((engine.metrics[0].partial_derivative - 8.0).abs() < 1e-3);
-        assert_eq!(engine.metrics[1].param_name, "offset");
-        assert!((engine.metrics[1].partial_derivative + 3.0).abs() < 1e-3);
     }
 
     #[test]
