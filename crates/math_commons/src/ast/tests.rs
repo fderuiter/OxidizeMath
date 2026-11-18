@@ -103,6 +103,40 @@ fn test_error_recovery_and_syntax_validation() {
 }
 
 #[test]
+fn test_user_message_plain_language_positions_and_no_debug_tokens() {
+    let unclosed = parse("(1 + 2").expect_err("unclosed paren must fail");
+    let msg_unclosed = unclosed.user_message();
+    assert!(
+        msg_unclosed.contains("character 7"),
+        "Expected 1-indexed position 7, got: {msg_unclosed}"
+    );
+    assert!(
+        msg_unclosed.contains("end of expression"),
+        "Expected 'end of expression', got: {msg_unclosed}"
+    );
+    assert!(!msg_unclosed.contains("Span {"));
+    assert!(!msg_unclosed.contains("<EOF>"));
+
+    let extra_paren = parse("1 + 2)").expect_err("extra paren must fail");
+    let msg_extra = extra_paren.user_message();
+    assert!(msg_extra.contains("character 6"));
+    assert!(msg_extra.contains("expected end of expression, found ')'"));
+    assert!(!msg_extra.contains("Span {"));
+
+    let bad_lex = parse("1 + @").expect_err("invalid char must fail");
+    let msg_lex = bad_lex.user_message();
+    assert!(msg_lex.contains("character 5"));
+    assert!(!msg_lex.contains(".."));
+    assert!(!msg_lex.contains("Span {"));
+
+    let trailing_op = parse("1 +").expect_err("incomplete rhs must fail");
+    let msg_trailing = trailing_op.user_message_for_input("1 +");
+    assert!(msg_trailing.contains("end of expression"));
+    assert!(msg_trailing.contains("character 4"));
+    assert!(!msg_trailing.contains("<EOF>"));
+}
+
+#[test]
 fn test_recursion_depth_limit() {
     // Build nested expression: "((((...1...))))"
     let mut deep = String::new();

@@ -224,7 +224,8 @@ impl InteractiveTool for SpinVisualizer {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "SpinVisualizer",
+        id: "SpinVisualizer",
+        display_name: "Spin Dynamics (Bloch Sphere)",
         domain: "quantum",
         tags: &[],
         build: || Box::new(SpinVisualizer::default()),

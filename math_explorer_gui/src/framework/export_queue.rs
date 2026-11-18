@@ -194,7 +194,7 @@ impl SimulationFramework {
         };
         let datasets = tool.export_datasets();
         if datasets.is_empty()
-            && self.overlay_sync.2 == Some(tool.name())
+            && self.sync_state.datasets_owner_tool == Some(tool.name())
             && !self.current_valid_plot_datasets.is_empty()
         {
             self.current_valid_plot_datasets.clone()

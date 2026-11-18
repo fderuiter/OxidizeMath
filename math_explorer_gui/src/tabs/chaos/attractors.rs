@@ -360,7 +360,8 @@ impl InteractiveTool for AttractorPlotter {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "AttractorPlotter",
+        id: "AttractorPlotter",
+        display_name: "Attractor Plotter",
         domain: "chaos",
         tags: &["lorenz", "attractor", "chaos"],
         build: || Box::new(AttractorPlotter::default()),

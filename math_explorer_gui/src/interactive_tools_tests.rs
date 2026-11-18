@@ -65,37 +65,37 @@ mod tests {
             assert!(
                 !desc.trim().is_empty(),
                 "Tool {} has empty theory_description",
-                meta.name
+                meta.id
             );
             assert!(
                 !desc.contains("Theoretical context not available"),
                 "Tool {} still has placeholder theory_description: {}",
-                meta.name,
+                meta.id,
                 desc
             );
 
             assert!(
                 !phonetic.trim().is_empty(),
                 "Tool {} has empty phonetic_description",
-                meta.name
+                meta.id
             );
             assert!(
                 !phonetic.contains("Theoretical context not available"),
                 "Tool {} still has placeholder phonetic_description: {}",
-                meta.name,
+                meta.id,
                 phonetic
             );
 
             assert!(
                 !citation.trim().is_empty(),
                 "Tool {} has empty theory_citation",
-                meta.name
+                meta.id
             );
             assert_ne!(
                 citation.trim(),
                 "Uncited",
                 "Tool {} has placeholder citation 'Uncited'",
-                meta.name
+                meta.id
             );
 
             count += 1;
@@ -120,7 +120,7 @@ mod tests {
         let dose_idx = framework
             .available_tools
             .iter()
-            .position(|m| m.name.contains("Dose"))
+            .position(|m| m.display_name.contains("Dose") || m.id.contains("Dose"))
             .unwrap_or(0);
         framework.select_tool(dose_idx);
 
