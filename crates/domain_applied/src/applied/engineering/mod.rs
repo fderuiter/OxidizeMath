@@ -19,7 +19,6 @@ use pure_math::theory_verification;
 
 theory_verification!(
     module = "engineering",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
     constants = {
         TOLERANCE = 0.001;
     },

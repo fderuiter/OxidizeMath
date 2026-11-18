@@ -159,8 +159,6 @@ impl<'ast> Visit<'ast> for AstVisitor {
                 Some("Deterministic")
             } else if name == "stochastic_signature_verification" {
                 Some("Stochastic")
-            } else if name == "empirical_verification" {
-                Some("Empirical")
             } else {
                 None
             };
@@ -168,7 +166,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
             if let Some(tier_name) = tier {
                 let tokens = node.mac.tokens.to_string();
 
-                // Detect vacuous bypass: zero initializations in stochastic/empirical
+                // Detect vacuous bypass: zero initializations in stochastic verification
                 if tokens.contains("zeros(")
                     || tokens.contains("zeros_like")
                     || tokens.contains("0.0")

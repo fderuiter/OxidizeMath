@@ -54,6 +54,7 @@ impl InteractiveTool for CustomExportTool {
             height: 480,
             aspect_ratio: egui_plot::export::AspectRatioOption::Free,
             background_color: egui::Color32::WHITE,
+            log_x: true,
             ..Default::default()
         })
     }
@@ -170,6 +171,8 @@ fn test_framework_custom_figure_options_and_slug_filenames() {
         egui_plot::export::AspectRatioOption::Free
     );
     assert!(!framework.export_bg_dark);
+    assert!(framework.export_options.log_x);
+    assert!(!framework.export_options.log_y);
 
     let (png, svg, gif) = SimulationFramework::export_filenames_for_tool("Custom Wave Solver");
     assert_eq!(png, "custom_wave_solver_figure.png");
@@ -202,6 +205,7 @@ fn test_framework_unified_modal_gif_sampling_and_close_button() {
         |ctx| framework.show(ctx, "sim_modal_test"),
     );
 
+    assert!(has_ak_text(&out1, "Copy CSV"));
     let open_btn = find_ak_button_center(&out1, "Export PNG Image");
     let out_open = click_framework_button(&ctx, &mut framework, open_btn, "sim_modal_test");
     assert!(framework.show_export_modal);

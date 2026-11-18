@@ -2,25 +2,30 @@ use super::*;
 use crate::export::sample_progressive_frames;
 use std::cell::Cell;
 
-fn collect_shape_texts(shape: &egui::epaint::Shape, out: &mut Vec<(String, egui::Pos2)>) {
-    match shape {
-        egui::epaint::Shape::Text(text_shape) => {
-            let center = text_shape.pos + text_shape.galley.rect.center().to_vec2();
-            out.push((text_shape.galley.job.text.clone(), center));
-        }
-        egui::epaint::Shape::Vec(shapes) => {
-            for inner in shapes {
-                collect_shape_texts(inner, out);
-            }
-        }
-        _ => {}
-    }
-}
+const MAX_SHAPE_NODES: usize = 8192;
 
 fn rendered_texts(output: &egui::FullOutput) -> Vec<(String, egui::Pos2)> {
     let mut out = Vec::new();
-    for clipped in &output.shapes {
-        collect_shape_texts(&clipped.shape, &mut out);
+    let mut stack: Vec<&egui::epaint::Shape> = output.shapes.iter().map(|c| &c.shape).collect();
+    let mut visited = 0usize;
+
+    while let Some(shape) = stack.pop() {
+        if visited >= MAX_SHAPE_NODES {
+            break;
+        }
+        visited += 1;
+        match shape {
+            egui::epaint::Shape::Text(text_shape) => {
+                let center = text_shape.pos + text_shape.galley.rect.center().to_vec2();
+                out.push((text_shape.galley.job.text.clone(), center));
+            }
+            egui::epaint::Shape::Vec(shapes) => {
+                for inner in shapes.iter().rev() {
+                    stack.push(inner);
+                }
+            }
+            _ => {}
+        }
     }
     out
 }
@@ -70,6 +75,8 @@ fn test_export_modal_state_defaults() {
     assert_eq!(state.options.height, 1080);
     assert_eq!(state.options.scale, 1.0);
     assert_eq!(state.options.aspect_ratio, AspectRatioOption::SixteenNine);
+    assert!(!state.options.log_x);
+    assert!(!state.options.log_y);
     assert!(state.bg_dark);
     assert_eq!(state.gif_fps, 15);
     assert_eq!(state.gif_frames, 20);
@@ -99,6 +106,15 @@ fn test_calculate_target_dimensions_and_max_cap() {
         ..Default::default()
     };
     assert_eq!(calculate_target_dimensions(&square_opts), (1000, 1000));
+
+    let non_finite_scale = ExportOptions {
+        width: 800,
+        height: 600,
+        scale: f32::NAN,
+        aspect_ratio: AspectRatioOption::Free,
+        ..Default::default()
+    };
+    assert_eq!(calculate_target_dimensions(&non_finite_scale), (800, 600));
 
     let oversized = ExportOptions {
         scale: 4.0,
@@ -219,36 +235,39 @@ fn test_modal_header_gif_callback_and_close_button() {
 fn test_plot_integration_opens_unified_modal_and_polls_clipboard() {
     let ctx = egui::Context::default();
     let plot_id = egui::Id::new("plot_unified_export_test");
-    let screen_rect = Some(egui::Rect::from_min_size(
-        egui::Pos2::ZERO,
-        egui::vec2(1280.0, 800.0),
-    ));
-    let idle_raw = || egui::RawInput {
-        screen_rect,
-        ..Default::default()
-    };
 
     let show_plot = |ctx: &egui::Context| {
         egui::CentralPanel::default().show(ctx, |ui| {
             crate::Plot::new(plot_id).id(plot_id).show(ui, |plot_ui| {
-                plot_ui.line(crate::Line::new("Series", vec![[0.0, 1.0], [1.0, 2.0]]));
+                plot_ui.line(crate::Line::new("Series", vec![[1.0, 1.0], [10.0, 100.0]]));
             });
         });
     };
 
-    let out1 = ctx.run(idle_raw(), show_plot);
+    let out1 = ctx.run(screen_input(), show_plot);
+    let mut mem = crate::PlotMemory::load(&ctx, plot_id).expect("PlotMemory initialized");
+    mem.log_x = true;
+    mem.log_y = true;
+    mem.store(&ctx, plot_id);
+
     let save_png_btn =
         find_text_center(&out1, "Save PNG").expect("Plot overlay Save PNG button must render");
-
     let (down, up) = click_input(save_png_btn);
     let _ = ctx.run(down, show_plot);
     let _ = ctx.run(up, show_plot);
-    let out_open = ctx.run(idle_raw(), show_plot);
+    let out_open = ctx.run(screen_input(), show_plot);
 
     assert!(find_text_center(&out_open, MODAL_HEADER_TEXT).is_some());
     assert!(find_text_center(&out_open, "Target Canvas Size: 1920 x 1080 px").is_some());
-    let close_pos = find_text_center(&out_open, "Close").expect("Plot modal Close button");
 
+    let svg_btn = find_text_center(&out_open, "Save SVG").expect("Modal Save SVG button");
+    let (down_svg, up_svg) = click_input(svg_btn);
+    let _ = ctx.run(down_svg, show_plot);
+    let _ = ctx.run(up_svg, show_plot);
+    let out_saved = ctx.run(screen_input(), show_plot);
+    assert!(find_text_center(&out_saved, "SVG image saved successfully.").is_some());
+
+    let close_pos = find_text_center(&out_saved, "Close").expect("Plot modal Close button");
     let (down_close, up_close) = click_input(close_pos);
     let _ = ctx.run(down_close, show_plot);
     let _ = ctx.run(up_close, show_plot);
@@ -259,7 +278,7 @@ fn test_plot_integration_opens_unified_modal_and_polls_clipboard() {
             "Async clipboard ready".to_string(),
         );
     });
-    let _ = ctx.run(idle_raw(), show_plot);
+    let _ = ctx.run(screen_input(), show_plot);
     assert!(
         ctx.data(|d| d.get_temp::<String>(clipboard_status_id(plot_id)))
             .is_none()

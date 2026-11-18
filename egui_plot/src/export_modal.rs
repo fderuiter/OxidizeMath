@@ -11,13 +11,29 @@ pub const MODAL_HEADER_TEXT: &str = "Offscreen High-Res Render Settings";
 
 const DARK_BG_COLOR: egui::Color32 = egui::Color32::from_rgb(18, 18, 18);
 
+#[cfg(not(target_arch = "wasm32"))]
+const INITIAL_CLIPBOARD_STATUS: &str = "Copied plot image to clipboard!";
+#[cfg(target_arch = "wasm32")]
+const INITIAL_CLIPBOARD_STATUS: &str = "Copying plot image to clipboard...";
+
 /// Persistent state for the shared high-resolution plot export modal.
+///
+/// # Example
+///
+/// ```
+/// use egui_plot::ExportModalState;
+///
+/// let state = ExportModalState::default();
+/// assert!(!state.open);
+/// assert_eq!(state.options.width, 1920);
+/// assert_eq!(state.options.height, 1080);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct ExportModalState {
     /// Whether the export modal window is currently open.
     pub open: bool,
-    /// Offscreen rendering options (dimensions, scale, thickness, opacity, background, aspect).
+    /// Offscreen rendering options (dimensions, scale, thickness, opacity, background, aspect, log axes).
     pub options: ExportOptions,
     /// Whether the dark background theme is selected (`true` for dark, `false` for light).
     pub bg_dark: bool,
@@ -44,6 +60,7 @@ impl Default for ExportModalState {
 
 impl ExportModalState {
     /// Borrow this state's fields as [`ExportModalBindings`] for [`show_export_modal`].
+    #[must_use]
     pub fn bindings(&mut self) -> ExportModalBindings<'_> {
         ExportModalBindings {
             open: &mut self.open,
@@ -57,6 +74,7 @@ impl ExportModalState {
 }
 
 /// Mutable bindings into export modal state fields.
+#[derive(Debug)]
 pub struct ExportModalBindings<'a> {
     /// Mutable flag controlling modal visibility.
     pub open: &'a mut bool,
@@ -73,6 +91,7 @@ pub struct ExportModalBindings<'a> {
 }
 
 /// Caller-scoped configuration for [`show_export_modal`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ExportModalConfig<'a> {
     /// Title shown in the `egui::Window` title bar.
     pub window_title: &'a str,
@@ -96,6 +115,7 @@ pub trait ExportDataSource {
 }
 
 /// Closure-backed [`ExportDataSource`] pairing a dataset provider and a frame sampler.
+#[derive(Clone, Copy, Debug)]
 pub struct CallbackExportSource<D, F> {
     /// Callback invoked to retrieve static plot datasets.
     pub datasets_fn: D,
@@ -118,6 +138,7 @@ where
 }
 
 /// Construct the temporary storage ID used for async clipboard completion messages.
+#[must_use]
 pub fn clipboard_status_id(scope_id: egui::Id) -> egui::Id {
     scope_id.with("async_clipboard_status")
 }
@@ -138,18 +159,44 @@ pub fn poll_clipboard_status(
 }
 
 /// Calculate target output pixel `(width, height)` from base dimensions, scale, and aspect ratio.
+///
+/// # Example
+///
+/// ```
+/// use egui_plot::{AspectRatioOption, ExportOptions, calculate_target_dimensions};
+///
+/// let opts = ExportOptions {
+///     width: 1920,
+///     height: 1080,
+///     scale: 2.0,
+///     aspect_ratio: AspectRatioOption::SixteenNine,
+///     ..Default::default()
+/// };
+/// assert_eq!(calculate_target_dimensions(&opts), (3840, 2160));
+/// ```
+#[must_use]
 pub fn calculate_target_dimensions(options: &ExportOptions) -> (u32, u32) {
-    let base_w = options.width.max(1);
-    let base_h = options.height.max(1);
-    let calc_w = (base_w as f32 * options.scale).round() as u32;
-    let mut calc_h = (base_h as f32 * options.scale).round() as u32;
-    if let Some(ratio) = options.aspect_ratio.ratio().filter(|&r| r > 0.0) {
-        calc_h = (calc_w as f32 / ratio).round() as u32;
+    let base_w = f64::from(options.width.max(1));
+    let base_h = f64::from(options.height.max(1));
+    let scale = if options.scale.is_finite() && options.scale > 0.0 {
+        f64::from(options.scale)
+    } else {
+        1.0
+    };
+    let calc_w = ((base_w * scale).round() as u32).max(1);
+    let mut calc_h = ((base_h * scale).round() as u32).max(1);
+    if let Some(ratio) = options
+        .aspect_ratio
+        .ratio()
+        .filter(|&r| r.is_finite() && r > 0.0)
+    {
+        calc_h = ((f64::from(calc_w) / f64::from(ratio)).round() as u32).max(1);
     }
     (calc_w, calc_h)
 }
 
 /// Return `true` when either calculated dimension exceeds [`MAX_EXPORT_DIMENSION`].
+#[must_use]
 pub fn exceeds_max_dimension(width: u32, height: u32) -> bool {
     width > MAX_EXPORT_DIMENSION || height > MAX_EXPORT_DIMENSION
 }
@@ -340,14 +387,7 @@ fn handle_copy_clipboard(
                 cb_ctx.request_repaint();
             }) {
                 Ok(_) => {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        *status_message = Some("Copied plot image to clipboard!".to_string());
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        *status_message = Some("Copying plot image to clipboard...".to_string());
-                    }
+                    *status_message = Some(INITIAL_CLIPBOARD_STATUS.to_string());
                 }
                 Err(e) => {
                     *status_message = Some(format!("Clipboard copy failed: {e}"));
