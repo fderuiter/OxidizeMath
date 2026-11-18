@@ -49,7 +49,7 @@ impl MorphogenesisTab {
         use math_explorer::biology::morphogenesis::DiffusionCoeff;
         use math_explorer::math_kernel::types::{Dimension, StepSize};
         let (a, b, d_u, d_v) = {
-            let p = params.read().unwrap();
+            let p = params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v)
         };
         let kinetics = SchnakenbergKinetics { a, b };
@@ -125,7 +125,7 @@ impl ExplorerTab for MorphogenesisTab {
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&MorphoState {
-            dt: self.params.read().unwrap().dt,
+            dt: self.params.read().unwrap_or_else(|e| e.into_inner()).dt,
             state: Some(self.worker.state()),
             paused: None,
             show_starter_gallery: self.show_starter_gallery,
@@ -135,7 +135,7 @@ impl ExplorerTab for MorphogenesisTab {
 
     fn load_state(&mut self, state: &str) {
         if let Ok(s) = serde_json::from_str::<MorphoState>(state) {
-            self.params.write().unwrap().dt = s.dt;
+            self.params.write().unwrap_or_else(|e| e.into_inner()).dt = s.dt;
             self.show_starter_gallery = false;
             let target = s.state.unwrap_or_else(|| {
                 if s.paused.unwrap_or(false) {
@@ -202,14 +202,14 @@ impl FiniteStateGuard for MorphogenesisTab {
     }
 
     fn auto_scale_step_size(&mut self) {
-        let mut p = self.params.write().unwrap();
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.dt = (p.dt * 0.5).max(1e-4);
         drop(p);
         self.reset_system();
     }
 
     fn clamp_parameters(&mut self) {
-        let mut p = self.params.write().unwrap();
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.a = p.a.clamp(0.0, 1.0);
         p.b = p.b.clamp(0.0, 2.0);
         p.d_u = p.d_u.clamp(0.1, 5.0);
@@ -220,7 +220,7 @@ impl FiniteStateGuard for MorphogenesisTab {
     }
 
     fn reset_parameters(&mut self) {
-        let mut p = self.params.write().unwrap();
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.a = 0.1;
         p.b = 0.9;
         p.d_u = 1.0;
@@ -240,7 +240,7 @@ impl MorphogenesisTab {
     }
 
     fn draw_parameter_sliders(&self, ui: &mut egui::Ui) {
-        let mut params = self.params.write().unwrap();
+        let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
         ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
         ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
         ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
@@ -251,14 +251,12 @@ impl MorphogenesisTab {
         ui.separator();
         ui.label("Presets:");
         if ui.button("Spots").clicked() {
-            if let Ok(mut p) = self.params.write() {
-                (p.a, p.b, p.d_u, p.d_v) = (0.1, 0.9, 1.0, 100.0);
-            }
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            (p.a, p.b, p.d_u, p.d_v) = (0.1, 0.9, 1.0, 100.0);
         }
         if ui.button("Stripes").clicked() {
-            if let Ok(mut p) = self.params.write() {
-                (p.a, p.b, p.d_u, p.d_v) = (0.14, 0.86, 1.0, 50.0);
-            }
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            (p.a, p.b, p.d_u, p.d_v) = (0.14, 0.86, 1.0, 50.0);
         }
 
         let mut dialog_state = std::mem::take(&mut self.dialog_state);

@@ -38,7 +38,7 @@ impl InteractivePreset for MorphogenesisTab {
     }
 
     fn export_config(&self) -> Self::Config {
-        let p = self.params.read().unwrap();
+        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         MorphogenesisPresetConfig {
             a: p.a,
             b: p.b,
@@ -52,7 +52,7 @@ impl InteractivePreset for MorphogenesisTab {
 
     fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
         {
-            let mut p = self.params.write().unwrap();
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.a = config.a;
             p.b = config.b;
             p.d_u = config.d_u;

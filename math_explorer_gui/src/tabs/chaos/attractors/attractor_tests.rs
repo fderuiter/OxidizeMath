@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use crate::async_sim::SimulationRunner;
 use eframe::egui;
 
 #[test]
@@ -291,4 +292,72 @@ fn test_attractor_legacy_session_backward_compatibility() {
     assert_eq!(plotter2.execution_state, SolverExecutionState::Ready);
     assert_eq!(plotter2.system.sigma, 10.0);
     assert!(plotter2.show_annotations);
+}
+
+#[test]
+fn test_attractor_poisoned_lock_recovery() {
+    let mut plotter = AttractorPlotter::default();
+
+    // Poison shared parameter RwLock
+    let params_clone = Arc::clone(&plotter.params);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut guard = params_clone.write().unwrap();
+        guard.sigma = 14.0;
+        guard.simulation_speed = 4;
+        panic!("simulated worker panic");
+    }));
+    assert!(plotter.params.is_poisoned());
+
+    // Runner reset, speed update, and step survive poisoned lock
+    let mut runner = AttractorRunner {
+        system: LorenzBuilder::new().build(LorenzState::new(1.0, 1.0, 1.0)),
+        params: Arc::clone(&plotter.params),
+        history: VecDeque::with_capacity(100),
+        step_count: 0,
+        execution_state: SolverExecutionState::Ready,
+    };
+    runner.process_command(SimCommand::Reset);
+    assert_eq!(runner.system.sigma, 14.0);
+
+    runner.process_command(SimCommand::SetSpeed(6));
+    runner.step();
+    assert_eq!(runner.step_count, 6);
+    assert_eq!(runner.history.len(), 6);
+    assert_eq!(runner.execution_state, SolverExecutionState::Running);
+
+    // Slider handler and plotter reset propagate updates through poisoned lock
+    plotter.system.sigma = 12.5;
+    plotter.system.rho = 30.0;
+    plotter.simulation_speed = 3;
+    plotter.on_slider_changed();
+    {
+        let p = plotter.params.read().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(p.sigma, 12.5);
+        assert_eq!(p.rho, 30.0);
+        assert_eq!(p.simulation_speed, 3);
+    }
+
+    runner.step();
+    assert_eq!(runner.system.sigma, 12.5);
+    assert_eq!(runner.system.rho, 30.0);
+    assert_eq!(runner.step_count, 9);
+
+    plotter.reset();
+    assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
+
+    // Step trajectory under poisoned lock and export verification plot
+    for _ in 0..100 {
+        runner.step();
+    }
+    plotter.history = runner.history.clone();
+    let datasets = plotter.export_datasets();
+    let options = egui_plot::export::ExportOptions::default();
+    if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
+        let _ = std::fs::write("/tmp/poisoned_lock_recovery_attractor.png", png_data);
+    }
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        plotter.show(ctx);
+    });
 }
