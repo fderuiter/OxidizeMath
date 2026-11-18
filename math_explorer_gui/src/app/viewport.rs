@@ -227,6 +227,31 @@ fn render_pane_header(
     }
 }
 
+fn merge_pane_commands(ctx: &egui::Context, pane_ctx: &egui::Context) {
+    let pane_reg = pane_ctx.data(|d| {
+        d.get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new("CMD_REGISTRY"))
+            .unwrap_or_default()
+    });
+    if pane_reg.commands.is_empty() {
+        return;
+    }
+    ctx.data_mut(|d| {
+        let mut root_reg = d
+            .get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new("CMD_REGISTRY"))
+            .unwrap_or_default();
+        for cmd in pane_reg.commands {
+            if !root_reg
+                .commands
+                .iter()
+                .any(|c| c.name == cmd.name && c.context == cmd.context && c.trigger == cmd.trigger)
+            {
+                root_reg.commands.push(cmd);
+            }
+        }
+        d.insert_temp(egui::Id::new("CMD_REGISTRY"), root_reg);
+    });
+}
+
 fn render_pane_content(
     app: &mut MathExplorerApp,
     ctx: &egui::Context,
@@ -240,9 +265,16 @@ fn render_pane_content(
     if let Some(tab) = app.tabs.get_mut(current_assigned) {
         let pane_ctx = &app.pane_contexts[pane_idx];
         pane_ctx.set_style((*ctx.style()).clone());
+        pane_ctx.data_mut(|d| {
+            d.insert_temp(
+                egui::Id::new("CMD_REGISTRY"),
+                egui_plot::commands::CommandRegistryData::default(),
+            );
+        });
         let output = pane_ctx.run(pane_input, |sub_ctx| {
             tab.show(sub_ctx, frame);
         });
+        merge_pane_commands(ctx, pane_ctx);
 
         if !output.textures_delta.is_empty() {
             let main_tex = ctx.tex_manager();

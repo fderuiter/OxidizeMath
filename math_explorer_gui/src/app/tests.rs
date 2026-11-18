@@ -241,7 +241,7 @@ fn test_cheatsheet_shortcut_aria_announcements() {
     );
     assert!(app.show_help_menu);
     let aria_msg = ctx.data(|d| d.get_temp::<String>(egui::Id::new("aria_live_message")));
-    assert_eq!(aria_msg, Some("Hotkey overlay opened".to_string()));
+    assert_eq!(aria_msg, Some("Keyboard shortcuts opened".to_string()));
 }
 
 #[test]
