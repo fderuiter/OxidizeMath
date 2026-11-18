@@ -424,7 +424,6 @@ mod tests {
         // Acceptance Criteria 4: Starter Gallery button toggles visibility on demand
         framework.show_starter_gallery = !framework.show_starter_gallery;
         assert!(framework.show_starter_gallery);
-
         // Acceptance Criteria 3: Loaded workspace sessions bypass the gallery
         let saved_json = framework.save_state().unwrap();
         let mut restored_framework = SimulationFramework::new("analysis");
@@ -432,7 +431,6 @@ mod tests {
         restored_framework.show_starter_gallery = true;
         restored_framework.load_state(&saved_json);
         assert!(!restored_framework.show_starter_gallery);
-
         // Verify Fluid Dynamics and Chaos presets apply cleanly
         let mut fluid_framework = SimulationFramework::new("fluid_dynamics");
         let fluid_cards = crate::starter_gallery::get_starter_cards_for_domain(

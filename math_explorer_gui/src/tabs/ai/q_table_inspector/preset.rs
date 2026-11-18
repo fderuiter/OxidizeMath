@@ -59,7 +59,6 @@ impl QTableInspectorTool {
             runner.step();
         }
         self.env = build_env(parsed.gamma);
-        self.agent = TabularQAgent::new(alpha, gamma_unit, eps, None);
         self.cached_q_values.clear();
         for x in 0..self.env.width {
             for y in 0..self.env.height {

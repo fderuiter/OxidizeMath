@@ -5,49 +5,11 @@ use std::path::PathBuf;
 use syn::visit::Visit;
 use walkdir::WalkDir;
 
-#[derive(Serialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ApiItem {
     pub signature: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deprecation_expires: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum ApiItemShim {
-    Simple(String),
-    Detailed {
-        signature: String,
-        deprecation_expires: Option<String>,
-    },
-}
-
-impl From<ApiItemShim> for ApiItem {
-    fn from(shim: ApiItemShim) -> Self {
-        match shim {
-            ApiItemShim::Simple(sig) => ApiItem {
-                signature: sig,
-                deprecation_expires: None,
-            },
-            ApiItemShim::Detailed {
-                signature,
-                deprecation_expires,
-            } => ApiItem {
-                signature,
-                deprecation_expires,
-            },
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for ApiItem {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let shim = ApiItemShim::deserialize(deserializer)?;
-        Ok(ApiItem::from(shim))
-    }
 }
 
 fn extract_expiration_date(attrs: &[syn::Attribute]) -> Option<String> {
@@ -324,11 +286,21 @@ mod tests {
     }
 
     #[test]
-    fn test_api_item_shim_deserialization() {
-        let json_simple = r#""fn test_function()""#;
-        let item: ApiItem = serde_json::from_str(json_simple).unwrap();
+    fn test_api_item_deserialization() {
+        let json_omitted = r#"{
+            "signature": "fn test_function()"
+        }"#;
+        let item: ApiItem = serde_json::from_str(json_omitted).unwrap();
         assert_eq!(item.signature, "fn test_function()");
         assert_eq!(item.deprecation_expires, None);
+
+        let json_null = r#"{
+            "signature": "fn null_func()",
+            "deprecation_expires": null
+        }"#;
+        let item_null: ApiItem = serde_json::from_str(json_null).unwrap();
+        assert_eq!(item_null.signature, "fn null_func()");
+        assert_eq!(item_null.deprecation_expires, None);
 
         let json_detailed = r#"{
             "signature": "fn old_func()",
@@ -337,6 +309,8 @@ mod tests {
         let item2: ApiItem = serde_json::from_str(json_detailed).unwrap();
         assert_eq!(item2.signature, "fn old_func()");
         assert_eq!(item2.deprecation_expires, Some("2026-11-01".to_string()));
+
+        assert!(serde_json::from_str::<ApiItem>(r#""fn legacy()""#).is_err());
     }
 
     #[test]

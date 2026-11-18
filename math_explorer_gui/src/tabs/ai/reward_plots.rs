@@ -1,5 +1,10 @@
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::{SimCommand, SimulationController, SimulationRunner, StateSnapshot};
+use crate::async_sim::ui::{
+    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+};
+use crate::async_sim::{
+    SimCommand, SimWorkerState, SimulationController, SimulationRunner, StateSnapshot,
+};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
@@ -7,12 +12,11 @@ use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorld
 use math_explorer::ai::reinforcement_learning::{algorithms::TabularQAgent, MarkovDecisionProcess};
 use std::sync::Arc;
 
-#[allow(missing_docs, dead_code)]
+#[allow(missing_docs)]
 pub struct RlSnapshotData {
     pub rewards_per_episode: Vec<f64>,
     pub episodes_trained: usize,
     pub target_episodes: usize,
-    pub is_training: bool,
 }
 
 #[allow(missing_docs)]
@@ -133,7 +137,6 @@ impl SimulationRunner for RewardPlotsRunner {
             rewards_per_episode: self.rewards_per_episode.clone(),
             episodes_trained: self.episodes_trained,
             target_episodes: self.target_episodes,
-            is_training: self.is_training,
         });
 
         StateSnapshot {
@@ -152,11 +155,15 @@ impl SimulationRunner for RewardPlotsRunner {
     fn is_complete(&self) -> bool {
         !self.is_training || self.episodes_trained >= self.target_episodes
     }
+
+    fn is_finite_state(&self) -> bool {
+        self.rewards_per_episode.iter().all(|r| r.is_finite())
+    }
 }
 
 #[allow(missing_docs)]
 pub struct RewardPlotsTool {
-    controller: SimulationController,
+    pub(crate) controller: SimulationController,
     rewards_per_episode: Vec<f64>,
     episodes_trained: usize,
     target_episodes: usize,
@@ -178,59 +185,88 @@ impl Default for RewardPlotsTool {
 }
 
 impl RewardPlotsTool {
+    /// Resets the agent in place or respawns a disconnected worker.
+    pub fn reset(&mut self) {
+        self.controller.reset_or_respawn(RewardPlotsRunner::new);
+        self.rewards_per_episode.clear();
+        self.episodes_trained = 0;
+        self.target_episodes = 0;
+    }
+
+    fn draw_training_buttons(&mut self, ui: &mut egui::Ui, is_running: bool, is_faulted: bool) {
+        if is_running {
+            let remaining = self.target_episodes.saturating_sub(self.episodes_trained);
+            let progress = if self.target_episodes > 0 {
+                (self.episodes_trained as f32 / self.target_episodes as f32).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            ui.add(
+                egui::ProgressBar::new(progress).text(format!("Training: {} remaining", remaining)),
+            );
+
+            if ui
+                .button("⏸ Pause Training")
+                .accessible_hover_text("Pause training in background thread")
+                .clicked()
+            {
+                let _ = self.controller.send_command(SimCommand::Pause);
+            }
+            return;
+        }
+
+        let has_unfinished =
+            self.episodes_trained < self.target_episodes && self.target_episodes > 0;
+        let btn_text = if has_unfinished {
+            "▶ Resume Training".to_string()
+        } else {
+            format!("▶ Train {} Episodes", self.training_steps)
+        };
+        let hover_text = if is_faulted {
+            "Worker faulted. Click Reset to restore training controls."
+        } else {
+            "Train the agent in the background thread"
+        };
+
+        if ui
+            .add_enabled(!is_faulted, egui::Button::new(btn_text))
+            .accessible_hover_text(hover_text)
+            .clicked()
+        {
+            let cmd = if has_unfinished {
+                SimCommand::Start
+            } else {
+                SimCommand::TrainEpisodes(self.training_steps)
+            };
+            let _ = self.controller.send_command(cmd);
+        }
+    }
+
     fn draw_controls(&mut self, ctx: &egui::Context, is_running: bool) {
         egui::SidePanel::left("reward_plots_controls").show(ctx, |ui| {
             ui.heading("Training Controls");
             ui.separator();
 
-            ui.label(format!("Total Episodes: {}", self.episodes_trained));
+            if let Some(WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters) =
+                render_worker_fault_banner(
+                    ui,
+                    self.controller.state(),
+                    self.controller.diagnostic_report(),
+                    false,
+                )
+            {
+                self.reset();
+                ctx.request_repaint();
+                ui.separator();
+            }
 
+            let is_faulted = self.controller.state() == SimWorkerState::Faulted;
+            ui.label(format!("Total Episodes: {}", self.episodes_trained));
             ui.add(
                 egui::Slider::new(&mut self.training_steps, 10..=1000).text("Episodes to Train"),
             );
 
-            if is_running {
-                let remaining = self.target_episodes.saturating_sub(self.episodes_trained);
-                let progress = if self.target_episodes > 0 {
-                    (self.episodes_trained as f32 / self.target_episodes as f32).clamp(0.0, 1.0)
-                } else {
-                    0.0
-                };
-                ui.add(
-                    egui::ProgressBar::new(progress)
-                        .text(format!("Training: {} remaining", remaining)),
-                );
-
-                if ui
-                    .button("⏸ Pause Training")
-                    .accessible_hover_text("Pause training in background thread")
-                    .clicked()
-                {
-                    let _ = self.controller.send_command(SimCommand::Pause);
-                }
-            } else {
-                let has_unfinished =
-                    self.episodes_trained < self.target_episodes && self.target_episodes > 0;
-                let btn_text = if has_unfinished {
-                    "▶ Resume Training".to_string()
-                } else {
-                    format!("▶ Train {} Episodes", self.training_steps)
-                };
-
-                if ui
-                    .button(btn_text)
-                    .accessible_hover_text("Train the agent in the background thread")
-                    .clicked()
-                {
-                    if has_unfinished {
-                        let _ = self.controller.send_command(SimCommand::Start);
-                    } else {
-                        let _ = self
-                            .controller
-                            .send_command(SimCommand::TrainEpisodes(self.training_steps));
-                    }
-                }
-            }
+            self.draw_training_buttons(ui, is_running, is_faulted);
 
             if ui
                 .button("↻ Reset Agent")
@@ -239,10 +275,8 @@ impl RewardPlotsTool {
                 )
                 .clicked()
             {
-                let _ = self.controller.send_command(SimCommand::Reset);
-                self.rewards_per_episode.clear();
-                self.episodes_trained = 0;
-                self.target_episodes = 0;
+                self.reset();
+                ctx.request_repaint();
             }
         });
     }
@@ -250,6 +284,13 @@ impl RewardPlotsTool {
     fn draw_plot(&self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Cumulative Reward over Episodes");
+
+            if self.rewards_per_episode.is_empty() {
+                render_empty_plot_guidance(
+                    ui,
+                    "No episodes trained yet — click '▶ Train ... Episodes' in the side panel to populate the reward curve.",
+                );
+            }
 
             let points: PlotPoints = self
                 .rewards_per_episode
@@ -260,13 +301,12 @@ impl RewardPlotsTool {
 
             let line = Line::new("Episode Reward", points);
 
-            let plot = Plot::new("reward_plot")
+            Plot::new("reward_plot")
                 .view_aspect(2.0)
-                .legend(egui_plot::Legend::default());
-
-            plot.show(ui, |plot_ui| {
-                plot_ui.line(line);
-            });
+                .legend(egui_plot::Legend::default())
+                .show(ui, |plot_ui| {
+                    plot_ui.line(line);
+                });
         });
     }
 }
@@ -302,10 +342,7 @@ impl InteractiveTool for RewardPlotsTool {
             return Err("training_steps must be between 10 and 1000".into());
         }
         self.training_steps = parsed.training_steps;
-        let _ = self.controller.send_command(SimCommand::Reset);
-        self.rewards_per_episode.clear();
-        self.episodes_trained = 0;
-        self.target_episodes = 0;
+        self.reset();
         Ok(())
     }
 

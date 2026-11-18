@@ -54,7 +54,8 @@ impl InteractiveTool for BandStructureTool {
             hbar: self.hbar,
             m: self.m,
             show_free_electron: self.show_free_electron,
-        }).ok()
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {

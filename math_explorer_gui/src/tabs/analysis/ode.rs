@@ -8,15 +8,15 @@ pub mod ui;
 
 use comparison::{simulate_preset, SolverDiscrepancy};
 
+pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::recovery::emit_divergence_telemetry;
 use crate::framework::{
     CalloutManager, InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager,
 };
 use crate::presets::OdePreset;
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
-
-pub use recovery::OdeDiagnosticReport;
-use recovery::clamp_ode_parameters;
+use recovery::{clamp_ode_parameters, clamp_ode_step_settings};
 
 // ----------------------------------------------------------------------------
 // Tool Implementation
@@ -37,7 +37,7 @@ pub struct OdeSolverTool {
     pub v_series: Vec<f64>,
     pub(crate) diverged: bool,
     pub(crate) math_input: MathExpressionInputBar,
-    pub(crate) diagnostic_report: Option<OdeDiagnosticReport>,
+    pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) comparison_mode: bool,
     pub(crate) discrepancy_euler_rk4: SolverDiscrepancy,
     pub(crate) discrepancy_heun_rk4: SolverDiscrepancy,
@@ -72,7 +72,10 @@ impl Default for OdeSolverTool {
                 vec![
                     ("y' = -k*y*sin(t) (Non-linear Sine)", "-k * y * sin(t)"),
                     ("y' = k*y (Exponential)", "k * y"),
-                    ("y' = r*y*(1 - y/cap_k) (Logistic)", "r * y * (1 - y / cap_k)"),
+                    (
+                        "y' = r*y*(1 - y/cap_k) (Logistic)",
+                        "r * y * (1 - y / cap_k)",
+                    ),
                     ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
                     ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
                 ],
@@ -109,11 +112,11 @@ impl OdeSolverTool {
 
     #[must_use]
     pub fn diverged(&self) -> bool {
-        self.diverged
+        self.diverged || !FiniteStateGuard::is_finite_state(self)
     }
 
     #[must_use]
-    pub fn diagnostic_report(&self) -> Option<&OdeDiagnosticReport> {
+    pub fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
         self.diagnostic_report.as_ref()
     }
 
@@ -136,6 +139,7 @@ impl OdeSolverTool {
             &mut self.ic_y0,
             &mut self.ic_v0,
         );
+        clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
         self.recalculate();
     }
 
@@ -235,7 +239,8 @@ impl OdeSolverTool {
                 format!("Initial (0, {:.2})", self.ic_y0),
                 [-25.0, -25.0],
             );
-            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last()) {
+            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last())
+            {
                 self.callout_manager.set_auto_callout(
                     "final_state",
                     [last_t, last_y],
@@ -268,23 +273,13 @@ impl OdeSolverTool {
 
         if let Some((t_div, step_idx, var_name)) = active_traj.divergence_info {
             self.diverged = true;
-            let report = OdeDiagnosticReport::new(
-                t_div,
-                step_idx,
-                var_name.clone(),
-                format!(
-                    "Simulation diverged at t={:.4}s (step {}) in variable {}",
-                    t_div, step_idx, var_name
-                ),
+            let message = format!(
+                "Simulation diverged at t={:.4}s (step {}) in variable {}",
+                t_div, step_idx, var_name
             );
-            self.diagnostic_report = Some(report);
-            recovery::emit_divergence_telemetry(
-                t_div,
-                step_idx,
-                &var_name,
-                self.preset.name(),
-                self.dt,
-            );
+            emit_divergence_telemetry("OdeSolverTool", t_div, step_idx, &var_name, &message);
+            self.diagnostic_report =
+                Some(DiagnosticReport::new(t_div, step_idx, var_name, message));
         }
     }
 }
@@ -410,6 +405,11 @@ impl InteractiveTool for OdeSolverTool {
         self.show_annotations = s.show_annotations;
         self.recalculate();
         Ok(())
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        FiniteStateGuard::clamp_parameters(self);
+        true
     }
 
     fn show(&mut self, ctx: &egui::Context) {

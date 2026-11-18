@@ -139,7 +139,8 @@ impl InteractiveTool for CrystalViewer {
             yaw: self.yaw,
             pitch: self.pitch,
             zoom: self.zoom,
-        }).ok()
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {

@@ -7,6 +7,8 @@ use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 pub struct NetworkPropagationTool {
     model: NetworkEpidemicModel,
     is_running: bool,
+    #[cfg(test)]
+    sim_steps: u64,
 }
 
 impl Default for NetworkPropagationTool {
@@ -14,6 +16,8 @@ impl Default for NetworkPropagationTool {
         Self {
             model: NetworkEpidemicModel::new(50, 0.05, 0.02),
             is_running: false,
+            #[cfg(test)]
+            sim_steps: 0,
         }
     }
 }
@@ -23,7 +27,20 @@ impl NetworkPropagationTool {
         let mut rng = oxidize_core::rng::OxidizeRng::default();
         self.model.initialize_geometric_graph_with_rng(&mut rng);
         self.is_running = false;
+        #[cfg(test)]
+        {
+            self.sim_steps = 0;
+        }
     }
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+
+#[cfg(test)]
+fn is_zero_u64(v: &u64) -> bool {
+    *v == 0
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -32,10 +49,17 @@ struct NetPropState {
     num_nodes: usize,
     beta: f64,
     gamma: f64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    is_running: bool,
+    #[cfg(test)]
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    sim_steps: u64,
 }
 
 impl InteractiveTool for NetworkPropagationTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Network Propagation"
     }
@@ -48,6 +72,9 @@ impl InteractiveTool for NetworkPropagationTool {
             num_nodes: self.model.num_nodes(),
             beta: self.model.beta(),
             gamma: self.model.gamma(),
+            is_running: self.is_running,
+            #[cfg(test)]
+            sim_steps: self.sim_steps,
         })
         .ok()
     }
@@ -63,12 +90,15 @@ impl InteractiveTool for NetworkPropagationTool {
         {
             return Err("Network propagation parameters out of bounds".into());
         }
+        #[cfg(test)]
+        let _ = s.sim_steps;
         self.model
             .set_num_nodes(s.num_nodes)
             .map_err(|e| e.to_string())?;
         self.model.set_beta(s.beta).map_err(|e| e.to_string())?;
         self.model.set_gamma(s.gamma).map_err(|e| e.to_string())?;
         self.reset_network();
+        self.is_running = s.is_running;
         Ok(())
     }
 
@@ -83,6 +113,10 @@ impl InteractiveTool for NetworkPropagationTool {
         if self.is_running {
             let mut rng = oxidize_core::rng::OxidizeRng::default();
             self.model.step_with_rng(&mut rng);
+            #[cfg(test)]
+            {
+                self.sim_steps = self.sim_steps.saturating_add(1);
+            }
             ui.ctx().request_repaint();
         }
 

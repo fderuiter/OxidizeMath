@@ -78,7 +78,9 @@ struct CeraState {
 }
 
 impl InteractiveTool for CeraTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "CERA Model"
     }
@@ -100,13 +102,13 @@ impl InteractiveTool for CeraTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: CeraState =
             serde_json::from_str(state).map_err(|e| format!("Invalid CERA state: {e}"))?;
-        if !(1..=10).contains(&s.in_channels)
-            || !(1..=20).contains(&s.latent_channels)
-            || !(1..=s.latent_channels).contains(&s.aligned_channels)
-            || !(1..=50).contains(&s.num_levels)
-            || !(1..=20).contains(&s.output_size)
+        if s.in_channels == 0
+            || s.latent_channels == 0
+            || s.aligned_channels == 0
+            || s.num_levels == 0
+            || s.output_size == 0
         {
-            return Err("CERA channel or level parameters out of bounds".into());
+            return Err("CERA channel and level counts must be positive".into());
         }
         self.in_channels = s.in_channels;
         self.latent_channels = s.latent_channels;
@@ -117,6 +119,11 @@ impl InteractiveTool for CeraTool {
         self.diverged = false;
         self.diagnostic_report = None;
         Ok(())
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        FiniteStateGuard::clamp_parameters(self);
+        true
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -144,7 +151,7 @@ impl InteractiveTool for CeraTool {
                         self.diagnostic_report = None;
                     }
                     RecoveryAction::ClampParameters => {
-                        self.clamp_parameters();
+                        FiniteStateGuard::clamp_parameters(self);
                     }
                     RecoveryAction::ResetParameters => {
                         self.reset_parameters();
@@ -163,10 +170,10 @@ impl InteractiveTool for CeraTool {
         });
 
         ui.horizontal(|ui| {
-            ui.add(egui::Slider::new(
-                &mut self.aligned_channels,
-                1..=self.latent_channels,
-            ).text("Aligned Channels:"));
+            ui.add(
+                egui::Slider::new(&mut self.aligned_channels, 1..=self.latent_channels)
+                    .text("Aligned Channels:"),
+            );
         });
 
         ui.horizontal(|ui| {
@@ -198,7 +205,7 @@ impl InteractiveTool for CeraTool {
             match Cera::new(config) {
                 Ok(model) => {
                     let inputs = DMatrix::from_fn(self.num_levels, self.in_channels, |_, _| {
-            // allow(entropy_guard)
+                        // allow(entropy_guard)
                         rand::random::<f32>()
                     });
                     let prediction = model.predict(&inputs);
@@ -252,7 +259,6 @@ impl InteractiveTool for CeraTool {
 
 // [cite:cera_framework]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         name: "CeraTool",
@@ -269,9 +275,15 @@ impl scientific_metadata::theory::TheoryDescribable for CeraTool {
             self.in_channels, self.latent_channels, self.num_levels
         )
     }
-    fn phonetic_description(&self) -> String { "Climate-Equivariant Representation Architecture theory".into() }
-    fn theory_citation(&self) -> String { "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Climate-Equivariant Representation Architecture theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

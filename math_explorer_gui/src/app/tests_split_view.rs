@@ -268,3 +268,172 @@ fn test_generate_split_view_screenshots() {
         let _ = std::fs::write("/tmp/dual_pane_split_vertical.png", png);
     }
 }
+
+fn run_split_frames(ctx: &egui::Context, app: &mut MathExplorerApp, frames: usize) {
+    let mut frame = eframe::Frame::_new_kittest();
+    let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1280.0, 800.0));
+    for _ in 0..frames {
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            },
+            |c| app.update(c, &mut frame),
+        );
+    }
+}
+
+#[test]
+fn test_same_domain_network_propagation_steps_once_per_pane_per_frame() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let Some(epi_idx) = app.tabs.iter().position(|t| t.name() == "Epidemiology") else {
+        return;
+    };
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    app.set_pane_tab(0, epi_idx);
+    app.set_pane_tab(1, epi_idx);
+    for (pane, beta) in [(0, 0.85), (1, 0.05)] {
+        let fw = app.pane_tab_mut(pane).unwrap().framework_mut().unwrap();
+        assert!(fw.select_tool_by_name("NetworkPropagationTool"));
+        fw.active_tool.as_mut().unwrap().load_state(&format!(
+            r#"{{"num_nodes":60,"beta":{beta},"gamma":0.05,"is_running":true}}"#
+        ));
+    }
+    run_split_frames(&ctx, &mut app, 5);
+    for (pane, expected_beta) in [(0, 0.85), (1, 0.05)] {
+        let fw = app.pane_tab(pane).unwrap().framework().unwrap();
+        assert_eq!(
+            fw.step_counter, 5,
+            "Pane {pane} framework must step once per frame"
+        );
+        let saved: serde_json::Value =
+            serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap();
+        assert_eq!(
+            saved["sim_steps"].as_u64(),
+            Some(5),
+            "Pane {pane} model must step once per frame"
+        );
+        assert!((saved["beta"].as_f64().unwrap() - expected_beta).abs() < 1e-6);
+    }
+}
+
+#[test]
+fn test_same_domain_scoped_overlays_and_export_modal_isolation() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let Some(epi_idx) = app.tabs.iter().position(|t| t.name() == "Epidemiology") else {
+        return;
+    };
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    app.set_pane_tab(0, epi_idx);
+    app.set_pane_tab(1, epi_idx);
+    run_split_frames(&ctx, &mut app, 1);
+    {
+        let fw0 = app.pane_tab_mut(0).unwrap().framework_mut().unwrap();
+        fw0.show_theory_portal = true;
+        fw0.show_starter_gallery = true;
+        fw0.show_export_modal = true;
+    }
+    run_split_frames(&ctx, &mut app, 3);
+    let fw0 = app.pane_tab(0).unwrap().framework().unwrap();
+    let fw1 = app.pane_tab(1).unwrap().framework().unwrap();
+    assert!(fw0.show_theory_portal && fw0.show_starter_gallery && fw0.show_export_modal);
+    assert!(!fw1.show_theory_portal && !fw1.show_starter_gallery && !fw1.show_export_modal);
+}
+
+#[test]
+fn test_same_domain_per_pane_sir_dataset_exports() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let Some(epi_idx) = app.tabs.iter().position(|t| t.name() == "Epidemiology") else {
+        return;
+    };
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    for (pane, beta) in [(0, 0.2), (1, 2.5)] {
+        app.set_pane_tab(pane, epi_idx);
+        let fw = app.pane_tab_mut(pane).unwrap().framework_mut().unwrap();
+        assert!(fw.select_tool_by_name("SirTool"));
+        fw.active_tool.as_mut().unwrap().load_state(&format!(
+            r#"{{"n":1000.0,"i0":10.0,"beta":{beta},"gamma":0.1,"duration":100.0}}"#
+        ));
+    }
+    run_split_frames(&ctx, &mut app, 2);
+    let d0 = app
+        .pane_tab(0)
+        .unwrap()
+        .framework()
+        .unwrap()
+        .export_datasets_with_fallback();
+    let d1 = app
+        .pane_tab(1)
+        .unwrap()
+        .framework()
+        .unwrap()
+        .export_datasets_with_fallback();
+    let peak_i = |ds: &[(String, Vec<[f64; 2]>)]| {
+        ds.iter()
+            .find(|(n, _)| n.contains("Infected"))
+            .unwrap()
+            .1
+            .iter()
+            .map(|p| p[1])
+            .fold(0.0_f64, f64::max)
+    };
+    assert!(peak_i(&d1) > peak_i(&d0) + 400.0);
+    let combined = vec![
+        (
+            "Pane 0 SIR Infected (beta=0.2)".to_string(),
+            d0[1].1.clone(),
+        ),
+        (
+            "Pane 1 SIR Infected (beta=2.5)".to_string(),
+            d1[1].1.clone(),
+        ),
+    ];
+    if let Ok(png) = egui_plot::export::export_custom_png(&combined, &Default::default()) {
+        let _ = std::fs::write("/tmp/same_domain_split_sir_comparison.png", png);
+    }
+}
+
+#[test]
+fn test_same_domain_per_pane_fallback_plot_exports() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let Some(ana_idx) = app
+        .tabs
+        .iter()
+        .position(|t| t.name() == "Analysis & Calculus")
+    else {
+        return;
+    };
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    for (pane, max_x, steps) in [(0, 1.5, 4), (1, 3.0, 24)] {
+        app.set_pane_tab(pane, ana_idx);
+        let fw = app.pane_tab_mut(pane).unwrap().framework_mut().unwrap();
+        assert!(fw.select_tool_by_name("RiemannIntegrationTool"));
+        fw.active_tool.as_mut().unwrap().load_state(&format!(
+            r#"{{"preset":"XSquared","min_x":0.0,"max_x":{max_x},"steps":{steps}}}"#
+        ));
+    }
+    run_split_frames(&ctx, &mut app, 2);
+    egui_plot::clear_last_plot_datasets();
+    let r0 = app
+        .pane_tab(0)
+        .unwrap()
+        .framework()
+        .unwrap()
+        .export_datasets_with_fallback();
+    let r1 = app
+        .pane_tab(1)
+        .unwrap()
+        .framework()
+        .unwrap()
+        .export_datasets_with_fallback();
+    assert!(!r0.is_empty() && !r1.is_empty());
+    assert_ne!(
+        r0[0].1.last(),
+        r1[0].1.last(),
+        "Fallback plot datasets must stay distinct per pane"
+    );
+}

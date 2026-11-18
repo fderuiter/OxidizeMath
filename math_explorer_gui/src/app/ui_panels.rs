@@ -98,52 +98,75 @@ pub fn render_issues_panel(
         });
 }
 
-/// Renders the global command cheatsheet modal window.
-pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
-    if *show_help_menu {
-        egui::Window::new("Help Menu")
-            .open(show_help_menu)
-            .resizable(true)
-            .show(ctx, |ui| {
-                ui.heading("Available Commands");
-                ui.separator();
-
-                let registry_data = ctx.data(|d| {
-                    d.get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new(
-                        "CMD_REGISTRY",
-                    ))
-                    .unwrap_or_default()
-                });
-
-                if registry_data.commands.is_empty() {
-                    ui.label("No commands available for the current context.");
-                } else {
-                    for cmd in registry_data.commands {
-                        ui.group(|ui| {
-                            ui.label(egui::RichText::new(&cmd.name).strong());
-                            ui.label(&cmd.description);
-
-                            let trigger_str = match &cmd.trigger {
-                                egui_plot::commands::CommandTrigger::Key(k) => {
-                                    format!("Key: {:?}", k)
-                                }
-                                egui_plot::commands::CommandTrigger::Shortcut(m, k) => {
-                                    format!("Shortcut: {:?} + {:?}", m, k)
-                                }
-                                egui_plot::commands::CommandTrigger::AltClick => {
-                                    "Alt-Click".to_string()
-                                }
-                            };
-                            ui.label(egui::RichText::new(trigger_str).code());
-
-                            if cmd.desktop_only {
-                                ui.label(egui::RichText::new("Desktop Only").italics());
-                            }
-                        });
-                    }
-                }
-            });
+fn group_commands_by_context(
+    commands: Vec<egui_plot::commands::CommandMetadata>,
+) -> Vec<(String, Vec<egui_plot::commands::CommandMetadata>)> {
+    let mut groups: Vec<(String, Vec<egui_plot::commands::CommandMetadata>)> = Vec::new();
+    for cmd in commands {
+        if let Some((_, list)) = groups
+            .iter_mut()
+            .find(|(ctx_name, _)| *ctx_name == cmd.context)
+        {
+            list.push(cmd);
+        } else {
+            groups.push((cmd.context.clone(), vec![cmd]));
+        }
     }
+    groups
+}
+
+fn render_command_entry(ui: &mut egui::Ui, cmd: &egui_plot::commands::CommandMetadata) {
+    ui.group(|ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(&cmd.name).strong());
+            ui.label(egui::RichText::new(cmd.trigger.display_label()).code());
+            if cmd.desktop_only {
+                ui.label(egui::RichText::new("Desktop Only").italics().small());
+            }
+        });
+        if !cmd.description.is_empty() {
+            ui.label(&cmd.description);
+        }
+    });
+}
+
+/// Renders the global keyboard shortcuts modal window.
+pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
+    if !*show_help_menu {
+        return;
+    }
+    egui::Window::new("Keyboard Shortcuts")
+        .open(show_help_menu)
+        .resizable(true)
+        .default_width(440.0)
+        .show(ctx, |ui| {
+            ui.heading("Keyboard Shortcuts");
+            ui.separator();
+
+            let registry_data = ctx.data(|d| {
+                d.get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new(
+                    "CMD_REGISTRY",
+                ))
+                .unwrap_or_default()
+            });
+
+            if registry_data.commands.is_empty() {
+                ui.label("No shortcuts available for the current context.");
+                return;
+            }
+
+            egui::ScrollArea::vertical()
+                .max_height(480.0)
+                .show(ui, |ui| {
+                    for (context_name, cmds) in group_commands_by_context(registry_data.commands) {
+                        ui.label(egui::RichText::new(&context_name).heading().strong());
+                        for cmd in &cmds {
+                            render_command_entry(ui, cmd);
+                        }
+                        ui.add_space(6.0);
+                    }
+                });
+        });
 }
 
 #[cfg(any(not(target_os = "macos"), test))]
@@ -394,7 +417,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
 
         ui.menu_button("Help", |ui| {
             if ui
-                .checkbox(&mut app.show_help_menu, "Command Framework")
+                .checkbox(&mut app.show_help_menu, "Keyboard Shortcuts")
                 .clicked()
             {
                 ui.close();
