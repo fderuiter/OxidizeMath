@@ -310,3 +310,99 @@ fn test_domain_simulation_tools_initialization() {
     let wave_tool = UnifiedSimTool::<WaveUnified>::new();
     assert_eq!(wave_tool.state(), SimWorkerState::Ready);
 }
+
+#[test]
+fn test_unified_model_observable_hook_and_voltage_derivatives() {
+    use crate::async_sim::unified::UnifiedModel;
+    use crate::sensitivity::SensitivityEngine;
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+    use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+    use crate::tabs::quantum::wave_sim::WaveUnified;
+    use std::collections::HashMap;
+
+    let lbm_params = HashMap::from([("viscosity".to_string(), 0.02)]);
+    assert!(LbmUnified::evaluate_observable(&lbm_params).is_none());
+
+    let wave_params = HashMap::from([
+        ("dt".to_string(), 0.05),
+        ("potential_type".to_string(), 0.0),
+    ]);
+    assert!(WaveUnified::evaluate_observable(&wave_params).is_none());
+
+    // Verify negative conductance perturbations near zero clamp cleanly instead of failing builder
+    let zero_perturbation = HashMap::from([
+        ("g_na".to_string(), -0.01),
+        ("g_k".to_string(), -0.01),
+        ("g_l".to_string(), -0.01),
+        ("i_ext".to_string(), 10.0),
+    ]);
+    let clamped_obs = HodgkinHuxleyUnified::evaluate_observable(&zero_perturbation);
+    assert!(clamped_obs.is_some());
+
+    let baseline_params = vec![
+        ("g_k".to_string(), 36.0),
+        ("g_l".to_string(), 0.3),
+        ("g_na".to_string(), 120.0),
+        ("i_ext".to_string(), 10.0),
+    ];
+    let mut engine = SensitivityEngine::new();
+    let eval_hh = |p_map: &HashMap<String, f64>| {
+        HodgkinHuxleyUnified::evaluate_observable(p_map)
+            .map(|(_, v)| v)
+            .unwrap_or(0.0)
+    };
+    engine.compute(&baseline_params, eval_hh);
+    engine.compute(&baseline_params, eval_hh);
+
+    assert!(engine.baseline_output > 20.0);
+    let g_k_deriv = engine.metrics[0].partial_derivative;
+    let g_na_deriv = engine.metrics[2].partial_derivative;
+    assert!(
+        g_k_deriv < 0.0,
+        "Potassium conductance should oppose peak depolarization"
+    );
+    assert!(
+        g_na_deriv > 0.0,
+        "Sodium conductance should raise peak depolarization"
+    );
+    assert!(
+        (g_na_deriv - 1.0).abs() > 1e-2,
+        "Must not equal synthetic slider-sum derivative"
+    );
+}
+
+#[test]
+fn test_unified_sim_tool_panel_gating() {
+    use crate::async_sim::unified::UnifiedSimTool;
+    use crate::framework::InteractiveTool;
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+    use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+    use crate::tabs::quantum::wave_sim::WaveUnified;
+
+    let render_texts = |tool: &mut dyn InteractiveTool| -> Vec<String> {
+        let ctx = eframe::egui::Context::default();
+        let out = ctx.run(eframe::egui::RawInput::default(), |ctx| tool.show(ctx));
+        let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+        let mut texts = Vec::new();
+        crate::sensitivity::tests::collect_shape_texts(&shapes, &mut texts);
+        texts
+    };
+
+    let lbm_texts = render_texts(&mut UnifiedSimTool::<LbmUnified>::new());
+    assert!(!lbm_texts
+        .iter()
+        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+
+    let wave_texts = render_texts(&mut UnifiedSimTool::<WaveUnified>::new());
+    assert!(!wave_texts
+        .iter()
+        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+
+    let hh_texts = render_texts(&mut UnifiedSimTool::<HodgkinHuxleyUnified>::new());
+    assert!(hh_texts
+        .iter()
+        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+    assert!(hh_texts
+        .iter()
+        .any(|t| t.contains("Baseline Peak Membrane Potential (mV):")));
+}
