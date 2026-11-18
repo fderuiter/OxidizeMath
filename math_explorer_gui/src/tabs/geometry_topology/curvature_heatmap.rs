@@ -208,20 +208,21 @@ impl InteractiveTool for CurvatureHeatmap {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<CurvatureHeatmapState>(state) {
-            self.surface_type = loaded.surface_type;
-            self.curvature_type = loaded.curvature_type;
-            self.sphere_radius = loaded.sphere_radius;
-            self.torus_major_radius = loaded.torus_major_radius;
-            self.torus_minor_radius = loaded.torus_minor_radius;
-            self.klein_radius = loaded.klein_radius;
-            self.u_resolution = loaded.u_resolution;
-            self.v_resolution = loaded.v_resolution;
-            self.pitch = loaded.pitch;
-            self.yaw = loaded.yaw;
-            self.zoom = loaded.zoom;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded =
+            serde_json::from_str::<CurvatureHeatmapState>(state).map_err(|e| e.to_string())?;
+        self.surface_type = loaded.surface_type;
+        self.curvature_type = loaded.curvature_type;
+        self.sphere_radius = loaded.sphere_radius;
+        self.torus_major_radius = loaded.torus_major_radius;
+        self.torus_minor_radius = loaded.torus_minor_radius;
+        self.klein_radius = loaded.klein_radius;
+        self.u_resolution = loaded.u_resolution;
+        self.v_resolution = loaded.v_resolution;
+        self.pitch = loaded.pitch;
+        self.yaw = loaded.yaw;
+        self.zoom = loaded.zoom;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -372,8 +373,17 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "grid_resolution": 30,
-    "surface_type": "Torus"
+    "surface_type": "Torus",
+    "curvature_type": "Gaussian",
+    "sphere_radius": 1.0,
+    "torus_major_radius": 2.5,
+    "torus_minor_radius": 0.8,
+    "klein_radius": 2.0,
+    "u_resolution": 36,
+    "v_resolution": 36,
+    "pitch": 0.6,
+    "yaw": 0.4,
+    "zoom": 1.0
   }
 }"#;
 

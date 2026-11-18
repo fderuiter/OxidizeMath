@@ -12,10 +12,48 @@ pub struct FactorizationTool {
     results: Option<FactorizationResult>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct FactorizationState {
+    input_text: String,
+}
+
+impl FactorizationTool {
+    fn analyze_input(&mut self) {
+        let trimmed = self.input_text.trim();
+        if trimmed.is_empty() {
+            self.results = None;
+            return;
+        }
+        self.results = Some(match trimmed.parse::<u64>() {
+            Ok(num) if num >= 2 => Ok((num, is_prime(num), prime_factors(num))),
+            Ok(_) => Err("Number must be at least 2.".to_string()),
+            Err(_) => Err("Please enter a valid positive integer (max 64-bit).".to_string()),
+        });
+    }
+}
+
 impl InteractiveTool for FactorizationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Factorization Tool"
+    }
+    fn domain(&self) -> &'static str {
+        "number_theory"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&FactorizationState {
+            input_text: self.input_text.clone(),
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: FactorizationState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid FactorizationTool state: {e}"))?;
+        self.input_text = s.input_text;
+        self.analyze_input();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -142,7 +180,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "target_number": 104729
+    "input_text": "104729"
   }
 }"#;
 

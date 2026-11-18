@@ -309,11 +309,10 @@ impl InteractiveTool for ReplicatorDynamicsTool {
         serde_json::to_string(&self.export_config()).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(config) = serde_json::from_str::<ReplicatorPresetConfig>(state) {
-            let _ = self.apply_config(config);
-            self.run_simulation();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let config =
+            serde_json::from_str::<ReplicatorPresetConfig>(state).map_err(|e| e.to_string())?;
+        self.apply_config(config)
     }
 
     fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {

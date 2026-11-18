@@ -67,10 +67,46 @@ impl SpinVisualizer {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SpinVisualizerState {
+    b_field: [f64; 3],
+    paused: bool,
+    camera: crate::framework::Camera3D,
+}
+
 impl InteractiveTool for SpinVisualizer {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Spin Dynamics (Bloch Sphere)"
+    }
+    fn domain(&self) -> &'static str {
+        "quantum"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&SpinVisualizerState {
+            b_field: self.b_field,
+            paused: self.paused,
+            camera: self.camera,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: SpinVisualizerState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SpinVisualizer state: {e}"))?;
+        if !s.b_field.iter().all(|v| v.is_finite())
+            || !s.camera.pitch.is_finite()
+            || !s.camera.yaw.is_finite()
+            || !s.camera.zoom.is_finite()
+        {
+            return Err("Non-finite parameters in SpinVisualizer".to_string());
+        }
+        self.b_field = s.b_field;
+        self.paused = s.paused;
+        self.camera = s.camera;
+        self.reset();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -287,9 +323,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "theta": 1.047,
-    "phi": 0.785,
-    "magnetic_b": 1.0
+    "b_field": [0.5, 0.0, 1.0],
+    "paused": true,
+    "camera": {
+      "pitch": 0.5,
+      "yaw": 0.5,
+      "zoom": 1.0
+    }
   }
 }"#;
 

@@ -316,8 +316,8 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "barrier_height": 5.0,
-    "packet_energy": 3.0
+    "potential_type": 1.0,
+    "dt": 0.02
   }
 }"#;
 

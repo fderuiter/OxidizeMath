@@ -151,14 +151,15 @@ impl InteractiveTool for CrystalViewer {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<CrystalState>(state) {
-            self.system = s.system;
-            self.lattice_constant = s.lattice_constant;
-            self.yaw = s.yaw;
-            self.pitch = s.pitch;
-            self.zoom = s.zoom;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: CrystalState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid CrystalViewer state: {e}"))?;
+        self.system = s.system;
+        self.lattice_constant = s.lattice_constant;
+        self.yaw = s.yaw;
+        self.pitch = s.pitch;
+        self.zoom = s.zoom;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -268,8 +269,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "structure": "FCC",
-    "unit_cells": 2
+    "system": "FaceCenteredCubic",
+    "lattice_constant": 3.0,
+    "yaw": 0.6,
+    "pitch": 0.4,
+    "zoom": 65.0
   }
 }"#;
 

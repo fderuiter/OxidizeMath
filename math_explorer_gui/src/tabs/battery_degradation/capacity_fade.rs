@@ -45,12 +45,13 @@ impl InteractiveTool for CapacityFadeTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<CapacityFadeState>(state) {
-            self.dod = s.dod;
-            self.temperature = s.temperature;
-            self.cycles_to_simulate = s.cycles_to_simulate;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: CapacityFadeState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid CapacityFadeTool state: {e}"))?;
+        self.dod = s.dod;
+        self.temperature = s.temperature;
+        self.cycles_to_simulate = s.cycles_to_simulate;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -175,8 +176,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "initial_capacity": 100.0,
-    "cycle_count": 1000
+    "dod": 80.0,
+    "temperature": 25.0,
+    "cycles_to_simulate": 1000.0
   }
 }"#;
 

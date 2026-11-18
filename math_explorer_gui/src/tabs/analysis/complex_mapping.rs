@@ -152,14 +152,15 @@ impl InteractiveTool for ComplexMappingTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<ComplexMappingState>(state) {
-            self.function = s.function;
-            self.grid_min = s.grid_min;
-            self.grid_max = s.grid_max;
-            self.grid_density = s.grid_density;
-            self.inspection_point = s.inspection_point;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: ComplexMappingState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid ComplexMappingTool state: {e}"))?;
+        self.function = s.function;
+        self.grid_min = s.grid_min;
+        self.grid_max = s.grid_max;
+        self.grid_density = s.grid_density;
+        self.inspection_point = s.inspection_point;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -430,8 +431,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "function": "z^2",
-    "grid_bound": 2.0
+    "function": "ZSquared",
+    "grid_min": -2.0,
+    "grid_max": 2.0,
+    "grid_density": 15,
+    "inspection_point": [1.0, 0.5]
   }
 }"#;
 

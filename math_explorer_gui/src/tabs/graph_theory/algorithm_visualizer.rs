@@ -338,13 +338,14 @@ impl InteractiveTool for AlgorithmVisualizerTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<AlgorithmVisualizerState>(state) {
-            self.selected_algorithm = loaded.selected_algorithm;
-            self.start_node = loaded.start_node;
-            self.playback_speed = loaded.playback_speed;
-            self.run_algorithm();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded = serde_json::from_str::<AlgorithmVisualizerState>(state)
+            .map_err(|e| e.to_string())?;
+        self.selected_algorithm = loaded.selected_algorithm;
+        self.start_node = loaded.start_node;
+        self.playback_speed = loaded.playback_speed;
+        self.run_algorithm();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -402,8 +403,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "algorithm": "Dijkstra",
-    "node_count": 12
+    "selected_algorithm": "Dijkstra",
+    "start_node": 5,
+    "playback_speed": 3.0
   }
 }"#;
 

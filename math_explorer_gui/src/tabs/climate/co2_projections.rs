@@ -35,10 +35,11 @@ impl InteractiveTool for Co2ProjectionsTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<Co2State>(state) {
-            self.reduction_scenario = s.reduction_scenario;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: Co2State = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid Co2ProjectionsTool state: {e}"))?;
+        self.reduction_scenario = s.reduction_scenario;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -108,8 +109,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "baseline_ppm": 420.0,
-    "annual_growth": 2.5
+    "reduction_scenario": 0.5
   }
 }"#;
 

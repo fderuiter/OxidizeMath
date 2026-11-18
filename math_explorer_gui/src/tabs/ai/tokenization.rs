@@ -54,10 +54,42 @@ impl TokenizationTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TokenizationState {
+    input_text: String,
+    d_model: usize,
+    use_subword: bool,
+}
+
 impl InteractiveTool for TokenizationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Tokenization & Embeddings"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&TokenizationState {
+            input_text: self.input_text.clone(),
+            d_model: self.d_model,
+            use_subword: self.use_subword,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: TokenizationState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid TokenizationTool state: {e}"))?;
+        if s.d_model == 0 {
+            return Err("d_model must be positive in TokenizationTool".to_string());
+        }
+        self.input_text = s.input_text;
+        self.d_model = s.d_model;
+        self.use_subword = s.use_subword;
+        self.recalculate_tokens();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -232,8 +264,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "vocab_size": 1000,
-    "sample_text": "Neural attention mechanisms"
+    "input_text": "Neural attention mechanisms",
+    "d_model": 12,
+    "use_subword": true
   }
 }"#;
 

@@ -172,16 +172,16 @@ impl InteractiveTool for SirTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<SirState>(state) {
-            self.n = s.n;
-            self.i0 = s.i0;
-            self.beta = s.beta;
-            self.gamma = s.gamma;
-            self.duration = s.duration;
-            self.snapshot_manager = s.snapshot_manager;
-            self.recalculate();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s = serde_json::from_str::<SirState>(state).map_err(|e| e.to_string())?;
+        self.n = s.n;
+        self.i0 = s.i0;
+        self.beta = s.beta;
+        self.gamma = s.gamma;
+        self.duration = s.duration;
+        self.snapshot_manager = s.snapshot_manager;
+        self.recalculate();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -350,9 +350,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
+    "n": 10000.0,
+    "i0": 25.0,
     "beta": 0.3,
     "gamma": 0.1,
-    "population": 10000
+    "duration": 120.0
   }
 }"#;
 

@@ -12,8 +12,8 @@ use std::collections::HashMap;
 mod runner;
 pub use runner::*;
 
-#[derive(Clone, Copy, PartialEq)]
-enum HeatmapView {
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(super) enum HeatmapView {
     MaxQ,
     Up,
     Down,
@@ -46,7 +46,7 @@ impl Default for QTableInspectorTool {
 }
 
 impl QTableInspectorTool {
-    fn sync_from_latest(&mut self) {
+    pub(super) fn sync_from_latest(&mut self) {
         if let Some(snapshot) = self.worker.latest_snapshot() {
             if let Some(data) = snapshot
                 .structured_data
@@ -290,6 +290,9 @@ impl InteractiveTool for QTableInspectorTool {
     fn name(&self) -> &'static str {
         "Q-Table Inspector"
     }
+    fn domain(&self) -> &'static str { "ai" }
+    fn save_state(&self) -> Option<String> { self.serialize_state() }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> { self.deserialize_state(state) }
 
     fn show(&mut self, ctx: &egui::Context) {
         if let Some(snapshot) = self.worker.update() {

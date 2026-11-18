@@ -66,20 +66,21 @@ impl InteractiveTool for GraphEditorTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<SerializedGraphState>(state) {
-            self.node_positions = loaded
-                .node_positions
-                .into_iter()
-                .map(|(id, (x, y))| (id, Pos2::new(x, y)))
-                .collect();
-            self.edges = loaded.edges;
-            self.selected_node = loaded.selected_node;
-            self.next_node_id = loaded.next_node_id;
-            self.undo_stack.clear();
-            self.redo_stack.clear();
-            self.rebuild_graph();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded =
+            serde_json::from_str::<SerializedGraphState>(state).map_err(|e| e.to_string())?;
+        self.node_positions = loaded
+            .node_positions
+            .into_iter()
+            .map(|(id, (x, y))| (id, Pos2::new(x, y)))
+            .collect();
+        self.edges = loaded.edges;
+        self.selected_node = loaded.selected_node;
+        self.next_node_id = loaded.next_node_id;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.rebuild_graph();
+        Ok(())
     }
 
     fn show_ui(&mut self, ui: &mut egui::Ui) {

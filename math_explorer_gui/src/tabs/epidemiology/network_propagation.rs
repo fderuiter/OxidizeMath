@@ -35,7 +35,7 @@ impl NetworkPropagationTool {
     }
 }
 
-fn is_false(value: &bool) -> bool {
+const fn is_false(value: &bool) -> bool {
     !*value
 }
 
@@ -74,14 +74,15 @@ impl InteractiveTool for NetworkPropagationTool {
         Some(self)
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<NetPropState>(state) {
-            let _ = self.model.set_num_nodes(s.num_nodes);
-            let _ = self.model.set_beta(s.beta);
-            let _ = self.model.set_gamma(s.gamma);
-            self.reset_network();
-            self.is_running = s.is_running;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: NetPropState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid NetworkPropagationTool state: {e}"))?;
+        let _ = self.model.set_num_nodes(s.num_nodes);
+        let _ = self.model.set_beta(s.beta);
+        let _ = self.model.set_gamma(s.gamma);
+        self.reset_network();
+        self.is_running = s.is_running;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -248,8 +249,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "infection_prob": 0.15,
-    "recovery_prob": 0.05
+    "num_nodes": 60,
+    "beta": 0.15,
+    "gamma": 0.05
   }
 }"#;
 

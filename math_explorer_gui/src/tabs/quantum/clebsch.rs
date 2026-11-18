@@ -69,11 +69,53 @@ impl TheoryDescribable for ClebschGordanTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ClebschGordanState {
+    j1: f64,
+    m1: f64,
+    j2: f64,
+    m2: f64,
+    j: f64,
+    m: f64,
+}
+
 impl InteractiveTool for ClebschGordanTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     
     fn name(&self) -> &'static str {
         "Clebsch-Gordan"
+    }
+
+    fn domain(&self) -> &'static str {
+        "quantum"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&ClebschGordanState {
+            j1: self.j1,
+            m1: self.m1,
+            j2: self.j2,
+            m2: self.m2,
+            j: self.j,
+            m: self.m,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: ClebschGordanState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid ClebschGordanTool state: {e}"))?;
+        if ![s.j1, s.m1, s.j2, s.m2, s.j, s.m].iter().all(|v| v.is_finite()) {
+            return Err("Non-finite quantum numbers in ClebschGordanTool".to_string());
+        }
+        self.j1 = s.j1;
+        self.m1 = s.m1;
+        self.j2 = s.j2;
+        self.m2 = s.m2;
+        self.j = s.j;
+        self.m = s.m;
+        self.calculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -238,7 +280,11 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "j1": 1.0,
-    "j2": 1.0
+    "m1": 1.0,
+    "j2": 1.0,
+    "m2": -1.0,
+    "j": 2.0,
+    "m": 0.0
   }
 }"#;
 

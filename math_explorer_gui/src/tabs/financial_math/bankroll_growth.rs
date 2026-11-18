@@ -139,14 +139,15 @@ impl InteractiveTool for BankrollGrowthTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<BankrollState>(state) {
-            self.initial_bankroll = s.initial_bankroll;
-            self.probability = s.probability;
-            self.odds = s.odds;
-            self.num_bets = s.num_bets;
-            self.recalculate();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: BankrollState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid BankrollGrowthTool state: {e}"))?;
+        self.initial_bankroll = s.initial_bankroll;
+        self.probability = s.probability;
+        self.odds = s.odds;
+        self.num_bets = s.num_bets;
+        self.recalculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -314,8 +315,10 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "initial_bankroll": 10000.0,
-    "time_steps": 100
+    "initial_bankroll": 5000.0,
+    "probability": 0.6,
+    "odds": 1.5,
+    "num_bets": 150
   }
 }"#;
 

@@ -56,14 +56,15 @@ impl InteractiveTool for RandomizationTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<RandomizationState>(state) {
-            self.randomization_type = s.randomization_type;
-            self.n_subjects = s.n_subjects;
-            self.block_size = s.block_size;
-            self.assignments.clear();
-            self.error_message = None;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: RandomizationState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid RandomizationTool state: {e}"))?;
+        self.randomization_type = s.randomization_type;
+        self.n_subjects = s.n_subjects;
+        self.block_size = s.block_size;
+        self.assignments.clear();
+        self.error_message = None;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -225,8 +226,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "block_size": 4,
-    "total_patients": 100
+    "randomization_type": "Block",
+    "n_subjects": 100,
+    "block_size": 4
   }
 }"#;
 

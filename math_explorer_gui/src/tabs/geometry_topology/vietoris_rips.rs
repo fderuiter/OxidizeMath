@@ -132,16 +132,16 @@ impl InteractiveTool for VietorisRipsTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<VietorisRipsState>(state) {
-            self.radius = loaded.radius;
-            self.points = loaded
-                .points
-                .into_iter()
-                .map(|[x, y]| Point2D::new(x, y))
-                .collect();
-            self.update_complex();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded = serde_json::from_str::<VietorisRipsState>(state).map_err(|e| e.to_string())?;
+        self.radius = loaded.radius;
+        self.points = loaded
+            .points
+            .into_iter()
+            .map(|[x, y]| Point2D::new(x, y))
+            .collect();
+        self.update_complex();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -353,8 +353,19 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "max_distance": 2.0,
-    "num_points": 50
+    "radius": 2.8,
+    "points": [
+      [2.0, 5.0],
+      [3.0, 7.5],
+      [5.0, 8.5],
+      [7.0, 7.5],
+      [8.0, 5.0],
+      [7.0, 2.5],
+      [5.0, 1.5],
+      [3.0, 2.5],
+      [2.6, 6.2],
+      [7.4, 6.2]
+    ]
   }
 }"#;
 

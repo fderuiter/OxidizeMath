@@ -105,10 +105,39 @@ impl TrainingMonitorTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TrainingMonitorState {
+    learning_rate: f64,
+    hidden_dim: usize,
+}
+
 impl InteractiveTool for TrainingMonitorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Training Monitor"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&TrainingMonitorState {
+            learning_rate: self.learning_rate,
+            hidden_dim: self.hidden_dim,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: TrainingMonitorState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid TrainingMonitorTool state: {e}"))?;
+        if !s.learning_rate.is_finite() || s.learning_rate <= 0.0 || s.hidden_dim == 0 {
+            return Err("Invalid learning_rate or hidden_dim in TrainingMonitorTool".to_string());
+        }
+        self.learning_rate = s.learning_rate;
+        self.hidden_dim = s.hidden_dim;
+        self.reinit_model();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -345,8 +374,8 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "max_epochs": 50,
-    "batch_size": 32
+    "learning_rate": 0.02,
+    "hidden_dim": 32
   }
 }"#;
 
