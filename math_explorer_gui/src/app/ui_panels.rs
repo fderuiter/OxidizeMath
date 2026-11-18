@@ -1,3 +1,4 @@
+#[cfg(any(not(target_os = "macos"), test))]
 use crate::app::{MathExplorerApp, ThemeMode, ViewportLayout};
 use eframe::egui;
 use federated_registry::{Severity, TelemetryEvent};
@@ -145,8 +146,47 @@ pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
     }
 }
 
+#[cfg(any(not(target_os = "macos"), test))]
+fn render_pane_assignments_submenu(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+) {
+    ui.menu_button("Pane Assignments", |ui| {
+        let pane_count = app.viewport_layout.pane_count();
+        let pane_prefixes = app.viewport_layout.pane_label_prefixes();
+        let mut pending_assignment = None;
+
+        for pane_idx in 0..pane_count {
+            let prefix = pane_prefixes.get(pane_idx).copied().unwrap_or("Pane:");
+            let assigned = app.pane_tabs.get(pane_idx).copied().unwrap_or(0);
+            let assigned_name = app
+                .tabs
+                .get(assigned)
+                .map(|t| t.name())
+                .unwrap_or("Unknown");
+
+            ui.push_id(("pane_assign", pane_idx), |ui| {
+                ui.menu_button((prefix, assigned_name), |pane_ui| {
+                    if let Some(tab_idx) = crate::app::domain_bar::render_domain_module_submenus(
+                        pane_ui, &app.tabs, assigned,
+                    ) {
+                        pending_assignment = Some((pane_idx, tab_idx));
+                    }
+                });
+            });
+        }
+
+        if let Some((pane_idx, tab_idx)) = pending_assignment {
+            app.select_pane_tab(ctx, pane_idx, tab_idx);
+            ui.close();
+        }
+    });
+}
+
 /// Renders the top menu bar in the UI.
-#[allow(clippy::too_many_lines, dead_code)]
+#[cfg(any(not(target_os = "macos"), test))]
+#[allow(clippy::too_many_lines)]
 pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
     let modifiers = if cfg!(target_os = "macos") {
         egui::Modifiers::MAC_CMD
@@ -299,42 +339,19 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
             });
 
             if app.viewport_layout != ViewportLayout::Single {
-                ui.menu_button("Pane Assignments", |ui| {
-                    let pane_count = app.viewport_layout.pane_count();
-                    let pane_labels = app.viewport_layout.pane_labels();
-                    let tab_names = app.tab_names();
-
-                    for pane_idx in 0..pane_count {
-                        let label = pane_labels.get(pane_idx).copied().unwrap_or("Pane");
-                        let assigned = app.pane_tabs.get(pane_idx).copied().unwrap_or(0);
-                        let assigned_name = tab_names.get(assigned).copied().unwrap_or("Unknown");
-
-                        ui.menu_button(format!("{}: {}", label, assigned_name), |ui| {
-                            for (tab_idx, tab_name) in tab_names.iter().enumerate() {
-                                if ui
-                                    .selectable_label(assigned == tab_idx, *tab_name)
-                                    .clicked()
-                                {
-                                    app.set_pane_tab(pane_idx, tab_idx);
-                                    ui.close();
-                                }
-                            }
-                        });
-                    }
-                });
+                render_pane_assignments_submenu(app, ctx, ui);
             }
 
             ui.separator();
-            ui.label(egui::RichText::new("Primary Module").strong());
-            let mut selected = app.selected_tab;
-            let tab_names = app.tab_names();
-            for (i, tab_name) in tab_names.into_iter().enumerate() {
-                if ui.radio_value(&mut selected, i, tab_name).clicked() {
-                    app.selected_tab = i;
-                    app.pane_tabs[0] = i;
+            ui.menu_button("Primary Module", |ui| {
+                let selected = app.selected_tab;
+                if let Some(tab_idx) =
+                    crate::app::domain_bar::render_domain_module_submenus(ui, &app.tabs, selected)
+                {
+                    app.select_tab(ctx, tab_idx);
                     ui.close();
                 }
-            }
+            });
             ui.separator();
             if ui
                 .checkbox(

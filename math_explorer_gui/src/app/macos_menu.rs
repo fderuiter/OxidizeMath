@@ -1,6 +1,7 @@
 #![cfg(target_os = "macos")]
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::domain_bar::AcademicDomain;
 use super::{MathExplorerApp, ThemeMode, ViewportLayout};
 use eframe::egui;
 use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
@@ -87,6 +88,26 @@ fn build_layout_submenu() -> Submenu {
     layout_menu
 }
 
+fn build_primary_module_submenu(app: &MathExplorerApp) -> Submenu {
+    let primary_menu = Submenu::new("Primary Module", true);
+    for &domain in AcademicDomain::ALL {
+        let domain_menu = Submenu::new(domain.name(), true);
+        let mut has_items = false;
+        for (i, tab) in app.tabs.iter().enumerate() {
+            if AcademicDomain::from_str(tab.academic_domain()) == Some(domain) {
+                let item =
+                    MenuItem::with_id(MenuId::new(format!("tab_{}", i)), tab.name(), true, None);
+                domain_menu.append(&item).unwrap();
+                has_items = true;
+            }
+        }
+        if has_items {
+            primary_menu.append(&domain_menu).unwrap();
+        }
+    }
+    primary_menu
+}
+
 fn build_view_menu(app: &MathExplorerApp) -> Submenu {
     let view_menu = Submenu::new("View", true);
     let palette_item =
@@ -97,10 +118,9 @@ fn build_view_menu(app: &MathExplorerApp) -> Submenu {
     view_menu.append(&build_layout_submenu()).unwrap();
     view_menu.append(&PredefinedMenuItem::separator()).unwrap();
 
-    for (i, name) in app.tab_names().into_iter().enumerate() {
-        let item = MenuItem::with_id(MenuId::new(format!("tab_{}", i)), name, true, None);
-        view_menu.append(&item).unwrap();
-    }
+    view_menu
+        .append(&build_primary_module_submenu(app))
+        .unwrap();
     view_menu.append(&PredefinedMenuItem::separator()).unwrap();
 
     let diag_item = CheckMenuItem::with_id(
@@ -242,7 +262,7 @@ pub(super) fn handle_macos_menu_events(app: &mut MathExplorerApp, ctx: &egui::Co
             "edit_redo" => app.redo(),
             other if other.starts_with("tab_") => {
                 if let Ok(idx) = other[4..].parse::<usize>() {
-                    app.selected_tab = idx;
+                    app.select_tab(ctx, idx);
                 }
             }
             _ => {}
