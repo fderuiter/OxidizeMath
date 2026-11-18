@@ -227,6 +227,34 @@ impl PlotBounds {
         self.max[1] = center.y + (self.max[1] - center.y) / (zoom_factor.y as f64);
     }
 
+    pub(crate) fn zoom_scaled(&mut self, zoom_factor: Vec2, center: PlotPoint, log_axis: Vec2b) {
+        let centers = [center.x, center.y];
+        for d in 0..2 {
+            let zf = zoom_factor[d] as f64;
+            if !zf.is_finite() || zf <= 0.0 {
+                continue;
+            }
+            if log_axis[d] {
+                let min_log = log10_clamped_bound(self.min[d]);
+                let max_log = log10_clamped_max(min_log, self.max[d]);
+                let c_log = if centers[d].is_finite() && centers[d] > 0.0 {
+                    centers[d].log10().clamp(MIN_LOG_EXP, MAX_LOG_EXP)
+                } else {
+                    0.5 * (min_log + max_log)
+                };
+                let new_min = (c_log + (min_log - c_log) / zf).clamp(MIN_LOG_EXP, MAX_LOG_EXP);
+                let new_max = (c_log + (max_log - c_log) / zf).clamp(MIN_LOG_EXP, MAX_LOG_EXP);
+                if new_max > new_min {
+                    self.min[d] = 10.0_f64.powf(new_min);
+                    self.max[d] = 10.0_f64.powf(new_max);
+                }
+            } else {
+                self.min[d] = centers[d] + (self.min[d] - centers[d]) / zf;
+                self.max[d] = centers[d] + (self.max[d] - centers[d]) / zf;
+            }
+        }
+    }
+
     #[inline]
     pub fn add_relative_margin_x(&mut self, margin_fraction: Vec2) {
         let width = self.width().max(0.0);
@@ -237,6 +265,21 @@ impl PlotBounds {
     pub fn add_relative_margin_y(&mut self, margin_fraction: Vec2) {
         let height = self.height().max(0.0);
         self.expand_y(margin_fraction.y as f64 * height);
+    }
+
+    pub(crate) fn add_log_margin_axis(&mut self, axis: usize, frac: f64) {
+        sanitize_log_axis_pair(&mut self.min[axis], &mut self.max[axis]);
+        if !frac.is_finite() || frac <= 0.0 {
+            return;
+        }
+        let min_log = self.min[axis].log10();
+        let max_log = self.max[axis].log10();
+        let span = (max_log - min_log).max(1e-6);
+        let pad = frac * span;
+        let new_min_log = (min_log - pad).clamp(MIN_LOG_EXP, MAX_LOG_EXP - 1e-6);
+        let new_max_log = (max_log + pad).clamp(new_min_log + 1e-6, MAX_LOG_EXP);
+        self.min[axis] = 10.0_f64.powf(new_min_log);
+        self.max[axis] = 10.0_f64.powf(new_max_log);
     }
 
     #[inline]
@@ -264,6 +307,47 @@ impl PlotBounds {
     }
 }
 
+const DEFAULT_MIN_LOG_BOUND: f64 = 1e-6;
+const MIN_LOG_EXP: f64 = -300.0;
+const MAX_LOG_EXP: f64 = 300.0;
+
+#[inline]
+fn sanitize_log_axis_pair(min: &mut f64, max: &mut f64) {
+    if !min.is_finite() || *min <= 0.0 {
+        *min = DEFAULT_MIN_LOG_BOUND;
+    } else {
+        *min = min.clamp(1e-300, 1e299);
+    }
+    if !max.is_finite() || *max <= *min {
+        *max = (*min * 10.0).min(1e300);
+    } else {
+        *max = max.min(1e300);
+    }
+}
+
+#[inline]
+fn log10_clamped_bound(v: f64) -> f64 {
+    if v.is_finite() && v > 0.0 {
+        v.log10().clamp(MIN_LOG_EXP, MAX_LOG_EXP)
+    } else {
+        DEFAULT_MIN_LOG_BOUND.log10()
+    }
+}
+
+#[inline]
+fn log10_clamped_max(min_log: f64, max_v: f64) -> f64 {
+    if max_v.is_finite() && max_v > 0.0 {
+        let m = max_v.log10().clamp(MIN_LOG_EXP, MAX_LOG_EXP);
+        if m > min_log {
+            m
+        } else {
+            (min_log + 1.0).min(MAX_LOG_EXP)
+        }
+    } else {
+        (min_log + 1.0).min(MAX_LOG_EXP)
+    }
+}
+
 /// Contains the screen rectangle and the plot bounds and provides methods to transform between them.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug)]
@@ -279,6 +363,10 @@ pub struct PlotTransform {
 
     /// Whether to always invert the x and/or y axis
     inverted_axis: Vec2b,
+
+    /// Whether to project the x and/or y axis in base-10 logarithmic space.
+    #[cfg_attr(feature = "serde", serde(default))]
+    log_axis: Vec2b,
 }
 
 impl PlotTransform {
@@ -342,6 +430,7 @@ impl PlotTransform {
             bounds: new_bounds,
             centered: center_axis,
             inverted_axis: Vec2b::new(false, false),
+            log_axis: Vec2b::new(false, false),
         }
     }
 
@@ -354,6 +443,36 @@ impl PlotTransform {
         let mut new = Self::new(frame, bounds, center_axis);
         new.inverted_axis = invert_axis.into();
         new
+    }
+
+    /// Returns whether logarithmic scaling is enabled on each axis.
+    #[inline]
+    pub fn log_axis(&self) -> Vec2b {
+        self.log_axis
+    }
+
+    /// Configures base-10 logarithmic scaling per axis, clamping non-positive bounds to `1e-6`
+    /// and disabling zero-centered symmetry on logarithmic axes.
+    pub fn set_log_axis(&mut self, log_axis: impl Into<Vec2b>) {
+        let log_axis = log_axis.into();
+        self.log_axis = log_axis;
+        if log_axis.x {
+            self.centered.x = false;
+            sanitize_log_axis_pair(&mut self.bounds.min[0], &mut self.bounds.max[0]);
+        }
+        if log_axis.y {
+            self.centered.y = false;
+            sanitize_log_axis_pair(&mut self.bounds.min[1], &mut self.bounds.max[1]);
+        }
+    }
+
+    /// Returns `true` if `point` has finite coordinates and strictly positive values on active log axes.
+    #[inline]
+    pub fn is_point_valid_for_scale(&self, point: &PlotPoint) -> bool {
+        point.x.is_finite()
+            && point.y.is_finite()
+            && (!self.log_axis.x || point.x > 0.0)
+            && (!self.log_axis.y || point.y > 0.0)
     }
 
     /// ui-space rectangle.
@@ -369,20 +488,63 @@ impl PlotTransform {
     }
 
     #[inline]
-    pub fn set_bounds(&mut self, bounds: PlotBounds) {
+    pub fn set_bounds(&mut self, mut bounds: PlotBounds) {
+        if self.log_axis.x {
+            sanitize_log_axis_pair(&mut bounds.min[0], &mut bounds.max[0]);
+        }
+        if self.log_axis.y {
+            sanitize_log_axis_pair(&mut bounds.min[1], &mut bounds.max[1]);
+        }
         self.bounds = bounds;
     }
 
     pub fn translate_bounds(&mut self, mut delta_pos: (f64, f64)) {
-        if self.centered.x {
+        if self.centered.x && !self.log_axis.x {
             delta_pos.0 = 0.;
         }
-        if self.centered.y {
+        if self.centered.y && !self.log_axis.y {
             delta_pos.1 = 0.;
         }
-        delta_pos.0 *= self.dvalue_dpos()[0];
-        delta_pos.1 *= self.dvalue_dpos()[1];
-        self.bounds.translate((delta_pos.0, delta_pos.1));
+        if self.log_axis.x {
+            self.translate_log_axis(0, delta_pos.0);
+        } else {
+            self.bounds.translate_x(delta_pos.0 * self.dvalue_dpos()[0]);
+        }
+        if self.log_axis.y {
+            self.translate_log_axis(1, delta_pos.1);
+        } else {
+            self.bounds.translate_y(delta_pos.1 * self.dvalue_dpos()[1]);
+        }
+    }
+
+    fn translate_log_axis(&mut self, axis: usize, delta_px: f64) {
+        if !delta_px.is_finite() || delta_px == 0.0 {
+            return;
+        }
+        let span_px = if axis == 0 {
+            self.frame.width() as f64
+        } else {
+            self.frame.height() as f64
+        };
+        if span_px <= 0.0 {
+            return;
+        }
+        let flip = match (axis, self.inverted_axis[axis]) {
+            (0, true) | (1, false) => -1.0,
+            _ => 1.0,
+        };
+        let min_log = log10_clamped_bound(self.bounds.min[axis]);
+        let max_log = log10_clamped_max(min_log, self.bounds.max[axis]);
+        let delta_log = delta_px * flip * (max_log - min_log) / span_px;
+        let lo = MIN_LOG_EXP - min_log;
+        let hi = MAX_LOG_EXP - max_log;
+        let clamped_delta = if lo <= hi {
+            delta_log.clamp(lo, hi)
+        } else {
+            0.0
+        };
+        self.bounds.min[axis] = 10.0_f64.powf(min_log + clamped_delta);
+        self.bounds.max[axis] = 10.0_f64.powf(max_log + clamped_delta);
     }
 
     /// Zoom by a relative factor with the given screen position as center.
@@ -390,7 +552,7 @@ impl PlotTransform {
         let center = self.value_from_position(center);
 
         let mut new_bounds = self.bounds;
-        new_bounds.zoom(zoom_factor, center);
+        new_bounds.zoom_scaled(zoom_factor, center, self.log_axis);
 
         if new_bounds.is_valid() {
             self.bounds = new_bounds;
@@ -398,28 +560,44 @@ impl PlotTransform {
     }
 
     pub fn position_from_point_x(&self, value: f64) -> f32 {
-        remap(
-            value,
-            self.bounds.min[0]..=self.bounds.max[0],
-            if self.inverted_axis[0] {
-                (self.frame.right() as f64)..=(self.frame.left() as f64)
+        let screen_range = if self.inverted_axis[0] {
+            (self.frame.right() as f64)..=(self.frame.left() as f64)
+        } else {
+            (self.frame.left() as f64)..=(self.frame.right() as f64)
+        };
+        if self.log_axis.x {
+            let min_log = log10_clamped_bound(self.bounds.min[0]);
+            let max_log = log10_clamped_max(min_log, self.bounds.max[0]);
+            let val_log = if value.is_finite() && value > 0.0 {
+                value.log10().clamp(MIN_LOG_EXP, MAX_LOG_EXP)
             } else {
-                (self.frame.left() as f64)..=(self.frame.right() as f64)
-            },
-        ) as f32
+                min_log.min(DEFAULT_MIN_LOG_BOUND.log10())
+            };
+            remap(val_log, min_log..=max_log, screen_range) as f32
+        } else {
+            remap(value, self.bounds.min[0]..=self.bounds.max[0], screen_range) as f32
+        }
     }
 
     pub fn position_from_point_y(&self, value: f64) -> f32 {
-        remap(
-            value,
-            self.bounds.min[1]..=self.bounds.max[1],
-            // negated y axis by default
-            if self.inverted_axis[1] {
-                (self.frame.top() as f64)..=(self.frame.bottom() as f64)
+        // negated y axis by default
+        let screen_range = if self.inverted_axis[1] {
+            (self.frame.top() as f64)..=(self.frame.bottom() as f64)
+        } else {
+            (self.frame.bottom() as f64)..=(self.frame.top() as f64)
+        };
+        if self.log_axis.y {
+            let min_log = log10_clamped_bound(self.bounds.min[1]);
+            let max_log = log10_clamped_max(min_log, self.bounds.max[1]);
+            let val_log = if value.is_finite() && value > 0.0 {
+                value.log10().clamp(MIN_LOG_EXP, MAX_LOG_EXP)
             } else {
-                (self.frame.bottom() as f64)..=(self.frame.top() as f64)
-            },
-        ) as f32
+                min_log.min(DEFAULT_MIN_LOG_BOUND.log10())
+            };
+            remap(val_log, min_log..=max_log, screen_range) as f32
+        } else {
+            remap(value, self.bounds.min[1]..=self.bounds.max[1], screen_range) as f32
+        }
     }
 
     /// Screen/ui position from point on plot.
@@ -432,27 +610,76 @@ impl PlotTransform {
 
     /// Plot point from screen/ui position.
     pub fn value_from_position(&self, pos: Pos2) -> PlotPoint {
-        let x = remap(
-            pos.x as f64,
-            if self.inverted_axis[0] {
-                (self.frame.right() as f64)..=(self.frame.left() as f64)
-            } else {
-                (self.frame.left() as f64)..=(self.frame.right() as f64)
-            },
-            self.bounds.range_x(),
-        );
-        let y = remap(
-            pos.y as f64,
-            // negated y axis by default
-            if self.inverted_axis[1] {
-                (self.frame.top() as f64)..=(self.frame.bottom() as f64)
-            } else {
-                (self.frame.bottom() as f64)..=(self.frame.top() as f64)
-            },
-            self.bounds.range_y(),
-        );
+        let x_screen = if self.inverted_axis[0] {
+            (self.frame.right() as f64)..=(self.frame.left() as f64)
+        } else {
+            (self.frame.left() as f64)..=(self.frame.right() as f64)
+        };
+        let y_screen = if self.inverted_axis[1] {
+            (self.frame.top() as f64)..=(self.frame.bottom() as f64)
+        } else {
+            (self.frame.bottom() as f64)..=(self.frame.top() as f64)
+        };
+
+        let x = if self.log_axis.x {
+            let min_log = log10_clamped_bound(self.bounds.min[0]);
+            let max_log = log10_clamped_max(min_log, self.bounds.max[0]);
+            let log_x = remap(pos.x as f64, x_screen, min_log..=max_log);
+            10.0_f64.powf(log_x.clamp(MIN_LOG_EXP, MAX_LOG_EXP))
+        } else {
+            remap(pos.x as f64, x_screen, self.bounds.range_x())
+        };
+
+        let y = if self.log_axis.y {
+            let min_log = log10_clamped_bound(self.bounds.min[1]);
+            let max_log = log10_clamped_max(min_log, self.bounds.max[1]);
+            let log_y = remap(pos.y as f64, y_screen, min_log..=max_log);
+            10.0_f64.powf(log_y.clamp(MIN_LOG_EXP, MAX_LOG_EXP))
+        } else {
+            remap(pos.y as f64, y_screen, self.bounds.range_y())
+        };
 
         PlotPoint::new(x, y)
+    }
+
+    /// Computes screen-space spacing in ui points for a grid/axis mark on `axis`.
+    pub fn step_spacing_in_points(&self, axis: Axis, step: super::GridMark) -> f32 {
+        let iaxis = usize::from(axis);
+        if !self.log_axis[iaxis] {
+            return (self.dpos_dvalue()[iaxis] * step.step_size).abs() as f32;
+        }
+        let v = step.value;
+        let s = step.step_size;
+        if !v.is_finite() || !s.is_finite() || v <= 0.0 || s <= 0.0 {
+            return 0.0;
+        }
+        let pos_at = |val: f64| match axis {
+            Axis::X => self.position_from_point_x(val),
+            Axis::Y => self.position_from_point_y(val),
+        };
+        let is_major_decade = (v - s).abs() <= 1e-4 * s;
+        if is_major_decade {
+            let neighbor = if (10.0 * v).is_finite() {
+                10.0 * v
+            } else {
+                0.1 * v
+            };
+            let one_decade_px = (pos_at(neighbor) - pos_at(v)).abs();
+            let exp = v.log10().round() as i32;
+            let stride = if exp == 0 {
+                256_u32
+            } else {
+                1_u32 << exp.unsigned_abs().trailing_zeros().min(8)
+            };
+            one_decade_px * (stride as f32)
+        } else {
+            let neighbor = if (v + s).is_finite() {
+                v + s
+            } else {
+                (v - s).max(1e-300)
+            };
+            (pos_at(neighbor) - pos_at(v)).abs()
+        }
     }
 
     /// Transform a rectangle of plot values to a screen-coordinate rectangle.
@@ -504,6 +731,9 @@ impl PlotTransform {
     ///
     /// This never contracts, so we don't miss out on any data.
     pub(crate) fn set_aspect_by_expanding(&mut self, aspect: f64) {
+        if self.log_axis.any() {
+            return;
+        }
         let current_aspect = self.aspect();
 
         let epsilon = 1e-5;
@@ -523,6 +753,9 @@ impl PlotTransform {
 
     /// Sets the aspect ratio by changing either the X or Y axis (callers choice).
     pub(crate) fn set_aspect_by_changing_axis(&mut self, aspect: f64, axis: Axis) {
+        if self.log_axis.any() {
+            return;
+        }
         let current_aspect = self.aspect();
 
         let epsilon = 1e-5;

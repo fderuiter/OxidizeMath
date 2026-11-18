@@ -1,8 +1,49 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::recovery::{render_recovery_banner, FiniteStateGuard, RecoveryAction};
+use crate::framework::recovery::{
+    render_recovery_banner, DiagnosticReport, FiniteStateGuard, RecoveryAction,
+};
 use crate::presets::OdePreset;
 use eframe::egui;
+
+impl FiniteStateGuard for super::OdeSolverTool {
+    fn is_finite_state(&self) -> bool {
+        !self.diverged
+            && self.time_series.iter().all(|t| t.is_finite())
+            && self.y_series.iter().all(|y| y.is_finite())
+            && self.v_series.iter().all(|v| v.is_finite())
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        super::OdeSolverTool::diagnostic_report(self)
+    }
+
+    fn diverged(&self) -> bool {
+        super::OdeSolverTool::diverged(self) || !FiniteStateGuard::is_finite_state(self)
+    }
+
+    fn auto_scale_step_size(&mut self) {
+        super::OdeSolverTool::auto_scale_step_size(self);
+    }
+
+    fn clamp_parameters(&mut self) {
+        if !self.dt.is_finite() || self.dt <= 0.0 {
+            self.dt = 0.05;
+        } else {
+            self.dt = self.dt.clamp(1e-6, 0.1);
+        }
+        if !self.total_time.is_finite() || self.total_time <= 0.0 {
+            self.total_time = 10.0;
+        } else {
+            self.total_time = self.total_time.clamp(0.1, 100.0);
+        }
+        self.clamp_instability_parameters();
+    }
+
+    fn reset_parameters(&mut self) {
+        super::OdeSolverTool::reset_parameters(self);
+    }
+}
 
 /// Clamps solver parameters and initial conditions to stable, finite bounds.
 pub fn clamp_ode_parameters(

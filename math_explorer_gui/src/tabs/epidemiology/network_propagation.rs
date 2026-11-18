@@ -30,8 +30,22 @@ impl NetworkPropagationTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NetPropState {
+    num_nodes: usize,
+    beta: f64,
+    gamma: f64,
+    #[serde(default)]
+    is_running: bool,
+    #[cfg(test)]
+    #[serde(default, skip_deserializing)]
+    sim_steps: u64,
+}
+
 impl InteractiveTool for NetworkPropagationTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Network Propagation"
     }
@@ -40,17 +54,6 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct NetPropState {
-            num_nodes: usize,
-            beta: f64,
-            gamma: f64,
-            #[serde(default)]
-            is_running: bool,
-            #[cfg(test)]
-            #[serde(default)]
-            sim_steps: u64,
-        }
         serde_json::to_string(&NetPropState {
             num_nodes: self.model.num_nodes(),
             beta: self.model.beta(),
@@ -58,18 +61,11 @@ impl InteractiveTool for NetworkPropagationTool {
             is_running: self.is_running,
             #[cfg(test)]
             sim_steps: self.sim_steps,
-        }).ok()
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct NetPropState {
-            num_nodes: usize,
-            beta: f64,
-            gamma: f64,
-            #[serde(default)]
-            is_running: bool,
-        }
         if let Ok(s) = serde_json::from_str::<NetPropState>(state) {
             let _ = self.model.set_num_nodes(s.num_nodes);
             let _ = self.model.set_beta(s.beta);

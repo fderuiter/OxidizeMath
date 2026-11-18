@@ -374,11 +374,6 @@ impl SimulationFramework {
                 egui::Id::new("INPUT_MODE_TOUCH"),
                 self.input_mode == InputMode::Touch,
             );
-            // Clear CMD_REGISTRY at start of frame
-            d.insert_temp(
-                egui::Id::new("CMD_REGISTRY"),
-                egui_plot::commands::CommandRegistryData::default(),
-            );
         });
 
         self.sync_overlays_before_frame(ctx, id_source);
