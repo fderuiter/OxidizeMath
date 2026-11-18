@@ -4,6 +4,8 @@ pub mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
 mod export_ui;
+#[cfg(test)]
+mod export_ui_tests;
 pub mod math_input;
 mod persistence;
 pub mod recovery;
