@@ -220,6 +220,23 @@ impl SimulationFramework {
         self.export_queue.push(format);
     }
 
+    /// Resolves export datasets for the active tool, falling back to `current_valid_plot_datasets`
+    /// when thread-local plot datasets were cleared prior to modal rendering or across panes.
+    pub(crate) fn export_datasets_with_fallback(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let Some(tool) = &self.active_tool else {
+            return Vec::new();
+        };
+        let datasets = tool.export_datasets();
+        if datasets.is_empty()
+            && self.sync_state.datasets_owner_tool == Some(tool.name())
+            && !self.current_valid_plot_datasets.is_empty()
+        {
+            self.current_valid_plot_datasets.clone()
+        } else {
+            datasets
+        }
+    }
+
     /// Queues a dataset or figure export request with an explicit destination target.
     pub fn queue_export_with_target(&mut self, format: ExportFormat, target: ExportTarget) {
         self.export_queue.push_target(format, target);
@@ -290,8 +307,8 @@ impl SimulationFramework {
             return;
         }
         let tool_name = tool.name().to_string();
-        let datasets: Vec<(String, Vec<[f64; 2]>)> = tool
-            .export_datasets()
+        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
+            .export_datasets_with_fallback()
             .into_iter()
             .filter(|(_, pts)| pts.iter().any(|p| p[0].is_finite() && p[1].is_finite()))
             .collect();
@@ -334,7 +351,7 @@ impl SimulationFramework {
         let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
             writer(&content)
         } else {
-            Self::write_system_text_clipboard(label, &content, ctx)
+            self.write_system_text_clipboard(label, &content, ctx)
         };
         match res {
             Ok(()) => {
@@ -356,6 +373,7 @@ impl SimulationFramework {
     }
 
     fn write_system_text_clipboard(
+        &self,
         label: &'static str,
         content: &str,
         ctx: Option<&egui::Context>,
@@ -368,7 +386,8 @@ impl SimulationFramework {
         #[cfg(not(test))]
         {
             if let Some(egui_ctx) = ctx.cloned() {
-                let status_id = egui::Id::new("framework_action_bar_clipboard_status");
+                let status_id =
+                    egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
                 egui_plot::export::copy_text_to_clipboard_with_callback(content, move |cb| {
                     egui_ctx.data_mut(|d| {
                         let status = match cb {
@@ -405,7 +424,7 @@ impl SimulationFramework {
         match self.persist_export_bytes(format, filename, bytes, text_content) {
             Ok(()) => self.set_export_status(
                 ExportStatusSeverity::Success,
-                format!("{ok_label} saved successfully ({filename})."),
+                format!("{ok_label} saved successfully."),
             ),
             Err(err) => {
                 self.set_export_status(ExportStatusSeverity::Error, format!("{err_prefix}: {err}"))

@@ -19,6 +19,13 @@ use super::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFrame
 
 /// Collects drawable [`ExportPrimitive`] items for `tool`, combining raster hooks, captured plot primitives, and fallback datasets.
 pub fn resolve_tool_primitives(tool: &dyn InteractiveTool) -> Vec<ExportPrimitive> {
+    resolve_tool_primitives_with_fallback(tool, &[])
+}
+
+fn resolve_tool_primitives_with_fallback(
+    tool: &dyn InteractiveTool,
+    fallback_datasets: &[(String, Vec<[f64; 2]>)],
+) -> Vec<ExportPrimitive> {
     let mut primitives = Vec::new();
     if let Some(raster) = valid_raster_image(tool) {
         let w = raster.width() as f64;
@@ -34,7 +41,12 @@ pub fn resolve_tool_primitives(tool: &dyn InteractiveTool) -> Vec<ExportPrimitiv
         primitives.extend(plot_prims);
     } else if primitives.is_empty() {
         let datasets = tool.export_datasets();
-        primitives.extend(datasets_to_primitives(&datasets));
+        let effective = if datasets.is_empty() {
+            fallback_datasets
+        } else {
+            datasets.as_slice()
+        };
+        primitives.extend(datasets_to_primitives(effective));
     }
     primitives
 }
@@ -47,6 +59,14 @@ fn valid_raster_image(tool: &dyn InteractiveTool) -> Option<egui::ColorImage> {
 /// Renders the current frame of `tool` into an offscreen [`egui::ColorImage`], rejecting empty payloads.
 pub fn render_tool_color_image(
     tool: &dyn InteractiveTool,
+    options: &ExportOptions,
+) -> Result<egui::ColorImage, String> {
+    render_tool_color_image_with_fallback(tool, &[], options)
+}
+
+fn render_tool_color_image_with_fallback(
+    tool: &dyn InteractiveTool,
+    fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<egui::ColorImage, String> {
     let plot_prims = tool.export_plot_primitives();
@@ -72,7 +92,7 @@ pub fn render_tool_color_image(
             ));
         }
     }
-    let primitives = resolve_tool_primitives(tool);
+    let primitives = resolve_tool_primitives_with_fallback(tool, fallback_datasets);
     if !has_drawable_primitives(&primitives) {
         return Err(format!(
             "{} produced no finite plot primitives or raster image to export",
@@ -87,7 +107,15 @@ pub fn render_tool_png(
     tool: &dyn InteractiveTool,
     options: &ExportOptions,
 ) -> Result<Vec<u8>, String> {
-    let image = render_tool_color_image(tool, options)?;
+    render_tool_png_with_fallback(tool, &[], options)
+}
+
+fn render_tool_png_with_fallback(
+    tool: &dyn InteractiveTool,
+    fallback_datasets: &[(String, Vec<[f64; 2]>)],
+    options: &ExportOptions,
+) -> Result<Vec<u8>, String> {
+    let image = render_tool_color_image_with_fallback(tool, fallback_datasets, options)?;
     color32_image_to_png(&image)
 }
 
@@ -96,13 +124,21 @@ pub fn render_tool_svg(
     tool: &dyn InteractiveTool,
     options: &ExportOptions,
 ) -> Result<String, String> {
+    render_tool_svg_with_fallback(tool, &[], options)
+}
+
+fn render_tool_svg_with_fallback(
+    tool: &dyn InteractiveTool,
+    fallback_datasets: &[(String, Vec<[f64; 2]>)],
+    options: &ExportOptions,
+) -> Result<String, String> {
     let plot_prims = tool.export_plot_primitives();
     if let Some(raster) = valid_raster_image(tool) {
         if !has_drawable_primitives(&plot_prims) {
             return export_raster_svg(&raster, options);
         }
     }
-    let primitives = resolve_tool_primitives(tool);
+    let primitives = resolve_tool_primitives_with_fallback(tool, fallback_datasets);
     if !has_drawable_primitives(&primitives) {
         return Err(format!(
             "{} produced no finite plot primitives or raster image to export",
@@ -119,13 +155,23 @@ pub fn render_tool_gif(
     frame_count: usize,
     fps: u32,
 ) -> Result<Vec<u8>, String> {
+    render_tool_gif_with_fallback(tool, &[], options, frame_count, fps)
+}
+
+fn render_tool_gif_with_fallback(
+    tool: &mut dyn InteractiveTool,
+    fallback_datasets: &[(String, Vec<[f64; 2]>)],
+    options: &ExportOptions,
+    frame_count: usize,
+    fps: u32,
+) -> Result<Vec<u8>, String> {
     let count = frame_count.max(1);
     let saved_state = tool.save_state();
 
     let result = if let Some(first_raster) = valid_raster_image(tool) {
         sample_and_encode_raster_gif(tool, first_raster, options, count, fps)
     } else {
-        sample_and_encode_plot_gif(tool, options, count, fps)
+        sample_and_encode_plot_gif(tool, fallback_datasets, options, count, fps)
     };
 
     if let Some(state_json) = saved_state {
@@ -154,11 +200,12 @@ fn sample_and_encode_raster_gif(
 
 fn sample_and_encode_plot_gif(
     tool: &mut dyn InteractiveTool,
+    fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
     count: usize,
     fps: u32,
 ) -> Result<Vec<u8>, String> {
-    let initial_prims = resolve_tool_primitives(tool);
+    let initial_prims = resolve_tool_primitives_with_fallback(tool, fallback_datasets);
     if has_non_polyline_primitives(&initial_prims) {
         return encode_progressive_primitive_gif(&initial_prims, options, count, fps);
     }
@@ -212,28 +259,38 @@ pub fn copy_tool_image_to_clipboard(
     options: &ExportOptions,
     ctx: Option<&egui::Context>,
 ) -> Result<&'static str, String> {
-    let color_img = render_tool_color_image(tool, options)?;
+    copy_tool_image_to_clipboard_scoped(
+        tool,
+        &[],
+        options,
+        ctx,
+        egui::Id::new("framework_export_default"),
+    )
+}
+
+fn copy_tool_image_to_clipboard_scoped(
+    tool: &dyn InteractiveTool,
+    fallback_datasets: &[(String, Vec<[f64; 2]>)],
+    options: &ExportOptions,
+    ctx: Option<&egui::Context>,
+    scope_id: egui::Id,
+) -> Result<&'static str, String> {
+    let color_img = render_tool_color_image_with_fallback(tool, fallback_datasets, options)?;
     #[cfg(test)]
     {
-        let _ = (&color_img, ctx);
+        let _ = (&color_img, ctx, scope_id);
     }
     #[cfg(not(test))]
     {
         if let Some(egui_ctx) = ctx.cloned() {
-            let status_id = egui::Id::new("framework_export_clipboard_status");
+            let status_id = egui_plot::clipboard_status_id(scope_id);
             egui_plot::export::copy_image_to_clipboard_with_callback(&color_img, move |res| {
                 egui_ctx.data_mut(|d| {
-                    let item = match res {
-                        Ok(()) => (
-                            ExportStatusSeverity::Success,
-                            "Copied plot image to clipboard!".to_string(),
-                        ),
-                        Err(e) => (
-                            ExportStatusSeverity::Error,
-                            format!("Clipboard copy failed: {e}"),
-                        ),
+                    let msg = match res {
+                        Ok(()) => "Copied plot image to clipboard!".to_string(),
+                        Err(e) => format!("Clipboard copy failed: {e}"),
                     };
-                    d.insert_temp(status_id, item);
+                    d.insert_temp(status_id, msg);
                 });
                 egui_ctx.request_repaint();
             })?;
@@ -267,12 +324,13 @@ impl SimulationFramework {
             return;
         };
         let filename = Self::build_export_filename(&tool_name, ExportFormat::Png);
+        let fallback = self.export_datasets_with_fallback();
         let tool = self
             .active_tool
             .as_ref()
             .expect("verified active tool")
             .as_ref();
-        match render_tool_png(tool, &self.export_options) {
+        match render_tool_png_with_fallback(tool, &fallback, &self.export_options) {
             Ok(bytes) => self.complete_file_export(
                 ExportFormat::Png,
                 &filename,
@@ -290,13 +348,24 @@ impl SimulationFramework {
     pub(super) fn dispatch_png_clipboard_export(&mut self, ctx: Option<&egui::Context>) {
         if self.ensure_figure_exportable().is_none() {
             return;
-        }
+        };
+        let fallback = self.export_datasets_with_fallback();
+        let scope_id = self
+            .sync_state
+            .last_modal_scope_id
+            .unwrap_or_else(|| self.export_modal_scope_id(&self.domain));
         let tool = self
             .active_tool
             .as_ref()
             .expect("verified active tool")
             .as_ref();
-        match copy_tool_image_to_clipboard(tool, &self.export_options, ctx) {
+        match copy_tool_image_to_clipboard_scoped(
+            tool,
+            &fallback,
+            &self.export_options,
+            ctx,
+            scope_id,
+        ) {
             Ok(msg) => self.set_export_status(ExportStatusSeverity::Success, msg),
             Err(err) => self.set_export_status(
                 ExportStatusSeverity::Error,
@@ -310,12 +379,13 @@ impl SimulationFramework {
             return;
         };
         let filename = Self::build_export_filename(&tool_name, ExportFormat::Svg);
+        let fallback = self.export_datasets_with_fallback();
         let tool = self
             .active_tool
             .as_ref()
             .expect("verified active tool")
             .as_ref();
-        match render_tool_svg(tool, &self.export_options) {
+        match render_tool_svg_with_fallback(tool, &fallback, &self.export_options) {
             Ok(svg) => {
                 let bytes = svg.as_bytes().to_vec();
                 self.complete_file_export(
@@ -338,6 +408,7 @@ impl SimulationFramework {
             return;
         };
         let filename = Self::build_export_filename(&tool_name, ExportFormat::Gif);
+        let fallback = self.export_datasets_with_fallback();
         let (frames, fps, opts) = (
             self.export_gif_frames as usize,
             self.export_gif_fps,
@@ -348,7 +419,7 @@ impl SimulationFramework {
             .as_mut()
             .expect("verified active tool")
             .as_mut();
-        match render_tool_gif(tool, &opts, frames, fps) {
+        match render_tool_gif_with_fallback(tool, &fallback, &opts, frames, fps) {
             Ok(bytes) => self.complete_file_export(
                 ExportFormat::Gif,
                 &filename,

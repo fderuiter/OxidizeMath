@@ -84,20 +84,39 @@ impl AcademicDomain {
     }
 }
 
-/// Selects an active tab by index, synchronizing primary pane and emitting accessibility announcements.
+/// Selects an active tab by index, updating the focused pane and emitting accessibility announcements.
 pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize) {
+    if tab_idx < app.tabs.len() {
+        let target_pane = app.active_focused_pane();
+        if target_pane == 0 {
+            app.selected_tab = tab_idx;
+            if !app.pane_tabs.is_empty() {
+                app.pane_tabs[0] = tab_idx;
+            }
+        } else {
+            app.set_pane_tab(target_pane, tab_idx);
+        }
+        announce_tab_switch(ctx, app.tabs[tab_idx].name());
+    }
+}
+
+/// Explicitly updates Pane 0's primary simulation module (used by `View -> Primary Module`).
+pub fn select_primary_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize) {
     if tab_idx < app.tabs.len() {
         app.selected_tab = tab_idx;
         if !app.pane_tabs.is_empty() {
             app.pane_tabs[0] = tab_idx;
         }
-        let tab_name = app.tabs[tab_idx].name();
-        let status_msg = format!("Switched to tab {}", tab_name);
-        announce_status(&status_msg);
-        ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("aria_live_message"), status_msg);
-        });
+        announce_tab_switch(ctx, app.tabs[tab_idx].name());
     }
+}
+
+fn announce_tab_switch(ctx: &egui::Context, tab_name: &str) {
+    let status_msg = format!("Switched to tab {}", tab_name);
+    announce_status(&status_msg);
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new("aria_live_message"), status_msg);
+    });
 }
 
 /// Assigns a simulation module to a specific viewport pane, synchronizing state and emitting accessibility announcements.
@@ -225,13 +244,14 @@ pub fn render_domain_switcher_bar(
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
 
+        let focused_tab_idx = app.focused_tab_index();
         let active_domain = app
             .tabs
-            .get(app.selected_tab)
+            .get(focused_tab_idx)
             .and_then(|t| AcademicDomain::from_str(t.academic_domain()));
         let active_tab_name = app
             .tabs
-            .get(app.selected_tab)
+            .get(focused_tab_idx)
             .map(|t| t.name())
             .unwrap_or("");
 
@@ -283,7 +303,7 @@ fn render_domain_button(
                 continue;
             }
             let tab_name = tab.name();
-            let is_active_module = tab_idx == app.selected_tab;
+            let is_active_module = tab_idx == app.focused_tab_index();
             let resp = if is_active_module {
                 ui.selectable_label(true, ("✓", tab_name))
             } else {

@@ -110,10 +110,13 @@ impl SimulationFramework {
         match check_result {
             Ok(()) => {
                 if !self.is_diverged {
+                    let active_name = self.active_tool.as_ref().map(|t| t.name());
                     if !plot_datasets.is_empty() {
                         self.current_valid_plot_datasets = plot_datasets;
+                        self.sync_state.datasets_owner_tool = active_name;
                     } else if !tool_datasets.is_empty() {
                         self.current_valid_plot_datasets = tool_datasets;
+                        self.sync_state.datasets_owner_tool = active_name;
                     }
                     self.step_counter += 1;
                 }
@@ -147,11 +150,7 @@ impl SimulationFramework {
                     tool.load_state(state_str);
                 }
             }
-            egui_plot::clear_last_plot_datasets();
-            egui_plot::append_last_plot_datasets(&snapshot.plot_datasets);
-            self.current_valid_plot_datasets = snapshot.plot_datasets;
-            self.is_diverged = false;
-            self.diagnostic_report = None;
+            self.restore_snapshot_plots(snapshot.plot_datasets);
 
             emit_recovery_telemetry(
                 "SimulationFramework",
@@ -176,11 +175,7 @@ impl SimulationFramework {
                     }
                 }
             }
-            egui_plot::clear_last_plot_datasets();
-            egui_plot::append_last_plot_datasets(&snapshot.plot_datasets);
-            self.current_valid_plot_datasets = snapshot.plot_datasets;
-            self.is_diverged = false;
-            self.diagnostic_report = None;
+            self.restore_snapshot_plots(snapshot.plot_datasets);
 
             emit_recovery_telemetry(
                 "SimulationFramework",
@@ -196,6 +191,11 @@ impl SimulationFramework {
     fn restore_snapshot_plots(&mut self, plot_datasets: Vec<(String, Vec<[f64; 2]>)>) {
         egui_plot::clear_last_plot_datasets();
         egui_plot::append_last_plot_datasets(&plot_datasets);
+        self.sync_state.datasets_owner_tool = self
+            .active_tool
+            .as_ref()
+            .filter(|_| !plot_datasets.is_empty())
+            .map(|t| t.name());
         self.current_valid_plot_datasets = plot_datasets;
         self.is_diverged = false;
         self.diagnostic_report = None;
@@ -277,6 +277,7 @@ impl SimulationFramework {
         }
         egui_plot::clear_last_plot_datasets();
         self.current_valid_plot_datasets.clear();
+        self.sync_state.datasets_owner_tool = None;
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.step_counter = 0;

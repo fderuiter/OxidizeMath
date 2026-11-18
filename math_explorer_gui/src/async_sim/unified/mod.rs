@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod canvas;
 pub mod tool;
 pub use tool::*;
 
@@ -101,7 +102,7 @@ pub struct UnifiedSimRunner<M: UnifiedModel> {
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
     #[allow(missing_docs)]
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
-        let initial_params = params.read().unwrap().clone();
+        let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
         Self {
             model: M::new(&initial_params),
             params,
@@ -112,7 +113,11 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
 
 impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
     fn process_command(&mut self, cmd: SimCommand) {
-        let current_params = self.params.read().unwrap().clone();
+        let current_params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         match cmd {
             SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
             SimCommand::Reset => {
@@ -123,7 +128,11 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
     }
 
     fn step(&mut self) {
-        let current_params = self.params.read().unwrap().clone();
+        let current_params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         self.model.step(&current_params);
     }
 

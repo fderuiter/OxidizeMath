@@ -6,7 +6,10 @@ pub mod export_queue;
 mod export_queue_tests;
 pub mod export_types;
 mod export_ui;
+#[cfg(test)]
+mod export_ui_tests;
 pub mod math_input;
+mod persistence;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
@@ -274,16 +277,20 @@ pub trait InteractiveTool {
 
         frames
     }
+
+    /// Returns a type-erased reference for test inspection of concrete tool state.
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        None
+    }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct FrameworkState {
-    selected_tool_index: Option<usize>,
-    selected_tool_name: Option<String>,
-    show_theory_portal: bool,
-    #[serde(default)]
-    show_starter_gallery: bool,
-    tool_states: std::collections::HashMap<String, String>,
+#[derive(Default, Clone, Copy)]
+pub(super) struct FrameworkSyncState {
+    pub(super) theory_portal: Option<bool>,
+    pub(super) starter_gallery: Option<bool>,
+    pub(super) datasets_owner_tool: Option<&'static str>,
+    pub(super) last_modal_scope_id: Option<egui::Id>,
 }
 
 #[allow(missing_docs)]
@@ -323,6 +330,8 @@ pub struct SimulationFramework {
     pub step_counter: usize,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
+    pub(super) instance_id: u64,
+    pub(super) sync_state: FrameworkSyncState,
 }
 
 impl SimulationFramework {
@@ -364,6 +373,8 @@ impl SimulationFramework {
             diagnostic_report: None,
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
+            instance_id: ui::next_framework_id(),
+            sync_state: FrameworkSyncState::default(),
         };
 
         if !framework.available_tools.is_empty() {
@@ -401,7 +412,8 @@ impl SimulationFramework {
         self.step_counter = 0;
         self.baseline_tool_state = factory_baseline_state;
         let active_tool_state = new_tool.save_state();
-        let initial_datasets = new_tool.export_datasets();
+        let initial_datasets = persistence::capture_isolated_tool_datasets(new_tool.as_ref());
+        self.sync_state.datasets_owner_tool = Some(new_tool.name());
         self.current_valid_plot_datasets = initial_datasets.clone();
         self.last_valid_snapshot = Some(StateSnapshot {
             tool_state: active_tool_state,
@@ -430,57 +442,6 @@ impl SimulationFramework {
             true
         } else {
             false
-        }
-    }
-
-    /// Serializes the framework state (selected tool index, active tool state, theory portal state) to JSON.
-    pub fn save_state(&self) -> Option<String> {
-        let mut tool_states = self.saved_tool_states.clone();
-        if let Some(active_tool) = &self.active_tool {
-            if let Some(state) = active_tool.save_state() {
-                tool_states.insert(active_tool.name().to_string(), state);
-            }
-        }
-        let selected_tool_name = self.selected_tool_index.and_then(|idx| {
-            self.available_tools
-                .get(idx)
-                .map(|meta| meta.name.to_string())
-        });
-
-        let state = FrameworkState {
-            selected_tool_index: self.selected_tool_index,
-            selected_tool_name,
-            show_theory_portal: self.show_theory_portal,
-            show_starter_gallery: self.show_starter_gallery,
-            tool_states,
-        };
-        serde_json::to_string(&state).ok()
-    }
-
-    /// Deserializes and restores the framework state from JSON.
-    pub fn load_state(&mut self, state_str: &str) {
-        let state: FrameworkState = match serde_json::from_str(state_str) {
-            Ok(s) => s,
-            Err(_) => return,
-        };
-        self.show_theory_portal = state.show_theory_portal;
-        // Saved workspace session bypasses the empty-state starter gallery
-        self.show_starter_gallery = false;
-        self.saved_tool_states = state.tool_states;
-
-        let tool_idx = if let Some(ref name) = state.selected_tool_name {
-            self.available_tools
-                .iter()
-                .position(|m| m.name == *name)
-                .or(state.selected_tool_index)
-        } else {
-            state.selected_tool_index
-        };
-
-        if let Some(idx) = tool_idx {
-            if idx < self.available_tools.len() {
-                self.select_tool(idx);
-            }
         }
     }
 }

@@ -1,7 +1,99 @@
 use super::*;
 use eframe::egui;
 
+struct FrameworkExportSource<'a> {
+    active_tool: &'a mut Option<Box<dyn InteractiveTool>>,
+    cached_tool_name: Option<&'static str>,
+    cached_plot_datasets: &'a [(String, Vec<[f64; 2]>)],
+    export_queue: &'a mut ExportQueue,
+    status_color: egui::Color32,
+    ctx: egui::Context,
+}
+
+impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
+    fn export_datasets(&mut self) -> Vec<egui_plot::export::ExportDataset> {
+        let Some(tool) = self.active_tool.as_ref() else {
+            return Vec::new();
+        };
+        let datasets = tool.export_datasets();
+        if datasets.is_empty()
+            && self.cached_tool_name == Some(tool.name())
+            && !self.cached_plot_datasets.is_empty()
+        {
+            self.cached_plot_datasets.to_vec()
+        } else {
+            datasets
+        }
+    }
+
+    fn sample_gif_frames(&mut self, num_frames: usize) -> Vec<egui_plot::export::DatasetFrame> {
+        let step_count = num_frames.max(1);
+        let Some(tool) = self.active_tool.as_mut() else {
+            return Vec::new();
+        };
+        let frames = tool.sample_animation_frames(step_count);
+        if frames.is_empty()
+            && self.cached_tool_name == Some(tool.name())
+            && !self.cached_plot_datasets.is_empty()
+        {
+            egui_plot::export::sample_progressive_frames(self.cached_plot_datasets, step_count)
+        } else {
+            frames
+        }
+    }
+
+    fn figure_capability(&self) -> (bool, &'static str) {
+        if let Some(tool) = self.active_tool.as_ref() {
+            let caps = tool.export_capabilities();
+            (caps.figure, caps.figure_disabled_reason)
+        } else {
+            let caps = ExportCapabilities::none();
+            (caps.figure, caps.figure_disabled_reason)
+        }
+    }
+
+    fn status_color(&self) -> Option<egui::Color32> {
+        Some(self.status_color)
+    }
+
+    fn intercept_action(&mut self, action: egui_plot::ExportModalAction) -> bool {
+        let (format, target) = match action {
+            egui_plot::ExportModalAction::SavePng => (ExportFormat::Png, ExportTarget::File),
+            egui_plot::ExportModalAction::SaveSvg => (ExportFormat::Svg, ExportTarget::File),
+            egui_plot::ExportModalAction::SaveGif => (ExportFormat::Gif, ExportTarget::File),
+            egui_plot::ExportModalAction::CopyClipboard => {
+                (ExportFormat::Png, ExportTarget::Clipboard)
+            }
+        };
+        self.export_queue.push_target(format, target);
+        self.ctx.request_repaint();
+        true
+    }
+}
+
 impl SimulationFramework {
+    pub(super) fn open_export_modal_for_active_tool(&mut self) {
+        if let Some(tool) = &self.active_tool {
+            if let Some(custom_opts) = tool.export_figure_options() {
+                self.export_bg_dark = custom_opts.background_color != egui::Color32::WHITE;
+                self.export_options = custom_opts;
+            }
+        }
+        self.show_export_modal = true;
+    }
+
+    pub(super) fn export_filenames_for_tool(tool_name: &str) -> (String, String, String) {
+        (
+            Self::build_export_filename(tool_name, ExportFormat::Png),
+            Self::build_export_filename(tool_name, ExportFormat::Svg),
+            Self::build_export_filename(tool_name, ExportFormat::Gif),
+        )
+    }
+
+    pub(super) fn export_modal_scope_id(&self, id_source: &str) -> egui::Id {
+        egui::Id::new(("framework_export", id_source, self.instance_id))
+    }
+
     pub(super) fn show_export_action_bar(&mut self, ctx: &egui::Context, id_source: &str) {
         if self.active_tool.is_none() {
             return;
@@ -19,15 +111,19 @@ impl SimulationFramework {
         egui::TopBottomPanel::top(format!("{}_export_bar", id_source))
             .exact_height(32.0)
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    let file_slug = self.render_dataset_and_figure_buttons(ui);
-                    self.render_action_bar_export_status(ctx, ui);
-                    ui.separator();
-                    self.render_starter_gallery_toggle(ctx, ui);
-                    self.render_preset_action_bar_controls(ui, &file_slug);
-                });
+                self.render_export_bar_row(ui, ctx);
             });
+    }
+
+    fn render_export_bar_row(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            let file_slug = self.render_dataset_and_figure_buttons(ui);
+            self.render_action_bar_export_status(ctx, ui);
+            ui.separator();
+            self.render_starter_gallery_toggle(ctx, ui);
+            self.render_preset_action_bar_controls(ui, &file_slug);
+        });
     }
 
     fn render_dataset_and_figure_buttons(&mut self, ui: &mut egui::Ui) -> String {
@@ -68,16 +164,11 @@ impl SimulationFramework {
 
         if ui
             .add_enabled(caps.figure, egui::Button::new("Export PNG Image"))
-            .on_hover_text("Configure and render high-resolution figure")
+            .on_hover_text("Configure and render high-resolution PNG figure")
             .on_disabled_hover_text(caps.figure_disabled_reason)
             .clicked()
         {
-            if let Some(tool) = &self.active_tool {
-                if let Some(custom_opts) = tool.export_figure_options() {
-                    self.export_options = custom_opts;
-                }
-            }
-            self.show_export_modal = true;
+            self.open_export_modal_for_active_tool();
         }
         file_slug
     }
@@ -98,9 +189,10 @@ impl SimulationFramework {
         }
     }
 
-    fn poll_async_clipboard_statuses(&mut self, ctx: &egui::Context) {
-        let bar_id = egui::Id::new("framework_action_bar_clipboard_status");
-        if let Some(async_status) = ctx.data_mut(|d| d.remove_temp::<ActionBarExportStatus>(bar_id))
+    fn poll_action_bar_clipboard_status(&mut self, ctx: &egui::Context) {
+        let status_id = egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
+        if let Some(async_status) =
+            ctx.data_mut(|d| d.remove_temp::<ActionBarExportStatus>(status_id))
         {
             let sev = if async_status.is_error {
                 ExportStatusSeverity::Error
@@ -109,16 +201,10 @@ impl SimulationFramework {
             };
             self.set_export_status(sev, async_status.message);
         }
-        let img_id = egui::Id::new("framework_export_clipboard_status");
-        if let Some((sev, msg)) =
-            ctx.data_mut(|d| d.remove_temp::<(ExportStatusSeverity, String)>(img_id))
-        {
-            self.set_export_status(sev, msg);
-        }
     }
 
     fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        self.poll_async_clipboard_statuses(ctx);
+        self.poll_action_bar_clipboard_status(ctx);
 
         let now = ctx.input(|i| i.time);
         let severity_color = self.export_status_severity.color();
@@ -244,219 +330,51 @@ impl SimulationFramework {
         }
     }
 
-    fn render_modal_aspect_combo(&mut self, ui: &mut egui::Ui, id_source: &str) {
-        ui.horizontal(|ui| {
-            ui.label("Aspect Ratio:");
-            egui::ComboBox::from_id_salt(format!("{}_export_aspect", id_source))
-                .selected_text(match self.export_options.aspect_ratio {
-                    egui_plot::export::AspectRatioOption::Free => "Custom / Free",
-                    egui_plot::export::AspectRatioOption::SixteenNine => "16:9 (Widescreen)",
-                    egui_plot::export::AspectRatioOption::FourThree => "4:3 (Standard)",
-                    egui_plot::export::AspectRatioOption::OneOne => "1:1 (Square)",
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut self.export_options.aspect_ratio,
-                        egui_plot::export::AspectRatioOption::SixteenNine,
-                        "16:9 (Widescreen)",
-                    );
-                    ui.selectable_value(
-                        &mut self.export_options.aspect_ratio,
-                        egui_plot::export::AspectRatioOption::FourThree,
-                        "4:3 (Standard)",
-                    );
-                    ui.selectable_value(
-                        &mut self.export_options.aspect_ratio,
-                        egui_plot::export::AspectRatioOption::OneOne,
-                        "1:1 (Square)",
-                    );
-                    ui.selectable_value(
-                        &mut self.export_options.aspect_ratio,
-                        egui_plot::export::AspectRatioOption::Free,
-                        "Custom / Free",
-                    );
-                });
-        });
-    }
+    pub(super) fn show_export_modal_dialog(&mut self, ctx: &egui::Context, id_source: &str) {
+        let scope_id = self.export_modal_scope_id(id_source);
+        self.sync_state.last_modal_scope_id = Some(scope_id);
 
-    fn render_export_modal_settings(&mut self, ui: &mut egui::Ui, id_source: &str) {
-        ui.horizontal(|ui| {
-            ui.label("Resolution Scale:");
-            ui.selectable_value(&mut self.export_options.scale, 1.0, "1x (1080p)");
-            ui.selectable_value(&mut self.export_options.scale, 2.0, "2x (4K)");
-            ui.selectable_value(&mut self.export_options.scale, 4.0, "4x");
-        });
-
-        self.render_modal_aspect_combo(ui, id_source);
-
-        ui.horizontal(|ui| {
-            ui.label("Line Thickness:");
-            ui.add(egui::Slider::new(
-                &mut self.export_options.line_thickness,
-                0.5..=10.0,
-            ));
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("Background Opacity:");
-            ui.add(egui::Slider::new(
-                &mut self.export_options.background_opacity,
-                0.0..=1.0,
-            ));
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("Background Color:");
-            ui.selectable_value(&mut self.export_bg_dark, true, "Dark");
-            ui.selectable_value(&mut self.export_bg_dark, false, "Light");
-        });
-
-        self.export_options.background_color = if self.export_bg_dark {
-            egui::Color32::from_rgb(18, 18, 18)
-        } else {
-            egui::Color32::WHITE
-        };
-
-        ui.horizontal(|ui| {
-            ui.label("GIF FPS:");
-            ui.add(egui::Slider::new(&mut self.export_gif_fps, 1..=60));
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("GIF Frame Steps:");
-            ui.add(egui::Slider::new(&mut self.export_gif_frames, 5..=60));
-        });
-    }
-
-    fn queue_modal_figure_request(
-        &mut self,
-        ui: &egui::Ui,
-        format: ExportFormat,
-        target: ExportTarget,
-    ) {
-        let Some(tool) = &self.active_tool else {
-            self.set_export_status(
-                ExportStatusSeverity::Warning,
-                "No active simulation tool available for export.",
-            );
-            return;
-        };
-        let caps = tool.export_capabilities();
-        if !caps.figure {
-            self.set_export_status(ExportStatusSeverity::Warning, caps.figure_disabled_reason);
-            return;
-        }
-        self.queue_export_with_target(format, target);
-        ui.ctx().request_repaint();
-    }
-
-    fn render_modal_save_buttons(&mut self, ui: &mut egui::Ui, caps: ExportCapabilities) {
-        if ui
-            .add_enabled(caps.figure, egui::Button::new("💾 Save PNG"))
-            .on_hover_text("Queue high-resolution PNG render after active frame completes")
-            .on_disabled_hover_text(caps.figure_disabled_reason)
-            .clicked()
+        if let Some(msg) =
+            ctx.data_mut(|d| d.remove_temp::<String>(egui_plot::clipboard_status_id(scope_id)))
         {
-            self.queue_modal_figure_request(ui, ExportFormat::Png, ExportTarget::File);
+            let sev = if msg.contains("failed") || msg.contains("unavailable") {
+                ExportStatusSeverity::Error
+            } else {
+                ExportStatusSeverity::Success
+            };
+            self.set_export_status(sev, msg);
         }
 
-        if ui
-            .add_enabled(caps.figure, egui::Button::new("💾 Save SVG"))
-            .on_hover_text("Queue vector SVG render after active frame completes")
-            .on_disabled_hover_text(caps.figure_disabled_reason)
-            .clicked()
-        {
-            self.queue_modal_figure_request(ui, ExportFormat::Svg, ExportTarget::File);
-        }
-
-        if ui
-            .add_enabled(caps.figure, egui::Button::new("🎬 Save GIF"))
-            .on_hover_text("Queue multi-frame GIF animation export after active frame completes")
-            .on_disabled_hover_text(caps.figure_disabled_reason)
-            .clicked()
-        {
-            self.queue_modal_figure_request(ui, ExportFormat::Gif, ExportTarget::File);
-        }
-
-        if ui
-            .add_enabled(caps.figure, egui::Button::new("📋 Copy to Clipboard"))
-            .on_hover_text(
-                "Queue high-resolution PNG copy to clipboard after active frame completes",
-            )
-            .on_disabled_hover_text(caps.figure_disabled_reason)
-            .clicked()
-        {
-            self.queue_modal_figure_request(ui, ExportFormat::Png, ExportTarget::Clipboard);
-        }
-    }
-
-    fn render_export_modal_actions(&mut self, ui: &mut egui::Ui) {
-        self.poll_async_clipboard_statuses(ui.ctx());
-
-        let base_w = self.export_options.width.max(1);
-        let base_h = self.export_options.height.max(1);
-        let calc_w = (base_w as f32 * self.export_options.scale).round() as u32;
-        let mut calc_h = (base_h as f32 * self.export_options.scale).round() as u32;
-        if let Some(ratio) = self
-            .export_options
-            .aspect_ratio
-            .ratio()
-            .filter(|&r| r > 0.0)
-        {
-            calc_h = (calc_w as f32 / ratio).round() as u32;
-        }
-
-        if calc_w > egui_plot::export::MAX_EXPORT_DIMENSION
-            || calc_h > egui_plot::export::MAX_EXPORT_DIMENSION
-        {
-            ui.label(
-                egui::RichText::new(format!(
-                    "⚠️ Capped at max dimension {}x{} px",
-                    egui_plot::export::MAX_EXPORT_DIMENSION,
-                    egui_plot::export::MAX_EXPORT_DIMENSION
-                ))
-                .color(egui::Color32::YELLOW),
-            );
-        } else {
-            ui.label(format!("Target Canvas Size: {} x {} px", calc_w, calc_h));
-        }
-
-        if let Some(msg) = &self.export_status_message {
-            ui.label(egui::RichText::new(msg).color(self.export_status_severity.color()));
-        }
-
-        ui.separator();
-
-        let caps = self
+        let tool_name = self
             .active_tool
             .as_ref()
-            .map(|t| t.export_capabilities())
-            .unwrap_or_else(ExportCapabilities::none);
-
-        ui.horizontal(|ui| {
-            self.render_modal_save_buttons(ui, caps);
-        });
-    }
-
-    pub(super) fn show_export_modal_dialog(&mut self, ctx: &egui::Context, id_source: &str) {
-        if !self.show_export_modal {
-            return;
-        }
-
-        let mut modal_open = self.show_export_modal;
-        egui::Window::new(format!("Export High-Res Plot - {}", id_source))
-            .open(&mut modal_open)
-            .resizable(true)
-            .collapsible(false)
-            .default_width(380.0)
-            .show(ctx, |ui| {
-                ui.label(egui::RichText::new("Offscreen High-Res Render Settings").strong());
-                ui.separator();
-                self.render_export_modal_settings(ui, id_source);
-                ui.separator();
-                self.render_export_modal_actions(ui);
-            });
-
-        self.show_export_modal = modal_open;
+            .map_or("simulation", |tool| tool.name());
+        let (png_filename, svg_filename, gif_filename) = Self::export_filenames_for_tool(tool_name);
+        let window_title = format!("Export High-Res Plot - {id_source}");
+        let config = egui_plot::export_modal::ExportModalConfig {
+            window_title: &window_title,
+            id: scope_id,
+            png_filename: &png_filename,
+            svg_filename: &svg_filename,
+            gif_filename: &gif_filename,
+        };
+        let status_color = self.export_status_severity.color();
+        let bindings = egui_plot::export_modal::ExportModalBindings {
+            open: &mut self.show_export_modal,
+            options: &mut self.export_options,
+            bg_dark: &mut self.export_bg_dark,
+            gif_fps: &mut self.export_gif_fps,
+            gif_frames: &mut self.export_gif_frames,
+            status_message: &mut self.export_status_message,
+        };
+        let mut source = FrameworkExportSource {
+            active_tool: &mut self.active_tool,
+            cached_tool_name: self.sync_state.datasets_owner_tool,
+            cached_plot_datasets: &self.current_valid_plot_datasets,
+            export_queue: &mut self.export_queue,
+            status_color,
+            ctx: ctx.clone(),
+        };
+        egui_plot::export_modal::show_export_modal(ctx, bindings, &config, &mut source);
     }
 }

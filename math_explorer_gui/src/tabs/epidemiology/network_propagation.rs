@@ -7,6 +7,8 @@ use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 pub struct NetworkPropagationTool {
     model: NetworkEpidemicModel,
     is_running: bool,
+    #[cfg(test)]
+    sim_steps: u64,
 }
 
 impl Default for NetworkPropagationTool {
@@ -14,6 +16,8 @@ impl Default for NetworkPropagationTool {
         Self {
             model: NetworkEpidemicModel::new(50, 0.05, 0.02),
             is_running: false,
+            #[cfg(test)]
+            sim_steps: 0,
         }
     }
 }
@@ -24,6 +28,15 @@ impl NetworkPropagationTool {
         self.model.initialize_geometric_graph_with_rng(&mut rng);
         self.is_running = false;
     }
+
+    #[cfg(test)]
+    pub(crate) fn sim_steps(&self) -> u64 {
+        self.sim_steps
+    }
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -31,6 +44,8 @@ struct NetPropState {
     num_nodes: usize,
     beta: f64,
     gamma: f64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    is_running: bool,
 }
 
 impl InteractiveTool for NetworkPropagationTool {
@@ -52,8 +67,14 @@ impl InteractiveTool for NetworkPropagationTool {
             num_nodes: self.model.num_nodes(),
             beta: self.model.beta(),
             gamma: self.model.gamma(),
+            is_running: self.is_running,
         })
         .ok()
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
     }
 
     fn load_state(&mut self, state: &str) {
@@ -62,6 +83,7 @@ impl InteractiveTool for NetworkPropagationTool {
             let _ = self.model.set_beta(s.beta);
             let _ = self.model.set_gamma(s.gamma);
             self.reset_network();
+            self.is_running = s.is_running;
         }
     }
 
@@ -76,6 +98,10 @@ impl InteractiveTool for NetworkPropagationTool {
         if self.is_running {
             let mut rng = oxidize_core::rng::OxidizeRng::default();
             self.model.step_with_rng(&mut rng);
+            #[cfg(test)]
+            {
+                self.sim_steps = self.sim_steps.saturating_add(1);
+            }
             ui.ctx().request_repaint();
         }
 
