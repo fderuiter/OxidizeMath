@@ -164,12 +164,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.separator();
         }
 
-        let param_list: Vec<(String, f64)> = self
-            .param_metadata
-            .iter()
-            .filter_map(|(name, _)| params_lock.get(name).map(|v| (name.clone(), *v)))
-            .collect();
-
         for (name, constraint) in &self.param_metadata {
             if let Some(val) = params_lock.get_mut(name) {
                 let slider = egui::Slider::new(val, constraint.min..=constraint.max)
@@ -182,15 +176,46 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
 
-        self.sensitivity_engine
-            .compute(&param_list, |p_map| p_map.values().map(|v| v.abs()).sum());
-
-        crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, M::name());
-
         drop(params_lock);
+        self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation();
         }
+    }
+
+    fn draw_observable_sensitivity(&mut self, ui: &mut egui::Ui) {
+        let observable_setup = {
+            let current_params = self.params.read().unwrap();
+            M::evaluate_observable(&current_params).map(|(metric_label, baseline_val)| {
+                let param_list: Vec<(String, f64)> = self
+                    .param_metadata
+                    .iter()
+                    .filter_map(|(name, _)| current_params.get(name).map(|v| (name.clone(), *v)))
+                    .collect();
+                (metric_label, baseline_val, param_list)
+            })
+        };
+
+        let Some((metric_label, baseline_val, param_list)) = observable_setup else {
+            return;
+        };
+
+        self.sensitivity_engine.baseline_output = baseline_val;
+        let mut initial_sample = Some(baseline_val);
+        self.sensitivity_engine.compute(&param_list, |p_map| {
+            initial_sample.take().unwrap_or_else(|| {
+                M::evaluate_observable(p_map)
+                    .map(|(_, val)| val)
+                    .unwrap_or(0.0)
+            })
+        });
+
+        crate::sensitivity::render_labeled_sensitivity_panel_ui(
+            ui,
+            &self.sensitivity_engine,
+            M::name(),
+            metric_label,
+        );
     }
 
     #[allow(clippy::too_many_lines)]
@@ -398,6 +423,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         }
     }
 
+    fn clamp_parameters(&mut self) -> bool {
+        self.handle_recovery_action(crate::framework::recovery::RecoveryAction::ClampParameters);
+        true
+    }
+
     fn show(&mut self, ctx: &egui::Context) {
         let has_update = self.controller.update().is_some();
         if has_update || self.controller.state().is_running() {
@@ -421,5 +451,8 @@ impl<M: UnifiedModel> scientific_metadata::theory::TheoryDescribable for Unified
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         self.cached_descs.clone()
+    }
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        self.param_metadata.iter().cloned().collect()
     }
 }

@@ -2,7 +2,6 @@
 
 use crate::accessibility::{announce_status, AccessibleHoverText};
 use eframe::egui;
-use scientific_metadata::theory::ParameterConstraint;
 use std::ops::RangeInclusive;
 
 /// Persistent animated slider state per widget ID.
@@ -50,19 +49,6 @@ impl<'a> AnimatedSlider<'a> {
         }
     }
 
-    /// Creates an `AnimatedSlider` from a `ParameterConstraint`.
-    pub fn from_constraint(value: &'a mut f64, constraint: &ParameterConstraint) -> Self {
-        Self {
-            value,
-            min: constraint.min.min(constraint.max),
-            max: constraint.min.max(constraint.max),
-            step: constraint.step,
-            label: "",
-            id_salt: None,
-            speed: None,
-        }
-    }
-
     /// Sets the label text for the slider.
     pub fn text(mut self, label: &'a str) -> Self {
         self.label = label;
@@ -76,12 +62,14 @@ impl<'a> AnimatedSlider<'a> {
     }
 
     /// Sets step size for slider.
+    #[cfg(test)]
     pub fn step_by(mut self, step: f64) -> Self {
         self.step = step;
         self
     }
 
     /// Sets custom animation sweep speed per second.
+    #[cfg(test)]
     pub fn speed(mut self, speed: f64) -> Self {
         self.speed = Some(speed);
         self

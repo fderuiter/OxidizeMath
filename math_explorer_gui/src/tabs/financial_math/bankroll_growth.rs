@@ -112,6 +112,14 @@ impl BankrollGrowthTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BankrollState {
+    initial_bankroll: f64,
+    probability: f64,
+    odds: f64,
+    num_bets: usize,
+}
+
 impl InteractiveTool for BankrollGrowthTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
@@ -122,29 +130,16 @@ impl InteractiveTool for BankrollGrowthTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BankrollState {
-            initial_bankroll: f64,
-            probability: f64,
-            odds: f64,
-            num_bets: usize,
-        }
         serde_json::to_string(&BankrollState {
             initial_bankroll: self.initial_bankroll,
             probability: self.probability,
             odds: self.odds,
             num_bets: self.num_bets,
-        }).ok()
+        })
+        .ok()
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BankrollState {
-            initial_bankroll: f64,
-            probability: f64,
-            odds: f64,
-            num_bets: usize,
-        }
         if let Ok(s) = serde_json::from_str::<BankrollState>(state) {
             self.initial_bankroll = s.initial_bankroll;
             self.probability = s.probability;

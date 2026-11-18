@@ -102,7 +102,6 @@ use pure_math::theory_verification;
 
 theory_verification!(
     module = "favoritism",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
     constants = {
         BASE_SCORE = 1.0;
     },

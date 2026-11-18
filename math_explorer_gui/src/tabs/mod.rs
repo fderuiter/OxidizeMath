@@ -116,4 +116,16 @@ pub trait ExplorerTab {
     fn select_tool_by_name(&mut self, _name: &str) -> bool {
         false
     }
+
+    /// Returns a reference to the underlying `SimulationFramework` in test builds.
+    #[cfg(test)]
+    fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
+        None
+    }
+
+    /// Returns a mutable reference to the underlying `SimulationFramework` in test builds.
+    #[cfg(test)]
+    fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
+        None
+    }
 }
