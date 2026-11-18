@@ -1,50 +1,68 @@
 use math_commons::math_kernel::types::{StepSize, flatten_2d_index};
 
 /// Standard spatial numerical operators for fused stencil evaluations.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StencilOperators {
     #[allow(missing_docs)]
     pub dx: StepSize,
     #[allow(missing_docs)]
     pub dy: StepSize,
+    #[allow(missing_docs)]
+    pub inv_dx: f64,
+    #[allow(missing_docs)]
+    pub inv_two_dx: f64,
+    #[allow(missing_docs)]
+    pub inv_dx_sq: f64,
+    #[allow(missing_docs)]
+    pub inv_dy_sq: f64,
 }
 
 impl StencilOperators {
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(dx: StepSize) -> Self {
-        Self {
-            dx,
-            dy: StepSize(1.0),
-        }
+        Self::new_2d(dx, StepSize(1.0))
     }
 
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
-        Self { dx, dy }
+        assert!(*dx > 0.0, "Step size dx must be positive and non-zero");
+        assert!(*dy > 0.0, "Step size dy must be positive and non-zero");
+        let inv_dx = 1.0 / *dx;
+        let inv_two_dx = 1.0 / (2.0 * *dx);
+        let inv_dx_sq = 1.0 / (*dx * *dx);
+        let inv_dy_sq = 1.0 / (*dy * *dy);
+        Self {
+            dx,
+            dy,
+            inv_dx,
+            inv_two_dx,
+            inv_dx_sq,
+            inv_dy_sq,
+        }
     }
 
     /// Central difference for 1st derivative (gradient): (u_{i+1} - u_{i-1}) / 2dx
     #[inline(always)]
     #[verified_engine::verified]
     pub fn central_diff_1st(&self, prev: f64, next: f64) -> f64 {
-        (next - prev) / (2.0 * *self.dx)
+        (next - prev) * self.inv_two_dx
     }
 
     /// Central difference for 2nd derivative (Laplacian) in 1D.
     #[inline(always)]
     #[verified_engine::verified]
     pub fn central_diff_2nd(&self, prev: f64, curr: f64, next: f64) -> f64 {
-        (next - 2.0 * curr + prev) / (*self.dx * *self.dx)
+        (next - 2.0 * curr + prev) * self.inv_dx_sq
     }
 
     /// Central difference for 2nd derivative (Laplacian) in 2D.
     #[inline(always)]
     #[verified_engine::verified]
     pub fn central_diff_2nd_2d(&self, curr: f64, left: f64, right: f64, up: f64, down: f64) -> f64 {
-        let d2x = (right - 2.0 * curr + left) / (*self.dx * *self.dx);
-        let d2y = (down - 2.0 * curr + up) / (*self.dy * *self.dy);
+        let d2x = (right - 2.0 * curr + left) * self.inv_dx_sq;
+        let d2y = (down - 2.0 * curr + up) * self.inv_dy_sq;
         d2x + d2y
     }
 
@@ -54,9 +72,9 @@ impl StencilOperators {
     #[verified_engine::verified]
     pub fn upwind_flux(&self, v: f64, prev: f64, curr: f64, next: f64) -> f64 {
         if v > 0.0 {
-            (curr * v - prev * v) / *self.dx
+            (curr * v - prev * v) * self.inv_dx
         } else {
-            (next * v - curr * v) / *self.dx
+            (next * v - curr * v) * self.inv_dx
         }
     }
 }
@@ -238,5 +256,65 @@ impl FusedStencilStepper {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_stencil_operators_precomputation() {
+        let ops = StencilOperators::new_2d(StepSize(0.5), StepSize(0.25));
+        assert!((ops.inv_dx - 2.0).abs() < 1e-12);
+        assert!((ops.inv_two_dx - 1.0).abs() < 1e-12);
+        assert!((ops.inv_dx_sq - 4.0).abs() < 1e-12);
+        assert!((ops.inv_dy_sq - 16.0).abs() < 1e-12);
+
+        let ops_1d = StencilOperators::new(StepSize(2.0));
+        assert!((ops_1d.inv_dx - 0.5).abs() < 1e-12);
+        assert!((ops_1d.inv_two_dx - 0.25).abs() < 1e-12);
+        assert!((ops_1d.inv_dx_sq - 0.25).abs() < 1e-12);
+        assert!((ops_1d.inv_dy_sq - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    #[should_panic(expected = "Step size dx must be positive and non-zero")]
+    fn test_stencil_operators_invalid_dx() {
+        StencilOperators::new(StepSize(0.0));
+    }
+
+    #[test]
+    #[should_panic(expected = "Step size dy must be positive and non-zero")]
+    fn test_stencil_operators_invalid_dy() {
+        StencilOperators::new_2d(StepSize(1.0), StepSize(-0.5));
+    }
+
+    #[test]
+    fn test_stencil_operator_evaluations() {
+        let dx = 0.2;
+        let dy = 0.4;
+        let ops = StencilOperators::new_2d(StepSize(dx), StepSize(dy));
+
+        let cd1 = ops.central_diff_1st(1.0, 3.0);
+        let cd1_expected = (3.0 - 1.0) / (2.0 * dx);
+        assert!((cd1 - cd1_expected).abs() < 1e-12);
+
+        let cd2 = ops.central_diff_2nd(1.0, 4.0, 9.0);
+        let cd2_expected = (9.0 - 2.0 * 4.0 + 1.0) / (dx * dx);
+        assert!((cd2 - cd2_expected).abs() < 1e-12);
+
+        let cd2_2d = ops.central_diff_2nd_2d(5.0, 2.0, 8.0, 3.0, 7.0);
+        let d2x_expected = (8.0 - 2.0 * 5.0 + 2.0) / (dx * dx);
+        let d2y_expected = (7.0 - 2.0 * 5.0 + 3.0) / (dy * dy);
+        assert!((cd2_2d - (d2x_expected + d2y_expected)).abs() < 1e-12);
+
+        let flux_pos = ops.upwind_flux(2.0, 1.0, 3.0, 5.0);
+        let flux_pos_expected = (3.0 * 2.0 - 1.0 * 2.0) / dx;
+        assert!((flux_pos - flux_pos_expected).abs() < 1e-12);
+
+        let flux_neg = ops.upwind_flux(-2.0, 1.0, 3.0, 5.0);
+        let flux_neg_expected = (5.0 * (-2.0) - 3.0 * (-2.0)) / dx;
+        assert!((flux_neg - flux_neg_expected).abs() < 1e-12);
     }
 }
