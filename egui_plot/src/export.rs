@@ -65,6 +65,12 @@ pub struct ExportOptions {
     pub background_color: egui::Color32,
     /// Target aspect ratio option.
     pub aspect_ratio: AspectRatioOption,
+    /// Project X coordinates in base-10 logarithmic space.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub log_x: bool,
+    /// Project Y coordinates in base-10 logarithmic space.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub log_y: bool,
 }
 
 impl Default for ExportOptions {
@@ -77,6 +83,8 @@ impl Default for ExportOptions {
             background_opacity: 1.0,
             background_color: egui::Color32::from_rgb(18, 18, 18),
             aspect_ratio: AspectRatioOption::SixteenNine,
+            log_x: false,
+            log_y: false,
         }
     }
 }
@@ -177,7 +185,7 @@ pub fn split_line(line: &str, delimiter: char) -> Vec<String> {
 /// Auto-detects delimiters and headers, converts rows into numerical `[f64; 2]` pairs,
 /// and skips invalid rows or non-numeric values.
 pub fn parse_csv(content: &str) -> Vec<ImportedDataset> {
-    let lines: Vec<&str> = content
+    let lines: Vec<&str> = strip_utf8_bom(content)
         .lines()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty() && !s.starts_with('#'))
@@ -306,502 +314,15 @@ pub fn parse_csv(content: &str) -> Vec<ImportedDataset> {
         .collect()
 }
 
-/// Infers an HTTP MIME type string from a target download filename extension.
-#[must_use]
-pub fn infer_mime_type(filename: &str) -> &'static str {
-    let lower = filename.trim().to_ascii_lowercase();
-    if lower.ends_with(".json") || lower.ends_with(".mws") {
-        "application/json"
-    } else if lower.ends_with(".csv") {
-        "text/csv"
-    } else if lower.ends_with(".svg") {
-        "image/svg+xml"
-    } else if lower.ends_with(".png") {
-        "image/png"
-    } else if lower.ends_with(".gif") {
-        "image/gif"
-    } else {
-        "application/octet-stream"
-    }
-}
-
-/// Normalizes a candidate download filename to a non-empty leaf filename without path separators.
-#[must_use]
-pub fn sanitize_download_filename(filename: &str, fallback: &str) -> String {
-    let trimmed = filename.trim().trim_matches(['/', '\\']);
-    let leaf = trimmed.rsplit(['/', '\\']).next().unwrap_or("");
-    let candidate = std::path::Path::new(leaf)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty() && *s != "." && *s != "..");
-
-    candidate.unwrap_or_else(|| fallback.trim()).to_string()
-}
-
-#[cfg(target_arch = "wasm32")]
-mod wasm_file_io {
-    use super::{infer_mime_type, sanitize_download_filename};
-    use std::cell::RefCell;
-    use std::rc::Rc;
-    use wasm_bindgen::JsCast as _;
-    use wasm_bindgen::closure::Closure;
-    use web_sys::{
-        Blob, BlobPropertyBag, Document, Event, File, FileReader, HtmlAnchorElement, HtmlElement,
-        HtmlInputElement, Url,
-    };
-
-    /// Outcome delivered by [`open_browser_file_picker`]: `None` on dialog dismissal, or
-    /// `Some(Ok((file_name, text)))` / `Some(Err(reason))` on selection.
-    pub type PickerOutcome = Option<Result<(String, String), String>>;
-
-    struct PickerCleanup {
-        input: HtmlInputElement,
-        on_change: Closure<dyn FnMut(Event)>,
-        on_cancel: Closure<dyn FnMut(Event)>,
-    }
-
-    impl PickerCleanup {
-        fn detach_and_remove(self) {
-            let _ = self.input.remove_event_listener_with_callback(
-                "change",
-                self.on_change.as_ref().unchecked_ref(),
-            );
-            let _ = self.input.remove_event_listener_with_callback(
-                "cancel",
-                self.on_cancel.as_ref().unchecked_ref(),
-            );
-            self.input.remove();
-        }
-    }
-
-    fn browser_document() -> Result<Document, String> {
-        let window =
-            web_sys::window().ok_or_else(|| "Browser window is unavailable".to_string())?;
-        window
-            .document()
-            .ok_or_else(|| "Browser document is unavailable".to_string())
-    }
-
-    fn focus_canvas(document: &Document) {
-        if let Some(canvas) = document
-            .get_element_by_id("the_canvas_id")
-            .and_then(|el| el.dyn_into::<HtmlElement>().ok())
-        {
-            let _ = canvas.focus();
-        }
-    }
-
-    /// Requests an immediate browser frame repaint and restores canvas focus after DOM dialogs.
-    pub fn request_browser_repaint() {
-        if let Some(window) = web_sys::window() {
-            if let Some(doc) = window.document() {
-                focus_canvas(&doc);
-            }
-            if let Ok(evt) = Event::new("pageshow") {
-                let _ = window.dispatch_event(&evt);
-            }
-        }
-    }
-
-    /// Triggers an immediate browser file download using a `Blob`, object `Url`, and `<a download>`.
-    pub fn download_browser_file(filename: &str, content: &[u8]) -> Result<(), String> {
-        let safe_name = sanitize_download_filename(filename, "download.bin");
-        let mime_type = infer_mime_type(&safe_name);
-        let document = browser_document()?;
-
-        let uint8_array = js_sys::Uint8Array::from(content);
-        let parts = js_sys::Array::new();
-        parts.push(&uint8_array);
-
-        let blob_props = BlobPropertyBag::new();
-        blob_props.set_type(mime_type);
-
-        let blob = Blob::new_with_u8_array_sequence_and_options(&parts, &blob_props)
-            .map_err(|e| format!("Failed to construct download Blob: {e:?}"))?;
-        let url = Url::create_object_url_with_blob(&blob)
-            .map_err(|e| format!("Failed to create object URL: {e:?}"))?;
-
-        let anchor = match document
-            .create_element("a")
-            .map_err(|e| format!("Failed to create anchor element: {e:?}"))
-            .and_then(|el| {
-                el.dyn_into::<HtmlAnchorElement>()
-                    .map_err(|_| "Created element is not an HtmlAnchorElement".to_string())
-            }) {
-            Ok(a) => a,
-            Err(err) => {
-                let _ = Url::revoke_object_url(&url);
-                return Err(err);
-            }
-        };
-
-        let _ = anchor.set_attribute("style", "display: none;");
-        anchor.set_href(&url);
-        anchor.set_download(&safe_name);
-        if let Some(body) = document.body() {
-            let _ = body.append_child(&anchor);
-        }
-        anchor.click();
-        anchor.remove();
-        let _ = Url::revoke_object_url(&url);
-        focus_canvas(&document);
-        Ok(())
-    }
-
-    fn create_hidden_file_input(
-        document: &Document,
-        accept: &str,
-    ) -> Result<HtmlInputElement, String> {
-        let body = document
-            .body()
-            .ok_or_else(|| "Browser document body is unavailable".to_string())?;
-        let input = document
-            .create_element("input")
-            .map_err(|e| format!("Failed to create file input element: {e:?}"))?
-            .dyn_into::<HtmlInputElement>()
-            .map_err(|_| "Created element is not an HtmlInputElement".to_string())?;
-
-        input.set_type("file");
-        if !accept.trim().is_empty() {
-            input.set_accept(accept);
-        }
-        let _ = input.set_attribute("style", "display: none;");
-        body.append_child(&input)
-            .map_err(|e| format!("Failed to append file input to document body: {e:?}"))?;
-        Ok(input)
-    }
-
-    async fn read_file_text(file: File) -> Result<String, String> {
-        let reader =
-            FileReader::new().map_err(|e| format!("Failed to initialize FileReader: {e:?}"))?;
-        let mut onload_slot: Option<Closure<dyn FnMut(Event)>> = None;
-        let mut onerror_slot: Option<Closure<dyn FnMut(Event)>> = None;
-        let reader_for_promise = reader.clone();
-        let promise = js_sys::Promise::new(&mut |resolve, reject| {
-            let load_reader = reader_for_promise.clone();
-            let load_reject = reject.clone();
-            let onload =
-                Closure::<dyn FnMut(Event)>::new(move |_evt: Event| match load_reader.result() {
-                    Ok(val) => {
-                        let _ = resolve.call1(&wasm_bindgen::JsValue::NULL, &val);
-                    }
-                    Err(err) => {
-                        let _ = load_reject.call1(&wasm_bindgen::JsValue::NULL, &err);
-                    }
-                });
-            let onerror = Closure::<dyn FnMut(Event)>::new(move |_evt: Event| {
-                let _ = reject.call1(
-                    &wasm_bindgen::JsValue::NULL,
-                    &wasm_bindgen::JsValue::from_str("Browser failed to read selected file"),
-                );
-            });
-            reader_for_promise.set_onload(Some(onload.as_ref().unchecked_ref()));
-            reader_for_promise.set_onerror(Some(onerror.as_ref().unchecked_ref()));
-            onload_slot = Some(onload);
-            onerror_slot = Some(onerror);
-        });
-
-        if let Err(e) = reader.read_as_text(&file) {
-            reader.set_onload(None);
-            reader.set_onerror(None);
-            return Err(format!("Failed to start reading selected file: {e:?}"));
-        }
-
-        let await_res = wasm_bindgen_futures::JsFuture::from(promise).await;
-        reader.set_onload(None);
-        reader.set_onerror(None);
-        drop(onload_slot);
-        drop(onerror_slot);
-
-        let js_val = await_res.map_err(|e| {
-            e.as_string()
-                .unwrap_or_else(|| format!("Failed to read selected file: {e:?}"))
-        })?;
-        js_val
-            .as_string()
-            .ok_or_else(|| "Selected file did not decode as UTF-8 text".to_string())
-    }
-
-    fn spawn_file_read<F>(file: File, done: F)
-    where
-        F: FnOnce(PickerOutcome) + 'static,
-    {
-        let name = sanitize_download_filename(&file.name(), "selected_file.txt");
-        wasm_bindgen_futures::spawn_local(async move {
-            let res = read_file_text(file).await.map(|text| (name, text));
-            done(Some(res));
-            request_browser_repaint();
-        });
-    }
-
-    /// Opens a native browser file selection dialog via a temporary hidden `<input type="file">`.
-    ///
-    /// Removes the temporary `<input>` node and drops event listener closures after `change` or
-    /// `cancel`, delivering `None` on dismissal or `Some(Result<(name, text), err>)` on selection.
-    pub fn open_browser_file_picker<F>(accept: &str, on_complete: F)
-    where
-        F: FnOnce(PickerOutcome) + 'static,
-    {
-        let input = match browser_document().and_then(|doc| create_hidden_file_input(&doc, accept))
-        {
-            Ok(el) => el,
-            Err(err) => {
-                on_complete(Some(Err(err)));
-                request_browser_repaint();
-                return;
-            }
-        };
-
-        let callback_slot: Rc<RefCell<Option<F>>> = Rc::new(RefCell::new(Some(on_complete)));
-        let cleanup_slot: Rc<RefCell<Option<PickerCleanup>>> = Rc::new(RefCell::new(None));
-
-        let input_for_change = input.clone();
-        let cb_for_change = Rc::clone(&callback_slot);
-        let cl_for_change = Rc::clone(&cleanup_slot);
-        let on_change = Closure::<dyn FnMut(Event)>::new(move |_evt: Event| {
-            let selected = input_for_change.files().and_then(|list| list.get(0));
-            if let Some(cleanup) = cl_for_change.borrow_mut().take() {
-                cleanup.detach_and_remove();
-            }
-            if let Some(done) = cb_for_change.borrow_mut().take() {
-                if let Some(file) = selected {
-                    spawn_file_read(file, done);
-                } else {
-                    done(None);
-                    request_browser_repaint();
-                }
-            }
-        });
-
-        let cb_for_cancel = Rc::clone(&callback_slot);
-        let cl_for_cancel = Rc::clone(&cleanup_slot);
-        let on_cancel = Closure::<dyn FnMut(Event)>::new(move |_evt: Event| {
-            if let Some(cleanup) = cl_for_cancel.borrow_mut().take() {
-                cleanup.detach_and_remove();
-            }
-            if let Some(done) = cb_for_cancel.borrow_mut().take() {
-                done(None);
-            }
-            request_browser_repaint();
-        });
-
-        let _ =
-            input.add_event_listener_with_callback("change", on_change.as_ref().unchecked_ref());
-        let _ =
-            input.add_event_listener_with_callback("cancel", on_cancel.as_ref().unchecked_ref());
-
-        *cleanup_slot.borrow_mut() = Some(PickerCleanup {
-            input: input.clone(),
-            on_change,
-            on_cancel,
-        });
-
-        input.click();
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-pub use wasm_file_io::{
-    PickerOutcome, download_browser_file, open_browser_file_picker, request_browser_repaint,
+pub use crate::file_io::{
+    drain_import_status, drain_imported_datasets, infer_mime_type, sanitize_download_filename,
+    save_file_dialog, strip_utf8_bom, trigger_import_csv, trigger_import_csv_for_plot,
 };
 
-type PendingImport = (egui::Id, Vec<ImportedDataset>);
-type PendingImportChannel = (
-    std::sync::mpsc::Sender<PendingImport>,
-    std::sync::mpsc::Receiver<PendingImport>,
-    Vec<PendingImport>,
-);
-
-static PENDING_IMPORTS: std::sync::Mutex<Option<PendingImportChannel>> =
-    std::sync::Mutex::new(None);
-
-type PendingImportStatus = (egui::Id, String, bool);
-type PendingStatusChannel = (
-    std::sync::mpsc::Sender<PendingImportStatus>,
-    std::sync::mpsc::Receiver<PendingImportStatus>,
-    Vec<PendingImportStatus>,
-);
-
-static PENDING_IMPORT_STATUS: std::sync::Mutex<Option<PendingStatusChannel>> =
-    std::sync::Mutex::new(None);
-
-fn pending_import_sender() -> std::sync::mpsc::Sender<PendingImport> {
-    let mut guard = PENDING_IMPORTS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if guard.is_none() {
-        let (tx, rx) = std::sync::mpsc::channel();
-        *guard = Some((tx, rx, Vec::new()));
-    }
-    guard.as_ref().unwrap().0.clone()
-}
-
-fn pending_status_sender() -> std::sync::mpsc::Sender<PendingImportStatus> {
-    let mut guard = PENDING_IMPORT_STATUS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if guard.is_none() {
-        let (tx, rx) = std::sync::mpsc::channel();
-        *guard = Some((tx, rx, Vec::new()));
-    }
-    guard.as_ref().unwrap().0.clone()
-}
-
-/// Drain any asynchronously imported datasets for the given plot ID.
-pub fn drain_imported_datasets(plot_id: egui::Id) -> Vec<ImportedDataset> {
-    let mut datasets = Vec::new();
-    let mut guard = PENDING_IMPORTS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some((_, rx, buffered)) = guard.as_mut() {
-        while let Ok(item) = rx.try_recv() {
-            buffered.push(item);
-        }
-        let mut remaining = Vec::with_capacity(buffered.len());
-        for (id, ds_list) in buffered.drain(..) {
-            if id == plot_id || id == egui::Id::NULL {
-                datasets.extend(ds_list);
-            } else {
-                remaining.push((id, ds_list));
-            }
-        }
-        *buffered = remaining;
-    }
-    datasets
-}
-
-/// Drain the latest asynchronous CSV import status message `(message, is_error)` for a plot ID.
-pub fn drain_import_status(plot_id: egui::Id) -> Option<(String, bool)> {
-    let mut latest = None;
-    let mut guard = PENDING_IMPORT_STATUS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some((_, rx, buffered)) = guard.as_mut() {
-        while let Ok(item) = rx.try_recv() {
-            buffered.push(item);
-        }
-        let mut remaining = Vec::with_capacity(buffered.len());
-        for (id, msg, is_error) in buffered.drain(..) {
-            if id == plot_id || id == egui::Id::NULL {
-                latest = Some((msg, is_error));
-            } else {
-                remaining.push((id, msg, is_error));
-            }
-        }
-        *buffered = remaining;
-    }
-    latest
-}
-
-pub(crate) fn process_plot_csv_import(
-    ctx: &egui::Context,
-    plot_id: egui::Id,
-    tx: &std::sync::mpsc::Sender<PendingImport>,
-    status_tx: &std::sync::mpsc::Sender<PendingImportStatus>,
-    outcome: Result<(String, String), String>,
-) {
-    match outcome {
-        Ok((name, content)) => {
-            let datasets = parse_csv(&content);
-            if datasets.is_empty() {
-                let msg =
-                    format!("Invalid or empty CSV file: no numeric data points found in {name}");
-                let _ = status_tx.send((plot_id, msg.clone(), true));
-                ctx.data_mut(|d| {
-                    d.insert_temp(egui::Id::new("aria_live_assertive_message"), msg);
-                });
-            } else {
-                let count = datasets.len();
-                let _ = tx.send((plot_id, datasets));
-                let msg = format!("Imported {count} dataset(s) from {name}");
-                let _ = status_tx.send((plot_id, msg.clone(), false));
-                ctx.data_mut(|d| {
-                    d.insert_temp(egui::Id::new("aria_live_message"), msg);
-                });
-            }
-        }
-        Err(err) => {
-            let _ = status_tx.send((plot_id, err.clone(), true));
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("aria_live_assertive_message"), err);
-            });
-        }
-    }
-    ctx.request_repaint();
-}
-
-/// Trigger cross-platform CSV dataset file import dialog asynchronously.
-pub fn trigger_import_csv(sender: std::sync::mpsc::Sender<Vec<ImportedDataset>>) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::thread::spawn(move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("CSV / TSV File", &["csv", "tsv", "txt"])
-                .pick_file()
-                && let Ok(content) = std::fs::read_to_string(path)
-            {
-                let datasets = parse_csv(&content);
-                if !datasets.is_empty() {
-                    let _ = sender.send(datasets);
-                }
-            }
-        });
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        open_browser_file_picker(
-            ".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain",
-            move |outcome| {
-                if let Some(Ok((_name, content))) = outcome {
-                    let datasets = parse_csv(&content);
-                    if !datasets.is_empty() {
-                        let _ = sender.send(datasets);
-                    }
-                }
-            },
-        );
-    }
-}
-
-/// Trigger CSV file import specifically for a target plot ID.
-pub fn trigger_import_csv_for_plot(ctx: &egui::Context, plot_id: egui::Id) {
-    let ctx_clone = ctx.clone();
-    let tx = pending_import_sender();
-    let status_tx = pending_status_sender();
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::thread::spawn(move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("CSV / TSV File", &["csv", "tsv", "txt"])
-                .pick_file()
-            {
-                let name = sanitize_download_filename(&path.to_string_lossy(), "dataset.csv");
-                let res = std::fs::read_to_string(&path)
-                    .map(|content| (name, content))
-                    .map_err(|e| format!("Failed to read CSV file: {e}"));
-                process_plot_csv_import(&ctx_clone, plot_id, &tx, &status_tx, res);
-            }
-        });
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        open_browser_file_picker(
-            ".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain",
-            move |outcome| match outcome {
-                Some(res) => {
-                    process_plot_csv_import(&ctx_clone, plot_id, &tx, &status_tx, res);
-                }
-                None => {
-                    ctx_clone.request_repaint();
-                }
-            },
-        );
-    }
-}
+#[cfg(target_arch = "wasm32")]
+pub use crate::file_io::{
+    PickerOutcome, download_browser_file, open_browser_file_picker, request_browser_repaint,
+};
 
 /// Helper function to sanitize a CSV field value under RFC 4180 and mitigate formula injection (CWE-1236).
 ///
@@ -921,6 +442,127 @@ fn escape_xml(input: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+#[inline]
+fn is_valid_export_point(p: [f64; 2], options: &ExportOptions) -> bool {
+    p[0].is_finite()
+        && p[1].is_finite()
+        && (!options.log_x || p[0] > 0.0)
+        && (!options.log_y || p[1] > 0.0)
+}
+
+#[inline]
+fn transform_export_coord(val: f64, is_log: bool) -> f64 {
+    if is_log {
+        val.log10().clamp(-300.0, 300.0)
+    } else {
+        val
+    }
+}
+
+fn compute_export_bounds(
+    datasets: &[(String, Vec<[f64; 2]>)],
+    options: &ExportOptions,
+    custom_bounds: Option<[f64; 4]>,
+) -> (f64, f64, f64, f64) {
+    let mut data_min_x = f64::INFINITY;
+    let mut data_max_x = -f64::INFINITY;
+    let mut data_min_y = f64::INFINITY;
+    let mut data_max_y = -f64::INFINITY;
+
+    for (_, pts) in datasets {
+        for &p in pts {
+            if is_valid_export_point(p, options) {
+                data_min_x = data_min_x.min(p[0]);
+                data_max_x = data_max_x.max(p[0]);
+                data_min_y = data_min_y.min(p[1]);
+                data_max_y = data_max_y.max(p[1]);
+            }
+        }
+    }
+
+    let (raw_min_x, raw_max_x, raw_min_y, raw_max_y) = if let Some(b) = custom_bounds {
+        let bx0 = if options.log_x && (!b[0].is_finite() || b[0] <= 0.0) {
+            if data_min_x.is_finite() {
+                data_min_x
+            } else {
+                1e-6
+            }
+        } else {
+            b[0]
+        };
+        let bx1 = if options.log_x && (!b[1].is_finite() || b[1] <= bx0) {
+            if data_max_x > bx0 {
+                data_max_x
+            } else {
+                bx0 * 10.0
+            }
+        } else {
+            b[1]
+        };
+        let by0 = if options.log_y && (!b[2].is_finite() || b[2] <= 0.0) {
+            if data_min_y.is_finite() {
+                data_min_y
+            } else {
+                1e-6
+            }
+        } else {
+            b[2]
+        };
+        let by1 = if options.log_y && (!b[3].is_finite() || b[3] <= by0) {
+            if data_max_y > by0 {
+                data_max_y
+            } else {
+                by0 * 10.0
+            }
+        } else {
+            b[3]
+        };
+        (bx0, bx1, by0, by1)
+    } else {
+        (data_min_x, data_max_x, data_min_y, data_max_y)
+    };
+
+    let (mut min_x, mut max_x) = if raw_min_x.is_finite() && raw_max_x.is_finite() {
+        (
+            transform_export_coord(raw_min_x, options.log_x),
+            transform_export_coord(raw_max_x, options.log_x),
+        )
+    } else if options.log_x {
+        (-6.0, 0.0)
+    } else {
+        (-1.0, 1.0)
+    };
+
+    let (mut min_y, mut max_y) = if raw_min_y.is_finite() && raw_max_y.is_finite() {
+        (
+            transform_export_coord(raw_min_y, options.log_y),
+            transform_export_coord(raw_max_y, options.log_y),
+        )
+    } else if options.log_y {
+        (-6.0, 0.0)
+    } else {
+        (-1.0, 1.0)
+    };
+
+    if min_x >= max_x {
+        min_x -= 1.0;
+        max_x += 1.0;
+    }
+    if min_y >= max_y {
+        min_y -= 1.0;
+        max_y += 1.0;
+    }
+
+    let margin_x = (max_x - min_x) * 0.05;
+    let margin_y = (max_y - min_y) * 0.05;
+    (
+        min_x - margin_x,
+        max_x + margin_x,
+        min_y - margin_y,
+        max_y + margin_y,
+    )
+}
+
 /// Render plot datasets into vector SVG XML string.
 pub fn export_custom_svg(
     datasets: &[(String, Vec<[f64; 2]>)],
@@ -949,45 +591,17 @@ pub fn export_custom_svg(
     let bg_a_factor =
         (options.background_color.a() as f32 / 255.0) * options.background_opacity.clamp(0.0, 1.0);
 
-    let mut min_x = f64::INFINITY;
-    let mut max_x = -f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_y = -f64::INFINITY;
-
-    for (_, pts) in datasets {
-        for p in pts {
-            if p[0].is_finite() && p[1].is_finite() {
-                min_x = min_x.min(p[0]);
-                max_x = max_x.max(p[0]);
-                min_y = min_y.min(p[1]);
-                max_y = max_y.max(p[1]);
-            }
-        }
-    }
-
-    if min_x >= max_x {
-        min_x -= 1.0;
-        max_x += 1.0;
-    }
-    if min_y >= max_y {
-        min_y -= 1.0;
-        max_y += 1.0;
-    }
-
-    let margin_x = (max_x - min_x) * 0.05;
-    let margin_y = (max_y - min_y) * 0.05;
-    min_x -= margin_x;
-    max_x += margin_x;
-    min_y -= margin_y;
-    max_y += margin_y;
+    let (min_x, max_x, min_y, max_y) = compute_export_bounds(datasets, options, None);
 
     let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
     let draw_w = (width as f64 - 2.0 * padding).max(1.0);
     let draw_h = (height as f64 - 2.0 * padding).max(1.0);
 
     let to_pixel = |p: [f64; 2]| -> (f64, f64) {
-        let x_norm = (p[0] - min_x) / (max_x - min_x);
-        let y_norm = (p[1] - min_y) / (max_y - min_y);
+        let tx = transform_export_coord(p[0], options.log_x);
+        let ty = transform_export_coord(p[1], options.log_y);
+        let x_norm = (tx - min_x) / (max_x - min_x);
+        let y_norm = (ty - min_y) / (max_y - min_y);
         let px = padding + x_norm * draw_w;
         let py = (height as f64 - padding) - y_norm * draw_h;
         (px, py)
@@ -1055,7 +669,7 @@ pub fn export_custom_svg(
         };
 
         for &p in pts {
-            if p[0].is_finite() && p[1].is_finite() {
+            if is_valid_export_point(p, options) {
                 current_segment.push(to_pixel(p));
             } else {
                 flush_segment(&mut current_segment, &mut svg);
@@ -1127,50 +741,17 @@ pub fn export_custom_image_with_bounds(
 
     let mut pixels = vec![bg_pixel; width * height];
 
-    let (mut min_x, mut max_x, mut min_y, mut max_y) = if let Some(b) = custom_bounds {
-        (b[0], b[1], b[2], b[3])
-    } else {
-        let mut min_x = f64::INFINITY;
-        let mut max_x = -f64::INFINITY;
-        let mut min_y = f64::INFINITY;
-        let mut max_y = -f64::INFINITY;
-
-        for (_, pts) in datasets {
-            for p in pts {
-                if p[0].is_finite() && p[1].is_finite() {
-                    min_x = min_x.min(p[0]);
-                    max_x = max_x.max(p[0]);
-                    min_y = min_y.min(p[1]);
-                    max_y = max_y.max(p[1]);
-                }
-            }
-        }
-        (min_x, max_x, min_y, max_y)
-    };
-
-    if min_x >= max_x {
-        min_x -= 1.0;
-        max_x += 1.0;
-    }
-    if min_y >= max_y {
-        min_y -= 1.0;
-        max_y += 1.0;
-    }
-
-    let margin_x = (max_x - min_x) * 0.05;
-    let margin_y = (max_y - min_y) * 0.05;
-    min_x -= margin_x;
-    max_x += margin_x;
-    min_y -= margin_y;
-    max_y += margin_y;
+    let (min_x, max_x, min_y, max_y) = compute_export_bounds(datasets, options, custom_bounds);
 
     let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
     let draw_w = (width as f64 - 2.0 * padding).max(1.0);
     let draw_h = (height as f64 - 2.0 * padding).max(1.0);
 
     let to_pixel = |p: [f64; 2]| -> (f64, f64) {
-        let x_norm = (p[0] - min_x) / (max_x - min_x);
-        let y_norm = (p[1] - min_y) / (max_y - min_y);
+        let tx = transform_export_coord(p[0], options.log_x);
+        let ty = transform_export_coord(p[1], options.log_y);
+        let x_norm = (tx - min_x) / (max_x - min_x);
+        let y_norm = (ty - min_y) / (max_y - min_y);
         let px = padding + x_norm * draw_w;
         let py = (height as f64 - padding) - y_norm * draw_h;
         (px, py)
@@ -1186,7 +767,7 @@ pub fn export_custom_image_with_bounds(
 
         let mut prev_pixel: Option<(f64, f64)> = None;
         for &p in pts {
-            if !p[0].is_finite() || !p[1].is_finite() {
+            if !is_valid_export_point(p, options) {
                 prev_pixel = None;
                 continue;
             }
@@ -1294,8 +875,8 @@ pub fn export_custom_gif(
 
     for frame in frames {
         for (_, pts) in frame {
-            for p in pts {
-                if p[0].is_finite() && p[1].is_finite() {
+            for &p in pts {
+                if is_valid_export_point(p, options) {
                     min_x = min_x.min(p[0]);
                     max_x = max_x.max(p[0]);
                     min_y = min_y.min(p[1]);
@@ -1552,6 +1133,92 @@ where
     Ok(())
 }
 
+/// Copy UTF-8 text (such as serialized CSV or JSON datasets) to the system clipboard.
+pub fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+        clipboard
+            .set_text(text.to_owned())
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        copy_text_to_clipboard_with_callback(text, |_| {})
+    }
+}
+
+/// Copy UTF-8 text to the system clipboard, invoking `on_complete` upon resolution.
+pub fn copy_text_to_clipboard_with_callback<F>(text: &str, on_complete: F) -> Result<(), String>
+where
+    F: FnOnce(Result<(), String>) + 'static,
+{
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let res = copy_text_to_clipboard(text);
+        on_complete(res.clone());
+        res
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        copy_text_to_clipboard_wasm(text, on_complete)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn copy_text_to_clipboard_wasm<F>(text: &str, on_complete: F) -> Result<(), String>
+where
+    F: FnOnce(Result<(), String>) + 'static,
+{
+    let window = web_sys::window().ok_or_else(|| {
+        "Clipboard API unavailable (no window object). Please use direct file download (Export CSV)."
+            .to_string()
+    })?;
+
+    if !window.is_secure_context() {
+        return Err(
+            "Clipboard API unavailable in insecure context. Please use HTTPS or direct file download (Export CSV)."
+                .to_string(),
+        );
+    }
+
+    let navigator = window.navigator();
+    let clipboard = navigator.clipboard();
+    if clipboard.is_undefined() || clipboard.is_null() {
+        return Err(
+            "Clipboard API is not supported in this browser. Please use direct file download (Export CSV)."
+                .to_string(),
+        );
+    }
+
+    let promise = clipboard.write_text(text);
+
+    wasm_bindgen_futures::spawn_local(async move {
+        let res = match wasm_bindgen_futures::JsFuture::from(promise).await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let err_msg = e
+                    .as_string()
+                    .or_else(|| {
+                        js_sys::Reflect::get(&e, &wasm_bindgen::JsValue::from_str("message"))
+                            .ok()
+                            .and_then(|m| m.as_string())
+                    })
+                    .unwrap_or_else(|| "Unknown error writing text to clipboard".to_string());
+                Err(format!(
+                    "Clipboard write failed: {err_msg}. Please use direct file download (Export CSV)."
+                ))
+            }
+        };
+        on_complete(res);
+    });
+
+    Ok(())
+}
+
 /// Convert an `egui::ColorImage` into PNG encoded bytes.
 pub fn color32_image_to_png(image: &egui::ColorImage) -> Result<Vec<u8>, String> {
     let width = image.width() as u32;
@@ -1578,33 +1245,6 @@ pub fn color32_image_to_png(image: &egui::ColorImage) -> Result<Vec<u8>, String>
 
 /// Type alias representing a single exported frame's dataset series.
 pub type ExportFrame = DatasetFrame;
-
-/// Trigger cross-platform file saving dialog or browser download action.
-pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _filter_ext: &[&str]) {
-    #[cfg(test)]
-    {
-        let _ = (filename, content, _filter_name, _filter_ext);
-    }
-
-    #[cfg(all(not(test), not(target_arch = "wasm32")))]
-    {
-        if std::env::var_os("CI").is_some() || std::env::var_os("RUST_TEST_THREADS").is_some() {
-            return;
-        }
-
-        let builder = rfd::FileDialog::new()
-            .set_file_name(filename)
-            .add_filter(_filter_name, _filter_ext);
-        if let Some(path) = builder.save_file() {
-            let _ = std::fs::write(path, content);
-        }
-    }
-
-    #[cfg(all(not(test), target_arch = "wasm32"))]
-    {
-        let _ = download_browser_file(filename, content);
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -2098,85 +1738,139 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_mime_type_and_sanitize_filename() {
-        assert_eq!(infer_mime_type("session.mws"), "application/json");
-        assert_eq!(infer_mime_type("BACKUP.MWS"), "application/json");
-        assert_eq!(infer_mime_type("preset.json"), "application/json");
-        assert_eq!(infer_mime_type("data.csv"), "text/csv");
-        assert_eq!(infer_mime_type("chart.png"), "image/png");
-        assert_eq!(infer_mime_type("chart.svg"), "image/svg+xml");
-        assert_eq!(infer_mime_type("anim.gif"), "image/gif");
-        assert_eq!(infer_mime_type("mesh.obj"), "application/octet-stream");
+    fn test_copy_text_to_clipboard_callback_invoked() {
+        let datasets = vec![("Series 1".to_string(), vec![[0.0, 1.0], [2.0, 3.0]])];
+        let csv = format_csv(&datasets);
+        let callback_called = std::sync::Arc::new(std::sync::Mutex::new(false));
+        let flag = callback_called.clone();
+        let _ = copy_text_to_clipboard_with_callback(&csv, move |_res| {
+            *flag.lock().unwrap() = true;
+        });
+        #[cfg(not(target_arch = "wasm32"))]
+        assert!(*callback_called.lock().unwrap());
+    }
 
-        assert_eq!(
-            sanitize_download_filename("/var/tmp/sir_data.csv", "fallback.csv"),
-            "sir_data.csv"
+    #[test]
+    fn test_copy_text_to_clipboard_pipeline_consistency() {
+        let text = "Dataset,X,Y\nTrajectory,0.5,1.25\n";
+        let res_direct = copy_text_to_clipboard(text);
+        let callback_res = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let res_slot = callback_res.clone();
+        let res_cb = copy_text_to_clipboard_with_callback(text, move |r| {
+            *res_slot.lock().unwrap() = Some(r);
+        });
+        assert_eq!(res_direct.is_ok(), res_cb.is_ok());
+        #[cfg(not(target_arch = "wasm32"))]
+        assert!(callback_res.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn test_export_custom_svg_logarithmic_spacing_and_splitting() {
+        let datasets = vec![(
+            "Decades".to_string(),
+            vec![
+                [1.0, 1.0],
+                [10.0, 100.0],
+                [0.0, -5.0],
+                [100.0, 10_000.0],
+                [1000.0, 1_000_000.0],
+            ],
+        )];
+        let options = ExportOptions {
+            width: 800,
+            height: 600,
+            log_x: true,
+            log_y: true,
+            ..Default::default()
+        };
+        let svg = export_custom_svg(&datasets, &options).expect("Log SVG export failed");
+        let polylines: Vec<&str> = svg.matches("<polyline ").collect();
+        assert_eq!(polylines.len(), 2, "Non-positive point must split polyline");
+
+        let parse_segment = |tag_start: &str| -> Vec<[f64; 2]> {
+            let p_attr = tag_start.split("points=\"").nth(1).unwrap();
+            let pts_str = p_attr.split('"').next().unwrap();
+            pts_str
+                .split_whitespace()
+                .map(|pair| {
+                    let mut it = pair.split(',');
+                    [
+                        it.next().unwrap().parse::<f64>().unwrap(),
+                        it.next().unwrap().parse::<f64>().unwrap(),
+                    ]
+                })
+                .collect()
+        };
+        let mut chunks = svg.split("<polyline ").skip(1);
+        let seg1 = parse_segment(chunks.next().unwrap());
+        let seg2 = parse_segment(chunks.next().unwrap());
+        let dx1 = seg1[1][0] - seg1[0][0];
+        let dx2 = seg2[1][0] - seg2[0][0];
+        let dy1 = (seg1[1][1] - seg1[0][1]).abs();
+        let dy2 = (seg2[1][1] - seg2[0][1]).abs();
+        assert!(
+            (dx1 - dx2).abs() < 0.05,
+            "Equal X decades in SVG: {dx1} vs {dx2}"
         );
-        assert_eq!(
-            sanitize_download_filename("C:\\fakepath\\sir_data.csv", "fallback.csv"),
-            "sir_data.csv"
-        );
-        assert_eq!(
-            sanitize_download_filename(" .. ", "fallback.csv"),
-            "fallback.csv"
+        assert!(
+            (dy1 - dy2).abs() < 0.05,
+            "Equal Y decades in SVG: {dy1} vs {dy2}"
         );
     }
 
     #[test]
-    fn test_process_plot_csv_import_valid_invalid_and_multi_plot_isolation() {
-        let ctx = egui::Context::default();
-        let plot_a = egui::Id::new("test_csv_import_plot_a");
-        let plot_b = egui::Id::new("test_csv_import_plot_b");
-        let tx = pending_import_sender();
-        let status_tx = pending_status_sender();
+    fn test_export_custom_png_and_gif_logarithmic() {
+        let sample_pts: Vec<[f64; 2]> = (0..=30)
+            .map(|i| {
+                let exp = -1.0 + (i as f64) * (4.0 / 30.0);
+                let x = 10.0_f64.powf(exp);
+                let wobble = 1.0 + 0.18 * ((i as f64) * 0.9).sin();
+                [x, 2.5 * x.powf(1.6) * wobble]
+            })
+            .collect();
+        let fit = crate::fit::fit_dataset_scaled(&sample_pts, 1, "PowerLaw", true, true).unwrap();
+        let fit_pts: Vec<[f64; 2]> = (0..=100)
+            .map(|i| {
+                let exp = -1.0 + (i as f64) * (4.0 / 100.0);
+                let x = 10.0_f64.powf(exp);
+                [x, fit.eval(x)]
+            })
+            .collect();
+        let datasets = vec![
+            ("Power-Law Measurements".to_string(), sample_pts.clone()),
+            (format!("Log-Log Fit ({})", fit.formula), fit_pts),
+        ];
+        let options = ExportOptions {
+            width: 960,
+            height: 540,
+            line_thickness: 3.0,
+            background_color: egui::Color32::from_rgb(18, 22, 30),
+            log_x: true,
+            log_y: true,
+            ..Default::default()
+        };
+        let png = export_custom_png(&datasets, &options).expect("Log PNG export failed");
+        assert_eq!(&png[0..8], b"\x89PNG\r\n\x1a\n");
+        let _ = std::fs::write("/tmp/log_space_projection_verification.png", &png);
+        if let Ok(svg_log) = export_custom_svg(&datasets, &options) {
+            let _ = std::fs::write("/tmp/log_space_projection_log.svg", svg_log);
+        }
+        let lin_opts = ExportOptions {
+            log_x: false,
+            log_y: false,
+            ..options
+        };
+        if let Ok(svg_lin) = export_custom_svg(&datasets, &lin_opts) {
+            let _ = std::fs::write("/tmp/log_space_projection_linear.svg", svg_lin);
+        }
 
-        process_plot_csv_import(
-            &ctx,
-            plot_a,
-            &tx,
-            &status_tx,
-            Ok((
-                "empirical.csv".to_string(),
-                "X,Infected\n0.0,10.0\n1.0,25.0\n".to_string(),
-            )),
-        );
-        process_plot_csv_import(
-            &ctx,
-            plot_b,
-            &tx,
-            &status_tx,
-            Ok((
-                "invalid.csv".to_string(),
-                "HeaderOnly,NoNumbers\nfoo,bar\n".to_string(),
-            )),
-        );
-
-        // Draining plot_b first must not consume plot_a's pending datasets or status
-        assert!(drain_imported_datasets(plot_b).is_empty());
-        let status_b = drain_import_status(plot_b).expect("plot_b should have error status");
-        assert!(status_b.1);
-        assert!(status_b.0.contains("Invalid or empty CSV file"));
-
-        let imported_a = drain_imported_datasets(plot_a);
-        assert_eq!(imported_a.len(), 1);
-        assert_eq!(imported_a[0].name, "Infected");
-        assert_eq!(imported_a[0].points, vec![[0.0, 10.0], [1.0, 25.0]]);
-        let status_a = drain_import_status(plot_a).expect("plot_a should have success status");
-        assert!(!status_a.1);
-        assert_eq!(status_a.0, "Imported 1 dataset(s) from empirical.csv");
-
-        // FileReader error forwarding
-        process_plot_csv_import(
-            &ctx,
-            plot_a,
-            &tx,
-            &status_tx,
-            Err("Browser failed to read selected file".to_string()),
-        );
-        let err_status = drain_import_status(plot_a).expect("plot_a should receive read error");
-        assert_eq!(
-            err_status,
-            ("Browser failed to read selected file".to_string(), true)
-        );
+        let frames = sample_progressive_frames(&datasets, 3);
+        let gif_opts = ExportOptions {
+            width: 240,
+            height: 135,
+            ..options
+        };
+        let gif = export_custom_gif(&frames, &gif_opts, 10).expect("Log GIF export failed");
+        assert_eq!(&gif[0..6], b"GIF89a");
     }
 }

@@ -12,6 +12,8 @@
 mod axis;
 pub mod commands;
 pub mod export;
+pub mod export_modal;
+pub mod file_io;
 pub mod fit;
 mod items;
 pub mod latex;
@@ -35,11 +37,17 @@ pub use crate::{
     export::{
         AspectRatioOption, ExportFrame, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
         color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard,
-        copy_image_to_clipboard_with_callback, export_csv, export_custom_gif, export_custom_image,
+        copy_image_to_clipboard_with_callback, copy_text_to_clipboard,
+        copy_text_to_clipboard_with_callback, export_csv, export_custom_gif, export_custom_image,
         export_custom_png, export_custom_svg, export_json, export_svg, export_svg_filename,
         parse_csv, save_file_dialog, trigger_import_csv, trigger_import_csv_for_plot,
     },
-    fit::{FitResult, FitType, fit_dataset},
+    export_modal::{
+        CallbackExportSource, ExportDataSource, ExportModalBindings, ExportModalConfig,
+        ExportModalState, MODAL_HEADER_TEXT, calculate_target_dimensions, clipboard_status_id,
+        exceeds_max_dimension, poll_clipboard_status, show_export_modal,
+    },
+    fit::{FitResult, FitType, fit_dataset, fit_dataset_scaled},
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
         LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
@@ -1072,8 +1080,9 @@ impl<'a> Plot<'a> {
         }
 
         // --- Legend ---
-        let legend = legend_config
-            .and_then(|config| LegendWidget::try_new(plot_rect, config, &items, &mem.hidden_items));
+        let legend = legend_config.and_then(|config| {
+            LegendWidget::try_new(plot_id, plot_rect, config, &items, &mem.hidden_items)
+        });
         // Don't show hover cursor when hovering over legend.
         if mem.hovered_legend_item.is_some() {
             show_x = false;
@@ -1153,6 +1162,13 @@ impl<'a> Plot<'a> {
             mem.auto_bounds = true.into();
         }
 
+        if last_plot_transform.log_axis().x != mem.log_x {
+            mem.auto_bounds.x = true;
+        }
+        if last_plot_transform.log_axis().y != mem.log_y {
+            mem.auto_bounds.y = true;
+        }
+
         let any_dynamic_modifications = !bounds_modifications.is_empty();
         // Apply bounds modifications.
         for modification in bounds_modifications {
@@ -1176,50 +1192,33 @@ impl<'a> Plot<'a> {
                     mem.auto_bounds = new_auto_bounds;
                 }
                 BoundsModification::Zoom(zoom_factor, center) => {
-                    bounds.zoom(zoom_factor, center);
+                    bounds.zoom_scaled(zoom_factor, center, Vec2b::new(mem.log_x, mem.log_y));
                     mem.auto_bounds = false.into();
                 }
             }
         }
 
-        // Reset bounds to initial bounds if they haven't been modified.
-        if (!default_auto_bounds.x && !any_dynamic_modifications) || mem.auto_bounds.x {
-            bounds.set_x(&min_auto_bounds);
-        }
-        if (!default_auto_bounds.y && !any_dynamic_modifications) || mem.auto_bounds.y {
-            bounds.set_y(&min_auto_bounds);
-        }
+        let log_axes = Vec2b::new(mem.log_x, mem.log_y);
+        apply_plot_bounds_with_scale(
+            &mut bounds,
+            &min_auto_bounds,
+            default_auto_bounds,
+            mem.auto_bounds,
+            any_dynamic_modifications,
+            &items,
+            margin_fraction,
+            log_axes,
+        );
 
-        let auto_x = mem.auto_bounds.x && (!min_auto_bounds.is_valid_x() || default_auto_bounds.x);
-        let auto_y = mem.auto_bounds.y && (!min_auto_bounds.is_valid_y() || default_auto_bounds.y);
-
-        // Set bounds automatically based on content.
-        if auto_x || auto_y {
-            for item in &items {
-                let item_bounds = item.bounds();
-                if auto_x {
-                    bounds.merge_x(&item_bounds);
-                }
-                if auto_y {
-                    bounds.merge_y(&item_bounds);
-                }
-            }
-
-            if auto_x {
-                bounds.add_relative_margin_x(margin_fraction);
-            }
-
-            if auto_y {
-                bounds.add_relative_margin_y(margin_fraction);
-            }
-        }
-
+        let effective_center_axis =
+            Vec2b::new(center_axis.x && !mem.log_x, center_axis.y && !mem.log_y);
         mem.transform = PlotTransform::new_with_invert_axis(
             plot_rect,
             bounds,
-            center_axis,
+            effective_center_axis,
             Vec2b::new(invert_x, invert_y),
         );
+        mem.transform.set_log_axis(log_axes);
 
         // Enforce aspect ratio
         if let Some(data_aspect) = data_aspect {
@@ -1486,26 +1485,14 @@ impl<'a> Plot<'a> {
         append_last_plot_datasets(&export_datasets);
         // --- END EXTRACT DATASETS ---
 
-        let mut auto_content_bounds = *bounds;
-        if default_auto_bounds.x || min_auto_bounds.is_valid_x() {
-            auto_content_bounds.set_x(&min_auto_bounds);
-        }
-        if default_auto_bounds.y || min_auto_bounds.is_valid_y() {
-            auto_content_bounds.set_y(&min_auto_bounds);
-        }
-        for item in &items {
-            let item_bounds = item.bounds();
-            auto_content_bounds.merge_x(&item_bounds);
-            auto_content_bounds.merge_y(&item_bounds);
-        }
-        if !auto_content_bounds.is_valid_x() {
-            auto_content_bounds.set_x(&PlotBounds::NOTHING);
-        }
-        if !auto_content_bounds.is_valid_y() {
-            auto_content_bounds.set_y(&PlotBounds::NOTHING);
-        }
-        auto_content_bounds.add_relative_margin_x(margin_fraction);
-        auto_content_bounds.add_relative_margin_y(margin_fraction);
+        let auto_content_bounds = compute_auto_content_bounds(
+            *bounds,
+            &min_auto_bounds,
+            default_auto_bounds,
+            &items,
+            margin_fraction,
+            log_axes,
+        );
 
         let prepared = PreparedPlot {
             plot_area_response: &response,
@@ -1580,15 +1567,7 @@ impl<'a> Plot<'a> {
         #[derive(Clone)]
         struct AccessState {
             show_table: bool,
-            show_export_modal: bool,
-            export_scale: f32,
-            export_aspect: AspectRatioOption,
-            export_line_thickness: f32,
-            export_bg_opacity: f32,
-            export_bg_dark: bool,
-            export_gif_fps: u32,
-            export_gif_frames: u32,
-            status_message: Option<String>,
+            export_modal: export_modal::ExportModalState,
             focused_item: usize,
             focused_point: usize,
             fit_degree: Option<usize>,
@@ -1617,15 +1596,7 @@ impl<'a> Plot<'a> {
             fn default() -> Self {
                 Self {
                     show_table: false,
-                    show_export_modal: false,
-                    export_scale: 1.0,
-                    export_aspect: AspectRatioOption::SixteenNine,
-                    export_line_thickness: 2.0,
-                    export_bg_opacity: 1.0,
-                    export_bg_dark: true,
-                    export_gif_fps: 15,
-                    export_gif_frames: 20,
-                    status_message: None,
+                    export_modal: export_modal::ExportModalState::default(),
                     focused_item: 0,
                     focused_point: 0,
                     fit_degree: None,
@@ -1664,12 +1635,8 @@ impl<'a> Plot<'a> {
                 clamp_grid: mem.clamp_grid,
                 ..Default::default()
             });
-
-        if let Some(msg) =
-            ui.data_mut(|d| d.remove_temp::<String>(plot_id.with("async_clipboard_status")))
-        {
-            access_state.status_message = Some(msg);
-        }
+        access_state.log_x = mem.log_x;
+        access_state.log_y = mem.log_y;
 
         if let Some(status) = export::drain_import_status(plot_id) {
             access_state.import_toast = Some(status);
@@ -1702,35 +1669,24 @@ impl<'a> Plot<'a> {
             && let Some(deg) = access_state.fit_degree
             && let Some((ds_name, ds_pts, ds_color)) =
                 accessible_datasets.get(access_state.fit_dataset_idx)
-            && let Some(fit_res) = crate::fit::fit_dataset(ds_pts, deg, ds_name)
+            && let Some(fit_res) =
+                crate::fit::fit_dataset_scaled(ds_pts, deg, ds_name, mem.log_x, mem.log_y)
         {
             let bounds = mem.transform.bounds();
             let x_min = bounds.min[0];
             let x_max = bounds.max[0];
             if x_max > x_min {
-                let sample_count = 200;
-                let screen_pts: Vec<Pos2> = (0..=sample_count)
-                    .map(|i| {
-                        let t = i as f64 / (sample_count as f64);
-                        let x = x_min + t * (x_max - x_min);
-                        let y = fit_res.eval(x);
-                        mem.transform.position_from_point(&PlotPoint::new(x, y))
-                    })
-                    .collect();
-
                 let accent_color = if *ds_color == Color32::TRANSPARENT {
                     ui.visuals().widgets.active.bg_fill
                 } else {
                     *ds_color
                 };
-
-                let dashed_shapes = Shape::dashed_line(
-                    &screen_pts,
+                paint_fitted_curve_overlay(
+                    &ui.painter().with_clip_rect(plot_rect),
+                    &mem.transform,
+                    &fit_res,
                     Stroke::new(2.5_f32, accent_color),
-                    8.0_f32,
-                    5.0_f32,
                 );
-                ui.painter().with_clip_rect(plot_rect).extend(dashed_shapes);
 
                 // Draw formula badge overlay on plot canvas
                 let badge_pos = plot_rect.min + egui::vec2(12.0_f32, 36.0_f32);
@@ -1778,7 +1734,7 @@ impl<'a> Plot<'a> {
         ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Save PNG").clicked() {
-                    access_state.show_export_modal = true;
+                    access_state.export_modal.open = true;
                 }
                 if ui.button("Export CSV").clicked() {
                     export::export_csv(&export_datasets);
@@ -1932,262 +1888,29 @@ impl<'a> Plot<'a> {
             });
         }
 
-        if access_state.show_export_modal {
-            let mut modal_open = access_state.show_export_modal;
-            let mut close_requested = false;
-            egui::Window::new(format!("Export High-Res Plot - {id_source:?}"))
-                .open(&mut modal_open)
-                .resizable(true)
-                .collapsible(false)
-                .default_width(380.0)
-                .show(ui.ctx(), |ui| {
-                    ui.label(egui::RichText::new("Offscreen Plot Render Settings").strong());
-                    ui.separator();
-
-                    ui.horizontal(|ui| {
-                        ui.label("Resolution Scale:");
-                        ui.selectable_value(&mut access_state.export_scale, 1.0, "1x (1080p)");
-                        ui.selectable_value(&mut access_state.export_scale, 2.0, "2x (4K)");
-                        ui.selectable_value(&mut access_state.export_scale, 4.0, "4x");
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Aspect Ratio:");
-                        egui::ComboBox::from_id_salt(plot_id.with("export_aspect"))
-                            .selected_text(match access_state.export_aspect {
-                                AspectRatioOption::Free => "Custom / Free",
-                                AspectRatioOption::SixteenNine => "16:9 (Widescreen)",
-                                AspectRatioOption::FourThree => "4:3 (Standard)",
-                                AspectRatioOption::OneOne => "1:1 (Square)",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut access_state.export_aspect,
-                                    AspectRatioOption::SixteenNine,
-                                    "16:9 (Widescreen)",
-                                );
-                                ui.selectable_value(
-                                    &mut access_state.export_aspect,
-                                    AspectRatioOption::FourThree,
-                                    "4:3 (Standard)",
-                                );
-                                ui.selectable_value(
-                                    &mut access_state.export_aspect,
-                                    AspectRatioOption::OneOne,
-                                    "1:1 (Square)",
-                                );
-                                ui.selectable_value(
-                                    &mut access_state.export_aspect,
-                                    AspectRatioOption::Free,
-                                    "Custom / Free",
-                                );
-                            });
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Line Thickness:");
-                        ui.add(egui::Slider::new(
-                            &mut access_state.export_line_thickness,
-                            0.5..=10.0,
-                        ));
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Background Opacity:");
-                        ui.add(egui::Slider::new(
-                            &mut access_state.export_bg_opacity,
-                            0.0..=1.0,
-                        ));
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Background Color:");
-                        ui.selectable_value(&mut access_state.export_bg_dark, true, "Dark");
-                        ui.selectable_value(&mut access_state.export_bg_dark, false, "Light");
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("GIF FPS:");
-                        ui.add(egui::Slider::new(&mut access_state.export_gif_fps, 1..=60));
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("GIF Frame Steps:");
-                        ui.add(egui::Slider::new(
-                            &mut access_state.export_gif_frames,
-                            5..=60,
-                        ));
-                    });
-
-                    ui.separator();
-
-                    let base_w = 1920u32;
-                    let base_h = 1080u32;
-                    let calc_w = (base_w as f32 * access_state.export_scale).round() as u32;
-                    let mut calc_h = (base_h as f32 * access_state.export_scale).round() as u32;
-                    if let Some(ratio) = access_state.export_aspect.ratio().filter(|&r| r > 0.0) {
-                        calc_h = (calc_w as f32 / ratio).round() as u32;
-                    }
-
-                    if calc_w > export::MAX_EXPORT_DIMENSION
-                        || calc_h > export::MAX_EXPORT_DIMENSION
-                    {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "⚠️ Capped at max dimension {}x{} px",
-                                export::MAX_EXPORT_DIMENSION,
-                                export::MAX_EXPORT_DIMENSION
-                            ))
-                            .color(Color32::YELLOW),
-                        );
-                    } else {
-                        ui.label(format!("Target Canvas Size: {} x {} px", calc_w, calc_h));
-                    }
-
-                    if let Some(msg) = &access_state.status_message {
-                        ui.label(egui::RichText::new(msg).color(Color32::GREEN));
-                    }
-
-                    ui.separator();
-
-                    let options = export::ExportOptions {
-                        width: base_w,
-                        height: base_h,
-                        scale: access_state.export_scale,
-                        line_thickness: access_state.export_line_thickness,
-                        background_opacity: access_state.export_bg_opacity,
-                        background_color: if access_state.export_bg_dark {
-                            Color32::from_rgb(18, 18, 18)
-                        } else {
-                            Color32::WHITE
-                        },
-                        aspect_ratio: access_state.export_aspect,
-                    };
-
-                    ui.horizontal(|ui| {
-                        if ui.button("💾 Save PNG").clicked() {
-                            match export::export_custom_png(&export_datasets, &options) {
-                                Ok(png_bytes) => {
-                                    export::save_file_dialog(
-                                        "plot.png",
-                                        &png_bytes,
-                                        "PNG Image",
-                                        &["png"],
-                                    );
-                                    access_state.status_message =
-                                        Some("PNG image saved successfully.".to_string());
-                                }
-                                Err(e) => {
-                                    access_state.status_message =
-                                        Some(format!("Export failed: {e}"));
-                                }
-                            }
-                        }
-
-                        if ui.button("💾 Save SVG").clicked() {
-                            match export::export_custom_svg(&export_datasets, &options) {
-                                Ok(svg_text) => {
-                                    export::save_file_dialog(
-                                        "plot.svg",
-                                        svg_text.as_bytes(),
-                                        "SVG Vector Image",
-                                        &["svg"],
-                                    );
-                                    access_state.status_message =
-                                        Some("SVG image saved successfully.".to_string());
-                                }
-                                Err(e) => {
-                                    access_state.status_message =
-                                        Some(format!("Export failed: {e}"));
-                                }
-                            }
-                        }
-
-                        if ui.button("🎬 Save GIF").clicked() {
-                            let sampled_frames = export::sample_progressive_frames(
-                                &export_datasets,
-                                access_state.export_gif_frames as usize,
-                            );
-                            match export::export_custom_gif(
-                                &sampled_frames,
-                                &options,
-                                access_state.export_gif_fps,
-                            ) {
-                                Ok(gif_bytes) => {
-                                    export::save_file_dialog(
-                                        "plot.gif",
-                                        &gif_bytes,
-                                        "GIF Animation",
-                                        &["gif"],
-                                    );
-                                    access_state.status_message =
-                                        Some("GIF animation saved successfully.".to_string());
-                                }
-                                Err(e) => {
-                                    access_state.status_message =
-                                        Some(format!("GIF export failed: {e}"));
-                                }
-                            }
-                        }
-
-                        if ui.button("📋 Copy to Clipboard").clicked() {
-                            match export::export_custom_image(&export_datasets, &options) {
-                                Ok(color_img) => {
-                                    let ctx = ui.ctx().clone();
-                                    let target_id = plot_id;
-                                    match export::copy_image_to_clipboard_with_callback(
-                                        &color_img,
-                                        move |res| {
-                                            ctx.data_mut(|d| {
-                                                let msg = match res {
-                                                    Ok(_) => "Copied plot image to clipboard!"
-                                                        .to_string(),
-                                                    Err(e) => {
-                                                        format!("Clipboard copy failed: {e}")
-                                                    }
-                                                };
-                                                d.insert_temp(
-                                                    target_id.with("async_clipboard_status"),
-                                                    msg,
-                                                );
-                                            });
-                                            ctx.request_repaint();
-                                        },
-                                    ) {
-                                        Ok(_) => {
-                                            #[cfg(not(target_arch = "wasm32"))]
-                                            {
-                                                access_state.status_message = Some(
-                                                    "Copied plot image to clipboard!".to_string(),
-                                                );
-                                            }
-                                            #[cfg(target_arch = "wasm32")]
-                                            {
-                                                access_state.status_message = Some(
-                                                    "Copying plot image to clipboard..."
-                                                        .to_string(),
-                                                );
-                                            }
-                                        }
-                                        Err(e) => {
-                                            access_state.status_message =
-                                                Some(format!("Clipboard copy failed: {e}"));
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    access_state.status_message =
-                                        Some(format!("Render failed: {e}"));
-                                }
-                            }
-                        }
-
-                        if ui.button("Close").clicked() {
-                            close_requested = true;
-                        }
-                    });
-                });
-            access_state.show_export_modal = modal_open && !close_requested;
+        {
+            access_state.export_modal.options.log_x = mem.log_x;
+            access_state.export_modal.options.log_y = mem.log_y;
+            let export_window_title = format!("Export High-Res Plot - {id_source:?}");
+            let export_config = export_modal::ExportModalConfig {
+                window_title: &export_window_title,
+                id: plot_id,
+                png_filename: "plot.png",
+                svg_filename: "plot.svg",
+                gif_filename: "plot.gif",
+            };
+            let mut export_source = export_modal::CallbackExportSource {
+                datasets_fn: || export_datasets.clone(),
+                sample_frames_fn: |num_frames| {
+                    export::sample_progressive_frames(&export_datasets, num_frames)
+                },
+            };
+            export_modal::show_export_modal(
+                ui.ctx(),
+                access_state.export_modal.bindings(),
+                &export_config,
+                &mut export_source,
+            );
         }
 
         if access_state.show_settings_modal {
@@ -2448,94 +2171,139 @@ impl<'a> Plot<'a> {
         }
 
         mem.show_settings_modal = access_state.show_settings_modal;
-        mem.log_x = access_state.log_x;
-        mem.log_y = access_state.log_y;
+        if mem.log_x != access_state.log_x {
+            mem.log_x = access_state.log_x;
+            mem.auto_bounds.x = true;
+            ui.ctx().request_repaint();
+        }
+        if mem.log_y != access_state.log_y {
+            mem.log_y = access_state.log_y;
+            mem.auto_bounds.y = true;
+            ui.ctx().request_repaint();
+        }
         mem.grid_density = access_state.grid_density;
         mem.show_x_labels = access_state.show_x_labels;
         mem.show_y_labels = access_state.show_y_labels;
         mem.clamp_grid = access_state.clamp_grid;
 
-        if focus_response.has_focus() {
+        let num_items = accessible_datasets.len();
+        if num_items > 0 {
+            crate::commands::CommandRegistryData::register(
+                ui.ctx(),
+                "Next Dataset",
+                "Navigate to the next dataset",
+                crate::commands::CommandTrigger::Key(egui::Key::ArrowDown),
+                false,
+                "Plot Accessibility",
+            );
+            crate::commands::CommandRegistryData::register(
+                ui.ctx(),
+                "Previous Dataset",
+                "Navigate to the previous dataset",
+                crate::commands::CommandTrigger::Key(egui::Key::ArrowUp),
+                false,
+                "Plot Accessibility",
+            );
+            if accessible_datasets
+                .get(access_state.focused_item)
+                .or_else(|| accessible_datasets.first())
+                .is_some_and(|(_, pts, _)| !pts.is_empty())
+            {
+                crate::commands::CommandRegistryData::register(
+                    ui.ctx(),
+                    "Next Point",
+                    "Navigate to the next point in the dataset",
+                    crate::commands::CommandTrigger::Key(egui::Key::ArrowRight),
+                    false,
+                    "Plot Accessibility",
+                );
+                crate::commands::CommandRegistryData::register(
+                    ui.ctx(),
+                    "Previous Point",
+                    "Navigate to the previous point in the dataset",
+                    crate::commands::CommandTrigger::Key(egui::Key::ArrowLeft),
+                    false,
+                    "Plot Accessibility",
+                );
+            }
+        }
+
+        if focus_response.has_focus() && num_items > 0 {
             let mut changed = false;
-            let num_items = accessible_datasets.len();
-            if num_items > 0 {
-                let down_triggered = crate::commands::CommandRegistryData::register_and_check(
-                    ui.ctx(),
-                    "Next Dataset",
-                    "Navigate to the next dataset",
-                    crate::commands::CommandTrigger::Key(egui::Key::ArrowDown),
-                    false,
-                    "Plot Accessibility",
-                    Some(ui),
-                    None,
-                );
-                if down_triggered && access_state.focused_item + 1 < num_items {
-                    access_state.focused_item += 1;
-                    access_state.focused_point = 0;
-                    changed = true;
-                }
+            let down_triggered = crate::commands::CommandRegistryData::register_and_check(
+                ui.ctx(),
+                "Next Dataset",
+                "Navigate to the next dataset",
+                crate::commands::CommandTrigger::Key(egui::Key::ArrowDown),
+                false,
+                "Plot Accessibility",
+                Some(ui),
+                None,
+            );
+            if down_triggered && access_state.focused_item + 1 < num_items {
+                access_state.focused_item += 1;
+                access_state.focused_point = 0;
+                changed = true;
+            }
 
-                let up_triggered = crate::commands::CommandRegistryData::register_and_check(
-                    ui.ctx(),
-                    "Previous Dataset",
-                    "Navigate to the previous dataset",
-                    crate::commands::CommandTrigger::Key(egui::Key::ArrowUp),
-                    false,
-                    "Plot Accessibility",
-                    Some(ui),
-                    None,
-                );
-                if up_triggered && access_state.focused_item > 0 {
-                    access_state.focused_item -= 1;
-                    access_state.focused_point = 0;
-                    changed = true;
-                }
+            let up_triggered = crate::commands::CommandRegistryData::register_and_check(
+                ui.ctx(),
+                "Previous Dataset",
+                "Navigate to the previous dataset",
+                crate::commands::CommandTrigger::Key(egui::Key::ArrowUp),
+                false,
+                "Plot Accessibility",
+                Some(ui),
+                None,
+            );
+            if up_triggered && access_state.focused_item > 0 {
+                access_state.focused_item -= 1;
+                access_state.focused_point = 0;
+                changed = true;
+            }
 
-                if let Some((_, pts, _)) = accessible_datasets.get(access_state.focused_item) {
-                    let num_pts = pts.len();
-                    if num_pts > 0 {
-                        let right_triggered =
-                            crate::commands::CommandRegistryData::register_and_check(
-                                ui.ctx(),
-                                "Next Point",
-                                "Navigate to the next point in the dataset",
-                                crate::commands::CommandTrigger::Key(egui::Key::ArrowRight),
-                                false,
-                                "Plot Accessibility",
-                                Some(ui),
-                                None,
-                            );
-                        if right_triggered && access_state.focused_point + 1 < num_pts {
-                            access_state.focused_point += 1;
-                            changed = true;
-                        }
+            if let Some((_, pts, _)) = accessible_datasets.get(access_state.focused_item) {
+                let num_pts = pts.len();
+                if num_pts > 0 {
+                    let right_triggered = crate::commands::CommandRegistryData::register_and_check(
+                        ui.ctx(),
+                        "Next Point",
+                        "Navigate to the next point in the dataset",
+                        crate::commands::CommandTrigger::Key(egui::Key::ArrowRight),
+                        false,
+                        "Plot Accessibility",
+                        Some(ui),
+                        None,
+                    );
+                    if right_triggered && access_state.focused_point + 1 < num_pts {
+                        access_state.focused_point += 1;
+                        changed = true;
+                    }
 
-                        let left_triggered =
-                            crate::commands::CommandRegistryData::register_and_check(
-                                ui.ctx(),
-                                "Previous Point",
-                                "Navigate to the previous point in the dataset",
-                                crate::commands::CommandTrigger::Key(egui::Key::ArrowLeft),
-                                false,
-                                "Plot Accessibility",
-                                Some(ui),
-                                None,
-                            );
-                        if left_triggered && access_state.focused_point > 0 {
-                            access_state.focused_point -= 1;
-                            changed = true;
-                        }
+                    let left_triggered = crate::commands::CommandRegistryData::register_and_check(
+                        ui.ctx(),
+                        "Previous Point",
+                        "Navigate to the previous point in the dataset",
+                        crate::commands::CommandTrigger::Key(egui::Key::ArrowLeft),
+                        false,
+                        "Plot Accessibility",
+                        Some(ui),
+                        None,
+                    );
+                    if left_triggered && access_state.focused_point > 0 {
+                        access_state.focused_point -= 1;
+                        changed = true;
                     }
                 }
+            }
 
-                if changed
-                    && let Some((name, pts, _)) = accessible_datasets.get(access_state.focused_item)
-                    && let Some(p) = pts.get(access_state.focused_point)
-                {
-                    let msg = format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]);
-                    ui.ctx()
-                        .data_mut(|d| d.insert_temp(egui::Id::new("aria_live_message"), msg));
-                }
+            if changed
+                && let Some((name, pts, _)) = accessible_datasets.get(access_state.focused_item)
+                && let Some(p) = pts.get(access_state.focused_point)
+            {
+                let msg = format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]);
+                ui.ctx()
+                    .data_mut(|d| d.insert_temp(egui::Id::new("aria_live_message"), msg));
             }
         }
 
@@ -2668,7 +2436,7 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
             if ui.button("Save PNG").clicked() {
-                access_state.show_export_modal = true;
+                access_state.export_modal.open = true;
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {
@@ -3233,10 +3001,217 @@ pub fn logarithmic_grid_spacer() -> GridSpacer<'static> {
                 }
             }
         }
+        if marks.is_empty() && max_pos > min_pos {
+            return log_grid_spacer(10)(GridInput {
+                bounds: (min_pos, max_pos),
+                base_step_size: (max_pos - min_pos) / 10.0,
+            });
+        }
         marks
     };
 
     Box::new(step_sizes)
+}
+
+fn collect_positive_axis_bounds(
+    axis: usize,
+    min_auto_bounds: &PlotBounds,
+    items: &[Box<dyn PlotItem + '_>],
+) -> Option<(f64, f64)> {
+    let mut lo = f64::INFINITY;
+    let mut hi = f64::NEG_INFINITY;
+    let mut consider = |v: f64| {
+        if v.is_finite() && v > 0.0 {
+            lo = lo.min(v);
+            hi = hi.max(v);
+        }
+    };
+    consider(min_auto_bounds.min[axis]);
+    consider(min_auto_bounds.max[axis]);
+    for item in items {
+        match item.geometry() {
+            PlotGeometry::Points(pts) => {
+                for pt in pts {
+                    if pt.x.is_finite() && pt.y.is_finite() {
+                        consider(if axis == 0 { pt.x } else { pt.y });
+                    }
+                }
+            }
+            PlotGeometry::None | PlotGeometry::Rects => {
+                let ib = item.bounds();
+                consider(ib.min[axis]);
+                consider(ib.max[axis]);
+                for pt in item.extract_points() {
+                    if pt[0].is_finite() && pt[1].is_finite() {
+                        consider(pt[axis]);
+                    }
+                }
+            }
+        }
+    }
+    (lo.is_finite() && hi.is_finite() && lo > 0.0 && hi >= lo).then_some((lo, hi))
+}
+
+fn apply_single_log_axis_bounds(
+    bounds: &mut PlotBounds,
+    axis: usize,
+    is_auto: bool,
+    positive_bounds: Option<(f64, f64)>,
+    margin_frac: f64,
+) {
+    if is_auto {
+        let (mut lo, mut hi) = positive_bounds.unwrap_or((1e-6, 10.0));
+        if (hi - lo).abs() <= f64::EPSILON * lo.max(1.0) {
+            let half_decade = 10.0_f64.sqrt();
+            lo = (lo / half_decade).max(1e-300);
+            hi = (hi * half_decade).min(1e300);
+        }
+        bounds.min[axis] = lo;
+        bounds.max[axis] = hi;
+        bounds.add_log_margin_axis(axis, margin_frac);
+    } else {
+        if !bounds.min[axis].is_finite() || bounds.min[axis] <= 0.0 {
+            bounds.min[axis] = positive_bounds
+                .map(|(lo, _)| lo)
+                .filter(|&lo| !bounds.max[axis].is_finite() || lo < bounds.max[axis])
+                .unwrap_or(1e-6);
+        }
+        if !bounds.max[axis].is_finite() || bounds.max[axis] <= bounds.min[axis] {
+            bounds.max[axis] = positive_bounds
+                .map(|(_, hi)| hi)
+                .filter(|&hi| hi > bounds.min[axis])
+                .unwrap_or_else(|| (bounds.min[axis] * 10.0).min(1e300));
+        }
+    }
+}
+
+#[expect(clippy::too_many_arguments)]
+fn apply_plot_bounds_with_scale(
+    bounds: &mut PlotBounds,
+    min_auto_bounds: &PlotBounds,
+    default_auto_bounds: Vec2b,
+    auto_bounds: Vec2b,
+    any_dynamic_modifications: bool,
+    items: &[Box<dyn PlotItem + '_>],
+    margin_fraction: Vec2,
+    log_axes: Vec2b,
+) {
+    if !log_axes.x && ((!default_auto_bounds.x && !any_dynamic_modifications) || auto_bounds.x) {
+        bounds.set_x(min_auto_bounds);
+    }
+    if !log_axes.y && ((!default_auto_bounds.y && !any_dynamic_modifications) || auto_bounds.y) {
+        bounds.set_y(min_auto_bounds);
+    }
+    let auto_x = auto_bounds.x && (!min_auto_bounds.is_valid_x() || default_auto_bounds.x);
+    let auto_y = auto_bounds.y && (!min_auto_bounds.is_valid_y() || default_auto_bounds.y);
+    if (!log_axes.x && auto_x) || (!log_axes.y && auto_y) {
+        for item in items {
+            let item_bounds = item.bounds();
+            if !log_axes.x && auto_x {
+                bounds.merge_x(&item_bounds);
+            }
+            if !log_axes.y && auto_y {
+                bounds.merge_y(&item_bounds);
+            }
+        }
+        if !log_axes.x && auto_x {
+            bounds.add_relative_margin_x(margin_fraction);
+        }
+        if !log_axes.y && auto_y {
+            bounds.add_relative_margin_y(margin_fraction);
+        }
+    }
+    if log_axes.x {
+        let pos = collect_positive_axis_bounds(0, min_auto_bounds, items);
+        let is_auto = auto_bounds.x || (!default_auto_bounds.x && !any_dynamic_modifications);
+        apply_single_log_axis_bounds(bounds, 0, is_auto, pos, margin_fraction.x as f64);
+    }
+    if log_axes.y {
+        let pos = collect_positive_axis_bounds(1, min_auto_bounds, items);
+        let is_auto = auto_bounds.y || (!default_auto_bounds.y && !any_dynamic_modifications);
+        apply_single_log_axis_bounds(bounds, 1, is_auto, pos, margin_fraction.y as f64);
+    }
+}
+
+fn compute_auto_content_bounds(
+    current_bounds: PlotBounds,
+    min_auto_bounds: &PlotBounds,
+    default_auto_bounds: Vec2b,
+    items: &[Box<dyn PlotItem + '_>],
+    margin_fraction: Vec2,
+    log_axes: Vec2b,
+) -> PlotBounds {
+    let mut out = current_bounds;
+    if !log_axes.x {
+        if default_auto_bounds.x || min_auto_bounds.is_valid_x() {
+            out.set_x(min_auto_bounds);
+        }
+        for item in items {
+            out.merge_x(&item.bounds());
+        }
+        if !out.is_valid_x() {
+            out.set_x(&PlotBounds::NOTHING);
+        }
+        out.add_relative_margin_x(margin_fraction);
+    } else {
+        let pos = collect_positive_axis_bounds(0, min_auto_bounds, items);
+        apply_single_log_axis_bounds(&mut out, 0, true, pos, margin_fraction.x as f64);
+    }
+    if !log_axes.y {
+        if default_auto_bounds.y || min_auto_bounds.is_valid_y() {
+            out.set_y(min_auto_bounds);
+        }
+        for item in items {
+            out.merge_y(&item.bounds());
+        }
+        if !out.is_valid_y() {
+            out.set_y(&PlotBounds::NOTHING);
+        }
+        out.add_relative_margin_y(margin_fraction);
+    } else {
+        let pos = collect_positive_axis_bounds(1, min_auto_bounds, items);
+        apply_single_log_axis_bounds(&mut out, 1, true, pos, margin_fraction.y as f64);
+    }
+    out
+}
+
+fn paint_fitted_curve_overlay(
+    painter: &egui::Painter,
+    transform: &PlotTransform,
+    fit_res: &FitResult,
+    stroke: Stroke,
+) {
+    let bounds = transform.bounds();
+    let x_min = bounds.min[0];
+    let x_max = bounds.max[0];
+    if !x_min.is_finite() || !x_max.is_finite() || x_max <= x_min {
+        return;
+    }
+    let sample_count = 200_usize;
+    let log_x = transform.log_axis().x && x_min > 0.0;
+    let min_log = if log_x { x_min.log10() } else { 0.0 };
+    let max_log = if log_x { x_max.log10() } else { 0.0 };
+    let mut segment: Vec<Pos2> = Vec::with_capacity(sample_count + 1);
+    for i in 0..=sample_count {
+        let t = i as f64 / (sample_count as f64);
+        let x = if log_x {
+            10.0_f64.powf(min_log + t * (max_log - min_log))
+        } else {
+            x_min + t * (x_max - x_min)
+        };
+        let pt = PlotPoint::new(x, fit_res.eval(x));
+        if transform.is_point_valid_for_scale(&pt) {
+            segment.push(transform.position_from_point(&pt));
+        } else if segment.len() >= 2 {
+            painter.extend(Shape::dashed_line(&segment, stroke, 8.0_f32, 5.0_f32));
+            segment.clear();
+        } else {
+            segment.clear();
+        }
+    }
+    if segment.len() >= 2 {
+        painter.extend(Shape::dashed_line(&segment, stroke, 8.0_f32, 5.0_f32));
+    }
 }
 
 /// Splits the grid into uniform-sized spacings (e.g. 100, 25, 1).
@@ -3431,6 +3406,14 @@ impl PreparedPlot<'_> {
                 tight_bounds.merge_x(&item_bounds);
                 tight_bounds.merge_y(&item_bounds);
             }
+            if transform.log_axis().x {
+                tight_bounds.min[0] = tight_bounds.min[0].max(transform.bounds().min[0]);
+                tight_bounds.max[0] = tight_bounds.max[0].max(tight_bounds.min[0]);
+            }
+            if transform.log_axis().y {
+                tight_bounds.min[1] = tight_bounds.min[1].max(transform.bounds().min[1]);
+                tight_bounds.max[1] = tight_bounds.max[1].max(tight_bounds.min[1]);
+            }
             tight_bounds
         });
 
@@ -3458,7 +3441,7 @@ impl PreparedPlot<'_> {
             };
 
             let pos_in_gui = transform.position_from_point(&value);
-            let spacing_in_points = (transform.dpos_dvalue()[iaxis] * step.step_size).abs() as f32;
+            let spacing_in_points = transform.step_spacing_in_points(axis, step);
 
             if spacing_in_points <= fade_range.min {
                 continue; // Too close together
@@ -4999,5 +4982,247 @@ mod floating_zoom_toolbar_tests {
             (bounds_after_drag.center().y - initial_bounds.center().y).abs() < 1e-4,
             "Interacting with overlay buttons must not capture drag events on the canvas"
         );
+    }
+}
+
+#[cfg(test)]
+mod log_space_projection_tests {
+    use super::*;
+
+    fn collect_text_strings(shapes: &[epaint::ClippedShape], out: &mut Vec<String>) {
+        for clipped in shapes {
+            collect_shape_texts(&clipped.shape, out);
+        }
+    }
+
+    fn collect_shape_texts(shape: &Shape, out: &mut Vec<String>) {
+        match shape {
+            Shape::Text(t) => out.push(t.galley.text().to_owned()),
+            Shape::Vec(v) => {
+                for s in v {
+                    collect_shape_texts(s, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn count_line_segments(shape: &Shape) -> usize {
+        match shape {
+            Shape::LineSegment { .. } => 1,
+            Shape::Vec(v) => v.iter().map(count_line_segments).sum(),
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn test_log_transform_equal_decade_spacing_and_round_trip() {
+        let frame = Rect::from_min_size(Pos2::new(50.0, 20.0), vec2(600.0, 400.0));
+        let bounds = PlotBounds::from_min_max([1.0, 0.01], [1000.0, 10_000.0]);
+        let mut tf = PlotTransform::new(frame, bounds, Vec2b::FALSE);
+        tf.set_log_axis(Vec2b::TRUE);
+
+        let x1 = tf.position_from_point_x(1.0);
+        let x10 = tf.position_from_point_x(10.0);
+        let x100 = tf.position_from_point_x(100.0);
+        let x1000 = tf.position_from_point_x(1000.0);
+        assert!(((x10 - x1) - 200.0).abs() < 1e-3);
+        assert!(((x100 - x10) - 200.0).abs() < 1e-3);
+        assert!(((x1000 - x100) - 200.0).abs() < 1e-3);
+
+        let y_a = tf.position_from_point_y(0.01);
+        let y_b = tf.position_from_point_y(0.1);
+        let y_c = tf.position_from_point_y(1.0);
+        assert!(((y_a - y_b) - (y_b - y_c)).abs() < 1e-3);
+
+        let pt = PlotPoint::new(31.622_776_6, 250.0);
+        let back = tf.value_from_position(tf.position_from_point(&pt));
+        assert!((back.x - pt.x).abs() / pt.x < 1e-5);
+        assert!((back.y - pt.y).abs() / pt.y < 1e-5);
+    }
+
+    #[test]
+    fn test_log_axes_retain_major_decade_ticks_and_grid_lines() {
+        let ctx = egui::Context::default();
+        let id = Id::new("log_decade_ticks_test");
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 650.0))),
+            ..Default::default()
+        };
+        let _ = ctx.run(raw.clone(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                Plot::new(id).id(id).show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("span", vec![[0.001, 0.001], [1000.0, 1000.0]]));
+                });
+            });
+        });
+        let mut mem = PlotMemory::load(&ctx, id).unwrap();
+        mem.log_x = true;
+        mem.log_y = true;
+        mem.store(&ctx, id);
+
+        let mut out = egui::FullOutput::default();
+        for _ in 0..2 {
+            out = ctx.run(raw.clone(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    Plot::new(id).id(id).show(ui, |plot_ui| {
+                        plot_ui.line(Line::new("span", vec![[0.001, 0.001], [1000.0, 1000.0]]));
+                    });
+                });
+            });
+        }
+        let mut texts = Vec::new();
+        collect_text_strings(&out.shapes, &mut texts);
+        for expected in ["0.001", "0.01", "0.1", "1", "10", "100"] {
+            let count = texts.iter().filter(|t| t.as_str() == expected).count();
+            assert!(
+                count >= 2,
+                "Expected decade label '{expected}' on both X and Y axes, got {count} in {texts:?}"
+            );
+        }
+        let seg_count: usize = out
+            .shapes
+            .iter()
+            .map(|c| count_line_segments(&c.shape))
+            .sum();
+        assert!(
+            seg_count >= 14,
+            "Expected log grid lines on both axes, got {seg_count}"
+        );
+    }
+
+    #[test]
+    fn test_log_line_splitting_points_filtering_and_hover_snap() {
+        let frame = Rect::from_min_size(Pos2::ZERO, vec2(400.0, 300.0));
+        let bounds = PlotBounds::from_min_max([1.0, 1.0], [1000.0, 1000.0]);
+        let mut tf = PlotTransform::new(frame, bounds, Vec2b::FALSE);
+        tf.set_log_axis(Vec2b::TRUE);
+
+        egui::__run_test_ui(|ui| {
+            let mut line_shapes = Vec::new();
+            let line = Line::new(
+                "split",
+                vec![
+                    [1.0, 10.0],
+                    [10.0, 50.0],
+                    [0.0, 20.0],
+                    [-5.0, 20.0],
+                    [100.0, 200.0],
+                    [500.0, 800.0],
+                ],
+            );
+            line.shapes(ui, &tf, &mut line_shapes);
+            let polylines = line_shapes
+                .iter()
+                .filter(|s| matches!(s, Shape::Path(_)))
+                .count();
+            assert_eq!(
+                polylines, 2,
+                "Line should split into 2 paths across non-positive gap"
+            );
+
+            let mut pt_shapes = Vec::new();
+            let pts = Points::new(
+                "pts",
+                vec![[0.0, 10.0], [-1.0, 5.0], [10.0, 0.0], [10.0, 100.0]],
+            )
+            .radius(3.0_f32);
+            pts.shapes(ui, &tf, &mut pt_shapes);
+            let circles = pt_shapes
+                .iter()
+                .filter(|s| matches!(s, Shape::Circle(_)))
+                .count();
+            assert_eq!(
+                circles, 1,
+                "Only strictly positive points should emit markers"
+            );
+
+            let closest = pts.find_closest(tf.position_from_point(&PlotPoint::new(1.0, 10.0)), &tf);
+            assert_eq!(
+                closest.unwrap().index,
+                3,
+                "Hover snap must skip non-positive points"
+            );
+        });
+    }
+
+    #[test]
+    fn test_log_bounds_include_zero_center_axis_and_toggle_reset() {
+        let ctx = egui::Context::default();
+        let id = Id::new("capacity_fade_log_bounds");
+        let series = vec![[0.0, 1.0], [10.0, 0.95], [100.0, 0.85], [1000.0, 0.72]];
+        let run_frame = |ctx: &egui::Context| {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    Plot::new(id)
+                        .id(id)
+                        .include_y(0.0)
+                        .include_y(1.0)
+                        .center_x_axis(true)
+                        .center_y_axis(true)
+                        .show(ui, |plot_ui| {
+                            plot_ui.line(Line::new("fade", series.clone()));
+                        });
+                });
+            });
+        };
+        run_frame(&ctx);
+        let mut mem = PlotMemory::load(&ctx, id).unwrap();
+        assert!(
+            mem.transform.bounds().min()[0] < 0.0,
+            "Linear center_x_axis has negative min"
+        );
+
+        mem.log_x = true;
+        mem.log_y = true;
+        mem.auto_bounds = Vec2b::FALSE;
+        mem.store(&ctx, id);
+        run_frame(&ctx);
+
+        let log_mem = PlotMemory::load(&ctx, id).unwrap();
+        let b = log_mem.transform.bounds();
+        assert!(
+            b.min()[0] > 5.0 && b.min()[0] <= 10.0,
+            "Log X should frame positive x>=10, got {:?}",
+            b
+        );
+        assert!(
+            b.min()[1] > 0.65 && b.min()[1] <= 0.72,
+            "Log Y should ignore include_y(0.0), got {:?}",
+            b
+        );
+
+        let mut back = log_mem;
+        back.log_x = false;
+        back.log_y = false;
+        back.store(&ctx, id);
+        run_frame(&ctx);
+        let lin_mem = PlotMemory::load(&ctx, id).unwrap();
+        assert!(lin_mem.auto_bounds.x && lin_mem.auto_bounds.y);
+        assert!(lin_mem.transform.bounds().min()[0] < 0.0);
+    }
+
+    #[test]
+    fn test_log_decade_pan_zoom_and_exponent_clamping() {
+        let frame = Rect::from_min_size(Pos2::ZERO, vec2(300.0, 300.0));
+        let bounds = PlotBounds::from_min_max([1.0, 1.0], [1000.0, 1000.0]);
+        let mut tf = PlotTransform::new(frame, bounds, Vec2b::FALSE);
+        tf.set_log_axis(Vec2b::TRUE);
+
+        tf.translate_bounds((100.0, 0.0));
+        assert!((tf.bounds().min()[0] - 10.0).abs() < 1e-6);
+        assert!((tf.bounds().max()[0] - 10_000.0).abs() < 1e-3);
+
+        tf.zoom(vec2(2.0, 2.0), frame.center());
+        let span_decades = tf.bounds().max()[0].log10() - tf.bounds().min()[0].log10();
+        assert!((span_decades - 1.5).abs() < 1e-5);
+
+        for _ in 0..40 {
+            tf.zoom(vec2(0.1, 0.1), frame.center());
+            tf.translate_bounds((1e6, -1e6));
+        }
+        assert!(tf.bounds().is_valid());
+        assert!(tf.bounds().min()[0] >= 1e-300 && tf.bounds().max()[0] <= 1e300);
+        assert!(tf.bounds().min()[1] >= 1e-300 && tf.bounds().max()[1] <= 1e300);
     }
 }

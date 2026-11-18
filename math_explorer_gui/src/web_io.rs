@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-pub use egui_plot::export::{infer_mime_type, sanitize_download_filename};
+pub use egui_plot::export::{infer_mime_type, sanitize_download_filename, strip_utf8_bom};
 
 #[cfg(target_arch = "wasm32")]
 pub use egui_plot::export::{

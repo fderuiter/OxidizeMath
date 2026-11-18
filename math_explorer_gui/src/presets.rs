@@ -183,7 +183,8 @@ pub trait InteractivePreset: Sized {
     /// Parses and validates a JSON preset string, applying configuration if valid.
     #[allow(clippy::wrong_self_convention)]
     fn from_json_str(&mut self, json_str: &str) -> Result<(), String> {
-        let envelope: PresetWrapper<Self::Config> = serde_json::from_str(json_str)
+        let cleaned = egui_plot::export::strip_utf8_bom(json_str);
+        let envelope: PresetWrapper<Self::Config> = serde_json::from_str(cleaned)
             .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
         if envelope.metadata.domain != self.domain() {
             return Err(format!(

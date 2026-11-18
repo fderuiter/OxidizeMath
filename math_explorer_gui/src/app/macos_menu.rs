@@ -160,6 +160,18 @@ fn build_appearance_menu() -> Submenu {
     appearance_menu
 }
 
+fn build_help_menu() -> Submenu {
+    let help_menu = Submenu::new("Help", true);
+    let shortcuts_item = MenuItem::with_id(
+        MenuId::new("help_commands"),
+        "Keyboard Shortcuts",
+        true,
+        None,
+    );
+    help_menu.append(&shortcuts_item).unwrap();
+    help_menu
+}
+
 pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
     let menu = Menu::new();
 
@@ -172,6 +184,7 @@ pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
     menu.append(&build_edit_menu()).unwrap();
     menu.append(&build_view_menu(app)).unwrap();
     menu.append(&build_appearance_menu()).unwrap();
+    menu.append(&build_help_menu()).unwrap();
 
     menu.init_for_nsapp();
 }

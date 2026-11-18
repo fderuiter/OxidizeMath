@@ -1,8 +1,69 @@
 use super::*;
 use eframe::egui;
 
+struct FrameworkExportSource<'a> {
+    active_tool: &'a mut Option<Box<dyn InteractiveTool>>,
+    cached_tool_name: Option<&'static str>,
+    cached_plot_datasets: &'a [(String, Vec<[f64; 2]>)],
+}
+
+impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
+    fn export_datasets(&mut self) -> Vec<egui_plot::export::ExportDataset> {
+        let Some(tool) = self.active_tool.as_ref() else {
+            return Vec::new();
+        };
+        let datasets = tool.export_datasets();
+        if datasets.is_empty()
+            && self.cached_tool_name == Some(tool.name())
+            && !self.cached_plot_datasets.is_empty()
+        {
+            self.cached_plot_datasets.to_vec()
+        } else {
+            datasets
+        }
+    }
+
+    fn sample_gif_frames(&mut self, num_frames: usize) -> Vec<egui_plot::export::DatasetFrame> {
+        let step_count = num_frames.max(1);
+        let Some(tool) = self.active_tool.as_mut() else {
+            return Vec::new();
+        };
+        let frames = tool.sample_animation_frames(step_count);
+        if frames.is_empty()
+            && self.cached_tool_name == Some(tool.name())
+            && !self.cached_plot_datasets.is_empty()
+        {
+            egui_plot::export::sample_progressive_frames(self.cached_plot_datasets, step_count)
+        } else {
+            frames
+        }
+    }
+}
+
 impl SimulationFramework {
-    #[allow(clippy::too_many_lines)]
+    pub(super) fn open_export_modal_for_active_tool(&mut self) {
+        if let Some(tool) = &self.active_tool {
+            if let Some(custom_opts) = tool.export_figure_options() {
+                self.export_bg_dark = custom_opts.background_color != egui::Color32::WHITE;
+                self.export_options = custom_opts;
+            }
+        }
+        self.show_export_modal = true;
+    }
+
+    pub(super) fn export_filenames_for_tool(tool_name: &str) -> (String, String, String) {
+        let file_slug = tool_name.to_lowercase().replace(' ', "_");
+        (
+            format!("{file_slug}_figure.png"),
+            format!("{file_slug}_figure.svg"),
+            format!("{file_slug}_animation.gif"),
+        )
+    }
+
+    pub(super) fn export_modal_scope_id(&self, id_source: &str) -> egui::Id {
+        egui::Id::new(("framework_export", id_source, self.instance_id))
+    }
+
     pub(super) fn show_export_action_bar(&mut self, ctx: &egui::Context, id_source: &str) {
         if self.active_tool.is_none() {
             return;
@@ -20,65 +81,115 @@ impl SimulationFramework {
         egui::TopBottomPanel::top(format!("{}_export_bar", id_source))
             .exact_height(32.0)
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    ui.label(egui::RichText::new("📊 Export:").strong());
-
-                    let tool_name = if let Some(tool) = &self.active_tool {
-                        tool.name()
-                    } else {
-                        "simulation"
-                    };
-
-                    let file_slug = tool_name.to_lowercase().replace(' ', "_");
-
-                    if ui
-                        .button("Export CSV")
-                        .on_hover_text("Export dataset points to CSV file")
-                        .clicked()
-                    {
-                        self.queue_export(ExportFormat::Csv);
-                    }
-
-                    if ui
-                        .button("Export JSON")
-                        .on_hover_text("Export dataset points to JSON file")
-                        .clicked()
-                    {
-                        self.queue_export(ExportFormat::Json);
-                    }
-
-                    if ui
-                        .button("Export PNG Image")
-                        .on_hover_text("Configure and render high-resolution PNG figure")
-                        .clicked()
-                    {
-                        if let Some(tool) = &self.active_tool {
-                            if let Some(custom_opts) = tool.export_figure_options() {
-                                self.export_options = custom_opts;
-                            }
-                        }
-                        self.show_export_modal = true;
-                    }
-
-                    ui.separator();
-                    if ui
-                        .button("🎨 Starter Gallery")
-                        .on_hover_text("Toggle starter template gallery overlay")
-                        .clicked()
-                    {
-                        self.show_starter_gallery = !self.show_starter_gallery;
-                        ctx.data_mut(|d| {
-                            d.insert_temp(
-                                egui::Id::new("SHOW_STARTER_GALLERY"),
-                                self.show_starter_gallery,
-                            )
-                        });
-                    }
-
-                    self.render_preset_action_bar_controls(ui, &file_slug);
-                });
+                self.render_export_bar_row(ui, ctx);
             });
+    }
+
+    fn render_export_bar_row(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.label(egui::RichText::new("📊 Export:").strong());
+
+            let tool_name = self
+                .active_tool
+                .as_ref()
+                .map_or("simulation", |tool| tool.name());
+            let file_slug = tool_name.to_lowercase().replace(' ', "_");
+
+            self.render_dataset_export_buttons(ui);
+            self.render_action_bar_export_status(ctx, ui);
+
+            ui.separator();
+            if ui
+                .button("🎨 Starter Gallery")
+                .on_hover_text("Toggle starter template gallery overlay")
+                .clicked()
+            {
+                self.show_starter_gallery = !self.show_starter_gallery;
+                ctx.data_mut(|d| {
+                    d.insert_temp(
+                        egui::Id::new("SHOW_STARTER_GALLERY"),
+                        self.show_starter_gallery,
+                    )
+                });
+            }
+
+            self.render_preset_action_bar_controls(ui, &file_slug);
+        });
+    }
+
+    fn render_dataset_export_buttons(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .button("Export CSV")
+            .on_hover_text("Export dataset points to CSV file")
+            .clicked()
+        {
+            self.queue_export(ExportFormat::Csv);
+        }
+
+        if ui
+            .button("Copy CSV")
+            .on_hover_text("Copy dataset points as CSV to clipboard")
+            .clicked()
+        {
+            self.queue_clipboard_export();
+        }
+
+        if ui
+            .button("Export JSON")
+            .on_hover_text("Export dataset points to JSON file")
+            .clicked()
+        {
+            self.queue_export(ExportFormat::Json);
+        }
+
+        if ui
+            .button("Export PNG Image")
+            .on_hover_text("Configure and render high-resolution PNG figure")
+            .clicked()
+        {
+            self.open_export_modal_for_active_tool();
+        }
+    }
+
+    fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        self.poll_action_bar_clipboard_status(ctx);
+
+        let now = ctx.input(|i| i.time);
+        let mut clear_status = false;
+
+        if let Some(ref mut status) = self.export_queue.status {
+            if !status.is_error {
+                let exp = *status.expires_at_time.get_or_insert(now + 3.0);
+                if now > 0.0 && now >= exp {
+                    clear_status = true;
+                } else {
+                    let remaining = (exp - now).max(0.05);
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
+                    ui.colored_label(egui::Color32::LIGHT_GREEN, format!("✓ {}", status.message));
+                    if ui
+                        .small_button("✖")
+                        .on_hover_text("Dismiss notification")
+                        .clicked()
+                    {
+                        clear_status = true;
+                    }
+                }
+            } else {
+                ui.colored_label(egui::Color32::RED, format!("⚠️ {}", status.message));
+                if ui
+                    .small_button("✖")
+                    .on_hover_text("Dismiss warning")
+                    .clicked()
+                {
+                    clear_status = true;
+                }
+            }
+        }
+
+        if clear_status {
+            self.export_queue.status = None;
+        }
     }
 
     fn export_active_preset_json(&mut self, file_slug: &str) {
@@ -159,282 +270,34 @@ impl SimulationFramework {
         }
     }
 
-    fn render_modal_aspect_combo(&mut self, ui: &mut egui::Ui, id_source: &str) {
-        ui.horizontal(|ui| {
-            ui.label("Aspect Ratio:");
-            egui::ComboBox::from_id_salt(format!("{}_export_aspect", id_source))
-                .selected_text(match self.export_options.aspect_ratio {
-                    egui_plot::export::AspectRatioOption::Free => "Custom / Free",
-                    egui_plot::export::AspectRatioOption::SixteenNine => "16:9 (Widescreen)",
-                    egui_plot::export::AspectRatioOption::FourThree => "4:3 (Standard)",
-                    egui_plot::export::AspectRatioOption::OneOne => "1:1 (Square)",
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut self.export_options.aspect_ratio,
-                        egui_plot::export::AspectRatioOption::SixteenNine,
-                        "16:9 (Widescreen)",
-                    );
-                    ui.selectable_value(
-                        &mut self.export_options.aspect_ratio,
-                        egui_plot::export::AspectRatioOption::FourThree,
-                        "4:3 (Standard)",
-                    );
-                    ui.selectable_value(
-                        &mut self.export_options.aspect_ratio,
-                        egui_plot::export::AspectRatioOption::OneOne,
-                        "1:1 (Square)",
-                    );
-                    ui.selectable_value(
-                        &mut self.export_options.aspect_ratio,
-                        egui_plot::export::AspectRatioOption::Free,
-                        "Custom / Free",
-                    );
-                });
-        });
-    }
-
-    fn render_export_modal_settings(&mut self, ui: &mut egui::Ui, id_source: &str) {
-        ui.horizontal(|ui| {
-            ui.label("Resolution Scale:");
-            ui.selectable_value(&mut self.export_options.scale, 1.0, "1x (1080p)");
-            ui.selectable_value(&mut self.export_options.scale, 2.0, "2x (4K)");
-            ui.selectable_value(&mut self.export_options.scale, 4.0, "4x");
-        });
-
-        self.render_modal_aspect_combo(ui, id_source);
-
-        ui.horizontal(|ui| {
-            ui.label("Line Thickness:");
-            ui.add(egui::Slider::new(
-                &mut self.export_options.line_thickness,
-                0.5..=10.0,
-            ));
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("Background Opacity:");
-            ui.add(egui::Slider::new(
-                &mut self.export_options.background_opacity,
-                0.0..=1.0,
-            ));
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("Background Color:");
-            ui.selectable_value(&mut self.export_bg_dark, true, "Dark");
-            ui.selectable_value(&mut self.export_bg_dark, false, "Light");
-        });
-
-        self.export_options.background_color = if self.export_bg_dark {
-            egui::Color32::from_rgb(18, 18, 18)
-        } else {
-            egui::Color32::WHITE
-        };
-
-        ui.horizontal(|ui| {
-            ui.label("GIF FPS:");
-            ui.add(egui::Slider::new(&mut self.export_gif_fps, 1..=60));
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("GIF Frame Steps:");
-            ui.add(egui::Slider::new(&mut self.export_gif_frames, 5..=60));
-        });
-    }
-
-    fn render_modal_save_png(&mut self, ui: &mut egui::Ui) {
-        if ui.button("💾 Save PNG").clicked() {
-            if let Some(tool) = &self.active_tool {
-                let datasets = tool.export_datasets();
-                let file_slug = tool.name().to_lowercase().replace(' ', "_");
-                let filename = format!("{}_figure.png", file_slug);
-                match egui_plot::export::export_custom_png(&datasets, &self.export_options) {
-                    Ok(png_bytes) => {
-                        egui_plot::export::save_file_dialog(
-                            &filename,
-                            &png_bytes,
-                            "PNG Image",
-                            &["png"],
-                        );
-                        self.export_status_message =
-                            Some("PNG image saved successfully.".to_string());
-                    }
-                    Err(e) => {
-                        self.export_status_message = Some(format!("Export failed: {e}"));
-                    }
-                }
-            }
-        }
-    }
-
-    fn render_modal_save_svg(&mut self, ui: &mut egui::Ui) {
-        if ui.button("💾 Save SVG").clicked() {
-            if let Some(tool) = &self.active_tool {
-                let datasets = tool.export_datasets();
-                let file_slug = tool.name().to_lowercase().replace(' ', "_");
-                let filename = format!("{}_figure.svg", file_slug);
-                match egui_plot::export::export_custom_svg(&datasets, &self.export_options) {
-                    Ok(svg_text) => {
-                        egui_plot::export::save_file_dialog(
-                            &filename,
-                            svg_text.as_bytes(),
-                            "SVG Vector Image",
-                            &["svg"],
-                        );
-                        self.export_status_message =
-                            Some("SVG image saved successfully.".to_string());
-                    }
-                    Err(e) => {
-                        self.export_status_message = Some(format!("Export failed: {e}"));
-                    }
-                }
-            }
-        }
-    }
-
-    fn render_modal_save_gif(&mut self, ui: &mut egui::Ui) {
-        if ui.button("🎬 Save GIF").clicked() {
-            if let Some(tool) = &mut self.active_tool {
-                let frames = tool.sample_animation_frames(self.export_gif_frames as usize);
-                let file_slug = tool.name().to_lowercase().replace(' ', "_");
-                let filename = format!("{}_animation.gif", file_slug);
-                match egui_plot::export::export_custom_gif(
-                    &frames,
-                    &self.export_options,
-                    self.export_gif_fps,
-                ) {
-                    Ok(gif_bytes) => {
-                        egui_plot::export::save_file_dialog(
-                            &filename,
-                            &gif_bytes,
-                            "GIF Animation",
-                            &["gif"],
-                        );
-                        self.export_status_message =
-                            Some("GIF animation saved successfully.".to_string());
-                    }
-                    Err(e) => {
-                        self.export_status_message = Some(format!("GIF export failed: {e}"));
-                    }
-                }
-            }
-        }
-    }
-
-    fn render_modal_copy_clipboard(&mut self, ui: &mut egui::Ui) {
-        if ui.button("📋 Copy to Clipboard").clicked() {
-            if let Some(tool) = &self.active_tool {
-                let datasets = tool.export_datasets();
-                match egui_plot::export::export_custom_image(&datasets, &self.export_options) {
-                    Ok(color_img) => {
-                        let ctx = ui.ctx().clone();
-                        let status_id = egui::Id::new("framework_export_clipboard_status");
-                        match egui_plot::export::copy_image_to_clipboard_with_callback(
-                            &color_img,
-                            move |res| {
-                                ctx.data_mut(|d| {
-                                    let msg = match res {
-                                        Ok(_) => "Copied plot image to clipboard!".to_string(),
-                                        Err(e) => format!("Clipboard copy failed: {e}"),
-                                    };
-                                    d.insert_temp(status_id, msg);
-                                });
-                                ctx.request_repaint();
-                            },
-                        ) {
-                            Ok(_) => {
-                                #[cfg(not(target_arch = "wasm32"))]
-                                {
-                                    self.export_status_message =
-                                        Some("Copied plot image to clipboard!".to_string());
-                                }
-                                #[cfg(target_arch = "wasm32")]
-                                {
-                                    self.export_status_message =
-                                        Some("Copying plot image to clipboard...".to_string());
-                                }
-                            }
-                            Err(e) => {
-                                self.export_status_message =
-                                    Some(format!("Clipboard copy failed: {e}"));
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        self.export_status_message = Some(format!("Render failed: {e}"));
-                    }
-                }
-            }
-        }
-    }
-
-    fn render_export_modal_actions(&mut self, ui: &mut egui::Ui) {
-        let status_id = egui::Id::new("framework_export_clipboard_status");
-        if let Some(msg) = ui.ctx().data_mut(|d| d.remove_temp::<String>(status_id)) {
-            self.export_status_message = Some(msg);
-        }
-        let base_w = self.export_options.width.max(1);
-        let base_h = self.export_options.height.max(1);
-        let calc_w = (base_w as f32 * self.export_options.scale).round() as u32;
-        let mut calc_h = (base_h as f32 * self.export_options.scale).round() as u32;
-        if let Some(ratio) = self
-            .export_options
-            .aspect_ratio
-            .ratio()
-            .filter(|&r| r > 0.0)
-        {
-            calc_h = (calc_w as f32 / ratio).round() as u32;
-        }
-
-        if calc_w > egui_plot::export::MAX_EXPORT_DIMENSION
-            || calc_h > egui_plot::export::MAX_EXPORT_DIMENSION
-        {
-            ui.label(
-                egui::RichText::new(format!(
-                    "⚠️ Capped at max dimension {}x{} px",
-                    egui_plot::export::MAX_EXPORT_DIMENSION,
-                    egui_plot::export::MAX_EXPORT_DIMENSION
-                ))
-                .color(egui::Color32::YELLOW),
-            );
-        } else {
-            ui.label(format!("Target Canvas Size: {} x {} px", calc_w, calc_h));
-        }
-
-        if let Some(msg) = &self.export_status_message {
-            ui.label(egui::RichText::new(msg).color(egui::Color32::GREEN));
-        }
-
-        ui.separator();
-
-        ui.horizontal(|ui| {
-            self.render_modal_save_png(ui);
-            self.render_modal_save_svg(ui);
-            self.render_modal_save_gif(ui);
-            self.render_modal_copy_clipboard(ui);
-        });
-    }
-
     pub(super) fn show_export_modal_dialog(&mut self, ctx: &egui::Context, id_source: &str) {
-        if !self.show_export_modal {
-            return;
-        }
-
-        let mut modal_open = self.show_export_modal;
-        egui::Window::new(format!("Export High-Res Plot - {}", id_source))
-            .open(&mut modal_open)
-            .resizable(true)
-            .collapsible(false)
-            .default_width(380.0)
-            .show(ctx, |ui| {
-                ui.label(egui::RichText::new("Offscreen High-Res Render Settings").strong());
-                ui.separator();
-                self.render_export_modal_settings(ui, id_source);
-                ui.separator();
-                self.render_export_modal_actions(ui);
-            });
-
-        self.show_export_modal = modal_open;
+        let tool_name = self
+            .active_tool
+            .as_ref()
+            .map_or("simulation", |tool| tool.name());
+        let (png_filename, svg_filename, gif_filename) = Self::export_filenames_for_tool(tool_name);
+        let window_title = format!("Export High-Res Plot - {id_source}");
+        let scope_id = self.export_modal_scope_id(id_source);
+        let config = egui_plot::export_modal::ExportModalConfig {
+            window_title: &window_title,
+            id: scope_id,
+            png_filename: &png_filename,
+            svg_filename: &svg_filename,
+            gif_filename: &gif_filename,
+        };
+        let bindings = egui_plot::export_modal::ExportModalBindings {
+            open: &mut self.show_export_modal,
+            options: &mut self.export_options,
+            bg_dark: &mut self.export_bg_dark,
+            gif_fps: &mut self.export_gif_fps,
+            gif_frames: &mut self.export_gif_frames,
+            status_message: &mut self.export_status_message,
+        };
+        let mut source = FrameworkExportSource {
+            active_tool: &mut self.active_tool,
+            cached_tool_name: self.overlay_sync.2,
+            cached_plot_datasets: &self.current_valid_plot_datasets,
+        };
+        egui_plot::export_modal::show_export_modal(ctx, bindings, &config, &mut source);
     }
 }
