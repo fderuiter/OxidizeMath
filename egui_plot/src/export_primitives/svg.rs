@@ -5,51 +5,9 @@ use std::sync::Arc;
 use crate::export::{ExportOptions, color32_image_to_png};
 
 use super::{
-    ExportPrimitive, compute_primitive_bounds, has_drawable_primitives, padded_bounds,
-    resolve_canvas_dimensions, resolve_color,
+    ExportPrimitive, PrimitiveCanvasLayout, compute_primitive_bounds_for_options,
+    has_drawable_primitives, resolve_canvas_dimensions, resolve_color, sanitize_bar_corners,
 };
-
-struct SvgLayout {
-    height: usize,
-    padding: f64,
-    draw_w: f64,
-    draw_h: f64,
-    min_x: f64,
-    max_x: f64,
-    min_y: f64,
-    max_y: f64,
-    scale: f64,
-    base_stroke: f64,
-}
-
-impl SvgLayout {
-    fn new(width: usize, height: usize, bounds: [f64; 4], options: &ExportOptions) -> Self {
-        let [min_x, max_x, min_y, max_y] = padded_bounds(bounds);
-        let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
-        let draw_w = (width as f64 - 2.0 * padding).max(1.0);
-        let draw_h = (height as f64 - 2.0 * padding).max(1.0);
-        Self {
-            height,
-            padding,
-            draw_w,
-            draw_h,
-            min_x,
-            max_x,
-            min_y,
-            max_y,
-            scale: (options.scale as f64).max(0.5),
-            base_stroke: (options.line_thickness * options.scale).max(1.0) as f64,
-        }
-    }
-
-    fn to_pixel(&self, p: [f64; 2]) -> (f64, f64) {
-        let x_norm = (p[0] - self.min_x) / (self.max_x - self.min_x);
-        let y_norm = (p[1] - self.min_y) / (self.max_y - self.min_y);
-        let px = self.padding + x_norm * self.draw_w;
-        let py = (self.height as f64 - self.padding) - y_norm * self.draw_h;
-        (px, py)
-    }
-}
 
 /// Renders `primitives` into a vector SVG XML document.
 pub fn export_primitives_svg(
@@ -60,9 +18,9 @@ pub fn export_primitives_svg(
         return Err("No drawable plot primitives available for SVG export".to_string());
     }
     let (width, height) = resolve_canvas_dimensions(options)?;
-    let bounds = compute_primitive_bounds(primitives)
+    let bounds = compute_primitive_bounds_for_options(primitives, options)
         .ok_or_else(|| "Unable to compute finite plot bounds for SVG export".to_string())?;
-    let layout = SvgLayout::new(width, height, bounds, options);
+    let layout = PrimitiveCanvasLayout::new(width, height, bounds, options);
 
     let bg = options.background_color;
     let bg_opacity = (bg.a() as f32 / 255.0) * options.background_opacity.clamp(0.0, 1.0);
@@ -94,17 +52,24 @@ pub fn export_raster_svg(
     if raster.width() == 0 || raster.height() == 0 || raster.pixels.is_empty() {
         return Err("Raster image is empty".to_string());
     }
+    let min_c = if options.log_x || options.log_y {
+        1.0
+    } else {
+        0.0
+    };
+    let max_x = (raster.width() as f64).max(min_c + 1.0);
+    let max_y = (raster.height() as f64).max(min_c + 1.0);
     let primitive = ExportPrimitive::RasterImage {
         name: "Raster Field".to_string(),
         image: Arc::new(raster.clone()),
-        bounds: Some([0.0, raster.width() as f64, 0.0, raster.height() as f64]),
+        bounds: Some([min_c, max_x, min_c, max_y]),
     };
     export_primitives_svg(&[primitive], options)
 }
 
 fn write_primitive_svg(
     svg: &mut String,
-    layout: &SvgLayout,
+    layout: &PrimitiveCanvasLayout,
     primitive: &ExportPrimitive,
     idx: usize,
 ) -> Result<(), String> {
@@ -122,23 +87,25 @@ fn write_primitive_svg(
             stroke_color,
             stroke_width,
         } => {
-            let stroke = resolve_color(*stroke_color, idx);
-            let fill_c = if *fill == egui::Color32::TRANSPARENT {
-                stroke.linear_multiply(0.4)
-            } else {
-                *fill
-            };
-            let sw = ((*stroke_width as f64) * layout.scale).max(1.0);
-            write_rect_svg(
-                svg,
-                name,
-                idx,
-                layout.to_pixel(*min),
-                layout.to_pixel(*max),
-                fill_c,
-                stroke,
-                sw,
-            );
+            if let Some((c0, c1)) = sanitize_bar_corners(*min, *max, layout.log_x, layout.log_y) {
+                let stroke = resolve_color(*stroke_color, idx);
+                let fill_c = if *fill == egui::Color32::TRANSPARENT {
+                    stroke.linear_multiply(0.4)
+                } else {
+                    *fill
+                };
+                let sw = ((*stroke_width as f64) * layout.scale).max(1.0);
+                write_rect_svg(
+                    svg,
+                    name,
+                    idx,
+                    layout.to_pixel(c0),
+                    layout.to_pixel(c1),
+                    fill_c,
+                    stroke,
+                    sw,
+                );
+            }
             Ok(())
         }
         ExportPrimitive::BoxElem { .. } => {
@@ -185,7 +152,7 @@ fn write_primitive_svg(
 
 fn write_raster_svg(
     svg: &mut String,
-    layout: &SvgLayout,
+    layout: &PrimitiveCanvasLayout,
     name: &str,
     image: &egui::ColorImage,
     bounds: Option<[f64; 4]>,
@@ -193,7 +160,9 @@ fn write_raster_svg(
 ) -> Result<(), String> {
     let png_bytes = color32_image_to_png(image)?;
     let b64 = encode_base64(&png_bytes);
-    let (x, y, w, h) = if let Some([x0, x1, y0, y1]) = bounds {
+    let (x, y, w, h) = if let Some([x0, x1, y0, y1]) =
+        bounds.filter(|b| !layout.log_x && !layout.log_y || (b[0] > 0.0 && b[2] > 0.0))
+    {
         let (px0, py0) = layout.to_pixel([x0, y0]);
         let (px1, py1) = layout.to_pixel([x1, y1]);
         let left = px0.min(px1);
@@ -240,7 +209,7 @@ fn write_rect_svg(
 
 fn write_box_svg(
     svg: &mut String,
-    layout: &SvgLayout,
+    layout: &PrimitiveCanvasLayout,
     primitive: &ExportPrimitive,
     idx: usize,
 ) {
@@ -262,6 +231,13 @@ fn write_box_svg(
     else {
         return;
     };
+    let pt_for = |arg: f64, val: f64| if *vertical { [arg, val] } else { [val, arg] };
+    let (hb, hw) = (box_width * 0.5, whisker_width * 0.5);
+    if !layout.is_valid_point(pt_for(argument - hb.max(hw), *lower_whisker))
+        || !layout.is_valid_point(pt_for(argument + hb.max(hw), *upper_whisker))
+    {
+        return;
+    }
     let stroke = resolve_color(*stroke_color, idx);
     let fill_c = if *fill == egui::Color32::TRANSPARENT {
         stroke.linear_multiply(0.35)
@@ -269,20 +245,16 @@ fn write_box_svg(
         *fill
     };
     let sw = ((*stroke_width as f64) * layout.scale).max(1.0);
-    let map = |arg: f64, val: f64| -> (f64, f64) {
-        if *vertical {
-            layout.to_pixel([arg, val])
-        } else {
-            layout.to_pixel([val, arg])
-        }
-    };
-    let (hb, hw) = (box_width * 0.5, whisker_width * 0.5);
+    let map = |arg: f64, val: f64| layout.to_pixel(pt_for(arg, val));
     let (b0, b1) = (
         map(argument - hb, *quartile1),
         map(argument + hb, *quartile3),
     );
     let (rx, ry) = (b0.0.min(b1.0), b0.1.min(b1.1));
-    let (rw, rh) = ((b0.0.max(b1.0) - rx).max(1.0), (b0.1.max(b1.1) - ry).max(1.0));
+    let (rw, rh) = (
+        (b0.0.max(b1.0) - rx).max(1.0),
+        (b0.1.max(b1.1) - ry).max(1.0),
+    );
     let sh = hex_rgb(stroke);
     let fh = hex_rgb(fill_c);
     let fo = fill_c.a() as f32 / 255.0;
@@ -294,8 +266,14 @@ fn write_box_svg(
         (map(argument - hb, *median), map(argument + hb, *median)),
         (map(*argument, *lower_whisker), map(*argument, *quartile1)),
         (map(*argument, *quartile3), map(*argument, *upper_whisker)),
-        (map(argument - hw, *lower_whisker), map(argument + hw, *lower_whisker)),
-        (map(argument - hw, *upper_whisker), map(argument + hw, *upper_whisker)),
+        (
+            map(argument - hw, *lower_whisker),
+            map(argument + hw, *lower_whisker),
+        ),
+        (
+            map(argument - hw, *upper_whisker),
+            map(argument + hw, *upper_whisker),
+        ),
     ] {
         svg.push_str(&format!(
             "    <line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{sh}\" stroke-width=\"{sw:.2}\" />\n",
@@ -308,7 +286,7 @@ fn write_box_svg(
 #[allow(clippy::too_many_arguments)]
 fn write_arrow_svg(
     svg: &mut String,
-    layout: &SvgLayout,
+    layout: &PrimitiveCanvasLayout,
     name: &str,
     idx: usize,
     origin: [f64; 2],
@@ -316,8 +294,7 @@ fn write_arrow_svg(
     tip_length: Option<f32>,
     color: egui::Color32,
 ) {
-    if !origin[0].is_finite() || !origin[1].is_finite() || !tip[0].is_finite() || !tip[1].is_finite()
-    {
+    if !layout.is_valid_point(origin) || !layout.is_valid_point(tip) {
         return;
     }
     let p0 = layout.to_pixel(origin);
@@ -364,7 +341,7 @@ fn write_arrow_svg(
 #[allow(clippy::too_many_arguments)]
 fn write_polyline_svg(
     svg: &mut String,
-    layout: &SvgLayout,
+    layout: &PrimitiveCanvasLayout,
     name: &str,
     idx: usize,
     points: &[[f64; 2]],
@@ -380,7 +357,7 @@ fn write_polyline_svg(
     ));
     let finite: Vec<(f64, f64)> = points
         .iter()
-        .filter(|p| p[0].is_finite() && p[1].is_finite())
+        .filter(|&&p| layout.is_valid_point(p))
         .map(|&p| layout.to_pixel(p))
         .collect();
     if finite.len() == 1 {
@@ -413,7 +390,7 @@ fn write_polyline_svg(
 
 fn write_points_svg(
     svg: &mut String,
-    layout: &SvgLayout,
+    layout: &PrimitiveCanvasLayout,
     name: &str,
     idx: usize,
     points: &[[f64; 2]],
@@ -426,7 +403,7 @@ fn write_points_svg(
         "  <g id=\"primitive-{idx}\" data-name=\"{escaped}\">\n"
     ));
     for &pt in points {
-        if pt[0].is_finite() && pt[1].is_finite() {
+        if layout.is_valid_point(pt) {
             let (px, py) = layout.to_pixel(pt);
             svg.push_str(&format!(
                 "    <circle cx=\"{px:.2}\" cy=\"{py:.2}\" r=\"{radius:.2}\" fill=\"{hex}\" />\n"

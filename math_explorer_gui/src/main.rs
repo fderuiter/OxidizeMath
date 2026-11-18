@@ -17,8 +17,7 @@ mod interactive_tools_tests;
 #[cfg(test)]
 mod markup_tests;
 pub mod presets;
-#[allow(missing_docs)]
-pub mod reflective_ui;
+mod reflective_ui;
 #[allow(missing_docs)]
 pub mod sensitivity;
 pub mod starter_gallery;

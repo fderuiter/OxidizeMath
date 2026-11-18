@@ -2,7 +2,6 @@ use super::*;
 use eframe::egui;
 
 impl SimulationFramework {
-    #[allow(clippy::too_many_lines)]
     pub(super) fn show_export_action_bar(&mut self, ctx: &egui::Context, id_source: &str) {
         if self.active_tool.is_none() {
             return;
@@ -22,80 +21,146 @@ impl SimulationFramework {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
-                    ui.label(egui::RichText::new("📊 Export:").strong());
-
-                    let (tool_name, caps) = if let Some(tool) = &self.active_tool {
-                        (tool.name(), tool.export_capabilities())
-                    } else {
-                        ("simulation", ExportCapabilities::none())
-                    };
-                    let file_slug = tool_name.to_lowercase().replace(' ', "_");
-
-                    if ui
-                        .add_enabled(caps.dataset, egui::Button::new("Export CSV"))
-                        .on_hover_text("Export dataset points to CSV file")
-                        .on_disabled_hover_text(caps.dataset_disabled_reason)
-                        .clicked()
-                    {
-                        self.queue_export(ExportFormat::Csv);
-                    }
-
-                    if ui
-                        .add_enabled(caps.dataset, egui::Button::new("Export JSON"))
-                        .on_hover_text("Export dataset points to JSON file")
-                        .on_disabled_hover_text(caps.dataset_disabled_reason)
-                        .clicked()
-                    {
-                        self.queue_export(ExportFormat::Json);
-                    }
-
-                    if ui
-                        .add_enabled(caps.figure, egui::Button::new("Export PNG Image"))
-                        .on_hover_text("Configure and render high-resolution figure")
-                        .on_disabled_hover_text(caps.figure_disabled_reason)
-                        .clicked()
-                    {
-                        if let Some(tool) = &self.active_tool {
-                            if let Some(custom_opts) = tool.export_figure_options() {
-                                self.export_options = custom_opts;
-                            }
-                        }
-                        self.show_export_modal = true;
-                    }
-
+                    let file_slug = self.render_dataset_and_figure_buttons(ui);
+                    self.render_action_bar_export_status(ctx, ui);
                     ui.separator();
-                    if ui
-                        .button("🎨 Starter Gallery")
-                        .on_hover_text("Toggle starter template gallery overlay")
-                        .clicked()
-                    {
-                        self.show_starter_gallery = !self.show_starter_gallery;
-                        ctx.data_mut(|d| {
-                            d.insert_temp(
-                                egui::Id::new("SHOW_STARTER_GALLERY"),
-                                self.show_starter_gallery,
-                            )
-                        });
-                    }
-
+                    self.render_starter_gallery_toggle(ctx, ui);
                     self.render_preset_action_bar_controls(ui, &file_slug);
-                    self.render_inline_export_status(ui);
                 });
             });
     }
 
-    fn render_inline_export_status(&mut self, ui: &mut egui::Ui) {
-        if self.show_export_modal {
-            return;
+    fn render_dataset_and_figure_buttons(&mut self, ui: &mut egui::Ui) -> String {
+        ui.label(egui::RichText::new("📊 Export:").strong());
+        let (tool_name, caps) = if let Some(tool) = &self.active_tool {
+            (tool.name(), tool.export_capabilities())
+        } else {
+            ("simulation", ExportCapabilities::none())
+        };
+        let file_slug = tool_name.to_lowercase().replace(' ', "_");
+
+        if ui
+            .add_enabled(caps.dataset, egui::Button::new("Export CSV"))
+            .on_hover_text("Export dataset points to CSV file")
+            .on_disabled_hover_text(caps.dataset_disabled_reason)
+            .clicked()
+        {
+            self.queue_export(ExportFormat::Csv);
         }
-        if let Some(ref msg) = self.export_status_message {
-            ui.separator();
-            ui.colored_label(self.export_status_severity.color(), msg);
-            if ui
-                .small_button("✖")
-                .on_hover_text("Dismiss export notification")
-                .clicked()
-            {
+
+        if ui
+            .add_enabled(caps.dataset, egui::Button::new("Copy CSV"))
+            .on_hover_text("Copy dataset points as CSV to clipboard")
+            .on_disabled_hover_text(caps.dataset_disabled_reason)
+            .clicked()
+        {
+            self.queue_clipboard_export();
+        }
+
+        if ui
+            .add_enabled(caps.dataset, egui::Button::new("Export JSON"))
+            .on_hover_text("Export dataset points to JSON file")
+            .on_disabled_hover_text(caps.dataset_disabled_reason)
+            .clicked()
+        {
+            self.queue_export(ExportFormat::Json);
+        }
+
+        if ui
+            .add_enabled(caps.figure, egui::Button::new("Export PNG Image"))
+            .on_hover_text("Configure and render high-resolution figure")
+            .on_disabled_hover_text(caps.figure_disabled_reason)
+            .clicked()
+        {
+            if let Some(tool) = &self.active_tool {
+                if let Some(custom_opts) = tool.export_figure_options() {
+                    self.export_options = custom_opts;
+                }
+            }
+            self.show_export_modal = true;
+        }
+        file_slug
+    }
+
+    fn render_starter_gallery_toggle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .button("🎨 Starter Gallery")
+            .on_hover_text("Toggle starter template gallery overlay")
+            .clicked()
+        {
+            self.show_starter_gallery = !self.show_starter_gallery;
+            ctx.data_mut(|d| {
+                d.insert_temp(
+                    egui::Id::new("SHOW_STARTER_GALLERY"),
+                    self.show_starter_gallery,
+                )
+            });
+        }
+    }
+
+    fn poll_async_clipboard_statuses(&mut self, ctx: &egui::Context) {
+        let bar_id = egui::Id::new("framework_action_bar_clipboard_status");
+        if let Some(async_status) = ctx.data_mut(|d| d.remove_temp::<ActionBarExportStatus>(bar_id))
+        {
+            let sev = if async_status.is_error {
+                ExportStatusSeverity::Error
+            } else {
+                ExportStatusSeverity::Success
+            };
+            self.set_export_status(sev, async_status.message);
+        }
+        let img_id = egui::Id::new("framework_export_clipboard_status");
+        if let Some((sev, msg)) =
+            ctx.data_mut(|d| d.remove_temp::<(ExportStatusSeverity, String)>(img_id))
+        {
+            self.set_export_status(sev, msg);
+        }
+    }
+
+    fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        self.poll_async_clipboard_statuses(ctx);
+
+        let now = ctx.input(|i| i.time);
+        let severity_color = self.export_status_severity.color();
+        let mut clear_status = false;
+        let mut dismissed_by_user = false;
+
+        if let Some(ref mut status) = self.export_queue.status {
+            if !status.is_error {
+                let exp = *status.expires_at_time.get_or_insert(now + 3.0);
+                if now > 0.0 && now >= exp {
+                    clear_status = true;
+                } else {
+                    let remaining = (exp - now).max(0.05);
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
+                    if !self.show_export_modal {
+                        ui.colored_label(severity_color, format!("✓ {}", status.message));
+                        if ui
+                            .small_button("✖")
+                            .on_hover_text("Dismiss notification")
+                            .clicked()
+                        {
+                            clear_status = true;
+                            dismissed_by_user = true;
+                        }
+                    }
+                }
+            } else if !self.show_export_modal {
+                ui.colored_label(severity_color, format!("⚠️ {}", status.message));
+                if ui
+                    .small_button("✖")
+                    .on_hover_text("Dismiss warning")
+                    .clicked()
+                {
+                    clear_status = true;
+                    dismissed_by_user = true;
+                }
+            }
+        }
+
+        if clear_status {
+            self.export_queue.status = None;
+            if dismissed_by_user {
                 self.export_status_message = None;
             }
         }
@@ -263,11 +328,16 @@ impl SimulationFramework {
         });
     }
 
-    fn queue_modal_figure_export(&mut self, ui: &egui::Ui, format: ExportFormat) {
+    fn queue_modal_figure_request(
+        &mut self,
+        ui: &egui::Ui,
+        format: ExportFormat,
+        target: ExportTarget,
+    ) {
         let Some(tool) = &self.active_tool else {
             self.set_export_status(
                 ExportStatusSeverity::Warning,
-                "Export skipped: no active simulation tool selected.",
+                "No active simulation tool available for export.",
             );
             return;
         };
@@ -276,7 +346,7 @@ impl SimulationFramework {
             self.set_export_status(ExportStatusSeverity::Warning, caps.figure_disabled_reason);
             return;
         }
-        self.queue_export(format);
+        self.queue_export_with_target(format, target);
         ui.ctx().request_repaint();
     }
 
@@ -287,7 +357,7 @@ impl SimulationFramework {
             .on_disabled_hover_text(caps.figure_disabled_reason)
             .clicked()
         {
-            self.queue_modal_figure_export(ui, ExportFormat::Png);
+            self.queue_modal_figure_request(ui, ExportFormat::Png, ExportTarget::File);
         }
 
         if ui
@@ -296,7 +366,7 @@ impl SimulationFramework {
             .on_disabled_hover_text(caps.figure_disabled_reason)
             .clicked()
         {
-            self.queue_modal_figure_export(ui, ExportFormat::Svg);
+            self.queue_modal_figure_request(ui, ExportFormat::Svg, ExportTarget::File);
         }
 
         if ui
@@ -305,76 +375,24 @@ impl SimulationFramework {
             .on_disabled_hover_text(caps.figure_disabled_reason)
             .clicked()
         {
-            self.queue_modal_figure_export(ui, ExportFormat::Gif);
+            self.queue_modal_figure_request(ui, ExportFormat::Gif, ExportTarget::File);
         }
-    }
 
-    fn render_modal_copy_clipboard(&mut self, ui: &mut egui::Ui, caps: ExportCapabilities) {
-        if !ui
+        if ui
             .add_enabled(caps.figure, egui::Button::new("📋 Copy to Clipboard"))
+            .on_hover_text(
+                "Queue high-resolution PNG copy to clipboard after active frame completes",
+            )
             .on_disabled_hover_text(caps.figure_disabled_reason)
             .clicked()
         {
-            return;
-        }
-        let Some(tool) = &self.active_tool else {
-            return;
-        };
-        match render_tool_color_image(tool.as_ref(), &self.export_options) {
-            Ok(color_img) => {
-                let ctx = ui.ctx().clone();
-                let status_id = egui::Id::new("framework_export_clipboard_status");
-                match egui_plot::export::copy_image_to_clipboard_with_callback(
-                    &color_img,
-                    move |res| {
-                        ctx.data_mut(|d| {
-                            let item = match res {
-                                Ok(_) => (
-                                    ExportStatusSeverity::Success,
-                                    "Copied plot image to clipboard!".to_string(),
-                                ),
-                                Err(e) => (
-                                    ExportStatusSeverity::Error,
-                                    format!("Clipboard copy failed: {e}"),
-                                ),
-                            };
-                            d.insert_temp(status_id, item);
-                        });
-                        ctx.request_repaint();
-                    },
-                ) {
-                    Ok(_) => {
-                        #[cfg(not(target_arch = "wasm32"))]
-                        self.set_export_status(
-                            ExportStatusSeverity::Success,
-                            "Copied plot image to clipboard!",
-                        );
-                        #[cfg(target_arch = "wasm32")]
-                        self.set_export_status(
-                            ExportStatusSeverity::Success,
-                            "Copying plot image to clipboard...",
-                        );
-                    }
-                    Err(e) => self.set_export_status(
-                        ExportStatusSeverity::Error,
-                        format!("Clipboard copy failed: {e}"),
-                    ),
-                }
-            }
-            Err(e) => {
-                self.set_export_status(ExportStatusSeverity::Error, format!("Render failed: {e}"))
-            }
+            self.queue_modal_figure_request(ui, ExportFormat::Png, ExportTarget::Clipboard);
         }
     }
 
     fn render_export_modal_actions(&mut self, ui: &mut egui::Ui) {
-        let status_id = egui::Id::new("framework_export_clipboard_status");
-        if let Some((sev, msg)) = ui
-            .ctx()
-            .data_mut(|d| d.remove_temp::<(ExportStatusSeverity, String)>(status_id))
-        {
-            self.set_export_status(sev, msg);
-        }
+        self.poll_async_clipboard_statuses(ui.ctx());
+
         let base_w = self.export_options.width.max(1);
         let base_h = self.export_options.height.max(1);
         let calc_w = (base_w as f32 * self.export_options.scale).round() as u32;
@@ -417,7 +435,6 @@ impl SimulationFramework {
 
         ui.horizontal(|ui| {
             self.render_modal_save_buttons(ui, caps);
-            self.render_modal_copy_clipboard(ui, caps);
         });
     }
 

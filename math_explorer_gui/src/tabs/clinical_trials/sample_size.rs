@@ -58,6 +58,17 @@ impl SampleSizeCalculatorTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SampleSizeState {
+    mode: CalculationMode,
+    alpha: f64,
+    power: f64,
+    delta: f64,
+    sigma: f64,
+    p1: f64,
+    p2: f64,
+}
+
 impl InteractiveTool for SampleSizeCalculatorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -73,16 +84,6 @@ impl InteractiveTool for SampleSizeCalculatorTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct SampleSizeState {
-            mode: CalculationMode,
-            alpha: f64,
-            power: f64,
-            delta: f64,
-            sigma: f64,
-            p1: f64,
-            p2: f64,
-        }
         serde_json::to_string(&SampleSizeState {
             mode: self.mode,
             alpha: self.alpha,
@@ -96,16 +97,6 @@ impl InteractiveTool for SampleSizeCalculatorTool {
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct SampleSizeState {
-            mode: CalculationMode,
-            alpha: f64,
-            power: f64,
-            delta: f64,
-            sigma: f64,
-            p1: f64,
-            p2: f64,
-        }
         if let Ok(s) = serde_json::from_str::<SampleSizeState>(state) {
             self.mode = s.mode;
             self.alpha = s.alpha;

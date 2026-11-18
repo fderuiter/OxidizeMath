@@ -58,11 +58,4 @@ pub mod vector_calculus;
 
 // [cite:graph_parameters_rust]
 
-crate::theory_verification!(
-    module = "pure_math",
-    epsilon = math_commons::registry::TOLERANCE_FAST,
-    constants = {
-        TEST = 1.0;
-    },
-    test = {}
-);
+crate::theory_verification!(module = "pure_math", constants = {}, test = {});

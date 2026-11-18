@@ -145,43 +145,57 @@ pub fn has_finite_dataset_points(datasets: &[(String, Vec<[f64; 2]>)]) -> bool {
 
 /// Returns `true` if `primitives` contains at least one finite drawable shape or non-empty raster image.
 pub fn has_drawable_primitives(primitives: &[ExportPrimitive]) -> bool {
-    primitives.iter().any(primitive_is_drawable)
+    compute_primitive_bounds(primitives).is_some()
+        || primitives.iter().any(|p| {
+            matches!(
+                p,
+                ExportPrimitive::RasterImage { image, .. }
+                    if image.width() > 0 && image.height() > 0 && !image.pixels.is_empty()
+            )
+        })
 }
 
-fn primitive_is_drawable(primitive: &ExportPrimitive) -> bool {
-    match primitive {
-        ExportPrimitive::Polyline { points, .. } | ExportPrimitive::Points { points, .. } => {
-            points.iter().any(|p| p[0].is_finite() && p[1].is_finite())
+pub(crate) fn is_valid_coord_pair(p: [f64; 2], log_x: bool, log_y: bool) -> bool {
+    p[0].is_finite() && p[1].is_finite() && (!log_x || p[0] > 0.0) && (!log_y || p[1] > 0.0)
+}
+
+#[inline]
+pub(crate) fn project_coord(val: f64, is_log: bool) -> f64 {
+    if is_log {
+        val.log10().clamp(-300.0, 300.0)
+    } else {
+        val
+    }
+}
+
+pub(crate) fn sanitize_bar_corners(
+    min: [f64; 2],
+    max: [f64; 2],
+    log_x: bool,
+    log_y: bool,
+) -> Option<([f64; 2], [f64; 2])> {
+    if !min[0].is_finite() || !min[1].is_finite() || !max[0].is_finite() || !max[1].is_finite() {
+        return None;
+    }
+    let (mut x0, x1) = (min[0].min(max[0]), min[0].max(max[0]));
+    let (mut y0, y1) = (min[1].min(max[1]), min[1].max(max[1]));
+    if log_x {
+        if x1 <= 0.0 {
+            return None;
         }
-        ExportPrimitive::Bar { min, max, .. } => {
-            min[0].is_finite() && min[1].is_finite() && max[0].is_finite() && max[1].is_finite()
-        }
-        ExportPrimitive::Arrow { origin, tip, .. } => {
-            origin[0].is_finite()
-                && origin[1].is_finite()
-                && tip[0].is_finite()
-                && tip[1].is_finite()
-        }
-        ExportPrimitive::BoxElem {
-            argument,
-            lower_whisker,
-            quartile1,
-            median,
-            quartile3,
-            upper_whisker,
-            ..
-        } => {
-            argument.is_finite()
-                && lower_whisker.is_finite()
-                && quartile1.is_finite()
-                && median.is_finite()
-                && quartile3.is_finite()
-                && upper_whisker.is_finite()
-        }
-        ExportPrimitive::RasterImage { image, .. } => {
-            image.width() > 0 && image.height() > 0 && !image.pixels.is_empty()
+        if x0 <= 0.0 {
+            x0 = (x1 * 1e-3).min(1e-3);
         }
     }
+    if log_y {
+        if y1 <= 0.0 {
+            return None;
+        }
+        if y0 <= 0.0 {
+            y0 = (y1 * 1e-3).min(1e-3);
+        }
+    }
+    Some(([x0, y0], [x1, y1]))
 }
 
 /// Converts legacy `(name, points)` datasets into [`ExportPrimitive::Polyline`] entries.
@@ -203,7 +217,15 @@ pub fn datasets_to_primitives(datasets: &[(String, Vec<[f64; 2]>)]) -> Vec<Expor
 
 /// Computes `[min_x, max_x, min_y, max_y]` across all finite coordinates in `primitives`.
 pub fn compute_primitive_bounds(primitives: &[ExportPrimitive]) -> Option<[f64; 4]> {
-    let mut bounds = BoundsAccumulator::new();
+    compute_primitive_bounds_for_options(primitives, &ExportOptions::default())
+}
+
+/// Computes `[min_x, max_x, min_y, max_y]` across valid coordinates in `primitives` under `options` axis scaling.
+pub fn compute_primitive_bounds_for_options(
+    primitives: &[ExportPrimitive],
+    options: &ExportOptions,
+) -> Option<[f64; 4]> {
+    let mut bounds = BoundsAccumulator::new(options.log_x, options.log_y);
     for primitive in primitives {
         bounds.include_primitive(primitive);
     }
@@ -211,6 +233,8 @@ pub fn compute_primitive_bounds(primitives: &[ExportPrimitive]) -> Option<[f64; 
 }
 
 struct BoundsAccumulator {
+    log_x: bool,
+    log_y: bool,
     min_x: f64,
     max_x: f64,
     min_y: f64,
@@ -218,8 +242,10 @@ struct BoundsAccumulator {
 }
 
 impl BoundsAccumulator {
-    fn new() -> Self {
+    fn new(log_x: bool, log_y: bool) -> Self {
         Self {
+            log_x,
+            log_y,
             min_x: f64::INFINITY,
             max_x: f64::NEG_INFINITY,
             min_y: f64::INFINITY,
@@ -228,7 +254,7 @@ impl BoundsAccumulator {
     }
 
     fn include_point(&mut self, p: [f64; 2]) {
-        if p[0].is_finite() && p[1].is_finite() {
+        if is_valid_coord_pair(p, self.log_x, self.log_y) {
             self.min_x = self.min_x.min(p[0]);
             self.max_x = self.max_x.max(p[0]);
             self.min_y = self.min_y.min(p[1]);
@@ -244,12 +270,18 @@ impl BoundsAccumulator {
                 }
             }
             ExportPrimitive::Bar { min, max, .. } => {
-                self.include_point(*min);
-                self.include_point(*max);
+                if let Some((c0, c1)) = sanitize_bar_corners(*min, *max, self.log_x, self.log_y) {
+                    self.include_point(c0);
+                    self.include_point(c1);
+                }
             }
             ExportPrimitive::Arrow { origin, tip, .. } => {
-                self.include_point(*origin);
-                self.include_point(*tip);
+                if is_valid_coord_pair(*origin, self.log_x, self.log_y)
+                    && is_valid_coord_pair(*tip, self.log_x, self.log_y)
+                {
+                    self.include_point(*origin);
+                    self.include_point(*tip);
+                }
             }
             ExportPrimitive::BoxElem {
                 vertical,
@@ -261,8 +293,7 @@ impl BoundsAccumulator {
                 ..
             } => {
                 let half_w = box_width.max(*whisker_width) * 0.5;
-                let a0 = argument - half_w;
-                let a1 = argument + half_w;
+                let (a0, a1) = (argument - half_w, argument + half_w);
                 if *vertical {
                     self.include_point([a0, *lower_whisker]);
                     self.include_point([a1, *upper_whisker]);
@@ -276,7 +307,8 @@ impl BoundsAccumulator {
                     self.include_point([*x0, *y0]);
                     self.include_point([*x1, *y1]);
                 } else if image.width() > 0 && image.height() > 0 {
-                    self.include_point([0.0, 0.0]);
+                    let min_c = if self.log_x || self.log_y { 1.0 } else { 0.0 };
+                    self.include_point([min_c, min_c]);
                     self.include_point([image.width() as f64, image.height() as f64]);
                 }
             }
@@ -293,6 +325,92 @@ impl BoundsAccumulator {
         } else {
             None
         }
+    }
+}
+
+pub(crate) struct PrimitiveCanvasLayout {
+    pub(crate) width: usize,
+    pub(crate) height: usize,
+    pub(crate) padding: f64,
+    pub(crate) draw_w: f64,
+    pub(crate) draw_h: f64,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+    pub(crate) log_x: bool,
+    pub(crate) log_y: bool,
+    pub(crate) scale: f64,
+    pub(crate) base_stroke: f64,
+}
+
+impl PrimitiveCanvasLayout {
+    pub(crate) fn new(
+        width: usize,
+        height: usize,
+        raw_bounds: [f64; 4],
+        options: &ExportOptions,
+    ) -> Self {
+        let bx0 = if options.log_x && raw_bounds[0] <= 0.0 {
+            1e-6
+        } else {
+            raw_bounds[0]
+        };
+        let bx1 = if options.log_x && raw_bounds[1] <= bx0 {
+            bx0 * 10.0
+        } else {
+            raw_bounds[1]
+        };
+        let by0 = if options.log_y && raw_bounds[2] <= 0.0 {
+            1e-6
+        } else {
+            raw_bounds[2]
+        };
+        let by1 = if options.log_y && raw_bounds[3] <= by0 {
+            by0 * 10.0
+        } else {
+            raw_bounds[3]
+        };
+        let projected = [
+            project_coord(bx0, options.log_x),
+            project_coord(bx1, options.log_x),
+            project_coord(by0, options.log_y),
+            project_coord(by1, options.log_y),
+        ];
+        let [min_x, max_x, min_y, max_y] = padded_bounds(projected);
+        let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
+        let draw_w = (width as f64 - 2.0 * padding).max(1.0);
+        let draw_h = (height as f64 - 2.0 * padding).max(1.0);
+        Self {
+            width,
+            height,
+            padding,
+            draw_w,
+            draw_h,
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+            log_x: options.log_x,
+            log_y: options.log_y,
+            scale: (options.scale as f64).max(0.5),
+            base_stroke: (options.line_thickness * options.scale).max(1.0) as f64,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn is_valid_point(&self, p: [f64; 2]) -> bool {
+        is_valid_coord_pair(p, self.log_x, self.log_y)
+    }
+
+    pub(crate) fn to_pixel(&self, p: [f64; 2]) -> (f64, f64) {
+        let px_val = project_coord(p[0], self.log_x);
+        let py_val = project_coord(p[1], self.log_y);
+        let x_norm = (px_val - self.min_x) / (self.max_x - self.min_x);
+        let y_norm = (py_val - self.min_y) / (self.max_y - self.min_y);
+        let px = self.padding + x_norm * self.draw_w;
+        let py = (self.height as f64 - self.padding) - y_norm * self.draw_h;
+        (px, py)
     }
 }
 

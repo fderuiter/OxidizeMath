@@ -9,12 +9,13 @@ use egui_plot::export::{
     color32_image_to_png, color32_images_to_gif, export_custom_gif, ExportOptions,
 };
 use egui_plot::export_primitives::{
-    compute_primitive_bounds, datasets_to_primitives, export_primitives_svg, export_raster_gif,
-    export_raster_svg, has_drawable_primitives, has_finite_dataset_points, render_primitives_image,
-    render_primitives_image_with_bounds, scale_color_image, ExportPrimitive,
+    compute_primitive_bounds_for_options, datasets_to_primitives, export_primitives_svg,
+    export_raster_gif, export_raster_svg, has_drawable_primitives, has_finite_dataset_points,
+    render_primitives_image, render_primitives_image_with_bounds, scale_color_image,
+    ExportPrimitive,
 };
 
-use super::InteractiveTool;
+use super::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework};
 
 /// Collects drawable [`ExportPrimitive`] items for `tool`, combining raster hooks, captured plot primitives, and fallback datasets.
 pub fn resolve_tool_primitives(tool: &dyn InteractiveTool) -> Vec<ExportPrimitive> {
@@ -192,7 +193,7 @@ fn encode_progressive_primitive_gif(
     count: usize,
     fps: u32,
 ) -> Result<Vec<u8>, String> {
-    let bounds = compute_primitive_bounds(primitives);
+    let bounds = compute_primitive_bounds_for_options(primitives, options);
     let total = primitives.len().max(1);
     let mut images = Vec::with_capacity(count);
     for step in 1..=count {
@@ -203,4 +204,163 @@ fn encode_progressive_primitive_gif(
         }
     }
     color32_images_to_gif(&images, fps)
+}
+
+/// Renders `tool` offscreen and copies the resulting `ColorImage` to the system clipboard.
+pub fn copy_tool_image_to_clipboard(
+    tool: &dyn InteractiveTool,
+    options: &ExportOptions,
+    ctx: Option<&egui::Context>,
+) -> Result<&'static str, String> {
+    let color_img = render_tool_color_image(tool, options)?;
+    #[cfg(test)]
+    {
+        let _ = (&color_img, ctx);
+    }
+    #[cfg(not(test))]
+    {
+        if let Some(egui_ctx) = ctx.cloned() {
+            let status_id = egui::Id::new("framework_export_clipboard_status");
+            egui_plot::export::copy_image_to_clipboard_with_callback(&color_img, move |res| {
+                egui_ctx.data_mut(|d| {
+                    let item = match res {
+                        Ok(()) => (
+                            ExportStatusSeverity::Success,
+                            "Copied plot image to clipboard!".to_string(),
+                        ),
+                        Err(e) => (
+                            ExportStatusSeverity::Error,
+                            format!("Clipboard copy failed: {e}"),
+                        ),
+                    };
+                    d.insert_temp(status_id, item);
+                });
+                egui_ctx.request_repaint();
+            })?;
+        } else {
+            egui_plot::export::copy_image_to_clipboard(&color_img)?;
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        Ok("Copying plot image to clipboard...")
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Ok("Copied plot image to clipboard!")
+    }
+}
+
+impl SimulationFramework {
+    pub(super) fn ensure_figure_exportable(&mut self) -> Option<String> {
+        let tool = self.active_tool.as_ref()?;
+        let caps = tool.export_capabilities();
+        if !caps.figure {
+            self.set_export_status(ExportStatusSeverity::Warning, caps.figure_disabled_reason);
+            return None;
+        }
+        Some(tool.name().to_string())
+    }
+
+    pub(super) fn dispatch_png_export(&mut self) {
+        let Some(tool_name) = self.ensure_figure_exportable() else {
+            return;
+        };
+        let filename = Self::build_export_filename(&tool_name, ExportFormat::Png);
+        let tool = self
+            .active_tool
+            .as_ref()
+            .expect("verified active tool")
+            .as_ref();
+        match render_tool_png(tool, &self.export_options) {
+            Ok(bytes) => self.complete_file_export(
+                ExportFormat::Png,
+                &filename,
+                &bytes,
+                None,
+                "PNG image",
+                "Export failed",
+            ),
+            Err(err) => {
+                self.set_export_status(ExportStatusSeverity::Error, format!("Export failed: {err}"))
+            }
+        }
+    }
+
+    pub(super) fn dispatch_png_clipboard_export(&mut self, ctx: Option<&egui::Context>) {
+        if self.ensure_figure_exportable().is_none() {
+            return;
+        }
+        let tool = self
+            .active_tool
+            .as_ref()
+            .expect("verified active tool")
+            .as_ref();
+        match copy_tool_image_to_clipboard(tool, &self.export_options, ctx) {
+            Ok(msg) => self.set_export_status(ExportStatusSeverity::Success, msg),
+            Err(err) => self.set_export_status(
+                ExportStatusSeverity::Error,
+                format!("Clipboard copy failed: {err}"),
+            ),
+        }
+    }
+
+    pub(super) fn dispatch_svg_export(&mut self) {
+        let Some(tool_name) = self.ensure_figure_exportable() else {
+            return;
+        };
+        let filename = Self::build_export_filename(&tool_name, ExportFormat::Svg);
+        let tool = self
+            .active_tool
+            .as_ref()
+            .expect("verified active tool")
+            .as_ref();
+        match render_tool_svg(tool, &self.export_options) {
+            Ok(svg) => {
+                let bytes = svg.as_bytes().to_vec();
+                self.complete_file_export(
+                    ExportFormat::Svg,
+                    &filename,
+                    &bytes,
+                    Some(svg),
+                    "SVG image",
+                    "Export failed",
+                );
+            }
+            Err(err) => {
+                self.set_export_status(ExportStatusSeverity::Error, format!("Export failed: {err}"))
+            }
+        }
+    }
+
+    pub(super) fn dispatch_gif_export(&mut self) {
+        let Some(tool_name) = self.ensure_figure_exportable() else {
+            return;
+        };
+        let filename = Self::build_export_filename(&tool_name, ExportFormat::Gif);
+        let (frames, fps, opts) = (
+            self.export_gif_frames as usize,
+            self.export_gif_fps,
+            self.export_options.clone(),
+        );
+        let tool = self
+            .active_tool
+            .as_mut()
+            .expect("verified active tool")
+            .as_mut();
+        match render_tool_gif(tool, &opts, frames, fps) {
+            Ok(bytes) => self.complete_file_export(
+                ExportFormat::Gif,
+                &filename,
+                &bytes,
+                None,
+                "GIF animation",
+                "GIF export failed",
+            ),
+            Err(err) => self.set_export_status(
+                ExportStatusSeverity::Error,
+                format!("GIF export failed: {err}"),
+            ),
+        }
+    }
 }

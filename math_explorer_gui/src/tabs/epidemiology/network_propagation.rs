@@ -26,6 +26,13 @@ impl NetworkPropagationTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NetPropState {
+    num_nodes: usize,
+    beta: f64,
+    gamma: f64,
+}
+
 impl InteractiveTool for NetworkPropagationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -41,12 +48,6 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct NetPropState {
-            num_nodes: usize,
-            beta: f64,
-            gamma: f64,
-        }
         serde_json::to_string(&NetPropState {
             num_nodes: self.model.num_nodes(),
             beta: self.model.beta(),
@@ -56,12 +57,6 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct NetPropState {
-            num_nodes: usize,
-            beta: f64,
-            gamma: f64,
-        }
         if let Ok(s) = serde_json::from_str::<NetPropState>(state) {
             let _ = self.model.set_num_nodes(s.num_nodes);
             let _ = self.model.set_beta(s.beta);

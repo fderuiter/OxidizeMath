@@ -18,61 +18,109 @@ pub enum ExportFormat {
 }
 
 impl ExportFormat {
+    const fn meta(self) -> (&'static str, &'static str, &'static str, &'static str) {
+        match self {
+            Self::Csv => ("csv", "CSV", "CSV File", "dataset"),
+            Self::Json => ("json", "JSON", "JSON File", "dataset"),
+            Self::Png => ("png", "PNG", "PNG Image", "figure"),
+            Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
+            Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
+        }
+    }
+
     /// Returns the standard file extension for this format.
     pub const fn extension(&self) -> &'static str {
-        match self {
-            Self::Csv => "csv",
-            Self::Json => "json",
-            Self::Png => "png",
-            Self::Svg => "svg",
-            Self::Gif => "gif",
-        }
+        self.meta().0
+    }
+
+    /// Returns the uppercase label for display messages.
+    pub const fn label(&self) -> &'static str {
+        self.meta().1
     }
 
     /// Returns the file dialog filter description.
     pub const fn filter_name(&self) -> &'static str {
-        match self {
-            Self::Csv => "CSV File",
-            Self::Json => "JSON File",
-            Self::Png => "PNG Image",
-            Self::Svg => "SVG Vector Image",
-            Self::Gif => "GIF Animation",
-        }
+        self.meta().2
     }
 
     /// Returns the filename stem suffix (`dataset`, `figure`, or `animation`).
     pub const fn stem_suffix(&self) -> &'static str {
-        match self {
-            Self::Csv | Self::Json => "dataset",
-            Self::Png | Self::Svg => "figure",
-            Self::Gif => "animation",
-        }
+        self.meta().3
     }
+}
+
+/// Output destination target for deferred simulation dataset and figure export.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ExportTarget {
+    /// Save serialized dataset or figure to disk via file save dialog or browser download.
+    File,
+    /// Copy serialized dataset text or rendered figure image directly to the system clipboard.
+    Clipboard,
+}
+
+/// A deferred export request combining format and output destination target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExportRequest {
+    /// Dataset or figure serialization format.
+    pub format: ExportFormat,
+    /// Output destination target.
+    pub target: ExportTarget,
+}
+
+/// Inline status feedback for action-bar export operations.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ActionBarExportStatus {
+    /// Human-readable confirmation or error message.
+    pub message: String,
+    /// Whether this status indicates an error or warning condition.
+    pub is_error: bool,
+    /// Optional `egui` timestamp (`ctx.input(|i| i.time)`) when temporary confirmation expires.
+    pub expires_at_time: Option<f64>,
 }
 
 /// Type alias for custom export file writer function.
 pub type CustomExportWriter = Arc<dyn Fn(&str, &[u8]) + Send + Sync>;
 
+/// Type alias for custom clipboard text writer function (useful for deterministic testing).
+pub type CustomClipboardWriter = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
+/// Formats a clipboard failure error with guidance toward disk export.
+pub(super) fn format_clipboard_error(err: &str) -> String {
+    if err.contains("Export CSV") {
+        format!("Clipboard unavailable: {err}")
+    } else {
+        format!("Clipboard unavailable ({err}). Please use Export CSV to save to disk.")
+    }
+}
+
 /// Manages pending dataset and figure export requests deferred to the end of the rendering frame.
 #[derive(Default)]
 pub struct ExportQueue {
     requests: Vec<ExportFormat>,
+    target_requests: Vec<ExportRequest>,
     /// Optional directory to directly write exported files (useful in headless/automated test runs).
     pub destination_dir: Option<PathBuf>,
     /// Optional custom sink callback to receive exported filenames and file bytes.
     pub custom_writer: Option<CustomExportWriter>,
+    /// Optional custom clipboard sink callback to receive serialized text content.
+    pub custom_clipboard_writer: Option<CustomClipboardWriter>,
     /// Retains the last exported filename (for inspection and verification).
     pub last_exported_filename: Option<String>,
-    /// Retains the last exported text file content (for CSV/JSON/SVG inspection).
+    /// Retains the last exported file or clipboard text content (for CSV/JSON/SVG inspection).
     pub last_exported_content: Option<String>,
     /// Retains the last exported raw byte payload (for PNG/GIF/SVG/CSV/JSON verification).
     pub last_exported_bytes: Option<Vec<u8>>,
+    /// Retains the last content copied directly to the clipboard.
+    pub last_clipboard_content: Option<String>,
+    /// Current inline status feedback for action-bar export actions.
+    pub status: Option<ActionBarExportStatus>,
 }
 
 impl std::fmt::Debug for ExportQueue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExportQueue")
             .field("requests", &self.requests)
+            .field("target_requests", &self.target_requests)
             .field("destination_dir", &self.destination_dir)
             .field("last_exported_filename", &self.last_exported_filename)
             .field("last_exported_content", &self.last_exported_content)
@@ -80,43 +128,72 @@ impl std::fmt::Debug for ExportQueue {
                 "last_exported_bytes_len",
                 &self.last_exported_bytes.as_ref().map(Vec::len),
             )
+            .field("last_clipboard_content", &self.last_clipboard_content)
+            .field("status", &self.status)
             .finish()
     }
 }
 
 impl ExportQueue {
-    /// Queues an export request, preventing duplicates from rapid repeated clicks within the frame.
+    /// Queues a file export request, preventing duplicates from rapid repeated clicks within the frame.
     pub fn push(&mut self, format: ExportFormat) -> bool {
-        if self.requests.contains(&format) {
+        self.push_target(format, ExportTarget::File)
+    }
+
+    /// Queues an export request for a specific output target, deduplicating identical `(format, target)` pairs.
+    pub fn push_target(&mut self, format: ExportFormat, target: ExportTarget) -> bool {
+        let req = ExportRequest { format, target };
+        if self.target_requests.contains(&req) {
             return false;
         }
-        self.requests.push(format);
+        if target == ExportTarget::File {
+            self.requests.push(format);
+        }
+        self.target_requests.push(req);
         true
+    }
+
+    /// Queues a direct CSV dataset export to the system clipboard, deduplicating rapid clicks.
+    pub fn queue_clipboard_export(&mut self) -> bool {
+        self.push_target(ExportFormat::Csv, ExportTarget::Clipboard)
     }
 
     /// Returns `true` if there are no pending export requests.
     pub fn is_empty(&self) -> bool {
-        self.requests.is_empty()
+        self.target_requests.is_empty()
     }
 
-    /// Returns the number of pending export requests.
+    /// Returns the number of pending export requests across all targets.
     pub fn len(&self) -> usize {
-        self.requests.len()
+        self.target_requests.len()
     }
 
-    /// Returns a slice of the pending requests.
+    /// Returns a slice of pending file-target export formats.
     pub fn requests(&self) -> &[ExportFormat] {
         &self.requests
     }
 
-    /// Drains all pending export requests from the queue.
+    /// Returns a slice of all pending target-aware export requests.
+    pub fn export_requests(&self) -> &[ExportRequest] {
+        &self.target_requests
+    }
+
+    /// Drains all pending file-target export formats and clears the queue.
     pub fn drain(&mut self) -> Vec<ExportFormat> {
+        self.target_requests.clear();
         std::mem::take(&mut self.requests)
+    }
+
+    /// Drains all pending target-aware export requests from the queue.
+    pub fn drain_requests(&mut self) -> Vec<ExportRequest> {
+        self.requests.clear();
+        std::mem::take(&mut self.target_requests)
     }
 
     /// Clears the queue without executing pending requests.
     pub fn clear(&mut self) {
         self.requests.clear();
+        self.target_requests.clear();
     }
 }
 
@@ -130,42 +207,80 @@ impl SimulationFramework {
         let msg = message.into();
         crate::accessibility::announce_status_with_priority(&msg, severity.aria_priority());
         self.export_status_severity = severity;
-        self.export_status_message = Some(msg);
+        self.export_status_message = Some(msg.clone());
+        self.export_queue.status = Some(ActionBarExportStatus {
+            message: msg,
+            is_error: severity != ExportStatusSeverity::Success,
+            expires_at_time: None,
+        });
     }
 
-    /// Queues a dataset or figure export request for deferred end-of-frame dispatch.
+    /// Queues a dataset or figure file export request for deferred end-of-frame dispatch.
     pub fn queue_export(&mut self, format: ExportFormat) {
         self.export_queue.push(format);
     }
 
+    /// Queues a dataset or figure export request with an explicit destination target.
+    pub fn queue_export_with_target(&mut self, format: ExportFormat, target: ExportTarget) {
+        self.export_queue.push_target(format, target);
+    }
+
+    /// Queues a direct CSV dataset clipboard export for deferred end-of-frame dispatch.
+    pub fn queue_clipboard_export(&mut self) {
+        self.export_queue.queue_clipboard_export();
+    }
+
     /// Dispatches all pending export requests accumulated in the action queue after `tool.show` completes.
     pub fn dispatch_pending_exports(&mut self) {
+        self.dispatch_pending_exports_inner(None);
+    }
+
+    /// Dispatches all pending export requests with an `egui::Context` for repaint scheduling and async callbacks.
+    pub fn dispatch_pending_exports_with_ctx(&mut self, ctx: &egui::Context) {
+        self.dispatch_pending_exports_inner(Some(ctx));
+    }
+
+    fn dispatch_pending_exports_inner(&mut self, ctx: Option<&egui::Context>) {
         if self.export_queue.is_empty() {
             return;
         }
-        let requests = self.export_queue.drain();
+        let requests = self.export_queue.drain_requests();
         if self.active_tool.is_none() {
             self.set_export_status(
                 ExportStatusSeverity::Warning,
-                "Export skipped: no active simulation tool selected.",
+                "No active simulation tool available for export.",
             );
+            if let Some(egui_ctx) = ctx {
+                egui_ctx.request_repaint();
+            }
             return;
         }
-        for format in requests {
-            self.dispatch_single_export(format);
+        for req in requests {
+            self.dispatch_single_request(req, ctx);
+        }
+        if let Some(egui_ctx) = ctx {
+            egui_ctx.request_repaint();
         }
     }
 
-    fn dispatch_single_export(&mut self, format: ExportFormat) {
-        match format {
-            ExportFormat::Csv | ExportFormat::Json => self.dispatch_dataset_export(format),
-            ExportFormat::Png => self.dispatch_png_export(),
-            ExportFormat::Svg => self.dispatch_svg_export(),
-            ExportFormat::Gif => self.dispatch_gif_export(),
+    fn dispatch_single_request(&mut self, req: ExportRequest, ctx: Option<&egui::Context>) {
+        match (req.format, req.target) {
+            (ExportFormat::Csv | ExportFormat::Json, target) => {
+                self.dispatch_dataset_export(req.format, target, ctx);
+            }
+            (ExportFormat::Png, ExportTarget::File) => self.dispatch_png_export(),
+            (ExportFormat::Png, ExportTarget::Clipboard) => self.dispatch_png_clipboard_export(ctx),
+            (ExportFormat::Svg, _) => self.dispatch_svg_export(),
+            (ExportFormat::Gif, _) => self.dispatch_gif_export(),
         }
     }
 
-    fn dispatch_dataset_export(&mut self, format: ExportFormat) {
+    fn dispatch_dataset_export(
+        &mut self,
+        format: ExportFormat,
+        target: ExportTarget,
+        ctx: Option<&egui::Context>,
+    ) {
         let Some(tool) = &self.active_tool else {
             return;
         };
@@ -183,11 +298,7 @@ impl SimulationFramework {
         if !egui_plot::export_primitives::has_finite_dataset_points(&datasets) {
             self.set_export_status(
                 ExportStatusSeverity::Error,
-                format!(
-                    "{} export rejected: {} produced no finite data points.",
-                    format.filter_name(),
-                    tool_name
-                ),
+                format!("No dataset points available to export from {tool_name}."),
             );
             return;
         }
@@ -196,124 +307,113 @@ impl SimulationFramework {
             ExportFormat::Json => egui_plot::export::format_json(&datasets),
             _ => return,
         };
-        let filename = Self::build_export_filename(&tool_name, format);
-        if let Err(err) =
-            self.persist_export_bytes(format, &filename, content.as_bytes(), Some(content.clone()))
-        {
-            self.set_export_status(ExportStatusSeverity::Error, format!("Export failed: {err}"));
-        } else {
-            self.set_export_status(
-                ExportStatusSeverity::Success,
-                format!("{} saved successfully ({filename}).", format.filter_name()),
-            );
-        }
-    }
-
-    fn dispatch_png_export(&mut self) {
-        let Some(tool) = &self.active_tool else {
-            return;
-        };
-        let caps = tool.export_capabilities();
-        if !caps.figure {
-            self.set_export_status(ExportStatusSeverity::Warning, caps.figure_disabled_reason);
-            return;
-        }
-        let filename = Self::build_export_filename(tool.name(), ExportFormat::Png);
-        match render_tool_png(tool.as_ref(), &self.export_options) {
-            Ok(png_bytes) => {
-                if let Err(err) =
-                    self.persist_export_bytes(ExportFormat::Png, &filename, &png_bytes, None)
-                {
-                    self.set_export_status(
-                        ExportStatusSeverity::Error,
-                        format!("Export failed: {err}"),
-                    );
-                } else {
-                    self.set_export_status(
-                        ExportStatusSeverity::Success,
-                        format!("PNG image saved successfully ({filename})."),
-                    );
-                }
-            }
-            Err(err) => {
-                self.set_export_status(ExportStatusSeverity::Error, format!("Export failed: {err}"))
-            }
-        }
-    }
-
-    fn dispatch_svg_export(&mut self) {
-        let Some(tool) = &self.active_tool else {
-            return;
-        };
-        let caps = tool.export_capabilities();
-        if !caps.figure {
-            self.set_export_status(ExportStatusSeverity::Warning, caps.figure_disabled_reason);
-            return;
-        }
-        let filename = Self::build_export_filename(tool.name(), ExportFormat::Svg);
-        match render_tool_svg(tool.as_ref(), &self.export_options) {
-            Ok(svg_text) => {
-                if let Err(err) = self.persist_export_bytes(
-                    ExportFormat::Svg,
+        match target {
+            ExportTarget::File => {
+                let filename = Self::build_export_filename(&tool_name, format);
+                let bytes = content.as_bytes().to_vec();
+                self.complete_file_export(
+                    format,
                     &filename,
-                    svg_text.as_bytes(),
-                    Some(svg_text.clone()),
-                ) {
-                    self.set_export_status(
-                        ExportStatusSeverity::Error,
-                        format!("Export failed: {err}"),
-                    );
+                    &bytes,
+                    Some(content),
+                    format.filter_name(),
+                    "Export failed",
+                );
+            }
+            ExportTarget::Clipboard => self.dispatch_clipboard_text_request(format, content, ctx),
+        }
+    }
+
+    fn dispatch_clipboard_text_request(
+        &mut self,
+        format: ExportFormat,
+        content: String,
+        ctx: Option<&egui::Context>,
+    ) {
+        let label = format.label();
+        let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
+            writer(&content)
+        } else {
+            Self::write_system_text_clipboard(label, &content, ctx)
+        };
+        match res {
+            Ok(()) => {
+                self.export_queue.last_exported_content = Some(content.clone());
+                self.export_queue.last_clipboard_content = Some(content);
+                let msg = if cfg!(target_arch = "wasm32")
+                    && self.export_queue.custom_clipboard_writer.is_none()
+                {
+                    format!("Copying {label} dataset to clipboard...")
                 } else {
-                    self.set_export_status(
-                        ExportStatusSeverity::Success,
-                        format!("SVG image saved successfully ({filename})."),
-                    );
-                }
+                    format!("Copied {label} dataset to clipboard!")
+                };
+                self.set_export_status(ExportStatusSeverity::Success, msg);
             }
             Err(err) => {
-                self.set_export_status(ExportStatusSeverity::Error, format!("Export failed: {err}"))
+                self.set_export_status(ExportStatusSeverity::Error, format_clipboard_error(&err));
             }
         }
     }
 
-    fn dispatch_gif_export(&mut self) {
-        let Some(tool) = &mut self.active_tool else {
-            return;
-        };
-        let caps = tool.export_capabilities();
-        if !caps.figure {
-            let reason = caps.figure_disabled_reason;
-            self.set_export_status(ExportStatusSeverity::Warning, reason);
-            return;
+    fn write_system_text_clipboard(
+        label: &'static str,
+        content: &str,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        #[cfg(test)]
+        {
+            let _ = (label, content, ctx);
+            Ok(())
         }
-        let filename = Self::build_export_filename(tool.name(), ExportFormat::Gif);
-        let frames = self.export_gif_frames as usize;
-        let fps = self.export_gif_fps;
-        let opts = self.export_options.clone();
-        match render_tool_gif(tool.as_mut(), &opts, frames, fps) {
-            Ok(gif_bytes) => {
-                if let Err(err) =
-                    self.persist_export_bytes(ExportFormat::Gif, &filename, &gif_bytes, None)
-                {
-                    self.set_export_status(
-                        ExportStatusSeverity::Error,
-                        format!("GIF export failed: {err}"),
-                    );
-                } else {
-                    self.set_export_status(
-                        ExportStatusSeverity::Success,
-                        format!("GIF animation saved successfully ({filename})."),
-                    );
-                }
+        #[cfg(not(test))]
+        {
+            if let Some(egui_ctx) = ctx.cloned() {
+                let status_id = egui::Id::new("framework_action_bar_clipboard_status");
+                egui_plot::export::copy_text_to_clipboard_with_callback(content, move |cb| {
+                    egui_ctx.data_mut(|d| {
+                        let status = match cb {
+                            Ok(()) => ActionBarExportStatus {
+                                message: format!("Copied {label} dataset to clipboard!"),
+                                is_error: false,
+                                expires_at_time: None,
+                            },
+                            Err(err) => ActionBarExportStatus {
+                                message: format_clipboard_error(&err),
+                                is_error: true,
+                                expires_at_time: None,
+                            },
+                        };
+                        d.insert_temp(status_id, status);
+                    });
+                    egui_ctx.request_repaint();
+                })
+            } else {
+                egui_plot::export::copy_text_to_clipboard(content)
             }
-            Err(err) => self.set_export_status(
-                ExportStatusSeverity::Error,
-                format!("GIF export failed: {err}"),
+        }
+    }
+
+    pub(super) fn complete_file_export(
+        &mut self,
+        format: ExportFormat,
+        filename: &str,
+        bytes: &[u8],
+        text_content: Option<String>,
+        ok_label: &str,
+        err_prefix: &str,
+    ) {
+        match self.persist_export_bytes(format, filename, bytes, text_content) {
+            Ok(()) => self.set_export_status(
+                ExportStatusSeverity::Success,
+                format!("{ok_label} saved successfully ({filename})."),
             ),
+            Err(err) => {
+                self.set_export_status(ExportStatusSeverity::Error, format!("{err_prefix}: {err}"))
+            }
         }
     }
 
-    fn build_export_filename(tool_name: &str, format: ExportFormat) -> String {
+    pub(super) fn build_export_filename(tool_name: &str, format: ExportFormat) -> String {
         let slug: String = tool_name
             .to_lowercase()
             .chars()
@@ -357,9 +457,7 @@ impl SimulationFramework {
                 &[format.extension()],
             );
             #[cfg(test)]
-            {
-                let _ = format;
-            }
+            let _ = format;
         }
         Ok(())
     }

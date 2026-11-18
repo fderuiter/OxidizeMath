@@ -93,7 +93,11 @@ pub(super) fn draw_dot(
     }
 }
 
-pub(super) fn blend_over(dst: egui::Color32, src: egui::Color32, alpha_factor: f64) -> egui::Color32 {
+pub(super) fn blend_over(
+    dst: egui::Color32,
+    src: egui::Color32,
+    alpha_factor: f64,
+) -> egui::Color32 {
     let src_a = (src.a() as f64 / 255.0) * alpha_factor.clamp(0.0, 1.0);
     if src_a <= 0.0 {
         return dst;
@@ -104,7 +108,8 @@ pub(super) fn blend_over(dst: egui::Color32, src: egui::Color32, alpha_factor: f
         return egui::Color32::TRANSPARENT;
     }
     let mix = |sc: u8, dc: u8| -> u8 {
-        let out = ((sc as f64 / 255.0) * src_a + (dc as f64 / 255.0) * dst_a * (1.0 - src_a)) / out_a;
+        let out =
+            ((sc as f64 / 255.0) * src_a + (dc as f64 / 255.0) * dst_a * (1.0 - src_a)) / out_a;
         (out * 255.0).round().clamp(0.0, 255.0) as u8
     };
     egui::Color32::from_rgba_unmultiplied(

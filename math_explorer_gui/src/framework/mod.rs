@@ -1,4 +1,5 @@
 pub mod callout_overlay;
+pub mod clamp;
 pub mod export_figure;
 pub mod export_queue;
 #[cfg(test)]
@@ -16,6 +17,7 @@ pub mod trace_overlay;
 mod ui;
 
 pub use callout_overlay::*;
+pub use clamp::*;
 pub use export_figure::*;
 pub use export_queue::*;
 pub use export_types::*;
@@ -164,6 +166,11 @@ pub trait InteractiveTool {
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, _state: &str) {}
 
+    /// Optional hook to clamp unstable parameters to safe bounds, returning true if handled.
+    fn clamp_parameters(&mut self) -> bool {
+        false
+    }
+
     /// Domain category of the tool (e.g. "analysis", "biology", "game_theory").
     fn domain(&self) -> &'static str {
         ""
@@ -281,19 +288,12 @@ struct FrameworkState {
 
 #[allow(missing_docs)]
 pub struct SimulationFramework {
-    #[allow(missing_docs)]
     pub available_tools: Vec<&'static ToolMetadata>,
-    #[allow(missing_docs)]
     pub active_tool: Option<Box<dyn InteractiveTool>>,
-    #[allow(missing_docs)]
     pub selected_tool_index: Option<usize>,
-    #[allow(missing_docs)]
     pub input_mode: InputMode,
-    #[allow(missing_docs)]
     pub show_theory_portal: bool,
-    #[allow(missing_docs)]
     pub show_starter_gallery: bool,
-    #[allow(missing_docs)]
     pub saved_tool_states: std::collections::HashMap<String, String>,
     pub search_query: String,
     last_announced_count: Option<usize>,
@@ -397,6 +397,7 @@ impl SimulationFramework {
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.export_status_message = None;
+        self.export_queue.status = None;
         self.step_counter = 0;
         self.baseline_tool_state = factory_baseline_state;
         let active_tool_state = new_tool.save_state();

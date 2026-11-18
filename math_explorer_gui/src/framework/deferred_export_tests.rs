@@ -279,3 +279,30 @@ fn test_empty_payload_rejection_status_colors_and_live_region() {
     assert!(announcements.iter().any(|(_, p)| p == "polite"));
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn test_deferred_png_clipboard_and_raster_csv_clipboard_capability_guard() {
+    let mut ok_fw = new_framework_with_tool(build_registered_tool("PartitionsWidget"));
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui_plot::clear_last_plot_datasets();
+        ok_fw.show_export_modal = true;
+        ok_fw.queue_export_with_target(ExportFormat::Png, ExportTarget::Clipboard);
+        ok_fw.show(ctx, "export_clipboard_img_test");
+    });
+    assert_eq!(ok_fw.export_status_severity, ExportStatusSeverity::Success);
+    assert!(ok_fw
+        .export_status_message
+        .as_deref()
+        .unwrap_or("")
+        .contains("clipboard"));
+
+    let mut raster_fw = new_framework_with_tool(build_registered_tool("DoseCalculationTool"));
+    raster_fw.queue_clipboard_export();
+    raster_fw.dispatch_pending_exports();
+    assert_eq!(
+        raster_fw.export_status_severity,
+        ExportStatusSeverity::Warning
+    );
+    assert!(raster_fw.export_queue.last_clipboard_content.is_none());
+}

@@ -19,6 +19,13 @@ impl Default for LifetimeEstimatorTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct LifetimeEstimatorState {
+    target_capacity: f64,
+    dod: f64,
+    cycles_per_day: f64,
+}
+
 impl InteractiveTool for LifetimeEstimatorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -34,12 +41,6 @@ impl InteractiveTool for LifetimeEstimatorTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct LifetimeEstimatorState {
-            target_capacity: f64,
-            dod: f64,
-            cycles_per_day: f64,
-        }
         serde_json::to_string(&LifetimeEstimatorState {
             target_capacity: self.target_capacity,
             dod: self.dod,
@@ -49,12 +50,6 @@ impl InteractiveTool for LifetimeEstimatorTool {
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct LifetimeEstimatorState {
-            target_capacity: f64,
-            dod: f64,
-            cycles_per_day: f64,
-        }
         if let Ok(s) = serde_json::from_str::<LifetimeEstimatorState>(state) {
             self.target_capacity = s.target_capacity;
             self.dod = s.dod;

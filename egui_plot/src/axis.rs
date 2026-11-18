@@ -150,6 +150,10 @@ impl<'a> AxisHints<'a> {
     }
 
     fn default_formatter(mark: GridMark, _range: &RangeInclusive<f64>) -> String {
+        let abs_v = mark.value.abs();
+        if abs_v > 0.0 && !(1e-6..1e12).contains(&abs_v) {
+            return format!("{:e}", mark.value);
+        }
         // Example: If the step to the next tick is `0.01`, we should use 2 decimals of precision:
         let num_decimals = -mark.step_size.log10().round() as usize;
 
@@ -298,7 +302,14 @@ impl<'a> AxisWidget<'a> {
     /// Add tick labels to the axis. Returns the thickness of the axis.
     fn add_tick_labels(&self, ui: &Ui, transform: PlotTransform, axis: Axis) -> f32 {
         let font_id = TextStyle::Body.resolve(ui.style());
-        let label_spacing = self.hints.label_spacing;
+        let label_spacing = if transform.log_axis()[axis as usize] && axis == Axis::X {
+            Rangef::new(
+                self.hints.label_spacing.min.min(32.0),
+                self.hints.label_spacing.max.min(48.0),
+            )
+        } else {
+            self.hints.label_spacing
+        };
         let mut thickness: f32 = 0.0;
 
         const SIDE_MARGIN: f32 = 4.0; // Add some margin to both sides of the text on the Y axis.
@@ -308,8 +319,7 @@ impl<'a> AxisWidget<'a> {
         for step in self.steps.iter() {
             let text = (self.hints.formatter)(*step, &self.range);
             if !text.is_empty() {
-                let spacing_in_points =
-                    (transform.dpos_dvalue()[usize::from(axis)] * step.step_size).abs() as f32;
+                let spacing_in_points = transform.step_spacing_in_points(axis, *step);
 
                 if spacing_in_points <= label_spacing.min {
                     // Labels are too close together - don't paint them.

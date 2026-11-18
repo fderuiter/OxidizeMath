@@ -1,12 +1,12 @@
 use eframe::egui::{Response, WidgetText};
 use scientific_metadata::theory::TheoryDescribable;
 
-/// Helper modeling the twin-slot ping-pong alternation logic.
+/// State container modeling WAI-ARIA twin-slot ping-pong live-region alternation.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TwinSlotLiveRegion {
-    /// Active slot index (0 or 1).
+    /// Active slot index (`0` or `1`).
     pub active_slot: usize,
-    /// Text contents of slot 0 and slot 1.
+    /// Text contents of slot `0` and slot `1`.
     pub slots: [String; 2],
 }
 
@@ -18,12 +18,18 @@ impl TwinSlotLiveRegion {
     }
 
     /// Alternates to the sibling slot, clears the previous slot, and populates the new active slot.
-    pub fn dispatch(&mut self, message: &str) {
+    pub fn dispatch(&mut self, message: &str) -> usize {
         let next_slot = 1 - self.active_slot;
         self.slots[self.active_slot].clear();
         self.slots[next_slot] = message.to_string();
         self.active_slot = next_slot;
+        next_slot
     }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn next_live_slot(toggle: &std::sync::atomic::AtomicBool) -> usize {
+    usize::from(toggle.fetch_xor(true, std::sync::atomic::Ordering::SeqCst))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -96,7 +102,7 @@ pub fn init_accessibility_bridge() {
     }
 }
 
-#[cfg(any(not(target_arch = "wasm32"), test))]
+#[cfg(test)]
 thread_local! {
     static TEST_ANNOUNCEMENTS: std::cell::RefCell<Vec<(String, String)>> =
         const { std::cell::RefCell::new(Vec::new()) };
@@ -130,10 +136,10 @@ pub fn announce_status_with_priority(message: &str, priority: &str) {
             .push((message.to_string(), priority.to_string()));
     });
 
-    let slot_idx = LIVE_REGION.with(|region| {
+    LIVE_REGION.with(|region| {
         let mut r = region.borrow_mut();
-        r.dispatch(message);
-        r.active_slot
+        let active = r.dispatch(message);
+        let _ = &r.slots[active];
     });
 
     if let Some(window) = web_sys::window() {
@@ -150,27 +156,27 @@ pub fn announce_status_with_priority(message: &str, priority: &str) {
                 init_accessibility_bridge();
             }
 
-            let _ = (&ASSERTIVE_SLOT_TOGGLE, &POLITE_SLOT_TOGGLE);
+            let toggle = if is_assertive {
+                &ASSERTIVE_SLOT_TOGGLE
+            } else {
+                &POLITE_SLOT_TOGGLE
+            };
+            let slot_idx = next_live_slot(toggle);
             let sibling_idx = 1 - slot_idx;
 
             let active_id = format!("{container_id}-slot-{slot_idx}");
             let sibling_id = format!("{container_id}-slot-{sibling_idx}");
 
-            // Clear the sibling slot
             if let Some(sibling_slot) = document.get_element_by_id(&sibling_id) {
                 sibling_slot.set_text_content(Some(""));
             }
 
-            // Populate the active slot
             if let Some(active_slot) = document.get_element_by_id(&active_id) {
                 active_slot.set_text_content(Some(message));
             }
         }
     }
 }
-
-#[cfg(not(target_arch = "wasm32"))]
-static LAST_ANNOUNCED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(missing_docs)]
@@ -182,51 +188,28 @@ pub fn announce_status(message: &str) {
 #[allow(missing_docs)]
 pub fn announce_status_with_priority(message: &str, priority: &str) {
     LIVE_REGION.with(|region| {
-        region.borrow_mut().dispatch(message);
+        let mut r = region.borrow_mut();
+        let active = r.dispatch(message);
+        let _ = &r.slots[active];
     });
-    if let Ok(mut lock) = LAST_ANNOUNCED.lock() {
-        *lock = Some(message.to_string());
-    }
+    #[cfg(test)]
     TEST_ANNOUNCEMENTS.with(|a| {
         a.borrow_mut()
             .push((message.to_string(), priority.to_string()));
     });
+    #[cfg(not(test))]
+    let _ = priority;
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-#[allow(missing_docs)]
-pub fn get_last_announced() -> Option<String> {
-    LAST_ANNOUNCED.lock().ok().and_then(|lock| lock.clone())
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[allow(missing_docs)]
-pub fn clear_last_announced() {
-    if let Ok(mut lock) = LAST_ANNOUNCED.lock() {
-        *lock = None;
-    }
-    clear_test_announcements();
-}
-
-#[cfg(any(not(target_arch = "wasm32"), test))]
-#[allow(dead_code, missing_docs)]
-pub fn last_announcement() -> Option<(String, String)> {
-    TEST_ANNOUNCEMENTS.with(|a| a.borrow().last().cloned())
-}
-
-#[cfg(any(not(target_arch = "wasm32"), test))]
-#[allow(dead_code, missing_docs)]
-pub fn all_announcements() -> Vec<(String, String)> {
+/// Returns all recorded `(message, priority)` status announcements for the current test thread.
+#[cfg(test)]
+pub(crate) fn all_announcements() -> Vec<(String, String)> {
     TEST_ANNOUNCEMENTS.with(|a| a.borrow().clone())
 }
 
-#[cfg(any(not(target_arch = "wasm32"), test))]
-#[allow(dead_code, missing_docs)]
-pub fn clear_test_announcements() {
-    #[cfg(not(target_arch = "wasm32"))]
-    if let Ok(mut lock) = LAST_ANNOUNCED.lock() {
-        *lock = None;
-    }
+/// Clears all recorded status announcements and resets the twin-slot live region for the current test thread.
+#[cfg(test)]
+pub(crate) fn clear_test_announcements() {
     LIVE_REGION.with(|region| {
         *region.borrow_mut() = TwinSlotLiveRegion::new();
     });
@@ -263,8 +246,10 @@ impl AccessibleHoverText for Response {
 
         if is_active && !dismissed {
             announce_status(&text_str);
+            let active_slot = with_live_region(|r| r.active_slot);
             self.ctx.data_mut(|d| {
                 d.insert_temp(eframe::egui::Id::new("aria_live_message"), text_str);
+                d.insert_temp(eframe::egui::Id::new("aria_live_slot"), active_slot);
             });
         }
 
@@ -306,8 +291,10 @@ impl AccessibleTheoryHover for Response {
 
         if is_active && !dismissed {
             announce_status(&speech_text);
+            let active_slot = with_live_region(|r| r.active_slot);
             self.ctx.data_mut(|d| {
                 d.insert_temp(eframe::egui::Id::new("aria_live_message"), speech_text);
+                d.insert_temp(eframe::egui::Id::new("aria_live_slot"), active_slot);
             });
         }
 
@@ -326,35 +313,37 @@ mod tests {
 
     #[test]
     fn test_twin_slot_alternation() {
+        let polite_toggle = std::sync::atomic::AtomicBool::new(false);
+        let assertive_toggle = std::sync::atomic::AtomicBool::new(false);
+
+        assert_eq!(next_live_slot(&polite_toggle), 0);
+        assert_eq!(next_live_slot(&polite_toggle), 1);
+        assert_eq!(next_live_slot(&polite_toggle), 0);
+        assert_eq!(next_live_slot(&polite_toggle), 1);
+
+        assert_eq!(next_live_slot(&assertive_toggle), 0);
+        assert_eq!(next_live_slot(&assertive_toggle), 1);
+        assert_eq!(next_live_slot(&assertive_toggle), 0);
+
         let mut region = TwinSlotLiveRegion::new();
         assert_eq!(region.active_slot, 0);
-        assert_eq!(region.slots[0], "");
-        assert_eq!(region.slots[1], "");
-
-        // Dispatch 1
-        region.dispatch("First message");
-        assert_eq!(region.active_slot, 1);
-        assert_eq!(region.slots[1], "First message");
-        assert_eq!(region.slots[0], "");
-
-        // Dispatch 2 with identical message (prevents dropped announcements)
-        region.dispatch("First message");
-        assert_eq!(region.active_slot, 0);
-        assert_eq!(region.slots[0], "First message");
-        assert_eq!(region.slots[1], "");
-
-        // Dispatch 3 with new message
-        region.dispatch("Second message");
-        assert_eq!(region.active_slot, 1);
-        assert_eq!(region.slots[1], "Second message");
-        assert_eq!(region.slots[0], "");
+        assert_eq!(region.dispatch("First"), 1);
+        assert_eq!(region.slots, ["".to_string(), "First".to_string()]);
+        assert_eq!(region.dispatch("First"), 0);
+        assert_eq!(region.slots, ["First".to_string(), "".to_string()]);
     }
 
     #[test]
     fn test_announcement_dispatch_on_native() {
         clear_test_announcements();
+        assert!(all_announcements().is_empty());
+        assert_eq!(with_live_region(|r| r.active_slot), 0);
+
         announce_status("Simulation paused");
+        assert_eq!(with_live_region(|r| r.active_slot), 1);
+
         announce_status_with_priority("Syntax Error: missing operand", "assertive");
+        assert_eq!(with_live_region(|r| r.active_slot), 0);
 
         let announcements = all_announcements();
         assert_eq!(announcements.len(), 2);
@@ -370,15 +359,8 @@ mod tests {
             )
         );
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            assert_eq!(
-                get_last_announced().as_deref(),
-                Some("Syntax Error: missing operand")
-            );
-            clear_last_announced();
-            assert_eq!(get_last_announced(), None);
-            assert_eq!(all_announcements().len(), 0);
-        }
+        clear_test_announcements();
+        assert!(all_announcements().is_empty());
+        assert_eq!(with_live_region(|r| r.active_slot), 0);
     }
 }

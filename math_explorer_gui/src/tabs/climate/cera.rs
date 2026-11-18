@@ -67,6 +67,15 @@ impl FiniteStateGuard for CeraTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CeraState {
+    in_channels: usize,
+    latent_channels: usize,
+    aligned_channels: usize,
+    num_levels: usize,
+    output_size: usize,
+}
+
 impl InteractiveTool for CeraTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -82,14 +91,6 @@ impl InteractiveTool for CeraTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CeraState {
-            in_channels: usize,
-            latent_channels: usize,
-            aligned_channels: usize,
-            num_levels: usize,
-            output_size: usize,
-        }
         serde_json::to_string(&CeraState {
             in_channels: self.in_channels,
             latent_channels: self.latent_channels,
@@ -101,14 +102,6 @@ impl InteractiveTool for CeraTool {
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct CeraState {
-            in_channels: usize,
-            latent_channels: usize,
-            aligned_channels: usize,
-            num_levels: usize,
-            output_size: usize,
-        }
         if let Ok(s) = serde_json::from_str::<CeraState>(state) {
             self.in_channels = s.in_channels;
             self.latent_channels = s.latent_channels;
@@ -119,6 +112,11 @@ impl InteractiveTool for CeraTool {
             self.diverged = false;
             self.diagnostic_report = None;
         }
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        FiniteStateGuard::clamp_parameters(self);
+        true
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -146,7 +144,7 @@ impl InteractiveTool for CeraTool {
                         self.diagnostic_report = None;
                     }
                     RecoveryAction::ClampParameters => {
-                        self.clamp_parameters();
+                        FiniteStateGuard::clamp_parameters(self);
                     }
                     RecoveryAction::ResetParameters => {
                         self.reset_parameters();

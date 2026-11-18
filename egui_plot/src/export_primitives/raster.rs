@@ -4,53 +4,9 @@ use crate::export::ExportOptions;
 
 use super::pixel_ops::{blend_over, draw_dot, draw_segment, fill_triangle};
 use super::{
-    ExportPrimitive, compute_primitive_bounds, has_drawable_primitives, padded_bounds,
-    resolve_canvas_dimensions, resolve_color,
+    ExportPrimitive, PrimitiveCanvasLayout, compute_primitive_bounds_for_options,
+    has_drawable_primitives, resolve_canvas_dimensions, resolve_color, sanitize_bar_corners,
 };
-
-struct CanvasTransform {
-    width: usize,
-    height: usize,
-    padding: f64,
-    draw_w: f64,
-    draw_h: f64,
-    min_x: f64,
-    max_x: f64,
-    min_y: f64,
-    max_y: f64,
-    scale: f64,
-    base_stroke: f64,
-}
-
-impl CanvasTransform {
-    fn new(width: usize, height: usize, bounds: [f64; 4], options: &ExportOptions) -> Self {
-        let [min_x, max_x, min_y, max_y] = padded_bounds(bounds);
-        let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
-        let draw_w = (width as f64 - 2.0 * padding).max(1.0);
-        let draw_h = (height as f64 - 2.0 * padding).max(1.0);
-        Self {
-            width,
-            height,
-            padding,
-            draw_w,
-            draw_h,
-            min_x,
-            max_x,
-            min_y,
-            max_y,
-            scale: (options.scale as f64).max(0.5),
-            base_stroke: (options.line_thickness * options.scale).max(1.0) as f64,
-        }
-    }
-
-    fn to_pixel(&self, p: [f64; 2]) -> (f64, f64) {
-        let x_norm = (p[0] - self.min_x) / (self.max_x - self.min_x);
-        let y_norm = (p[1] - self.min_y) / (self.max_y - self.min_y);
-        let px = self.padding + x_norm * self.draw_w;
-        let py = (self.height as f64 - self.padding) - y_norm * self.draw_h;
-        (px, py)
-    }
-}
 
 /// Renders `primitives` into an offscreen `egui::ColorImage` using automatic bounds.
 pub fn render_primitives_image(
@@ -71,9 +27,9 @@ pub fn render_primitives_image_with_bounds(
     }
     let (width, height) = resolve_canvas_dimensions(options)?;
     let bounds = custom_bounds
-        .or_else(|| compute_primitive_bounds(primitives))
+        .or_else(|| compute_primitive_bounds_for_options(primitives, options))
         .ok_or_else(|| "Unable to compute finite plot bounds for image export".to_string())?;
-    let tf = CanvasTransform::new(width, height, bounds, options);
+    let tf = PrimitiveCanvasLayout::new(width, height, bounds, options);
     let bg = background_pixel(options);
     let mut pixels = vec![bg; width * height];
 
@@ -126,7 +82,7 @@ fn background_pixel(options: &ExportOptions) -> egui::Color32 {
 
 fn draw_primitive(
     pixels: &mut [egui::Color32],
-    tf: &CanvasTransform,
+    tf: &PrimitiveCanvasLayout,
     primitive: &ExportPrimitive,
     idx: usize,
 ) {
@@ -142,13 +98,16 @@ fn draw_primitive(
             stroke_width,
             ..
         } => {
+            let Some((c0, c1)) = sanitize_bar_corners(*min, *max, tf.log_x, tf.log_y) else {
+                return;
+            };
             let stroke = resolve_color(*stroke_color, idx);
             let fill_c = if *fill == egui::Color32::TRANSPARENT {
                 stroke.linear_multiply(0.4)
             } else {
                 *fill
             };
-            let (p0, p1) = (tf.to_pixel(*min), tf.to_pixel(*max));
+            let (p0, p1) = (tf.to_pixel(c0), tf.to_pixel(c1));
             let sw = ((*stroke_width as f64) * tf.scale).max(1.0);
             draw_rect(pixels, tf.width, tf.height, p0, p1, fill_c, stroke, sw);
         }
@@ -184,7 +143,7 @@ fn draw_primitive(
             let fill = resolve_color(*color, idx);
             let r = ((*radius as f64) * tf.scale).max(1.5);
             for &pt in points {
-                if pt[0].is_finite() && pt[1].is_finite() {
+                if tf.is_valid_point(pt) {
                     draw_dot(pixels, tf.width, tf.height, tf.to_pixel(pt), r, fill);
                 }
             }
@@ -194,11 +153,13 @@ fn draw_primitive(
 
 fn draw_raster_primitive(
     pixels: &mut [egui::Color32],
-    tf: &CanvasTransform,
+    tf: &PrimitiveCanvasLayout,
     image: &egui::ColorImage,
     bounds: Option<[f64; 4]>,
 ) {
-    let rect = if let Some([x0, x1, y0, y1]) = bounds {
+    let rect = if let Some([x0, x1, y0, y1]) =
+        bounds.filter(|b| !tf.log_x && !tf.log_y || (b[0] > 0.0 && b[2] > 0.0))
+    {
         let (px0, py0) = tf.to_pixel([x0, y0]);
         let (px1, py1) = tf.to_pixel([x1, y1]);
         (px0.min(px1), py0.min(py1), px0.max(px1), py0.max(py1))
@@ -245,7 +206,7 @@ fn blit_image(
 
 fn draw_box_elem(
     pixels: &mut [egui::Color32],
-    tf: &CanvasTransform,
+    tf: &PrimitiveCanvasLayout,
     primitive: &ExportPrimitive,
     idx: usize,
 ) {
@@ -267,6 +228,13 @@ fn draw_box_elem(
     else {
         return;
     };
+    let pt_for = |arg: f64, val: f64| if *vertical { [arg, val] } else { [val, arg] };
+    let (hb, hw) = (box_width * 0.5, whisker_width * 0.5);
+    if !tf.is_valid_point(pt_for(argument - hb.max(hw), *lower_whisker))
+        || !tf.is_valid_point(pt_for(argument + hb.max(hw), *upper_whisker))
+    {
+        return;
+    }
     let stroke = resolve_color(*stroke_color, idx);
     let fill_c = if *fill == egui::Color32::TRANSPARENT {
         stroke.linear_multiply(0.35)
@@ -275,77 +243,38 @@ fn draw_box_elem(
     };
     let sw = ((*stroke_width as f64) * tf.scale).max(1.0);
     let r = (sw * 0.5).max(0.75);
-    let map = |arg: f64, val: f64| -> (f64, f64) {
-        if *vertical {
-            tf.to_pixel([arg, val])
-        } else {
-            tf.to_pixel([val, arg])
-        }
-    };
-    let hb = box_width * 0.5;
-    let hw = whisker_width * 0.5;
+    let map = |arg: f64, val: f64| tf.to_pixel(pt_for(arg, val));
     let (b0, b1) = (
         map(argument - hb, *quartile1),
         map(argument + hb, *quartile3),
     );
     draw_rect(pixels, tf.width, tf.height, b0, b1, fill_c, stroke, sw);
-    draw_segment(
-        pixels,
-        tf.width,
-        tf.height,
-        map(argument - hb, *median),
-        map(argument + hb, *median),
-        r,
-        stroke,
-    );
-    draw_segment(
-        pixels,
-        tf.width,
-        tf.height,
-        map(*argument, *lower_whisker),
-        map(*argument, *quartile1),
-        r,
-        stroke,
-    );
-    draw_segment(
-        pixels,
-        tf.width,
-        tf.height,
-        map(*argument, *quartile3),
-        map(*argument, *upper_whisker),
-        r,
-        stroke,
-    );
-    draw_segment(
-        pixels,
-        tf.width,
-        tf.height,
-        map(argument - hw, *lower_whisker),
-        map(argument + hw, *lower_whisker),
-        r,
-        stroke,
-    );
-    draw_segment(
-        pixels,
-        tf.width,
-        tf.height,
-        map(argument - hw, *upper_whisker),
-        map(argument + hw, *upper_whisker),
-        r,
-        stroke,
-    );
+    for (p0, p1) in [
+        (map(argument - hb, *median), map(argument + hb, *median)),
+        (map(*argument, *lower_whisker), map(*argument, *quartile1)),
+        (map(*argument, *quartile3), map(*argument, *upper_whisker)),
+        (
+            map(argument - hw, *lower_whisker),
+            map(argument + hw, *lower_whisker),
+        ),
+        (
+            map(argument - hw, *upper_whisker),
+            map(argument + hw, *upper_whisker),
+        ),
+    ] {
+        draw_segment(pixels, tf.width, tf.height, p0, p1, r, stroke);
+    }
 }
 
 fn draw_arrow(
     pixels: &mut [egui::Color32],
-    tf: &CanvasTransform,
+    tf: &PrimitiveCanvasLayout,
     origin: [f64; 2],
     tip: [f64; 2],
     tip_length: Option<f32>,
     color: egui::Color32,
 ) {
-    if !origin[0].is_finite() || !origin[1].is_finite() || !tip[0].is_finite() || !tip[1].is_finite()
-    {
+    if !tf.is_valid_point(origin) || !tf.is_valid_point(tip) {
         return;
     }
     let p0 = tf.to_pixel(origin);
@@ -380,7 +309,7 @@ fn draw_arrow(
 
 fn draw_polyline(
     pixels: &mut [egui::Color32],
-    tf: &CanvasTransform,
+    tf: &PrimitiveCanvasLayout,
     points: &[[f64; 2]],
     stroke: egui::Color32,
     radius: f64,
@@ -389,7 +318,7 @@ fn draw_polyline(
 ) {
     let screen_pts: Vec<(f64, f64)> = points
         .iter()
-        .filter(|p| p[0].is_finite() && p[1].is_finite())
+        .filter(|&&p| tf.is_valid_point(p))
         .map(|&p| tf.to_pixel(p))
         .collect();
     if closed && screen_pts.len() >= 3 {
@@ -408,7 +337,7 @@ fn draw_polyline(
     }
     let mut prev: Option<(f64, f64)> = None;
     for &p in points {
-        if !p[0].is_finite() || !p[1].is_finite() {
+        if !tf.is_valid_point(p) {
             prev = None;
             continue;
         }
@@ -422,7 +351,15 @@ fn draw_polyline(
     }
     if closed && screen_pts.len() >= 2 {
         let last = screen_pts[screen_pts.len() - 1];
-        draw_segment(pixels, tf.width, tf.height, last, screen_pts[0], radius, stroke);
+        draw_segment(
+            pixels,
+            tf.width,
+            tf.height,
+            last,
+            screen_pts[0],
+            radius,
+            stroke,
+        );
     }
 }
 

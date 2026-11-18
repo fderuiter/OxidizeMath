@@ -42,7 +42,7 @@ impl fmt::Display for FitType {
 /// Result of a fitted curve regression model.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FitResult {
-    /// Polynomial coefficients $[c_0, c_1, \dots, c_d]$ where $f(x) = \sum_{k=0}^d c_k x^k$.
+    /// Polynomial coefficients $[c_0, c_1, \dots, c_d]$ where $f(u) = \sum_{k=0}^d c_k u^k$.
     pub coefficients: Vec<f64>,
     /// Coefficient of determination ($R^2 \in [0, 1]$).
     pub r_squared: f64,
@@ -52,18 +52,34 @@ pub struct FitResult {
     pub formula: String,
     /// Name of the fitted dataset.
     pub dataset_name: String,
+    /// Whether the independent variable was transformed via $\log_{10}(x)$.
+    pub log_x: bool,
+    /// Whether the dependent variable was transformed via $\log_{10}(y)$.
+    pub log_y: bool,
 }
 
 impl FitResult {
-    /// Evaluates the fitted polynomial function at point `x`.
+    /// Evaluates the fitted function at data-space coordinate `x`.
     pub fn eval(&self, x: f64) -> f64 {
-        let mut y = 0.0;
-        let mut x_pow = 1.0;
+        let u = if self.log_x {
+            if !x.is_finite() || x <= 0.0 {
+                return f64::NAN;
+            }
+            x.log10()
+        } else {
+            x
+        };
+        let mut poly = 0.0;
+        let mut u_pow = 1.0;
         for &coeff in &self.coefficients {
-            y += coeff * x_pow;
-            x_pow *= x;
+            poly += coeff * u_pow;
+            u_pow *= u;
         }
-        y
+        if self.log_y {
+            10.0_f64.powf(poly.clamp(-300.0, 300.0))
+        } else {
+            poly
+        }
     }
 }
 
@@ -75,11 +91,31 @@ pub fn fit_dataset(
     target_degree: usize,
     dataset_name: &str,
 ) -> Option<FitResult> {
-    // Filter out invalid / non-finite points
+    fit_dataset_scaled(points, target_degree, dataset_name, false, false)
+}
+
+/// Computes least-squares regression in linear, semilog, or log-log coordinates.
+///
+/// Non-positive points on logarithmic axes are filtered out prior to fitting.
+pub fn fit_dataset_scaled(
+    points: &[[f64; 2]],
+    target_degree: usize,
+    dataset_name: &str,
+    log_x: bool,
+    log_y: bool,
+) -> Option<FitResult> {
     let valid_points: Vec<[f64; 2]> = points
         .iter()
         .copied()
-        .filter(|p| p[0].is_finite() && p[1].is_finite())
+        .filter(|p| {
+            p[0].is_finite() && p[1].is_finite() && (!log_x || p[0] > 0.0) && (!log_y || p[1] > 0.0)
+        })
+        .map(|p| {
+            [
+                if log_x { p[0].log10() } else { p[0] },
+                if log_y { p[1].log10() } else { p[1] },
+            ]
+        })
         .collect();
 
     let n = valid_points.len();
@@ -88,11 +124,8 @@ pub fn fit_dataset(
     }
 
     let degree = target_degree.clamp(1, 4).min(n - 1);
-    let m = degree + 1; // Number of coefficients c_0 .. c_degree
+    let m = degree + 1;
 
-    // Build normal equations matrix M (m x m) and vector v (m x 1)
-    // M_{j, k} = sum_{i=1..n} x_i^{j + k}
-    // v_j = sum_{i=1..n} y_i * x_i^j
     let mut sum_x_pow = vec![0.0; 2 * degree + 1];
     for p in &valid_points {
         let x = p[0];
@@ -119,21 +152,34 @@ pub fn fit_dataset(
         }
     }
 
-    // Solve mat * coeffs = rhs using Gaussian elimination with partial pivoting
     let coeffs = solve_linear_system(&mut mat, &mut rhs)?;
+    let r_squared = compute_r_squared(&valid_points, &coeffs);
+    let formula = format_scaled_polynomial_formula(&coeffs, log_x, log_y);
 
-    // Calculate R^2 coefficient of determination
+    Some(FitResult {
+        coefficients: coeffs,
+        r_squared,
+        degree,
+        formula,
+        dataset_name: dataset_name.to_owned(),
+        log_x,
+        log_y,
+    })
+}
+
+fn compute_r_squared(valid_points: &[[f64; 2]], coeffs: &[f64]) -> f64 {
+    let n = valid_points.len();
     let y_mean = valid_points.iter().map(|p| p[1]).sum::<f64>() / (n as f64);
     let mut ss_tot = 0.0;
     let mut ss_res = 0.0;
 
-    for p in &valid_points {
+    for p in valid_points {
         let x = p[0];
         let y = p[1];
 
         let mut y_pred = 0.0;
         let mut x_pow = 1.0;
-        for &c in &coeffs {
+        for &c in coeffs {
             y_pred += c * x_pow;
             x_pow *= x;
         }
@@ -142,21 +188,11 @@ pub fn fit_dataset(
         ss_res += (y - y_pred).powi(2);
     }
 
-    let r_squared = if ss_tot < 1e-12 {
+    if ss_tot < 1e-12 {
         if ss_res < 1e-12 { 1.0 } else { 0.0 }
     } else {
         (1.0 - ss_res / ss_tot).clamp(0.0, 1.0)
-    };
-
-    let formula = format_polynomial_formula(&coeffs);
-
-    Some(FitResult {
-        coefficients: coeffs,
-        r_squared,
-        degree,
-        formula,
-        dataset_name: dataset_name.to_owned(),
-    })
+    }
 }
 
 /// Solves a linear system $A x = b$ using Gaussian elimination with partial pivoting.
@@ -217,11 +253,13 @@ fn solve_linear_system(a: &mut [Vec<f64>], b: &mut [f64]) -> Option<Vec<f64>> {
 }
 
 /// Formats polynomial coefficients into a mathematical formula string.
-/// Coefficients order: $[c_0, c_1, \dots, c_d]$ for $f(x) = c_0 + c_1 x + \dots + c_d x^d$.
-fn format_polynomial_formula(coeffs: &[f64]) -> String {
+/// Coefficients order: $[c_0, c_1, \dots, c_d]$ for $f(u) = c_0 + c_1 u + \dots + c_d u^d$.
+fn format_scaled_polynomial_formula(coeffs: &[f64], log_x: bool, log_y: bool) -> String {
+    let lhs = if log_y { "log10(y)" } else { "y" };
+    let var = if log_x { "log10(x)" } else { "x" };
     let degree = coeffs.len().saturating_sub(1);
     if degree == 0 {
-        return format!("y = {:.4}", coeffs.first().copied().unwrap_or(0.0));
+        return format!("{lhs} = {:.4}", coeffs.first().copied().unwrap_or(0.0));
     }
 
     let mut terms = Vec::new();
@@ -248,9 +286,9 @@ fn format_polynomial_formula(coeffs: &[f64]) -> String {
             0 => format!("{sign_str}{abs_coeff:.4}"),
             1 => {
                 if (abs_coeff - 1.0).abs() < 1e-6 {
-                    format!("{sign_str}x")
+                    format!("{sign_str}{var}")
                 } else {
-                    format!("{sign_str}{abs_coeff:.4}x")
+                    format!("{sign_str}{abs_coeff:.4}{var}")
                 }
             }
             p => {
@@ -259,10 +297,15 @@ fn format_polynomial_formula(coeffs: &[f64]) -> String {
                 } else {
                     ""
                 };
-                if (abs_coeff - 1.0).abs() < 1e-6 {
-                    format!("{sign_str}x{sup}")
+                let base_var = if log_x {
+                    format!("({var}){sup}")
                 } else {
-                    format!("{sign_str}{abs_coeff:.4}x{sup}")
+                    format!("{var}{sup}")
+                };
+                if (abs_coeff - 1.0).abs() < 1e-6 {
+                    format!("{sign_str}{base_var}")
+                } else {
+                    format!("{sign_str}{abs_coeff:.4}{base_var}")
                 }
             }
         };
@@ -271,9 +314,9 @@ fn format_polynomial_formula(coeffs: &[f64]) -> String {
     }
 
     if terms.is_empty() {
-        "y = 0".to_owned()
+        format!("{lhs} = 0")
     } else {
-        format!("y = {}", terms.join(""))
+        format!("{lhs} = {}", terms.join(""))
     }
 }
 
@@ -423,10 +466,50 @@ mod tests {
             background_opacity: 1.0,
             background_color: egui::Color32::from_rgb(20, 24, 30),
             aspect_ratio: crate::export::AspectRatioOption::SixteenNine,
+            ..Default::default()
         };
 
         if let Ok(png_bytes) = crate::export::export_custom_png(&datasets, &options) {
             let _ = std::fs::write("/tmp/regression_fit_overlay.png", png_bytes);
         }
+    }
+
+    #[test]
+    fn test_fit_dataset_scaled_power_law_log_log() {
+        let pts = vec![
+            [0.0, 0.0],
+            [-5.0, 10.0],
+            [1.0, 2.5],
+            [2.0, 20.0],
+            [4.0, 160.0],
+            [10.0, 2500.0],
+            [100.0, 2_500_000.0],
+        ];
+        let res =
+            super::fit_dataset_scaled(&pts, 1, "PowerLaw", true, true).expect("Log-log fit failed");
+        assert!(res.log_x && res.log_y);
+        assert!((res.r_squared - 1.0).abs() < 1e-9);
+        assert!(res.formula.contains("log10(y)") && res.formula.contains("log10(x)"));
+        assert!((res.eval(4.0) - 160.0).abs() < 1e-6);
+        assert!((res.eval(10.0) - 2500.0).abs() < 1e-5);
+        assert!(res.eval(0.0).is_nan());
+    }
+
+    #[test]
+    fn test_fit_dataset_scaled_exponential_semi_log() {
+        let pts = vec![
+            [0.0, 10.0],
+            [2.0, 1.0],
+            [4.0, 0.1],
+            [6.0, 0.01],
+            [8.0, 0.001],
+        ];
+        let res = super::fit_dataset_scaled(&pts, 1, "ExpDecay", false, true)
+            .expect("Semi-log fit failed");
+        assert!(!res.log_x && res.log_y);
+        assert!((res.r_squared - 1.0).abs() < 1e-9);
+        assert!(res.formula.contains("log10(y)"));
+        assert!((res.eval(2.0) - 1.0).abs() < 1e-6);
+        assert!((res.eval(6.0) - 0.01).abs() < 1e-8);
     }
 }

@@ -4,14 +4,15 @@
 use std::{ops::RangeInclusive, sync::Arc};
 
 use egui::{
+    Align2, Color32, CornerRadius, Id, ImageOptions, Mesh, NumExt as _, PopupAnchor, Pos2, Rect,
+    Rgba, Shape, Stroke, TextStyle, TextureId, Ui, Vec2, WidgetText,
     emath::Rot2,
     epaint::{CircleShape, PathStroke, TextShape},
-    pos2, vec2, Align2, Color32, CornerRadius, Id, ImageOptions, Mesh, NumExt as _, PopupAnchor,
-    Pos2, Rect, Rgba, Shape, Stroke, TextStyle, TextureId, Ui, Vec2, WidgetText,
+    pos2, vec2,
 };
 
 use emath::Float as _;
-use rect_elem::{highlighted_color, RectElement};
+use rect_elem::{RectElement, highlighted_color};
 
 use super::{Cursor, LabelFormatter, PlotBounds, PlotTransform};
 
@@ -155,6 +156,7 @@ pub trait PlotItem {
             PlotGeometry::Points(points) => points
                 .iter()
                 .enumerate()
+                .filter(|(_, value)| transform.is_point_valid_for_scale(value))
                 .map(|(index, value)| {
                     let pos = transform.position_from_point(value);
                     let dist_sq = point.distance_sq(pos);
@@ -291,6 +293,10 @@ impl PlotItem for HLine {
             ..
         } = self;
 
+        if !y.is_finite() || (transform.log_axis().y && *y <= 0.0) {
+            return;
+        }
+
         let points = vec![
             transform.position_from_point(&PlotPoint::new(transform.bounds().min[0], *y)),
             transform.position_from_point(&PlotPoint::new(transform.bounds().max[0], *y)),
@@ -388,6 +394,10 @@ impl PlotItem for VLine {
             style,
             ..
         } = self;
+
+        if !x.is_finite() || (transform.log_axis().x && *x <= 0.0) {
+            return;
+        }
 
         let points = vec![
             transform.position_from_point(&PlotPoint::new(*x, transform.bounds().min[1])),
@@ -551,7 +561,7 @@ impl PlotItem for Line<'_> {
             style,
             ..
         } = self;
-        let mut fill = *fill;
+        let fill = *fill;
 
         let mut final_stroke: PathStroke = (*stroke).into();
         // if we have a gradient color, we need to wrap the stroke callback to transpose the position to a value
@@ -565,25 +575,30 @@ impl PlotItem for Line<'_> {
             final_stroke = PathStroke::new_uv(stroke.width, wrapped_callback.clone());
         }
 
-        let values_tf: Vec<_> = series
-            .points()
-            .iter()
-            .map(|v| transform.position_from_point(v))
-            .collect();
-        let n_values = values_tf.len();
-
-        // Fill the area between the line and a reference line, if required.
-        if n_values < 2 {
-            fill = None;
+        let mut segments: Vec<Vec<Pos2>> = Vec::new();
+        let mut current: Vec<Pos2> = Vec::new();
+        for v in series.points() {
+            if transform.is_point_valid_for_scale(v) {
+                current.push(transform.position_from_point(v));
+            } else if !current.is_empty() {
+                segments.push(std::mem::take(&mut current));
+            }
         }
+        if !current.is_empty() {
+            segments.push(current);
+        }
+
         if let Some(y_reference) = fill {
             let mut fill_alpha = self.fill_alpha;
             if base.highlight {
                 fill_alpha = (2.0 * fill_alpha).at_most(1.0);
             }
-            let y = transform
-                .position_from_point(&PlotPoint::new(0.0, y_reference))
-                .y;
+            let y_ref_val = if transform.log_axis().y {
+                (y_reference as f64).max(transform.bounds().min[1])
+            } else {
+                y_reference as f64
+            };
+            let y = transform.position_from_point_y(y_ref_val);
             let default_fill_color = Rgba::from(stroke.color)
                 .to_opaque()
                 .multiply(fill_alpha)
@@ -605,32 +620,40 @@ impl PlotItem for Line<'_> {
                 }
             };
 
-            let mut mesh = Mesh::default();
-            let expected_intersections = 20;
-            mesh.reserve_triangles((n_values - 1) * 2);
-            mesh.reserve_vertices(n_values * 2 + expected_intersections);
-            values_tf.windows(2).for_each(|w| {
-                let fill_color = fill_color_for_point(w[0]);
-                let i = mesh.vertices.len() as u32;
-                mesh.colored_vertex(w[0], fill_color);
-                mesh.colored_vertex(pos2(w[0].x, y), fill_color);
-                if let Some(x) = y_intersection(&w[0], &w[1], y) {
-                    let point = pos2(x, y);
-                    mesh.colored_vertex(point, fill_color_for_point(point));
-                    mesh.add_triangle(i, i + 1, i + 2);
-                    mesh.add_triangle(i + 2, i + 3, i + 4);
-                } else {
-                    mesh.add_triangle(i, i + 1, i + 2);
-                    mesh.add_triangle(i + 1, i + 2, i + 3);
+            for values_tf in &segments {
+                let n_values = values_tf.len();
+                if n_values < 2 {
+                    continue;
                 }
-            });
-            let last = values_tf[n_values - 1];
-            let fill_color = fill_color_for_point(last);
-            mesh.colored_vertex(last, fill_color);
-            mesh.colored_vertex(pos2(last.x, y), fill_color);
-            shapes.push(Shape::Mesh(std::sync::Arc::new(mesh)));
+                let mut mesh = Mesh::default();
+                let expected_intersections = 20;
+                mesh.reserve_triangles((n_values - 1) * 2);
+                mesh.reserve_vertices(n_values * 2 + expected_intersections);
+                values_tf.windows(2).for_each(|w| {
+                    let fill_color = fill_color_for_point(w[0]);
+                    let i = mesh.vertices.len() as u32;
+                    mesh.colored_vertex(w[0], fill_color);
+                    mesh.colored_vertex(pos2(w[0].x, y), fill_color);
+                    if let Some(x) = y_intersection(&w[0], &w[1], y) {
+                        let point = pos2(x, y);
+                        mesh.colored_vertex(point, fill_color_for_point(point));
+                        mesh.add_triangle(i, i + 1, i + 2);
+                        mesh.add_triangle(i + 2, i + 3, i + 4);
+                    } else {
+                        mesh.add_triangle(i, i + 1, i + 2);
+                        mesh.add_triangle(i + 1, i + 2, i + 3);
+                    }
+                });
+                let last = values_tf[n_values - 1];
+                let fill_color = fill_color_for_point(last);
+                mesh.colored_vertex(last, fill_color);
+                mesh.colored_vertex(pos2(last.x, y), fill_color);
+                shapes.push(Shape::Mesh(std::sync::Arc::new(mesh)));
+            }
         }
-        style.style_line(values_tf, final_stroke, base.highlight, shapes);
+        for values_tf in segments {
+            style.style_line(values_tf, final_stroke.clone(), base.highlight, shapes);
+        }
     }
 
     fn initialize(&mut self, x_range: RangeInclusive<f64>) {
@@ -1002,11 +1025,19 @@ impl PlotItem for Points<'_> {
             stem_stroke.width *= 2.0;
         }
 
-        let y_reference = stems.map(|y| transform.position_from_point(&PlotPoint::new(0.0, y)).y);
+        let y_reference = stems.map(|y| {
+            let y_val = if transform.log_axis().y {
+                (y as f64).max(transform.bounds().min[1])
+            } else {
+                y as f64
+            };
+            transform.position_from_point_y(y_val)
+        });
 
         series
             .points()
             .iter()
+            .filter(|value| transform.is_point_valid_for_scale(value))
             .map(|value| transform.position_from_point(value))
             .for_each(|center| {
                 let tf = |dx: f32, dy: f32| -> Pos2 { center + radius * vec2(dx, dy) };
@@ -1932,8 +1963,17 @@ pub(super) fn rulers_and_tooltip_at_value(
                 ui.add_space(2.0);
             }
             let scale = plot.transform.dvalue_dpos();
-            let x_decimals = ((-scale[0].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6);
-            let y_decimals = ((-scale[1].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6);
+            let log_axis = plot.transform.log_axis();
+            let x_decimals = if log_axis.x && value.x > 0.0 {
+                ((-value.x.log10()).ceil().at_least(0.0) as usize + 2).clamp(1, 6)
+            } else {
+                ((-scale[0].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6)
+            };
+            let y_decimals = if log_axis.y && value.y > 0.0 {
+                ((-value.y.log10()).ceil().at_least(0.0) as usize + 2).clamp(1, 6)
+            } else {
+                ((-scale[1].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6)
+            };
             if plot.show_x && plot.show_y {
                 ui.label(
                     egui::RichText::new(format!("x = {:.*}", x_decimals, value.x)).monospace(),

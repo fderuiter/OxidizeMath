@@ -59,10 +59,7 @@ fn test_arrows_extract_points_bounds_and_offscreen_render() {
     arrows.initialize(0.0..=2.0);
 
     let pts = arrows.extract_points();
-    assert_eq!(
-        pts,
-        vec![[0.0, 0.0], [0.8, 0.4], [1.0, 0.0], [1.8, 0.6]]
-    );
+    assert_eq!(pts, vec![[0.0, 0.0], [0.8, 0.4], [1.0, 0.0], [1.8, 0.6]]);
 
     let bounds = arrows.bounds();
     assert!(bounds.max()[0] >= 1.8 && bounds.max()[1] >= 0.6);
@@ -120,8 +117,8 @@ fn test_boxplot_extract_points_and_offscreen_render() {
 
 #[test]
 fn test_mixed_line_and_bar_and_raster_exports() {
-    let mut line = Line::new("Trajectory", vec![[0.0, 0.2], [1.0, 0.6], [2.0, 0.8]])
-        .color(egui::Color32::RED);
+    let mut line =
+        Line::new("Trajectory", vec![[0.0, 0.2], [1.0, 0.6], [2.0, 0.8]]).color(egui::Color32::RED);
     line.initialize(0.0..=2.0);
     let bars = BarChart::new("Shares", vec![Bar::new(0.0, 0.6), Bar::new(1.0, 0.4)])
         .color(egui::Color32::BLUE);
@@ -167,4 +164,44 @@ fn test_empty_primitives_and_raster_rejected() {
         bounds: None,
     };
     assert!(render_primitives_image(&[empty_prim], &opts).is_err());
+}
+
+#[test]
+fn test_primitives_log_axis_projection_png_and_svg() {
+    let prim = ExportPrimitive::Points {
+        name: "Decades".to_string(),
+        points: vec![[-5.0, 10.0], [1.0, 10.0], [10.0, 100.0], [100.0, 1000.0]],
+        color: egui::Color32::from_rgb(80, 220, 120),
+        radius: 4.0,
+    };
+    let opts = ExportOptions {
+        width: 400,
+        height: 400,
+        log_x: true,
+        log_y: true,
+        ..ExportOptions::default()
+    };
+    let img = render_primitives_image(std::slice::from_ref(&prim), &opts).expect("log png");
+    assert!(count_non_bg_pixels(&img, opts.background_color) > 20);
+
+    let svg = export_primitives_svg(std::slice::from_ref(&prim), &opts).expect("log svg");
+    let cx_vals: Vec<f64> = svg
+        .lines()
+        .filter_map(|line| {
+            let start = line.find("cx=\"")? + 4;
+            let end = line[start..].find('"')? + start;
+            line[start..end].parse::<f64>().ok()
+        })
+        .collect();
+    assert_eq!(
+        cx_vals.len(),
+        3,
+        "Non-positive point must be filtered on log axis"
+    );
+    let step_01 = cx_vals[1] - cx_vals[0];
+    let step_12 = cx_vals[2] - cx_vals[1];
+    assert!(
+        (step_01 - step_12).abs() < 0.25,
+        "Decade steps must be equal in log10 space: {cx_vals:?}"
+    );
 }

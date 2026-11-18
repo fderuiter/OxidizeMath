@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use egui::{epaint::Hsva, Color32, Pos2, Response, Vec2, Vec2b};
+use egui::{Color32, Pos2, Response, Vec2, Vec2b, epaint::Hsva};
 
 use crate::{BoundsModification, PlotBounds, PlotItem, PlotPoint, PlotTransform};
 
@@ -293,10 +293,15 @@ impl<'a> PlotUi<'a> {
             .iter()
             .flat_map(|item| item.extract_export_primitives())
             .collect();
-        if let Ok(png_bytes) = crate::export_primitives::export_primitives_png(
-            &primitives,
-            &crate::export::ExportOptions::default(),
-        ) {
+        let log_axis = self.last_plot_transform.log_axis();
+        let options = crate::export::ExportOptions {
+            log_x: log_axis.x,
+            log_y: log_axis.y,
+            ..Default::default()
+        };
+        if let Ok(png_bytes) =
+            crate::export_primitives::export_primitives_png(&primitives, &options)
+        {
             crate::export::save_file_dialog("plot.png", &png_bytes, "PNG Image", &["png"]);
         }
     }
@@ -313,10 +318,14 @@ impl<'a> PlotUi<'a> {
             .iter()
             .flat_map(|item| item.extract_export_primitives())
             .collect();
-        if let Ok(svg_text) = crate::export_primitives::export_primitives_svg(
-            &primitives,
-            &crate::export::ExportOptions::default(),
-        ) {
+        let log_axis = self.last_plot_transform.log_axis();
+        let options = crate::export::ExportOptions {
+            log_x: log_axis.x,
+            log_y: log_axis.y,
+            ..Default::default()
+        };
+        if let Ok(svg_text) = crate::export_primitives::export_primitives_svg(&primitives, &options)
+        {
             crate::export::save_file_dialog(
                 "plot.svg",
                 svg_text.as_bytes(),

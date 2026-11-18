@@ -79,6 +79,16 @@ pub trait UnifiedModel:
     {
         false
     }
+
+    /// Evaluate a fast scalar observable `(metric_label, value)` from `params`
+    /// for parameter sensitivity analysis. Returns `None` when no fast scalar
+    /// observable is available on the UI thread.
+    fn evaluate_observable(_params: &HashMap<String, f64>) -> Option<(&'static str, f64)>
+    where
+        Self: Sized,
+    {
+        None
+    }
 }
 
 #[allow(missing_docs)]

@@ -35,6 +35,17 @@ impl Default for BetSizeCalculatorTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BetSizeState {
+    probability_input: f64,
+    odds_format: OddsFormat,
+    decimal_odds: f64,
+    american_odds: f64,
+    fractional_numerator: f64,
+    fractional_denominator: f64,
+    bankroll: f64,
+}
+
 impl InteractiveTool for BetSizeCalculatorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -50,16 +61,6 @@ impl InteractiveTool for BetSizeCalculatorTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BetSizeState {
-            probability_input: f64,
-            odds_format: OddsFormat,
-            decimal_odds: f64,
-            american_odds: f64,
-            fractional_numerator: f64,
-            fractional_denominator: f64,
-            bankroll: f64,
-        }
         serde_json::to_string(&BetSizeState {
             probability_input: self.probability_input,
             odds_format: self.odds_format,
@@ -73,16 +74,6 @@ impl InteractiveTool for BetSizeCalculatorTool {
     }
 
     fn load_state(&mut self, state: &str) {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct BetSizeState {
-            probability_input: f64,
-            odds_format: OddsFormat,
-            decimal_odds: f64,
-            american_odds: f64,
-            fractional_numerator: f64,
-            fractional_denominator: f64,
-            bankroll: f64,
-        }
         if let Ok(s) = serde_json::from_str::<BetSizeState>(state) {
             self.probability_input = s.probability_input;
             self.odds_format = s.odds_format;
