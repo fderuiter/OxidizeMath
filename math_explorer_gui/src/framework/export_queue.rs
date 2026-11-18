@@ -100,6 +100,20 @@ impl SimulationFramework {
         self.export_queue.push(format);
     }
 
+    /// Resolves export datasets for the active tool, falling back to `current_valid_plot_datasets`
+    /// when thread-local plot datasets were cleared prior to modal rendering or across panes.
+    pub(crate) fn export_datasets_with_fallback(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let Some(tool) = &self.active_tool else {
+            return Vec::new();
+        };
+        let datasets = tool.export_datasets();
+        if datasets.is_empty() && !self.current_valid_plot_datasets.is_empty() {
+            self.current_valid_plot_datasets.clone()
+        } else {
+            datasets
+        }
+    }
+
     /// Dispatches all pending export requests accumulated in the action queue.
     /// This is executed at the end of the frame after active simulation tools have rendered
     /// and their plot datasets have been fully populated into `egui_plot`.
@@ -110,11 +124,10 @@ impl SimulationFramework {
 
         let requests = self.export_queue.drain();
 
-        let (tool_name, datasets) = if let Some(tool) = &self.active_tool {
-            (tool.name(), tool.export_datasets())
-        } else {
+        let Some(tool_name) = self.active_tool.as_ref().map(|t| t.name()) else {
             return;
         };
+        let datasets = self.export_datasets_with_fallback();
 
         let file_slug = tool_name.to_lowercase().replace(' ', "_");
 

@@ -1,6 +1,7 @@
 pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
+mod pane_slots;
 mod session;
 mod split_view;
 mod state;
@@ -18,6 +19,8 @@ mod tests_diagnostics;
 mod tests_domain_bar;
 #[cfg(test)]
 mod tests_multi_pane;
+#[cfg(test)]
+mod tests_pane_isolation;
 #[cfg(test)]
 mod tests_secondary_menus;
 #[cfg(test)]
@@ -57,6 +60,8 @@ pub struct MathExplorerApp {
     pub session_manager: WorkspaceSessionManager,
     pub viewport_layout: ViewportLayout,
     pub pane_tabs: Vec<usize>,
+    pub focused_pane: usize,
+    pane_slots: pane_slots::SecondaryPaneSlots,
     pane_contexts: [egui::Context; 4],
     pane_textures: [std::collections::HashMap<egui::TextureId, egui::TextureId>; 4],
     pub is_dragging_divider: bool,
@@ -85,6 +90,8 @@ impl Default for MathExplorerApp {
             session_manager: WorkspaceSessionManager::new(),
             viewport_layout: ViewportLayout::Single,
             pane_tabs: vec![0, 1, 2, 3],
+            focused_pane: 0,
+            pane_slots: pane_slots::SecondaryPaneSlots::default(),
             pane_contexts: std::array::from_fn(|_| egui::Context::default()),
             pane_textures: std::array::from_fn(|_| std::collections::HashMap::new()),
             is_dragging_divider: false,
@@ -93,13 +100,14 @@ impl Default for MathExplorerApp {
 }
 
 impl MathExplorerApp {
-    /// Swaps the primary and secondary pane active tabs immediately.
+    /// Swaps the primary and secondary pane active tabs and their per-pane states immediately.
     pub fn swap_panes(&mut self) {
         if self.tabs.len() > 1 {
             std::mem::swap(&mut self.selected_tab, &mut self.secondary_tab);
             if self.pane_tabs.len() > 1 {
                 self.pane_tabs.swap(0, 1);
             }
+            self.swap_primary_and_secondary_states();
         }
     }
 
@@ -127,6 +135,7 @@ impl MathExplorerApp {
             } else if pane_idx == 1 {
                 self.secondary_tab = tab_idx;
             }
+            self.on_pane_tab_assigned(pane_idx, tab_idx);
         }
     }
 
@@ -140,6 +149,7 @@ impl MathExplorerApp {
         if layout != ViewportLayout::Single && self.pane_tabs.len() > 1 {
             self.pane_tabs[1] = self.secondary_tab;
         }
+        self.prune_inactive_pane_slots(layout.pane_count());
     }
 
     /// Synchronizes legacy `split_layout_mode` with current `viewport_layout`.
@@ -398,10 +408,18 @@ impl eframe::App for MathExplorerApp {
                 SplitLayoutMode::Single => ViewportLayout::Single,
             };
             self.viewport_layout = layout;
+            if !self.pane_tabs.is_empty() {
+                self.pane_tabs[0] = self.selected_tab;
+            }
+            if self.pane_tabs.len() > 1 {
+                self.pane_tabs[1] = self.secondary_tab;
+            }
             layout
         } else {
             ViewportLayout::Single
         };
+
+        self.prune_inactive_pane_slots(active_layout.pane_count());
 
         if active_layout != ViewportLayout::Single {
             let mut split_state = std::mem::take(&mut self.split_view_state);
@@ -420,21 +438,7 @@ impl eframe::App for MathExplorerApp {
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
 
         // Render Command Palette Overlay
-        if let Some(selection) = self.command_palette.show(ctx, &self.tabs) {
-            if selection.tab_index < self.tabs.len() {
-                self.select_tab(ctx, selection.tab_index);
-                if let Some(tool_name) = &selection.tool_name {
-                    let tab = &mut self.tabs[selection.tab_index];
-                    tab.select_tool_by_name(tool_name);
-                    let tab_name = tab.name();
-                    let msg = format!("Switched to tool {} in tab {}", tool_name, tab_name);
-                    crate::accessibility::announce_status(&msg);
-                    ctx.data_mut(|d| {
-                        d.insert_temp(egui::Id::new("aria_live_message"), msg);
-                    });
-                }
-            }
-        }
+        self.apply_command_palette_selection(ctx);
 
         let current_app_state = self.get_app_state();
         self.session_manager

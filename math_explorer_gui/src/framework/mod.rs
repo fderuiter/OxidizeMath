@@ -303,6 +303,8 @@ pub struct SimulationFramework {
     pub step_counter: usize,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
+    pub(super) instance_id: u64,
+    pub(super) overlay_sync: (Option<bool>, Option<bool>),
 }
 
 impl SimulationFramework {
@@ -343,6 +345,8 @@ impl SimulationFramework {
             diagnostic_report: None,
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
+            instance_id: ui::next_framework_id(),
+            overlay_sync: (None, None),
         };
 
         if !framework.available_tools.is_empty() {
@@ -378,7 +382,12 @@ impl SimulationFramework {
         self.step_counter = 0;
         self.baseline_tool_state = factory_baseline_state;
         let active_tool_state = new_tool.save_state();
+        let prev_datasets = egui_plot::get_last_plot_datasets();
+        egui_plot::clear_last_plot_datasets();
         let initial_datasets = new_tool.export_datasets();
+        if !prev_datasets.is_empty() {
+            egui_plot::append_last_plot_datasets(&prev_datasets);
+        }
         self.current_valid_plot_datasets = initial_datasets.clone();
         self.last_valid_snapshot = Some(StateSnapshot {
             tool_state: active_tool_state,
@@ -456,8 +465,32 @@ impl SimulationFramework {
 
         if let Some(idx) = tool_idx {
             if idx < self.available_tools.len() {
-                self.select_tool(idx);
+                if self.selected_tool_index == Some(idx) && self.active_tool.is_some() {
+                    if let Some(tool) = &mut self.active_tool {
+                        if let Some(saved) = self.saved_tool_states.get(tool.name()) {
+                            tool.load_state(saved);
+                        }
+                        let prev = egui_plot::get_last_plot_datasets();
+                        egui_plot::clear_last_plot_datasets();
+                        let refreshed = tool.export_datasets();
+                        if !prev.is_empty() {
+                            egui_plot::append_last_plot_datasets(&prev);
+                        }
+                        self.current_valid_plot_datasets = refreshed.clone();
+                        self.last_valid_snapshot = Some(StateSnapshot {
+                            tool_state: tool.save_state(),
+                            plot_datasets: refreshed,
+                            step_index: self.step_counter,
+                            timestamp: crate::web_io::PlatformInstant::now(),
+                        });
+                    }
+                } else {
+                    self.select_tool(idx);
+                }
             }
+        } else {
+            self.selected_tool_index = None;
+            self.active_tool = None;
         }
     }
 }

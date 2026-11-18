@@ -36,6 +36,10 @@ pub struct AppState {
     pub viewport_layout: ViewportLayout,
     #[serde(default)]
     pub pane_tabs: Vec<usize>,
+    #[serde(default)]
+    pub focused_pane: usize,
+    #[serde(default)]
+    pub pane_tab_states: Vec<std::collections::HashMap<String, String>>,
 }
 
 impl Default for AppState {
@@ -55,6 +59,8 @@ impl Default for AppState {
             split_ratio: 0.5,
             viewport_layout: ViewportLayout::Single,
             pane_tabs: vec![0, 1, 2, 3],
+            focused_pane: 0,
+            pane_tab_states: Vec::new(),
         }
     }
 }
@@ -114,6 +120,8 @@ impl AppState {
             split_ratio: app.split_ratio.clamp(0.20, 0.80),
             viewport_layout,
             pane_tabs,
+            focused_pane: app.active_focused_pane(),
+            pane_tab_states: app.extract_pane_tab_states(),
         }
     }
 
@@ -183,6 +191,7 @@ impl AppState {
         }
         if app.viewport_layout == ViewportLayout::Single {
             app.pane_tabs[0] = app.selected_tab;
+            app.focused_pane = 0;
         } else {
             if let Some(&first) = app.pane_tabs.first() {
                 app.selected_tab = first;
@@ -190,6 +199,10 @@ impl AppState {
             if let Some(&second) = app.pane_tabs.get(1) {
                 app.secondary_tab = second;
             }
+            let max_pane = app.viewport_layout.pane_count().saturating_sub(1);
+            app.focused_pane = self.focused_pane.min(max_pane);
         }
+
+        app.restore_pane_tab_states(self.pane_tab_states, &self.tab_states);
     }
 }

@@ -245,8 +245,8 @@ impl SimulationFramework {
 
     fn render_modal_save_png(&mut self, ui: &mut egui::Ui) {
         if ui.button("💾 Save PNG").clicked() {
+            let datasets = self.export_datasets_with_fallback();
             if let Some(tool) = &self.active_tool {
-                let datasets = tool.export_datasets();
                 let file_slug = tool.name().to_lowercase().replace(' ', "_");
                 let filename = format!("{}_figure.png", file_slug);
                 match egui_plot::export::export_custom_png(&datasets, &self.export_options) {
@@ -270,8 +270,8 @@ impl SimulationFramework {
 
     fn render_modal_save_svg(&mut self, ui: &mut egui::Ui) {
         if ui.button("💾 Save SVG").clicked() {
+            let datasets = self.export_datasets_with_fallback();
             if let Some(tool) = &self.active_tool {
-                let datasets = tool.export_datasets();
                 let file_slug = tool.name().to_lowercase().replace(' ', "_");
                 let filename = format!("{}_figure.svg", file_slug);
                 match egui_plot::export::export_custom_svg(&datasets, &self.export_options) {
@@ -295,8 +295,13 @@ impl SimulationFramework {
 
     fn render_modal_save_gif(&mut self, ui: &mut egui::Ui) {
         if ui.button("🎬 Save GIF").clicked() {
+            let step_count = (self.export_gif_frames as usize).max(1);
+            let cached = self.current_valid_plot_datasets.clone();
             if let Some(tool) = &mut self.active_tool {
-                let frames = tool.sample_animation_frames(self.export_gif_frames as usize);
+                let mut frames = tool.sample_animation_frames(step_count);
+                if frames.is_empty() && !cached.is_empty() {
+                    frames = egui_plot::export::sample_progressive_frames(&cached, step_count);
+                }
                 let file_slug = tool.name().to_lowercase().replace(' ', "_");
                 let filename = format!("{}_animation.gif", file_slug);
                 match egui_plot::export::export_custom_gif(
@@ -324,8 +329,8 @@ impl SimulationFramework {
 
     fn render_modal_copy_clipboard(&mut self, ui: &mut egui::Ui) {
         if ui.button("📋 Copy to Clipboard").clicked() {
-            if let Some(tool) = &self.active_tool {
-                let datasets = tool.export_datasets();
+            let datasets = self.export_datasets_with_fallback();
+            if self.active_tool.is_some() {
                 match egui_plot::export::export_custom_image(&datasets, &self.export_options) {
                     Ok(color_img) => {
                         let ctx = ui.ctx().clone();
