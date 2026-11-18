@@ -103,7 +103,8 @@ impl SimWorkerState {
                 cmd,
                 SimCommand::Start | SimCommand::Pause | SimCommand::TrainEpisodes(_)
             ),
-            Self::Uninitialized | Self::Faulted | Self::Terminated => false,
+            Self::Faulted => matches!(cmd, SimCommand::Reset),
+            Self::Uninitialized | Self::Terminated => false,
         }
     }
 }
