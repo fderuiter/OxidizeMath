@@ -5,7 +5,7 @@
 //! advantages and a clipped surrogate objective.
 
 use math_explorer::applied::grpo::formulas::{
-    clipped_surrogate_objective, response_level_advantage,
+    clipped_surrogate_objective, normalize_group_advantages,
 };
 
 fn main() {
@@ -17,18 +17,20 @@ fn main() {
 
     // 2. Calculate Advantages (normalized z-scores)
     // Mean = 0.566, StdDev ≈ 0.404
-    let adv_0 = response_level_advantage(&rewards, rewards[0]); // High advantage
-    let adv_1 = response_level_advantage(&rewards, rewards[1]); // Near zero
-    let adv_2 = response_level_advantage(&rewards, rewards[2]); // Negative advantage
+    // Demonstrates zero-allocation group advantage normalization into a pre-allocated buffer
+    let mut advantages = vec![0.0; rewards.len()];
+    normalize_group_advantages(&rewards, &mut advantages);
 
-    println!("Advantages: [{:.4}, {:.4}, {:.4}]", adv_0, adv_1, adv_2);
+    println!(
+        "Advantages: [{:.4}, {:.4}, {:.4}]",
+        advantages[0], advantages[1], advantages[2]
+    );
 
     // 3. Compute Objective
     // Assume current policy probabilities (pi) and old policy (pi_old)
     // If pi > pi_old for a good advantage (adv_0), objective increases.
     let pi_thetas = vec![0.6, 0.3, 0.1];
     let pi_olds = vec![0.5, 0.3, 0.2];
-    let advantages = vec![adv_0, adv_1, adv_2];
 
     let loss = clipped_surrogate_objective(
         &pi_thetas,

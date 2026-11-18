@@ -897,10 +897,19 @@
   ],
   "crates/domain_applied/src/applied/grpo/formulas.rs": [
     {
+      "signature": "pub fn batch_group_advantages (rewards : & [f64]) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn batch_response_level_advantages (rewards : & [f64]) -> Vec < f64 >"
+    },
+    {
       "signature": "pub fn clipped_surrogate_objective (pi_thetas : & [f64] , pi_theta_olds : & [f64] , advantages : & [f64] , epsilon : f64 , beta : f64 , kl_divergence : f64 ,) -> f64"
     },
     {
       "signature": "pub fn kl_divergence_lower_bound (p : f64 , beta : f64) -> f64"
+    },
+    {
+      "signature": "pub fn normalize_group_advantages (rewards : & [f64] , out : & mut [f64])"
     },
     {
       "signature": "pub fn response_level_advantage (rewards : & [f64] , reward_i : f64) -> f64"
