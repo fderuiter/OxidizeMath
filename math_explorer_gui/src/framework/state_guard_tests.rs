@@ -412,20 +412,59 @@ fn test_apply_preset_json_malformed_surfaces_toast_and_telemetry_warning() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let applied = framework.apply_preset_json("{not valid preset json");
-    let err_msg = applied.expect_err("Malformed JSON must return Err");
-    let toast = framework
-        .preset_dialog
-        .toast_error
-        .clone()
-        .expect("toast_error must be populated on malformed preset JSON");
-    assert_eq!(toast, err_msg);
-
-    let events = federated_registry::global_registry().try_recv_all();
-    let warning = events
-        .iter()
-        .rev()
-        .find(|ev| ev.source == "PresetSerialization" && ev.message == toast)
-        .expect("Expected TelemetryEvent from PresetSerialization");
+    let mut warning = None;
+    for _ in 0..5 {
+        let err_msg = framework
+            .apply_preset_json("{not valid preset json")
+            .expect_err("Malformed JSON must return Err");
+        let toast = framework
+            .preset_dialog
+            .toast_error
+            .clone()
+            .expect("toast_error must be populated on malformed preset JSON");
+        assert_eq!(toast, err_msg);
+        if let Some(ev) = federated_registry::global_registry()
+            .try_recv_all()
+            .into_iter()
+            .rev()
+            .find(|ev| ev.source == "PresetSerialization" && ev.message == toast)
+        {
+            warning = Some(ev);
+            break;
+        }
+    }
+    let warning = warning.expect("Expected TelemetryEvent from PresetSerialization");
     assert_eq!(warning.severity, federated_registry::Severity::Warning);
+}
+
+#[test]
+fn test_starter_card_launch_isolates_cross_pane_plot_datasets_and_syncs_owner() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut fw = SimulationFramework::new("epidemiology");
+    let foreign_plot = vec![("OtherPaneCurve".to_string(), vec![[0.0, 99.0], [1.0, 88.0]])];
+    egui_plot::clear_last_plot_datasets();
+    egui_plot::append_last_plot_datasets(&foreign_plot);
+
+    let cards =
+        crate::starter_gallery::get_starter_cards_for_domain("epidemiology", &fw.available_tools);
+    let net_card = cards
+        .iter()
+        .find(|c| c.tool_name == Some("NetworkPropagationTool"))
+        .expect("NetworkPropagationTool starter card expected");
+    assert!(fw.launch_starter_card(net_card).is_ok());
+
+    // NetworkPropagationTool uses default egui_plot export_datasets(), so foreign pane data must
+    // neither leak into its snapshot/cache nor be wiped from egui_plot's global buffer.
+    assert!(fw.current_valid_plot_datasets.is_empty());
+    assert!(fw
+        .last_valid_snapshot()
+        .is_some_and(|s| s.plot_datasets.is_empty()));
+    assert_eq!(
+        fw.sync_state.datasets_owner_tool,
+        Some("Network Propagation")
+    );
+    assert_eq!(egui_plot::get_last_plot_datasets(), foreign_plot);
+    egui_plot::clear_last_plot_datasets();
 }

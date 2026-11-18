@@ -416,7 +416,7 @@ impl SimulationFramework {
             let any = owner.is_some();
             let p = resolve_scoped_overlay(
                 self.show_theory_portal,
-                self.overlay_sync.0,
+                self.sync_state.theory_portal,
                 d.get_temp::<bool>(inst_portal),
                 d.get_temp::<bool>(dom_portal),
                 d.get_temp::<bool>(global_portal),
@@ -425,7 +425,7 @@ impl SimulationFramework {
             );
             let g = resolve_scoped_overlay(
                 self.show_starter_gallery,
-                self.overlay_sync.1,
+                self.sync_state.starter_gallery,
                 d.get_temp::<bool>(inst_gallery),
                 d.get_temp::<bool>(dom_gallery),
                 d.get_temp::<bool>(global_gallery),
@@ -450,8 +450,8 @@ impl SimulationFramework {
             self.show_starter_gallery = g;
         }
         self.write_overlay_keys(ctx, id_source);
-        self.overlay_sync.0 = Some(self.show_theory_portal);
-        self.overlay_sync.1 = Some(self.show_starter_gallery);
+        self.sync_state.theory_portal = Some(self.show_theory_portal);
+        self.sync_state.starter_gallery = Some(self.show_starter_gallery);
     }
 
     fn write_overlay_keys(&self, ctx: &egui::Context, id_source: &str) {

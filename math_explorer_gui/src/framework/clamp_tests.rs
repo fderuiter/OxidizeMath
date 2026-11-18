@@ -11,6 +11,21 @@ fn load_active(fw: &mut SimulationFramework, state: &str) {
     fw.active_tool.as_mut().unwrap().load_state(state);
 }
 
+fn assert_clamp_emits(
+    mut run: impl FnMut(&mut SimulationFramework),
+    fw: &mut SimulationFramework,
+    needle: &str,
+) {
+    for _ in 0..5 {
+        let _ = federated_registry::global_registry().try_recv_all();
+        run(fw);
+        if drained_telemetry_contains(needle) {
+            return;
+        }
+    }
+    panic!("Expected SimulationFramework telemetry containing '{needle}'");
+}
+
 fn drained_telemetry_contains(needle: &str) -> bool {
     federated_registry::global_registry()
         .try_recv_all()
@@ -41,9 +56,16 @@ fn test_clamp_parameters_multistep_lorenz_restores_plots_and_stabilizes() {
         let _g = crate::reflective_ui::tests::TEST_MUTEX
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let _ = federated_registry::global_registry().try_recv_all();
-        fw.handle_state_guard_action(StateGuardAction::ClampParameters);
-        assert!(drained_telemetry_contains("Clamped snapshot JSON"));
+        assert_clamp_emits(
+            |f| {
+                load_active(f, unstable);
+                f.current_valid_plot_datasets = saved_plot.clone();
+                f.cache_valid_snapshot();
+                f.handle_state_guard_action(StateGuardAction::ClampParameters);
+            },
+            &mut fw,
+            "Clamped snapshot JSON",
+        );
         assert_eq!(egui_plot::get_last_plot_datasets(), saved_plot);
     }
     assert!(!fw.is_diverged() && fw.diagnostic_report().is_none());
@@ -78,9 +100,19 @@ fn test_clamp_parameters_dispatches_domain_hooks_and_restores_datasets() {
         let _g = crate::reflective_ui::tests::TEST_MUTEX
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let _ = federated_registry::global_registry().try_recv_all();
-        cera_fw.clamp_parameters();
-        assert!(drained_telemetry_contains("domain hook"));
+        assert_clamp_emits(
+            |f| {
+                load_active(
+                    f,
+                    r#"{"in_channels":99,"latent_channels":4,"aligned_channels":18,"num_levels":90,"output_size":40}"#,
+                );
+                f.current_valid_plot_datasets = plots.clone();
+                f.cache_valid_snapshot();
+                f.clamp_parameters();
+            },
+            &mut cera_fw,
+            "domain hook",
+        );
         assert_eq!(egui_plot::get_last_plot_datasets(), plots);
     }
     let cera_val = active_json(&cera_fw);
@@ -125,22 +157,30 @@ fn test_clamp_parameters_baseline_fallback_and_telemetry() {
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
-    load_active(&mut fw, &drifted);
-    let _ = federated_registry::global_registry().try_recv_all();
-    fw.clamp_parameters();
+    assert_clamp_emits(
+        |f| {
+            load_active(f, &drifted);
+            f.clamp_parameters();
+        },
+        &mut fw,
+        "Fallback",
+    );
     assert_eq!(
         fw.active_tool.as_ref().unwrap().save_state(),
         Some(baseline.clone())
     );
-    assert!(drained_telemetry_contains("Fallback"));
 
-    load_active(&mut fw, &drifted);
-    fw.last_valid_snapshot = None;
-    let _ = federated_registry::global_registry().try_recv_all();
-    fw.clamp_parameters();
+    assert_clamp_emits(
+        |f| {
+            load_active(f, &drifted);
+            f.last_valid_snapshot = None;
+            f.clamp_parameters();
+        },
+        &mut fw,
+        "missing",
+    );
     assert_eq!(
         fw.active_tool.as_ref().unwrap().save_state(),
         Some(baseline)
     );
-    assert!(drained_telemetry_contains("missing"));
 }

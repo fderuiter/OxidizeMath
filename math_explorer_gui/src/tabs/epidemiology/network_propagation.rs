@@ -28,15 +28,15 @@ impl NetworkPropagationTool {
         self.model.initialize_geometric_graph_with_rng(&mut rng);
         self.is_running = false;
     }
+
+    #[cfg(test)]
+    pub(crate) fn sim_steps(&self) -> u64 {
+        self.sim_steps
+    }
 }
 
-const fn is_false(v: &bool) -> bool {
-    !*v
-}
-
-#[cfg(test)]
-const fn is_zero_u64(v: &u64) -> bool {
-    *v == 0
+const fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -46,9 +46,6 @@ struct NetPropState {
     gamma: f64,
     #[serde(default, skip_serializing_if = "is_false")]
     is_running: bool,
-    #[cfg(test)]
-    #[serde(default, skip_deserializing, skip_serializing_if = "is_zero_u64")]
-    sim_steps: u64,
 }
 
 impl InteractiveTool for NetworkPropagationTool {
@@ -68,10 +65,13 @@ impl InteractiveTool for NetworkPropagationTool {
             beta: self.model.beta(),
             gamma: self.model.gamma(),
             is_running: self.is_running,
-            #[cfg(test)]
-            sim_steps: self.sim_steps,
         })
         .ok()
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
