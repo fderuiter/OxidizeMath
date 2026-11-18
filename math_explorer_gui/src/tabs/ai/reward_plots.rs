@@ -7,12 +7,11 @@ use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorld
 use math_explorer::ai::reinforcement_learning::{algorithms::TabularQAgent, MarkovDecisionProcess};
 use std::sync::Arc;
 
-#[allow(missing_docs, dead_code)]
+#[allow(missing_docs)]
 pub struct RlSnapshotData {
     pub rewards_per_episode: Vec<f64>,
     pub episodes_trained: usize,
     pub target_episodes: usize,
-    pub is_training: bool,
 }
 
 #[allow(missing_docs)]
@@ -133,7 +132,6 @@ impl SimulationRunner for RewardPlotsRunner {
             rewards_per_episode: self.rewards_per_episode.clone(),
             episodes_trained: self.episodes_trained,
             target_episodes: self.target_episodes,
-            is_training: self.is_training,
         });
 
         StateSnapshot {
