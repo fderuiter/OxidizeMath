@@ -205,12 +205,18 @@ impl MathExplorerApp {
         let p0_name = self.tabs[new_p0].name().to_string();
         let p1_name = self.tabs[new_p1].name().to_string();
         let s_old_p0 = self.tabs[new_p1].save_state();
+        let mut s_old_p1 = None;
         if let Some(slot1) = self.pane_slots.slot_mut(1) {
-            if let Some(s_old_p1) = slot1.saved_states.get(&p0_name).cloned() {
-                self.tabs[new_p0].load_state(&s_old_p1);
-            }
+            s_old_p1 = slot1.saved_states.get(&p0_name).cloned();
             if let Some(s0) = s_old_p0 {
                 slot1.saved_states.insert(p1_name, s0);
+            }
+        }
+        if let Some(saved) = s_old_p1 {
+            self.tabs[new_p0].load_state(&saved);
+        } else if self.viewport_layout != ViewportLayout::Single {
+            if let Some(fresh) = crate::tabs::instantiate_tab(new_p0) {
+                self.tabs[new_p0] = fresh;
             }
         }
     }

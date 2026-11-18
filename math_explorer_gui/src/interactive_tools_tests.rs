@@ -264,7 +264,7 @@ mod tests {
         );
         assert_tool_roundtrip(
             &mut crate::tabs::epidemiology::network_propagation::NetworkPropagationTool::default(),
-            r#"{"num_nodes":30,"beta":0.08,"gamma":0.03,"is_running":true,"sim_steps":0}"#,
+            r#"{"num_nodes":30,"beta":0.08,"gamma":0.03}"#,
         );
         assert_tool_roundtrip(
             &mut crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool::default(),

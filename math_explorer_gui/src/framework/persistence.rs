@@ -12,6 +12,19 @@ struct FrameworkState {
     tool_states: std::collections::HashMap<String, String>,
 }
 
+pub(super) fn capture_isolated_tool_datasets(
+    tool: &dyn InteractiveTool,
+) -> Vec<(String, Vec<[f64; 2]>)> {
+    let prev = egui_plot::get_last_plot_datasets();
+    egui_plot::clear_last_plot_datasets();
+    let datasets = tool.export_datasets();
+    egui_plot::clear_last_plot_datasets();
+    if !prev.is_empty() {
+        egui_plot::append_last_plot_datasets(&prev);
+    }
+    datasets
+}
+
 impl SimulationFramework {
     /// Serializes the framework state (selected tool index, active tool state, theory portal state) to JSON.
     pub fn save_state(&self) -> Option<String> {
@@ -65,6 +78,8 @@ impl SimulationFramework {
             if idx < self.available_tools.len() {
                 if self.selected_tool_index == Some(idx) && self.active_tool.is_some() {
                     let meta = self.available_tools[idx];
+                    self.is_diverged = false;
+                    self.diagnostic_report = None;
                     if let Some(tool) = &mut self.active_tool {
                         if let Some(saved) = self
                             .saved_tool_states
@@ -73,14 +88,9 @@ impl SimulationFramework {
                         {
                             tool.load_state(saved);
                         }
-                        let prev = egui_plot::get_last_plot_datasets();
-                        egui_plot::clear_last_plot_datasets();
-                        let refreshed = tool.export_datasets();
-                        if !prev.is_empty() {
-                            egui_plot::append_last_plot_datasets(&prev);
-                        }
-                        (self.overlay_sync.2, self.current_valid_plot_datasets) =
-                            (Some(tool.name()), refreshed.clone());
+                        let refreshed = capture_isolated_tool_datasets(tool.as_ref());
+                        self.sync_state.datasets_owner_tool = Some(tool.name());
+                        self.current_valid_plot_datasets = refreshed.clone();
                         self.last_valid_snapshot = Some(StateSnapshot {
                             tool_state: tool.save_state(),
                             plot_datasets: refreshed,
