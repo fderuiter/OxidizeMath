@@ -15,6 +15,15 @@ pub enum CrystalSystemEnum {
 }
 
 impl CrystalSystemEnum {
+    /// Returns a readable crystallographic system title for UI selectors.
+    pub fn label(&self) -> &'static str {
+        match self {
+            CrystalSystemEnum::SimpleCubic => "Simple Cubic",
+            CrystalSystemEnum::BodyCenteredCubic => "Body-Centered Cubic (BCC)",
+            CrystalSystemEnum::FaceCenteredCubic => "Face-Centered Cubic (FCC)",
+        }
+    }
+
     fn generate(&self, a: f64) -> UnitCell {
         match self {
             CrystalSystemEnum::SimpleCubic => SimpleCubic.generate(a),
@@ -160,22 +169,22 @@ impl InteractiveTool for CrystalViewer {
 
             ui.label("Crystal System");
             egui::ComboBox::from_id_salt("crystal_system_combo")
-                .selected_text(format!("{:?}", self.system))
+                .selected_text(self.system.label())
                 .show_ui(ui, |ui| {
                     ui.selectable_value(
                         &mut self.system,
                         CrystalSystemEnum::SimpleCubic,
-                        "Simple Cubic",
+                        CrystalSystemEnum::SimpleCubic.label(),
                     );
                     ui.selectable_value(
                         &mut self.system,
                         CrystalSystemEnum::BodyCenteredCubic,
-                        "BCC",
+                        CrystalSystemEnum::BodyCenteredCubic.label(),
                     );
                     ui.selectable_value(
                         &mut self.system,
                         CrystalSystemEnum::FaceCenteredCubic,
-                        "FCC",
+                        CrystalSystemEnum::FaceCenteredCubic.label(),
                     );
                 });
 
@@ -221,7 +230,8 @@ impl InteractiveTool for CrystalViewer {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "CrystalViewer",
+        id: "CrystalViewer",
+        display_name: "Crystal Lattice Viewer",
         domain: "solid_state",
         tags: &[],
         build: || Box::new(CrystalViewer::default()),
@@ -244,7 +254,7 @@ impl scientific_metadata::theory::TheoryDescribable for CrystalViewer {
     fn theory_citation(&self) -> String { "Introduction to Solid State Physics (Kittel, 2004); Solid State Physics (Ashcroft & Mermin, 1976)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("SimpleCubic".into(), "Primitive cubic lattice with basis at (0,0,0)".into());
+        map.insert("Simple Cubic".into(), "Primitive cubic lattice with basis at (0,0,0)".into());
         map.insert("BCC".into(), "Body-centered lattice with basis at (0,0,0) and (1/2, 1/2, 1/2)".into());
         map.insert("FCC".into(), "Face-centered close-packed cubic lattice".into());
         map

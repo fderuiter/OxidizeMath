@@ -21,9 +21,10 @@ mod tests {
         let filtered_count = framework
             .available_tools
             .iter()
-            .filter(|meta| {
-                meta.name.to_lowercase().contains(&query)
-                    || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
+            .filter(|m| {
+                m.display_name.to_lowercase().contains(&query)
+                    || m.id.to_lowercase().contains(&query)
+                    || m.tags.iter().any(|t| t.to_lowercase().contains(&query))
             })
             .count();
 
@@ -41,9 +42,10 @@ mod tests {
         let filtered_count = framework
             .available_tools
             .iter()
-            .filter(|meta| {
-                meta.name.to_lowercase().contains(&query)
-                    || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
+            .filter(|m| {
+                m.display_name.to_lowercase().contains(&query)
+                    || m.id.to_lowercase().contains(&query)
+                    || m.tags.iter().any(|t| t.to_lowercase().contains(&query))
             })
             .count();
 

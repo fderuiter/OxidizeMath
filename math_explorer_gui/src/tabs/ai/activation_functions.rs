@@ -215,7 +215,8 @@ impl InteractiveTool for ActivationFunctionsTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "ActivationFunctionsTool",
+        id: "ActivationFunctionsTool",
+        display_name: "Activation Functions",
         domain: "ai",
         tags: &[],
         build: || Box::new(ActivationFunctionsTool::default()),

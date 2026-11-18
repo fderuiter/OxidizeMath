@@ -57,12 +57,12 @@ fn test_all_registered_tools_have_starter_presets() {
     for tool in &tools {
         let matching = presets
             .iter()
-            .filter(|p| p.tool_name == Some(tool.name) && p.domain == tool.domain)
+            .filter(|p| p.tool_name == Some(tool.id) && p.domain == tool.domain)
             .collect::<Vec<_>>();
         assert!(
             !matching.is_empty(),
             "Tool '{}' in domain '{}' has no registered starter preset",
-            tool.name,
+            tool.id,
             tool.domain
         );
 
@@ -71,7 +71,7 @@ fn test_all_registered_tools_have_starter_presets() {
             let parsed: serde_json::Value = serde_json::from_str(payload).unwrap_or_else(|e| {
                 panic!(
                     "Invalid JSON payload for tool '{}', preset '{}': {}",
-                    tool.name, preset.title, e
+                    tool.id, preset.title, e
                 )
             });
             assert!(parsed.is_object(), "Payload must be a JSON object");
@@ -160,12 +160,12 @@ fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetM
     target_tool.apply_preset_json(payload).unwrap_or_else(|e| {
         panic!(
             "apply_preset_json failed for preset '{}' on '{}': {}",
-            preset.id, tool_meta.name, e
+            preset.id, tool_meta.id, e
         )
     });
     let expected_str = target_tool
         .save_state()
-        .unwrap_or_else(|| panic!("save_state returned None for '{}'", tool_meta.name));
+        .unwrap_or_else(|| panic!("save_state returned None for '{}'", tool_meta.id));
     let expected_val: serde_json::Value = serde_json::from_str(&expected_str).unwrap();
 
     let mut perturbed_tool = (tool_meta.build)();
@@ -175,16 +175,13 @@ fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetM
         assert!(
             perturb_first_number(&mut perturbed_val),
             "Failed to perturb state for '{}'",
-            tool_meta.name
+            tool_meta.id
         );
         let perturbed_json = serde_json::to_string(&perturbed_val).unwrap();
         perturbed_tool
             .try_load_state(&perturbed_json)
             .unwrap_or_else(|e| {
-                panic!(
-                    "Perturb try_load_state failed on '{}': {}",
-                    tool_meta.name, e
-                )
+                panic!("Perturb try_load_state failed on '{}': {}", tool_meta.id, e)
             });
     }
     let before_val: serde_json::Value =
@@ -192,7 +189,7 @@ fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetM
     assert_ne!(
         before_val, expected_val,
         "Perturbed state must differ from preset '{}' on '{}'",
-        preset.id, tool_meta.name
+        preset.id, tool_meta.id
     );
 
     perturbed_tool
@@ -203,7 +200,7 @@ fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetM
     assert_eq!(
         after_val, expected_val,
         "Preset '{}' did not mutate perturbed '{}' to exact target configuration",
-        preset.id, tool_meta.name
+        preset.id, tool_meta.id
     );
 }
 
@@ -227,7 +224,7 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
             let tool_meta = tools
                 .iter()
                 .copied()
-                .find(|t| t.name == tool_name && t.domain == preset.domain)
+                .find(|t| t.id == tool_name && t.domain == preset.domain)
                 .unwrap_or_else(|| panic!("Missing ToolMetadata for '{}'", tool_name));
             verify_tool_preset_mutation(tool_meta, preset);
         } else {
@@ -264,12 +261,12 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
         assert_eq!(default_tool.domain(), tool_meta.domain);
         let default_json = default_tool
             .save_state()
-            .unwrap_or_else(|| panic!("save_state returned None for '{}'", tool_meta.name));
+            .unwrap_or_else(|| panic!("save_state returned None for '{}'", tool_meta.id));
         let default_val: serde_json::Value = serde_json::from_str(&default_json).unwrap();
 
         let preset = presets
             .iter()
-            .find(|p| p.tool_name == Some(tool_meta.name) && p.domain == tool_meta.domain)
+            .find(|p| p.tool_name == Some(tool_meta.id) && p.domain == tool_meta.domain)
             .expect("Every registered tool must have a starter preset");
         let mut modified_tool = (tool_meta.build)();
         modified_tool
@@ -289,24 +286,24 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
         assert_ne!(
             non_default_val, default_val,
             "Non-default state must differ from default for '{}'",
-            tool_meta.name
+            tool_meta.id
         );
 
         let mut restored_tool = (tool_meta.build)();
         restored_tool
             .try_load_state(&non_default_json)
-            .unwrap_or_else(|e| panic!("try_load_state failed for '{}': {}", tool_meta.name, e));
+            .unwrap_or_else(|e| panic!("try_load_state failed for '{}': {}", tool_meta.id, e));
         let restored_val: serde_json::Value =
             serde_json::from_str(&restored_tool.save_state().unwrap()).unwrap();
         assert_eq!(
             restored_val, non_default_val,
             "State roundtrip mismatch for '{}'",
-            tool_meta.name
+            tool_meta.id
         );
         assert!(
             restored_tool.try_load_state("{malformed_json").is_err(),
             "Malformed JSON must return Err for '{}'",
-            tool_meta.name
+            tool_meta.id
         );
     }
 }
@@ -315,7 +312,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
 fn test_unified_sim_tool_rejects_unknown_empty_and_non_finite_parameters() {
     let lbm_meta = inventory::iter::<ToolMetadata>
         .into_iter()
-        .find(|t| t.name == "LatticeBoltzmannTool")
+        .find(|t| t.id == "LatticeBoltzmannTool")
         .expect("LatticeBoltzmannTool must be registered");
     let mut tool = (lbm_meta.build)();
 

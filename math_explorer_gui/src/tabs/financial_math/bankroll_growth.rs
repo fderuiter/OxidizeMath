@@ -98,15 +98,15 @@ impl BankrollGrowthTool {
                         }
                     }
                     (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
-                        self.error_msg = Some(format!("Error: {:?}", e)); // e is an enum
+                        self.error_msg = Some(format!("Error: {e}"));
                     }
                 }
             }
             (Err(e), _) => {
-                self.error_msg = Some(format!("Error: {:?}", e));
+                self.error_msg = Some(format!("Error: {e}"));
             }
             (_, Err(e)) => {
-                self.error_msg = Some(format!("Error: {:?}", e));
+                self.error_msg = Some(format!("Error: {e}"));
             }
         }
     }
@@ -245,7 +245,8 @@ impl InteractiveTool for BankrollGrowthTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "BankrollGrowthTool",
+        id: "BankrollGrowthTool",
+        display_name: "Bankroll Growth",
         domain: "financial_math",
         tags: &[],
         build: || Box::new(BankrollGrowthTool::default()),

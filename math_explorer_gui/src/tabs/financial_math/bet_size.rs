@@ -266,7 +266,8 @@ impl InteractiveTool for BetSizeCalculatorTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "BetSizeCalculatorTool",
+        id: "BetSizeCalculatorTool",
+        display_name: "Bet Size Calculator",
         domain: "financial_math",
         tags: &[],
         build: || Box::new(BetSizeCalculatorTool::default()),

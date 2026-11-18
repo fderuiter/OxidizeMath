@@ -283,6 +283,14 @@ impl SimulationFramework {
         self.step_counter = 0;
         if let Some(tool) = &self.active_tool {
             let restored_state = tool.save_state();
+            if let Some(&meta) = self
+                .selected_tool_index
+                .and_then(|idx| self.available_tools.get(idx))
+            {
+                if meta.id != tool.name() {
+                    self.saved_tool_states.remove(meta.id);
+                }
+            }
             if let Some(ref state) = restored_state {
                 self.saved_tool_states
                     .insert(tool.name().to_string(), state.clone());
@@ -312,6 +320,14 @@ impl SimulationFramework {
         if let Some(tool) = &self.active_tool {
             let state = tool.save_state();
             self.baseline_tool_state = state.clone();
+            if let Some(&meta) = self
+                .selected_tool_index
+                .and_then(|idx| self.available_tools.get(idx))
+            {
+                if meta.id != tool.name() {
+                    self.saved_tool_states.remove(meta.id);
+                }
+            }
             if let Some(ref s) = state {
                 self.saved_tool_states
                     .insert(tool.name().to_string(), s.clone());
@@ -357,7 +373,11 @@ impl SimulationFramework {
     ) -> Result<(), String> {
         let target_idx = card
             .tool_name
-            .and_then(|name| self.available_tools.iter().position(|t| t.name == name))
+            .and_then(|name| {
+                self.available_tools
+                    .iter()
+                    .position(|t| t.id == name || t.display_name == name)
+            })
             .or(self.selected_tool_index);
         if let Some(idx) = target_idx {
             if self.selected_tool_index != Some(idx) {

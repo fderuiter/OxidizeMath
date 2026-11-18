@@ -93,7 +93,8 @@ impl InteractiveTool for BeamProfilingTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "BeamProfilingTool",
+        id: "BeamProfilingTool",
+        display_name: "Beam Profiling",
         domain: "medical",
         tags: &[],
         build: || Box::new(BeamProfilingTool::default()),

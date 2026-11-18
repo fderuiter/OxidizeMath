@@ -151,7 +151,8 @@ impl InteractiveTool for UalbfWidget {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "UalbfWidget",
+        id: "UalbfWidget",
+        display_name: "UALBF",
         domain: "number_theory",
         tags: &[],
         build: || Box::new(UalbfWidget::default()),

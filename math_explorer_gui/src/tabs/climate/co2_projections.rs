@@ -81,7 +81,8 @@ impl InteractiveTool for Co2ProjectionsTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "Co2ProjectionsTool",
+        id: "Co2ProjectionsTool",
+        display_name: "CO2 Projections",
         domain: "climate",
         tags: &[],
         build: || Box::new(Co2ProjectionsTool::default()),

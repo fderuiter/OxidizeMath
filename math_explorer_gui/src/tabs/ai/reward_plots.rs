@@ -372,7 +372,8 @@ impl InteractiveTool for RewardPlotsTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "RewardPlotsTool",
+        id: "RewardPlotsTool",
+        display_name: "Reward Plots",
         domain: "ai",
         tags: &[],
         build: || Box::new(RewardPlotsTool::default()),

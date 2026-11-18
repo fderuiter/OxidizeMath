@@ -303,7 +303,8 @@ impl SpikeAnalysisTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "SpikeAnalysisTool",
+        id: "SpikeAnalysisTool",
+        display_name: "Spike Train Analysis",
         domain: "neuroscience",
         tags: &[],
         build: || Box::new(SpikeAnalysisTool::default()),

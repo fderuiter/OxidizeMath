@@ -475,7 +475,8 @@ impl TheoryDescribable for AttentionMapsTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "AttentionMapsTool",
+        id: "AttentionMapsTool",
+        display_name: "Attention Maps",
         domain: "ai",
         tags: &[],
         build: || Box::new(AttentionMapsTool::default()),

@@ -268,7 +268,8 @@ impl InteractiveTool for SirTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "SirTool",
+        id: "SirTool",
+        display_name: "SIR Model",
         domain: "epidemiology",
         tags: &[],
         build: || Box::new(SirTool::default()),
