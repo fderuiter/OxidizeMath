@@ -307,13 +307,19 @@ fn test_same_domain_network_propagation_steps_once_per_pane_per_frame() {
             fw.step_counter, 5,
             "Pane {pane} framework must step once per frame"
         );
-        let saved: serde_json::Value =
-            serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap();
+        let tool = fw.active_tool.as_ref().unwrap();
+        let net_tool = tool
+            .as_any()
+            .and_then(|a| {
+                a.downcast_ref::<crate::tabs::epidemiology::network_propagation::NetworkPropagationTool>()
+            })
+            .expect("Active tool must be NetworkPropagationTool");
         assert_eq!(
-            saved["sim_steps"].as_u64(),
-            Some(5),
+            net_tool.sim_steps(),
+            5,
             "Pane {pane} model must step once per frame"
         );
+        let saved: serde_json::Value = serde_json::from_str(&tool.save_state().unwrap()).unwrap();
         assert!((saved["beta"].as_f64().unwrap() - expected_beta).abs() < 1e-6);
     }
 }

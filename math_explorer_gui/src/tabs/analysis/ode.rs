@@ -8,16 +8,15 @@ pub mod ui;
 
 use comparison::{simulate_preset, SolverDiscrepancy};
 
+pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::recovery::emit_divergence_telemetry;
 use crate::framework::{
     CalloutManager, InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager,
 };
 use crate::presets::{InteractivePreset, OdePreset};
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
-
-use crate::framework::recovery::emit_divergence_telemetry;
-pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use recovery::clamp_ode_parameters;
+use recovery::{clamp_ode_parameters, clamp_ode_step_settings};
 
 // ----------------------------------------------------------------------------
 // Tool Implementation
@@ -113,7 +112,7 @@ impl OdeSolverTool {
 
     #[must_use]
     pub fn diverged(&self) -> bool {
-        self.diverged
+        self.diverged || !FiniteStateGuard::is_finite_state(self)
     }
 
     #[must_use]
@@ -140,6 +139,7 @@ impl OdeSolverTool {
             &mut self.ic_y0,
             &mut self.ic_v0,
         );
+        clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
         self.recalculate();
     }
 

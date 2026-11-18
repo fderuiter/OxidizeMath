@@ -4,6 +4,8 @@ pub mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
 mod export_ui;
+#[cfg(test)]
+mod export_ui_tests;
 pub mod math_input;
 mod persistence;
 pub mod recovery;
@@ -256,6 +258,19 @@ pub trait InteractiveTool {
 
         frames
     }
+
+    /// Returns a type-erased reference for test inspection of concrete tool state.
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        None
+    }
+}
+
+#[derive(Default, Clone, Copy)]
+pub(super) struct FrameworkSyncState {
+    pub(super) theory_portal: Option<bool>,
+    pub(super) starter_gallery: Option<bool>,
+    pub(super) datasets_owner_tool: Option<&'static str>,
 }
 
 #[allow(missing_docs)]
@@ -302,7 +317,7 @@ pub struct SimulationFramework {
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
     pub(super) instance_id: u64,
-    pub(super) overlay_sync: (Option<bool>, Option<bool>, Option<&'static str>),
+    pub(super) sync_state: FrameworkSyncState,
 }
 
 impl SimulationFramework {
@@ -344,7 +359,7 @@ impl SimulationFramework {
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
             instance_id: ui::next_framework_id(),
-            overlay_sync: (None, None, None),
+            sync_state: FrameworkSyncState::default(),
         };
 
         if !framework.available_tools.is_empty() {
@@ -380,14 +395,9 @@ impl SimulationFramework {
         self.step_counter = 0;
         self.baseline_tool_state = factory_baseline_state;
         let active_tool_state = new_tool.save_state();
-        let prev_datasets = egui_plot::get_last_plot_datasets();
-        egui_plot::clear_last_plot_datasets();
-        let initial_datasets = new_tool.export_datasets();
-        if !prev_datasets.is_empty() {
-            egui_plot::append_last_plot_datasets(&prev_datasets);
-        }
-        (self.overlay_sync.2, self.current_valid_plot_datasets) =
-            (Some(new_tool.name()), initial_datasets.clone());
+        let initial_datasets = persistence::capture_isolated_tool_datasets(new_tool.as_ref());
+        self.sync_state.datasets_owner_tool = Some(new_tool.name());
+        self.current_valid_plot_datasets = initial_datasets.clone();
         self.last_valid_snapshot = Some(StateSnapshot {
             tool_state: active_tool_state,
             plot_datasets: initial_datasets,
