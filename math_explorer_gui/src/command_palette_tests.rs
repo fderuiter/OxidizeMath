@@ -188,29 +188,29 @@ fn test_palette_tool_indexing_and_fuzzy_match() {
     let first = &items[0];
     match first {
         PaletteItem::Tool { name, .. } => {
-            assert_eq!(*name, "AlgorithmVisualizerTool");
+            assert_eq!(*name, "Algorithm Visualizer");
         }
         _ => panic!(
-            "Expected Dijkstra query to match AlgorithmVisualizerTool, found {:?}",
+            "Expected Dijkstra query to match Algorithm Visualizer, found {:?}",
             first
         ),
     }
 
-    // 2. Lorenz (via tag on AttractorPlotter)
+    // 2. Lorenz (via tag on Attractor Plotter)
     palette.query = "lorenz".to_string();
     let items = palette.filter_items(&tabs);
     assert!(!items.is_empty(), "Lorenz tool should be matched via tags");
     match &items[0] {
         PaletteItem::Tool { name, .. } => {
-            assert_eq!(*name, "AttractorPlotter");
+            assert_eq!(*name, "Attractor Plotter");
         }
         _ => panic!(
-            "Expected Lorenz query to match AttractorPlotter, found {:?}",
+            "Expected Lorenz query to match Attractor Plotter, found {:?}",
             items[0]
         ),
     }
 
-    // 3. CERA (via name CeraTool)
+    // 3. CERA (via name CERA Model / id CeraTool)
     palette.query = "cera".to_string();
     let items = palette.filter_items(&tabs);
     assert!(
@@ -219,10 +219,10 @@ fn test_palette_tool_indexing_and_fuzzy_match() {
     );
     match &items[0] {
         PaletteItem::Tool { name, .. } => {
-            assert_eq!(*name, "CeraTool");
+            assert_eq!(*name, "CERA Model");
         }
         _ => panic!(
-            "Expected CERA query to match CeraTool, found {:?}",
+            "Expected CERA query to match CERA Model, found {:?}",
             items[0]
         ),
     }
@@ -255,7 +255,7 @@ fn test_palette_keyboard_tool_selection() {
 
     assert_eq!(
         selected,
-        Some(PaletteSelection::tool(0, "AlgorithmVisualizerTool"))
+        Some(PaletteSelection::tool(0, "Algorithm Visualizer"))
     );
     assert!(!palette.is_open);
 }
@@ -275,9 +275,9 @@ fn test_palette_score_ranking_tabs_vs_tools() {
     // Therefore OdeSolverTool should be ranked higher!
     match &items[0] {
         PaletteItem::Tool { name, .. } => {
-            assert_eq!(*name, "OdeSolverTool");
+            assert_eq!(*name, "ODE Solvers");
         }
-        _ => panic!("Expected OdeSolverTool to rank higher due to prefix match score"),
+        _ => panic!("Expected ODE Solvers to rank higher due to prefix match score"),
     }
 }
 
@@ -300,8 +300,42 @@ fn test_palette_domain_fallback_safely_defaults_to_zero() {
                 *tab_index, 0,
                 "Tool with unmatched domain should fall back to tab 0"
             );
-            assert_eq!(*name, "AlgorithmVisualizerTool");
+            assert_eq!(*name, "Algorithm Visualizer");
         }
         _ => panic!("Expected Tool item"),
+    }
+}
+
+#[test]
+fn test_palette_domain_title_formatting_and_dual_key_search() {
+    assert_eq!(format_domain_title("clinical_trials"), "Clinical Trials");
+    assert_eq!(format_domain_title("number_theory"), "Number Theory");
+    assert_eq!(
+        format_domain_title("geometry_topology"),
+        "Geometry & Topology"
+    );
+
+    let tabs = mock_tabs();
+    for query in [
+        "clinical_trials",
+        "Clinical Trials",
+        "Sample Size Calculator (Clinical Trials)",
+    ] {
+        let palette = CommandPalette {
+            query: query.to_string(),
+            ..Default::default()
+        };
+        let items = palette.filter_items(&tabs);
+        assert!(
+            items.iter().any(|item| matches!(
+                item,
+                PaletteItem::Tool {
+                    name: "Sample Size Calculator",
+                    domain: "clinical_trials",
+                    ..
+                }
+            )),
+            "Expected Sample Size Calculator to match query '{query}'"
+        );
     }
 }

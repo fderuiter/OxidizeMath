@@ -147,7 +147,8 @@ impl InteractiveTool for CapacityFadeTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "CapacityFadeTool",
+        id: "CapacityFadeTool",
+        display_name: "Capacity Fade",
         domain: "battery_degradation",
         tags: &[],
         build: || Box::new(CapacityFadeTool::default()),

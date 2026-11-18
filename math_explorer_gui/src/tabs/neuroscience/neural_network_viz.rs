@@ -212,7 +212,8 @@ impl InteractiveTool for NeuralNetworkVizTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "NeuralNetworkVizTool",
+        id: "NeuralNetworkVizTool",
+        display_name: "Neural Network Viz",
         domain: "neuroscience",
         tags: &[],
         build: || Box::new(NeuralNetworkVizTool::default()),

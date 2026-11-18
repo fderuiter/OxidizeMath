@@ -1,4 +1,66 @@
 use eframe::egui;
+use std::borrow::Cow;
+
+/// Formats a snake_case domain identifier into a user-facing domain title.
+pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
+    match domain.trim() {
+        "ai" => Cow::Borrowed("Artificial Intelligence"),
+        "analysis" => Cow::Borrowed("Analysis & Calculus"),
+        "battery_degradation" => Cow::Borrowed("Battery Degradation"),
+        "biology" => Cow::Borrowed("Biology"),
+        "chaos" => Cow::Borrowed("Chaos Theory"),
+        "climate" => Cow::Borrowed("Climate"),
+        "clinical_trials" => Cow::Borrowed("Clinical Trials"),
+        "epidemiology" => Cow::Borrowed("Epidemiology"),
+        "financial_math" => Cow::Borrowed("Financial Math"),
+        "fluid_dynamics" => Cow::Borrowed("Fluid Dynamics"),
+        "game_theory" => Cow::Borrowed("Game Theory"),
+        "geometry_topology" => Cow::Borrowed("Geometry & Topology"),
+        "graph_theory" => Cow::Borrowed("Graph Theory"),
+        "medical" => Cow::Borrowed("Medical Physics"),
+        "neuroscience" => Cow::Borrowed("Neuroscience"),
+        "number_theory" => Cow::Borrowed("Number Theory"),
+        "quantum" => Cow::Borrowed("Quantum Mechanics"),
+        "solid_state" => Cow::Borrowed("Solid State Physics"),
+        other => Cow::Owned(
+            other
+                .split('_')
+                .filter(|part| !part.is_empty())
+                .map(|word| {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
+                        None => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
+        ),
+    }
+}
+
+fn score_tool_metadata(meta: &crate::framework::ToolMetadata, query: &str) -> Option<usize> {
+    let domain_title = format_domain_title(meta.domain);
+    let formatted_entry = format!("{} ({})", meta.display_name, domain_title);
+    let mut score = fuzzy_match_score(meta.display_name, query);
+    for candidate in [meta.id, formatted_entry.as_str()] {
+        if let Some(s) = fuzzy_match_score(candidate, query) {
+            score = Some(score.map_or(s, |cur| cur.min(s)));
+        }
+    }
+    for &tag in meta.tags {
+        if let Some(tag_score) = fuzzy_match_score(tag, query) {
+            score = Some(score.map_or(tag_score, |cur| cur.min(tag_score)));
+        }
+    }
+    for domain_candidate in [meta.domain, domain_title.as_ref()] {
+        if let Some(domain_score) = fuzzy_match_score(domain_candidate, query) {
+            let weighted = domain_score.saturating_add(50);
+            score = Some(score.map_or(weighted, |cur| cur.min(weighted)));
+        }
+    }
+    score
+}
 
 /// Helper to check if `query` matches `text` using case-insensitive fuzzy or substring filtering.
 /// Returns a score if matched (lower score = better match / higher rank).
@@ -211,14 +273,7 @@ impl CommandPalette {
 
         // 2. Index simulation tools registered in inventory
         for meta in inventory::iter::<crate::framework::ToolMetadata> {
-            let mut score = fuzzy_match_score(meta.name, &self.query);
-            for &tag in meta.tags {
-                if let Some(tag_score) = fuzzy_match_score(tag, &self.query) {
-                    score = Some(score.map_or(tag_score, |s| s.min(tag_score)));
-                }
-            }
-
-            if let Some(s) = score {
+            if let Some(s) = score_tool_metadata(meta, &self.query) {
                 // Find matching tab index for this tool's domain, safely falling back to 0
                 let tab_index = tabs
                     .iter()
@@ -233,7 +288,7 @@ impl CommandPalette {
                 matched.push((
                     PaletteItem::Tool {
                         tab_index,
-                        name: meta.name,
+                        name: meta.display_name,
                         domain: meta.domain,
                         tags: meta.tags,
                     },
@@ -328,16 +383,18 @@ impl CommandPalette {
                 } else {
                     for (list_idx, item) in filtered_items.iter().enumerate() {
                         let is_selected = list_idx == self.selected_index;
-                        let text = match item {
-                            PaletteItem::Tab { name, .. } => {
-                                egui::RichText::new(format!("📁 [Tab] {}", name))
-                                    .size(14.0)
-                                    .strong()
-                            }
-                            PaletteItem::Tool { name, domain, .. } => {
-                                egui::RichText::new(format!("🔧 {}  ({})", name, domain)).size(14.0)
-                            }
-                        };
+                        let text =
+                            match item {
+                                PaletteItem::Tab { name, .. } => {
+                                    egui::RichText::new(format!("📁 [Tab] {}", name))
+                                        .size(14.0)
+                                        .strong()
+                                }
+                                PaletteItem::Tool { name, domain, .. } => egui::RichText::new(
+                                    format!("🔧 {} ({})", name, format_domain_title(domain)),
+                                )
+                                .size(14.0),
+                            };
                         let response = ui.selectable_label(is_selected, text);
 
                         if is_selected {
