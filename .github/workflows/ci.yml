@@ -55,8 +55,8 @@ jobs:
       - name: Verify Architectural Records Updates
         run: cargo run -p unified_verification --release -- verify-records
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Check Traceability
         run: cargo run -p unified_verification --release -- traceability
@@ -199,8 +199,8 @@ jobs:
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
         run: cargo run -p unified_verification --release -- verify-suite
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Upload Verification Certificate
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
