@@ -116,6 +116,73 @@ fn test_case_insensitive_constants_and_precedence() {
 }
 
 #[test]
+fn test_all_builtin_funcs_real_and_complex_parity() {
+    let x = 0.5_f64;
+    let z = Complex64::new(0.5, -0.25);
+    let rvars = HashMap::from([("x".to_string(), x)]);
+    let cvars = HashMap::from([("z".to_string(), z)]);
+    for (name, exp_r, exp_c) in [
+        ("sin", x.sin(), z.sin()),
+        ("cos", x.cos(), z.cos()),
+        ("tan", x.tan(), z.tan()),
+        ("exp", x.exp(), z.exp()),
+        ("ln", x.ln(), z.ln()),
+        ("log10", x.log10(), z.ln() / std::f64::consts::LN_10),
+        ("sqrt", x.sqrt(), z.sqrt()),
+        ("abs", x.abs(), Complex64::new(z.norm(), 0.0)),
+        ("sinh", x.sinh(), z.sinh()),
+        ("cosh", x.cosh(), z.cosh()),
+        ("tanh", x.tanh(), z.tanh()),
+        ("asin", x.asin(), z.asin()),
+        ("acos", x.acos(), z.acos()),
+        ("atan", x.atan(), z.atan()),
+    ] {
+        let r = parse(&format!("{name}(x)")).unwrap().eval(&rvars).unwrap();
+        let ode = parse(&format!("{name} y")).unwrap().eval_2d(0.0, x, &rvars);
+        let c_expr = parse(&format!("{name}(z)")).unwrap();
+        assert!((r - exp_r).abs() < 1e-12 && (ode - exp_r).abs() < 1e-12);
+        assert!((c_expr.eval_complex(&cvars).unwrap() - exp_c).norm() < 1e-12);
+        assert!((c_expr.eval_complex_z(z) - exp_c).norm() < 1e-12);
+    }
+}
+
+#[test]
+fn test_eval_division_power_and_arity_edge_cases() {
+    let (rvars, cvars) = (HashMap::new(), HashMap::new());
+    let div_zero = parse("1 / 0").unwrap();
+    assert!(div_zero.eval(&rvars).unwrap().is_nan() && div_zero.eval_2d(0.0, 0.0, &rvars).is_nan());
+
+    let c_div = parse("1 / z").unwrap();
+    assert!(c_div.eval_complex_z(Complex64::new(1e-7, 1e-7)).re.is_nan());
+    assert!((c_div.eval_complex_z(Complex64::new(2e-6, 0.0)).re - 5e5).abs() < 1e-6);
+
+    let z = Complex64::new(1.5, -0.5);
+    assert!((parse("z^3").unwrap().eval_complex_z(z) - z.powf(3.0)).norm() < 1e-12);
+    assert!((parse("z^i").unwrap().eval_complex_z(z) - z.powc(Complex64::i())).norm() < 1e-12);
+
+    let (zero_args, two_args) = (parse("sin()").unwrap(), parse("cos(1, 2)").unwrap());
+    assert_eq!(
+        zero_args.eval(&rvars),
+        Err(EvalError::WrongArgumentCount {
+            func: Func::Sin,
+            expected: 1,
+            found: 0
+        })
+    );
+    assert_eq!(
+        two_args.eval_complex(&cvars),
+        Err(EvalError::WrongArgumentCount {
+            func: Func::Cos,
+            expected: 1,
+            found: 2
+        })
+    );
+    assert!(
+        zero_args.eval_2d(0.0, 0.0, &rvars).is_nan() && zero_args.eval_complex_z(z).re.is_nan()
+    );
+}
+
+#[test]
 fn test_case_insensitive_variable_map_lookups() {
     let mut vars = HashMap::new();
     vars.insert("Alpha_1".into(), 3.5);
@@ -206,6 +273,19 @@ fn test_user_message_plain_language_positions_and_no_debug_tokens() {
     assert!(msg_trailing.contains("end of expression"));
     assert!(msg_trailing.contains("character 4"));
     assert!(!msg_trailing.contains("<EOF>"));
+
+    let empty_err = ParseError::EmptyExpression;
+    let depth_err = ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH);
+    for err in [
+        &unclosed,
+        &extra_paren,
+        &bad_lex,
+        &trailing_op,
+        &empty_err,
+        &depth_err,
+    ] {
+        assert_eq!(err.to_string(), err.user_message());
+    }
 }
 
 #[test]

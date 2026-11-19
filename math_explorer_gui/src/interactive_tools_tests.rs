@@ -278,9 +278,15 @@ mod tests {
             &mut crate::tabs::solid_state::band_structure::BandStructureTool::default(),
             r#"{"e0":0.5,"t":1.5,"a":1.2,"hbar":1.0,"m":0.8,"show_free_electron":true}"#,
         );
+        let mut crystal = crate::tabs::solid_state::crystal_viewer::CrystalViewer::default();
+        assert!(crate::framework::InteractiveTool::try_load_state(
+            &mut crystal,
+            r#"{"system":"SimpleCubic","lattice_constant":3.5,"yaw":0.75,"pitch":0.25,"zoom":60.0}"#
+        )
+        .is_ok());
         assert_tool_roundtrip(
             &mut crate::tabs::solid_state::crystal_viewer::CrystalViewer::default(),
-            r#"{"system":"SimpleCubic","lattice_constant":3.5,"yaw":0.75,"pitch":0.25,"zoom":60.0}"#,
+            r#"{"system":"SimpleCubic","lattice_constant":3.5,"camera":{"pitch":0.25,"yaw":0.75,"zoom":1.2}}"#,
         );
         assert_tab_roundtrip(
             &mut crate::tabs::favoritism::FavoritismTab::default(),

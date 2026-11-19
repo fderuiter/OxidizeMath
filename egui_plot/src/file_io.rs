@@ -463,40 +463,6 @@ pub(crate) fn process_plot_csv_import(
     ctx.request_repaint();
 }
 
-/// Triggers a cross-platform CSV/TSV dataset file import dialog asynchronously.
-pub fn trigger_import_csv(sender: std::sync::mpsc::Sender<Vec<ImportedDataset>>) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::thread::spawn(move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("CSV / TSV File", &["csv", "tsv", "txt"])
-                .pick_file()
-                && let Ok(content) = std::fs::read_to_string(path)
-            {
-                let datasets = parse_csv(&content);
-                if !datasets.is_empty() {
-                    let _ = sender.send(datasets);
-                }
-            }
-        });
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        open_browser_file_picker(
-            ".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain",
-            move |outcome| {
-                if let Some(Ok((_name, content))) = outcome {
-                    let datasets = parse_csv(&content);
-                    if !datasets.is_empty() {
-                        let _ = sender.send(datasets);
-                    }
-                }
-            },
-        );
-    }
-}
-
 /// Triggers a CSV/TSV file import dialog scoped to a specific target `plot_id`.
 pub fn trigger_import_csv_for_plot(ctx: &egui::Context, plot_id: egui::Id) {
     let ctx_clone = ctx.clone();

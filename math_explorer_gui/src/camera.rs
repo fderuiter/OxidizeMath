@@ -1,21 +1,19 @@
 use eframe::egui;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum GizmoAxis {
-    X,
-    Y,
-    Z,
-    Iso,
+#[path = "camera_gizmo.rs"]
+mod gizmo;
+
+const fn default_angle() -> f32 {
+    0.5_f32
 }
 
-#[derive(Clone, Copy, Debug)]
-struct GizmoHandle {
-    axis: GizmoAxis,
-    label: &'static str,
-    color: egui::Color32,
-    screen_pos: egui::Pos2,
-    depth: f32,
+const fn default_zoom() -> f32 {
+    1.0_f32
 }
+
+/// Canonical canvas helper text displayed below interactive 3D viewports.
+pub const CAMERA_3D_HELPER_TEXT: &str =
+    "Drag canvas or use WASD to orbit, scroll or Q/E to zoom, double-click or press R to reset view.";
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -27,22 +25,92 @@ pub struct Camera3D {
     pub yaw: f32,
     #[allow(missing_docs)]
     pub zoom: f32,
+    #[serde(skip, default = "default_angle")]
+    reset_pitch: f32,
+    #[serde(skip, default = "default_angle")]
+    reset_yaw: f32,
+    #[serde(skip, default = "default_zoom")]
+    reset_zoom: f32,
+}
+
+impl PartialEq for Camera3D {
+    fn eq(&self, other: &Self) -> bool {
+        self.pitch == other.pitch && self.yaw == other.yaw && self.zoom == other.zoom
+    }
 }
 
 impl Default for Camera3D {
     fn default() -> Self {
-        Self {
-            pitch: 0.5_f32,
-            yaw: 0.5_f32,
-            zoom: 1.0_f32,
-        }
+        Self::new(default_angle(), default_angle(), default_zoom())
     }
 }
 
 impl Camera3D {
     #[allow(missing_docs)]
     pub fn new(pitch: f32, yaw: f32, zoom: f32) -> Self {
-        Self { pitch, yaw, zoom }
+        Self {
+            pitch,
+            yaw,
+            zoom,
+            reset_pitch: pitch,
+            reset_yaw: yaw,
+            reset_zoom: zoom,
+        }
+    }
+
+    /// Returns true if pitch, yaw, and zoom are finite and zoom lies within `[0.01, 100.0]`.
+    pub fn is_valid(&self) -> bool {
+        self.pitch.is_finite()
+            && self.yaw.is_finite()
+            && self.zoom.is_finite()
+            && (0.01_f32..=100.0_f32).contains(&self.zoom)
+    }
+
+    /// Applies orientation and zoom from `pose` while preserving this tool's default reset pose.
+    pub fn apply_pose(&mut self, pose: Self) {
+        self.pitch = pose.pitch;
+        self.yaw = pose.yaw;
+        self.zoom = pose.zoom;
+    }
+
+    /// Restores camera pitch, yaw, and zoom to this instance's configured default pose.
+    pub fn reset(&mut self) {
+        self.pitch = self.reset_pitch;
+        self.yaw = self.reset_yaw;
+        self.zoom = self.reset_zoom;
+    }
+
+    /// Resolves either a nested `camera` object or legacy `pitch`/`yaw`/`zoom` preset fields.
+    pub fn from_preset_fields(
+        camera: Option<Self>,
+        pitch: Option<f32>,
+        yaw: Option<f32>,
+        zoom: Option<f32>,
+        fallback: Option<Self>,
+    ) -> Result<Self, String> {
+        let has_legacy = pitch.is_some() || yaw.is_some() || zoom.is_some();
+        if let Some(cam) = camera {
+            if has_legacy {
+                return Err("Conflicting camera and legacy pitch/yaw/zoom fields".to_string());
+            }
+            if !cam.is_valid() {
+                return Err("Camera parameters out of valid bounds".to_string());
+            }
+            return Ok(cam);
+        }
+        match (pitch, yaw, zoom) {
+            (Some(p), Some(y), Some(z)) => {
+                let cam = Self::new(p, y, z);
+                if !cam.is_valid() {
+                    return Err("Camera parameters out of valid bounds".to_string());
+                }
+                Ok(cam)
+            }
+            (None, None, None) => {
+                fallback.ok_or_else(|| "Missing camera configuration in preset state".to_string())
+            }
+            _ => Err("Incomplete legacy camera fields: pitch, yaw, and zoom required".to_string()),
+        }
     }
 
     /// Snaps camera orientation to Top view (XY plane).
@@ -71,39 +139,61 @@ impl Camera3D {
 
     #[allow(missing_docs)]
     pub fn handle_interaction(&mut self, response: &egui::Response, ui: &egui::Ui) {
-        let gizmo_handled = self.draw_gizmo_overlay(response, ui);
+        self.handle_interaction_with_plot(response, ui, None);
+    }
 
+    pub(crate) fn handle_interaction_with_plot(
+        &mut self,
+        response: &egui::Response,
+        ui: &egui::Ui,
+        plot_id: Option<egui::Id>,
+    ) {
+        let gizmo_handled = self.draw_gizmo_overlay(response, ui);
+        let is_dragging_callout = ui.ctx().data(|d| {
+            let by_resp = d
+                .get_temp::<bool>(response.id.with("dragging_callout"))
+                .unwrap_or(false);
+            let by_plot = plot_id.is_some_and(|pid| {
+                d.get_temp::<bool>(pid.with("dragging_callout"))
+                    .unwrap_or(false)
+            });
+            by_resp || by_plot
+        });
+        let press_inside_gizmo = ui.input(|i| {
+            i.pointer
+                .press_origin()
+                .is_some_and(|pos| self.is_inside_gizmo(pos, response.rect))
+        });
         let multi_touch = ui.input(|i| i.multi_touch());
 
-        if !gizmo_handled {
-            if let Some(touch) = multi_touch {
+        if !gizmo_handled && !is_dragging_callout {
+            if !press_inside_gizmo
+                && (response.clicked() || response.dragged_by(egui::PointerButton::Primary))
+            {
+                response.request_focus();
+            }
+            if !press_inside_gizmo && response.double_clicked() {
+                self.reset();
+            } else if let Some(touch) = multi_touch {
                 if touch.zoom_delta != 1.0_f32 {
                     let zoom_factor = 1.0_f32 + (touch.zoom_delta - 1.0_f32) * 0.5_f32;
-                    self.zoom *= zoom_factor;
-                    self.zoom = self.zoom.clamp(0.01_f32, 100.0_f32);
+                    self.zoom = (self.zoom * zoom_factor).clamp(0.01_f32, 100.0_f32);
                 }
                 if touch.translation_delta != egui::Vec2::ZERO {
                     self.yaw -= touch.translation_delta.x * 0.01_f32;
                     self.pitch -= touch.translation_delta.y * 0.01_f32;
                 }
-            } else if response.dragged() {
-                let press_inside_gizmo = ui.input(|i| {
-                    i.pointer
-                        .press_origin()
-                        .is_some_and(|pos| self.is_inside_gizmo(pos, response.rect))
-                });
-                if !press_inside_gizmo {
-                    let delta = response.drag_delta();
-                    self.yaw -= delta.x * 0.01_f32;
-                    self.pitch -= delta.y * 0.01_f32;
-                }
+            } else if !press_inside_gizmo && response.dragged_by(egui::PointerButton::Primary) {
+                let delta = response.drag_delta();
+                self.yaw -= delta.x * 0.01_f32;
+                self.pitch -= delta.y * 0.01_f32;
             }
         }
 
         let scroll = ui.input(|i| i.raw_scroll_delta.y);
         if scroll != 0.0_f32 && response.hovered() && multi_touch.is_none() {
-            self.zoom *= 1.0_f32 + (scroll * 0.001_f32);
-            self.zoom = self.zoom.clamp(0.01_f32, 100.0_f32);
+            let factor = (1.0_f32 + scroll * 0.001_f32).max(0.1_f32);
+            self.zoom = (self.zoom * factor).clamp(0.01_f32, 100.0_f32);
         }
 
         self.register_camera_commands(ui);
@@ -112,7 +202,7 @@ impl Camera3D {
         }
     }
 
-    fn project_unit(&self, point: &[f64; 3]) -> (f32, f32, f32) {
+    pub(super) fn project_unit(&self, point: &[f64; 3]) -> (f32, f32, f32) {
         let cy = (self.yaw as f64).cos();
         let sy = (self.yaw as f64).sin();
         let cp = (self.pitch as f64).cos();
@@ -129,204 +219,18 @@ impl Camera3D {
         (x2 as f32, y2 as f32, z2 as f32)
     }
 
-    fn gizmo_geometry(
-        &self,
-        rect: egui::Rect,
-        palette: &crate::app::SemanticPalette,
-    ) -> (egui::Pos2, f32, f32, [GizmoHandle; 4]) {
-        let min_dim = rect.width().min(rect.height());
-        let scale = (min_dim / 160.0_f32).clamp(0.5_f32, 1.0_f32);
-        let margin = 45.0_f32 * scale;
-
-        let center_x = (rect.max.x - margin).max(rect.min.x + margin);
-        let center_y = (rect.min.y + margin).min(rect.max.y - margin);
-        let center = egui::pos2(center_x, center_y);
-
-        let axis_length = 30.0_f32 * scale;
-        let knob_radius = 8.0_f32 * scale;
-
-        let (px_x, py_x, pz_x) = self.project_unit(&[1.0, 0.0, 0.0]);
-        let (px_y, py_y, pz_y) = self.project_unit(&[0.0, 1.0, 0.0]);
-        let (px_z, py_z, pz_z) = self.project_unit(&[0.0, 0.0, 1.0]);
-
-        let pos_x = egui::pos2(center.x + px_x * axis_length, center.y - py_x * axis_length);
-        let pos_y = egui::pos2(center.x + px_y * axis_length, center.y - py_y * axis_length);
-        let pos_z = egui::pos2(center.x + px_z * axis_length, center.y - py_z * axis_length);
-
-        let handles = [
-            GizmoHandle {
-                axis: GizmoAxis::Iso,
-                label: "ISO",
-                color: palette.surface_fill,
-                screen_pos: center,
-                depth: -10.0_f32,
-            },
-            GizmoHandle {
-                axis: GizmoAxis::X,
-                label: "X",
-                color: palette.axis_x,
-                screen_pos: pos_x,
-                depth: pz_x,
-            },
-            GizmoHandle {
-                axis: GizmoAxis::Y,
-                label: "Y",
-                color: palette.axis_y,
-                screen_pos: pos_y,
-                depth: pz_y,
-            },
-            GizmoHandle {
-                axis: GizmoAxis::Z,
-                label: "Z",
-                color: palette.axis_z,
-                screen_pos: pos_z,
-                depth: pz_z,
-            },
-        ];
-
-        (center, axis_length, knob_radius, handles)
-    }
-
-    fn is_inside_gizmo(&self, pos: egui::Pos2, rect: egui::Rect) -> bool {
-        let palette = crate::app::ThemeMode::Dark.palette();
-        let (center, axis_length, knob_radius, _) = self.gizmo_geometry(rect, &palette);
-        let bg_radius = axis_length + knob_radius + 4.0_f32;
-        pos.distance(center) <= bg_radius
-    }
-
-    fn check_gizmo_click(
-        &mut self,
-        handles: &[GizmoHandle],
-        pointer_pos: Option<egui::Pos2>,
-        is_clicked: bool,
-        knob_radius: f32,
-    ) -> bool {
-        let mut hovered_axis = None;
-        if let Some(pos) = pointer_pos {
-            let hit_threshold = knob_radius + 4.0_f32;
-            for handle in handles {
-                if pos.distance(handle.screen_pos) <= hit_threshold {
-                    hovered_axis = Some(handle.axis);
-                    break;
-                }
-            }
-        }
-
-        if let Some(axis) = hovered_axis {
-            if is_clicked {
-                match axis {
-                    GizmoAxis::X => self.snap_to_yz(),
-                    GizmoAxis::Y => self.snap_to_xz(),
-                    GizmoAxis::Z => self.snap_to_xy(),
-                    GizmoAxis::Iso => self.snap_to_iso(),
-                }
-                return true;
-            }
-        }
-        false
-    }
-
-    fn render_gizmo_painter(
-        &self,
-        ui: &egui::Ui,
-        center: egui::Pos2,
-        axis_length: f32,
-        knob_radius: f32,
-        mut handles: Vec<GizmoHandle>,
-        hovered_axis: Option<GizmoAxis>,
-    ) {
-        let painter = ui.painter();
-        let visuals = ui.visuals();
-        let palette = crate::app::SemanticPalette::from_visuals(visuals);
-        let scale = axis_length / 30.0_f32;
-        let bg_radius = axis_length + knob_radius + 4.0_f32;
-        let wf = visuals.window_fill();
-        let backdrop_fill = egui::Color32::from_rgba_unmultiplied(wf.r(), wf.g(), wf.b(), 180);
-
-        painter.circle_filled(center, bg_radius, backdrop_fill);
-        painter.circle_stroke(
-            center,
-            bg_radius,
-            egui::Stroke::new(1.0_f32, palette.graph_edge),
-        );
-
-        handles.sort_by(|a, b| {
-            a.depth
-                .partial_cmp(&b.depth)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        for handle in &handles {
-            let is_hovered = hovered_axis == Some(handle.axis);
-            let current_radius = if is_hovered {
-                knob_radius * 1.25_f32
-            } else {
-                knob_radius
-            };
-
-            if handle.axis != GizmoAxis::Iso {
-                painter.line_segment(
-                    [center, handle.screen_pos],
-                    egui::Stroke::new(2.5_f32 * scale, handle.color),
-                );
-            }
-
-            painter.circle_filled(handle.screen_pos, current_radius, handle.color);
-            painter.circle_stroke(
-                handle.screen_pos,
-                current_radius,
-                egui::Stroke::new(
-                    if is_hovered { 2.0_f32 } else { 1.0_f32 },
-                    palette.node_stroke,
-                ),
-            );
-
-            let font_size = if handle.axis == GizmoAxis::Iso {
-                8.0_f32 * scale
-            } else {
-                10.0_f32 * scale
-            };
-
-            painter.text(
-                handle.screen_pos,
-                egui::Align2::CENTER_CENTER,
-                handle.label,
-                egui::FontId::proportional(font_size),
-                crate::app::contrasting_text_color(handle.color),
-            );
-        }
-    }
-
-    /// Renders on-canvas interactive orientation gizmo and returns true if clicked.
-    pub fn draw_gizmo_overlay(&mut self, response: &egui::Response, ui: &egui::Ui) -> bool {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let (center, axis_length, knob_radius, handles) =
-            self.gizmo_geometry(response.rect, &palette);
-        let pointer_pos = ui.input(|i| i.pointer.interact_pos());
-        let is_clicked = ui.input(|i| i.pointer.primary_clicked());
-
-        let hovered_axis = pointer_pos.and_then(|pos| {
-            let hit_threshold = knob_radius + 4.0_f32;
-            handles
-                .iter()
-                .find(|h| pos.distance(h.screen_pos) <= hit_threshold)
-                .map(|h| h.axis)
-        });
-
-        let handled_click = self.check_gizmo_click(&handles, pointer_pos, is_clicked, knob_radius);
-        self.render_gizmo_painter(
-            ui,
-            center,
-            axis_length,
-            knob_radius,
-            handles.to_vec(),
-            hovered_axis,
-        );
-
-        handled_click
-    }
-
     fn handle_keyboard_interaction(&mut self, ui: &egui::Ui) {
+        let reset_pressed = ui.input(|i| {
+            !i.modifiers.command
+                && !i.modifiers.ctrl
+                && !i.modifiers.alt
+                && i.key_pressed(egui::Key::R)
+        });
+        if reset_pressed {
+            self.reset();
+            return;
+        }
+
         let mut yaw_delta = 0.0_f32;
         let mut pitch_delta = 0.0_f32;
         let mut zoom_factor = 1.0_f32;
@@ -343,16 +247,15 @@ impl Camera3D {
             pitch_delta -= 0.05_f32;
         }
         if ui.input(|i| i.key_down(egui::Key::Q)) {
-            zoom_factor *= 1.05_f32;
+            zoom_factor /= 1.05_f32;
         }
         if ui.input(|i| i.key_down(egui::Key::E)) {
-            zoom_factor /= 1.05_f32;
+            zoom_factor *= 1.05_f32;
         }
 
         self.yaw -= yaw_delta;
         self.pitch -= pitch_delta;
-        self.zoom *= zoom_factor;
-        self.zoom = self.zoom.clamp(0.01_f32, 100.0_f32);
+        self.zoom = (self.zoom * zoom_factor).clamp(0.01_f32, 100.0_f32);
     }
 
     fn register_camera_commands(&self, ui: &egui::Ui) {
@@ -363,6 +266,11 @@ impl Camera3D {
             (egui::Key::D, "Yaw Right", "Rotate camera yaw right"),
             (egui::Key::Q, "Zoom Out", "Zoom camera out"),
             (egui::Key::E, "Zoom In", "Zoom camera in"),
+            (
+                egui::Key::R,
+                "Reset View",
+                "Reset camera orientation and zoom",
+            ),
         ];
 
         let ctx = ui.ctx();
@@ -385,12 +293,10 @@ impl Camera3D {
         let cp = (self.pitch as f64).cos();
         let sp = (self.pitch as f64).sin();
 
-        // Apply yaw (rotate around Z)
         let x1 = point[0] * cy - point[1] * sy;
         let y1 = point[0] * sy + point[1] * cy;
         let z1 = point[2];
 
-        // Apply pitch (rotate around X)
         let x2 = x1;
         let y2 = y1 * cp - z1 * sp;
 
@@ -406,31 +312,88 @@ impl Camera3D {
         ui.drag_angle(&mut self.pitch);
 
         ui.add(egui::Slider::new(&mut self.zoom, 0.1..=5.0).text("Zoom"));
+
+        if ui.button("↻ Reset View").clicked() {
+            self.reset();
+        }
+    }
+}
+
+/// Shared 3D viewport wrapper around `egui_plot::Plot` that disables 2D pan/zoom gestures,
+/// locks symmetric viewport bounds so `Camera3D::zoom` never gets cancelled by auto-bounds,
+/// and delegates canvas orbit, zoom, gizmo, and reset gestures to `Camera3D`.
+pub struct Plot3DViewport<'a> {
+    id_source: egui::Id,
+    half_extent: f64,
+    helper_text: Option<&'a str>,
+}
+
+impl<'a> Plot3DViewport<'a> {
+    /// Creates a 3D viewport with locked symmetric half-extent in projected plot units.
+    pub fn new(id_source: impl std::hash::Hash, half_extent: f64) -> Self {
+        Self {
+            id_source: egui::Id::new(id_source),
+            half_extent: half_extent.max(0.1),
+            helper_text: Some(CAMERA_3D_HELPER_TEXT),
+        }
+    }
+
+    /// Overrides the helper caption displayed beneath the 3D canvas.
+    pub fn helper_text(mut self, text: &'a str) -> Self {
+        self.helper_text = Some(text);
+        self
+    }
+
+    /// Renders the locked 3D plot, processes `Camera3D` gestures, and draws optional helper copy.
+    pub fn show<'p, R>(
+        self,
+        ui: &mut egui::Ui,
+        camera: &mut Camera3D,
+        build_fn: impl FnOnce(&mut egui_plot::PlotUi<'p>) -> R,
+    ) -> egui_plot::PlotResponse<R> {
+        let avail = ui.available_size_before_wrap();
+        let label_reserve = if self.helper_text.is_some() {
+            24.0_f32
+        } else {
+            0.0_f32
+        };
+        let plot_height = (avail.y - label_reserve).max(64.0_f32);
+        let aspect = if plot_height > 0.0_f32 {
+            (avail.x / plot_height).max(1.0_f32) as f64
+        } else {
+            1.0
+        };
+        let x_half = self.half_extent * aspect;
+        let y_half = self.half_extent;
+
+        let mut captured_plot_id = None;
+        let plot_response = egui_plot::Plot::new(self.id_source)
+            .height(plot_height)
+            .data_aspect(1.0)
+            .allow_drag(false)
+            .allow_zoom(false)
+            .allow_axis_zoom_drag(false)
+            .allow_scroll(false)
+            .allow_boxed_zoom(false)
+            .allow_double_click_reset(false)
+            .show_navigation_controls(false)
+            .default_x_bounds(-x_half, x_half)
+            .default_y_bounds(-y_half, y_half)
+            .show(ui, |plot_ui| {
+                captured_plot_id = Some(plot_ui.plot_id());
+                build_fn(plot_ui)
+            });
+
+        camera.handle_interaction_with_plot(&plot_response.response, ui, captured_plot_id);
+
+        if let Some(text) = self.helper_text {
+            ui.label(text);
+        }
+
+        plot_response
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_camera_snapping() {
-        let mut camera = Camera3D::default();
-
-        camera.snap_to_xy();
-        assert_eq!(camera.pitch, 0.0_f32);
-        assert_eq!(camera.yaw, 0.0_f32);
-
-        camera.snap_to_xz();
-        assert_eq!(camera.pitch, -std::f32::consts::FRAC_PI_2);
-        assert_eq!(camera.yaw, 0.0_f32);
-
-        camera.snap_to_yz();
-        assert_eq!(camera.pitch, -std::f32::consts::FRAC_PI_2);
-        assert_eq!(camera.yaw, -std::f32::consts::FRAC_PI_2);
-
-        camera.snap_to_iso();
-        assert_eq!(camera.pitch, 0.5_f32);
-        assert_eq!(camera.yaw, 0.5_f32);
-    }
-}
+#[path = "camera_tests.rs"]
+mod tests;

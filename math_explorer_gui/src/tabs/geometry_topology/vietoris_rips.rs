@@ -222,12 +222,7 @@ impl InteractiveTool for VietorisRipsTool {
 
             ui.horizontal(|ui| {
                 if ui.button("Generate Random Points").clicked() {
-                    // allow(entropy_guard)
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-                    let mut rng = oxidize_core::rng::OxidizeRng::new(now);
+                    let mut rng = oxidize_core::rng::OxidizeRng::new(self.revision);
 
                     self.points.clear();
                     for _ in 0..20 {

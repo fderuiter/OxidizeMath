@@ -50,23 +50,7 @@ impl ParseError {
     /// without exposing internal `Span` structs or `<EOF>` markers.
     #[must_use]
     pub fn user_message(&self) -> String {
-        match self {
-            Self::Lex(err) => err.user_message(),
-            Self::UnexpectedToken {
-                expected,
-                found,
-                span,
-            } => {
-                let char_pos = span.start + 1;
-                let found_desc = format_found_token(found);
-                format!("At character {char_pos}: expected {expected}, found {found_desc}")
-            }
-            Self::UnexpectedEof => "Unexpected end of expression".to_string(),
-            Self::RecursionLimitExceeded(max_depth) => {
-                format!("Expression is nested too deeply (maximum depth {max_depth})")
-            }
-            Self::EmptyExpression => "Expression cannot be empty".to_string(),
-        }
+        self.to_string()
     }
 
     /// Formats this parse error in plain language with source context so trailing
@@ -211,7 +195,7 @@ impl Parser {
             }
 
             // Check for implicit multiplication
-            if self.can_start_implicit_mul() {
+            if self.can_start_atom() {
                 let l_bp = 5;
                 let r_bp = 6;
                 if l_bp < min_bp {
@@ -275,7 +259,7 @@ impl Parser {
                 return self.parse_parenthesized_func(func, depth);
             }
             // Support function without parens e.g. "sin x" if followed by atom
-            if self.can_start_prefix() {
+            if self.can_start_atom() {
                 let (arg, arg_height) = self.parse_expr(7, depth + 1)?;
                 let next_height = arg_height + 1;
                 if next_height > MAX_PARSE_DEPTH {
@@ -338,14 +322,7 @@ impl Parser {
         }
     }
 
-    fn can_start_prefix(&self) -> bool {
-        matches!(
-            self.peek().kind,
-            TokenKind::Number(_) | TokenKind::Ident(_) | TokenKind::LParen
-        )
-    }
-
-    fn can_start_implicit_mul(&self) -> bool {
+    fn can_start_atom(&self) -> bool {
         matches!(
             self.peek().kind,
             TokenKind::Number(_) | TokenKind::Ident(_) | TokenKind::LParen

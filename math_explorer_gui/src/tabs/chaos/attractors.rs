@@ -27,6 +27,8 @@ pub struct AttractorPlotter {
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
     pub show_annotations: bool,
+    pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
+    pub(crate) dragged_callout: Option<usize>,
 }
 
 impl Default for AttractorPlotter {
@@ -59,6 +61,8 @@ impl Default for AttractorPlotter {
             params,
             worker,
             show_annotations: true,
+            fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
+            dragged_callout: None,
         }
     }
 }
@@ -204,6 +208,9 @@ impl InteractiveTool for AttractorPlotter {
         self.is_paused().hash(&mut h);
         self.diverged().hash(&mut h);
         self.show_annotations.hash(&mut h);
+        self.camera.pitch.to_bits().hash(&mut h);
+        self.camera.yaw.to_bits().hash(&mut h);
+        self.camera.zoom.to_bits().hash(&mut h);
         h.finish().max(1)
     }
 

@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::framework::SimulationFramework;
-use crate::presets::InteractivePreset;
 use crate::tabs::morphogenesis::MorphogenesisTab;
 use federated_registry::{global_registry, Severity};
 

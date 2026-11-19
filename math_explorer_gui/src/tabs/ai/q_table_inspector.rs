@@ -285,10 +285,29 @@ impl QTableInspectorTool {
                 self.env.width as f32 * cell_size,
                 self.env.height as f32 * cell_size,
             );
-            let (response, painter) = ui.allocate_painter(grid_size, egui::Sense::hover());
+            let (response, painter) =
+                ui.allocate_painter(grid_size, egui::Sense::focusable_noninteractive());
             let _ = response
                 .clone()
                 .accessible_hover_text("Q-Table Heatmap Visualization");
+            let view_name = match self.view {
+                HeatmapView::MaxQ => "Max Q",
+                HeatmapView::Up => "Up",
+                HeatmapView::Down => "Down",
+                HeatmapView::Left => "Left",
+                HeatmapView::Right => "Right",
+            };
+            let summary = format!(
+                "Episodes trained: {}, View: {}",
+                self.episodes_trained, view_name
+            );
+            crate::accessibility::register_canvas_accessibility(
+                ui,
+                &response,
+                egui::accesskit::Role::GraphicsDocument,
+                "Q-Table Heatmap Visualization",
+                Some(&summary),
+            );
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let rect = response.rect;
             let bounds = self.compute_q_bounds();
@@ -308,6 +327,7 @@ impl QTableInspectorTool {
                     );
                 }
             }
+            crate::accessibility::paint_canvas_focus_ring(ui, &response);
         });
     }
 }

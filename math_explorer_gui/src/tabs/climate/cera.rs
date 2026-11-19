@@ -5,6 +5,7 @@ use eframe::egui;
 use math_explorer::climate::cera::Cera;
 use math_explorer::climate::config::CeraConfig;
 use nalgebra::DMatrix;
+use rand::Rng;
 
 const MAX_IN_CHANNELS: usize = 10;
 const MAX_LATENT_CHANNELS: usize = 20;
@@ -219,10 +220,9 @@ impl InteractiveTool for CeraTool {
 
             match Cera::new(config) {
                 Ok(model) => {
-                    let inputs = DMatrix::from_fn(self.num_levels, self.in_channels, |_, _| {
-                        // allow(entropy_guard)
-                        rand::random::<f32>()
-                    });
+                    let mut rng = oxidize_core::rng::OxidizeRng::default();
+                    let inputs =
+                        DMatrix::from_fn(self.num_levels, self.in_channels, |_, _| rng.gen::<f32>());
                     let prediction = model.predict(&inputs);
 
                     let has_non_finite = prediction.iter().any(|v| !v.is_finite());

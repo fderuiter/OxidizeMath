@@ -21,7 +21,7 @@ scan_paths = [
     "traceability.toml",
     "verification_whitelist.toml",
 ]
-target_extensions = ["rs", "toml", "yml", "yaml", "json", "sh"]
+target_extensions = ["rs", "toml", "yml", "yaml", "json", "sh", "js", "html"]
 allowlist = [
     "crates/unified_verification/src/entropy_guard/tests.rs",
 ]

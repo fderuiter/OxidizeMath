@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::async_sim::SimulationRunner;
+use crate::framework::Camera3D;
 use eframe::egui;
 
 #[test]
@@ -360,4 +361,93 @@ fn test_attractor_poisoned_lock_recovery() {
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         plotter.show(ctx);
     });
+}
+
+#[test]
+fn test_attractor_camera_preset_roundtrip_and_validation() {
+    let mut plotter = AttractorPlotter::default();
+    let base_rev = plotter.state_revision();
+    plotter.camera = Camera3D::new(0.45, -0.75, 1.35);
+    assert_ne!(plotter.state_revision(), base_rev);
+
+    let saved = plotter.save_state().expect("camera state should serialize");
+    let mut restored = AttractorPlotter::default();
+    restored
+        .try_load_state(&saved)
+        .expect("camera state should deserialize");
+    assert!((restored.camera.pitch - 0.45).abs() < 1e-6);
+    assert!((restored.camera.yaw + 0.75).abs() < 1e-6);
+    assert!((restored.camera.zoom - 1.35).abs() < 1e-6);
+
+    restored.camera.reset();
+    assert_eq!(
+        (
+            restored.camera.pitch,
+            restored.camera.yaw,
+            restored.camera.zoom
+        ),
+        (0.0, 0.0, 1.0)
+    );
+
+    let legacy = r#"{"sigma":10.0,"rho":28.0,"beta":2.6667,"dt":0.01,"simulation_speed":5,"pitch":0.3,"yaw":-0.4,"zoom":1.2}"#;
+    restored
+        .try_load_state(legacy)
+        .expect("legacy pitch/yaw/zoom fields should deserialize");
+    assert!((restored.camera.zoom - 1.2).abs() < 1e-6);
+
+    let bad_zoom = r#"{"sigma":10.0,"rho":28.0,"beta":2.6667,"dt":0.01,"simulation_speed":5,"camera":{"pitch":0.0,"yaw":0.0,"zoom":-1.0}}"#;
+    assert!(restored.try_load_state(bad_zoom).is_err());
+}
+
+fn find_callout_center(shapes: &[egui::epaint::ClippedShape], needle: &str) -> egui::Pos2 {
+    for clipped in shapes {
+        if let egui::epaint::Shape::Text(text) = &clipped.shape {
+            if text.galley.text().contains(needle) {
+                return text.visual_bounding_rect().center();
+            }
+        }
+    }
+    panic!("Callout containing '{needle}' not found in output shapes");
+}
+
+#[test]
+fn test_attractor_fixed_callout_drag_leaves_camera_unchanged() {
+    let ctx = egui::Context::default();
+    let mut plotter = AttractorPlotter::default();
+    let screen = Some(egui::Rect::from_min_size(
+        egui::Pos2::ZERO,
+        egui::vec2(1000.0, 700.0),
+    ));
+    let _ = ctx.run(egui::RawInput { screen_rect: screen, ..Default::default() }, |ctx| plotter.show(ctx));
+    let out = ctx.run(egui::RawInput { screen_rect: screen, ..Default::default() }, |ctx| plotter.show(ctx));
+
+    let start = find_callout_center(&out.shapes, "Fixed Point C+");
+    let end = start + egui::vec2(30.0, -20.0);
+    let initial_offset = plotter.fixed_callout_offsets[0];
+    let initial_pose = (plotter.camera.pitch, plotter.camera.yaw);
+
+    let press = egui::RawInput {
+        screen_rect: screen,
+        events: vec![
+            egui::Event::PointerMoved(start),
+            egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE },
+        ],
+        ..Default::default()
+    };
+    let _ = ctx.run(press, |ctx| plotter.show(ctx));
+    let drag = egui::RawInput {
+        screen_rect: screen,
+        events: vec![egui::Event::PointerMoved(end)],
+        ..Default::default()
+    };
+    let _ = ctx.run(drag, |ctx| plotter.show(ctx));
+    let release = egui::RawInput {
+        screen_rect: screen,
+        events: vec![egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE }],
+        ..Default::default()
+    };
+    let _ = ctx.run(release, |ctx| plotter.show(ctx));
+
+    assert_ne!(plotter.fixed_callout_offsets[0], initial_offset);
+    assert_eq!((plotter.camera.pitch, plotter.camera.yaw), initial_pose);
 }

@@ -1,7 +1,7 @@
 use crate::accessibility::AccessibleTheoryHover;
-use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
+use crate::framework::{Camera3D, InteractiveTool, PlaybackAction, PlaybackTransport, Plot3DViewport};
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoint, Points};
+use egui_plot::{Line, PlotPoint, Points};
 use math_explorer::physics::quantum::{
     evolve_state_in_place, spin, time_evolution_operator, QuantumOperator, QuantumState,
 };
@@ -151,10 +151,8 @@ impl SpinVisualizer {
             let tip = [end];
 
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            let response = Plot::new("bloch_sphere")
-                .data_aspect(1.0)
-                .view_aspect(1.0)
-                .show(ui, |plot_ui| {
+            let response = Plot3DViewport::new("bloch_sphere", 1.5)
+                .show(ui, &mut self.camera, |plot_ui| {
                     plot_ui.line(Line::new("", &equator[..]).color(palette.graph_edge));
                     plot_ui.line(Line::new("", &meridian[..]).color(palette.graph_edge));
                     plot_ui.line(Line::new("", &meridian2[..]).color(palette.graph_edge));
@@ -176,18 +174,31 @@ impl SpinVisualizer {
                 })
                 .response;
 
-            self.camera.handle_interaction(&response, ui);
             response.accessible_theory_hover(&self.psi);
         });
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize)]
+struct SpinVisualizerSaveState {
+    b_field: [f64; 3],
+    paused: bool,
+    camera: Camera3D,
+}
+
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SpinVisualizerState {
     b_field: [f64; 3],
     paused: bool,
-    camera: crate::framework::Camera3D,
+    #[serde(default)]
+    camera: Option<Camera3D>,
+    #[serde(default)]
+    pitch: Option<f32>,
+    #[serde(default)]
+    yaw: Option<f32>,
+    #[serde(default)]
+    zoom: Option<f32>,
 }
 
 impl InteractiveTool for SpinVisualizer {
@@ -202,7 +213,7 @@ impl InteractiveTool for SpinVisualizer {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&SpinVisualizerState {
+        serde_json::to_string(&SpinVisualizerSaveState {
             b_field: self.b_field,
             paused: self.paused,
             camera: self.camera,
@@ -220,16 +231,16 @@ impl InteractiveTool for SpinVisualizer {
         {
             return Err("b_field components must be finite in [-5.0, 5.0]".to_string());
         }
-        if !loaded.camera.pitch.is_finite()
-            || !loaded.camera.yaw.is_finite()
-            || !loaded.camera.zoom.is_finite()
-            || !(0.01..=100.0).contains(&loaded.camera.zoom)
-        {
-            return Err("camera pitch/yaw/zoom out of valid range".to_string());
-        }
+        let camera = Camera3D::from_preset_fields(
+            loaded.camera,
+            loaded.pitch,
+            loaded.yaw,
+            loaded.zoom,
+            None,
+        )?;
         self.b_field = loaded.b_field;
         self.paused = loaded.paused;
-        self.camera = loaded.camera;
+        self.camera.apply_pose(camera);
         self.reset();
         Ok(())
     }
@@ -351,6 +362,15 @@ mod tests {
         }
         assert_ne!(viz.cached_key, key_dt_changed);
         assert!((&viz.psi.vector - &expected.vector).norm() < 1e-12);
+    }
+
+    #[test]
+    fn test_spin_visualizer_viewport_and_plot_export() {
+        let mut viz = SpinVisualizer::default();
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| viz.show(ctx));
+        assert!(!egui_plot::get_last_plot_datasets().is_empty());
+        assert!(!egui_plot::get_last_plot_primitives().is_empty());
     }
 }
 

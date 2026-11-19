@@ -1,3 +1,4 @@
+use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
@@ -245,7 +246,18 @@ impl IsingModelTool {
             self.sync_lattice_texture(ctx);
 
             if let Some(texture) = &self.texture {
-                ui.image(texture);
+                let alt_label = format!(
+                    "2D Ising Model spin lattice visualization (T = {:.2}, M = {:.3}, E = {:.3})",
+                    self.temperature, self.magnetization, self.energy
+                );
+                let response = ui
+                    .add(
+                        egui::Image::new(texture)
+                            .alt_text(alt_label)
+                            .sense(egui::Sense::focusable_noninteractive()),
+                    )
+                    .accessible_theory_hover(self);
+                crate::accessibility::paint_canvas_focus_ring(ui, &response);
             } else {
                 render_empty_plot_guidance(
                     ui,

@@ -8,12 +8,20 @@ use syn::visit::Visit;
 use walkdir::WalkDir;
 
 #[derive(Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
 pub struct WhitelistConfig {
     #[serde(default)]
     pub entropy_guard: Option<EntropyGuardConfig>,
+    #[serde(default)]
+    pub doc_verification: Option<toml::Value>,
+    #[serde(default)]
+    pub dead_code: Option<toml::Value>,
+    #[serde(default)]
+    pub workflow_linter: Option<toml::Value>,
 }
 
 #[derive(Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
 pub struct EntropyGuardConfig {
     #[serde(default, alias = "targets", alias = "paths", alias = "scan_targets")]
     pub scan_paths: Option<Vec<String>>,
@@ -36,15 +44,134 @@ pub const DEFAULT_SCAN_PATHS: &[&str] = &[
     "verification_whitelist.toml",
 ];
 
-pub const DEFAULT_TARGET_EXTENSIONS: &[&str] = &["rs", "toml", "yml", "yaml", "json", "sh"];
+pub const DEFAULT_TARGET_EXTENSIONS: &[&str] =
+    &["rs", "toml", "yml", "yaml", "json", "sh", "js", "html"];
+
+struct SecretScanner {
+    aws_re: Regex,
+    gh_re: Regex,
+    slack_re: Regex,
+    b64_re: Regex,
+    b64url_re: Regex,
+}
+
+impl SecretScanner {
+    fn new() -> Self {
+        Self {
+            aws_re: Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(),
+            gh_re: Regex::new(r"ghp_[a-zA-Z0-9]{36,40}|github_pat_[a-zA-Z0-9_]{82}").unwrap(),
+            slack_re: Regex::new(r"xoxb-[a-zA-Z0-9-]{10,}").unwrap(),
+            b64_re: Regex::new(r"^[A-Za-z0-9+/=]{33,}$").unwrap(),
+            b64url_re: Regex::new(r"^[A-Za-z0-9_-]{33,}$").unwrap(),
+        }
+    }
+
+    fn classify(&self, text: &str) -> Option<&'static str> {
+        if (text.contains("-----BEGIN ") && text.contains("PRIVATE KEY-----"))
+            || (text.contains("-----BEGIN RSA ") && text.contains("PRIVATE KEY-----"))
+        {
+            Some("Private Key")
+        } else if self.aws_re.is_match(text) {
+            Some("AWS Access Key")
+        } else if self.gh_re.is_match(text) {
+            Some("GitHub API Token")
+        } else if self.slack_re.is_match(text) {
+            Some("Slack API Token")
+        } else if self.has_high_entropy_token(text) {
+            Some("High-Entropy Secret")
+        } else {
+            None
+        }
+    }
+
+    fn has_high_entropy_token(&self, text: &str) -> bool {
+        text.split(is_token_delimiter)
+            .filter(|raw| !raw.is_empty())
+            .any(|raw| self.is_high_entropy_raw_token(raw))
+    }
+
+    fn is_high_entropy_raw_token(&self, raw: &str) -> bool {
+        if is_url_or_path_token(raw) {
+            return false;
+        }
+        let candidate = strip_key_prefix(raw).trim_end_matches('.');
+        if is_excluded_token(candidate) {
+            return false;
+        }
+        if self.matches_secret_entropy(candidate) {
+            return true;
+        }
+        candidate.contains('.')
+            && candidate
+                .split('.')
+                .all(|seg| !seg.is_empty() && seg.chars().all(is_b64url_char))
+            && candidate
+                .split('.')
+                .any(|seg| !is_excluded_token(seg) && self.matches_secret_entropy(seg))
+    }
+
+    fn matches_secret_entropy(&self, token: &str) -> bool {
+        (self.b64_re.is_match(token) || self.b64url_re.is_match(token))
+            && calculate_entropy(token) > 4.5
+    }
+}
+
+fn is_token_delimiter(c: char) -> bool {
+    c.is_whitespace() || "\"'`,;()[]{}<>?&@".contains(c)
+}
+
+fn is_b64url_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == '-'
+}
+
+fn strip_key_prefix(tok: &str) -> &str {
+    let without_pad = tok.trim_end_matches('=');
+    if let Some((_, rhs)) = without_pad.rsplit_once('=') {
+        let pad_len = tok.len() - without_pad.len();
+        let rhs_start = tok.len() - rhs.len() - pad_len;
+        return &tok[rhs_start..];
+    }
+    if let Some((_, rhs)) = tok.rsplit_once(':') {
+        return rhs;
+    }
+    tok
+}
+
+fn is_pure_hex(s: &str) -> bool {
+    let hex = s
+        .strip_prefix("0x")
+        .or_else(|| s.strip_prefix("0X"))
+        .unwrap_or(s);
+    !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn is_integrity_digest(s: &str) -> bool {
+    let lower = s.to_ascii_lowercase();
+    lower.starts_with("sha256-") || lower.starts_with("sha384-") || lower.starts_with("sha512-")
+}
+
+fn is_url_or_path_token(raw: &str) -> bool {
+    raw.contains("://")
+        || raw.starts_with('/')
+        || raw.starts_with("./")
+        || raw.starts_with("../")
+        || raw.ends_with('/')
+        || raw.contains("//")
+}
+
+fn is_excluded_token(candidate: &str) -> bool {
+    candidate.len() < 33
+        || is_pure_hex(candidate)
+        || is_integrity_digest(candidate)
+        || is_url_or_path_token(candidate)
+        || (candidate.contains('/') && !candidate.contains('+') && !candidate.ends_with('='))
+}
 
 struct SecurityVisitor<'a> {
     aliases: HashMap<String, String>,
     entropy_violations: Vec<(String, usize)>,
     secret_warnings: Vec<(String, usize)>,
-    aws_re: &'a Regex,
-    gh_re: &'a Regex,
-    slack_re: &'a Regex,
+    scanner: &'a SecretScanner,
 }
 
 fn flatten_use_tree(
@@ -80,7 +207,7 @@ fn flatten_use_tree(
 fn resolve_path(p: &syn::Path, mappings: &HashMap<String, String>) -> String {
     let mut parts = Vec::new();
     for (i, seg) in p.segments.iter().enumerate() {
-        if i == 0 {
+        if i == 0 && p.leading_colon.is_none() {
             let first = seg.ident.to_string();
             if let Some(mapped) = mappings.get(&first) {
                 parts.push(mapped.clone());
@@ -120,20 +247,12 @@ impl<'a, 'ast> Visit<'ast> for SecurityVisitor<'a> {
             let resolved = resolve_path(&p.path, &self.aliases);
             let line = i.func.span().start().line;
 
-            if resolved.contains("thread_rng")
-                || resolved.ends_with("::thread_rng")
-                || resolved == "thread_rng"
-            {
+            if resolved == "thread_rng" || resolved.ends_with("::thread_rng") {
                 self.entropy_violations
                     .push(("thread_rng()".to_string(), line));
-            } else if resolved.contains("random")
-                || resolved.ends_with("::random")
-                || resolved == "random"
-            {
+            } else if resolved == "random" || resolved.ends_with("::random") {
                 self.entropy_violations.push(("random()".to_string(), line));
-            } else if resolved.contains("SystemTime::now")
-                || (resolved.ends_with("::now") && resolved.contains("SystemTime"))
-            {
+            } else if resolved == "SystemTime::now" || resolved.ends_with("::SystemTime::now") {
                 self.entropy_violations
                     .push(("SystemTime::now()".to_string(), line));
             }
@@ -144,33 +263,9 @@ impl<'a, 'ast> Visit<'ast> for SecurityVisitor<'a> {
     fn visit_lit_str(&mut self, lit: &'ast syn::LitStr) {
         let value = lit.value();
         let line = lit.span().start().line;
-
-        if (value.contains("-----BEGIN ") && value.contains("PRIVATE KEY-----"))
-            || (value.contains("-----BEGIN RSA ") && value.contains("PRIVATE KEY-----"))
-        {
-            self.secret_warnings.push(("Private Key".to_string(), line));
-        } else if self.aws_re.is_match(&value) {
-            self.secret_warnings
-                .push(("AWS Access Key".to_string(), line));
-        } else if self.gh_re.is_match(&value) {
-            self.secret_warnings
-                .push(("GitHub API Token".to_string(), line));
-        } else if self.slack_re.is_match(&value) {
-            self.secret_warnings
-                .push(("Slack API Token".to_string(), line));
-        } else if value.len() > 32 {
-            let is_hex_or_b64 = value
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=');
-            if is_hex_or_b64 {
-                let entropy = calculate_entropy(&value);
-                if entropy > 4.5 {
-                    self.secret_warnings
-                        .push(("High-Entropy Secret".to_string(), line));
-                }
-            }
+        if let Some(kind) = self.scanner.classify(&value) {
+            self.secret_warnings.push((kind.to_string(), line));
         }
-
         syn::visit::visit_lit_str(self, lit);
     }
 }
@@ -188,19 +283,20 @@ pub fn find_whitelist_path() -> Option<PathBuf> {
     None
 }
 
-pub fn load_whitelist_config(path: Option<&Path>) -> EntropyGuardConfig {
+pub fn load_whitelist_config(path: Option<&Path>) -> Result<EntropyGuardConfig, String> {
     let toml_path = match path {
         Some(p) => Some(p.to_path_buf()),
         None => find_whitelist_path(),
     };
-    if let Some(p) = toml_path {
-        if let Ok(content) = fs::read_to_string(&p) {
-            if let Ok(cfg) = toml::from_str::<WhitelistConfig>(&content) {
-                return cfg.entropy_guard.unwrap_or_default();
-            }
-        }
-    }
-    EntropyGuardConfig::default()
+    let Some(p) = toml_path else {
+        return Ok(EntropyGuardConfig::default());
+    };
+    let content =
+        fs::read_to_string(&p).map_err(|err| format!("Failed to read {}: {}", p.display(), err))?;
+    let cfg = toml::from_str::<WhitelistConfig>(&content)
+        .map_err(|err| format!("Failed to parse {}: {}", p.display(), err))?;
+    let _ = (&cfg.doc_verification, &cfg.dead_code, &cfg.workflow_linter);
+    Ok(cfg.entropy_guard.unwrap_or_default())
 }
 
 pub fn is_file_allowlisted(path: &Path, allowlist: &[String]) -> bool {
@@ -232,25 +328,7 @@ fn is_ignored_dir(entry: &walkdir::DirEntry) -> bool {
     false
 }
 
-fn is_line_ignored(line_num: usize, lines: &[&str]) -> bool {
-    if line_num > 0 && line_num <= lines.len() {
-        if lines[line_num - 1].contains("allow(entropy_guard)") {
-            return true;
-        }
-        if line_num > 1 && lines[line_num - 2].contains("allow(entropy_guard)") {
-            return true;
-        }
-    }
-    false
-}
-
-fn scan_rust_file(
-    path: &Path,
-    aws_re: &Regex,
-    gh_re: &Regex,
-    slack_re: &Regex,
-    violations: &mut Vec<String>,
-) {
+fn scan_rust_file(path: &Path, scanner: &SecretScanner, violations: &mut Vec<String>) {
     let Ok(content) = fs::read_to_string(path) else {
         return;
     };
@@ -261,72 +339,40 @@ fn scan_rust_file(
         aliases: HashMap::new(),
         entropy_violations: Vec::new(),
         secret_warnings: Vec::new(),
-        aws_re,
-        gh_re,
-        slack_re,
+        scanner,
     };
     visitor.visit_file(&ast);
 
-    let lines: Vec<&str> = content.lines().collect();
-
     for (name, line_num) in visitor.entropy_violations {
-        if !is_line_ignored(line_num, &lines) {
-            let msg = format!(
-                "Entropy Guard Violation: Prohibited pattern '{}' found in {} at line {}",
-                name,
-                path.display(),
-                line_num
-            );
-            violations.push(msg.clone());
-            println!("[WARNING] {}", msg);
-        }
+        let msg = format!(
+            "Entropy Guard Violation: Prohibited pattern '{}' found in {} at line {}",
+            name,
+            path.display(),
+            line_num
+        );
+        violations.push(msg.clone());
+        println!("[WARNING] {}", msg);
     }
 
     for (kind, line_num) in visitor.secret_warnings {
-        if !is_line_ignored(line_num, &lines) {
-            let msg = format!(
-                "Raw credential ({}) found in {} at line {}",
-                kind,
-                path.display(),
-                line_num
-            );
-            violations.push(msg.clone());
-            println!("[WARNING] {}", msg);
-        }
+        let msg = format!(
+            "Raw credential ({}) found in {} at line {}",
+            kind,
+            path.display(),
+            line_num
+        );
+        violations.push(msg.clone());
+        println!("[WARNING] {}", msg);
     }
 }
 
-fn scan_text_file(
-    path: &Path,
-    aws_re: &Regex,
-    gh_re: &Regex,
-    slack_re: &Regex,
-    violations: &mut Vec<String>,
-) {
+fn scan_text_file(path: &Path, scanner: &SecretScanner, violations: &mut Vec<String>) {
     let Ok(content) = fs::read_to_string(path) else {
         return;
     };
-    let lines: Vec<&str> = content.lines().collect();
-    for (idx, line) in lines.iter().enumerate() {
+    for (idx, line) in content.lines().enumerate() {
         let line_num = idx + 1;
-        if is_line_ignored(line_num, &lines) {
-            continue;
-        }
-        let kind = if (line.contains("-----BEGIN ") && line.contains("PRIVATE KEY-----"))
-            || (line.contains("-----BEGIN RSA ") && line.contains("PRIVATE KEY-----"))
-        {
-            Some("Private Key")
-        } else if aws_re.is_match(line) {
-            Some("AWS Access Key")
-        } else if gh_re.is_match(line) {
-            Some("GitHub API Token")
-        } else if slack_re.is_match(line) {
-            Some("Slack API Token")
-        } else {
-            None
-        };
-
-        if let Some(kind_str) = kind {
+        if let Some(kind_str) = scanner.classify(line) {
             let msg = format!(
                 "Raw credential ({}) found in {} at line {}",
                 kind_str,
@@ -345,9 +391,7 @@ pub fn scan_paths_internal(
     allowlist: &[String],
 ) -> Vec<String> {
     let mut all_violations = Vec::new();
-    let aws_re = Regex::new(r"AKIA[0-9A-Z]{16}").unwrap();
-    let gh_re = Regex::new(r"ghp_[a-zA-Z0-9]{36,40}|github_pat_[a-zA-Z0-9_]{82}").unwrap();
-    let slack_re = Regex::new(r"xoxb-[a-zA-Z0-9-]{10,}").unwrap();
+    let scanner = SecretScanner::new();
     let mut visited = HashSet::new();
 
     for target in scan_targets {
@@ -393,21 +437,9 @@ pub fn scan_paths_internal(
             }
 
             if ext.eq_ignore_ascii_case("rs") {
-                scan_rust_file(
-                    entry.path(),
-                    &aws_re,
-                    &gh_re,
-                    &slack_re,
-                    &mut all_violations,
-                );
+                scan_rust_file(entry.path(), &scanner, &mut all_violations);
             } else {
-                scan_text_file(
-                    entry.path(),
-                    &aws_re,
-                    &gh_re,
-                    &slack_re,
-                    &mut all_violations,
-                );
+                scan_text_file(entry.path(), &scanner, &mut all_violations);
             }
         }
     }
@@ -417,17 +449,22 @@ pub fn scan_paths_internal(
 
 pub fn check_entropy(members: &[String]) -> Vec<String> {
     println!("Running Entropy Guard and Secrets Scanner...");
-    let config = load_whitelist_config(None);
+    let config = match load_whitelist_config(None) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("[!] {}", err);
+            return vec![format!("Entropy Guard Configuration Error: {}", err)];
+        }
+    };
     let scan_targets: Vec<String> = if !members.is_empty() {
         members.to_vec()
-    } else if let Some(ref paths) = config.scan_paths {
-        if !paths.is_empty() {
-            paths.clone()
-        } else {
-            DEFAULT_SCAN_PATHS.iter().map(|s| s.to_string()).collect()
-        }
     } else {
-        DEFAULT_SCAN_PATHS.iter().map(|s| s.to_string()).collect()
+        config
+            .scan_paths
+            .as_ref()
+            .filter(|p| !p.is_empty())
+            .cloned()
+            .unwrap_or_else(|| DEFAULT_SCAN_PATHS.iter().map(|s| s.to_string()).collect())
     };
 
     let target_extensions: Vec<String> = config

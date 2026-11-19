@@ -79,6 +79,8 @@ pub struct CommandPalette {
     pub selected_index: usize,
     /// Flag indicating whether the palette was opened on this frame (for auto-focusing).
     pub just_opened: bool,
+    /// Widget ID that held focus prior to opening the command palette.
+    pub prior_focus: Option<egui::Id>,
 }
 
 const SEARCH_INPUT_LABEL: &str = "Search tabs and tools";
@@ -104,6 +106,7 @@ fn announce_palette_status(ctx: &egui::Context, message: impl Into<String>) {
 impl CommandPalette {
     /// Opens the command palette modal, clearing the query and resetting selection.
     pub fn open(&mut self) {
+        self.prior_focus = None;
         self.reset_state(true);
     }
 
@@ -280,6 +283,9 @@ impl CommandPalette {
         });
 
         if self.just_opened {
+            if self.prior_focus.is_none() {
+                self.prior_focus = ui.ctx().memory(|m| m.focused());
+            }
             text_edit_response.request_focus();
             self.just_opened = false;
         }
@@ -354,6 +360,9 @@ impl CommandPalette {
         tabs: &[Box<dyn crate::tabs::ExplorerTab>],
     ) -> Option<PaletteSelection> {
         if !self.is_open {
+            if let Some(prev_id) = self.prior_focus.take() {
+                ctx.memory_mut(|m| m.request_focus(prev_id));
+            }
             return None;
         }
 
@@ -384,10 +393,18 @@ impl CommandPalette {
         });
 
         if esc_pressed || modal_res.should_close() {
+            let prior_focus = self.prior_focus.take();
             self.close();
+            if let Some(prev_id) = prior_focus {
+                ctx.memory_mut(|m| m.request_focus(prev_id));
+            }
             announce_palette_status(ctx, "Command palette closed");
         } else if selected_item.is_some() {
+            let prior_focus = self.prior_focus.take();
             self.close();
+            if let Some(prev_id) = prior_focus {
+                ctx.memory_mut(|m| m.request_focus(prev_id));
+            }
         } else if query_changed {
             announce_palette_status(ctx, format_search_count_status(filtered_items.len()));
         }

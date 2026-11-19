@@ -1,13 +1,15 @@
 #![doc = include_str!("../README.md")]
+mod gates;
 mod markdown_links;
 mod papers;
 
+use gates::run_cmd;
 use markdown_links::check_markdown_links;
 use std::env;
 #[cfg(any(unix, test))]
 use std::fs;
 use std::path::Path;
-use std::process::{Command, exit};
+use std::process::exit;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -19,24 +21,31 @@ fn main() {
             exit(0);
         }
     }
-    match args[1].as_str() {
+    dispatch_command(&args[1], &args[2..]);
+}
+
+fn dispatch_command(cmd: &str, rest: &[String]) {
+    match cmd {
         "setup" => setup(),
-        "lint-all" | "lint" => lint_all(),
-        "check-cargo-docs" | "check-workspace-docs" => check_cargo_docs(),
-        "check-docs" => check_docs(),
-        "check-entropy" => check_entropy(),
-        "test-features" => test_features(&args[2..]),
-        "verify-suite" => verify_suite(&args[2..]),
-        "verify-records" => verify_records(),
-        "compile-papers" => compile_papers(),
-        "traceability" => traceability(),
-        "check-file-lengths" => check_file_lengths(),
-        "check-staged-duplicates" => check_staged_duplicates(),
+        "lint-all" | "lint" => gates::lint_all(),
+        "check-cargo-docs" | "check-workspace-docs" => gates::check_cargo_docs(),
+        "check-docs" => gates::check_docs(),
+        "check-entropy" => gates::check_entropy(),
+        "test-features" => test_features(rest),
+        "verify-suite" => gates::verify_suite(rest),
+        "verify-records" => gates::verify_records(rest),
+        "compile-papers" => papers::compile_papers(),
+        "traceability" => gates::traceability(),
+        "check-file-lengths" => gates::check_file_lengths(),
+        "check-duplicates" => gates::check_duplicates(),
+        "check-api-drift" => gates::check_api_drift(),
+        "check-profiles" => gates::check_profiles(),
+        "check-staged-duplicates" => gates::check_staged_duplicates(),
         "check-markdown-links" => check_markdown_links(),
-        "check-vulnerabilities" => check_vulnerabilities(),
-        "test-policy-audit" => test_policy_audit(),
-        "lint-workflows" => lint_workflows(),
-        "regenerate-baseline" => regenerate_baseline(),
+        "check-vulnerabilities" => gates::check_vulnerabilities(),
+        "test-policy-audit" => gates::test_policy_audit(),
+        "lint-workflows" => gates::lint_workflows(),
+        "regenerate-baseline" => gates::regenerate_baseline(),
         _ => {
             println!("Unknown command");
             exit(1);
@@ -47,8 +56,10 @@ fn main() {
 fn print_help() {
     println!("Usage: xtask <command> [args...]\n");
     println!("Active Quality Gates:");
+    println!("  check-api-drift          - Validate public API surface against baseline");
     println!("  check-cargo-docs         - Verify workspace documentation builds without warnings");
     println!("  check-docs               - Run crate documentation audit");
+    println!("  check-duplicates         - Run AST-level code clone detector across crates");
     println!("  check-entropy            - Scan codebase for high entropy strings and secrets");
     println!(
         "  check-file-lengths       - Run centralized verification suite for file-length constraints"
@@ -56,10 +67,11 @@ fn print_help() {
     println!(
         "  check-markdown-links     - Check all internal relative markdown documentation links"
     );
+    println!("  check-profiles           - Verify Cargo release profile invariants");
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
     println!(
-        "  lint-all                 - Run format, clippy, file-length, duplicate, doc, doctest, workflow, traceability, entropy, vulnerability, and policy audit checks"
+        "  lint-all                 - Run format, profile, AST duplicate, API drift, staged ADR, file-length, clippy, doc, doctest, markdown-link, workflow, traceability, entropy, vulnerability, and policy audit checks"
     );
     println!("  lint-workflows           - Lint CI workflow definitions");
     println!("  test-features            - Run tests across feature combinations");
@@ -67,109 +79,14 @@ fn print_help() {
         "  test-policy-audit        - Detect unauthorized dead-code bypasses and unused dependencies"
     );
     println!("  traceability             - Generate traceability report");
-    println!("  verify-records           - Verify verification records");
+    println!(
+        "  verify-records           - Verify architectural decision records (--staged supported)"
+    );
     println!("  verify-suite             - Run high-integrity verified suite\n");
     println!("Legacy Utility Tasks:");
     println!("  compile-papers           - Compile academic papers with Tectonic");
     println!("  regenerate-baseline      - Regenerate public API baseline");
     println!("  setup                    - Run setup script and configure git hooks");
-}
-
-fn run_cmd(cmd: &str, args: &[&str]) {
-    run_cmd_with_env(cmd, args, &[]);
-}
-
-fn run_cmd_with_env(cmd: &str, args: &[&str], envs: &[(&str, &str)]) {
-    println!("Running: {} {}", cmd, args.join(" "));
-    let mut command = Command::new(cmd);
-    command.args(args);
-    for (k, v) in envs {
-        command.env(k, v);
-    }
-    let status = command.status();
-    match status {
-        Ok(s) if s.success() => (),
-        _ => {
-            eprintln!("Command failed!");
-            exit(1);
-        }
-    }
-}
-
-const HOST_CLIPPY_ARGS: &[&str] = &[
-    "clippy",
-    "--workspace",
-    "--all-targets",
-    "--all-features",
-    "--",
-    "-D",
-    "warnings",
-];
-
-const WASM_CLIPPY_ARGS: &[&str] = &[
-    "clippy",
-    "--workspace",
-    "--lib",
-    "--bins",
-    "--tests",
-    "--target",
-    "wasm32-unknown-unknown",
-    "--all-features",
-    "--",
-    "-D",
-    "warnings",
-];
-
-fn run_clippy_lints() {
-    println!("\n--- Step 2a: Clippy Lints (Host) ---");
-    run_cmd("cargo", HOST_CLIPPY_ARGS);
-
-    println!("\n--- Step 2b: Clippy Lints (WebAssembly) ---");
-    run_cmd("cargo", WASM_CLIPPY_ARGS);
-}
-
-fn lint_all() {
-    println!("=== Running Workspace Lint Suite ===");
-    println!("\n--- Step 1: Format Check ---");
-    run_cmd("cargo", &["fmt", "--all", "--", "--check"]);
-
-    println!("\n--- Step 2: Clippy Lints ---");
-    run_clippy_lints();
-
-    println!("\n--- Step 3: Staged Duplicates Check ---");
-    check_staged_duplicates();
-
-    println!("\n--- Step 4: File Length Checks ---");
-    check_file_lengths();
-
-    println!("\n--- Step 5: Cargo Doc Verification ---");
-    check_cargo_docs();
-
-    println!("\n--- Step 6: Doc Tests ---");
-    run_cmd("cargo", &["test", "--doc", "--workspace", "--all-features"]);
-
-    println!("\n--- Step 7: Markdown Documentation Links ---");
-    check_markdown_links();
-
-    println!("\n--- Step 8: CI Workflow Linting ---");
-    lint_workflows();
-
-    println!("\n--- Step 9: Crate Documentation Audit ---");
-    check_docs();
-
-    println!("\n--- Step 10: Traceability Check ---");
-    traceability();
-
-    println!("\n--- Step 11: Entropy and Secret Scanning ---");
-    check_entropy();
-
-    println!("\n--- Step 12: Dependency Vulnerability Check ---");
-    check_vulnerabilities();
-
-    println!("\n--- Step 13: Policy Audit ---");
-    test_policy_audit();
-
-    println!("\n=== All Lint Checks Passed Successfully ===");
 }
 
 fn configure_git_hooks() {
@@ -233,7 +150,7 @@ fn test_features(args: &[String]) {
             "cargo",
             &["test", "-p", "math_explorer", "--no-default-features"],
         );
-        for f in features.iter() {
+        for f in &features {
             println!("=== Running tests for feature: {} ===", f);
             run_cmd(
                 "cargo",
@@ -273,101 +190,12 @@ fn test_features(args: &[String]) {
     }
 }
 
-fn verify_suite(args: &[String]) {
-    println!("=== High-Integrity Verified Suite ===");
-    let mut cmd_args = vec![
-        "run",
-        "-p",
-        "unified_verification",
-        "--release",
-        "--",
-        "verify-suite",
-    ];
-    let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    cmd_args.extend(args_str);
-    run_cmd("cargo", &cmd_args);
-}
-
-fn run_verification(subcmd: &str) {
-    run_cmd(
-        "cargo",
-        &[
-            "run",
-            "-p",
-            "unified_verification",
-            "--release",
-            "--",
-            subcmd,
-        ],
-    );
-}
-
-fn verify_records() {
-    println!("=== Verify Records ===");
-    run_verification("verify-records");
-}
-
-fn compile_papers() {
-    papers::compile_papers();
-}
-
-fn traceability() {
-    println!("=== Traceability Report ===");
-    run_verification("traceability");
-}
-
-fn lint_workflows() {
-    println!("=== Lint CI Workflows ===");
-    run_verification("lint-workflows");
-}
-
-fn check_docs() {
-    println!("=== Check Crate Documentation ===");
-    run_verification("check-docs");
-}
-
-fn check_cargo_docs() {
-    println!("=== Cargo Doc Verification ===");
-    run_cmd_with_env(
-        "cargo",
-        &["doc", "--workspace", "--no-deps"],
-        &[("RUSTDOCFLAGS", "-D warnings")],
-    );
-}
-
-fn check_file_lengths() {
-    println!("=== Check File Lengths ===");
-    run_verification("check-file-lengths");
-}
-
-fn check_entropy() {
-    println!("=== Check Entropy and Secrets ===");
-    run_verification("check-entropy");
-}
-
-fn check_vulnerabilities() {
-    println!("=== Check Dependency Vulnerabilities ===");
-    run_verification("check-vulnerabilities");
-}
-
-fn test_policy_audit() {
-    println!("=== Run Policy Audit ===");
-    run_verification("test-policy-audit");
-}
-
-fn check_staged_duplicates() {
-    run_verification("check-staged-duplicates");
-}
-
-fn regenerate_baseline() {
-    println!("=== Regenerate Public API Baseline ===");
-    run_verification("regenerate-baseline");
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gates::{HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS};
     use crate::markdown_links::{collect_md_files, extract_md_links};
+    use std::process::Command;
 
     #[test]
     fn test_git_hooks_path_configuration() {
@@ -414,14 +242,24 @@ mod tests {
             .expect("failed to execute xtask --help");
         assert!(output.status.success());
         let help = String::from_utf8_lossy(&output.stdout);
-        assert!(help.contains("lint-workflows"));
-        assert!(help.contains("check-docs"));
-        assert!(help.contains("check-cargo-docs"));
-        assert!(help.contains("traceability"));
-        assert!(help.contains("lint-all"));
-        assert!(help.contains("check-entropy"));
-        assert!(help.contains("check-vulnerabilities"));
-        assert!(help.contains("test-policy-audit"));
+        for cmd in [
+            "check-api-drift",
+            "check-duplicates",
+            "check-profiles",
+            "lint-workflows",
+            "check-docs",
+            "check-cargo-docs",
+            "traceability",
+            "lint-all",
+            "check-entropy",
+            "check-vulnerabilities",
+            "test-policy-audit",
+            "verify-records",
+            "verify-suite",
+            "regenerate-baseline",
+        ] {
+            assert!(help.contains(cmd), "Missing help entry for {cmd}");
+        }
     }
 
     #[test]
@@ -462,5 +300,16 @@ mod tests {
         let expected_cmd = format!("cargo {}", WASM_CLIPPY_ARGS.join(" "));
         assert!(ci_yaml.contains("name: Run Clippy (WASM)"));
         assert!(ci_yaml.contains(&expected_cmd));
+
+        for preflight_cmd in [
+            "cargo run -p unified_verification --release -- check-profiles",
+            "cargo run -p unified_verification --release -- check-duplicates",
+            "cargo run -p unified_verification --release -- check-api-drift",
+        ] {
+            assert!(
+                ci_yaml.contains(preflight_cmd),
+                "ci.yml missing pre-flight command: {preflight_cmd}"
+            );
+        }
     }
 }

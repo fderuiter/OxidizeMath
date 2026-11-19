@@ -10,7 +10,6 @@ use rand::Rng;
 #[verified_engine::verified]
 pub fn random_walk_1d(steps: usize) -> f64 {
     let mut rng = oxidize_core::rng::OxidizeRng::default();
-    // allow(entropy_guard)
     random_walk_1d_with_rng(steps, &mut rng)
 }
 
@@ -54,7 +53,6 @@ pub fn estimate_diffusion_coefficient_with_rng<R: Rng + ?Sized>(
     let mut sum_sq_displacement = 0.0;
 
     for _ in 0..num_walks {
-        // allow(entropy_guard)
         let final_pos = random_walk_1d_with_rng(time_steps, rng);
         sum_sq_displacement += final_pos * final_pos;
     }
