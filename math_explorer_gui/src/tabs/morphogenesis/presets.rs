@@ -77,6 +77,29 @@ impl InteractivePreset for MorphogenesisTab {
     }
 }
 
+impl MorphogenesisTab {
+    pub(crate) fn apply_starter_card(
+        &mut self,
+        card_title: &str,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        let Some(json_str) = preset_json else {
+            return Ok(());
+        };
+        match self.from_json_str(json_str) {
+            Ok(()) => {
+                self.dialog_state.toast_error = None;
+                Ok(())
+            }
+            Err(err) => {
+                let msg = format!("Failed to launch '{}': {}", card_title, err);
+                self.dialog_state.record_import_error(msg.clone());
+                Err(msg)
+            }
+        }
+    }
+}
+
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "turing_spots",

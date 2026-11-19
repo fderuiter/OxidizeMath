@@ -23,6 +23,7 @@ impl Default for PrimeSpiralWidget {
 use crate::framework::InteractiveTool;
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PrimeSpiralState {
     grid_size: usize,
 }
@@ -46,12 +47,12 @@ impl InteractiveTool for PrimeSpiralWidget {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: PrimeSpiralState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid PrimeSpiralWidget state: {e}"))?;
-        if s.grid_size < 2 || s.grid_size > math_commons::registry::MAX_GRID_SIZE {
-            return Err("Invalid grid_size in PrimeSpiralWidget".to_string());
+        let parsed: PrimeSpiralState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid prime spiral state: {e}"))?;
+        if !(10..=math_commons::registry::MAX_GRID_SIZE).contains(&parsed.grid_size) {
+            return Err("grid_size out of allowed bounds".into());
         }
-        self.grid_size = s.grid_size;
+        self.grid_size = parsed.grid_size;
         self.texture = None;
         Ok(())
     }

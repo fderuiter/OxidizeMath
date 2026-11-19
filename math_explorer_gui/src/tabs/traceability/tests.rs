@@ -267,3 +267,180 @@ fn test_traceability_online_document_links() {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn wait_for_scan_completion(tab: &mut TraceabilityTab) {
+    let ctx = egui::Context::default();
+    for _ in 0..500 {
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            let mut frame = eframe::Frame::_new_kittest();
+            tab.show(ctx, &mut frame);
+        });
+        if !tab.state.is_scanning() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    panic!("Timed out waiting for TraceabilityTab scan completion");
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn test_traceability_load_state_rejects_outside_workspace_and_traversal() {
+    let pid = std::process::id();
+    let canary_dir = std::env::temp_dir().join(format!("oxidize_canary_outside_{}", pid));
+    let canary_papers = canary_dir.join("papers");
+    std::fs::create_dir_all(&canary_papers).unwrap();
+    std::fs::write(
+        canary_papers.join("canary_audit.tex"),
+        "\\documentclass{article}\\begin{document}Canary\\end{document}",
+    )
+    .unwrap();
+
+    let mut tab = TraceabilityTab {
+        papers: HashMap::new(),
+        orphaned_papers: Vec::new(),
+        unlinked_code: Vec::new(),
+        invalid_links: Vec::new(),
+        repo_path: None,
+        report_rx: None,
+        state: TraceabilityScanState::Idle,
+    };
+
+    let canary_path = oxidize_core::path_utils::normalize_path(&canary_dir);
+    let payload = format!("{{\"repo_path\":\"{}\"}}", canary_path);
+    tab.load_state(&payload);
+    assert_eq!(tab.repo_path, None, "Outside-workspace path must reset to None");
+    tab.refresh();
+    let canary_found = tab.online_document_url("canary_audit.tex").is_some();
+    assert!(
+        !canary_found,
+        "Untrusted repo_path must not traverse outside workspace"
+    );
+
+    wait_for_scan_completion(&mut tab);
+    assert!(tab.state.is_ready());
+    assert_eq!(tab.online_document_url("canary_audit.tex"), None);
+
+    for traversal in [
+        "../..",
+        "../../tmp",
+        "..\\..\\tmp",
+        "papers/..",
+        "./papers/../..",
+    ] {
+        let traversal_payload = serde_json::json!({ "repo_path": traversal }).to_string();
+        tab.load_state(&traversal_payload);
+        assert_eq!(
+            tab.repo_path, None,
+            "Traversal sequence '{traversal}' must be rejected"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&canary_dir);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn test_traceability_edge_cases_empty_nonexistent_and_valid_subdir() {
+    let pid = std::process::id();
+    let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
+    let scratch_base = ws_root
+        .join("target")
+        .join(format!("traceability_boundary_test_{}", pid));
+    std::fs::create_dir_all(&scratch_base).unwrap();
+
+    let mut tab = TraceabilityTab {
+        papers: HashMap::new(),
+        orphaned_papers: Vec::new(),
+        unlinked_code: Vec::new(),
+        invalid_links: Vec::new(),
+        repo_path: None,
+        report_rx: None,
+        state: TraceabilityScanState::Idle,
+    };
+
+    for invalid in ["", "   ", "nonexistent_dir_xyz_987654"] {
+        let payload = serde_json::json!({ "repo_path": invalid }).to_string();
+        tab.load_state(&payload);
+        assert_eq!(tab.repo_path, None);
+    }
+
+    let regular_file = scratch_base.join("not_a_dir.txt");
+    std::fs::write(&regular_file, "hello").unwrap();
+    tab.load_state(&serde_json::json!({ "repo_path": regular_file }).to_string());
+    assert_eq!(tab.repo_path, None);
+
+    let valid_subdir = scratch_base.join("valid_subproject");
+    std::fs::create_dir_all(valid_subdir.join("papers")).unwrap();
+    std::fs::write(
+        valid_subdir.join("papers").join("scoped_inside.tex"),
+        "\\documentclass{article}\\begin{document}Inside\\end{document}",
+    )
+    .unwrap();
+    tab.load_state(&serde_json::json!({ "repo_path": valid_subdir }).to_string());
+    assert!(tab.repo_path.is_some());
+    let saved = tab.save_state().expect("save_state");
+    tab.load_state(&saved);
+    assert!(tab.repo_path.is_some());
+    tab.refresh();
+    wait_for_scan_completion(&mut tab);
+    assert!(tab.online_document_url("scoped_inside.tex").is_some());
+
+    let _ = std::fs::remove_dir_all(&scratch_base);
+}
+
+#[cfg(unix)]
+#[test]
+fn test_traceability_rejects_symlink_resolving_outside_workspace() {
+    let pid = std::process::id();
+    let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
+    let scratch_base = ws_root
+        .join("target")
+        .join(format!("traceability_symlink_test_{}", pid));
+    std::fs::create_dir_all(&scratch_base).unwrap();
+
+    let external_dir = std::env::temp_dir().join(format!("oxidize_symlink_target_{}", pid));
+    std::fs::create_dir_all(external_dir.join("papers")).unwrap();
+    std::fs::write(external_dir.join("papers").join("symlink_canary.tex"), "x").unwrap();
+    let symlink_inside = scratch_base.join("escape_link");
+    let _ = std::fs::remove_file(&symlink_inside);
+    std::os::unix::fs::symlink(&external_dir, &symlink_inside).unwrap();
+
+    let mut tab = TraceabilityTab {
+        papers: HashMap::new(),
+        orphaned_papers: Vec::new(),
+        unlinked_code: Vec::new(),
+        invalid_links: Vec::new(),
+        repo_path: None,
+        report_rx: None,
+        state: TraceabilityScanState::Idle,
+    };
+
+    tab.load_state(&serde_json::json!({ "repo_path": symlink_inside }).to_string());
+    assert_eq!(tab.repo_path, None);
+
+    tab.repo_path = Some(symlink_inside.to_string_lossy().into_owned());
+    tab.refresh();
+    assert_eq!(tab.repo_path, None);
+    wait_for_scan_completion(&mut tab);
+    assert_eq!(tab.online_document_url("symlink_canary.tex"), None);
+
+    let datasets = vec![
+        (
+            "Rejected Untrusted Paths".to_string(),
+            vec![[0.0, 1.0], [1.0, 1.0], [2.0, 1.0], [3.0, 1.0]],
+        ),
+        (
+            "Leaked Canary Reads".to_string(),
+            vec![[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]],
+        ),
+    ];
+    let options = egui_plot::export::ExportOptions::default();
+    if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
+        let _ = std::fs::write("/tmp/traceability_repo_path_validation.png", png_data);
+    }
+
+    let _ = std::fs::remove_dir_all(&external_dir);
+    let _ = std::fs::remove_dir_all(&scratch_base);
+}
+

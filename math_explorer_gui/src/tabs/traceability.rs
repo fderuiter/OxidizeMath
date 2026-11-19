@@ -126,7 +126,63 @@ impl TraceabilityTab {
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn online_document_url(&self, name: &str) -> Option<String> {
-        Self::paper_url(name)
+        let clean = name.strip_prefix("papers/").unwrap_or(name);
+        let is_tracked = self.papers.keys().any(|k| {
+            let k_clean = k.strip_prefix("papers/").unwrap_or(k.as_str());
+            k == name || k_clean == clean
+        }) || self.orphaned_papers.iter().any(|p| {
+            let p_clean = p.strip_prefix("papers/").unwrap_or(p.as_str());
+            p == name || p_clean == clean
+        });
+        is_tracked.then(|| Self::paper_url(name)).flatten()
+    }
+
+    fn has_traversal_sequence(raw: &str) -> bool {
+        raw.contains('\0')
+            || raw.split(['/', '\\']).any(|seg| seg == "..")
+            || std::path::Path::new(raw)
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn canonical_workspace_root() -> Option<std::path::PathBuf> {
+        let cwd = std::env::current_dir().ok()?.canonicalize().ok()?;
+        for ancestor in cwd.ancestors().take(64) {
+            if let Ok(manifest) = std::fs::read_to_string(ancestor.join("Cargo.toml")) {
+                if manifest.contains("[workspace]") {
+                    return Some(ancestor.to_path_buf());
+                }
+            }
+        }
+        Some(cwd)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn validate_repo_path(raw: &str) -> Option<String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() || Self::has_traversal_sequence(trimmed) {
+            return None;
+        }
+        let canonical_root = Self::canonical_workspace_root()?;
+        let candidate = std::path::Path::new(trimmed);
+        let resolved = if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            canonical_root.join(candidate)
+        };
+        let canonical_candidate = resolved.canonicalize().ok()?;
+        if !canonical_candidate.is_dir() || !canonical_candidate.starts_with(&canonical_root) {
+            return None;
+        }
+        let normalized = oxidize_core::path_utils::normalize_path(&canonical_candidate);
+        (!normalized.is_empty()).then_some(normalized)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn validate_repo_path(raw: &str) -> Option<String> {
+        let _ = Self::has_traversal_sequence(raw);
+        None
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -135,11 +191,12 @@ impl TraceabilityTab {
         self.orphaned_papers.clear();
         self.unlinked_code.clear();
         self.invalid_links.clear();
+        self.repo_path = self.repo_path.as_deref().and_then(Self::validate_repo_path);
         self.state = TraceabilityScanState::Scanning;
 
         let base_dir = match &self.repo_path {
             Some(p) => format!("{}/", p),
-            None => "".to_string(),
+            None => String::new(),
         };
 
         // Scan the standard directories
@@ -225,7 +282,9 @@ impl ExplorerTab for TraceabilityTab {
 
     fn load_state(&mut self, state: &str) {
         if let Ok(s) = serde_json::from_str::<TraceabilityState>(state) {
-            self.repo_path = s.repo_path;
+            self.repo_path = s.repo_path.as_deref().and_then(Self::validate_repo_path);
+        } else {
+            self.repo_path = None;
         }
     }
 
@@ -276,12 +335,10 @@ impl ExplorerTab for TraceabilityTab {
                 }
                 
                 #[cfg(not(target_arch = "wasm32"))]
-                {
-                    if ui.button("Select Codebase Directory...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                            self.repo_path = Some(path.display().to_string());
-                            self.refresh();
-                        }
+                if ui.button("Select Codebase Directory...").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                        self.repo_path = Self::validate_repo_path(&path.to_string_lossy());
+                        self.refresh();
                     }
                 }
                 
@@ -294,7 +351,8 @@ impl ExplorerTab for TraceabilityTab {
             ui.separator();
 
             let mut retry_clicked = false;
-            let mut new_path_picked = None;
+            #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
+            let mut new_path_picked: Option<String> = None;
             match &self.state {
                 TraceabilityScanState::Scanning => {
                     ui.horizontal(|ui| {
@@ -317,18 +375,16 @@ impl ExplorerTab for TraceabilityTab {
                                     retry_clicked = true;
                                 }
                                 #[cfg(not(target_arch = "wasm32"))]
-                                {
-                                    if ui.button("Select Codebase Directory...").clicked() {
-                                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                                            new_path_picked = Some(path.display().to_string());
-                                        }
+                                if ui.button("Select Codebase Directory...").clicked() {
+                                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                        new_path_picked = Some(path.display().to_string());
                                     }
                                 }
                             });
                         });
                     });
                     if let Some(path) = new_path_picked {
-                        self.repo_path = Some(path);
+                        self.repo_path = Self::validate_repo_path(&path);
                         self.refresh();
                     } else if retry_clicked {
                         self.refresh();

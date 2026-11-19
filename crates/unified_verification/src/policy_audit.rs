@@ -5,12 +5,14 @@ use std::path::Path;
 use syn::visit::Visit;
 use walkdir::WalkDir;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub struct Whitelist {
+    #[serde(default)]
     dead_code: Vec<DeadCodeEntry>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct DeadCodeEntry {
     file: String,
     identifier: Option<String>,
@@ -77,6 +79,69 @@ impl<'ast> Visit<'ast> for DependencyVisitor {
     }
 }
 
+fn is_dead_code_lint_name(ident: &syn::Ident) -> bool {
+    ident == "dead_code" || ident == "unused" || ident == "warnings"
+}
+
+fn is_dead_code_lint_path(path: &syn::Path) -> bool {
+    if path.segments.iter().any(|seg| !seg.arguments.is_empty()) {
+        return false;
+    }
+    match path.segments.len() {
+        1 => is_dead_code_lint_name(&path.segments[0].ident),
+        2 => path.segments[0].ident == "rust" && is_dead_code_lint_name(&path.segments[1].ident),
+        _ => false,
+    }
+}
+
+fn attr_suppresses_dead_code(attr: &syn::Attribute) -> bool {
+    let mut stack = vec![attr.meta.clone()];
+    while let Some(meta) = stack.pop() {
+        let syn::Meta::List(list) = meta else {
+            continue;
+        };
+        if list.path.is_ident("allow") || list.path.is_ident("expect") {
+            let Ok(nested) = list.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            ) else {
+                continue;
+            };
+            for item in nested {
+                if let syn::Meta::Path(lint_path) = item {
+                    if is_dead_code_lint_path(&lint_path) {
+                        return true;
+                    }
+                }
+            }
+        } else if list.path.is_ident("cfg_attr") {
+            let Ok(nested) = list.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            ) else {
+                continue;
+            };
+            for item in nested.into_iter().skip(1) {
+                stack.push(item);
+            }
+        }
+    }
+    false
+}
+
+fn impl_self_ident(ty: &syn::Type) -> Option<String> {
+    let mut current = ty;
+    while let syn::Type::Group(group) = current {
+        current = &group.elem;
+    }
+    if let syn::Type::Paren(paren) = current {
+        current = &paren.elem;
+    }
+    if let syn::Type::Path(type_path) = current {
+        type_path.path.segments.last().map(|s| s.ident.to_string())
+    } else {
+        None
+    }
+}
+
 struct DeadCodeVisitor {
     file_path: String,
     allowed: Vec<DeadCodeEntry>,
@@ -86,12 +151,9 @@ struct DeadCodeVisitor {
 impl DeadCodeVisitor {
     fn is_authorized(&self, ident: Option<&str>) -> bool {
         for entry in &self.allowed {
-            let mut path_matches = self.file_path == entry.file;
-            if !path_matches {
-                if self.file_path.ends_with(&entry.file) {
-                    path_matches = true;
-                }
-            }
+            let norm_entry = entry.file.replace('\\', "/");
+            let path_matches =
+                self.file_path == norm_entry || self.file_path.ends_with(&format!("/{norm_entry}"));
             if path_matches {
                 match (&entry.identifier, ident) {
                     (None, _) => return true,
@@ -105,15 +167,12 @@ impl DeadCodeVisitor {
 
     fn check_attrs(&mut self, attrs: &[syn::Attribute], ident: Option<&str>) {
         for attr in attrs {
-            let meta_str = quote::quote!(#attr).to_string();
-            if meta_str.contains("allow") && meta_str.contains("dead_code") {
-                if !self.is_authorized(ident) {
-                    println!(
-                        "[!] Unauthorized dead code bypass in {} (identifier: {:?})",
-                        self.file_path, ident
-                    );
-                    self.has_unauthorized = true;
-                }
+            if attr_suppresses_dead_code(attr) && !self.is_authorized(ident) {
+                println!(
+                    "[!] Unauthorized dead code bypass in {} (identifier: {:?})",
+                    self.file_path, ident
+                );
+                self.has_unauthorized = true;
             }
         }
     }
@@ -136,6 +195,14 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor {
         self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
         syn::visit::visit_item_enum(self, i);
     }
+    fn visit_item_union(&mut self, i: &'ast syn::ItemUnion) {
+        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        syn::visit::visit_item_union(self, i);
+    }
+    fn visit_item_type(&mut self, i: &'ast syn::ItemType) {
+        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        syn::visit::visit_item_type(self, i);
+    }
     fn visit_item_mod(&mut self, i: &'ast syn::ItemMod) {
         self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
         syn::visit::visit_item_mod(self, i);
@@ -151,6 +218,28 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor {
     fn visit_item_trait(&mut self, i: &'ast syn::ItemTrait) {
         self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
         syn::visit::visit_item_trait(self, i);
+    }
+    fn visit_item_trait_alias(&mut self, i: &'ast syn::ItemTraitAlias) {
+        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        syn::visit::visit_item_trait_alias(self, i);
+    }
+    fn visit_item_impl(&mut self, i: &'ast syn::ItemImpl) {
+        let ident = impl_self_ident(&i.self_ty);
+        self.check_attrs(&i.attrs, ident.as_deref());
+        syn::visit::visit_item_impl(self, i);
+    }
+    fn visit_item_use(&mut self, i: &'ast syn::ItemUse) {
+        self.check_attrs(&i.attrs, None);
+        syn::visit::visit_item_use(self, i);
+    }
+    fn visit_item_macro(&mut self, i: &'ast syn::ItemMacro) {
+        let ident = i.ident.as_ref().map(ToString::to_string);
+        self.check_attrs(&i.attrs, ident.as_deref());
+        syn::visit::visit_item_macro(self, i);
+    }
+    fn visit_item_foreign_mod(&mut self, i: &'ast syn::ItemForeignMod) {
+        self.check_attrs(&i.attrs, None);
+        syn::visit::visit_item_foreign_mod(self, i);
     }
     fn visit_field(&mut self, i: &'ast syn::Field) {
         if let Some(ident) = &i.ident {
@@ -172,18 +261,69 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor {
         self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
         syn::visit::visit_impl_item_const(self, i);
     }
+    fn visit_impl_item_type(&mut self, i: &'ast syn::ImplItemType) {
+        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        syn::visit::visit_impl_item_type(self, i);
+    }
+    fn visit_trait_item_fn(&mut self, i: &'ast syn::TraitItemFn) {
+        self.check_attrs(&i.attrs, Some(&i.sig.ident.to_string()));
+        syn::visit::visit_trait_item_fn(self, i);
+    }
+    fn visit_trait_item_const(&mut self, i: &'ast syn::TraitItemConst) {
+        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        syn::visit::visit_trait_item_const(self, i);
+    }
+    fn visit_trait_item_type(&mut self, i: &'ast syn::TraitItemType) {
+        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        syn::visit::visit_trait_item_type(self, i);
+    }
+    fn visit_foreign_item_fn(&mut self, i: &'ast syn::ForeignItemFn) {
+        self.check_attrs(&i.attrs, Some(&i.sig.ident.to_string()));
+        syn::visit::visit_foreign_item_fn(self, i);
+    }
+    fn visit_foreign_item_static(&mut self, i: &'ast syn::ForeignItemStatic) {
+        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        syn::visit::visit_foreign_item_static(self, i);
+    }
+    fn visit_foreign_item_type(&mut self, i: &'ast syn::ForeignItemType) {
+        self.check_attrs(&i.attrs, Some(&i.ident.to_string()));
+        syn::visit::visit_foreign_item_type(self, i);
+    }
+    fn visit_local(&mut self, i: &'ast syn::Local) {
+        self.check_attrs(&i.attrs, None);
+        syn::visit::visit_local(self, i);
+    }
+}
+
+fn load_whitelist(whitelist_path: &Path) -> Option<Whitelist> {
+    if !whitelist_path.exists() {
+        return Some(Whitelist::default());
+    }
+    let content = match fs::read_to_string(whitelist_path) {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("[!] Failed to read {}: {}", whitelist_path.display(), err);
+            return None;
+        }
+    };
+    match toml::from_str::<Whitelist>(&content) {
+        Ok(whitelist) => Some(whitelist),
+        Err(err) => {
+            eprintln!("[!] Failed to parse {}: {}", whitelist_path.display(), err);
+            None
+        }
+    }
 }
 
 pub fn run_policy_audit(members: &[&str]) -> bool {
-    let mut success = true;
+    run_policy_audit_with_whitelist(members, Path::new("verification_whitelist.toml"))
+}
 
-    let whitelist_path = "verification_whitelist.toml";
-    let whitelist: Whitelist = if Path::new(whitelist_path).exists() {
-        let content = fs::read_to_string(whitelist_path).unwrap();
-        toml::from_str(&content).unwrap_or_else(|_| Whitelist { dead_code: vec![] })
-    } else {
-        Whitelist { dead_code: vec![] }
+pub(crate) fn run_policy_audit_with_whitelist(members: &[&str], whitelist_path: &Path) -> bool {
+    let Some(whitelist) = load_whitelist(whitelist_path) else {
+        return false;
     };
+    let mut success = true;
 
     println!("Running Policy Audit for unused dependencies and dead code bypasses...");
 
@@ -244,26 +384,14 @@ pub fn run_policy_audit(members: &[&str]) -> bool {
                         dep_visitor.visit_file(&ast);
 
                         // Check dead code
-                        if content.contains("allow(dead_code)") {
-                            // Convert allowed list to a cloned version
-                            let allowed = whitelist
-                                .dead_code
-                                .iter()
-                                .map(|e| DeadCodeEntry {
-                                    file: e.file.clone(),
-                                    identifier: e.identifier.clone(),
-                                })
-                                .collect();
-
-                            let mut dc_visitor = DeadCodeVisitor {
-                                file_path: file_path.clone(),
-                                allowed,
-                                has_unauthorized: false,
-                            };
-                            dc_visitor.visit_file(&ast);
-                            if dc_visitor.has_unauthorized {
-                                success = false;
-                            }
+                        let mut dc_visitor = DeadCodeVisitor {
+                            file_path: file_path.clone(),
+                            allowed: whitelist.dead_code.clone(),
+                            has_unauthorized: false,
+                        };
+                        dc_visitor.visit_file(&ast);
+                        if dc_visitor.has_unauthorized {
+                            success = false;
                         }
                     }
                 }
@@ -298,14 +426,4 @@ pub fn run_policy_audit(members: &[&str]) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_policy_audit_workspace_run() {
-        let _lock = crate::DIR_LOCK.lock().unwrap();
-        let members = vec!["crates/pure_math"];
-        let success = run_policy_audit(&members);
-        assert!(success, "pure_math should pass policy audit");
-    }
-}
+mod tests;

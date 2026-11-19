@@ -350,11 +350,12 @@ impl SimulationFramework {
     /// or recording a toast and telemetry warning on failure.
     pub fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
         let res = match &mut self.active_tool {
-            Some(tool) => tool.apply_preset_json(json_str),
+            Some(tool) => tool.import_preset_json(json_str),
             None => Err("No active tool selected for preset import".to_string()),
         };
         match res {
             Ok(()) => {
+                self.preset_dialog.toast_error = None;
                 self.sync_active_baseline();
                 Ok(())
             }
@@ -365,21 +366,42 @@ impl SimulationFramework {
         }
     }
 
-    /// Rebuilds a clean target tool instance for a starter card, applies its preset JSON,
-    /// and synchronizes baseline/reset snapshots.
-    pub fn launch_starter_card(
+    /// Rebuilds a clean target tool instance for a starter card, validates and applies its
+    /// preset JSON, and synchronizes baseline/reset snapshots or records a toast + telemetry warning.
+    pub fn apply_starter_card(
         &mut self,
-        card: &crate::starter_gallery::StarterCard,
+        card_title: &str,
+        tool_name: Option<&str>,
+        preset_json: Option<&str>,
     ) -> Result<(), String> {
-        let target_idx = card
-            .tool_name
-            .and_then(|name| {
-                self.available_tools
+        let target_idx = match tool_name {
+            Some(target_name) => {
+                let Some(idx) = self
+                    .available_tools
                     .iter()
-                    .position(|t| t.id == name || t.display_name == name)
-            })
-            .or(self.selected_tool_index);
+                    .position(|t| t.id == target_name || t.display_name == target_name)
+                else {
+                    let err = format!(
+                        "Starter preset '{card_title}' targets unavailable tool '{target_name}'"
+                    );
+                    self.preset_dialog.record_import_error(err.clone());
+                    return Err(err);
+                };
+                Some(idx)
+            }
+            None => self.selected_tool_index,
+        };
+
         if let Some(idx) = target_idx {
+            let meta = self.available_tools[idx];
+            let mut new_tool = (meta.build)();
+            if let Some(json_str) = preset_json {
+                if let Err(err) = new_tool.import_preset_json(json_str) {
+                    let msg = format!("Failed to launch '{card_title}': {err}");
+                    self.preset_dialog.record_import_error(msg.clone());
+                    return Err(msg);
+                }
+            }
             if self.selected_tool_index != Some(idx) {
                 if let Some(old_tool) = &self.active_tool {
                     if let Some(state) = old_tool.save_state() {
@@ -388,22 +410,39 @@ impl SimulationFramework {
                     }
                 }
             }
-            if let Some(&meta) = self.available_tools.get(idx) {
-                let new_tool = (meta.build)();
-                scientific_metadata::citation_registry::CitationRegistry::register(
-                    new_tool.name().to_string(),
-                    new_tool.theory().theory_citation(),
-                );
-                self.selected_tool_index = Some(idx);
-                self.active_tool = Some(new_tool);
-                self.sync_active_baseline();
+            scientific_metadata::citation_registry::CitationRegistry::register(
+                new_tool.name().to_string(),
+                new_tool.theory().theory_citation(),
+            );
+            self.selected_tool_index = Some(idx);
+            self.active_tool = Some(new_tool);
+            self.preset_dialog.toast_error = None;
+            self.sync_active_baseline();
+        } else if let Some(json_str) = preset_json {
+            let Some(tool) = &mut self.active_tool else {
+                let err = format!("No active tool available to launch '{card_title}'");
+                self.preset_dialog.record_import_error(err.clone());
+                return Err(err);
+            };
+            if let Err(err) = tool.import_preset_json(json_str) {
+                let msg = format!("Failed to launch '{card_title}': {err}");
+                self.preset_dialog.record_import_error(msg.clone());
+                return Err(msg);
             }
-        }
-        if let Some(preset_json) = card.preset_json {
-            self.apply_preset_json(preset_json)?;
+            self.preset_dialog.toast_error = None;
+            self.sync_active_baseline();
         }
         self.show_starter_gallery = false;
         Ok(())
+    }
+
+    /// Rebuilds a clean target tool instance for a starter card, applies its preset JSON,
+    /// and synchronizes baseline/reset snapshots.
+    pub fn launch_starter_card(
+        &mut self,
+        card: &crate::starter_gallery::StarterCard,
+    ) -> Result<(), String> {
+        self.apply_starter_card(card.title, card.tool_name, card.preset_json)
     }
 
     /// Dispatches a StateGuardAction remedy.

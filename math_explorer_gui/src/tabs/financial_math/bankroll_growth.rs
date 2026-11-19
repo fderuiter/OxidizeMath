@@ -113,6 +113,7 @@ impl BankrollGrowthTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BankrollState {
     initial_bankroll: f64,
     probability: f64,
@@ -140,8 +141,23 @@ impl InteractiveTool for BankrollGrowthTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: BankrollState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid BankrollGrowthTool state: {e}"))?;
+        let s: BankrollState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid bankroll state: {e}"))?;
+        if ![s.initial_bankroll, s.probability, s.odds]
+            .iter()
+            .all(|v| v.is_finite())
+            || !(100.0..=10_000.0).contains(&s.initial_bankroll)
+            || !(0.01..=0.99).contains(&s.probability)
+            || !(0.1..=10.0).contains(&s.odds)
+            || !(10..=1000).contains(&s.num_bets)
+        {
+            return Err("Bankroll simulation parameters out of bounds".into());
+        }
+        let p = UnitInterval::new(s.probability).map_err(|e| format!("Error: {e}"))?;
+        let o = Odds::new(s.odds).map_err(|e| format!("Error: {e}"))?;
+        kelly_fraction(&p, &o).map_err(|e| format!("Error: {e}"))?;
+        variants::half_kelly(&p, &o).map_err(|e| format!("Error: {e}"))?;
+        variants::quarter_kelly(&p, &o).map_err(|e| format!("Error: {e}"))?;
         self.initial_bankroll = s.initial_bankroll;
         self.probability = s.probability;
         self.odds = s.odds;
@@ -309,7 +325,7 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "initial_bankroll": 5000.0,
     "probability": 0.6,
-    "odds": 1.5,
+    "odds": 2.5,
     "num_bets": 150
   }
 }"#;

@@ -88,6 +88,9 @@ This command executes all workspace quality gates:
 8. **CI Workflows**: `cargo run -p unified_verification --release -- lint-workflows` (validates GitHub Actions workflow structure)
 9. **Crate Documentation Audit**: `cargo run -p unified_verification --release -- check-docs` (verifies README files and entrypoint docs)
 10. **Traceability**: `cargo run -p unified_verification --release -- traceability` (validates architectural citations and test mappings)
+11. **Entropy & Secret Scanning**: `cargo run -p unified_verification --release -- check-entropy` (audits source files for secrets and unseeded entropy)
+12. **Dependency Vulnerabilities**: `cargo run -p unified_verification --release -- check-vulnerabilities` (scans dependencies against OSV advisories)
+13. **Policy Audit**: `cargo run -p unified_verification --release -- test-policy-audit` (detects unauthorized `dead_code`, `unused`, or `warnings` bypass attributes and unused dependencies)
 
 ### Troubleshooting
 

@@ -105,6 +105,7 @@ impl SimulationFramework {
             .is_some_and(|tool| self.preset_dialog.poll_import_tool(tool.as_mut()));
         if imported {
             self.sync_active_baseline();
+            ctx.request_repaint();
         }
 
         egui::TopBottomPanel::top(format!("{}_export_bar", id_source))

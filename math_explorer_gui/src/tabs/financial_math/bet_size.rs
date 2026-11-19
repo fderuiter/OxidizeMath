@@ -36,6 +36,7 @@ impl Default for BetSizeCalculatorTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BetSizeState {
     probability_input: f64,
     odds_format: OddsFormat,
@@ -74,8 +75,27 @@ impl InteractiveTool for BetSizeCalculatorTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: BetSizeState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid BetSizeCalculatorTool state: {e}"))?;
+        let s: BetSizeState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid bet size state: {e}"))?;
+        if ![
+            s.probability_input,
+            s.decimal_odds,
+            s.american_odds,
+            s.fractional_numerator,
+            s.fractional_denominator,
+            s.bankroll,
+        ]
+        .iter()
+        .all(|v| v.is_finite())
+            || !(0.0..=100.0).contains(&s.probability_input)
+            || !(1.01..=1000.0).contains(&s.decimal_odds)
+            || !(-10_000.0..=10_000.0).contains(&s.american_odds)
+            || !(1.0..=1000.0).contains(&s.fractional_numerator)
+            || !(1.0..=1000.0).contains(&s.fractional_denominator)
+            || !(1.0..=1_000_000.0).contains(&s.bankroll)
+        {
+            return Err("Bet size parameters out of bounds".into());
+        }
         self.probability_input = s.probability_input;
         self.odds_format = s.odds_format;
         self.decimal_odds = s.decimal_odds;

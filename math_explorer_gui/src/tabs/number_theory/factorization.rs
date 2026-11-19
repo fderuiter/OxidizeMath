@@ -13,23 +13,9 @@ pub struct FactorizationTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct FactorizationState {
     input_text: String,
-}
-
-impl FactorizationTool {
-    fn analyze_input(&mut self) {
-        let trimmed = self.input_text.trim();
-        if trimmed.is_empty() {
-            self.results = None;
-            return;
-        }
-        self.results = Some(match trimmed.parse::<u64>() {
-            Ok(num) if num >= 2 => Ok((num, is_prime(num), prime_factors(num))),
-            Ok(_) => Err("Number must be at least 2.".to_string()),
-            Err(_) => Err("Please enter a valid positive integer (max 64-bit).".to_string()),
-        });
-    }
 }
 
 impl InteractiveTool for FactorizationTool {
@@ -54,10 +40,22 @@ impl InteractiveTool for FactorizationTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: FactorizationState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid FactorizationTool state: {e}"))?;
-        self.input_text = s.input_text;
-        self.analyze_input();
+        let parsed: FactorizationState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid factorization state: {e}"))?;
+        let trimmed = parsed.input_text.trim();
+        if trimmed.is_empty() {
+            self.input_text = parsed.input_text;
+            self.results = None;
+            return Ok(());
+        }
+        let num = trimmed
+            .parse::<u64>()
+            .map_err(|_| "input_text must be an integer >= 2 or empty".to_string())?;
+        if num < 2 {
+            return Err("Number must be at least 2".into());
+        }
+        self.input_text = parsed.input_text;
+        self.results = Some(Ok((num, is_prime(num), prime_factors(num))));
         Ok(())
     }
 
@@ -200,7 +198,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "factorization_starter",
         title: "Prime Factorization",
-        description: "Fundamental theorem of arithmetic decomposition via Pollard rho and trial division heuristics.",
+        description: "Fundamental theorem of arithmetic prime power decomposition and deterministic primality testing.",
         category: "Arithmetic",
         icon: "🔢",
         domain: "number_theory",
