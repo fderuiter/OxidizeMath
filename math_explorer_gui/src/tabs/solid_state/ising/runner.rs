@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::framework::recovery::DiagnosticReport;
 use eframe::egui;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
@@ -18,6 +19,21 @@ pub struct IsingSharedParams {
 pub struct IsingRunner {
     pub lattice: SpinLattice,
     pub params: Arc<std::sync::RwLock<IsingSharedParams>>,
+}
+
+impl IsingRunner {
+    fn evolve_trials(&mut self, num_trials: usize) {
+        let (temp, j, h) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.temperature, p.j_coupling, p.h_field)
+        };
+        if !temp.is_finite() || !j.is_finite() || !h.is_finite() {
+            return;
+        }
+        let j_scale = if j.abs() < 1e-6 { 1.0 } else { j.abs() };
+        let t_phys = temp * j_scale / KB;
+        self.lattice.evolve(num_trials, t_phys, j, h);
+    }
 }
 
 impl SimulationRunner for IsingRunner {
@@ -39,13 +55,17 @@ impl SimulationRunner for IsingRunner {
     }
 
     fn step(&mut self) {
-        let (temp, j, h, steps) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.temperature, p.j_coupling, p.h_field, p.steps_per_frame)
-        };
-        let j_scale = if j.abs() < 1e-6 { 1.0 } else { j.abs() };
-        let t_phys = temp * j_scale / KB;
-        self.lattice.evolve(steps, t_phys, j, h);
+        let steps = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .steps_per_frame;
+        self.evolve_trials(steps);
+    }
+
+    fn step_once(&mut self) {
+        let one_sweep = self.lattice.width() * self.lattice.height();
+        self.evolve_trials(one_sweep);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -80,5 +100,23 @@ impl SimulationRunner for IsingRunner {
 
     fn get_steps_per_frame(&self) -> usize {
         1
+    }
+
+    fn is_finite_state(&self) -> bool {
+        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+        p.temperature.is_finite() && p.j_coupling.is_finite() && p.h_field.is_finite()
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        if self.is_finite_state() {
+            None
+        } else {
+            Some(DiagnosticReport::new(
+                0.0,
+                0,
+                "ising_parameters",
+                "Non-finite Ising model parameter encountered",
+            ))
+        }
     }
 }

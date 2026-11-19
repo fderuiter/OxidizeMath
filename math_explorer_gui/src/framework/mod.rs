@@ -15,6 +15,9 @@ pub mod math_input;
 mod metadata_label_tests;
 mod overlay_sync;
 mod persistence;
+pub mod playback;
+#[cfg(test)]
+mod playback_tests;
 pub mod recovery;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
@@ -32,6 +35,7 @@ pub use export_figure::*;
 pub use export_queue::*;
 pub use export_types::*;
 pub use math_input::*;
+pub use playback::*;
 pub use recovery::*;
 pub use state_guard::*;
 pub use trace_overlay::*;
