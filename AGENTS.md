@@ -29,9 +29,10 @@ Run workspace compilation, clippy, unit/integration tests, feature matrix checks
 cargo check --workspace
 cargo build --workspace --all-features
 
-# Run formatting and strict Clippy lints across all targets and features
+# Run formatting and strict Clippy lints across host and WebAssembly targets
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
 # Run workspace library/integration tests and feature-isolated domain tests
 cargo test --workspace --lib --tests
@@ -52,16 +53,17 @@ Before opening or updating a pull request, run the unified lint suite from [CONT
 # Run the complete workspace quality gate suite
 cargo run -p xtask -- lint-all
 
+# Format and lint host and WebAssembly targets with Clippy (warnings denied)
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
+
 # Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA or ./ local action pins)
 cargo run -p unified_verification --release -- lint-workflows
 
 # Audit AST attributes for unauthorized dead_code/unused/warnings bypasses and unused dependencies
 cargo run -p xtask -- test-policy-audit
 cargo run -p unified_verification --release -- test-policy-audit
-
-# Format and Clippy lint checks
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Verify crate documentation and workspace rustdoc builds
 cargo run -p unified_verification --release -- check-docs

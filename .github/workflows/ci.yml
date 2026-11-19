@@ -212,6 +212,10 @@ jobs:
         if: matrix.target == 'wasm32-unknown-unknown'
         run: cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
 
+      - name: Run Clippy (WASM)
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
+
       - name: Install cargo-binstall
         if: matrix.target == 'wasm32-unknown-unknown'
         uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
