@@ -22,6 +22,7 @@ enum CurvatureType {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CurvatureHeatmapState {
     surface_type: SurfaceType,
     curvature_type: CurvatureType,
@@ -209,8 +210,43 @@ impl InteractiveTool for CurvatureHeatmap {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded =
-            serde_json::from_str::<CurvatureHeatmapState>(state).map_err(|e| e.to_string())?;
+        let loaded: CurvatureHeatmapState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid curvature state: {e}"))?;
+        if !loaded.sphere_radius.is_finite() || !(0.1..=5.0).contains(&loaded.sphere_radius) {
+            return Err(format!("sphere_radius out of range: {}", loaded.sphere_radius));
+        }
+        if !loaded.torus_major_radius.is_finite()
+            || !(1.0..=5.0).contains(&loaded.torus_major_radius)
+        {
+            return Err(format!(
+                "torus_major_radius out of range: {}",
+                loaded.torus_major_radius
+            ));
+        }
+        if !loaded.torus_minor_radius.is_finite()
+            || !(0.1..=2.0).contains(&loaded.torus_minor_radius)
+        {
+            return Err(format!(
+                "torus_minor_radius out of range: {}",
+                loaded.torus_minor_radius
+            ));
+        }
+        if !loaded.klein_radius.is_finite() || !(0.5..=5.0).contains(&loaded.klein_radius) {
+            return Err(format!("klein_radius out of range: {}", loaded.klein_radius));
+        }
+        let max_res = math_commons::registry::MAX_GRID_SIZE;
+        if !(10..=max_res).contains(&loaded.u_resolution)
+            || !(10..=max_res).contains(&loaded.v_resolution)
+        {
+            return Err("Resolution out of valid range".to_string());
+        }
+        if !loaded.pitch.is_finite()
+            || !loaded.yaw.is_finite()
+            || !loaded.zoom.is_finite()
+            || !(0.1..=5.0).contains(&loaded.zoom)
+        {
+            return Err("View parameters out of valid range".to_string());
+        }
         self.surface_type = loaded.surface_type;
         self.curvature_type = loaded.curvature_type;
         self.sphere_radius = loaded.sphere_radius;

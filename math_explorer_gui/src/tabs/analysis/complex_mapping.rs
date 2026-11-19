@@ -124,6 +124,7 @@ impl ComplexMappingTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ComplexMappingState {
     function: MappingFunction,
     grid_min: f64,
@@ -154,7 +155,15 @@ impl InteractiveTool for ComplexMappingTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: ComplexMappingState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid ComplexMappingTool state: {e}"))?;
+            .map_err(|e| format!("Invalid complex mapping state: {e}"))?;
+        if !s.grid_min.is_finite()
+            || !s.grid_max.is_finite()
+            || s.grid_min >= s.grid_max
+            || !(2..=math_commons::registry::MAX_GRID_SIZE).contains(&s.grid_density)
+            || !s.inspection_point.iter().all(|v| v.is_finite())
+        {
+            return Err("Complex mapping bounds or density out of valid range".into());
+        }
         self.function = s.function;
         self.grid_min = s.grid_min;
         self.grid_max = s.grid_max;

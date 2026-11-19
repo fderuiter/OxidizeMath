@@ -1,8 +1,8 @@
 #![doc = include_str!("../README.md")]
-mod markdown;
+mod markdown_links;
 mod papers;
 
-use markdown::check_markdown_links;
+use markdown_links::check_markdown_links;
 use std::env;
 #[cfg(any(unix, test))]
 use std::fs;
@@ -34,6 +34,7 @@ fn main() {
         "check-staged-duplicates" => check_staged_duplicates(),
         "check-markdown-links" => check_markdown_links(),
         "check-vulnerabilities" => check_vulnerabilities(),
+        "test-policy-audit" => test_policy_audit(),
         "lint-workflows" => lint_workflows(),
         "regenerate-baseline" => regenerate_baseline(),
         _ => {
@@ -58,10 +59,13 @@ fn print_help() {
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
     println!(
-        "  lint-all                 - Run format, clippy, file-length, duplicate, doc, doctest, workflow, traceability, entropy, and vulnerability checks"
+        "  lint-all                 - Run format, clippy, file-length, duplicate, doc, doctest, workflow, traceability, entropy, vulnerability, and policy audit checks"
     );
     println!("  lint-workflows           - Lint CI workflow definitions");
     println!("  test-features            - Run tests across feature combinations");
+    println!(
+        "  test-policy-audit        - Detect unauthorized dead-code bypasses and unused dependencies"
+    );
     println!("  traceability             - Generate traceability report");
     println!("  verify-records           - Verify verification records");
     println!("  verify-suite             - Run high-integrity verified suite\n");
@@ -161,6 +165,9 @@ fn lint_all() {
 
     println!("\n--- Step 12: Dependency Vulnerability Check ---");
     check_vulnerabilities();
+
+    println!("\n--- Step 13: Policy Audit ---");
+    test_policy_audit();
 
     println!("\n=== All Lint Checks Passed Successfully ===");
 }
@@ -343,6 +350,11 @@ fn check_vulnerabilities() {
     run_verification("check-vulnerabilities");
 }
 
+fn test_policy_audit() {
+    println!("=== Run Policy Audit ===");
+    run_verification("test-policy-audit");
+}
+
 fn check_staged_duplicates() {
     run_verification("check-staged-duplicates");
 }
@@ -355,7 +367,7 @@ fn regenerate_baseline() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::markdown::{collect_md_files, extract_md_links};
+    use crate::markdown_links::{collect_md_files, extract_md_links};
 
     #[test]
     fn test_git_hooks_path_configuration() {
@@ -409,6 +421,7 @@ mod tests {
         assert!(help.contains("lint-all"));
         assert!(help.contains("check-entropy"));
         assert!(help.contains("check-vulnerabilities"));
+        assert!(help.contains("test-policy-audit"));
     }
 
     #[test]

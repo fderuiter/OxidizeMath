@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "tests"))]
+
 use super::*;
 
 #[test]
@@ -38,27 +40,18 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert!(
-        tools.len() >= 42,
-        "Expected at least 42 tools, found {}",
-        tools.len()
-    );
+    assert_eq!(tools.len(), 52, "Expected 52 registered tools");
 
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert!(
-        presets.len() >= tools.len(),
-        "Expected at least as many presets ({}) as tools ({})",
-        presets.len(),
-        tools.len()
-    );
+    assert_eq!(presets.len(), 57, "Expected 57 registered starter presets");
 
     for tool in &tools {
-        let matching = presets
+        let matching: Vec<_> = presets
             .iter()
             .filter(|p| p.tool_name == Some(tool.id) && p.domain == tool.domain)
-            .collect::<Vec<_>>();
+            .collect();
         assert!(
             !matching.is_empty(),
             "Tool '{}' in domain '{}' has no registered starter preset",
@@ -67,13 +60,13 @@ fn test_all_registered_tools_have_starter_presets() {
         );
 
         for preset in matching {
-            let payload = (preset.preset_generator)();
-            let parsed: serde_json::Value = serde_json::from_str(payload).unwrap_or_else(|e| {
-                panic!(
-                    "Invalid JSON payload for tool '{}', preset '{}': {}",
-                    tool.id, preset.title, e
-                )
-            });
+            let parsed: serde_json::Value = serde_json::from_str(preset.generate_preset())
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "Invalid JSON payload for tool '{}', preset '{}': {}",
+                        tool.id, preset.title, e
+                    )
+                });
             assert!(parsed.is_object(), "Payload must be a JSON object");
             let meta = &parsed["metadata"];
             assert_eq!(meta["schema_version"], "1.0");
@@ -155,11 +148,11 @@ fn perturb_first_number(val: &mut serde_json::Value) -> bool {
 }
 
 fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetMetadata) {
-    let payload = (preset.preset_generator)();
+    let payload = preset.generate_preset();
     let mut target_tool = (tool_meta.build)();
-    target_tool.apply_preset_json(payload).unwrap_or_else(|e| {
+    target_tool.import_preset_json(payload).unwrap_or_else(|e| {
         panic!(
-            "apply_preset_json failed for preset '{}' on '{}': {}",
+            "import_preset_json failed for preset '{}' on '{}': {}",
             preset.id, tool_meta.id, e
         )
     });
@@ -193,8 +186,8 @@ fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetM
     );
 
     perturbed_tool
-        .apply_preset_json(payload)
-        .unwrap_or_else(|e| panic!("Re-apply preset '{}' failed: {}", preset.id, e));
+        .import_preset_json(payload)
+        .unwrap_or_else(|e| panic!("Re-import preset '{}' failed: {}", preset.id, e));
     let after_val: serde_json::Value =
         serde_json::from_str(&perturbed_tool.save_state().unwrap()).unwrap();
     assert_eq!(
@@ -228,7 +221,7 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
                 .unwrap_or_else(|| panic!("Missing ToolMetadata for '{}'", tool_name));
             verify_tool_preset_mutation(tool_meta, preset);
         } else {
-            let payload = (preset.preset_generator)();
+            let payload = preset.generate_preset();
             let mut target_tab = MorphogenesisTab::default();
             target_tab
                 .from_json_str(payload)
@@ -270,7 +263,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
             .expect("Every registered tool must have a starter preset");
         let mut modified_tool = (tool_meta.build)();
         modified_tool
-            .apply_preset_json((preset.preset_generator)())
+            .import_preset_json(preset.generate_preset())
             .unwrap();
         let mut non_default_json = modified_tool.save_state().unwrap();
         let mut non_default_val: serde_json::Value =
@@ -321,7 +314,7 @@ fn test_unified_sim_tool_rejects_unknown_empty_and_non_finite_parameters() {
         .try_load_state(r#"{"reynolds": 100.0, "relaxation_time": 0.6}"#)
         .is_err());
     assert!(tool
-        .apply_preset_json(
+        .import_preset_json(
             r#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"fluid_dynamics","timestamp":"0"},"config":{"unknown_param":1.0}}"#
         )
         .is_err());

@@ -2,9 +2,20 @@ use crate::framework::InteractiveTool;
 use eframe::egui;
 
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
-#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct GaussianSplattingTool {
     pub scale: f64,
+}
+
+impl Default for GaussianSplattingTool {
+    fn default() -> Self {
+        Self { scale: 1.0 }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GaussianSplattingState {
+    scale: f64,
 }
 
 impl InteractiveTool for GaussianSplattingTool {
@@ -22,16 +33,16 @@ impl InteractiveTool for GaussianSplattingTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(self).ok()
+        serde_json::to_string(&GaussianSplattingState { scale: self.scale }).ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: Self = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid GaussianSplattingTool state: {e}"))?;
-        if !s.scale.is_finite() {
-            return Err("Invalid non-finite scale in GaussianSplattingTool".to_string());
+        let parsed: GaussianSplattingState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid splatting state: {e}"))?;
+        if !parsed.scale.is_finite() || !(0.1..=10.0).contains(&parsed.scale) {
+            return Err("Gaussian splat scale must be finite within [0.1, 10.0]".into());
         }
-        self.scale = s.scale;
+        self.scale = parsed.scale;
         Ok(())
     }
 
@@ -95,7 +106,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "gaussian_splatting_starter",
         title: "Gaussian Splatting",
-        description: "3D Gaussian radiance field point rendering with covariance ellipsoids and spherical harmonics.",
+        description: "3D Gaussian radiance field scale parameter control and theoretical model overview.",
         category: "Neural Rendering",
         icon: "🎨",
         domain: "ai",

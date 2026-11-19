@@ -17,7 +17,8 @@ enum PartitionFunctionType {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-struct PartitionsWidgetState {
+#[serde(deny_unknown_fields)]
+struct PartitionsState {
     precision: usize,
     selected_function: PartitionFunctionType,
     f_k_val: usize,
@@ -72,7 +73,7 @@ impl InteractiveTool for PartitionsWidget {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&PartitionsWidgetState {
+        serde_json::to_string(&PartitionsState {
             precision: self.precision,
             selected_function: self.selected_function,
             f_k_val: self.f_k_val,
@@ -81,14 +82,14 @@ impl InteractiveTool for PartitionsWidget {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: PartitionsWidgetState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid PartitionsWidget state: {e}"))?;
-        if s.precision == 0 || s.f_k_val == 0 {
-            return Err("precision and f_k_val must be positive in PartitionsWidget".to_string());
+        let parsed: PartitionsState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid partitions state: {e}"))?;
+        if !(1..=200).contains(&parsed.precision) || !(1..=100).contains(&parsed.f_k_val) {
+            return Err("Partition precision or f_k_val out of bounds".into());
         }
-        self.precision = s.precision;
-        self.selected_function = s.selected_function;
-        self.f_k_val = s.f_k_val;
+        self.precision = parsed.precision;
+        self.selected_function = parsed.selected_function;
+        self.f_k_val = parsed.f_k_val;
         self.calculate();
         Ok(())
     }
@@ -260,7 +261,7 @@ impl scientific_metadata::theory::TheoryDescribable for PartitionsWidget {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Integer Partitions (Hardy-Ramanujan)",
+    "title": "Partition Functions & Q-Series",
     "domain": "number_theory",
     "timestamp": "2026-11-16T00:00:00Z"
   },
@@ -274,8 +275,8 @@ const STARTER_PRESET_JSON: &str = r#"{
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "partitions_starter",
-        title: "Integer Partitions (Hardy-Ramanujan)",
-        description: "p(n) integer partition function asymptotic counting and Young Ferrers diagram displays.",
+        title: "Partition Functions & Q-Series",
+        description: "Euler and colored partition generating function q-series coefficient expansions.",
         category: "Combinatorics",
         icon: "🧱",
         domain: "number_theory",

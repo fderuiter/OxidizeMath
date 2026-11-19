@@ -15,6 +15,7 @@ pub use runner::*;
 const DEFAULT_ISING_SIZE: usize = 100;
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct IsingState {
     temperature: f64,
     j_coupling: f64,
@@ -362,9 +363,17 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s = serde_json::from_str::<IsingState>(state).map_err(|e| e.to_string())?;
-        if !s.temperature.is_finite() || !s.j_coupling.is_finite() || !s.h_field.is_finite() {
-            return Err("Non-finite parameters in IsingModelTool".to_string());
+        let s: IsingState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid Ising state: {e}"))?;
+        if !s.temperature.is_finite()
+            || !(0.1..=10.0).contains(&s.temperature)
+            || !s.j_coupling.is_finite()
+            || !(-2.0..=2.0).contains(&s.j_coupling)
+            || !s.h_field.is_finite()
+            || !(-2.0..=2.0).contains(&s.h_field)
+            || !(100..=50_000).contains(&s.steps_per_frame)
+        {
+            return Err("Ising parameters out of valid bounds".to_string());
         }
         self.temperature = s.temperature;
         self.j_coupling = s.j_coupling;

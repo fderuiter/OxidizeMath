@@ -27,6 +27,7 @@ impl Default for DoseCalculationTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct DoseState {
     amplitude: f64,
     beta: f64,
@@ -65,7 +66,17 @@ impl InteractiveTool for DoseCalculationTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded = serde_json::from_str::<DoseState>(state).map_err(|e| e.to_string())?;
+        let loaded: DoseState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid DoseCalculation state: {e}"))?;
+        if !loaded.amplitude.is_finite() || !(0.1..=10.0).contains(&loaded.amplitude) {
+            return Err(format!("amplitude out of [0.1, 10.0]: {}", loaded.amplitude));
+        }
+        if !loaded.beta.is_finite() || !(0.1..=5.0).contains(&loaded.beta) {
+            return Err(format!("beta out of [0.1, 5.0]: {}", loaded.beta));
+        }
+        if !(10..=1024).contains(&loaded.width) || !(10..=1024).contains(&loaded.height) {
+            return Err("width and height must be in [10, 1024]".to_string());
+        }
         self.amplitude = loaded.amplitude;
         self.beta = loaded.beta;
         self.width = loaded.width;
@@ -205,7 +216,7 @@ impl scientific_metadata::theory::TheoryDescribable for DoseCalculationTool {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Percentage Depth Dose (PDD)",
+    "title": "Point-Source Dose Kernel",
     "domain": "medical",
     "timestamp": "2026-11-16T00:00:00Z"
   },
@@ -220,8 +231,8 @@ const STARTER_PRESET_JSON: &str = r#"{
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "dose_calculation_starter",
-        title: "Percentage Depth Dose (PDD)",
-        description: "Tissue-air ratio and depth attenuation profile for megavoltage photon radiation dosimetry.",
+        title: "Point-Source Dose Kernel",
+        description: "K(r) = (A/r²)e^(-βr): 2D radial point-spread dose convolution heatmap.",
         category: "Dosimetry",
         icon: "🎯",
         domain: "medical",

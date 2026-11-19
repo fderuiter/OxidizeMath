@@ -8,7 +8,7 @@ use std::f64::consts::PI;
 
 pub struct PotentialFlowTool {
     field: PotentialFlowField,
-    preset_type: String,
+    elements: Vec<SerializedFlowElement>,
     // UI State
     grid_size: usize,
     view_range: f64,
@@ -21,40 +21,74 @@ pub struct PotentialFlowTool {
     new_element_angle: f64,
 }
 
-#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 enum ElementType {
     Uniform,
+    #[default]
     Source,
     Sink,
     Vortex,
     Doublet,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct PotentialFlowState {
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SerializedFlowElement {
+    element_type: ElementType,
+    strength: f64,
     #[serde(default)]
-    preset_type: Option<String>,
+    x: f64,
+    #[serde(default)]
+    y: f64,
+    #[serde(default)]
+    angle: f64,
+}
+
+const fn default_element_strength() -> f64 {
+    10.0
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PotentialFlowState {
+    elements: Vec<SerializedFlowElement>,
     grid_size: usize,
     view_range: f64,
+    #[serde(default)]
     selected_element_type: ElementType,
+    #[serde(default = "default_element_strength")]
     new_element_strength: f64,
+    #[serde(default)]
     new_element_x: f64,
+    #[serde(default)]
     new_element_y: f64,
+    #[serde(default)]
     new_element_angle: f64,
 }
 
 impl Default for PotentialFlowTool {
     fn default() -> Self {
-        let mut field = PotentialFlowField::new();
-        // Default: Flow past a cylinder (Uniform + Doublet)
-        field.add(Box::new(UniformFlow::new(10.0, 0.0)));
-        // Radius R=2, U=10 => kappa = 2*pi*U*R^2 = 2*pi*10*4 = 80*pi approx 251.3
         let kappa = 2.0 * PI * 10.0 * 2.0 * 2.0;
-        field.add(Box::new(Doublet::new(kappa, 0.0, 0.0)));
-
-        Self {
-            field,
-            preset_type: "CylinderFlow".to_string(),
+        let elements = vec![
+            SerializedFlowElement {
+                element_type: ElementType::Uniform,
+                strength: 10.0,
+                x: 0.0,
+                y: 0.0,
+                angle: 0.0,
+            },
+            SerializedFlowElement {
+                element_type: ElementType::Doublet,
+                strength: kappa,
+                x: 0.0,
+                y: 0.0,
+                angle: 0.0,
+            },
+        ];
+        let mut tool = Self {
+            field: PotentialFlowField::new(),
+            elements,
             grid_size: 20,
             view_range: 10.0,
             selected_element_type: ElementType::Source,
@@ -62,46 +96,13 @@ impl Default for PotentialFlowTool {
             new_element_x: 0.0,
             new_element_y: 0.0,
             new_element_angle: 0.0,
-        }
+        };
+        tool.rebuild_field();
+        tool
     }
 }
 
 use crate::framework::InteractiveTool;
-use crate::presets::InteractivePreset;
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct PotentialFlowPresetConfig {
-    pub preset_type: String,
-    pub grid_size: usize,
-    pub view_range: f64,
-}
-
-impl InteractivePreset for PotentialFlowTool {
-    type Config = PotentialFlowPresetConfig;
-
-    fn domain(&self) -> &'static str {
-        "fluid_dynamics"
-    }
-
-    fn title(&self) -> String {
-        "Potential Flow - Cylinder Vector Field".to_string()
-    }
-
-    fn export_config(&self) -> Self::Config {
-        PotentialFlowPresetConfig {
-            preset_type: self.preset_type.clone(),
-            grid_size: self.grid_size,
-            view_range: self.view_range,
-        }
-    }
-
-    fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
-        self.rebuild_preset_field(&config.preset_type)?;
-        self.grid_size = config.grid_size;
-        self.view_range = config.view_range;
-        Ok(())
-    }
-}
 
 impl InteractiveTool for PotentialFlowTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
@@ -113,21 +114,9 @@ impl InteractiveTool for PotentialFlowTool {
         "fluid_dynamics"
     }
 
-    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        self.from_json_str(json_str)
-    }
-
-    fn export_preset_json(&self) -> Result<String, String> {
-        self.to_json_string()
-    }
-
-    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        self.from_json_str(json_str)
-    }
-
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&PotentialFlowState {
-            preset_type: Some(self.preset_type.clone()),
+            elements: self.elements.clone(),
             grid_size: self.grid_size,
             view_range: self.view_range,
             selected_element_type: self.selected_element_type,
@@ -140,10 +129,26 @@ impl InteractiveTool for PotentialFlowTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded = serde_json::from_str::<PotentialFlowState>(state).map_err(|e| e.to_string())?;
-        if let Some(ref preset_type) = loaded.preset_type {
-            self.rebuild_preset_field(preset_type)?;
+        let loaded: PotentialFlowState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid PotentialFlowTool state: {}", e))?;
+        if loaded.grid_size < 2
+            || loaded.grid_size > math_commons::registry::MAX_GRID_SIZE
+            || !loaded.view_range.is_finite()
+            || loaded.view_range <= 0.0
+            || !loaded.new_element_strength.is_finite()
+            || !loaded.new_element_x.is_finite()
+            || !loaded.new_element_y.is_finite()
+            || !loaded.new_element_angle.is_finite()
+            || loaded.elements.iter().any(|el| {
+                !el.strength.is_finite()
+                    || !el.x.is_finite()
+                    || !el.y.is_finite()
+                    || !el.angle.is_finite()
+            })
+        {
+            return Err("PotentialFlowTool parameters must be finite and within valid grid/view bounds".to_string());
         }
+        self.elements = loaded.elements;
         self.grid_size = loaded.grid_size;
         self.view_range = loaded.view_range;
         self.selected_element_type = loaded.selected_element_type;
@@ -151,6 +156,7 @@ impl InteractiveTool for PotentialFlowTool {
         self.new_element_x = loaded.new_element_x;
         self.new_element_y = loaded.new_element_y;
         self.new_element_angle = loaded.new_element_angle;
+        self.rebuild_field();
         Ok(())
     }
 
@@ -158,10 +164,6 @@ impl InteractiveTool for PotentialFlowTool {
     fn show(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("potential_flow_controls").show(ctx, |ui| {
             ui.heading("Potential Flow Controls");
-            if ui.button("🎨 Starter Gallery").clicked() {
-                let cur = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("SHOW_STARTER_GALLERY")).unwrap_or(false));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), !cur));
-            }
             ui.separator();
 
             ui.collapsing("Add Element", |ui| {
@@ -277,61 +279,35 @@ impl InteractiveTool for PotentialFlowTool {
 }
 
 impl PotentialFlowTool {
+    fn rebuild_field(&mut self) {
+        let mut field = PotentialFlowField::new();
+        for el in &self.elements {
+            let elem: Box<dyn FlowElement> = match el.element_type {
+                ElementType::Uniform => Box::new(UniformFlow::new(el.strength, el.angle)),
+                ElementType::Source => Box::new(Source::new(el.strength, el.x, el.y)),
+                ElementType::Sink => Box::new(Source::new(-el.strength, el.x, el.y)),
+                ElementType::Vortex => Box::new(Vortex::new(el.strength, el.x, el.y)),
+                ElementType::Doublet => Box::new(Doublet::new(el.strength, el.x, el.y)),
+            };
+            field.add(elem);
+        }
+        self.field = field;
+    }
+
     fn add_element(&mut self) {
-        let element: Box<dyn FlowElement> = match self.selected_element_type {
-            ElementType::Uniform => Box::new(UniformFlow::new(
-                self.new_element_strength,
-                self.new_element_angle,
-            )),
-            ElementType::Source => Box::new(Source::new(
-                self.new_element_strength,
-                self.new_element_x,
-                self.new_element_y,
-            )),
-            ElementType::Sink => Box::new(Source::new(
-                -self.new_element_strength,
-                self.new_element_x,
-                self.new_element_y,
-            )),
-            ElementType::Vortex => Box::new(Vortex::new(
-                self.new_element_strength,
-                self.new_element_x,
-                self.new_element_y,
-            )),
-            ElementType::Doublet => Box::new(Doublet::new(
-                self.new_element_strength,
-                self.new_element_x,
-                self.new_element_y,
-            )),
-        };
-        self.field.add(element);
+        self.elements.push(SerializedFlowElement {
+            element_type: self.selected_element_type,
+            strength: self.new_element_strength,
+            x: self.new_element_x,
+            y: self.new_element_y,
+            angle: self.new_element_angle,
+        });
+        self.rebuild_field();
     }
 
     fn clear(&mut self) {
+        self.elements.clear();
         self.field.clear();
-    }
-
-    fn rebuild_preset_field(&mut self, preset_type: &str) -> Result<(), String> {
-        match preset_type {
-            "SourceSink" => {
-                let mut field = PotentialFlowField::new();
-                field.add(Box::new(Source::new(10.0, -3.0, 0.0)));
-                field.add(Box::new(Source::new(-10.0, 3.0, 0.0)));
-                self.field = field;
-                self.preset_type = "SourceSink".to_string();
-                Ok(())
-            }
-            "CylinderFlow" => {
-                let mut field = PotentialFlowField::new();
-                field.add(Box::new(UniformFlow::new(10.0, 0.0)));
-                let kappa = 2.0 * PI * 10.0 * 2.0 * 2.0;
-                field.add(Box::new(Doublet::new(kappa, 0.0, 0.0)));
-                self.field = field;
-                self.preset_type = "CylinderFlow".to_string();
-                Ok(())
-            }
-            other => Err(format!("Unknown PotentialFlow preset_type '{}'", other)),
-        }
     }
 }
 

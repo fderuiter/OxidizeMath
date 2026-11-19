@@ -2,7 +2,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 
-/// Validate all internal relative Markdown links across repository documentation files.
 pub(crate) fn check_markdown_links() {
     println!("=== Checking Markdown Documentation Links ===");
     let mut md_files = Vec::new();

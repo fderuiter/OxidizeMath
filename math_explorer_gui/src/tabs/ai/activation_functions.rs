@@ -16,6 +16,7 @@ enum ActivationFunction {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ActivationFunctionsState {
     selected_function: ActivationFunction,
     x_min: f64,
@@ -61,15 +62,19 @@ impl InteractiveTool for ActivationFunctionsTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: ActivationFunctionsState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid ActivationFunctionsTool state: {e}"))?;
-        if !s.x_min.is_finite() || !s.x_max.is_finite() || s.x_min >= s.x_max || s.points < 2 {
-            return Err("Invalid ActivationFunctionsTool range or point count".to_string());
+        let parsed: ActivationFunctionsState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid activation state: {e}"))?;
+        if !parsed.x_min.is_finite()
+            || !parsed.x_max.is_finite()
+            || parsed.x_min >= parsed.x_max
+            || !(2..=10_000).contains(&parsed.points)
+        {
+            return Err("Activation plot range and point count must be valid and finite".into());
         }
-        self.selected_function = s.selected_function;
-        self.x_min = s.x_min;
-        self.x_max = s.x_max;
-        self.points = s.points;
+        self.selected_function = parsed.selected_function;
+        self.x_min = parsed.x_min;
+        self.x_max = parsed.x_max;
+        self.points = parsed.points;
         Ok(())
     }
 
@@ -246,8 +251,8 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "selected_function": "Gelu",
-    "x_min": -3.0,
-    "x_max": 3.0,
+    "x_min": -4.0,
+    "x_max": 4.0,
     "points": 200
   }
 }"#;
@@ -256,7 +261,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "activation_functions_starter",
         title: "Activation Functions",
-        description: "Comparison of non-linear activations: ReLU, GELU, Sigmoid, and Swish functions.",
+        description: "Comparison of non-linear activations and derivatives: ReLU, Sigmoid, Tanh, and GELU.",
         category: "Neural Architectures",
         icon: "⚡",
         domain: "ai",
