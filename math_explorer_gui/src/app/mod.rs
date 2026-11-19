@@ -46,7 +46,9 @@ pub use viewport::ViewportLayout;
 use crate::command_palette::CommandPalette;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
-use federated_registry::{global_registry, Severity, TelemetryEvent};
+#[cfg(test)]
+use federated_registry::global_registry;
+use federated_registry::{Severity, TelemetryEvent};
 
 pub struct MathExplorerApp {
     pub(super) tabs: Vec<Box<dyn ExplorerTab>>,
@@ -188,16 +190,15 @@ impl MathExplorerApp {
         match self.session_manager.parse_envelope(json_str) {
             Ok(app_state) => self.apply_app_state(app_state),
             Err(err) => {
-                global_registry().emit(TelemetryEvent {
-                    source: "MathExplorerApp".to_string(),
-                    severity: Severity::Warning,
-                    message: format!(
+                crate::telemetry::emit_telemetry(
+                    "MathExplorerApp",
+                    Severity::Warning,
+                    format!(
                         "Failed to parse saved session state, resetting to defaults: {}",
                         err
                     ),
-                    metadata: std::collections::HashMap::new(),
-                    thread_name: None,
-                });
+                    std::collections::HashMap::new(),
+                );
             }
         }
     }
@@ -368,7 +369,7 @@ impl eframe::App for MathExplorerApp {
         }
 
         // Fetch new events
-        let new_events = global_registry().try_recv_all();
+        let new_events = crate::telemetry::poll_app_telemetry();
         let mut has_error_or_fatal = false;
         for event in &new_events {
             if matches!(event.severity, Severity::Error | Severity::Fatal) {

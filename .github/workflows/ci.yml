@@ -35,18 +35,15 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Cache dependencies
-        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-preflight-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-preflight-
+          scope: preflight
+          profile: mixed
+          extra-files: |
+            apps/xtask/Cargo.toml
+            apps/xtask/README.md
+            apps/xtask/src/**
 
       - name: Build Unified Verification Tool
         run: cargo build -p unified_verification --release
@@ -122,7 +119,7 @@ jobs:
             name: Windows Native
             artifact_name: windows_installer
           - os: macos-latest
-            target: x86_64-apple-darwin
+            target: aarch64-apple-darwin
             name: macOS Native
             artifact_name: macos_app
           - os: ubuntu-latest
@@ -149,19 +146,12 @@ jobs:
           components: clippy, rustfmt, llvm-tools-preview
           targets: ${{ matrix.target }}
 
-      - name: Cache dependencies
-        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.target }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
-            ${{ runner.os }}-cargo-
+          scope: build-and-test
+          profile: mixed
+          target: ${{ matrix.target }}
 
       - name: Build Unified Verification Tool
         run: cargo build -p unified_verification --release
@@ -345,6 +335,16 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
+        with:
+          scope: compile-papers
+          profile: dev
+          extra-files: |
+            apps/xtask/Cargo.toml
+            apps/xtask/README.md
+            apps/xtask/src/**
+
       - name: Compile Papers
         run: cargo run -p xtask -- compile-papers
 
@@ -394,18 +394,18 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - name: Cache dependencies
-        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-features-${{ matrix.feature }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-features-${{ matrix.feature }}-
+          scope: features-${{ matrix.feature || 'core-only' }}
+          profile: dev
+          extra-files: |
+            apps/xtask/Cargo.toml
+            apps/xtask/README.md
+            apps/xtask/src/**
+            math_explorer/Cargo.toml
+            math_explorer_gui/Cargo.toml
+            math_explorer_gui/build.rs
 
       - name: Run Tests
         run: |
@@ -443,6 +443,13 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
+        with:
+          scope: package-${{ matrix.target }}
+          profile: release
+          extra-files: math_explorer_gui/Cargo.toml
 
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2

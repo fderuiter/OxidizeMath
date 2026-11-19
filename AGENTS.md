@@ -1,12 +1,12 @@
 # OxidizeMath Agent & Developer Verification Guide
 
-This guide documents repository conventions, local build, domain feature matrix, WebAssembly bundle, workflow linting, and release packaging checks for contributors and automated coding agents working in the **OxidizeMath** workspace. See [README.md](README.md) for an architectural overview, [CONTRIBUTING.md](CONTRIBUTING.md) for engineering and safety standards (consolidated in `CONTRIBUTING.md` per [ADR 0005](docs/adr/0005-active-documentation-standard.md)), and [docs/README.md](docs/README.md) for the documentation index.
+This guide documents repository conventions, local Cargo build and test commands, domain feature matrix checks, WebAssembly bundle verification, workflow linting, and release packaging checks for contributors and automated coding agents working in the **OxidizeMath** workspace. See [README.md](README.md) for an architectural overview, [CONTRIBUTING.md](CONTRIBUTING.md) for engineering and NASA Power of 10 safety standards (consolidated in `CONTRIBUTING.md` per [ADR 0005](docs/adr/0005-active-documentation-standard.md)), and [docs/README.md](docs/README.md) for the documentation index.
 
 ## 1. Architecture, Policy & Documentation Rules
 
 All Markdown files in the repository (outside excluded build directories such as `target`, `dist`, and `artifacts`) are compiled by `crates/markdown_tests/build.rs` via `rustdoc`.
 
-- Always tag non-Rust code blocks with `bash`, `yaml`, or `text` fences so `cargo test --doc` does not attempt to compile shell commands, workflow snippets, or plain text snippets as Rust doctests.
+- Always tag non-Rust code blocks with `bash`, `yaml`, or `text` fences so `cargo test --doc` does not attempt to compile shell commands, workflow YAML, or plain text snippets as Rust doctests.
 - Keep core engineering safety rules (such as the NASA Power of 10 standards) in [CONTRIBUTING.md](CONTRIBUTING.md) rather than duplicating them here.
 - Ensure all relative Markdown links resolve to existing files in the repository.
 - Keep every Rust source file at or below **500 lines** (`check-file-lengths`) and keep functions within the **60-line** Clippy ceiling configured in `.clippy.toml`.
@@ -21,12 +21,19 @@ Markdown verification gates:
 - cargo run -p xtask -- check-markdown-links
 ```
 
-## 2. CI Pre-Flight & Quality Gates
+## 2. Local Cargo Builds & CI Quality Gates
 
-Configure version-controlled Git hooks and run the full pre-commit verification suite aligned with [CONTRIBUTING.md](CONTRIBUTING.md) via `xtask`:
+Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) restore Cargo registry sources and profile-scoped `target/` caches via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (referencing `./.github/actions/cargo-cache` without caching mutable CLI binaries).
+
+Configure version-controlled Git hooks, run workspace builds, and execute the full pre-commit verification suite aligned with [CONTRIBUTING.md](CONTRIBUTING.md) via `xtask`:
 
 ```bash
+# Install version-controlled Git hooks
 cargo run -p xtask -- setup
+
+# Type-check and build all workspace members
+cargo check --workspace
+cargo build --workspace --all-features
 
 # Run the full verification suite (formatting, host & WASM clippy, duplicates, file lengths,
 # rustdoc, doctests, markdown links, workflow lints, crate docs, traceability, entropy, vulnerabilities, policy audit)
@@ -41,7 +48,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
-# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA action pins)
+# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA or ./ local action pins)
 cargo run -p unified_verification --release -- lint-workflows
 
 # Audit AST attributes for unauthorized dead_code/unused/warnings bypasses and unused dependencies

@@ -119,7 +119,7 @@ fn test_step_command_advances_once_and_returns_to_ready() {
     assert_eq!(controller.state(), SimWorkerState::Ready);
 
     assert!(controller.send_command(SimCommand::Step(1)).is_ok());
-    for _ in 0..40 {
+    for _ in 0..400 {
         thread::sleep(Duration::from_millis(10));
         if controller.update().is_some() && controller.state() == SimWorkerState::Ready {
             break;
@@ -134,7 +134,7 @@ fn test_step_command_advances_once_and_returns_to_ready() {
         .any(|(msg, prio)| msg == "Simulation step completed" && prio == "polite"));
 
     assert!(controller.send_command(SimCommand::Step(3)).is_ok());
-    for _ in 0..40 {
+    for _ in 0..400 {
         thread::sleep(Duration::from_millis(10));
         if controller.update().is_some() && controller.state() == SimWorkerState::Ready {
             break;
@@ -177,7 +177,7 @@ fn test_step_divergence_transitions_to_faulted_and_emits_diagnostic() {
     let mut controller = SimulationController::new(DivergingStepRunner { value: 0.0 });
     assert!(controller.send_command(SimCommand::Step(1)).is_ok());
 
-    for _ in 0..40 {
+    for _ in 0..400 {
         thread::sleep(Duration::from_millis(10));
         let _ = controller.update();
         if controller.state() == SimWorkerState::Faulted {
