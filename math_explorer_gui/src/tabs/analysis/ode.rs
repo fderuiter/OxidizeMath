@@ -407,3 +407,6 @@ mod ode_tests;
 
 #[cfg(test)]
 mod recovery_tests;
+
+#[cfg(test)]
+mod sensitivity_tests;

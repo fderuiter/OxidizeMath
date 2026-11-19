@@ -9,6 +9,77 @@ use math_explorer::pure_math::analysis::ode::{
     Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
 };
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+
+pub(super) struct AstContext<'a>(pub(super) Option<&'a Expr>);
+
+impl Hash for AstContext<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let Some(root) = self.0 else {
+            0_u8.hash(state);
+            return;
+        };
+        1_u8.hash(state);
+        let mut stack: [Option<&Expr>; 64] = [None; 64];
+        stack[0] = Some(root);
+        let mut top = 1_usize;
+        for _ in 0..256 {
+            if top == 0 {
+                break;
+            }
+            top -= 1;
+            if let Some(node) = stack[top] {
+                push_and_hash_expr_node(node, &mut stack, &mut top, state);
+            }
+        }
+    }
+}
+
+fn push_and_hash_expr_node<'a, H: Hasher>(
+    node: &'a Expr,
+    stack: &mut [Option<&'a Expr>; 64],
+    top: &mut usize,
+    state: &mut H,
+) {
+    match node {
+        Expr::Number(n) => {
+            1_u8.hash(state);
+            crate::sensitivity::canonical_f64_bits(*n).hash(state);
+        }
+        Expr::Variable(v) => {
+            2_u8.hash(state);
+            v.hash(state);
+        }
+        Expr::Binary { op, left, right } => {
+            3_u8.hash(state);
+            op.hash(state);
+            if *top + 2 <= stack.len() {
+                stack[*top] = Some(right);
+                stack[*top + 1] = Some(left);
+                *top += 2;
+            }
+        }
+        Expr::Unary { op, expr } => {
+            4_u8.hash(state);
+            op.hash(state);
+            if *top < stack.len() {
+                stack[*top] = Some(expr);
+                *top += 1;
+            }
+        }
+        Expr::Function { func, args } => {
+            5_u8.hash(state);
+            func.hash(state);
+            args.len().hash(state);
+            for arg in args.iter().rev() {
+                if *top < stack.len() {
+                    stack[*top] = Some(arg);
+                    *top += 1;
+                }
+            }
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct ExponentialOde {

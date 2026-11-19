@@ -461,4 +461,25 @@ fn test_unified_sim_tool_panel_gating() {
     assert!(hh_texts
         .iter()
         .any(|t| t.contains("Baseline Peak Membrane Potential (mV):")));
+
+    let ctx = eframe::egui::Context::default();
+    let input = eframe::egui::RawInput {
+        screen_rect: Some(eframe::egui::Rect::from_min_size(
+            eframe::egui::Pos2::ZERO,
+            eframe::egui::vec2(960.0, 640.0),
+        )),
+        ..Default::default()
+    };
+    let mut hh_tool = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
+    let out1 = ctx.run(input.clone(), |ctx| hh_tool.show(ctx));
+    assert!(!hh_tool.sensitivity_engine.is_converged());
+    assert!(out1.viewport_output[&eframe::egui::ViewportId::ROOT]
+        .repaint_delay
+        .is_zero());
+    let _ = ctx.run(input.clone(), |ctx| hh_tool.show(ctx));
+    assert!(hh_tool.sensitivity_engine.is_converged());
+    let out_idle = ctx.run(input, |ctx| hh_tool.show(ctx));
+    assert!(!out_idle.viewport_output[&eframe::egui::ViewportId::ROOT]
+        .repaint_delay
+        .is_zero());
 }

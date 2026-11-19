@@ -7,6 +7,34 @@
 
 use eframe::egui;
 use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
+
+/// Normalizes floating-point values to canonical IEEE-754 bit patterns
+/// (`-0.0` maps to `+0.0` and all `NaN` payloads map to a single quiet `NaN`).
+#[must_use]
+pub fn canonical_f64_bits(value: f64) -> u64 {
+    if value == 0.0 {
+        0.0_f64.to_bits()
+    } else if value.is_nan() {
+        f64::NAN.to_bits()
+    } else {
+        value.to_bits()
+    }
+}
+
+fn hash_context<C: Hash>(context: &C) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    context.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn set_map_value(map: &mut HashMap<String, f64>, key: &str, value: f64) {
+    if let Some(slot) = map.get_mut(key) {
+        *slot = value;
+    } else {
+        map.insert(key.to_string(), value);
+    }
+}
 
 /// Quantitative sensitivity metrics for a single input parameter.
 #[derive(Debug, Clone, PartialEq)]
@@ -32,65 +60,152 @@ pub struct SensitivityEngine {
     pub baseline_output: f64,
     /// Current batch index for round-robin parameter evaluation bounding (max 5 sample runs).
     pub batch_offset: usize,
+    cached_params: Vec<(String, u64)>,
+    cached_context_hash: Option<u64>,
+    evaluated_count: usize,
+    baseline_map: HashMap<String, f64>,
 }
 
 impl SensitivityEngine {
     /// Creates a new SensitivityEngine instance.
+    #[must_use]
     pub fn new() -> Self {
-        Self {
-            metrics: Vec::new(),
-            baseline_output: 0.0,
-            batch_offset: 0,
+        Self::default()
+    }
+
+    /// Returns `true` when all active parameters have been evaluated for the current inputs.
+    #[must_use]
+    pub fn is_converged(&self) -> bool {
+        self.evaluated_count >= self.cached_params.len()
+    }
+
+    /// Returns `true` when `params` and `context` match the memoized parameter and context state.
+    #[must_use]
+    pub fn matches_cache<K: AsRef<str>, C: Hash>(&self, params: &[(K, f64)], context: &C) -> bool {
+        self.cached_context_hash == Some(hash_context(context))
+            && self.schema_matches(params)
+            && self.values_match(params)
+    }
+
+    fn schema_matches<K: AsRef<str>>(&self, params: &[(K, f64)]) -> bool {
+        self.cached_params.len() == params.len()
+            && self
+                .cached_params
+                .iter()
+                .zip(params)
+                .all(|((cached_key, _), (key, _))| cached_key == key.as_ref())
+    }
+
+    fn values_match<K: AsRef<str>>(&self, params: &[(K, f64)]) -> bool {
+        self.cached_params
+            .iter()
+            .zip(params)
+            .all(|((_, cached_bits), (_, val))| *cached_bits == canonical_f64_bits(*val))
+    }
+
+    fn reset_empty(&mut self) {
+        self.metrics.clear();
+        self.cached_params.clear();
+        self.baseline_map.clear();
+        self.cached_context_hash = None;
+        self.evaluated_count = 0;
+        self.batch_offset = 0;
+    }
+
+    fn sync_cache_on_miss<K: AsRef<str>>(&mut self, params: &[(K, f64)], context_hash: u64) {
+        if self.schema_matches(params) {
+            for (idx, (key, val)) in params.iter().enumerate() {
+                self.cached_params[idx].1 = canonical_f64_bits(*val);
+                set_map_value(&mut self.baseline_map, key.as_ref(), *val);
+                self.metrics[idx].baseline_value = *val;
+            }
+        } else {
+            self.batch_offset = 0;
+            self.cached_params.clear();
+            self.baseline_map.clear();
+            self.metrics.clear();
+            self.cached_params.reserve(params.len());
+            self.baseline_map.reserve(params.len());
+            self.metrics.reserve(params.len());
+            for (key, val) in params {
+                let name = key.as_ref();
+                self.cached_params
+                    .push((name.to_string(), canonical_f64_bits(*val)));
+                self.baseline_map.insert(name.to_string(), *val);
+                self.metrics.push(SensitivityMetric {
+                    param_name: name.to_string(),
+                    baseline_value: *val,
+                    partial_derivative: 0.0,
+                    elasticity: 0.0,
+                    is_high_sensitivity: false,
+                });
+            }
         }
+        self.cached_context_hash = Some(context_hash);
+        self.evaluated_count = 0;
     }
 
     /// Evaluates normalized sensitivity indices using central finite differences (+/- 1% delta).
     ///
     /// Respects the constraint bounding perturbation evaluations to at most 5 sample runs
     /// (1 baseline + max 2 parameters * 2 perturbations per step = 5 runs max) to prevent UI slowdown.
-    pub fn compute<F>(
+    pub fn compute<K, F>(&mut self, params: &[(K, f64)], eval_fn: F) -> &Vec<SensitivityMetric>
+    where
+        K: AsRef<str>,
+        F: FnMut(&HashMap<String, f64>) -> f64,
+    {
+        self.compute_with_context(params, &(), eval_fn)
+    }
+
+    /// Evaluates normalized sensitivity indices memoized by canonical parameter bits and `context`.
+    pub fn compute_with_context<K, C, F>(
         &mut self,
-        params: &[(String, f64)],
+        params: &[(K, f64)],
+        context: &C,
         mut eval_fn: F,
     ) -> &Vec<SensitivityMetric>
     where
+        K: AsRef<str>,
+        C: Hash,
         F: FnMut(&HashMap<String, f64>) -> f64,
     {
         if params.is_empty() {
-            self.metrics.clear();
+            self.reset_empty();
             return &self.metrics;
         }
 
-        // Convert slice to parameter map
-        let mut baseline_map: HashMap<String, f64> = params.iter().cloned().collect();
-        let y0 = eval_fn(&baseline_map);
-        self.baseline_output = y0;
+        let context_hash = hash_context(context);
+        let is_hit = self.cached_context_hash == Some(context_hash)
+            && self.schema_matches(params)
+            && self.values_match(params);
 
-        // Ensure metrics vector matches param count
-        if self.metrics.len() != params.len() {
-            self.metrics = params
-                .iter()
-                .map(|(name, val)| SensitivityMetric {
-                    param_name: name.clone(),
-                    baseline_value: *val,
-                    partial_derivative: 0.0,
-                    elasticity: 0.0,
-                    is_high_sensitivity: false,
-                })
-                .collect();
+        if is_hit {
+            if self.evaluated_count >= params.len() {
+                return &self.metrics;
+            }
+        } else {
+            self.sync_cache_on_miss(params, context_hash);
+            self.baseline_output = eval_fn(&self.baseline_map);
         }
 
-        // Bounded perturbation evaluations: Max 5 sample runs per frame (1 baseline + 2 params * 2 runs = 5 runs)
         let num_params = params.len();
-        let max_params_per_frame = 2;
+        let batch_count = (num_params - self.evaluated_count).min(2);
+        let y0 = self.baseline_output;
 
-        for step in 0..num_params.min(max_params_per_frame) {
+        for step in 0..batch_count {
             let idx = (self.batch_offset + step) % num_params;
             let (ref name, p_val) = params[idx];
-            self.metrics[idx] = eval_single_param(name, p_val, &mut baseline_map, y0, &mut eval_fn);
+            self.metrics[idx] = eval_single_param(
+                name.as_ref(),
+                p_val,
+                &mut self.baseline_map,
+                y0,
+                &mut eval_fn,
+            );
         }
 
-        self.batch_offset = (self.batch_offset + max_params_per_frame) % num_params.max(1);
+        self.batch_offset = (self.batch_offset + batch_count) % num_params;
+        self.evaluated_count += batch_count;
         &self.metrics
     }
 }
@@ -112,15 +227,15 @@ where
     };
 
     // Evaluate upper perturbation P+ = P + delta
-    baseline_map.insert(name.to_string(), p_val + delta);
+    set_map_value(baseline_map, name, p_val + delta);
     let y_plus = eval_fn(baseline_map);
 
     // Evaluate lower perturbation P- = P - delta
-    baseline_map.insert(name.to_string(), p_val - delta);
+    set_map_value(baseline_map, name, p_val - delta);
     let y_minus = eval_fn(baseline_map);
 
     // Restore baseline
-    baseline_map.insert(name.to_string(), p_val);
+    set_map_value(baseline_map, name, p_val);
 
     let dy_dp = if delta > 0.0 {
         (y_plus - y_minus) / (2.0 * delta)
@@ -171,6 +286,10 @@ pub fn render_labeled_sensitivity_panel_ui(
     } else {
         format!("Baseline {}: {:.4}", metric_label, engine.baseline_output)
     };
+
+    if !engine.is_converged() {
+        ui.ctx().request_repaint();
+    }
 
     ui.add_space(6.0);
     egui::CollapsingHeader::new("Sensitivity & Perturbation Analysis")
@@ -236,160 +355,5 @@ fn render_sensitivity_metric_card(
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
-    use super::*;
-
-    pub(crate) fn collect_shape_texts(shapes: &[egui::epaint::Shape], out: &mut Vec<String>) {
-        for shape in shapes {
-            match shape {
-                egui::epaint::Shape::Text(text_shape) => {
-                    out.push(text_shape.galley.text().to_string());
-                }
-                egui::epaint::Shape::Vec(nested) => collect_shape_texts(nested, out),
-                _ => {}
-            }
-        }
-    }
-
-    #[test]
-    fn test_sensitivity_linear_function() {
-        let mut engine = SensitivityEngine::new();
-        let params = vec![("a".to_string(), 5.0), ("b".to_string(), 10.0)];
-
-        // Y = 2*a + b -> dY/da = 2, dY/db = 1
-        let eval_fn = |p: &HashMap<String, f64>| -> f64 {
-            let a = p.get("a").copied().unwrap_or(0.0);
-            let b = p.get("b").copied().unwrap_or(0.0);
-            2.0 * a + b
-        };
-
-        let metrics = engine.compute(&params, eval_fn);
-        assert_eq!(metrics.len(), 2);
-        assert!((metrics[0].partial_derivative - 2.0).abs() < 1e-4);
-        assert!(!metrics[0].is_high_sensitivity);
-    }
-
-    #[test]
-    fn test_high_sensitivity_warning() {
-        let mut engine = SensitivityEngine::new();
-        let params = vec![("x".to_string(), 3.0)];
-
-        // Y = x^3 -> dY/dx = 3*x^2 = 27. Elasticity = 27 * 3 / 27 = 3.0 > 2.0
-        let eval_fn = |p: &HashMap<String, f64>| -> f64 {
-            let x = p.get("x").copied().unwrap_or(1.0);
-            x.powi(3)
-        };
-
-        let metrics = engine.compute(&params, eval_fn);
-        assert_eq!(metrics.len(), 1);
-        assert!((metrics[0].elasticity - 3.0).abs() < 1e-2);
-        assert!(metrics[0].is_high_sensitivity);
-    }
-
-    #[test]
-    fn test_bounded_evaluations_run_count() {
-        let mut engine = SensitivityEngine::new();
-        let params = vec![
-            ("p1".to_string(), 1.0),
-            ("p2".to_string(), 2.0),
-            ("p3".to_string(), 3.0),
-            ("p4".to_string(), 4.0),
-        ];
-
-        let mut call_count = 0;
-        let eval_fn = |p: &HashMap<String, f64>| -> f64 {
-            call_count += 1;
-            p.values().sum()
-        };
-
-        engine.compute(&params, eval_fn);
-        // 1 baseline evaluation + max 2 params * 2 perturbations = 5 evaluations max
-        assert!(call_count <= 5);
-        assert_eq!(call_count, 5);
-    }
-
-    #[test]
-    fn test_render_labeled_sensitivity_panel_ui_renders_custom_label() {
-        let ctx = egui::Context::default();
-        let mut engine = SensitivityEngine::new();
-        let params = vec![("g_na".to_string(), 120.0)];
-        engine.compute(&params, |p| p.get("g_na").copied().unwrap_or(0.0) * 0.25);
-
-        let out = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                render_labeled_sensitivity_panel_ui(
-                    ui,
-                    &engine,
-                    "hh_test",
-                    "Peak Membrane Potential (mV)",
-                );
-            });
-        });
-
-        let raw_shapes: Vec<egui::epaint::Shape> =
-            out.shapes.into_iter().map(|cs| cs.shape).collect();
-        let mut texts = Vec::new();
-        collect_shape_texts(&raw_shapes, &mut texts);
-
-        assert!(
-            texts
-                .iter()
-                .any(|t| t.contains("Baseline Peak Membrane Potential (mV): 30.0000")),
-            "Expected labeled baseline metric in rendered UI texts, got: {:?}",
-            texts
-        );
-    }
-
-    #[test]
-    fn test_sensitivity_metric_card_uses_wcag_semantic_palette_across_themes() {
-        let mut engine = SensitivityEngine::new();
-        engine.metrics = vec![
-            SensitivityMetric {
-                param_name: "high_p".to_string(),
-                baseline_value: 3.0,
-                partial_derivative: 27.0,
-                elasticity: 3.0,
-                is_high_sensitivity: true,
-            },
-            SensitivityMetric {
-                param_name: "mid_p".to_string(),
-                baseline_value: 2.0,
-                partial_derivative: 1.5,
-                elasticity: 1.5,
-                is_high_sensitivity: false,
-            },
-            SensitivityMetric {
-                param_name: "low_p".to_string(),
-                baseline_value: 1.0,
-                partial_derivative: 0.5,
-                elasticity: 0.5,
-                is_high_sensitivity: false,
-            },
-        ];
-
-        for mode in [
-            crate::app::ThemeMode::Dark,
-            crate::app::ThemeMode::Light,
-            crate::app::ThemeMode::HighContrast,
-        ] {
-            let ctx = egui::Context::default();
-            ctx.set_visuals(mode.visuals());
-            let palette = mode.palette();
-            let panel_bg = mode.visuals().panel_fill;
-            assert!(crate::app::contrast_ratio(palette.error, panel_bg) >= 4.5);
-            assert!(crate::app::contrast_ratio(palette.warning, panel_bg) >= 4.5);
-            assert!(crate::app::contrast_ratio(palette.success, panel_bg) >= 4.5);
-
-            let out = ctx.run(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    render_sensitivity_panel_ui(ui, &engine, "wcag_sens");
-                });
-            });
-            let raw_shapes: Vec<egui::epaint::Shape> =
-                out.shapes.into_iter().map(|cs| cs.shape).collect();
-            let mut texts = Vec::new();
-            collect_shape_texts(&raw_shapes, &mut texts);
-            assert!(texts.iter().any(|t| t.contains("High Sensitivity")));
-        }
-    }
-}
+#[path = "sensitivity_tests.rs"]
+pub(crate) mod tests;
