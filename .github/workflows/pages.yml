@@ -33,6 +33,13 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
+        with:
+          scope: pages-build
+          profile: release
+          target: wasm32-unknown-unknown
+
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
 

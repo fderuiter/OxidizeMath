@@ -1,12 +1,12 @@
 # OxidizeMath Agent & Developer Verification Guide
 
-This guide documents local build, verification, and release packaging checks for contributors and automated coding agents working in the OxidizeMath workspace. See [README.md](README.md) for an architectural overview and [CONTRIBUTING.md](CONTRIBUTING.md) for engineering standards.
+This guide documents local Cargo build, test, CI verification, and release packaging checks for contributors and automated coding agents working in the OxidizeMath workspace. See [README.md](README.md) for an architectural overview and [CONTRIBUTING.md](CONTRIBUTING.md) for engineering and NASA Power of 10 safety standards (kept consolidated in `CONTRIBUTING.md` per [docs/adr/0005-active-documentation-standard.md](docs/adr/0005-active-documentation-standard.md)).
 
 ## 1. Documentation & Markdown Rules
 
 All Markdown files in the repository (outside excluded build directories such as `target`, `dist`, and `artifacts`) are compiled by `crates/markdown_tests/build.rs` via `rustdoc`.
 
-- Always tag non-Rust code blocks with `bash` or `text` fences so `cargo test --doc` does not attempt to compile shell commands or plain text snippets as Rust doctests.
+- Always tag non-Rust code blocks with `bash`, `yaml`, or `text` fences so `cargo test --doc` does not attempt to compile shell commands, workflow YAML, or plain text snippets as Rust doctests.
 - Ensure all relative Markdown links resolve to existing files in the repository.
 
 ```text
@@ -17,12 +17,38 @@ Markdown verification gates:
 - cargo run -p xtask -- check-markdown-links
 ```
 
-## 2. CI Pre-Flight & Quality Gates
+## 2. Local Cargo Builds & Workspace Tests
 
-Before opening or updating a pull request, run the repository quality gates defined in [.github/workflows/ci.yml](.github/workflows/ci.yml):
+Run workspace compilation, clippy, unit/integration tests, feature matrix checks, and WebAssembly target checks locally before submitting changes:
 
 ```bash
-# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA action pins)
+# Type-check and build all workspace members
+cargo check --workspace
+cargo build --workspace --all-features
+
+# Run formatting and strict Clippy lints across all targets and features
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Run workspace library/integration tests and feature-isolated domain tests
+cargo test --workspace --lib --tests
+cargo run -p xtask -- test-features
+
+# Type-check WebAssembly target builds (matching CI and GitHub Pages builds)
+cargo check --workspace --target wasm32-unknown-unknown --all-features
+```
+
+## 3. CI Pre-Flight, Workflow Lints & Quality Gates
+
+CI jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) and [.github/workflows/pages.yml](.github/workflows/pages.yml) restore Cargo registry and profile-scoped `target/` caches via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (referencing `./.github/actions/cargo-cache` without caching mutable CLI binaries).
+
+Before opening or updating a pull request, run the unified lint suite from [CONTRIBUTING.md](CONTRIBUTING.md) or invoke individual verification gates directly:
+
+```bash
+# Run the complete workspace quality gate suite
+cargo run -p xtask -- lint-all
+
+# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA or ./ local action pins)
 cargo run -p unified_verification --release -- lint-workflows
 
 # Verify crate documentation and workspace rustdoc builds
@@ -40,7 +66,7 @@ cargo run -p unified_verification --release -- traceability
 BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
 ```
 
-## 3. Local Release Packaging Checks
+## 4. Local Release Packaging Checks
 
 Pull requests automatically execute the Linux Debian (`deb`) installer build in the `package` job of [.github/workflows/ci.yml](.github/workflows/ci.yml), while `main` pushes, `v*` tag pushes, and `workflow_dispatch` runs build all three desktop installer targets (`deb`, `dmg`, and `wix`).
 
