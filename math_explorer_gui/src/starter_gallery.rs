@@ -235,7 +235,12 @@ pub const PRESET_3D_ATTRACTOR: &str = r#"{
     "dt": 0.01,
     "simulation_speed": 5,
     "execution_state": "Running",
-    "show_annotations": true
+    "show_annotations": true,
+    "camera": {
+      "pitch": 0.35,
+      "yaw": -0.45,
+      "zoom": 1.0
+    }
   }
 }"#;
 
