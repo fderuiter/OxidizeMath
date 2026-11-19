@@ -183,48 +183,59 @@ fn test_failed_card_launch_surfaces_toast_and_preset_serialization_telemetry() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let _ = global_registry().try_recv_all();
-
     let mut framework = SimulationFramework::new("analysis");
     let bad_ode_json = inject_unknown_config_field(PRESET_HARMONIC_OSCILLATOR);
-    let res = framework.apply_starter_card(
-        "Broken Harmonic",
-        Some("OdeSolverTool"),
-        Some(&bad_ode_json),
-    );
-    assert!(res.is_err());
-    assert!(framework
-        .preset_dialog
-        .toast_error
-        .as_deref()
-        .is_some_and(|m| m.contains("Broken Harmonic")));
-
-    let events = global_registry().try_recv_all();
-    assert!(
-        events.iter().any(|e| {
+    let mut found_ode = false;
+    for _ in 0..5 {
+        let _ = global_registry().try_recv_all();
+        let res = framework.apply_starter_card(
+            "Broken Harmonic",
+            Some("OdeSolverTool"),
+            Some(&bad_ode_json),
+        );
+        assert!(res.is_err());
+        assert!(framework
+            .preset_dialog
+            .toast_error
+            .as_deref()
+            .is_some_and(|m| m.contains("Broken Harmonic")));
+        if global_registry().try_recv_all().iter().any(|e| {
             e.source == "PresetSerialization"
                 && e.severity == Severity::Warning
                 && e.message.contains("Broken Harmonic")
-        }),
+        }) {
+            found_ode = true;
+            break;
+        }
+    }
+    assert!(
+        found_ode,
         "Expected PresetSerialization warning telemetry on failed framework card launch"
     );
 
     let mut morph = MorphogenesisTab::default();
     let bad_morph_json = inject_unknown_config_field(PRESET_TURING_SPOTS);
-    assert!(morph
-        .apply_starter_card("Broken Spots", Some(&bad_morph_json))
-        .is_err());
-    assert!(morph
-        .dialog_state
-        .toast_error
-        .as_deref()
-        .is_some_and(|m| m.contains("Broken Spots")));
-    let morph_events = global_registry().try_recv_all();
-    assert!(morph_events.iter().any(|e| {
-        e.source == "PresetSerialization"
-            && e.severity == Severity::Warning
-            && e.message.contains("Broken Spots")
-    }));
+    let mut found_morph = false;
+    for _ in 0..5 {
+        let _ = global_registry().try_recv_all();
+        assert!(morph
+            .apply_starter_card("Broken Spots", Some(&bad_morph_json))
+            .is_err());
+        assert!(morph
+            .dialog_state
+            .toast_error
+            .as_deref()
+            .is_some_and(|m| m.contains("Broken Spots")));
+        if global_registry().try_recv_all().iter().any(|e| {
+            e.source == "PresetSerialization"
+                && e.severity == Severity::Warning
+                && e.message.contains("Broken Spots")
+        }) {
+            found_morph = true;
+            break;
+        }
+    }
+    assert!(found_morph);
 }
 
 #[test]
@@ -250,13 +261,18 @@ fn test_single_starter_gallery_button_per_simulation_view() {
             framework.select_tool_by_name(tool_name),
             "Failed to select {tool_name} in {domain}"
         );
-        let out = ctx.run(
-            egui::RawInput {
-                screen_rect: Some(screen_rect),
-                ..Default::default()
-            },
-            |ctx| framework.show(ctx, domain),
-        );
+        let out = {
+            let _guard = crate::reflective_ui::tests::TEST_MUTEX
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(screen_rect),
+                    ..Default::default()
+                },
+                |ctx| framework.show(ctx, domain),
+            )
+        };
         assert_eq!(
             count_gallery_buttons(&out),
             1,

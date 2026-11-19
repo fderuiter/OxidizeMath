@@ -59,19 +59,27 @@ fn test_simulation_controller_start_pause() {
     assert!(!controller.is_running());
     assert_eq!(steps.load(Ordering::SeqCst), 0);
 
-    // Start simulation
+    // Start simulation and poll until worker produces a step snapshot
     let _ = controller.send_command(SimCommand::Start);
-    thread::sleep(Duration::from_millis(50));
-    let snap_is_some = controller.update().is_some();
+    let mut snap_is_some = false;
+    for _ in 0..200 {
+        thread::sleep(Duration::from_millis(10));
+        if controller.update().is_some() {
+            snap_is_some = true;
+        }
+        if snap_is_some && steps.load(Ordering::SeqCst) > 0 {
+            break;
+        }
+    }
     assert!(controller.is_running());
     assert!(snap_is_some);
     let current_steps = steps.load(Ordering::SeqCst);
     assert!(current_steps > 0);
 
-    // Pause simulation
+    // Pause simulation and wait until worker acknowledges pause
     let _ = controller.send_command(SimCommand::Pause);
-    thread::sleep(Duration::from_millis(50));
-    controller.update();
+    controller.wait_until_paused();
+    while controller.update().is_some() {}
     assert!(!controller.is_running());
     let paused_steps = steps.load(Ordering::SeqCst);
 
@@ -235,10 +243,16 @@ fn test_worker_panic_transitions_to_faulted_within_one_frame() {
     panic_flag.store(true, Ordering::SeqCst);
     assert!(controller.send_command(SimCommand::Start).is_ok());
 
-    // Allow background thread to hit the step panic
-    std::thread::sleep(Duration::from_millis(50));
+    // Wait for background thread to hit the step panic and disconnect channel
+    for _ in 0..200 {
+        assert!(controller.update().is_none());
+        if controller.state() == SimWorkerState::Faulted {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
 
-    // On the next frame update, disconnection must be detected and state set to Faulted
+    // Disconnection must be detected with zero post-panic snapshots and state set to Faulted
     assert!(controller.update().is_none());
     assert_eq!(controller.state(), SimWorkerState::Faulted);
     assert!(controller.state().is_faulted());
@@ -274,17 +288,22 @@ fn test_update_returns_snapshot_only_on_new_snapshot() {
     assert!(controller.update().is_some());
     assert!(controller.update().is_none());
 
-    // Start simulation and wait briefly for a step snapshot
+    // Start simulation and poll until a step snapshot arrives
     assert!(controller.send_command(SimCommand::Start).is_ok());
-    std::thread::sleep(Duration::from_millis(30));
+    let mut got_step_snapshot = false;
+    for _ in 0..200 {
+        std::thread::sleep(Duration::from_millis(10));
+        if controller.update().is_some() {
+            got_step_snapshot = true;
+            break;
+        }
+    }
+    assert!(got_step_snapshot);
 
-    let first_update = controller.update();
-    assert!(first_update.is_some());
-
-    // Pause simulation
+    // Pause simulation and wait until worker settles idle
     assert!(controller.send_command(SimCommand::Pause).is_ok());
-    // Drain any remaining messages
-    let _ = controller.update();
+    controller.wait_until_paused();
+    while controller.update().is_some() {}
 
     // Subsequent updates while paused should return None (no new snapshots)
     assert!(controller.update().is_none());

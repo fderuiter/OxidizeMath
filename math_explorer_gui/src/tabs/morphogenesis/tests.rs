@@ -46,6 +46,7 @@ fn test_morphogenesis_render_lifecycle_and_dirty_tracking() {
 
     // 2. Pause simulation to test stationary/idle frame
     let _ = tab.worker.send_command(SimCommand::Pause);
+    tab.worker.wait_until_paused();
 
     // Drain any pending updates from the worker before pause settled
     while tab.worker.update().is_some() {}
@@ -196,7 +197,7 @@ fn test_morphogenesis_fault_halts_repaints_and_recovers() {
 
     // 1. Paused state: repaints halted
     let _ = tab.worker.send_command(SimCommand::Pause);
-    thread::sleep(Duration::from_millis(20));
+    tab.worker.wait_until_paused();
     while tab.worker.update().is_some() {}
     tab.dirty = false;
 
@@ -218,7 +219,7 @@ fn test_morphogenesis_fault_halts_repaints_and_recovers() {
 
     // Pause running worker
     let _ = tab.worker.send_command(SimCommand::Pause);
-    thread::sleep(Duration::from_millis(20));
+    tab.worker.wait_until_paused();
     while tab.worker.update().is_some() {}
 
     // 3. Faulted state: repaints halted
@@ -270,7 +271,7 @@ fn test_morphogenesis_save_and_load_state_compatibility() {
 fn test_morphogenesis_poisoned_lock_recovery() {
     let mut tab = MorphogenesisTab::default();
     let _ = tab.worker.send_command(SimCommand::Pause);
-    thread::sleep(Duration::from_millis(20));
+    tab.worker.wait_until_paused();
 
     // Poison shared parameter RwLock
     let params_clone = Arc::clone(&tab.params);
@@ -331,7 +332,7 @@ fn test_morphogenesis_poisoned_lock_recovery() {
 fn test_turing_stripes_syncs_kinetics_before_reinit_and_surfaces_import_errors() {
     let mut tab = MorphogenesisTab::default();
     let _ = tab.worker.send_command(SimCommand::Pause);
-    thread::sleep(Duration::from_millis(20));
+    tab.worker.wait_until_paused();
 
     // Verify runner starts with default Schnakenberg kinetics (a=0.1, b=0.9 => v0 = 0.9)
     let mut runner = MorphogenesisTab::create_runner(&tab.params, 20, 20);

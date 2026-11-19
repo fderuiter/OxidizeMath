@@ -48,14 +48,14 @@ fn test_clamp_parameters_multistep_lorenz_restores_plots_and_stabilizes() {
     fw.current_valid_plot_datasets = saved_plot.clone();
     fw.cache_valid_snapshot();
 
-    egui_plot::clear_last_plot_datasets();
-    egui_plot::append_last_plot_datasets(&[("Trajectory".to_string(), vec![[0.0, f64::NAN]])]);
-    assert!(fw.inspect_runtime_state().is_err());
-
     {
         let _g = crate::reflective_ui::tests::TEST_MUTEX
             .lock()
             .unwrap_or_else(|e| e.into_inner());
+        egui_plot::clear_last_plot_datasets();
+        egui_plot::append_last_plot_datasets(&[("Trajectory".to_string(), vec![[0.0, f64::NAN]])]);
+        assert!(fw.inspect_runtime_state().is_err());
+
         assert_clamp_emits(
             |f| {
                 load_active(f, unstable);

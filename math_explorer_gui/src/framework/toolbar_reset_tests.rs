@@ -208,6 +208,9 @@ fn test_reset_parameters_synchronizes_saved_states_across_tool_switches() {
 
 #[test]
 fn test_reset_parameters_rebuilds_from_factory_when_baseline_missing() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut framework = SimulationFramework::new("analysis");
     let ode_idx = find_ode_tool_index(&framework);
     framework.select_tool(ode_idx);

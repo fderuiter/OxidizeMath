@@ -29,6 +29,9 @@ fn run_deferred_frame(framework: &mut SimulationFramework, format: ExportFormat)
         )),
         ..Default::default()
     };
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let _ = ctx.run(raw_input, |ctx| {
         egui_plot::clear_last_plot_datasets();
         framework.show_export_modal = true;
@@ -290,12 +293,17 @@ fn test_empty_payload_rejection_status_colors_and_live_region() {
 fn test_deferred_png_clipboard_and_raster_csv_clipboard_capability_guard() {
     let mut ok_fw = new_framework_with_tool(build_registered_tool("PartitionsWidget"));
     let ctx = egui::Context::default();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        egui_plot::clear_last_plot_datasets();
-        ok_fw.show_export_modal = true;
-        ok_fw.queue_export_with_target(ExportFormat::Png, ExportTarget::Clipboard);
-        ok_fw.show(ctx, "export_clipboard_img_test");
-    });
+    {
+        let _guard = crate::reflective_ui::tests::TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui_plot::clear_last_plot_datasets();
+            ok_fw.show_export_modal = true;
+            ok_fw.queue_export_with_target(ExportFormat::Png, ExportTarget::Clipboard);
+            ok_fw.show(ctx, "export_clipboard_img_test");
+        });
+    }
     assert_eq!(ok_fw.export_status_severity, ExportStatusSeverity::Success);
     assert!(ok_fw
         .export_status_message

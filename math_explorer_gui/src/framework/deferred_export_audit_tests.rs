@@ -13,6 +13,9 @@ fn run_modal_export_after_clear(framework: &mut SimulationFramework, format: Exp
         )),
         ..Default::default()
     };
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let _ = ctx.run(raw_input, |ctx| {
         egui_plot::clear_last_plot_datasets();
         framework.show_export_modal = true;

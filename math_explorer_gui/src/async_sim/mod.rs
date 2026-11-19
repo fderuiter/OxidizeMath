@@ -64,6 +64,7 @@ pub struct SimulationController {
     state_rx: Receiver<SimStateUpdate>,
     latest_snapshot: Option<StateSnapshot>,
     pending_snapshot: bool,
+    awaiting_pause_ack: bool,
     state: SimWorkerState,
     diagnostic_report: Option<crate::framework::recovery::DiagnosticReport>,
     #[cfg(target_arch = "wasm32")]
@@ -87,6 +88,7 @@ impl SimulationController {
             state_rx,
             latest_snapshot: Some(initial_snapshot),
             pending_snapshot: false,
+            awaiting_pause_ack: false,
             state: SimWorkerState::Ready,
             diagnostic_report: None,
         }
@@ -116,6 +118,7 @@ impl SimulationController {
             state_rx,
             latest_snapshot: Some(initial_snapshot),
             pending_snapshot: false,
+            awaiting_pause_ack: false,
             state: SimWorkerState::Ready,
             diagnostic_report: None,
             worker: opt_worker,
@@ -151,7 +154,9 @@ impl SimulationController {
             });
         }
 
+        let was_running = self.state.is_running();
         let is_reset = matches!(cmd, SimCommand::Reset);
+        let is_pause = matches!(cmd, SimCommand::Pause);
         let cmd_target_state = match cmd {
             SimCommand::Start | SimCommand::TrainEpisodes(_) => Some(SimWorkerState::Running),
             SimCommand::Step(_) => Some(SimWorkerState::Stepping),
@@ -160,24 +165,11 @@ impl SimulationController {
         };
 
         if cmd_target_state.is_some() {
-            while let Ok(update) = self.state_rx.try_recv() {
-                match update {
-                    SimStateUpdate::Snapshot(snapshot) if !is_reset => {
-                        self.latest_snapshot = Some(snapshot);
-                        self.pending_snapshot = true;
-                    }
-                    SimStateUpdate::Snapshot(_) => {
-                        self.pending_snapshot = false;
-                    }
-                    SimStateUpdate::Divergence(report) => {
-                        self.diagnostic_report = Some(report);
-                    }
-                    SimStateUpdate::Status(_) => {}
-                }
-            }
+            self.drain_pre_command_updates(is_reset);
         }
 
         if self.cmd_tx.send(cmd).is_err() {
+            self.awaiting_pause_ack = false;
             self.state = SimWorkerState::Faulted;
             return Err(SimCommandError::ChannelDisconnected);
         }
@@ -185,6 +177,11 @@ impl SimulationController {
         if is_reset {
             self.diagnostic_report = None;
             self.pending_snapshot = false;
+        }
+        if is_pause && was_running {
+            self.awaiting_pause_ack = true;
+        } else if cmd_target_state.is_some() && !is_pause {
+            self.awaiting_pause_ack = false;
         }
 
         if let Some(target) = cmd_target_state {
@@ -195,6 +192,48 @@ impl SimulationController {
         self.wake_wasm_worker();
 
         Ok(())
+    }
+
+    fn drain_pre_command_updates(&mut self, is_reset: bool) {
+        while let Ok(update) = self.state_rx.try_recv() {
+            match update {
+                SimStateUpdate::Snapshot(snapshot) if !is_reset => {
+                    self.latest_snapshot = Some(snapshot);
+                    self.pending_snapshot = true;
+                }
+                SimStateUpdate::Snapshot(_) => self.pending_snapshot = false,
+                SimStateUpdate::Divergence(report) => self.diagnostic_report = Some(report),
+                SimStateUpdate::Status(event) => self.record_status_pause_ack(&event),
+            }
+        }
+    }
+
+    fn record_status_pause_ack(&mut self, event: &WorkerStatusEvent) {
+        if matches!(
+            event,
+            WorkerStatusEvent::Ready
+                | WorkerStatusEvent::Faulted(_)
+                | WorkerStatusEvent::Terminated
+        ) {
+            self.awaiting_pause_ack = false;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn wait_until_paused(&mut self) {
+        let mut saw_snapshot = false;
+        for _ in 0..400 {
+            if self.update().is_some() {
+                saw_snapshot = true;
+            }
+            if !self.awaiting_pause_ack || self.state.is_faulted() || self.state.is_terminated() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        if saw_snapshot {
+            self.pending_snapshot = true;
+        }
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -258,6 +297,7 @@ impl SimulationController {
                     }
                 }
                 Ok(SimStateUpdate::Status(event)) => {
+                    self.record_status_pause_ack(&event);
                     let next = event.to_state();
                     if !self.state.is_terminated()
                         && (!self.state.is_faulted() || next.is_terminated())
@@ -273,6 +313,7 @@ impl SimulationController {
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
+                    self.awaiting_pause_ack = false;
                     disconnected = true;
                     break;
                 }

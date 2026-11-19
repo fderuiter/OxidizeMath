@@ -152,6 +152,7 @@ fn test_disconnected_faulted_worker_preserves_diagnostic_until_respawn() {
         state_rx,
         latest_snapshot: Some(seed),
         pending_snapshot: false,
+        awaiting_pause_ack: false,
         state: SimWorkerState::Faulted,
         diagnostic_report: Some(DiagnosticReport::new(0.2, 2, "x", "Diverged before drop")),
         #[cfg(target_arch = "wasm32")]

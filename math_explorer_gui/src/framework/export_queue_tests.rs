@@ -4,6 +4,12 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
+    fn lock_plot() -> std::sync::MutexGuard<'static, ()> {
+        crate::reflective_ui::tests::TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn test_export_queue_deduplication_on_rapid_clicks() {
         let mut queue = ExportQueue::default();
@@ -34,6 +40,7 @@ mod tests {
 
     #[test]
     fn test_export_csv_end_of_frame_dispatch_non_empty() {
+        let _guard = lock_plot();
         let temp_dir =
             std::env::temp_dir().join(format!("oxidize_test_export_csv_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -85,6 +92,7 @@ mod tests {
 
     #[test]
     fn test_export_json_end_of_frame_dispatch_valid_json() {
+        let _guard = lock_plot();
         let temp_dir =
             std::env::temp_dir().join(format!("oxidize_test_export_json_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -138,6 +146,7 @@ mod tests {
 
     #[test]
     fn test_exported_coordinates_match_click_frame_visual_parameters() {
+        let _guard = lock_plot();
         let mut framework = SimulationFramework::new("analysis");
         framework.export_queue.custom_writer = Some(Arc::new(|_, _| {}));
         let ctx = eframe::egui::Context::default();
@@ -259,6 +268,7 @@ mod tests {
 
     #[test]
     fn test_deferred_dispatch_captures_frame_data_where_immediate_fails() {
+        let _guard = lock_plot();
         // Reproduce the problem statement:
         // When clear_last_plot_datasets is called at the beginning of the frame,
         // querying tool.export_datasets() immediately during action bar rendering
@@ -340,6 +350,7 @@ mod tests {
 
     #[test]
     fn test_clipboard_end_of_frame_dispatch_accuracy_without_disk_writes() {
+        let _guard = lock_plot();
         let temp_dir = std::env::temp_dir().join(format!(
             "oxidize_test_clipboard_no_disk_{}",
             std::process::id()

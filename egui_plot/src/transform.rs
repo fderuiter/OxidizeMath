@@ -245,8 +245,8 @@ impl PlotBounds {
                 let new_min = (c_log + (min_log - c_log) / zf).clamp(MIN_LOG_EXP, MAX_LOG_EXP);
                 let new_max = (c_log + (max_log - c_log) / zf).clamp(MIN_LOG_EXP, MAX_LOG_EXP);
                 if new_max > new_min {
-                    self.min[d] = 10.0_f64.powf(new_min);
-                    self.max[d] = 10.0_f64.powf(new_max);
+                    self.min[d] = 10.0_f64.powf(new_min).clamp(1e-300, 1e300);
+                    self.max[d] = 10.0_f64.powf(new_max).clamp(1e-300, 1e300);
                 }
             } else {
                 self.min[d] = centers[d] + (self.min[d] - centers[d]) / zf;
@@ -543,8 +543,8 @@ impl PlotTransform {
         } else {
             0.0
         };
-        self.bounds.min[axis] = 10.0_f64.powf(min_log + clamped_delta);
-        self.bounds.max[axis] = 10.0_f64.powf(max_log + clamped_delta);
+        self.bounds.min[axis] = 10.0_f64.powf(min_log + clamped_delta).clamp(1e-300, 1e300);
+        self.bounds.max[axis] = 10.0_f64.powf(max_log + clamped_delta).clamp(1e-300, 1e300);
     }
 
     /// Zoom by a relative factor with the given screen position as center.
