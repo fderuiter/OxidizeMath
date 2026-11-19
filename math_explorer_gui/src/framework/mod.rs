@@ -15,9 +15,11 @@ mod overlay_sync;
 mod persistence;
 pub mod recovery;
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod recovery_tests;
 pub mod state_guard;
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod state_guard_tests;
 pub mod trace_overlay;
 mod ui;

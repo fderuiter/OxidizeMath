@@ -27,6 +27,7 @@ pub struct PlatformInstant {
 
 impl PlatformInstant {
     /// Captures the current platform timestamp.
+    #[allow(clippy::disallowed_methods)]
     #[must_use]
     pub fn now() -> Self {
         #[cfg(not(target_arch = "wasm32"))]
