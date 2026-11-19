@@ -2,9 +2,9 @@
 
 use super::{UnifiedModel, UnifiedSimRunner};
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
-use eframe::egui;
+use eframe::egui::{self, ColorImage};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -17,6 +17,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(super) dirty: bool,
+    stepped_snapshot: Option<StateSnapshot>,
     cached_theory_desc: String,
     cached_phonetic: String,
     cached_citation: String,
@@ -58,6 +59,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             steps_per_frame: 5,
             texture: None,
             dirty: true,
+            stepped_snapshot: None,
             cached_theory_desc: temp_model.theory_description(),
             cached_phonetic: temp_model.phonetic_description(),
             cached_citation: temp_model.theory_citation(),
@@ -73,6 +75,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 
     pub(super) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
+        self.stepped_snapshot = None;
         let params = Arc::clone(&self.params);
         self.controller
             .reset_or_respawn(|| UnifiedSimRunner::<M>::new(params));
@@ -223,6 +226,39 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         M::domain()
     }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        if M::is_raster_model() {
+            crate::framework::ExportCapabilities::raster_only()
+        } else {
+            crate::framework::ExportCapabilities::plot()
+        }
+    }
+
+    fn export_raster_image(&self) -> Option<ColorImage> {
+        let snapshot = self
+            .stepped_snapshot
+            .as_ref()
+            .or_else(|| self.controller.latest_snapshot())?;
+        let guard = snapshot.pixels.try_read().ok()?;
+        if guard.is_empty() || snapshot.width == 0 || snapshot.height == 0 {
+            return None;
+        }
+        Some(ColorImage::new(
+            [snapshot.width, snapshot.height],
+            guard.clone(),
+        ))
+    }
+
+    fn step_simulation(&mut self) {
+        if let Ok(params) = self.params.read() {
+            let mut model = M::new(&params);
+            for _ in 0..self.steps_per_frame.max(1) {
+                model.step(&params);
+            }
+            self.stepped_snapshot = Some(model.get_snapshot());
+        }
+    }
+
     fn save_state(&self) -> Option<String> {
         let params = self
             .params
@@ -281,6 +317,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     fn show(&mut self, ctx: &egui::Context) {
         let has_update = self.controller.update().is_some();
         if has_update {
+            self.stepped_snapshot = None;
             self.dirty = true;
         }
         if has_update
@@ -291,7 +328,6 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         {
             ctx.request_repaint();
         }
-
         self.draw_left_panel(ctx);
         self.draw_central_panel(ctx);
     }

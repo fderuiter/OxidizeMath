@@ -28,7 +28,9 @@ struct PrimeSpiralState {
 }
 
 impl InteractiveTool for PrimeSpiralWidget {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Prime Spiral (Ulam Spiral)"
     }
@@ -54,6 +56,18 @@ impl InteractiveTool for PrimeSpiralWidget {
         Ok(())
     }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::raster_only()
+    }
+
+    fn export_raster_image(&self) -> Option<ColorImage> {
+        let size = self.grid_size.max(2);
+        if self.pixels_buffer.len() == size * size {
+            return Some(ColorImage::new([size, size], self.pixels_buffer.clone()));
+        }
+        Some(Self::build_spiral_image(size))
+    }
+
     fn show(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Prime Spiral (Ulam Spiral)");
@@ -62,7 +76,13 @@ impl InteractiveTool for PrimeSpiralWidget {
 
             ui.vertical(|ui| {
                 let changed = ui
-                    .add(egui::Slider::new(&mut self.grid_size, 10..=math_commons::registry::MAX_GRID_SIZE).text("Grid Size (side length)"))
+                    .add(
+                        egui::Slider::new(
+                            &mut self.grid_size,
+                            10..=math_commons::registry::MAX_GRID_SIZE,
+                        )
+                        .text("Grid Size (side length)"),
+                    )
                     .changed();
 
                 if changed || self.texture.is_none() {
@@ -79,67 +99,55 @@ impl InteractiveTool for PrimeSpiralWidget {
 }
 
 impl PrimeSpiralWidget {
-    fn regenerate_texture(&mut self, ctx: &egui::Context) {
-        let size = self.grid_size;
+    fn populate_ulam_pixels(size: usize, lookup: &mut Vec<bool>, pixels: &mut Vec<Color32>) {
         let num_pixels = size * size;
+        pixels.clear();
+        pixels.resize(num_pixels, Color32::BLACK);
 
-        self.pixels_buffer.clear();
-        self.pixels_buffer.resize(num_pixels, Color32::BLACK);
-
-        // Ulam Spiral Logic
-        let center_x = (size / 2) as i32;
-        let center_y = (size / 2) as i32;
-
-        let mut x = 0;
-        let mut y = 0;
-        let mut dx = 0;
-        let mut dy = -1;
-        // removed unused 't' and 'max_i'
-
-        let limit = (size * size) as u64;
-        let primes = primes_up_to(limit);
-
-        self.is_prime_lookup.clear();
-        self.is_prime_lookup.resize((limit + 1) as usize, false);
-        for &p in &primes {
-            if (p as usize) < self.is_prime_lookup.len() {
-                self.is_prime_lookup[p as usize] = true;
+        let limit = num_pixels as u64;
+        lookup.clear();
+        lookup.resize((limit + 1) as usize, false);
+        for p in primes_up_to(limit) {
+            if (p as usize) < lookup.len() {
+                lookup[p as usize] = true;
             }
         }
 
-        let half_size = (size / 2) as i32;
-
-        for (i, &is_prime) in self.is_prime_lookup
-            .iter()
-            .enumerate()
-            .take(num_pixels + 1)
-            .skip(1)
-        {
-            if (-half_size <= x) && (x <= half_size) && (-half_size <= y) && (y <= half_size) {
-                let px = (center_x + x) as usize;
-                let py = (center_y + y) as usize;
-
+        let half = (size / 2) as i32;
+        let (mut x, mut y, mut dx, mut dy) = (0i32, 0i32, 0i32, -1i32);
+        for (i, &is_prime) in lookup.iter().enumerate().take(num_pixels + 1).skip(1) {
+            if (-half <= x) && (x <= half) && (-half <= y) && (y <= half) {
+                let (px, py) = ((half + x) as usize, (half + y) as usize);
                 if px < size && py < size {
                     if is_prime {
-                        self.pixels_buffer[flatten_2d_index(px, py, size)] = Color32::WHITE;
+                        pixels[flatten_2d_index(px, py, size)] = Color32::WHITE;
                     }
                     if i == 1 {
-                        self.pixels_buffer[flatten_2d_index(px, py, size)] = Color32::RED;
+                        pixels[flatten_2d_index(px, py, size)] = Color32::RED;
                     }
                 }
             }
-
             if x == y || (x < 0 && x == -y) || (x > 0 && x == 1 - y) {
                 let temp = dx;
                 dx = -dy;
                 dy = temp;
             }
-
             x += dx;
             y += dy;
         }
+    }
 
-        // Use ..Default::default() to fill potentially new fields like source_size
+    fn build_spiral_image(size: usize) -> ColorImage {
+        let mut lookup = Vec::new();
+        let mut pixels = Vec::new();
+        Self::populate_ulam_pixels(size, &mut lookup, &mut pixels);
+        ColorImage::new([size, size], pixels)
+    }
+
+    fn regenerate_texture(&mut self, ctx: &egui::Context) {
+        let size = self.grid_size;
+        Self::populate_ulam_pixels(size, &mut self.is_prime_lookup, &mut self.pixels_buffer);
+
         let image = ColorImage {
             size: [size, size],
             pixels: self.pixels_buffer.clone(),
@@ -149,11 +157,7 @@ impl PrimeSpiralWidget {
         if let Some(texture) = &mut self.texture {
             texture.set(image, TextureOptions::NEAREST);
         } else {
-            self.texture = Some(ctx.load_texture(
-                "ulam_spiral",
-                image,
-                TextureOptions::NEAREST, // Nearest neighbor for crisp pixels
-            ));
+            self.texture = Some(ctx.load_texture("ulam_spiral", image, TextureOptions::NEAREST));
         }
     }
 }
@@ -209,7 +213,6 @@ mod tests {
 
 // [cite:mmwave_radiotherapy_setup]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "PrimeSpiralWidget",
@@ -227,9 +230,15 @@ impl scientific_metadata::theory::TheoryDescribable for PrimeSpiralWidget {
             self.grid_size, self.grid_size
         )
     }
-    fn phonetic_description(&self) -> String { "Ulam prime spiral and quadratic prime polynomial theory".into() }
-    fn theory_citation(&self) -> String { "A Visual Display of Prime Numbers (Ulam, 1964); A visual display of prime numbers (Stein, Ulam, & Wells, 1964)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Ulam prime spiral and quadratic prime polynomial theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "A Visual Display of Prime Numbers (Ulam, 1964); A visual display of prime numbers (Stein, Ulam, & Wells, 1964)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

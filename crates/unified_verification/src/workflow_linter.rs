@@ -392,8 +392,7 @@ pub fn lint_workflows() -> bool {
 }
 
 #[cfg(test)]
-#[path = "workflow_linter/action_timeout_tests.rs"]
-mod action_timeout_tests;
-
+#[path = "workflow_linter/policy_tests.rs"]
+mod policy_tests;
 #[cfg(test)]
 mod tests;

@@ -364,6 +364,14 @@ impl InteractiveTool for AttentionMapsTool {
     fn save_state(&self) -> Option<String> { self.serialize_state() }
     fn try_load_state(&mut self, state: &str) -> Result<(), String> { self.deserialize_state(state) }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::raster_only()
+    }
+
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        preset::render_attention_raster(&self.attention_weights, &self.output_matrix)
+    }
+
     fn show(&mut self, ctx: &egui::Context) {
         let input_mode = ctx.data(|d| {
             d.get_temp(egui::Id::new("INPUT_MODE"))
@@ -465,8 +473,8 @@ inventory::submit! {
     }
 }
 
+#[path = "attention_maps/preset.rs"]
+mod preset;
 #[cfg(test)]
 #[path = "attention_maps/tests.rs"]
 mod tests;
-#[path = "attention_maps/preset.rs"]
-mod preset;

@@ -246,7 +246,10 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+        let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+        if points.is_empty() && self.is_finite_state() {
+            points.push(self.project(self.system.state.vec));
+        }
         vec![("Trajectory".to_string(), points)]
     }
 

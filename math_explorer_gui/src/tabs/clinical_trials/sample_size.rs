@@ -70,12 +70,17 @@ struct SampleSizeState {
 }
 
 impl InteractiveTool for SampleSizeCalculatorTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Sample Size Calculator"
     }
     fn domain(&self) -> &'static str {
         "clinical_trials"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -145,12 +150,20 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             ui.group(|ui| {
                 ui.heading("Statistical Parameters");
                 egui::Grid::new("common_params_grid").show(ui, |ui| {
-                    changed |= ui.add(egui::Slider::new(&mut self.alpha, 0.001..=0.20).text("Type I Error Rate (α): - Alpha"))
+                    changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.alpha, 0.001..=0.20)
+                                .text("Type I Error Rate (α): - Alpha"),
+                        )
                         .accessible_hover_text("Significance level (e.g., 0.05 for 5%)")
                         .changed();
                     ui.end_row();
 
-                    changed |= ui.add(egui::Slider::new(&mut self.power, 0.5..=0.999).text("Statistical Power (1-β): - Power"))
+                    changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.power, 0.5..=0.999)
+                                .text("Statistical Power (1-β): - Power"),
+                        )
                         .accessible_hover_text(
                             "Probability of detecting an effect if it exists (e.g., 0.80)",
                         )
@@ -166,12 +179,20 @@ impl InteractiveTool for SampleSizeCalculatorTool {
                 CalculationMode::Means => {
                     ui.heading("Means Parameters");
                     egui::Grid::new("means_params_grid").show(ui, |ui| {
-                        changed |= ui.add(egui::Slider::new(&mut self.delta, 0.01..=5.0).text("Effect Size (δ): - Delta"))
+                        changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.delta, 0.01..=5.0)
+                                    .text("Effect Size (δ): - Delta"),
+                            )
                             .accessible_hover_text("Minimum difference to detect between groups")
                             .changed();
                         ui.end_row();
 
-                        changed |= ui.add(egui::Slider::new(&mut self.sigma, 0.1..=10.0).text("Standard Deviation (σ): - Sigma"))
+                        changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.sigma, 0.1..=10.0)
+                                    .text("Standard Deviation (σ): - Sigma"),
+                            )
                             .accessible_hover_text("Assumed standard deviation of the population")
                             .changed();
                         ui.end_row();
@@ -180,12 +201,20 @@ impl InteractiveTool for SampleSizeCalculatorTool {
                 CalculationMode::Proportions => {
                     ui.heading("Proportions Parameters");
                     egui::Grid::new("props_params_grid").show(ui, |ui| {
-                        changed |= ui.add(egui::Slider::new(&mut self.p1, 0.01..=0.99).text("Group 1 Proportion (p1): - p1"))
+                        changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.p1, 0.01..=0.99)
+                                    .text("Group 1 Proportion (p1): - p1"),
+                            )
                             .accessible_hover_text("Expected proportion in Control group")
                             .changed();
                         ui.end_row();
 
-                        changed |= ui.add(egui::Slider::new(&mut self.p2, 0.01..=0.99).text("Group 2 Proportion (p2): - p2"))
+                        changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.p2, 0.01..=0.99)
+                                    .text("Group 2 Proportion (p2): - p2"),
+                            )
                             .accessible_hover_text("Expected proportion in Treatment group")
                             .changed();
                         ui.end_row();
@@ -231,7 +260,6 @@ impl InteractiveTool for SampleSizeCalculatorTool {
 
 // [cite:clinical_trials_statistics]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "SampleSizeCalculatorTool",
@@ -255,12 +283,22 @@ impl scientific_metadata::theory::TheoryDescribable for SampleSizeCalculatorTool
             ),
         }
     }
-    fn phonetic_description(&self) -> String { "Clinical trial sample size and statistical power theory".into() }
-    fn theory_citation(&self) -> String { "Sample Size Calculations in Clinical Research (Chow et al., 2017)".into() }
+    fn phonetic_description(&self) -> String {
+        "Clinical trial sample size and statistical power theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Sample Size Calculations in Clinical Research (Chow et al., 2017)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Means".into(), "Normal approximation for difference between two independent continuous means".into());
-        map.insert("Proportions".into(), "Normal approximation with pooled variance for binary outcome proportions".into());
+        map.insert(
+            "Means".into(),
+            "Normal approximation for difference between two independent continuous means".into(),
+        );
+        map.insert(
+            "Proportions".into(),
+            "Normal approximation with pooled variance for binary outcome proportions".into(),
+        );
         map
     }
 }

@@ -33,9 +33,14 @@ impl FactorizationTool {
 }
 
 impl InteractiveTool for FactorizationTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Factorization Tool"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
     fn domain(&self) -> &'static str {
         "number_theory"
@@ -67,16 +72,17 @@ impl InteractiveTool for FactorizationTool {
                 ui.label("Number:");
                 let response =
                     ui.add(egui::TextEdit::singleline(&mut self.input_text).hint_text("e.g. 42"));
-                let enter_shortcut_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
-                    ui.ctx(),
-                    "Analyze Factorization",
-                    "Analyze the number for primality and calculate its prime factors",
-                    egui_plot::commands::CommandTrigger::Key(egui::Key::Enter),
-                    false,
-                    "Factorization Tool",
-                    Some(ui),
-                    None,
-                );
+                let enter_shortcut_triggered =
+                    egui_plot::commands::CommandRegistryData::register_and_check(
+                        ui.ctx(),
+                        "Analyze Factorization",
+                        "Analyze the number for primality and calculate its prime factors",
+                        egui_plot::commands::CommandTrigger::Key(egui::Key::Enter),
+                        false,
+                        "Factorization Tool",
+                        Some(ui),
+                        None,
+                    );
                 let enter_pressed = response.lost_focus() && enter_shortcut_triggered;
 
                 if ui
@@ -153,7 +159,6 @@ impl InteractiveTool for FactorizationTool {
 
 // [cite:algorithmic_information_rust]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "FactorizationTool",
@@ -168,9 +173,15 @@ impl scientific_metadata::theory::TheoryDescribable for FactorizationTool {
     fn theory_description(&self) -> String {
         "Integer factorization into unique prime powers by the Fundamental Theorem of Arithmetic: $n = \\prod_{i=1}^k p_i^{a_i}$, with deterministic trial division and probabilistic Miller-Rabin primality certification.".into()
     }
-    fn phonetic_description(&self) -> String { "Fundamental Theorem of Arithmetic prime factorization theory".into() }
-    fn theory_citation(&self) -> String { "An Introduction to the Theory of Numbers (Hardy & Wright, 2008)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Fundamental Theorem of Arithmetic prime factorization theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "An Introduction to the Theory of Numbers (Hardy & Wright, 2008)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

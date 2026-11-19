@@ -332,6 +332,7 @@ impl SimulationFramework {
     #[allow(missing_docs, clippy::too_many_lines)]
     pub fn show(&mut self, ctx: &egui::Context, id_source: &str) {
         egui_plot::clear_last_plot_datasets();
+        egui_plot::clear_last_plot_primitives();
 
         // Display recovery banner when solver divergence is detected
         if self.is_diverged {
@@ -384,6 +385,7 @@ impl SimulationFramework {
             // Solver execution halted: keep last valid plot data active in egui_plot
             if let Some(ref snapshot) = self.last_valid_snapshot {
                 egui_plot::clear_last_plot_datasets();
+                egui_plot::clear_last_plot_primitives();
                 egui_plot::append_last_plot_datasets(&snapshot.plot_datasets);
             }
             tool.show(ctx);

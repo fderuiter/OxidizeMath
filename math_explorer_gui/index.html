@@ -44,6 +44,18 @@
             height: 100%;
         }
 
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
         /* Loading indicator styles */
         #loading_indicator {
             position: fixed;
@@ -55,6 +67,9 @@
             background-color: #121214;
             color: #e2e8f0;
             z-index: 1000;
+            padding: 24px;
+            box-sizing: border-box;
+            text-align: center;
             user-select: none;
         }
 
@@ -108,7 +123,43 @@
         .loading-subtitle {
             font-size: 0.95rem;
             color: #94a3b8;
-            margin: 0;
+            margin: 0 0 16px 0;
+        }
+
+        .loading-progress {
+            appearance: none;
+            -webkit-appearance: none;
+            width: min(320px, 80vw);
+            height: 10px;
+            border: 1px solid #64748b;
+            border-radius: 999px;
+            background-color: #1e293b;
+            overflow: hidden;
+            accent-color: #60a5fa;
+        }
+
+        .loading-progress::-webkit-progress-bar {
+            background-color: #1e293b;
+            border-radius: 999px;
+        }
+
+        .loading-progress::-webkit-progress-value {
+            background-color: #60a5fa;
+            border-radius: 999px;
+            transition: width 0.12s linear;
+        }
+
+        .loading-progress::-moz-progress-bar {
+            background-color: #60a5fa;
+            border-radius: 999px;
+            transition: width 0.12s linear;
+        }
+
+        .loading-bytes {
+            font-size: 0.875rem;
+            color: #cbd5e1;
+            font-variant-numeric: tabular-nums;
+            margin: 10px 0 0 0;
         }
 
         @media (prefers-color-scheme: light) {
@@ -144,6 +195,28 @@
                 color: #475569;
             }
 
+            .loading-progress {
+                border-color: #64748b;
+                background-color: #e2e8f0;
+                accent-color: #2563eb;
+            }
+
+            .loading-progress::-webkit-progress-bar {
+                background-color: #e2e8f0;
+            }
+
+            .loading-progress::-webkit-progress-value {
+                background-color: #2563eb;
+            }
+
+            .loading-progress::-moz-progress-bar {
+                background-color: #2563eb;
+            }
+
+            .loading-bytes {
+                color: #334155;
+            }
+
             #error_container {
                 background-color: rgba(248, 248, 248, 0.96);
             }
@@ -169,6 +242,10 @@
 
             .instructions-card h2 {
                 color: #0f172a;
+            }
+
+            .recovery-list {
+                color: #475569;
             }
 
             .browser-item h3 {
@@ -233,6 +310,28 @@
                 color: #ffffff;
             }
 
+            .loading-progress {
+                border: 2px solid #ffffff;
+                background-color: #000000;
+                accent-color: #ffff00;
+            }
+
+            .loading-progress::-webkit-progress-bar {
+                background-color: #000000;
+            }
+
+            .loading-progress::-webkit-progress-value {
+                background-color: #ffff00;
+            }
+
+            .loading-progress::-moz-progress-bar {
+                background-color: #ffff00;
+            }
+
+            .loading-bytes {
+                color: #ffffff;
+            }
+
             #error_container {
                 background-color: #000000;
             }
@@ -248,7 +347,7 @@
                 color: #ffff00;
             }
 
-            .error-message, .instructions-card h2, .browser-item ol, .browser-item ol li strong, .additional-info {
+            .error-message, .instructions-card h2, .recovery-list, .browser-item ol, .browser-item ol li strong, .additional-info {
                 color: #ffffff;
                 border-top-color: #ffffff;
             }
@@ -296,6 +395,54 @@
                 forced-color-adjust: none;
                 border-color: GrayText;
                 border-top-color: Highlight;
+            }
+
+            .loading-progress {
+                border-color: CanvasText;
+                accent-color: Highlight;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .spinner {
+                animation: none !important;
+                border-color: #60a5fa;
+                background-color: rgba(96, 165, 250, 0.16);
+            }
+
+            .loading-progress,
+            .reload-btn {
+                animation: none !important;
+                transition: none !important;
+            }
+
+            .loading-progress::-webkit-progress-value {
+                transition: none !important;
+            }
+
+            .loading-progress::-moz-progress-bar {
+                transition: none !important;
+            }
+        }
+
+        @media (prefers-color-scheme: light) and (prefers-reduced-motion: reduce) {
+            .spinner {
+                border-color: #2563eb;
+                background-color: rgba(37, 99, 235, 0.12);
+            }
+        }
+
+        @media (prefers-contrast: more) and (prefers-reduced-motion: reduce) {
+            .spinner {
+                border-color: #ffff00;
+                background-color: transparent;
+            }
+        }
+
+        @media (forced-colors: active) and (prefers-reduced-motion: reduce) {
+            .spinner {
+                border-color: Highlight;
+                background-color: transparent;
             }
         }
 
@@ -368,11 +515,34 @@
             margin-bottom: 24px;
         }
 
+        #error_recovery_steps {
+            display: none;
+        }
+
+        #error_container[data-error-category="network"] #error_recovery_steps,
+        #error_container[data-error-category="compile"] #error_recovery_steps,
+        #error_container[data-error-category="timeout"] #error_recovery_steps,
+        #error_container[data-error-category="isolation"] #error_recovery_steps {
+            display: block;
+        }
+
+        #error_container:not([data-error-category="webgl"]) #webgl_instructions {
+            display: none;
+        }
+
         .instructions-card h2 {
             font-size: 1.05rem;
             font-weight: 600;
             color: #f1f5f9;
             margin: 0 0 14px 0;
+        }
+
+        .recovery-list {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 0.9rem;
+            color: #cbd5e1;
+            line-height: 1.6;
         }
 
         .browser-grid {
@@ -480,9 +650,10 @@
     <link data-trunk rel="copy-file" href="coi-serviceworker.min.js"/>
     <script src="reload.js" defer></script>
     <link data-trunk rel="copy-file" href="reload.js"/>
-    <script src="bootstrap.js" defer></script>
+    <script type="module" src="bootstrap.js" defer></script>
     <link data-trunk rel="copy-file" href="bootstrap.js"/>
-    <link data-trunk rel="rust" href="Cargo.toml" data-bin="math_explorer_gui" data-wasm-opt="z"/>
+    <link data-trunk rel="copy-file" href="initializer.js"/>
+    <link data-trunk rel="rust" href="Cargo.toml" data-bin="math_explorer_gui" data-wasm-opt="z" data-reference-types data-initializer="initializer.js"/>
     <link data-trunk rel="copy-file" href="worker.js"/>
 </head>
 <body>
@@ -493,8 +664,18 @@
         </div>
     </noscript>
 
-    <!-- Visual loading indicator while WebAssembly and shaders compile -->
-    <div id="loading_indicator" role="status" aria-live="polite" aria-busy="true">
+    <!-- Shared twin-slot ARIA live regions reused by pre-boot scripts and src/accessibility.rs -->
+    <div id="aria-live-polite" class="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        <span id="aria-live-polite-slot-0"></span>
+        <span id="aria-live-polite-slot-1"></span>
+    </div>
+    <div id="aria-live-assertive" class="sr-only" role="alert" aria-live="assertive" aria-atomic="true">
+        <span id="aria-live-assertive-slot-0"></span>
+        <span id="aria-live-assertive-slot-1"></span>
+    </div>
+
+    <!-- Visual loading indicator while WebAssembly downloads and shaders compile -->
+    <div id="loading_indicator" role="status" aria-busy="true">
         <svg class="brand-mark" viewBox="0 0 64 64" width="56" height="56" aria-hidden="true" focusable="false">
             <rect class="brand-badge" x="4" y="4" width="56" height="56" rx="14" stroke-width="3"/>
             <line class="brand-axes" x1="14" y1="32" x2="50" y2="32" stroke-width="2" stroke-linecap="round"/>
@@ -503,19 +684,27 @@
             <circle class="brand-node" cx="32" cy="32" r="4"/>
         </svg>
         <div class="spinner" aria-hidden="true"></div>
-        <div class="loading-title">Loading Math Explorer...</div>
-        <p class="loading-subtitle">Initializing WebAssembly &amp; graphics engine</p>
+        <div id="loading_title" class="loading-title">Loading Math Explorer...</div>
+        <p id="loading_subtitle" class="loading-subtitle">Initializing WebAssembly &amp; graphics engine</p>
+        <progress id="loading_progress" class="loading-progress" role="progressbar" aria-label="WebAssembly download progress" aria-valuemin="0" aria-valuemax="100"></progress>
+        <p id="loading_bytes" class="loading-bytes" aria-live="off">Preparing download...</p>
     </div>
 
-    <!-- WebGL error boundary shown if hardware acceleration or WebGL fails -->
-    <div id="error_container" role="alert" aria-live="assertive">
+    <!-- WebGL error boundary and pre-boot network/compile/timeout recovery -->
+    <div id="error_container" role="alert" aria-live="assertive" data-error-category="webgl" aria-labelledby="error_title" aria-describedby="error_message">
         <div class="error-card">
             <div class="error-icon-wrapper" aria-hidden="true">&#9888;</div>
-            <h1 class="error-title">WebGL Initialization Failed</h1>
-            <p class="error-message">
+            <h1 id="error_title" class="error-title">WebGL Initialization Failed</h1>
+            <p id="error_message" class="error-message">
                 Math Explorer requires WebGL and hardware acceleration to render mathematics and interactive simulations. Your browser was unable to initialize a WebGL rendering context.
             </p>
-            <div class="instructions-card">
+            <div id="error_recovery_steps" class="instructions-card">
+                <h2 id="error_recovery_heading">Recovery Steps</h2>
+                <ol id="error_recovery_list" class="recovery-list">
+                    <li>Check your network connection and select <strong>Reload Page</strong> to retry loading Math Explorer.</li>
+                </ol>
+            </div>
+            <div id="webgl_instructions" class="instructions-card">
                 <h2>Enable Hardware Acceleration &amp; WebGL</h2>
                 <div class="browser-grid">
                     <div class="browser-item">

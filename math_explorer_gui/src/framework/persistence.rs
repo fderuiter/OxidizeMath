@@ -16,11 +16,17 @@ pub(super) fn capture_isolated_tool_datasets(
     tool: &dyn InteractiveTool,
 ) -> Vec<(String, Vec<[f64; 2]>)> {
     let prev = egui_plot::get_last_plot_datasets();
+    let prev_prims = egui_plot::get_last_plot_primitives();
     egui_plot::clear_last_plot_datasets();
+    egui_plot::clear_last_plot_primitives();
     let datasets = tool.export_datasets();
     egui_plot::clear_last_plot_datasets();
+    egui_plot::clear_last_plot_primitives();
     if !prev.is_empty() {
         egui_plot::append_last_plot_datasets(&prev);
+    }
+    if !prev_prims.is_empty() {
+        egui_plot::append_last_plot_primitives(&prev_prims);
     }
     datasets
 }

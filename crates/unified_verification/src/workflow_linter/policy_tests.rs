@@ -1,5 +1,83 @@
 use super::*;
 
+fn validate_concurrency_str(content: &str) -> Result<(), String> {
+    let yaml: Value =
+        serde_saphyr::from_str(content).map_err(|e| format!("Invalid YAML syntax: {}", e))?;
+    validate_concurrency_block(&yaml).map_err(|e| e.to_string())
+}
+
+#[test]
+fn test_valid_concurrency_mapping() {
+    let yaml = r#"
+name: CI
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+"#;
+    assert!(validate_concurrency_str(yaml).is_ok());
+}
+
+#[test]
+fn test_valid_concurrency_string() {
+    let yaml = r#"
+name: CI
+concurrency: ci-run
+"#;
+    assert!(validate_concurrency_str(yaml).is_ok());
+}
+
+#[test]
+fn test_missing_concurrency() {
+    let yaml = r#"
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+"#;
+    assert_eq!(
+        validate_concurrency_str(yaml),
+        Err("Workflow is missing a global 'concurrency' block.".to_string())
+    );
+}
+
+#[test]
+fn test_invalid_concurrency_missing_group() {
+    let yaml = r#"
+name: CI
+concurrency:
+  cancel-in-progress: true
+"#;
+    assert_eq!(
+        validate_concurrency_str(yaml),
+        Err("Workflow 'concurrency' block must specify a 'group'.".to_string())
+    );
+}
+
+#[test]
+fn test_invalid_concurrency_empty_group() {
+    let yaml = r#"
+name: CI
+concurrency:
+  group: "   "
+"#;
+    assert_eq!(
+        validate_concurrency_str(yaml),
+        Err("Workflow 'concurrency' group cannot be empty.".to_string())
+    );
+}
+
+#[test]
+fn test_invalid_concurrency_empty_string() {
+    let yaml = r#"
+name: CI
+concurrency: "   "
+"#;
+    assert_eq!(
+        validate_concurrency_str(yaml),
+        Err("Workflow 'concurrency' block cannot be empty.".to_string())
+    );
+}
+
 fn validate_timeouts_str(content: &str) -> Result<(), String> {
     let yaml: Value =
         serde_saphyr::from_str(content).map_err(|e| format!("Invalid YAML syntax: {}", e))?;
