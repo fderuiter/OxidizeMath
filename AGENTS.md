@@ -1,14 +1,17 @@
 # OxidizeMath Agent & Developer Verification Guide
 
-This guide documents local build, domain feature matrix, WebAssembly bundle, workflow linting, and release packaging checks for contributors and automated coding agents working in the OxidizeMath workspace. See [README.md](README.md) for an architectural overview and [CONTRIBUTING.md](CONTRIBUTING.md) for engineering and safety standards (consolidated in `CONTRIBUTING.md` per [ADR 0005](docs/adr/0005-active-documentation-standard.md)).
+This guide documents repository conventions, local build, domain feature matrix, WebAssembly bundle, workflow linting, and release packaging checks for contributors and automated coding agents working in the OxidizeMath workspace. See [README.md](README.md) for an architectural overview, [CONTRIBUTING.md](CONTRIBUTING.md) for engineering and safety standards (consolidated in `CONTRIBUTING.md` per [ADR 0005](docs/adr/0005-active-documentation-standard.md)), and [docs/README.md](docs/README.md) for the documentation index.
 
-## 1. Documentation & Markdown Rules
+## 1. Architecture, Policy & Documentation Rules
 
 All Markdown files in the repository (outside excluded build directories such as `target`, `dist`, and `artifacts`) are compiled by `crates/markdown_tests/build.rs` via `rustdoc`.
 
 - Always tag non-Rust code blocks with `bash`, `yaml`, or `text` fences so `cargo test --doc` does not attempt to compile shell commands, workflow snippets, or plain text snippets as Rust doctests.
 - Keep core engineering safety rules (such as the NASA Power of 10 standards) in [CONTRIBUTING.md](CONTRIBUTING.md) rather than duplicating them here.
 - Ensure all relative Markdown links resolve to existing files in the repository.
+- Keep every Rust source file at or below **500 lines** (`check-file-lengths`) and keep functions within the **60-line** Clippy ceiling configured in `.clippy.toml`.
+- Do not introduce unwhitelisted `dead_code`, `unused`, or `warnings` lint suppressions (`allow`, `expect`, or `cfg_attr`). Zero `dead_code` bypass entries are permitted per [ADR 0019](docs/adr/0019-purge-dead-code-bypasses.md); gate test-only helpers with `#[cfg(test)]` or delete unreferenced items instead.
+- Modifying core mathematical or runtime crates (`crates/` excluding `crates/unified_verification`, or `math_explorer/`) requires creating or updating an Architectural Decision Record under `docs/adr/`.
 
 ```text
 Markdown verification gates:
@@ -20,23 +23,28 @@ Markdown verification gates:
 
 ## 2. CI Pre-Flight & Quality Gates
 
-Before opening or updating a pull request, run the workspace lint suite aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [.github/workflows/ci.yml](.github/workflows/ci.yml):
+Run the full pre-commit verification suite aligned with [CONTRIBUTING.md](CONTRIBUTING.md) via `xtask`:
 
 ```bash
-# Run the full manual verification suite (formatting, clippy, duplicates, file lengths,
-# rustdoc, doctests, markdown links, workflow lints, crate docs, traceability, entropy, vulnerabilities)
+# Run the full verification suite (formatting, host & WASM clippy, duplicates, file lengths,
+# rustdoc, doctests, markdown links, workflow lints, crate docs, traceability, entropy, vulnerabilities, policy audit)
 cargo run -p xtask -- lint-all
 ```
 
-Individual quality gates executed in `pre-flight` can also be run directly:
+Before opening or updating a pull request, individual quality gates defined in [.github/workflows/ci.yml](.github/workflows/ci.yml) can also be run directly:
 
 ```bash
+# Format and lint host and WebAssembly targets with Clippy (warnings denied)
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
+
 # Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA action pins)
 cargo run -p unified_verification --release -- lint-workflows
 
-# Verify formatting and Clippy lints across all targets and features
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+# Audit AST attributes for unauthorized dead_code/unused/warnings bypasses and unused dependencies
+cargo run -p xtask -- test-policy-audit
+cargo run -p unified_verification --release -- test-policy-audit
 
 # Verify crate documentation and workspace rustdoc builds
 cargo run -p unified_verification --release -- check-docs
@@ -51,6 +59,11 @@ cargo run -p unified_verification --release -- traceability
 
 # Verify architectural decision records when core crates change
 BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
+
+# Native unit/integration tests and WebAssembly target checks
+cargo test --workspace --lib --tests
+cargo check --workspace --target wasm32-unknown-unknown --all-features
+cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
 
 ## 3. Isolated Domain Feature Matrix (`test-features`)
@@ -79,9 +92,10 @@ sudo apt-get update
 sudo apt-get install -y binaryen brotli
 cargo binstall --no-confirm trunk
 
-# 2. Type-check workspace crates and tests for WebAssembly
+# 2. Type-check and lint workspace crates and tests for WebAssembly
 cargo check --workspace --target wasm32-unknown-unknown --all-features --verbose
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
+cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
 # 3. Build release WebAssembly distribution, compress assets, and verify the 3 MB size budget
 (cd math_explorer_gui && trunk build --release)

@@ -84,6 +84,9 @@ jobs:
       - name: Check File Lengths (500 lines limit)
         run: cargo run -p unified_verification --release -- check-file-lengths
 
+      - name: Check Policy Audit
+        run: cargo run -p unified_verification --release -- test-policy-audit
+
       - name: Check Entropy and Secrets
         run: cargo run -p unified_verification --release -- check-entropy
 
@@ -218,6 +221,10 @@ jobs:
       - name: Check Workspace Tests (WASM)
         if: matrix.target == 'wasm32-unknown-unknown'
         run: cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
+
+      - name: Run Clippy (WASM)
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
       - name: Install cargo-binstall
         if: matrix.target == 'wasm32-unknown-unknown'

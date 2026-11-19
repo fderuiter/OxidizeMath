@@ -199,9 +199,12 @@ impl TrainingMonitorTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TrainingMonitorState {
     learning_rate: f64,
     hidden_dim: usize,
+    #[serde(default)]
+    is_training: bool,
 }
 
 impl InteractiveTool for TrainingMonitorTool {
@@ -219,19 +222,24 @@ impl InteractiveTool for TrainingMonitorTool {
         serde_json::to_string(&TrainingMonitorState {
             learning_rate: self.learning_rate,
             hidden_dim: self.hidden_dim,
+            is_training: self.is_training,
         })
         .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: TrainingMonitorState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid TrainingMonitorTool state: {e}"))?;
-        if !s.learning_rate.is_finite() || s.learning_rate <= 0.0 || s.hidden_dim == 0 {
-            return Err("Invalid learning_rate or hidden_dim in TrainingMonitorTool".to_string());
+        let parsed: TrainingMonitorState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid training monitor state: {e}"))?;
+        if !parsed.learning_rate.is_finite()
+            || !(0.001..=0.1).contains(&parsed.learning_rate)
+            || !(2..=64).contains(&parsed.hidden_dim)
+        {
+            return Err("Training monitor learning_rate or hidden_dim out of bounds".into());
         }
-        self.learning_rate = s.learning_rate;
-        self.hidden_dim = s.hidden_dim;
+        self.learning_rate = parsed.learning_rate;
+        self.hidden_dim = parsed.hidden_dim;
         self.reinit_model();
+        self.is_training = parsed.is_training;
         Ok(())
     }
 
@@ -358,7 +366,8 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "learning_rate": 0.02,
-    "hidden_dim": 32
+    "hidden_dim": 32,
+    "is_training": false
   }
 }"#;
 
@@ -366,7 +375,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "training_monitor_starter",
         title: "Training Monitor",
-        description: "Live loss curve tracking, learning rate schedules, and validation perplexity convergence metrics.",
+        description: "Two-layer MLP spiral classification training monitor tracking live loss and accuracy curves.",
         category: "Deep Learning",
         icon: "📈",
         domain: "ai",

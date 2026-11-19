@@ -79,7 +79,11 @@ cargo run -p xtask -- lint-all
 
 This command executes all workspace quality gates:
 1. **Formatting**: `cargo fmt --all -- --check`
-2. **Clippy Lints**: `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+2. **Clippy Lints (Host & WebAssembly)**:
+   ```bash
+   cargo clippy --workspace --all-targets --all-features -- -D warnings
+   cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
+   ```
 3. **Staged Duplicates**: Duplicate file detection in staged git changes
 4. **File Length Constraints**: Enforces the 500-line ceiling per source file
 5. **Documentation**: `cargo doc --workspace --no-deps` (with warnings treated as errors)
@@ -88,6 +92,9 @@ This command executes all workspace quality gates:
 8. **CI Workflows**: `cargo run -p unified_verification --release -- lint-workflows` (validates GitHub Actions workflow structure)
 9. **Crate Documentation Audit**: `cargo run -p unified_verification --release -- check-docs` (verifies README files and entrypoint docs)
 10. **Traceability**: `cargo run -p unified_verification --release -- traceability` (validates architectural citations and test mappings)
+11. **Entropy & Secret Scanning**: `cargo run -p unified_verification --release -- check-entropy` (audits source files for secrets and unseeded entropy)
+12. **Dependency Vulnerabilities**: `cargo run -p unified_verification --release -- check-vulnerabilities` (scans dependencies against OSV advisories)
+13. **Policy Audit**: `cargo run -p unified_verification --release -- test-policy-audit` (detects unauthorized `dead_code`, `unused`, or `warnings` bypass attributes and unused dependencies)
 
 ### Troubleshooting
 

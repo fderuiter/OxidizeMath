@@ -95,6 +95,7 @@ impl RiemannIntegrationTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RiemannState {
     preset: FunctionPreset,
     min_x: f64,
@@ -122,8 +123,15 @@ impl InteractiveTool for RiemannIntegrationTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: RiemannState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid RiemannIntegrationTool state: {e}"))?;
+        let s: RiemannState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid Riemann state: {e}"))?;
+        if !s.min_x.is_finite()
+            || !s.max_x.is_finite()
+            || s.min_x >= s.max_x
+            || !(1..=200).contains(&s.steps)
+        {
+            return Err("Riemann integration interval or partition count invalid".into());
+        }
         self.preset = s.preset;
         self.min_x = s.min_x;
         self.max_x = s.max_x;
@@ -404,7 +412,7 @@ mod tests {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Riemann Sum Approximations",
+    "title": "Composite Trapezoidal Integration",
     "domain": "analysis",
     "timestamp": "2026-11-16T00:00:00Z"
   },
@@ -419,8 +427,8 @@ const STARTER_PRESET_JSON: &str = r#"{
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "riemann_integration_starter",
-        title: "Riemann Sum Approximations",
-        description: "Definite integral partition limits via Darboux upper/lower sums and midpoint quadrature.",
+        title: "Composite Trapezoidal Integration",
+        description: "Definite integral numerical quadrature via composite trapezoidal rule partitions.",
         category: "Integral Calculus",
         icon: "📐",
         domain: "analysis",

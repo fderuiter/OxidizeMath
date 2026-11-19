@@ -325,7 +325,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "wave_sim_starter",
         title: "Schrödinger Wave Packet",
-        description: "iℏ·∂ψ/∂t = -ℏ²/(2m)∇²ψ + V·ψ: 1D quantum Gaussian wave packet tunneling through a potential barrier.",
+        description: "iℏ·∂ψ/∂t = -ℏ²/(2m)∇²ψ + V·ψ: 1D Gaussian wave packet evolution in infinite-well and harmonic oscillator potentials.",
         category: "Wave Mechanics",
         icon: "🌊",
         domain: "quantum",

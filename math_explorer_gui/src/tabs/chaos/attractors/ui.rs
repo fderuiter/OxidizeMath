@@ -17,11 +17,6 @@ impl AttractorPlotter {
         let worker_faulted = self.worker.state() == SimWorkerState::Faulted;
         egui::SidePanel::left("attractor_controls").show(ctx, |ui| {
             ui.heading("Lorenz Attractor");
-            if ui.button("🎨 Starter Gallery").clicked() {
-                let id = egui::Id::new("SHOW_STARTER_GALLERY");
-                let cur = ctx.data(|d| d.get_temp::<bool>(id).unwrap_or(false));
-                ctx.data_mut(|d| d.insert_temp(id, !cur));
-            }
             ui.separator();
 
             if worker_faulted && !self.diverged() {

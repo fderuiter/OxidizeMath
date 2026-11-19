@@ -5,6 +5,7 @@ use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::epidemiology::compartmental::SIRModel;
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SirState {
     n: f64,
     i0: f64,
@@ -173,7 +174,19 @@ impl InteractiveTool for SirTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s = serde_json::from_str::<SirState>(state).map_err(|e| e.to_string())?;
+        let s: SirState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid SIR state: {e}"))?;
+        if ![s.n, s.i0, s.beta, s.gamma, s.duration]
+            .iter()
+            .all(|v| v.is_finite())
+            || !(100.0..=100_000.0).contains(&s.n)
+            || !(1.0..=s.n).contains(&s.i0)
+            || !(0.0..=5.0).contains(&s.beta)
+            || !(0.0..=1.0).contains(&s.gamma)
+            || !(10.0..=365.0).contains(&s.duration)
+        {
+            return Err("SIR parameters out of bounds".into());
+        }
         self.n = s.n;
         self.i0 = s.i0;
         self.beta = s.beta;

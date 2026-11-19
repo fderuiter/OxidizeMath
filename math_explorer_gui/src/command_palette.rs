@@ -1,123 +1,8 @@
+mod scoring;
+
 use eframe::egui;
-use std::borrow::Cow;
-
-/// Formats a snake_case domain identifier into a user-facing domain title.
-pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
-    match domain.trim() {
-        "ai" => Cow::Borrowed("Artificial Intelligence"),
-        "analysis" => Cow::Borrowed("Analysis & Calculus"),
-        "battery_degradation" => Cow::Borrowed("Battery Degradation"),
-        "biology" => Cow::Borrowed("Biology"),
-        "chaos" => Cow::Borrowed("Chaos Theory"),
-        "climate" => Cow::Borrowed("Climate"),
-        "clinical_trials" => Cow::Borrowed("Clinical Trials"),
-        "epidemiology" => Cow::Borrowed("Epidemiology"),
-        "financial_math" => Cow::Borrowed("Financial Math"),
-        "fluid_dynamics" => Cow::Borrowed("Fluid Dynamics"),
-        "game_theory" => Cow::Borrowed("Game Theory"),
-        "geometry_topology" => Cow::Borrowed("Geometry & Topology"),
-        "graph_theory" => Cow::Borrowed("Graph Theory"),
-        "medical" => Cow::Borrowed("Medical Physics"),
-        "neuroscience" => Cow::Borrowed("Neuroscience"),
-        "number_theory" => Cow::Borrowed("Number Theory"),
-        "quantum" => Cow::Borrowed("Quantum Mechanics"),
-        "solid_state" => Cow::Borrowed("Solid State Physics"),
-        other => Cow::Owned(
-            other
-                .split('_')
-                .filter(|part| !part.is_empty())
-                .map(|word| {
-                    let mut chars = word.chars();
-                    match chars.next() {
-                        Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
-                        None => String::new(),
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(" "),
-        ),
-    }
-}
-
-fn score_tool_metadata(meta: &crate::framework::ToolMetadata, query: &str) -> Option<usize> {
-    let domain_title = format_domain_title(meta.domain);
-    let formatted_entry = format!("{} ({})", meta.display_name, domain_title);
-    let mut score = fuzzy_match_score(meta.display_name, query);
-    for candidate in [meta.id, formatted_entry.as_str()] {
-        if let Some(s) = fuzzy_match_score(candidate, query) {
-            score = Some(score.map_or(s, |cur| cur.min(s)));
-        }
-    }
-    for &tag in meta.tags {
-        if let Some(tag_score) = fuzzy_match_score(tag, query) {
-            score = Some(score.map_or(tag_score, |cur| cur.min(tag_score)));
-        }
-    }
-    for domain_candidate in [meta.domain, domain_title.as_ref()] {
-        if let Some(domain_score) = fuzzy_match_score(domain_candidate, query) {
-            let weighted = domain_score.saturating_add(50);
-            score = Some(score.map_or(weighted, |cur| cur.min(weighted)));
-        }
-    }
-    score
-}
-
-/// Helper to check if `query` matches `text` using case-insensitive fuzzy or substring filtering.
-/// Returns a score if matched (lower score = better match / higher rank).
-pub fn fuzzy_match_score(text: &str, query: &str) -> Option<usize> {
-    let trimmed_query = query.trim().to_lowercase();
-    if trimmed_query.is_empty() {
-        return Some(usize::MAX);
-    }
-
-    let text_lower = text.to_lowercase();
-
-    // 1. Exact match
-    if text_lower == trimmed_query {
-        return Some(0);
-    }
-
-    // 2. Exact prefix match
-    if text_lower.starts_with(&trimmed_query) {
-        return Some(1);
-    }
-
-    // 3. Exact contiguous substring match
-    if let Some(pos) = text_lower.find(&trimmed_query) {
-        return Some(10 + pos);
-    }
-
-    // 4. All whitespace-separated terms match as contiguous substrings
-    let terms: Vec<&str> = trimmed_query.split_whitespace().collect();
-    if terms.len() > 1 && terms.iter().all(|term| text_lower.contains(term)) {
-        return Some(100);
-    }
-
-    // 5. Fuzzy character subsequence match (all non-space query characters appear in order)
-    let query_chars: Vec<char> = trimmed_query
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .collect();
-    if query_chars.is_empty() {
-        return Some(usize::MAX);
-    }
-
-    let mut text_chars = text_lower.chars();
-    let mut matched_count = 0;
-    for q_char in &query_chars {
-        if text_chars.any(|t_char| t_char == *q_char) {
-            matched_count += 1;
-        } else {
-            break;
-        }
-    }
-
-    if matched_count == query_chars.len() {
-        Some(200)
-    } else {
-        None
-    }
-}
+use scoring::score_tool_metadata;
+pub use scoring::{format_domain_title, fuzzy_match_score};
 
 /// Target tab index and optional tool name selected from the command palette.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -196,23 +81,43 @@ pub struct CommandPalette {
     pub just_opened: bool,
 }
 
+const SEARCH_INPUT_LABEL: &str = "Search tabs and tools";
+const SEARCH_HINT_TEXT: &str = "Type tab or tool name (e.g. dijkstra, lorenz, cera, fluid)...";
+pub(crate) const SEARCH_WIDGET_INFO_ID: &str = "command_palette_search_info";
+
+fn format_search_count_status(count: usize) -> String {
+    match count {
+        0 => "No matching tools found".to_string(),
+        1 => "1 matching result found".to_string(),
+        n => format!("{n} matching results found"),
+    }
+}
+
+fn announce_palette_status(ctx: &egui::Context, message: impl Into<String>) {
+    let message = message.into();
+    crate::accessibility::announce_status(&message);
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new("aria_live_message"), message);
+    });
+}
+
 impl CommandPalette {
     /// Opens the command palette modal, clearing the query and resetting selection.
     pub fn open(&mut self) {
-        self.is_open = true;
-        self.query.clear();
-        self.last_query.clear();
-        self.selected_index = 0;
-        self.just_opened = true;
+        self.reset_state(true);
     }
 
     /// Closes the command palette modal.
     pub fn close(&mut self) {
-        self.is_open = false;
+        self.reset_state(false);
+    }
+
+    fn reset_state(&mut self, open: bool) {
+        self.is_open = open;
         self.query.clear();
         self.last_query.clear();
         self.selected_index = 0;
-        self.just_opened = false;
+        self.just_opened = open;
     }
 
     /// Toggles the visibility state of the command palette modal.
@@ -324,11 +229,10 @@ impl CommandPalette {
             }
 
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) {
-                if self.selected_index == 0 {
-                    self.selected_index = filtered_items.len() - 1;
-                } else {
-                    self.selected_index -= 1;
-                }
+                self.selected_index = self
+                    .selected_index
+                    .checked_sub(1)
+                    .unwrap_or(filtered_items.len() - 1);
             }
 
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
@@ -345,8 +249,8 @@ impl CommandPalette {
         (selected_item, esc_pressed)
     }
 
-    /// Renders search header and text field with auto-focus behavior.
-    fn render_header_and_search(&mut self, ui: &mut egui::Ui) {
+    /// Renders search header and text field with auto-focus and accessible WidgetInfo label.
+    fn render_header_and_search(&mut self, ui: &mut egui::Ui, prev_query: &str) {
         ui.horizontal(|ui| {
             ui.heading("🔍 Command Palette");
         });
@@ -354,9 +258,26 @@ impl CommandPalette {
 
         let text_edit_response = ui.add(
             egui::TextEdit::singleline(&mut self.query)
-                .hint_text("Type tab or tool name (e.g. dijkstra, lorenz, cera, fluid)...")
+                .hint_text(SEARCH_HINT_TEXT)
                 .desired_width(f32::INFINITY),
         );
+
+        let search_info = egui::WidgetInfo {
+            label: Some(SEARCH_INPUT_LABEL.to_string()),
+            ..egui::WidgetInfo::text_edit(
+                ui.is_enabled(),
+                prev_query,
+                &self.query,
+                SEARCH_HINT_TEXT,
+            )
+        };
+        text_edit_response.widget_info({
+            let search_info = search_info.clone();
+            move || search_info.clone()
+        });
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(egui::Id::new(SEARCH_WIDGET_INFO_ID), search_info);
+        });
 
         if self.just_opened {
             text_edit_response.request_focus();
@@ -436,33 +357,26 @@ impl CommandPalette {
             return None;
         }
 
-        let filtered_items = self.filter_items(tabs);
+        let prev_query = self.last_query.clone();
+        let mut filtered_items = self.filter_items(tabs);
+        let mut query_changed = self.sync_selection_with_results(filtered_items.len());
 
-        if self.query != self.last_query {
-            self.selected_index = 0;
-            self.last_query = self.query.clone();
-        } else if filtered_items.is_empty() {
-            self.selected_index = 0;
-        } else if self.selected_index >= filtered_items.len() {
-            self.selected_index = filtered_items.len() - 1;
-        }
-
-        let (kb_selected_item, esc_pressed) = self.handle_keyboard_inputs(ctx, &filtered_items);
-        let mut selected_item = kb_selected_item;
-
+        let (mut selected_item, esc_pressed) = self.handle_keyboard_inputs(ctx, &filtered_items);
         let modal = egui::Modal::new(egui::Id::new("command_palette_modal"))
             .backdrop_color(egui::Color32::from_black_alpha(150));
 
         let modal_res = modal.show(ctx, |ui| {
             ui.set_width(550.0);
             ui.set_max_height(400.0);
-
             ui.vertical(|ui| {
-                self.render_header_and_search(ui);
+                self.render_header_and_search(ui, &prev_query);
+                if self.query != self.last_query {
+                    filtered_items = self.filter_items(tabs);
+                    query_changed |= self.sync_selection_with_results(filtered_items.len());
+                }
                 ui.add_space(8.0);
-                let mouse_selected = self.render_results_list(ui, &filtered_items);
-                if mouse_selected.is_some() {
-                    selected_item = mouse_selected;
+                if let Some(clicked) = self.render_results_list(ui, &filtered_items) {
+                    selected_item = Some(clicked);
                 }
                 ui.add_space(4.0);
                 self.render_footer(ui);
@@ -471,17 +385,29 @@ impl CommandPalette {
 
         if esc_pressed || modal_res.should_close() {
             self.close();
-            ctx.data_mut(|d| {
-                d.insert_temp(
-                    egui::Id::new("aria_live_message"),
-                    "Command palette closed".to_string(),
-                );
-            });
+            announce_palette_status(ctx, "Command palette closed");
         } else if selected_item.is_some() {
             self.close();
+        } else if query_changed {
+            announce_palette_status(ctx, format_search_count_status(filtered_items.len()));
         }
 
         selected_item
+    }
+
+    fn sync_selection_with_results(&mut self, item_count: usize) -> bool {
+        if self.query != self.last_query {
+            self.selected_index = 0;
+            self.last_query = self.query.clone();
+            true
+        } else {
+            if item_count == 0 {
+                self.selected_index = 0;
+            } else if self.selected_index >= item_count {
+                self.selected_index = item_count - 1;
+            }
+            false
+        }
     }
 }
 

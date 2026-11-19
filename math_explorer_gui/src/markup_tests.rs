@@ -1,10 +1,12 @@
 #[cfg(test)]
+#[path = "markup_shell_tests.rs"]
+mod shell_tests;
+
+#[cfg(test)]
 mod tests {
     const INDEX_HTML: &str = include_str!("../index.html");
     const TRUNK_TOML: &str = include_str!("../Trunk.toml");
     const BOOTSTRAP_JS: &str = include_str!("../bootstrap.js");
-    const FAVICON_SVG: &str = include_str!("../icons/favicon.svg");
-    const SITE_WEBMANIFEST: &str = include_str!("../site.webmanifest");
 
     fn extract_meta_csp(html: &str) -> &str {
         let csp_marker = "http-equiv=\"Content-Security-Policy\"";
@@ -117,20 +119,19 @@ mod tests {
     }
 
     #[test]
-    fn test_trunk_toml_disables_inline_script_injection() {
+    fn test_trunk_toml_disables_inline_script_and_preload_injection() {
         let build_section = trunk_section("[build]");
-        assert!(
-            build_section
-                .lines()
-                .any(|line| line.trim() == "inject_scripts = false"),
-            "[build] in Trunk.toml must set inject_scripts = false"
-        );
-        assert!(
-            build_section
-                .lines()
-                .any(|line| line.trim() == "filehash = false"),
-            "[build] in Trunk.toml must preserve filehash = false for fixed asset names"
-        );
+        for setting in [
+            "inject_scripts = false",
+            "filehash = false",
+            "pattern_script = \"\"",
+            "pattern_preload = \"\"",
+        ] {
+            assert!(
+                build_section.lines().any(|line| line.trim() == setting),
+                "[build] in Trunk.toml must set {setting}"
+            );
+        }
 
         let serve_section = trunk_section("[serve]");
         assert!(
@@ -177,72 +178,107 @@ mod tests {
     }
 
     #[test]
-    fn test_external_bootstrap_and_preload_tags() {
+    fn test_critical_inline_styles_precede_external_scripts() {
+        let style_start = INDEX_HTML
+            .find("<style>")
+            .expect("<style> block must exist in index.html");
+        let style_end = INDEX_HTML
+            .find("</style>")
+            .expect("</style> closing tag must exist in index.html");
+        let first_script = INDEX_HTML
+            .find("<script")
+            .expect("startup <script> tags must exist in index.html");
+
+        assert!(
+            style_start < style_end && style_end < first_script,
+            "Critical inline <style> block must appear before any <script> tag"
+        );
+    }
+
+    #[test]
+    fn test_all_startup_scripts_are_external_and_deferred() {
+        let mut search_from = 0;
+        let mut script_sources = Vec::new();
+
+        while let Some(offset) = INDEX_HTML[search_from..].find("<script") {
+            let tag_start = search_from + offset;
+            let tag_end = INDEX_HTML[tag_start..]
+                .find('>')
+                .map(|end| tag_start + end)
+                .expect("<script> opening tag must close");
+            let open_tag = &INDEX_HTML[tag_start..=tag_end];
+
+            assert!(
+                open_tag.contains("src=\""),
+                "All <script> tags must reference external files (no inline scripts): {open_tag}"
+            );
+            assert!(
+                open_tag.contains(" defer") || open_tag.contains("\tdefer"),
+                "All startup <script> tags must be marked defer: {open_tag}"
+            );
+
+            let close_start = INDEX_HTML[(tag_end + 1)..]
+                .find("</script>")
+                .map(|end| tag_end + 1 + end)
+                .expect("</script> closing tag must exist");
+            let inline_body = INDEX_HTML[(tag_end + 1)..close_start].trim();
+            assert!(
+                inline_body.is_empty(),
+                "External <script> tag must have empty inline body, found: {inline_body}"
+            );
+
+            script_sources.push(open_tag.to_string());
+            search_from = close_start + "</script>".len();
+        }
+
+        for script_file in ["coi-serviceworker.min.js", "reload.js", "bootstrap.js"] {
+            let src_attr = format!("src=\"{script_file}\"");
+            assert!(
+                script_sources.iter().any(|t| t.contains(&src_attr)),
+                "index.html must include deferred {script_file}"
+            );
+        }
         assert!(
             INDEX_HTML.contains("<link data-trunk rel=\"copy-file\" href=\"bootstrap.js\"/>"),
             "index.html must copy bootstrap.js via data-trunk copy-file"
         );
         assert!(
-            INDEX_HTML.contains("<script type=\"module\" src=\"bootstrap.js\"></script>"),
-            "index.html must load bootstrap.js as an external module script"
-        );
-        assert!(
-            INDEX_HTML.contains("<link rel=\"modulepreload\" href=\"./math_explorer_gui.js\">"),
-            "index.html must modulepreload ./math_explorer_gui.js"
-        );
-        assert!(
-            INDEX_HTML.contains("rel=\"preload\"")
-                && INDEX_HTML.contains("href=\"./math_explorer_gui_bg.wasm\"")
-                && INDEX_HTML.contains("as=\"fetch\""),
-            "index.html must preload ./math_explorer_gui_bg.wasm as fetch"
+            INDEX_HTML.contains("<link data-trunk rel=\"copy-file\" href=\"initializer.js\"/>"),
+            "index.html must copy initializer.js via data-trunk copy-file"
         );
     }
 
     #[test]
-    fn test_index_html_has_zero_inline_scripts() {
-        let mut search_from = 0;
-        let mut script_count = 0;
-
-        while let Some(rel_start) = INDEX_HTML[search_from..].find("<script") {
-            let open_start = search_from + rel_start;
-            let open_end = INDEX_HTML[open_start..]
-                .find('>')
-                .expect("<script> opening tag must close")
-                + open_start;
-            let open_tag = &INDEX_HTML[open_start..=open_end];
-            assert!(
-                open_tag.contains("src=\""),
-                "Every <script> tag in index.html must use an external src attribute: {open_tag}"
-            );
-
-            let close_start = INDEX_HTML[(open_end + 1)..]
-                .find("</script>")
-                .expect("<script> must have a matching </script> closing tag")
-                + open_end
-                + 1;
-            let inline_body = INDEX_HTML[(open_end + 1)..close_start].trim();
-            assert!(
-                inline_body.is_empty(),
-                "<script> tag must have empty inline body, found: {inline_body}"
-            );
-
-            script_count += 1;
-            search_from = close_start + "</script>".len();
-        }
-
+    fn test_strict_csp_and_dom_contracts_preserved() {
         assert!(
-            script_count >= 3,
-            "Expected at least 3 external script tags in index.html, found {script_count}"
+            INDEX_HTML.contains("script-src 'self' 'wasm-unsafe-eval' blob:;"),
+            "Strict script-src CSP directive without unsafe-inline must be preserved"
+        );
+        assert!(
+            !INDEX_HTML.contains("rel=\"preload\"")
+                && !INDEX_HTML.contains("rel=\"modulepreload\""),
+            "Source HTML must not contain unconditional preload or modulepreload hints"
+        );
+        assert!(
+            INDEX_HTML.contains("id=\"loading_indicator\""),
+            "Loading indicator DOM id must be preserved"
+        );
+        assert!(
+            INDEX_HTML.contains("id=\"error_container\"")
+                && INDEX_HTML.contains("id=\"error_details\""),
+            "Error boundary DOM ids must be preserved"
         );
     }
 
     #[test]
     fn test_bootstrap_js_initializes_wasm_and_error_boundary() {
         for required in [
+            "./initializer.js",
             "./math_explorer_gui.js",
             "./math_explorer_gui_bg.wasm",
             "window.wasmBindings",
             "TrunkApplicationStarted",
+            "__mathExplorerIsolation",
             "loading_indicator",
             "error_container",
             "error_details",
@@ -250,234 +286,6 @@ mod tests {
             assert!(
                 BOOTSTRAP_JS.contains(required),
                 "bootstrap.js must reference '{required}'"
-            );
-        }
-    }
-
-    #[test]
-    fn test_document_title_and_metadata_tags() {
-        assert!(
-            INDEX_HTML.contains("<title>Math Explorer</title>"),
-            "index.html must set <title>Math Explorer</title>"
-        );
-        assert!(
-            !INDEX_HTML.contains("<title>Math Explorer GUI</title>"),
-            "index.html must not retain legacy <title>Math Explorer GUI</title>"
-        );
-        for snippet in [
-            "name=\"description\"",
-            "name=\"application-name\" content=\"Math Explorer\"",
-            "name=\"color-scheme\" content=\"dark light\"",
-            "name=\"theme-color\" media=\"(prefers-color-scheme: dark)\"",
-            "name=\"theme-color\" media=\"(prefers-color-scheme: light)\"",
-            "property=\"og:title\" content=\"Math Explorer\"",
-            "property=\"og:description\"",
-            "property=\"og:type\" content=\"website\"",
-            "property=\"og:image\"",
-        ] {
-            assert!(
-                INDEX_HTML.contains(snippet),
-                "index.html head must contain metadata snippet: {snippet}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_favicon_manifest_and_trunk_staging_links() {
-        for link_snippet in [
-            "<link rel=\"icon\" href=\"favicon.ico\" sizes=\"any\">",
-            "<link rel=\"icon\" href=\"favicon.svg\" type=\"image/svg+xml\">",
-            "<link rel=\"apple-touch-icon\" href=\"256x256.png\">",
-            "<link rel=\"manifest\" href=\"site.webmanifest\">",
-        ] {
-            assert!(
-                INDEX_HTML.contains(link_snippet),
-                "index.html must declare browser link tag: {link_snippet}"
-            );
-        }
-
-        for staged_asset in [
-            "icons/favicon.svg",
-            "icons/icon.ico",
-            "icons/32x32.png",
-            "icons/128x128.png",
-            "icons/256x256.png",
-            "icons/512x512.png",
-            "site.webmanifest",
-        ] {
-            let directive = format!("data-trunk rel=\"copy-file\" href=\"{staged_asset}\"");
-            assert!(
-                INDEX_HTML.contains(&directive),
-                "index.html must stage asset via Trunk copy-file: {directive}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_loading_indicator_contains_decorative_inline_svg() {
-        let loading_start = INDEX_HTML
-            .find("id=\"loading_indicator\"")
-            .expect("#loading_indicator must exist");
-        let loading_end = INDEX_HTML[loading_start..]
-            .find("</div>\n\n    <!-- WebGL error boundary")
-            .map(|offset| loading_start + offset)
-            .expect("#loading_indicator closing block must exist");
-        let loading_block = &INDEX_HTML[loading_start..loading_end];
-
-        let svg_start = loading_block
-            .find("<svg")
-            .expect("#loading_indicator must include an inline <svg> brand mark");
-        let svg_open_end = loading_block[svg_start..]
-            .find('>')
-            .expect("<svg> opening tag must close")
-            + svg_start;
-        let svg_open_tag = &loading_block[svg_start..=svg_open_end];
-
-        assert!(
-            svg_open_tag.contains("aria-hidden=\"true\""),
-            "Inline brand mark <svg> must set aria-hidden=\"true\", found: {svg_open_tag}"
-        );
-        assert!(
-            loading_block.contains("</svg>"),
-            "Inline brand mark <svg> must close inside #loading_indicator"
-        );
-    }
-
-    #[test]
-    fn test_trunk_rust_link_configures_initializer() {
-        let rust_link_start = INDEX_HTML
-            .find("<link data-trunk rel=\"rust\"")
-            .expect("Trunk rust <link> tag must exist in index.html");
-        let rust_link_end = INDEX_HTML[rust_link_start..]
-            .find('>')
-            .expect("Trunk rust <link> tag must close")
-            + rust_link_start;
-        let rust_link_tag = &INDEX_HTML[rust_link_start..=rust_link_end];
-
-        assert!(
-            rust_link_tag.contains("data-initializer=\"initializer.js\""),
-            "Trunk rust link must configure data-initializer=\"initializer.js\", found: {rust_link_tag}"
-        );
-    }
-
-    #[test]
-    fn test_loading_indicator_progress_and_byte_counter() {
-        let loading_start = INDEX_HTML
-            .find("id=\"loading_indicator\"")
-            .expect("#loading_indicator must exist in index.html");
-        let error_start = INDEX_HTML
-            .find("id=\"error_container\"")
-            .expect("#error_container must exist after #loading_indicator");
-        assert!(loading_start < error_start);
-
-        let loading_section = &INDEX_HTML[loading_start..error_start];
-        assert!(
-            loading_section.contains("aria-busy=\"true\""),
-            "#loading_indicator must initialize aria-busy=\"true\""
-        );
-        assert!(
-            loading_section.contains("<progress")
-                && loading_section.contains("id=\"loading_progress\"")
-                && loading_section.contains("role=\"progressbar\""),
-            "#loading_indicator must contain <progress id=\"loading_progress\" role=\"progressbar\">"
-        );
-        assert!(
-            loading_section.contains("id=\"loading_bytes\""),
-            "#loading_indicator must contain a byte counter element (#loading_bytes)"
-        );
-    }
-
-    #[test]
-    fn test_adaptive_shell_theme_media_queries() {
-        for rule in [
-            "@media (prefers-color-scheme: light)",
-            "@media (prefers-contrast: more)",
-            "@media (forced-colors: active)",
-            "border-color: GrayText;",
-            "border-top-color: Highlight;",
-        ] {
-            assert!(
-                INDEX_HTML.contains(rule),
-                "index.html stylesheet must define adaptive theme rule: {rule}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_prefers_reduced_motion_halts_spinner() {
-        let media_pos = INDEX_HTML
-            .find("@media (prefers-reduced-motion: reduce)")
-            .expect("index.html must include @media (prefers-reduced-motion: reduce) styles");
-        let style_end = INDEX_HTML[media_pos..]
-            .find("</style>")
-            .expect("</style> tag must exist")
-            + media_pos;
-        let reduced_motion_block = &INDEX_HTML[media_pos..style_end];
-
-        assert!(
-            reduced_motion_block.contains(".spinner")
-                && reduced_motion_block.contains("animation: none"),
-            "prefers-reduced-motion block must disable .spinner animation"
-        );
-    }
-
-    #[test]
-    fn test_prerendered_twin_slot_live_regions() {
-        for id in [
-            "id=\"aria-live-polite\"",
-            "id=\"aria-live-polite-slot-0\"",
-            "id=\"aria-live-polite-slot-1\"",
-            "id=\"aria-live-assertive\"",
-            "id=\"aria-live-assertive-slot-0\"",
-            "id=\"aria-live-assertive-slot-1\"",
-        ] {
-            assert!(
-                INDEX_HTML.contains(id),
-                "index.html must pre-render twin-slot live region node {id}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_favicon_svg_and_site_webmanifest_assets() {
-        assert!(
-            FAVICON_SVG.contains("<svg") && FAVICON_SVG.contains("</svg>"),
-            "icons/favicon.svg must be a non-empty valid SVG document"
-        );
-
-        let manifest: serde_json::Value = serde_json::from_str(SITE_WEBMANIFEST)
-            .expect("site.webmanifest must parse as valid JSON");
-        assert_eq!(manifest["name"], "Math Explorer");
-        assert_eq!(manifest["short_name"], "Math Explorer");
-        let icons = manifest["icons"]
-            .as_array()
-            .expect("site.webmanifest must define an icons array");
-        assert!(
-            icons.len() >= 5,
-            "site.webmanifest must declare vector and raster icon entries"
-        );
-    }
-
-    #[test]
-    fn test_error_container_supports_categories_and_webgl_instructions() {
-        assert!(
-            INDEX_HTML.contains("data-error-category=\"webgl\""),
-            "#error_container must default to data-error-category=\"webgl\""
-        );
-        for required in [
-            "id=\"error_title\"",
-            "id=\"error_message\"",
-            "id=\"error_recovery_steps\"",
-            "id=\"error_recovery_list\"",
-            "id=\"webgl_instructions\"",
-            "id=\"error_details\"",
-            "data-error-category=\"network\"",
-            "data-error-category=\"compile\"",
-            "data-error-category=\"timeout\"",
-        ] {
-            assert!(
-                INDEX_HTML.contains(required),
-                "index.html must include {required} for multi-category error recovery"
             );
         }
     }

@@ -13,7 +13,7 @@ use crate::framework::recovery::emit_divergence_telemetry;
 use crate::framework::{
     CalloutManager, InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager,
 };
-use crate::presets::{InteractivePreset, OdePreset};
+use crate::presets::OdePreset;
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 use recovery::{clamp_ode_parameters, clamp_ode_step_settings};
@@ -289,6 +289,7 @@ fn default_annotations_enabled() -> bool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct OdeState {
     #[serde(default)]
     preset: Option<OdePreset>,
@@ -322,22 +323,6 @@ impl InteractiveTool for OdeSolverTool {
     }
     fn domain(&self) -> &'static str {
         "analysis"
-    }
-
-    fn export_preset_json(&self) -> Result<String, String> {
-        self.to_json_string()
-    }
-
-    fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let res = self.from_json_str(json_str);
-        if res.is_ok() {
-            self.recalculate();
-        }
-        res
-    }
-
-    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        self.import_preset_json(json_str)
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -388,6 +373,18 @@ impl InteractiveTool for OdeSolverTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: OdeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {e}"))?;
+        if !s.dt.is_finite()
+            || s.dt <= 0.0
+            || !s.total_time.is_finite()
+            || s.total_time <= 0.0
+            || !s.param_k.is_finite()
+            || !s.param_r.is_finite()
+            || !s.param_cap_k.is_finite()
+            || !s.ic_y0.is_finite()
+            || !s.ic_v0.is_finite()
+        {
+            return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
+        }
         if let Some(p) = s.preset {
             self.preset = p;
         }

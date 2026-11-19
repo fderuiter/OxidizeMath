@@ -169,7 +169,22 @@ pub const PRESET_VECTOR_FIELD: &str = r#"{
     "timestamp": "2026-11-14T00:00:00Z"
   },
   "config": {
-    "preset_type": "CylinderFlow",
+    "elements": [
+      {
+        "element_type": "Uniform",
+        "strength": 10.0,
+        "x": 0.0,
+        "y": 0.0,
+        "angle": 0.0
+      },
+      {
+        "element_type": "Doublet",
+        "strength": 251.32741228718345,
+        "x": 0.0,
+        "y": 0.0,
+        "angle": 0.0
+      }
+    ],
     "grid_size": 20,
     "view_range": 10.0
   }
@@ -184,7 +199,22 @@ pub const PRESET_SOURCE_SINK: &str = r#"{
     "timestamp": "2026-11-14T00:00:00Z"
   },
   "config": {
-    "preset_type": "SourceSink",
+    "elements": [
+      {
+        "element_type": "Source",
+        "strength": 10.0,
+        "x": -3.0,
+        "y": 0.0,
+        "angle": 0.0
+      },
+      {
+        "element_type": "Sink",
+        "strength": 10.0,
+        "x": 3.0,
+        "y": 0.0,
+        "angle": 0.0
+      }
+    ],
     "grid_size": 25,
     "view_range": 12.0
   }
@@ -204,6 +234,7 @@ pub const PRESET_3D_ATTRACTOR: &str = r#"{
     "beta": 2.6666666666666665,
     "dt": 0.01,
     "simulation_speed": 5,
+    "execution_state": "Running",
     "show_annotations": true
   }
 }"#;
@@ -364,3 +395,7 @@ pub fn show_starter_gallery_overlay(
 #[cfg(test)]
 #[path = "starter_gallery/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "starter_gallery/contract_tests.rs"]
+mod contract_tests;
