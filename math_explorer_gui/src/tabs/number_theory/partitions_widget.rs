@@ -32,12 +32,14 @@ pub struct PartitionsWidget {
 
 impl Default for PartitionsWidget {
     fn default() -> Self {
-        Self {
+        let mut widget = Self {
             precision: 20,
             selected_function: PartitionFunctionType::PStar,
             f_k_val: 1,
             coeffs: Vec::new(),
-        }
+        };
+        widget.calculate();
+        widget
     }
 }
 
@@ -59,7 +61,9 @@ impl PartitionsWidget {
 }
 
 impl InteractiveTool for PartitionsWidget {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Partition Function"
     }
@@ -216,7 +220,6 @@ impl InteractiveTool for PartitionsWidget {
 
 // [cite:partitions_implementation]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "PartitionsWidget",
@@ -234,12 +237,22 @@ impl scientific_metadata::theory::TheoryDescribable for PartitionsWidget {
             self.precision
         )
     }
-    fn phonetic_description(&self) -> String { "Integer partition functions and Eisenstein series theory".into() }
-    fn theory_citation(&self) -> String { "On Eisenstein series, color partition and divisor function (Pushpa & Vasuki, 2022); The Theory of Partitions (Andrews, 1976)".into() }
+    fn phonetic_description(&self) -> String {
+        "Integer partition functions and Eisenstein series theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "On Eisenstein series, color partition and divisor function (Pushpa & Vasuki, 2022); The Theory of Partitions (Andrews, 1976)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("PStar".into(), "Unrestricted partition counting function generating series".into());
-        map.insert("Eisenstein".into(), "Modular forms and divisor sum Eisenstein series components".into());
+        map.insert(
+            "PStar".into(),
+            "Unrestricted partition counting function generating series".into(),
+        );
+        map.insert(
+            "Eisenstein".into(),
+            "Modular forms and divisor sum Eisenstein series components".into(),
+        );
         map
     }
 }

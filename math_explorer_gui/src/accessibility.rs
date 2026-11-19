@@ -1,6 +1,32 @@
 use eframe::egui::{Response, WidgetText};
 use scientific_metadata::theory::TheoryDescribable;
 
+/// State container modeling WAI-ARIA twin-slot ping-pong live-region alternation.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TwinSlotLiveRegion {
+    /// Active slot index (`0` or `1`).
+    pub active_slot: usize,
+    /// Text contents of slot `0` and slot `1`.
+    pub slots: [String; 2],
+}
+
+impl TwinSlotLiveRegion {
+    /// Creates a new empty twin-slot live region.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Alternates to the sibling slot, clears the previous slot, and populates the new active slot.
+    pub fn dispatch(&mut self, message: &str) -> usize {
+        let next_slot = 1 - self.active_slot;
+        self.slots[self.active_slot].clear();
+        self.slots[next_slot] = message.to_string();
+        self.active_slot = next_slot;
+        next_slot
+    }
+}
+
 #[cfg(any(target_arch = "wasm32", test))]
 fn next_live_slot(toggle: &std::sync::atomic::AtomicBool) -> usize {
     usize::from(toggle.fetch_xor(true, std::sync::atomic::Ordering::SeqCst))
@@ -86,6 +112,16 @@ thread_local! {
 #[allow(missing_docs)]
 pub fn init_accessibility_bridge() {}
 
+thread_local! {
+    static LIVE_REGION: std::cell::RefCell<TwinSlotLiveRegion> =
+        std::cell::RefCell::new(TwinSlotLiveRegion::new());
+}
+
+/// Inspects the thread-local [`TwinSlotLiveRegion`] state backing screen-reader announcements.
+pub fn with_live_region<R>(f: impl FnOnce(&TwinSlotLiveRegion) -> R) -> R {
+    LIVE_REGION.with(|region| f(&region.borrow()))
+}
+
 #[cfg(target_arch = "wasm32")]
 // theory_verification!
 pub fn announce_status(message: &str) {
@@ -98,6 +134,12 @@ pub fn announce_status_with_priority(message: &str, priority: &str) {
     TEST_ANNOUNCEMENTS.with(|a| {
         a.borrow_mut()
             .push((message.to_string(), priority.to_string()));
+    });
+
+    LIVE_REGION.with(|region| {
+        let mut r = region.borrow_mut();
+        let active = r.dispatch(message);
+        let _ = &r.slots[active];
     });
 
     if let Some(window) = web_sys::window() {
@@ -120,18 +162,15 @@ pub fn announce_status_with_priority(message: &str, priority: &str) {
                 &POLITE_SLOT_TOGGLE
             };
             let slot_idx = next_live_slot(toggle);
-
             let sibling_idx = 1 - slot_idx;
 
             let active_id = format!("{container_id}-slot-{slot_idx}");
             let sibling_id = format!("{container_id}-slot-{sibling_idx}");
 
-            // Clear the sibling slot
             if let Some(sibling_slot) = document.get_element_by_id(&sibling_id) {
                 sibling_slot.set_text_content(Some(""));
             }
 
-            // Populate the active slot
             if let Some(active_slot) = document.get_element_by_id(&active_id) {
                 active_slot.set_text_content(Some(message));
             }
@@ -148,13 +187,18 @@ pub fn announce_status(message: &str) {
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(missing_docs)]
 pub fn announce_status_with_priority(message: &str, priority: &str) {
+    LIVE_REGION.with(|region| {
+        let mut r = region.borrow_mut();
+        let active = r.dispatch(message);
+        let _ = &r.slots[active];
+    });
     #[cfg(test)]
     TEST_ANNOUNCEMENTS.with(|a| {
         a.borrow_mut()
             .push((message.to_string(), priority.to_string()));
     });
     #[cfg(not(test))]
-    let _ = (message, priority);
+    let _ = priority;
 }
 
 /// Returns all recorded `(message, priority)` status announcements for the current test thread.
@@ -163,9 +207,12 @@ pub(crate) fn all_announcements() -> Vec<(String, String)> {
     TEST_ANNOUNCEMENTS.with(|a| a.borrow().clone())
 }
 
-/// Clears all recorded status announcements for the current test thread.
+/// Clears all recorded status announcements and resets the twin-slot live region for the current test thread.
 #[cfg(test)]
 pub(crate) fn clear_test_announcements() {
+    LIVE_REGION.with(|region| {
+        *region.borrow_mut() = TwinSlotLiveRegion::new();
+    });
     TEST_ANNOUNCEMENTS.with(|a| a.borrow_mut().clear());
 }
 
@@ -218,8 +265,10 @@ impl AccessibleHoverText for Response {
             let text_into = text.into();
             let text_str = text_into.text().to_string();
             announce_status(&text_str);
+            let active_slot = with_live_region(|r| r.active_slot);
             self.ctx.data_mut(|d| {
                 d.insert_temp(eframe::egui::Id::new("aria_live_message"), text_str);
+                d.insert_temp(eframe::egui::Id::new("aria_live_slot"), active_slot);
             });
             if self.enabled() {
                 self.on_hover_text(text_into)
@@ -285,8 +334,10 @@ impl AccessibleTheoryHover for Response {
             let raw_text = theory.theory_description();
             let speech_text = theory.phonetic_description();
             announce_status(&speech_text);
+            let active_slot = with_live_region(|r| r.active_slot);
             self.ctx.data_mut(|d| {
                 d.insert_temp(eframe::egui::Id::new("aria_live_message"), speech_text);
+                d.insert_temp(eframe::egui::Id::new("aria_live_slot"), active_slot);
             });
             if self.enabled() {
                 self.on_hover_text(raw_text)
@@ -301,151 +352,5 @@ impl AccessibleTheoryHover for Response {
 // theory_verification!
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use eframe::egui;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    struct CountingWidgetText<'a>(&'a str, &'a AtomicUsize);
-
-    impl From<CountingWidgetText<'_>> for WidgetText {
-        fn from(value: CountingWidgetText<'_>) -> Self {
-            value.1.fetch_add(1, Ordering::SeqCst);
-            WidgetText::from(value.0)
-        }
-    }
-
-    #[test]
-    fn test_twin_slot_alternation() {
-        let polite_toggle = std::sync::atomic::AtomicBool::new(false);
-        let assertive_toggle = std::sync::atomic::AtomicBool::new(false);
-
-        // Polite slot alternates 0 -> 1 -> 0 -> 1
-        assert_eq!(next_live_slot(&polite_toggle), 0);
-        assert_eq!(next_live_slot(&polite_toggle), 1);
-        assert_eq!(next_live_slot(&polite_toggle), 0);
-        assert_eq!(next_live_slot(&polite_toggle), 1);
-
-        // Assertive toggle maintains independent 0 -> 1 alternation
-        assert_eq!(next_live_slot(&assertive_toggle), 0);
-        assert_eq!(next_live_slot(&assertive_toggle), 1);
-        assert_eq!(next_live_slot(&assertive_toggle), 0);
-    }
-
-    #[test]
-    fn test_announcement_dispatch_on_native() {
-        clear_test_announcements();
-        assert!(all_announcements().is_empty());
-
-        announce_status("Simulation paused");
-        announce_status_with_priority("Syntax Error: missing operand", "assertive");
-
-        let announcements = all_announcements();
-        assert_eq!(announcements.len(), 2);
-        assert_eq!(
-            announcements[0],
-            ("Simulation paused".to_string(), "polite".to_string())
-        );
-        assert_eq!(
-            announcements[1],
-            (
-                "Syntax Error: missing operand".to_string(),
-                "assertive".to_string()
-            )
-        );
-
-        clear_test_announcements();
-        assert!(all_announcements().is_empty());
-    }
-
-    #[test]
-    fn test_accessible_hover_text_zero_conversion_on_inactive_frame() {
-        let ctx = egui::Context::default();
-        let conversions = AtomicUsize::new(0);
-        let screen_rect = Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(800.0, 600.0),
-        ));
-        clear_test_announcements();
-
-        let _ = ctx.run(
-            egui::RawInput {
-                screen_rect,
-                ..Default::default()
-            },
-            |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    ui.button("Action")
-                        .accessible_hover_text(CountingWidgetText(
-                            "Helpful guidance",
-                            &conversions,
-                        ));
-                });
-            },
-        );
-        assert_eq!(
-            conversions.load(Ordering::SeqCst),
-            0,
-            "Standard inactive frame updates must not convert or heap-allocate tooltip text"
-        );
-        assert!(all_announcements().is_empty());
-    }
-
-    fn run_action_frame(
-        ctx: &egui::Context,
-        focused: bool,
-        events: Vec<egui::Event>,
-    ) -> (egui::Id, bool) {
-        let mut out = (egui::Id::NULL, false);
-        let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(800.0, 600.0),
-            )),
-            focused,
-            events,
-            ..Default::default()
-        };
-        let _ = ctx.run(input, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                let resp = ui
-                    .button("Action")
-                    .accessible_hover_text("Helpful guidance");
-                out = (resp.id, resp.has_focus());
-            });
-        });
-        out
-    }
-
-    #[test]
-    fn test_accessible_hover_text_focus_escape_preserves_focus() {
-        let ctx = egui::Context::default();
-        clear_test_announcements();
-
-        let (btn_id, _) = run_action_frame(&ctx, false, Vec::new());
-        ctx.memory_mut(|m| m.request_focus(btn_id));
-        let (_, focused_on_tab) = run_action_frame(&ctx, true, Vec::new());
-        assert!(focused_on_tab);
-        assert!(all_announcements()
-            .iter()
-            .any(|(msg, prio)| msg == "Helpful guidance" && prio == "polite"));
-
-        clear_test_announcements();
-        let esc = vec![egui::Event::Key {
-            key: egui::Key::Escape,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: egui::Modifiers::NONE,
-        }];
-        let (_, focused_after_escape) = run_action_frame(&ctx, true, esc);
-        assert!(
-            focused_after_escape,
-            "Escape dismissal must preserve keyboard focus"
-        );
-        assert!(ctx
-            .data(|d| d.get_temp::<bool>(btn_id.with("tooltip_dismissed")))
-            .unwrap_or(false));
-        assert!(all_announcements().is_empty());
-    }
-}
+#[path = "accessibility_tests.rs"]
+mod tests;

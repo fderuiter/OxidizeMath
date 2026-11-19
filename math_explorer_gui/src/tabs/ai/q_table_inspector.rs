@@ -336,9 +336,18 @@ impl InteractiveTool for QTableInspectorTool {
     fn name(&self) -> &'static str {
         "Q-Table Inspector"
     }
-    fn domain(&self) -> &'static str { "ai" }
-    fn save_state(&self) -> Option<String> { self.serialize_state() }
-    fn try_load_state(&mut self, state: &str) -> Result<(), String> { self.deserialize_state(state) }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+    fn save_state(&self) -> Option<String> {
+        self.serialize_state()
+    }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.deserialize_state(state)
+    }
 
     fn show(&mut self, ctx: &egui::Context) {
         if let Some(snapshot) = self.worker.update() {
@@ -406,8 +415,8 @@ impl scientific_metadata::theory::TheoryDescribable for QTableInspectorTool {
     }
 }
 
+#[path = "q_table_inspector/preset.rs"]
+mod preset;
 #[cfg(test)]
 #[path = "q_table_inspector/tests.rs"]
 mod tests;
-#[path = "q_table_inspector/preset.rs"]
-mod preset;
