@@ -414,6 +414,9 @@ fn generate_verification_screenshot(path: &str, _title: &str, labels: &[&str]) {
 
 #[test]
 fn test_lazy_secondary_slots_and_same_domain_quad_isolation() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
     let mut frame = eframe::Frame::_new_kittest();
