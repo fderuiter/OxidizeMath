@@ -133,7 +133,6 @@ impl MusicEstimator {
     ///
     /// assert_eq!(spectrum.len(), 11); // 0.0 to 1.0 with 0.1 step inclusive
     /// ```
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     #[verified_engine::verified]
     pub fn compute_spectrum(
         &self,
@@ -160,24 +159,47 @@ impl MusicEstimator {
             ));
         }
 
-        // 1. Estimate Covariance Matrix Rxx
-        // Rxx = (1/K) * sum(x_k * x_k^H)
-        let n = self.samples_per_chirp;
-        let mut r_xx = DMatrix::<Complex<f64>>::zeros(n, n);
+        let r_xx = self.estimate_covariance();
+        let subspace = self.extract_compact_subspace(r_xx)?;
+        let params = RangeSweepParams {
+            start_range,
+            end_range,
+            step_range,
+            bandwidth,
+            c,
+        };
 
+        debug_assert!(subspace.basis.ncols() <= self.samples_per_chirp / 2);
+        Ok(subspace.evaluate_range_sweep(&params))
+    }
+
+    /// Estimates the sample covariance matrix $R_{xx} = \frac{1}{K} \sum_{k=1}^K x_k x_k^H$.
+    #[verified_engine::verified]
+    fn estimate_covariance(&self) -> DMatrix<Complex<f64>> {
+        let n = self.samples_per_chirp;
+        debug_assert!(n > 0);
+        debug_assert!(!self.snapshots.is_empty());
+
+        let mut r_xx = DMatrix::<Complex<f64>>::zeros(n, n);
         for snap in &self.snapshots {
-            // snap is column vector (Nx1)
-            // snap * snap^H -> NxN matrix
             let outer = snap * snap.adjoint();
             r_xx += outer;
         }
-        r_xx /= Complex::new(self.snapshots.len() as f64, 0.0); // normalize
+        r_xx /= Complex::new(self.snapshots.len() as f64, 0.0);
+        r_xx
+    }
 
-        // 2. Eigen Decomposition
-        // We use SVD or Eigendecomposition. Rxx is Hermitian.
+    /// Extracts a compact $N \times \min(P, N - P)$ orthonormal eigenvector basis.
+    #[verified_engine::verified]
+    fn extract_compact_subspace(
+        &self,
+        r_xx: DMatrix<Complex<f64>>,
+    ) -> Result<CompactSubspace, RadarError> {
+        let n = self.samples_per_chirp;
+        debug_assert_eq!(r_xx.nrows(), n);
+        debug_assert_eq!(r_xx.ncols(), n);
+
         let eigen = r_xx.symmetric_eigen();
-
-        // Check for numerical instability (NaNs in eigenvalues)
         if eigen.eigenvalues.iter().any(|v| v.is_nan()) {
             return Err(RadarError::Math(
                 math_commons::error::MathError::NumericalError {
@@ -186,28 +208,7 @@ impl MusicEstimator {
             ));
         }
 
-        // Eigenvalues are sorted in ascending order by default in nalgebra::symmetric_eigen?
-        // Actually we need to check documentation or assume.
-        // Usually noise eigenvalues are the smallest ones.
-        // If we have P targets, the P largest eigenvalues correspond to signal.
-        // The remaining N - P are noise.
-        // `eigen.eigenvalues` is a vector.
-        // `eigen.eigenvectors` is a matrix where columns are eigenvectors.
-
-        // Sort eigenvalues and permute eigenvectors
-        let mut pairs: Vec<(f64, usize)> = eigen
-            .eigenvalues
-            .iter()
-            .enumerate()
-            .map(|(i, &v)| (v, i))
-            .collect();
-        // Sort descending (largest first).
-        // Safe to unwrap because we checked for NaNs above.
-        pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-
-        // 3. Extract Noise Subspace En
-        // The last (N - P) eigenvectors correspond to noise.
-        let num_noise_vectors = n - self.signal_subspace_dim;
+        let num_noise_vectors = n.saturating_sub(self.signal_subspace_dim);
         if num_noise_vectors == 0 {
             return Err(RadarError::InvalidSignalSubspace {
                 samples: n,
@@ -215,72 +216,91 @@ impl MusicEstimator {
             });
         }
 
-        // Collect indices of noise eigenvectors (the smallest ones)
-        let noise_indices: Vec<usize> = pairs
+        let mut pairs: Vec<(f64, usize)> = eigen
+            .eigenvalues
             .iter()
-            .skip(self.signal_subspace_dim) // Skip the P largest (Signal)
-            .map(|(_, i)| *i)
+            .enumerate()
+            .map(|(i, &v)| (v, i))
             .collect();
+        // Sort descending (largest first). Safe to unwrap because we checked for NaNs above.
+        pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
 
-        // Construct En matrix (N x (N-P))
-        // We can pre-compute En * En^H to speed up the loop: P_noise = En * En^H
-        // Then denominator is a^H * P_noise * a
-        let mut p_noise = DMatrix::<Complex<f64>>::zeros(n, n);
+        let use_signal_complement = self.signal_subspace_dim < num_noise_vectors;
+        let selected = if use_signal_complement {
+            &pairs[..self.signal_subspace_dim]
+        } else {
+            &pairs[self.signal_subspace_dim..]
+        };
 
-        for idx in noise_indices {
-            let col = eigen.eigenvectors.column(idx);
-            p_noise += col * col.adjoint();
+        let mut basis = DMatrix::<Complex<f64>>::zeros(n, selected.len());
+        for (col_idx, &(_, eig_idx)) in selected.iter().enumerate() {
+            basis
+                .column_mut(col_idx)
+                .copy_from(&eigen.eigenvectors.column(eig_idx));
         }
 
-        // 4. Compute Spectrum P(R)
-        // Optimization: Pre-allocate spectrum vector using robust integer steps
-        // Round to nearest integer to handle floating point imprecision
-        let steps = ((end_range - start_range) / step_range).round() as usize;
+        Ok(CompactSubspace {
+            basis,
+            use_signal_complement,
+        })
+    }
+}
+
+/// Compact column-major orthonormal eigenvector basis of shape $N \times \min(P, N - P)$.
+struct CompactSubspace {
+    basis: DMatrix<Complex<f64>>,
+    use_signal_complement: bool,
+}
+
+/// Range sweep configuration for evaluating the MUSIC pseudospectrum.
+struct RangeSweepParams {
+    start_range: f64,
+    end_range: f64,
+    step_range: f64,
+    bandwidth: f64,
+    c: f64,
+}
+
+impl CompactSubspace {
+    /// Evaluates $P(R) = (d(R) + 10^{-12})^{-1}$ across the range grid using low-rank projection.
+    #[verified_engine::verified]
+    fn evaluate_range_sweep(&self, params: &RangeSweepParams) -> Vec<(f64, f64)> {
+        let n = self.basis.nrows();
+        debug_assert!(n > 0);
+        debug_assert!(params.step_range > 0.0);
+
+        let steps = ((params.end_range - params.start_range) / params.step_range).round() as usize;
         let mut spectrum = Vec::with_capacity(steps + 1);
-
-        // Constants for steering vector
-        // a(R)[n] = exp(j * (4pi * B * R / c) * (n / N))
-        // Let alpha = (4pi * B * R) / (c * N)
-        // phase[n] = alpha * n
-        let constant_factor = (4.0 * PI * bandwidth) / (c * n as f64);
-
-        // Profiler Optimization: Reuse buffers to avoid allocation in the hot loop
+        let constant_factor = (4.0 * PI * params.bandwidth) / (params.c * n as f64);
         let mut a_vec = DVector::from_element(n, Complex::new(0.0, 0.0));
-        let mut tmp = DVector::from_element(n, Complex::new(0.0, 0.0));
-        let mut r = start_range;
+        let mut r = params.start_range;
 
-        // Optimization: Use a fixed loop count to guarantee vector length consistency,
-        // but use incremental addition for 'r' to avoid int-to-float conversion overhead in loop body.
         for _ in 0..=steps {
             let alpha = constant_factor * r;
             let (sin_alpha, cos_alpha) = alpha.sin_cos();
             let step_phasor = Complex::new(cos_alpha, sin_alpha);
 
-            // Construct steering vector a(R) in-place using complex phasor recurrence
             a_vec[0] = Complex::new(1.0, 0.0);
             for k in 1..n {
                 a_vec[k] = a_vec[k - 1] * step_phasor;
             }
 
-            // Denominator D = a^H * P_noise * a
+            let mut proj_norm_sq = 0.0;
+            for col in self.basis.column_iter() {
+                proj_norm_sq += col.dotc(&a_vec).norm_sqr();
+            }
 
-            // Optimization: Use `mul_to` to avoid allocating `tmp` every iteration
-            p_noise.mul_to(&a_vec, &mut tmp);
+            let den = if self.use_signal_complement {
+                (a_vec.norm_squared() - proj_norm_sq).max(0.0)
+            } else {
+                proj_norm_sq.max(0.0)
+            };
 
-            // Optimization: Use `dotc` (conjugate dot product) to compute a^H * tmp directly as a scalar
-            // This avoids allocating a 1x1 DMatrix.
-            let den_complex = a_vec.dotc(&tmp);
-
-            let den = den_complex.norm(); // Should be real, take norm to be safe
-
-            // P(R) = 1 / D
-            // Add small epsilon to avoid division by zero
             let power = 1.0 / (den + 1e-12);
-
             spectrum.push((r, power));
-            r += step_range;
+            r += params.step_range;
         }
 
-        Ok(spectrum)
+        spectrum
     }
 }
