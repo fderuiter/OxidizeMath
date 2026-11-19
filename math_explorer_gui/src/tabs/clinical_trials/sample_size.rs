@@ -59,6 +59,7 @@ impl SampleSizeCalculatorTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SampleSizeState {
     mode: CalculationMode,
     alpha: f64,
@@ -97,8 +98,28 @@ impl InteractiveTool for SampleSizeCalculatorTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: SampleSizeState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid SampleSizeCalculatorTool state: {e}"))?;
+        let s: SampleSizeState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid sample size state: {e}"))?;
+        if ![s.alpha, s.power, s.delta, s.sigma, s.p1, s.p2]
+            .iter()
+            .all(|v| v.is_finite())
+            || !(0.001..=0.20).contains(&s.alpha)
+            || !(0.5..=0.999).contains(&s.power)
+            || !(0.01..=5.0).contains(&s.delta)
+            || !(0.1..=10.0).contains(&s.sigma)
+            || !(0.01..=0.99).contains(&s.p1)
+            || !(0.01..=0.99).contains(&s.p2)
+        {
+            return Err("Sample size parameters out of bounds".into());
+        }
+        let result = match s.mode {
+            CalculationMode::Means => calculate_sample_size_means(s.alpha, s.power, s.delta, s.sigma)
+                .map_err(|e| e.to_string())?,
+            CalculationMode::Proportions => {
+                calculate_sample_size_proportions(s.alpha, s.power, s.p1, s.p2)
+                    .map_err(|e| e.to_string())?
+            }
+        };
         self.mode = s.mode;
         self.alpha = s.alpha;
         self.power = s.power;
@@ -106,7 +127,7 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         self.sigma = s.sigma;
         self.p1 = s.p1;
         self.p2 = s.p2;
-        self.recalculate();
+        self.result = Ok(result);
         Ok(())
     }
 

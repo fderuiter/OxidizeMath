@@ -1,13 +1,21 @@
 use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 
+#[cfg(any(test, feature = "pure_math", feature = "physics"))]
 pub mod slider;
+#[cfg(any(test, feature = "pure_math", feature = "physics"))]
 #[allow(unused_imports)]
 pub use slider::AnimatedSlider;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub use slider::AnimatedSliderState;
 
+#[cfg(any(
+    test,
+    feature = "pure_math",
+    feature = "applied",
+    feature = "epidemiology"
+))]
 fn format_metric_label(label: &str, value: &str) -> String {
     if label.is_empty() {
         value.to_string()
@@ -19,6 +27,12 @@ fn format_metric_label(label: &str, value: &str) -> String {
 }
 
 /// Renders a formatted metric label and value alongside an inline copy button and context menu.
+#[cfg(any(
+    test,
+    feature = "pure_math",
+    feature = "applied",
+    feature = "epidemiology"
+))]
 pub fn render_copyable_metric(ui: &mut egui::Ui, label: &str, value: &str) -> egui::Response {
     let response = ui
         .horizontal(|ui| {
@@ -48,6 +62,7 @@ pub fn render_copyable_metric(ui: &mut egui::Ui, label: &str, value: &str) -> eg
 }
 
 /// Renders a mathematical formula (LaTeX with optional plain text) alongside inline export buttons and a right-click context menu.
+#[cfg(any(test, feature = "pure_math", feature = "ai", feature = "physics"))]
 pub fn render_formula_with_export(
     ui: &mut egui::Ui,
     latex_str: &str,

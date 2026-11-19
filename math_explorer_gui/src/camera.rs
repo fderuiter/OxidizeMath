@@ -18,6 +18,7 @@ struct GizmoHandle {
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[allow(missing_docs)]
 pub struct Camera3D {
     #[allow(missing_docs)]

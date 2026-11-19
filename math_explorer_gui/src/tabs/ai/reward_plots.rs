@@ -317,6 +317,7 @@ impl RewardPlotsTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RewardPlotsState {
     training_steps: usize,
 }
@@ -340,12 +341,12 @@ impl InteractiveTool for RewardPlotsTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: RewardPlotsState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid RewardPlotsTool state: {e}"))?;
-        if s.training_steps == 0 {
-            return Err("training_steps must be positive in RewardPlotsTool".to_string());
+        let parsed: RewardPlotsState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid reward plots state: {e}"))?;
+        if !(10..=1000).contains(&parsed.training_steps) {
+            return Err("training_steps must be between 10 and 1000".into());
         }
-        self.training_steps = s.training_steps;
+        self.training_steps = parsed.training_steps;
         self.reset();
         Ok(())
     }
@@ -418,7 +419,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "reward_plots_starter",
         title: "Reward Trajectory",
-        description: "Episode cumulative return and moving average reward learning dynamics across training episodes.",
+        description: "Episodic cumulative return trajectory across tabular Q-learning Grid World training episodes.",
         category: "Reinforcement Learning",
         icon: "🎯",
         domain: "ai",

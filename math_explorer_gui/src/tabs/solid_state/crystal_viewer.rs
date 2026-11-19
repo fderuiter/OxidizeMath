@@ -125,6 +125,7 @@ impl CrystalViewer {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CrystalState {
     system: CrystalSystemEnum,
     lattice_constant: f64,
@@ -154,8 +155,21 @@ impl InteractiveTool for CrystalViewer {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: CrystalState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid CrystalViewer state: {e}"))?;
+        let s: CrystalState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid CrystalViewer state: {e}"))?;
+        if !s.lattice_constant.is_finite() || !(0.5..=5.0).contains(&s.lattice_constant) {
+            return Err(format!(
+                "lattice_constant out of [0.5, 5.0]: {}",
+                s.lattice_constant
+            ));
+        }
+        if !s.yaw.is_finite()
+            || !s.pitch.is_finite()
+            || !s.zoom.is_finite()
+            || !(10.0..=200.0).contains(&s.zoom)
+        {
+            return Err("Camera yaw/pitch/zoom out of valid range".to_string());
+        }
         self.system = s.system;
         self.lattice_constant = s.lattice_constant;
         self.yaw = s.yaw;
@@ -284,7 +298,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "crystal_viewer_starter",
         title: "Bravais Crystal Lattice",
-        description: "3D periodic atomic unit cell crystallographic coordinates (FCC, BCC, Diamond cubic structures).",
+        description: "3D periodic unit cell atomic coordinates for Simple Cubic, BCC, and FCC Bravais lattices.",
         category: "Crystallography",
         icon: "💎",
         domain: "solid_state",

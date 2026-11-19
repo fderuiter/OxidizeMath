@@ -15,6 +15,7 @@ impl Default for TemperatureAnomaliesTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TempState {
     time_series: Vec<[f64; 2]>,
 }
@@ -36,10 +37,12 @@ impl InteractiveTool for TemperatureAnomaliesTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: TempState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid TemperatureAnomaliesTool state: {e}"))?;
-        if s.time_series.is_empty() {
-            return Err("time_series must not be empty in TemperatureAnomaliesTool".to_string());
+        let s: TempState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid temperature state: {e}"))?;
+        if s.time_series.is_empty()
+            || !s.time_series.iter().all(|pt| pt[0].is_finite() && pt[1].is_finite())
+        {
+            return Err("Temperature time_series must be non-empty and finite".into());
         }
         self.time_series = s.time_series;
         Ok(())
@@ -106,7 +109,8 @@ const STARTER_PRESET_JSON: &str = r#"{
       [1980.0, 0.26],
       [2000.0, 0.39],
       [2010.0, 0.72],
-      [2020.0, 1.02]
+      [2020.0, 1.02],
+      [2023.0, 1.17]
     ]
   }
 }"#;

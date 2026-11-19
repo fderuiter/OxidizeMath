@@ -180,7 +180,10 @@ pub trait InteractiveTool {
 
     /// Fallibly deserializes and restores tool-specific parameters from a JSON state string.
     fn try_load_state(&mut self, _state: &str) -> Result<(), String> {
-        Err(format!("State loading not supported for {}", self.name()))
+        Err(format!(
+            "Preset state deserialization not supported for {}",
+            self.name()
+        ))
     }
 
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
@@ -221,11 +224,15 @@ pub trait InteractiveTool {
 
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let cleaned = egui_plot::export::strip_utf8_bom(json_str);
         let envelope: crate::presets::PresetWrapper<serde_json::Value> =
-            serde_json::from_str(json_str)
+            serde_json::from_str(cleaned)
                 .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
         let expected_domain = self.domain();
-        if !expected_domain.is_empty() && envelope.metadata.domain != expected_domain {
+        if expected_domain.is_empty() {
+            return Err(format!("Preset import not supported for {}", self.name()));
+        }
+        if envelope.metadata.domain != expected_domain {
             return Err(format!(
                 "Domain mismatch: preset is for domain '{}', but active tool is '{}'",
                 envelope.metadata.domain, expected_domain
@@ -264,11 +271,6 @@ pub trait InteractiveTool {
 
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
-
-    /// Applies a preset JSON configuration envelope via fallible preset deserialization.
-    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        self.import_preset_json(json_str)
-    }
 
     /// Optional hook to sample multi-frame animation datasets for GIF export.
     fn sample_animation_frames(

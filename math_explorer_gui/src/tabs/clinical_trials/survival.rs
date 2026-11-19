@@ -98,6 +98,7 @@ impl SurvivalAnalysisTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SurvivalState {
     input_text: String,
 }
@@ -119,10 +120,22 @@ impl InteractiveTool for SurvivalAnalysisTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: SurvivalState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid SurvivalAnalysisTool state: {e}"))?;
-        self.input_text = s.input_text;
-        self.recalculate();
+        let s: SurvivalState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid survival state: {e}"))?;
+        let mut candidate = Self {
+            input_text: s.input_text,
+            observations: Vec::new(),
+            curve: Vec::new(),
+            error_message: None,
+        };
+        candidate.recalculate();
+        if let Some(err) = candidate.error_message {
+            return Err(err);
+        }
+        if candidate.observations.is_empty() {
+            return Err("Survival observations cannot be empty".into());
+        }
+        *self = candidate;
         Ok(())
     }
 

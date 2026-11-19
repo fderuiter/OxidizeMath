@@ -70,6 +70,7 @@ impl TheoryDescribable for ClebschGordanTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ClebschGordanState {
     j1: f64,
     m1: f64,
@@ -85,7 +86,6 @@ impl InteractiveTool for ClebschGordanTool {
     fn name(&self) -> &'static str {
         "Clebsch-Gordan"
     }
-
     fn domain(&self) -> &'static str {
         "quantum"
     }
@@ -103,17 +103,26 @@ impl InteractiveTool for ClebschGordanTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: ClebschGordanState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid ClebschGordanTool state: {e}"))?;
-        if ![s.j1, s.m1, s.j2, s.m2, s.j, s.m].iter().all(|v| v.is_finite()) {
-            return Err("Non-finite quantum numbers in ClebschGordanTool".to_string());
+        let parsed: ClebschGordanState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid Clebsch-Gordan state: {e}"))?;
+        if ![parsed.j1, parsed.m1, parsed.j2, parsed.m2, parsed.j, parsed.m]
+            .iter()
+            .all(|v| v.is_finite())
+            || !(0.0..=10.0).contains(&parsed.j1)
+            || !(-10.0..=10.0).contains(&parsed.m1)
+            || !(0.0..=10.0).contains(&parsed.j2)
+            || !(-10.0..=10.0).contains(&parsed.m2)
+            || !(0.0..=20.0).contains(&parsed.j)
+            || !(-20.0..=20.0).contains(&parsed.m)
+        {
+            return Err("Clebsch-Gordan quantum numbers out of bounds".into());
         }
-        self.j1 = s.j1;
-        self.m1 = s.m1;
-        self.j2 = s.j2;
-        self.m2 = s.m2;
-        self.j = s.j;
-        self.m = s.m;
+        self.j1 = parsed.j1;
+        self.m1 = parsed.m1;
+        self.j2 = parsed.j2;
+        self.m2 = parsed.m2;
+        self.j = parsed.j;
+        self.m = parsed.m;
         self.calculate();
         Ok(())
     }
@@ -282,10 +291,10 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "j1": 1.0,
     "m1": 1.0,
-    "j2": 1.0,
-    "m2": -1.0,
-    "j": 2.0,
-    "m": 0.0
+    "j2": 0.5,
+    "m2": -0.5,
+    "j": 1.5,
+    "m": 0.5
   }
 }"#;
 

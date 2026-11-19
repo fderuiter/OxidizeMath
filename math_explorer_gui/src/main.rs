@@ -17,7 +17,6 @@ mod interactive_tools_tests;
 #[cfg(test)]
 mod markup_tests;
 pub mod presets;
-#[cfg_attr(not(feature = "pure_math"), allow(dead_code))]
 mod reflective_ui;
 #[allow(missing_docs)]
 pub mod sensitivity;
