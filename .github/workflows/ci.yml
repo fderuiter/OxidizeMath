@@ -84,6 +84,9 @@ jobs:
       - name: Check File Lengths (500 lines limit)
         run: cargo run -p unified_verification --release -- check-file-lengths
 
+      - name: Check Policy Audit
+        run: cargo run -p unified_verification --release -- test-policy-audit
+
       - name: Check Entropy and Secrets
         run: cargo run -p unified_verification --release -- check-entropy
 

@@ -1843,10 +1843,21 @@ impl<'a> Plot<'a> {
 
                 if let Some((ref msg, is_error)) = access_state.import_toast {
                     ui.separator();
-                    let (color, icon) = if is_error {
-                        (Color32::RED, "⚠️")
+                    let (err_color, ok_color) = if ui.visuals().dark_mode {
+                        (
+                            Color32::from_rgb(255, 118, 118),
+                            Color32::from_rgb(74, 214, 122),
+                        )
                     } else {
-                        (Color32::LIGHT_GREEN, "ℹ️")
+                        (
+                            Color32::from_rgb(180, 28, 28),
+                            Color32::from_rgb(15, 115, 54),
+                        )
+                    };
+                    let (color, icon) = if is_error {
+                        (err_color, "⚠️")
+                    } else {
+                        (ok_color, "ℹ️")
                     };
                     ui.colored_label(color, format!("{icon} {msg}"));
                     if ui

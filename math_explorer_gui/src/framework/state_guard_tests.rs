@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::clamp_tests::load_active;
 use super::recovery::*;
 use super::SimulationFramework;
 
