@@ -32,6 +32,7 @@ impl Default for RandomizationTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RandomizationState {
     randomization_type: RandomizationType,
     n_subjects: usize,
@@ -63,7 +64,13 @@ impl InteractiveTool for RandomizationTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: RandomizationState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid RandomizationTool state: {e}"))?;
+            .map_err(|e| format!("Invalid randomization state: {e}"))?;
+        if !(1..=1000).contains(&s.n_subjects) || !(2..=100).contains(&s.block_size) {
+            return Err("Randomization subject count or block_size out of bounds".into());
+        }
+        if s.randomization_type == RandomizationType::Block {
+            BlockRandomizer::new(s.block_size).map_err(|e| e.to_string())?;
+        }
         self.randomization_type = s.randomization_type;
         self.n_subjects = s.n_subjects;
         self.block_size = s.block_size;
@@ -242,7 +249,7 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "randomization_type": "Block",
-    "n_subjects": 100,
+    "n_subjects": 24,
     "block_size": 4
   }
 }"#;
@@ -251,7 +258,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "randomization_starter",
         title: "Permuted Block Randomization",
-        description: "Stratified patient assignment maintaining treatment balance across clinical trial arms.",
+        description: "Simple and permuted block patient allocation maintaining treatment balance across trial arms.",
         category: "Biostatistics",
         icon: "🎲",
         domain: "clinical_trials",

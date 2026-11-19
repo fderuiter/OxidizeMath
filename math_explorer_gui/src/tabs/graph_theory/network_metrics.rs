@@ -18,6 +18,7 @@ enum MetricType {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct NetworkMetricsState {
     selected_metric: MetricType,
 }
@@ -141,8 +142,8 @@ impl InteractiveTool for NetworkMetricsTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded =
-            serde_json::from_str::<NetworkMetricsState>(state).map_err(|e| e.to_string())?;
+        let loaded: NetworkMetricsState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid NetworkMetrics state: {e}"))?;
         self.selected_metric = loaded.selected_metric;
         self.compute_metrics();
         Ok(())
@@ -324,7 +325,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "network_metrics_starter",
         title: "Network Centrality Metrics",
-        description: "Betweenness, closeness, degree, and eigenvector centrality distributions across complex graphs.",
+        description: "Degree centrality, closeness centrality, local clustering coefficient, and graph diameter.",
         category: "Network Science",
         icon: "📊",
         domain: "graph_theory",

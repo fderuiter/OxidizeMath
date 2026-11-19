@@ -5,6 +5,8 @@ inject_scripts = false
 public_url = "./"
 rustflags = ["-C", "target-feature=+atomics,+bulk-memory", "-C", "strip=debuginfo"]
 wasm-opt = "z"
+pattern_script = ""
+pattern_preload = ""
 
 [tools]
 wasm_opt = "version_123"

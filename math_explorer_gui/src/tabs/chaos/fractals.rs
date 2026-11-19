@@ -68,6 +68,7 @@ impl TheoryDescribable for FractalViewer {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct FractalState {
     center_re: f64,
     center_im: f64,
@@ -126,8 +127,16 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: FractalState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid FractalViewer state: {e}"))?;
+        let s: FractalState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid fractal state: {e}"))?;
+        if ![s.center_re, s.center_im, s.zoom, s.julia_re, s.julia_im]
+            .iter()
+            .all(|v| v.is_finite())
+            || !(0.1..=10_000.0).contains(&s.zoom)
+            || !(10..=math_commons::registry::MAX_ITERATIONS as u32).contains(&s.max_iter)
+        {
+            return Err("Fractal view parameters out of bounds".into());
+        }
         self.center = Complex::new(s.center_re, s.center_im);
         self.zoom = s.zoom;
         self.max_iter = s.max_iter;

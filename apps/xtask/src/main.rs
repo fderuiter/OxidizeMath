@@ -1,10 +1,13 @@
 #![doc = include_str!("../README.md")]
+mod markdown_links;
 mod papers;
 mod web_e2e;
 
+use markdown_links::check_markdown_links;
 use std::env;
+#[cfg(unix)]
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, exit};
 
 fn main() {
@@ -32,6 +35,7 @@ fn main() {
         "check-staged-duplicates" => check_staged_duplicates(),
         "check-markdown-links" => check_markdown_links(),
         "check-vulnerabilities" => check_vulnerabilities(),
+        "test-policy-audit" => test_policy_audit(),
         "lint-workflows" => lint_workflows(),
         "regenerate-baseline" => regenerate_baseline(),
         "web-e2e" => web_e2e::run_web_e2e(&args[2..]),
@@ -57,10 +61,13 @@ fn print_help() {
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
     println!(
-        "  lint-all                 - Run format, clippy, file-length, duplicate, doc, doctest, workflow, traceability, entropy, and vulnerability checks"
+        "  lint-all                 - Run format, clippy, file-length, duplicate, doc, doctest, workflow, traceability, entropy, vulnerability, and policy audit checks"
     );
     println!("  lint-workflows           - Lint CI workflow definitions");
     println!("  test-features            - Run tests across feature combinations");
+    println!(
+        "  test-policy-audit        - Detect unauthorized dead-code bypasses and unused dependencies"
+    );
     println!("  traceability             - Generate traceability report");
     println!("  verify-records           - Verify verification records");
     println!("  verify-suite             - Run high-integrity verified suite");
@@ -94,12 +101,7 @@ fn run_cmd_with_env(cmd: &str, args: &[&str], envs: &[(&str, &str)]) {
     }
 }
 
-fn lint_all() {
-    println!("=== Running Workspace Lint Suite ===");
-    println!("\n--- Step 1: Format Check ---");
-    run_cmd("cargo", &["fmt", "--all", "--", "--check"]);
-
-    println!("\n--- Step 2: Clippy Lints ---");
+fn run_clippy() {
     run_cmd(
         "cargo",
         &[
@@ -112,6 +114,15 @@ fn lint_all() {
             "warnings",
         ],
     );
+}
+
+fn lint_all() {
+    println!("=== Running Workspace Lint Suite ===");
+    println!("\n--- Step 1: Format Check ---");
+    run_cmd("cargo", &["fmt", "--all", "--", "--check"]);
+
+    println!("\n--- Step 2: Clippy Lints ---");
+    run_clippy();
 
     println!("\n--- Step 3: Staged Duplicates Check ---");
     check_staged_duplicates();
@@ -142,6 +153,9 @@ fn lint_all() {
 
     println!("\n--- Step 12: Dependency Vulnerability Check ---");
     check_vulnerabilities();
+
+    println!("\n--- Step 13: Policy Audit ---");
+    test_policy_audit();
 
     println!("\n=== All Lint Checks Passed Successfully ===");
 }
@@ -324,6 +338,11 @@ fn check_vulnerabilities() {
     run_verification("check-vulnerabilities");
 }
 
+fn test_policy_audit() {
+    println!("=== Run Policy Audit ===");
+    run_verification("test-policy-audit");
+}
+
 fn check_staged_duplicates() {
     run_verification("check-staged-duplicates");
 }
@@ -333,101 +352,10 @@ fn regenerate_baseline() {
     run_verification("regenerate-baseline");
 }
 
-fn check_markdown_links() {
-    println!("=== Checking Markdown Documentation Links ===");
-    let mut md_files = Vec::new();
-    collect_md_files(Path::new("."), &mut md_files);
-
-    let mut broken = Vec::new();
-    for file in &md_files {
-        if let Ok(content) = fs::read_to_string(file) {
-            let parent = file.parent().unwrap_or(Path::new("."));
-            let links = extract_md_links(&content);
-            for link in links {
-                let target = link.split_whitespace().next().unwrap_or(&link);
-                if target.starts_with("http://")
-                    || target.starts_with("https://")
-                    || target.starts_with("mailto:")
-                    || target.starts_with('#')
-                    || target.contains("::")
-                {
-                    continue;
-                }
-                let path_part = target.split('#').next().unwrap_or("");
-                if path_part.is_empty() {
-                    continue;
-                }
-                let rel_dest = parent.join(path_part);
-                let root_dest = Path::new(path_part);
-                if !rel_dest.exists() && !root_dest.exists() {
-                    broken.push((file.display().to_string(), target.to_string()));
-                }
-            }
-        }
-    }
-
-    if !broken.is_empty() {
-        eprintln!("Found {} broken markdown link(s):", broken.len());
-        for (f, l) in &broken {
-            eprintln!("  In {}: broken link target -> {}", f, l);
-        }
-        exit(1);
-    }
-    println!(
-        "All markdown documentation links in {} files resolved successfully.",
-        md_files.len()
-    );
-}
-
-fn collect_md_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name == "target"
-                    || name == ".git"
-                    || name == "node_modules"
-                    || name.starts_with("cargo-machete")
-                    || name == "artifacts"
-                    || name == "dist"
-                {
-                    continue;
-                }
-                collect_md_files(&path, out);
-            } else if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
-                out.push(path);
-            }
-        }
-    }
-}
-
-fn extract_md_links(content: &str) -> Vec<String> {
-    let mut links = Vec::new();
-    let mut rest = content;
-    while let Some(start_bracket) = rest.find('[') {
-        rest = &rest[start_bracket + 1..];
-        if let Some(end_bracket) = rest.find(']') {
-            let after_bracket = &rest[end_bracket + 1..];
-            if after_bracket.starts_with('(') {
-                if let Some(end_paren) = after_bracket.find(')') {
-                    let link = &after_bracket[1..end_paren];
-                    links.push(link.trim().to_string());
-                    rest = &after_bracket[end_paren + 1..];
-                } else {
-                    rest = after_bracket;
-                }
-            } else {
-                rest = after_bracket;
-            }
-        }
-    }
-    links
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::markdown_links::{collect_md_files, extract_md_links};
 
     #[test]
     fn test_git_hooks_path_configuration() {
@@ -481,6 +409,7 @@ mod tests {
         assert!(help.contains("lint-all"));
         assert!(help.contains("check-entropy"));
         assert!(help.contains("check-vulnerabilities"));
+        assert!(help.contains("test-policy-audit"));
         assert!(help.contains("web-e2e"));
     }
 }

@@ -2,6 +2,22 @@
 (function () {
     const DEFAULT_STALL_TIMEOUT_MS = 12000;
 
+    function clearStaleIsolationFlags() {
+        try {
+            window.sessionStorage.removeItem('coiReloadedBySelf');
+            window.sessionStorage.removeItem('coiCoepHasFailed');
+        } catch (_err) {
+            // Ignore storage errors in restricted browser modes
+        }
+    }
+
+    function isIsolationReloading() {
+        return Boolean(
+            window.__mathExplorerIsolation &&
+            window.__mathExplorerIsolation.status === 'reloading'
+        );
+    }
+
     const ERROR_CATEGORIES = {
         network: {
             title: 'Network Error Loading Math Explorer',
@@ -28,6 +44,19 @@
             ],
             alert:
                 'WebAssembly startup error. Cached files may be corrupted. Select Reload Page to retry.'
+        },
+        isolation: {
+            title: 'Cross-Origin Isolation & WebAssembly Initialization Failed',
+            message:
+                'Math Explorer could not initialize its WebAssembly engine because cross-origin isolation (Service Workers or SharedArrayBuffer) is unavailable or blocked in this browser environment.',
+            heading: 'Restore Browser Isolation & Site Data Support',
+            steps: [
+                'Open Math Explorer in a standard browser window instead of Private or Incognito mode (Firefox Private Browsing and restricted WebViews disable Service Workers).',
+                'Allow site data and Service Worker registration for this site over HTTPS or localhost.',
+                'Temporarily disable extensions or enterprise policies that block Service Workers, SharedArrayBuffer, or WebAssembly compilation, then select Reload Page.'
+            ],
+            alert:
+                'Cross-origin isolation and WebAssembly initialization failed. Allow Service Workers and SharedArrayBuffer, then select Reload Page.'
         },
         timeout: {
             title: 'Startup Timed Out',
@@ -220,7 +249,7 @@
     }
 
     function showError(category, details) {
-        if (isUnloading || window.sessionStorage.getItem('coiReloadedBySelf')) {
+        if (isUnloading || isIsolationReloading()) {
             return;
         }
         const resolvedCategory = Object.prototype.hasOwnProperty.call(ERROR_CATEGORIES, category)
@@ -336,7 +365,7 @@
         const timeoutMs = resolveStallTimeoutMs();
         stallTimerId = window.setTimeout(function () {
             stallTimerId = null;
-            if (!isBootPending() || isUnloading) {
+            if (!isBootPending() || isUnloading || isIsolationReloading()) {
                 return;
             }
             showError(
@@ -348,8 +377,10 @@
 
     function attachDomBindings() {
         const reloadButton = document.querySelector('.reload-btn');
-        if (reloadButton) {
+        if (reloadButton && !reloadButton.dataset.reloadBound) {
+            reloadButton.dataset.reloadBound = 'true';
             reloadButton.addEventListener('click', function () {
+                clearStaleIsolationFlags();
                 window.location.reload();
             });
         }
@@ -430,7 +461,7 @@
     recordProgress('Loading startup scripts');
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', attachDomBindings);
+        document.addEventListener('DOMContentLoaded', attachDomBindings, { once: true });
     } else {
         attachDomBindings();
     }

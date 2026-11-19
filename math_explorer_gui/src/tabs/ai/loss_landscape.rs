@@ -38,6 +38,7 @@ impl Default for LossLandscapeTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct LossLandscapeState {
     w_min: f64,
     w_max: f64,
@@ -67,21 +68,23 @@ impl InteractiveTool for LossLandscapeTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: LossLandscapeState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid LossLandscapeTool state: {e}"))?;
-        if !s.w_min.is_finite()
-            || !s.w_max.is_finite()
-            || !s.b_min.is_finite()
-            || !s.b_max.is_finite()
-            || s.resolution < 2
+        let parsed: LossLandscapeState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid loss landscape state: {e}"))?;
+        if !parsed.w_min.is_finite()
+            || !parsed.w_max.is_finite()
+            || parsed.w_min >= parsed.w_max
+            || !parsed.b_min.is_finite()
+            || !parsed.b_max.is_finite()
+            || parsed.b_min >= parsed.b_max
+            || !(10..=50).contains(&parsed.resolution)
         {
-            return Err("Invalid bounds or resolution in LossLandscapeTool".to_string());
+            return Err("Loss landscape parameter bounds or grid resolution invalid".into());
         }
-        self.w_min = s.w_min;
-        self.w_max = s.w_max;
-        self.b_min = s.b_min;
-        self.b_max = s.b_max;
-        self.resolution = s.resolution;
+        self.w_min = parsed.w_min;
+        self.w_max = parsed.w_max;
+        self.b_min = parsed.b_min;
+        self.b_max = parsed.b_max;
+        self.resolution = parsed.resolution;
         Ok(())
     }
 
@@ -246,11 +249,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "w_min": -0.5,
-    "w_max": 4.5,
-    "b_min": -1.5,
-    "b_max": 3.5,
-    "resolution": 25
+    "w_min": -1.0,
+    "w_max": 5.0,
+    "b_min": -2.0,
+    "b_max": 4.0,
+    "resolution": 30
   }
 }"#;
 
@@ -258,7 +261,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "loss_landscape_starter",
         title: "Loss Landscape",
-        description: "Optimization surface geometry and gradient descent saddle point exploration in weight space.",
+        description: "2D linear regression Mean Squared Error (MSE) loss surface L(w, b) over weight and bias space.",
         category: "Optimization",
         icon: "⛰️",
         domain: "ai",

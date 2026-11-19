@@ -200,12 +200,6 @@ impl InteractiveTool for AttractorPlotter {
         self.deserialize_state(state)
     }
 
-    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        self.import_preset_json(json_str)?;
-        self.execution_state = SolverExecutionState::Running;
-        Ok(())
-    }
-
     fn step_simulation(&mut self) {
         if self.diverged() {
             return;
