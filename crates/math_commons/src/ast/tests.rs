@@ -80,6 +80,78 @@ fn test_equation_prefix_handling() {
 }
 
 #[test]
+fn test_case_insensitive_constants_and_precedence() {
+    use std::f64::consts::{E, PI, TAU};
+
+    let mut real_vars = HashMap::new();
+    real_vars.insert("pi".into(), 99.0);
+    real_vars.insert("PI".into(), 88.0);
+    real_vars.insert("e".into(), -1.0);
+    real_vars.insert("tau".into(), 0.0);
+    real_vars.insert("t".into(), 42.0);
+    real_vars.insert("y".into(), 77.0);
+
+    let expr_real = parse("PI + Tau - E").expect("parse real constants");
+    let expected_real = PI + TAU - E;
+    assert!((expr_real.eval(&real_vars).unwrap() - expected_real).abs() < 1e-12);
+    assert!((expr_real.eval_2d(2.0, 3.0, &real_vars) - expected_real).abs() < 1e-12);
+
+    let expr_ode_vars = parse("T + 2 * Y + Pi").expect("parse ode vars");
+    assert!((expr_ode_vars.eval_2d(2.0, 3.0, &real_vars) - (8.0 + PI)).abs() < 1e-12);
+
+    let mut complex_vars = HashMap::new();
+    complex_vars.insert("pi".into(), Complex64::new(99.0, 0.0));
+    complex_vars.insert("i".into(), Complex64::new(5.0, 5.0));
+    complex_vars.insert("I".into(), Complex64::new(6.0, 6.0));
+
+    let expr_c = parse("PI + Tau * I - E * i").expect("parse complex constants");
+    let expected_c = Complex64::new(PI, TAU - E);
+    let val_c = expr_c.eval_complex(&complex_vars).unwrap();
+    assert!((val_c - expected_c).norm() < 1e-12);
+
+    let expr_z = parse("Z * I + PI + Tau - E").expect("parse complex z");
+    let z = Complex64::new(2.0, -1.0);
+    let expected_z = z * Complex64::i() + Complex64::new(PI + TAU - E, 0.0);
+    assert!((expr_z.eval_complex_z(z) - expected_z).norm() < 1e-12);
+}
+
+#[test]
+fn test_case_insensitive_variable_map_lookups() {
+    let mut vars = HashMap::new();
+    vars.insert("Alpha_1".into(), 3.5);
+    vars.insert("BETA".into(), 2.0);
+    vars.insert("k".into(), 2.0);
+    vars.insert("K".into(), 9.0);
+
+    let expr = parse("alpha_1 * beta").expect("parse mixed-case lookup");
+    assert!((expr.eval(&vars).unwrap() - 7.0).abs() < 1e-12);
+    assert!((expr.eval_2d(0.0, 0.0, &vars) - 7.0).abs() < 1e-12);
+
+    // Exact match takes priority before case-insensitive scan
+    assert_eq!(parse("k").unwrap().eval(&vars).unwrap(), 2.0);
+    assert_eq!(parse("K").unwrap().eval(&vars).unwrap(), 9.0);
+    assert_eq!(parse("k").unwrap().eval_2d(0.0, 0.0, &vars), 2.0);
+    assert_eq!(parse("K").unwrap().eval_2d(0.0, 0.0, &vars), 9.0);
+
+    let mut cvars = HashMap::new();
+    cvars.insert("Gain".into(), Complex64::new(1.5, -0.5));
+    let cval = parse("GAIN * 2").unwrap().eval_complex(&cvars).unwrap();
+    assert!((cval - Complex64::new(3.0, -1.0)).norm() < 1e-12);
+
+    let missing = parse("unknown_var").unwrap();
+    assert_eq!(
+        missing.eval(&vars),
+        Err(EvalError::UnknownVariable("unknown_var".into()))
+    );
+    assert_eq!(
+        missing.eval_complex(&cvars),
+        Err(EvalError::UnknownVariable("unknown_var".into()))
+    );
+    assert!(missing.eval_2d(1.0, 2.0, &vars).is_nan());
+    assert!(missing.eval_complex_z(Complex64::new(1.0, 0.0)).re.is_nan());
+}
+
+#[test]
 fn test_error_recovery_and_syntax_validation() {
     // Empty expression
     assert_eq!(parse(""), Err(ParseError::EmptyExpression));
