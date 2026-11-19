@@ -241,6 +241,21 @@ jobs:
         if: matrix.target == 'wasm32-unknown-unknown'
         run: bash scripts/verify_wasm_budget.sh math_explorer_gui/dist
 
+      - name: Set up Python Playwright and Chromium
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/web-e2e-venv"
+          echo "$RUNNER_TEMP/web-e2e-venv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/web-e2e-venv/bin/pip" install --upgrade pip "pytest>=8.0,<10.0" "playwright>=1.48,<2.0"
+          "$RUNNER_TEMP/web-e2e-venv/bin/python" -m playwright install chromium
+          sudo "$RUNNER_TEMP/web-e2e-venv/bin/python" -m playwright install-deps chromium
+
+      - name: Run Browser E2E Suite
+        if: matrix.target == 'wasm32-unknown-unknown'
+        env:
+          PYTHON: ${{ runner.temp }}/web-e2e-venv/bin/python
+        run: cargo run -p xtask -- web-e2e --skip-build
+
       - name: Code Signing (Windows)
         if: runner.os == 'Windows'
         shell: bash

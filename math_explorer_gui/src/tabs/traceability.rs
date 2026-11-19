@@ -75,6 +75,7 @@ struct PaperStatus {
 
 impl Default for TraceabilityTab {
     fn default() -> Self {
+        #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
         let mut tab = Self {
             papers: HashMap::new(),
             orphaned_papers: Vec::new(),
@@ -84,6 +85,7 @@ impl Default for TraceabilityTab {
             report_rx: None,
             state: TraceabilityScanState::Idle,
         };
+        #[cfg(not(target_arch = "wasm32"))]
         tab.refresh();
         tab
     }

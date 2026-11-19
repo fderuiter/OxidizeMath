@@ -18,7 +18,7 @@ jobs:
   build:
     name: Build Web Application
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -32,6 +32,19 @@ jobs:
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: wasm32-unknown-unknown
+
+      - name: Cache dependencies
+        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-pages-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-pages-
 
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
@@ -48,6 +61,19 @@ jobs:
 
       - name: Verify WebAssembly Size Budget
         run: bash scripts/verify_wasm_budget.sh math_explorer_gui/dist
+
+      - name: Set up Python Playwright and Chromium
+        run: |
+          python3 -m venv "$RUNNER_TEMP/web-e2e-venv"
+          echo "$RUNNER_TEMP/web-e2e-venv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/web-e2e-venv/bin/pip" install --upgrade pip "pytest>=8.0,<10.0" "playwright>=1.48,<2.0"
+          "$RUNNER_TEMP/web-e2e-venv/bin/python" -m playwright install chromium
+          sudo "$RUNNER_TEMP/web-e2e-venv/bin/python" -m playwright install-deps chromium
+
+      - name: Run Browser E2E Suite
+        env:
+          PYTHON: ${{ runner.temp }}/web-e2e-venv/bin/python
+        run: cargo run -p xtask -- web-e2e --skip-build
 
       - name: Generate SHA-256 Manifest
         shell: bash

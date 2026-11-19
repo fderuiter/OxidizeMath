@@ -24,3 +24,6 @@ temp/
 *.log
 papers/output/
 dist/
+__pycache__/
+*.pyc
+.pytest_cache/

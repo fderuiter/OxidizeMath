@@ -22,6 +22,7 @@ These commands run automated checks in git hooks or CI.
 | `traceability` | Generates and checks the traceability report. | Active |
 | `verify-records` | Verifies structural records. | Active |
 | `verify-suite` | Runs the high-integrity verification suite. | Active |
+| `web-e2e` | Builds `math_explorer_gui/dist` and runs headless Chromium Playwright E2E tests. | Active |
 
 ### Legacy Utility Tasks
 These commands are used for manual repository maintenance or legacy workflows.

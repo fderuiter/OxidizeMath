@@ -89,7 +89,7 @@ impl SimulationController {
     // theory_verification!
     pub fn new<T: SimulationRunner>(runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(4);
+        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(64);
         let initial_snapshot = runner.get_snapshot();
 
         let ctx = WorkerContext {
@@ -115,33 +115,45 @@ impl SimulationController {
     #[cfg(target_arch = "wasm32")]
     // theory_verification!
     fn spawn_web_worker_or_local(handle: u32) -> Option<web_sys::Worker> {
+        use wasm_bindgen::JsCast;
         let mut opt_worker = None;
-        let worker_opts = web_sys::WorkerOptions::new();
-        worker_opts.set_type(web_sys::WorkerType::Module);
-        if let Ok(worker) = web_sys::Worker::new_with_options("worker.js", &worker_opts) {
-            let msg = js_sys::Object::new();
-            let _ = js_sys::Reflect::set(
-                &msg,
-                &wasm_bindgen::JsValue::from_str("type"),
-                &wasm_bindgen::JsValue::from_str("init"),
-            );
-            let _ = js_sys::Reflect::set(
-                &msg,
-                &wasm_bindgen::JsValue::from_str("module"),
-                &wasm_bindgen::module(),
-            );
-            let _ = js_sys::Reflect::set(
-                &msg,
-                &wasm_bindgen::JsValue::from_str("memory"),
-                &wasm_bindgen::memory(),
-            );
-            let _ = js_sys::Reflect::set(
-                &msg,
-                &wasm_bindgen::JsValue::from_str("handle"),
-                &wasm_bindgen::JsValue::from_f64(handle as f64),
-            );
-            if worker.post_message(&msg).is_ok() {
-                opt_worker = Some(worker);
+        let has_shared_memory = js_sys::Reflect::get(
+            &wasm_bindgen::memory(),
+            &wasm_bindgen::JsValue::from_str("buffer"),
+        )
+        .map(|buf| buf.is_instance_of::<js_sys::SharedArrayBuffer>())
+        .unwrap_or(false);
+
+        if has_shared_memory {
+            let worker_opts = web_sys::WorkerOptions::new();
+            worker_opts.set_type(web_sys::WorkerType::Module);
+            if let Ok(worker) = web_sys::Worker::new_with_options("worker.js", &worker_opts) {
+                let msg = js_sys::Object::new();
+                let _ = js_sys::Reflect::set(
+                    &msg,
+                    &wasm_bindgen::JsValue::from_str("type"),
+                    &wasm_bindgen::JsValue::from_str("init"),
+                );
+                let _ = js_sys::Reflect::set(
+                    &msg,
+                    &wasm_bindgen::JsValue::from_str("module"),
+                    &wasm_bindgen::module(),
+                );
+                let _ = js_sys::Reflect::set(
+                    &msg,
+                    &wasm_bindgen::JsValue::from_str("memory"),
+                    &wasm_bindgen::memory(),
+                );
+                let _ = js_sys::Reflect::set(
+                    &msg,
+                    &wasm_bindgen::JsValue::from_str("handle"),
+                    &wasm_bindgen::JsValue::from_f64(handle as f64),
+                );
+                if worker.post_message(&msg).is_ok() {
+                    opt_worker = Some(worker);
+                } else {
+                    worker.terminate();
+                }
             }
         }
 

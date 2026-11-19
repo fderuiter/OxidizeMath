@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 mod papers;
+mod web_e2e;
 
 use std::env;
 use std::fs;
@@ -33,6 +34,7 @@ fn main() {
         "check-vulnerabilities" => check_vulnerabilities(),
         "lint-workflows" => lint_workflows(),
         "regenerate-baseline" => regenerate_baseline(),
+        "web-e2e" => web_e2e::run_web_e2e(&args[2..]),
         _ => {
             println!("Unknown command");
             exit(1);
@@ -61,7 +63,10 @@ fn print_help() {
     println!("  test-features            - Run tests across feature combinations");
     println!("  traceability             - Generate traceability report");
     println!("  verify-records           - Verify verification records");
-    println!("  verify-suite             - Run high-integrity verified suite\n");
+    println!("  verify-suite             - Run high-integrity verified suite");
+    println!(
+        "  web-e2e                  - Build WebAssembly GUI and run headless Chromium E2E tests\n"
+    );
     println!("Legacy Utility Tasks:");
     println!("  compile-papers           - Compile academic papers with Tectonic");
     println!("  regenerate-baseline      - Regenerate public API baseline");
@@ -476,5 +481,6 @@ mod tests {
         assert!(help.contains("lint-all"));
         assert!(help.contains("check-entropy"));
         assert!(help.contains("check-vulnerabilities"));
+        assert!(help.contains("web-e2e"));
     }
 }

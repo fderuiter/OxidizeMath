@@ -7,7 +7,19 @@ use super::{
 use std::sync::mpsc::{Receiver, SyncSender};
 use wasm_bindgen::JsCast;
 
-/// Wakes up the Web Worker if it is suspended.
+fn wake_map_object(global: &wasm_bindgen::JsValue) -> Option<js_sys::Object> {
+    let key = wasm_bindgen::JsValue::from_str("__sim_worker_wakers");
+    if let Ok(existing) = js_sys::Reflect::get(global, &key) {
+        if let Ok(obj) = existing.dyn_into::<js_sys::Object>() {
+            return Some(obj);
+        }
+    }
+    let created = js_sys::Object::new();
+    js_sys::Reflect::set(global, &key, &created).ok()?;
+    Some(created)
+}
+
+/// Wakes up the Web Worker (or any suspended local WASM workers) if suspended.
 pub fn wake_worker() {
     let global = js_sys::global();
     if let Ok(wake_fn) = js_sys::Reflect::get(
@@ -17,6 +29,16 @@ pub fn wake_worker() {
         if wake_fn.is_function() {
             let func = wake_fn.unchecked_into::<js_sys::Function>();
             let _ = func.call0(&wasm_bindgen::JsValue::UNDEFINED);
+        }
+    }
+    if let Some(map_obj) = wake_map_object(&global) {
+        let values = js_sys::Object::values(&map_obj);
+        for idx in 0..values.length() {
+            let entry = values.get(idx);
+            if entry.is_function() {
+                let func = entry.unchecked_into::<js_sys::Function>();
+                let _ = func.call0(&wasm_bindgen::JsValue::UNDEFINED);
+            }
         }
     }
 }
@@ -45,21 +67,42 @@ async fn yield_to_event_loop() {
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }
 
-async fn suspend_worker() {
+async fn suspend_worker(handle: u32) {
+    let handle_key = handle.to_string();
+    let is_dedicated_worker = js_sys::global()
+        .dyn_into::<web_sys::DedicatedWorkerGlobalScope>()
+        .is_ok();
     let promise = js_sys::Promise::new(&mut |resolve, _| {
         let global = js_sys::global();
-        let _ = js_sys::Reflect::set(
-            &global,
-            &wasm_bindgen::JsValue::from_str("__sim_worker_wake"),
-            &resolve,
-        );
+        if let Some(map_obj) = wake_map_object(&global) {
+            let _ = js_sys::Reflect::set(
+                &map_obj,
+                &wasm_bindgen::JsValue::from_str(&handle_key),
+                &resolve,
+            );
+        }
+        if is_dedicated_worker {
+            let _ = js_sys::Reflect::set(
+                &global,
+                &wasm_bindgen::JsValue::from_str("__sim_worker_wake"),
+                &resolve,
+            );
+        }
     });
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
     let global = js_sys::global();
-    let _ = js_sys::Reflect::delete_property(
-        &global,
-        &wasm_bindgen::JsValue::from_str("__sim_worker_wake"),
-    );
+    if let Some(map_obj) = wake_map_object(&global) {
+        let _ = js_sys::Reflect::delete_property(
+            &map_obj,
+            &wasm_bindgen::JsValue::from_str(&handle_key),
+        );
+    }
+    if is_dedicated_worker {
+        let _ = js_sys::Reflect::delete_property(
+            &global,
+            &wasm_bindgen::JsValue::from_str("__sim_worker_wake"),
+        );
+    }
 }
 
 /// Sets up the event listener for wake messages in DedicatedWorkerGlobalScope.
@@ -99,19 +142,19 @@ fn process_wasm_commands(
         match cmd {
             SimCommand::Start => {
                 *state = SimWorkerState::Running;
-                let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Running));
+                let _ = state_tx.try_send(SimStateUpdate::Status(WorkerStatusEvent::Running));
             }
             SimCommand::Pause => {
                 *state = SimWorkerState::Ready;
-                let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+                let _ = state_tx.try_send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
             }
             SimCommand::Reset => {
                 *state = SimWorkerState::Ready;
                 emit_paused_snapshot = false;
                 runner.process_command(SimCommand::Reset);
                 let snapshot = runner.get_snapshot();
-                let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
-                let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+                let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
+                let _ = state_tx.try_send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
             }
             SimCommand::SetSpeed(speed) => {
                 *steps_per_frame = speed;
@@ -120,7 +163,7 @@ fn process_wasm_commands(
             SimCommand::TrainEpisodes(_) => {
                 *state = SimWorkerState::Running;
                 runner.process_command(cmd);
-                let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Running));
+                let _ = state_tx.try_send(SimStateUpdate::Status(WorkerStatusEvent::Running));
             }
             SimCommand::ApplyBrush { .. } | SimCommand::ClearObstacles | SimCommand::Custom(_) => {
                 runner.process_command(cmd);
@@ -168,10 +211,10 @@ fn step_wasm_runner(
                 "Non-finite floating-point state encountered",
             )
         });
-        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Faulted(
+        let _ = state_tx.try_send(SimStateUpdate::Status(WorkerStatusEvent::Faulted(
             report.message.clone(),
         )));
-        let _ = state_tx.send(SimStateUpdate::Divergence(report));
+        let _ = state_tx.try_send(SimStateUpdate::Divergence(report));
         let snapshot = runner.get_snapshot();
         let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
         return;
@@ -181,8 +224,8 @@ fn step_wasm_runner(
     let snapshot = runner.get_snapshot();
     if is_done {
         *state = SimWorkerState::Ready;
-        let _ = state_tx.send(SimStateUpdate::Snapshot(snapshot));
-        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+        let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
+        let _ = state_tx.try_send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
     } else {
         let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
     }
@@ -202,17 +245,22 @@ pub async fn run_simulation_worker(handle: u32) {
 
     let mut state = SimWorkerState::Ready;
     let mut steps_per_frame = runner.get_steps_per_frame();
-    let _ = state_tx.send(SimStateUpdate::Snapshot(runner.get_snapshot()));
-    let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+    let _ = state_tx.try_send(SimStateUpdate::Snapshot(runner.get_snapshot()));
+    let _ = state_tx.try_send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
 
     loop {
-        let cmd_opt = if state.is_running() {
-            cmd_rx.try_recv().ok()
-        } else if let Ok(c) = cmd_rx.try_recv() {
-            Some(c)
-        } else {
-            suspend_worker().await;
-            cmd_rx.try_recv().ok()
+        let cmd_opt = match cmd_rx.try_recv() {
+            Ok(c) => Some(c),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+            Err(std::sync::mpsc::TryRecvError::Empty) if state.is_running() => None,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                suspend_worker(handle).await;
+                match cmd_rx.try_recv() {
+                    Ok(c) => Some(c),
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+                    Err(std::sync::mpsc::TryRecvError::Empty) => None,
+                }
+            }
         };
 
         if let Some(first_cmd) = cmd_opt {

@@ -1,17 +1,13 @@
 [build]
 target = "index.html"
 filehash = false
+inject_scripts = false
 public_url = "./"
 rustflags = ["-C", "target-feature=+atomics,+bulk-memory", "-C", "strip=debuginfo"]
 wasm-opt = "z"
 
+[tools]
+wasm_opt = "version_123"
+
 [serve]
 headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp", "Content-Security-Policy" = "default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' blob:;" }
-
-[[hooks]]
-stage = "post_build"
-command = "bash"
-command_arguments = [
-    "-c",
-    "for f in \"$TRUNK_STAGING_DIR\"/*.wasm \"$TRUNK_STAGING_DIR\"/*.js \"$TRUNK_STAGING_DIR\"/*.html \"$TRUNK_STAGING_DIR\"/*.css; do if [ -f \"$f\" ]; then gzip -k -9 -f \"$f\" && brotli -k -9 -f \"$f\"; fi; done"
-]

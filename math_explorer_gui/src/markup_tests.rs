@@ -76,4 +76,20 @@ mod tests {
             "Fallback text should be descriptive (at least 10 chars), got: {trimmed_text}"
         );
     }
+
+    #[test]
+    fn test_favicons_and_external_bootstrap_present() {
+        assert!(
+            INDEX_HTML.contains("rel=\"icon\"") && INDEX_HTML.contains("href=\"icon.ico\""),
+            "index.html must declare icon.ico favicon link"
+        );
+        assert!(
+            INDEX_HTML.contains("href=\"32x32.png\""),
+            "index.html must declare 32x32.png favicon link"
+        );
+        assert!(
+            INDEX_HTML.contains("src=\"bootstrap.js\""),
+            "index.html must load external bootstrap.js module under strict CSP"
+        );
+    }
 }

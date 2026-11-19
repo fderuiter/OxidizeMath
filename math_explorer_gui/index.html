@@ -5,11 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' blob:;">
     <title>Math Explorer GUI</title>
+    <link rel="icon" type="image/x-icon" href="icon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="32x32.png">
+    <link data-trunk rel="copy-file" href="icons/icon.ico"/>
+    <link data-trunk rel="copy-file" href="icons/32x32.png"/>
     <script src="coi-serviceworker.min.js"></script>
     <link data-trunk rel="copy-file" href="coi-serviceworker.min.js"/>
     <script src="reload.js"></script>
     <link data-trunk rel="copy-file" href="reload.js"/>
-    <link data-trunk rel="rust" href="Cargo.toml" data-bin="math_explorer_gui" data-wasm-opt="z"/>
+    <script id="wasm_bootstrap_script" type="module" src="bootstrap.js"></script>
+    <link data-trunk rel="copy-file" href="bootstrap.js"/>
+    <link data-trunk rel="rust" href="Cargo.toml" data-bin="math_explorer_gui" data-wasm-opt="z" data-wasm-opt-params="--enable-reference-types --enable-bulk-memory --enable-mutable-globals --enable-nontrapping-float-to-int --enable-sign-ext"/>
     <link data-trunk rel="copy-file" href="worker.js"/>
     <style>
         html, body {
@@ -258,10 +264,10 @@
     </noscript>
 
     <!-- Visual loading indicator while WebAssembly and shaders compile -->
-    <div id="loading_indicator" role="status" aria-live="polite" aria-busy="true">
+    <div id="loading_indicator" role="status" aria-live="polite" aria-busy="true" data-stage="initial">
         <div class="spinner" aria-hidden="true"></div>
         <div class="loading-title">Loading Math Explorer...</div>
-        <p class="loading-subtitle">Initializing WebAssembly &amp; graphics engine</p>
+        <p id="loading_subtitle" class="loading-subtitle">Initializing WebAssembly &amp; graphics engine</p>
     </div>
 
     <!-- WebGL error boundary shown if hardware acceleration or WebGL fails -->
