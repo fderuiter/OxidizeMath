@@ -15,25 +15,21 @@ pub enum TraceabilityScanState {
 
 #[allow(missing_docs)]
 impl TraceabilityScanState {
-    #[allow(missing_docs)]
     pub fn is_scanning(&self) -> bool {
         matches!(self, Self::Scanning)
     }
 
     #[cfg(test)]
-    #[allow(missing_docs)]
     pub fn is_ready(&self) -> bool {
         matches!(self, Self::Ready)
     }
 
     #[cfg(test)]
-    #[allow(missing_docs)]
     pub fn is_failed(&self) -> bool {
         matches!(self, Self::Failed(_))
     }
 
     #[cfg(test)]
-    #[allow(missing_docs)]
     pub fn error(&self) -> Option<&str> {
         match self {
             Self::Failed(err) => Some(err.as_str()),
@@ -92,39 +88,30 @@ impl Default for TraceabilityTab {
 #[allow(missing_docs)]
 impl TraceabilityTab {
     #[cfg(test)]
-    #[allow(missing_docs)]
     pub fn retry(&mut self) {
         self.refresh();
     }
 
     #[cfg(test)]
-    #[allow(missing_docs)]
     pub fn error_message(&self) -> Option<&str> {
         self.state.error()
     }
 
-    #[allow(missing_docs)]
     pub fn paper_url(name: &str) -> Option<String> {
+        const BASE: &str = "https://fderuiter.github.io/OxidizeMath";
         let clean = name.strip_prefix("papers/").unwrap_or(name);
         if let Some(stem) = clean.strip_suffix(".tex") {
-            Some(format!(
-                "https://fderuiter.github.io/OxidizeMath/{}.pdf",
-                stem
-            ))
+            Some(format!("{BASE}/{stem}.pdf"))
         } else if clean.ends_with(".pdf") {
-            Some(format!("https://fderuiter.github.io/OxidizeMath/{}", clean))
+            Some(format!("{BASE}/{clean}"))
         } else if !clean.starts_with("spec:") && !clean.starts_with("registry:") {
-            Some(format!(
-                "https://fderuiter.github.io/OxidizeMath/{}.pdf",
-                clean
-            ))
+            Some(format!("{BASE}/{clean}.pdf"))
         } else {
             None
         }
     }
 
     #[cfg(test)]
-    #[allow(missing_docs)]
     pub fn online_document_url(&self, name: &str) -> Option<String> {
         let clean = name.strip_prefix("papers/").unwrap_or(name);
         let is_tracked = self.papers.keys().any(|k| {
@@ -146,16 +133,32 @@ impl TraceabilityTab {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    fn has_workspace_header(manifest: &str) -> bool {
+        manifest.lines().any(|line| {
+            let h = line.split('#').next().unwrap_or("").trim();
+            let k = h.strip_prefix('[').and_then(|s| s.strip_suffix(']'));
+            k.is_some_and(|s| {
+                let key = s.trim();
+                !s.starts_with('[')
+                    && !s.ends_with(']')
+                    && (key == "workspace"
+                        || key
+                            .strip_prefix("workspace")
+                            .is_some_and(|rest| rest.trim_start().starts_with('.')))
+            })
+        })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn canonical_workspace_root() -> Option<std::path::PathBuf> {
         let cwd = std::env::current_dir().ok()?.canonicalize().ok()?;
-        for ancestor in cwd.ancestors().take(64) {
-            if let Ok(manifest) = std::fs::read_to_string(ancestor.join("Cargo.toml")) {
-                if manifest.contains("[workspace]") {
-                    return Some(ancestor.to_path_buf());
-                }
-            }
-        }
-        Some(cwd)
+        cwd.ancestors()
+            .take(64)
+            .find(|dir| {
+                std::fs::read_to_string(dir.join("Cargo.toml"))
+                    .is_ok_and(|m| Self::has_workspace_header(&m))
+            })
+            .map(std::path::Path::to_path_buf)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
