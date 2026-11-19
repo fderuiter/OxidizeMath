@@ -343,10 +343,10 @@ impl InteractiveTool for QTableInspectorTool {
         "ai"
     }
     fn save_state(&self) -> Option<String> {
-        self.serialize_state()
+        self.save_preset_state()
     }
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        self.deserialize_state(state)
+        self.try_load_preset_state(state)
     }
 
     fn show(&mut self, ctx: &egui::Context) {

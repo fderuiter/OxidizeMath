@@ -75,8 +75,9 @@ impl InteractiveTool for GraphEditorTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded =
-            serde_json::from_str::<SerializedGraphState>(state).map_err(|e| e.to_string())?;
+        let loaded: SerializedGraphState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid graph state: {e}"))?;
+        loaded.validate()?;
         self.node_positions = loaded
             .node_positions
             .into_iter()

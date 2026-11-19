@@ -17,6 +17,7 @@ enum Algorithm {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AlgorithmVisualizerState {
     selected_algorithm: Algorithm,
     start_node: Option<usize>,
@@ -392,8 +393,19 @@ impl InteractiveTool for AlgorithmVisualizerTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded = serde_json::from_str::<AlgorithmVisualizerState>(state)
-            .map_err(|e| e.to_string())?;
+        let loaded: AlgorithmVisualizerState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid AlgorithmVisualizer state: {e}"))?;
+        if !loaded.playback_speed.is_finite() || !(0.5..=5.0).contains(&loaded.playback_speed) {
+            return Err(format!(
+                "playback_speed out of [0.5, 5.0]: {}",
+                loaded.playback_speed
+            ));
+        }
+        if let Some(id) = loaded.start_node {
+            if !self.node_indices.contains_key(&id) {
+                return Err(format!("Unknown start_node id: {id}"));
+            }
+        }
         self.selected_algorithm = loaded.selected_algorithm;
         self.start_node = loaded.start_node;
         self.playback_speed = loaded.playback_speed;

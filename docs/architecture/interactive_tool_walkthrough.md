@@ -85,16 +85,57 @@ impl TheoryDescribable for HarmonicOscillatorTool {
 
 ### Step 3: Implement the `InteractiveTool` Trait
 
-Implement `InteractiveTool`. Provide `name()`, `theory()`, parameter controls in `show_ui()`, and canvas rendering in `draw()`:
+Implement `InteractiveTool`. Provide `name()`, `domain()`, `theory()`, validated state serialization (`save_state()` and `try_load_state()` using `#[serde(deny_unknown_fields)]`), parameter controls in `show_ui()`, and canvas rendering in `draw()`:
 
 ```rust,ignore
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HarmonicOscillatorState {
+    mass: f32,
+    spring_k: f32,
+    damping: f32,
+}
+
 impl InteractiveTool for HarmonicOscillatorTool {
     fn name(&self) -> &'static str {
         "Harmonic Oscillator"
     }
 
+    fn domain(&self) -> &'static str {
+        "physics"
+    }
+
     fn theory(&self) -> &dyn TheoryDescribable {
         self
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&HarmonicOscillatorState {
+            mass: self.mass,
+            spring_k: self.spring_k,
+            damping: self.damping,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded: HarmonicOscillatorState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid oscillator state: {e}"))?;
+        if !loaded.mass.is_finite() || !(0.1..=10.0).contains(&loaded.mass) {
+            return Err("mass must be finite in [0.1, 10.0]".to_string());
+        }
+        if !loaded.spring_k.is_finite() || !(0.1..=50.0).contains(&loaded.spring_k) {
+            return Err("spring_k must be finite in [0.1, 50.0]".to_string());
+        }
+        if !loaded.damping.is_finite() || !(0.0..=2.0).contains(&loaded.damping) {
+            return Err("damping must be finite in [0.0, 2.0]".to_string());
+        }
+        self.mass = loaded.mass;
+        self.spring_k = loaded.spring_k;
+        self.damping = loaded.damping;
+        self.position = 1.0;
+        self.velocity = 0.0;
+        Ok(())
     }
 
     fn show_ui(&mut self, ui: &mut egui::Ui) {
@@ -128,11 +169,27 @@ impl InteractiveTool for HarmonicOscillatorTool {
 }
 ```
 
-### Step 4: Register with Tool Metadata
+Implementing `domain()`, `save_state()`, and `try_load_state()` automatically enables JSON preset export (`export_preset_json`), validated JSON preset import (`import_preset_json`), baseline parameter reset, and Starter Gallery template dispatch.
 
-Submit your tool metadata with the `inventory::submit!` macro at the bottom of the file:
+### Step 4: Register Tool and Starter Preset Metadata
+
+Submit your `ToolMetadata` and `StarterPresetMetadata` entries with `inventory::submit!` at the bottom of the file. Ensure `STARTER_PRESET_JSON` wraps a `"config"` object matching your `#[serde(deny_unknown_fields)]` state struct and a `"metadata.domain"` matching `domain()`:
 
 ```rust,ignore
+const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Underdamped Harmonic Oscillator",
+    "domain": "physics",
+    "timestamp": "2026-11-18T00:00:00Z"
+  },
+  "config": {
+    "mass": 1.0,
+    "spring_k": 10.0,
+    "damping": 0.1
+  }
+}"#;
+
 inventory::submit! {
     math_explorer_gui::framework::ToolMetadata {
         id: "HarmonicOscillatorTool",
@@ -140,6 +197,19 @@ inventory::submit! {
         domain: "physics",
         tags: &["mechanics", "differential_equations", "oscillator"],
         build: || Box::new(HarmonicOscillatorTool::default()),
+    }
+}
+
+inventory::submit! {
+    math_explorer_gui::starter_gallery::StarterPresetMetadata {
+        id: "harmonic_oscillator_starter",
+        title: "Underdamped Harmonic Oscillator",
+        description: "m·x'' + c·x' + k·x = 0: Damped Hookean spring-mass oscillation.",
+        category: "Classical Mechanics",
+        icon: "🌀",
+        domain: "physics",
+        tool_name: Some("HarmonicOscillatorTool"),
+        preset_generator: || STARTER_PRESET_JSON,
     }
 }
 ```

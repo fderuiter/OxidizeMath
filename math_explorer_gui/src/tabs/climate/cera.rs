@@ -68,6 +68,7 @@ impl FiniteStateGuard for CeraTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CeraState {
     in_channels: usize,
     latent_channels: usize,
@@ -103,7 +104,15 @@ impl InteractiveTool for CeraTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: CeraState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid CeraTool state: {e}"))?;
+            serde_json::from_str(state).map_err(|e| format!("Invalid CERA state: {e}"))?;
+        if s.in_channels == 0
+            || s.latent_channels == 0
+            || s.aligned_channels == 0
+            || s.num_levels == 0
+            || s.output_size == 0
+        {
+            return Err("CERA channel and level counts must be positive".into());
+        }
         self.in_channels = s.in_channels;
         self.latent_channels = s.latent_channels;
         self.aligned_channels = s.aligned_channels;
@@ -285,7 +294,7 @@ impl scientific_metadata::theory::TheoryDescribable for CeraTool {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Energy Balance Model",
+    "title": "CERA Climate Alignment",
     "domain": "climate",
     "timestamp": "2026-11-16T00:00:00Z"
   },
@@ -301,8 +310,8 @@ const STARTER_PRESET_JSON: &str = r#"{
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "cera_starter",
-        title: "Energy Balance Model",
-        description: "C·dT/dt = S(1 - α) - (A + B·T): Zeroth-order planetary radiative equilibrium and feedback loops.",
+        title: "CERA Climate Alignment",
+        description: "Climate-invariant multi-level latent representation alignment across atmospheric regimes.",
         category: "Climate Modeling",
         icon: "🌍",
         domain: "climate",

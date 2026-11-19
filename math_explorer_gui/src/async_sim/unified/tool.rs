@@ -260,12 +260,9 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn save_state(&self) -> Option<String> {
-        let params = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        serde_json::to_string(&params).ok()
+        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let sorted: std::collections::BTreeMap<&String, &f64> = params.iter().collect();
+        serde_json::to_string(&sorted).ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
@@ -294,14 +291,13 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                 ));
             }
         }
-        let mut guard = self
-            .params
-            .write()
-            .map_err(|_| format!("Failed to acquire parameter lock for {}", M::name()))?;
-        for (key, value) in params {
-            guard.insert(key, value);
+        {
+            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
+            for (key, value) in params {
+                guard.insert(key, value);
+            }
         }
-        drop(guard);
+        self.texture = None;
         self.reset_simulation(None);
         Ok(())
     }

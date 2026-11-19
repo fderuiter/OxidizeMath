@@ -360,9 +360,15 @@ impl InteractiveTool for AttentionMapsTool {
     fn name(&self) -> &'static str {
         "Attention Maps"
     }
-    fn domain(&self) -> &'static str { "ai" }
-    fn save_state(&self) -> Option<String> { self.serialize_state() }
-    fn try_load_state(&mut self, state: &str) -> Result<(), String> { self.deserialize_state(state) }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+    fn save_state(&self) -> Option<String> {
+        self.save_preset_state()
+    }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.try_load_preset_state(state)
+    }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::raster_only()

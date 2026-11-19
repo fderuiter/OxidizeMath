@@ -3,7 +3,7 @@ use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard, RecoveryAction};
 use crate::framework::{PlaybackAction, PlaybackTransport};
-use crate::presets::{InteractivePreset, PresetDialogState};
+use crate::presets::PresetDialogState;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use math_explorer::biology::diffusion::FiniteDifference2D;
@@ -35,7 +35,7 @@ pub struct MorphogenesisTab {
     width: usize,
     height: usize,
     texture: Option<egui::TextureHandle>,
-    dialog_state: PresetDialogState,
+    pub(crate) dialog_state: PresetDialogState,
     pixels: Vec<egui::Color32>,
     dirty: bool,
     pub show_starter_gallery: bool,
@@ -190,10 +190,11 @@ impl ExplorerTab for MorphogenesisTab {
                 &cards,
                 &mut is_open,
             ) {
-                if let Some(preset_json) = card.preset_json {
-                    if let Err(err) = self.from_json_str(preset_json) {
-                        self.dialog_state.record_import_error(err);
-                    }
+                if self
+                    .apply_starter_card(card.title, card.preset_json)
+                    .is_ok()
+                {
+                    ctx.request_repaint();
                 }
                 is_open = false;
             }
@@ -301,7 +302,7 @@ impl MorphogenesisTab {
         }
     }
 
-    fn draw_controls(&mut self, ctx: &egui::Context) {
+    pub(crate) fn draw_controls(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("morphogenesis_controls").show(ctx, |ui| {
             ui.heading("Morphogenesis Controls");
             if ui.button("🎨 Starter Gallery").clicked() {

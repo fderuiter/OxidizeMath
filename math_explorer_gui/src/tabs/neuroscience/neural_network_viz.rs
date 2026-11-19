@@ -188,8 +188,10 @@ impl NeuralNetworkVizTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct NeuralNetworkVizState {
     external_input: Vec<f64>,
+    #[serde(default)]
     weights: Vec<Vec<f64>>,
     dt: f64,
     is_running: bool,
@@ -221,31 +223,41 @@ impl InteractiveTool for NeuralNetworkVizTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: NeuralNetworkVizState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid NeuralNetworkVizTool state: {e}"))?;
+            .map_err(|e| format!("Invalid neural network viz state: {e}"))?;
         let n = s.external_input.len();
-        if n == 0
-            || s.weights.len() != n
-            || s.weights
+        let weights_valid = s.weights.is_empty()
+            || (s.weights.len() == n
+                && s.weights
+                    .iter()
+                    .all(|row| row.len() == n && row.iter().all(|w| w.is_finite())));
+        if !(1..=32).contains(&n)
+            || !weights_valid
+            || !s
+                .external_input
                 .iter()
-                .any(|row| row.len() != n || row.iter().any(|w| !w.is_finite()))
-            || s.external_input.iter().any(|v| !v.is_finite())
+                .all(|v| v.is_finite() && (-10.0..=50.0).contains(v))
             || !s.dt.is_finite()
-            || s.dt <= 0.0
+            || !(0.001..=0.5).contains(&s.dt)
         {
-            return Err(
-                "Invalid network dimensions or non-finite values in NeuralNetworkVizTool"
-                    .to_string(),
-            );
+            return Err("NeuralNetworkViz parameters or dimensions out of bounds".into());
         }
-        let radius = 100.0;
-        self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
-        self.positions = (0..n)
-            .map(|i| {
-                let angle = i as f32 * TAU / n as f32;
-                [angle.cos() * radius, angle.sin() * radius]
-            })
-            .collect();
-        self.weights = s.weights;
+        if s.weights.is_empty() && n == 5 {
+            self.reset();
+        } else {
+            let radius = 100.0;
+            self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
+            self.positions = (0..n)
+                .map(|i| {
+                    let angle = i as f32 * TAU / n as f32;
+                    [angle.cos() * radius, angle.sin() * radius]
+                })
+                .collect();
+            self.weights = if s.weights.is_empty() {
+                vec![vec![0.0; n]; n]
+            } else {
+                s.weights
+            };
+        }
         self.external_input = s.external_input;
         self.dt = s.dt;
         self.is_running = s.is_running;
@@ -335,7 +347,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "neural_network_viz_starter",
         title: "Spiking Neural Circuit",
-        description: "Multi-layer synaptic weight propagation and receptive field neuron activation patterns.",
+        description: "Coupled 5-neuron Hodgkin-Huxley ring circuit with excitatory and inhibitory synaptic currents.",
         category: "Neural Circuits",
         icon: "⚡",
         domain: "neuroscience",

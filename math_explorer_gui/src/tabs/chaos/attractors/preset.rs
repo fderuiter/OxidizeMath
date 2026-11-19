@@ -7,6 +7,7 @@ const fn default_annotations_enabled() -> bool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AttractorState {
     sigma: f64,
     rho: f64,
@@ -39,8 +40,17 @@ impl AttractorPlotter {
     pub(super) fn deserialize_state(&mut self, state: &str) -> Result<(), String> {
         let s: AttractorState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid AttractorPlotter state: {e}"))?;
-        if !s.sigma.is_finite() || !s.rho.is_finite() || !s.beta.is_finite() || !s.dt.is_finite() {
-            return Err("AttractorPlotter parameters must be finite".to_string());
+        if !s.sigma.is_finite()
+            || !s.rho.is_finite()
+            || !s.beta.is_finite()
+            || !s.dt.is_finite()
+            || s.dt <= 0.0
+            || s.simulation_speed == 0
+        {
+            return Err(
+                "AttractorPlotter parameters must be finite with dt > 0 and simulation_speed > 0"
+                    .to_string(),
+            );
         }
         self.system.sigma = s.sigma;
         self.system.rho = s.rho;

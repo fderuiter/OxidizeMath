@@ -61,6 +61,7 @@ impl TheoryDescribable for BifurcationDiagram {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BifurcationState {
     r_min: f64,
     r_max: f64,
@@ -88,8 +89,17 @@ impl InteractiveTool for BifurcationDiagram {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: BifurcationState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid BifurcationDiagram state: {e}"))?;
+        let s: BifurcationState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid bifurcation state: {e}"))?;
+        if !s.r_min.is_finite()
+            || !s.r_max.is_finite()
+            || !(0.0..=4.0).contains(&s.r_min)
+            || !(0.0..=4.0).contains(&s.r_max)
+            || s.r_min >= s.r_max
+            || !(100..=2000).contains(&s.steps)
+        {
+            return Err("Bifurcation r bounds or step count invalid".into());
+        }
         self.r_min = s.r_min;
         self.r_max = s.r_max;
         self.steps = s.steps;
@@ -241,7 +251,7 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "r_min": 2.5,
     "r_max": 4.0,
-    "steps": 1000
+    "steps": 800
   }
 }"#;
 

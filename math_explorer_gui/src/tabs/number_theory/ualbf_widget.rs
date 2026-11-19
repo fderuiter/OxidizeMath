@@ -25,6 +25,7 @@ impl Default for UalbfWidget {
 use crate::framework::InteractiveTool;
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct UalbfState {
     limit_p: u64,
     max_exponent: u32,
@@ -55,14 +56,18 @@ impl InteractiveTool for UalbfWidget {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: UalbfState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid UalbfWidget state: {e}"))?;
-        if s.limit_p < 2 || s.max_exponent == 0 || !s.stop_threshold_log.is_finite() {
-            return Err("Invalid parameters in UalbfWidget".to_string());
+        let parsed: UalbfState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid UALBF state: {e}"))?;
+        if !(100..=10_000).contains(&parsed.limit_p)
+            || !(1..=4).contains(&parsed.max_exponent)
+            || !parsed.stop_threshold_log.is_finite()
+            || !(10.0..=15.0).contains(&parsed.stop_threshold_log)
+        {
+            return Err("UALBF parameters out of bounds".into());
         }
-        self.limit_p = s.limit_p;
-        self.max_exponent = s.max_exponent;
-        self.stop_threshold_log = s.stop_threshold_log;
+        self.limit_p = parsed.limit_p;
+        self.max_exponent = parsed.max_exponent;
+        self.stop_threshold_log = parsed.stop_threshold_log;
         self.result = None;
         self.status_message = String::from("Ready. Configure parameters and click Run.");
         Ok(())
@@ -185,7 +190,7 @@ impl scientific_metadata::theory::TheoryDescribable for UalbfWidget {
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Universal Arithmetic Logic",
+    "title": "UALBF Quasiperfect Search",
     "domain": "number_theory",
     "timestamp": "2026-11-16T00:00:00Z"
   },
@@ -199,9 +204,9 @@ const STARTER_PRESET_JSON: &str = r#"{
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "ualbf_starter",
-        title: "Universal Arithmetic Logic",
-        description: "Bitwise boolean evaluation, modular ring arithmetic, and congruency lattice operations.",
-        category: "Modular Arithmetic",
+        title: "UALBF Quasiperfect Search",
+        description: "Unified Algebraic-Lattice Bipartition Framework search for quasiperfect number lower bounds.",
+        category: "Number Theory",
         icon: "🧮",
         domain: "number_theory",
         tool_name: Some("UalbfWidget"),
