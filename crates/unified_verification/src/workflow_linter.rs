@@ -267,51 +267,15 @@ pub fn validate_job_timeouts(yaml: &Value) -> Result<(), String> {
     Ok(())
 }
 
-fn is_pinned_commit_hash(action_ref: &str) -> bool {
-    let trimmed = action_ref.trim();
-    if trimmed.starts_with("./") {
-        return true;
-    }
-    match trimmed.rsplit_once('@') {
-        Some((_action, ref_part)) => {
-            let ref_trimmed = ref_part.trim();
-            ref_trimmed.len() == 40 && ref_trimmed.chars().all(|c| c.is_ascii_hexdigit())
-        }
-        None => false,
-    }
+/// Validates job-level reusable workflow `uses` and step-level action `uses` relative to `repo_root`.
+pub fn validate_action_pinning_in_dir(yaml: &Value, repo_root: &Path) -> Result<(), String> {
+    let mut state = pinning::PinningState::default();
+    pinning::validate_workflow_jobs(yaml, repo_root, &mut state)
 }
 
+/// Validates job-level reusable workflow `uses` and step-level action `uses` relative to `.`.
 pub fn validate_action_pinning(yaml: &Value) -> Result<(), String> {
-    let jobs = match yaml.get("jobs") {
-        Some(Value::Object(map)) => map,
-        Some(_) => return Err("Workflow 'jobs' block must be a mapping.".to_string()),
-        None => return Ok(()),
-    };
-
-    for (job_name, job_val) in jobs {
-        let Some(steps) = job_val.get("steps").and_then(|s| s.as_array()) else {
-            continue;
-        };
-
-        for step in steps {
-            if let Some(uses_val) = step.get("uses") {
-                let Some(uses_str) = uses_val.as_str() else {
-                    return Err(format!(
-                        "Job '{}' contains a step with an invalid 'uses' attribute.",
-                        job_name
-                    ));
-                };
-                if !is_pinned_commit_hash(uses_str) {
-                    return Err(format!(
-                        "Action '{}' in job '{}' must be pinned to a 40-character commit hash.",
-                        uses_str, job_name
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(())
+    validate_action_pinning_in_dir(yaml, Path::new("."))
 }
 
 /// Validates that workflow `run` scripts do not directly interpolate `${{ github.* }}` expressions.
@@ -369,8 +333,16 @@ pub fn validate_run_script_expressions(yaml: &Value) -> Result<(), String> {
     Ok(())
 }
 
-fn lint_workflow_file(path: &Path, exceptions: &[JobPermissionException]) -> bool {
+fn lint_workflow_file(
+    path: &Path,
+    repo_root: &Path,
+    exceptions: &[JobPermissionException],
+) -> bool {
     let path_str = path.to_string_lossy();
+    if let Err(msg) = docker::canonicalize_within(path, repo_root, &path_str, "repository root") {
+        eprintln!("Error in {}: {}", path_str, msg);
+        return false;
+    }
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) => {
@@ -393,11 +365,16 @@ fn lint_workflow_file(path: &Path, exceptions: &[JobPermissionException]) -> boo
     } else {
         validate_permissions_with_exceptions(&yaml, Some(path), exceptions)
     };
+    let pin_res = if repo_root == Path::new(".") {
+        validate_action_pinning(&yaml)
+    } else {
+        validate_action_pinning_in_dir(&yaml, repo_root)
+    };
     for check in [
         perm_res,
         validate_concurrency_block(&yaml).map_err(str::to_string),
         validate_job_timeouts(&yaml),
-        validate_action_pinning(&yaml),
+        pin_res,
         validate_run_script_expressions(&yaml),
     ] {
         if let Err(msg) = check {
@@ -409,9 +386,10 @@ fn lint_workflow_file(path: &Path, exceptions: &[JobPermissionException]) -> boo
     passed
 }
 
-/// Lints all `.yml`/`.yaml` workflows inside `workflows_dir` using exceptions from `whitelist_path`.
+/// Lints all `.yml`/`.yaml` workflows inside `workflows_dir` and `.github/actions` manifests using `whitelist_path`.
 pub fn lint_workflows_in_dir(workflows_dir: &Path, whitelist_path: Option<&Path>) -> bool {
-    if !workflows_dir.exists() {
+    let (repo_root, actions_dir) = docker::infer_repo_and_actions_dirs(workflows_dir);
+    if !workflows_dir.exists() && !actions_dir.exists() {
         println!("No .github/workflows directory found. Skipping workflow linting.");
         return true;
     }
@@ -419,18 +397,32 @@ pub fn lint_workflows_in_dir(workflows_dir: &Path, whitelist_path: Option<&Path>
     let exceptions = load_workflow_exceptions(whitelist_path);
     let mut all_passed = true;
 
-    for entry in WalkDir::new(workflows_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        if entry.path().is_file() {
-            let path_str = entry.path().to_string_lossy();
-            if (path_str.ends_with(".yml") || path_str.ends_with(".yaml"))
-                && !lint_workflow_file(entry.path(), &exceptions)
+    if workflows_dir.exists() {
+        for entry in WalkDir::new(workflows_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+            let path_str = path.to_string_lossy();
+            if entry.file_type().is_symlink()
+                && let Err(msg) =
+                    docker::canonicalize_within(path, &repo_root, &path_str, "repository root")
+            {
+                eprintln!("Error in {}: {}", path_str, msg);
+                all_passed = false;
+                continue;
+            }
+            if path.is_file()
+                && (path_str.ends_with(".yml") || path_str.ends_with(".yaml"))
+                && !lint_workflow_file(path, &repo_root, &exceptions)
             {
                 all_passed = false;
             }
         }
+    }
+
+    if !docker::lint_actions_dir(&actions_dir, &repo_root) {
+        all_passed = false;
     }
 
     if all_passed {
@@ -442,12 +434,14 @@ pub fn lint_workflows_in_dir(workflows_dir: &Path, whitelist_path: Option<&Path>
     all_passed
 }
 
-/// Lints all GitHub Actions workflows in `.github/workflows`.
+/// Lints all GitHub Actions workflows in `.github/workflows` and composite actions in `.github/actions`.
 pub fn lint_workflows() -> bool {
     lint_workflows_in_dir(Path::new(".github/workflows"), None)
 }
 
+mod docker;
 mod expressions;
+mod pinning;
 #[cfg(test)]
 #[path = "workflow_linter/policy_tests.rs"]
 mod policy_tests;
