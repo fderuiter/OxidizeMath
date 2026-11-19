@@ -93,6 +93,13 @@ jobs:
           $SHACMD "${files[@]}" > SHA256SUMS
           $SHACHECK SHA256SUMS
 
+      - name: Upload Pages checksum manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pages-sha256sums
+          path: math_explorer_gui/dist/SHA256SUMS
+          if-no-files-found: error
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
@@ -109,7 +116,24 @@ jobs:
     permissions:
       pages: write
       id-token: write
+      attestations: write
     steps:
+      - name: Download Pages checksum manifest
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        with:
+          name: pages-sha256sums
+          path: pages-checksums
+
+      - name: Attest Pages build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: pages-checksums/SHA256SUMS
+
+      - name: Attest Pages checksum manifest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: pages-checksums/SHA256SUMS
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

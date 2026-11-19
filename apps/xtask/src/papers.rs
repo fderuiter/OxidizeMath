@@ -181,7 +181,7 @@ fn is_safe_bundle_filename(name: &str) -> bool {
         && (name.ends_with(".pdf")
             || name == "Verification_Certificate.json"
             || name == "index.html")
-        && name != "SHA256SUMS"
+        && !name.starts_with("SHA256SUMS")
 }
 
 fn collect_bundle_artifacts(output_dir: &Path) -> Vec<String> {
@@ -221,16 +221,38 @@ fn build_checksum_args<'a>(cmd: &str, checksum_targets: &'a [String]) -> Vec<&'a
     cmd_args
 }
 
+fn detect_sha256_cmd() -> &'static str {
+    if Command::new("sha256sum").arg("--version").output().is_ok() {
+        "sha256sum"
+    } else {
+        "shasum"
+    }
+}
+
+fn build_check_args<'a>(cmd: &str, manifest_name: &'a str) -> Vec<&'a str> {
+    if cmd == "shasum" {
+        vec!["-a", "256", "-c", "--", manifest_name]
+    } else {
+        vec!["-c", "--", manifest_name]
+    }
+}
+
 pub fn package_release_bundle(output_dir: &Path) {
     let cert_path = Path::new("Verification_Certificate.json");
     if cert_path.exists() {
-        let _ = fs::copy(cert_path, output_dir.join("Verification_Certificate.json"));
+        fs::copy(cert_path, output_dir.join("Verification_Certificate.json"))
+            .expect("Failed to copy Verification_Certificate.json");
     }
 
-    let bundle_file = output_dir.join("papers-bundle.tar.gz");
-    let files_to_pack = collect_bundle_artifacts(output_dir);
-    let tar_args = build_tar_args(&files_to_pack);
+    let inner_artifacts = collect_bundle_artifacts(output_dir);
+    write_sha256_manifest(output_dir, "SHA256SUMS", &inner_artifacts);
 
+    let mut files_to_pack = inner_artifacts;
+    files_to_pack.push("SHA256SUMS".to_string());
+    files_to_pack.sort();
+
+    let bundle_file = output_dir.join("papers-bundle.tar.gz");
+    let tar_args = build_tar_args(&files_to_pack);
     let tar_status = Command::new("tar")
         .current_dir(output_dir)
         .args(&tar_args)
@@ -242,24 +264,18 @@ pub fn package_release_bundle(output_dir: &Path) {
     }
     println!("Created release bundle at {:?}", bundle_file);
 
-    // Generate SHA256 checksums
-    generate_sha256sums(output_dir);
+    let outer_targets = vec!["papers-bundle.tar.gz".to_string()];
+    write_sha256_manifest(output_dir, "SHA256SUMS-papers", &outer_targets);
 }
 
-fn generate_sha256sums(output_dir: &Path) {
-    let (cmd, flag) = if Command::new("sha256sum").arg("--version").output().is_ok() {
-        ("sha256sum", "-c")
-    } else {
-        ("shasum", "-c")
-    };
+fn write_sha256_manifest(output_dir: &Path, manifest_name: &str, checksum_targets: &[String]) {
+    if checksum_targets.is_empty() {
+        eprintln!("Error: no checksum targets found for {}.", manifest_name);
+        exit(1);
+    }
 
-    let mut checksum_targets = vec!["papers-bundle.tar.gz".to_string()];
-    checksum_targets.extend(collect_bundle_artifacts(output_dir));
-    checksum_targets.sort();
-    checksum_targets.dedup();
-
-    let cmd_args = build_checksum_args(cmd, &checksum_targets);
-
+    let cmd = detect_sha256_cmd();
+    let cmd_args = build_checksum_args(cmd, checksum_targets);
     let output = Command::new(cmd)
         .current_dir(output_dir)
         .args(&cmd_args)
@@ -267,24 +283,23 @@ fn generate_sha256sums(output_dir: &Path) {
 
     match output {
         Ok(out) if out.status.success() => {
-            let sums_path = output_dir.join("SHA256SUMS");
+            let sums_path = output_dir.join(manifest_name);
             fs::write(&sums_path, &out.stdout).unwrap();
-            println!("Generated SHA256SUMS at {:?}", sums_path);
+            println!("Generated {} at {:?}", manifest_name, sums_path);
 
+            let check_args = build_check_args(cmd, manifest_name);
             let check_status = Command::new(cmd)
                 .current_dir(output_dir)
-                .arg(flag)
-                .arg("--")
-                .arg("SHA256SUMS")
+                .args(&check_args)
                 .status();
             if !check_status.map(|s| s.success()).unwrap_or(false) {
-                eprintln!("Checksum verification failed!");
+                eprintln!("Checksum verification failed for {}!", manifest_name);
                 exit(1);
             }
-            println!("SHA256 checksums successfully verified.");
+            println!("{} successfully verified.", manifest_name);
         }
         _ => {
-            eprintln!("Error generating SHA-256 sums.");
+            eprintln!("Error generating SHA-256 sums for {}.", manifest_name);
             exit(1);
         }
     }

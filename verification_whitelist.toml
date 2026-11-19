@@ -29,13 +29,13 @@ allowlist = [
 [[workflow_linter.exceptions]]
 workflow = ".github/workflows/ci.yml"
 job = "publish-release"
-allow_write = ["contents"]
-reason = "Publishing GitHub Releases on version tags requires contents: write"
+allow_write = ["contents", "attestations", "id-token"]
+reason = "Publishing GitHub Releases and SLSA provenance attestations on version tags requires contents: write, attestations: write, and id-token: write"
 
 [[workflow_linter.exceptions]]
 workflow = ".github/workflows/pages.yml"
 job = "deploy"
-allow_write = ["pages", "id-token"]
-reason = "Deploying to GitHub Pages requires pages: write and id-token: write"
+allow_write = ["pages", "id-token", "attestations"]
+reason = "Deploying to GitHub Pages with SLSA provenance attestations requires pages: write, id-token: write, and attestations: write"
 
 

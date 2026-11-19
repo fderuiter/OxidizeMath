@@ -46,6 +46,7 @@ fn test_is_safe_bundle_filename_rejects_leading_dashes() {
         "--checkpoint-action=exec=touch CANARY_PWNED.pdf"
     ));
     assert!(!is_safe_bundle_filename("SHA256SUMS"));
+    assert!(!is_safe_bundle_filename("SHA256SUMS-papers"));
     assert!(!is_safe_bundle_filename("notes.txt"));
 }
 
@@ -125,7 +126,7 @@ fn test_package_release_bundle_prevents_option_injection() {
         "Option injection payload must not execute during bundle creation"
     );
 
-    // Verify archive exists and contains only legitimate artifacts
+    // Verify archive exists and contains SHA256SUMS plus legitimate inner artifacts
     let bundle_path = temp.path.join("papers-bundle.tar.gz");
     assert!(bundle_path.exists(), "Release bundle should be created");
 
@@ -143,18 +144,90 @@ fn test_package_release_bundle_prevents_option_injection() {
     assert_eq!(
         entries,
         vec![
+            "SHA256SUMS".to_string(),
             "Verification_Certificate.json".to_string(),
             "index.html".to_string(),
             "paper_alpha.pdf".to_string(),
         ]
     );
 
-    // Verify SHA256SUMS excludes dash-prefixed entries and includes valid artifacts
+    // Verify inner SHA256SUMS hashes inner artifacts only and excludes dash-prefixed entries
     let sums = fs::read_to_string(temp.path.join("SHA256SUMS")).expect("SHA256SUMS missing");
-    assert!(sums.contains("papers-bundle.tar.gz"));
+    assert!(!sums.contains("papers-bundle.tar.gz"));
     assert!(sums.contains("paper_alpha.pdf"));
     assert!(sums.contains("index.html"));
     assert!(sums.contains("Verification_Certificate.json"));
     assert!(!sums.contains("--checkpoint"));
     assert!(!sums.contains("CANARY_PWNED.pdf"));
+
+    // Verify outer SHA256SUMS-papers hashes only papers-bundle.tar.gz
+    let outer_sums =
+        fs::read_to_string(temp.path.join("SHA256SUMS-papers")).expect("SHA256SUMS-papers missing");
+    assert!(outer_sums.contains("papers-bundle.tar.gz"));
+    assert!(!outer_sums.contains("paper_alpha.pdf"));
+    assert!(!outer_sums.contains("index.html"));
+    assert!(!outer_sums.contains("Verification_Certificate.json"));
+    assert_eq!(outer_sums.lines().count(), 1);
+}
+
+#[test]
+#[cfg(unix)]
+fn test_split_manifests_verify_in_isolated_release_and_extracted_dirs() {
+    let build_dir = TempOutputDir::new("split_build");
+    fs::write(build_dir.path.join("paper_one.pdf"), b"%PDF-1.4 one\n").unwrap();
+    fs::write(build_dir.path.join("paper_two.pdf"), b"%PDF-1.4 two\n").unwrap();
+    fs::write(build_dir.path.join("index.html"), b"<html>index</html>").unwrap();
+    fs::write(
+        build_dir.path.join("Verification_Certificate.json"),
+        b"{\"passed\":true}",
+    )
+    .unwrap();
+
+    package_release_bundle(&build_dir.path);
+
+    let cmd = detect_sha256_cmd();
+
+    // Simulate release-assets/ containing only papers-bundle.tar.gz and SHA256SUMS-papers
+    let release_dir = TempOutputDir::new("split_release");
+    fs::copy(
+        build_dir.path.join("papers-bundle.tar.gz"),
+        release_dir.path.join("papers-bundle.tar.gz"),
+    )
+    .unwrap();
+    fs::copy(
+        build_dir.path.join("SHA256SUMS-papers"),
+        release_dir.path.join("SHA256SUMS-papers"),
+    )
+    .unwrap();
+
+    let outer_check = Command::new(cmd)
+        .current_dir(&release_dir.path)
+        .args(build_check_args(cmd, "SHA256SUMS-papers"))
+        .status()
+        .expect("failed to run checksum check on SHA256SUMS-papers");
+    assert!(
+        outer_check.success(),
+        "SHA256SUMS-papers must verify cleanly"
+    );
+
+    // Extract papers-bundle.tar.gz into an empty directory and verify internal SHA256SUMS
+    let extract_dir = TempOutputDir::new("split_extract");
+    let extract_status = Command::new("tar")
+        .arg("-xzf")
+        .arg(release_dir.path.join("papers-bundle.tar.gz"))
+        .arg("-C")
+        .arg(&extract_dir.path)
+        .status()
+        .expect("failed to extract papers-bundle.tar.gz");
+    assert!(extract_status.success());
+
+    let inner_check = Command::new(cmd)
+        .current_dir(&extract_dir.path)
+        .args(build_check_args(cmd, "SHA256SUMS"))
+        .status()
+        .expect("failed to run checksum check on extracted SHA256SUMS");
+    assert!(
+        inner_check.success(),
+        "Extracted SHA256SUMS must verify cleanly"
+    );
 }

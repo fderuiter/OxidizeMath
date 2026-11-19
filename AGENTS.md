@@ -19,10 +19,23 @@ Markdown verification gates:
 
 ## 2. CI Pre-Flight & Quality Gates
 
-Before opening or updating a pull request, run the repository quality gates defined in [.github/workflows/ci.yml](.github/workflows/ci.yml):
+Before opening or updating a pull request, run the full workspace verification suite aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [.github/workflows/ci.yml](.github/workflows/ci.yml) (all NASA Power of 10 coding and safety standards remain authoritative in [CONTRIBUTING.md](CONTRIBUTING.md)):
 
 ```bash
-# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA action pins)
+# Run all workspace quality gates in one command (format, clippy, duplicates, file-lengths, docs, doctests, markdown links, workflow lints, doc audit, traceability, entropy, vulnerabilities)
+cargo run -p xtask -- lint-all
+```
+
+You can also invoke individual CI pre-flight checks directly while iterating:
+
+```bash
+# Check formatting and workspace Clippy lints (60-line function limit in .clippy.toml)
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Lint GitHub Actions workflows (.github/workflows/ci.yml and .github/workflows/pages.yml):
+# enforces global permissions: read-all, scoped job write exceptions in verification_whitelist.toml,
+# global concurrency, positive timeout-minutes, and 40-char hexadecimal commit SHA action pinning
 cargo run -p unified_verification --release -- lint-workflows
 
 # Verify crate documentation and workspace rustdoc builds
@@ -87,3 +100,53 @@ Clean up local `math_explorer_gui/dist` build outputs before committing so untra
 ```bash
 rm -rf math_explorer_gui/dist
 ```
+
+## 4. Local Paper Bundling & Split Checksum Verification
+
+The `compile-papers` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) downloads the fresh `Verification_Certificate.json` artifact produced by `build-and-test`, compiles all 28 LaTeX papers via [apps/xtask/src/papers.rs](apps/xtask/src/papers.rs), and emits split SHA-256 manifests so both downloaded release archives and extracted paper bundles verify cleanly.
+
+### Prerequisites (Ubuntu / Debian)
+
+```bash
+sudo apt-get update
+sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science texlive-binaries
+```
+
+### Compile Papers & Verify Split Manifests
+
+```bash
+# Optional: regenerate a fresh Verification_Certificate.json locally (requires cargo-llvm-cov)
+# cargo run -p unified_verification --release -- verify-suite
+
+# Compile all 28 PDFs, index.html, papers-bundle.tar.gz, SHA256SUMS, and SHA256SUMS-papers
+cargo run -p xtask -- compile-papers
+
+# 1. Verify outer release manifest (hashes only papers-bundle.tar.gz)
+(
+  cd papers/output
+  sha256sum -c SHA256SUMS-papers
+)
+
+# 2. Extract papers-bundle.tar.gz into a clean directory and verify internal SHA256SUMS
+#    (hashes all 28 .pdf files, index.html, and Verification_Certificate.json)
+(
+  verify_dir="$(mktemp -d)"
+  trap 'rm -rf "$verify_dir"' EXIT
+  tar -xzf papers/output/papers-bundle.tar.gz -C "$verify_dir"
+  cd "$verify_dir"
+  sha256sum -c SHA256SUMS
+)
+```
+
+### Consolidated Release Manifest & SLSA Provenance Rules
+
+```text
+Release asset & attestation invariants (.github/workflows/ci.yml & .github/workflows/pages.yml):
+- release-assets/SHA256SUMS hashes only deliverable binaries (.deb, .dmg, .msi/.exe),
+  papers-bundle.tar.gz, and fresh Verification_Certificate.json (omitting all SHA256SUMS* files).
+- Prepare release assets fails with exit code 1 if any expected platform installer,
+  papers-bundle.tar.gz, Verification_Certificate.json, or SHA256SUMS-papers is missing.
+- publish-release (ci.yml) and deploy (pages.yml) generate GitHub SLSA v1.0 provenance
+  attestations via actions/attest-build-provenance; build jobs remain strictly read-only.
+```
+
