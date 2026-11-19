@@ -1,6 +1,6 @@
-use crate::framework::InteractiveTool;
+use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{Line, PlotPoints};
 use math_commons::math_kernel::colormap::mapped_gradient;
 use math_explorer::pure_math::differential_geometry::surface::{
     KleinBottle, ParametricSurface, Sphere, SurfaceAnalysis, Torus,
@@ -21,7 +21,20 @@ enum CurvatureType {
     Mean,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize)]
+struct CurvatureHeatmapSaveState {
+    surface_type: SurfaceType,
+    curvature_type: CurvatureType,
+    sphere_radius: f64,
+    torus_major_radius: f64,
+    torus_minor_radius: f64,
+    klein_radius: f64,
+    u_resolution: usize,
+    v_resolution: usize,
+    camera: Camera3D,
+}
+
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CurvatureHeatmapState {
     surface_type: SurfaceType,
@@ -32,9 +45,14 @@ struct CurvatureHeatmapState {
     klein_radius: f64,
     u_resolution: usize,
     v_resolution: usize,
-    pitch: f32,
-    yaw: f32,
-    zoom: f32,
+    #[serde(default)]
+    camera: Option<Camera3D>,
+    #[serde(default)]
+    pitch: Option<f32>,
+    #[serde(default)]
+    yaw: Option<f32>,
+    #[serde(default)]
+    zoom: Option<f32>,
 }
 
 pub struct CurvatureHeatmap {
@@ -52,9 +70,7 @@ pub struct CurvatureHeatmap {
     v_resolution: usize,
 
     // View
-    pitch: f32,
-    yaw: f32,
-    zoom: f32,
+    camera: Camera3D,
 }
 
 impl Default for CurvatureHeatmap {
@@ -68,9 +84,7 @@ impl Default for CurvatureHeatmap {
             klein_radius: 2.0,
             u_resolution: 30,
             v_resolution: 30,
-            pitch: 0.5,
-            yaw: 0.5,
-            zoom: 1.0,
+            camera: Camera3D::new(0.5, 0.5, 1.0),
         }
     }
 }
@@ -78,21 +92,7 @@ impl Default for CurvatureHeatmap {
 impl CurvatureHeatmap {
     /// Projects a 3D point to 2D based on rotation and zoom
     fn project(&self, p: Point3<f64>) -> [f64; 2] {
-        // Rotation Matrix
-        // Yaw (around Z) - Assuming Z is up
-        let cy = (self.yaw as f64).cos();
-        let sy = (self.yaw as f64).sin();
-        let x1 = p.x * cy - p.y * sy;
-        let y1 = p.x * sy + p.y * cy;
-        let z1 = p.z;
-
-        // Pitch (around X)
-        let cp = (self.pitch as f64).cos();
-        let sp = (self.pitch as f64).sin();
-        let y2 = y1 * cp - z1 * sp;
-
-        // Apply zoom
-        [x1 * (self.zoom as f64), y2 * (self.zoom as f64)]
+        self.camera.project(&[p.x, p.y, p.z])
     }
 
     /// Maps a curvature value to a color.
@@ -193,7 +193,7 @@ impl InteractiveTool for CurvatureHeatmap {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&CurvatureHeatmapState {
+        serde_json::to_string(&CurvatureHeatmapSaveState {
             surface_type: self.surface_type,
             curvature_type: self.curvature_type,
             sphere_radius: self.sphere_radius,
@@ -202,9 +202,7 @@ impl InteractiveTool for CurvatureHeatmap {
             klein_radius: self.klein_radius,
             u_resolution: self.u_resolution,
             v_resolution: self.v_resolution,
-            pitch: self.pitch,
-            yaw: self.yaw,
-            zoom: self.zoom,
+            camera: self.camera,
         })
         .ok()
     }
@@ -240,13 +238,13 @@ impl InteractiveTool for CurvatureHeatmap {
         {
             return Err("Resolution out of valid range".to_string());
         }
-        if !loaded.pitch.is_finite()
-            || !loaded.yaw.is_finite()
-            || !loaded.zoom.is_finite()
-            || !(0.1..=5.0).contains(&loaded.zoom)
-        {
-            return Err("View parameters out of valid range".to_string());
-        }
+        let camera = Camera3D::from_preset_fields(
+            loaded.camera,
+            loaded.pitch,
+            loaded.yaw,
+            loaded.zoom,
+            None,
+        )?;
         self.surface_type = loaded.surface_type;
         self.curvature_type = loaded.curvature_type;
         self.sphere_radius = loaded.sphere_radius;
@@ -255,9 +253,7 @@ impl InteractiveTool for CurvatureHeatmap {
         self.klein_radius = loaded.klein_radius;
         self.u_resolution = loaded.u_resolution;
         self.v_resolution = loaded.v_resolution;
-        self.pitch = loaded.pitch;
-        self.yaw = loaded.yaw;
-        self.zoom = loaded.zoom;
+        self.camera.apply_pose(camera);
         Ok(())
     }
 
@@ -306,13 +302,7 @@ impl InteractiveTool for CurvatureHeatmap {
             });
 
             ui.collapsing("View", |ui| {
-                ui.label("Yaw");
-                ui.drag_angle(&mut self.yaw);
-
-                ui.label("Pitch");
-                ui.drag_angle(&mut self.pitch);
-
-                ui.add(egui::Slider::new(&mut self.zoom, 0.1..=5.0).text("Zoom"));
+                self.camera.ui(ui);
             });
 
             ui.collapsing("Resolution", |ui| {
@@ -345,9 +335,9 @@ impl InteractiveTool for CurvatureHeatmap {
                 }
             };
 
-            Plot::new("curvature_plot")
-                .data_aspect(1.0)
-                .show(ui, |plot_ui| {
+            Plot3DViewport::new("curvature_plot", 4.0)
+                .helper_text("Drag canvas or use WASD to orbit, scroll or Q/E to zoom, double-click or press R to reset view. Blue = Low Curvature, Red = High Curvature.")
+                .show(ui, &mut self.camera, |plot_ui| {
                     for (i, (line_points, color)) in lines.into_iter().enumerate() {
                         plot_ui.line(
                             Line::new("", PlotPoints::new(line_points))
@@ -356,8 +346,6 @@ impl InteractiveTool for CurvatureHeatmap {
                         );
                     }
                 });
-
-            ui.label("Drag 'Yaw' and 'Pitch' in the side panel to rotate the view. Blue = Low Curvature, Red = High Curvature.");
         });
     }
 }
@@ -417,9 +405,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "klein_radius": 2.0,
     "u_resolution": 36,
     "v_resolution": 36,
-    "pitch": 0.6,
-    "yaw": 0.4,
-    "zoom": 1.0
+    "camera": {
+      "pitch": 0.6,
+      "yaw": 0.4,
+      "zoom": 1.0
+    }
   }
 }"#;
 
@@ -433,5 +423,39 @@ inventory::submit! {
         domain: "geometry_topology",
         tool_name: Some("CurvatureHeatmap"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![cfg_attr(any(), verified(opt_out = "tests"))]
+
+    use super::*;
+
+    #[test]
+    fn curvature_heatmap_camera_preset_and_export_work() {
+        let tool = CurvatureHeatmap {
+            camera: Camera3D::new(0.7, -0.35, 1.4),
+            ..Default::default()
+        };
+        let saved = tool.save_state().expect("state should serialize");
+
+        let mut restored = CurvatureHeatmap::default();
+        restored
+            .try_load_state(&saved)
+            .expect("saved state should load");
+        assert!((restored.camera.pitch - 0.7).abs() < 1e-6);
+        assert!((restored.camera.yaw + 0.35).abs() < 1e-6);
+        assert!((restored.camera.zoom - 1.4).abs() < 1e-6);
+
+        let legacy = r#"{"surface_type":"Torus","curvature_type":"Mean","sphere_radius":1.0,"torus_major_radius":2.0,"torus_minor_radius":0.5,"klein_radius":2.0,"u_resolution":20,"v_resolution":20,"pitch":0.4,"yaw":0.8,"zoom":1.2}"#;
+        restored
+            .try_load_state(legacy)
+            .expect("legacy pitch/yaw/zoom preset should load");
+        assert!((restored.camera.yaw - 0.8).abs() < 1e-6);
+
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| restored.show(ctx));
+        assert!(!egui_plot::get_last_plot_datasets().is_empty());
     }
 }

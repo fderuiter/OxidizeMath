@@ -7,7 +7,7 @@ mod session;
 mod split_view;
 mod state;
 pub mod theme;
-mod ui_panels;
+pub(crate) mod ui_panels;
 mod viewport;
 
 #[cfg(test)]

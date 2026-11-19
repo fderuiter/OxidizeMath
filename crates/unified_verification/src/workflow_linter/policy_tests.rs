@@ -473,3 +473,24 @@ fn test_lint_workflows_audits_standalone_actions_and_canary_cases() {
     ));
     let _ = fs::remove_dir_all(&temp2);
 }
+
+#[test]
+fn test_rejects_composite_inputs_and_indirect_env_script_injections() {
+    let temp = make_temp_workspace("canary_script_injections");
+    let wf_dir = temp.join(".github/workflows");
+    write_fixture(
+        &temp,
+        ".github/actions/canary-composite/action.yml",
+        "runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: printf 'canary-composite:%s\\n' \"${{ github.event.pull_request.title }}\"\n",
+    );
+    assert!(!lint_workflows_in_dir(&wf_dir, None));
+    let _ = fs::remove_dir_all(&temp);
+    for bad_wf in [
+        "jobs:\n  d:\n    steps:\n      - run: printf 'canary-input:%s\\n' \"${{ inputs.canary_branch }}\"\n",
+        "env:\n  WORKFLOW_PR_TITLE: ${{ github.event.pull_request.title }}\njobs:\n  check:\n    env:\n      JOB_HEAD_REF: ${{ github.head_ref }}\n    steps:\n      - run: printf 'canary-env:%s:%s\\n' \"${{ env.WORKFLOW_PR_TITLE }}\" \"${{ env.JOB_HEAD_REF }}\"\n",
+        "jobs:\n  u:\n    steps:\n      - run: echo \"${{ env.UNMAPPED_KEY }}\"\n",
+    ] {
+        let yaml: Value = serde_saphyr::from_str(bad_wf).unwrap();
+        assert!(validate_run_script_expressions(&yaml).is_err());
+    }
+}

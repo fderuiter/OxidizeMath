@@ -72,6 +72,8 @@ fn read_and_validate_reusable_workflow(
             uses_str, e
         )
     })?;
+    super::validate_run_script_expressions(&yaml)
+        .map_err(|e| format!("Local reusable workflow '{}': {}", uses_str, e))?;
     validate_workflow_jobs(&yaml, repo_root, state)
 }
 
@@ -270,6 +272,11 @@ fn validate_action_manifest_body(
         for step in steps {
             validate_step_uses(step, &owner_desc, &invalid_attr_msg, repo_root, state)?;
         }
+        super::expressions::validate_steps_run_expressions(
+            steps,
+            &super::expressions::SafeEnvScope::default(),
+            &format!("Action '{}'", manifest_label),
+        )?;
     }
     Ok(())
 }

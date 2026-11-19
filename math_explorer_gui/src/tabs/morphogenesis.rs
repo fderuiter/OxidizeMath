@@ -284,7 +284,15 @@ impl MorphogenesisTab {
         }
 
         let mut dialog_state = std::mem::take(&mut self.dialog_state);
-        crate::presets::render_preset_buttons(&mut dialog_state, ui, self);
+        let domain = self.domain();
+        crate::presets::render_preset_buttons(
+            &mut dialog_state,
+            ui,
+            self,
+            domain,
+            Self::to_json_string,
+            Self::from_json_str,
+        );
         self.dialog_state = dialog_state;
     }
 

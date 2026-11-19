@@ -1,6 +1,6 @@
-use crate::framework::InteractiveTool;
+use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints, Points};
+use egui_plot::{Line, PlotPoints, Points};
 use math_explorer::physics::solid_state::lattice::{
     BodyCenteredCubic, CrystalSystem, FaceCenteredCubic, SimpleCubic, UnitCell,
 };
@@ -36,11 +36,7 @@ impl CrystalSystemEnum {
 pub struct CrystalViewer {
     system: CrystalSystemEnum,
     lattice_constant: f64,
-
-    // Camera
-    yaw: f32,
-    pitch: f32,
-    zoom: f32,
+    camera: Camera3D,
 }
 
 impl Default for CrystalViewer {
@@ -48,38 +44,16 @@ impl Default for CrystalViewer {
         Self {
             system: CrystalSystemEnum::FaceCenteredCubic,
             lattice_constant: 2.0,
-            yaw: 0.5,
-            pitch: 0.5,
-            zoom: 50.0,
+            camera: Camera3D::new(0.5, 0.5, 1.0),
         }
     }
 }
 
 impl CrystalViewer {
     fn project(&self, p: Vector3<f64>) -> [f64; 2] {
-        let center = Vector3::new(
-            self.lattice_constant / 2.0,
-            self.lattice_constant / 2.0,
-            self.lattice_constant / 2.0,
-        );
-        let p_centered = p - center;
-
-        // Rotation
-        let cy = (self.yaw as f64).cos();
-        let sy = (self.yaw as f64).sin();
-        let cp = (self.pitch as f64).cos();
-        let sp = (self.pitch as f64).sin();
-
-        // Rotate around Y (Yaw)
-        let x1 = p_centered.x * cy - p_centered.z * sy;
-        let z1 = p_centered.x * sy + p_centered.z * cy;
-        let y1 = p_centered.y;
-
-        // Rotate around X (Pitch)
-        let y2 = y1 * cp - z1 * sp;
-        // let z2 = y1 * sp + z1 * cp; // Depth, ignored for 2D projection
-
-        [x1 * (self.zoom as f64), y2 * (self.zoom as f64)]
+        let half = self.lattice_constant * 0.5;
+        self.camera
+            .project(&[p.x - half, p.y - half, p.z - half])
     }
 
     fn draw_unit_cell_box(&self, ui: &mut egui_plot::PlotUi) {
@@ -124,14 +98,26 @@ impl CrystalViewer {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize)]
+struct CrystalSaveState {
+    system: CrystalSystemEnum,
+    lattice_constant: f64,
+    camera: Camera3D,
+}
+
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CrystalState {
     system: CrystalSystemEnum,
     lattice_constant: f64,
-    yaw: f32,
-    pitch: f32,
-    zoom: f32,
+    #[serde(default)]
+    camera: Option<Camera3D>,
+    #[serde(default)]
+    yaw: Option<f32>,
+    #[serde(default)]
+    pitch: Option<f32>,
+    #[serde(default)]
+    zoom: Option<f32>,
 }
 
 impl InteractiveTool for CrystalViewer {
@@ -144,12 +130,10 @@ impl InteractiveTool for CrystalViewer {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&CrystalState {
+        serde_json::to_string(&CrystalSaveState {
             system: self.system,
             lattice_constant: self.lattice_constant,
-            yaw: self.yaw,
-            pitch: self.pitch,
-            zoom: self.zoom,
+            camera: self.camera,
         })
         .ok()
     }
@@ -163,18 +147,20 @@ impl InteractiveTool for CrystalViewer {
                 s.lattice_constant
             ));
         }
-        if !s.yaw.is_finite()
-            || !s.pitch.is_finite()
-            || !s.zoom.is_finite()
-            || !(10.0..=200.0).contains(&s.zoom)
-        {
-            return Err("Camera yaw/pitch/zoom out of valid range".to_string());
-        }
+        let normalized_zoom = s.zoom.map(|z| {
+            if (10.0_f32..=200.0_f32).contains(&z) {
+                z / 50.0_f32
+            } else if z > 200.0_f32 {
+                f32::NAN
+            } else {
+                z
+            }
+        });
+        let camera =
+            Camera3D::from_preset_fields(s.camera, s.pitch, s.yaw, normalized_zoom, None)?;
         self.system = s.system;
         self.lattice_constant = s.lattice_constant;
-        self.yaw = s.yaw;
-        self.pitch = s.pitch;
-        self.zoom = s.zoom;
+        self.camera.apply_pose(camera);
         Ok(())
     }
 
@@ -207,37 +193,31 @@ impl InteractiveTool for CrystalViewer {
             ui.add(egui::Slider::new(&mut self.lattice_constant, 0.5..=5.0).text("Lattice Constant (a)"));
 
             ui.separator();
-            ui.heading("Camera");
-            ui.label("Yaw");
-            ui.drag_angle(&mut self.yaw);
-            ui.label("Pitch");
-            ui.drag_angle(&mut self.pitch);
-            ui.add(egui::Slider::new(&mut self.zoom, 10.0..=200.0).text("Zoom"));
+            ui.collapsing("View", |ui| {
+                self.camera.ui(ui);
+            });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            Plot::new("crystal_plot")
-                .data_aspect(1.0)
-                .show(ui, |plot_ui| {
-                    // Draw Box
-                    self.draw_unit_cell_box(plot_ui);
+            let mut camera = self.camera;
+            Plot3DViewport::new("crystal_plot", 3.5).show(ui, &mut camera, |plot_ui| {
+                self.draw_unit_cell_box(plot_ui);
 
-                    // Draw Atoms
-                    let unit_cell = self.system.generate(self.lattice_constant);
-                    let points: Vec<[f64; 2]> = unit_cell
-                        .atomic_positions
-                        .iter()
-                        .map(|p| self.project(*p))
-                        .collect();
+                let unit_cell = self.system.generate(self.lattice_constant);
+                let points: Vec<[f64; 2]> = unit_cell
+                    .atomic_positions
+                    .iter()
+                    .map(|p| self.project(*p))
+                    .collect();
 
-                    plot_ui.points(
-                        Points::new("Atoms", points)
-                            .radius(5.0_f32)
-                            .color(palette.axis_x),
-                    );
-                });
-            ui.label("Drag 'Yaw' and 'Pitch' to rotate.");
+                plot_ui.points(
+                    Points::new("Atoms", points)
+                        .radius(5.0_f32)
+                        .color(palette.axis_x),
+                );
+            });
+            self.camera = camera;
         });
     }
 }
@@ -288,9 +268,11 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "system": "FaceCenteredCubic",
     "lattice_constant": 3.0,
-    "yaw": 0.6,
-    "pitch": 0.4,
-    "zoom": 65.0
+    "camera": {
+      "pitch": 0.4,
+      "yaw": 0.6,
+      "zoom": 1.3
+    }
   }
 }"#;
 
@@ -304,5 +286,39 @@ inventory::submit! {
         domain: "solid_state",
         tool_name: Some("CrystalViewer"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![cfg_attr(any(), verified(opt_out = "tests"))]
+
+    use super::*;
+
+    #[test]
+    fn crystal_viewer_camera_preset_and_export_work() {
+        let tool = CrystalViewer {
+            camera: Camera3D::new(0.35, 0.9, 1.5),
+            ..Default::default()
+        };
+        let saved = tool.save_state().expect("state should serialize");
+
+        let mut restored = CrystalViewer::default();
+        restored
+            .try_load_state(&saved)
+            .expect("saved state should load");
+        assert!((restored.camera.pitch - 0.35).abs() < 1e-6);
+        assert!((restored.camera.yaw - 0.9).abs() < 1e-6);
+        assert!((restored.camera.zoom - 1.5).abs() < 1e-6);
+
+        let legacy = r#"{"system":"BodyCenteredCubic","lattice_constant":2.5,"pitch":0.4,"yaw":0.6,"zoom":1.3}"#;
+        restored
+            .try_load_state(legacy)
+            .expect("legacy pitch/yaw/zoom preset should load");
+        assert!((restored.camera.zoom - 1.3).abs() < 1e-6);
+
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| restored.show(ctx));
+        assert!(!egui_plot::get_last_plot_datasets().is_empty());
     }
 }

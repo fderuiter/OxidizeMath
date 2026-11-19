@@ -1,3 +1,4 @@
+use crate::accessibility::AccessibleTheoryHover;
 use eframe::egui::{self, Color32, ColorImage, TextureHandle, TextureOptions};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::number_theory::primes::primes_up_to;
@@ -91,8 +92,18 @@ impl InteractiveTool for PrimeSpiralWidget {
                 }
 
                 if let Some(texture) = &self.texture {
-                    // Correctly use ui.image with 1 argument (impl Into<ImageSource>)
-                    ui.image(texture);
+                    let alt_label = format!(
+                        "Ulam Prime Spiral visualization ({0}x{0} grid)",
+                        self.grid_size
+                    );
+                    let response = ui
+                        .add(
+                            egui::Image::new(texture)
+                                .alt_text(alt_label)
+                                .sense(egui::Sense::focusable_noninteractive()),
+                        )
+                        .accessible_theory_hover(self);
+                    crate::accessibility::paint_canvas_focus_ring(ui, &response);
                 }
             });
         });

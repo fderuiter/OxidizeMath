@@ -22,19 +22,22 @@ fn test_starter_cards_presence_and_metadata() {
 
 #[test]
 fn test_preset_json_validity() {
-    use crate::presets::{MorphogenesisPresetConfig, OdePresetConfig, PresetWrapper};
+    use crate::presets::{deserialize_preset_envelope, MorphogenesisPresetConfig};
 
-    let ode_env: PresetWrapper<OdePresetConfig> =
-        serde_json::from_str(PRESET_HARMONIC_OSCILLATOR).unwrap();
-    assert_eq!(ode_env.metadata.domain, "analysis");
+    let ode_meta = inventory::iter::<ToolMetadata>
+        .into_iter()
+        .find(|t| t.id == "OdeSolverTool")
+        .expect("OdeSolverTool must be registered");
+    let mut ode_tool = (ode_meta.build)();
+    ode_tool
+        .import_preset_json(PRESET_HARMONIC_OSCILLATOR)
+        .unwrap();
+    ode_tool.import_preset_json(PRESET_LOGISTIC_GROWTH).unwrap();
 
-    let log_env: PresetWrapper<OdePresetConfig> =
-        serde_json::from_str(PRESET_LOGISTIC_GROWTH).unwrap();
-    assert_eq!(log_env.metadata.domain, "analysis");
-
-    let morph_env: PresetWrapper<MorphogenesisPresetConfig> =
-        serde_json::from_str(PRESET_TURING_SPOTS).unwrap();
-    assert_eq!(morph_env.metadata.domain, "biology");
+    let morph_cfg: MorphogenesisPresetConfig =
+        deserialize_preset_envelope(PRESET_TURING_SPOTS, "biology", "Morphogenesis").unwrap();
+    assert_eq!(morph_cfg.width, 100);
+    assert_eq!(morph_cfg.height, 100);
 }
 
 #[test]
@@ -199,7 +202,6 @@ fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetM
 
 #[test]
 fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
-    use crate::presets::InteractivePreset;
     use crate::tabs::morphogenesis::MorphogenesisTab;
 
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();

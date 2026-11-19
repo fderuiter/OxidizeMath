@@ -1,81 +1,63 @@
 use super::*;
 
-struct DummyTool {
-    pub value: f64,
-    pub name: String,
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct DummyConfig {
     pub value: f64,
     pub name: String,
 }
 
-impl InteractivePreset for DummyTool {
-    type Config = DummyConfig;
-
-    fn domain(&self) -> &'static str {
-        "test_domain"
-    }
-
-    fn title(&self) -> String {
-        "Dummy Tool".to_string()
-    }
-
-    fn export_config(&self) -> Self::Config {
-        DummyConfig {
-            value: self.value,
-            name: self.name.clone(),
-        }
-    }
-
-    fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
-        self.value = config.value;
-        self.name = config.name;
-        Ok(())
-    }
-}
-
 #[test]
-fn test_roundtrip_dummy_preset() {
-    let mut tool = DummyTool {
+fn test_roundtrip_preset_envelope_and_bom_stripping() {
+    let config = DummyConfig {
         value: 42.5,
         name: "Test Simulation".to_string(),
     };
 
-    let json = tool.to_json_string().unwrap();
+    let json = serialize_preset_envelope("Dummy Tool", "test_domain", &config).unwrap();
     assert!(json.contains("test_domain"));
     assert!(json.contains("42.5"));
 
-    tool.value = 0.0;
-    tool.name = "Cleared".to_string();
+    let restored: DummyConfig =
+        deserialize_preset_envelope(&json, "test_domain", "Dummy Tool").unwrap();
+    assert_eq!(restored, config);
 
-    tool.from_json_str(&json).unwrap();
-    assert_eq!(tool.value, 42.5);
-    assert_eq!(tool.name, "Test Simulation");
+    let bom_json = format!("\u{feff}{json}");
+    let bom_restored: DummyConfig =
+        deserialize_preset_envelope(&bom_json, "test_domain", "Dummy Tool").unwrap();
+    assert_eq!(bom_restored, config);
 }
 
 #[test]
-fn test_corrupted_json_graceful_failure() {
-    let mut tool = DummyTool {
-        value: 10.0,
-        name: "Original".to_string(),
-    };
+fn test_corrupted_json_and_empty_domain_graceful_failure() {
+    let bad_schema = deserialize_preset_envelope::<DummyConfig>(
+        "INVALID JSON CONTENT {",
+        "test_domain",
+        "Dummy Tool",
+    );
+    assert!(bad_schema
+        .unwrap_err()
+        .contains("Invalid JSON preset schema"));
 
-    let result = tool.from_json_str("INVALID JSON CONTENT {");
-    assert!(result.is_err());
-    // Value should remain unaltered
-    assert_eq!(tool.value, 10.0);
-    assert_eq!(tool.name, "Original");
+    let valid_json = serialize_preset_envelope(
+        "Dummy Tool",
+        "test_domain",
+        DummyConfig {
+            value: 10.0,
+            name: "Original".to_string(),
+        },
+    )
+    .unwrap();
+    let unsupported =
+        deserialize_preset_envelope::<DummyConfig>(&valid_json, "", "Unsupported Tool");
+    assert_eq!(
+        unsupported.unwrap_err(),
+        "Preset import not supported for Unsupported Tool"
+    );
 }
 
 #[test]
 fn test_domain_mismatch_failure() {
-    let mut tool = DummyTool {
-        value: 10.0,
-        name: "Original".to_string(),
-    };
-
     let wrong_domain_json = r#"{
         "metadata": {
             "schema_version": "1.0",
@@ -89,10 +71,10 @@ fn test_domain_mismatch_failure() {
         }
     }"#;
 
-    let result = tool.from_json_str(wrong_domain_json);
+    let result =
+        deserialize_preset_envelope::<DummyConfig>(wrong_domain_json, "test_domain", "Dummy Tool");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Domain mismatch"));
-    assert_eq!(tool.value, 10.0);
 }
 
 #[test]
@@ -126,38 +108,7 @@ fn test_replicator_matrix_validation() {
 }
 
 #[test]
-fn test_ode_preset_config_roundtrip() {
-    let config = OdePresetConfig {
-        preset: OdePreset::HarmonicOscillator,
-        dt: 0.01,
-        total_time: 15.0,
-        param_k: 2.5,
-        param_r: 1.0,
-        param_cap_k: 10.0,
-        ic_y0: 1.5,
-        ic_v0: -0.5,
-        custom_expr: String::new(),
-    };
-
-    let wrapper = PresetWrapper {
-        metadata: PresetMetadata {
-            schema_version: "1.0".to_string(),
-            title: "Harmonic Test".to_string(),
-            domain: "analysis".to_string(),
-            timestamp: "2026-10-01T00:00:00Z".to_string(),
-        },
-        config: config.clone(),
-    };
-
-    let json = serde_json::to_string_pretty(&wrapper).unwrap();
-    let deserialized: PresetWrapper<OdePresetConfig> = serde_json::from_str(&json).unwrap();
-    assert_eq!(deserialized.config, config);
-    assert_eq!(deserialized.metadata.domain, "analysis");
-    assert!(deserialized.config.validate().is_ok());
-}
-
-#[test]
-fn test_ode_preset_config_validate_bounds_and_step_caps() {
+fn test_checked_ode_step_count_bounds_and_step_caps() {
     assert_eq!(checked_ode_step_count(0.001, 100.0), Some(100_000));
     assert_eq!(checked_ode_step_count(0.0005, 100.0), Some(MAX_ODE_STEPS));
     assert_eq!(checked_ode_step_count(1e-300, 10.0), None);
@@ -166,37 +117,6 @@ fn test_ode_preset_config_validate_bounds_and_step_caps() {
     assert_eq!(checked_ode_step_count(0.05, -10.0), None);
     assert_eq!(checked_ode_step_count(f64::NAN, 10.0), None);
     assert_eq!(checked_ode_step_count(0.05, f64::INFINITY), None);
-
-    let base = OdePresetConfig {
-        preset: OdePreset::Exponential,
-        dt: 0.05,
-        total_time: 10.0,
-        param_k: 1.0,
-        param_r: 1.0,
-        param_cap_k: 10.0,
-        ic_y0: 1.0,
-        ic_v0: 0.0,
-        custom_expr: String::new(),
-    };
-    assert!(base.validate().is_ok());
-
-    let tiny_dt = OdePresetConfig {
-        dt: 1e-300,
-        ..base.clone()
-    };
-    assert!(tiny_dt.validate().is_err());
-
-    let non_finite_param = OdePresetConfig {
-        param_k: f64::NAN,
-        ..base.clone()
-    };
-    assert!(non_finite_param.validate().is_err());
-
-    let negative_time = OdePresetConfig {
-        total_time: -1.0,
-        ..base
-    };
-    assert!(negative_time.validate().is_err());
 }
 
 #[test]
@@ -211,34 +131,26 @@ fn test_morphogenesis_preset_config_roundtrip() {
         height: 80,
     };
 
-    let wrapper = PresetWrapper {
-        metadata: PresetMetadata {
-            schema_version: "1.0".to_string(),
-            title: "Stripes Test".to_string(),
-            domain: "biology".to_string(),
-            timestamp: "2026-10-01T00:00:00Z".to_string(),
-        },
-        config: config.clone(),
-    };
-
-    let json = serde_json::to_string_pretty(&wrapper).unwrap();
-    let deserialized: PresetWrapper<MorphogenesisPresetConfig> =
-        serde_json::from_str(&json).unwrap();
-    assert_eq!(deserialized.config, config);
-    assert_eq!(deserialized.metadata.domain, "biology");
+    let json = serialize_preset_envelope("Stripes Test", "biology", &config).unwrap();
+    let deserialized: MorphogenesisPresetConfig =
+        deserialize_preset_envelope(&json, "biology", "Morphogenesis").unwrap();
+    assert_eq!(deserialized, config);
 }
 
 #[test]
-fn test_preset_dialog_poll_import_export_and_cancel_cleanup() {
-    let mut tool = DummyTool {
+fn test_preset_dialog_poll_pending_import_export_and_cancel_cleanup() {
+    let mut state = DummyConfig {
         value: 1.0,
         name: "Initial".to_string(),
     };
-    let exported = DummyTool {
-        value: 77.25,
-        name: "Browser Imported".to_string(),
-    }
-    .to_json_string()
+    let exported = serialize_preset_envelope(
+        "Dummy Tool",
+        "test_domain",
+        DummyConfig {
+            value: 77.25,
+            name: "Browser Imported".to_string(),
+        },
+    )
     .unwrap();
 
     let mut dialog = PresetDialogState {
@@ -266,9 +178,12 @@ fn test_preset_dialog_poll_import_export_and_cancel_cleanup() {
     tx.send(Ok(("custom_preset.json".to_string(), exported)))
         .unwrap();
 
-    assert!(dialog.poll_import(&mut tool));
-    assert_eq!(tool.value, 77.25);
-    assert_eq!(tool.name, "Browser Imported");
+    assert!(dialog.poll_pending_import(|json_str| {
+        state = deserialize_preset_envelope(json_str, "test_domain", "Dummy Tool")?;
+        Ok(())
+    }));
+    assert_eq!(state.value, 77.25);
+    assert_eq!(state.name, "Browser Imported");
     assert!(dialog.toast_error.is_none());
     assert_eq!(
         dialog.toast_info.as_deref(),
@@ -281,13 +196,13 @@ fn test_preset_dialog_poll_import_export_and_cancel_cleanup() {
     dialog.import_rx = Some(cancel_rx);
     drop(cancel_tx);
 
-    assert!(!dialog.poll_import(&mut tool));
+    assert!(!dialog.poll_pending_import(|_| Ok(())));
     assert!(dialog.import_rx.is_none());
     assert!(dialog.toast_error.is_none());
 }
 
 #[test]
-fn test_preset_dialog_poll_import_tool_and_read_error() {
+fn test_preset_dialog_poll_pending_import_with_interactive_tool_and_read_error() {
     let mut framework = crate::framework::SimulationFramework::new("chaos");
     let tool = framework
         .active_tool
@@ -301,7 +216,7 @@ fn test_preset_dialog_poll_import_tool_and_read_error() {
     tx.send(Ok(("lorenz_preset.json".to_string(), valid_json)))
         .unwrap();
 
-    assert!(dialog.poll_import_tool(tool.as_mut()));
+    assert!(dialog.poll_pending_import(|json_str| tool.import_preset_json(json_str)));
     assert!(dialog.toast_error.is_none());
     assert_eq!(
         dialog.toast_info.as_deref(),
@@ -315,24 +230,24 @@ fn test_preset_dialog_poll_import_tool_and_read_error() {
     err_tx
         .send(Err("Browser failed to read selected file".to_string()))
         .unwrap();
-    assert!(!dialog.poll_import_tool(tool.as_mut()));
+    assert!(!dialog.poll_pending_import(|json_str| tool.import_preset_json(json_str)));
     assert_eq!(
         dialog.toast_error.as_deref(),
         Some("Browser failed to read selected file")
     );
     assert!(dialog.toast_info.is_none());
 
-    // Simulate cancel on poll_import_tool
+    // Simulate cancel on poll_pending_import
     let (cancel_tx, cancel_rx) = channel::<Result<(String, String), String>>();
     dialog.import_rx = Some(cancel_rx);
     drop(cancel_tx);
-    assert!(!dialog.poll_import_tool(tool.as_mut()));
+    assert!(!dialog.poll_pending_import(|json_str| tool.import_preset_json(json_str)));
     assert!(dialog.import_rx.is_none());
 }
 
 #[test]
 fn test_preset_dialog_invalid_json_and_export_error_toasts() {
-    let mut tool = DummyTool {
+    let mut state = DummyConfig {
         value: 12.5,
         name: "Baseline".to_string(),
     };
@@ -344,14 +259,21 @@ fn test_preset_dialog_invalid_json_and_export_error_toasts() {
     bad_tx
         .send(Ok(("corrupt.json".to_string(), "{ malformed".to_string())))
         .unwrap();
-    assert!(!dialog.poll_import(&mut tool));
-    assert_eq!(tool.value, 12.5);
-    assert_eq!(tool.name, "Baseline");
+    assert!(!dialog.poll_pending_import(|json_str| {
+        state = deserialize_preset_envelope(json_str, "test_domain", "Dummy Tool")?;
+        Ok(())
+    }));
+    assert_eq!(state.value, 12.5);
+    assert_eq!(state.name, "Baseline");
     assert!(dialog
         .toast_error
         .as_deref()
         .is_some_and(|m| m.contains("Invalid JSON preset schema")));
     assert!(dialog.toast_info.is_none());
+
+    // Direct export serialization failure records error toast immediately
+    dialog.export_preset_result(Err("Preset export failed".to_string()), "dummy");
+    assert_eq!(dialog.toast_error.as_deref(), Some("Preset export failed"));
 
     // Export error over channel sets toast_error, and export cancel clears export_rx quietly
     let (exp_err_tx, exp_err_rx) = channel();

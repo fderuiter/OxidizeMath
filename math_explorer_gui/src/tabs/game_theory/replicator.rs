@@ -1,5 +1,5 @@
 use crate::framework::InteractiveTool;
-use crate::presets::{InteractivePreset, ReplicatorPresetConfig};
+use crate::presets::ReplicatorPresetConfig;
 use eframe::egui;
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
 use nalgebra::{DMatrix, DVector};
@@ -179,18 +179,8 @@ impl scientific_metadata::theory::TheoryDescribable for ReplicatorDynamicsTool {
     }
 }
 
-impl InteractivePreset for ReplicatorDynamicsTool {
-    type Config = ReplicatorPresetConfig;
-
-    fn domain(&self) -> &'static str {
-        "game_theory"
-    }
-
-    fn title(&self) -> String {
-        "Replicator Dynamics Simulation".to_string()
-    }
-
-    fn export_config(&self) -> Self::Config {
+impl ReplicatorDynamicsTool {
+    fn export_config(&self) -> ReplicatorPresetConfig {
         let rows = self.payoff_matrix.nrows();
         let cols = self.payoff_matrix.ncols();
         let mut matrix = Vec::with_capacity(rows);
@@ -212,7 +202,7 @@ impl InteractivePreset for ReplicatorDynamicsTool {
         }
     }
 
-    fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
+    fn apply_config(&mut self, config: ReplicatorPresetConfig) -> Result<(), String> {
         config.validate()?;
 
         let rows = config.payoff_matrix.len();

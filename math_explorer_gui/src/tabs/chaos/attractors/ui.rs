@@ -7,9 +7,9 @@ use crate::async_sim::ui::{
     WorkerFaultAction,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
-use egui_plot::{Callout, Line, Plot, PlotPoints, Points};
+use egui_plot::{Callout, Line, PlotPoint, PlotPoints, Points};
 use nalgebra::Vector3;
 
 impl AttractorPlotter {
@@ -224,24 +224,105 @@ impl AttractorPlotter {
         }
     }
 
-    fn draw_fixed_point_callouts(&self, plot_ui: &mut egui_plot::PlotUi<'_>) {
+    fn clear_callout_drag(&mut self, plot_ui: &egui_plot::PlotUi<'_>) {
+        if self.dragged_callout.take().is_some() {
+            let pid = plot_ui.plot_id();
+            plot_ui.ctx().data_mut(|d| {
+                d.remove_temp::<bool>(pid.with("dragging_callout"));
+            });
+        }
+    }
+
+    fn callout_frame_rect(
+        plot_ui: &egui_plot::PlotUi<'_>,
+        target: [f64; 2],
+        offset: Vec2,
+        label: &str,
+    ) -> egui::Rect {
+        let ctx = plot_ui.ctx();
+        let font_id = egui::TextStyle::Small.resolve(&ctx.style());
+        let galley =
+            ctx.fonts_mut(|f| f.layout_no_wrap(label.to_owned(), font_id, Color32::WHITE));
+        let target_pos = plot_ui.screen_from_plot(PlotPoint::new(target[0], target[1]));
+        let padding = Vec2::new(6.0, 4.0);
+        egui::Align2::CENTER_CENTER.anchor_size(target_pos + offset, galley.size() + 2.0 * padding)
+    }
+
+    fn update_fixed_callout_drag(
+        &mut self,
+        plot_ui: &egui_plot::PlotUi<'_>,
+        rects: &[egui::Rect; 2],
+    ) {
+        let ctx = plot_ui.ctx().clone();
+        let plot_id = plot_ui.plot_id();
+        let (pointer_down, primary_pressed, hit_pos, drag_delta) = ctx.input(|i| {
+            let hit = if i.pointer.primary_pressed() {
+                i.pointer.press_origin().or_else(|| i.pointer.latest_pos())
+            } else {
+                i.pointer.latest_pos()
+            };
+            (
+                i.pointer.primary_down(),
+                i.pointer.primary_pressed(),
+                hit,
+                i.pointer.delta(),
+            )
+        });
+
+        if !pointer_down {
+            self.clear_callout_drag(plot_ui);
+        }
+
+        if self.dragged_callout.is_none() {
+            if let Some(pos) = hit_pos {
+                if let Some(idx) = rects.iter().position(|r| r.expand(4.0).contains(pos)) {
+                    ctx.set_cursor_icon(egui::CursorIcon::Grab);
+                    if primary_pressed {
+                        self.dragged_callout = Some(idx);
+                    }
+                }
+            }
+        }
+
+        if pointer_down {
+            if let Some(idx) = self.dragged_callout {
+                ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+                self.fixed_callout_offsets[idx] += drag_delta;
+                ctx.data_mut(|d| {
+                    d.insert_temp(plot_id.with("dragging_callout"), true);
+                });
+            }
+        }
+    }
+
+    fn draw_fixed_point_callouts(&mut self, plot_ui: &mut egui_plot::PlotUi<'_>) {
         if !self.show_annotations
             || self.system.rho <= 1.0
             || self.system.beta <= 0.0
             || !self.system.rho.is_finite()
             || !self.system.beta.is_finite()
         {
+            self.clear_callout_drag(plot_ui);
             return;
         }
 
         let x = (self.system.beta * (self.system.rho - 1.0)).sqrt();
         let z = self.system.rho - 1.0;
         if !x.is_finite() || !z.is_finite() {
+            self.clear_callout_drag(plot_ui);
             return;
         }
 
         let c_pos = self.project(Vector3::new(x, x, z));
         let c_neg = self.project(Vector3::new(-x, -x, z));
+        let label_pos = format!("Fixed Point C+ ({x:.1}, {x:.1}, {z:.1})");
+        let label_neg = format!("Fixed Point C- ({:.1}, {:.1}, {z:.1})", -x, -x);
+        let rects = [
+            Self::callout_frame_rect(plot_ui, c_pos, self.fixed_callout_offsets[0], &label_pos),
+            Self::callout_frame_rect(plot_ui, c_neg, self.fixed_callout_offsets[1], &label_neg),
+        ];
+        self.update_fixed_callout_drag(plot_ui, &rects);
+
         let visuals = plot_ui.ctx().style().visuals.clone();
         let palette = crate::app::SemanticPalette::from_visuals(&visuals);
         let bg_fill = Color32::from_rgba_unmultiplied(
@@ -252,25 +333,19 @@ impl AttractorPlotter {
         );
         let frame_stroke = visuals.widgets.noninteractive.bg_stroke;
 
-        let callout_pos = Callout::new(
-            c_pos,
-            format!("Fixed Point C+ ({x:.1}, {x:.1}, {z:.1})"),
-        )
-        .offset(Vec2::new(35.0, -25.0))
-        .leader_stroke(Stroke::new(1.5_f32, palette.series_color(3)))
-        .frame(bg_fill, frame_stroke)
-        .corner_radius(CornerRadius::same(4))
-        .text_color(visuals.text_color());
+        let callout_pos = Callout::new(c_pos, label_pos)
+            .offset(self.fixed_callout_offsets[0])
+            .leader_stroke(Stroke::new(1.5_f32, palette.series_color(3)))
+            .frame(bg_fill, frame_stroke)
+            .corner_radius(CornerRadius::same(4))
+            .text_color(visuals.text_color());
 
-        let callout_neg = Callout::new(
-            c_neg,
-            format!("Fixed Point C- ({:.1}, {:.1}, {z:.1})", -x, -x),
-        )
-        .offset(Vec2::new(-35.0, 25.0))
-        .leader_stroke(Stroke::new(1.5_f32, palette.series_color(4)))
-        .frame(bg_fill, frame_stroke)
-        .corner_radius(CornerRadius::same(4))
-        .text_color(visuals.text_color());
+        let callout_neg = Callout::new(c_neg, label_neg)
+            .offset(self.fixed_callout_offsets[1])
+            .leader_stroke(Stroke::new(1.5_f32, palette.series_color(4)))
+            .frame(bg_fill, frame_stroke)
+            .corner_radius(CornerRadius::same(4))
+            .text_color(visuals.text_color());
 
         plot_ui.callout(callout_pos);
         plot_ui.callout(callout_neg);
@@ -292,9 +367,9 @@ impl AttractorPlotter {
                 .then(|| self.project(self.system.state.vec));
 
             let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
-            let response = Plot::new("attractor_plot")
-                .data_aspect(1.0)
-                .show(ui, |plot_ui| {
+            let mut camera = self.camera;
+            let response = Plot3DViewport::new("attractor_plot", 32.0)
+                .show(ui, &mut camera, |plot_ui| {
                     plot_ui.line(Line::new("Trajectory", PlotPoints::new(points)).color(series0));
                     if let Some(pt) = initial_pt {
                         plot_ui.points(
@@ -306,10 +381,9 @@ impl AttractorPlotter {
                     self.draw_fixed_point_callouts(plot_ui);
                 })
                 .response;
+            self.camera = camera;
 
-            self.camera.handle_interaction(&response, ui);
             response.accessible_theory_hover(&self.system);
-            ui.label("Drag 'Yaw' and 'Pitch' in the side panel to rotate the view.");
         });
     }
 }

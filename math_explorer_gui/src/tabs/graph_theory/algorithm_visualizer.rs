@@ -35,6 +35,7 @@ pub struct AlgorithmVisualizerTool {
 
     selected_algorithm: Algorithm,
     start_node: Option<usize>,
+    focused_node: usize,
 
     // Animation state
     animation_step: usize,
@@ -54,6 +55,7 @@ impl Default for AlgorithmVisualizerTool {
             edges: Vec::new(),
             selected_algorithm: Algorithm::Dijkstra,
             start_node: None,
+            focused_node: 0,
             animation_step: 0,
             visit_order: Vec::new(),
             distances: HashMap::new(),
@@ -201,6 +203,8 @@ impl AlgorithmVisualizerTool {
             if ui.radio_value(&mut self.selected_algorithm, Algorithm::Dfs, "DFS").clicked() { changed = true; }
             if changed { self.run_algorithm(); }
             ui.separator();
+            self.render_start_node_selector(ui);
+            ui.separator();
 
             if !self.visit_order.is_empty() {
                 ui.label(format!("Animation Step: {} / {}", self.animation_step, self.visit_order.len()));
@@ -240,138 +244,40 @@ impl AlgorithmVisualizerTool {
                 ui.add(egui::Slider::new(&mut self.playback_speed, 0.5..=5.0).text("Speed").suffix("x"));
             }
             ui.separator();
-            ui.label("Click a node to set as start node.");
+            ui.label("Click a node or use Arrow keys + Enter on the canvas to set the start node.");
         });
     }
 
-    fn render_canvas(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click());
-            let _ = response.clone().accessible_hover_text("Graph Theory Algorithm Visualization");
-            let pointer_pos = response.interact_pointer_pos();
-            let node_radius = 15.0;
-            let to_screen = eframe::egui::emath::RectTransform::from_to(
-                eframe::egui::Rect::from_min_size(Pos2::ZERO, response.rect.size()),
-                response.rect,
-            );
-
-            let mut clicked_node = None;
-            if response.clicked() {
-                if let Some(pos) = pointer_pos {
-                    for (&id, &node_pos) in &self.node_positions {
-                        let screen_pos = to_screen.transform_pos(node_pos);
-                        if (pos - screen_pos).length() <= node_radius {
-                            clicked_node = Some(id);
-                            break;
+    fn render_start_node_selector(&mut self, ui: &mut egui::Ui) {
+        let mut node_ids: Vec<usize> = self.node_positions.keys().copied().collect();
+        node_ids.sort_unstable();
+        let selected_text = self
+            .start_node
+            .map_or_else(|| "None".to_string(), |id| format!("Node {id}"));
+        ui.horizontal(|ui| {
+            ui.label("Start Node:");
+            egui::ComboBox::from_id_salt("algorithm_visualizer_start_node")
+                .selected_text(selected_text)
+                .show_ui(ui, |ui| {
+                    for id in node_ids {
+                        let is_selected = self.start_node == Some(id);
+                        if ui.selectable_label(is_selected, format!("Node {id}")).clicked() {
+                            self.start_node = Some(id);
+                            self.focused_node = id;
+                            self.run_algorithm();
+                            crate::accessibility::announce_live_status(
+                                ui.ctx(),
+                                format!("Start node set to Node {id}"),
+                            );
                         }
                     }
-                }
-            }
-
-            if let Some(id) = clicked_node {
-                self.start_node = Some(id);
-                self.run_algorithm();
-            }
-
-            let visuals = ui.visuals().clone();
-            self.draw_edges(&painter, &to_screen, &visuals);
-            self.draw_nodes(&painter, &to_screen, node_radius, &visuals);
+                });
         });
     }
-
-    fn draw_edges(
-        &self,
-        painter: &egui::Painter,
-        to_screen: &eframe::egui::emath::RectTransform,
-        visuals: &egui::Visuals,
-    ) {
-        let palette = crate::app::SemanticPalette::from_visuals(visuals);
-        for &(u, v, weight) in &self.edges {
-            if let (Some(&pos_u), Some(&pos_v)) =
-                (self.node_positions.get(&u), self.node_positions.get(&v))
-            {
-                let screen_pos_u = to_screen.transform_pos(pos_u);
-                let screen_pos_v = to_screen.transform_pos(pos_v);
-                let u_visited = self
-                    .visit_order
-                    .iter()
-                    .take(self.animation_step)
-                    .any(|&id| id == u);
-                let v_visited = self
-                    .visit_order
-                    .iter()
-                    .take(self.animation_step)
-                    .any(|&id| id == v);
-                let color = if u_visited && v_visited {
-                    palette.success
-                } else {
-                    palette.graph_edge
-                };
-                painter.line_segment([screen_pos_u, screen_pos_v], (2.0, color));
-
-                let mid_point = screen_pos_u + (screen_pos_v - screen_pos_u) * 0.5;
-                painter.text(
-                    mid_point,
-                    egui::Align2::CENTER_CENTER,
-                    format!("{:.1}", weight),
-                    egui::FontId::proportional(12.0),
-                    visuals.text_color(),
-                );
-            }
-        }
-    }
-
-    fn draw_nodes(
-        &self,
-        painter: &egui::Painter,
-        to_screen: &eframe::egui::emath::RectTransform,
-        node_radius: f32,
-        visuals: &egui::Visuals,
-    ) {
-        let palette = crate::app::SemanticPalette::from_visuals(visuals);
-        for (&id, &pos) in &self.node_positions {
-            let screen_pos = to_screen.transform_pos(pos);
-            let is_start = self.start_node == Some(id);
-            let visit_index = self.visit_order.iter().position(|&vid| vid == id);
-            let is_visited = visit_index.is_some_and(|idx| idx < self.animation_step);
-            let is_current = visit_index
-                .is_some_and(|idx| idx == self.animation_step.saturating_sub(1) && self.animation_step > 0);
-
-            let fill_color = if is_start {
-                palette.accent
-            } else if is_current {
-                palette.error
-            } else if is_visited {
-                palette.success
-            } else {
-                palette.series_color(0)
-            };
-
-            painter.circle(
-                screen_pos,
-                node_radius,
-                fill_color,
-                (1.0, palette.node_stroke),
-            );
-            let label = if self.selected_algorithm == Algorithm::Dijkstra && is_visited {
-                if let Some(dist) = self.distances.get(&id) {
-                    format!("{:.1}", dist)
-                } else {
-                    id.to_string()
-                }
-            } else {
-                id.to_string()
-            };
-            painter.text(
-                screen_pos,
-                egui::Align2::CENTER_CENTER,
-                label,
-                egui::FontId::proportional(12.0),
-                crate::app::contrasting_text_color(fill_color),
-            );
-        }
-    }
 }
+
+#[path = "algorithm_visualizer/canvas.rs"]
+mod canvas;
 
 impl InteractiveTool for AlgorithmVisualizerTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
@@ -420,6 +326,9 @@ impl InteractiveTool for AlgorithmVisualizerTool {
         }
         self.selected_algorithm = loaded.selected_algorithm;
         self.start_node = loaded.start_node;
+        if let Some(id) = loaded.start_node {
+            self.focused_node = id;
+        }
         self.playback_speed = loaded.playback_speed;
         self.run_algorithm();
         Ok(())

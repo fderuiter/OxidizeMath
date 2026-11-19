@@ -35,6 +35,7 @@ mod ui;
 
 pub use callout_overlay::*;
 pub use clamp::*;
+pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub use export_figure::*;
 pub use export_queue::*;
 pub use export_types::*;
@@ -86,6 +87,26 @@ pub trait InteractiveTool {
     fn theory(&self) -> &dyn TheoryDescribable;
 
     /// Show the tool. Tools can implement this to take full control over rendering.
+    ///
+    /// # Accessibility Requirements for Custom `show` Overrides
+    ///
+    /// The default implementation allocates its central canvas with [`egui::Sense::click_and_drag`]
+    /// (which includes [`egui::Sense::FOCUSABLE`]) and dispatches [`Self::on_keyboard`] when
+    /// `response.has_focus()` is true. When overriding `show` directly:
+    ///
+    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`] (or
+    ///   [`egui::Sense::click`] / [`egui::Sense::click_and_drag`] for interactive canvases) instead
+    ///   of `Sense::hover()` so `Tab` traversal reaches the visualization.
+    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))`
+    ///   instead of raw `ui.image(texture)` calls so `AccessKit` exposes `Role::Image` and non-empty
+    ///   alternative text.
+    /// - Populate `AccessKit` metadata (`Role`, non-empty `label`, and dynamic `value` summary) via
+    ///   `ctx.accesskit_node_builder(response.id, ...)` (or
+    ///   `crate::accessibility::register_canvas_accessibility`) and draw a high-contrast focus ring
+    ///   when `response.has_focus()`.
+    /// - If the canvas consumes arrow keys, call `Memory::set_focus_lock_filter` with
+    ///   `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
+    ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
     fn show(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left(format!("{}_controls", self.name())).show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -224,18 +245,8 @@ pub trait InteractiveTool {
     fn export_preset_json(&self) -> Result<String, String> {
         if let Some(state_str) = self.save_state() {
             let config: serde_json::Value = serde_json::from_str(&state_str)
-                .map_err(|e| format!("Serialization error: {}", e))?;
-            let envelope = crate::presets::PresetWrapper {
-                metadata: crate::presets::PresetMetadata {
-                    schema_version: "1.0".to_string(),
-                    title: self.name().to_string(),
-                    domain: self.domain().to_string(),
-                    timestamp: chrono::Utc::now().to_rfc3339(),
-                },
-                config,
-            };
-            serde_json::to_string_pretty(&envelope)
-                .map_err(|e| format!("Serialization error: {}", e))
+                .map_err(|e| format!("Serialization error: {e}"))?;
+            crate::presets::serialize_preset_envelope(self.name(), self.domain(), config)
         } else {
             Err(format!("Preset export not supported for {}", self.name()))
         }
@@ -243,22 +254,10 @@ pub trait InteractiveTool {
 
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let cleaned = egui_plot::export::strip_utf8_bom(json_str);
-        let envelope: crate::presets::PresetWrapper<serde_json::Value> =
-            serde_json::from_str(cleaned)
-                .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
-        let expected_domain = self.domain();
-        if expected_domain.is_empty() {
-            return Err(format!("Preset import not supported for {}", self.name()));
-        }
-        if envelope.metadata.domain != expected_domain {
-            return Err(format!(
-                "Domain mismatch: preset is for domain '{}', but active tool is '{}'",
-                envelope.metadata.domain, expected_domain
-            ));
-        }
-        let config_str = serde_json::to_string(&envelope.config)
-            .map_err(|e| format!("Config serialization error: {}", e))?;
+        let config: serde_json::Value =
+            crate::presets::deserialize_preset_envelope(json_str, self.domain(), self.name())?;
+        let config_str = serde_json::to_string(&config)
+            .map_err(|e| format!("Config serialization error: {e}"))?;
         self.try_load_state(&config_str)
     }
 
@@ -438,4 +437,4 @@ impl SimulationFramework {
     }
 }
 
-pub use crate::camera::Camera3D;
+pub use crate::camera::{Camera3D, Plot3DViewport, CAMERA_3D_HELPER_TEXT};
