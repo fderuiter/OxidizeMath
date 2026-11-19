@@ -351,7 +351,7 @@ impl ExplorerTab for TraceabilityTab {
             ui.separator();
 
             let mut retry_clicked = false;
-            #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
+            #[cfg(not(target_arch = "wasm32"))]
             let mut new_path_picked: Option<String> = None;
             match &self.state {
                 TraceabilityScanState::Scanning => {
@@ -383,10 +383,13 @@ impl ExplorerTab for TraceabilityTab {
                             });
                         });
                     });
+                    #[cfg(not(target_arch = "wasm32"))]
                     if let Some(path) = new_path_picked {
                         self.repo_path = Self::validate_repo_path(&path);
                         self.refresh();
-                    } else if retry_clicked {
+                        return;
+                    }
+                    if retry_clicked {
                         self.refresh();
                     }
                     return;
