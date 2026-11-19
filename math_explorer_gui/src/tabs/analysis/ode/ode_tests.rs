@@ -190,6 +190,20 @@ fn test_ode_custom_state_roundtrip() {
 }
 
 #[test]
+fn test_ode_deep_custom_expr_preset_and_state_rejected() {
+    let deep_expr = format!("{}1", "1+".repeat(100_000));
+    let preset_payload = format!(
+        r#"{{"metadata":{{"schema_version":"1.0","title":"Deep","domain":"analysis","timestamp":"2026-11-18T00:00:00Z"}},"config":{{"preset":"Custom","dt":0.05,"total_time":0.1,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"custom_expr":"{deep_expr}"}}}}"#
+    );
+    let mut tool = OdeSolverTool::default();
+    let _ = tool.import_preset_json(&preset_payload);
+    assert!(!tool.math_input.is_valid());
+    let mut restored = OdeSolverTool::default();
+    restored.load_state(&tool.save_state().expect("save state"));
+    assert!(!restored.math_input.is_valid());
+}
+
+#[test]
 fn test_generate_custom_ode_and_complex_screenshots() {
     let mut tool = OdeSolverTool {
         preset: OdePreset::Custom, param_k: 2.0, ic_y0: 1.0, dt: 0.02, total_time: 10.0, ..Default::default()

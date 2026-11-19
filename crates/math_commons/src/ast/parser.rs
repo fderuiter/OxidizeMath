@@ -110,7 +110,7 @@ pub fn parse_equation(input: &str) -> Result<(Option<String>, Expr), ParseError>
 
     let mut parser = Parser::new(tokens);
     let lhs = parser.try_parse_equation_lhs();
-    let expr = parser.parse_expr(0, 0)?;
+    let (expr, _) = parser.parse_expr(0, 0)?;
 
     if !parser.is_at_end() {
         let tok = parser.peek();
@@ -187,12 +187,12 @@ impl Parser {
         None
     }
 
-    fn parse_expr(&mut self, min_bp: u8, depth: usize) -> Result<Expr, ParseError> {
+    fn parse_expr(&mut self, min_bp: u8, depth: usize) -> Result<(Expr, usize), ParseError> {
         if depth > MAX_PARSE_DEPTH {
             return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
         }
 
-        let mut lhs = self.parse_prefix(depth)?;
+        let (mut lhs, mut lhs_height) = self.parse_prefix(depth)?;
 
         loop {
             if self.is_at_end() {
@@ -205,8 +205,8 @@ impl Parser {
                     break;
                 }
                 self.advance(); // consume operator
-                let rhs = self.parse_expr(r_bp, depth + 1)?;
-                lhs = Expr::binary(op, lhs, rhs);
+                let (rhs, rhs_height) = self.parse_expr(r_bp, depth + 1)?;
+                (lhs, lhs_height) = wrap_binary(op, lhs, lhs_height, rhs, rhs_height)?;
                 continue;
             }
 
@@ -217,24 +217,24 @@ impl Parser {
                 if l_bp < min_bp {
                     break;
                 }
-                let rhs = self.parse_expr(r_bp, depth + 1)?;
-                lhs = Expr::binary(BinaryOp::Mul, lhs, rhs);
+                let (rhs, rhs_height) = self.parse_expr(r_bp, depth + 1)?;
+                (lhs, lhs_height) = wrap_binary(BinaryOp::Mul, lhs, lhs_height, rhs, rhs_height)?;
                 continue;
             }
 
             break;
         }
 
-        Ok(lhs)
+        Ok((lhs, lhs_height))
     }
 
-    fn parse_prefix(&mut self, depth: usize) -> Result<Expr, ParseError> {
+    fn parse_prefix(&mut self, depth: usize) -> Result<(Expr, usize), ParseError> {
         let tok = self.advance().clone();
         match tok.kind {
-            TokenKind::Number(n) => Ok(Expr::Number(n)),
+            TokenKind::Number(n) => Ok((Expr::Number(n), 0)),
             TokenKind::Ident(name) => self.parse_ident_or_func(name, depth),
             TokenKind::LParen => {
-                let inner = self.parse_expr(0, depth + 1)?;
+                let (inner, inner_height) = self.parse_expr(0, depth + 1)?;
                 if self.peek().kind != TokenKind::RParen {
                     return Err(ParseError::UnexpectedToken {
                         expected: "closing parenthesis ')'".into(),
@@ -243,16 +243,10 @@ impl Parser {
                     });
                 }
                 self.advance(); // consume ')'
-                Ok(inner)
+                Ok((inner, inner_height))
             }
-            TokenKind::Plus => {
-                let expr = self.parse_expr(7, depth + 1)?;
-                Ok(Expr::unary(UnaryOp::Pos, expr))
-            }
-            TokenKind::Minus => {
-                let expr = self.parse_expr(7, depth + 1)?;
-                Ok(Expr::unary(UnaryOp::Neg, expr))
-            }
+            TokenKind::Plus => self.parse_unary(UnaryOp::Pos, depth),
+            TokenKind::Minus => self.parse_unary(UnaryOp::Neg, depth),
             TokenKind::Eof => Err(ParseError::UnexpectedEof),
             _ => Err(ParseError::UnexpectedToken {
                 expected: "number, variable, function, or '('".into(),
@@ -262,40 +256,75 @@ impl Parser {
         }
     }
 
-    fn parse_ident_or_func(&mut self, name: String, depth: usize) -> Result<Expr, ParseError> {
+    fn parse_unary(&mut self, op: UnaryOp, depth: usize) -> Result<(Expr, usize), ParseError> {
+        let (expr, inner_height) = self.parse_expr(7, depth + 1)?;
+        let next_height = inner_height + 1;
+        if next_height > MAX_PARSE_DEPTH {
+            return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
+        }
+        Ok((Expr::unary(op, expr), next_height))
+    }
+
+    fn parse_ident_or_func(
+        &mut self,
+        name: String,
+        depth: usize,
+    ) -> Result<(Expr, usize), ParseError> {
         if let Some(func) = Func::from_name(&name) {
             if self.peek().kind == TokenKind::LParen {
-                self.advance(); // consume '('
-                let mut args = Vec::new();
-                if self.peek().kind != TokenKind::RParen {
-                    loop {
-                        let arg = self.parse_expr(0, depth + 1)?;
-                        args.push(arg);
-                        if self.peek().kind == TokenKind::Comma {
-                            self.advance();
-                        } else {
-                            break;
-                        }
-                    }
-                }
-                if self.peek().kind != TokenKind::RParen {
-                    return Err(ParseError::UnexpectedToken {
-                        expected: "closing parenthesis ')' after function arguments".into(),
-                        found: self.peek().kind.to_string(),
-                        span: self.peek().span,
-                    });
-                }
-                self.advance(); // consume ')'
-                return Ok(Expr::function(func, args));
+                return self.parse_parenthesized_func(func, depth);
             }
             // Support function without parens e.g. "sin x" if followed by atom
             if self.can_start_prefix() {
-                let arg = self.parse_expr(7, depth + 1)?;
-                return Ok(Expr::function(func, vec![arg]));
+                let (arg, arg_height) = self.parse_expr(7, depth + 1)?;
+                let next_height = arg_height + 1;
+                if next_height > MAX_PARSE_DEPTH {
+                    return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
+                }
+                return Ok((Expr::function(func, vec![arg]), next_height));
             }
         }
 
-        Ok(Expr::Variable(name))
+        Ok((Expr::Variable(name), 0))
+    }
+
+    fn parse_parenthesized_func(
+        &mut self,
+        func: Func,
+        depth: usize,
+    ) -> Result<(Expr, usize), ParseError> {
+        self.advance(); // consume '('
+        let mut args = Vec::new();
+        let mut max_arg_height = 0;
+        if self.peek().kind != TokenKind::RParen {
+            loop {
+                let (arg, arg_height) = self.parse_expr(0, depth + 1)?;
+                max_arg_height = max_arg_height.max(arg_height);
+                args.push(arg);
+                if self.peek().kind == TokenKind::Comma {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+        if self.peek().kind != TokenKind::RParen {
+            return Err(ParseError::UnexpectedToken {
+                expected: "closing parenthesis ')' after function arguments".into(),
+                found: self.peek().kind.to_string(),
+                span: self.peek().span,
+            });
+        }
+        self.advance(); // consume ')'
+        let next_height = if args.is_empty() {
+            0
+        } else {
+            max_arg_height + 1
+        };
+        if next_height > MAX_PARSE_DEPTH {
+            return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
+        }
+        Ok((Expr::function(func, args), next_height))
     }
 
     fn peek_infix_op(&self) -> Option<(u8, u8, BinaryOp)> {
@@ -322,4 +351,18 @@ impl Parser {
             TokenKind::Number(_) | TokenKind::Ident(_) | TokenKind::LParen
         )
     }
+}
+
+fn wrap_binary(
+    op: BinaryOp,
+    lhs: Expr,
+    lhs_height: usize,
+    rhs: Expr,
+    rhs_height: usize,
+) -> Result<(Expr, usize), ParseError> {
+    let next_height = lhs_height.max(rhs_height) + 1;
+    if next_height > MAX_PARSE_DEPTH {
+        return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
+    }
+    Ok((Expr::binary(op, lhs, rhs), next_height))
 }

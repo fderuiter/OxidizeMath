@@ -225,6 +225,123 @@ fn test_recursion_depth_limit() {
 }
 
 #[test]
+fn test_left_associative_and_implicit_mul_height_limits() {
+    let vars = HashMap::from([("x".to_string(), 1.0)]);
+
+    let exact_add = format!("{}1", "1 + ".repeat(MAX_PARSE_DEPTH));
+    let parsed_add = parse(&exact_add).expect("height 64 left-associative sum should parse");
+    assert_eq!(
+        parsed_add.eval(&vars).unwrap(),
+        (MAX_PARSE_DEPTH + 1) as f64
+    );
+
+    let over_add = format!("{}1", "1 + ".repeat(MAX_PARSE_DEPTH + 1));
+    assert_eq!(
+        parse(&over_add),
+        Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
+    );
+
+    let huge_add = format!("{}1", "1+".repeat(100_000));
+    assert_eq!(
+        parse(&huge_add),
+        Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
+    );
+
+    let exact_mul = vec!["x"; MAX_PARSE_DEPTH + 1].join(" ");
+    let parsed_mul = parse(&exact_mul).expect("height 64 implicit multiplication should parse");
+    assert_eq!(parsed_mul.eval(&vars).unwrap(), 1.0);
+
+    let over_mul = vec!["x"; MAX_PARSE_DEPTH + 2].join(" ");
+    assert_eq!(
+        parse(&over_mul),
+        Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
+    );
+
+    let huge_mul = format!("{}x", "x ".repeat(100_000));
+    assert_eq!(
+        parse(&huge_mul),
+        Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
+    );
+}
+
+#[test]
+fn test_mixed_parentheses_unary_and_function_height_limits() {
+    let vars = HashMap::new();
+    let chain_40 = format!("{}1", "1 + ".repeat(40));
+    let balanced = format!("({chain_40}) + ({chain_40})");
+    let balanced_expr = parse(&balanced).expect("two height-40 branches have height 41 <= 64");
+    assert_eq!(balanced_expr.eval(&vars).unwrap(), 82.0);
+
+    let chain_63 = format!("{}1", "1 + ".repeat(MAX_PARSE_DEPTH - 1));
+    let chain_64 = format!("{}1", "1 + ".repeat(MAX_PARSE_DEPTH));
+
+    assert_eq!(
+        parse(&format!("-({chain_63})"))
+            .expect("unary over height 63 has height 64")
+            .eval(&vars)
+            .unwrap(),
+        -(MAX_PARSE_DEPTH as f64)
+    );
+    assert_eq!(
+        parse(&format!("-({chain_64})")),
+        Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
+    );
+    assert_eq!(
+        parse(&format!("1 + ({chain_64})")),
+        Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
+    );
+    assert!(parse(&format!("sin({chain_63})")).is_ok());
+    assert_eq!(
+        parse(&format!("sin({chain_64})")),
+        Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
+    );
+}
+
+#[test]
+fn test_iterative_drop_and_latex_on_deep_programmatic_expr() {
+    let mut expr = Expr::Number(1.0);
+    for idx in 0..100_000 {
+        expr = match idx % 4 {
+            0 => Expr::binary(BinaryOp::Add, expr, Expr::Number(1.0)),
+            1 => Expr::unary(UnaryOp::Neg, expr),
+            2 => Expr::function(Func::Sin, vec![expr]),
+            _ => Expr::function(Func::Sqrt, vec![expr]),
+        };
+    }
+
+    let latex = expr.to_latex();
+    assert!(latex.starts_with(r"\sqrt{\sin\left(-"));
+    assert!(latex.ends_with(r"\right)}"));
+    assert_eq!(
+        expr.eval(&HashMap::new()),
+        Err(EvalError::RecursionLimitExceeded(MAX_EVAL_DEPTH))
+    );
+    drop(expr);
+}
+
+#[test]
+fn test_latex_precedence_and_function_formatting_parity() {
+    assert_eq!(
+        parse("a - (b - c)").unwrap().to_latex(),
+        r"a - \left(b - c\right)"
+    );
+    assert_eq!(parse("(a - b) - c").unwrap().to_latex(), "a - b - c");
+    assert_eq!(
+        parse("(a + b) * (c - d)").unwrap().to_latex(),
+        r"\left(a + b\right) \cdot \left(c - d\right)"
+    );
+    assert_eq!(
+        parse("(a + b)^2").unwrap().to_latex(),
+        r"{\left(a + b\right)}^{2}"
+    );
+    assert_eq!(parse("-(a / b)").unwrap().to_latex(), r"-\frac{a}{b}");
+    assert_eq!(
+        parse("sqrt(pi) + abs(tau - alpha_1)").unwrap().to_latex(),
+        r"\sqrt{\pi} + \left|\tau - alpha\_1\right|"
+    );
+}
+
+#[test]
 fn test_complex_evaluation() {
     let expr = parse("z^2").expect("parse");
     let z = Complex64::new(1.0, 2.0);

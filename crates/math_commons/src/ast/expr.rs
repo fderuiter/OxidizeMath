@@ -184,4 +184,53 @@ impl Expr {
     pub fn function(func: Func, args: Vec<Expr>) -> Self {
         Self::Function { func, args }
     }
+
+    const fn has_children(&self) -> bool {
+        matches!(
+            self,
+            Self::Binary { .. } | Self::Unary { .. } | Self::Function { .. }
+        )
+    }
+
+    fn take_children(&mut self, worklist: &mut Vec<Expr>) {
+        match self {
+            Self::Number(_) | Self::Variable(_) => {}
+            Self::Binary { left, right, .. } => {
+                let lhs = std::mem::replace(&mut **left, Self::Number(0.0));
+                let rhs = std::mem::replace(&mut **right, Self::Number(0.0));
+                if lhs.has_children() {
+                    worklist.push(lhs);
+                }
+                if rhs.has_children() {
+                    worklist.push(rhs);
+                }
+            }
+            Self::Unary { expr, .. } => {
+                let inner = std::mem::replace(&mut **expr, Self::Number(0.0));
+                if inner.has_children() {
+                    worklist.push(inner);
+                }
+            }
+            Self::Function { args, .. } => {
+                for arg in std::mem::take(args) {
+                    if arg.has_children() {
+                        worklist.push(arg);
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Drop for Expr {
+    fn drop(&mut self) {
+        if !self.has_children() {
+            return;
+        }
+        let mut worklist = Vec::new();
+        self.take_children(&mut worklist);
+        while let Some(mut node) = worklist.pop() {
+            node.take_children(&mut worklist);
+        }
+    }
 }
