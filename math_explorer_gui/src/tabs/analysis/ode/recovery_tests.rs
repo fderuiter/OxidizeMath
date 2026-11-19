@@ -431,3 +431,57 @@ fn test_ode_nan_initial_condition() {
     assert!(tool.diverged());
     assert!(tool.y_series.is_empty());
 }
+
+#[test]
+fn test_ode_untrusted_preset_and_session_step_caps() {
+    use crate::framework::InteractiveTool;
+    use crate::presets::{InteractivePreset, OdePresetConfig, MAX_ODE_STEPS};
+    use std::collections::HashMap;
+    use systems::eval_ode_final_state;
+
+    let mut ode = OdeSolverTool::default();
+    let res = ode.import_preset_json(r#"{"metadata":{"schema_version":"1.0","title":"t","domain":"analysis","timestamp":"2026-11-18T00:00:00Z"},"config":{"preset":"Exponential","dt":1e-300,"total_time":10.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"custom_expr":""}}"#);
+    assert!(res.is_err());
+    assert!(ode.time_series.len() <= 1_000_001);
+    assert!(ode.time_series.len() <= MAX_ODE_STEPS + 1);
+
+    let bad_cfg = OdePresetConfig {
+        preset: OdePreset::Exponential,
+        dt: 1e-300,
+        total_time: 10.0,
+        param_k: 1.0,
+        param_r: 1.0,
+        param_cap_k: 10.0,
+        ic_y0: 1.0,
+        ic_v0: 0.0,
+        custom_expr: String::new(),
+    };
+    assert!(ode.apply_config(bad_cfg).is_err());
+
+    ode.load_state(r#"{"preset":"Exponential","dt":5e-17,"total_time":100.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0}"#);
+    assert!(ode.time_series.len() <= MAX_ODE_STEPS + 1);
+
+    let final_tiny = eval_ode_final_state(
+        OdePreset::Exponential,
+        IntegrationMethod::Euler,
+        1e-12,
+        10.0,
+        &HashMap::new(),
+        None,
+    );
+    assert!(final_tiny.is_nan());
+    let traj = simulate_preset(
+        OdePreset::Exponential,
+        IntegrationMethod::Euler,
+        1e-300,
+        10.0,
+        1.0,
+        1.0,
+        10.0,
+        1.0,
+        0.0,
+        None,
+    );
+    assert!(traj.time_series.is_empty());
+}
+
