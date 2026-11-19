@@ -29,65 +29,67 @@ impl Default for SurvivalAnalysisTool {
 }
 
 impl SurvivalAnalysisTool {
+    fn parse_observation_line(line_idx: usize, line: &str) -> Result<Observation, String> {
+        let parts: Vec<&str> = line.split(',').collect();
+        if parts.len() != 2 {
+            return Err(format!("Line {}: Expected 'time, event'", line_idx + 1));
+        }
+
+        let time_str = parts[0].trim();
+        let event_str = parts[1].trim();
+
+        let time_val = time_str
+            .parse::<f64>()
+            .map_err(|_| format!("Line {}: Invalid time '{}'", line_idx + 1, time_str))?;
+
+        let event_occurred = match event_str.parse::<u8>() {
+            Ok(1) => true,
+            Ok(0) => false,
+            _ if event_str.eq_ignore_ascii_case("true") => true,
+            _ if event_str.eq_ignore_ascii_case("false") => false,
+            _ => {
+                return Err(format!(
+                    "Line {}: Event must be 1 (event) or 0 (censored)",
+                    line_idx + 1
+                ));
+            }
+        };
+
+        let time =
+            SurvivalTime::new(time_val).map_err(|e| format!("Line {}: {}", line_idx + 1, e))?;
+
+        Ok(Observation {
+            time,
+            event_occurred,
+        })
+    }
+
     fn recalculate(&mut self) {
         self.observations.clear();
+        self.curve.clear();
         self.error_message = None;
 
-        for (line_idx, line) in self.input_text.lines().enumerate() {
-            let line = line.trim();
+        for (line_idx, raw_line) in self.input_text.lines().enumerate() {
+            let line = raw_line.trim();
             if line.is_empty() {
                 continue;
             }
 
-            let parts: Vec<&str> = line.split(',').collect();
-            if parts.len() != 2 {
-                self.error_message = Some(format!("Line {}: Expected 'time, event'", line_idx + 1));
+            if self.observations.len() >= math_commons::registry::MAX_ITERATIONS {
+                self.observations.clear();
+                self.error_message = Some(format!(
+                    "Line {}: Maximum of {} observations exceeded",
+                    line_idx + 1,
+                    math_commons::registry::MAX_ITERATIONS
+                ));
                 return;
             }
 
-            let time_str = parts[0].trim();
-            let event_str = parts[1].trim();
-
-            let time_val = match time_str.parse::<f64>() {
-                Ok(t) => t,
-                Err(_) => {
-                    self.error_message = Some(format!(
-                        "Line {}: Invalid time '{}'",
-                        line_idx + 1,
-                        time_str
-                    ));
-                    return;
-                }
-            };
-
-            let event_occurred = match event_str.parse::<u8>() {
-                Ok(1) => true,
-                Ok(0) => false,
-                _ => {
-                    // Try parsing as boolean "true"/"false" just in case
-                    if event_str.eq_ignore_ascii_case("true") {
-                        true
-                    } else if event_str.eq_ignore_ascii_case("false") {
-                        false
-                    } else {
-                        self.error_message = Some(format!(
-                            "Line {}: Event must be 1 (event) or 0 (censored)",
-                            line_idx + 1
-                        ));
-                        return;
-                    }
-                }
-            };
-
-            match SurvivalTime::new(time_val) {
-                Ok(t) => {
-                    self.observations.push(Observation {
-                        time: t,
-                        event_occurred,
-                    });
-                }
-                Err(e) => {
-                    self.error_message = Some(format!("Line {}: {}", line_idx + 1, e));
+            match Self::parse_observation_line(line_idx, line) {
+                Ok(obs) => self.observations.push(obs),
+                Err(err) => {
+                    self.observations.clear();
+                    self.error_message = Some(err);
                     return;
                 }
             }
@@ -246,5 +248,77 @@ inventory::submit! {
         domain: "clinical_trials",
         tool_name: Some("SurvivalAnalysisTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reject_infinite_and_non_finite_presets() {
+        let inf_preset = r#"{"metadata":{"schema_version":"1.0","title":"KM","domain":"clinical_trials","timestamp":"2026-11-19T00:00:00Z"},"config":{"input_text":"inf, 1"}}"#;
+        let mut tool = SurvivalAnalysisTool::default();
+        let baseline_len = tool.observations.len();
+        assert!(tool.import_preset_json(inf_preset).is_err());
+        assert_eq!(tool.observations.len(), baseline_len);
+
+        for invalid_input in ["-inf, 1", "Infinity, 0", "NaN, 1", "-1.0, 1"] {
+            let payload = format!(
+                r#"{{"metadata":{{"schema_version":"1.0","title":"KM","domain":"clinical_trials","timestamp":"2026-11-19T00:00:00Z"}},"config":{{"input_text":"{invalid_input}"}}}}"#
+            );
+            assert!(
+                tool.import_preset_json(&payload).is_err(),
+                "Expected error for preset input '{invalid_input}'"
+            );
+            assert_eq!(tool.observations.len(), baseline_len);
+        }
+    }
+
+    #[test]
+    fn test_observation_cap_enforced_in_recalculate_and_load_state() {
+        let max_obs = math_commons::registry::MAX_ITERATIONS;
+        let at_cap_input: String = (0..max_obs)
+            .map(|idx| format!("{}.0, 1", idx + 1))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let mut tool = SurvivalAnalysisTool::default();
+        let state_ok = serde_json::to_string(&SurvivalState {
+            input_text: at_cap_input,
+        })
+        .unwrap();
+        assert!(tool.try_load_state(&state_ok).is_ok());
+        assert_eq!(tool.observations.len(), max_obs);
+        assert!(tool.error_message.is_none());
+
+        let over_cap_input: String = (0..=max_obs)
+            .map(|idx| format!("{}.0, 1", idx + 1))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let state_over = serde_json::to_string(&SurvivalState {
+            input_text: over_cap_input.clone(),
+        })
+        .unwrap();
+        let err = tool.try_load_state(&state_over).unwrap_err();
+        assert!(err.contains(&max_obs.to_string()));
+        assert_eq!(tool.observations.len(), max_obs);
+
+        tool.input_text = over_cap_input;
+        tool.recalculate();
+        assert!(tool.error_message.is_some());
+        assert!(tool.observations.is_empty());
+        assert!(tool.curve.is_empty());
+    }
+
+    #[test]
+    fn test_starter_preset_preserves_survival_probabilities() {
+        let mut tool = SurvivalAnalysisTool::default();
+        tool.import_preset_json(STARTER_PRESET_JSON).unwrap();
+        assert_eq!(tool.observations.len(), 10);
+        assert_eq!(tool.curve.len(), 10);
+        assert!((tool.curve[0].survival_probability - 0.9).abs() < 1e-12);
+        assert!((tool.curve[1].survival_probability - 0.8).abs() < 1e-12);
+        assert!((tool.curve[2].survival_probability - 0.8).abs() < 1e-12);
     }
 }
