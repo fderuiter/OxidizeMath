@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import functools
+import shutil
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Dict, Iterator, List, Tuple
+from typing import BinaryIO, Dict, Iterator, List, Optional, Tuple
 
 
 @dataclass
@@ -20,8 +22,20 @@ class RecordedRequest:
     status: int
 
 
+@dataclass(frozen=True)
+class ThrottleProfile:
+    """Server-side Slow-3G HTTP streaming parameters for .js and .wasm assets."""
+
+    latency_s: float = 0.08
+    chunk_bytes: int = 262_144
+    chunk_delay_s: float = 0.04
+
+
 class DistRequestHandler(SimpleHTTPRequestHandler):
     """Static file handler serving math_explorer_gui/dist with optional COOP/COEP headers."""
+
+    protocol_version = "HTTP/1.1"
+    timeout = 5.0
 
     extensions_map = {
         **SimpleHTTPRequestHandler.extensions_map,
@@ -45,14 +59,22 @@ class DistRequestHandler(SimpleHTTPRequestHandler):
         request_log: List[RecordedRequest],
         request_lock: threading.Lock,
         status_overrides: Dict[str, int],
+        throttle_state: List[Optional[ThrottleProfile]],
         **kwargs,
     ) -> None:
         self._isolated = isolated
         self._request_log = request_log
         self._request_lock = request_lock
         self._status_overrides = status_overrides
+        self._throttle_state = throttle_state
         self._last_status = 200
         super().__init__(*args, directory=directory, **kwargs)
+
+    def handle_one_request(self) -> None:
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
 
     def do_GET(self) -> None:  # noqa: N802
         clean_path = self.path.split("?", 1)[0]
@@ -64,9 +86,39 @@ class DistRequestHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_connection = True
+                return
             return
-        super().do_GET()
+        try:
+            super().do_GET()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+            return
+
+    def copyfile(self, source: BinaryIO, outputfile: BinaryIO) -> None:
+        clean_path = self.path.split("?", 1)[0]
+        with self._request_lock:
+            profile = self._throttle_state[0]
+        try:
+            if profile is not None and clean_path.endswith((".js", ".wasm")):
+                if profile.latency_s > 0:
+                    time.sleep(profile.latency_s)
+                while True:
+                    chunk = source.read(profile.chunk_bytes)
+                    if not chunk:
+                        break
+                    outputfile.write(chunk)
+                    outputfile.flush()
+                    if profile.chunk_delay_s > 0:
+                        time.sleep(profile.chunk_delay_s)
+            else:
+                shutil.copyfileobj(source, outputfile)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+            return
 
     def send_response(self, code: int, message: str | None = None) -> None:
         self._last_status = code
@@ -89,15 +141,23 @@ class DistRequestHandler(SimpleHTTPRequestHandler):
         return
 
 
+class DistHTTPServer(ThreadingHTTPServer):
+    """Multi-threaded local HTTP server with an expanded TCP accept backlog for parallel browser preloads."""
+
+    request_queue_size = 128
+    daemon_threads = True
+
+
 @dataclass
 class LocalDistServer:
     """Running background ThreadingHTTPServer wrapper."""
 
-    httpd: ThreadingHTTPServer
+    httpd: DistHTTPServer
     thread: threading.Thread
     isolated: bool
     requests: List[RecordedRequest] = field(default_factory=list)
     status_overrides: Dict[str, int] = field(default_factory=dict)
+    throttle_state: List[Optional[ThrottleProfile]] = field(default_factory=lambda: [None])
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     @property
@@ -131,6 +191,27 @@ class LocalDistServer:
             with self.lock:
                 self.status_overrides.pop(normalized, None)
 
+    @contextmanager
+    def throttle_slow_3g(
+        self,
+        *,
+        latency_s: float = 0.08,
+        chunk_bytes: int = 262_144,
+        chunk_delay_s: float = 0.04,
+    ) -> Iterator[None]:
+        profile = ThrottleProfile(
+            latency_s=latency_s,
+            chunk_bytes=chunk_bytes,
+            chunk_delay_s=chunk_delay_s,
+        )
+        with self.lock:
+            self.throttle_state[0] = profile
+        try:
+            yield
+        finally:
+            with self.lock:
+                self.throttle_state[0] = None
+
     def close(self) -> None:
         self.httpd.shutdown()
         self.httpd.server_close()
@@ -147,6 +228,7 @@ def start_dist_server(dist_dir: Path, *, isolated: bool) -> LocalDistServer:
 
     requests: List[RecordedRequest] = []
     status_overrides: Dict[str, int] = {}
+    throttle_state: List[Optional[ThrottleProfile]] = [None]
     lock = threading.Lock()
     handler_factory = functools.partial(
         DistRequestHandler,
@@ -155,8 +237,9 @@ def start_dist_server(dist_dir: Path, *, isolated: bool) -> LocalDistServer:
         request_log=requests,
         request_lock=lock,
         status_overrides=status_overrides,
+        throttle_state=throttle_state,
     )
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler_factory)
+    httpd = DistHTTPServer(("127.0.0.1", 0), handler_factory)
     thread = threading.Thread(
         target=httpd.serve_forever,
         name=f"dist-http-{'isolated' if isolated else 'static'}",
@@ -169,5 +252,6 @@ def start_dist_server(dist_dir: Path, *, isolated: bool) -> LocalDistServer:
         isolated=isolated,
         requests=requests,
         status_overrides=status_overrides,
+        throttle_state=throttle_state,
         lock=lock,
     )

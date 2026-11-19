@@ -9,7 +9,14 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List
 
 import pytest
-from playwright.sync_api import Browser, ConsoleMessage, Error as PlaywrightError, Page, Response, sync_playwright
+from playwright.sync_api import (
+    Browser,
+    ConsoleMessage,
+    Error as PlaywrightError,
+    Page,
+    Response,
+    sync_playwright,
+)
 
 # Ensure local sibling imports resolve regardless of pytest rootdir invocation mode.
 SUITE_DIR = Path(__file__).resolve().parent
@@ -165,6 +172,22 @@ def poll_until(
     )
 
 
+def goto_dist(
+    page: Page,
+    url: str,
+    *,
+    wait_until: str = "domcontentloaded",
+) -> Response | None:
+    """Navigate from a freshly created page while guarding against cold about:blank abort races."""
+    page.wait_for_load_state("load")
+    try:
+        return page.goto(url, wait_until=wait_until)  # type: ignore[arg-type]
+    except PlaywrightError as exc:
+        if "net::ERR_ABORTED" in str(exc) and page.url == "about:blank":
+            return page.goto(url, wait_until=wait_until)  # type: ignore[arg-type]
+        raise
+
+
 @pytest.fixture(scope="session")
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -204,6 +227,12 @@ def chromium_browser() -> Iterator[Browser]:
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True, args=CHROMIUM_LAUNCH_ARGS)
         try:
+            warmup_ctx = browser.new_context()
+            try:
+                warmup_page = warmup_ctx.new_page()
+                warmup_page.goto("about:blank", wait_until="load")
+            finally:
+                warmup_ctx.close()
             yield browser
         finally:
             browser.close()

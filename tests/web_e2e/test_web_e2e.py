@@ -9,7 +9,7 @@ from typing import Dict, List
 import pytest
 from playwright.sync_api import Browser, Page, Route
 
-from conftest import PageDiagnostics, poll_until
+from conftest import PageDiagnostics, goto_dist, poll_until
 from server import LocalDistServer
 
 
@@ -22,7 +22,6 @@ def verify_favicons_delivered(page: Page, diagnostics: PageDiagnostics) -> List[
     )
     assert len(icon_hrefs) >= 2, f"Expected at least 2 favicon <link> tags, found: {icon_hrefs}"
 
-    # Verify any passive favicon responses recorded by Chromium did not fail.
     for resp in diagnostics.responses:
         url = str(resp["url"])
         if any(url.endswith(href.lstrip("./")) for href in icon_hrefs) or url.endswith("/favicon.ico"):
@@ -44,13 +43,7 @@ def verify_favicons_delivered(page: Page, diagnostics: PageDiagnostics) -> List[
                             error: '',
                         };
                     } catch (err) {
-                        return {
-                            href: targetHref,
-                            status: 0,
-                            contentType: '',
-                            byteLength: 0,
-                            error: String(err),
-                        };
+                        return { href: targetHref, status: 0, contentType: '', byteLength: 0, error: String(err) };
                     }
                 })
             ).then((items) => {
@@ -59,17 +52,12 @@ def verify_favicons_delivered(page: Page, diagnostics: PageDiagnostics) -> List[
         }""",
         icon_hrefs,
     )
-    results: List[Dict[str, object]] = poll_until(
-        page,
-        "() => window.__faviconCheckResult",
-        timeout_ms=5000,
-    )
+    results: List[Dict[str, object]] = poll_until(page, "() => window.__faviconCheckResult", timeout_ms=5000)
     for fetched in results:
         href = str(fetched["href"])
         assert fetched["status"] == 200, f"Favicon '{href}' returned HTTP {fetched['status']}: {fetched}"
         assert int(fetched["byteLength"]) > 0, f"Favicon '{href}' body was empty: {fetched}"
-        content_type = str(fetched["contentType"]).lower()
-        assert "image/" in content_type, f"Favicon '{href}' had unexpected Content-Type: {fetched}"
+        assert "image/" in str(fetched["contentType"]).lower(), f"Unexpected Content-Type: {fetched}"
 
     return results
 
@@ -155,7 +143,7 @@ def test_cold_load_startup_csp_isolation_favicons_and_focus(
         page = context.new_page()
         diagnostics = PageDiagnostics().attach(page)
 
-        response = page.goto(isolated_server.base_url, wait_until="domcontentloaded")
+        response = goto_dist(page, isolated_server.base_url, wait_until="domcontentloaded")
         assert response is not None and response.status == 200
         assert not diagnostics.csp_console_errors, (
             f"CSP violation during initial document parse: {diagnostics.csp_console_errors}"
@@ -197,7 +185,7 @@ def test_favicon_404_fails_check_immediately(
         diagnostics = PageDiagnostics().attach(page)
 
         with isolated_server.override_status("/favicon.ico", 404):
-            page.goto(isolated_server.base_url, wait_until="domcontentloaded")
+            goto_dist(page, isolated_server.base_url, wait_until="domcontentloaded")
             assert_canvas_ready_and_focused(page)
 
             with pytest.raises(AssertionError, match="404"):
@@ -216,7 +204,7 @@ def test_csp_blocks_inline_script_and_fails_diagnostics(
         page = context.new_page()
         diagnostics = PageDiagnostics().attach(page)
 
-        page.goto(isolated_server.base_url, wait_until="domcontentloaded")
+        goto_dist(page, isolated_server.base_url, wait_until="domcontentloaded")
         assert_canvas_ready_and_focused(page)
 
         page.evaluate(
@@ -252,9 +240,10 @@ def test_coi_serviceworker_activates_isolation_on_static_host(
         page = context.new_page()
         diagnostics = PageDiagnostics().attach(page)
 
-        page.goto(unisolated_server.base_url, wait_until="domcontentloaded")
+        # Use wait_until="commit" because coi-serviceworker.min.js triggers an automatic
+        # reload as soon as the Service Worker activates, which can supersede DOMContentLoaded.
+        goto_dist(page, unisolated_server.base_url, wait_until="commit")
 
-        # coi-serviceworker registers and triggers an automatic reload into isolated context.
         poll_until(
             page,
             """() => (
@@ -274,24 +263,11 @@ def test_slow_3g_progressive_loading_before_canvas_focus(
     chromium_browser: Browser,
     isolated_server: LocalDistServer,
 ) -> None:
-    """Verify Slow-3G throttling via Playwright routes + CDP shows progressive #loading_indicator updates."""
+    """Verify Slow-3G throttling via Playwright routes + chunked HTTP streaming shows progressive #loading_indicator updates."""
     context = chromium_browser.new_context()
     try:
         page = context.new_page()
         diagnostics = PageDiagnostics().attach(page)
-
-        cdp = context.new_cdp_session(page)
-        cdp.send("Network.enable")
-        cdp.send(
-            "Network.emulateNetworkConditions",
-            {
-                "offline": False,
-                "latency": 120,
-                "downloadThroughput": 1_400_000,
-                "uploadThroughput": 400_000,
-                "connectionType": "cellular3g",
-            },
-        )
 
         throttled_assets: List[str] = []
 
@@ -299,42 +275,43 @@ def test_slow_3g_progressive_loading_before_canvas_focus(
             url = route.request.url
             if url.endswith("math_explorer_gui.js") or url.endswith("math_explorer_gui_bg.wasm"):
                 throttled_assets.append(url)
-                time.sleep(0.25)
+                time.sleep(0.12)
             route.continue_()
 
         page.route("**/math_explorer_gui*", throttle_bundle)
 
-        page.goto(isolated_server.base_url, wait_until="domcontentloaded")
+        with isolated_server.throttle_slow_3g():
+            goto_dist(page, isolated_server.base_url, wait_until="domcontentloaded")
 
-        # Immediately after DOMContentLoaded under Slow-3G, #loading_indicator must be visible
-        # and #the_canvas_id must not yet hold keyboard focus.
-        initial_state = page.evaluate(
-            """() => {
-                const indicator = document.getElementById('loading_indicator');
-                return {
-                    present: Boolean(indicator),
-                    role: indicator ? indicator.getAttribute('role') : null,
-                    ariaBusy: indicator ? indicator.getAttribute('aria-busy') : null,
-                    activeId: document.activeElement ? document.activeElement.id : null,
-                };
-            }"""
-        )
-        assert initial_state["present"] is True, f"Expected #loading_indicator during Slow-3G load: {initial_state}"
-        assert initial_state["role"] == "status"
-        assert initial_state["ariaBusy"] == "true"
-        assert initial_state["activeId"] != "the_canvas_id"
+            # Immediately after DOMContentLoaded under Slow-3G, #loading_indicator must be visible
+            # and #the_canvas_id must not yet hold keyboard focus.
+            initial_state = page.evaluate(
+                """() => {
+                    const indicator = document.getElementById('loading_indicator');
+                    return {
+                        present: Boolean(indicator),
+                        role: indicator ? indicator.getAttribute('role') : null,
+                        ariaBusy: indicator ? indicator.getAttribute('aria-busy') : null,
+                        activeId: document.activeElement ? document.activeElement.id : null,
+                    };
+                }"""
+            )
+            assert initial_state["present"] is True, f"Expected #loading_indicator during Slow-3G load: {initial_state}"
+            assert initial_state["role"] == "status"
+            assert initial_state["ariaBusy"] == "true"
+            assert initial_state["activeId"] != "the_canvas_id"
 
-        # Observe live progressive WASM streaming updates while #loading_indicator is still mounted.
-        poll_until(
-            page,
-            """() => {
-                const stages = window.__mathExplorerLoadingStages || [];
-                return stages.some((entry) => entry.stage === 'downloading-wasm' && (entry.loadedBytes || 0) > 0);
-            }""",
-            timeout_ms=25000,
-        )
+            # Observe live progressive WASM streaming updates while #loading_indicator is still mounted.
+            poll_until(
+                page,
+                """() => {
+                    const stages = window.__mathExplorerLoadingStages || [];
+                    return stages.some((entry) => entry.stage === 'downloading-wasm' && (entry.loadedBytes || 0) > 0);
+                }""",
+                timeout_ms=25000,
+            )
 
-        assert_canvas_ready_and_focused(page, timeout_ms=35000)
+            assert_canvas_ready_and_focused(page, timeout_ms=35000)
 
         recorded_stages = page.evaluate("() => window.__mathExplorerLoadingStages || []")
         stage_names = [str(item["stage"]) for item in recorded_stages]
@@ -380,7 +357,7 @@ def test_fault_offline_alerts_and_recovers_via_reload_button(
 
         page.route("**/math_explorer_gui_bg.wasm", drop_connection_on_wasm)
 
-        page.goto(isolated_server.base_url, wait_until="domcontentloaded")
+        goto_dist(page, isolated_server.base_url, wait_until="domcontentloaded")
         details = assert_accessible_error_alert_and_reload_focus(page)
         assert len(details) > 0
         assert not page_errors, f"Unexpected uncaught pageerror(s): {page_errors}"
@@ -422,7 +399,7 @@ def test_fault_http_500_alerts_and_recovers_via_reload_button(
 
         page.route("**/math_explorer_gui_bg.wasm", inject_http_500)
 
-        page.goto(isolated_server.base_url, wait_until="domcontentloaded")
+        goto_dist(page, isolated_server.base_url, wait_until="domcontentloaded")
         assert_accessible_error_alert_and_reload_focus(page)
         poll_until(
             page,
@@ -471,7 +448,7 @@ def test_fault_corrupt_wasm_alerts_and_recovers_via_reload_button(
 
         page.route("**/math_explorer_gui_bg.wasm", inject_corrupt_wasm)
 
-        page.goto(isolated_server.base_url, wait_until="domcontentloaded")
+        goto_dist(page, isolated_server.base_url, wait_until="domcontentloaded")
         details = assert_accessible_error_alert_and_reload_focus(page)
         assert (
             "wasm" in details.lower() or "compile" in details.lower() or "magic" in details.lower()
@@ -496,32 +473,21 @@ def test_webgl_disabled_fallback_shows_details_and_focuses_reload_button(
     try:
         page = context.new_page()
         diagnostics = PageDiagnostics().attach(page)
-
         page.add_init_script(
-            """
-            (() => {
-                const origGetContext = HTMLCanvasElement.prototype.getContext;
-                HTMLCanvasElement.prototype.getContext = function (contextType, ...rest) {
-                    if (
-                        contextType === 'webgl' ||
-                        contextType === 'webgl2' ||
-                        contextType === 'experimental-webgl'
-                    ) {
+            """(() => {
+                const orig = HTMLCanvasElement.prototype.getContext;
+                HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
+                    if (kind === 'webgl' || kind === 'webgl2' || kind === 'experimental-webgl') {
                         return null;
                     }
-                    return origGetContext.call(this, contextType, ...rest);
+                    return orig.call(this, kind, ...rest);
                 };
-            })();
-            """
+            })();"""
         )
-
-        page.goto(isolated_server.base_url, wait_until="domcontentloaded")
+        goto_dist(page, isolated_server.base_url, wait_until="domcontentloaded")
         details = assert_accessible_error_alert_and_reload_focus(page)
-
-        title_text = page.locator("#error_container .error-title").inner_text()
-        assert "WebGL Initialization Failed" in title_text
+        assert "WebGL Initialization Failed" in page.locator("#error_container .error-title").inner_text()
         assert len(details) > 0
-
         assert not diagnostics.read_csp_violations(page)
         assert not diagnostics.page_errors
     finally:
