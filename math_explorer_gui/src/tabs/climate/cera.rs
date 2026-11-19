@@ -87,6 +87,9 @@ impl InteractiveTool for CeraTool {
     fn domain(&self) -> &'static str {
         "climate"
     }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
+    }
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&CeraState {

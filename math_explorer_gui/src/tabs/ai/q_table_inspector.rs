@@ -336,6 +336,9 @@ impl InteractiveTool for QTableInspectorTool {
     fn name(&self) -> &'static str {
         "Q-Table Inspector"
     }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
+    }
     fn domain(&self) -> &'static str {
         "ai"
     }
@@ -412,8 +415,8 @@ impl scientific_metadata::theory::TheoryDescribable for QTableInspectorTool {
     }
 }
 
+#[path = "q_table_inspector/preset.rs"]
+mod preset;
 #[cfg(test)]
 #[path = "q_table_inspector/tests.rs"]
 mod tests;
-#[path = "q_table_inspector/preset.rs"]
-mod preset;

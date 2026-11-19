@@ -1,7 +1,7 @@
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::pure_math::statistics::kelly::{
-    expected_value, kelly_fraction, variants, UnitInterval, Odds,
+    expected_value, kelly_fraction, variants, Odds, UnitInterval,
 };
 
 #[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -48,12 +48,17 @@ struct BetSizeState {
 }
 
 impl InteractiveTool for BetSizeCalculatorTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Bet Size Calculator"
     }
     fn domain(&self) -> &'static str {
         "financial_math"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -284,7 +289,6 @@ impl InteractiveTool for BetSizeCalculatorTool {
 
 // [cite:modular_polynomials_review]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "BetSizeCalculatorTool",
@@ -302,9 +306,15 @@ impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
             self.probability_input, self.decimal_odds
         )
     }
-    fn phonetic_description(&self) -> String { "Kelly criterion optimal bet sizing theory".into() }
-    fn theory_citation(&self) -> String { "A New Interpretation of Information Rate (Kelly, 1956)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Kelly criterion optimal bet sizing theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "A New Interpretation of Information Rate (Kelly, 1956)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

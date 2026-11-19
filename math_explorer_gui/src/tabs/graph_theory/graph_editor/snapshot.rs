@@ -131,6 +131,35 @@ const STARTER_PRESET_JSON: &str = r#"{
 }"#;
 
 inventory::submit! {
+    crate::framework::ToolMetadata {
+        id: "GraphEditorTool",
+        display_name: "Graph Editor",
+        domain: "graph_theory",
+        tags: &[],
+        build: || Box::new(GraphEditorTool::default()),
+    }
+}
+
+impl scientific_metadata::theory::TheoryDescribable for GraphEditorTool {
+    fn theory_description(&self) -> String {
+        format!(
+            "Combinatorial graph structure $G = (V, E)$ with $|V| = {}$ nodes and $|E| = {}$ edges under force-directed spring-electrical embedding $F = F_{{\\text{{attr}}}} + F_{{\\text{{rep}}}}.$",
+            self.node_positions.len(),
+            self.edges.len()
+        )
+    }
+    fn phonetic_description(&self) -> String {
+        "Combinatorial graph theory and force-directed network embedding".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Graph Drawing by Force-Directed Placement (Fruchterman & Reingold, 1991)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+
+inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "graph_editor_starter",
         title: "Interactive Graph Layout",

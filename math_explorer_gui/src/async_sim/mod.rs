@@ -130,6 +130,10 @@ impl SimulationController {
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn set_state_for_test(&mut self, state: SimWorkerState) {
+        if state.is_faulted() || state.is_terminated() {
+            let _ = self.cmd_tx.send(SimCommand::Pause);
+            self.pending_snapshot = false;
+        }
         self.state = state;
     }
 
@@ -248,14 +252,21 @@ impl SimulationController {
         loop {
             match self.state_rx.try_recv() {
                 Ok(SimStateUpdate::Snapshot(snapshot)) => {
-                    self.latest_snapshot = Some(snapshot);
-                    received_new_snapshot = true;
+                    if !self.state.is_faulted() && !self.state.is_terminated() {
+                        self.latest_snapshot = Some(snapshot);
+                        received_new_snapshot = true;
+                    }
                 }
                 Ok(SimStateUpdate::Status(event)) => {
-                    if matches!(event, WorkerStatusEvent::Stepping) {
-                        stepping_in_flight = true;
+                    let next = event.to_state();
+                    if !self.state.is_terminated()
+                        && (!self.state.is_faulted() || next.is_terminated())
+                    {
+                        if matches!(event, WorkerStatusEvent::Stepping) {
+                            stepping_in_flight = true;
+                        }
+                        self.state = next;
                     }
-                    self.state = event.to_state();
                 }
                 Ok(SimStateUpdate::Divergence(report)) => {
                     self.diagnostic_report = Some(report);
@@ -282,11 +293,9 @@ impl SimulationController {
             }
         }
 
-        if received_new_snapshot {
-            self.latest_snapshot.as_ref()
-        } else {
-            None
-        }
+        self.latest_snapshot
+            .as_ref()
+            .filter(|_| received_new_snapshot)
     }
 }
 
