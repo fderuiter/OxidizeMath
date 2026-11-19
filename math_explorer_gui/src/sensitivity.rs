@@ -192,19 +192,24 @@ pub fn render_labeled_sensitivity_panel_ui(
                 return;
             }
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             for metric in &engine.metrics {
-                render_sensitivity_metric_card(ui, metric);
+                render_sensitivity_metric_card(ui, metric, &palette);
                 ui.add_space(2.0);
             }
         });
 }
 
-fn render_sensitivity_metric_card(ui: &mut egui::Ui, metric: &SensitivityMetric) {
+fn render_sensitivity_metric_card(
+    ui: &mut egui::Ui,
+    metric: &SensitivityMetric,
+    palette: &crate::app::SemanticPalette,
+) {
     ui.group(|ui| {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(&metric.param_name).strong());
             if metric.is_high_sensitivity {
-                ui.colored_label(egui::Color32::RED, "⚠️ High Sensitivity (> 2.0 elasticity)");
+                ui.colored_label(palette.error, "⚠️ High Sensitivity (> 2.0 elasticity)");
             }
         });
 
@@ -216,11 +221,11 @@ fn render_sensitivity_metric_card(ui: &mut egui::Ui, metric: &SensitivityMetric)
 
         let progress = (metric.elasticity / 3.0).clamp(0.0, 1.0) as f32;
         let color = if metric.elasticity > 2.0 {
-            egui::Color32::RED
+            palette.error
         } else if metric.elasticity > 1.0 {
-            egui::Color32::GOLD
+            palette.warning
         } else {
-            egui::Color32::GREEN
+            palette.success
         };
 
         let progress_bar = egui::ProgressBar::new(progress)
@@ -333,5 +338,58 @@ pub(crate) mod tests {
             "Expected labeled baseline metric in rendered UI texts, got: {:?}",
             texts
         );
+    }
+
+    #[test]
+    fn test_sensitivity_metric_card_uses_wcag_semantic_palette_across_themes() {
+        let mut engine = SensitivityEngine::new();
+        engine.metrics = vec![
+            SensitivityMetric {
+                param_name: "high_p".to_string(),
+                baseline_value: 3.0,
+                partial_derivative: 27.0,
+                elasticity: 3.0,
+                is_high_sensitivity: true,
+            },
+            SensitivityMetric {
+                param_name: "mid_p".to_string(),
+                baseline_value: 2.0,
+                partial_derivative: 1.5,
+                elasticity: 1.5,
+                is_high_sensitivity: false,
+            },
+            SensitivityMetric {
+                param_name: "low_p".to_string(),
+                baseline_value: 1.0,
+                partial_derivative: 0.5,
+                elasticity: 0.5,
+                is_high_sensitivity: false,
+            },
+        ];
+
+        for mode in [
+            crate::app::ThemeMode::Dark,
+            crate::app::ThemeMode::Light,
+            crate::app::ThemeMode::HighContrast,
+        ] {
+            let ctx = egui::Context::default();
+            ctx.set_visuals(mode.visuals());
+            let palette = mode.palette();
+            let panel_bg = mode.visuals().panel_fill;
+            assert!(crate::app::contrast_ratio(palette.error, panel_bg) >= 4.5);
+            assert!(crate::app::contrast_ratio(palette.warning, panel_bg) >= 4.5);
+            assert!(crate::app::contrast_ratio(palette.success, panel_bg) >= 4.5);
+
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    render_sensitivity_panel_ui(ui, &engine, "wcag_sens");
+                });
+            });
+            let raw_shapes: Vec<egui::epaint::Shape> =
+                out.shapes.into_iter().map(|cs| cs.shape).collect();
+            let mut texts = Vec::new();
+            collect_shape_texts(&raw_shapes, &mut texts);
+            assert!(texts.iter().any(|t| t.contains("High Sensitivity")));
+        }
     }
 }

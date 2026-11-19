@@ -262,6 +262,7 @@ impl LegendEntry {
 
 #[derive(Clone)]
 pub(super) struct LegendWidget {
+    plot_id: Id,
     rect: Rect,
     entries: Vec<LegendEntry>,
     config: Legend,
@@ -271,6 +272,7 @@ impl LegendWidget {
     /// Create a new legend from items, the names of items that are hidden and the style of the
     /// text. Returns `None` if the legend has no entries.
     pub(super) fn try_new<'a>(
+        plot_id: Id,
         rect: Rect,
         config: Legend,
         items: &[Box<dyn PlotItem + 'a>],
@@ -321,6 +323,7 @@ impl LegendWidget {
         }
 
         (!entries.is_empty()).then_some(Self {
+            plot_id,
             rect,
             entries,
             config,
@@ -346,10 +349,12 @@ impl LegendWidget {
 impl Widget for &mut LegendWidget {
     fn ui(self, ui: &mut Ui) -> Response {
         let LegendWidget {
+            plot_id,
             rect,
             entries,
             config,
         } = self;
+        let target_plot_id = *plot_id;
 
         let main_dir = match config.position {
             Corner::LeftTop | Corner::RightTop => Direction::TopDown,
@@ -425,7 +430,7 @@ impl Widget for &mut LegendWidget {
                             if ui.button("Import CSV").clicked() {
                                 crate::export::trigger_import_csv_for_plot(
                                     ui.ctx(),
-                                    egui::Id::NULL,
+                                    target_plot_id,
                                 );
                                 ui.close();
                             }

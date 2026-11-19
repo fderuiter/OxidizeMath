@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::clamp_tests::load_active;
 use super::recovery::*;
 use super::SimulationFramework;
 
@@ -128,7 +129,7 @@ fn test_simulation_framework_auto_scale_step_size_halves_dt_and_restarts() {
     if let Some(pos) = framework
         .available_tools
         .iter()
-        .position(|t| t.name.contains("ODE"))
+        .position(|t| t.display_name.contains("ODE") || t.id.contains("Ode"))
     {
         framework.select_tool(pos);
     }
@@ -308,14 +309,7 @@ fn test_simulation_framework_recovery_banner_ui_and_screenshot() {
 #[test]
 fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
     let mut framework = SimulationFramework::new("analysis");
-    if let Some(pos) = framework
-        .available_tools
-        .iter()
-        .position(|t| t.name.contains("ODE") || t.name.contains("Ode"))
-    {
-        framework.select_tool(pos);
-    }
-
+    assert!(framework.select_tool_by_name("OdeSolverTool"));
     let baseline = framework
         .baseline_tool_state
         .clone()
@@ -325,16 +319,12 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
         obj.insert("dt".to_string(), serde_json::json!(0.2));
     }
     let modified = serde_json::to_string(&val).unwrap();
-
-    framework
-        .active_tool
-        .as_mut()
-        .unwrap()
-        .load_state(&modified);
+    load_active(&mut framework, &modified);
     egui_plot::append_last_plot_datasets(&[("Modified Run".to_string(), vec![[0.0, 5.0]])]);
     framework.current_valid_plot_datasets = vec![("Modified Run".to_string(), vec![[0.0, 5.0]])];
     framework.cache_valid_snapshot();
 
+    let before_reset = crate::web_io::PlatformInstant::now();
     framework.reset_parameters();
 
     assert!(egui_plot::get_last_plot_datasets().is_empty());
@@ -345,153 +335,133 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
     assert_eq!(snap.tool_state.as_ref(), Some(&baseline));
     assert!(snap.plot_datasets.is_empty());
     assert_eq!(snap.step_index, 0);
-
+    let zero = std::time::Duration::ZERO;
+    assert_eq!(before_reset.duration_since(snap.timestamp), zero);
+    assert!(snap.timestamp.duration_since(before_reset) >= zero);
     // Subsequent Step-Back must preserve restored baseline rather than reverting to modified state
     assert!(framework.rollback_step_back());
     assert_eq!(
         framework.active_tool.as_ref().unwrap().save_state(),
         Some(baseline)
     );
+
+    let mut empty_fw = SimulationFramework::new("__nonexistent_domain__");
+    assert!(empty_fw.active_tool.is_none());
+    empty_fw.reset_parameters();
+    assert!(empty_fw.last_valid_snapshot().is_none());
 }
 
-fn active_json(fw: &SimulationFramework) -> serde_json::Value {
-    serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap()
+fn active_saved_state(fw: &SimulationFramework) -> String {
+    fw.active_tool.as_ref().unwrap().save_state().unwrap()
 }
 
-fn load_active(fw: &mut SimulationFramework, state: &str) {
-    fw.active_tool.as_mut().unwrap().load_state(state);
-}
-
-fn drained_telemetry_contains(needle: &str) -> bool {
-    federated_registry::global_registry()
-        .try_recv_all()
+#[test]
+fn test_starter_card_launch_updates_baseline_and_snapshot_for_reset() {
+    let mut fw = SimulationFramework::new("fluid_dynamics");
+    let cards =
+        crate::starter_gallery::get_starter_cards_for_domain("fluid_dynamics", &fw.available_tools);
+    let source_sink = cards
         .iter()
-        .any(|e| {
-            e.source == "SimulationFramework"
-                && e.metadata
-                    .get("details")
-                    .is_some_and(|d| d.contains(needle))
-        })
-}
-
-#[test]
-fn test_clamp_parameters_multistep_lorenz_restores_plots_and_stabilizes() {
-    let mut fw = SimulationFramework::new("chaos");
-    assert!(fw.select_tool_by_name("AttractorPlotter"));
-    let unstable = r#"{"sigma":250.0,"rho":800.0,"beta":25.0,"dt":0.25,"simulation_speed":5,"execution_state":{"Diverged":{"invalid_vec":["NaN","Infinity","-Infinity"],"diverged_at_step":10}},"show_annotations":true}"#;
-    load_active(&mut fw, unstable);
-    let saved_plot = vec![("Trajectory".to_string(), vec![[0.0, 1.0], [1.0, 2.5]])];
-    fw.current_valid_plot_datasets = saved_plot.clone();
-    fw.cache_valid_snapshot();
-
-    egui_plot::clear_last_plot_datasets();
-    egui_plot::append_last_plot_datasets(&[("Trajectory".to_string(), vec![[0.0, f64::NAN]])]);
-    assert!(fw.inspect_runtime_state().is_err());
-
-    {
-        let _g = crate::reflective_ui::tests::TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let _ = federated_registry::global_registry().try_recv_all();
-        fw.handle_state_guard_action(StateGuardAction::ClampParameters);
-        assert!(drained_telemetry_contains("Clamped snapshot JSON"));
-        assert_eq!(egui_plot::get_last_plot_datasets(), saved_plot);
-    }
-    assert!(!fw.is_diverged() && fw.diagnostic_report().is_none());
-
-    let post = active_json(&fw);
-    assert!(post["sigma"].as_f64().unwrap() <= 50.0 && post["rho"].as_f64().unwrap() <= 100.0);
-    assert!(post["beta"].as_f64().unwrap() <= 10.0 && post["dt"].as_f64().unwrap() <= 0.01);
-    assert_eq!(post["execution_state"], serde_json::json!("Ready"));
-
-    for _ in 0..40 {
-        fw.active_tool.as_mut().unwrap().step_simulation();
-    }
-    let post_ds = fw.active_tool.as_ref().unwrap().export_datasets();
-    assert!(inspect_datasets_for_divergence(&post_ds).is_ok());
-    if let Ok(png) = egui_plot::export::export_custom_png(&post_ds, &Default::default()) {
-        let _ = std::fs::write("/tmp/clamp_parameters_lorenz_recovery.png", png);
-    }
-}
-
-#[test]
-fn test_clamp_parameters_dispatches_domain_hooks_and_restores_datasets() {
-    let mut cera_fw = SimulationFramework::new("climate");
-    assert!(cera_fw.select_tool_by_name("CeraTool"));
-    load_active(
-        &mut cera_fw,
-        r#"{"in_channels":99,"latent_channels":4,"aligned_channels":18,"num_levels":90,"output_size":40}"#,
-    );
-    let plots = vec![("CERA".to_string(), vec![[0.0, 0.4], [1.0, 0.8]])];
-    cera_fw.current_valid_plot_datasets = plots.clone();
-    cera_fw.cache_valid_snapshot();
-    {
-        let _g = crate::reflective_ui::tests::TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let _ = federated_registry::global_registry().try_recv_all();
-        cera_fw.clamp_parameters();
-        assert!(drained_telemetry_contains("domain hook"));
-        assert_eq!(egui_plot::get_last_plot_datasets(), plots);
-    }
-    let cera_val = active_json(&cera_fw);
-    assert_eq!(cera_val["in_channels"].as_u64(), Some(10));
-    assert_eq!(cera_val["aligned_channels"].as_u64(), Some(4));
-
-    let mut ode_fw = SimulationFramework::new("analysis");
-    assert!(ode_fw.select_tool_by_name("OdeSolverTool"));
-    let mut ode_json: serde_json::Value =
-        serde_json::from_str(ode_fw.baseline_tool_state.as_ref().unwrap()).unwrap();
-    ode_json["param_k"] = serde_json::json!(1e200);
-    ode_json["dt"] = serde_json::json!(5.0);
-    load_active(&mut ode_fw, &ode_json.to_string());
-    ode_fw.cache_valid_snapshot();
-    ode_fw.clamp_parameters();
-    let ode_post = active_json(&ode_fw);
-    assert!(
-        ode_post["param_k"].as_f64().unwrap() <= 5.0 && ode_post["dt"].as_f64().unwrap() <= 0.1
-    );
-
-    let mut lbm_fw = SimulationFramework::new("fluid_dynamics");
-    assert!(!lbm_fw
-        .active_tool
-        .as_ref()
+        .find(|c| c.title == "Source-Sink Pair")
+        .expect("Source-Sink Pair card expected");
+    let factory_state = (fw
+        .available_tools
+        .iter()
+        .find(|t| t.id == "PotentialFlowTool")
         .unwrap()
-        .theory()
-        .theory_parameters()
-        .is_empty());
-    load_active(&mut lbm_fw, r#"{"viscosity":99.0}"#);
-    lbm_fw.cache_valid_snapshot();
-    lbm_fw.clamp_parameters();
-    assert!(active_json(&lbm_fw)["viscosity"].as_f64().unwrap() < 99.0);
+        .build)()
+    .save_state()
+    .unwrap();
+
+    fw.show_starter_gallery = true;
+    assert!(fw.launch_starter_card(source_sink).is_ok());
+    assert!(!fw.show_starter_gallery);
+
+    let preset_state = active_saved_state(&fw);
+    assert_ne!(preset_state, factory_state);
+    assert_eq!(
+        fw.baseline_tool_state.as_deref(),
+        Some(preset_state.as_str())
+    );
+    assert_eq!(
+        fw.last_valid_snapshot()
+            .and_then(|s| s.tool_state.as_deref()),
+        Some(preset_state.as_str())
+    );
+
+    fw.active_tool.as_mut().unwrap().load_state(&factory_state);
+    assert_eq!(active_saved_state(&fw), factory_state);
+
+    fw.reset_parameters();
+    assert_eq!(active_saved_state(&fw), preset_state);
+    assert_eq!(
+        fw.last_valid_snapshot()
+            .and_then(|s| s.tool_state.as_deref()),
+        Some(preset_state.as_str())
+    );
 }
 
 #[test]
-fn test_clamp_parameters_baseline_fallback_and_telemetry() {
-    let mut fw = SimulationFramework::new("chaos");
-    assert!(fw.select_tool_by_name("AttractorPlotter"));
-    let baseline = fw.baseline_tool_state.clone().unwrap();
-    let drifted = baseline.replace("\"sigma\":10.0", "\"sigma\":42.0");
-    let _g = crate::reflective_ui::tests::TEST_MUTEX
+fn test_apply_preset_json_malformed_surfaces_toast_and_telemetry_warning() {
+    let mut framework = SimulationFramework::new("analysis");
+    assert!(framework.preset_dialog.toast_error.is_none());
+
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    let mut warning = None;
+    for _ in 0..5 {
+        let err_msg = framework
+            .apply_preset_json("{not valid preset json")
+            .expect_err("Malformed JSON must return Err");
+        let toast = framework
+            .preset_dialog
+            .toast_error
+            .clone()
+            .expect("toast_error must be populated on malformed preset JSON");
+        assert_eq!(toast, err_msg);
+        if let Some(ev) = federated_registry::global_registry()
+            .try_recv_all()
+            .into_iter()
+            .rev()
+            .find(|ev| ev.source == "PresetSerialization" && ev.message == toast)
+        {
+            warning = Some(ev);
+            break;
+        }
+    }
+    let warning = warning.expect("Expected TelemetryEvent from PresetSerialization");
+    assert_eq!(warning.severity, federated_registry::Severity::Warning);
+}
 
-    load_active(&mut fw, &drifted);
-    let _ = federated_registry::global_registry().try_recv_all();
-    fw.clamp_parameters();
-    assert_eq!(
-        fw.active_tool.as_ref().unwrap().save_state(),
-        Some(baseline.clone())
-    );
-    assert!(drained_telemetry_contains("Fallback"));
+#[test]
+fn test_starter_card_launch_isolates_cross_pane_plot_datasets_and_syncs_owner() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut fw = SimulationFramework::new("epidemiology");
+    let foreign_plot = vec![("OtherPaneCurve".to_string(), vec![[0.0, 99.0], [1.0, 88.0]])];
+    egui_plot::clear_last_plot_datasets();
+    egui_plot::append_last_plot_datasets(&foreign_plot);
 
-    load_active(&mut fw, &drifted);
-    fw.last_valid_snapshot = None;
-    let _ = federated_registry::global_registry().try_recv_all();
-    fw.clamp_parameters();
+    let cards =
+        crate::starter_gallery::get_starter_cards_for_domain("epidemiology", &fw.available_tools);
+    let net_card = cards
+        .iter()
+        .find(|c| c.tool_name == Some("NetworkPropagationTool"))
+        .expect("NetworkPropagationTool starter card expected");
+    assert!(fw.launch_starter_card(net_card).is_ok());
+
+    // NetworkPropagationTool uses default egui_plot export_datasets(), so foreign pane data must
+    // neither leak into its snapshot/cache nor be wiped from egui_plot's global buffer.
+    assert!(fw.current_valid_plot_datasets.is_empty());
+    assert!(fw
+        .last_valid_snapshot()
+        .is_some_and(|s| s.plot_datasets.is_empty()));
     assert_eq!(
-        fw.active_tool.as_ref().unwrap().save_state(),
-        Some(baseline)
+        fw.sync_state.datasets_owner_tool,
+        Some("Network Propagation")
     );
-    assert!(drained_telemetry_contains("missing"));
+    assert_eq!(egui_plot::get_last_plot_datasets(), foreign_plot);
+    egui_plot::clear_last_plot_datasets();
 }

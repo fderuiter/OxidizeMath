@@ -139,6 +139,16 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         map
     }
 
+    fn parameter_label(name: &str) -> String {
+        match name {
+            "g_na" => "Sodium Conductance (mS/cm²)".to_string(),
+            "g_k" => "Potassium Conductance (mS/cm²)".to_string(),
+            "g_l" => "Leak Conductance (mS/cm²)".to_string(),
+            "i_ext" => "External Stimulus Current (µA/cm²)".to_string(),
+            other => other.to_string(),
+        }
+    }
+
     fn name() -> &'static str {
         "Hodgkin-Huxley Model"
     }
@@ -174,7 +184,8 @@ impl UnifiedModel for HodgkinHuxleyUnified {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "HodgkinHuxleyTool",
+        id: "HodgkinHuxleyTool",
+        display_name: "Hodgkin-Huxley Model",
         domain: "neuroscience",
         tags: &[],
         build: || Box::new(UnifiedSimTool::<HodgkinHuxleyUnified>::new()),
@@ -223,8 +234,10 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "current_injection": 10.0,
-    "duration_ms": 50.0
+    "g_na": 120.0,
+    "g_k": 36.0,
+    "g_l": 0.3,
+    "i_ext": 10.0
   }
 }"#;
 

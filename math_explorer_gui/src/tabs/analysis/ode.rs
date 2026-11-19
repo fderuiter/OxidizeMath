@@ -385,28 +385,29 @@ impl InteractiveTool for OdeSolverTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<OdeState>(state) {
-            if let Some(p) = s.preset {
-                self.preset = p;
-            }
-            self.dt = s.dt;
-            self.total_time = s.total_time;
-            self.param_k = s.param_k;
-            self.param_r = s.param_r;
-            self.param_cap_k = s.param_cap_k;
-            self.ic_y0 = s.ic_y0;
-            self.ic_v0 = s.ic_v0;
-            if !s.custom_expr.is_empty() {
-                self.math_input.set_expression(&s.custom_expr);
-            }
-            self.snapshot_manager = s.snapshot_manager;
-            self.callout_manager = s.callout_manager;
-            self.method = s.method;
-            self.comparison_mode = s.comparison_mode;
-            self.show_annotations = s.show_annotations;
-            self.recalculate();
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: OdeState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {e}"))?;
+        if let Some(p) = s.preset {
+            self.preset = p;
         }
+        self.dt = s.dt;
+        self.total_time = s.total_time;
+        self.param_k = s.param_k;
+        self.param_r = s.param_r;
+        self.param_cap_k = s.param_cap_k;
+        self.ic_y0 = s.ic_y0;
+        self.ic_v0 = s.ic_v0;
+        if !s.custom_expr.is_empty() {
+            self.math_input.set_expression(&s.custom_expr);
+        }
+        self.snapshot_manager = s.snapshot_manager;
+        self.callout_manager = s.callout_manager;
+        self.method = s.method;
+        self.comparison_mode = s.comparison_mode;
+        self.show_annotations = s.show_annotations;
+        self.recalculate();
+        Ok(())
     }
 
     fn clamp_parameters(&mut self) -> bool {
@@ -450,7 +451,8 @@ impl InteractiveTool for OdeSolverTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "OdeSolverTool",
+        id: "OdeSolverTool",
+        display_name: "ODE Solvers",
         domain: "analysis",
         tags: &[],
         build: || Box::new(OdeSolverTool::default()),

@@ -7,6 +7,10 @@ STAGING_DIR="${1:-${TRUNK_STAGING_DIR:-math_explorer_gui/dist}}"
 INDEX_HTML="$STAGING_DIR/index.html"
 LOADER_JS="$STAGING_DIR/trunk-loader.js"
 
+if [ -f "$STAGING_DIR/icon.ico" ]; then
+    mv "$STAGING_DIR/icon.ico" "$STAGING_DIR/favicon.ico"
+fi
+
 if [ -f "$INDEX_HTML" ] && grep -q '<script type="module">' "$INDEX_HTML"; then
     awk -v loader="$LOADER_JS" '
         BEGIN { in_mod = 0 }
@@ -59,7 +63,7 @@ if [ -f "$INDEX_HTML" ] && grep -q '<script type="module">' "$INDEX_HTML"; then
 fi
 
 shopt -s nullglob
-for ext in wasm js html css; do
+for ext in wasm js html css svg webmanifest; do
     for f in "$STAGING_DIR"/*."$ext"; do
         if [ -f "$f" ]; then
             gzip -k -9 -f "$f"

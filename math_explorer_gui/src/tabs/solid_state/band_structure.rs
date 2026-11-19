@@ -57,15 +57,16 @@ impl InteractiveTool for BandStructureTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<BandStructureState>(state) {
-            self.e0 = s.e0;
-            self.t = s.t;
-            self.a = s.a;
-            self.hbar = s.hbar;
-            self.m = s.m;
-            self.show_free_electron = s.show_free_electron;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: BandStructureState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid BandStructureTool state: {e}"))?;
+        self.e0 = s.e0;
+        self.t = s.t;
+        self.a = s.a;
+        self.hbar = s.hbar;
+        self.m = s.m;
+        self.show_free_electron = s.show_free_electron;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -155,7 +156,8 @@ impl InteractiveTool for BandStructureTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "BandStructureTool",
+        id: "BandStructureTool",
+        display_name: "Band Structure",
         domain: "solid_state",
         tags: &[],
         build: || Box::new(BandStructureTool::default()),
@@ -192,8 +194,12 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "lattice_type": "FCC",
-    "fermi_level": 0.0
+    "e0": 0.0,
+    "t": 1.5,
+    "a": 1.2,
+    "hbar": 1.0,
+    "m": 1.0,
+    "show_free_electron": true
   }
 }"#;
 

@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 
 /// Available one-click recovery remedies for solver divergence.
@@ -157,7 +158,7 @@ pub fn render_state_guard_action_buttons(
         if has_stepback
             && ui
                 .button("⏮ Step Back")
-                .on_hover_text(
+                .accessible_hover_text(
                     "Restore the most recent valid pre-divergence state snapshot and plot data",
                 )
                 .clicked()
@@ -172,7 +173,7 @@ pub fn render_state_guard_action_buttons(
 
         if ui
             .button("Auto-scale Step Size (dt)")
-            .on_hover_text(
+            .accessible_hover_text(
                 "Halve step size (dt) and recalculate simulation trajectory from snapshot",
             )
             .clicked()
@@ -187,7 +188,7 @@ pub fn render_state_guard_action_buttons(
 
         if ui
             .button("Clamp Instability Parameters")
-            .on_hover_text(
+            .accessible_hover_text(
                 "Restrict rate parameters and initial conditions to pre-configured stable bounds",
             )
             .clicked()
@@ -202,7 +203,7 @@ pub fn render_state_guard_action_buttons(
 
         if ui
             .button("Reset All Parameters")
-            .on_hover_text("Restore default baseline configuration")
+            .accessible_hover_text("Restore default baseline configuration")
             .clicked()
         {
             emit_recovery_telemetry(
@@ -237,10 +238,11 @@ pub fn render_state_guard_banner(
     has_stepback: bool,
 ) -> Option<StateGuardAction> {
     let mut chosen_action = None;
+    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
 
     egui::Frame::new()
-        .fill(egui::Color32::from_rgb(45, 20, 20))
-        .stroke(egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(220, 50, 50)))
+        .fill(palette.error_banner_bg)
+        .stroke(egui::Stroke::new(1.5_f32, palette.error_banner_stroke))
         .corner_radius(egui::CornerRadius::same(6))
         .inner_margin(egui::Margin::same(10))
         .show(ui, |ui| {
@@ -248,7 +250,7 @@ pub fn render_state_guard_banner(
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new("⚠️ Solver Divergence Warning: Non-finite state detected (NaN or Inf). Integration terminated.")
-                            .color(egui::Color32::from_rgb(255, 100, 100))
+                            .color(palette.error)
                             .strong()
                             .size(13.0),
                     );
@@ -260,7 +262,7 @@ pub fn render_state_guard_banner(
                         ui.label(
                             egui::RichText::new("Diagnostic Context: ")
                                 .strong()
-                                .color(egui::Color32::LIGHT_GRAY),
+                                .color(palette.muted_text),
                         );
                         ui.label(
                             egui::RichText::new(format!(
@@ -268,7 +270,7 @@ pub fn render_state_guard_banner(
                                 diag.t_diverged, diag.step_index, diag.variable
                             ))
                             .monospace()
-                            .color(egui::Color32::from_rgb(240, 200, 150)),
+                            .color(palette.warning),
                         );
                     });
                 }

@@ -35,10 +35,11 @@ impl InteractiveTool for Co2ProjectionsTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<Co2State>(state) {
-            self.reduction_scenario = s.reduction_scenario;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: Co2State = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid Co2ProjectionsTool state: {e}"))?;
+        self.reduction_scenario = s.reduction_scenario;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -61,15 +62,18 @@ impl InteractiveTool for Co2ProjectionsTool {
             .y_axis_formatter(|y, _range| format!("{:.1} ppm", y.value))
             .legend(egui_plot::Legend::default());
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         plot.show(ui, |plot_ui| {
             let hist_points = PlotPoints::new(historical);
-            let hist_line = Line::new("Historical CO2", hist_points).width(2.0_f32);
+            let hist_line = Line::new("Historical CO2", hist_points)
+                .width(2.0_f32)
+                .color(palette.series_color(0));
             plot_ui.line(hist_line);
 
             let proj_points = PlotPoints::new(projected);
             let proj_line = Line::new("Projected CO2", proj_points)
                 .width(2.0_f32)
-                .color(egui::Color32::RED);
+                .color(palette.series_color(3));
             plot_ui.line(proj_line);
         });
     }
@@ -80,7 +84,8 @@ impl InteractiveTool for Co2ProjectionsTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "Co2ProjectionsTool",
+        id: "Co2ProjectionsTool",
+        display_name: "CO2 Projections",
         domain: "climate",
         tags: &[],
         build: || Box::new(Co2ProjectionsTool::default()),
@@ -107,8 +112,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "baseline_ppm": 420.0,
-    "annual_growth": 2.5
+    "reduction_scenario": 0.5
   }
 }"#;
 

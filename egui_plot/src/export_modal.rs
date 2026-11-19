@@ -290,6 +290,17 @@ fn render_dimension_and_status(
     options: &ExportOptions,
     status_message: &Option<String>,
 ) {
+    let (warn_color, ok_color) = if ui.visuals().dark_mode {
+        (
+            egui::Color32::from_rgb(245, 194, 66),
+            egui::Color32::from_rgb(74, 214, 122),
+        )
+    } else {
+        (
+            egui::Color32::from_rgb(146, 84, 0),
+            egui::Color32::from_rgb(15, 115, 54),
+        )
+    };
     let (calc_w, calc_h) = calculate_target_dimensions(options);
     if exceeds_max_dimension(calc_w, calc_h) {
         ui.label(
@@ -297,14 +308,14 @@ fn render_dimension_and_status(
                 "⚠️ Capped at max dimension {}x{} px",
                 MAX_EXPORT_DIMENSION, MAX_EXPORT_DIMENSION
             ))
-            .color(egui::Color32::YELLOW),
+            .color(warn_color),
         );
     } else {
         ui.label(format!("Target Canvas Size: {} x {} px", calc_w, calc_h));
     }
 
     if let Some(msg) = status_message {
-        ui.label(egui::RichText::new(msg).color(egui::Color32::GREEN));
+        ui.label(egui::RichText::new(msg).color(ok_color));
     }
 }
 
