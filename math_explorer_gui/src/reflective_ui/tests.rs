@@ -3,6 +3,10 @@ use std::sync::Mutex;
 
 pub(crate) static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
+pub(crate) fn lock_test_mutex() -> std::sync::MutexGuard<'static, ()> {
+    TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[test]
 fn test_render_copyable_metric() {
     let ctx = egui::Context::default();

@@ -2,7 +2,7 @@
 //! and configuration models for Math Explorer simulation tools.
 
 use crate::framework::InteractiveTool;
-use federated_registry::{global_registry, Severity, TelemetryEvent};
+use federated_registry::Severity;
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 
@@ -302,13 +302,12 @@ impl PresetDialogState {
     /// Records a preset deserialization or import error into toast state, telemetry, and accessibility status.
     pub(crate) fn record_import_error(&mut self, err: String) {
         self.toast_info = None;
-        global_registry().emit(TelemetryEvent {
-            source: "PresetSerialization".to_string(),
-            severity: Severity::Warning,
-            message: err.clone(),
-            metadata: std::collections::HashMap::new(),
-            thread_name: None,
-        });
+        crate::telemetry::emit_telemetry(
+            "PresetSerialization",
+            Severity::Warning,
+            err.clone(),
+            std::collections::HashMap::new(),
+        );
         crate::accessibility::announce_status_with_priority(&err, "assertive");
         self.toast_error = Some(err);
     }

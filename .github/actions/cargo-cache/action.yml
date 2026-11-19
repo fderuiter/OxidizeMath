@@ -1,0 +1,96 @@
+name: Cargo Cache
+description: Restore OS-shared Cargo registry sources and job-scoped Cargo build artifacts.
+
+inputs:
+  scope:
+    description: Distinct job or matrix scope identifier for the target directory cache.
+    required: true
+  profile:
+    description: Cargo build profile scope (for example dev, release, or mixed).
+    required: false
+    default: mixed
+  target:
+    description: Explicit Rust target triple; defaults to the active rustc host triple.
+    required: false
+    default: ""
+  extra-files:
+    description: Optional file paths or glob patterns hashed into the target cache key.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Compute Rust toolchain and manifest cache metadata
+      id: cache-meta
+      shell: bash
+      env:
+        INPUT_TARGET: ${{ inputs.target }}
+        INPUT_EXTRA_FILES: ${{ inputs.extra-files }}
+        LOCK_AND_CONFIG_HASH: ${{ hashFiles('Cargo.lock', '**/Cargo.lock', '.cargo/config.toml', 'math_explorer_gui/Trunk.toml') }}
+        EXTRA_FILES_HASH: ${{ inputs.extra-files != '' && hashFiles(inputs.extra-files) || '' }}
+      run: |
+        set -euo pipefail
+
+        sha256_hex() {
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum | awk '{print $1}' | tr -d '\r'
+          elif command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 | awk '{print $1}' | tr -d '\r'
+          elif command -v openssl >/dev/null 2>&1; then
+            openssl dgst -sha256 -r | awk '{print $1}' | tr -d '\r'
+          else
+            echo "Error: Neither sha256sum, shasum, nor openssl is available" >&2
+            exit 1
+          fi
+        }
+
+        rustc_info="$(rustc -vV | tr -d '\r')"
+        host_triple="$(printf '%s\n' "$rustc_info" | sed -n 's/^host: //p')"
+        if [ -z "$host_triple" ]; then
+          echo "Error: Unable to determine host triple from rustc -vV" >&2
+          exit 1
+        fi
+
+        resolved_target="$(printf '%s' "${INPUT_TARGET:-}" | tr -d '\r')"
+        if [ -z "$resolved_target" ]; then
+          resolved_target="$host_triple"
+        fi
+
+        if [ -z "${LOCK_AND_CONFIG_HASH:-}" ]; then
+          echo "Error: Failed to hash Cargo.lock and workspace build configuration files" >&2
+          exit 1
+        fi
+
+        if [ -n "${INPUT_EXTRA_FILES:-}" ] && [ -z "${EXTRA_FILES_HASH:-}" ]; then
+          echo "Error: extra-files pattern matched no files: ${INPUT_EXTRA_FILES}" >&2
+          exit 1
+        fi
+
+        compiler_hash="$(printf '%s\ntarget=%s\n' "$rustc_info" "$resolved_target" | sha256_hex)"
+        manifest_hash="$(printf '%s:%s\n' "$LOCK_AND_CONFIG_HASH" "${EXTRA_FILES_HASH:-}" | sha256_hex)"
+
+        {
+          printf 'target=%s\n' "$resolved_target"
+          printf 'compiler-hash=%s\n' "$compiler_hash"
+          printf 'manifest-hash=%s\n' "$manifest_hash"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Cache Cargo registry and git database
+      uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('Cargo.lock', '**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+
+    - name: Cache Cargo target directory
+      uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
+      with:
+        path: target/
+        key: ${{ runner.os }}-cargo-target-${{ inputs.scope }}-${{ inputs.profile }}-${{ steps.cache-meta.outputs.target }}-${{ steps.cache-meta.outputs.compiler-hash }}-${{ steps.cache-meta.outputs.manifest-hash }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-target-${{ inputs.scope }}-${{ inputs.profile }}-${{ steps.cache-meta.outputs.target }}-${{ steps.cache-meta.outputs.compiler-hash }}-
