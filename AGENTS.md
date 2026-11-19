@@ -31,16 +31,17 @@ cargo run -p xtask -- lint-all
 Before opening or updating a pull request, run the repository quality gates defined in [.github/workflows/ci.yml](.github/workflows/ci.yml):
 
 ```bash
+# Format and lint host and WebAssembly targets with Clippy (warnings denied)
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
+
 # Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA action pins)
 cargo run -p unified_verification --release -- lint-workflows
 
 # Audit AST attributes for unauthorized dead_code/unused/warnings bypasses and unused dependencies
 cargo run -p xtask -- test-policy-audit
 cargo run -p unified_verification --release -- test-policy-audit
-
-# Format and Clippy lint checks
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Verify crate documentation and workspace rustdoc builds
 cargo run -p unified_verification --release -- check-docs
