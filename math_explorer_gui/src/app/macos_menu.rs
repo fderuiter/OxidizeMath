@@ -275,7 +275,7 @@ pub(super) fn handle_macos_menu_events(app: &mut MathExplorerApp, ctx: &egui::Co
             "edit_redo" => app.redo(),
             other if other.starts_with("tab_") => {
                 if let Ok(idx) = other[4..].parse::<usize>() {
-                    app.select_tab(ctx, idx);
+                    super::domain_bar::select_primary_tab(app, ctx, idx);
                 }
             }
             _ => {}

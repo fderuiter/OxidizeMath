@@ -1,3 +1,4 @@
+// [cite:quantum_mechanics]
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::{SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -173,6 +174,24 @@ impl UnifiedModel for WaveUnified {
         map
     }
 
+    fn parameter_label(name: &str) -> String {
+        match name {
+            "potential_type" => "Potential Profile".to_string(),
+            "dt" => "Time Step (Δt)".to_string(),
+            other => other.to_string(),
+        }
+    }
+
+    fn parameter_choices(name: &str) -> &'static [(&'static str, f64)] {
+        match name {
+            "potential_type" => &[
+                ("Infinite Potential Well", 0.0),
+                ("Harmonic Oscillator", 1.0),
+            ],
+            _ => &[],
+        }
+    }
+
     fn name() -> &'static str {
         "Wave Simulator"
     }
@@ -181,12 +200,12 @@ impl UnifiedModel for WaveUnified {
         if let Some(snap) = snapshot_opt {
             if let Some(any_data) = &snap.structured_data {
                 if let Some(wave_data) = any_data.downcast_ref::<WaveData>() {
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                    let psi_color = palette.series_color(0);
+                    let potential_color = palette.series_color(1);
                     ui.label(format!("Time: {:.2}", wave_data.time));
-                    ui.label("White: |ψ(x)|² (Probability)");
-                    ui.colored_label(
-                        egui::Color32::from_rgb(100, 100, 255),
-                        "Blue: V(x) (Potential)",
-                    );
+                    ui.colored_label(psi_color, "━ |ψ(x)|² (Probability Density)");
+                    ui.colored_label(potential_color, "━ V(x) (Potential Barrier)");
 
                     let mut psi_points = Vec::new();
                     let mut v_points = Vec::new();
@@ -207,12 +226,12 @@ impl UnifiedModel for WaveUnified {
                         .show(ui, |plot_ui| {
                             plot_ui.line(
                                 Line::new("Probability |ψ|²", PlotPoints::new(psi_points))
-                                    .color(egui::Color32::WHITE)
+                                    .color(psi_color)
                                     .width(2.0_f32),
                             );
                             plot_ui.line(
                                 Line::new("Potential V(x) (scaled)", PlotPoints::new(v_points))
-                                    .color(egui::Color32::from_rgb(100, 100, 255)),
+                                    .color(potential_color),
                             );
                         });
                     return true;
@@ -257,7 +276,8 @@ impl WaveUnified {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "WaveSimulator",
+        id: "WaveSimulator",
+        display_name: "Wave Simulator",
         domain: "quantum",
         tags: &[],
         build: || Box::new(UnifiedSimTool::<WaveUnified>::new()),
@@ -266,16 +286,25 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for WaveUnified {
     fn theory_description(&self) -> String {
-        "Quantum wave simulation [cite:quantum_mechanics]".to_string()
+        "Time-dependent 1D Schrödinger wave packet evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ for infinite well and harmonic oscillator potentials.".to_string()
     }
     fn phonetic_description(&self) -> String {
-        "Quantum wave simulation".to_string()
+        "Time-dependent one-dimensional Schrodinger wave packet simulation".to_string()
     }
     fn theory_citation(&self) -> String {
-        "[cite:quantum_mechanics]".to_string()
+        "Schrödinger, E. (1926). An Undulatory Theory of the Mechanics of Atoms and Molecules. Physical Review, 28(6), 1049-1070; Griffiths, D. J., & Schroeter, D. F. (2018). Introduction to Quantum Mechanics (3rd ed.). Cambridge University Press.".to_string()
     }
     fn available_descriptions(&self) -> HashMap<String, String> {
-        HashMap::new()
+        let mut map = HashMap::new();
+        map.insert(
+            "potential_type".to_string(),
+            "Selects between an infinite square well (V = 0 inside walls) and a quadratic harmonic potential V(x) = 0.5 x².".to_string(),
+        );
+        map.insert(
+            "dt".to_string(),
+            "Integration time step Δt controlling unitary wave-packet propagation per tick.".to_string(),
+        );
+        map
     }
 }
 
@@ -287,8 +316,8 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "barrier_height": 5.0,
-    "packet_energy": 3.0
+    "potential_type": 1.0,
+    "dt": 0.02
   }
 }"#;
 

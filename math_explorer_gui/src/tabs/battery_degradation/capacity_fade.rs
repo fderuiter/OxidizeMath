@@ -45,12 +45,13 @@ impl InteractiveTool for CapacityFadeTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<CapacityFadeState>(state) {
-            self.dod = s.dod;
-            self.temperature = s.temperature;
-            self.cycles_to_simulate = s.cycles_to_simulate;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: CapacityFadeState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid CapacityFadeTool state: {e}"))?;
+        self.dod = s.dod;
+        self.temperature = s.temperature;
+        self.cycles_to_simulate = s.cycles_to_simulate;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -103,6 +104,7 @@ impl InteractiveTool for CapacityFadeTool {
 
             let line = Line::new("Capacity", PlotPoints::new(points));
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             Plot::new("capacity_fade_plot")
                 .view_aspect(2.0)
                 .x_axis_label("Cycles")
@@ -114,13 +116,13 @@ impl InteractiveTool for CapacityFadeTool {
                     // Add a horizontal line at 70% (End of Life)
                     plot_ui.hline(
                         HLine::new("End of Life (70%)", 0.7)
-                            .color(egui::Color32::RED)
+                            .color(palette.error)
                             .style(egui_plot::LineStyle::Dashed { length: 10.0 }),
                     );
                     // Add a horizontal line at 80% (First Life)
                     plot_ui.hline(
                         HLine::new("First Life (80%)", 0.8)
-                            .color(egui::Color32::YELLOW)
+                            .color(palette.warning)
                             .style(egui_plot::LineStyle::Dashed { length: 10.0 }),
                     );
                 });
@@ -147,7 +149,8 @@ impl InteractiveTool for CapacityFadeTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "CapacityFadeTool",
+        id: "CapacityFadeTool",
+        display_name: "Capacity Fade",
         domain: "battery_degradation",
         tags: &[],
         build: || Box::new(CapacityFadeTool::default()),
@@ -174,8 +177,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "initial_capacity": 100.0,
-    "cycle_count": 1000
+    "dod": 80.0,
+    "temperature": 25.0,
+    "cycles_to_simulate": 1000.0
   }
 }"#;
 

@@ -232,7 +232,7 @@ impl TheoryDescribable for LorenzSystem {
     }
 
     fn theory_citation(&self) -> String {
-        "[cite:chaos_theory]".to_string()
+        "Lorenz, E. N. (1963). Deterministic Nonperiodic Flow. Journal of the Atmospheric Sciences, 20(2), 130-141.".to_string()
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {

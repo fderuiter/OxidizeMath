@@ -35,10 +35,14 @@ impl InteractiveTool for TemperatureAnomaliesTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<TempState>(state) {
-            self.time_series = s.time_series;
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: TempState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid TemperatureAnomaliesTool state: {e}"))?;
+        if s.time_series.is_empty() {
+            return Err("time_series must not be empty in TemperatureAnomaliesTool".to_string());
         }
+        self.time_series = s.time_series;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -68,7 +72,8 @@ impl InteractiveTool for TemperatureAnomaliesTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "TemperatureAnomaliesTool",
+        id: "TemperatureAnomaliesTool",
+        display_name: "Temperature Anomalies",
         domain: "climate",
         tags: &[],
         build: || Box::new(TemperatureAnomaliesTool::default()),
@@ -92,8 +97,17 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "smoothing_years": 5,
-    "baseline_start": 1951
+    "time_series": [
+      [1880.0, -0.16],
+      [1900.0, -0.08],
+      [1920.0, -0.27],
+      [1940.0, 0.12],
+      [1960.0, -0.03],
+      [1980.0, 0.26],
+      [2000.0, 0.39],
+      [2010.0, 0.72],
+      [2020.0, 1.02]
+    ]
   }
 }"#;
 

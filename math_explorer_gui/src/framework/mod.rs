@@ -1,5 +1,7 @@
 pub mod callout_overlay;
 pub mod clamp;
+#[cfg(test)]
+mod clamp_tests;
 pub mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
@@ -7,12 +9,17 @@ mod export_ui;
 #[cfg(test)]
 mod export_ui_tests;
 pub mod math_input;
+#[cfg(test)]
+mod metadata_label_tests;
+mod overlay_sync;
 mod persistence;
 pub mod recovery;
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod recovery_tests;
 pub mod state_guard;
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod state_guard_tests;
 pub mod trace_overlay;
 mod ui;
@@ -30,7 +37,8 @@ use eframe::egui;
 use scientific_metadata::theory::TheoryDescribable;
 
 pub struct ToolMetadata {
-    pub name: &'static str,
+    pub id: &'static str,
+    pub display_name: &'static str,
     pub domain: &'static str,
     pub tags: &'static [&'static str],
     pub build: fn() -> Box<dyn InteractiveTool>,
@@ -162,8 +170,15 @@ pub trait InteractiveTool {
         None
     }
 
+    /// Fallibly deserializes and restores tool-specific parameters from a JSON state string.
+    fn try_load_state(&mut self, _state: &str) -> Result<(), String> {
+        Err(format!("State loading not supported for {}", self.name()))
+    }
+
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
-    fn load_state(&mut self, _state: &str) {}
+    fn load_state(&mut self, state: &str) {
+        let _ = self.try_load_state(state);
+    }
 
     /// Optional hook to clamp unstable parameters to safe bounds, returning true if handled.
     fn clamp_parameters(&mut self) -> bool {
@@ -210,8 +225,7 @@ pub trait InteractiveTool {
         }
         let config_str = serde_json::to_string(&envelope.config)
             .map_err(|e| format!("Config serialization error: {}", e))?;
-        self.load_state(&config_str);
-        Ok(())
+        self.try_load_state(&config_str)
     }
 
     /// Optional hook to export tool datasets.
@@ -228,9 +242,9 @@ pub trait InteractiveTool {
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
 
-    /// Optional hook to apply a preset JSON configuration envelope (via InteractivePreset).
-    fn apply_preset_json(&mut self, _json_str: &str) -> Result<(), String> {
-        Ok(())
+    /// Applies a preset JSON configuration envelope via fallible preset deserialization.
+    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        self.import_preset_json(json_str)
     }
 
     /// Optional hook to sample multi-frame animation datasets for GIF export.
@@ -258,6 +272,19 @@ pub trait InteractiveTool {
 
         frames
     }
+
+    /// Returns a type-erased reference for test inspection of concrete tool state.
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        None
+    }
+}
+
+#[derive(Default, Clone, Copy)]
+pub(super) struct FrameworkSyncState {
+    pub(super) theory_portal: Option<bool>,
+    pub(super) starter_gallery: Option<bool>,
+    pub(super) datasets_owner_tool: Option<&'static str>,
 }
 
 #[allow(missing_docs)]
@@ -304,7 +331,7 @@ pub struct SimulationFramework {
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
     pub(super) instance_id: u64,
-    pub(super) overlay_sync: (Option<bool>, Option<bool>, Option<&'static str>),
+    pub(super) sync_state: FrameworkSyncState,
 }
 
 impl SimulationFramework {
@@ -315,8 +342,8 @@ impl SimulationFramework {
             .filter(|t| t.domain == domain)
             .collect();
 
-        // Sort by name for deterministic order
-        available_tools.sort_by_key(|t| t.name);
+        // Sort by display name (then id) for deterministic order
+        available_tools.sort_by_key(|t| (t.display_name, t.id));
 
         let mut framework = Self {
             available_tools,
@@ -345,8 +372,8 @@ impl SimulationFramework {
             diagnostic_report: None,
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
-            instance_id: ui::next_framework_id(),
-            overlay_sync: (None, None, None),
+            instance_id: overlay_sync::next_framework_id(),
+            sync_state: FrameworkSyncState::default(),
         };
 
         if !framework.available_tools.is_empty() {
@@ -374,7 +401,11 @@ impl SimulationFramework {
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();
         let factory_baseline_state = new_tool.save_state();
-        if let Some(state) = self.saved_tool_states.get(new_tool.name()) {
+        if let Some(state) = self
+            .saved_tool_states
+            .get(new_tool.name())
+            .or_else(|| self.saved_tool_states.get(meta.id))
+        {
             new_tool.load_state(state);
         }
         self.is_diverged = false;
@@ -382,14 +413,9 @@ impl SimulationFramework {
         self.step_counter = 0;
         self.baseline_tool_state = factory_baseline_state;
         let active_tool_state = new_tool.save_state();
-        let prev_datasets = egui_plot::get_last_plot_datasets();
-        egui_plot::clear_last_plot_datasets();
-        let initial_datasets = new_tool.export_datasets();
-        if !prev_datasets.is_empty() {
-            egui_plot::append_last_plot_datasets(&prev_datasets);
-        }
-        (self.overlay_sync.2, self.current_valid_plot_datasets) =
-            (Some(new_tool.name()), initial_datasets.clone());
+        let initial_datasets = persistence::capture_isolated_tool_datasets(new_tool.as_ref());
+        self.sync_state.datasets_owner_tool = Some(new_tool.name());
+        self.current_valid_plot_datasets = initial_datasets.clone();
         self.last_valid_snapshot = Some(StateSnapshot {
             tool_state: active_tool_state,
             plot_datasets: initial_datasets,
@@ -403,12 +429,12 @@ impl SimulationFramework {
         self.active_tool = Some(new_tool);
     }
 
-    /// Selects and activates a tool by name in `available_tools`.
-    /// Matches tool name or tags (case-insensitively). Returns true if found and activated.
+    /// Selects and activates a tool by ID, display name, or tag in `available_tools` (case-insensitively).
     pub fn select_tool_by_name(&mut self, name: &str) -> bool {
         let name_trimmed = name.trim();
         if let Some(index) = self.available_tools.iter().position(|t| {
-            t.name.eq_ignore_ascii_case(name_trimmed)
+            t.id.eq_ignore_ascii_case(name_trimmed)
+                || t.display_name.eq_ignore_ascii_case(name_trimmed)
                 || t.tags
                     .iter()
                     .any(|tag| tag.eq_ignore_ascii_case(name_trimmed))

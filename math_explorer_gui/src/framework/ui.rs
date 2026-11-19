@@ -1,47 +1,36 @@
 use super::*;
 use eframe::egui;
 
-pub(super) fn next_framework_id() -> u64 {
-    static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-    NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-}
-
-fn resolve_scoped_overlay(
-    self_val: bool,
-    last_synced: Option<bool>,
-    inst_val: Option<bool>,
-    domain_val: Option<bool>,
-    global_val: Option<bool>,
-    is_same_owner: bool,
-    has_any_owner: bool,
-) -> bool {
-    if last_synced.is_some() && last_synced != Some(self_val) {
-        return self_val;
-    }
-    if last_synced.is_none() {
-        if self_val {
-            return true;
-        }
-        return inst_val.unwrap_or_else(|| {
-            if !has_any_owner {
-                domain_val.or(global_val).unwrap_or(self_val)
-            } else {
-                self_val
+pub(crate) fn format_theory_context_key(key: &str) -> String {
+    match key.trim() {
+        "g_na" => "Sodium Conductance".to_string(),
+        "g_k" => "Potassium Conductance".to_string(),
+        "g_l" => "Leak Conductance".to_string(),
+        "i_ext" => "External Stimulus Current".to_string(),
+        "potential_type" => "Potential Profile".to_string(),
+        "dt" => "Time Step".to_string(),
+        "params" => "Model Parameters".to_string(),
+        "viscosity" => "Kinematic Viscosity".to_string(),
+        other if other.contains('_') => other
+            .split('_')
+            .filter(|s| !s.is_empty())
+            .map(|w| {
+                let mut chars = w.chars();
+                match chars.next() {
+                    Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+        other => {
+            let mut chars = other.chars();
+            match chars.next() {
+                Some(c) if c.is_lowercase() => format!("{}{}", c.to_uppercase(), chars.as_str()),
+                _ => other.to_string(),
             }
-        });
-    }
-    if let Some(v) = inst_val.filter(|&v| Some(v) != last_synced) {
-        return v;
-    }
-    if is_same_owner {
-        if let Some(v) = domain_val.filter(|&v| Some(v) != last_synced) {
-            return v;
-        }
-        if let Some(v) = global_val.filter(|&v| Some(v) != last_synced) {
-            return v;
         }
     }
-    self_val
 }
 
 impl SimulationFramework {
@@ -77,16 +66,21 @@ impl SimulationFramework {
                         render_theory_summary_with_export(ui, &theory.theory_citation(), None)
                             .accessible_hover_text("Academic citations");
 
-                        let available = theory.available_descriptions();
-                        if !available.is_empty() {
+                        let mut entries: Vec<(String, String)> = theory
+                            .available_descriptions()
+                            .into_iter()
+                            .filter(|(k, _)| !k.trim().eq_ignore_ascii_case("default"))
+                            .collect();
+                        entries.sort_by(|a, b| a.0.cmp(&b.0));
+                        if !entries.is_empty() {
                             ui.separator();
                             ui.heading("Additional Context");
-                            for (key, desc) in available {
-                                let context_entry = format!("{}: {}", key, desc);
+                            for (key, desc) in entries {
+                                let label = format_theory_context_key(&key);
+                                let context_entry = format!("{label}: {desc}");
                                 render_theory_summary_with_export(ui, &context_entry, None)
                                     .accessible_hover_text(format!(
-                                        "Additional context for {}",
-                                        key
+                                        "Additional context for {label}"
                                     ));
                             }
                         }
@@ -124,7 +118,8 @@ impl SimulationFramework {
                 if query.is_empty() {
                     true
                 } else {
-                    meta.name.to_lowercase().contains(&query)
+                    meta.display_name.to_lowercase().contains(&query)
+                        || meta.id.to_lowercase().contains(&query)
                         || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
                 }
             })
@@ -157,14 +152,17 @@ impl SimulationFramework {
                 for &(i, meta) in &filtered_tools {
                     ui.horizontal(|ui| {
                         let is_selected = self.selected_tool_index == Some(i);
-                        if ui.selectable_label(is_selected, meta.name).clicked() {
+                        if ui
+                            .selectable_label(is_selected, meta.display_name)
+                            .clicked()
+                        {
                             tool_to_select = Some(i);
                         }
                         let tool_help_btn = ui
                             .add(egui::Button::new("❓").small())
                             .accessible_hover_text(format!(
                                 "Open Theory Context Portal for {}",
-                                meta.name
+                                meta.display_name
                             ));
                         if tool_help_btn.clicked() {
                             open_portal_for_tool = Some(i);
@@ -274,7 +272,7 @@ impl SimulationFramework {
                             .show(ui, |ui| {
                                 ui.set_width(220.0);
                                 ui.vertical(|ui| {
-                                    ui.heading(meta.name);
+                                    ui.heading(meta.display_name);
                                     ui.add_space(6.0);
                                     if !meta.tags.is_empty() {
                                         ui.horizontal_wrapped(|ui| {
@@ -315,20 +313,7 @@ impl SimulationFramework {
                 &cards,
                 &mut is_open,
             ) {
-                if let Some(tool_name) = card.tool_name {
-                    if let Some(pos) = self
-                        .available_tools
-                        .iter()
-                        .position(|t| t.name == tool_name)
-                    {
-                        self.select_tool(pos);
-                    }
-                }
-                if let Some(preset_json) = card.preset_json {
-                    if let Some(tool) = &mut self.active_tool {
-                        let _ = tool.apply_preset_json(preset_json);
-                    }
-                }
+                let _ = self.launch_starter_card(&card);
                 is_open = false;
             }
             self.show_starter_gallery = is_open;
@@ -409,82 +394,5 @@ impl SimulationFramework {
         self.sync_overlays_after_frame(ctx, id_source);
 
         self.dispatch_pending_exports_with_ctx(ctx);
-    }
-
-    fn sync_overlays_before_frame(&mut self, ctx: &egui::Context, id_source: &str) {
-        let owner_id = egui::Id::new("FRAMEWORK_OVERLAY_OWNER");
-        let inst_portal = egui::Id::new(("SHOW_THEORY_PORTAL_INST", id_source, self.instance_id));
-        let inst_gallery =
-            egui::Id::new(("SHOW_STARTER_GALLERY_INST", id_source, self.instance_id));
-        let dom_portal = egui::Id::new("SHOW_THEORY_PORTAL").with(id_source);
-        let dom_gallery = egui::Id::new("SHOW_STARTER_GALLERY").with(id_source);
-        let global_portal = egui::Id::new("SHOW_THEORY_PORTAL");
-        let global_gallery = egui::Id::new("SHOW_STARTER_GALLERY");
-
-        let (portal, gallery) = ctx.data(|d| {
-            let owner = d.get_temp::<(String, u64)>(owner_id);
-            let same = owner
-                .as_ref()
-                .is_some_and(|(src, id)| src == id_source && *id == self.instance_id);
-            let any = owner.is_some();
-            let p = resolve_scoped_overlay(
-                self.show_theory_portal,
-                self.overlay_sync.0,
-                d.get_temp::<bool>(inst_portal),
-                d.get_temp::<bool>(dom_portal),
-                d.get_temp::<bool>(global_portal),
-                same,
-                any,
-            );
-            let g = resolve_scoped_overlay(
-                self.show_starter_gallery,
-                self.overlay_sync.1,
-                d.get_temp::<bool>(inst_gallery),
-                d.get_temp::<bool>(dom_gallery),
-                d.get_temp::<bool>(global_gallery),
-                same,
-                any,
-            );
-            (p, g)
-        });
-
-        self.show_theory_portal = portal;
-        self.show_starter_gallery = gallery;
-        self.write_overlay_keys(ctx, id_source);
-    }
-
-    fn sync_overlays_after_frame(&mut self, ctx: &egui::Context, id_source: &str) {
-        let global_portal = egui::Id::new("SHOW_THEORY_PORTAL");
-        let global_gallery = egui::Id::new("SHOW_STARTER_GALLERY");
-        if let Some(p) = ctx.data(|d| d.get_temp::<bool>(global_portal)) {
-            self.show_theory_portal = p;
-        }
-        if let Some(g) = ctx.data(|d| d.get_temp::<bool>(global_gallery)) {
-            self.show_starter_gallery = g;
-        }
-        self.write_overlay_keys(ctx, id_source);
-        self.overlay_sync.0 = Some(self.show_theory_portal);
-        self.overlay_sync.1 = Some(self.show_starter_gallery);
-    }
-
-    fn write_overlay_keys(&self, ctx: &egui::Context, id_source: &str) {
-        let owner_id = egui::Id::new("FRAMEWORK_OVERLAY_OWNER");
-        let inst_portal = egui::Id::new(("SHOW_THEORY_PORTAL_INST", id_source, self.instance_id));
-        let inst_gallery =
-            egui::Id::new(("SHOW_STARTER_GALLERY_INST", id_source, self.instance_id));
-        let dom_portal = egui::Id::new("SHOW_THEORY_PORTAL").with(id_source);
-        let dom_gallery = egui::Id::new("SHOW_STARTER_GALLERY").with(id_source);
-        ctx.data_mut(|d| {
-            d.insert_temp(owner_id, (id_source.to_string(), self.instance_id));
-            d.insert_temp(inst_portal, self.show_theory_portal);
-            d.insert_temp(dom_portal, self.show_theory_portal);
-            d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), self.show_theory_portal);
-            d.insert_temp(inst_gallery, self.show_starter_gallery);
-            d.insert_temp(dom_gallery, self.show_starter_gallery);
-            d.insert_temp(
-                egui::Id::new("SHOW_STARTER_GALLERY"),
-                self.show_starter_gallery,
-            );
-        });
     }
 }

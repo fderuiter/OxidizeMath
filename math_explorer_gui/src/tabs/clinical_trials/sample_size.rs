@@ -91,17 +91,18 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<SampleSizeState>(state) {
-            self.mode = s.mode;
-            self.alpha = s.alpha;
-            self.power = s.power;
-            self.delta = s.delta;
-            self.sigma = s.sigma;
-            self.p1 = s.p1;
-            self.p2 = s.p2;
-            self.recalculate();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: SampleSizeState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SampleSizeCalculatorTool state: {e}"))?;
+        self.mode = s.mode;
+        self.alpha = s.alpha;
+        self.power = s.power;
+        self.delta = s.delta;
+        self.sigma = s.sigma;
+        self.p1 = s.p1;
+        self.p2 = s.p2;
+        self.recalculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -203,6 +204,7 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             // Results Display
             match &self.result {
                 Ok(n) => {
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new("Required Sample Size per Group:")
@@ -212,14 +214,15 @@ impl InteractiveTool for SampleSizeCalculatorTool {
                         ui.label(
                             egui::RichText::new(n.to_string())
                                 .size(24.0)
-                                .color(egui::Color32::GREEN)
+                                .color(palette.success)
                                 .strong(),
                         );
                     });
                     ui.label(format!("Total participants needed: {}", n * 2));
                 }
                 Err(e) => {
-                    ui.colored_label(egui::Color32::RED, format!("Error: {}", e));
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                    ui.colored_label(palette.error, format!("Error: {}", e));
                 }
             }
         });
@@ -231,7 +234,8 @@ impl InteractiveTool for SampleSizeCalculatorTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "SampleSizeCalculatorTool",
+        id: "SampleSizeCalculatorTool",
+        display_name: "Sample Size Calculator",
         domain: "clinical_trials",
         tags: &[],
         build: || Box::new(SampleSizeCalculatorTool::default()),
@@ -269,9 +273,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
+    "mode": "Means",
     "alpha": 0.05,
-    "power": 0.8,
-    "effect_size": 0.5
+    "power": 0.85,
+    "delta": 0.5,
+    "sigma": 1.0,
+    "p1": 0.5,
+    "p2": 0.65
   }
 }"#;
 

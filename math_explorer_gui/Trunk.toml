@@ -15,5 +15,5 @@ stage = "post_build"
 command = "bash"
 command_arguments = [
     "-c",
-    "for f in \"$TRUNK_STAGING_DIR\"/*.wasm \"$TRUNK_STAGING_DIR\"/*.js \"$TRUNK_STAGING_DIR\"/*.html \"$TRUNK_STAGING_DIR\"/*.css; do if [ -f \"$f\" ]; then gzip -k -9 -f \"$f\" && brotli -k -9 -f \"$f\"; fi; done"
+    "if [ -f \"$TRUNK_STAGING_DIR/icon.ico\" ]; then mv \"$TRUNK_STAGING_DIR/icon.ico\" \"$TRUNK_STAGING_DIR/favicon.ico\"; fi && for f in \"$TRUNK_STAGING_DIR\"/*.wasm \"$TRUNK_STAGING_DIR\"/*.js \"$TRUNK_STAGING_DIR\"/*.html \"$TRUNK_STAGING_DIR\"/*.css \"$TRUNK_STAGING_DIR\"/*.svg \"$TRUNK_STAGING_DIR\"/*.webmanifest; do if [ -f \"$f\" ]; then gzip -k -9 -f \"$f\" && brotli -k -9 -f \"$f\"; fi; done"
 ]

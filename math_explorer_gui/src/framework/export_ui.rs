@@ -69,13 +69,12 @@ impl SimulationFramework {
             return;
         }
 
-        if let Some(tool) = &mut self.active_tool {
-            if self.preset_dialog.poll_import_tool(tool.as_mut()) {
-                if let Some(state) = tool.save_state() {
-                    self.saved_tool_states
-                        .insert(tool.name().to_string(), state);
-                }
-            }
+        let imported = self
+            .active_tool
+            .as_mut()
+            .is_some_and(|tool| self.preset_dialog.poll_import_tool(tool.as_mut()));
+        if imported {
+            self.sync_active_baseline();
         }
 
         egui::TopBottomPanel::top(format!("{}_export_bar", id_source))
@@ -159,6 +158,7 @@ impl SimulationFramework {
         let mut clear_status = false;
 
         if let Some(ref mut status) = self.export_queue.status {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             if !status.is_error {
                 let exp = *status.expires_at_time.get_or_insert(now + 3.0);
                 if now > 0.0 && now >= exp {
@@ -166,7 +166,7 @@ impl SimulationFramework {
                 } else {
                     let remaining = (exp - now).max(0.05);
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
-                    ui.colored_label(egui::Color32::LIGHT_GREEN, format!("✓ {}", status.message));
+                    ui.colored_label(palette.success, format!("✓ {}", status.message));
                     if ui
                         .small_button("✖")
                         .on_hover_text("Dismiss notification")
@@ -176,7 +176,7 @@ impl SimulationFramework {
                     }
                 }
             } else {
-                ui.colored_label(egui::Color32::RED, format!("⚠️ {}", status.message));
+                ui.colored_label(palette.error, format!("⚠️ {}", status.message));
                 if ui
                     .small_button("✖")
                     .on_hover_text("Dismiss warning")
@@ -200,16 +200,7 @@ impl SimulationFramework {
                     self.preset_dialog.trigger_export(json_str, &filename);
                 }
                 Err(err) => {
-                    federated_registry::global_registry().emit(
-                        federated_registry::TelemetryEvent {
-                            source: "PresetSerialization".to_string(),
-                            severity: federated_registry::Severity::Warning,
-                            message: err.clone(),
-                            metadata: std::collections::HashMap::new(),
-                            thread_name: None,
-                        },
-                    );
-                    self.preset_dialog.toast_error = Some(err);
+                    self.preset_dialog.record_import_error(err);
                 }
             }
         }
@@ -245,9 +236,10 @@ impl SimulationFramework {
             ui.ctx().request_repaint();
         }
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         if let Some(ref msg) = self.preset_dialog.toast_info {
             ui.separator();
-            ui.colored_label(egui::Color32::LIGHT_GREEN, format!("ℹ️ {}", msg));
+            ui.colored_label(palette.success, format!("ℹ️ {}", msg));
             if ui
                 .small_button("✖")
                 .on_hover_text("Dismiss notification")
@@ -259,7 +251,7 @@ impl SimulationFramework {
 
         if let Some(ref err) = self.preset_dialog.toast_error {
             ui.separator();
-            ui.colored_label(egui::Color32::RED, format!("⚠️ {}", err));
+            ui.colored_label(palette.error, format!("⚠️ {}", err));
             if ui
                 .small_button("✖")
                 .on_hover_text("Dismiss warning")
@@ -295,7 +287,7 @@ impl SimulationFramework {
         };
         let mut source = FrameworkExportSource {
             active_tool: &mut self.active_tool,
-            cached_tool_name: self.overlay_sync.2,
+            cached_tool_name: self.sync_state.datasets_owner_tool,
             cached_plot_datasets: &self.current_valid_plot_datasets,
         };
         egui_plot::export_modal::show_export_modal(ctx, bindings, &config, &mut source);

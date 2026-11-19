@@ -222,13 +222,10 @@ impl CalloutManager {
         }
 
         let visuals = ctx.style().visuals.clone();
+        let palette = crate::app::SemanticPalette::from_visuals(&visuals);
         let text_color = visuals.text_color();
         let frame_fill = visuals.window_fill;
-        let frame_stroke_color = if visuals.dark_mode {
-            Color32::from_gray(180)
-        } else {
-            Color32::from_gray(100)
-        };
+        let frame_stroke_color = palette.graph_edge;
         let frame_stroke = Stroke::new(1.0_f32, frame_stroke_color);
         let leader_stroke = Stroke::new(1.0_f32, frame_stroke_color);
 
