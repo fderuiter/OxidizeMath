@@ -477,19 +477,8 @@ mod tests {
 }
 
 const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Kermack-McKendrick SIR Model",
-    "domain": "epidemiology",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "n": 10000.0,
-    "i0": 25.0,
-    "beta": 0.3,
-    "gamma": 0.1,
-    "duration": 120.0
-  }
+  "metadata": { "schema_version": "1.0", "title": "Kermack-McKendrick SIR Model", "domain": "epidemiology", "timestamp": "2026-11-16T00:00:00Z" },
+  "config": { "n": 10000.0, "i0": 25.0, "beta": 0.3, "gamma": 0.1, "duration": 120.0 }
 }"#;
 
 inventory::submit! {
