@@ -51,6 +51,12 @@ impl MathExplorerApp {
     }
 
     pub(crate) fn try_focused_pane_undo(&mut self) -> bool {
+        if !self
+            .pane_tab(self.active_focused_pane())
+            .is_some_and(|t| t.can_undo())
+        {
+            return false;
+        }
         let Some((handled, tab_name)) = self
             .focused_pane_tab_mut()
             .map(|t| (t.try_undo(), t.name().to_string()))
@@ -69,6 +75,12 @@ impl MathExplorerApp {
     }
 
     pub(crate) fn try_focused_pane_redo(&mut self) -> bool {
+        if !self
+            .pane_tab(self.active_focused_pane())
+            .is_some_and(|t| t.can_redo())
+        {
+            return false;
+        }
         let prev = self.session_manager.last_committed_state.clone();
         let Some((handled, tab_name)) = self
             .focused_pane_tab_mut()

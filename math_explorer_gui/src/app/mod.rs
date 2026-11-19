@@ -221,7 +221,7 @@ impl MathExplorerApp {
 
     /// Restores the previous application state from the focused tool or undo history stack.
     pub fn undo(&mut self) {
-        if self.try_focused_pane_undo() || !self.session_manager.can_undo() {
+        if !self.can_undo() || self.try_focused_pane_undo() {
             return;
         }
         if let Some(prev) = self.session_manager.pop_undo() {
@@ -234,7 +234,7 @@ impl MathExplorerApp {
 
     /// Re-applies an undone application state from the focused tool or redo history stack.
     pub fn redo(&mut self) {
-        if self.try_focused_pane_redo() || !self.session_manager.can_redo() {
+        if !self.can_redo() || self.try_focused_pane_redo() {
             return;
         }
         if let Some(next) = self.session_manager.pop_redo() {
