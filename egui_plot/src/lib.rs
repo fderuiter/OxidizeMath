@@ -40,8 +40,8 @@ pub use crate::{
         color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard,
         copy_image_to_clipboard_with_callback, copy_text_to_clipboard,
         copy_text_to_clipboard_with_callback, export_csv, export_custom_gif, export_custom_image,
-        export_custom_png, export_custom_svg, export_json, export_svg, export_svg_filename,
-        parse_csv, save_file_dialog, trigger_import_csv, trigger_import_csv_for_plot,
+        export_custom_png, export_custom_svg, export_json, parse_csv, save_file_dialog,
+        trigger_import_csv_for_plot,
     },
     export_modal::{
         CallbackExportSource, ExportDataSource, ExportModalAction, ExportModalBindings,

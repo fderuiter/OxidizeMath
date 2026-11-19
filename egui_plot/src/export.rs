@@ -316,7 +316,7 @@ pub fn parse_csv(content: &str) -> Vec<ImportedDataset> {
 
 pub use crate::file_io::{
     drain_import_status, drain_imported_datasets, infer_mime_type, sanitize_download_filename,
-    save_file_dialog, strip_utf8_bom, trigger_import_csv, trigger_import_csv_for_plot,
+    save_file_dialog, strip_utf8_bom, trigger_import_csv_for_plot,
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -683,22 +683,6 @@ pub fn export_custom_svg(
     svg.push_str("</svg>\n");
 
     Ok(svg)
-}
-
-/// Export dataset points to SVG string with a custom filename and initiate download or file save dialog.
-pub fn export_svg_filename(
-    datasets: &[(String, Vec<[f64; 2]>)],
-    options: &ExportOptions,
-    filename: &str,
-) {
-    if let Ok(svg) = export_custom_svg(datasets, options) {
-        save_file_dialog(filename, svg.as_bytes(), "SVG Vector Image", &["svg"]);
-    }
-}
-
-/// Export dataset points to SVG string and initiate download or file save dialog.
-pub fn export_svg(datasets: &[(String, Vec<[f64; 2]>)], options: &ExportOptions) {
-    export_svg_filename(datasets, options, "export.svg");
 }
 
 /// Render plot datasets into an `egui::ColorImage` buffer using offscreen rasterization.
