@@ -290,16 +290,12 @@ fn generate_sha256sums(output_dir: &Path) {
     }
 }
 
-pub fn generate_index_html(tex_files: &[PathBuf], output_dir: &Path) {
-    let mut papers_meta = extract_papers_metadata(tex_files);
-    papers_meta.sort_by(|a, b| a.1.cmp(&b.1));
-
-    let mut html = String::from(
-        r#"<!DOCTYPE html>
+const INDEX_HTML_HEADER: &str = r#"<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
   <title>OxidizeMath Academic Papers</title>
   <style>
     :root { --bg: #0d1117; --card-bg: #161b22; --card-border: #30363d; --text: #c9d1d9; --heading: #f0f6fc; --accent: #58a6ff; --accent-hover: #79c0ff; --meta: #8b949e; }
@@ -332,23 +328,26 @@ pub fn generate_index_html(tex_files: &[PathBuf], output_dir: &Path) {
       </div>
     </header>
     <main class="grid">
-"#,
-    );
+"#;
 
-    for (stem, title, author, abstract_text) in papers_meta {
-        html.push_str(&render_paper_card(&stem, &title, &author, &abstract_text));
-    }
-
-    html.push_str(
-        r#"    </main>
+const INDEX_HTML_FOOTER: &str = r#"    </main>
     <footer>
       <p>Published by OxidizeMath Automated Continuous Verification &amp; Publishing System</p>
     </footer>
   </div>
 </body>
 </html>
-"#,
-    );
+"#;
+
+pub fn generate_index_html(tex_files: &[PathBuf], output_dir: &Path) {
+    let mut papers_meta = extract_papers_metadata(tex_files);
+    papers_meta.sort_by(|a, b| a.1.cmp(&b.1));
+
+    let mut html = String::from(INDEX_HTML_HEADER);
+    for (stem, title, author, abstract_text) in papers_meta {
+        html.push_str(&render_paper_card(&stem, &title, &author, &abstract_text));
+    }
+    html.push_str(INDEX_HTML_FOOTER);
 
     let index_path = output_dir.join("index.html");
     fs::write(&index_path, html).unwrap();
@@ -374,6 +373,8 @@ fn extract_papers_metadata(tex_files: &[PathBuf]) -> Vec<(String, String, String
 }
 
 fn render_paper_card(stem: &str, title: &str, author: &str, abstract_text: &str) -> String {
+    let escaped_stem = escape_html(stem);
+    let encoded_stem = escape_html(&encode_uri_component(stem));
     let escaped_title = escape_html(title);
     let escaped_author = escape_html(author);
     let escaped_abstract = escape_html(abstract_text);
@@ -390,7 +391,7 @@ fn render_paper_card(stem: &str, title: &str, author: &str, abstract_text: &str)
         </div>
       </article>
 "#,
-        escaped_title, escaped_author, stem, escaped_abstract, stem
+        escaped_title, escaped_author, escaped_stem, escaped_abstract, encoded_stem
     )
 }
 
@@ -465,6 +466,21 @@ fn escape_html(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+fn encode_uri_component(s: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::with_capacity(s.len());
+    for byte in s.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 0x0F)]));
+        }
+    }
+    encoded
 }
 
 #[cfg(test)]
