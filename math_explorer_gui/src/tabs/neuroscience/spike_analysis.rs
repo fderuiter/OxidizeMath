@@ -50,6 +50,9 @@ impl InteractiveTool for SpikeAnalysisTool {
     fn name(&self) -> &'static str {
         "Spike Train Analysis"
     }
+    fn step_simulation(&mut self) {
+        Self::step_simulation(self);
+    }
     fn domain(&self) -> &'static str {
         "neuroscience"
     }
@@ -158,10 +161,17 @@ impl SpikeAnalysisTool {
                         let palette = crate::app::SemanticPalette::from_visuals(
                             &plot_ui.ctx().style().visuals,
                         );
-                        plot_ui.line(
-                            Line::new("Voltage", &self.history_points[..])
-                                .color(palette.series_color(0)),
-                        );
+                        if self.history_points.is_empty() {
+                            plot_ui.line(
+                                Line::new("Voltage", vec![[self.time, self.neuron.v()]])
+                                    .color(palette.series_color(0)),
+                            );
+                        } else {
+                            plot_ui.line(
+                                Line::new("Voltage", &self.history_points[..])
+                                    .color(palette.series_color(0)),
+                            );
+                        }
                         plot_ui.hline(
                             egui_plot::HLine::new("Threshold", self.spike_threshold)
                                 .color(palette.error),
@@ -353,7 +363,10 @@ mod tests {
                 spike_plot_points,
                 egui_plot::PlotPoints::Borrowed(_)
             ));
-            assert_eq!(spike_plot_points.points().len(), tool.spike_plot_points.len());
+            assert_eq!(
+                spike_plot_points.points().len(),
+                tool.spike_plot_points.len()
+            );
         }
 
         let old_threshold = tool.spike_threshold;

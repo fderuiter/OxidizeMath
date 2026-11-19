@@ -5,6 +5,7 @@ use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
+use math_explorer::physics::stat_mech::KB;
 use std::sync::Arc;
 
 #[path = "ising/runner.rs"]
@@ -34,6 +35,7 @@ pub struct IsingModelTool {
     energy: f64,
     texture: Option<egui::TextureHandle>,
     pixels: Vec<egui::Color32>,
+    stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
     dirty: bool,
     params: Arc<std::sync::RwLock<IsingSharedParams>>,
     pub worker: BackgroundWorker<IsingRunner>,
@@ -48,6 +50,7 @@ impl IsingModelTool {
             params: Arc::clone(&self.params),
         };
         self.worker = BackgroundWorker::new(runner);
+        self.stepped_pixels = None;
         self.sync_metrics_from_latest();
         self.dirty = true;
     }
@@ -65,6 +68,7 @@ impl IsingModelTool {
             lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
             params,
         });
+        self.stepped_pixels = None;
         self.sync_metrics_from_latest();
         self.dirty = true;
     }
@@ -277,6 +281,7 @@ impl Default for IsingModelTool {
             energy: 0.0,
             texture: None,
             pixels: Vec::new(),
+            stepped_pixels: None,
             dirty: true,
             params,
             worker,
@@ -297,6 +302,53 @@ impl InteractiveTool for IsingModelTool {
         "solid_state"
     }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::raster_only()
+    }
+
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        if let Some((w, h, ref px)) = self.stepped_pixels {
+            if w > 0 && h > 0 && !px.is_empty() {
+                return Some(egui::ColorImage::new([w, h], px.clone()));
+            }
+        }
+        let snap = self.worker.latest_snapshot()?;
+        let px = snap.pixels.try_read().ok()?;
+        if px.is_empty() || snap.width == 0 || snap.height == 0 {
+            return None;
+        }
+        Some(egui::ColorImage::new([snap.width, snap.height], px.clone()))
+    }
+
+    fn step_simulation(&mut self) {
+        let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None);
+        let j_scale = if self.j_coupling.abs() < 1e-6 {
+            1.0
+        } else {
+            self.j_coupling.abs()
+        };
+        let t_phys = self.temperature * j_scale / KB;
+        lattice.evolve(
+            self.steps_per_frame.clamp(100, 5000),
+            t_phys,
+            self.j_coupling,
+            self.h_field,
+        );
+        let pixels: Vec<egui::Color32> = lattice
+            .spins()
+            .iter()
+            .map(|&s| {
+                if s > 0 {
+                    egui::Color32::from_rgb(200, 50, 50)
+                } else {
+                    egui::Color32::from_rgb(50, 50, 200)
+                }
+            })
+            .collect();
+        self.stepped_pixels = Some((lattice.width(), lattice.height(), pixels));
+        self.dirty = true;
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&IsingState {
             temperature: self.temperature,
@@ -311,6 +363,9 @@ impl InteractiveTool for IsingModelTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s = serde_json::from_str::<IsingState>(state).map_err(|e| e.to_string())?;
+        if !s.temperature.is_finite() || !s.j_coupling.is_finite() || !s.h_field.is_finite() {
+            return Err("Non-finite parameters in IsingModelTool".to_string());
+        }
         self.temperature = s.temperature;
         self.j_coupling = s.j_coupling;
         self.h_field = s.h_field;
@@ -336,6 +391,7 @@ impl InteractiveTool for IsingModelTool {
         } else if self.worker.is_running() {
             let _ = self.worker.send_command(SimCommand::Pause);
         }
+        self.stepped_pixels = None;
         self.dirty = true;
         Ok(())
     }
@@ -346,6 +402,7 @@ impl InteractiveTool for IsingModelTool {
                 self.magnetization = snapshot.custom_data[0];
                 self.energy = snapshot.custom_data[1];
             }
+            self.stepped_pixels = None;
             self.dirty = true;
         }
 
@@ -360,6 +417,9 @@ impl InteractiveTool for IsingModelTool {
         self.draw_central_panel(ctx);
     }
 }
+
+#[path = "ising/preset.rs"]
+mod preset;
 
 #[cfg(test)]
 use crate::async_sim::SimulationRunner;
@@ -376,48 +436,5 @@ inventory::submit! {
         domain: "solid_state",
         tags: &[],
         build: || Box::new(IsingModelTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for IsingModelTool {
-    fn theory_description(&self) -> String {
-        "Two-dimensional square lattice ferromagnetic Ising model governed by Hamiltonian $H = -J \\sum_{\\langle i, j \\rangle} s_i s_j - h \\sum_i s_i$ with Onsager critical temperature $T_c = \\frac{2J}{k_B \\ln(1 + \\sqrt{2})} \\approx 2.269 \\frac{J}{k_B}$.".into()
-    }
-    fn phonetic_description(&self) -> String {
-        "Two-dimensional Ising model ferromagnetic phase transition theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Crystal Statistics. I. A Two-Dimensional Model with an Order-Disorder Transition (Onsager, 1944)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "2D Ising Model Ferromagnetism",
-    "domain": "solid_state",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "temperature": 2.269,
-    "j_coupling": 1.0,
-    "h_field": 0.05,
-    "steps_per_frame": 10000
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "ising_model_starter",
-        title: "2D Ising Model Ferromagnetism",
-        description: "H = -J ∑ s_i·s_j - h ∑ s_i: Monte Carlo Metropolis spin flip dynamics and Curie transition.",
-        category: "Statistical Mechanics",
-        icon: "🧲",
-        domain: "solid_state",
-        tool_name: Some("IsingModelTool"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }

@@ -202,6 +202,9 @@ impl InteractiveTool for NeuralNetworkVizTool {
     fn name(&self) -> &'static str {
         "Neural Network Viz"
     }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
+    }
     fn domain(&self) -> &'static str {
         "neuroscience"
     }
