@@ -118,11 +118,12 @@ impl ReplicatorDynamicsTool {
             });
     }
 
-    pub(super) fn show_bottom_panel(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::bottom("replicator_bottom_panel")
+    pub(super) fn show_bottom_panel(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "replicator_bottom_panel");
+        egui::TopBottomPanel::bottom(panel_id)
             .resizable(true)
             .min_height(200.0)
-            .show(ctx, |ui| {
+            .show_inside(parent_ui, |ui| {
                 ui.heading("Population Distribution");
                 ui.horizontal(|ui| {
                     if let Some(action) = PlaybackTransport::in_thread(

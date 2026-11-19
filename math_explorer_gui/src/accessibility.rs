@@ -100,6 +100,7 @@ pub fn init_accessibility_bridge() {
             }
         }
     }
+    ensure_plot_live_bridge();
 }
 
 #[cfg(test)]
@@ -110,7 +111,20 @@ thread_local! {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(missing_docs)]
-pub fn init_accessibility_bridge() {}
+pub fn init_accessibility_bridge() {
+    ensure_plot_live_bridge();
+}
+
+/// Ensures `egui_plot` live messages route directly into [`TwinSlotLiveRegion`] and root `ctx` data.
+pub fn ensure_plot_live_bridge() {
+    egui_plot::set_live_region_announcer(|ctx, message, assertive| {
+        if assertive {
+            announce_live_assertive_status(ctx, message);
+        } else {
+            announce_live_status(ctx, message);
+        }
+    });
+}
 
 thread_local! {
     static LIVE_REGION: std::cell::RefCell<TwinSlotLiveRegion> =
@@ -269,6 +283,7 @@ impl AccessibleHoverText for Response {
             self.ctx.data_mut(|d| {
                 d.insert_temp(eframe::egui::Id::new("aria_live_message"), text_str);
                 d.insert_temp(eframe::egui::Id::new("aria_live_slot"), active_slot);
+                d.insert_temp(eframe::egui::Id::new("aria_live_dispatched"), true);
             });
             if self.enabled() {
                 self.on_hover_text(text_into)
@@ -338,6 +353,7 @@ impl AccessibleTheoryHover for Response {
             self.ctx.data_mut(|d| {
                 d.insert_temp(eframe::egui::Id::new("aria_live_message"), speech_text);
                 d.insert_temp(eframe::egui::Id::new("aria_live_slot"), active_slot);
+                d.insert_temp(eframe::egui::Id::new("aria_live_dispatched"), true);
             });
             if self.enabled() {
                 self.on_hover_text(raw_text)
@@ -359,6 +375,25 @@ pub fn announce_live_status(ctx: &eframe::egui::Context, message: impl Into<Stri
     ctx.data_mut(|d| {
         d.insert_temp(eframe::egui::Id::new("aria_live_message"), message);
         d.insert_temp(eframe::egui::Id::new("aria_live_slot"), active_slot);
+        d.insert_temp(eframe::egui::Id::new("aria_live_dispatched"), true);
+    });
+}
+
+/// Announces an assertive alert message to the live region and stores it in `ctx` temp data.
+pub fn announce_live_assertive_status(ctx: &eframe::egui::Context, message: impl Into<String>) {
+    let message = message.into();
+    announce_status_with_priority(&message, "assertive");
+    let active_slot = with_live_region(|r| r.active_slot);
+    ctx.data_mut(|d| {
+        d.insert_temp(
+            eframe::egui::Id::new("aria_live_assertive_message"),
+            message,
+        );
+        d.insert_temp(eframe::egui::Id::new("aria_live_slot"), active_slot);
+        d.insert_temp(
+            eframe::egui::Id::new("aria_live_assertive_dispatched"),
+            true,
+        );
     });
 }
 

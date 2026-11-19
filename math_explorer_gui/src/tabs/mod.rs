@@ -60,16 +60,21 @@ pub trait ExplorerTab {
     /// Returns the name of the tab, displayed in the navigation bar.
     fn name(&self) -> &'static str;
 
-    /// Renders the content of the tab.
+    /// Renders the content of the tab at the root `egui::Context` level.
     ///
-    /// The tab is responsible for defining its own panels (e.g., `SidePanel`, `CentralPanel`).
-    /// The parent application will typically have already drawn a top navigation bar, so avoid `TopBottomPanel::top`.
-    ///
-    /// # Arguments
-    ///
-    /// * `ctx` - The egui Context, used for adding widgets and handling input.
-    /// * `frame` - The eframe Frame, used for window management (e.g., resizing, closing).
-    fn show(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame);
+    /// By default, this creates a frameless root `CentralPanel` and delegates to [`Self::show_inside`].
+    fn show(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE)
+            .show(ctx, |ui| {
+                self.show_inside(ui, frame);
+            });
+    }
+
+    /// Renders the content of the tab inside a scoped parent `egui::Ui` (such as a multi-pane viewport region).
+    fn show_inside(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.show(ui.ctx(), frame);
+    }
 
     /// Monotonic or deterministic revision token for persisted tab state (`0` if untracked).
     fn state_revision(&self) -> u64 {

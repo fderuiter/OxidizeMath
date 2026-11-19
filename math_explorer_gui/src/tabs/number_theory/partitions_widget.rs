@@ -95,8 +95,8 @@ impl InteractiveTool for PartitionsWidget {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Partition Function & Q-Series");
             ui.label("Calculate and visualize restricted partition functions.");
 

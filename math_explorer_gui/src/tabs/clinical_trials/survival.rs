@@ -141,8 +141,9 @@ impl InteractiveTool for SurvivalAnalysisTool {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("survival_input_panel").show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(ui, "survival_input_panel");
+        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Input Data");
             ui.label("Format: Time, Event (1=Death, 0=Censored)");
             ui.add_space(5.0);
@@ -164,7 +165,7 @@ impl InteractiveTool for SurvivalAnalysisTool {
             render_copyable_metric(ui, "Observations", &self.observations.len().to_string());
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Kaplan-Meier Survival Curve");
 
             let mut plot_points: Vec<[f64; 2]> = Vec::new();

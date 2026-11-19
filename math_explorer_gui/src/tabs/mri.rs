@@ -257,8 +257,10 @@ impl MriTab {
         }
     }
 
-    fn draw_side_panel(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("controls_panel").show(ctx, |ui| {
+    fn draw_side_panel(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let panel_id = crate::framework::scoped_panel_id(ui, "controls_panel");
+        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("MRI Physics Control");
             ui.separator();
 
@@ -278,7 +280,7 @@ impl MriTab {
             self.draw_relaxation_controls(ui);
             self.draw_magnetic_field_controls(ui);
             ui.separator();
-            self.draw_playback_controls(ui, ctx);
+            self.draw_playback_controls(ui, &ctx);
 
             ui.separator();
             ui.label(format!("Time: {:.3} s", self.current_time));
@@ -289,8 +291,8 @@ impl MriTab {
         });
     }
 
-    fn draw_central_panel(&self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn draw_central_panel(&self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Magnetization Vector Evolution");
 
             if self.mx_points.len() <= 1 {
@@ -345,8 +347,15 @@ impl MriTab {
         });
     }
 
-    /// Updates from the background worker and renders the MRI tab UI.
-    pub fn show_ui(&mut self, ctx: &egui::Context) {
+    #[cfg(test)]
+    pub(crate) fn show_ui(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE)
+            .show(ctx, |ui| self.show_ui_inside(ui));
+    }
+
+    /// Updates from the background worker and renders the MRI tab UI at root context level.
+    fn show_ui_inside(&mut self, ui: &mut egui::Ui) {
         if let Some(snapshot) = self.worker.update() {
             if let Some(data) = snapshot
                 .structured_data
@@ -364,11 +373,11 @@ impl MriTab {
             self.worker.state(),
             SimWorkerState::Running | SimWorkerState::Stepping
         ) {
-            ctx.request_repaint();
+            ui.ctx().request_repaint();
         }
 
-        self.draw_side_panel(ctx);
-        self.draw_central_panel(ctx);
+        self.draw_side_panel(ui);
+        self.draw_central_panel(ui);
     }
 }
 
@@ -418,8 +427,8 @@ impl ExplorerTab for MriTab {
         }
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.show_ui(ctx);
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.show_ui_inside(ui);
     }
 }
 

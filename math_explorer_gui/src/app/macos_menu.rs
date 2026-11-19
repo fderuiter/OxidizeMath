@@ -88,6 +88,43 @@ fn build_layout_submenu() -> Submenu {
     layout_menu
 }
 
+fn build_focus_pane_submenu() -> Submenu {
+    let focus_menu = Submenu::new("Focus Pane", true);
+    focus_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("focus_pane_next"),
+            "Next Pane",
+            true,
+            None,
+        ))
+        .unwrap();
+    focus_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("focus_pane_prev"),
+            "Previous Pane",
+            true,
+            None,
+        ))
+        .unwrap();
+    focus_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    for (idx, label) in [
+        (0, "Pane 1 (Primary / Top-Left)"),
+        (1, "Pane 2 (Secondary / Top-Right)"),
+        (2, "Pane 3 (Bottom-Left)"),
+        (3, "Pane 4 (Bottom-Right)"),
+    ] {
+        focus_menu
+            .append(&MenuItem::with_id(
+                MenuId::new(format!("focus_pane_{idx}")),
+                label,
+                true,
+                None,
+            ))
+            .unwrap();
+    }
+    focus_menu
+}
+
 fn build_primary_module_submenu(app: &MathExplorerApp) -> Submenu {
     let primary_menu = Submenu::new("Primary Module", true);
     for &domain in AcademicDomain::ALL {
@@ -116,6 +153,7 @@ fn build_view_menu(app: &MathExplorerApp) -> Submenu {
     view_menu.append(&PredefinedMenuItem::separator()).unwrap();
 
     view_menu.append(&build_layout_submenu()).unwrap();
+    view_menu.append(&build_focus_pane_submenu()).unwrap();
     view_menu.append(&PredefinedMenuItem::separator()).unwrap();
 
     view_menu
@@ -227,6 +265,19 @@ fn handle_view_layout_event(app: &mut MathExplorerApp, id: &str) -> bool {
     true
 }
 
+fn handle_focus_pane_event(app: &mut MathExplorerApp, ctx: &egui::Context, id: &str) -> bool {
+    match id {
+        "focus_pane_next" => super::viewport::focus::cycle_focused_pane(app, ctx, false),
+        "focus_pane_prev" => super::viewport::focus::cycle_focused_pane(app, ctx, true),
+        "focus_pane_0" => super::viewport::focus::focus_pane_interactive(app, ctx, 0),
+        "focus_pane_1" => super::viewport::focus::focus_pane_interactive(app, ctx, 1),
+        "focus_pane_2" => super::viewport::focus::focus_pane_interactive(app, ctx, 2),
+        "focus_pane_3" => super::viewport::focus::focus_pane_interactive(app, ctx, 3),
+        _ => return false,
+    }
+    true
+}
+
 fn handle_palette_theme_event(app: &mut MathExplorerApp, ctx: &egui::Context, id: &str) -> bool {
     match id {
         "cmd_palette" => {
@@ -236,9 +287,7 @@ fn handle_palette_theme_event(app: &mut MathExplorerApp, ctx: &egui::Context, id
             } else {
                 "Command palette closed"
             };
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
-            });
+            crate::accessibility::announce_live_status(ctx, status_msg);
         }
         "help_commands" => app.show_help_menu = !app.show_help_menu,
         "theme_dark" => {
@@ -266,6 +315,7 @@ pub(super) fn handle_macos_menu_events(app: &mut MathExplorerApp, ctx: &egui::Co
         let id = event.id.0.as_str();
         if handle_file_event(app, id)
             || handle_view_layout_event(app, id)
+            || handle_focus_pane_event(app, ctx, id)
             || handle_palette_theme_event(app, ctx, id)
         {
             return;

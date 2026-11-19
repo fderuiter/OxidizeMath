@@ -128,8 +128,9 @@ impl InteractiveTool for ClebschGordanTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("clebsch_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "clebsch_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Parameters");
             ui.separator();
 
@@ -194,7 +195,7 @@ impl InteractiveTool for ClebschGordanTool {
             }
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Clebsch-Gordan Coefficient Calculator");
             ui.separator();
 

@@ -21,6 +21,8 @@ mod tests_domain_bar;
 #[cfg(test)]
 mod tests_multi_pane;
 #[cfg(test)]
+mod tests_multi_pane_a11y;
+#[cfg(test)]
 mod tests_pane_isolation;
 #[cfg(test)]
 mod tests_secondary_menus;
@@ -72,8 +74,6 @@ pub struct MathExplorerApp {
     pub pane_tabs: Vec<usize>,
     pub focused_pane: usize,
     pane_slots: pane_slots::SecondaryPaneSlots,
-    pane_contexts: [egui::Context; 4],
-    pane_textures: [std::collections::HashMap<egui::TextureId, egui::TextureId>; 4],
     pub is_dragging_divider: bool,
     tab_state_cache: state::TabStateCache,
     last_frame_had_input: bool,
@@ -82,6 +82,7 @@ pub struct MathExplorerApp {
 impl Default for MathExplorerApp {
     #[allow(clippy::vec_init_then_push)]
     fn default() -> Self {
+        crate::accessibility::ensure_plot_live_bridge();
         let tabs: Vec<Box<dyn ExplorerTab>> = crate::tabs::instantiate_tabs();
 
         Self {
@@ -104,8 +105,6 @@ impl Default for MathExplorerApp {
             pane_tabs: vec![0, 1, 2, 3],
             focused_pane: 0,
             pane_slots: pane_slots::SecondaryPaneSlots::default(),
-            pane_contexts: std::array::from_fn(|_| egui::Context::default()),
-            pane_textures: std::array::from_fn(|_| std::collections::HashMap::new()),
             is_dragging_divider: false,
             tab_state_cache: state::TabStateCache::default(),
             last_frame_had_input: false,
@@ -260,26 +259,42 @@ impl eframe::App for MathExplorerApp {
             ctx.set_visuals(self.theme.visuals());
         }
 
-        if let Some(msg) = ctx.data_mut(|d| {
+        crate::accessibility::ensure_plot_live_bridge();
+
+        if let Some((msg, dispatched)) = ctx.data_mut(|d| {
             let msg = d.get_temp::<String>(egui::Id::new("aria_live_message"));
+            let dispatched = d
+                .get_temp::<bool>(egui::Id::new("aria_live_dispatched"))
+                .unwrap_or(false);
             d.remove::<String>(egui::Id::new("aria_live_message"));
-            msg
+            d.remove::<bool>(egui::Id::new("aria_live_dispatched"));
+            msg.map(|m| (m, dispatched))
         }) {
-            crate::accessibility::announce_status(&msg);
+            if !dispatched {
+                crate::accessibility::announce_status(&msg);
+            }
         }
 
-        if let Some(msg) = ctx.data_mut(|d| {
+        if let Some((msg, dispatched)) = ctx.data_mut(|d| {
             let msg = d.get_temp::<String>(egui::Id::new("aria_live_assertive_message"));
+            let dispatched = d
+                .get_temp::<bool>(egui::Id::new("aria_live_assertive_dispatched"))
+                .unwrap_or(false);
             d.remove::<String>(egui::Id::new("aria_live_assertive_message"));
-            msg
+            d.remove::<bool>(egui::Id::new("aria_live_assertive_dispatched"));
+            msg.map(|m| (m, dispatched))
         }) {
-            crate::accessibility::announce_status_with_priority(&msg, "assertive");
+            if !dispatched {
+                crate::accessibility::announce_status_with_priority(&msg, "assertive");
+            }
         }
 
         let mut session_mgr = std::mem::take(&mut self.session_manager);
         session_mgr.register_and_check_shortcuts(ctx, self);
         session_mgr.poll(self, ctx);
         self.session_manager = session_mgr;
+
+        viewport::focus::register_and_handle_pane_focus_shortcuts(self, ctx);
 
         // Global Keyboard Shortcut Listener for Cheatsheet Modal
         let modifiers = if cfg!(target_os = "macos") {
@@ -306,9 +321,7 @@ impl eframe::App for MathExplorerApp {
             } else {
                 "Command palette closed"
             };
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
-            });
+            crate::accessibility::announce_live_status(ctx, status_msg);
         }
 
         let slash_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
@@ -344,9 +357,7 @@ impl eframe::App for MathExplorerApp {
             } else {
                 "Keyboard shortcuts closed"
             };
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
-            });
+            crate::accessibility::announce_live_status(ctx, status_msg);
         }
 
         let shift_modifiers = modifiers | egui::Modifiers::SHIFT;
@@ -369,9 +380,7 @@ impl eframe::App for MathExplorerApp {
             } else {
                 "Issues & Diagnostics panel closed"
             };
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
-            });
+            crate::accessibility::announce_live_status(ctx, status_msg);
         }
 
         // Fetch new events
@@ -454,14 +463,8 @@ impl eframe::App for MathExplorerApp {
             let mut split_state = std::mem::take(&mut self.split_view_state);
             split_state.render_split(self, ctx, frame);
             self.split_view_state = split_state;
-        } else if let Some(tab) = self.tabs.get_mut(self.selected_tab) {
-            tab.show(ctx, frame);
         } else {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                ui.centered_and_justified(|ui| {
-                    ui.label("No module selected.");
-                });
-            });
+            viewport::render_single_pane_viewport(self, ctx, frame);
         }
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);

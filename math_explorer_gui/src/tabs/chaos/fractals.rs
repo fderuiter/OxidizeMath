@@ -147,8 +147,10 @@ impl InteractiveTool for FractalViewer {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("fractal_settings").show(ctx, |ui| {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let ctx = parent_ui.ctx().clone();
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "fractal_settings");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Settings");
             ui.separator();
 
@@ -269,7 +271,7 @@ impl InteractiveTool for FractalViewer {
             ui.label("- Two-Finger Pan (Touch)");
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let available_size = ui.available_size();
             let (width, height) = (available_size.x as usize, available_size.y as usize);
 

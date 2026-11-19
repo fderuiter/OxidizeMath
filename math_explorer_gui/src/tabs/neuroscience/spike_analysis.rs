@@ -89,15 +89,16 @@ impl InteractiveTool for SpikeAnalysisTool {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
-        self.draw_controls(ctx);
-        self.draw_plots(ctx);
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.draw_controls(ui);
+        self.draw_plots(ui);
     }
 }
 
 impl SpikeAnalysisTool {
-    fn draw_controls(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("spike_analysis_controls").show(ctx, |ui| {
+    fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "spike_analysis_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Configuration");
             ui.separator();
 
@@ -154,8 +155,9 @@ impl SpikeAnalysisTool {
         });
     }
 
-    fn draw_plots(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn draw_plots(&mut self, parent_ui: &mut egui::Ui) {
+        let ctx = parent_ui.ctx().clone();
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             if self.is_running {
                 self.step_simulation();
                 ctx.request_repaint();

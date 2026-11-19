@@ -24,8 +24,8 @@ impl ExplorerTab for GeometryTopologyTab {
         "Geometry & Topology"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.framework.show(ctx, "geometry_topology");
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.framework.show_inside(ui, "geometry_topology");
     }
 
     fn state_revision(&self) -> u64 {

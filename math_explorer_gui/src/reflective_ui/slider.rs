@@ -107,9 +107,21 @@ impl<'a> AnimatedSlider<'a> {
 impl<'a> egui::Widget for AnimatedSlider<'a> {
     #[allow(clippy::too_many_lines)]
     fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
-        let id = self
-            .id_salt
-            .unwrap_or_else(|| ui.make_persistent_id(self.label));
+        let id = match self.id_salt {
+            Some(raw_id) => {
+                let scope_key = ui.ctx().data(|d| {
+                    let pane = d.get_temp::<usize>(egui::Id::new("CURRENT_RENDERING_PANE"));
+                    let fw = d.get_temp::<u64>(egui::Id::new("SCOPED_ANIMATED_SLIDER_OWNER"));
+                    (pane, fw)
+                });
+                if scope_key.0.is_some() || scope_key.1.is_some() {
+                    ui.make_persistent_id((raw_id, scope_key.0, scope_key.1))
+                } else {
+                    raw_id
+                }
+            }
+            None => ui.make_persistent_id(self.label),
+        };
         let mut state: AnimatedSliderState =
             ui.ctx().data_mut(|d| d.get_temp(id)).unwrap_or_default();
         let was_playing = state.playing;
@@ -182,6 +194,7 @@ impl<'a> egui::Widget for AnimatedSlider<'a> {
                     announce_status(&announcement);
                     ui.ctx().data_mut(|d| {
                         d.insert_temp(egui::Id::new("aria_live_message"), announcement);
+                        d.insert_temp(egui::Id::new("aria_live_dispatched"), true);
                         d.insert_temp(
                             id.with("play_button_info"),
                             egui::WidgetInfo::selected(
@@ -224,6 +237,7 @@ impl<'a> egui::Widget for AnimatedSlider<'a> {
                     announce_status(&announcement);
                     ui.ctx().data_mut(|d| {
                         d.insert_temp(egui::Id::new("aria_live_message"), announcement);
+                        d.insert_temp(egui::Id::new("aria_live_dispatched"), true);
                         d.insert_temp(
                             id.with("play_button_info"),
                             egui::WidgetInfo::selected(

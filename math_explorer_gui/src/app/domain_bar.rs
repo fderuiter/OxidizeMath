@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::accessibility::{announce_status, AccessibleHoverText};
+use crate::accessibility::{announce_live_status, AccessibleHoverText};
 use crate::app::MathExplorerApp;
 use eframe::egui;
 
@@ -113,10 +113,7 @@ pub fn select_primary_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_id
 
 fn announce_tab_switch(ctx: &egui::Context, tab_name: &str) {
     let status_msg = format!("Switched to tab {}", tab_name);
-    announce_status(&status_msg);
-    ctx.data_mut(|d| {
-        d.insert_temp(egui::Id::new("aria_live_message"), status_msg);
-    });
+    announce_live_status(ctx, status_msg);
 }
 
 /// Assigns a simulation module to a specific viewport pane, synchronizing state and emitting accessibility announcements.
@@ -136,10 +133,7 @@ pub fn select_pane_tab(
             .copied()
             .unwrap_or("Pane");
         let status_msg = format!("Assigned {} to {}", tab_name, pane_label);
-        announce_status(&status_msg);
-        ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("aria_live_message"), status_msg);
-        });
+        announce_live_status(ctx, status_msg);
     }
 }
 

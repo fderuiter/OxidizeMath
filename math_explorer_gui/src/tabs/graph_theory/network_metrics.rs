@@ -150,8 +150,9 @@ impl InteractiveTool for NetworkMetricsTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("network_metrics_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "network_metrics_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Network Metrics");
             ui.separator();
 
@@ -186,7 +187,7 @@ impl InteractiveTool for NetworkMetricsTool {
             ui.label("Nodes are color-coded based on the selected metric value. Red indicates higher values.");
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let (response, painter) = ui.allocate_painter(
                 ui.available_size(),
                 egui::Sense::focusable_noninteractive(),

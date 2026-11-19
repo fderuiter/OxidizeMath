@@ -139,8 +139,14 @@ impl QTableInspectorTool {
         }
     }
 
-    fn draw_side_panel(&mut self, ctx: &egui::Context, legend_size: f32) {
-        egui::SidePanel::left("q_table_controls").show(ctx, |ui| {
+    fn draw_side_panel(
+        &mut self,
+        parent_ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        legend_size: f32,
+    ) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "q_table_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Training Controls");
             ui.separator();
 
@@ -271,8 +277,8 @@ impl QTableInspectorTool {
         }
     }
 
-    fn draw_heatmap(&self, ctx: &egui::Context, cell_size: f32) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn draw_heatmap(&self, parent_ui: &mut egui::Ui, cell_size: f32) {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Q-Value Heatmap");
             if self.episodes_trained == 0 {
                 render_empty_plot_guidance(
@@ -369,7 +375,8 @@ impl InteractiveTool for QTableInspectorTool {
         self.try_load_preset_state(state)
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
         if let Some(snapshot) = self.worker.update() {
             if let Some(data) = snapshot
                 .structured_data
@@ -403,8 +410,8 @@ impl InteractiveTool for QTableInspectorTool {
             60.0
         };
 
-        self.draw_side_panel(ctx, legend_size);
-        self.draw_heatmap(ctx, cell_size);
+        self.draw_side_panel(ui, &ctx, legend_size);
+        self.draw_heatmap(ui, cell_size);
     }
 }
 

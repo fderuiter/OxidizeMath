@@ -173,8 +173,9 @@ impl InteractiveTool for ComplexMappingTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("complex_mapping_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "complex_mapping_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Mapping Controls");
             ui.separator();
 
@@ -256,7 +257,7 @@ impl InteractiveTool for ComplexMappingTool {
             );
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Conformal Mapping Visualization");
 
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());

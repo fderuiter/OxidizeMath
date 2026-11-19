@@ -440,24 +440,18 @@ pub(crate) fn process_plot_csv_import(
                 let msg =
                     format!("Invalid or empty CSV file: no numeric data points found in {name}");
                 push_bounded(pending_status_queue(), (plot_id, msg.clone(), true));
-                ctx.data_mut(|d| {
-                    d.insert_temp(egui::Id::new("aria_live_assertive_message"), msg);
-                });
+                crate::emit_plot_live_message(ctx, msg, true);
             } else {
                 let count = datasets.len();
                 push_bounded(pending_imports_queue(), (plot_id, datasets));
                 let msg = format!("Imported {count} dataset(s) from {name}");
                 push_bounded(pending_status_queue(), (plot_id, msg.clone(), false));
-                ctx.data_mut(|d| {
-                    d.insert_temp(egui::Id::new("aria_live_message"), msg);
-                });
+                crate::emit_plot_live_message(ctx, msg, false);
             }
         }
         Err(err) => {
             push_bounded(pending_status_queue(), (plot_id, err.clone(), true));
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("aria_live_assertive_message"), err);
-            });
+            crate::emit_plot_live_message(ctx, err, true);
         }
     }
     ctx.request_repaint();

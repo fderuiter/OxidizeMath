@@ -96,11 +96,7 @@ fn format_search_count_status(count: usize) -> String {
 }
 
 fn announce_palette_status(ctx: &egui::Context, message: impl Into<String>) {
-    let message = message.into();
-    crate::accessibility::announce_status(&message);
-    ctx.data_mut(|d| {
-        d.insert_temp(egui::Id::new("aria_live_message"), message);
-    });
+    crate::accessibility::announce_live_status(ctx, message);
 }
 
 impl CommandPalette {

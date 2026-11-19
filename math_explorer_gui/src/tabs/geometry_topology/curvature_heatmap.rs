@@ -258,8 +258,9 @@ impl InteractiveTool for CurvatureHeatmap {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("curvature_heatmap_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(ui, "curvature_heatmap_controls");
+        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Curvature Heatmap");
             ui.separator();
 
@@ -312,7 +313,7 @@ impl InteractiveTool for CurvatureHeatmap {
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let lines = match self.surface_type {
                 SurfaceType::Sphere => {
                     let surface = Sphere {

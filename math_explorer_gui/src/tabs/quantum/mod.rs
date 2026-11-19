@@ -24,8 +24,8 @@ impl ExplorerTab for QuantumTab {
         "Quantum Mechanics"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.framework.show(ctx, "quantum");
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.framework.show_inside(ui, "quantum");
     }
 
     fn state_revision(&self) -> u64 {

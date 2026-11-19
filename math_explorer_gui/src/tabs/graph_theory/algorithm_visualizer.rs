@@ -189,8 +189,10 @@ impl AlgorithmVisualizerTool {
         }
     }
 
-    fn render_controls(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("algorithm_visualizer_controls").show(ctx, |ui| {
+    fn render_controls(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id =
+            crate::framework::scoped_panel_id(parent_ui, "algorithm_visualizer_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Algorithm Visualizer");
             ui.separator();
             ui.label("Select Algorithm:");
@@ -322,10 +324,11 @@ impl InteractiveTool for AlgorithmVisualizerTool {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
-        self.update_animation(ctx);
-        self.render_controls(ctx);
-        self.render_canvas(ctx);
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        self.update_animation(&ctx);
+        self.render_controls(ui);
+        self.render_canvas(ui);
     }
 }
 

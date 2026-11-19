@@ -60,8 +60,8 @@ impl InteractiveTool for FactorizationTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Large Number Factorization and Primality Testing");
             ui.label("Enter an integer to test for primality and find its prime factors.");
             ui.add_space(10.0);

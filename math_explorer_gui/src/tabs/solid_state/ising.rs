@@ -151,11 +151,12 @@ impl IsingModelTool {
         }
     }
 
-    fn draw_side_panel(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("ising_controls")
+    fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "ising_controls");
+        egui::SidePanel::left(panel_id)
             .resizable(false)
             .default_width(220.0)
-            .show(ctx, |ui| {
+            .show_inside(parent_ui, |ui| {
                 ui.heading("Ising Model Controls");
                 ui.separator();
 
@@ -241,8 +242,8 @@ impl IsingModelTool {
         self.dirty = false;
     }
 
-    fn draw_central_panel(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.sync_lattice_texture(ctx);
 
             if let Some(texture) = &self.texture {
@@ -417,7 +418,8 @@ impl InteractiveTool for IsingModelTool {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
         if let Some(snapshot) = self.worker.update() {
             if snapshot.custom_data.len() >= 2 {
                 self.magnetization = snapshot.custom_data[0];
@@ -434,8 +436,8 @@ impl InteractiveTool for IsingModelTool {
             ctx.request_repaint();
         }
 
-        self.draw_side_panel(ctx);
-        self.draw_central_panel(ctx);
+        self.draw_side_panel(ui, &ctx);
+        self.draw_central_panel(ui, &ctx);
     }
 }
 

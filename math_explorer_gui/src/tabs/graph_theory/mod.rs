@@ -23,8 +23,8 @@ impl ExplorerTab for GraphTheoryTab {
         "Graph Theory"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.framework.show(ctx, "graph_theory");
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.framework.show_inside(ui, "graph_theory");
     }
 
     fn state_revision(&self) -> u64 {

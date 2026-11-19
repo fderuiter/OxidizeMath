@@ -23,8 +23,8 @@ impl ExplorerTab for BatteryDegradationTab {
         "Battery Degradation"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.framework.show(ctx, "battery_degradation");
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.framework.show_inside(ui, "battery_degradation");
     }
 
     fn state_revision(&self) -> u64 {

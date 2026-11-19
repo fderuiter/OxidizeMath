@@ -226,10 +226,11 @@ impl<'a> PlaybackTransport<'a> {
     }
 
     fn check_keyboard_shortcuts(&self, ui: &egui::Ui) -> Option<PlaybackAction> {
-        if ui.ctx().wants_keyboard_input() {
+        if !super::is_pane_shortcut_allowed(ui) {
             return None;
         }
         if self.can_toggle
+            && super::is_pane_activation_shortcut_allowed(ui)
             && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Space))
         {
             return Some(if self.is_playing {
@@ -265,6 +266,7 @@ impl<'a> PlaybackTransport<'a> {
         announce_status(&announcement);
         ctx.data_mut(|d| {
             d.insert_temp(egui::Id::new("aria_live_message"), announcement);
+            d.insert_temp(egui::Id::new("aria_live_dispatched"), true);
             if matches!(action, PlaybackAction::Play | PlaybackAction::Pause) {
                 let next_playing = matches!(action, PlaybackAction::Play);
                 let next_label = if next_playing {

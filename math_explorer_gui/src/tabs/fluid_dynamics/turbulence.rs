@@ -97,7 +97,8 @@ impl InteractiveTool for TurbulenceTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let ctx = &ui.ctx().clone();
         let dt = ctx.input(|i| i.stable_dt).min(0.1) as f64;
         self.update(dt);
 
@@ -121,7 +122,8 @@ impl InteractiveTool for TurbulenceTool {
             }
         };
 
-        egui::SidePanel::left("turbulence_controls").show(ctx, |ui| {
+        let panel_id = crate::framework::scoped_panel_id(ui, "turbulence_controls");
+        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Turbulence Analysis");
             ui.separator();
 
@@ -201,7 +203,7 @@ impl InteractiveTool for TurbulenceTool {
             }
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             Plot::new("turbulence_plot")
                 .data_aspect(1.0)
                 .view_aspect(0.5)
