@@ -133,15 +133,18 @@ fn render_command_entry(ui: &mut egui::Ui, cmd: &egui_plot::commands::CommandMet
 
 /// Renders the global keyboard shortcuts modal window.
 pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
-    if !*show_help_menu {
-        return;
-    }
-    egui::Window::new("Keyboard Shortcuts")
-        .open(show_help_menu)
-        .resizable(true)
+    crate::ModalLifecycle::new(egui::Id::new("keyboard_shortcuts_modal"))
         .default_width(440.0)
-        .show(ctx, |ui| {
-            ui.heading("Keyboard Shortcuts");
+        .max_height(560.0)
+        .show(ctx, show_help_menu, |ui, frame_ctx| {
+            ui.horizontal(|ui| {
+                ui.heading("Keyboard Shortcuts");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("Close").clicked() {
+                        frame_ctx.close();
+                    }
+                });
+            });
             ui.separator();
 
             let registry_data = ctx.data(|d| {
@@ -157,7 +160,7 @@ pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
             }
 
             egui::ScrollArea::vertical()
-                .max_height(480.0)
+                .max_height(460.0)
                 .show(ui, |ui| {
                     for (context_name, cmds) in group_commands_by_context(registry_data.commands) {
                         ui.label(egui::RichText::new(&context_name).heading().strong());

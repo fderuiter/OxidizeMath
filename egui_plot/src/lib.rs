@@ -20,6 +20,7 @@ mod items;
 pub mod latex;
 mod legend;
 mod memory;
+pub mod modal_lifecycle;
 mod plot_ui;
 mod transform;
 
@@ -62,6 +63,7 @@ pub use crate::{
     latex::{MathBox, parse_latex_to_layout_job, parse_latex_with_font, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::{CanvasCallout, PlotMemory},
+    modal_lifecycle::{ModalFrameContext, ModalLifecycle},
     plot_ui::PlotUi,
     transform::{PlotBounds, PlotTransform},
 };
@@ -1574,65 +1576,6 @@ impl<'a> Plot<'a> {
         let transform = mem.transform;
 
         // --- ACCESSIBILITY LOGIC INJECTED ---
-        #[derive(Clone)]
-        struct AccessState {
-            show_table: bool,
-            export_modal: export_modal::ExportModalState,
-            focused_item: usize,
-            focused_point: usize,
-            fit_degree: Option<usize>,
-            fit_dataset_idx: usize,
-            show_fit_overlay: bool,
-            show_settings_modal: bool,
-            log_x: bool,
-            log_y: bool,
-            grid_density: f32,
-            show_x_labels: bool,
-            show_y_labels: bool,
-            clamp_grid: bool,
-            show_add_callout_modal: bool,
-            new_callout_point: [f64; 2],
-            new_callout_text: String,
-            new_callout_offset: [f32; 2],
-            last_context_plot_pos: Option<[f64; 2]>,
-            show_edit_callout_modal: bool,
-            editing_callout_idx: Option<usize>,
-            edit_callout_text: String,
-            edit_callout_offset: [f32; 2],
-            import_toast: Option<(String, bool)>,
-        }
-
-        impl Default for AccessState {
-            fn default() -> Self {
-                Self {
-                    show_table: false,
-                    export_modal: export_modal::ExportModalState::default(),
-                    focused_item: 0,
-                    focused_point: 0,
-                    fit_degree: None,
-                    fit_dataset_idx: 0,
-                    show_fit_overlay: true,
-                    show_settings_modal: false,
-                    log_x: false,
-                    log_y: false,
-                    grid_density: 8.0,
-                    show_x_labels: true,
-                    show_y_labels: true,
-                    clamp_grid: false,
-                    show_add_callout_modal: false,
-                    new_callout_point: [0.0, 0.0],
-                    new_callout_text: String::new(),
-                    new_callout_offset: [30.0, -30.0],
-                    last_context_plot_pos: None,
-                    show_edit_callout_modal: false,
-                    editing_callout_idx: None,
-                    edit_callout_text: String::new(),
-                    edit_callout_offset: [30.0, -30.0],
-                    import_toast: None,
-                }
-            }
-        }
-
         let mut access_state = ui
             .data_mut(|d| d.get_temp::<AccessState>(plot_id))
             .unwrap_or_else(|| AccessState {
@@ -1884,9 +1827,12 @@ impl<'a> Plot<'a> {
             Self::render_floating_zoom_toolbar(ui, &mut mem, &zoom_config);
         }
 
-        if access_state.show_table {
-            egui::Window::new(format!("Data Table - {id_source:?}")).show(ui.ctx(), |ui| {
-                egui::ScrollArea::both().show(ui, |ui| {
+        ModalLifecycle::new(plot_id.with("data_table_modal"))
+            .title(format!("Data Table - {id_source:?}"))
+            .default_width(360.0)
+            .max_height(420.0)
+            .show(ui.ctx(), &mut access_state.show_table, |ui, frame_ctx| {
+                egui::ScrollArea::both().max_height(320.0).show(ui, |ui| {
                     for (name, pts, _) in &accessible_datasets {
                         if pts.is_empty() {
                             continue;
@@ -1897,8 +1843,11 @@ impl<'a> Plot<'a> {
                         }
                     }
                 });
+                ui.separator();
+                if ui.button("Close").clicked() {
+                    frame_ctx.close();
+                }
             });
-        }
 
         {
             access_state.export_modal.options.log_x = mem.log_x;
@@ -1925,15 +1874,13 @@ impl<'a> Plot<'a> {
             );
         }
 
-        if access_state.show_settings_modal {
-            let mut modal_open = access_state.show_settings_modal;
-            let mut close_requested = false;
-            egui::Window::new(format!("Plot Settings 🔧 - {id_source:?}"))
-                .open(&mut modal_open)
-                .resizable(true)
-                .collapsible(false)
-                .default_width(320.0)
-                .show(ui.ctx(), |ui| {
+        ModalLifecycle::new(plot_id.with("plot_settings_modal"))
+            .title(format!("Plot Settings 🔧 - {id_source:?}"))
+            .default_width(320.0)
+            .show(
+                ui.ctx(),
+                &mut access_state.show_settings_modal,
+                |ui, frame_ctx| {
                     ui.label(egui::RichText::new("Grid & Axis Settings").strong());
                     ui.separator();
 
@@ -1982,82 +1929,86 @@ impl<'a> Plot<'a> {
                             mem.show_grid = Vec2b::new(true, true);
                         }
                         if ui.button("Close").clicked() {
-                            close_requested = true;
+                            frame_ctx.close();
                         }
                     });
-                });
-            access_state.show_settings_modal = modal_open && !close_requested;
-        }
+                },
+            );
 
-        if access_state.show_add_callout_modal {
-            let mut modal_open = access_state.show_add_callout_modal;
-            let mut close_requested = false;
+        {
             let mut add_confirmed = false;
-
-            egui::Window::new(format!("Add Callout - {id_source:?}"))
-                .open(&mut modal_open)
-                .resizable(false)
-                .collapsible(false)
+            ModalLifecycle::new(plot_id.with("add_callout_modal"))
+                .title(format!("Add Callout - {id_source:?}"))
                 .default_width(320.0)
-                .show(ui.ctx(), |ui| {
-                    ui.label(egui::RichText::new("New Callout Annotation").strong());
-                    ui.separator();
+                .show(
+                    ui.ctx(),
+                    &mut access_state.show_add_callout_modal,
+                    |ui, frame_ctx| {
+                        ui.label(egui::RichText::new("New Callout Annotation").strong());
+                        ui.separator();
 
-                    ui.horizontal(|ui| {
-                        ui.label("Target Coordinates:");
-                        ui.monospace(format!(
-                            "X: {:.4}, Y: {:.4}",
-                            access_state.new_callout_point[0], access_state.new_callout_point[1]
-                        ));
-                    });
+                        ui.horizontal(|ui| {
+                            ui.label("Target Coordinates:");
+                            ui.monospace(format!(
+                                "X: {:.4}, Y: {:.4}",
+                                access_state.new_callout_point[0],
+                                access_state.new_callout_point[1]
+                            ));
+                        });
 
-                    ui.add_space(4.0);
-                    ui.label("Label Text (max 128 chars):");
-                    let text_edit_res = ui.add(
-                        egui::TextEdit::singleline(&mut access_state.new_callout_text)
-                            .char_limit(128)
-                            .hint_text("e.g. Equilibrium / Critical Point"),
-                    );
-                    if text_edit_res.lost_focus()
-                        && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter))
-                    {
-                        add_confirmed = true;
-                    }
-
-                    if access_state.new_callout_text.chars().count() > 128 {
-                        access_state.new_callout_text =
-                            access_state.new_callout_text.chars().take(128).collect();
-                    }
-
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new("Screen Pixel Offset").small().weak());
-                    ui.horizontal(|ui| {
-                        ui.label("X Offset (dx):");
-                        ui.add(
-                            egui::DragValue::new(&mut access_state.new_callout_offset[0])
-                                .speed(1.0),
+                        ui.add_space(4.0);
+                        ui.label("Label Text (max 128 chars):");
+                        let text_edit_res = ui.add(
+                            egui::TextEdit::singleline(&mut access_state.new_callout_text)
+                                .char_limit(128)
+                                .hint_text("e.g. Equilibrium / Critical Point"),
                         );
-                        ui.label("px");
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Y Offset (dy):");
-                        ui.add(
-                            egui::DragValue::new(&mut access_state.new_callout_offset[1])
-                                .speed(1.0),
-                        );
-                        ui.label("px");
-                    });
-
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        if ui.button("Add Callout").clicked() {
+                        if frame_ctx.just_opened {
+                            text_edit_res.request_focus();
+                        } else if text_edit_res.lost_focus()
+                            && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter))
+                        {
                             add_confirmed = true;
                         }
-                        if ui.button("Cancel").clicked() {
-                            close_requested = true;
+
+                        if access_state.new_callout_text.chars().count() > 128 {
+                            access_state.new_callout_text =
+                                access_state.new_callout_text.chars().take(128).collect();
                         }
-                    });
-                });
+
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new("Screen Pixel Offset").small().weak());
+                        ui.horizontal(|ui| {
+                            ui.label("X Offset (dx):");
+                            ui.add(
+                                egui::DragValue::new(&mut access_state.new_callout_offset[0])
+                                    .speed(1.0),
+                            );
+                            ui.label("px");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Y Offset (dy):");
+                            ui.add(
+                                egui::DragValue::new(&mut access_state.new_callout_offset[1])
+                                    .speed(1.0),
+                            );
+                            ui.label("px");
+                        });
+
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            if ui.button("Add Callout").clicked() {
+                                add_confirmed = true;
+                            }
+                            if ui.button("Cancel").clicked() {
+                                frame_ctx.close();
+                            }
+                        });
+                        if add_confirmed {
+                            frame_ctx.close();
+                        }
+                    },
+                );
 
             if add_confirmed {
                 let label = if access_state.new_callout_text.trim().is_empty() {
@@ -2077,109 +2028,109 @@ impl<'a> Plot<'a> {
                     },
                 );
                 ui.ctx().request_repaint();
-                close_requested = true;
             }
-
-            access_state.show_add_callout_modal = modal_open && !close_requested;
         }
 
-        if access_state.show_edit_callout_modal {
-            let mut modal_open = access_state.show_edit_callout_modal;
-            let mut close_requested = false;
+        {
+            let valid_callout_idx = access_state
+                .editing_callout_idx
+                .filter(|&idx| idx < mem.callouts.len());
+            if access_state.show_edit_callout_modal && valid_callout_idx.is_none() {
+                access_state.show_edit_callout_modal = false;
+            }
             let mut delete_requested = false;
             let mut update_confirmed = false;
-            let current_idx = access_state.editing_callout_idx;
+            ModalLifecycle::new(plot_id.with("edit_callout_modal"))
+                .title(format!("Edit Callout - {id_source:?}"))
+                .default_width(320.0)
+                .show(
+                    ui.ctx(),
+                    &mut access_state.show_edit_callout_modal,
+                    |ui, frame_ctx| {
+                        let Some(idx) = valid_callout_idx else {
+                            frame_ctx.close();
+                            return;
+                        };
+                        ui.label(egui::RichText::new("Edit Callout Annotation").strong());
+                        ui.separator();
 
-            if let Some(idx) = current_idx {
-                if idx < mem.callouts.len() {
-                    egui::Window::new(format!("Edit Callout - {id_source:?}"))
-                        .open(&mut modal_open)
-                        .resizable(false)
-                        .collapsible(false)
-                        .default_width(320.0)
-                        .show(ui.ctx(), |ui| {
-                            ui.label(egui::RichText::new("Edit Callout Annotation").strong());
-                            ui.separator();
-
-                            ui.horizontal(|ui| {
-                                ui.label("Target Coordinates:");
-                                ui.monospace(format!(
-                                    "X: {:.4}, Y: {:.4}",
-                                    mem.callouts[idx].point[0], mem.callouts[idx].point[1]
-                                ));
-                            });
-
-                            ui.add_space(4.0);
-                            ui.label("Label Text (max 128 chars):");
-                            ui.add(
-                                egui::TextEdit::singleline(&mut access_state.edit_callout_text)
-                                    .char_limit(128),
-                            );
-
-                            if access_state.edit_callout_text.chars().count() > 128 {
-                                access_state.edit_callout_text =
-                                    access_state.edit_callout_text.chars().take(128).collect();
-                            }
-
-                            ui.add_space(4.0);
-                            ui.label(egui::RichText::new("Screen Pixel Offset").small().weak());
-                            ui.horizontal(|ui| {
-                                ui.label("X Offset (dx):");
-                                ui.add(
-                                    egui::DragValue::new(&mut access_state.edit_callout_offset[0])
-                                        .speed(1.0),
-                                );
-                                ui.label("px");
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("Y Offset (dy):");
-                                ui.add(
-                                    egui::DragValue::new(&mut access_state.edit_callout_offset[1])
-                                        .speed(1.0),
-                                );
-                                ui.label("px");
-                            });
-
-                            ui.separator();
-                            ui.horizontal(|ui| {
-                                if ui.button("Update").clicked() {
-                                    update_confirmed = true;
-                                }
-                                if ui.button("Remove").clicked() {
-                                    delete_requested = true;
-                                }
-                                if ui.button("Cancel").clicked() {
-                                    close_requested = true;
-                                }
-                            });
+                        ui.horizontal(|ui| {
+                            ui.label("Target Coordinates:");
+                            ui.monospace(format!(
+                                "X: {:.4}, Y: {:.4}",
+                                mem.callouts[idx].point[0], mem.callouts[idx].point[1]
+                            ));
                         });
 
-                    if update_confirmed {
-                        let new_label = if access_state.edit_callout_text.trim().is_empty() {
-                            format!(
-                                "({:.2}, {:.2})",
-                                mem.callouts[idx].point[0], mem.callouts[idx].point[1]
-                            )
-                        } else {
-                            access_state.edit_callout_text.clone()
-                        };
-                        mem.callouts[idx].label = new_label;
-                        mem.callouts[idx].offset = access_state.edit_callout_offset;
-                        close_requested = true;
-                    }
+                        ui.add_space(4.0);
+                        ui.label("Label Text (max 128 chars):");
+                        let text_edit_res = ui.add(
+                            egui::TextEdit::singleline(&mut access_state.edit_callout_text)
+                                .char_limit(128),
+                        );
+                        if frame_ctx.just_opened {
+                            text_edit_res.request_focus();
+                        }
 
-                    if delete_requested {
-                        mem.callouts.remove(idx);
-                        close_requested = true;
-                    }
-                } else {
-                    close_requested = true;
+                        if access_state.edit_callout_text.chars().count() > 128 {
+                            access_state.edit_callout_text =
+                                access_state.edit_callout_text.chars().take(128).collect();
+                        }
+
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new("Screen Pixel Offset").small().weak());
+                        ui.horizontal(|ui| {
+                            ui.label("X Offset (dx):");
+                            ui.add(
+                                egui::DragValue::new(&mut access_state.edit_callout_offset[0])
+                                    .speed(1.0),
+                            );
+                            ui.label("px");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Y Offset (dy):");
+                            ui.add(
+                                egui::DragValue::new(&mut access_state.edit_callout_offset[1])
+                                    .speed(1.0),
+                            );
+                            ui.label("px");
+                        });
+
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            if ui.button("Update").clicked() {
+                                update_confirmed = true;
+                            }
+                            if ui.button("Remove").clicked() {
+                                delete_requested = true;
+                            }
+                            if ui.button("Cancel").clicked() {
+                                frame_ctx.close();
+                            }
+                        });
+                        if update_confirmed || delete_requested {
+                            frame_ctx.close();
+                        }
+                    },
+                );
+
+            if let Some(idx) = valid_callout_idx {
+                if update_confirmed {
+                    let new_label = if access_state.edit_callout_text.trim().is_empty() {
+                        format!(
+                            "({:.2}, {:.2})",
+                            mem.callouts[idx].point[0], mem.callouts[idx].point[1]
+                        )
+                    } else {
+                        access_state.edit_callout_text.clone()
+                    };
+                    mem.callouts[idx].label = new_label;
+                    mem.callouts[idx].offset = access_state.edit_callout_offset;
                 }
-            } else {
-                close_requested = true;
+                if delete_requested {
+                    mem.callouts.remove(idx);
+                }
             }
-
-            access_state.show_edit_callout_modal = modal_open && !close_requested;
         }
 
         mem.show_settings_modal = access_state.show_settings_modal;
@@ -5239,3 +5190,65 @@ mod log_space_projection_tests {
         assert!(tf.bounds().min()[1] >= 1e-300 && tf.bounds().max()[1] <= 1e300);
     }
 }
+
+#[derive(Clone)]
+pub(crate) struct AccessState {
+    pub(crate) show_table: bool,
+    pub(crate) export_modal: export_modal::ExportModalState,
+    pub(crate) focused_item: usize,
+    pub(crate) focused_point: usize,
+    pub(crate) fit_degree: Option<usize>,
+    pub(crate) fit_dataset_idx: usize,
+    pub(crate) show_fit_overlay: bool,
+    pub(crate) show_settings_modal: bool,
+    pub(crate) log_x: bool,
+    pub(crate) log_y: bool,
+    pub(crate) grid_density: f32,
+    pub(crate) show_x_labels: bool,
+    pub(crate) show_y_labels: bool,
+    pub(crate) clamp_grid: bool,
+    pub(crate) show_add_callout_modal: bool,
+    pub(crate) new_callout_point: [f64; 2],
+    pub(crate) new_callout_text: String,
+    pub(crate) new_callout_offset: [f32; 2],
+    pub(crate) last_context_plot_pos: Option<[f64; 2]>,
+    pub(crate) show_edit_callout_modal: bool,
+    pub(crate) editing_callout_idx: Option<usize>,
+    pub(crate) edit_callout_text: String,
+    pub(crate) edit_callout_offset: [f32; 2],
+    pub(crate) import_toast: Option<(String, bool)>,
+}
+
+impl Default for AccessState {
+    fn default() -> Self {
+        Self {
+            show_table: false,
+            export_modal: export_modal::ExportModalState::default(),
+            focused_item: 0,
+            focused_point: 0,
+            fit_degree: None,
+            fit_dataset_idx: 0,
+            show_fit_overlay: true,
+            show_settings_modal: false,
+            log_x: false,
+            log_y: false,
+            grid_density: 8.0,
+            show_x_labels: true,
+            show_y_labels: true,
+            clamp_grid: false,
+            show_add_callout_modal: false,
+            new_callout_point: [0.0, 0.0],
+            new_callout_text: String::new(),
+            new_callout_offset: [30.0, -30.0],
+            last_context_plot_pos: None,
+            show_edit_callout_modal: false,
+            editing_callout_idx: None,
+            edit_callout_text: String::new(),
+            edit_callout_offset: [30.0, -30.0],
+            import_toast: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod modal_lifecycle_tests;

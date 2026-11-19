@@ -307,91 +307,95 @@ pub fn get_starter_cards_for_domain(
     cards
 }
 
+fn render_starter_card(ui: &mut egui::Ui, card: &StarterCard) -> bool {
+    let mut launched = false;
+    egui::Frame::group(ui.style())
+        .inner_margin(14.0)
+        .corner_radius(8.0)
+        .show(ui, |ui| {
+            ui.set_width(215.0);
+            ui.set_min_height(170.0);
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(card.icon).size(26.0));
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new(card.title).strong().size(15.0));
+                        ui.label(
+                            egui::RichText::new(format!("[{}]", card.category))
+                                .small()
+                                .color(ui.visuals().weak_text_color()),
+                        );
+                    });
+                });
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(card.description)
+                        .size(12.0)
+                        .color(ui.visuals().text_color()),
+                );
+                ui.add_space(10.0);
+                if ui.button(format!("▶ Launch {}", card.title)).clicked() {
+                    launched = true;
+                }
+            });
+        });
+    launched
+}
+
 /// Renders the central canvas starter gallery card overlay in an egui Context.
-#[allow(clippy::too_many_lines)]
 pub fn show_starter_gallery_overlay(
     ctx: &egui::Context,
     id_source: &str,
     cards: &[StarterCard],
     is_open: &mut bool,
 ) -> Option<StarterCard> {
-    if !*is_open || cards.is_empty() {
+    if cards.is_empty() {
         return None;
     }
 
     let mut selected_card = None;
+    let modal_id = egui::Id::new(format!("{id_source}_starter_gallery_overlay"));
+    let frame = egui::Frame::window(&ctx.style())
+        .inner_margin(16)
+        .corner_radius(12.0)
+        .shadow(ctx.style().visuals.window_shadow);
 
-    egui::Area::new(egui::Id::new(format!("{}_starter_gallery_overlay", id_source)))
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-        .show(ctx, |ui| {
-            egui::Frame::window(ui.style())
-                .inner_margin(16)
-                .corner_radius(12.0)
-                .shadow(ui.style().visuals.window_shadow)
-                .show(ui, |ui| {
-                    ui.set_max_width(740.0);
-                    ui.set_max_height(520.0);
-
-                    // Header
-                    ui.horizontal(|ui| {
-                        ui.heading("🚀 Starter Template Gallery");
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("✖ Close Gallery").clicked() {
-                                *is_open = false;
-                            }
-                        });
-                    });
-
-                    ui.label(
-                        egui::RichText::new("Choose a guided starter model to launch pre-configured simulation parameters:")
-                            .color(ui.visuals().weak_text_color()),
-                    );
-                    ui.add_space(8.0);
-                    ui.separator();
-                    ui.add_space(10.0);
-
-                    // Cards Grid
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-                            for card in cards {
-                                egui::Frame::group(ui.style())
-                                    .inner_margin(14.0)
-                                    .corner_radius(8.0)
-                                    .show(ui, |ui| {
-                                        ui.set_width(215.0);
-                                        ui.set_min_height(170.0);
-                                        ui.vertical(|ui| {
-                                            ui.horizontal(|ui| {
-                                                ui.label(egui::RichText::new(card.icon).size(26.0));
-                                                ui.vertical(|ui| {
-                                                    ui.label(egui::RichText::new(card.title).strong().size(15.0));
-                                                    ui.label(
-                                                        egui::RichText::new(format!("[{}]", card.category))
-                                                            .small()
-                                                            .color(ui.visuals().weak_text_color()),
-                                                    );
-                                                });
-                                            });
-                                            ui.add_space(8.0);
-                                            ui.label(
-                                                egui::RichText::new(card.description)
-                                                    .size(12.0)
-                                                    .color(ui.visuals().text_color()),
-                                            );
-                                            ui.add_space(10.0);
-                                            let btn = ui.button(format!("▶ Launch {}", card.title));
-                                            if btn.clicked() {
-                                                selected_card = Some(card.clone());
-                                                *is_open = false;
-                                            }
-                                        });
-                                    });
-                            }
-                        });
-                    });
+    crate::ModalLifecycle::new(modal_id)
+        .frame(frame)
+        .backdrop_color(egui::Color32::from_black_alpha(120))
+        .max_width(740.0)
+        .max_height(520.0)
+        .show(ctx, is_open, |ui, frame_ctx| {
+            ui.horizontal(|ui| {
+                ui.heading("🚀 Starter Template Gallery");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("✖ Close Gallery").clicked() {
+                        frame_ctx.close();
+                    }
                 });
+            });
+
+            ui.label(
+                egui::RichText::new(
+                    "Choose a guided starter model to launch pre-configured simulation parameters:",
+                )
+                .color(ui.visuals().weak_text_color()),
+            );
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(10.0);
+
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
+                    for card in cards {
+                        if render_starter_card(ui, card) {
+                            selected_card = Some(card.clone());
+                            frame_ctx.close();
+                        }
+                    }
+                });
+            });
         });
 
     selected_card

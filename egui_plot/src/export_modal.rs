@@ -515,20 +515,13 @@ pub fn show_export_modal(
     source: &mut impl ExportDataSource,
 ) {
     poll_clipboard_status(ctx, config.id, bindings.status_message);
-    if !*bindings.open {
-        return;
-    }
-
     let status_color = source.status_color();
+    let modal_id = config.id.with("export_modal_window");
     let mut modal_open = *bindings.open;
-    let mut close_requested = false;
-    egui::Window::new(config.window_title)
-        .id(config.id.with("export_modal_window"))
-        .open(&mut modal_open)
-        .resizable(true)
-        .collapsible(false)
+    crate::modal_lifecycle::ModalLifecycle::new(modal_id)
+        .title(config.window_title)
         .default_width(380.0)
-        .show(ctx, |ui| {
+        .show(ctx, &mut modal_open, |ui, frame_ctx| {
             ui.label(egui::RichText::new(MODAL_HEADER_TEXT).strong());
             ui.separator();
             render_modal_settings(ui, config.id, &mut bindings);
@@ -540,10 +533,11 @@ pub fn show_export_modal(
                 status_color,
             );
             ui.separator();
-            close_requested = render_action_buttons(ui, &mut bindings, config, source);
+            if render_action_buttons(ui, &mut bindings, config, source) {
+                frame_ctx.close();
+            }
         });
-
-    *bindings.open = modal_open && !close_requested;
+    *bindings.open = modal_open;
 }
 
 #[cfg(test)]

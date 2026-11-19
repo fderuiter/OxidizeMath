@@ -298,8 +298,15 @@ impl InteractiveTool for FractalViewer {
             }
 
             if let Some(texture) = &self.texture {
-                // Display the image
-                let response = ui.image(texture).accessible_theory_hover(self);
+                let alt_label = self.theory_description();
+                let response = ui
+                    .add(
+                        egui::Image::new(texture)
+                            .alt_text(alt_label)
+                            .sense(egui::Sense::click_and_drag()),
+                    )
+                    .accessible_theory_hover(self);
+                crate::accessibility::paint_canvas_focus_ring(ui, &response);
 
                 let multi_touch = ui.input(|i| i.multi_touch());
 

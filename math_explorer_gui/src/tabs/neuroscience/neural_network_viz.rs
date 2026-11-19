@@ -149,11 +149,21 @@ impl NeuralNetworkVizTool {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Network Visualization");
 
-            let (response, painter) =
-                ui.allocate_painter(ui.available_size(), egui::Sense::hover());
-            let _ = response.clone().accessible_hover_text(
-                "Neural Network Visualization: Showing interconnected neurons",
+            let (response, painter) = ui.allocate_painter(
+                ui.available_size(),
+                egui::Sense::focusable_noninteractive(),
             );
+            let label = "Neural Network Visualization: Showing interconnected neurons";
+            let _ = response.clone().accessible_hover_text(label);
+            let summary = format!("{} interconnected neurons", self.neurons.len());
+            crate::accessibility::register_canvas_accessibility(
+                ui,
+                &response,
+                egui::accesskit::Role::GraphicsDocument,
+                label,
+                Some(&summary),
+            );
+            crate::accessibility::paint_canvas_focus_ring(ui, &response);
 
             let center = response.rect.center();
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());

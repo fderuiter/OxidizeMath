@@ -1,8 +1,8 @@
 use std::string::String;
 
 use egui::{
-    Align, Color32, Direction, Frame, Id, Layout, PointerButton, Rect, Response, Sense, Shadow,
-    Shape, TextStyle, Ui, Widget, WidgetInfo, WidgetType, epaint::CircleShape, pos2, vec2,
+    Align, Color32, Direction, Frame, Id, Layout, Rect, Response, Sense, Shadow, Shape, TextStyle,
+    Ui, Widget, WidgetInfo, WidgetType, epaint::CircleShape, pos2, vec2,
 };
 
 use super::items::PlotItem;
@@ -446,7 +446,7 @@ impl Widget for &mut LegendWidget {
 
 /// Handle per-entry interactions.
 fn handle_interaction_on_legend_item(response: &Response, entry: &mut LegendEntry) {
-    entry.checked ^= response.clicked_by(PointerButton::Primary);
+    entry.checked ^= response.clicked();
     entry.hovered = response.hovered();
 }
 

@@ -270,10 +270,22 @@ impl InteractiveTool for GridWorldTool {
                 self.env.height as f32 * cell_size,
             );
 
-            let (response, painter) = ui.allocate_painter(grid_size, egui::Sense::hover());
+            let (response, painter) =
+                ui.allocate_painter(grid_size, egui::Sense::focusable_noninteractive());
             let _ = response
                 .clone()
                 .accessible_hover_text("Grid World Visualization");
+            let summary = format!(
+                "Agent at ({}, {}), Episode {}, Reward {:.2}",
+                self.current_state.x, self.current_state.y, self.episodes, self.total_reward
+            );
+            crate::accessibility::register_canvas_accessibility(
+                ui,
+                &response,
+                egui::accesskit::Role::GraphicsDocument,
+                "Grid World Visualization",
+                Some(&summary),
+            );
             let rect = response.rect;
 
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
@@ -306,6 +318,7 @@ impl InteractiveTool for GridWorldTool {
                     );
                 }
             }
+            crate::accessibility::paint_canvas_focus_ring(ui, &response);
         });
     }
 }
