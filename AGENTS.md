@@ -1,12 +1,13 @@
 # OxidizeMath Agent & Developer Verification Guide
 
-This guide documents local build, verification, and release packaging checks for contributors and automated coding agents working in the OxidizeMath workspace. See [README.md](README.md) for an architectural overview and [CONTRIBUTING.md](CONTRIBUTING.md) for engineering standards.
+This guide documents local build, domain feature matrix, WebAssembly bundle, workflow linting, and release packaging checks for contributors and automated coding agents working in the OxidizeMath workspace. See [README.md](README.md) for an architectural overview and [CONTRIBUTING.md](CONTRIBUTING.md) for engineering and safety standards (consolidated in `CONTRIBUTING.md` per [ADR 0005](docs/adr/0005-active-documentation-standard.md)).
 
 ## 1. Documentation & Markdown Rules
 
 All Markdown files in the repository (outside excluded build directories such as `target`, `dist`, and `artifacts`) are compiled by `crates/markdown_tests/build.rs` via `rustdoc`.
 
-- Always tag non-Rust code blocks with `bash` or `text` fences so `cargo test --doc` does not attempt to compile shell commands or plain text snippets as Rust doctests.
+- Always tag non-Rust code blocks with `bash`, `yaml`, or `text` fences so `cargo test --doc` does not attempt to compile shell commands, workflow snippets, or plain text snippets as Rust doctests.
+- Keep core engineering safety rules (such as the NASA Power of 10 standards) in [CONTRIBUTING.md](CONTRIBUTING.md) rather than duplicating them here.
 - Ensure all relative Markdown links resolve to existing files in the repository.
 
 ```text
@@ -19,11 +20,23 @@ Markdown verification gates:
 
 ## 2. CI Pre-Flight & Quality Gates
 
-Before opening or updating a pull request, run the repository quality gates defined in [.github/workflows/ci.yml](.github/workflows/ci.yml):
+Before opening or updating a pull request, run the workspace lint suite aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [.github/workflows/ci.yml](.github/workflows/ci.yml):
+
+```bash
+# Run the full manual verification suite (formatting, clippy, duplicates, file lengths,
+# rustdoc, doctests, markdown links, workflow lints, crate docs, traceability, entropy, vulnerabilities)
+cargo run -p xtask -- lint-all
+```
+
+Individual quality gates executed in `pre-flight` can also be run directly:
 
 ```bash
 # Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA action pins)
 cargo run -p unified_verification --release -- lint-workflows
+
+# Verify formatting and Clippy lints across all targets and features
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Verify crate documentation and workspace rustdoc builds
 cargo run -p unified_verification --release -- check-docs
@@ -40,7 +53,59 @@ cargo run -p unified_verification --release -- traceability
 BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
 ```
 
-## 3. Local Release Packaging Checks
+## 3. Isolated Domain Feature Matrix (`test-features`)
+
+Both `deploy-pages` and `publish-release` in [.github/workflows/ci.yml](.github/workflows/ci.yml) wait for `feature-matrix`, because [math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml) enables all seven scientific domains by default. Verify isolated domain feature compilation and tests locally via `xtask`:
+
+```bash
+# Run core-only (--no-default-features), all seven isolated domains, and --all-features sequentially
+cargo run -p xtask -- test-features
+
+# Run a single isolated domain suite (pure_math, applied, ai, biology, climate, epidemiology, or physics)
+cargo run -p xtask -- test-features physics
+
+# Run core-only (--no-default-features) without optional domain crates
+cargo run -p xtask -- test-features core-only
+```
+
+## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
+
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` compiles the web application once with `trunk build --release`, pre-compresses assets, enforces the 3 MB compressed bundle budget, generates `SHA256SUMS`, and uploads the GitHub Pages artifact on `refs/heads/main` before `deploy-pages` publishes it.
+
+```bash
+# 1. Install the WebAssembly Rust target, Trunk, and compression utilities (Ubuntu / Debian)
+rustup target add wasm32-unknown-unknown
+sudo apt-get update
+sudo apt-get install -y binaryen brotli
+cargo binstall --no-confirm trunk
+
+# 2. Type-check workspace crates and tests for WebAssembly
+cargo check --workspace --target wasm32-unknown-unknown --all-features --verbose
+cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
+
+# 3. Build release WebAssembly distribution, compress assets, and verify the 3 MB size budget
+(cd math_explorer_gui && trunk build --release)
+bash scripts/compress_dist.sh math_explorer_gui/dist
+bash scripts/verify_wasm_budget.sh math_explorer_gui/dist
+
+# 4. Generate and verify the Pages SHA256SUMS manifest
+(
+  cd math_explorer_gui/dist
+  shopt -s nullglob
+  shopt -u dotglob
+  files=()
+  for f in *; do
+    if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
+      files+=("$f")
+    fi
+  done
+  test "${#files[@]}" -gt 0
+  sha256sum "${files[@]}" > SHA256SUMS
+  sha256sum -c SHA256SUMS
+)
+```
+
+## 5. Local Release Packaging Checks
 
 Pull requests automatically execute the Linux Debian (`deb`) installer build in the `package` job of [.github/workflows/ci.yml](.github/workflows/ci.yml), while `main` pushes, `v*` tag pushes, and `workflow_dispatch` runs build all three desktop installer targets (`deb`, `dmg`, and `wix`).
 
@@ -58,7 +123,7 @@ cargo binstall --no-confirm --disable-strategies compile cargo-packager@0.11.8
 
 ### Build Linux `.deb` Installer & SHA-256 Manifest
 
-`math_explorer_gui/Cargo.toml` configures `out-dir = "dist"` under `[package.metadata.packager]`, so `cargo packager` writes installers to `math_explorer_gui/dist` alongside a hidden `.cargo-packager` metadata directory.
+[math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml) configures `out-dir = "dist"` under `[package.metadata.packager]`, so `cargo packager` writes installers to `math_explorer_gui/dist` alongside a hidden `.cargo-packager` metadata directory.
 
 ```bash
 # 1. Build release GUI binary and package Debian installer
@@ -82,7 +147,7 @@ cargo packager --release -p math_explorer_gui -f deb
 )
 ```
 
-Clean up local `math_explorer_gui/dist` build outputs before committing so untracked installer binaries are not left in the workspace:
+Clean up local `math_explorer_gui/dist` build outputs before committing so untracked web or installer binaries are not left in the workspace:
 
 ```bash
 rm -rf math_explorer_gui/dist
