@@ -313,12 +313,38 @@ impl RewardPlotsTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct RewardPlotsState {
+    training_steps: usize,
+}
+
 impl InteractiveTool for RewardPlotsTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }
     fn name(&self) -> &'static str {
         "Reward Plots"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&RewardPlotsState {
+            training_steps: self.training_steps,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: RewardPlotsState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid RewardPlotsTool state: {e}"))?;
+        if s.training_steps == 0 {
+            return Err("training_steps must be positive in RewardPlotsTool".to_string());
+        }
+        self.training_steps = s.training_steps;
+        self.reset();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -381,8 +407,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "episodes": 200,
-    "smoothing_window": 10
+    "training_steps": 200
   }
 }"#;
 

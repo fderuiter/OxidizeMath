@@ -284,3 +284,79 @@ fn test_plot_integration_opens_unified_modal_and_polls_clipboard() {
             .is_none()
     );
 }
+
+fn srgb_luminance(c: egui::Color32) -> f64 {
+    let ch = |v: u8| {
+        let s = f64::from(v) / 255.0;
+        if s <= 0.04045 {
+            s / 12.92
+        } else {
+            ((s + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * ch(c.r()) + 0.7152 * ch(c.g()) + 0.0722 * ch(c.b())
+}
+
+fn wcag_contrast(a: egui::Color32, b: egui::Color32) -> f64 {
+    let (l1, l2) = (srgb_luminance(a), srgb_luminance(b));
+    (l1.max(l2) + 0.05) / (l1.min(l2) + 0.05)
+}
+
+fn find_text_color(output: &egui::FullOutput, needle: &str) -> Option<egui::Color32> {
+    let mut stack: Vec<&egui::epaint::Shape> = output.shapes.iter().map(|c| &c.shape).collect();
+    while let Some(shape) = stack.pop() {
+        match shape {
+            egui::epaint::Shape::Text(t) if t.galley.job.text.contains(needle) => {
+                return t
+                    .galley
+                    .job
+                    .sections
+                    .first()
+                    .map(|s| s.format.color)
+                    .or(Some(t.fallback_color));
+            }
+            egui::epaint::Shape::Vec(v) => stack.extend(v.iter()),
+            _ => {}
+        }
+    }
+    None
+}
+
+#[test]
+fn test_export_modal_warning_and_status_colors_meet_wcag_aa() {
+    for visuals in [egui::Visuals::dark(), egui::Visuals::light()] {
+        let ctx = egui::Context::default();
+        ctx.set_visuals(visuals.clone());
+        let bg = visuals.window_fill();
+        let mut state = ExportModalState {
+            open: true,
+            options: ExportOptions {
+                scale: 4.0,
+                ..Default::default()
+            },
+            status_message: Some("PNG image saved successfully.".to_string()),
+            ..Default::default()
+        };
+        let config = ExportModalConfig {
+            window_title: "Export Contrast Test",
+            id: egui::Id::new(("export_contrast", visuals.dark_mode)),
+            png_filename: "plot.png",
+            svg_filename: "plot.svg",
+            gif_filename: "plot.gif",
+        };
+        let mut source = CallbackExportSource {
+            datasets_fn: Vec::new,
+            sample_frames_fn: |_| Vec::new(),
+        };
+        let _ = ctx.run(screen_input(), |ctx| {
+            show_export_modal(ctx, state.bindings(), &config, &mut source);
+        });
+        let out = ctx.run(screen_input(), |ctx| {
+            show_export_modal(ctx, state.bindings(), &config, &mut source);
+        });
+        let warn_c = find_text_color(&out, "Capped at max dimension").expect("warn text");
+        let ok_c = find_text_color(&out, "PNG image saved successfully.").expect("status text");
+        assert!(wcag_contrast(warn_c, bg) >= 4.5, "warn contrast < 4.5");
+        assert!(wcag_contrast(ok_c, bg) >= 4.5, "status contrast < 4.5");
+    }
+}

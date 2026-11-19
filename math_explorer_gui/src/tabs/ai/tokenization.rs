@@ -54,10 +54,42 @@ impl TokenizationTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TokenizationState {
+    input_text: String,
+    d_model: usize,
+    use_subword: bool,
+}
+
 impl InteractiveTool for TokenizationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Tokenization & Embeddings"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&TokenizationState {
+            input_text: self.input_text.clone(),
+            d_model: self.d_model,
+            use_subword: self.use_subword,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: TokenizationState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid TokenizationTool state: {e}"))?;
+        if s.d_model == 0 {
+            return Err("d_model must be positive in TokenizationTool".to_string());
+        }
+        self.input_text = s.input_text;
+        self.d_model = s.d_model;
+        self.use_subword = s.use_subword;
+        self.recalculate_tokens();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -164,19 +196,15 @@ impl InteractiveTool for TokenizationTool {
                         }
                         ui.end_row();
 
+                        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+
                         // Data rows
                         for token in &self.tokens {
                             ui.label(egui::RichText::new(&token.text).monospace());
 
                             for &val in &token.embedding {
-                                // Simple heatmap color mapping
-                                let color = if val < 0.0 {
-                                    egui::Color32::from_rgb((255.0 * val.abs()) as u8, 0, 0)
-                                } else {
-                                    egui::Color32::from_rgb(0, (255.0 * val) as u8, 0)
-                                };
-
-                                let text_color = if val.abs() > 0.5 { egui::Color32::WHITE } else { ui.visuals().text_color() };
+                                let color = embedding_cell_color(val, &palette);
+                                let text_color = crate::app::contrasting_text_color(color);
 
                                 egui::Frame::NONE
                                     .fill(color)
@@ -196,6 +224,28 @@ impl InteractiveTool for TokenizationTool {
             });
         });
     }
+}
+
+fn lerp_channel(a: u8, b: u8, t: f64) -> u8 {
+    (f64::from(a) + (f64::from(b) - f64::from(a)) * t.clamp(0.0, 1.0)).round() as u8
+}
+
+pub(crate) fn embedding_cell_color(
+    val: f64,
+    palette: &crate::app::SemanticPalette,
+) -> egui::Color32 {
+    let base = palette.surface_fill;
+    let target = if val < 0.0 {
+        palette.error
+    } else {
+        palette.success
+    };
+    let t = val.abs().clamp(0.0, 1.0);
+    egui::Color32::from_rgb(
+        lerp_channel(base.r(), target.r(), t),
+        lerp_channel(base.g(), target.g(), t),
+        lerp_channel(base.b(), target.b(), t),
+    )
 }
 
 // [cite:algorithmic_information_rust]
@@ -232,8 +282,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "vocab_size": 1000,
-    "sample_text": "Neural attention mechanisms"
+    "input_text": "Neural attention mechanisms",
+    "d_model": 12,
+    "use_subword": true
   }
 }"#;
 

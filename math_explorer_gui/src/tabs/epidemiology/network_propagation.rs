@@ -1,7 +1,6 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
-use egui::Color32;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 
 pub struct NetworkPropagationTool {
@@ -95,21 +94,23 @@ impl NetworkPropagationTool {
                 .filter(|&&s| s == target)
                 .count()
         };
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.label(
             egui::RichText::new(format!("Susceptible: {}", count_state(NodeState::Susceptible)))
-                .color(Color32::BLUE),
+                .color(palette.axis_z),
         );
         ui.label(
             egui::RichText::new(format!("Infected: {}", count_state(NodeState::Infected)))
-                .color(Color32::RED),
+                .color(palette.axis_x),
         );
         ui.label(
             egui::RichText::new(format!("Recovered: {}", count_state(NodeState::Recovered)))
-                .color(Color32::GREEN),
+                .color(palette.axis_y),
         );
     }
 
     fn draw_graph_column(&self, ui: &mut egui::Ui) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.heading("Network Visualization");
         let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::hover());
         let _ = response
@@ -124,7 +125,7 @@ impl NetworkPropagationTool {
                         center + egui::vec2(self.model.positions()[i][0], self.model.positions()[i][1]);
                     let p2 =
                         center + egui::vec2(self.model.positions()[j][0], self.model.positions()[j][1]);
-                    painter.line_segment([p1, p2], (1.0, Color32::from_gray(100)));
+                    painter.line_segment([p1, p2], (1.0, palette.graph_edge));
                 }
             }
         }
@@ -132,17 +133,17 @@ impl NetworkPropagationTool {
         for i in 0..self.model.num_nodes() {
             let p = center + egui::vec2(self.model.positions()[i][0], self.model.positions()[i][1]);
             let color = match self.model.states()[i] {
-                NodeState::Susceptible => Color32::BLUE,
-                NodeState::Infected => Color32::RED,
-                NodeState::Recovered => Color32::GREEN,
+                NodeState::Susceptible => palette.axis_z,
+                NodeState::Infected => palette.axis_x,
+                NodeState::Recovered => palette.axis_y,
             };
             painter.circle_filled(p, 5.0, color);
-            painter.circle_stroke(p, 5.0, (1.0, Color32::WHITE));
+            painter.circle_stroke(p, 5.0, (1.0, palette.node_stroke));
         }
     }
 }
 
-fn is_false(value: &bool) -> bool {
+const fn is_false(value: &bool) -> bool {
     !*value
 }
 
@@ -181,14 +182,15 @@ impl InteractiveTool for NetworkPropagationTool {
         Some(self)
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<NetPropState>(state) {
-            let _ = self.model.set_num_nodes(s.num_nodes);
-            let _ = self.model.set_beta(s.beta);
-            let _ = self.model.set_gamma(s.gamma);
-            self.reset_network();
-            self.is_running = s.is_running;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: NetPropState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid NetworkPropagationTool state: {e}"))?;
+        let _ = self.model.set_num_nodes(s.num_nodes);
+        let _ = self.model.set_beta(s.beta);
+        let _ = self.model.set_gamma(s.gamma);
+        self.reset_network();
+        self.is_running = s.is_running;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -268,8 +270,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "infection_prob": 0.15,
-    "recovery_prob": 0.05
+    "num_nodes": 60,
+    "beta": 0.15,
+    "gamma": 0.05
   }
 }"#;
 

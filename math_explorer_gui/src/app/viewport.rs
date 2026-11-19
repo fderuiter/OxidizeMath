@@ -344,20 +344,21 @@ pub fn render_multi_pane_manager(
                 });
             }
 
+            let palette = super::SemanticPalette::from_visuals(ui.visuals());
             let divider_color = if app.is_dragging_divider {
-                egui::Color32::from_rgb(90, 150, 255)
+                palette.accent
             } else if is_hovered {
-                egui::Color32::from_rgb(140, 140, 150)
+                palette.graph_edge
             } else {
-                egui::Color32::from_gray(50)
+                palette.surface_fill
             };
             ui.painter().rect_filled(divider_rect, 0.0, divider_color);
 
             let center = divider_rect.center();
             let handle_color = if app.is_dragging_divider || is_hovered {
-                egui::Color32::WHITE
+                super::contrasting_text_color(divider_color)
             } else {
-                egui::Color32::from_gray(130)
+                palette.muted_text
             };
             let (p1, p2) = if app.viewport_layout == ViewportLayout::SplitHorizontal {
                 (

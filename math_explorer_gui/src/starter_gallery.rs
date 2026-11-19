@@ -199,9 +199,12 @@ pub const PRESET_3D_ATTRACTOR: &str = r#"{
     "timestamp": "2026-11-14T00:00:00Z"
   },
   "config": {
-    "preset_type": "StandardLorenz",
+    "sigma": 10.0,
+    "rho": 28.0,
+    "beta": 2.6666666666666665,
     "dt": 0.01,
-    "simulation_speed": 5
+    "simulation_speed": 5,
+    "show_annotations": true
   }
 }"#;
 
@@ -359,127 +362,5 @@ pub fn show_starter_gallery_overlay(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_starter_cards_presence_and_metadata() {
-        let analysis_cards = get_starter_cards_for_domain("analysis", &[]);
-        assert!(analysis_cards
-            .iter()
-            .any(|c| c.title == "Harmonic Oscillator"));
-        assert!(analysis_cards.iter().any(|c| c.title == "Logistic Growth"));
-
-        let fluid_cards = get_starter_cards_for_domain("fluid_dynamics", &[]);
-        assert!(fluid_cards.iter().any(|c| c.title == "Vector Field"));
-
-        let chaos_cards = get_starter_cards_for_domain("chaos", &[]);
-        assert!(chaos_cards.iter().any(|c| c.title == "3D Attractor"));
-
-        let bio_cards = get_starter_cards_for_domain("biology", &[]);
-        assert!(bio_cards.iter().any(|c| c.title == "Turing Spots"));
-    }
-
-    #[test]
-    fn test_preset_json_validity() {
-        use crate::presets::{MorphogenesisPresetConfig, OdePresetConfig, PresetWrapper};
-
-        let ode_env: PresetWrapper<OdePresetConfig> =
-            serde_json::from_str(PRESET_HARMONIC_OSCILLATOR).unwrap();
-        assert_eq!(ode_env.metadata.domain, "analysis");
-
-        let log_env: PresetWrapper<OdePresetConfig> =
-            serde_json::from_str(PRESET_LOGISTIC_GROWTH).unwrap();
-        assert_eq!(log_env.metadata.domain, "analysis");
-
-        let morph_env: PresetWrapper<MorphogenesisPresetConfig> =
-            serde_json::from_str(PRESET_TURING_SPOTS).unwrap();
-        assert_eq!(morph_env.metadata.domain, "biology");
-    }
-
-    #[test]
-    fn test_all_registered_tools_have_starter_presets() {
-        let tools: Vec<&'static ToolMetadata> =
-            inventory::iter::<ToolMetadata>.into_iter().collect();
-        assert!(
-            tools.len() >= 42,
-            "Expected at least 42 tools, found {}",
-            tools.len()
-        );
-
-        let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
-            .into_iter()
-            .collect();
-        assert!(
-            presets.len() >= tools.len(),
-            "Expected at least as many presets ({}) as tools ({})",
-            presets.len(),
-            tools.len()
-        );
-
-        for tool in &tools {
-            let matching = presets
-                .iter()
-                .filter(|p| p.tool_name == Some(tool.id) && p.domain == tool.domain)
-                .collect::<Vec<_>>();
-            assert!(
-                !matching.is_empty(),
-                "Tool '{}' in domain '{}' has no registered starter preset",
-                tool.id,
-                tool.domain
-            );
-
-            for preset in matching {
-                let payload = (preset.preset_generator)();
-                let parsed: serde_json::Value = serde_json::from_str(payload).unwrap_or_else(|e| {
-                    panic!(
-                        "Invalid JSON payload for tool '{}', preset '{}': {}",
-                        tool.id, preset.title, e
-                    )
-                });
-                assert!(parsed.is_object(), "Payload must be a JSON object");
-                let meta = &parsed["metadata"];
-                assert_eq!(meta["schema_version"], "1.0");
-                assert_eq!(meta["domain"], tool.domain);
-                assert!(parsed["config"].is_object(), "Config must be a JSON object");
-            }
-        }
-    }
-
-    #[test]
-    fn test_starter_cards_for_all_registered_domains() {
-        let mut domains: std::collections::HashSet<&'static str> = std::collections::HashSet::new();
-        for tool in inventory::iter::<ToolMetadata> {
-            domains.insert(tool.domain);
-        }
-        domains.insert("biology");
-
-        for &domain in &domains {
-            let cards = get_starter_cards_for_domain(domain, &[]);
-            assert!(
-                !cards.is_empty(),
-                "get_starter_cards_for_domain returned no cards for domain '{}'",
-                domain
-            );
-            for card in &cards {
-                assert!(!card.title.is_empty());
-                assert!(!card.description.is_empty());
-                assert!(card.preset_json.is_some());
-            }
-        }
-
-        // Generate screenshot artifact of federated preset distribution
-        let datasets = vec![(
-            "Federated Presets Per Domain".to_string(),
-            domains
-                .iter()
-                .enumerate()
-                .map(|(i, &d)| [i as f64, get_starter_cards_for_domain(d, &[]).len() as f64])
-                .collect(),
-        )];
-        let options = egui_plot::export::ExportOptions::default();
-        if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
-            let _ = std::fs::write("/tmp/federated_preset_inventory_preview.png", png_data);
-        }
-    }
-}
+#[path = "starter_gallery/tests.rs"]
+mod tests;

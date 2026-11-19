@@ -132,25 +132,28 @@ impl SpinVisualizer {
             let z_axis = [origin, to_pt([0.0, 0.0, 1.2])];
             let tip = [end];
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let response = Plot::new("bloch_sphere")
                 .data_aspect(1.0)
                 .view_aspect(1.0)
                 .show(ui, |plot_ui| {
-                    plot_ui.line(Line::new("", &equator[..]).color(egui::Color32::GRAY));
-                    plot_ui.line(Line::new("", &meridian[..]).color(egui::Color32::GRAY));
-                    plot_ui.line(Line::new("", &meridian2[..]).color(egui::Color32::GRAY));
-                    plot_ui.line(Line::new("", &x_axis[..]).color(egui::Color32::RED));
-                    plot_ui.line(Line::new("", &y_axis[..]).color(egui::Color32::GREEN));
-                    plot_ui.line(Line::new("", &z_axis[..]).color(egui::Color32::BLUE));
+                    plot_ui.line(Line::new("", &equator[..]).color(palette.graph_edge));
+                    plot_ui.line(Line::new("", &meridian[..]).color(palette.graph_edge));
+                    plot_ui.line(Line::new("", &meridian2[..]).color(palette.graph_edge));
+
+                    plot_ui.line(Line::new("", &x_axis[..]).color(palette.axis_x));
+                    plot_ui.line(Line::new("", &y_axis[..]).color(palette.axis_y));
+                    plot_ui.line(Line::new("", &z_axis[..]).color(palette.axis_z));
+
                     plot_ui.line(
                         Line::new("State", &vec_line[..])
-                            .color(egui::Color32::YELLOW)
+                            .color(palette.accent)
                             .width(3.0_f32),
                     );
                     plot_ui.points(
                         Points::new("", &tip[..])
                             .radius(5.0_f32)
-                            .color(egui::Color32::YELLOW),
+                            .color(palette.accent),
                     );
                 })
                 .response;
@@ -161,12 +164,48 @@ impl SpinVisualizer {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SpinVisualizerState {
+    b_field: [f64; 3],
+    paused: bool,
+    camera: crate::framework::Camera3D,
+}
+
 impl InteractiveTool for SpinVisualizer {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }
     fn name(&self) -> &'static str {
         "Spin Dynamics (Bloch Sphere)"
+    }
+    fn domain(&self) -> &'static str {
+        "quantum"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&SpinVisualizerState {
+            b_field: self.b_field,
+            paused: self.paused,
+            camera: self.camera,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: SpinVisualizerState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SpinVisualizer state: {e}"))?;
+        if !s.b_field.iter().all(|v| v.is_finite())
+            || !s.camera.pitch.is_finite()
+            || !s.camera.yaw.is_finite()
+            || !s.camera.zoom.is_finite()
+        {
+            return Err("Non-finite parameters in SpinVisualizer".to_string());
+        }
+        self.b_field = s.b_field;
+        self.paused = s.paused;
+        self.camera = s.camera;
+        self.reset();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -259,9 +298,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "theta": 1.047,
-    "phi": 0.785,
-    "magnetic_b": 1.0
+    "b_field": [0.5, 0.0, 1.0],
+    "paused": true,
+    "camera": {
+      "pitch": 0.5,
+      "yaw": 0.5,
+      "zoom": 1.0
+    }
   }
 }"#;
 

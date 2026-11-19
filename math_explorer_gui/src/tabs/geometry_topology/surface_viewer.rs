@@ -138,17 +138,18 @@ impl InteractiveTool for SurfaceViewer {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<SurfaceViewerState>(state) {
-            self.surface_type = loaded.surface_type;
-            self.sphere_radius = loaded.sphere_radius;
-            self.torus_major_radius = loaded.torus_major_radius;
-            self.torus_minor_radius = loaded.torus_minor_radius;
-            self.klein_radius = loaded.klein_radius;
-            self.u_resolution = loaded.u_resolution;
-            self.v_resolution = loaded.v_resolution;
-            self.camera = loaded.camera;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded =
+            serde_json::from_str::<SurfaceViewerState>(state).map_err(|e| e.to_string())?;
+        self.surface_type = loaded.surface_type;
+        self.sphere_radius = loaded.sphere_radius;
+        self.torus_major_radius = loaded.torus_major_radius;
+        self.torus_minor_radius = loaded.torus_minor_radius;
+        self.klein_radius = loaded.klein_radius;
+        self.u_resolution = loaded.u_resolution;
+        self.v_resolution = loaded.v_resolution;
+        self.camera = loaded.camera;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -227,6 +228,7 @@ impl InteractiveTool for SurfaceViewer {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let surface = self.create_surface();
 
             let grid_lines = self.generate_grid_lines(surface.as_ref());
@@ -238,7 +240,7 @@ impl InteractiveTool for SurfaceViewer {
                         plot_ui.line(
                             Line::new("", PlotPoints::new(line_points))
                                 .name(format!("line_{}", i))
-                                .color(egui::Color32::from_rgb(100, 200, 255)),
+                                .color(palette.series_color(0)),
                         );
                     }
                 })
@@ -295,9 +297,18 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "u_steps": 40,
-    "v_steps": 40,
-    "surface": "Enneper"
+    "surface_type": "KleinBottle",
+    "sphere_radius": 1.0,
+    "torus_major_radius": 2.0,
+    "torus_minor_radius": 0.5,
+    "klein_radius": 2.2,
+    "u_resolution": 40,
+    "v_resolution": 40,
+    "camera": {
+      "pitch": 0.6,
+      "yaw": 0.4,
+      "zoom": 1.0
+    }
   }
 }"#;
 

@@ -1,3 +1,4 @@
+use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 
 pub mod slider;
@@ -20,7 +21,11 @@ pub fn render_copyable_metric(ui: &mut egui::Ui, label: &str, value: &str) -> eg
     let response = ui
         .horizontal(|ui| {
             ui.label(format_metric_label(label, value));
-            if ui.button("📋").on_hover_text("Copy value").clicked() {
+            if ui
+                .button("📋")
+                .accessible_hover_text("Copy value")
+                .clicked()
+            {
                 ui.ctx().copy_text(value.to_string());
             }
         })
@@ -60,14 +65,14 @@ pub fn render_formula_with_export(
             );
             if ui
                 .add_enabled(!is_latex_empty, egui::Button::new("📋 LaTeX"))
-                .on_hover_text("Copy LaTeX formula")
+                .accessible_hover_text("Copy LaTeX formula")
                 .clicked()
             {
                 ui.ctx().copy_text(latex_str.to_string());
             }
             if ui
                 .add_enabled(!is_plain_empty, egui::Button::new("📋 Text"))
-                .on_hover_text("Copy plain text formula")
+                .accessible_hover_text("Copy plain text formula")
                 .clicked()
             {
                 ui.ctx().copy_text(plain_text.to_string());
@@ -138,14 +143,14 @@ pub fn render_theory_summary_with_export(
             }
             if ui
                 .add_enabled(!is_plain_empty, egui::Button::new("📋 Text"))
-                .on_hover_text("Copy text summary")
+                .accessible_hover_text("Copy text summary")
                 .clicked()
             {
                 ui.ctx().copy_text(plain_text.to_string());
             }
             if ui
                 .add_enabled(!is_latex_empty, egui::Button::new("📋 LaTeX"))
-                .on_hover_text("Copy LaTeX formula/text")
+                .accessible_hover_text("Copy LaTeX formula/text")
                 .clicked()
             {
                 ui.ctx().copy_text(latex_text.to_string());

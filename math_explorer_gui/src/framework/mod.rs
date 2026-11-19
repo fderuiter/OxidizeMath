@@ -1,5 +1,7 @@
 pub mod callout_overlay;
 pub mod clamp;
+#[cfg(test)]
+mod clamp_tests;
 pub mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
@@ -16,9 +18,11 @@ pub mod playback;
 mod playback_tests;
 pub mod recovery;
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod recovery_tests;
 pub mod state_guard;
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod state_guard_tests;
 pub mod trace_overlay;
 mod ui;
@@ -170,8 +174,15 @@ pub trait InteractiveTool {
         None
     }
 
+    /// Fallibly deserializes and restores tool-specific parameters from a JSON state string.
+    fn try_load_state(&mut self, _state: &str) -> Result<(), String> {
+        Err(format!("State loading not supported for {}", self.name()))
+    }
+
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
-    fn load_state(&mut self, _state: &str) {}
+    fn load_state(&mut self, state: &str) {
+        let _ = self.try_load_state(state);
+    }
 
     /// Optional hook to clamp unstable parameters to safe bounds, returning true if handled.
     fn clamp_parameters(&mut self) -> bool {
@@ -218,8 +229,7 @@ pub trait InteractiveTool {
         }
         let config_str = serde_json::to_string(&envelope.config)
             .map_err(|e| format!("Config serialization error: {}", e))?;
-        self.load_state(&config_str);
-        Ok(())
+        self.try_load_state(&config_str)
     }
 
     /// Optional hook to export tool datasets.
@@ -236,9 +246,9 @@ pub trait InteractiveTool {
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
 
-    /// Optional hook to apply a preset JSON configuration envelope (via InteractivePreset).
-    fn apply_preset_json(&mut self, _json_str: &str) -> Result<(), String> {
-        Ok(())
+    /// Applies a preset JSON configuration envelope via fallible preset deserialization.
+    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        self.import_preset_json(json_str)
     }
 
     /// Optional hook to sample multi-frame animation datasets for GIF export.

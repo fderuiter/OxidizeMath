@@ -224,10 +224,11 @@ fn render_status_row(
                 *had_error = true;
                 *last_announced_error = Some(err_msg);
             }
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new(format!("⚠️ Syntax Error: {detail}"))
-                        .color(egui::Color32::from_rgb(220, 50, 50))
+                        .color(palette.error)
                         .small(),
                 );
             });
@@ -331,6 +332,50 @@ mod tests {
                 assert!(!announced.contains("Span {"));
                 assert!(!announced.contains("<EOF>"));
             }
+        }
+    }
+
+    fn collect_text_colors(shapes: &[egui::epaint::Shape], out: &mut Vec<(String, egui::Color32)>) {
+        for shape in shapes {
+            match shape {
+                egui::epaint::Shape::Text(t) => {
+                    let color = t
+                        .override_text_color
+                        .or_else(|| t.galley.job.sections.first().map(|s| s.format.color))
+                        .unwrap_or(egui::Color32::TRANSPARENT);
+                    out.push((t.galley.job.text.clone(), color));
+                }
+                egui::epaint::Shape::Vec(inner) => collect_text_colors(inner, out),
+                _ => {}
+            }
+        }
+    }
+
+    #[test]
+    fn test_syntax_error_uses_semantic_palette_error_across_themes() {
+        for mode in [
+            crate::app::ThemeMode::Dark,
+            crate::app::ThemeMode::Light,
+            crate::app::ThemeMode::HighContrast,
+        ] {
+            let mut bar = MathExpressionInputBar::new("y'", "1 +", vec![]);
+            let ctx = egui::Context::default();
+            ctx.set_visuals(mode.visuals());
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    bar.ui(ui);
+                });
+            });
+            let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+            let mut rendered = Vec::new();
+            collect_text_colors(&shapes, &mut rendered);
+            let err_entry = rendered
+                .iter()
+                .find(|(text, _)| text.contains("Syntax Error:"))
+                .expect("expected rendered syntax error label");
+            assert!(!err_entry.0.contains("<EOF>") && !err_entry.0.contains("Span {"));
+            assert_eq!(err_entry.1, mode.palette().error);
+            assert!(crate::app::contrast_ratio(err_entry.1, mode.visuals().panel_fill) >= 4.5);
         }
     }
 }

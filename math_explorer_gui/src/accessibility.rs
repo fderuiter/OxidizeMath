@@ -177,35 +177,55 @@ pub trait AccessibleHoverText {
 
 impl AccessibleHoverText for Response {
     fn accessible_hover_text(self, text: impl Into<WidgetText>) -> Self {
-        let text_into = text.into();
-        let text_str = text_into.text().to_string();
-
-        let is_active = self.hovered() || self.has_focus();
+        let is_hovered = if self.enabled() {
+            self.hovered()
+        } else {
+            self.contains_pointer()
+        };
         let dismiss_id = self.id.with("tooltip_dismissed");
         let mut dismissed = self
             .ctx
             .data(|d| d.get_temp::<bool>(dismiss_id))
             .unwrap_or(false);
 
+        let escape_pressed = self.ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape));
+        if escape_pressed && !dismissed && self.lost_focus() {
+            self.request_focus();
+            dismissed = true;
+            self.ctx.data_mut(|d| d.insert_temp(dismiss_id, true));
+        }
+
+        let is_focused = self.has_focus() || self.ctx.memory(|mem| mem.has_focus(self.id));
+        let is_active = is_hovered || is_focused;
+
         if is_active {
-            if self.ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape)) {
+            if escape_pressed && !dismissed {
                 dismissed = true;
                 self.ctx.data_mut(|d| d.insert_temp(dismiss_id, true));
             }
-        } else if dismissed {
-            dismissed = false;
-            self.ctx.data_mut(|d| d.insert_temp(dismiss_id, false));
+        } else {
+            if dismissed {
+                self.ctx.data_mut(|d| d.insert_temp(dismiss_id, false));
+            }
+            return if self.enabled() {
+                self.on_hover_text(text)
+            } else {
+                self.on_disabled_hover_text(text)
+            };
         }
 
-        if is_active && !dismissed {
+        if !dismissed {
+            let text_into = text.into();
+            let text_str = text_into.text().to_string();
             announce_status(&text_str);
             self.ctx.data_mut(|d| {
                 d.insert_temp(eframe::egui::Id::new("aria_live_message"), text_str);
             });
-        }
-
-        if !dismissed {
-            self.on_hover_text(text_into)
+            if self.enabled() {
+                self.on_hover_text(text_into)
+            } else {
+                self.on_disabled_hover_text(text_into)
+            }
         } else {
             self
         }
@@ -220,35 +240,59 @@ pub trait AccessibleTheoryHover {
 
 impl AccessibleTheoryHover for Response {
     fn accessible_theory_hover(self, theory: &impl TheoryDescribable) -> Self {
-        let raw_text = theory.theory_description();
-        let speech_text = theory.phonetic_description();
-
-        let is_active = self.hovered() || self.has_focus();
+        let is_hovered = if self.enabled() {
+            self.hovered()
+        } else {
+            self.contains_pointer()
+        };
         let dismiss_id = self.id.with("tooltip_dismissed");
         let mut dismissed = self
             .ctx
             .data(|d| d.get_temp::<bool>(dismiss_id))
             .unwrap_or(false);
 
+        let escape_pressed = self.ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape));
+        if escape_pressed && !dismissed && self.lost_focus() {
+            self.request_focus();
+            dismissed = true;
+            self.ctx.data_mut(|d| d.insert_temp(dismiss_id, true));
+        }
+
+        let is_focused = self.has_focus() || self.ctx.memory(|mem| mem.has_focus(self.id));
+        let is_active = is_hovered || is_focused;
+
         if is_active {
-            if self.ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape)) {
+            if escape_pressed && !dismissed {
                 dismissed = true;
                 self.ctx.data_mut(|d| d.insert_temp(dismiss_id, true));
             }
-        } else if dismissed {
-            dismissed = false;
-            self.ctx.data_mut(|d| d.insert_temp(dismiss_id, false));
+        } else {
+            if dismissed {
+                self.ctx.data_mut(|d| d.insert_temp(dismiss_id, false));
+            }
+            if self.ctx.memory(|mem| mem.everything_is_visible()) {
+                let raw_text = theory.theory_description();
+                return if self.enabled() {
+                    self.on_hover_text(raw_text)
+                } else {
+                    self.on_disabled_hover_text(raw_text)
+                };
+            }
+            return self;
         }
 
-        if is_active && !dismissed {
+        if !dismissed {
+            let raw_text = theory.theory_description();
+            let speech_text = theory.phonetic_description();
             announce_status(&speech_text);
             self.ctx.data_mut(|d| {
                 d.insert_temp(eframe::egui::Id::new("aria_live_message"), speech_text);
             });
-        }
-
-        if !dismissed {
-            self.on_hover_text(raw_text)
+            if self.enabled() {
+                self.on_hover_text(raw_text)
+            } else {
+                self.on_disabled_hover_text(raw_text)
+            }
         } else {
             self
         }
@@ -259,6 +303,17 @@ impl AccessibleTheoryHover for Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use eframe::egui;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountingWidgetText<'a>(&'a str, &'a AtomicUsize);
+
+    impl From<CountingWidgetText<'_>> for WidgetText {
+        fn from(value: CountingWidgetText<'_>) -> Self {
+            value.1.fetch_add(1, Ordering::SeqCst);
+            WidgetText::from(value.0)
+        }
+    }
 
     #[test]
     fn test_twin_slot_alternation() {
@@ -300,6 +355,97 @@ mod tests {
         );
 
         clear_test_announcements();
+        assert!(all_announcements().is_empty());
+    }
+
+    #[test]
+    fn test_accessible_hover_text_zero_conversion_on_inactive_frame() {
+        let ctx = egui::Context::default();
+        let conversions = AtomicUsize::new(0);
+        let screen_rect = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(800.0, 600.0),
+        ));
+        clear_test_announcements();
+
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect,
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.button("Action")
+                        .accessible_hover_text(CountingWidgetText(
+                            "Helpful guidance",
+                            &conversions,
+                        ));
+                });
+            },
+        );
+        assert_eq!(
+            conversions.load(Ordering::SeqCst),
+            0,
+            "Standard inactive frame updates must not convert or heap-allocate tooltip text"
+        );
+        assert!(all_announcements().is_empty());
+    }
+
+    fn run_action_frame(
+        ctx: &egui::Context,
+        focused: bool,
+        events: Vec<egui::Event>,
+    ) -> (egui::Id, bool) {
+        let mut out = (egui::Id::NULL, false);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(800.0, 600.0),
+            )),
+            focused,
+            events,
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let resp = ui
+                    .button("Action")
+                    .accessible_hover_text("Helpful guidance");
+                out = (resp.id, resp.has_focus());
+            });
+        });
+        out
+    }
+
+    #[test]
+    fn test_accessible_hover_text_focus_escape_preserves_focus() {
+        let ctx = egui::Context::default();
+        clear_test_announcements();
+
+        let (btn_id, _) = run_action_frame(&ctx, false, Vec::new());
+        ctx.memory_mut(|m| m.request_focus(btn_id));
+        let (_, focused_on_tab) = run_action_frame(&ctx, true, Vec::new());
+        assert!(focused_on_tab);
+        assert!(all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg == "Helpful guidance" && prio == "polite"));
+
+        clear_test_announcements();
+        let esc = vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }];
+        let (_, focused_after_escape) = run_action_frame(&ctx, true, esc);
+        assert!(
+            focused_after_escape,
+            "Escape dismissal must preserve keyboard focus"
+        );
+        assert!(ctx
+            .data(|d| d.get_temp::<bool>(btn_id.with("tooltip_dismissed")))
+            .unwrap_or(false));
         assert!(all_announcements().is_empty());
     }
 }

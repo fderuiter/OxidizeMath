@@ -164,7 +164,8 @@ impl MriTab {
                 self.params.write().unwrap_or_else(|e| e.into_inner()).t2 = self.simulator.t2;
             }
             if self.simulator.t2 > self.simulator.t1 {
-                ui.colored_label(egui::Color32::RED, "Warning: T2 > T1 is unphysical!");
+                let err = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
+                ui.colored_label(err, "Warning: T2 > T1 is unphysical!");
             }
         });
     }
@@ -299,6 +300,7 @@ impl MriTab {
                 );
             }
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             Plot::new("bloch_plot")
                 .legend(Legend::default())
                 .x_axis_label("Time (s)")
@@ -306,15 +308,13 @@ impl MriTab {
                 .view_aspect(2.0)
                 .show(ui, |plot_ui| {
                     plot_ui.line(
-                        Line::new("Mx (Transverse)", &self.mx_points[..]).color(egui::Color32::RED),
+                        Line::new("Mx (Transverse)", &self.mx_points[..]).color(palette.axis_x),
                     );
                     plot_ui.line(
-                        Line::new("My (Transverse)", &self.my_points[..])
-                            .color(egui::Color32::GREEN),
+                        Line::new("My (Transverse)", &self.my_points[..]).color(palette.axis_y),
                     );
                     plot_ui.line(
-                        Line::new("Mz (Longitudinal)", &self.mz_points[..])
-                            .color(egui::Color32::BLUE),
+                        Line::new("Mz (Longitudinal)", &self.mz_points[..]).color(palette.axis_z),
                     );
                     if self.mx_points.len() == 1 {
                         let mx0 = [self.mx_points[0].x, self.mx_points[0].y];
@@ -323,17 +323,17 @@ impl MriTab {
                         plot_ui.points(
                             Points::new("Mx (t=0)", vec![mx0])
                                 .radius(4.5_f32)
-                                .color(egui::Color32::RED),
+                                .color(palette.axis_x),
                         );
                         plot_ui.points(
                             Points::new("My (t=0)", vec![my0])
                                 .radius(4.5_f32)
-                                .color(egui::Color32::GREEN),
+                                .color(palette.axis_y),
                         );
                         plot_ui.points(
                             Points::new("Mz (t=0)", vec![mz0])
                                 .radius(4.5_f32)
-                                .color(egui::Color32::BLUE),
+                                .color(palette.axis_z),
                         );
                     }
                 });

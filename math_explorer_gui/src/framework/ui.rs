@@ -96,7 +96,10 @@ impl SimulationFramework {
             let response = ui.add(text_edit);
 
             if !self.search_query.is_empty()
-                && ui.button("❌").on_hover_text("Clear search").clicked()
+                && ui
+                    .button("❌")
+                    .accessible_hover_text("Clear search")
+                    .clicked()
             {
                 self.search_query.clear();
             }
@@ -313,20 +316,7 @@ impl SimulationFramework {
                 &cards,
                 &mut is_open,
             ) {
-                if let Some(tool_name) = card.tool_name {
-                    if let Some(pos) = self
-                        .available_tools
-                        .iter()
-                        .position(|t| t.id == tool_name || t.display_name == tool_name)
-                    {
-                        self.select_tool(pos);
-                    }
-                }
-                if let Some(preset_json) = card.preset_json {
-                    if let Some(tool) = &mut self.active_tool {
-                        let _ = tool.apply_preset_json(preset_json);
-                    }
-                }
+                let _ = self.launch_starter_card(&card);
                 is_open = false;
             }
             self.show_starter_gallery = is_open;

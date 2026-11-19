@@ -44,12 +44,13 @@ impl InteractiveTool for LifetimeEstimatorTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<LifetimeEstimatorState>(state) {
-            self.target_capacity = s.target_capacity;
-            self.dod = s.dod;
-            self.cycles_per_day = s.cycles_per_day;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: LifetimeEstimatorState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid LifetimeEstimatorTool state: {e}"))?;
+        self.target_capacity = s.target_capacity;
+        self.dod = s.dod;
+        self.cycles_per_day = s.cycles_per_day;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -101,6 +102,7 @@ impl InteractiveTool for LifetimeEstimatorTool {
             let lifetime_years = lifetime_days / 365.25;
 
             // Results Display
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new("Estimated Total Cycles:")
@@ -110,7 +112,7 @@ impl InteractiveTool for LifetimeEstimatorTool {
                 ui.label(
                     egui::RichText::new(format!("{:.0}", total_cycles))
                         .size(24.0)
-                        .color(egui::Color32::GREEN)
+                        .color(palette.success)
                         .strong(),
                 );
             });
@@ -126,7 +128,7 @@ impl InteractiveTool for LifetimeEstimatorTool {
                 ui.label(
                     egui::RichText::new(format!("{:.1} years", lifetime_years))
                         .size(24.0)
-                        .color(egui::Color32::GREEN)
+                        .color(palette.success)
                         .strong(),
                 );
             });
@@ -169,8 +171,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "temperature_c": 25.0,
-    "c_rate": 1.0
+    "target_capacity": 80.0,
+    "dod": 75.0,
+    "cycles_per_day": 1.0
   }
 }"#;
 
