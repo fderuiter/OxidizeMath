@@ -76,4 +76,99 @@ mod tests {
             "Fallback text should be descriptive (at least 10 chars), got: {trimmed_text}"
         );
     }
+
+    #[test]
+    fn test_critical_inline_styles_precede_external_scripts() {
+        let style_start = INDEX_HTML
+            .find("<style>")
+            .expect("<style> block must exist in index.html");
+        let style_end = INDEX_HTML
+            .find("</style>")
+            .expect("</style> closing tag must exist in index.html");
+        let first_script = INDEX_HTML
+            .find("<script")
+            .expect("startup <script> tags must exist in index.html");
+
+        assert!(
+            style_start < style_end && style_end < first_script,
+            "Critical inline <style> block must appear before any <script> tag"
+        );
+    }
+
+    #[test]
+    fn test_all_startup_scripts_are_external_and_deferred() {
+        let mut search_from = 0;
+        let mut script_sources = Vec::new();
+
+        while let Some(offset) = INDEX_HTML[search_from..].find("<script") {
+            let tag_start = search_from + offset;
+            let tag_end = INDEX_HTML[tag_start..]
+                .find('>')
+                .map(|end| tag_start + end)
+                .expect("<script> opening tag must close");
+            let open_tag = &INDEX_HTML[tag_start..=tag_end];
+
+            assert!(
+                open_tag.contains("src=\""),
+                "All <script> tags must reference external files (no inline scripts): {open_tag}"
+            );
+            assert!(
+                open_tag.contains(" defer") || open_tag.contains("\tdefer"),
+                "All startup <script> tags must be marked defer: {open_tag}"
+            );
+
+            let close_start = INDEX_HTML[(tag_end + 1)..]
+                .find("</script>")
+                .map(|end| tag_end + 1 + end)
+                .expect("</script> closing tag must exist");
+            let inline_body = INDEX_HTML[(tag_end + 1)..close_start].trim();
+            assert!(
+                inline_body.is_empty(),
+                "External <script> tag must have empty inline body, found: {inline_body}"
+            );
+
+            script_sources.push(open_tag.to_string());
+            search_from = close_start + "</script>".len();
+        }
+
+        assert!(
+            script_sources
+                .iter()
+                .any(|t| t.contains("src=\"coi-serviceworker.min.js\"")),
+            "index.html must include deferred coi-serviceworker.min.js"
+        );
+        assert!(
+            script_sources
+                .iter()
+                .any(|t| t.contains("src=\"reload.js\"")),
+            "index.html must include deferred reload.js"
+        );
+        assert!(
+            script_sources
+                .iter()
+                .any(|t| t.contains("src=\"bootstrap.js\"")),
+            "index.html must include deferred bootstrap.js"
+        );
+    }
+
+    #[test]
+    fn test_strict_csp_and_dom_contracts_preserved() {
+        assert!(
+            INDEX_HTML.contains("script-src 'self' 'wasm-unsafe-eval' blob:;"),
+            "Strict script-src CSP directive without unsafe-inline must be preserved"
+        );
+        assert!(
+            !INDEX_HTML.contains("rel=\"preload\"") && !INDEX_HTML.contains("rel=\"modulepreload\""),
+            "Source HTML must not contain unconditional preload or modulepreload hints"
+        );
+        assert!(
+            INDEX_HTML.contains("id=\"loading_indicator\""),
+            "Loading indicator DOM id must be preserved"
+        );
+        assert!(
+            INDEX_HTML.contains("id=\"error_container\"")
+                && INDEX_HTML.contains("id=\"error_details\""),
+            "Error boundary DOM ids must be preserved"
+        );
+    }
 }
