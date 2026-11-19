@@ -129,7 +129,7 @@ impl AttractorPlotter {
 
                 if ui
                     .add(
-                        egui::Slider::new(&mut self.simulation_speed, 1..=50)
+                        egui::Slider::new(&mut self.simulation_speed, 1..=super::MAX_SIMULATION_SPEED)
                             .text("Speed (steps/frame)"),
                     )
                     .changed()

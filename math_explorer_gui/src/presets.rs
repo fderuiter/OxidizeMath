@@ -163,13 +163,16 @@ pub fn serialize_preset_envelope<T: Serialize>(
     serde_json::to_string_pretty(&envelope).map_err(|e| format!("Serialization error: {e}"))
 }
 
-/// Strips any UTF-8 BOM, parses a [`PresetWrapper`] JSON envelope, and validates `metadata.domain`.
-pub fn deserialize_preset_envelope<T: for<'de> Deserialize<'de>>(
+/// Strips any UTF-8 BOM, enforces `bounds.for_preset_envelope()`, parses a [`PresetWrapper`]
+/// JSON envelope, and validates `metadata.domain`.
+pub fn deserialize_preset_envelope_bounded<T: for<'de> Deserialize<'de>>(
     json_str: &str,
     expected_domain: &str,
     target_name: &str,
+    bounds: crate::framework::ToolStateBounds,
 ) -> Result<T, String> {
     let cleaned = egui_plot::export::strip_utf8_bom(json_str);
+    bounds.for_preset_envelope().validate_json(cleaned)?;
     let envelope: PresetWrapper<T> =
         serde_json::from_str(cleaned).map_err(|e| format!("Invalid JSON preset schema: {e}"))?;
     if expected_domain.is_empty() {
@@ -182,6 +185,21 @@ pub fn deserialize_preset_envelope<T: for<'de> Deserialize<'de>>(
         ));
     }
     Ok(envelope.config)
+}
+
+/// Strips any UTF-8 BOM, enforces default preset envelope bounds, parses a [`PresetWrapper`]
+/// JSON envelope, and validates `metadata.domain`.
+pub fn deserialize_preset_envelope<T: for<'de> Deserialize<'de>>(
+    json_str: &str,
+    expected_domain: &str,
+    target_name: &str,
+) -> Result<T, String> {
+    deserialize_preset_envelope_bounded(
+        json_str,
+        expected_domain,
+        target_name,
+        crate::framework::ToolStateBounds::DEFAULT,
+    )
 }
 
 /// UI helper state for non-blocking file operations and user warnings/toasts.

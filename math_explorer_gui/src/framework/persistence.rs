@@ -45,23 +45,72 @@ fn serialize_raw_or_str<M: SerializeMap>(
     }
 }
 
+fn decode_bounded_tool_entry(raw: Box<RawValue>) -> Option<String> {
+    let raw_text = raw.get();
+    let max_quoted_len = MAX_TOOL_STATE_BYTES.saturating_mul(2).saturating_add(2);
+    if raw_text.starts_with('"') {
+        if raw_text.len() > max_quoted_len {
+            return None;
+        }
+        if let Ok(unescaped) = serde_json::from_str::<String>(raw_text) {
+            return ToolStateBounds::DEFAULT
+                .validate_json(&unescaped)
+                .is_ok()
+                .then_some(unescaped);
+        }
+    }
+    if ToolStateBounds::DEFAULT.validate_json(raw_text).is_err() {
+        return None;
+    }
+    let boxed_str: Box<str> = raw.into();
+    Some(String::from(boxed_str))
+}
+
 fn deserialize_tool_states<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<HashMap<String, String>, D::Error> {
-    let raw_map = HashMap::<String, Box<RawValue>>::deserialize(deserializer)?;
-    let mut out = HashMap::with_capacity(raw_map.len());
-    for (key, raw) in raw_map {
-        let raw_text = raw.get();
-        if raw_text.starts_with('"') {
-            if let Ok(unescaped) = serde_json::from_str::<String>(raw_text) {
-                out.insert(key, unescaped);
-                continue;
-            }
+    struct ToolStatesVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for ToolStatesVisitor {
+        type Value = HashMap<String, String>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("a bounded map of tool names to serialized JSON states")
         }
-        let boxed_str: Box<str> = raw.into();
-        out.insert(key, String::from(boxed_str));
+
+        fn visit_map<M: serde::de::MapAccess<'de>>(
+            self,
+            mut map: M,
+        ) -> Result<Self::Value, M::Error> {
+            use serde::de::Error;
+            let cap = map.size_hint().unwrap_or(0).min(MAX_SESSION_TOOL_ENTRIES);
+            let mut out = HashMap::with_capacity(cap);
+            let mut entry_count = 0_usize;
+            let mut total_bytes = 0_usize;
+
+            while let Some((key, raw)) = map.next_entry::<String, Box<RawValue>>()? {
+                entry_count = entry_count.saturating_add(1);
+                if entry_count > MAX_SESSION_TOOL_ENTRIES {
+                    return Err(M::Error::custom("tool_states entry count limit exceeded"));
+                }
+                if key.len() > MAX_TOOL_KEY_BYTES {
+                    return Err(M::Error::custom("tool_states key length limit exceeded"));
+                }
+                total_bytes = total_bytes
+                    .saturating_add(key.len())
+                    .saturating_add(raw.get().len());
+                if total_bytes > MAX_SESSION_STATE_BYTES {
+                    return Err(M::Error::custom("tool_states session byte limit exceeded"));
+                }
+                if let Some(decoded) = decode_bounded_tool_entry(raw) {
+                    out.insert(key, decoded);
+                }
+            }
+            Ok(out)
+        }
     }
-    Ok(out)
+
+    deserializer.deserialize_map(ToolStatesVisitor)
 }
 
 #[derive(Serialize)]
@@ -180,7 +229,11 @@ impl SimulationFramework {
 
     /// Deserializes and restores the framework state from JSON.
     pub fn load_state(&mut self, state_str: &str) {
-        let Ok(state) = serde_json::from_str::<FrameworkStateDeserialize>(state_str) else {
+        let cleaned = egui_plot::export::strip_utf8_bom(state_str);
+        if ToolStateBounds::SESSION.validate_json(cleaned).is_err() {
+            return;
+        }
+        let Ok(state) = serde_json::from_str::<FrameworkStateDeserialize>(cleaned) else {
             return;
         };
         let _ = state.show_starter_gallery;

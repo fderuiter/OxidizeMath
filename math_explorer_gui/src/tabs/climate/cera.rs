@@ -7,6 +7,11 @@ use math_explorer::climate::config::CeraConfig;
 use nalgebra::DMatrix;
 use rand::Rng;
 
+const MAX_IN_CHANNELS: usize = 10;
+const MAX_LATENT_CHANNELS: usize = 20;
+const MAX_NUM_LEVELS: usize = 50;
+const MAX_OUTPUT_SIZE: usize = 20;
+
 pub struct CeraTool {
     pub(crate) in_channels: usize,
     pub(crate) latent_channels: usize,
@@ -47,11 +52,11 @@ impl FiniteStateGuard for CeraTool {
     }
 
     fn clamp_parameters(&mut self) {
-        self.in_channels = self.in_channels.clamp(1, 10);
-        self.latent_channels = self.latent_channels.clamp(1, 20);
+        self.in_channels = self.in_channels.clamp(1, MAX_IN_CHANNELS);
+        self.latent_channels = self.latent_channels.clamp(1, MAX_LATENT_CHANNELS);
         self.aligned_channels = self.aligned_channels.clamp(1, self.latent_channels);
-        self.num_levels = self.num_levels.clamp(1, 50);
-        self.output_size = self.output_size.clamp(1, 20);
+        self.num_levels = self.num_levels.clamp(1, MAX_NUM_LEVELS);
+        self.output_size = self.output_size.clamp(1, MAX_OUTPUT_SIZE);
         self.diverged = false;
         self.diagnostic_report = None;
     }
@@ -108,15 +113,18 @@ impl InteractiveTool for CeraTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let s: CeraState =
             serde_json::from_str(state).map_err(|e| format!("Invalid CERA state: {e}"))?;
-        if s.in_channels == 0
-            || s.latent_channels == 0
-            || s.aligned_channels == 0
-            || s.num_levels == 0
-            || s.output_size == 0
+        if !(1..=MAX_IN_CHANNELS).contains(&s.in_channels)
+            || !(1..=MAX_LATENT_CHANNELS).contains(&s.latent_channels)
+            || !(1..=s.latent_channels).contains(&s.aligned_channels)
+            || !(1..=MAX_NUM_LEVELS).contains(&s.num_levels)
+            || !(1..=MAX_OUTPUT_SIZE).contains(&s.output_size)
         {
-            return Err("CERA channel and level counts must be positive".into());
+            return Err(format!(
+                "CERA parameters out of bounds (expected in_channels in 1..={MAX_IN_CHANNELS}, latent_channels in 1..={MAX_LATENT_CHANNELS}, aligned_channels in 1..=latent_channels, num_levels in 1..={MAX_NUM_LEVELS}, output_size in 1..={MAX_OUTPUT_SIZE})"
+            ));
         }
         self.in_channels = s.in_channels;
         self.latent_channels = s.latent_channels;

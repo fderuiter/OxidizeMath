@@ -7,6 +7,9 @@ use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+/// Maximum allowed simulation sub-steps per frame for [`super::AttractorPlotter`].
+pub const MAX_SIMULATION_SPEED: usize = 50;
+
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SolverExecutionState {
     Ready,
@@ -213,7 +216,11 @@ impl AttractorRunner {
         self.system.sigma = p.sigma;
         self.system.rho = p.rho;
         self.system.beta = p.beta;
-        (p.dt, p.simulation_speed, p.max_points)
+        (
+            p.dt,
+            p.simulation_speed.clamp(1, MAX_SIMULATION_SPEED),
+            p.max_points,
+        )
     }
 
     fn advance_lorenz_tick(&mut self, dt: f64, max_points: usize) -> bool {
@@ -284,7 +291,7 @@ impl SimulationRunner for AttractorRunner {
                 self.params
                     .write()
                     .unwrap_or_else(|e| e.into_inner())
-                    .simulation_speed = speed;
+                    .simulation_speed = speed.clamp(1, MAX_SIMULATION_SPEED);
             }
             _ => {}
         }
