@@ -89,6 +89,7 @@ impl GridWorldTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GridWorldToolState {
     width: i32,
     height: i32,
@@ -123,31 +124,39 @@ impl InteractiveTool for GridWorldTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: GridWorldToolState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid GridWorldTool state: {e}"))?;
-        let gamma_iv = math_commons::primitives::UnitInterval::new(s.gamma)
-            .map_err(|e| format!("Invalid discount factor in GridWorldTool: {e}"))?;
-        if s.width < 2 || s.height < 2 || !s.playback_speed.is_finite() {
-            return Err("Invalid dimensions or playback speed in GridWorldTool".to_string());
+        let parsed: GridWorldToolState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid GridWorld state: {e}"))?;
+        if !(2..=20).contains(&parsed.width)
+            || !(2..=20).contains(&parsed.height)
+            || !parsed.gamma.is_finite()
+            || !(0.0..=1.0).contains(&parsed.gamma)
+            || !parsed.playback_speed.is_finite()
+            || !(1.0..=20.0).contains(&parsed.playback_speed)
+        {
+            return Err("GridWorld dimensions, gamma, or playback_speed out of bounds".into());
         }
+        let gamma_unit = math_commons::primitives::UnitInterval::new(parsed.gamma)
+            .map_err(|e| format!("Invalid discount factor: {e}"))?;
+        let start = GridState { x: 0, y: 0 };
+        let goal = GridState {
+            x: parsed.width - 1,
+            y: parsed.height - 1,
+        };
         let traps = vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }]
             .into_iter()
-            .filter(|t| t.x < s.width && t.y < s.height && !(t.x == s.width - 1 && t.y == s.height - 1))
+            .filter(|t| t.x < parsed.width && t.y < parsed.height && *t != start && *t != goal)
             .collect();
         self.env = GridWorldEnv {
-            width: s.width,
-            height: s.height,
-            start: GridState { x: 0, y: 0 },
-            goal: GridState {
-                x: s.width - 1,
-                y: s.height - 1,
-            },
+            width: parsed.width,
+            height: parsed.height,
+            start,
+            goal,
             traps,
-            gamma: s.gamma,
+            gamma: parsed.gamma,
         };
         self.agent = TabularQAgent::new(
             math_commons::primitives::UnitInterval::new(0.1).unwrap(),
-            gamma_iv,
+            gamma_unit,
             math_commons::primitives::UnitInterval::new(0.1).unwrap(),
             None,
         );
@@ -155,8 +164,9 @@ impl InteractiveTool for GridWorldTool {
         self.episodes = 0;
         self.total_reward = 0.0;
         self.steps = 0;
-        self.playback_speed = s.playback_speed;
-        self.is_playing = s.is_playing;
+        self.playback_speed = parsed.playback_speed;
+        self.is_playing = parsed.is_playing;
+        self.last_tick = crate::web_io::PlatformInstant::now();
         Ok(())
     }
 

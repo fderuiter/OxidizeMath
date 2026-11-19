@@ -286,9 +286,14 @@ mod tests {
             &mut crate::tabs::favoritism::FavoritismTab::default(),
             r#"{"selected_child_index":1,"new_child_name":"Sibling"}"#,
         );
+        let valid_repo_dir = oxidize_core::path_utils::normalize_path(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .canonicalize()
+                .expect("canonical manifest dir"),
+        );
         assert_tab_roundtrip(
             &mut crate::tabs::traceability::TraceabilityTab::default(),
-            r#"{"repo_path":"/tmp/mock_repo"}"#,
+            &serde_json::json!({ "repo_path": valid_repo_dir }).to_string(),
         );
     }
 }

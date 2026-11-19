@@ -1,13 +1,16 @@
 # OxidizeMath Agent & Developer Verification Guide
 
-This guide documents local Cargo build, test, CI verification, and release packaging checks for contributors and automated coding agents working in the OxidizeMath workspace. See [README.md](README.md) for an architectural overview and [CONTRIBUTING.md](CONTRIBUTING.md) for engineering and NASA Power of 10 safety standards (kept consolidated in `CONTRIBUTING.md` per [docs/adr/0005-active-documentation-standard.md](docs/adr/0005-active-documentation-standard.md)).
+This guide documents repository conventions, local Cargo build and test commands, CI verification gates, and release packaging checks for contributors and automated coding agents working in the OxidizeMath workspace. See [README.md](README.md) for an architectural overview, [CONTRIBUTING.md](CONTRIBUTING.md) for engineering and NASA Power of 10 safety standards (kept consolidated in `CONTRIBUTING.md` per [docs/adr/0005-active-documentation-standard.md](docs/adr/0005-active-documentation-standard.md)), and [docs/README.md](docs/README.md) for the documentation index.
 
-## 1. Documentation & Markdown Rules
+## 1. Architecture, Policy & Documentation Rules
 
 All Markdown files in the repository (outside excluded build directories such as `target`, `dist`, and `artifacts`) are compiled by `crates/markdown_tests/build.rs` via `rustdoc`.
 
 - Always tag non-Rust code blocks with `bash`, `yaml`, or `text` fences so `cargo test --doc` does not attempt to compile shell commands, workflow YAML, or plain text snippets as Rust doctests.
 - Ensure all relative Markdown links resolve to existing files in the repository.
+- Keep every Rust source file at or below **500 lines** (`check-file-lengths`) and keep functions within the **60-line** Clippy ceiling configured in `.clippy.toml`.
+- Do not introduce unwhitelisted `dead_code`, `unused`, or `warnings` lint suppressions (`allow`, `expect`, or `cfg_attr`). Zero `dead_code` bypass entries are permitted per [ADR 0019](docs/adr/0019-purge-dead-code-bypasses.md); gate test-only helpers with `#[cfg(test)]` or delete unreferenced items instead.
+- Modifying core mathematical or runtime crates (`crates/` excluding `crates/unified_verification`, or `math_explorer/`) requires creating or updating an Architectural Decision Record under `docs/adr/`.
 
 ```text
 Markdown verification gates:
@@ -34,8 +37,9 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --lib --tests
 cargo run -p xtask -- test-features
 
-# Type-check WebAssembly target builds (matching CI and GitHub Pages builds)
+# Type-check WebAssembly target builds and tests (matching CI and GitHub Pages builds)
 cargo check --workspace --target wasm32-unknown-unknown --all-features
+cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
 
 ## 3. CI Pre-Flight, Workflow Lints & Quality Gates
@@ -51,6 +55,14 @@ cargo run -p xtask -- lint-all
 # Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA or ./ local action pins)
 cargo run -p unified_verification --release -- lint-workflows
 
+# Audit AST attributes for unauthorized dead_code/unused/warnings bypasses and unused dependencies
+cargo run -p xtask -- test-policy-audit
+cargo run -p unified_verification --release -- test-policy-audit
+
+# Format and Clippy lint checks
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+
 # Verify crate documentation and workspace rustdoc builds
 cargo run -p unified_verification --release -- check-docs
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
@@ -64,6 +76,11 @@ cargo run -p unified_verification --release -- traceability
 
 # Verify architectural decision records when core crates change
 BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
+
+# Native unit/integration tests and WebAssembly target checks
+cargo test --workspace --lib --tests
+cargo check --workspace --target wasm32-unknown-unknown --all-features
+cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
 
 ## 4. Local Release Packaging Checks
