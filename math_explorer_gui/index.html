@@ -3,20 +3,40 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interactive scientific simulations and mathematical visualizations across physics, biology, climate, epidemiology, AI, and pure mathematics.">
+    <meta name="application-name" content="Math Explorer">
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121214">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f8f8">
+    <meta property="og:title" content="Math Explorer">
+    <meta property="og:description" content="Interactive scientific simulations and mathematical visualizations across physics, biology, climate, epidemiology, AI, and pure mathematics.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Math Explorer">
+    <meta property="og:image" content="512x512.png">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' blob:;">
-    <title>Math Explorer GUI</title>
-    <link rel="icon" type="image/x-icon" href="icon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="32x32.png">
+    <title>Math Explorer</title>
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="256x256.png">
+    <link rel="manifest" href="site.webmanifest">
+    <link data-trunk rel="copy-file" href="icons/favicon.svg"/>
     <link data-trunk rel="copy-file" href="icons/icon.ico"/>
     <link data-trunk rel="copy-file" href="icons/32x32.png"/>
-    <script src="coi-serviceworker.min.js"></script>
-    <link data-trunk rel="copy-file" href="coi-serviceworker.min.js"/>
+    <link data-trunk rel="copy-file" href="icons/128x128.png"/>
+    <link data-trunk rel="copy-file" href="icons/256x256.png"/>
+    <link data-trunk rel="copy-file" href="icons/512x512.png"/>
+    <link data-trunk rel="copy-file" href="site.webmanifest"/>
     <script src="reload.js"></script>
     <link data-trunk rel="copy-file" href="reload.js"/>
-    <script id="wasm_bootstrap_script" type="module" src="bootstrap.js"></script>
-    <link data-trunk rel="copy-file" href="bootstrap.js"/>
-    <link data-trunk rel="rust" href="Cargo.toml" data-bin="math_explorer_gui" data-wasm-opt="z" data-wasm-opt-params="--enable-reference-types --enable-bulk-memory --enable-mutable-globals --enable-nontrapping-float-to-int --enable-sign-ext"/>
+    <link rel="modulepreload" href="./math_explorer_gui.js">
+    <link rel="preload" href="./math_explorer_gui_bg.wasm" as="fetch" type="application/wasm" crossorigin="anonymous">
+    <script src="coi-serviceworker.min.js"></script>
+    <link data-trunk rel="copy-file" href="coi-serviceworker.min.js"/>
+    <link data-trunk rel="rust" href="Cargo.toml" data-bin="math_explorer_gui" data-wasm-opt="z" data-reference-types data-initializer="initializer.js" data-wasm-opt-params="--enable-reference-types --enable-bulk-memory --enable-mutable-globals --enable-nontrapping-float-to-int --enable-sign-ext"/>
+    <link data-trunk rel="copy-file" href="initializer.js"/>
     <link data-trunk rel="copy-file" href="worker.js"/>
+    <link data-trunk rel="copy-file" href="bootstrap.js"/>
+    <script type="module" src="bootstrap.js"></script>
     <style>
         html, body {
             margin: 0;
@@ -35,6 +55,18 @@
             height: 100%;
         }
 
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
         /* Loading indicator styles */
         #loading_indicator {
             position: fixed;
@@ -46,7 +78,35 @@
             background-color: #121214;
             color: #e2e8f0;
             z-index: 1000;
+            padding: 24px;
+            box-sizing: border-box;
+            text-align: center;
             user-select: none;
+        }
+
+        .brand-mark {
+            width: 56px;
+            height: 56px;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+        }
+
+        .brand-badge {
+            fill: #172554;
+            stroke: #3b82f6;
+        }
+
+        .brand-axes {
+            stroke: #60a5fa;
+            stroke-opacity: 0.5;
+        }
+
+        .brand-wave {
+            stroke: #ffffff;
+        }
+
+        .brand-node {
+            fill: #38bdf8;
         }
 
         .spinner {
@@ -74,7 +134,327 @@
         .loading-subtitle {
             font-size: 0.95rem;
             color: #94a3b8;
-            margin: 0;
+            margin: 0 0 16px 0;
+        }
+
+        .loading-progress {
+            appearance: none;
+            -webkit-appearance: none;
+            width: min(320px, 80vw);
+            height: 10px;
+            border: 1px solid #64748b;
+            border-radius: 999px;
+            background-color: #1e293b;
+            overflow: hidden;
+            accent-color: #60a5fa;
+        }
+
+        .loading-progress::-webkit-progress-bar {
+            background-color: #1e293b;
+            border-radius: 999px;
+        }
+
+        .loading-progress::-webkit-progress-value {
+            background-color: #60a5fa;
+            border-radius: 999px;
+            transition: width 0.12s linear;
+        }
+
+        .loading-progress::-moz-progress-bar {
+            background-color: #60a5fa;
+            border-radius: 999px;
+            transition: width 0.12s linear;
+        }
+
+        .loading-bytes {
+            font-size: 0.875rem;
+            color: #cbd5e1;
+            font-variant-numeric: tabular-nums;
+            margin: 10px 0 0 0;
+        }
+
+        @media (prefers-color-scheme: light) {
+            html, body, #loading_indicator {
+                background-color: #f8f8f8;
+                color: #18181b;
+            }
+
+            .brand-badge {
+                fill: #eff6ff;
+                stroke: #2563eb;
+            }
+
+            .brand-axes {
+                stroke: #60a5fa;
+                stroke-opacity: 0.65;
+            }
+
+            .brand-wave {
+                stroke: #1d4ed8;
+            }
+
+            .brand-node {
+                fill: #2563eb;
+            }
+
+            .spinner {
+                border-color: rgba(24, 24, 27, 0.14);
+                border-top-color: #2563eb;
+            }
+
+            .loading-subtitle {
+                color: #475569;
+            }
+
+            .loading-progress {
+                border-color: #64748b;
+                background-color: #e2e8f0;
+                accent-color: #2563eb;
+            }
+
+            .loading-progress::-webkit-progress-bar {
+                background-color: #e2e8f0;
+            }
+
+            .loading-progress::-webkit-progress-value {
+                background-color: #2563eb;
+            }
+
+            .loading-progress::-moz-progress-bar {
+                background-color: #2563eb;
+            }
+
+            .loading-bytes {
+                color: #334155;
+            }
+
+            #error_container {
+                background-color: rgba(248, 248, 248, 0.96);
+            }
+
+            .error-card {
+                background-color: #ffffff;
+                border-color: #cbd5e1;
+                box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+            }
+
+            .error-title {
+                color: #dc2626;
+            }
+
+            .error-message {
+                color: #334155;
+            }
+
+            .instructions-card {
+                background-color: #f8fafc;
+                border-color: #e2e8f0;
+            }
+
+            .instructions-card h2 {
+                color: #0f172a;
+            }
+
+            .recovery-list {
+                color: #475569;
+            }
+
+            .browser-item h3 {
+                color: #1d4ed8;
+            }
+
+            .browser-item ol, .additional-info {
+                color: #475569;
+                border-top-color: #e2e8f0;
+            }
+
+            .browser-item ol li strong {
+                color: #0f172a;
+            }
+
+            .additional-info a {
+                color: #1d4ed8;
+            }
+
+            .error-details {
+                background-color: #fef2f2;
+                border-color: #fecaca;
+                color: #991b1b;
+            }
+
+            noscript .noscript-banner {
+                background-color: #f8f8f8;
+                color: #b91c1c;
+            }
+        }
+
+        @media (prefers-contrast: more) {
+            html, body, #loading_indicator {
+                background-color: #000000;
+                color: #ffffff;
+            }
+
+            .brand-badge {
+                fill: #000000;
+                stroke: #ffffff;
+            }
+
+            .brand-axes {
+                stroke: #ffffff;
+                stroke-opacity: 0.85;
+            }
+
+            .brand-wave {
+                stroke: #ffff00;
+            }
+
+            .brand-node {
+                fill: #ffff00;
+            }
+
+            .spinner {
+                border-color: rgba(255, 255, 255, 0.35);
+                border-top-color: #ffff00;
+            }
+
+            .loading-subtitle {
+                color: #ffffff;
+            }
+
+            .loading-progress {
+                border: 2px solid #ffffff;
+                background-color: #000000;
+                accent-color: #ffff00;
+            }
+
+            .loading-progress::-webkit-progress-bar {
+                background-color: #000000;
+            }
+
+            .loading-progress::-webkit-progress-value {
+                background-color: #ffff00;
+            }
+
+            .loading-progress::-moz-progress-bar {
+                background-color: #ffff00;
+            }
+
+            .loading-bytes {
+                color: #ffffff;
+            }
+
+            #error_container {
+                background-color: #000000;
+            }
+
+            .error-card, .instructions-card, .error-details {
+                background-color: #000000;
+                border: 2px solid #ffffff;
+                box-shadow: none;
+            }
+
+            .error-title, .error-icon-wrapper, .error-details, noscript .noscript-banner {
+                background-color: #000000;
+                color: #ffff00;
+            }
+
+            .error-message, .instructions-card h2, .recovery-list, .browser-item ol, .browser-item ol li strong, .additional-info {
+                color: #ffffff;
+                border-top-color: #ffffff;
+            }
+
+            .browser-item h3, .additional-info a {
+                color: #ffff00;
+            }
+
+            .reload-btn {
+                background-color: #005a9e;
+                color: #ffffff;
+                border: 2px solid #ffffff;
+            }
+
+            .reload-btn:hover, .reload-btn:focus-visible {
+                outline: 2px solid #ffff00;
+                border-color: #ffff00;
+            }
+        }
+
+        @media (forced-colors: active) {
+            .brand-mark {
+                forced-color-adjust: none;
+            }
+
+            .brand-badge {
+                fill: Canvas;
+                stroke: CanvasText;
+            }
+
+            .brand-axes {
+                stroke: GrayText;
+                stroke-opacity: 1;
+            }
+
+            .brand-wave {
+                stroke: Highlight;
+            }
+
+            .brand-node {
+                fill: Highlight;
+            }
+
+            .spinner {
+                forced-color-adjust: none;
+                border-color: GrayText;
+                border-top-color: Highlight;
+            }
+
+            .loading-progress {
+                border-color: CanvasText;
+                accent-color: Highlight;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .spinner {
+                animation: none !important;
+                border-color: #60a5fa;
+                background-color: rgba(96, 165, 250, 0.16);
+            }
+
+            .loading-progress,
+            .reload-btn {
+                animation: none !important;
+                transition: none !important;
+            }
+
+            .loading-progress::-webkit-progress-value {
+                transition: none !important;
+            }
+
+            .loading-progress::-moz-progress-bar {
+                transition: none !important;
+            }
+        }
+
+        @media (prefers-color-scheme: light) and (prefers-reduced-motion: reduce) {
+            .spinner {
+                border-color: #2563eb;
+                background-color: rgba(37, 99, 235, 0.12);
+            }
+        }
+
+        @media (prefers-contrast: more) and (prefers-reduced-motion: reduce) {
+            .spinner {
+                border-color: #ffff00;
+                background-color: transparent;
+            }
+        }
+
+        @media (forced-colors: active) and (prefers-reduced-motion: reduce) {
+            .spinner {
+                border-color: Highlight;
+                background-color: transparent;
+            }
         }
 
         /* Error boundary / recovery container styles */
@@ -146,11 +526,33 @@
             margin-bottom: 24px;
         }
 
+        #error_recovery_steps {
+            display: none;
+        }
+
+        #error_container[data-error-category="network"] #error_recovery_steps,
+        #error_container[data-error-category="compile"] #error_recovery_steps,
+        #error_container[data-error-category="timeout"] #error_recovery_steps {
+            display: block;
+        }
+
+        #error_container:not([data-error-category="webgl"]) #webgl_instructions {
+            display: none;
+        }
+
         .instructions-card h2 {
             font-size: 1.05rem;
             font-weight: 600;
             color: #f1f5f9;
             margin: 0 0 14px 0;
+        }
+
+        .recovery-list {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 0.9rem;
+            color: #cbd5e1;
+            line-height: 1.6;
         }
 
         .browser-grid {
@@ -263,22 +665,47 @@
         </div>
     </noscript>
 
-    <!-- Visual loading indicator while WebAssembly and shaders compile -->
-    <div id="loading_indicator" role="status" aria-live="polite" aria-busy="true" data-stage="initial">
-        <div class="spinner" aria-hidden="true"></div>
-        <div class="loading-title">Loading Math Explorer...</div>
-        <p id="loading_subtitle" class="loading-subtitle">Initializing WebAssembly &amp; graphics engine</p>
+    <!-- Shared twin-slot ARIA live regions reused by pre-boot scripts and src/accessibility.rs -->
+    <div id="aria-live-polite" class="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        <span id="aria-live-polite-slot-0"></span>
+        <span id="aria-live-polite-slot-1"></span>
+    </div>
+    <div id="aria-live-assertive" class="sr-only" role="alert" aria-live="assertive" aria-atomic="true">
+        <span id="aria-live-assertive-slot-0"></span>
+        <span id="aria-live-assertive-slot-1"></span>
     </div>
 
-    <!-- WebGL error boundary shown if hardware acceleration or WebGL fails -->
-    <div id="error_container" role="alert" aria-live="assertive">
+    <!-- Visual loading indicator while WebAssembly downloads and shaders compile -->
+    <div id="loading_indicator" role="status" aria-busy="true">
+        <svg class="brand-mark" viewBox="0 0 64 64" width="56" height="56" aria-hidden="true" focusable="false">
+            <rect class="brand-badge" x="4" y="4" width="56" height="56" rx="14" stroke-width="3"/>
+            <line class="brand-axes" x1="14" y1="32" x2="50" y2="32" stroke-width="2" stroke-linecap="round"/>
+            <line class="brand-axes" x1="32" y1="14" x2="32" y2="50" stroke-width="2" stroke-linecap="round"/>
+            <path class="brand-wave" d="M 14 36 C 20 18, 26 18, 32 32 C 38 46, 44 46, 50 28" fill="none" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle class="brand-node" cx="32" cy="32" r="4"/>
+        </svg>
+        <div class="spinner" aria-hidden="true"></div>
+        <div id="loading_title" class="loading-title">Loading Math Explorer...</div>
+        <p id="loading_subtitle" class="loading-subtitle">Initializing WebAssembly &amp; graphics engine</p>
+        <progress id="loading_progress" class="loading-progress" role="progressbar" aria-label="WebAssembly download progress" aria-valuemin="0" aria-valuemax="100"></progress>
+        <p id="loading_bytes" class="loading-bytes" aria-live="off">Preparing download...</p>
+    </div>
+
+    <!-- WebGL error boundary and pre-boot network/compile/timeout recovery -->
+    <div id="error_container" role="alert" aria-live="assertive" data-error-category="webgl" aria-labelledby="error_title" aria-describedby="error_message">
         <div class="error-card">
             <div class="error-icon-wrapper" aria-hidden="true">&#9888;</div>
-            <h1 class="error-title">WebGL Initialization Failed</h1>
-            <p class="error-message">
+            <h1 id="error_title" class="error-title">WebGL Initialization Failed</h1>
+            <p id="error_message" class="error-message">
                 Math Explorer requires WebGL and hardware acceleration to render mathematics and interactive simulations. Your browser was unable to initialize a WebGL rendering context.
             </p>
-            <div class="instructions-card">
+            <div id="error_recovery_steps" class="instructions-card">
+                <h2 id="error_recovery_heading">Recovery Steps</h2>
+                <ol id="error_recovery_list" class="recovery-list">
+                    <li>Check your network connection and select <strong>Reload Page</strong> to retry loading Math Explorer.</li>
+                </ol>
+            </div>
+            <div id="webgl_instructions" class="instructions-card">
                 <h2>Enable Hardware Acceleration &amp; WebGL</h2>
                 <div class="browser-grid">
                     <div class="browser-item">

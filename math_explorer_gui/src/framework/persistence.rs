@@ -12,6 +12,25 @@ struct FrameworkState {
     tool_states: std::collections::HashMap<String, String>,
 }
 
+pub(super) fn capture_isolated_tool_datasets(
+    tool: &dyn InteractiveTool,
+) -> Vec<(String, Vec<[f64; 2]>)> {
+    let prev = egui_plot::get_last_plot_datasets();
+    let prev_prims = egui_plot::get_last_plot_primitives();
+    egui_plot::clear_last_plot_datasets();
+    egui_plot::clear_last_plot_primitives();
+    let datasets = tool.export_datasets();
+    egui_plot::clear_last_plot_datasets();
+    egui_plot::clear_last_plot_primitives();
+    if !prev.is_empty() {
+        egui_plot::append_last_plot_datasets(&prev);
+    }
+    if !prev_prims.is_empty() {
+        egui_plot::append_last_plot_primitives(&prev_prims);
+    }
+    datasets
+}
+
 impl SimulationFramework {
     /// Serializes the framework state (selected tool index, active tool state, theory portal state) to JSON.
     pub fn save_state(&self) -> Option<String> {
@@ -24,7 +43,7 @@ impl SimulationFramework {
         let selected_tool_name = self.selected_tool_index.and_then(|idx| {
             self.available_tools
                 .get(idx)
-                .map(|meta| meta.name.to_string())
+                .map(|meta| meta.id.to_string())
         });
 
         let state = FrameworkState {
@@ -49,9 +68,13 @@ impl SimulationFramework {
         self.saved_tool_states = state.tool_states;
 
         let tool_idx = if let Some(ref name) = state.selected_tool_name {
+            let trimmed = name.trim();
             self.available_tools
                 .iter()
-                .position(|m| m.name == *name)
+                .position(|m| {
+                    m.id.eq_ignore_ascii_case(trimmed)
+                        || m.display_name.eq_ignore_ascii_case(trimmed)
+                })
                 .or(state.selected_tool_index)
         } else {
             state.selected_tool_index
@@ -60,18 +83,20 @@ impl SimulationFramework {
         if let Some(idx) = tool_idx {
             if idx < self.available_tools.len() {
                 if self.selected_tool_index == Some(idx) && self.active_tool.is_some() {
+                    let meta = self.available_tools[idx];
+                    self.is_diverged = false;
+                    self.diagnostic_report = None;
                     if let Some(tool) = &mut self.active_tool {
-                        if let Some(saved) = self.saved_tool_states.get(tool.name()) {
+                        if let Some(saved) = self
+                            .saved_tool_states
+                            .get(tool.name())
+                            .or_else(|| self.saved_tool_states.get(meta.id))
+                        {
                             tool.load_state(saved);
                         }
-                        let prev = egui_plot::get_last_plot_datasets();
-                        egui_plot::clear_last_plot_datasets();
-                        let refreshed = tool.export_datasets();
-                        if !prev.is_empty() {
-                            egui_plot::append_last_plot_datasets(&prev);
-                        }
-                        (self.overlay_sync.2, self.current_valid_plot_datasets) =
-                            (Some(tool.name()), refreshed.clone());
+                        let refreshed = capture_isolated_tool_datasets(tool.as_ref());
+                        self.sync_state.datasets_owner_tool = Some(tool.name());
+                        self.current_valid_plot_datasets = refreshed.clone();
                         self.last_valid_snapshot = Some(StateSnapshot {
                             tool_state: tool.save_state(),
                             plot_datasets: refreshed,

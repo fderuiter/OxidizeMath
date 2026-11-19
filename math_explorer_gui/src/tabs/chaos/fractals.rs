@@ -2,9 +2,9 @@ use crate::accessibility::AccessibleTheoryHover;
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
-use scientific_metadata::theory::TheoryDescribable;
 use math_explorer::physics::chaos::fractals::{escape_time_julia, escape_time_mandelbrot};
 use num_complex::Complex;
+use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -57,7 +57,7 @@ impl TheoryDescribable for FractalViewer {
     }
 
     fn theory_citation(&self) -> String {
-        "[cite:graph_parameters_rust]".to_string()
+        "Mandelbrot, B. B. (1982). The Fractal Geometry of Nature. W. H. Freeman; Julia, G. (1918). Mémoire sur l'itération des fonctions rationnelles. Journal de Mathématiques Pures et Appliquées, 8, 47-245.".to_string()
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
@@ -79,14 +79,37 @@ struct FractalState {
 }
 
 impl InteractiveTool for FractalViewer {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
-    
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+
     fn name(&self) -> &'static str {
         "Fractal Viewer"
     }
 
     fn domain(&self) -> &'static str {
         "chaos"
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::raster_only()
+    }
+
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        let (width, height) = (480, 320);
+        let zoom = if self.zoom.is_finite() && self.zoom > 0.0 {
+            self.zoom
+        } else {
+            1.0
+        };
+        let scale_y = 3.0 / zoom;
+        let scale_x = scale_y * (width as f64 / height as f64);
+        Some(self.generate_image(width, height, scale_x, scale_y))
+    }
+
+    fn step_simulation(&mut self) {
+        self.zoom = (self.zoom * 1.06).min(10_000.0);
+        self.dirty = true;
     }
 
     fn save_state(&self) -> Option<String> {
@@ -102,15 +125,16 @@ impl InteractiveTool for FractalViewer {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<FractalState>(state) {
-            self.center = Complex::new(s.center_re, s.center_im);
-            self.zoom = s.zoom;
-            self.max_iter = s.max_iter;
-            self.mode = s.mode;
-            self.julia_c = Complex::new(s.julia_re, s.julia_im);
-            self.dirty = true;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: FractalState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid FractalViewer state: {e}"))?;
+        self.center = Complex::new(s.center_re, s.center_im);
+        self.zoom = s.zoom;
+        self.max_iter = s.max_iter;
+        self.mode = s.mode;
+        self.julia_c = Complex::new(s.julia_re, s.julia_im);
+        self.dirty = true;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -204,9 +228,12 @@ impl InteractiveTool for FractalViewer {
             // Max Iterations
             if ui
                 .add(
-                    egui::Slider::new(&mut self.max_iter, 10..=math_commons::registry::MAX_ITERATIONS as u32)
-                        .logarithmic(true)
-                        .text("Max Iter"),
+                    egui::Slider::new(
+                        &mut self.max_iter,
+                        10..=math_commons::registry::MAX_ITERATIONS as u32,
+                    )
+                    .logarithmic(true)
+                    .text("Max Iter"),
                 )
                 .changed()
             {
@@ -382,10 +409,10 @@ impl FractalViewer {
 
 // [cite:graph_parameters_rust]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "FractalViewer",
+        id: "FractalViewer",
+        display_name: "Fractal Viewer",
         domain: "chaos",
         tags: &[],
         build: || Box::new(FractalViewer::default()),
@@ -400,8 +427,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "max_iterations": 150,
-    "zoom": 1.0
+    "center_re": -0.75,
+    "center_im": 0.0,
+    "zoom": 1.0,
+    "max_iter": 150,
+    "mode": "Mandelbrot",
+    "julia_re": -0.7,
+    "julia_im": 0.27015
   }
 }"#;
 

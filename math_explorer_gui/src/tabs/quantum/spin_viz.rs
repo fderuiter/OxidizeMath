@@ -1,15 +1,13 @@
-use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
+use crate::accessibility::AccessibleTheoryHover;
+use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint, Points};
-use scientific_metadata::theory::TheoryDescribable;
 use math_explorer::physics::quantum::{evolve_state, spin, QuantumOperator, QuantumState};
 use num_complex::Complex;
 
-use crate::framework::InteractiveTool;
-
 pub struct SpinVisualizer {
     psi: QuantumState,
-    b_field: [f64; 3], // [Bx, By, Bz]
+    b_field: [f64; 3],
     time: f64,
     paused: bool,
     camera: crate::framework::Camera3D,
@@ -20,12 +18,9 @@ pub struct SpinVisualizer {
 
 impl Default for SpinVisualizer {
     fn default() -> Self {
-        // Initial state |0> (spin up)
-        let psi = QuantumState::spin_zero();
-
         Self {
-            psi,
-            b_field: [0.0, 0.0, 1.0], // Default B field along Z
+            psi: QuantumState::spin_zero(),
+            b_field: [0.0, 0.0, 1.0],
             time: 0.0,
             paused: true,
             camera: crate::framework::Camera3D::new(0.5, 0.5, 1.0),
@@ -38,193 +33,203 @@ impl Default for SpinVisualizer {
 
 impl SpinVisualizer {
     pub fn reset(&mut self) {
-        // Reset to |0>
         self.psi = QuantumState::spin_zero();
         self.time = 0.0;
     }
 
-    fn step(&mut self, dt: f64) {
-        let bx = self.b_field[0];
-        let by = self.b_field[1];
-        let bz = self.b_field[2];
+    pub fn step_once(&mut self) {
+        self.paused = true;
+        self.step(0.05);
+    }
 
-        // H = 0.5 * (Bx*Sx + By*Sy + Bz*Sz)
+    fn step(&mut self, dt: f64) {
+        let [bx, by, bz] = self.b_field;
         let h_matrix = (&self.sx.matrix * Complex::new(bx, 0.0)
             + &self.sy.matrix * Complex::new(by, 0.0)
             + &self.sz.matrix * Complex::new(bz, 0.0))
             * Complex::new(0.5, 0.0);
 
         let hamiltonian = QuantumOperator::new(h_matrix);
-
-        // Evolve
-        self.psi = evolve_state(&self.psi, &hamiltonian, dt, 1.0);
+        self.psi = evolve_state(&self.psi, &hamiltonian, dt, 1.0).normalize();
         self.time += dt;
-        self.psi = self.psi.normalize();
     }
 
     fn project(&self, point: [f64; 3]) -> [f64; 2] {
         self.camera.project(&point)
     }
-}
 
-impl InteractiveTool for SpinVisualizer {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
-    fn name(&self) -> &'static str {
-        "Spin Dynamics (Bloch Sphere)"
+    fn project_circle(&self, axis: usize) -> [PlotPoint; 61] {
+        let mut ring = [PlotPoint::new(0.0, 0.0); 61];
+        for (i, pt) in ring.iter_mut().enumerate() {
+            let theta = i as f64 * std::f64::consts::TAU / 60.0;
+            let p3 = match axis {
+                0 => [theta.cos(), theta.sin(), 0.0],
+                1 => [0.0, theta.cos(), theta.sin()],
+                _ => [theta.cos(), 0.0, theta.sin()],
+            };
+            let [x, y] = self.project(p3);
+            *pt = PlotPoint::new(x, y);
+        }
+        ring
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        if !self.paused {
-            self.step(0.05);
-            ctx.request_repaint();
-        }
-
-        // Calculate expectation values once per frame
-        let ex = self.sx.expectation_value(&self.psi).re;
-        let ey = self.sy.expectation_value(&self.psi).re;
-        let ez = self.sz.expectation_value(&self.psi).re;
-
+    fn draw_controls(&mut self, ctx: &egui::Context, ex: f64, ey: f64, ez: f64) {
         egui::SidePanel::left("spin_controls").show(ctx, |ui| {
             ui.heading("Controls");
             ui.separator();
 
             ui.group(|ui| {
-                ui.add(egui::Slider::new(&mut self.b_field[0], -5.0..=5.0).text("Magnetic Field B - Bx"));
+                ui.add(
+                    egui::Slider::new(&mut self.b_field[0], -5.0..=5.0)
+                        .text("Magnetic Field B - Bx"),
+                );
                 ui.add(egui::Slider::new(&mut self.b_field[1], -5.0..=5.0).text("By"));
                 ui.add(egui::Slider::new(&mut self.b_field[2], -5.0..=5.0).text("Bz"));
             });
 
             ui.separator();
-            ui.horizontal(|ui| {
-                if ui
-                    .button(if self.paused { "▶ Play" } else { "⏸ Pause" })
-                    .clicked()
-                {
-                    self.paused = !self.paused;
+            if let Some(action) = PlaybackTransport::in_thread(
+                "spin_viz_transport",
+                "Spin Dynamics (Bloch Sphere)",
+                !self.paused,
+            )
+            .show(ui)
+            {
+                match action {
+                    PlaybackAction::Play => self.paused = false,
+                    PlaybackAction::Pause => self.paused = true,
+                    PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::Reset => self.reset(),
                 }
-                if ui
-                    .button("🔄 Reset")
-                    .accessible_hover_text(format!(
-                        "Reset to {}",
-                        QuantumState::spin_zero().theory_description()
-                    ))
-                    .clicked()
-                {
-                    self.reset();
-                }
-            });
+            }
 
             ui.separator();
             ui.heading("View");
             self.camera.ui(ui);
 
             ui.separator();
-
-            ui.label(format!("Ex (x): {:.3}", ex));
-            ui.label(format!("Ey (y): {:.3}", ey));
-            ui.label(format!("Ez (z): {:.3}", ez));
+            ui.label(format!("Ex (x): {ex:.3}"));
+            ui.label(format!("Ey (y): {ey:.3}"));
+            ui.label(format!("Ez (z): {ez:.3}"));
         });
+    }
 
+    fn draw_bloch_sphere(&mut self, ctx: &egui::Context, ex: f64, ey: f64, ez: f64) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Generate sphere wireframe with fixed stack arrays
-            let mut equator = [PlotPoint::new(0.0, 0.0); 61];
-            for (i, pt) in equator.iter_mut().enumerate() {
-                let theta = i as f64 * std::f64::consts::TAU / 60.0;
-                let [x, y] = self.project([theta.cos(), theta.sin(), 0.0]);
-                *pt = PlotPoint::new(x, y);
-            }
+            let equator = self.project_circle(0);
+            let meridian = self.project_circle(1);
+            let meridian2 = self.project_circle(2);
 
-            let mut meridian = [PlotPoint::new(0.0, 0.0); 61];
-            for (i, pt) in meridian.iter_mut().enumerate() {
-                let theta = i as f64 * std::f64::consts::TAU / 60.0;
-                let [x, y] = self.project([0.0, theta.cos(), theta.sin()]);
-                *pt = PlotPoint::new(x, y);
-            }
-
-            let mut meridian2 = [PlotPoint::new(0.0, 0.0); 61];
-            for (i, pt) in meridian2.iter_mut().enumerate() {
-                let theta = i as f64 * std::f64::consts::TAU / 60.0;
-                let [x, y] = self.project([theta.cos(), 0.0, theta.sin()]);
-                *pt = PlotPoint::new(x, y);
-            }
-
-            // Vector & Axes
-            let origin = {
-                let [x, y] = self.project([0.0, 0.0, 0.0]);
+            let to_pt = |p: [f64; 3]| {
+                let [x, y] = self.project(p);
                 PlotPoint::new(x, y)
             };
-            let end = {
-                let [x, y] = self.project([ex, ey, ez]);
-                PlotPoint::new(x, y)
-            };
+            let origin = to_pt([0.0, 0.0, 0.0]);
+            let end = to_pt([ex, ey, ez]);
             let vec_line = [origin, end];
-
-            let x_axis = [
-                origin,
-                {
-                    let [x, y] = self.project([1.2, 0.0, 0.0]);
-                    PlotPoint::new(x, y)
-                },
-            ];
-            let y_axis = [
-                origin,
-                {
-                    let [x, y] = self.project([0.0, 1.2, 0.0]);
-                    PlotPoint::new(x, y)
-                },
-            ];
-            let z_axis = [
-                origin,
-                {
-                    let [x, y] = self.project([0.0, 0.0, 1.2]);
-                    PlotPoint::new(x, y)
-                },
-            ];
+            let x_axis = [origin, to_pt([1.2, 0.0, 0.0])];
+            let y_axis = [origin, to_pt([0.0, 1.2, 0.0])];
+            let z_axis = [origin, to_pt([0.0, 0.0, 1.2])];
             let tip = [end];
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let response = Plot::new("bloch_sphere")
                 .data_aspect(1.0)
                 .view_aspect(1.0)
                 .show(ui, |plot_ui| {
-                    plot_ui.line(Line::new("", &equator[..]).color(egui::Color32::GRAY));
-                    plot_ui.line(Line::new("", &meridian[..]).color(egui::Color32::GRAY));
-                    plot_ui.line(Line::new("", &meridian2[..]).color(egui::Color32::GRAY));
+                    plot_ui.line(Line::new("", &equator[..]).color(palette.graph_edge));
+                    plot_ui.line(Line::new("", &meridian[..]).color(palette.graph_edge));
+                    plot_ui.line(Line::new("", &meridian2[..]).color(palette.graph_edge));
 
-                    plot_ui.line(Line::new("", &x_axis[..]).color(egui::Color32::RED));
-                    plot_ui.line(Line::new("", &y_axis[..]).color(egui::Color32::GREEN));
-                    plot_ui.line(Line::new("", &z_axis[..]).color(egui::Color32::BLUE));
+                    plot_ui.line(Line::new("", &x_axis[..]).color(palette.axis_x));
+                    plot_ui.line(Line::new("", &y_axis[..]).color(palette.axis_y));
+                    plot_ui.line(Line::new("", &z_axis[..]).color(palette.axis_z));
 
-                    // Draw state vector (only named line in legend)
                     plot_ui.line(
                         Line::new("State", &vec_line[..])
-                            .color(egui::Color32::YELLOW)
+                            .color(palette.accent)
                             .width(3.0_f32),
                     );
-
-                    // Draw point at tip
                     plot_ui.points(
                         Points::new("", &tip[..])
                             .radius(5.0_f32)
-                            .color(egui::Color32::YELLOW),
+                            .color(palette.accent),
                     );
                 })
                 .response;
-            
+
             self.camera.handle_interaction(&response, ui);
-            
             response.accessible_theory_hover(&self.psi);
         });
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SpinVisualizerState {
+    b_field: [f64; 3],
+    paused: bool,
+    camera: crate::framework::Camera3D,
+}
+
+impl InteractiveTool for SpinVisualizer {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+    fn name(&self) -> &'static str {
+        "Spin Dynamics (Bloch Sphere)"
+    }
+    fn domain(&self) -> &'static str {
+        "quantum"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&SpinVisualizerState {
+            b_field: self.b_field,
+            paused: self.paused,
+            camera: self.camera,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: SpinVisualizerState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SpinVisualizer state: {e}"))?;
+        if !s.b_field.iter().all(|v| v.is_finite())
+            || !s.camera.pitch.is_finite()
+            || !s.camera.yaw.is_finite()
+            || !s.camera.zoom.is_finite()
+        {
+            return Err("Non-finite parameters in SpinVisualizer".to_string());
+        }
+        self.b_field = s.b_field;
+        self.paused = s.paused;
+        self.camera = s.camera;
+        self.reset();
+        Ok(())
+    }
+
+    fn show(&mut self, ctx: &egui::Context) {
+        if !self.paused {
+            self.step(0.05);
+            ctx.request_repaint();
+        }
+
+        let ex = self.sx.expectation_value(&self.psi).re;
+        let ey = self.sy.expectation_value(&self.psi).re;
+        let ez = self.sz.expectation_value(&self.psi).re;
+
+        self.draw_controls(ctx, ex, ey, ez);
+        self.draw_bloch_sphere(ctx, ex, ey, ez);
     }
 }
 
 // [cite:quantum_mechanics]
 // module = "quantum"
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "SpinVisualizer",
+        id: "SpinVisualizer",
+        display_name: "Spin Dynamics (Bloch Sphere)",
         domain: "quantum",
         tags: &[],
         build: || Box::new(SpinVisualizer::default()),
@@ -238,9 +243,15 @@ impl scientific_metadata::theory::TheoryDescribable for SpinVisualizer {
             self.b_field[0], self.b_field[1], self.b_field[2]
         )
     }
-    fn phonetic_description(&self) -> String { "Quantum spin-1/2 Bloch sphere dynamics and Zeeman effect theory".into() }
-    fn theory_citation(&self) -> String { "Principles of Quantum Mechanics (Shankar, 2012); Quantum Mechanics: Concepts and Applications (Zettili, 2009)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Quantum spin-1/2 Bloch sphere dynamics and Zeeman effect theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Principles of Quantum Mechanics (Shankar, 2012); Quantum Mechanics: Concepts and Applications (Zettili, 2009)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 #[cfg(test)]
@@ -256,8 +267,9 @@ mod tests {
         let ez = viz.sz.expectation_value(&viz.psi).re;
         assert!((ez - 1.0).abs() < 1e-6);
 
-        viz.step(0.1);
-        assert!(viz.time > 0.0);
+        viz.step_once();
+        assert!(viz.paused);
+        assert!((viz.time - 0.05).abs() < 1e-9);
 
         viz.reset();
         assert_eq!(viz.time, 0.0);
@@ -286,9 +298,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "theta": 1.047,
-    "phi": 0.785,
-    "magnetic_b": 1.0
+    "b_field": [0.5, 0.0, 1.0],
+    "paused": true,
+    "camera": {
+      "pitch": 0.5,
+      "yaw": 0.5,
+      "zoom": 1.0
+    }
   }
 }"#;
 

@@ -27,12 +27,17 @@ struct LifetimeEstimatorState {
 }
 
 impl InteractiveTool for LifetimeEstimatorTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Lifetime Estimator"
     }
     fn domain(&self) -> &'static str {
         "battery_degradation"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -44,12 +49,13 @@ impl InteractiveTool for LifetimeEstimatorTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<LifetimeEstimatorState>(state) {
-            self.target_capacity = s.target_capacity;
-            self.dod = s.dod;
-            self.cycles_per_day = s.cycles_per_day;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: LifetimeEstimatorState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid LifetimeEstimatorTool state: {e}"))?;
+        self.target_capacity = s.target_capacity;
+        self.dod = s.dod;
+        self.cycles_per_day = s.cycles_per_day;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -67,18 +73,27 @@ impl InteractiveTool for LifetimeEstimatorTool {
             ui.group(|ui| {
                 ui.heading("Usage Profile");
                 egui::Grid::new("lifetime_params_grid").show(ui, |ui| {
-                    ui.add(egui::Slider::new(&mut self.dod, 0.1..=100.0).text("Depth of Discharge (DoD): - %"))
-                        .accessible_hover_text("Percentage of battery capacity used per cycle.");
+                    ui.add(
+                        egui::Slider::new(&mut self.dod, 0.1..=100.0)
+                            .text("Depth of Discharge (DoD): - %"),
+                    )
+                    .accessible_hover_text("Percentage of battery capacity used per cycle.");
                     ui.end_row();
 
-                    ui.add(egui::Slider::new(&mut self.target_capacity, 10.0..=99.0).text("Target Capacity (End of Life): - %"))
-                        .accessible_hover_text(
-                            "The threshold capacity to be considered 'end of life'.",
-                        );
+                    ui.add(
+                        egui::Slider::new(&mut self.target_capacity, 10.0..=99.0)
+                            .text("Target Capacity (End of Life): - %"),
+                    )
+                    .accessible_hover_text(
+                        "The threshold capacity to be considered 'end of life'.",
+                    );
                     ui.end_row();
 
-                    ui.add(egui::Slider::new(&mut self.cycles_per_day, 0.1..=10.0).text("Cycles per Day: - cycles"))
-                        .accessible_hover_text("How many charge/discharge cycles happen per day.");
+                    ui.add(
+                        egui::Slider::new(&mut self.cycles_per_day, 0.1..=10.0)
+                            .text("Cycles per Day: - cycles"),
+                    )
+                    .accessible_hover_text("How many charge/discharge cycles happen per day.");
                     ui.end_row();
                 });
             });
@@ -101,6 +116,7 @@ impl InteractiveTool for LifetimeEstimatorTool {
             let lifetime_years = lifetime_days / 365.25;
 
             // Results Display
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new("Estimated Total Cycles:")
@@ -110,7 +126,7 @@ impl InteractiveTool for LifetimeEstimatorTool {
                 ui.label(
                     egui::RichText::new(format!("{:.0}", total_cycles))
                         .size(24.0)
-                        .color(egui::Color32::GREEN)
+                        .color(palette.success)
                         .strong(),
                 );
             });
@@ -126,7 +142,7 @@ impl InteractiveTool for LifetimeEstimatorTool {
                 ui.label(
                     egui::RichText::new(format!("{:.1} years", lifetime_years))
                         .size(24.0)
-                        .color(egui::Color32::GREEN)
+                        .color(palette.success)
                         .strong(),
                 );
             });
@@ -138,10 +154,10 @@ impl InteractiveTool for LifetimeEstimatorTool {
 
 // [cite:algorithmic_information_rust]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "LifetimeEstimatorTool",
+        id: "LifetimeEstimatorTool",
+        display_name: "Lifetime Estimator",
         domain: "battery_degradation",
         tags: &[],
         build: || Box::new(LifetimeEstimatorTool::default()),
@@ -155,9 +171,15 @@ impl scientific_metadata::theory::TheoryDescribable for LifetimeEstimatorTool {
             self.target_capacity, self.dod
         )
     }
-    fn phonetic_description(&self) -> String { "Battery lifetime estimator and power-law cycle life theory".into() }
-    fn theory_citation(&self) -> String { "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Battery lifetime estimator and power-law cycle life theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{
@@ -168,8 +190,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "temperature_c": 25.0,
-    "c_rate": 1.0
+    "target_capacity": 80.0,
+    "dod": 75.0,
+    "cycles_per_day": 1.0
   }
 }"#;
 

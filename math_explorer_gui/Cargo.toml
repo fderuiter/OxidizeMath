@@ -1,13 +1,13 @@
 [package]
 name = "math_explorer_gui"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
 build = "build.rs"
 
 [package.metadata.packager]
 product-name = "Math Explorer"
 identifier = "com.jules.mathexplorer"
-version = "0.1.0"
+version = "0.4.0"
 icons = ["icons/32x32.png", "icons/128x128.png", "icons/256x256.png", "icons/512x512.png", "icons/icon.icns", "icons/icon.ico"]
 out-dir = "dist"
 formats = ["wix", "dmg", "deb"]
@@ -27,7 +27,6 @@ futures = { workspace = true }
 federated_registry = { path = "../crates/federated_registry" }
 eframe = { workspace = true }
 egui_plot = "0.34.1"
-rfd = { workspace = true }
 nalgebra = { workspace = true }
 oxidize_core = { path = "../crates/oxidize_core" }
 math_explorer = { path = "../math_explorer", optional = true }
@@ -42,6 +41,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = { workspace = true }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 muda = { workspace = true }
 
@@ -51,24 +53,15 @@ getrandom = { workspace = true, features = ["js"] }
 wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 web-sys = { workspace = true, features = [
-    "Blob",
-    "BlobPropertyBag",
     "DedicatedWorkerGlobalScope",
     "Document",
     "Element",
     "ErrorEvent",
     "Event",
-    "EventTarget",
-    "File",
-    "FileList",
-    "FileReader",
-    "HtmlAnchorElement",
     "HtmlCanvasElement",
     "HtmlElement",
-    "HtmlInputElement",
     "MessageEvent",
     "Node",
-    "Url",
     "Window",
     "Worker",
     "WorkerOptions",

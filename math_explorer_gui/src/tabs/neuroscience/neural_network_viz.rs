@@ -1,5 +1,5 @@
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::InteractiveTool;
+use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui::Color32;
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
@@ -7,13 +7,9 @@ use std::f32::consts::TAU;
 
 pub struct NeuralNetworkVizTool {
     neurons: Vec<HodgkinHuxleyNeuron>,
-    /// Positions for drawing the nodes in a circle
     positions: Vec<[f32; 2]>,
-    /// Adjacency matrix: `weights[i][j]` is the weight of connection from j to i
     weights: Vec<Vec<f64>>,
-    /// Current external input injected to each neuron
     external_input: Vec<f64>,
-
     is_running: bool,
     dt: f64,
 }
@@ -29,26 +25,21 @@ impl Default for NeuralNetworkVizTool {
         let radius = 100.0;
         for i in 0..num_neurons {
             neurons.push(HodgkinHuxleyNeuron::new(-65.0));
-
-            // Arrange neurons in a circle
             let angle = i as f32 * TAU / num_neurons as f32;
             positions.push([angle.cos() * radius, angle.sin() * radius]);
         }
 
-        // Define some simple connections (e.g., a ring with excitatory forward and inhibitory backward)
         for i in 0..num_neurons {
             let next = (i + 1) % num_neurons;
             let prev = (i + num_neurons - 1) % num_neurons;
-
             if let Some(row) = weights.get_mut(next) {
-                row[i] = 2.0; // Excitatory connection
+                row[i] = 2.0;
             }
             if let Some(row) = weights.get_mut(prev) {
-                row[i] = -1.0; // Inhibitory connection
+                row[i] = -1.0;
             }
         }
 
-        // Inject some initial current into the first neuron to kickstart
         external_input[0] = 10.0;
 
         Self {
@@ -67,16 +58,19 @@ impl NeuralNetworkVizTool {
         *self = Self::default();
     }
 
+    pub(crate) fn step_once(&mut self) {
+        self.is_running = false;
+        self.step();
+    }
+
     fn step(&mut self) {
         let num_neurons = self.neurons.len();
         let mut next_inputs = vec![0.0; num_neurons];
 
-        // Compute synaptic currents.
-        // Simple model: if a presynaptic neuron is firing (V > 0), inject current.
         for (i, input) in next_inputs.iter_mut().enumerate().take(num_neurons) {
             for (j, neuron) in self.neurons.iter().enumerate().take(num_neurons) {
                 if neuron.v() > 0.0 {
-                    *input += self.weights[i][j] * 50.0; // Synaptic strength scalar
+                    *input += self.weights[i][j] * 50.0;
                 }
             }
         }
@@ -86,133 +80,197 @@ impl NeuralNetworkVizTool {
             self.neurons[i].update(self.dt, total_i_ext);
         }
     }
-}
 
-impl InteractiveTool for NeuralNetworkVizTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
-    fn name(&self) -> &'static str {
-        "Neural Network Viz"
-    }
-
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        if self.is_running {
-            for _ in 0..10 {
-                // Run multiple steps per frame to speed up simulation
-                self.step();
-            }
-            ctx.request_repaint();
-        }
-
+    fn draw_controls(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("nn_viz_controls").show(ctx, |ui| {
             ui.heading("Controls");
             ui.separator();
 
-            if ui
-                .button(if self.is_running { "⏸ Pause" } else { "▶ Start" })
-                .accessible_hover_text(if self.is_running {
-                    "Pause the Neural Network simulation"
-                } else {
-                    "Start the Neural Network simulation"
-                })
-                .clicked()
+            if let Some(action) = PlaybackTransport::in_thread(
+                "nn_viz_transport",
+                "Neural Network Viz",
+                self.is_running,
+            )
+            .show(ui)
             {
-                self.is_running = !self.is_running;
-            }
-
-            if ui
-                .button("↻ Reset")
-                .accessible_hover_text("Reset the simulation to its initial state")
-                .clicked()
-            {
-                self.reset();
+                match action {
+                    PlaybackAction::Play => self.is_running = true,
+                    PlaybackAction::Pause => self.is_running = false,
+                    PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::Reset => self.reset(),
+                }
             }
 
             ui.separator();
             ui.heading("External Current (uA/cm^2)");
             for i in 0..self.external_input.len() {
                 ui.horizontal(|ui| {
-                     
-                    ui.add(egui::Slider::new(&mut self.external_input[i], -10.0..=50.0).text(format!("Neuron {}", i)));
+                    ui.add(
+                        egui::Slider::new(&mut self.external_input[i], -10.0..=50.0)
+                            .text(format!("Neuron {i}")),
+                    );
                 });
             }
 
             ui.separator();
-            ui.label("Synaptic activity is modeled simply: if a presynaptic neuron's voltage > 0, a scaled current is added to the postsynaptic neuron.");
+            ui.label(
+                "Synaptic activity is modeled simply: if a presynaptic neuron's voltage > 0, a scaled current is added to the postsynaptic neuron.",
+            );
         });
+    }
 
+    fn draw_synaptic_edges(
+        &self,
+        painter: &egui::Painter,
+        center: egui::Pos2,
+        palette: &crate::app::SemanticPalette,
+    ) {
+        let num_neurons = self.neurons.len();
+        for i in 0..num_neurons {
+            for j in 0..num_neurons {
+                let weight = self.weights[i][j];
+                if weight != 0.0 {
+                    let p1 = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
+                    let p2 = center + egui::vec2(self.positions[j][0], self.positions[j][1]);
+                    let base = if weight > 0.0 {
+                        palette.success
+                    } else {
+                        palette.error
+                    };
+                    let color =
+                        Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
+                    painter.line_segment([p2, p1], (1.0 + weight.abs() as f32, color));
+                }
+            }
+        }
+    }
+
+    fn draw_network(&self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Network Visualization");
 
-            // Draw custom graph
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::hover());
             let _ = response.clone().accessible_hover_text(
                 "Neural Network Visualization: Showing interconnected neurons",
             );
 
-            let rect = response.rect;
-            let center = rect.center();
+            let center = response.rect.center();
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            self.draw_synaptic_edges(&painter, center, &palette);
 
-            let num_neurons = self.neurons.len();
-
-            // Draw edges
-            for i in 0..num_neurons {
-                for j in 0..num_neurons {
-                    let weight = self.weights[i][j];
-                    if weight != 0.0 {
-                        let p1 = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
-                        let p2 = center + egui::vec2(self.positions[j][0], self.positions[j][1]);
-
-                        let color = if weight > 0.0 {
-                            Color32::from_rgba_premultiplied(0, 255, 0, 100) // Excitatory: green
-                        } else {
-                            Color32::from_rgba_premultiplied(255, 0, 0, 100) // Inhibitory: red
-                        };
-
-                        // To show direction, we can draw a simple line, but offset slightly
-                        // Here, just draw a line
-                        painter.line_segment([p2, p1], (1.0 + weight.abs() as f32, color));
-                    }
-                }
-            }
-
-            // Draw nodes
-            for i in 0..num_neurons {
+            for i in 0..self.neurons.len() {
                 let v = self.neurons[i].v() as f32;
                 let p = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
-
-                // Color based on voltage
-                // Resting is ~-65, Spike is ~+40
                 let normalized_v = ((v + 65.0) / 105.0).clamp(0.0, 1.0);
+                let low = palette.axis_z;
+                let high = palette.axis_x;
+                let lerp = |a: u8, b: u8| {
+                    (f32::from(a) + (f32::from(b) - f32::from(a)) * normalized_v).round() as u8
+                };
                 let color = Color32::from_rgb(
-                    (normalized_v * 255.0) as u8,
-                    ((1.0 - normalized_v) * 100.0) as u8, // Base blue-ish
-                    255,
+                    lerp(low.r(), high.r()),
+                    lerp(low.g(), high.g()),
+                    lerp(low.b(), high.b()),
                 );
-
                 painter.circle_filled(p, 15.0, color);
-                painter.circle_stroke(p, 15.0, (1.0, Color32::WHITE));
-
-                // Draw text label
+                painter.circle_stroke(p, 15.0, (1.0, palette.node_stroke));
                 painter.text(
                     p,
                     egui::Align2::CENTER_CENTER,
-                    format!("N{}\n{:.0}mV", i, v),
+                    format!("N{i}\n{v:.0}mV"),
                     egui::FontId::proportional(10.0),
-                    Color32::WHITE,
+                    crate::app::contrasting_text_color(color),
                 );
             }
         });
     }
 }
 
-// [cite:cera_framework]
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NeuralNetworkVizState {
+    external_input: Vec<f64>,
+    weights: Vec<Vec<f64>>,
+    dt: f64,
+    is_running: bool,
+}
 
+impl InteractiveTool for NeuralNetworkVizTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+    fn name(&self) -> &'static str {
+        "Neural Network Viz"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
+    }
+    fn domain(&self) -> &'static str {
+        "neuroscience"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&NeuralNetworkVizState {
+            external_input: self.external_input.clone(),
+            weights: self.weights.clone(),
+            dt: self.dt,
+            is_running: self.is_running,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: NeuralNetworkVizState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid NeuralNetworkVizTool state: {e}"))?;
+        let n = s.external_input.len();
+        if n == 0
+            || s.weights.len() != n
+            || s.weights
+                .iter()
+                .any(|row| row.len() != n || row.iter().any(|w| !w.is_finite()))
+            || s.external_input.iter().any(|v| !v.is_finite())
+            || !s.dt.is_finite()
+            || s.dt <= 0.0
+        {
+            return Err(
+                "Invalid network dimensions or non-finite values in NeuralNetworkVizTool"
+                    .to_string(),
+            );
+        }
+        let radius = 100.0;
+        self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
+        self.positions = (0..n)
+            .map(|i| {
+                let angle = i as f32 * TAU / n as f32;
+                [angle.cos() * radius, angle.sin() * radius]
+            })
+            .collect();
+        self.weights = s.weights;
+        self.external_input = s.external_input;
+        self.dt = s.dt;
+        self.is_running = s.is_running;
+        Ok(())
+    }
+
+    fn show(&mut self, ctx: &egui::Context) {
+        if self.is_running {
+            for _ in 0..10 {
+                self.step();
+            }
+            ctx.request_repaint();
+        }
+
+        self.draw_controls(ctx);
+        self.draw_network(ctx);
+    }
+}
+
+// [cite:cera_framework]
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "NeuralNetworkVizTool",
+        id: "NeuralNetworkVizTool",
+        display_name: "Neural Network Viz",
         domain: "neuroscience",
         tags: &[],
         build: || Box::new(NeuralNetworkVizTool::default()),
@@ -226,9 +284,30 @@ impl scientific_metadata::theory::TheoryDescribable for NeuralNetworkVizTool {
             self.neurons.len()
         )
     }
-    fn phonetic_description(&self) -> String { "Coupled Hodgkin-Huxley neural network and synaptic transmission theory".into() }
-    fn theory_citation(&self) -> String { "A Quantitative Description of Membrane Current and Its Application to Conduction and Excitation in Nerve (Hodgkin & Huxley, 1952); Theoretical Neuroscience (Dayan & Abbott, 2001)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Coupled Hodgkin-Huxley neural network and synaptic transmission theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "A Quantitative Description of Membrane Current and Its Application to Conduction and Excitation in Nerve (Hodgkin & Huxley, 1952); Theoretical Neuroscience (Dayan & Abbott, 2001)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_neural_network_viz_step_once_keeps_paused() {
+        let mut tool = NeuralNetworkVizTool::default();
+        assert!(!tool.is_running);
+        let initial_v0 = tool.neurons[0].v();
+        tool.step_once();
+        assert!(!tool.is_running);
+        assert_ne!(tool.neurons[0].v(), initial_v0);
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{
@@ -239,12 +318,16 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "layers": [
-      4,
-      8,
-      2
+    "external_input": [15.0, 0.0, 0.0, 0.0, 0.0],
+    "weights": [
+      [0.0, -1.0, 0.0, 0.0, 2.0],
+      [2.0, 0.0, -1.0, 0.0, 0.0],
+      [0.0, 2.0, 0.0, -1.0, 0.0],
+      [0.0, 0.0, 2.0, 0.0, -1.0],
+      [-1.0, 0.0, 0.0, 2.0, 0.0]
     ],
-    "activation": "ReLU"
+    "dt": 0.05,
+    "is_running": false
   }
 }"#;
 

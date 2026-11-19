@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import functools
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, Iterator, List, Tuple
 
 
 @dataclass
@@ -33,6 +34,7 @@ class DistRequestHandler(SimpleHTTPRequestHandler):
         ".ico": "image/x-icon",
         ".png": "image/png",
         ".svg": "image/svg+xml",
+        ".webmanifest": "application/manifest+json; charset=utf-8",
     }
 
     def __init__(
@@ -42,13 +44,29 @@ class DistRequestHandler(SimpleHTTPRequestHandler):
         isolated: bool,
         request_log: List[RecordedRequest],
         request_lock: threading.Lock,
+        status_overrides: Dict[str, int],
         **kwargs,
     ) -> None:
         self._isolated = isolated
         self._request_log = request_log
         self._request_lock = request_lock
+        self._status_overrides = status_overrides
         self._last_status = 200
         super().__init__(*args, directory=directory, **kwargs)
+
+    def do_GET(self) -> None:  # noqa: N802
+        clean_path = self.path.split("?", 1)[0]
+        with self._request_lock:
+            forced = self._status_overrides.get(clean_path)
+        if forced is not None:
+            body = f"HTTP {forced}".encode("utf-8")
+            self.send_response(forced)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
 
     def send_response(self, code: int, message: str | None = None) -> None:
         self._last_status = code
@@ -79,6 +97,7 @@ class LocalDistServer:
     thread: threading.Thread
     isolated: bool
     requests: List[RecordedRequest] = field(default_factory=list)
+    status_overrides: Dict[str, int] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     @property
@@ -101,6 +120,17 @@ class LocalDistServer:
         with self.lock:
             self.requests.clear()
 
+    @contextmanager
+    def override_status(self, path: str, status: int) -> Iterator[None]:
+        normalized = path if path.startswith("/") else f"/{path}"
+        with self.lock:
+            self.status_overrides[normalized] = status
+        try:
+            yield
+        finally:
+            with self.lock:
+                self.status_overrides.pop(normalized, None)
+
     def close(self) -> None:
         self.httpd.shutdown()
         self.httpd.server_close()
@@ -116,6 +146,7 @@ def start_dist_server(dist_dir: Path, *, isolated: bool) -> LocalDistServer:
         )
 
     requests: List[RecordedRequest] = []
+    status_overrides: Dict[str, int] = {}
     lock = threading.Lock()
     handler_factory = functools.partial(
         DistRequestHandler,
@@ -123,6 +154,7 @@ def start_dist_server(dist_dir: Path, *, isolated: bool) -> LocalDistServer:
         isolated=isolated,
         request_log=requests,
         request_lock=lock,
+        status_overrides=status_overrides,
     )
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler_factory)
     thread = threading.Thread(
@@ -136,5 +168,6 @@ def start_dist_server(dist_dir: Path, *, isolated: bool) -> LocalDistServer:
         thread=thread,
         isolated=isolated,
         requests=requests,
+        status_overrides=status_overrides,
         lock=lock,
     )

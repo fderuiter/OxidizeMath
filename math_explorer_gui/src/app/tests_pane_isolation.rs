@@ -151,3 +151,118 @@ fn test_single_pane_startup_allocates_only_primary_catalog() {
     assert_eq!(app.active_secondary_slot_count(), 0);
     assert_eq!(app.focused_pane, 0);
 }
+
+#[test]
+fn test_quad_pane_contexts_inherit_active_theme_palette() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    app.set_layout(ViewportLayout::QuadGrid);
+    for p in 0..4 {
+        app.set_pane_tab(p, p % app.tabs.len().max(1));
+    }
+
+    for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::HighContrast] {
+        app.theme = mode;
+        run_screen_events(&ctx, &mut app, Vec::new());
+        for (pane_idx, pane_ctx) in app.pane_contexts.iter().enumerate() {
+            let pane_visuals = &pane_ctx.style().visuals;
+            assert_eq!(
+                ThemeMode::from_visuals(pane_visuals),
+                mode,
+                "pane {pane_idx} did not inherit ThemeMode::{mode:?}"
+            );
+            assert_eq!(
+                SemanticPalette::from_visuals(pane_visuals),
+                mode.palette(),
+                "pane {pane_idx} did not resolve SemanticPalette for {mode:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_select_primary_tab_preserves_focused_secondary_pane() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    if app.tabs.len() < 3 {
+        return;
+    }
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    app.set_pane_tab(0, 0);
+    app.set_pane_tab(1, 1);
+    app.focus_pane(1);
+
+    domain_bar::select_primary_tab(&mut app, &ctx, 2);
+    assert_eq!(app.selected_tab, 2);
+    assert_eq!(app.pane_tabs[0], 2);
+    assert_eq!(app.pane_tabs[1], 1);
+    assert_eq!(app.focused_pane, 1);
+}
+
+#[test]
+fn test_pre_render_swap_panes_does_not_leak_stale_catalog_state() {
+    let mut app = MathExplorerApp::default();
+    let Some(epi_idx) = app.tabs.iter().position(|t| t.name() == "Epidemiology") else {
+        return;
+    };
+    let other_idx = usize::from(epi_idx == 0);
+    {
+        let fw = app.tabs[epi_idx].framework_mut().unwrap();
+        assert!(fw.select_tool_by_name("SirTool"));
+        fw.active_tool
+            .as_mut()
+            .unwrap()
+            .load_state(r#"{"n":1000.0,"i0":10.0,"beta":4.25,"gamma":0.1,"duration":100.0}"#);
+    }
+    app.selected_tab = other_idx;
+    app.secondary_tab = epi_idx;
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    app.swap_panes();
+
+    assert_eq!(app.selected_tab, epi_idx);
+    assert_eq!(app.secondary_tab, other_idx);
+    assert!(!pane_tool_state(&mut app, 0).contains("\"beta\":4.25"));
+}
+
+#[test]
+fn test_same_domain_clamp_and_undo_recovery_isolation() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let Some(epi_idx) = app.tabs.iter().position(|t| t.name() == "Epidemiology") else {
+        return;
+    };
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    app.set_pane_tab(0, epi_idx);
+    app.set_pane_tab(1, epi_idx);
+    for (pane, beta) in [(0, 0.35), (1, 1.85)] {
+        let fw = app.pane_tab_mut(pane).unwrap().framework_mut().unwrap();
+        assert!(fw.select_tool_by_name("SirTool"));
+        fw.active_tool.as_mut().unwrap().load_state(&format!(
+            r#"{{"n":1000.0,"i0":10.0,"beta":{beta},"gamma":0.1,"duration":100.0}}"#
+        ));
+    }
+    run_screen_events(&ctx, &mut app, Vec::new());
+    let valid_state = app.get_app_state();
+    app.session_manager.track_state_changes(&ctx, valid_state);
+
+    {
+        let fw1 = app.pane_tab_mut(1).unwrap().framework_mut().unwrap();
+        fw1.is_diverged = true;
+        fw1.clamp_parameters();
+        assert!(!fw1.is_diverged());
+        assert!(!fw1.export_datasets_with_fallback().is_empty());
+        fw1.is_diverged = true;
+    }
+    let diverged_state = app.get_app_state();
+    app.session_manager
+        .track_state_changes(&ctx, diverged_state);
+    app.undo();
+
+    let fw0 = app.pane_tab(0).unwrap().framework().unwrap();
+    let fw1 = app.pane_tab(1).unwrap().framework().unwrap();
+    assert!(!fw0.is_diverged());
+    assert!(!fw1.is_diverged());
+    assert!(pane_tool_state(&mut app, 0).contains("\"beta\":0.35"));
+    assert!(pane_tool_state(&mut app, 1).contains("\"beta\":1.85"));
+}

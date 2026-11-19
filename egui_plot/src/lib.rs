@@ -13,6 +13,8 @@ mod axis;
 pub mod commands;
 pub mod export;
 pub mod export_modal;
+pub mod export_primitives;
+pub mod file_io;
 pub mod fit;
 mod items;
 pub mod latex;
@@ -42,9 +44,14 @@ pub use crate::{
         parse_csv, save_file_dialog, trigger_import_csv, trigger_import_csv_for_plot,
     },
     export_modal::{
-        CallbackExportSource, ExportDataSource, ExportModalBindings, ExportModalConfig,
-        ExportModalState, MODAL_HEADER_TEXT, calculate_target_dimensions, clipboard_status_id,
-        exceeds_max_dimension, poll_clipboard_status, show_export_modal,
+        CallbackExportSource, ExportDataSource, ExportModalAction, ExportModalBindings,
+        ExportModalConfig, ExportModalState, MODAL_HEADER_TEXT, calculate_target_dimensions,
+        clipboard_status_id, exceeds_max_dimension, poll_clipboard_status, show_export_modal,
+    },
+    export_primitives::{
+        ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,
+        export_primitives_png, export_primitives_svg, export_raster_gif, export_raster_png,
+        export_raster_svg, get_last_plot_primitives, render_primitives_image,
     },
     fit::{FitResult, FitType, fit_dataset, fit_dataset_scaled},
     items::{
@@ -1079,8 +1086,9 @@ impl<'a> Plot<'a> {
         }
 
         // --- Legend ---
-        let legend = legend_config
-            .and_then(|config| LegendWidget::try_new(plot_rect, config, &items, &mem.hidden_items));
+        let legend = legend_config.and_then(|config| {
+            LegendWidget::try_new(plot_id, plot_rect, config, &items, &mem.hidden_items)
+        });
         // Don't show hover cursor when hovering over legend.
         if mem.hovered_legend_item.is_some() {
             show_x = false;
@@ -1473,14 +1481,18 @@ impl<'a> Plot<'a> {
 
         // --- EXTRACT DATASETS INJECTED ---
         let mut accessible_datasets: Vec<(String, Vec<[f64; 2]>, Color32)> = Vec::new();
+        let mut extracted_primitives: Vec<ExportPrimitive> = Vec::new();
         for item in &items {
             accessible_datasets.push((item.name().to_owned(), item.extract_points(), item.color()));
+            extracted_primitives.extend(item.extract_export_primitives());
         }
         let export_datasets: Vec<(String, Vec<[f64; 2]>)> = accessible_datasets
             .iter()
+            .filter(|(_, p, _)| !p.is_empty())
             .map(|(n, p, _)| (n.clone(), p.clone()))
             .collect();
         append_last_plot_datasets(&export_datasets);
+        append_last_plot_primitives(&extracted_primitives);
         // --- END EXTRACT DATASETS ---
 
         let auto_content_bounds = compute_auto_content_bounds(
@@ -1587,6 +1599,7 @@ impl<'a> Plot<'a> {
             editing_callout_idx: Option<usize>,
             edit_callout_text: String,
             edit_callout_offset: [f32; 2],
+            import_toast: Option<(String, bool)>,
         }
 
         impl Default for AccessState {
@@ -1615,6 +1628,7 @@ impl<'a> Plot<'a> {
                     editing_callout_idx: None,
                     edit_callout_text: String::new(),
                     edit_callout_offset: [30.0, -30.0],
+                    import_toast: None,
                 }
             }
         }
@@ -1633,6 +1647,10 @@ impl<'a> Plot<'a> {
             });
         access_state.log_x = mem.log_x;
         access_state.log_y = mem.log_y;
+
+        if let Some(status) = export::drain_import_status(plot_id) {
+            access_state.import_toast = Some(status);
+        }
 
         if ui.ctx().data_mut(|d| {
             d.get_temp::<bool>(plot_id.with("toggle_settings"))
@@ -1830,6 +1848,25 @@ impl<'a> Plot<'a> {
                         if ui.button("Clear Fit").clicked() {
                             access_state.fit_degree = None;
                         }
+                    }
+                }
+
+                if let Some((ref msg, is_error)) = access_state.import_toast {
+                    ui.separator();
+                    let dark_mode = ui.visuals().dark_mode;
+                    let (color, icon) = match (is_error, dark_mode) {
+                        (true, true) => (Color32::from_rgb(255, 118, 118), "⚠️"),
+                        (true, false) => (Color32::from_rgb(180, 28, 28), "⚠️"),
+                        (false, true) => (Color32::from_rgb(74, 214, 122), "ℹ️"),
+                        (false, false) => (Color32::from_rgb(15, 115, 54), "ℹ️"),
+                    };
+                    ui.colored_label(color, format!("{icon} {msg}"));
+                    if ui
+                        .small_button("✖")
+                        .on_hover_text("Dismiss import notification")
+                        .clicked()
+                    {
+                        access_state.import_toast = None;
                     }
                 }
             });
@@ -3676,6 +3713,7 @@ thread_local! {
 /// Clears thread-local record of plot datasets from the current frame.
 pub fn clear_last_plot_datasets() {
     LAST_PLOT_DATASETS.with(|d| d.borrow_mut().clear());
+    clear_last_plot_primitives();
 }
 
 /// Appends datasets captured from an `egui_plot::Plot` widget.

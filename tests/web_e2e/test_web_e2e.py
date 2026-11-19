@@ -28,26 +28,48 @@ def verify_favicons_delivered(page: Page, diagnostics: PageDiagnostics) -> List[
         if any(url.endswith(href.lstrip("./")) for href in icon_hrefs) or url.endswith("/favicon.ico"):
             assert resp["status"] == 200, f"Passive favicon request failed: {resp}"
 
-    results: List[Dict[str, object]] = []
-    for href in icon_hrefs:
-        fetched = page.evaluate(
-            """async (targetHref) => {
-                const response = await fetch(targetHref, { cache: 'no-store' });
-                const buffer = await response.arrayBuffer();
-                return {
-                    href: targetHref,
-                    status: response.status,
-                    contentType: response.headers.get('content-type') || '',
-                    byteLength: buffer.byteLength,
-                };
-            }""",
-            href,
-        )
+    page.evaluate(
+        """(hrefs) => {
+            window.__faviconCheckResult = null;
+            Promise.all(
+                hrefs.map(async (targetHref) => {
+                    try {
+                        const response = await fetch(targetHref, { cache: 'no-store' });
+                        const buffer = await response.arrayBuffer();
+                        return {
+                            href: targetHref,
+                            status: response.status,
+                            contentType: response.headers.get('content-type') || '',
+                            byteLength: buffer.byteLength,
+                            error: '',
+                        };
+                    } catch (err) {
+                        return {
+                            href: targetHref,
+                            status: 0,
+                            contentType: '',
+                            byteLength: 0,
+                            error: String(err),
+                        };
+                    }
+                })
+            ).then((items) => {
+                window.__faviconCheckResult = items;
+            });
+        }""",
+        icon_hrefs,
+    )
+    results: List[Dict[str, object]] = poll_until(
+        page,
+        "() => window.__faviconCheckResult",
+        timeout_ms=5000,
+    )
+    for fetched in results:
+        href = str(fetched["href"])
         assert fetched["status"] == 200, f"Favicon '{href}' returned HTTP {fetched['status']}: {fetched}"
         assert int(fetched["byteLength"]) > 0, f"Favicon '{href}' body was empty: {fetched}"
         content_type = str(fetched["contentType"]).lower()
         assert "image/" in content_type, f"Favicon '{href}' had unexpected Content-Type: {fetched}"
-        results.append(fetched)
 
     return results
 
@@ -156,8 +178,8 @@ def test_cold_load_startup_csp_isolation_favicons_and_focus(
 
         favicons = verify_favicons_delivered(page, diagnostics)
         hrefs = {str(item["href"]) for item in favicons}
-        assert any(h.endswith("icon.ico") for h in hrefs), f"Missing icon.ico in {hrefs}"
-        assert any(h.endswith("32x32.png") for h in hrefs), f"Missing 32x32.png in {hrefs}"
+        assert any(h.endswith("favicon.ico") for h in hrefs), f"Missing favicon.ico in {hrefs}"
+        assert any(h.endswith("favicon.svg") for h in hrefs), f"Missing favicon.svg in {hrefs}"
 
         diagnostics.assert_clean_runtime(page)
     finally:
@@ -174,16 +196,12 @@ def test_favicon_404_fails_check_immediately(
         page = context.new_page()
         diagnostics = PageDiagnostics().attach(page)
 
-        def fail_favicon(route: Route) -> None:
-            route.fulfill(status=404, content_type="text/plain", body="Not Found")
+        with isolated_server.override_status("/favicon.ico", 404):
+            page.goto(isolated_server.base_url, wait_until="domcontentloaded")
+            assert_canvas_ready_and_focused(page)
 
-        page.route("**/icon.ico", fail_favicon)
-
-        page.goto(isolated_server.base_url, wait_until="domcontentloaded")
-        assert_canvas_ready_and_focused(page)
-
-        with pytest.raises(AssertionError, match="404"):
-            verify_favicons_delivered(page, diagnostics)
+            with pytest.raises(AssertionError, match="404"):
+                verify_favicons_delivered(page, diagnostics)
     finally:
         context.close()
 
@@ -405,7 +423,16 @@ def test_fault_http_500_alerts_and_recovers_via_reload_button(
         page.route("**/math_explorer_gui_bg.wasm", inject_http_500)
 
         page.goto(isolated_server.base_url, wait_until="domcontentloaded")
-        details = assert_accessible_error_alert_and_reload_focus(page)
+        assert_accessible_error_alert_and_reload_focus(page)
+        poll_until(
+            page,
+            """() => {
+                const el = document.getElementById('error_details');
+                return Boolean(el && (el.textContent || '').includes('500'));
+            }""",
+            timeout_ms=5000,
+        )
+        details = page.locator("#error_details").inner_text()
         assert "500" in details, f"Expected HTTP 500 diagnostic in #error_details, got: {details}"
         assert not page_errors, f"Unexpected uncaught pageerror(s): {page_errors}"
 

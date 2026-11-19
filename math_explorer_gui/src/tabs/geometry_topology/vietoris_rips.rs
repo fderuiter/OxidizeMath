@@ -96,12 +96,12 @@ impl VietorisRipsTool {
                 }
                 Err(e) => {
                     self.clear_cache();
-                    self.error_msg = Some(format!("Error building complex: {:?}", e));
+                    self.error_msg = Some(format!("Error building complex: {e}"));
                 }
             },
             Err(e) => {
                 self.clear_cache();
-                self.error_msg = Some(format!("Error building point cloud: {:?}", e));
+                self.error_msg = Some(format!("Error building point cloud: {e}"));
             }
         }
     }
@@ -132,16 +132,16 @@ impl InteractiveTool for VietorisRipsTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<VietorisRipsState>(state) {
-            self.radius = loaded.radius;
-            self.points = loaded
-                .points
-                .into_iter()
-                .map(|[x, y]| Point2D::new(x, y))
-                .collect();
-            self.update_complex();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded = serde_json::from_str::<VietorisRipsState>(state).map_err(|e| e.to_string())?;
+        self.radius = loaded.radius;
+        self.points = loaded
+            .points
+            .into_iter()
+            .map(|[x, y]| Point2D::new(x, y))
+            .collect();
+        self.update_complex();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -191,8 +191,9 @@ impl InteractiveTool for VietorisRipsTool {
                 ));
             });
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             if let Some(err) = &self.error_msg {
-                ui.colored_label(egui::Color32::RED, err);
+                ui.colored_label(palette.error, err);
             }
 
             // Plotting
@@ -203,11 +204,13 @@ impl InteractiveTool for VietorisRipsTool {
                 .allow_zoom(true);
 
             plot.show(ui, |plot_ui| {
+                let s0 = palette.series_color(0);
+                let tri_fill = egui::Color32::from_rgba_unmultiplied(s0.r(), s0.g(), s0.b(), 55);
                 // Draw 2-simplices (triangles)
                 for t in &self.cached_triangles {
                     plot_ui.polygon(
                         Polygon::new("Triangle", &t[..])
-                            .fill_color(egui::Color32::from_rgba_unmultiplied(100, 150, 250, 50))
+                            .fill_color(tri_fill)
                             .stroke(egui::Stroke::new(0.0_f32, egui::Color32::TRANSPARENT)),
                     );
                 }
@@ -216,7 +219,7 @@ impl InteractiveTool for VietorisRipsTool {
                 for e in &self.cached_edges {
                     plot_ui.line(
                         Line::new("Edge", &e[..])
-                            .color(egui::Color32::from_rgb(150, 150, 150))
+                            .color(palette.graph_edge)
                             .width(1.5_f32),
                     );
                 }
@@ -224,7 +227,7 @@ impl InteractiveTool for VietorisRipsTool {
                 // Draw 0-simplices (vertices)
                 plot_ui.points(
                     Points::new("Vertices", &self.cached_vertices[..])
-                        .color(egui::Color32::from_rgb(50, 50, 200))
+                        .color(s0)
                         .radius(4.0_f32),
                 );
             });
@@ -237,7 +240,8 @@ impl InteractiveTool for VietorisRipsTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "VietorisRipsTool",
+        id: "VietorisRipsTool",
+        display_name: "Vietoris-Rips Complex",
         domain: "geometry_topology",
         tags: &[],
         build: || Box::new(VietorisRipsTool::default()),
@@ -352,8 +356,19 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "max_distance": 2.0,
-    "num_points": 50
+    "radius": 2.8,
+    "points": [
+      [2.0, 5.0],
+      [3.0, 7.5],
+      [5.0, 8.5],
+      [7.0, 7.5],
+      [8.0, 5.0],
+      [7.0, 2.5],
+      [5.0, 1.5],
+      [3.0, 2.5],
+      [2.6, 6.2],
+      [7.4, 6.2]
+    ]
   }
 }"#;
 

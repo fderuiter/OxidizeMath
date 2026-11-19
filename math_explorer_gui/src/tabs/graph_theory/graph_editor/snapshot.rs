@@ -82,10 +82,56 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "damping": 0.85,
-    "repulsion": 50.0
+    "node_positions": {
+      "0": [300.0, 220.0],
+      "1": [200.0, 140.0],
+      "2": [400.0, 140.0],
+      "3": [400.0, 300.0],
+      "4": [200.0, 300.0]
+    },
+    "edges": [
+      [0, 1, 1.0],
+      [0, 2, 1.0],
+      [0, 3, 1.0],
+      [0, 4, 1.0],
+      [1, 2, 1.0],
+      [2, 3, 1.0],
+      [3, 4, 1.0],
+      [4, 1, 1.0]
+    ],
+    "selected_node": 0,
+    "next_node_id": 5
   }
 }"#;
+
+inventory::submit! {
+    crate::framework::ToolMetadata {
+        id: "GraphEditorTool",
+        display_name: "Graph Editor",
+        domain: "graph_theory",
+        tags: &[],
+        build: || Box::new(GraphEditorTool::default()),
+    }
+}
+
+impl scientific_metadata::theory::TheoryDescribable for GraphEditorTool {
+    fn theory_description(&self) -> String {
+        format!(
+            "Combinatorial graph structure $G = (V, E)$ with $|V| = {}$ nodes and $|E| = {}$ edges under force-directed spring-electrical embedding $F = F_{{\\text{{attr}}}} + F_{{\\text{{rep}}}}.$",
+            self.node_positions.len(),
+            self.edges.len()
+        )
+    }
+    fn phonetic_description(&self) -> String {
+        "Combinatorial graph theory and force-directed network embedding".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Graph Drawing by Force-Directed Placement (Fruchterman & Reingold, 1991)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {

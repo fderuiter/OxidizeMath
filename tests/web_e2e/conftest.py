@@ -142,9 +142,26 @@ def poll_until(
             last_error = exc
         time.sleep(interval_ms / 1000.0)
 
+    snapshot = ""
+    try:
+        dom = page.evaluate(
+            """() => ({
+                activeId: document.activeElement ? document.activeElement.id : null,
+                hasLoading: Boolean(document.getElementById('loading_indicator')),
+                errorDisplay: document.getElementById('error_container')
+                    ? window.getComputedStyle(document.getElementById('error_container')).display
+                    : null,
+                errorDetails: document.getElementById('error_details')
+                    ? document.getElementById('error_details').textContent
+                    : null,
+            })"""
+        )
+        snapshot = f" (DOM={dom})"
+    except PlaywrightError:
+        pass
     detail = f" (last transient error: {last_error})" if last_error else ""
     raise TimeoutError(
-        f"Timed out after {timeout_ms}ms waiting for predicate: {predicate_fn}{detail}"
+        f"Timed out after {timeout_ms}ms waiting for predicate: {predicate_fn}{snapshot}{detail}"
     )
 
 

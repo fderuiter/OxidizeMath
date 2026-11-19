@@ -67,14 +67,14 @@ impl InteractiveTool for TurbulenceTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<TurbulenceState>(state) {
-            self.density = loaded.density;
-            self.dynamic_viscosity = loaded.dynamic_viscosity;
-            self.velocity = loaded.velocity;
-            self.length = loaded.length;
-            self.geometry = loaded.geometry;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded = serde_json::from_str::<TurbulenceState>(state).map_err(|e| e.to_string())?;
+        self.density = loaded.density;
+        self.dynamic_viscosity = loaded.dynamic_viscosity;
+        self.velocity = loaded.velocity;
+        self.length = loaded.length;
+        self.geometry = loaded.geometry;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -151,10 +151,11 @@ impl InteractiveTool for TurbulenceTool {
             ui.heading("Results");
             ui.label(format!("Reynolds Number: {:.2}", reynolds_number));
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let (regime_text, color) = match regime {
-                FlowRegime::Laminar => ("Laminar", egui::Color32::GREEN),
-                FlowRegime::Transitional => ("Transitional", egui::Color32::YELLOW),
-                FlowRegime::Turbulent => ("Turbulent", egui::Color32::RED),
+                FlowRegime::Laminar => ("Laminar", palette.success),
+                FlowRegime::Transitional => ("Transitional", palette.warning),
+                FlowRegime::Turbulent => ("Turbulent", palette.error),
             };
             ui.colored_label(color, format!("Regime: {}", regime_text));
 
@@ -222,8 +223,11 @@ impl InteractiveTool for TurbulenceTool {
                             .collect();
 
                         // Line::new requires name as first argument in egui_plot 0.34
-                        plot_ui
-                            .line(Line::new("Streamline", points).color(egui::Color32::LIGHT_BLUE));
+                        let line_color = crate::app::SemanticPalette::from_visuals(
+                            &plot_ui.ctx().style().visuals,
+                        )
+                        .series_color(0);
+                        plot_ui.line(Line::new("Streamline", points).color(line_color));
                     }
                 });
         });
@@ -244,7 +248,8 @@ impl TurbulenceTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "TurbulenceTool",
+        id: "TurbulenceTool",
+        display_name: "Turbulence / Reynolds Analysis",
         domain: "fluid_dynamics",
         tags: &[],
         build: || Box::new(TurbulenceTool::default()),
@@ -282,8 +287,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "viscosity": 0.001,
-    "energy_dissipation": 0.1
+    "density": 1.225,
+    "dynamic_viscosity": 0.0000181,
+    "velocity": 25.0,
+    "length": 1.0,
+    "geometry": "FlatPlate"
   }
 }"#;
 

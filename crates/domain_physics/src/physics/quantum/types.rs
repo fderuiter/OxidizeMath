@@ -1,3 +1,4 @@
+// [cite:quantum_mechanics]
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
 use scientific_metadata::theory::TheoryDescribable;
@@ -49,7 +50,7 @@ impl TheoryDescribable for QuantumState {
 
     #[verified_engine::verified]
     fn theory_citation(&self) -> String {
-        "[cite:quantum_mechanics]".to_string()
+        "Griffiths, D. J., & Schroeter, D. F. (2018). Introduction to Quantum Mechanics (3rd ed.). Cambridge University Press.".to_string()
     }
 
     #[verified_engine::verified]

@@ -7,6 +7,7 @@ use crate::async_sim::ui::{
     WorkerFaultAction,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
+use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
 use egui_plot::{Callout, Line, Plot, PlotPoints, Points};
 use nalgebra::Vector3;
@@ -56,20 +57,27 @@ impl AttractorPlotter {
     fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
         ui.collapsing("Parameters", |ui| {
             if ui
-                .add(egui::Slider::new(&mut self.system.sigma, 0.0..=50.0).text("Prandtl Number (σ)"))
-                .changed()
-            {
-                self.on_slider_changed();
-            }
-            if ui
-                .add(egui::Slider::new(&mut self.system.rho, 0.0..=100.0).text("Rayleigh Number (ρ)"))
+                .add(
+                    egui::Slider::new(&mut self.system.sigma, 0.0..=50.0)
+                        .text("Prandtl Number (σ)"),
+                )
                 .changed()
             {
                 self.on_slider_changed();
             }
             if ui
                 .add(
-                    egui::Slider::new(&mut self.system.beta, 0.0..=10.0).text("Geometric Factor (β)"),
+                    egui::Slider::new(&mut self.system.rho, 0.0..=100.0)
+                        .text("Rayleigh Number (ρ)"),
+                )
+                .changed()
+            {
+                self.on_slider_changed();
+            }
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.system.beta, 0.0..=10.0)
+                        .text("Geometric Factor (β)"),
                 )
                 .changed()
             {
@@ -84,47 +92,68 @@ impl AttractorPlotter {
         ctx: &egui::Context,
         worker_faulted: bool,
     ) {
-        ui.collapsing("Simulation", |ui| {
-            ui.horizontal(|ui| {
-                let can_toggle = !worker_faulted && !self.diverged();
-                let label = if self.is_paused() || worker_faulted {
-                    "▶ Play"
+        egui::CollapsingHeader::new("Simulation")
+            .default_open(true)
+            .show(ui, |ui| {
+                let transport_state = if self.diverged() || worker_faulted {
+                    SimWorkerState::Faulted
+                } else if self.worker.state().is_stepping() {
+                    SimWorkerState::Stepping
+                } else if self.is_paused() {
+                    SimWorkerState::Ready
                 } else {
-                    "⏸ Pause"
+                    self.worker.state()
                 };
-                if ui.add_enabled(can_toggle, egui::Button::new(label)).clicked() {
-                    if self.is_paused() {
-                        let _ = self.try_resume();
-                    } else {
-                        self.execution_state = SolverExecutionState::Paused;
-                        let _ = self.worker.send_command(SimCommand::Pause);
+
+                if let Some(action) = PlaybackTransport::from_worker_state(
+                    "attractor_transport",
+                    "Attractor Plotter",
+                    transport_state,
+                )
+                .can_reset(true)
+                .show(ui)
+                {
+                    match action {
+                        PlaybackAction::Play => {
+                            let _ = self.try_resume();
+                        }
+                        PlaybackAction::Pause => {
+                            self.execution_state = SolverExecutionState::Paused;
+                            let _ = self.worker.send_command(SimCommand::Pause);
+                        }
+                        PlaybackAction::Step => {
+                            self.execution_state = SolverExecutionState::Paused;
+                            let _ = self.worker.send_command(SimCommand::Step(1));
+                        }
+                        PlaybackAction::Reset => {
+                            self.reset();
+                            ctx.request_repaint();
+                        }
                     }
                 }
-                if ui.button("↻ Reset").clicked() {
-                    self.reset();
-                    ctx.request_repaint();
+
+                if ui
+                    .add(
+                        egui::Slider::new(&mut self.simulation_speed, 1..=50)
+                            .text("Speed (steps/frame)"),
+                    )
+                    .changed()
+                {
+                    self.on_slider_changed();
+                }
+                if ui
+                    .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
+                    .changed()
+                {
+                    self.on_slider_changed();
+                }
+                if ui
+                    .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
+                    .changed()
+                {
+                    self.on_slider_changed();
                 }
             });
-
-            if ui
-                .add(egui::Slider::new(&mut self.simulation_speed, 1..=50).text("Speed (steps/frame)"))
-                .changed()
-            {
-                self.on_slider_changed();
-            }
-            if ui
-                .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
-                .changed()
-            {
-                self.on_slider_changed();
-            }
-            if ui
-                .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
-                .changed()
-            {
-                self.on_slider_changed();
-            }
-        });
     }
 
     fn apply_fault_action(&mut self, action: WorkerFaultAction, ctx: &egui::Context) {
@@ -219,6 +248,7 @@ impl AttractorPlotter {
         let c_pos = self.project(Vector3::new(x, x, z));
         let c_neg = self.project(Vector3::new(-x, -x, z));
         let visuals = plot_ui.ctx().style().visuals.clone();
+        let palette = crate::app::SemanticPalette::from_visuals(&visuals);
         let bg_fill = Color32::from_rgba_unmultiplied(
             visuals.window_fill().r(),
             visuals.window_fill().g(),
@@ -229,20 +259,20 @@ impl AttractorPlotter {
 
         let callout_pos = Callout::new(
             c_pos,
-            format!("Fixed Point C+ ({:.1}, {:.1}, {:.1})", x, x, z),
+            format!("Fixed Point C+ ({x:.1}, {x:.1}, {z:.1})"),
         )
         .offset(Vec2::new(35.0, -25.0))
-        .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(231, 76, 60)))
+        .leader_stroke(Stroke::new(1.5_f32, palette.series_color(3)))
         .frame(bg_fill, frame_stroke)
         .corner_radius(CornerRadius::same(4))
         .text_color(visuals.text_color());
 
         let callout_neg = Callout::new(
             c_neg,
-            format!("Fixed Point C- ({:.1}, {:.1}, {:.1})", -x, -x, z),
+            format!("Fixed Point C- ({:.1}, {:.1}, {z:.1})", -x, -x),
         )
         .offset(Vec2::new(-35.0, 25.0))
-        .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(155, 89, 182)))
+        .leader_stroke(Stroke::new(1.5_f32, palette.series_color(4)))
         .frame(bg_fill, frame_stroke)
         .corner_radius(CornerRadius::same(4))
         .text_color(visuals.text_color());
@@ -258,7 +288,7 @@ impl AttractorPlotter {
             if self.history.is_empty() && !self.diverged() {
                 render_empty_plot_guidance(
                     ui,
-                    "Initial Lorenz state (1, 1, 1) ready — click ▶ Play to trace the strange attractor.",
+                    "Initial Lorenz state (1, 1, 1) ready — click ▶ Play or ⏭ Step to trace the strange attractor.",
                 );
             }
 
@@ -266,18 +296,16 @@ impl AttractorPlotter {
             let initial_pt = (points.is_empty() && self.is_finite_state())
                 .then(|| self.project(self.system.state.vec));
 
+            let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
             let response = Plot::new("attractor_plot")
                 .data_aspect(1.0)
                 .show(ui, |plot_ui| {
-                    plot_ui.line(
-                        Line::new("Trajectory", PlotPoints::new(points))
-                            .color(Color32::from_rgb(100, 200, 255)),
-                    );
+                    plot_ui.line(Line::new("Trajectory", PlotPoints::new(points)).color(series0));
                     if let Some(pt) = initial_pt {
                         plot_ui.points(
                             Points::new("Initial State", vec![pt])
                                 .radius(4.0_f32)
-                                .color(Color32::from_rgb(100, 200, 255)),
+                                .color(series0),
                         );
                     }
                     self.draw_fixed_point_callouts(plot_ui);

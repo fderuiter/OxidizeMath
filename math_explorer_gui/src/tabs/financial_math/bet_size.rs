@@ -1,7 +1,7 @@
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::pure_math::statistics::kelly::{
-    expected_value, kelly_fraction, variants, UnitInterval, Odds,
+    expected_value, kelly_fraction, variants, Odds, UnitInterval,
 };
 
 #[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -47,12 +47,17 @@ struct BetSizeState {
 }
 
 impl InteractiveTool for BetSizeCalculatorTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Bet Size Calculator"
     }
     fn domain(&self) -> &'static str {
         "financial_math"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -68,16 +73,17 @@ impl InteractiveTool for BetSizeCalculatorTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<BetSizeState>(state) {
-            self.probability_input = s.probability_input;
-            self.odds_format = s.odds_format;
-            self.decimal_odds = s.decimal_odds;
-            self.american_odds = s.american_odds;
-            self.fractional_numerator = s.fractional_numerator;
-            self.fractional_denominator = s.fractional_denominator;
-            self.bankroll = s.bankroll;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: BetSizeState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid BetSizeCalculatorTool state: {e}"))?;
+        self.probability_input = s.probability_input;
+        self.odds_format = s.odds_format;
+        self.decimal_odds = s.decimal_odds;
+        self.american_odds = s.american_odds;
+        self.fractional_numerator = s.fractional_numerator;
+        self.fractional_denominator = s.fractional_denominator;
+        self.bankroll = s.bankroll;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -175,13 +181,14 @@ impl InteractiveTool for BetSizeCalculatorTool {
             }
         };
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         match (prob_result, odds_result) {
             (Ok(prob), Ok(odds)) => {
                 let ev = expected_value(&prob, &odds);
                 ui.label(format!("Expected Value (per $1 staked): ${:.3}", ev));
 
                 if ev > 0.0 {
-                    ui.label(egui::RichText::new("Positive Edge!").color(egui::Color32::GREEN));
+                    ui.label(egui::RichText::new("Positive Edge!").color(palette.success));
 
                     match kelly_fraction(&prob, &odds) {
                         Ok(full_kelly) => {
@@ -234,26 +241,26 @@ impl InteractiveTool for BetSizeCalculatorTool {
                         Err(e) => {
                             ui.label(
                                 egui::RichText::new(format!("Error calculating Kelly: {}", e))
-                                    .color(egui::Color32::RED),
+                                    .color(palette.error),
                             );
                         }
                     }
                 } else {
                     ui.label(
                         egui::RichText::new("No Edge (Negative or Zero EV). Do not bet.")
-                            .color(egui::Color32::RED),
+                            .color(palette.error),
                     );
                 }
             }
             (Err(e), _) => {
                 ui.label(
                     egui::RichText::new(format!("Invalid Probability: {}", e))
-                        .color(egui::Color32::RED),
+                        .color(palette.error),
                 );
             }
             (_, Err(e)) => {
                 ui.label(
-                    egui::RichText::new(format!("Invalid Odds: {}", e)).color(egui::Color32::RED),
+                    egui::RichText::new(format!("Invalid Odds: {}", e)).color(palette.error),
                 );
             }
         }
@@ -262,10 +269,10 @@ impl InteractiveTool for BetSizeCalculatorTool {
 
 // [cite:modular_polynomials_review]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "BetSizeCalculatorTool",
+        id: "BetSizeCalculatorTool",
+        display_name: "Bet Size Calculator",
         domain: "financial_math",
         tags: &[],
         build: || Box::new(BetSizeCalculatorTool::default()),
@@ -279,9 +286,15 @@ impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
             self.probability_input, self.decimal_odds
         )
     }
-    fn phonetic_description(&self) -> String { "Kelly criterion optimal bet sizing theory".into() }
-    fn theory_citation(&self) -> String { "A New Interpretation of Information Rate (Kelly, 1956)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Kelly criterion optimal bet sizing theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "A New Interpretation of Information Rate (Kelly, 1956)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{
@@ -292,8 +305,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "win_probability": 0.55,
-    "payout_ratio": 1.0
+    "probability_input": 60.0,
+    "odds_format": "Decimal",
+    "decimal_odds": 2.0,
+    "american_odds": 100.0,
+    "fractional_numerator": 1.0,
+    "fractional_denominator": 1.0,
+    "bankroll": 2500.0
   }
 }"#;
 

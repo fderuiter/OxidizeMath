@@ -205,3 +205,266 @@ fn test_canvas_draw_resolves_dynamic_theme_colors() {
     assert_ne!(dark_weight_color, light_weight_color);
 }
 
+fn dispatch_key(tool: &mut GraphEditorTool, key: egui::Key, modifiers: egui::Modifiers) {
+    let ctx = egui::Context::default();
+    let viewport = egui::vec2(400.0, 300.0);
+    let raw = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, viewport)),
+        ..Default::default()
+    };
+    let _ = ctx.run(raw, |ctx| {
+        egui::Area::new(egui::Id::new("test_graph_canvas"))
+            .fixed_pos(Pos2::ZERO)
+            .show(ctx, |ui| {
+                let (response, _painter) =
+                    ui.allocate_painter(viewport, egui::Sense::click_and_drag());
+                let mut keys_down = std::collections::HashSet::new();
+                keys_down.insert(key);
+                let interaction_ctx = crate::framework::InteractionContext {
+                    pointer_pos: None,
+                    delta: egui::Vec2::ZERO,
+                    is_dragging: false,
+                    is_clicked: false,
+                    response: &response,
+                    input_mode: crate::framework::InputMode::Mouse,
+                    multi_touch: None,
+                    keys_down,
+                    modifiers,
+                };
+                tool.on_keyboard(&interaction_ctx);
+            });
+    });
+}
+
+fn last_announcement() -> Option<String> {
+    crate::accessibility::all_announcements()
+        .pop()
+        .map(|(msg, _)| msg)
+}
+
+#[test]
+fn test_keyboard_node_creation_and_offset_announcements() {
+    crate::accessibility::clear_test_announcements();
+    let mut tool = GraphEditorTool::default();
+
+    dispatch_key(&mut tool, egui::Key::N, egui::Modifiers::NONE);
+    assert_eq!(tool.node_positions.len(), 1);
+    assert_eq!(tool.selected_node, Some(0));
+    assert_eq!(tool.node_positions.get(&0), Some(&Pos2::new(200.0, 150.0)));
+    assert_eq!(
+        last_announcement().as_deref(),
+        Some("Added node 0 at (200.0, 150.0)")
+    );
+
+    dispatch_key(&mut tool, egui::Key::Enter, egui::Modifiers::NONE);
+    assert_eq!(tool.node_positions.len(), 2);
+    assert_eq!(tool.selected_node, Some(1));
+    assert_eq!(tool.node_positions.get(&1), Some(&Pos2::new(230.0, 180.0)));
+    assert_eq!(
+        last_announcement().as_deref(),
+        Some("Added node 1 at (230.0, 180.0)")
+    );
+}
+
+#[test]
+fn test_keyboard_selection_traversal_forward_and_reverse() {
+    let mut tool = GraphEditorTool::default();
+    dispatch_key(&mut tool, egui::Key::N, egui::Modifiers::NONE);
+    dispatch_key(&mut tool, egui::Key::N, egui::Modifiers::NONE);
+    dispatch_key(&mut tool, egui::Key::N, egui::Modifiers::NONE);
+    tool.selected_node = None;
+    crate::accessibility::clear_test_announcements();
+
+    dispatch_key(&mut tool, egui::Key::Tab, egui::Modifiers::NONE);
+    assert_eq!(tool.selected_node, Some(0));
+    assert_eq!(last_announcement().as_deref(), Some("Selected node 0"));
+
+    dispatch_key(&mut tool, egui::Key::OpenBracket, egui::Modifiers::NONE);
+    assert_eq!(tool.selected_node, Some(1));
+    assert_eq!(last_announcement().as_deref(), Some("Selected node 1"));
+
+    dispatch_key(&mut tool, egui::Key::Tab, egui::Modifiers::NONE);
+    assert_eq!(tool.selected_node, Some(2));
+    dispatch_key(&mut tool, egui::Key::Tab, egui::Modifiers::NONE);
+    assert_eq!(tool.selected_node, Some(0));
+
+    dispatch_key(&mut tool, egui::Key::Tab, egui::Modifiers::SHIFT);
+    assert_eq!(tool.selected_node, Some(2));
+    assert_eq!(last_announcement().as_deref(), Some("Selected node 2"));
+
+    dispatch_key(&mut tool, egui::Key::CloseBracket, egui::Modifiers::NONE);
+    assert_eq!(tool.selected_node, Some(1));
+    assert_eq!(last_announcement().as_deref(), Some("Selected node 1"));
+}
+
+#[test]
+fn test_keyboard_arrow_translation_normal_and_shift_steps() {
+    let mut tool = GraphEditorTool::default();
+    dispatch_key(&mut tool, egui::Key::N, egui::Modifiers::NONE);
+    crate::accessibility::clear_test_announcements();
+
+    dispatch_key(&mut tool, egui::Key::ArrowRight, egui::Modifiers::NONE);
+    assert_eq!(tool.node_positions.get(&0), Some(&Pos2::new(210.0, 150.0)));
+    assert_eq!(
+        last_announcement().as_deref(),
+        Some("Moved node 0 to (210.0, 150.0)")
+    );
+
+    dispatch_key(&mut tool, egui::Key::ArrowDown, egui::Modifiers::SHIFT);
+    assert_eq!(tool.node_positions.get(&0), Some(&Pos2::new(210.0, 200.0)));
+    assert_eq!(
+        last_announcement().as_deref(),
+        Some("Moved node 0 to (210.0, 200.0)")
+    );
+
+    dispatch_key(&mut tool, egui::Key::ArrowLeft, egui::Modifiers::NONE);
+    dispatch_key(&mut tool, egui::Key::ArrowUp, egui::Modifiers::SHIFT);
+    assert_eq!(tool.node_positions.get(&0), Some(&Pos2::new(200.0, 150.0)));
+    let idx0 = *tool.node_indices.get(&0).expect("node 0 index");
+    assert_eq!(
+        tool.graph.graph.node_weight(idx0),
+        Some(&Pos2::new(200.0, 150.0))
+    );
+}
+
+#[test]
+fn test_keyboard_edge_connection_duplicate_and_self_loop() {
+    let mut tool = GraphEditorTool::default();
+    dispatch_key(&mut tool, egui::Key::N, egui::Modifiers::NONE);
+    crate::accessibility::clear_test_announcements();
+
+    // Single-node graph must prevent self-loop without adding an undo snapshot
+    let undo_before = tool.undo_stack.len();
+    dispatch_key(&mut tool, egui::Key::E, egui::Modifiers::NONE);
+    assert!(tool.edges.is_empty());
+    assert_eq!(tool.undo_stack.len(), undo_before);
+    assert_eq!(
+        last_announcement().as_deref(),
+        Some("Cannot create self-loop on node 0")
+    );
+
+    // Add second node, select node 0, and connect 0 -> 1
+    dispatch_key(&mut tool, egui::Key::N, egui::Modifiers::NONE);
+    dispatch_key(&mut tool, egui::Key::Tab, egui::Modifiers::NONE);
+    assert_eq!(tool.selected_node, Some(0));
+    crate::accessibility::clear_test_announcements();
+
+    dispatch_key(&mut tool, egui::Key::E, egui::Modifiers::NONE);
+    assert_eq!(tool.edges.len(), 1);
+    assert_eq!(tool.edges[0], (0, 1, 1.0));
+    assert_eq!(
+        last_announcement().as_deref(),
+        Some("Connected node 0 to node 1")
+    );
+
+    // Pressing E again must prevent duplicate edge and announce duplicate status
+    let undo_after_connect = tool.undo_stack.len();
+    dispatch_key(&mut tool, egui::Key::E, egui::Modifiers::NONE);
+    assert_eq!(tool.edges.len(), 1);
+    assert_eq!(tool.undo_stack.len(), undo_after_connect);
+    assert!(last_announcement()
+        .unwrap_or_default()
+        .contains("Duplicate edge"));
+
+    // Reverse direction (1 -> 0) on undirected graph is also rejected as duplicate
+    dispatch_key(&mut tool, egui::Key::Tab, egui::Modifiers::NONE);
+    dispatch_key(&mut tool, egui::Key::E, egui::Modifiers::NONE);
+    assert_eq!(tool.edges.len(), 1);
+}
+
+#[test]
+fn test_keyboard_empty_graph_and_undo_redo_shortcuts() {
+    crate::accessibility::clear_test_announcements();
+    let mut tool = GraphEditorTool::default();
+
+    dispatch_key(&mut tool, egui::Key::Tab, egui::Modifiers::NONE);
+    dispatch_key(&mut tool, egui::Key::Tab, egui::Modifiers::SHIFT);
+    dispatch_key(&mut tool, egui::Key::ArrowUp, egui::Modifiers::NONE);
+    assert!(tool.selected_node.is_none());
+    assert!(!tool.can_undo());
+
+    dispatch_key(&mut tool, egui::Key::E, egui::Modifiers::NONE);
+    assert_eq!(
+        last_announcement().as_deref(),
+        Some("No node selected to connect")
+    );
+
+    // Create 2 nodes and an edge, then verify Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z
+    dispatch_key(&mut tool, egui::Key::N, egui::Modifiers::NONE);
+    dispatch_key(&mut tool, egui::Key::N, egui::Modifiers::NONE);
+    dispatch_key(&mut tool, egui::Key::E, egui::Modifiers::NONE);
+    assert_eq!(tool.edges.len(), 1);
+
+    dispatch_key(&mut tool, egui::Key::Z, egui::Modifiers::CTRL);
+    assert!(tool.edges.is_empty());
+
+    dispatch_key(&mut tool, egui::Key::Y, egui::Modifiers::CTRL);
+    assert_eq!(tool.edges.len(), 1);
+
+    dispatch_key(&mut tool, egui::Key::Z, egui::Modifiers::CTRL);
+    dispatch_key(
+        &mut tool,
+        egui::Key::Z,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(tool.edges.len(), 1);
+}
+
+fn run_tool_frame(ctx: &egui::Context, tool: &mut GraphEditorTool, events: Vec<egui::Event>) {
+    let rect = egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0));
+    let raw = egui::RawInput {
+        screen_rect: Some(rect),
+        events,
+        ..Default::default()
+    };
+    let _ = ctx.run(raw, |ctx| tool.show(ctx));
+}
+
+#[test]
+fn test_focused_canvas_prevents_held_key_repeat_and_locks_tab() {
+    let ctx = egui::Context::default();
+    let mut tool = GraphEditorTool::default();
+
+    run_tool_frame(&ctx, &mut tool, Vec::new());
+
+    let click_pos = Pos2::new(500.0, 300.0);
+    run_tool_frame(
+        &ctx,
+        &mut tool,
+        vec![
+            egui::Event::PointerMoved(click_pos),
+            egui::Event::PointerButton {
+                pos: click_pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerButton {
+                pos: click_pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+    );
+    assert!(ctx.memory(|m| m.focused().is_some()));
+
+    run_tool_frame(
+        &ctx,
+        &mut tool,
+        vec![egui::Event::Key {
+            key: egui::Key::N,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    );
+    let count_after_press = tool.node_positions.len();
+
+    // N remains held down with no new Event::Key -> must NOT insert duplicate node
+    run_tool_frame(&ctx, &mut tool, Vec::new());
+    assert_eq!(tool.node_positions.len(), count_after_press);
+}
+
+

@@ -76,7 +76,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             );
         }
 
-        let color = egui::Color32::from_rgb(100, 200, 255);
+        let color = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
         let initial_pt = (points.len() == 1).then(|| points[0]);
         let line = Line::new(M::name(), PlotPoints::from_iter(points)).color(color);
 

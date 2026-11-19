@@ -70,12 +70,17 @@ struct SampleSizeState {
 }
 
 impl InteractiveTool for SampleSizeCalculatorTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Sample Size Calculator"
     }
     fn domain(&self) -> &'static str {
         "clinical_trials"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -91,17 +96,18 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<SampleSizeState>(state) {
-            self.mode = s.mode;
-            self.alpha = s.alpha;
-            self.power = s.power;
-            self.delta = s.delta;
-            self.sigma = s.sigma;
-            self.p1 = s.p1;
-            self.p2 = s.p2;
-            self.recalculate();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: SampleSizeState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SampleSizeCalculatorTool state: {e}"))?;
+        self.mode = s.mode;
+        self.alpha = s.alpha;
+        self.power = s.power;
+        self.delta = s.delta;
+        self.sigma = s.sigma;
+        self.p1 = s.p1;
+        self.p2 = s.p2;
+        self.recalculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -144,12 +150,20 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             ui.group(|ui| {
                 ui.heading("Statistical Parameters");
                 egui::Grid::new("common_params_grid").show(ui, |ui| {
-                    changed |= ui.add(egui::Slider::new(&mut self.alpha, 0.001..=0.20).text("Type I Error Rate (α): - Alpha"))
+                    changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.alpha, 0.001..=0.20)
+                                .text("Type I Error Rate (α): - Alpha"),
+                        )
                         .accessible_hover_text("Significance level (e.g., 0.05 for 5%)")
                         .changed();
                     ui.end_row();
 
-                    changed |= ui.add(egui::Slider::new(&mut self.power, 0.5..=0.999).text("Statistical Power (1-β): - Power"))
+                    changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.power, 0.5..=0.999)
+                                .text("Statistical Power (1-β): - Power"),
+                        )
                         .accessible_hover_text(
                             "Probability of detecting an effect if it exists (e.g., 0.80)",
                         )
@@ -165,12 +179,20 @@ impl InteractiveTool for SampleSizeCalculatorTool {
                 CalculationMode::Means => {
                     ui.heading("Means Parameters");
                     egui::Grid::new("means_params_grid").show(ui, |ui| {
-                        changed |= ui.add(egui::Slider::new(&mut self.delta, 0.01..=5.0).text("Effect Size (δ): - Delta"))
+                        changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.delta, 0.01..=5.0)
+                                    .text("Effect Size (δ): - Delta"),
+                            )
                             .accessible_hover_text("Minimum difference to detect between groups")
                             .changed();
                         ui.end_row();
 
-                        changed |= ui.add(egui::Slider::new(&mut self.sigma, 0.1..=10.0).text("Standard Deviation (σ): - Sigma"))
+                        changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.sigma, 0.1..=10.0)
+                                    .text("Standard Deviation (σ): - Sigma"),
+                            )
                             .accessible_hover_text("Assumed standard deviation of the population")
                             .changed();
                         ui.end_row();
@@ -179,12 +201,20 @@ impl InteractiveTool for SampleSizeCalculatorTool {
                 CalculationMode::Proportions => {
                     ui.heading("Proportions Parameters");
                     egui::Grid::new("props_params_grid").show(ui, |ui| {
-                        changed |= ui.add(egui::Slider::new(&mut self.p1, 0.01..=0.99).text("Group 1 Proportion (p1): - p1"))
+                        changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.p1, 0.01..=0.99)
+                                    .text("Group 1 Proportion (p1): - p1"),
+                            )
                             .accessible_hover_text("Expected proportion in Control group")
                             .changed();
                         ui.end_row();
 
-                        changed |= ui.add(egui::Slider::new(&mut self.p2, 0.01..=0.99).text("Group 2 Proportion (p2): - p2"))
+                        changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.p2, 0.01..=0.99)
+                                    .text("Group 2 Proportion (p2): - p2"),
+                            )
                             .accessible_hover_text("Expected proportion in Treatment group")
                             .changed();
                         ui.end_row();
@@ -203,6 +233,7 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             // Results Display
             match &self.result {
                 Ok(n) => {
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new("Required Sample Size per Group:")
@@ -212,14 +243,15 @@ impl InteractiveTool for SampleSizeCalculatorTool {
                         ui.label(
                             egui::RichText::new(n.to_string())
                                 .size(24.0)
-                                .color(egui::Color32::GREEN)
+                                .color(palette.success)
                                 .strong(),
                         );
                     });
                     ui.label(format!("Total participants needed: {}", n * 2));
                 }
                 Err(e) => {
-                    ui.colored_label(egui::Color32::RED, format!("Error: {}", e));
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                    ui.colored_label(palette.error, format!("Error: {}", e));
                 }
             }
         });
@@ -228,10 +260,10 @@ impl InteractiveTool for SampleSizeCalculatorTool {
 
 // [cite:clinical_trials_statistics]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "SampleSizeCalculatorTool",
+        id: "SampleSizeCalculatorTool",
+        display_name: "Sample Size Calculator",
         domain: "clinical_trials",
         tags: &[],
         build: || Box::new(SampleSizeCalculatorTool::default()),
@@ -251,12 +283,22 @@ impl scientific_metadata::theory::TheoryDescribable for SampleSizeCalculatorTool
             ),
         }
     }
-    fn phonetic_description(&self) -> String { "Clinical trial sample size and statistical power theory".into() }
-    fn theory_citation(&self) -> String { "Sample Size Calculations in Clinical Research (Chow et al., 2017)".into() }
+    fn phonetic_description(&self) -> String {
+        "Clinical trial sample size and statistical power theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Sample Size Calculations in Clinical Research (Chow et al., 2017)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Means".into(), "Normal approximation for difference between two independent continuous means".into());
-        map.insert("Proportions".into(), "Normal approximation with pooled variance for binary outcome proportions".into());
+        map.insert(
+            "Means".into(),
+            "Normal approximation for difference between two independent continuous means".into(),
+        );
+        map.insert(
+            "Proportions".into(),
+            "Normal approximation with pooled variance for binary outcome proportions".into(),
+        );
         map
     }
 }
@@ -269,9 +311,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
+    "mode": "Means",
     "alpha": 0.05,
-    "power": 0.8,
-    "effect_size": 0.5
+    "power": 0.85,
+    "delta": 0.5,
+    "sigma": 1.0,
+    "p1": 0.5,
+    "p2": 0.65
   }
 }"#;
 

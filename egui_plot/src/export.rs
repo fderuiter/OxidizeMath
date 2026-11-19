@@ -185,7 +185,7 @@ pub fn split_line(line: &str, delimiter: char) -> Vec<String> {
 /// Auto-detects delimiters and headers, converts rows into numerical `[f64; 2]` pairs,
 /// and skips invalid rows or non-numeric values.
 pub fn parse_csv(content: &str) -> Vec<ImportedDataset> {
-    let lines: Vec<&str> = content
+    let lines: Vec<&str> = strip_utf8_bom(content)
         .lines()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty() && !s.starts_with('#'))
@@ -314,78 +314,15 @@ pub fn parse_csv(content: &str) -> Vec<ImportedDataset> {
         .collect()
 }
 
-type PendingImport = (egui::Id, Vec<ImportedDataset>);
+pub use crate::file_io::{
+    drain_import_status, drain_imported_datasets, infer_mime_type, sanitize_download_filename,
+    save_file_dialog, strip_utf8_bom, trigger_import_csv, trigger_import_csv_for_plot,
+};
 
-static PENDING_IMPORTS: std::sync::Mutex<
-    Option<(
-        std::sync::mpsc::Sender<PendingImport>,
-        std::sync::mpsc::Receiver<PendingImport>,
-    )>,
-> = std::sync::Mutex::new(None);
-
-/// Drain any asynchronously imported datasets for the given plot ID.
-pub fn drain_imported_datasets(plot_id: egui::Id) -> Vec<ImportedDataset> {
-    let mut datasets = Vec::new();
-    if let Ok(guard) = PENDING_IMPORTS.lock()
-        && let Some((_, rx)) = guard.as_ref()
-    {
-        while let Ok((id, ds_list)) = rx.try_recv() {
-            if id == plot_id || id == egui::Id::NULL {
-                datasets.extend(ds_list);
-            }
-        }
-    }
-    datasets
-}
-
-/// Trigger cross-platform CSV dataset file import dialog asynchronously.
-pub fn trigger_import_csv(sender: std::sync::mpsc::Sender<Vec<ImportedDataset>>) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::thread::spawn(move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("CSV / TSV File", &["csv", "tsv", "txt"])
-                .pick_file()
-                && let Ok(content) = std::fs::read_to_string(path)
-            {
-                let datasets = parse_csv(&content);
-                if !datasets.is_empty() {
-                    let _ = sender.send(datasets);
-                }
-            }
-        });
-    }
-}
-
-/// Trigger CSV file import specifically for a target plot ID.
-pub fn trigger_import_csv_for_plot(ctx: &egui::Context, plot_id: egui::Id) {
-    let ctx_clone = ctx.clone();
-    let tx = {
-        let mut guard = PENDING_IMPORTS.lock().unwrap();
-        if guard.is_none() {
-            let (tx, rx) = std::sync::mpsc::channel();
-            *guard = Some((tx, rx));
-        }
-        guard.as_ref().unwrap().0.clone()
-    };
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::thread::spawn(move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("CSV / TSV File", &["csv", "tsv", "txt"])
-                .pick_file()
-                && let Ok(content) = std::fs::read_to_string(path)
-            {
-                let datasets = parse_csv(&content);
-                if !datasets.is_empty() {
-                    let _ = tx.send((plot_id, datasets));
-                    ctx_clone.request_repaint();
-                }
-            }
-        });
-    }
-}
+#[cfg(target_arch = "wasm32")]
+pub use crate::file_io::{
+    PickerOutcome, download_browser_file, open_browser_file_picker, request_browser_repaint,
+};
 
 /// Helper function to sanitize a CSV field value under RFC 4180 and mitigate formula injection (CWE-1236).
 ///
@@ -1308,71 +1245,6 @@ pub fn color32_image_to_png(image: &egui::ColorImage) -> Result<Vec<u8>, String>
 
 /// Type alias representing a single exported frame's dataset series.
 pub type ExportFrame = DatasetFrame;
-
-/// Trigger cross-platform file saving dialog or browser download action.
-pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _filter_ext: &[&str]) {
-    #[cfg(test)]
-    {
-        let _ = (filename, content, _filter_name, _filter_ext);
-    }
-
-    #[cfg(all(not(test), not(target_arch = "wasm32")))]
-    {
-        if std::env::var_os("CI").is_some() || std::env::var_os("RUST_TEST_THREADS").is_some() {
-            return;
-        }
-
-        let builder = rfd::FileDialog::new()
-            .set_file_name(filename)
-            .add_filter(_filter_name, _filter_ext);
-        if let Some(path) = builder.save_file() {
-            let _ = std::fs::write(path, content);
-        }
-    }
-
-    #[cfg(all(not(test), target_arch = "wasm32"))]
-    {
-        use wasm_bindgen::JsCast as _;
-        use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
-
-        let mime_type = if filename.ends_with(".csv") {
-            "text/csv"
-        } else if filename.ends_with(".json") {
-            "application/json"
-        } else if filename.ends_with(".png") {
-            "image/png"
-        } else if filename.ends_with(".svg") {
-            "image/svg+xml"
-        } else if filename.ends_with(".gif") {
-            "image/gif"
-        } else {
-            "application/octet-stream"
-        };
-
-        if let Some(window) = web_sys::window() {
-            if let Some(document) = window.document() {
-                let uint8_array = js_sys::Uint8Array::from(content);
-                let array = js_sys::Array::new();
-                array.push(&uint8_array);
-                let blob_props = BlobPropertyBag::new();
-                blob_props.set_type(mime_type);
-                if let Ok(blob) = Blob::new_with_u8_array_sequence_and_options(&array, &blob_props)
-                {
-                    if let Ok(url) = Url::create_object_url_with_blob(&blob) {
-                        if let Ok(element) = document.create_element("a") {
-                            if let Ok(anchor) = element.dyn_into::<HtmlAnchorElement>() {
-                                anchor.set_href(&url);
-                                anchor.set_download(filename);
-                                anchor.click();
-                                let _ = Url::revoke_object_url(&url);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

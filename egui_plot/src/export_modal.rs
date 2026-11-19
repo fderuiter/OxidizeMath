@@ -105,6 +105,19 @@ pub struct ExportModalConfig<'a> {
     pub gif_filename: &'a str,
 }
 
+/// Action triggered by clicking one of the export buttons inside [`show_export_modal`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExportModalAction {
+    /// Save high-resolution PNG figure to disk.
+    SavePng,
+    /// Save vector SVG figure to disk.
+    SaveSvg,
+    /// Save multi-frame animated GIF to disk.
+    SaveGif,
+    /// Copy high-resolution PNG figure to the system clipboard.
+    CopyClipboard,
+}
+
 /// Provider interface supplying plot datasets and sampled GIF frames on demand.
 pub trait ExportDataSource {
     /// Collect current 2D plot datasets for static PNG, SVG, or clipboard export.
@@ -112,6 +125,21 @@ pub trait ExportDataSource {
 
     /// Sample multi-frame datasets for animated GIF export.
     fn sample_gif_frames(&mut self, num_frames: usize) -> Vec<DatasetFrame>;
+
+    /// Returns `(enabled, disabled_hover_reason)` for figure export buttons.
+    fn figure_capability(&self) -> (bool, &'static str) {
+        (true, "")
+    }
+
+    /// Optional status label color override (defaults to `Color32::GREEN` when `None`).
+    fn status_color(&self) -> Option<egui::Color32> {
+        None
+    }
+
+    /// Optional hook to intercept modal button clicks (e.g. to queue deferred end-of-frame exports).
+    fn intercept_action(&mut self, _action: ExportModalAction) -> bool {
+        false
+    }
 }
 
 /// Closure-backed [`ExportDataSource`] pairing a dataset provider and a frame sampler.
@@ -289,7 +317,19 @@ fn render_dimension_and_status(
     ui: &mut egui::Ui,
     options: &ExportOptions,
     status_message: &Option<String>,
+    status_color: Option<egui::Color32>,
 ) {
+    let (warn_color, ok_color) = if ui.visuals().dark_mode {
+        (
+            egui::Color32::from_rgb(245, 194, 66),
+            egui::Color32::from_rgb(74, 214, 122),
+        )
+    } else {
+        (
+            egui::Color32::from_rgb(146, 84, 0),
+            egui::Color32::from_rgb(15, 115, 54),
+        )
+    };
     let (calc_w, calc_h) = calculate_target_dimensions(options);
     if exceeds_max_dimension(calc_w, calc_h) {
         ui.label(
@@ -297,14 +337,14 @@ fn render_dimension_and_status(
                 "⚠️ Capped at max dimension {}x{} px",
                 MAX_EXPORT_DIMENSION, MAX_EXPORT_DIMENSION
             ))
-            .color(egui::Color32::YELLOW),
+            .color(warn_color),
         );
     } else {
         ui.label(format!("Target Canvas Size: {} x {} px", calc_w, calc_h));
     }
 
     if let Some(msg) = status_message {
-        ui.label(egui::RichText::new(msg).color(egui::Color32::GREEN));
+        ui.label(egui::RichText::new(msg).color(status_color.unwrap_or(ok_color)));
     }
 }
 
@@ -400,6 +440,14 @@ fn handle_copy_clipboard(
     }
 }
 
+fn modal_fig_button(ui: &mut egui::Ui, enabled: bool, label: &str, disabled_reason: &str) -> bool {
+    let mut resp = ui.add_enabled(enabled, egui::Button::new(label));
+    if !disabled_reason.is_empty() {
+        resp = resp.on_disabled_hover_text(disabled_reason);
+    }
+    resp.clicked()
+}
+
 fn render_action_buttons(
     ui: &mut egui::Ui,
     bindings: &mut ExportModalBindings<'_>,
@@ -407,8 +455,11 @@ fn render_action_buttons(
     source: &mut impl ExportDataSource,
 ) -> bool {
     let mut close_requested = false;
+    let (enabled, reason) = source.figure_capability();
     ui.horizontal(|ui| {
-        if ui.button("💾 Save PNG").clicked() {
+        if modal_fig_button(ui, enabled, "💾 Save PNG", reason)
+            && !source.intercept_action(ExportModalAction::SavePng)
+        {
             handle_save_png(
                 bindings.options,
                 config.png_filename,
@@ -416,7 +467,9 @@ fn render_action_buttons(
                 bindings.status_message,
             );
         }
-        if ui.button("💾 Save SVG").clicked() {
+        if modal_fig_button(ui, enabled, "💾 Save SVG", reason)
+            && !source.intercept_action(ExportModalAction::SaveSvg)
+        {
             handle_save_svg(
                 bindings.options,
                 config.svg_filename,
@@ -424,7 +477,9 @@ fn render_action_buttons(
                 bindings.status_message,
             );
         }
-        if ui.button("🎬 Save GIF").clicked() {
+        if modal_fig_button(ui, enabled, "🎬 Save GIF", reason)
+            && !source.intercept_action(ExportModalAction::SaveGif)
+        {
             handle_save_gif(
                 bindings.options,
                 *bindings.gif_fps,
@@ -434,7 +489,9 @@ fn render_action_buttons(
                 bindings.status_message,
             );
         }
-        if ui.button("📋 Copy to Clipboard").clicked() {
+        if modal_fig_button(ui, enabled, "📋 Copy to Clipboard", reason)
+            && !source.intercept_action(ExportModalAction::CopyClipboard)
+        {
             handle_copy_clipboard(
                 ui.ctx(),
                 config.id,
@@ -462,6 +519,7 @@ pub fn show_export_modal(
         return;
     }
 
+    let status_color = source.status_color();
     let mut modal_open = *bindings.open;
     let mut close_requested = false;
     egui::Window::new(config.window_title)
@@ -475,7 +533,12 @@ pub fn show_export_modal(
             ui.separator();
             render_modal_settings(ui, config.id, &mut bindings);
             ui.separator();
-            render_dimension_and_status(ui, bindings.options, bindings.status_message);
+            render_dimension_and_status(
+                ui,
+                bindings.options,
+                bindings.status_message,
+                status_color,
+            );
             ui.separator();
             close_requested = render_action_buttons(ui, &mut bindings, config, source);
         });

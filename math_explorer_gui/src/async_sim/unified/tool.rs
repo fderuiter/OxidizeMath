@@ -1,11 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{UnifiedModel, UnifiedSimRunner};
-use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::InteractiveTool;
-use eframe::egui;
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
+use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
+use eframe::egui::{self, ColorImage};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -14,15 +13,16 @@ use std::sync::{Arc, RwLock};
 pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) controller: BackgroundWorker<UnifiedSimRunner<M>>,
     pub(crate) params: Arc<RwLock<HashMap<String, f64>>>,
-    param_metadata: Vec<(String, ParameterConstraint)>,
+    pub(super) param_metadata: Vec<(String, ParameterConstraint)>,
     steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(super) dirty: bool,
+    stepped_snapshot: Option<StateSnapshot>,
     cached_theory_desc: String,
     cached_phonetic: String,
     cached_citation: String,
-    cached_descs: HashMap<String, String>,
-    sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(super) cached_descs: HashMap<String, String>,
+    pub(super) sensitivity_engine: crate::sensitivity::SensitivityEngine,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -41,7 +41,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         let mut initial_params = HashMap::new();
         for (name, constraint) in &param_metadata {
-            initial_params.insert(name.clone(), (constraint.min + constraint.max) / 2.0);
+            let default_val = M::parameter_choices(name)
+                .first()
+                .map_or((constraint.min + constraint.max) / 2.0, |&(_, v)| v);
+            initial_params.insert(name.clone(), default_val);
         }
 
         let params = Arc::new(RwLock::new(initial_params.clone()));
@@ -56,6 +59,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             steps_per_frame: 5,
             texture: None,
             dirty: true,
+            stepped_snapshot: None,
             cached_theory_desc: temp_model.theory_description(),
             cached_phonetic: temp_model.phonetic_description(),
             cached_citation: temp_model.theory_citation(),
@@ -70,7 +74,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.controller.state()
     }
 
-    fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
+    pub(super) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
+        self.stepped_snapshot = None;
         let params = Arc::clone(&self.params);
         self.controller
             .reset_or_respawn(|| UnifiedSimRunner::<M>::new(params));
@@ -102,7 +107,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 for (name, c) in &self.param_metadata {
                     if let Some(v) = p.get_mut(name) {
                         *v = if !v.is_finite() {
-                            (c.min + c.max) / 2.0
+                            M::parameter_choices(name)
+                                .first()
+                                .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice)
                         } else {
                             v.clamp(c.min, c.max)
                         };
@@ -118,7 +125,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                         "viscosity" => 0.02,
                         "dt" => 0.05,
                         "potential_type" => 0.0,
-                        _ => (c.min + c.max) / 2.0,
+                        _ => M::parameter_choices(name)
+                            .first()
+                            .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice),
                     };
                     p.insert(name.clone(), d);
                 }
@@ -127,107 +136,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 let _ = self.controller.send_command(SimCommand::Start);
             }
         }
-    }
-
-    fn draw_presets_and_actions(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
-        let mut reset_needed = false;
-        let presets = M::presets();
-        if !presets.is_empty() {
-            let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
-            ui.horizontal(|ui| {
-                ui.label("Presets:");
-                for (name, preset_params) in presets {
-                    if ui.button(name).clicked() {
-                        for (k, v) in &preset_params {
-                            params_lock.insert(k.clone(), *v);
-                        }
-                        reset_needed = true;
-                    }
-                }
-            });
-            drop(params_lock);
-            ui.separator();
-        }
-
-        let custom_actions = M::custom_actions();
-        if !custom_actions.is_empty() {
-            ui.horizontal(|ui| {
-                ui.label("Actions:");
-                for action in custom_actions {
-                    if ui.button(action).clicked()
-                        && self
-                            .controller
-                            .send_command(SimCommand::Custom(action.to_string()))
-                            .is_ok()
-                    {
-                        ctx.request_repaint();
-                    }
-                }
-            });
-            ui.separator();
-        }
-        reset_needed
-    }
-
-    fn draw_model_parameters(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.separator();
-        ui.label("Model Parameters");
-
-        let reset_needed = self.draw_presets_and_actions(ui, ctx);
-        let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
-
-        for (name, constraint) in &self.param_metadata {
-            if let Some(val) = params_lock.get_mut(name) {
-                let slider = egui::Slider::new(val, constraint.min..=constraint.max)
-                    .step_by(constraint.step)
-                    .text(name);
-                let mut resp = ui.add(slider);
-                if let Some(desc) = self.cached_descs.get(name) {
-                    resp = resp.accessible_hover_text(desc);
-                }
-            }
-        }
-
-        drop(params_lock);
-        self.draw_observable_sensitivity(ui);
-        if reset_needed {
-            self.reset_simulation(Some(ctx));
-        }
-    }
-
-    fn draw_observable_sensitivity(&mut self, ui: &mut egui::Ui) {
-        let observable_setup = {
-            let current_params = self.params.read().unwrap_or_else(|e| e.into_inner());
-            M::evaluate_observable(&current_params).map(|(metric_label, baseline_val)| {
-                let param_list: Vec<(String, f64)> = self
-                    .param_metadata
-                    .iter()
-                    .filter_map(|(name, _)| current_params.get(name).map(|v| (name.clone(), *v)))
-                    .collect();
-                (metric_label, baseline_val, param_list)
-            })
-        };
-
-        let Some((metric_label, baseline_val, param_list)) = observable_setup else {
-            return;
-        };
-
-        self.sensitivity_engine.baseline_output = baseline_val;
-        let mut initial_sample = Some(baseline_val);
-        self.sensitivity_engine.compute(&param_list, |p_map| {
-            initial_sample.take().unwrap_or_else(|| {
-                M::evaluate_observable(p_map)
-                    .map(|(_, val)| val)
-                    .unwrap_or(0.0)
-            })
-        });
-
-        crate::sensitivity::render_labeled_sensitivity_panel_ui(
-            ui,
-            &self.sensitivity_engine,
-            M::name(),
-            metric_label,
-        );
     }
 
     fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -246,53 +154,41 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.separator();
         }
 
+        let state = self.controller.state();
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.horizontal(|ui| {
             ui.label("Status:");
             let (status_text, color) = match state {
-                SimWorkerState::Uninitialized => ("Uninitialized", egui::Color32::GRAY),
-                SimWorkerState::Ready => ("Ready", egui::Color32::from_rgb(80, 200, 120)),
-                SimWorkerState::Running => ("Running", egui::Color32::from_rgb(60, 160, 240)),
-                SimWorkerState::Stepping => ("Stepping", egui::Color32::from_rgb(240, 200, 60)),
-                SimWorkerState::Faulted => ("Faulted", egui::Color32::RED),
-                SimWorkerState::Terminated => ("Terminated", egui::Color32::DARK_GRAY),
+                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
+                SimWorkerState::Ready => ("Ready", palette.success),
+                SimWorkerState::Running => ("Running", palette.info),
+                SimWorkerState::Stepping => ("Stepping", palette.warning),
+                SimWorkerState::Faulted => ("Faulted", palette.error),
+                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
             };
             ui.colored_label(color, status_text);
         });
         ui.separator();
 
-        let state = self.controller.state();
-        let run_pause_enabled = matches!(state, SimWorkerState::Ready | SimWorkerState::Running);
-        let button_text = if state.is_running() {
-            "⏸ Pause"
-        } else {
-            "▶ Run"
-        };
-        let tooltip_text = match state {
-            SimWorkerState::Running => "Pause simulation",
-            SimWorkerState::Ready => "Start simulation",
-            SimWorkerState::Faulted => "Worker thread faulted. Click Reset to restore simulation.",
-            _ => "Simulation worker unavailable",
-        };
-
-        if ui
-            .add_enabled(run_pause_enabled, egui::Button::new(button_text))
-            .accessible_hover_text(tooltip_text)
-            .clicked()
+        if let Some(action) =
+            PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
+                .can_reset(true)
+                .show(ui)
         {
-            let cmd = if state.is_running() {
-                SimCommand::Pause
-            } else {
-                SimCommand::Start
-            };
-            let _ = self.controller.send_command(cmd);
-        }
-
-        if ui
-            .button("↻ Reset")
-            .accessible_hover_text("Reset simulation state")
-            .clicked()
-        {
-            self.reset_simulation(Some(ctx));
+            match action {
+                PlaybackAction::Play => {
+                    let _ = self.controller.send_command(SimCommand::Start);
+                }
+                PlaybackAction::Pause => {
+                    let _ = self.controller.send_command(SimCommand::Pause);
+                }
+                PlaybackAction::Step => {
+                    let _ = self.controller.send_command(SimCommand::Step(1));
+                }
+                PlaybackAction::Reset => {
+                    self.reset_simulation(Some(ctx));
+                }
+            }
         }
     }
 
@@ -330,6 +226,39 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         M::domain()
     }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        if M::is_raster_model() {
+            crate::framework::ExportCapabilities::raster_only()
+        } else {
+            crate::framework::ExportCapabilities::plot()
+        }
+    }
+
+    fn export_raster_image(&self) -> Option<ColorImage> {
+        let snapshot = self
+            .stepped_snapshot
+            .as_ref()
+            .or_else(|| self.controller.latest_snapshot())?;
+        let guard = snapshot.pixels.try_read().ok()?;
+        if guard.is_empty() || snapshot.width == 0 || snapshot.height == 0 {
+            return None;
+        }
+        Some(ColorImage::new(
+            [snapshot.width, snapshot.height],
+            guard.clone(),
+        ))
+    }
+
+    fn step_simulation(&mut self) {
+        if let Ok(params) = self.params.read() {
+            let mut model = M::new(&params);
+            for _ in 0..self.steps_per_frame.max(1) {
+                model.step(&params);
+            }
+            self.stepped_snapshot = Some(model.get_snapshot());
+        }
+    }
+
     fn save_state(&self) -> Option<String> {
         let params = self
             .params
@@ -339,11 +268,42 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         serde_json::to_string(&params).ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(params) = serde_json::from_str::<HashMap<String, f64>>(state) {
-            *self.params.write().unwrap_or_else(|e| e.into_inner()) = params;
-            self.reset_simulation(None);
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let params: HashMap<String, f64> = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
+        if !self.param_metadata.is_empty() && params.is_empty() {
+            return Err(format!(
+                "Empty parameter configuration for {}; expected parameters: {}",
+                M::name(),
+                self.param_metadata
+                    .iter()
+                    .map(|m| m.0.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
+        for (key, value) in &params {
+            if !self.param_metadata.iter().any(|meta| &meta.0 == key) {
+                return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
+            }
+            if !value.is_finite() {
+                return Err(format!(
+                    "Non-finite value for parameter '{}' in {}",
+                    key,
+                    M::name()
+                ));
+            }
+        }
+        let mut guard = self
+            .params
+            .write()
+            .map_err(|_| format!("Failed to acquire parameter lock for {}", M::name()))?;
+        for (key, value) in params {
+            guard.insert(key, value);
+        }
+        drop(guard);
+        self.reset_simulation(None);
+        Ok(())
     }
 
     fn clamp_parameters(&mut self) -> bool {
@@ -357,12 +317,17 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     fn show(&mut self, ctx: &egui::Context) {
         let has_update = self.controller.update().is_some();
         if has_update {
+            self.stepped_snapshot = None;
             self.dirty = true;
         }
-        if has_update || self.controller.state().is_running() {
+        if has_update
+            || matches!(
+                self.controller.state(),
+                SimWorkerState::Running | SimWorkerState::Stepping
+            )
+        {
             ctx.request_repaint();
         }
-
         self.draw_left_panel(ctx);
         self.draw_central_panel(ctx);
     }

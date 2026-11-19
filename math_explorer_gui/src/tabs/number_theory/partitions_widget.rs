@@ -4,7 +4,7 @@ use eframe::egui;
 use egui_plot::{Bar, BarChart, Plot};
 use math_explorer::pure_math::number_theory::partitions;
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum PartitionFunctionType {
     PStar,
     M,
@@ -16,6 +16,13 @@ enum PartitionFunctionType {
     FK,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PartitionsWidgetState {
+    precision: usize,
+    selected_function: PartitionFunctionType,
+    f_k_val: usize,
+}
+
 pub struct PartitionsWidget {
     precision: usize,
     selected_function: PartitionFunctionType,
@@ -25,12 +32,14 @@ pub struct PartitionsWidget {
 
 impl Default for PartitionsWidget {
     fn default() -> Self {
-        Self {
+        let mut widget = Self {
             precision: 20,
             selected_function: PartitionFunctionType::PStar,
             f_k_val: 1,
             coeffs: Vec::new(),
-        }
+        };
+        widget.calculate();
+        widget
     }
 }
 
@@ -52,9 +61,36 @@ impl PartitionsWidget {
 }
 
 impl InteractiveTool for PartitionsWidget {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Partition Function"
+    }
+    fn domain(&self) -> &'static str {
+        "number_theory"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&PartitionsWidgetState {
+            precision: self.precision,
+            selected_function: self.selected_function,
+            f_k_val: self.f_k_val,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: PartitionsWidgetState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid PartitionsWidget state: {e}"))?;
+        if s.precision == 0 || s.f_k_val == 0 {
+            return Err("precision and f_k_val must be positive in PartitionsWidget".to_string());
+        }
+        self.precision = s.precision;
+        self.selected_function = s.selected_function;
+        self.f_k_val = s.f_k_val;
+        self.calculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -184,10 +220,10 @@ impl InteractiveTool for PartitionsWidget {
 
 // [cite:partitions_implementation]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "PartitionsWidget",
+        id: "PartitionsWidget",
+        display_name: "Partition Function",
         domain: "number_theory",
         tags: &[],
         build: || Box::new(PartitionsWidget::default()),
@@ -201,12 +237,22 @@ impl scientific_metadata::theory::TheoryDescribable for PartitionsWidget {
             self.precision
         )
     }
-    fn phonetic_description(&self) -> String { "Integer partition functions and Eisenstein series theory".into() }
-    fn theory_citation(&self) -> String { "On Eisenstein series, color partition and divisor function (Pushpa & Vasuki, 2022); The Theory of Partitions (Andrews, 1976)".into() }
+    fn phonetic_description(&self) -> String {
+        "Integer partition functions and Eisenstein series theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "On Eisenstein series, color partition and divisor function (Pushpa & Vasuki, 2022); The Theory of Partitions (Andrews, 1976)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("PStar".into(), "Unrestricted partition counting function generating series".into());
-        map.insert("Eisenstein".into(), "Modular forms and divisor sum Eisenstein series components".into());
+        map.insert(
+            "PStar".into(),
+            "Unrestricted partition counting function generating series".into(),
+        );
+        map.insert(
+            "Eisenstein".into(),
+            "Modular forms and divisor sum Eisenstein series components".into(),
+        );
         map
     }
 }
@@ -219,7 +265,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "target_integer": 25
+    "precision": 25,
+    "selected_function": "PStar",
+    "f_k_val": 1
   }
 }"#;
 

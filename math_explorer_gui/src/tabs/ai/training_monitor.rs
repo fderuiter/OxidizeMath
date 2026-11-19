@@ -1,7 +1,5 @@
-use crate::accessibility::AccessibleHoverText;
-use crate::framework::InteractiveTool;
+use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
-use egui::Color32;
 use egui_plot::{Line, Plot, Points};
 use math_explorer::ai::deep_learning_theory::cycle::TrainingLoop;
 use math_explorer::ai::deep_learning_theory::linear_algebra::Vector;
@@ -11,19 +9,11 @@ use std::f64::consts::PI;
 
 pub struct TrainingMonitorTool {
     training_loop: TrainingLoop<TwoLayerMLP>,
-
-    // Dataset: (x, y_true)
     data: Vec<(Vector, Vector)>,
-
-    // UI State
     is_training: bool,
     epoch: usize,
-
-    // Hyperparameters
     learning_rate: f64,
     hidden_dim: usize,
-
-    // Metrics History
     loss_history: Vec<[f64; 2]>,
     accuracy_history: Vec<[f64; 2]>,
 }
@@ -32,21 +22,15 @@ impl Default for TrainingMonitorTool {
     fn default() -> Self {
         let hidden_dim = 16;
         let learning_rate = 0.01;
-
-        // Fallback to SGD if Adam fails (though it shouldn't for f64 constants).
         let optimizer: Box<dyn math_explorer::ai::optimization::Optimizer<f64>> =
             match Adam::new(learning_rate) {
                 Ok(adam) => Box::new(adam),
                 Err(_) => Box::new(math_explorer::ai::optimization::SGD::new(learning_rate)),
             };
 
-        let training_loop = TrainingLoop::new(2, hidden_dim, 2, optimizer);
-
-        let data = generate_spiral_data(100);
-
         Self {
-            training_loop,
-            data,
+            training_loop: TrainingLoop::new(2, hidden_dim, 2, optimizer),
+            data: generate_spiral_data(100),
             is_training: false,
             epoch: 0,
             learning_rate,
@@ -79,17 +63,19 @@ impl TrainingMonitorTool {
         self.reinit_model();
     }
 
+    pub(crate) fn step_once(&mut self) {
+        self.is_training = false;
+        self.step();
+    }
+
     fn step(&mut self) {
         let mut epoch_loss = 0.0;
         let mut correct = 0;
 
-        // Simple Full Batch (or online for simplicity)
-        // Here we do online updates (SGD style loop) over the dataset
         for (x, y_true) in &self.data {
             let loss = self.training_loop.train_step(x, y_true).unwrap_or(0.0);
             epoch_loss += loss;
 
-            // Check accuracy
             let y_pred = self.training_loop.predict(x);
             if argmax(&y_pred) == argmax(y_true) {
                 correct += 1;
@@ -103,65 +89,45 @@ impl TrainingMonitorTool {
         self.accuracy_history.push([self.epoch as f64, accuracy]);
         self.epoch += 1;
     }
-}
 
-impl InteractiveTool for TrainingMonitorTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
-    fn name(&self) -> &'static str {
-        "Training Monitor"
-    }
-
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        // Run training step if active
-        if self.is_training {
-            self.step();
-            // Request repaint for smooth animation
-            ctx.request_repaint();
-        }
-
+    fn draw_controls(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("training_monitor_controls").show(ctx, |ui| {
             ui.heading("Controls");
             ui.separator();
 
-            let training_btn = ui.button(if self.is_training {
-                "⏹ Stop Training"
-            } else {
-                "▶ Start Training"
-            });
-
-            if training_btn
-                .accessible_hover_text(if self.is_training {
-                    "Stop the continuous training loop"
-                } else {
-                    "Start the continuous training loop"
-                })
-                .clicked()
+            if let Some(action) = PlaybackTransport::in_thread(
+                "training_monitor_transport",
+                "Training Monitor",
+                self.is_training,
+            )
+            .play_label("▶ Train")
+            .step_label("⏭ Step Epoch")
+            .show(ui)
             {
-                self.is_training = !self.is_training;
-            }
-
-            if ui
-                .button("↻ Reset to Defaults")
-                .accessible_hover_text("Re-initialize neural network weights and reset hyperparameters to default values")
-                .clicked()
-            {
-                self.reset();
+                match action {
+                    PlaybackAction::Play => self.is_training = true,
+                    PlaybackAction::Pause => self.is_training = false,
+                    PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::Reset => self.reset(),
+                }
             }
 
             ui.separator();
             ui.heading("Hyperparameters");
 
-            if ui.add(egui::Slider::new(&mut self.learning_rate, 0.001..=0.1).logarithmic(true).text("Learning Rate"))
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.learning_rate, 0.001..=0.1)
+                        .logarithmic(true)
+                        .text("Learning Rate"),
+                )
                 .changed()
             {
-                // Ideally, update optimizer LR immediately, but for simplicity we apply on reset
-                // or we could expose set_lr on the optimizer trait if needed.
-                // For this demo, let's just hint that reset is needed or update on reset.
                 ui.label("Note: Requires Reset to apply effectively");
             }
 
-            if ui.add(egui::Slider::new(&mut self.hidden_dim, 2..=64).text("Hidden Neurons"))
+            if ui
+                .add(egui::Slider::new(&mut self.hidden_dim, 2..=64).text("Hidden Neurons"))
                 .changed()
             {
                 self.reinit_model();
@@ -176,9 +142,10 @@ impl InteractiveTool for TrainingMonitorTool {
                 ui.label(format!("Accuracy: {:.1}%", last_acc[1] * 100.0));
             }
         });
+    }
 
+    fn draw_plots(&self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Top: Metrics
             ui.columns(2, |columns| {
                 columns[0].heading("Loss History");
                 Plot::new("loss_plot")
@@ -187,89 +154,124 @@ impl InteractiveTool for TrainingMonitorTool {
                         plot_ui.line(Line::new("Loss", self.loss_history.clone()));
                     });
 
+                let palette = crate::app::SemanticPalette::from_visuals(columns[1].visuals());
                 columns[1].heading("Accuracy History");
                 Plot::new("accuracy_plot")
                     .height(200.0)
                     .show(&mut columns[1], |plot_ui| {
                         plot_ui.line(
                             Line::new("Accuracy", self.accuracy_history.clone())
-                                .color(Color32::GREEN),
+                                .color(palette.success),
                         );
                     });
             });
 
             ui.separator();
 
-            // Bottom: Data Visualization
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.heading("Decision Boundary Visualization");
             Plot::new("data_plot").data_aspect(1.0).show(ui, |plot_ui| {
-                // Draw actual data points
                 let mut class_0_points = Vec::new();
                 let mut class_1_points = Vec::new();
 
                 for (x, y) in &self.data {
                     let point = [x[0], x[1]];
                     if y[0] > 0.5 {
-                        // Class 0
                         class_0_points.push(point);
                     } else {
-                        // Class 1
                         class_1_points.push(point);
                     }
                 }
 
                 plot_ui.points(
                     Points::new("Class 0", class_0_points)
-                        .color(Color32::RED)
+                        .color(palette.axis_x)
                         .radius(4.0_f32),
                 );
                 plot_ui.points(
                     Points::new("Class 1", class_1_points)
-                        .color(Color32::BLUE)
+                        .color(palette.axis_z)
                         .radius(4.0_f32),
                 );
-
-                // Optionally draw prediction grid (expensive, maybe skip for now or low res)
-                // If we want to show decision boundary, we can sample a grid.
             });
         });
     }
 }
 
-/// Generates a 2D spiral dataset for classification.
-/// Returns a vector of (Input, Target) pairs.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TrainingMonitorState {
+    learning_rate: f64,
+    hidden_dim: usize,
+}
+
+impl InteractiveTool for TrainingMonitorTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+    fn name(&self) -> &'static str {
+        "Training Monitor"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&TrainingMonitorState {
+            learning_rate: self.learning_rate,
+            hidden_dim: self.hidden_dim,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: TrainingMonitorState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid TrainingMonitorTool state: {e}"))?;
+        if !s.learning_rate.is_finite() || s.learning_rate <= 0.0 || s.hidden_dim == 0 {
+            return Err("Invalid learning_rate or hidden_dim in TrainingMonitorTool".to_string());
+        }
+        self.learning_rate = s.learning_rate;
+        self.hidden_dim = s.hidden_dim;
+        self.reinit_model();
+        Ok(())
+    }
+
+    fn show(&mut self, ctx: &egui::Context) {
+        if self.is_training {
+            self.step();
+            ctx.request_repaint();
+        }
+        self.draw_controls(ctx);
+        self.draw_plots(ctx);
+    }
+}
+
 fn generate_spiral_data(points_per_class: usize) -> Vec<(Vector, Vector)> {
     let mut data = Vec::new();
-    let n = points_per_class; // Points per class
+    let n = points_per_class;
 
     for class_idx in 0..2 {
         for i in 0..n {
-            let r = i as f64 / n as f64; // Radius
-            let t = 2.5 * r * 2.0 * PI + (class_idx as f64 * PI); // Angle
+            let r = i as f64 / n as f64;
+            let t = 2.5 * r * 2.0 * PI + (class_idx as f64 * PI);
 
             // allow(entropy_guard)
-            let x = r * t.sin() + rand::random::<f64>() * 0.1; // Add noise
+            let x = r * t.sin() + rand::random::<f64>() * 0.1;
             // allow(entropy_guard)
             let y = r * t.cos() + rand::random::<f64>() * 0.1;
 
             let input = Vector::from_vec(vec![x, y]);
-
-            // One-hot encoding
             let target = if class_idx == 0 {
                 Vector::from_vec(vec![1.0, 0.0])
             } else {
                 Vector::from_vec(vec![0.0, 1.0])
             };
-
             data.push((input, target));
         }
     }
 
-    // Shuffle data (simple shuffle)
     use rand::seq::SliceRandom;
     let mut rng = oxidize_core::rng::OxidizeRng::default();
     data.shuffle(&mut rng);
-
     data
 }
 
@@ -287,10 +289,10 @@ fn argmax(v: &Vector) -> usize {
 
 // [cite:graph_parameters_rust]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "TrainingMonitorTool",
+        id: "TrainingMonitorTool",
+        display_name: "Training Monitor",
         domain: "ai",
         tags: &[],
         build: || Box::new(TrainingMonitorTool::default()),
@@ -304,9 +306,15 @@ impl scientific_metadata::theory::TheoryDescribable for TrainingMonitorTool {
             self.hidden_dim, self.learning_rate
         )
     }
-    fn phonetic_description(&self) -> String { "Neural network training monitor and optimization theory".into() }
-    fn theory_citation(&self) -> String { "Adam: A Method for Stochastic Optimization (Kingma & Ba, 2014); Deep Learning (Goodfellow et al., 2016)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Neural network training monitor and optimization theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Adam: A Method for Stochastic Optimization (Kingma & Ba, 2014); Deep Learning (Goodfellow et al., 2016)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 #[cfg(test)]
@@ -314,7 +322,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_training_monitor_reset() {
+    fn test_training_monitor_reset_and_step_once() {
         let mut tool = TrainingMonitorTool {
             learning_rate: 0.05,
             hidden_dim: 32,
@@ -333,6 +341,11 @@ mod tests {
         assert!(!tool.is_training);
         assert!(tool.loss_history.is_empty());
         assert!(tool.accuracy_history.is_empty());
+
+        tool.step_once();
+        assert!(!tool.is_training);
+        assert_eq!(tool.epoch, 1);
+        assert_eq!(tool.loss_history.len(), 1);
     }
 }
 
@@ -344,8 +357,8 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "max_epochs": 50,
-    "batch_size": 32
+    "learning_rate": 0.02,
+    "hidden_dim": 32
   }
 }"#;
 

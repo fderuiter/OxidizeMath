@@ -4,27 +4,7 @@ use math_explorer::ai::transformer::{Decoder, Encoder, Transformer};
 use nalgebra::DMatrix;
 use scientific_metadata::theory::TheoryDescribable;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ThemeContrastMode {
-    Dark,
-    Light,
-    HighContrast,
-}
-
-impl ThemeContrastMode {
-    pub fn from_visuals(visuals: &egui::Visuals) -> Self {
-        if visuals.dark_mode
-            && visuals.extreme_bg_color == egui::Color32::BLACK
-            && visuals.selection.bg_fill == egui::Color32::from_rgb(0, 90, 158)
-        {
-            ThemeContrastMode::HighContrast
-        } else if visuals.dark_mode {
-            ThemeContrastMode::Dark
-        } else {
-            ThemeContrastMode::Light
-        }
-    }
-}
+pub use crate::app::ThemeMode as ThemeContrastMode;
 
 #[inline(always)]
 fn scale_channel_255(v: f64) -> u8 {
@@ -225,12 +205,14 @@ impl HeatmapTexture {
             );
         }
 
-        let current_theme = ThemeContrastMode::from_visuals(&ui.ctx().style().visuals);
-        let border_stroke = match current_theme {
-            ThemeContrastMode::HighContrast => egui::Stroke::new(2.0_f32, egui::Color32::WHITE),
-            ThemeContrastMode::Dark => egui::Stroke::new(1.0_f32, egui::Color32::from_gray(70)),
-            ThemeContrastMode::Light => egui::Stroke::new(1.0_f32, egui::Color32::from_gray(180)),
+        let current_theme = ThemeContrastMode::from_visuals(ui.visuals());
+        let palette = current_theme.palette();
+        let border_width = if current_theme == ThemeContrastMode::HighContrast {
+            2.0_f32
+        } else {
+            1.0_f32
         };
+        let border_stroke = egui::Stroke::new(border_width, palette.graph_edge);
         ui.painter()
             .rect_stroke(rect, 0.0_f32, border_stroke, egui::StrokeKind::Middle);
 
@@ -264,10 +246,10 @@ impl HeatmapTexture {
         let cell_max = egui::pos2(cell_min.x + cell_w, cell_min.y + cell_h);
         let cell_rect = egui::Rect::from_min_max(cell_min, cell_max);
 
+        let palette = current_theme.palette();
         let hover_stroke = match current_theme {
-            ThemeContrastMode::HighContrast => egui::Stroke::new(2.0_f32, egui::Color32::YELLOW),
-            ThemeContrastMode::Dark => egui::Stroke::new(1.5_f32, egui::Color32::WHITE),
-            ThemeContrastMode::Light => egui::Stroke::new(1.5_f32, egui::Color32::BLACK),
+            ThemeContrastMode::HighContrast => egui::Stroke::new(2.0_f32, palette.accent),
+            _ => egui::Stroke::new(1.5_f32, palette.node_stroke),
         };
         ui.painter()
             .rect_stroke(cell_rect, 0.0_f32, hover_stroke, egui::StrokeKind::Middle);
@@ -378,6 +360,17 @@ impl InteractiveTool for AttentionMapsTool {
     fn name(&self) -> &'static str {
         "Attention Maps"
     }
+    fn domain(&self) -> &'static str { "ai" }
+    fn save_state(&self) -> Option<String> { self.serialize_state() }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> { self.deserialize_state(state) }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::raster_only()
+    }
+
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        preset::render_attention_raster(&self.attention_weights, &self.output_matrix)
+    }
 
     fn show(&mut self, ctx: &egui::Context) {
         let input_mode = ctx.data(|d| {
@@ -472,15 +465,16 @@ impl TheoryDescribable for AttentionMapsTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "AttentionMapsTool",
+        id: "AttentionMapsTool",
+        display_name: "Attention Maps",
         domain: "ai",
         tags: &[],
         build: || Box::new(AttentionMapsTool::default()),
     }
 }
 
+#[path = "attention_maps/preset.rs"]
+mod preset;
 #[cfg(test)]
 #[path = "attention_maps/tests.rs"]
 mod tests;
-#[path = "attention_maps/preset.rs"]
-mod preset;

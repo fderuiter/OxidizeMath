@@ -119,13 +119,18 @@ impl NetworkMetricsTool {
 }
 
 impl InteractiveTool for NetworkMetricsTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Network Metrics"
     }
 
     fn domain(&self) -> &'static str {
         "graph_theory"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -135,11 +140,12 @@ impl InteractiveTool for NetworkMetricsTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<NetworkMetricsState>(state) {
-            self.selected_metric = loaded.selected_metric;
-            self.compute_metrics();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded =
+            serde_json::from_str::<NetworkMetricsState>(state).map_err(|e| e.to_string())?;
+        self.selected_metric = loaded.selected_metric;
+        self.compute_metrics();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -192,13 +198,14 @@ impl InteractiveTool for NetworkMetricsTool {
             );
 
             // Draw edges
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             for &(u, v, _) in &self.edges {
                 if let (Some(&pos_u), Some(&pos_v)) =
                     (self.node_positions.get(&u), self.node_positions.get(&v))
                 {
                     let screen_pos_u = to_screen.transform_pos(pos_u);
                     let screen_pos_v = to_screen.transform_pos(pos_v);
-                    painter.line_segment([screen_pos_u, screen_pos_v], (2.0, egui::Color32::GRAY));
+                    painter.line_segment([screen_pos_u, screen_pos_v], (2.0, palette.graph_edge));
                 }
             }
 
@@ -220,27 +227,29 @@ impl InteractiveTool for NetworkMetricsTool {
                 let screen_pos = to_screen.transform_pos(pos);
                 let val = self.metric_values.get(&id).copied().unwrap_or(0.0);
 
-                // Color mapping: light blue (low) to red (high)
+                // Color mapping: low metric (blue) to high metric (red)
                 let t = if range > 0.0 {
                     ((val - min_val) / range) as f32
                 } else {
                     0.5
                 };
 
-                let r = (173.0 + t * (255.0 - 173.0)) as u8;
-                let g = (216.0 - t * 216.0) as u8;
-                let b = (230.0 - t * 230.0) as u8;
+                let low = palette.axis_z;
+                let high = palette.axis_x;
+                let lerp = |a: u8, b: u8| {
+                    (f32::from(a) + (f32::from(b) - f32::from(a)) * t.clamp(0.0, 1.0)).round() as u8
+                };
+                let fill_color =
+                    egui::Color32::from_rgb(lerp(low.r(), high.r()), lerp(low.g(), high.g()), lerp(low.b(), high.b()));
 
-                let fill_color = egui::Color32::from_rgb(r, g, b);
-
-                painter.circle(screen_pos, 20.0, fill_color, (1.0, egui::Color32::WHITE));
+                painter.circle(screen_pos, 20.0, fill_color, (1.0, palette.node_stroke));
 
                 painter.text(
                     screen_pos,
                     egui::Align2::CENTER_CENTER,
                     format!("{:.2}", val),
                     egui::FontId::proportional(12.0),
-                    egui::Color32::BLACK,
+                    crate::app::contrasting_text_color(fill_color),
                 );
             }
         });
@@ -249,10 +258,10 @@ impl InteractiveTool for NetworkMetricsTool {
 
 // [cite:graph_parameters_rust]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "NetworkMetricsTool",
+        id: "NetworkMetricsTool",
+        display_name: "Network Metrics",
         domain: "graph_theory",
         tags: &[],
         build: || Box::new(NetworkMetricsTool::default()),
@@ -263,21 +272,38 @@ impl scientific_metadata::theory::TheoryDescribable for NetworkMetricsTool {
     fn theory_description(&self) -> String {
         let metric_str = match self.selected_metric {
             MetricType::DegreeCentrality => "degree centrality $C_D(v) = \\frac{\\deg(v)}{|V|-1}$",
-            MetricType::ClosenessCentrality => "closeness centrality $C_C(v) = \\frac{|V|-1}{\\sum_{u \\neq v} d(v, u)}$",
-            MetricType::ClusteringCoefficient => "Watts-Strogatz local clustering coefficient $C_v = \\frac{2 e_v}{k_v(k_v-1)}$",
+            MetricType::ClosenessCentrality => {
+                "closeness centrality $C_C(v) = \\frac{|V|-1}{\\sum_{u \\neq v} d(v, u)}$"
+            }
+            MetricType::ClusteringCoefficient => {
+                "Watts-Strogatz local clustering coefficient $C_v = \\frac{2 e_v}{k_v(k_v-1)}$"
+            }
         };
         format!(
             "Complex network topological parameter analysis computing {}.",
             metric_str
         )
     }
-    fn phonetic_description(&self) -> String { "Network metrics and graph centrality theory".into() }
-    fn theory_citation(&self) -> String { "Collective Dynamics of 'Small-World' Networks (Watts & Strogatz, 1998); Networks (Newman, 2010)".into() }
+    fn phonetic_description(&self) -> String {
+        "Network metrics and graph centrality theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Collective Dynamics of 'Small-World' Networks (Watts & Strogatz, 1998); Networks (Newman, 2010)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("DegreeCentrality".into(), "Normalized count of incident edges per vertex".into());
-        map.insert("ClosenessCentrality".into(), "Reciprocal of average geodesic distance to all reachable vertices".into());
-        map.insert("ClusteringCoefficient".into(), "Fraction of neighbor pairs that are mutually connected".into());
+        map.insert(
+            "DegreeCentrality".into(),
+            "Normalized count of incident edges per vertex".into(),
+        );
+        map.insert(
+            "ClosenessCentrality".into(),
+            "Reciprocal of average geodesic distance to all reachable vertices".into(),
+        );
+        map.insert(
+            "ClusteringCoefficient".into(),
+            "Fraction of neighbor pairs that are mutually connected".into(),
+        );
         map
     }
 }
@@ -290,8 +316,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "num_nodes": 20,
-    "edge_probability": 0.2
+    "selected_metric": "ClosenessCentrality"
   }
 }"#;
 

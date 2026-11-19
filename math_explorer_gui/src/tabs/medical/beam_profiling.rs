@@ -41,11 +41,12 @@ impl InteractiveTool for BeamProfilingTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<BeamProfilingState>(state) {
-            self.incident_fluence = loaded.incident_fluence;
-            self.mu = loaded.mu;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded =
+            serde_json::from_str::<BeamProfilingState>(state).map_err(|e| e.to_string())?;
+        self.incident_fluence = loaded.incident_fluence;
+        self.mu = loaded.mu;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -92,7 +93,8 @@ impl InteractiveTool for BeamProfilingTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "BeamProfilingTool",
+        id: "BeamProfilingTool",
+        display_name: "Beam Profiling",
         domain: "medical",
         tags: &[],
         build: || Box::new(BeamProfilingTool::default()),
@@ -116,8 +118,8 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "field_width_cm": 10.0,
-    "energy_mev": 6.0
+    "incident_fluence": 150.0,
+    "mu": 0.06
   }
 }"#;
 

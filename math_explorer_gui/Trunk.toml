@@ -10,4 +10,13 @@ wasm-opt = "z"
 wasm_opt = "version_123"
 
 [serve]
+no_autoreload = true
 headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp", "Content-Security-Policy" = "default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' blob:;" }
+
+[[hooks]]
+stage = "post_build"
+command = "bash"
+command_arguments = [
+    "-c",
+    "if [ -f ../scripts/finalize_web_dist.sh ]; then bash ../scripts/finalize_web_dist.sh \"$TRUNK_STAGING_DIR\"; else bash scripts/finalize_web_dist.sh \"$TRUNK_STAGING_DIR\"; fi"
+]
