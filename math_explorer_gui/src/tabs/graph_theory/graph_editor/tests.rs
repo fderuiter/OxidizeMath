@@ -467,4 +467,34 @@ fn test_focused_canvas_prevents_held_key_repeat_and_locks_tab() {
     assert_eq!(tool.node_positions.len(), count_after_press);
 }
 
+#[test]
+fn test_try_load_state_equality_and_single_fire_toolbar_shortcuts() {
+    let ctx = egui::Context::default();
+    let mut tool = GraphEditorTool::default();
+    let rect = egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0));
+    tool.insert_node_from_keyboard(rect);
+    tool.insert_node_from_keyboard(rect);
+    let count_before = tool.node_positions.len();
+    let saved = tool.save_state().unwrap();
+    tool.try_load_state(&saved).unwrap();
+    assert!(tool.can_undo());
+
+    let mods = if cfg!(target_os = "macos") {
+        egui::Modifiers::MAC_CMD
+    } else {
+        egui::Modifiers::CTRL
+    };
+    let z_evt = egui::Event::Key {
+        key: egui::Key::Z,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: mods,
+    };
+    run_tool_frame(&ctx, &mut tool, vec![z_evt]);
+    assert_eq!(tool.node_positions.len(), count_before - 1);
+    assert!(tool.import_preset_json(snapshot::STARTER_PRESET_JSON).is_ok());
+    assert!(!tool.can_undo() && !tool.can_redo());
+}
+
 

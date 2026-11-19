@@ -219,9 +219,9 @@ impl MathExplorerApp {
         domain_bar::select_pane_tab(self, ctx, pane_idx, tab_idx);
     }
 
-    /// Restores the previous application state from the undo history stack.
+    /// Restores the previous application state from the focused tool or undo history stack.
     pub fn undo(&mut self) {
-        if !self.session_manager.can_undo() {
+        if self.try_focused_pane_undo() || !self.session_manager.can_undo() {
             return;
         }
         if let Some(prev) = self.session_manager.pop_undo() {
@@ -232,9 +232,9 @@ impl MathExplorerApp {
         }
     }
 
-    /// Re-applies an undone application state from the redo history stack.
+    /// Re-applies an undone application state from the focused tool or redo history stack.
     pub fn redo(&mut self) {
-        if !self.session_manager.can_redo() {
+        if self.try_focused_pane_redo() || !self.session_manager.can_redo() {
             return;
         }
         if let Some(next) = self.session_manager.pop_redo() {

@@ -91,6 +91,42 @@ impl GraphEditorTool {
             && self.edges.iter().all(|&(_, _, w)| w.is_finite())
     }
 
+    pub(crate) fn matches_serialized_state(&self, loaded: &SerializedGraphState) -> bool {
+        self.next_node_id == loaded.next_node_id
+            && self.selected_node == loaded.selected_node
+            && self.edges == loaded.edges
+            && self.node_positions.len() == loaded.node_positions.len()
+            && self.node_positions.iter().all(|(&id, &pos)| {
+                loaded
+                    .node_positions
+                    .get(&id)
+                    .is_some_and(|&(x, y)| pos.x == x && pos.y == y)
+            })
+    }
+
+    pub(crate) fn load_serialized_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded: SerializedGraphState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid graph state: {e}"))?;
+        loaded.validate()?;
+        if self.matches_serialized_state(&loaded) {
+            return Ok(());
+        }
+        self.node_positions = loaded
+            .node_positions
+            .into_iter()
+            .map(|(id, (x, y))| (id, Pos2::new(x, y)))
+            .collect();
+        self.edges = loaded.edges;
+        self.selected_node = loaded.selected_node;
+        self.next_node_id = loaded.next_node_id;
+        self.dragged_node = None;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.bump_revision();
+        self.rebuild_graph();
+        Ok(())
+    }
+
     pub fn push_undo_snapshot(&mut self) {
         self.bump_revision();
         let snapshot = GraphSnapshot {
@@ -144,7 +180,7 @@ impl GraphEditorTool {
     }
 }
 
-const STARTER_PRESET_JSON: &str = r#"{
+pub(super) const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
     "title": "Interactive Graph Layout",

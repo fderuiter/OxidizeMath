@@ -25,7 +25,7 @@ fn is_key_triggered(ctx: &InteractionContext, key: egui::Key) -> bool {
 }
 
 impl GraphEditorTool {
-    pub(super) fn register_keyboard_commands(&self, ctx: &egui::Context) {
+    pub(super) fn register_keyboard_commands(&self, ctx: &egui::Context) -> egui::Modifiers {
         let context = "Graph Editor";
         CommandRegistryData::register(
             ctx,
@@ -76,6 +76,42 @@ impl GraphEditorTool {
             context,
         );
         self.register_arrow_commands(ctx);
+        self.register_history_commands(ctx)
+    }
+
+    fn register_history_commands(&self, ctx: &egui::Context) -> egui::Modifiers {
+        let m = if cfg!(target_os = "macos") {
+            egui::Modifiers::MAC_CMD
+        } else {
+            egui::Modifiers::CTRL
+        };
+        CommandRegistryData::register(
+            ctx,
+            "Undo",
+            "Undo the last graph modification",
+            CommandTrigger::Shortcut(m, egui::Key::Z),
+            true,
+            "Graph Editor",
+        );
+        CommandRegistryData::register(
+            ctx,
+            "Redo",
+            "Redo the last undone graph modification",
+            CommandTrigger::Shortcut(m | egui::Modifiers::SHIFT, egui::Key::Z),
+            true,
+            "Graph Editor",
+        );
+        if !cfg!(target_os = "macos") {
+            CommandRegistryData::register(
+                ctx,
+                "Redo",
+                "Redo the last undone graph modification",
+                CommandTrigger::Shortcut(m, egui::Key::Y),
+                true,
+                "Graph Editor",
+            );
+        }
+        m
     }
 
     fn register_arrow_commands(&self, ctx: &egui::Context) {
@@ -97,7 +133,8 @@ impl GraphEditorTool {
         }
     }
 
-    pub(super) fn configure_canvas_focus(&self, ui: &mut egui::Ui, response: &egui::Response) {
+    pub(super) fn configure_canvas_focus(&mut self, ui: &mut egui::Ui, response: &egui::Response) {
+        self.canvas_id = Some(response.id);
         if response.clicked() || response.drag_started() {
             response.request_focus();
         }
@@ -113,6 +150,30 @@ impl GraphEditorTool {
                     },
                 );
             });
+        }
+    }
+
+    pub(super) fn consume_toolbar_undo_redo(&mut self, ui: &mut egui::Ui, m: egui::Modifiers) {
+        let other_focused = ui.ctx().wants_keyboard_input()
+            && ui.ctx().memory(|mem| mem.focused()) != self.canvas_id;
+        if other_focused {
+            return;
+        }
+        let sm = m | egui::Modifiers::SHIFT;
+        let (undo, redo) = ui.input_mut(|i| {
+            let redo_shift = i.consume_shortcut(&egui::KeyboardShortcut::new(sm, egui::Key::Z));
+            let redo_y = !cfg!(target_os = "macos")
+                && i.consume_shortcut(&egui::KeyboardShortcut::new(m, egui::Key::Y));
+            let redo = redo_shift || redo_y;
+            let undo = !redo && i.consume_shortcut(&egui::KeyboardShortcut::new(m, egui::Key::Z));
+            (undo, redo)
+        });
+        if redo && self.can_redo() {
+            self.redo();
+            announce_status("Redid graph modification");
+        } else if undo && self.can_undo() {
+            self.undo();
+            announce_status("Undid graph modification");
         }
     }
 

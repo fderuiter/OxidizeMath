@@ -197,6 +197,31 @@ pub trait InteractiveTool {
         0
     }
 
+    /// Returns true if this tool maintains local undo history with available entries.
+    fn can_undo(&self) -> bool {
+        false
+    }
+
+    /// Returns true if this tool maintains local redo history with available entries.
+    fn can_redo(&self) -> bool {
+        false
+    }
+
+    /// Attempts to undo the latest local tool edit, returning true if handled.
+    fn try_undo(&mut self) -> bool {
+        false
+    }
+
+    /// Attempts to redo the latest locally undone tool edit, returning true if handled.
+    fn try_redo(&mut self) -> bool {
+        false
+    }
+
+    /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        None
+    }
+
     /// Direct numeric parameter finiteness hook without JSON serialization.
     fn has_finite_parameters(&self) -> bool {
         true
@@ -317,6 +342,12 @@ pub trait InteractiveTool {
     /// Returns a type-erased reference for test inspection of concrete tool state.
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
+        None
+    }
+
+    /// Returns a mutable type-erased reference for test manipulation of concrete tool state.
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
     }
 }

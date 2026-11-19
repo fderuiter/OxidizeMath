@@ -48,6 +48,10 @@ impl TabStateCache {
         self.entries.borrow_mut().clear();
     }
 
+    pub(super) fn invalidate_tab(&self, name: &str) {
+        self.entries.borrow_mut().remove(name);
+    }
+
     pub(super) fn extract_tab_json(
         &self,
         tab: &dyn ExplorerTab,

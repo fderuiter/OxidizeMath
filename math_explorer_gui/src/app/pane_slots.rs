@@ -101,7 +101,6 @@ impl SecondaryPaneSlots {
             .and_then(|idx| self.slots.get_mut(idx))
     }
 
-    #[cfg(test)]
     fn slot(&self, pane_idx: usize) -> Option<&SecondarySlot> {
         pane_idx.checked_sub(1).and_then(|idx| self.slots.get(idx))
     }
@@ -144,6 +143,16 @@ impl MathExplorerApp {
                 slot.drop_active();
             }
         }
+        let active_sub_contexts = if active_pane_count <= 1 {
+            0
+        } else {
+            active_pane_count.min(self.pane_contexts.len())
+        };
+        for pane_ctx in &self.pane_contexts[active_sub_contexts..] {
+            if let Some(fid) = pane_ctx.memory(|m| m.focused()) {
+                pane_ctx.memory_mut(|m| m.surrender_focus(fid));
+            }
+        }
         if active_pane_count <= 1 {
             self.focused_pane = 0;
         } else if self.focused_pane >= active_pane_count {
@@ -163,7 +172,7 @@ impl MathExplorerApp {
     /// Returns a mutable reference to the `ExplorerTab` assigned to `pane_idx`, instantiating lazily for secondary panes.
     pub fn pane_tab_mut(&mut self, pane_idx: usize) -> Option<&mut Box<dyn ExplorerTab>> {
         if pane_idx == 0 {
-            let tab_idx = self.pane_tabs.first().copied().unwrap_or(self.selected_tab);
+            let tab_idx = self.active_primary_tab_index();
             return self.tabs.get_mut(tab_idx);
         }
         let tab_idx = self.pane_tabs.get(pane_idx).copied()?;
@@ -171,6 +180,14 @@ impl MathExplorerApp {
             return None;
         }
         self.pane_slots.slot_mut(pane_idx)?.ensure_tab(tab_idx)
+    }
+
+    /// Snapshots the focused secondary pane slot if active.
+    pub(super) fn snapshot_focused_secondary_slot(&mut self) {
+        let target = self.active_focused_pane();
+        if let Some(slot) = self.pane_slots.slot_mut(target) {
+            slot.snapshot_active();
+        }
     }
 
     /// Returns a mutable reference to the `ExplorerTab` of the currently focused pane.
@@ -465,10 +482,9 @@ impl MathExplorerApp {
     }
 
     /// Returns an immutable reference to a pane's instantiated `ExplorerTab` if currently allocated.
-    #[cfg(test)]
     pub fn pane_tab(&self, pane_idx: usize) -> Option<&dyn ExplorerTab> {
         if pane_idx == 0 {
-            let tab_idx = self.pane_tabs.first().copied().unwrap_or(self.selected_tab);
+            let tab_idx = self.active_primary_tab_index();
             self.tabs.get(tab_idx).map(|b| b.as_ref())
         } else {
             self.pane_slots

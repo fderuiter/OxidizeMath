@@ -131,10 +131,14 @@ struct ComplexMappingState {
     grid_max: f64,
     grid_density: usize,
     inspection_point: [f64; 2],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    custom_expr: Option<String>,
 }
 
 impl InteractiveTool for ComplexMappingTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Complex Mapping"
     }
@@ -143,12 +147,16 @@ impl InteractiveTool for ComplexMappingTool {
     }
 
     fn save_state(&self) -> Option<String> {
+        let custom_expr =
+            (self.function == MappingFunction::Custom || self.math_input.raw_text != "z^3 - 1/z")
+                .then(|| self.math_input.raw_text.clone());
         serde_json::to_string(&ComplexMappingState {
             function: self.function,
             grid_min: self.grid_min,
             grid_max: self.grid_max,
             grid_density: self.grid_density,
             inspection_point: self.inspection_point,
+            custom_expr,
         })
         .ok()
     }
@@ -169,6 +177,8 @@ impl InteractiveTool for ComplexMappingTool {
         self.grid_max = s.grid_max;
         self.grid_density = s.grid_density;
         self.inspection_point = s.inspection_point;
+        self.math_input
+            .set_expression(s.custom_expr.as_deref().unwrap_or("z^3 - 1/z"));
         Ok(())
     }
 
@@ -431,6 +441,22 @@ mod tests {
         let z_zero = Complex64::new(0.0, 0.0);
         let w_zero = tool.eval_z(z_zero);
         assert_eq!(w_zero, Complex64::new(1e6, 1e6));
+    }
+
+    #[test]
+    fn test_custom_expr_state_roundtrip_and_legacy_compat() {
+        let mut tool = ComplexMappingTool {
+            function: MappingFunction::Custom,
+            ..Default::default()
+        };
+        tool.math_input.set_expression("sin(z) + z^2");
+        let saved = tool.save_state().expect("serialize ComplexMappingTool");
+
+        let mut restored = ComplexMappingTool::default();
+        restored.try_load_state(&saved).expect("load saved state");
+        assert_eq!(restored.math_input.raw_text, "sin(z) + z^2");
+        assert!(restored.math_input.is_valid());
+        assert!(restored.import_preset_json(STARTER_PRESET_JSON).is_ok());
     }
 }
 

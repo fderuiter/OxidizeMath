@@ -294,10 +294,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
 
         ui.menu_button("Edit", |ui| {
             let undo_btn = egui::Button::new("Undo").shortcut_text(format!("{}Z", cmd_str));
-            if ui
-                .add_enabled(app.session_manager.can_undo(), undo_btn)
-                .clicked()
-            {
+            if ui.add_enabled(app.can_undo(), undo_btn).clicked() {
                 app.undo();
                 ui.close();
             }
@@ -308,10 +305,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 format!("{}Y", cmd_str)
             };
             let redo_btn = egui::Button::new("Redo").shortcut_text(redo_shortcut);
-            if ui
-                .add_enabled(app.session_manager.can_redo(), redo_btn)
-                .clicked()
-            {
+            if ui.add_enabled(app.can_redo(), redo_btn).clicked() {
                 app.redo();
                 ui.close();
             }
