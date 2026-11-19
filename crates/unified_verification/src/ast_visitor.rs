@@ -1,9 +1,11 @@
+use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use syn::visit::Visit;
 use walkdir::WalkDir;
 
+#[derive(Default)]
 struct MaliciousCodeVisitor {
     has_shell_execution: bool,
     has_network_socket: bool,
@@ -205,64 +207,159 @@ pub fn run_clone_detector() -> bool {
     flags_found == 0
 }
 
+const MALICIOUS_PATH_PAIRS: &[(&str, &str)] = &[
+    ("Command", "new"),
+    ("TcpStream", "connect"),
+    ("UdpSocket", "bind"),
+];
+
+fn resolve_target_triple(
+    cargo_build_target: Option<&str>,
+    rustc_vv: Option<&str>,
+) -> Option<String> {
+    if let Some(target) = cargo_build_target.map(str::trim).filter(|t| !t.is_empty()) {
+        return Some(target.to_string());
+    }
+    rustc_vv?
+        .lines()
+        .find_map(|line| line.strip_prefix("host:"))
+        .map(str::trim)
+        .filter(|triple| !triple.is_empty())
+        .map(ToString::to_string)
+}
+
+fn detect_active_target_triple() -> Option<String> {
+    let env_target = env::var("CARGO_BUILD_TARGET").ok();
+    if let Some(target) = resolve_target_triple(env_target.as_deref(), None) {
+        return Some(target);
+    }
+    let rustc = env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let out = Command::new(rustc).arg("-vV").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    resolve_target_triple(None, Some(&String::from_utf8_lossy(&out.stdout)))
+}
+
+fn collect_crates_io_dep_paths() -> Vec<PathBuf> {
+    let meta = detect_active_target_triple()
+        .and_then(|triple| {
+            Command::new("cargo")
+                .args([
+                    "metadata",
+                    "--format-version",
+                    "1",
+                    "--filter-platform",
+                    &triple,
+                ])
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .and_then(|out| serde_json::from_slice(&out.stdout).ok())
+        })
+        .or_else(|| {
+            Command::new("cargo")
+                .args(["metadata", "--format-version", "1"])
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .and_then(|out| serde_json::from_slice(&out.stdout).ok())
+        })
+        .unwrap_or_default();
+    extract_crates_io_dep_paths(&meta)
+}
+
+fn extract_crates_io_dep_paths(meta: &serde_json::Value) -> Vec<PathBuf> {
+    let mut deps_paths = Vec::new();
+    let Some(packages) = meta.get("packages").and_then(|p| p.as_array()) else {
+        return deps_paths;
+    };
+    for pkg in packages {
+        if let Some(manifest_path) = pkg.get("manifest_path").and_then(|m| m.as_str())
+            && let Some(source) = pkg.get("source").and_then(|s| s.as_str())
+            && source.contains("crates.io")
+            && let Some(parent) = PathBuf::from(manifest_path).parent()
+        {
+            deps_paths.push(parent.to_path_buf());
+        }
+    }
+    deps_paths
+}
+
+fn has_candidate_path_pair(content: &str, lhs: &str, rhs: &str) -> bool {
+    for (idx, _) in content.match_indices(lhs) {
+        let rest = content[idx + lhs.len()..].trim_start();
+        if rest.starts_with("//")
+            || rest.starts_with("/*")
+            || (rest.starts_with('<') && !rest.starts_with("</"))
+        {
+            return true;
+        }
+        let Some(after_sep) = rest.strip_prefix("::") else {
+            continue;
+        };
+        let after_sep = after_sep.trim_start();
+        if after_sep.starts_with("//")
+            || after_sep.starts_with("/*")
+            || after_sep.starts_with('<')
+            || after_sep
+                .strip_prefix("r#")
+                .unwrap_or(after_sep)
+                .starts_with(rhs)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn may_contain_malicious_call(content: &str) -> bool {
+    content.contains("remove_dir_all")
+        || MALICIOUS_PATH_PAIRS
+            .iter()
+            .any(|&(lhs, rhs)| has_candidate_path_pair(content, lhs, rhs))
+}
+
+fn scan_rs_file_for_malicious_calls(path: &Path) -> usize {
+    let Ok(content) = fs::read_to_string(path) else {
+        return 0;
+    };
+    if !may_contain_malicious_call(&content) {
+        return 0;
+    }
+    let Ok(ast) = syn::parse_file(&content) else {
+        return 0;
+    };
+    let mut visitor = MaliciousCodeVisitor::default();
+    visitor.visit_file(&ast);
+
+    let mut flags = 0;
+    for (matched, label) in [
+        (visitor.has_shell_execution, "1: Shell execution found"),
+        (
+            visitor.has_network_socket,
+            "2: Network socket pattern found",
+        ),
+        (visitor.has_suspicious_fs, "3: Suspicious FS access found"),
+    ] {
+        if matched {
+            println!("[!] Malicious pattern {} in {}", label, path.display());
+            flags += 1;
+        }
+    }
+    flags
+}
+
+/// Scans active-target `crates.io` dependency sources for suspicious shell, network,
+/// or filesystem AST call patterns after a zero-false-negative text pre-filter.
 pub fn run_ast_visitor() -> bool {
     println!("Running AST visitor on 100% of third-party dependencies...");
 
-    let mut deps_paths = Vec::new();
-    let meta_out = Command::new("cargo")
-        .args(["metadata", "--format-version", "1"])
-        .output()
-        .unwrap();
-    let meta: serde_json::Value = serde_json::from_slice(&meta_out.stdout).unwrap_or_default();
-    if let Some(packages) = meta.get("packages").and_then(|p| p.as_array()) {
-        for pkg in packages {
-            if let Some(manifest_path) = pkg.get("manifest_path").and_then(|m| m.as_str()) {
-                if let Some(source) = pkg.get("source").and_then(|s| s.as_str()) {
-                    if source.contains("crates.io") {
-                        if let Some(p) = PathBuf::from(manifest_path).parent() {
-                            deps_paths.push(p.to_path_buf());
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     let mut flags_found = 0;
-    for path in deps_paths.iter() {
-        for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+    for path in collect_crates_io_dep_paths() {
+        for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
             if entry.path().extension().and_then(|s| s.to_str()) == Some("rs") {
-                if let Ok(content) = fs::read_to_string(entry.path()) {
-                    if let Ok(ast) = syn::parse_file(&content) {
-                        let mut visitor = MaliciousCodeVisitor {
-                            has_shell_execution: false,
-                            has_network_socket: false,
-                            has_suspicious_fs: false,
-                        };
-                        visitor.visit_file(&ast);
-                        if visitor.has_shell_execution {
-                            println!(
-                                "[!] Malicious pattern 1: Shell execution found in {}",
-                                entry.path().display()
-                            );
-                            flags_found += 1;
-                        }
-                        if visitor.has_network_socket {
-                            println!(
-                                "[!] Malicious pattern 2: Network socket pattern found in {}",
-                                entry.path().display()
-                            );
-                            flags_found += 1;
-                        }
-                        if visitor.has_suspicious_fs {
-                            println!(
-                                "[!] Malicious pattern 3: Suspicious FS access found in {}",
-                                entry.path().display()
-                            );
-                            flags_found += 1;
-                        }
-                    }
-                }
+                flags_found += scan_rs_file_for_malicious_calls(entry.path());
             }
         }
     }
@@ -274,6 +371,17 @@ pub fn run_ast_visitor() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ast_flags(code: &str) -> (bool, bool, bool) {
+        let file = syn::parse_file(code).unwrap();
+        let mut visitor = MaliciousCodeVisitor::default();
+        visitor.visit_file(&file);
+        (
+            visitor.has_shell_execution,
+            visitor.has_network_socket,
+            visitor.has_suspicious_fs,
+        )
+    }
 
     #[test]
     fn test_clone_detector_is_a_b_plus_c() {
@@ -291,7 +399,97 @@ mod tests {
     #[test]
     fn test_run_clone_detector_execution() {
         let _lock = crate::DIR_LOCK.lock().unwrap();
-        let passed = run_clone_detector();
-        assert!(passed, "First-party code should pass clone detector");
+        assert!(
+            run_clone_detector(),
+            "First-party code should pass clone detector"
+        );
+    }
+
+    #[test]
+    fn test_prefilter_rejects_clean_and_unrelated_paths() {
+        for snippet in [
+            "fn add(a: i32, b: i32) -> i32 { a + b }",
+            "fn benign(c: &mut std::process::Command) { let _ = std::process::Command::output(c); }",
+            "fn net(s: &std::net::TcpStream, u: &std::net::UdpSocket) { let _ = (std::net::TcpStream::peer_addr(s), std::net::UdpSocket::local_addr(u)); }",
+        ] {
+            assert!(
+                !may_contain_malicious_call(snippet),
+                "unexpected match: {snippet}"
+            );
+            assert_eq!(ast_flags(snippet), (false, false, false));
+        }
+    }
+
+    #[test]
+    fn test_prefilter_accepts_spaced_commented_raw_and_turbofish_calls() {
+        for (snippet, expected) in [
+            ("fn f() { Command :: new(\"ls\"); }", (true, false, false)),
+            (
+                "fn f() { TcpStream\n::\nconnect(\"a\"); }",
+                (false, true, false),
+            ),
+            (
+                "fn f() { UdpSocket\t::\tbind(\"b\"); }",
+                (false, true, false),
+            ),
+            (
+                "fn f() { std::fs::remove_dir_all(\"x\"); }",
+                (false, false, true),
+            ),
+            (
+                "fn f() { Command::/* c */new(\"sh\"); }",
+                (true, false, false),
+            ),
+            (
+                "fn f() { TcpStream::// c\nconnect(\"x\"); }",
+                (false, true, false),
+            ),
+            (
+                "fn f() { UdpSocket /* c */ ::bind(\"x\"); }",
+                (false, true, false),
+            ),
+            ("fn f() { r#Command::new(\"sh\"); }", (true, false, false)),
+            ("fn f() { Command::r#new(\"sh\"); }", (false, false, false)),
+            ("fn f() { Command::<u8>::new(); }", (true, false, false)),
+            (
+                "fn f() { TcpStream::<u8>::connect(); }",
+                (false, true, false),
+            ),
+            ("fn f() { UdpSocket::<u8>::bind(); }", (false, true, false)),
+        ] {
+            assert!(may_contain_malicious_call(snippet), "missed: {snippet}");
+            assert_eq!(ast_flags(snippet), expected, "AST mismatch: {snippet}");
+        }
+    }
+
+    #[test]
+    fn test_target_resolution_and_metadata_extraction() {
+        let rustc_vv = "rustc 1.99.0\nhost: x86_64-unknown-linux-gnu\n";
+        assert_eq!(
+            resolve_target_triple(Some("wasm32-unknown-unknown"), Some(rustc_vv)),
+            Some("wasm32-unknown-unknown".to_string())
+        );
+        assert_eq!(
+            resolve_target_triple(Some("   "), Some(rustc_vv)),
+            Some("x86_64-unknown-linux-gnu".to_string())
+        );
+        assert_eq!(resolve_target_triple(Some(""), None), None);
+
+        let meta = serde_json::json!({
+            "packages": [
+                {"manifest_path": "/cache/serde-1.0/Cargo.toml", "source": "registry+https://github.com/rust-lang/crates.io-index"},
+                {"manifest_path": "/app/crates/pure_math/Cargo.toml", "source": null}
+            ]
+        });
+        assert_eq!(
+            extract_crates_io_dep_paths(&meta),
+            vec![PathBuf::from("/cache/serde-1.0")]
+        );
+    }
+
+    #[test]
+    fn test_run_ast_visitor_execution() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
+        assert!(run_ast_visitor());
     }
 }
