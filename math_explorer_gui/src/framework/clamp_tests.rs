@@ -7,7 +7,7 @@ fn active_json(fw: &SimulationFramework) -> serde_json::Value {
     serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap()
 }
 
-fn load_active(fw: &mut SimulationFramework, state: &str) {
+pub(super) fn load_active(fw: &mut SimulationFramework, state: &str) {
     fw.active_tool.as_mut().unwrap().load_state(state);
 }
 

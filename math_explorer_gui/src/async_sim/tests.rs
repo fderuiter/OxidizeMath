@@ -304,6 +304,7 @@ fn test_state_display_and_helpers() {
 
     assert!(SimWorkerState::Ready.is_ready());
     assert!(SimWorkerState::Running.is_running());
+    assert!(SimWorkerState::Stepping.is_stepping());
     assert!(SimWorkerState::Faulted.is_faulted());
     assert!(SimWorkerState::Terminated.is_terminated());
 }

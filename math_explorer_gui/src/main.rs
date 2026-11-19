@@ -51,6 +51,23 @@ fn main() -> eframe::Result {
 }
 
 #[cfg(target_arch = "wasm32")]
+// theory_verification!
+fn select_webgl_error_category(doc: &web_sys::Document) {
+    if let Some(error_container) = doc.get_element_by_id("error_container") {
+        let _ = error_container.set_attribute("data-error-category", "webgl");
+    }
+    if let Some(title_el) = doc.get_element_by_id("error_title") {
+        title_el.set_text_content(Some("WebGL Initialization Failed"));
+    }
+    if let Some(msg_el) = doc.get_element_by_id("error_message") {
+        msg_el.set_text_content(Some(
+            "Math Explorer requires WebGL and hardware acceleration to render mathematics and interactive simulations. Your browser was unable to initialize a WebGL rendering context.",
+        ));
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+// theory_verification!
 fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) {
     accessibility::announce_status_with_priority(
         "WebGL initialization failed. Please enable hardware acceleration in your browser settings.",
@@ -59,12 +76,15 @@ fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) 
 
     if let Some(doc) = document {
         if let Some(loading) = doc.get_element_by_id("loading_indicator") {
+            let _ = loading.set_attribute("aria-busy", "false");
             loading.remove();
         }
 
         if let Some(canvas) = doc.get_element_by_id("the_canvas_id") {
             let _ = canvas.set_attribute("style", "display: none;");
         }
+
+        select_webgl_error_category(doc);
 
         if let Some(error_container) = doc.get_element_by_id("error_container") {
             let _ = error_container.set_attribute("style", "display: flex;");
@@ -134,6 +154,7 @@ fn main() {
         match start_res {
             Ok(()) => {
                 if let Some(loading) = doc.get_element_by_id("loading_indicator") {
+                    let _ = loading.set_attribute("aria-busy", "false");
                     loading.remove();
                 }
 

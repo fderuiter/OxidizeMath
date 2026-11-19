@@ -1,32 +1,60 @@
-# AGENTS.md — Developer & Agent Workflow Guide
+# OxidizeMath Agent & Developer Verification Guide
 
-This guide documents local build, verification, and feature-matrix workflows for automated coding agents and human contributors working in **OxidizeMath**. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Documentation Index](docs/README.md) for full architectural and contribution standards.
+This guide documents local build, verification, feature-matrix, and release packaging workflows for contributors and automated coding agents working in the **OxidizeMath** workspace. See [README.md](README.md) for an architectural overview, [CONTRIBUTING.md](CONTRIBUTING.md) for engineering standards, and the [Documentation Index](docs/README.md) for domain guides.
 
-## Quick Start & Quality Gates
+## 1. Documentation & Markdown Rules
 
-Configure version-controlled Git hooks and run initial workspace checks:
+All Markdown files in the repository (outside excluded build directories such as `target`, `dist`, and `artifacts`) are compiled by `crates/markdown_tests/build.rs` via `rustdoc`.
+
+- Always tag non-Rust code blocks with `bash` or `text` fences so `cargo test --doc` does not attempt to compile shell commands or plain text snippets as Rust doctests.
+- Ensure all relative Markdown links resolve to existing files in the repository.
+
+```text
+Markdown verification gates:
+- cargo run -p unified_verification --release -- check-docs
+- RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+- cargo test --doc --workspace --all-features
+- cargo run -p xtask -- check-markdown-links
+```
+
+## 2. CI Pre-Flight & Quality Gates
+
+Configure version-controlled Git hooks and run the complete workspace lint suite locally:
 
 ```bash
 cargo run -p xtask -- setup
-```
-
-Run tests and compile checks across all workspace members:
-
-```bash
-# Run unit and integration tests across all workspace crates
-cargo test --workspace
-
-# Check compilation across all workspace crates
-cargo check --workspace
-```
-
-Run the complete workspace lint and verification suite before committing:
-
-```bash
 cargo run -p xtask -- lint-all
 ```
 
-## Feature Matrix Testing (`xtask test-features`)
+Before opening or updating a pull request, run the repository quality gates defined in [.github/workflows/ci.yml](.github/workflows/ci.yml):
+
+```bash
+# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA action pins)
+cargo run -p unified_verification --release -- lint-workflows
+
+# Verify crate documentation and workspace rustdoc builds
+cargo run -p unified_verification --release -- check-docs
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+cargo test --doc --workspace --all-features
+
+# Validate relative Markdown links, file lengths (500-line ceiling), entropy/secrets, and traceability
+cargo run -p xtask -- check-markdown-links
+cargo run -p unified_verification --release -- check-file-lengths
+cargo run -p unified_verification --release -- check-entropy
+cargo run -p unified_verification --release -- traceability
+
+# Verify architectural decision records when core crates change
+BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
+```
+
+### Repository Guardrails & Conventions
+
+- **File & Function Size Limits**: Every `.rs` source file must remain at or below **500 lines** (`cargo run -p xtask -- check-file-lengths`), and functions must respect the **60-line** threshold configured in [.clippy.toml](.clippy.toml).
+- **GUI Feature Guards**: When adding or modifying tests in `math_explorer_gui` that import domain-specific tabs/tools or assert full-catalog counts, guard imports and test functions with the corresponding `#[cfg(feature = "...")]` attribute so `core-only` and single-feature matrix builds compile without errors or unused-import/dead-code warnings.
+- **Zero Compiler Warnings**: All targets must pass Clippy and `rustdoc` with `-D warnings`.
+- **Architectural Decision Records (ADRs)**: Structural modifications under `math_explorer/` or `crates/` (outside `unified_verification`) require an accompanying ADR update under `docs/adr/` verified by `cargo run -p xtask -- verify-records`.
+
+## 3. Feature Matrix Testing (`xtask test-features`)
 
 Both [math_explorer/Cargo.toml](math_explorer/Cargo.toml) and [math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml) gate optional scientific domains behind Cargo features (`pure_math`, `applied`, `ai`, `biology`, `climate`, `epidemiology`, `physics`). In `math_explorer_gui`, [math_explorer_gui/build.rs](math_explorer_gui/build.rs) conditionally registers domain tabs via `@explorer_feature` annotations, leaving only `TraceabilityTab` active under `--no-default-features`.
 
@@ -56,10 +84,50 @@ cargo run -p xtask -- test-features epidemiology
 cargo run -p xtask -- test-features physics
 ```
 
-## Repository Guardrails & Conventions
+## 4. Local Release Packaging Checks
 
-- **File & Function Size Limits**: Every `.rs` source file must remain at or below **500 lines** (`cargo run -p xtask -- check-file-lengths`), and functions must respect the **60-line** threshold configured in [.clippy.toml](.clippy.toml).
-- **GUI Feature Guards**: When adding or modifying tests in `math_explorer_gui` that import domain-specific tabs/tools or assert full-catalog counts, guard imports and test functions with the corresponding `#[cfg(feature = "...")]` attribute so `core-only` and single-feature matrix builds compile without errors or unused-import/dead-code warnings.
-- **Zero Compiler Warnings**: All targets must pass Clippy and `rustdoc` with `-D warnings`.
-- **Markdown Code Fences & Links**: Workspace Markdown files are compiled by `crates/markdown_tests` during `cargo test --doc --workspace --all-features` and audited by `cargo run -p xtask -- check-markdown-links`. Always tag shell or non-Rust snippets with `bash` or `text` fences and ensure relative links resolve to existing repository paths.
-- **Architectural Decision Records (ADRs)**: Structural modifications under `math_explorer/` or `crates/` (outside `unified_verification`) require an accompanying ADR update under `docs/adr/` verified by `cargo run -p xtask -- verify-records`.
+Pull requests automatically execute the Linux Debian (`deb`) installer build in the `package` job of [.github/workflows/ci.yml](.github/workflows/ci.yml), while `main` pushes, `v*` tag pushes, and `workflow_dispatch` runs build all three desktop installer targets (`deb`, `dmg`, and `wix`).
+
+### Prerequisites (Ubuntu / Debian)
+
+Install native GUI and packaging libraries along with `cargo-packager` `0.11.8` using `cargo-binstall` without falling back to source compilation:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libgtk-3-dev libxdo-dev build-essential
+
+# Install pinned cargo-packager prebuilt binary (fails fast if unavailable)
+cargo binstall --no-confirm --disable-strategies compile cargo-packager@0.11.8
+```
+
+### Build Linux `.deb` Installer & SHA-256 Manifest
+
+`math_explorer_gui/Cargo.toml` configures `out-dir = "dist"` under `[package.metadata.packager]`, so `cargo packager` writes installers to `math_explorer_gui/dist` alongside a hidden `.cargo-packager` metadata directory.
+
+```bash
+# 1. Build release GUI binary and package Debian installer
+cargo build --release -p math_explorer_gui
+cargo packager --release -p math_explorer_gui -f deb
+
+# 2. Generate and verify SHA256SUMS for installer files only (skipping .cargo-packager)
+(
+  cd math_explorer_gui/dist
+  shopt -s nullglob
+  shopt -u dotglob
+  files=()
+  for f in *.deb *.dmg *.msi *.exe *.wix; do
+    if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
+      files+=("$f")
+    fi
+  done
+  test "${#files[@]}" -gt 0
+  sha256sum "${files[@]}" > SHA256SUMS
+  sha256sum -c SHA256SUMS
+)
+```
+
+Clean up local `math_explorer_gui/dist` build outputs before committing so untracked installer binaries are not left in the workspace:
+
+```bash
+rm -rf math_explorer_gui/dist
+```

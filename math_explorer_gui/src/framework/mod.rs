@@ -2,9 +2,11 @@ pub mod callout_overlay;
 pub mod clamp;
 #[cfg(all(test, feature = "physics"))]
 mod clamp_tests;
+pub mod export_figure;
 pub mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
+pub mod export_types;
 mod export_ui;
 #[cfg(test)]
 mod export_ui_tests;
@@ -13,6 +15,9 @@ pub mod math_input;
 mod metadata_label_tests;
 mod overlay_sync;
 mod persistence;
+pub mod playback;
+#[cfg(test)]
+mod playback_tests;
 pub mod recovery;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
@@ -26,8 +31,11 @@ mod ui;
 
 pub use callout_overlay::*;
 pub use clamp::*;
+pub use export_figure::*;
 pub use export_queue::*;
+pub use export_types::*;
 pub use math_input::*;
+pub use playback::*;
 pub use recovery::*;
 pub use state_guard::*;
 pub use trace_overlay::*;
@@ -228,10 +236,25 @@ pub trait InteractiveTool {
         self.try_load_state(&config_str)
     }
 
+    /// Declares which dataset and figure export formats this tool supports.
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot()
+    }
+
     /// Optional hook to export tool datasets.
     /// Default implementation extracts datasets recorded from embedded `egui_plot::Plot`s if available.
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         egui_plot::get_last_plot_datasets()
+    }
+
+    /// Optional hook to extract offscreen drawable plot primitives (`Bar`, `Arrow`, `BoxElem`, `Polyline`, `Points`).
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        egui_plot::get_last_plot_primitives()
+    }
+
+    /// Optional hook for texture-backed tools to expose their rendered 2D raster field for PNG, SVG, and GIF exports.
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        None
     }
 
     /// Optional hook to provide custom figure export options.
@@ -285,23 +308,17 @@ pub(super) struct FrameworkSyncState {
     pub(super) theory_portal: Option<bool>,
     pub(super) starter_gallery: Option<bool>,
     pub(super) datasets_owner_tool: Option<&'static str>,
+    pub(super) last_modal_scope_id: Option<egui::Id>,
 }
 
 #[allow(missing_docs)]
 pub struct SimulationFramework {
-    #[allow(missing_docs)]
     pub available_tools: Vec<&'static ToolMetadata>,
-    #[allow(missing_docs)]
     pub active_tool: Option<Box<dyn InteractiveTool>>,
-    #[allow(missing_docs)]
     pub selected_tool_index: Option<usize>,
-    #[allow(missing_docs)]
     pub input_mode: InputMode,
-    #[allow(missing_docs)]
     pub show_theory_portal: bool,
-    #[allow(missing_docs)]
     pub show_starter_gallery: bool,
-    #[allow(missing_docs)]
     pub saved_tool_states: std::collections::HashMap<String, String>,
     pub search_query: String,
     last_announced_count: Option<usize>,
@@ -312,6 +329,7 @@ pub struct SimulationFramework {
     pub export_gif_fps: u32,
     pub export_gif_frames: u32,
     pub export_status_message: Option<String>,
+    pub export_status_severity: ExportStatusSeverity,
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
     pub export_queue: ExportQueue,
@@ -362,6 +380,7 @@ impl SimulationFramework {
             export_gif_fps: 15,
             export_gif_frames: 20,
             export_status_message: None,
+            export_status_severity: ExportStatusSeverity::Success,
             domain: domain.to_string(),
             preset_dialog: crate::presets::PresetDialogState::default(),
             export_queue: ExportQueue::default(),
@@ -410,6 +429,8 @@ impl SimulationFramework {
         }
         self.is_diverged = false;
         self.diagnostic_report = None;
+        self.export_status_message = None;
+        self.export_queue.status = None;
         self.step_counter = 0;
         self.baseline_tool_state = factory_baseline_state;
         let active_tool_state = new_tool.save_state();
