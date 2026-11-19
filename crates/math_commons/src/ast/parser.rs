@@ -10,11 +10,11 @@ pub const MAX_PARSE_DEPTH: usize = 64;
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum ParseError {
     /// Error during tokenization.
-    #[error("Lexical error: {0}")]
+    #[error("{}", .0.user_message())]
     Lex(#[from] LexError),
 
     /// Unexpected token encountered.
-    #[error("Parse error at {span:?}: expected {expected}, found '{found}'")]
+    #[error("At character {}: expected {expected}, found {}", span.start + 1, format_found_token(found))]
     UnexpectedToken {
         /// Description of expected syntax.
         expected: String,
@@ -29,12 +29,61 @@ pub enum ParseError {
     UnexpectedEof,
 
     /// Expression nesting depth exceeded safe threshold.
-    #[error("Recursion limit exceeded (max depth {0})")]
+    #[error("Expression is nested too deeply (maximum depth {0})")]
     RecursionLimitExceeded(usize),
 
     /// Empty expression string provided.
     #[error("Expression cannot be empty")]
     EmptyExpression,
+}
+
+fn format_found_token(found: &str) -> String {
+    if found == "<EOF>" || found == "end of expression" {
+        "end of expression".to_string()
+    } else {
+        format!("'{found}'")
+    }
+}
+
+impl ParseError {
+    /// Formats this parse error in plain language using 1-indexed character positions
+    /// without exposing internal `Span` structs or `<EOF>` markers.
+    #[must_use]
+    pub fn user_message(&self) -> String {
+        match self {
+            Self::Lex(err) => err.user_message(),
+            Self::UnexpectedToken {
+                expected,
+                found,
+                span,
+            } => {
+                let char_pos = span.start + 1;
+                let found_desc = format_found_token(found);
+                format!("At character {char_pos}: expected {expected}, found {found_desc}")
+            }
+            Self::UnexpectedEof => "Unexpected end of expression".to_string(),
+            Self::RecursionLimitExceeded(max_depth) => {
+                format!("Expression is nested too deeply (maximum depth {max_depth})")
+            }
+            Self::EmptyExpression => "Expression cannot be empty".to_string(),
+        }
+    }
+
+    /// Formats this parse error in plain language with source context so trailing
+    /// incomplete expressions also report a 1-indexed character position.
+    #[must_use]
+    pub fn user_message_for_input(&self, input: &str) -> String {
+        if matches!(self, Self::UnexpectedEof) {
+            let trimmed_chars = input.trim().chars().count();
+            if trimmed_chars > 0 {
+                return format!(
+                    "Unexpected end of expression at character {}",
+                    trimmed_chars + 1
+                );
+            }
+        }
+        self.user_message()
+    }
 }
 
 /// Parses a mathematical string into an Abstract Syntax Tree (`Expr`).

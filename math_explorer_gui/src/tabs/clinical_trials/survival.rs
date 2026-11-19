@@ -118,11 +118,12 @@ impl InteractiveTool for SurvivalAnalysisTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<SurvivalState>(state) {
-            self.input_text = s.input_text;
-            self.recalculate();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: SurvivalState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SurvivalAnalysisTool state: {e}"))?;
+        self.input_text = s.input_text;
+        self.recalculate();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -140,7 +141,8 @@ impl InteractiveTool for SurvivalAnalysisTool {
             }
 
             if let Some(err) = &self.error_message {
-                ui.colored_label(egui::Color32::RED, err);
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                ui.colored_label(palette.error, err);
             }
 
             ui.separator();
@@ -189,7 +191,8 @@ impl InteractiveTool for SurvivalAnalysisTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "SurvivalAnalysisTool",
+        id: "SurvivalAnalysisTool",
+        display_name: "Survival Curves (Kaplan-Meier)",
         domain: "clinical_trials",
         tags: &[],
         build: || Box::new(SurvivalAnalysisTool::default()),
@@ -216,8 +219,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "time_horizon_months": 24,
-    "hazard_ratio": 0.7
+    "input_text": "3.0, 1\n5.0, 1\n6.0, 0\n8.0, 1\n11.0, 0\n14.0, 1\n18.0, 1\n21.0, 0\n24.0, 1\n30.0, 0"
   }
 }"#;
 

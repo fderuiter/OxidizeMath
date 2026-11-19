@@ -15,6 +15,15 @@ pub enum CrystalSystemEnum {
 }
 
 impl CrystalSystemEnum {
+    /// Returns a readable crystallographic system title for UI selectors.
+    pub fn label(&self) -> &'static str {
+        match self {
+            CrystalSystemEnum::SimpleCubic => "Simple Cubic",
+            CrystalSystemEnum::BodyCenteredCubic => "Body-Centered Cubic (BCC)",
+            CrystalSystemEnum::FaceCenteredCubic => "Face-Centered Cubic (FCC)",
+        }
+    }
+
     fn generate(&self, a: f64) -> UnitCell {
         match self {
             CrystalSystemEnum::SimpleCubic => SimpleCubic.generate(a),
@@ -101,12 +110,14 @@ impl CrystalViewer {
             (3, 7), // Verticals
         ];
 
+        let edge_color =
+            crate::app::SemanticPalette::from_visuals(&ui.ctx().style().visuals).graph_edge;
         for (start_idx, end_idx) in edges {
             let start = self.project(corners[start_idx]);
             let end = self.project(corners[end_idx]);
             ui.line(
                 Line::new("Edge", PlotPoints::new(vec![start, end]))
-                    .color(egui::Color32::GRAY)
+                    .color(edge_color)
                     .width(1.0_f32),
             );
         }
@@ -142,14 +153,15 @@ impl InteractiveTool for CrystalViewer {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<CrystalState>(state) {
-            self.system = s.system;
-            self.lattice_constant = s.lattice_constant;
-            self.yaw = s.yaw;
-            self.pitch = s.pitch;
-            self.zoom = s.zoom;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: CrystalState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid CrystalViewer state: {e}"))?;
+        self.system = s.system;
+        self.lattice_constant = s.lattice_constant;
+        self.yaw = s.yaw;
+        self.pitch = s.pitch;
+        self.zoom = s.zoom;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -159,22 +171,22 @@ impl InteractiveTool for CrystalViewer {
 
             ui.label("Crystal System");
             egui::ComboBox::from_id_salt("crystal_system_combo")
-                .selected_text(format!("{:?}", self.system))
+                .selected_text(self.system.label())
                 .show_ui(ui, |ui| {
                     ui.selectable_value(
                         &mut self.system,
                         CrystalSystemEnum::SimpleCubic,
-                        "Simple Cubic",
+                        CrystalSystemEnum::SimpleCubic.label(),
                     );
                     ui.selectable_value(
                         &mut self.system,
                         CrystalSystemEnum::BodyCenteredCubic,
-                        "BCC",
+                        CrystalSystemEnum::BodyCenteredCubic.label(),
                     );
                     ui.selectable_value(
                         &mut self.system,
                         CrystalSystemEnum::FaceCenteredCubic,
-                        "FCC",
+                        CrystalSystemEnum::FaceCenteredCubic.label(),
                     );
                 });
 
@@ -190,6 +202,7 @@ impl InteractiveTool for CrystalViewer {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             Plot::new("crystal_plot")
                 .data_aspect(1.0)
                 .show(ui, |plot_ui| {
@@ -207,7 +220,7 @@ impl InteractiveTool for CrystalViewer {
                     plot_ui.points(
                         Points::new("Atoms", points)
                             .radius(5.0_f32)
-                            .color(egui::Color32::RED),
+                            .color(palette.axis_x),
                     );
                 });
             ui.label("Drag 'Yaw' and 'Pitch' to rotate.");
@@ -220,7 +233,8 @@ impl InteractiveTool for CrystalViewer {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "CrystalViewer",
+        id: "CrystalViewer",
+        display_name: "Crystal Lattice Viewer",
         domain: "solid_state",
         tags: &[],
         build: || Box::new(CrystalViewer::default()),
@@ -243,7 +257,7 @@ impl scientific_metadata::theory::TheoryDescribable for CrystalViewer {
     fn theory_citation(&self) -> String { "Introduction to Solid State Physics (Kittel, 2004); Solid State Physics (Ashcroft & Mermin, 1976)".into() }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("SimpleCubic".into(), "Primitive cubic lattice with basis at (0,0,0)".into());
+        map.insert("Simple Cubic".into(), "Primitive cubic lattice with basis at (0,0,0)".into());
         map.insert("BCC".into(), "Body-centered lattice with basis at (0,0,0) and (1/2, 1/2, 1/2)".into());
         map.insert("FCC".into(), "Face-centered close-packed cubic lattice".into());
         map
@@ -258,8 +272,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "structure": "FCC",
-    "unit_cells": 2
+    "system": "FaceCenteredCubic",
+    "lattice_constant": 3.0,
+    "yaw": 0.6,
+    "pitch": 0.4,
+    "zoom": 65.0
   }
 }"#;
 

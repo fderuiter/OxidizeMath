@@ -47,7 +47,7 @@ impl TheoryDescribable for BifurcationDiagram {
     }
 
     fn theory_citation(&self) -> String {
-        "[cite:algorithmic_information_rust]".to_string()
+        "May, R. M. (1976). Simple mathematical models with very complicated dynamics. Nature, 261(5560), 459-467; Feigenbaum, M. J. (1978). Quantitative universality for a class of nonlinear transformations. Journal of Statistical Physics, 19(1), 25-52.".to_string()
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
@@ -87,13 +87,14 @@ impl InteractiveTool for BifurcationDiagram {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<BifurcationState>(state) {
-            self.r_min = s.r_min;
-            self.r_max = s.r_max;
-            self.steps = s.steps;
-            self.recompute();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: BifurcationState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid BifurcationDiagram state: {e}"))?;
+        self.r_min = s.r_min;
+        self.r_max = s.r_max;
+        self.steps = s.steps;
+        self.recompute();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -138,6 +139,7 @@ impl InteractiveTool for BifurcationDiagram {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let response = Plot::new("bifurcation_plot")
                 .view_aspect(2.0)
                 .x_axis_label("Growth Rate (r)")
@@ -146,7 +148,7 @@ impl InteractiveTool for BifurcationDiagram {
                     plot_ui.points(
                         Points::new("Attractor", &self.points[..])
                             .radius(1.0_f32)
-                            .color(egui::Color32::from_rgb(100, 200, 255)),
+                            .color(palette.series_color(0)),
                     );
                 })
                 .response;
@@ -160,7 +162,8 @@ impl InteractiveTool for BifurcationDiagram {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "BifurcationDiagram",
+        id: "BifurcationDiagram",
+        display_name: "Bifurcation Diagram",
         domain: "chaos",
         tags: &[],
         build: || Box::new(BifurcationDiagram::default()),
@@ -238,7 +241,7 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "r_min": 2.5,
     "r_max": 4.0,
-    "iterations": 1000
+    "steps": 1000
   }
 }"#;
 

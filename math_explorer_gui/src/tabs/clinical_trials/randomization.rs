@@ -56,14 +56,15 @@ impl InteractiveTool for RandomizationTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<RandomizationState>(state) {
-            self.randomization_type = s.randomization_type;
-            self.n_subjects = s.n_subjects;
-            self.block_size = s.block_size;
-            self.assignments.clear();
-            self.error_message = None;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: RandomizationState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid RandomizationTool state: {e}"))?;
+        self.randomization_type = s.randomization_type;
+        self.n_subjects = s.n_subjects;
+        self.block_size = s.block_size;
+        self.assignments.clear();
+        self.error_message = None;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -135,21 +136,22 @@ impl InteractiveTool for RandomizationTool {
 
             ui.add_space(10.0);
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             if let Some(ref err) = self.error_message {
-                ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
+                ui.colored_label(palette.error, format!("Error: {}", err));
             } else if self.assignments.is_empty() {
                 ui.vertical_centered(|ui| {
                     ui.add_space(20.0);
                     ui.label(
                         egui::RichText::new("No subjects allocated yet.")
                             .strong()
-                            .color(egui::Color32::DARK_GRAY),
+                            .color(palette.muted_text),
                     );
                     ui.label(
                         egui::RichText::new(
                             "Configure parameters and click 'Allocate Subjects' to begin.",
                         )
-                        .color(egui::Color32::GRAY),
+                        .color(palette.muted_text),
                     );
                 });
             } else {
@@ -188,7 +190,8 @@ impl InteractiveTool for RandomizationTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "RandomizationTool",
+        id: "RandomizationTool",
+        display_name: "Randomization",
         domain: "clinical_trials",
         tags: &[],
         build: || Box::new(RandomizationTool::default()),
@@ -224,8 +227,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "block_size": 4,
-    "total_patients": 100
+    "randomization_type": "Block",
+    "n_subjects": 100,
+    "block_size": 4
   }
 }"#;
 

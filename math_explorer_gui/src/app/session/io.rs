@@ -26,11 +26,14 @@ pub fn spawn_open_dialog(tx: Sender<Result<(PathBuf, String), String>>) {
 
     #[cfg(target_arch = "wasm32")]
     {
-        crate::web_io::open_browser_file_picker(".mws,.json,application/json", move |outcome| {
-            if let Some(res) = outcome {
-                let _ = tx.send(res.map(|(name, content)| (PathBuf::from(name), content)));
-            }
-        });
+        egui_plot::export::open_browser_file_picker(
+            ".mws,.json,application/json",
+            move |outcome| {
+                if let Some(res) = outcome {
+                    let _ = tx.send(res.map(|(name, content)| (PathBuf::from(name), content)));
+                }
+            },
+        );
     }
 }
 
@@ -59,11 +62,12 @@ pub fn spawn_save_as_dialog(tx: Sender<Result<PathBuf, String>>, envelope_json: 
 
     #[cfg(target_arch = "wasm32")]
     {
-        let filename = crate::web_io::sanitize_download_filename("workspace.mws", "workspace.mws");
-        let res = crate::web_io::download_browser_file(&filename, envelope_json.as_bytes())
+        let filename =
+            egui_plot::export::sanitize_download_filename("workspace.mws", "workspace.mws");
+        let res = egui_plot::export::download_browser_file(&filename, envelope_json.as_bytes())
             .map(|()| PathBuf::from(filename));
         let _ = tx.send(res);
-        crate::web_io::request_browser_repaint();
+        egui_plot::export::request_browser_repaint();
     }
 }
 
@@ -88,11 +92,11 @@ pub fn spawn_save_direct(
     #[cfg(target_arch = "wasm32")]
     {
         let filename =
-            crate::web_io::sanitize_download_filename(file_name_str(&path), "workspace.mws");
-        let res = crate::web_io::download_browser_file(&filename, envelope_json.as_bytes())
+            egui_plot::export::sanitize_download_filename(file_name_str(&path), "workspace.mws");
+        let res = egui_plot::export::download_browser_file(&filename, envelope_json.as_bytes())
             .map(|()| PathBuf::from(filename));
         let _ = tx.send(res);
-        crate::web_io::request_browser_repaint();
+        egui_plot::export::request_browser_repaint();
     }
 }
 
@@ -108,8 +112,8 @@ pub fn handle_transition_error(
     op: &str,
 ) {
     let err = format!(
-        "Invalid state transition: received {op} result while in {:?}",
-        mgr.lifecycle_state
+        "Invalid state transition: received {op} result while {}",
+        mgr.lifecycle_state.user_label()
     );
     notify(mgr, ctx, err, true);
     mgr.lifecycle_state = super::SessionLifecycleState::Error;

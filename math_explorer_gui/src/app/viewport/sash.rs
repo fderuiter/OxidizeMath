@@ -364,20 +364,21 @@ pub(super) fn paint_split_sash(
     is_dragging: bool,
     state: &SashFrameState,
 ) {
+    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
     let divider_color = if is_dragging {
-        egui::Color32::from_rgb(90, 150, 255)
+        palette.accent
     } else if state.is_hovered || state.has_focus {
-        egui::Color32::from_rgb(110, 130, 165)
+        palette.graph_edge
     } else {
-        egui::Color32::from_gray(50)
+        palette.surface_fill
     };
     ui.painter().rect_filled(divider_rect, 0.0, divider_color);
 
     let center = divider_rect.center();
     let handle_color = if is_dragging || state.is_hovered || state.has_focus {
-        egui::Color32::WHITE
+        crate::app::contrasting_text_color(divider_color)
     } else {
-        egui::Color32::from_gray(130)
+        palette.muted_text
     };
     let (p1, p2) = if layout == ViewportLayout::SplitHorizontal {
         (

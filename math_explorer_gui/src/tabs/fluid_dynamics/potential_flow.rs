@@ -8,6 +8,7 @@ use std::f64::consts::PI;
 
 pub struct PotentialFlowTool {
     field: PotentialFlowField,
+    preset_type: String,
     // UI State
     grid_size: usize,
     view_range: f64,
@@ -31,6 +32,8 @@ enum ElementType {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct PotentialFlowState {
+    #[serde(default)]
+    preset_type: Option<String>,
     grid_size: usize,
     view_range: f64,
     selected_element_type: ElementType,
@@ -51,6 +54,7 @@ impl Default for PotentialFlowTool {
 
         Self {
             field,
+            preset_type: "CylinderFlow".to_string(),
             grid_size: 20,
             view_range: 10.0,
             selected_element_type: ElementType::Source,
@@ -85,27 +89,16 @@ impl InteractivePreset for PotentialFlowTool {
 
     fn export_config(&self) -> Self::Config {
         PotentialFlowPresetConfig {
-            preset_type: "CylinderFlow".to_string(),
+            preset_type: self.preset_type.clone(),
             grid_size: self.grid_size,
             view_range: self.view_range,
         }
     }
 
     fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
+        self.rebuild_preset_field(&config.preset_type)?;
         self.grid_size = config.grid_size;
         self.view_range = config.view_range;
-        if config.preset_type == "SourceSink" {
-            let mut field = PotentialFlowField::new();
-            field.add(Box::new(Source::new(10.0, -3.0, 0.0)));
-            field.add(Box::new(Source::new(-10.0, 3.0, 0.0)));
-            self.field = field;
-        } else {
-            let mut field = PotentialFlowField::new();
-            field.add(Box::new(UniformFlow::new(10.0, 0.0)));
-            let kappa = 2.0 * PI * 10.0 * 2.0 * 2.0;
-            field.add(Box::new(Doublet::new(kappa, 0.0, 0.0)));
-            self.field = field;
-        }
         Ok(())
     }
 }
@@ -134,6 +127,7 @@ impl InteractiveTool for PotentialFlowTool {
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&PotentialFlowState {
+            preset_type: Some(self.preset_type.clone()),
             grid_size: self.grid_size,
             view_range: self.view_range,
             selected_element_type: self.selected_element_type,
@@ -145,16 +139,19 @@ impl InteractiveTool for PotentialFlowTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<PotentialFlowState>(state) {
-            self.grid_size = loaded.grid_size;
-            self.view_range = loaded.view_range;
-            self.selected_element_type = loaded.selected_element_type;
-            self.new_element_strength = loaded.new_element_strength;
-            self.new_element_x = loaded.new_element_x;
-            self.new_element_y = loaded.new_element_y;
-            self.new_element_angle = loaded.new_element_angle;
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded = serde_json::from_str::<PotentialFlowState>(state).map_err(|e| e.to_string())?;
+        if let Some(ref preset_type) = loaded.preset_type {
+            self.rebuild_preset_field(preset_type)?;
         }
+        self.grid_size = loaded.grid_size;
+        self.view_range = loaded.view_range;
+        self.selected_element_type = loaded.selected_element_type;
+        self.new_element_strength = loaded.new_element_strength;
+        self.new_element_x = loaded.new_element_x;
+        self.new_element_y = loaded.new_element_y;
+        self.new_element_angle = loaded.new_element_angle;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -270,9 +267,10 @@ impl InteractiveTool for PotentialFlowTool {
                         x += step;
                     }
 
-                    plot_ui.arrows(
-                        Arrows::new("Vector Field", origins, tips).color(egui::Color32::LIGHT_BLUE),
-                    );
+                    let arrow_color =
+                        crate::app::SemanticPalette::from_visuals(&plot_ui.ctx().style().visuals)
+                            .series_color(0);
+                    plot_ui.arrows(Arrows::new("Vector Field", origins, tips).color(arrow_color));
                 });
         });
     }
@@ -312,6 +310,29 @@ impl PotentialFlowTool {
     fn clear(&mut self) {
         self.field.clear();
     }
+
+    fn rebuild_preset_field(&mut self, preset_type: &str) -> Result<(), String> {
+        match preset_type {
+            "SourceSink" => {
+                let mut field = PotentialFlowField::new();
+                field.add(Box::new(Source::new(10.0, -3.0, 0.0)));
+                field.add(Box::new(Source::new(-10.0, 3.0, 0.0)));
+                self.field = field;
+                self.preset_type = "SourceSink".to_string();
+                Ok(())
+            }
+            "CylinderFlow" => {
+                let mut field = PotentialFlowField::new();
+                field.add(Box::new(UniformFlow::new(10.0, 0.0)));
+                let kappa = 2.0 * PI * 10.0 * 2.0 * 2.0;
+                field.add(Box::new(Doublet::new(kappa, 0.0, 0.0)));
+                self.field = field;
+                self.preset_type = "CylinderFlow".to_string();
+                Ok(())
+            }
+            other => Err(format!("Unknown PotentialFlow preset_type '{}'", other)),
+        }
+    }
 }
 
 // [cite:modular_polynomials_review]
@@ -319,7 +340,8 @@ impl PotentialFlowTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "PotentialFlowTool",
+        id: "PotentialFlowTool",
+        display_name: "Potential Flow",
         domain: "fluid_dynamics",
         tags: &[],
         build: || Box::new(PotentialFlowTool::default()),

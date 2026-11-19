@@ -62,7 +62,7 @@ impl fmt::Display for TokenKind {
             Self::RParen => write!(f, ")"),
             Self::Comma => write!(f, ","),
             Self::Equals => write!(f, "="),
-            Self::Eof => write!(f, "<EOF>"),
+            Self::Eof => write!(f, "end of expression"),
         }
     }
 }
@@ -78,7 +78,7 @@ pub struct Token {
 
 /// Error encountered during lexical analysis.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("Lexer error at offset {start}..{end}: {message}")]
+#[error("{}", self.user_message())]
 pub struct LexError {
     /// Start byte index.
     pub start: usize,
@@ -86,6 +86,15 @@ pub struct LexError {
     pub end: usize,
     /// Descriptive error message.
     pub message: String,
+}
+
+impl LexError {
+    /// Formats this lexical error in plain language using 1-indexed character positions.
+    #[must_use]
+    pub fn user_message(&self) -> String {
+        let char_pos = self.start + 1;
+        format!("{} at character {char_pos}", self.message)
+    }
 }
 
 /// Tokenizes a mathematical expression string into a vector of tokens.

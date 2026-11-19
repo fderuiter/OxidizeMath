@@ -3,7 +3,7 @@
 use super::sash::{focus_outline_color, split_sash_id};
 use super::ViewportLayout;
 use crate::accessibility::{all_announcements, clear_test_announcements};
-use crate::app::{MathExplorerApp, ThemeMode};
+use crate::app::{contrast_ratio, MathExplorerApp, ThemeMode};
 use eframe::egui;
 use eframe::App;
 
@@ -63,24 +63,6 @@ fn shape_uses_stroke(shape: &egui::Shape, target: egui::Color32) -> bool {
         egui::Shape::Vec(nested) => nested.iter().any(|s| shape_uses_stroke(s, target)),
         _ => false,
     }
-}
-
-fn relative_luminance(color: egui::Color32) -> f64 {
-    let to_linear = |channel: u8| {
-        let c = f64::from(channel) / 255.0;
-        if c <= 0.04045 {
-            c / 12.92
-        } else {
-            ((c + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    0.2126 * to_linear(color.r()) + 0.7152 * to_linear(color.g()) + 0.0722 * to_linear(color.b())
-}
-
-fn contrast_ratio(c1: egui::Color32, c2: egui::Color32) -> f64 {
-    let l1 = relative_luminance(c1);
-    let l2 = relative_luminance(c2);
-    (l1.max(l2) + 0.05) / (l1.min(l2) + 0.05)
 }
 
 #[test]
