@@ -2072,6 +2072,9 @@
       "signature": "pub fn evolve_state (state : & QuantumState , hamiltonian : & QuantumOperator , t : f64 , h_bar : f64 ,) -> QuantumState"
     },
     {
+      "signature": "pub fn evolve_state_in_place (state : & mut QuantumState , propagator : & QuantumOperator , scratch : & mut DVector < Complex < f64 > > ,)"
+    },
+    {
       "signature": "pub fn time_evolution_operator (hamiltonian : & QuantumOperator , t : f64 , h_bar : f64 ,) -> QuantumOperator"
     }
   ],

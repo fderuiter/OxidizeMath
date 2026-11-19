@@ -1,10 +1,16 @@
 #![allow(missing_docs)]
 use approx::assert_relative_eq;
 use domain_physics::physics::quantum::{
-    QuantumOperator, QuantumState, dft_operator, sigma_x, sigma_y, sigma_z,
+    QuantumOperator, QuantumState, construct_1d_hamiltonian, dft_operator, evolve_state,
+    evolve_state_in_place, gaussian_wavepacket, sigma_x, sigma_y, sigma_z, time_evolution_operator,
 };
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
+use verified_engine::allocator::VerifiedAllocator;
+use verified_engine::engine::VerifiedEngine;
+
+#[global_allocator]
+static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
 #[verified_engine::verified]
@@ -118,4 +124,76 @@ fn test_dft_unitarity() {
     let i_complex = identity.map(|x| Complex::new(x, 0.0));
 
     assert!((identity_approx - i_complex).norm() < math_commons::registry::TOLERANCE_STANDARD);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_evolve_and_normalize_in_place_zero_allocations_and_parity() {
+    let n = 16;
+    let dx = 0.25;
+    let x_grid: Vec<f64> = (0..n).map(|i| -2.0 + i as f64 * dx).collect();
+    let potential = DVector::from_fn(n, |i, _| 0.5 * x_grid[i] * x_grid[i]);
+    let hamiltonian = construct_1d_hamiltonian(&potential, dx, 1.0, 1.0);
+    let dt = 0.03;
+    let propagator = time_evolution_operator(&hamiltonian, dt, 1.0);
+
+    let mut psi_in_place = gaussian_wavepacket(&x_grid, -0.5, 2.0, 0.5);
+    let mut psi_ref = psi_in_place.clone();
+    let mut scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
+
+    let ((), metrics) = VerifiedEngine::run_verified(|| {
+        for _ in 0..5 {
+            evolve_state_in_place(&mut psi_in_place, &propagator, &mut scratch);
+            psi_in_place.normalize_in_place();
+        }
+    });
+    assert!(metrics.function_calls >= 10);
+
+    for _ in 0..5 {
+        psi_ref = evolve_state(&psi_ref, &hamiltonian, dt, 1.0).normalize();
+    }
+    assert!((&psi_in_place.vector - &psi_ref.vector).norm() < 1e-12);
+    assert_relative_eq!(
+        psi_in_place.norm(),
+        1.0,
+        epsilon = math_commons::registry::TOLERANCE_STANDARD
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_normalize_in_place_zero_vector_and_exact_parity() {
+    let mut zero_state = QuantumState::new(DVector::from_element(3, Complex::new(0.0, 0.0)));
+    let ((), _) = VerifiedEngine::run_verified(|| {
+        zero_state.normalize_in_place();
+    });
+    assert_eq!(zero_state.norm(), 0.0);
+
+    let mut state = QuantumState::new(DVector::from_vec(vec![
+        Complex::new(3.0, -1.5),
+        Complex::new(-2.0, 4.0),
+    ]));
+    let expected = state.normalize();
+    let ((), _) = VerifiedEngine::run_verified(|| {
+        state.normalize_in_place();
+    });
+    assert_eq!(state.vector, expected.vector);
+}
+
+#[test]
+#[should_panic(expected = "Propagator matrix must be square")]
+fn test_evolve_state_in_place_rejects_non_square_operator() {
+    let mut state = QuantumState::spin_zero();
+    let non_square = QuantumOperator::new(DMatrix::zeros(2, 3));
+    let mut scratch = DVector::from_element(2, Complex::new(0.0, 0.0));
+    evolve_state_in_place(&mut state, &non_square, &mut scratch);
+}
+
+#[test]
+#[should_panic(expected = "Scratch vector length must match state vector length")]
+fn test_evolve_state_in_place_rejects_mismatched_scratch() {
+    let mut state = QuantumState::spin_zero();
+    let propagator = time_evolution_operator(&sigma_x(), 0.1, 1.0);
+    let mut bad_scratch = DVector::from_element(3, Complex::new(0.0, 0.0));
+    evolve_state_in_place(&mut state, &propagator, &mut bad_scratch);
 }

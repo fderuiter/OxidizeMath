@@ -6,9 +6,10 @@ use eframe::egui;
 use egui_plot::{Legend, Line, Plot, PlotPoints};
 use scientific_metadata::theory::ParameterConstraint;
 use math_explorer::physics::quantum::{
-    construct_1d_hamiltonian, evolve_state, gaussian_wavepacket, QuantumOperator, QuantumState,
+    construct_1d_hamiltonian, evolve_state_in_place, gaussian_wavepacket, time_evolution_operator,
+    QuantumOperator, QuantumState,
 };
-use nalgebra::DVector;
+use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
 use std::any::Any;
 use std::collections::HashMap;
@@ -24,6 +25,9 @@ pub struct WaveData {
 pub struct WaveUnified {
     pub(crate) psi: QuantumState,
     hamiltonian: QuantumOperator,
+    propagator: QuantumOperator,
+    cached_dt: Option<f64>,
+    scratch: DVector<Complex<f64>>,
     potential: DVector<f64>,
     x_axis: Vec<f64>,
     time: f64,
@@ -71,7 +75,10 @@ impl UnifiedModel for WaveUnified {
         let potential_type = *params.get("potential_type").unwrap_or(&0.0);
         let mut sim = Self {
             psi: QuantumState::new(DVector::from_element(n_points, Complex::new(0.0, 0.0))),
-            hamiltonian: construct_1d_hamiltonian(&DVector::zeros(n_points), 1.0, 1.0, 1.0),
+            hamiltonian: QuantumOperator::new(DMatrix::zeros(n_points, n_points)),
+            propagator: QuantumOperator::new(DMatrix::zeros(n_points, n_points)),
+            cached_dt: None,
+            scratch: DVector::from_element(n_points, Complex::new(0.0, 0.0)),
             potential: DVector::zeros(n_points),
             x_axis: Vec::new(),
             time: 0.0,
@@ -101,8 +108,9 @@ impl UnifiedModel for WaveUnified {
             ));
             return;
         }
+        self.refresh_propagator(dt);
         self.step_count += 1;
-        self.psi = evolve_state(&self.psi, &self.hamiltonian, dt, 1.0);
+        evolve_state_in_place(&mut self.psi, &self.propagator, &mut self.scratch);
         self.time += dt;
 
         if !self.psi.vector.iter().all(|c| c.re.is_finite() && c.im.is_finite()) {
@@ -116,7 +124,7 @@ impl UnifiedModel for WaveUnified {
             return;
         }
 
-        self.psi = self.psi.normalize();
+        self.psi.normalize_in_place();
 
         if !self.psi.vector.iter().all(|c| c.re.is_finite() && c.im.is_finite()) {
             self.diverged = true;
@@ -247,6 +255,13 @@ impl UnifiedModel for WaveUnified {
 }
 
 impl WaveUnified {
+    fn refresh_propagator(&mut self, dt: f64) {
+        if self.cached_dt != Some(dt) {
+            self.propagator = time_evolution_operator(&self.hamiltonian, dt, 1.0);
+            self.cached_dt = Some(dt);
+        }
+    }
+
     fn init_system(&mut self, potential_type: f64) {
         let dx = (self.x_max - self.x_min) / (self.n_points as f64 - 1.0);
         self.x_axis = (0..self.n_points)
@@ -264,6 +279,9 @@ impl WaveUnified {
         }
 
         self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
+        self.propagator = QuantumOperator::new(DMatrix::zeros(self.n_points, self.n_points));
+        self.cached_dt = None;
+        self.scratch = DVector::from_element(self.n_points, Complex::new(0.0, 0.0));
 
         let x0 = -2.0;
         let k0 = 5.0;
@@ -331,5 +349,69 @@ inventory::submit! {
         domain: "quantum",
         tool_name: Some("WaveSimulator"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use math_explorer::physics::quantum::evolve_state;
+
+    #[test]
+    fn test_wave_unified_dt_caching_and_trajectory_parity() {
+        let mut params = HashMap::new();
+        params.insert("potential_type".to_string(), 0.0);
+        params.insert("dt".to_string(), 0.05);
+
+        let mut sim = WaveUnified::new(&params);
+        sim.n_points = 20;
+        sim.init_system(0.0);
+        assert_eq!(sim.cached_dt, None);
+        assert_eq!(sim.scratch.len(), 20);
+
+        let mut expected_psi = sim.psi.clone();
+        for _ in 0..3 {
+            sim.step(&params);
+            expected_psi = evolve_state(&expected_psi, &sim.hamiltonian, 0.05, 1.0).normalize();
+        }
+        assert_eq!(sim.cached_dt, Some(0.05));
+        let ptr_before = sim.propagator.matrix.as_ptr();
+        sim.step(&params);
+        expected_psi = evolve_state(&expected_psi, &sim.hamiltonian, 0.05, 1.0).normalize();
+        assert_eq!(sim.propagator.matrix.as_ptr(), ptr_before);
+        assert!((&sim.psi.vector - &expected_psi.vector).norm() < 1e-12);
+
+        params.insert("dt".to_string(), 0.02);
+        sim.step(&params);
+        expected_psi = evolve_state(&expected_psi, &sim.hamiltonian, 0.02, 1.0).normalize();
+        assert_eq!(sim.cached_dt, Some(0.02));
+        assert!((&sim.psi.vector - &expected_psi.vector).norm() < 1e-12);
+    }
+
+    #[test]
+    fn test_wave_unified_reset_invalidates_propagator_on_potential_change() {
+        let mut params = HashMap::new();
+        params.insert("potential_type".to_string(), 0.0);
+        params.insert("dt".to_string(), 0.04);
+
+        let mut sim = WaveUnified::new(&params);
+        sim.n_points = 20;
+        sim.init_system(0.0);
+        sim.step(&params);
+        assert_eq!(sim.cached_dt, Some(0.04));
+        let well_propagator = sim.propagator.matrix.clone();
+
+        params.insert("potential_type".to_string(), 1.0);
+        sim.process_command(SimCommand::Reset, &params);
+        assert_eq!(sim.cached_dt, None);
+        assert_eq!(sim.step_count, 0);
+        assert_eq!(sim.time, 0.0);
+
+        let init_psi = sim.psi.clone();
+        sim.step(&params);
+        assert_eq!(sim.cached_dt, Some(0.04));
+        assert_ne!(sim.propagator.matrix, well_propagator);
+        let expected = evolve_state(&init_psi, &sim.hamiltonian, 0.04, 1.0).normalize();
+        assert!((&sim.psi.vector - &expected.vector).norm() < 1e-12);
     }
 }

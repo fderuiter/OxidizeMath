@@ -14,6 +14,7 @@
 //! The core function `evolve_state` computes the state at time $t$ given an initial state and a Hamiltonian.
 
 use crate::physics::quantum::types::{QuantumOperator, QuantumState};
+use nalgebra::DVector;
 use num_complex::Complex;
 
 /// Calculates the time evolution operator $U(t) = e^{-i\hat{H}t/\hbar}$.
@@ -145,4 +146,63 @@ pub fn evolve_state(
 ) -> QuantumState {
     let u = time_evolution_operator(hamiltonian, t, h_bar);
     QuantumState::new(&u.matrix * &state.vector)
+}
+
+/// Evolves a quantum state in place using a precomputed unitary propagator $U(\Delta t)$.
+///
+/// Multiplies `propagator.matrix` by `state.vector` into `scratch` and swaps the buffers,
+/// advancing $|\psi(t + \Delta t)\rangle = U(\Delta t)|\psi(t)\rangle$ with zero heap allocations.
+///
+/// # Arguments
+/// * `state` - Mutable quantum state vector $|\psi\rangle$ to evolve in place.
+/// * `propagator` - Precomputed square unitary propagator $U(\Delta t) = e^{-i\hat{H}\Delta t/\hbar}$.
+/// * `scratch` - Pre-allocated complex vector with length matching `state.vector.len()`.
+///
+/// # Panics
+/// Panics if `propagator.matrix` is not square, or if its dimensions or `scratch.len()` do not
+/// match `state.vector.len()`.
+///
+/// # Example
+///
+/// ```
+/// use domain_physics::physics::quantum::{
+///     evolve_state_in_place, sigma_x, time_evolution_operator, QuantumState,
+/// };
+/// use nalgebra::DVector;
+/// use num_complex::Complex;
+///
+/// let h_hat = sigma_x();
+/// let dt = std::f64::consts::PI / 2.0;
+/// let propagator = time_evolution_operator(&h_hat, dt, 1.0);
+///
+/// let mut state = QuantumState::spin_zero();
+/// let mut scratch = DVector::from_element(2, Complex::new(0.0, 0.0));
+/// evolve_state_in_place(&mut state, &propagator, &mut scratch);
+///
+/// assert!((state.probability_density()[1] - 1.0).abs() < 1e-6);
+/// ```
+#[verified_engine::verified]
+pub fn evolve_state_in_place(
+    state: &mut QuantumState,
+    propagator: &QuantumOperator,
+    scratch: &mut DVector<Complex<f64>>,
+) {
+    let dim = state.vector.len();
+    assert_eq!(
+        propagator.matrix.nrows(),
+        propagator.matrix.ncols(),
+        "Propagator matrix must be square"
+    );
+    assert_eq!(
+        propagator.matrix.ncols(),
+        dim,
+        "Propagator dimension must match state vector length"
+    );
+    assert_eq!(
+        scratch.len(),
+        dim,
+        "Scratch vector length must match state vector length"
+    );
+    propagator.matrix.mul_to(&state.vector, scratch);
+    std::mem::swap(&mut state.vector, scratch);
 }

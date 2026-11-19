@@ -420,6 +420,9 @@ inventory::submit! {
 }
 
 #[cfg(test)]
+mod comparison_tests;
+
+#[cfg(test)]
 mod ode_tests;
 
 #[cfg(test)]
