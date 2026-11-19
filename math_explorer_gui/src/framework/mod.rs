@@ -25,6 +25,9 @@ pub mod recovery;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod recovery_tests;
+pub mod state_bounds;
+#[cfg(test)]
+mod state_bounds_tests;
 pub mod state_guard;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
@@ -40,6 +43,7 @@ pub use export_types::*;
 pub use math_input::*;
 pub use playback::*;
 pub use recovery::*;
+pub use state_bounds::*;
 pub use state_guard::*;
 pub use trace_overlay::*;
 
@@ -196,6 +200,11 @@ pub trait InteractiveTool {
         self.load_state(state);
     }
 
+    /// Structural and byte-size budget enforced before JSON state deserialization.
+    fn state_bounds(&self) -> ToolStateBounds {
+        ToolStateBounds::DEFAULT
+    }
+
     /// Fallibly deserializes and restores tool-specific parameters from a JSON state string.
     fn try_load_state(&mut self, _state: &str) -> Result<(), String> {
         Err(format!(
@@ -206,6 +215,9 @@ pub trait InteractiveTool {
 
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, state: &str) {
+        if self.state_bounds().validate_json(state).is_err() {
+            return;
+        }
         let _ = self.try_load_state(state);
     }
 
@@ -243,7 +255,9 @@ pub trait InteractiveTool {
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
         let cleaned = egui_plot::export::strip_utf8_bom(json_str);
-        let envelope: crate::presets::PresetWrapper<serde_json::Value> =
+        let bounds = self.state_bounds();
+        bounds.for_preset_envelope().validate_json(cleaned)?;
+        let envelope: crate::presets::PresetWrapper<Box<serde_json::value::RawValue>> =
             serde_json::from_str(cleaned)
                 .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
         let expected_domain = self.domain();
@@ -256,9 +270,9 @@ pub trait InteractiveTool {
                 envelope.metadata.domain, expected_domain
             ));
         }
-        let config_str = serde_json::to_string(&envelope.config)
-            .map_err(|e| format!("Config serialization error: {}", e))?;
-        self.try_load_state(&config_str)
+        let config_str = envelope.config.get();
+        bounds.validate_json(config_str)?;
+        self.try_load_state(config_str)
     }
 
     /// Declares which dataset and figure export formats this tool supports.

@@ -4,7 +4,24 @@ use eframe::egui;
 use math_explorer::pure_math::number_theory::ambs::prime_factors;
 use math_explorer::pure_math::number_theory::primes::is_prime;
 
+/// Maximum integer accepted for synchronous trial-division primality and factorization.
+///
+/// Prevents UI-thread stalls and avoids `i * i` `u64` multiplication overflow in trial division.
+pub const MAX_SYNC_FACTORIZATION_INPUT: u64 = 10_000_000_000_000;
+
 type FactorizationResult = Result<(u64, bool, Vec<(u64, u32)>), String>;
+
+fn factorize_bounded(num: u64) -> FactorizationResult {
+    if num < 2 {
+        return Err("Number must be at least 2.".to_string());
+    }
+    if num > MAX_SYNC_FACTORIZATION_INPUT {
+        return Err(format!(
+            "Number exceeds maximum synchronous limit ({MAX_SYNC_FACTORIZATION_INPUT})."
+        ));
+    }
+    Ok((num, is_prime(num), prime_factors(num)))
+}
 
 #[derive(Default)]
 pub struct FactorizationTool {
@@ -40,6 +57,7 @@ impl InteractiveTool for FactorizationTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let parsed: FactorizationState =
             serde_json::from_str(state).map_err(|e| format!("Invalid factorization state: {e}"))?;
         let trimmed = parsed.input_text.trim();
@@ -51,11 +69,9 @@ impl InteractiveTool for FactorizationTool {
         let num = trimmed
             .parse::<u64>()
             .map_err(|_| "input_text must be an integer >= 2 or empty".to_string())?;
-        if num < 2 {
-            return Err("Number must be at least 2".into());
-        }
+        let computed = factorize_bounded(num)?;
         self.input_text = parsed.input_text;
-        self.results = Some(Ok((num, is_prime(num), prime_factors(num))));
+        self.results = Some(Ok(computed));
         Ok(())
     }
 
@@ -92,15 +108,7 @@ impl InteractiveTool for FactorizationTool {
                     || enter_pressed
                 {
                     self.results = Some(match self.input_text.trim().parse::<u64>() {
-                        Ok(num) => {
-                            if num < 2 {
-                                Err("Number must be at least 2.".to_string())
-                            } else {
-                                let prime_check = is_prime(num);
-                                let factors = prime_factors(num);
-                                Ok((num, prime_check, factors))
-                            }
-                        }
+                        Ok(num) => factorize_bounded(num),
                         Err(_) => {
                             Err("Please enter a valid positive integer (max 64-bit).".to_string())
                         }
@@ -204,5 +212,82 @@ inventory::submit! {
         domain: "number_theory",
         tool_name: Some("FactorizationTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn click_analyze_button(ctx: &egui::Context, tool: &mut FactorizationTool) {
+        let rect = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(800.0, 600.0),
+        ));
+        let out = ctx.run(
+            egui::RawInput {
+                screen_rect: rect,
+                ..Default::default()
+            },
+            |ctx| tool.show(ctx),
+        );
+        let btn_bounds = out
+            .platform_output
+            .accesskit_update
+            .as_ref()
+            .and_then(|ak| {
+                ak.nodes.iter().find_map(|(_, n)| {
+                    (n.role() == egui::accesskit::Role::Button && n.label() == Some("▶ Analyze"))
+                        .then(|| n.bounds())
+                        .flatten()
+                })
+            })
+            .expect("Analyze button must exist");
+        let pos = egui::pos2(
+            ((btn_bounds.x0 + btn_bounds.x1) * 0.5) as f32,
+            ((btn_bounds.y0 + btn_bounds.y1) * 0.5) as f32,
+        );
+        let events = vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ];
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: rect,
+                events,
+                ..Default::default()
+            },
+            |ctx| tool.show(ctx),
+        );
+    }
+
+    #[test]
+    fn test_factorization_synchronous_cap_and_ui_analyze() {
+        assert!(factorize_bounded(1).is_err());
+        assert!(factorize_bounded(18_446_744_073_709_551_557).is_err());
+        assert_eq!(
+            factorize_bounded(42).unwrap(),
+            (42, false, vec![(2, 1), (3, 1), (7, 1)])
+        );
+
+        let mut tool = FactorizationTool {
+            input_text: "18446744073709551557".to_string(),
+            results: None,
+        };
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        click_analyze_button(&ctx, &mut tool);
+        assert!(matches!(tool.results, Some(Err(_))));
     }
 }
