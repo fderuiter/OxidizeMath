@@ -71,7 +71,7 @@ cargo run -p xtask -- setup
 
 ### Manual Verification Checks
 
-You can run the full lint suite manually at any time before committing or pushing changes:
+You can run the full lint suite manually at any time before committing or pushing changes (aligned with [crates/unified_verification/README.md](crates/unified_verification/README.md)):
 
 ```bash
 cargo run -p xtask -- lint-all
@@ -79,22 +79,42 @@ cargo run -p xtask -- lint-all
 
 This command executes all workspace quality gates:
 1. **Formatting**: `cargo fmt --all -- --check`
-2. **Clippy Lints (Host & WebAssembly)**:
+2. **Cargo Profile Verification**: `cargo run -p unified_verification --release -- check-profiles` (enforces workspace `[profile.release]` `overflow-checks = true` and rejects member `[profile.release]` overrides)
+3. **AST Code Clone Detection**: `cargo run -p unified_verification --release -- check-duplicates` (blocks duplicated indexing and color-conversion AST patterns across first-party crates)
+4. **Public API Drift**: `cargo run -p unified_verification --release -- check-api-drift` (validates reachable public methods, traits, constants, statics, types, and `pub use` re-exports against `crates/unified_verification/api_baseline.json`)
+5. **Staged Architectural Decision Records**: `cargo run -p unified_verification --release -- verify-records --staged` (ensures staged edits to `crates/` or `math_explorer/` include an ADR under `docs/adr/`)
+6. **File Length Constraints**: `cargo run -p unified_verification --release -- check-file-lengths` (enforces the 500-line ceiling per source file)
+7. **Clippy Lints (Host & WebAssembly)**:
    ```bash
    cargo clippy --workspace --all-targets --all-features -- -D warnings
    cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
    ```
-3. **Staged Duplicates**: Duplicate file detection in staged git changes
-4. **File Length Constraints**: Enforces the 500-line ceiling per source file
-5. **Documentation**: `cargo doc --workspace --no-deps` (with warnings treated as errors)
-6. **Documentation Tests**: `cargo test --doc --workspace --all-features`
-7. **Markdown Links**: Validates all internal relative markdown links
-8. **CI Workflows**: `cargo run -p unified_verification --release -- lint-workflows` (validates GitHub Actions workflow permissions, concurrency controls, job timeouts, commit-pinned actions, and rejects direct `${{ github.* }}` interpolations in `run` scripts)
-9. **Crate Documentation Audit**: `cargo run -p unified_verification --release -- check-docs` (verifies README files and entrypoint docs)
-10. **Traceability**: `cargo run -p unified_verification --release -- traceability` (validates architectural citations and test mappings)
-11. **Entropy & Secret Scanning**: `cargo run -p unified_verification --release -- check-entropy` (audits source files for secrets and unseeded entropy)
-12. **Dependency Vulnerabilities**: `cargo run -p unified_verification --release -- check-vulnerabilities` (scans dependencies against OSV advisories)
-13. **Policy Audit**: `cargo run -p unified_verification --release -- test-policy-audit` (detects unauthorized `dead_code`, `unused`, or `warnings` bypass attributes and unused dependencies)
+8. **Documentation**: `cargo doc --workspace --no-deps` (with warnings treated as errors)
+9. **Documentation Tests**: `cargo test --doc --workspace --all-features`
+10. **Markdown Links**: `cargo run -p xtask -- check-markdown-links` (validates all internal relative markdown links)
+11. **CI Workflows**: `cargo run -p unified_verification --release -- lint-workflows` (validates GitHub Actions workflow permissions, concurrency controls, job timeouts, commit-pinned actions, and rejects direct `${{ github.* }}` interpolations in `run` scripts)
+12. **Crate Documentation Audit**: `cargo run -p unified_verification --release -- check-docs` (verifies README files and entrypoint docs)
+13. **Traceability**: `cargo run -p unified_verification --release -- traceability` (validates architectural citations and test mappings)
+14. **Entropy & Secret Scanning**: `cargo run -p unified_verification --release -- check-entropy` (audits source files for secrets and unseeded entropy)
+15. **Dependency Vulnerabilities**: `cargo run -p unified_verification --release -- check-vulnerabilities` (scans dependencies against OSV advisories)
+16. **Policy Audit**: `cargo run -p unified_verification --release -- test-policy-audit` (detects unauthorized `dead_code`, `unused`, or `warnings` bypass attributes and unused dependencies)
+
+Individual gates, baseline regeneration, and the full coverage-backed verification suite can also be invoked directly:
+
+```bash
+# Run individual pre-flight static gates via xtask or unified_verification
+cargo run -p xtask -- check-profiles
+cargo run -p xtask -- check-duplicates
+cargo run -p xtask -- check-api-drift
+
+# Regenerate api_baseline.json after intentional public API changes (must accompany an ADR in docs/adr/)
+cargo run -p xtask -- regenerate-baseline
+cargo run -p unified_verification --release -- regenerate-baseline
+
+# Execute the full high-integrity verification suite (static gates + cargo llvm-cov coverage report)
+cargo run -p xtask -- verify-suite
+cargo run -p unified_verification --release -- verify-suite
+```
 
 ### Troubleshooting
 
