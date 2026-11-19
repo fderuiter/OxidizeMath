@@ -22,6 +22,10 @@ Markdown verification gates:
 Before opening or updating a pull request, run the repository quality gates defined in [.github/workflows/ci.yml](.github/workflows/ci.yml):
 
 ```bash
+# Lint host and WebAssembly targets with Clippy (warnings denied)
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
+
 # Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA action pins)
 cargo run -p unified_verification --release -- lint-workflows
 

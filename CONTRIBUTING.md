@@ -79,7 +79,11 @@ cargo run -p xtask -- lint-all
 
 This command executes all workspace quality gates:
 1. **Formatting**: `cargo fmt --all -- --check`
-2. **Clippy Lints**: `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+2. **Clippy Lints (Host & WebAssembly)**:
+   ```bash
+   cargo clippy --workspace --all-targets --all-features -- -D warnings
+   cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
+   ```
 3. **Staged Duplicates**: Duplicate file detection in staged git changes
 4. **File Length Constraints**: Enforces the 500-line ceiling per source file
 5. **Documentation**: `cargo doc --workspace --no-deps` (with warnings treated as errors)
