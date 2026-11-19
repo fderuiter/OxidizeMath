@@ -300,3 +300,110 @@ fn test_runtime_overhead_less_than_one_percent() {
         step_elapsed
     );
 }
+
+fn run_recovery_banner_frame(
+    ctx: &egui::Context,
+    report: &DiagnosticReport,
+    events: Vec<egui::Event>,
+) -> egui::FullOutput {
+    let screen_rect = Some(egui::Rect::from_min_size(
+        egui::Pos2::ZERO,
+        egui::vec2(1200.0, 400.0),
+    ));
+    ctx.run(
+        egui::RawInput {
+            screen_rect,
+            events,
+            ..Default::default()
+        },
+        |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = render_state_guard_banner(ui, Some(report), true);
+            });
+        },
+    )
+}
+
+fn verify_recovery_button_hover_and_escape(
+    ctx: &egui::Context,
+    report: &DiagnosticReport,
+    btn_label: &str,
+    expected_tooltip: &str,
+) {
+    let out = run_recovery_banner_frame(
+        ctx,
+        report,
+        vec![egui::Event::PointerMoved(egui::pos2(1190.0, 390.0))],
+    );
+    let ak = out
+        .platform_output
+        .accesskit_update
+        .as_ref()
+        .expect("AccessKit tree must exist");
+    let bounds = ak
+        .nodes
+        .iter()
+        .find_map(|(_, node)| {
+            if node.role() == egui::accesskit::Role::Button && node.label() == Some(btn_label) {
+                node.bounds()
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| panic!("Recovery button '{btn_label}' must exist"));
+    let pos = egui::pos2(
+        ((bounds.x0 + bounds.x1) * 0.5) as f32,
+        ((bounds.y0 + bounds.y1) * 0.5) as f32,
+    );
+
+    crate::accessibility::clear_test_announcements();
+    let _ = run_recovery_banner_frame(ctx, report, vec![egui::Event::PointerMoved(pos)]);
+    assert!(
+        crate::accessibility::all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg == expected_tooltip && prio == "polite"),
+        "Expected announcement '{expected_tooltip}' for '{btn_label}'"
+    );
+
+    crate::accessibility::clear_test_announcements();
+    let esc = egui::Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let _ = run_recovery_banner_frame(ctx, report, vec![egui::Event::PointerMoved(pos), esc]);
+    assert!(
+        crate::accessibility::all_announcements().is_empty(),
+        "Recovery button '{btn_label}' tooltip must dismiss on Escape"
+    );
+}
+
+#[test]
+fn test_recovery_action_buttons_announce_and_dismiss_on_escape() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let report = DiagnosticReport::new(0.5, 10, "state_variable", "Non-finite float detected.");
+
+    for (btn_label, expected_tooltip) in [
+        (
+            "⏮ Step Back",
+            "Restore the most recent valid pre-divergence state snapshot and plot data",
+        ),
+        (
+            "Auto-scale Step Size (dt)",
+            "Halve step size (dt) and recalculate simulation trajectory from snapshot",
+        ),
+        (
+            "Clamp Instability Parameters",
+            "Restrict rate parameters and initial conditions to pre-configured stable bounds",
+        ),
+        (
+            "Reset All Parameters",
+            "Restore default baseline configuration",
+        ),
+    ] {
+        verify_recovery_button_hover_and_escape(&ctx, &report, btn_label, expected_tooltip);
+    }
+}

@@ -7,7 +7,7 @@ fn find_ode_tool_index(framework: &SimulationFramework) -> usize {
     framework
         .available_tools
         .iter()
-        .position(|t| t.name.contains("ODE") || t.name.contains("Ode"))
+        .position(|t| t.display_name.contains("ODE") || t.id.contains("Ode"))
         .unwrap_or(0)
 }
 

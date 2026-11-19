@@ -21,9 +21,10 @@ mod tests {
         let filtered_count = framework
             .available_tools
             .iter()
-            .filter(|meta| {
-                meta.name.to_lowercase().contains(&query)
-                    || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
+            .filter(|m| {
+                m.display_name.to_lowercase().contains(&query)
+                    || m.id.to_lowercase().contains(&query)
+                    || m.tags.iter().any(|t| t.to_lowercase().contains(&query))
             })
             .count();
 
@@ -41,9 +42,10 @@ mod tests {
         let filtered_count = framework
             .available_tools
             .iter()
-            .filter(|meta| {
-                meta.name.to_lowercase().contains(&query)
-                    || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
+            .filter(|m| {
+                m.display_name.to_lowercase().contains(&query)
+                    || m.id.to_lowercase().contains(&query)
+                    || m.tags.iter().any(|t| t.to_lowercase().contains(&query))
             })
             .count();
 
@@ -411,13 +413,7 @@ mod tests {
             .find(|c| c.title == "Harmonic Oscillator")
             .unwrap();
         assert!(harmonic_card.preset_json.is_some());
-
-        if let Some(tool) = &mut framework.active_tool {
-            assert!(tool
-                .apply_preset_json(harmonic_card.preset_json.unwrap())
-                .is_ok());
-        }
-        framework.show_starter_gallery = false;
+        assert!(framework.launch_starter_card(harmonic_card).is_ok());
         assert!(!framework.show_starter_gallery);
 
         // Acceptance Criteria 4: Starter Gallery button toggles visibility on demand
@@ -442,11 +438,7 @@ mod tests {
             .iter()
             .find(|c| c.title == "Vector Field")
             .unwrap();
-        if let Some(tool) = &mut fluid_framework.active_tool {
-            assert!(tool
-                .apply_preset_json(vector_card.preset_json.unwrap())
-                .is_ok());
-        }
+        assert!(fluid_framework.launch_starter_card(vector_card).is_ok());
 
         let mut chaos_framework = SimulationFramework::new("chaos");
         let chaos_cards = crate::starter_gallery::get_starter_cards_for_domain(
@@ -457,11 +449,7 @@ mod tests {
             .iter()
             .find(|c| c.title == "3D Attractor")
             .unwrap();
-        if let Some(tool) = &mut chaos_framework.active_tool {
-            assert!(tool
-                .apply_preset_json(attractor_card.preset_json.unwrap())
-                .is_ok());
-        }
+        assert!(chaos_framework.launch_starter_card(attractor_card).is_ok());
 
         // Generate visual artifact screenshot at /tmp/starter_gallery_preview.png
         let gallery_preview_datasets = vec![

@@ -23,30 +23,24 @@ fn render_fault_frame(
     detail: Option<&str>,
     offer_reset_parameters: bool,
 ) -> Option<WorkerFaultAction> {
+    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
     let mut chosen = None;
     egui::Frame::new()
-        .fill(egui::Color32::from_rgb(45, 20, 20))
-        .stroke(egui::Stroke::new(
-            1.5_f32,
-            egui::Color32::from_rgb(220, 50, 50),
-        ))
+        .fill(palette.error_banner_bg)
+        .stroke(egui::Stroke::new(1.5_f32, palette.error_banner_stroke))
         .corner_radius(egui::CornerRadius::same(6))
         .inner_margin(egui::Margin::same(10))
         .show(ui, |ui| {
             ui.vertical(|ui| {
                 ui.label(
                     egui::RichText::new(headline)
-                        .color(egui::Color32::from_rgb(255, 100, 100))
+                        .color(palette.error)
                         .strong()
                         .size(13.0),
                 );
                 if let Some(info) = detail {
                     ui.add_space(4.0);
-                    ui.label(
-                        egui::RichText::new(info)
-                            .monospace()
-                            .color(egui::Color32::from_rgb(240, 200, 150)),
-                    );
+                    ui.label(egui::RichText::new(info).monospace().color(palette.warning));
                 }
                 ui.add_space(6.0);
                 ui.horizontal_wrapped(|ui| {
@@ -127,19 +121,65 @@ pub fn render_custom_fault_banner(
 
 /// Renders subtle guidance text above or inside an empty or baseline plot view.
 pub fn render_empty_plot_guidance(ui: &mut egui::Ui, message: &str) {
+    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
     egui::Frame::new()
-        .fill(egui::Color32::from_rgba_unmultiplied(40, 50, 65, 110))
-        .stroke(egui::Stroke::new(
-            1.0_f32,
-            egui::Color32::from_rgb(90, 120, 150),
-        ))
+        .fill(palette.surface_fill)
+        .stroke(egui::Stroke::new(1.0_f32, palette.graph_edge))
         .corner_radius(egui::CornerRadius::same(4))
         .inner_margin(egui::Margin::symmetric(8, 6))
         .show(ui, |ui| {
             ui.label(
                 egui::RichText::new(message)
                     .italics()
-                    .color(egui::Color32::from_rgb(190, 210, 230)),
+                    .color(palette.muted_text),
             );
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{contrast_ratio, ThemeMode};
+
+    fn find_text_color(output: &egui::FullOutput, needle: &str) -> Option<egui::Color32> {
+        let mut stack: Vec<&egui::epaint::Shape> = output.shapes.iter().map(|c| &c.shape).collect();
+        while let Some(shape) = stack.pop() {
+            match shape {
+                egui::epaint::Shape::Text(t) if t.galley.job.text.contains(needle) => {
+                    return t
+                        .galley
+                        .job
+                        .sections
+                        .first()
+                        .map(|s| s.format.color)
+                        .or(Some(t.fallback_color));
+                }
+                egui::epaint::Shape::Vec(v) => stack.extend(v.iter()),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn test_worker_fault_and_guidance_frames_meet_wcag_aa_across_themes() {
+        for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::HighContrast] {
+            let ctx = egui::Context::default();
+            ctx.set_visuals(mode.visuals());
+            let palette = mode.palette();
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = render_worker_fault_banner(ui, SimWorkerState::Faulted, None, false);
+                    render_empty_plot_guidance(ui, "Simulation ready — click Run.");
+                });
+            });
+            let headline = find_text_color(&out, "Simulation Worker Faulted").expect("headline");
+            let detail = find_text_color(&out, "Click Reset to restore").expect("detail");
+            let guidance = find_text_color(&out, "Simulation ready").expect("guidance");
+            assert!(contrast_ratio(headline, palette.error_banner_bg) >= 4.5);
+            assert!(contrast_ratio(detail, palette.error_banner_bg) >= 4.5);
+            assert!(contrast_ratio(guidance, palette.surface_fill) >= 4.5);
+            assert!(contrast_ratio(palette.error_banner_stroke, palette.error_banner_bg) >= 3.0);
+        }
+    }
 }

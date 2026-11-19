@@ -56,7 +56,7 @@ impl TheoryDescribable for ClebschGordanTool {
     }
 
     fn theory_citation(&self) -> String {
-        "[cite:quantum_mechanics]".to_string()
+        "Wigner, E. P. (1959). Group Theory and its Application to the Quantum Mechanics of Atomic Spectra. Academic Press; Sakurai, J. J., & Napolitano, J. (2020). Modern Quantum Mechanics (3rd ed.). Cambridge University Press.".to_string()
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
@@ -69,11 +69,53 @@ impl TheoryDescribable for ClebschGordanTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ClebschGordanState {
+    j1: f64,
+    m1: f64,
+    j2: f64,
+    m2: f64,
+    j: f64,
+    m: f64,
+}
+
 impl InteractiveTool for ClebschGordanTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     
     fn name(&self) -> &'static str {
         "Clebsch-Gordan"
+    }
+
+    fn domain(&self) -> &'static str {
+        "quantum"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&ClebschGordanState {
+            j1: self.j1,
+            m1: self.m1,
+            j2: self.j2,
+            m2: self.m2,
+            j: self.j,
+            m: self.m,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: ClebschGordanState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid ClebschGordanTool state: {e}"))?;
+        if ![s.j1, s.m1, s.j2, s.m2, s.j, s.m].iter().all(|v| v.is_finite()) {
+            return Err("Non-finite quantum numbers in ClebschGordanTool".to_string());
+        }
+        self.j1 = s.j1;
+        self.m1 = s.m1;
+        self.j2 = s.j2;
+        self.m2 = s.m2;
+        self.j = s.j;
+        self.m = s.m;
+        self.calculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -158,6 +200,7 @@ impl InteractiveTool for ClebschGordanTool {
 
             ui.add_space(20.0);
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new("Result (Amplitude): ")
@@ -167,7 +210,7 @@ impl InteractiveTool for ClebschGordanTool {
                 ui.label(
                     egui::RichText::new(format!("{:.6}", self.result))
                         .size(24.0)
-                        .color(egui::Color32::LIGHT_GREEN),
+                        .color(palette.success),
                 );
             });
 
@@ -181,7 +224,7 @@ impl InteractiveTool for ClebschGordanTool {
             // Use Plot for visualization as requested
             let bar = Bar::new(0.0, self.result).width(0.5).name("Amplitude");
             let chart =
-                BarChart::new("Coefficient Value", vec![bar]).color(egui::Color32::LIGHT_BLUE);
+                BarChart::new("Coefficient Value", vec![bar]).color(palette.series_color(0));
 
             let response = Plot::new("clebsch_plot")
                 .view_aspect(2.0)
@@ -196,7 +239,7 @@ impl InteractiveTool for ClebschGordanTool {
             // Warnings / Info
             if (self.m1 + self.m2 - self.m).abs() > 1e-9 {
                 ui.colored_label(
-                    egui::Color32::RED,
+                    palette.error,
                     "Warning: M must equal m1 + m2 for non-zero result.",
                 );
             }
@@ -205,7 +248,7 @@ impl InteractiveTool for ClebschGordanTool {
             let j_max = self.j1 + self.j2;
             if self.j < j_min || self.j > j_max {
                 ui.colored_label(
-                    egui::Color32::RED,
+                    palette.error,
                     format!(
                         "Warning: J must be in range [{:.1}, {:.1}] (Triangle Inequality).",
                         j_min, j_max
@@ -221,7 +264,8 @@ impl InteractiveTool for ClebschGordanTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "ClebschGordanTool",
+        id: "ClebschGordanTool",
+        display_name: "Clebsch-Gordan",
         domain: "quantum",
         tags: &[],
         build: || Box::new(ClebschGordanTool::default()),
@@ -237,7 +281,11 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "j1": 1.0,
-    "j2": 1.0
+    "m1": 1.0,
+    "j2": 1.0,
+    "m2": -1.0,
+    "j": 2.0,
+    "m": 0.0
   }
 }"#;
 

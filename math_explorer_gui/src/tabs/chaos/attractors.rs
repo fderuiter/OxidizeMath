@@ -181,10 +181,6 @@ impl AttractorPlotter {
     }
 }
 
-const fn default_annotations_enabled() -> bool {
-    true
-}
-
 impl InteractiveTool for AttractorPlotter {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -197,117 +193,55 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn save_state(&self) -> Option<String> {
-        #[derive(serde::Serialize)]
-        struct AttractorState {
-            sigma: f64,
-            rho: f64,
-            beta: f64,
-            dt: f64,
-            simulation_speed: usize,
-            execution_state: SolverExecutionState,
-            #[serde(default = "default_annotations_enabled")]
-            show_annotations: bool,
-        }
-
-        serde_json::to_string(&AttractorState {
-            sigma: self.system.sigma,
-            rho: self.system.rho,
-            beta: self.system.beta,
-            dt: self.dt,
-            simulation_speed: self.simulation_speed,
-            execution_state: self.execution_state,
-            show_annotations: self.show_annotations,
-        })
-        .ok()
+        self.serialize_state()
     }
 
-    fn load_state(&mut self, state: &str) {
-        #[derive(serde::Deserialize)]
-        struct AttractorState {
-            sigma: f64,
-            rho: f64,
-            beta: f64,
-            dt: f64,
-            simulation_speed: usize,
-            #[serde(default)]
-            execution_state: Option<SolverExecutionState>,
-            #[serde(default = "default_annotations_enabled")]
-            show_annotations: bool,
-        }
-
-        if let Ok(s) = serde_json::from_str::<AttractorState>(state) {
-            self.system.sigma = s.sigma;
-            self.system.rho = s.rho;
-            self.system.beta = s.beta;
-            self.dt = s.dt;
-            self.simulation_speed = s.simulation_speed;
-            self.show_annotations = s.show_annotations;
-            self.reset();
-            let _ = self.worker.update();
-            let execution_state = s.execution_state.unwrap_or_else(|| {
-                let legacy_paused = serde_json::from_str::<serde_json::Value>(state)
-                    .ok()
-                    .and_then(|v| v.get("paused").and_then(|p| p.as_bool()))
-                    .unwrap_or(false);
-                if legacy_paused {
-                    SolverExecutionState::Paused
-                } else {
-                    SolverExecutionState::Ready
-                }
-            });
-            self.execution_state = execution_state;
-            if let SolverExecutionState::Diverged {
-                invalid_vec,
-                diverged_at_step,
-            } = execution_state
-            {
-                self.system.state.vec = invalid_vec;
-                self.step_count = diverged_at_step;
-            }
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.deserialize_state(state)
     }
 
-    fn apply_preset_json(&mut self, _json_str: &str) -> Result<(), String> {
-        self.reset_parameters();
+    fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        self.import_preset_json(json_str)?;
         self.execution_state = SolverExecutionState::Running;
         Ok(())
     }
 
     fn step_simulation(&mut self) {
-        if !self.diverged() {
-            if self.execution_state == SolverExecutionState::Ready {
-                self.execution_state = SolverExecutionState::Running;
+        if self.diverged() {
+            return;
+        }
+        if self.execution_state == SolverExecutionState::Ready {
+            self.execution_state = SolverExecutionState::Running;
+        }
+        for _ in 0..self.simulation_speed {
+            let current_vec = self.system.state.vec;
+            if !current_vec.x.is_finite()
+                || !current_vec.y.is_finite()
+                || !current_vec.z.is_finite()
+            {
+                self.execution_state = SolverExecutionState::Diverged {
+                    invalid_vec: current_vec,
+                    diverged_at_step: self.step_count,
+                };
+                break;
             }
-            for _ in 0..self.simulation_speed {
-                let current_vec = self.system.state.vec;
-                if !current_vec.x.is_finite()
-                    || !current_vec.y.is_finite()
-                    || !current_vec.z.is_finite()
-                {
-                    self.execution_state = SolverExecutionState::Diverged {
-                        invalid_vec: current_vec,
-                        diverged_at_step: self.step_count,
-                    };
-                    break;
-                }
 
-                self.system.step(self.dt);
-                self.step_count += 1;
+            self.system.step(self.dt);
+            self.step_count += 1;
 
-                let vec = self.system.state.vec;
-                if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
-                    self.execution_state = SolverExecutionState::Diverged {
-                        invalid_vec: vec,
-                        diverged_at_step: self.step_count,
-                    };
-                    break;
-                }
-
-                if self.history.len() >= self.max_points {
-                    self.history.pop_front();
-                }
-                self.history.push_back(vec);
+            let vec = self.system.state.vec;
+            if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
+                self.execution_state = SolverExecutionState::Diverged {
+                    invalid_vec: vec,
+                    diverged_at_step: self.step_count,
+                };
+                break;
             }
+
+            if self.history.len() >= self.max_points {
+                self.history.pop_front();
+            }
+            self.history.push_back(vec);
         }
     }
 
@@ -328,6 +262,7 @@ impl InteractiveTool for AttractorPlotter {
         }
 
         let ui_diverged = self.diverged();
+        let was_paused = self.is_paused();
         if let Some(snapshot) = self.worker.update() {
             if !ui_diverged {
                 if let Some(data) = snapshot
@@ -338,7 +273,11 @@ impl InteractiveTool for AttractorPlotter {
                     self.history = data.history.clone();
                     self.system.state.vec = data.current_vec;
                     self.step_count = data.step_count;
-                    self.execution_state = data.execution_state;
+                    if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
+                        || !was_paused
+                    {
+                        self.execution_state = data.execution_state;
+                    }
                 }
             }
         }
@@ -353,6 +292,10 @@ impl InteractiveTool for AttractorPlotter {
             let _ = self.worker.send_command(SimCommand::Pause);
         }
 
+        if self.worker.state().is_stepping() {
+            ctx.request_repaint();
+        }
+
         self.draw_side_panel(ctx);
         self.draw_central_panel(ctx);
     }
@@ -360,12 +303,17 @@ impl InteractiveTool for AttractorPlotter {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "AttractorPlotter",
+        id: "AttractorPlotter",
+        display_name: "Attractor Plotter",
         domain: "chaos",
         tags: &["lorenz", "attractor", "chaos"],
         build: || Box::new(AttractorPlotter::default()),
     }
 }
 
+#[path = "attractors/preset.rs"]
+mod preset;
+
 #[cfg(test)]
+#[path = "attractors/attractor_tests.rs"]
 mod attractor_tests;

@@ -12,7 +12,10 @@ use math_explorer::pure_math::graph_theory::{
 use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
 
+mod keyboard;
 mod snapshot;
+#[allow(unused_imports)]
+pub use keyboard::{TRANSLATE_STEP_NORMAL, TRANSLATE_STEP_SHIFT};
 #[allow(unused_imports)]
 pub use snapshot::{GraphSnapshot, SerializedGraphState, MAX_SNAPSHOTS};
 
@@ -66,20 +69,21 @@ impl InteractiveTool for GraphEditorTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<SerializedGraphState>(state) {
-            self.node_positions = loaded
-                .node_positions
-                .into_iter()
-                .map(|(id, (x, y))| (id, Pos2::new(x, y)))
-                .collect();
-            self.edges = loaded.edges;
-            self.selected_node = loaded.selected_node;
-            self.next_node_id = loaded.next_node_id;
-            self.undo_stack.clear();
-            self.redo_stack.clear();
-            self.rebuild_graph();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded =
+            serde_json::from_str::<SerializedGraphState>(state).map_err(|e| e.to_string())?;
+        self.node_positions = loaded
+            .node_positions
+            .into_iter()
+            .map(|(id, (x, y))| (id, Pos2::new(x, y)))
+            .collect();
+        self.edges = loaded.edges;
+        self.selected_node = loaded.selected_node;
+        self.next_node_id = loaded.next_node_id;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.rebuild_graph();
+        Ok(())
     }
 
     fn show_ui(&mut self, ui: &mut egui::Ui) {
@@ -122,20 +126,7 @@ impl InteractiveTool for GraphEditorTool {
     }
 
     fn on_keyboard(&mut self, ctx: &InteractionContext) {
-        let ctrl_or_cmd = ctx.modifiers.command || ctx.modifiers.ctrl || ctx.modifiers.mac_cmd;
-        if ctrl_or_cmd {
-            if ctx.keys_down.contains(&egui::Key::Z) {
-                if ctx.modifiers.shift {
-                    if self.can_redo() {
-                        self.redo();
-                    }
-                } else if self.can_undo() {
-                    self.undo();
-                }
-            } else if ctx.keys_down.contains(&egui::Key::Y) && self.can_redo() {
-                self.redo();
-            }
-        }
+        self.handle_keyboard(ctx);
     }
 
     fn on_hover(&mut self, ctx: &InteractionContext) {
@@ -274,8 +265,10 @@ impl InteractiveTool for GraphEditorTool {
         }
     }
 
-    fn draw(&mut self, ui: &mut egui::Ui, _response: &egui::Response, painter: &egui::Painter) {
+    fn draw(&mut self, ui: &mut egui::Ui, response: &egui::Response, painter: &egui::Painter) {
+        self.configure_canvas_focus(ui, response);
         let node_radius = 15.0;
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let text_color = ui.visuals().text_color();
         let window_stroke = ui.visuals().window_stroke();
 
@@ -285,9 +278,9 @@ impl InteractiveTool for GraphEditorTool {
                 (self.node_positions.get(&u), self.node_positions.get(&v))
             {
                 let color = if self.mode == EditorMode::Remove && self.hovered_edge == Some(i) {
-                    egui::Color32::RED
+                    palette.error
                 } else {
-                    egui::Color32::GRAY
+                    palette.graph_edge
                 };
 
                 painter.line_segment([pos_u, pos_v], (2.0, color));
@@ -310,11 +303,11 @@ impl InteractiveTool for GraphEditorTool {
             let is_hovered = self.hovered_node == Some(id);
 
             let fill_color = if self.mode == EditorMode::Remove && is_hovered {
-                egui::Color32::from_rgb(255, 100, 100)
+                palette.error
             } else if is_selected {
-                egui::Color32::GREEN
+                palette.success
             } else {
-                egui::Color32::LIGHT_BLUE
+                palette.series_color(0)
             };
 
             painter.circle(pos, node_radius, fill_color, window_stroke);
@@ -324,7 +317,7 @@ impl InteractiveTool for GraphEditorTool {
                 egui::Align2::CENTER_CENTER,
                 id.to_string(),
                 egui::FontId::proportional(14.0),
-                egui::Color32::BLACK,
+                crate::app::contrasting_text_color(fill_color),
             );
         }
     }
@@ -335,6 +328,7 @@ impl GraphEditorTool {
     pub fn can_redo(&self) -> bool { !self.redo_stack.is_empty() }
 
     fn show_undo_redo_toolbar(&mut self, ui: &mut egui::Ui) {
+        self.register_keyboard_commands(ui.ctx());
         let m = if cfg!(target_os = "macos") { egui::Modifiers::MAC_CMD } else { egui::Modifiers::CTRL };
         CommandRegistryData::register(ui.ctx(), "Undo", "Undo the last graph modification", CommandTrigger::Shortcut(m, egui::Key::Z), true, "Graph Editor");
         CommandRegistryData::register(ui.ctx(), "Redo", "Redo the last undone graph modification", CommandTrigger::Shortcut(m | egui::Modifiers::SHIFT, egui::Key::Z), true, "Graph Editor");
@@ -460,7 +454,8 @@ impl GraphEditorTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "GraphEditorTool",
+        id: "GraphEditorTool",
+        display_name: "Graph Editor",
         domain: "graph_theory",
         tags: &[],
         build: || Box::new(GraphEditorTool::default()),

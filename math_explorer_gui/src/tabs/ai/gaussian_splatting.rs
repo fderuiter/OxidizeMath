@@ -2,7 +2,7 @@ use crate::framework::InteractiveTool;
 use eframe::egui;
 
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct GaussianSplattingTool {
     pub scale: f64,
 }
@@ -11,6 +11,23 @@ impl InteractiveTool for GaussianSplattingTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
     fn name(&self) -> &'static str {
         "Gaussian Splatting"
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(self).ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: Self = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid GaussianSplattingTool state: {e}"))?;
+        if !s.scale.is_finite() {
+            return Err("Invalid non-finite scale in GaussianSplattingTool".to_string());
+        }
+        self.scale = s.scale;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -46,7 +63,8 @@ impl scientific_metadata::theory::TheoryDescribable for GaussianSplattingTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "Gaussian Splatting",
+        id: "Gaussian Splatting",
+        display_name: "Gaussian Splatting",
         domain: "ai",
         tags: &["ai", "graphics"],
         build: || Box::new(GaussianSplattingTool::default()),
@@ -61,8 +79,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "num_points": 500,
-    "splat_scale": 1.0
+    "scale": 1.5
   }
 }"#;
 

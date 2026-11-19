@@ -3,7 +3,7 @@ use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::{InputMode, InteractiveTool};
+use crate::framework::{InputMode, InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorldEnv, Move};
 use std::collections::HashMap;
@@ -12,8 +12,8 @@ use std::collections::HashMap;
 mod runner;
 pub use runner::*;
 
-#[derive(Clone, Copy, PartialEq)]
-enum HeatmapView {
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(super) enum HeatmapView {
     MaxQ,
     Up,
     Down,
@@ -46,7 +46,7 @@ impl Default for QTableInspectorTool {
 }
 
 impl QTableInspectorTool {
-    fn sync_from_latest(&mut self) {
+    pub(super) fn sync_from_latest(&mut self) {
         if let Some(snapshot) = self.worker.latest_snapshot() {
             if let Some(data) = snapshot
                 .structured_data
@@ -121,6 +121,24 @@ impl QTableInspectorTool {
         }
     }
 
+    fn handle_transport_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
+        match action {
+            PlaybackAction::Play => {
+                let _ = self.worker.send_command(SimCommand::TrainEpisodes(100));
+            }
+            PlaybackAction::Pause => {
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+            PlaybackAction::Step => {
+                let _ = self.worker.send_command(SimCommand::Step(1));
+            }
+            PlaybackAction::Reset => {
+                self.reset();
+                ctx.request_repaint();
+            }
+        }
+    }
+
     fn draw_side_panel(&mut self, ctx: &egui::Context, legend_size: f32) {
         egui::SidePanel::left("q_table_controls").show(ctx, |ui| {
             ui.heading("Training Controls");
@@ -140,36 +158,34 @@ impl QTableInspectorTool {
             }
 
             let state = self.worker.state();
-            let can_train = state == SimWorkerState::Ready;
             ui.label(format!("Episodes Trained: {}", self.episodes_trained));
             if state.is_running() {
-                ui.colored_label(
-                    egui::Color32::from_rgb(60, 160, 240),
-                    "⏳ Training in background...",
-                );
+                let info = crate::app::SemanticPalette::from_visuals(ui.visuals()).info;
+                ui.colored_label(info, "⏳ Training in background...");
+            }
+
+            if let Some(action) = PlaybackTransport::from_worker_state(
+                "q_table_transport",
+                "Q-Table Inspector",
+                state,
+            )
+            .play_label("▶ Train 100")
+            .step_label("⏭ Step Episode")
+            .can_reset(true)
+            .show(ui)
+            {
+                self.handle_transport_action(action, ctx);
             }
 
             if ui
-                .add_enabled(can_train, egui::Button::new("▶ Train 100 Episodes"))
-                .accessible_hover_text("Train the agent for 100 episodes in the background")
-                .clicked()
-            {
-                let _ = self.worker.send_command(SimCommand::TrainEpisodes(100));
-            }
-            if ui
-                .add_enabled(can_train, egui::Button::new("▶ Train 1000 Episodes"))
+                .add_enabled(
+                    state.is_ready(),
+                    egui::Button::new("▶ Train 1000 Episodes"),
+                )
                 .accessible_hover_text("Train the agent for 1000 episodes in the background")
                 .clicked()
             {
                 let _ = self.worker.send_command(SimCommand::TrainEpisodes(1000));
-            }
-            if ui
-                .button("↻ Reset Agent")
-                .accessible_hover_text("Clear the Q-table and reset the agent's knowledge")
-                .clicked()
-            {
-                self.reset();
-                ctx.request_repaint();
             }
 
             self.draw_view_and_legend(ui, legend_size);
@@ -185,20 +201,17 @@ impl QTableInspectorTool {
         ui.radio_value(&mut self.view, HeatmapView::Left, "Move Left Q-Value");
         ui.radio_value(&mut self.view, HeatmapView::Right, "Move Right Q-Value");
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.separator();
         ui.label("Legend:");
-        ui.horizontal(|ui| {
-            ui.label("Goal:");
-            let (response, painter) =
-                ui.allocate_painter(egui::vec2(legend_size, legend_size), egui::Sense::hover());
-            painter.rect_filled(response.rect, 0.0, egui::Color32::GREEN);
-        });
-        ui.horizontal(|ui| {
-            ui.label("Trap:");
-            let (response, painter) =
-                ui.allocate_painter(egui::vec2(legend_size, legend_size), egui::Sense::hover());
-            painter.rect_filled(response.rect, 0.0, egui::Color32::RED);
-        });
+        for (label, color) in [("Goal:", palette.success), ("Trap:", palette.error)] {
+            ui.horizontal(|ui| {
+                ui.label(label);
+                let (resp, painter) =
+                    ui.allocate_painter(egui::vec2(legend_size, legend_size), egui::Sense::hover());
+                painter.rect_filled(resp.rect, 0.0, color);
+            });
+        }
     }
 
     fn compute_q_bounds(&self) -> (f64, f64) {
@@ -219,13 +232,52 @@ impl QTableInspectorTool {
         (min_q, max_q)
     }
 
+    fn paint_heatmap_cell(
+        &self,
+        painter: &egui::Painter,
+        cell_rect: egui::Rect,
+        state: GridState,
+        bounds: (f64, f64),
+        palette: &crate::app::SemanticPalette,
+    ) {
+        let (min_q, max_q) = bounds;
+        let q_value = self.get_q_value_for_view(&state);
+        let fill_color = if state == self.env.goal {
+            palette.success
+        } else if self.env.traps.contains(&state) {
+            palette.error
+        } else {
+            let norm = ((q_value - min_q) / (max_q - min_q)).clamp(0.0, 1.0);
+            q_value_cell_color(norm, palette)
+        };
+
+        painter.rect_filled(cell_rect, 0.0, fill_color);
+        painter.rect_stroke(
+            cell_rect,
+            0.0,
+            egui::Stroke::new(1.0_f32, palette.graph_edge),
+            egui::StrokeKind::Middle,
+        );
+
+        if state != self.env.goal && !self.env.traps.contains(&state) {
+            let text_color = crate::app::contrasting_text_color(fill_color);
+            painter.text(
+                cell_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                format!("{q_value:.2}"),
+                egui::FontId::proportional(14.0),
+                text_color,
+            );
+        }
+    }
+
     fn draw_heatmap(&self, ctx: &egui::Context, cell_size: f32) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Q-Value Heatmap");
             if self.episodes_trained == 0 {
                 render_empty_plot_guidance(
                     ui,
-                    "Untrained baseline Q-table (0.00) — click '▶ Train 100 Episodes' to update state-action values.",
+                    "Untrained baseline Q-table (0.00) — click '▶ Train 100' or '⏭ Step Episode' to update state-action values.",
                 );
             }
 
@@ -237,8 +289,9 @@ impl QTableInspectorTool {
             let _ = response
                 .clone()
                 .accessible_hover_text("Q-Table Heatmap Visualization");
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let rect = response.rect;
-            let (min_q, max_q) = self.compute_q_bounds();
+            let bounds = self.compute_q_bounds();
 
             for x in 0..self.env.width {
                 for y in 0..self.env.height {
@@ -246,41 +299,34 @@ impl QTableInspectorTool {
                         rect.min + egui::vec2(x as f32 * cell_size, y as f32 * cell_size);
                     let cell_rect =
                         egui::Rect::from_min_size(top_left, egui::vec2(cell_size, cell_size));
-                    let state = GridState { x, y };
-                    let q_value = self.get_q_value_for_view(&state);
-
-                    let fill_color = if state == self.env.goal {
-                        egui::Color32::GREEN
-                    } else if self.env.traps.contains(&state) {
-                        egui::Color32::RED
-                    } else {
-                        let norm = ((q_value - min_q) / (max_q - min_q)).clamp(0.0, 1.0);
-                        let high = (norm * 255.0) as u8;
-                        let low = 255_u8.saturating_sub(high);
-                        egui::Color32::from_rgb(high, high, low)
-                    };
-
-                    painter.rect_filled(cell_rect, 0.0, fill_color);
-                    painter.rect_stroke(
+                    self.paint_heatmap_cell(
+                        &painter,
                         cell_rect,
-                        0.0,
-                        egui::Stroke::new(1.0_f32, egui::Color32::BLACK),
-                        egui::StrokeKind::Middle,
+                        GridState { x, y },
+                        bounds,
+                        &palette,
                     );
-
-                    if state != self.env.goal && !self.env.traps.contains(&state) {
-                        painter.text(
-                            cell_rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            format!("{:.2}", q_value),
-                            egui::FontId::proportional(14.0),
-                            egui::Color32::BLACK,
-                        );
-                    }
                 }
             }
         });
     }
+}
+
+fn lerp_q_channel(a: u8, b: u8, t: f64) -> u8 {
+    (f64::from(a) + (f64::from(b) - f64::from(a)) * t.clamp(0.0, 1.0)).round() as u8
+}
+
+pub(crate) fn q_value_cell_color(
+    normalized: f64,
+    palette: &crate::app::SemanticPalette,
+) -> egui::Color32 {
+    let low = palette.axis_z;
+    let high = palette.accent;
+    egui::Color32::from_rgb(
+        lerp_q_channel(low.r(), high.r(), normalized),
+        lerp_q_channel(low.g(), high.g(), normalized),
+        lerp_q_channel(low.b(), high.b(), normalized),
+    )
 }
 
 impl InteractiveTool for QTableInspectorTool {
@@ -290,6 +336,9 @@ impl InteractiveTool for QTableInspectorTool {
     fn name(&self) -> &'static str {
         "Q-Table Inspector"
     }
+    fn domain(&self) -> &'static str { "ai" }
+    fn save_state(&self) -> Option<String> { self.serialize_state() }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> { self.deserialize_state(state) }
 
     fn show(&mut self, ctx: &egui::Context) {
         if let Some(snapshot) = self.worker.update() {
@@ -302,7 +351,10 @@ impl InteractiveTool for QTableInspectorTool {
                 self.episodes_trained = data.episodes_trained;
             }
         }
-        if self.worker.is_running() {
+        if matches!(
+            self.worker.state(),
+            SimWorkerState::Running | SimWorkerState::Stepping
+        ) {
             ctx.request_repaint();
         }
 
@@ -331,7 +383,8 @@ impl InteractiveTool for QTableInspectorTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "QTableInspectorTool",
+        id: "QTableInspectorTool",
+        display_name: "Q-Table Inspector",
         domain: "ai",
         tags: &[],
         build: || Box::new(QTableInspectorTool::default()),

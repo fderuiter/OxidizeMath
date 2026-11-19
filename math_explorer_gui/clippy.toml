@@ -1,0 +1,5 @@
+too-many-lines-threshold = 60
+cognitive-complexity-threshold = 25
+disallowed-methods = [
+    { path = "std::time::Instant::now", reason = "use crate::web_io::PlatformInstant::now() so wasm32-unknown-unknown builds do not panic" },
+]

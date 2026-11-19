@@ -1,4 +1,4 @@
-// External bootstrap controller for Math Explorer GUI.
+// External bootstrap controller for Math Explorer GUI under strict CSP ('self').
 // Delays ES module and WebAssembly requests while cross-origin isolation
 // service worker registration is pending, proceeds once isolation is active
 // or unavailable, and transitions to the recovery boundary if startup fails.
@@ -24,7 +24,7 @@
         }
     }
 
-    function updateRecoveryContentForBootstrapFailure(isolationDecision) {
+    function updateRecoveryContentForBootstrapFailure() {
         const container = document.getElementById('error_container');
         if (!container) {
             return;
@@ -97,42 +97,50 @@
     }
 
     function showBootstrapRecovery(err, isolationDecision) {
-        const loading = document.getElementById('loading_indicator');
-        if (loading) {
-            loading.remove();
-        }
+        const applyDomErrorState = () => {
+            const loading = document.getElementById('loading_indicator');
+            if (loading) {
+                loading.remove();
+            }
 
-        const canvas = document.getElementById('the_canvas_id');
-        if (canvas) {
-            canvas.setAttribute('style', 'display: none;');
-        }
+            const canvas = document.getElementById('the_canvas_id');
+            if (canvas) {
+                canvas.setAttribute('style', 'display: none;');
+            }
 
-        updateRecoveryContentForBootstrapFailure(isolationDecision);
+            updateRecoveryContentForBootstrapFailure();
 
-        const errorContainer = document.getElementById('error_container');
-        if (errorContainer) {
-            errorContainer.setAttribute('style', 'display: flex;');
-        }
+            const errorContainer = document.getElementById('error_container');
+            if (errorContainer) {
+                errorContainer.setAttribute('style', 'display: flex;');
+            }
 
-        const detailsLines = [];
-        if (isolationDecision && isolationDecision.reason) {
-            detailsLines.push('Isolation status: ' + isolationDecision.reason);
-        } else if (!window.crossOriginIsolated) {
-            detailsLines.push('Isolation status: window.crossOriginIsolated is false.');
-        }
-        if (err) {
-            detailsLines.push('Initialization error: ' + formatError(err));
-        }
+            const detailsLines = [];
+            if (isolationDecision && isolationDecision.reason) {
+                detailsLines.push('Isolation status: ' + isolationDecision.reason);
+            } else if (!window.crossOriginIsolated) {
+                detailsLines.push('Isolation status: window.crossOriginIsolated is false.');
+            }
+            if (err) {
+                detailsLines.push('Initialization error: ' + formatError(err));
+            }
 
-        const detailsEl = document.getElementById('error_details');
-        if (detailsEl && detailsLines.length > 0) {
-            detailsEl.textContent = detailsLines.join('\n');
-            detailsEl.setAttribute('style', 'display: block;');
-        }
+            const detailsEl = document.getElementById('error_details');
+            if (detailsEl && detailsLines.length > 0) {
+                detailsEl.textContent = detailsLines.join('\n');
+                detailsEl.setAttribute('style', 'display: block;');
+            }
 
-        const reloadButton = document.getElementById('webgl_reload_button');
-        if (reloadButton && typeof reloadButton.focus === 'function') {
-            reloadButton.focus();
+            const reloadButton = document.getElementById('webgl_reload_button');
+            if (reloadButton && typeof reloadButton.focus === 'function') {
+                reloadButton.focus();
+            }
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', applyDomErrorState, { once: true });
+        } else {
+            applyDomErrorState();
         }
     }
 

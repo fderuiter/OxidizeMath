@@ -57,7 +57,7 @@ impl TheoryDescribable for FractalViewer {
     }
 
     fn theory_citation(&self) -> String {
-        "[cite:graph_parameters_rust]".to_string()
+        "Mandelbrot, B. B. (1982). The Fractal Geometry of Nature. W. H. Freeman; Julia, G. (1918). Mémoire sur l'itération des fonctions rationnelles. Journal de Mathématiques Pures et Appliquées, 8, 47-245.".to_string()
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
@@ -102,15 +102,16 @@ impl InteractiveTool for FractalViewer {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<FractalState>(state) {
-            self.center = Complex::new(s.center_re, s.center_im);
-            self.zoom = s.zoom;
-            self.max_iter = s.max_iter;
-            self.mode = s.mode;
-            self.julia_c = Complex::new(s.julia_re, s.julia_im);
-            self.dirty = true;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: FractalState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid FractalViewer state: {e}"))?;
+        self.center = Complex::new(s.center_re, s.center_im);
+        self.zoom = s.zoom;
+        self.max_iter = s.max_iter;
+        self.mode = s.mode;
+        self.julia_c = Complex::new(s.julia_re, s.julia_im);
+        self.dirty = true;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -385,7 +386,8 @@ impl FractalViewer {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "FractalViewer",
+        id: "FractalViewer",
+        display_name: "Fractal Viewer",
         domain: "chaos",
         tags: &[],
         build: || Box::new(FractalViewer::default()),
@@ -400,8 +402,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "max_iterations": 150,
-    "zoom": 1.0
+    "center_re": -0.75,
+    "center_im": 0.0,
+    "zoom": 1.0,
+    "max_iter": 150,
+    "mode": "Mandelbrot",
+    "julia_re": -0.7,
+    "julia_im": 0.27015
   }
 }"#;
 

@@ -120,6 +120,10 @@ impl SimulationRunner for QTableRunner {
         }
     }
 
+    fn step_once(&mut self) {
+        self.run_one_episode();
+    }
+
     fn get_snapshot(&self) -> StateSnapshot {
         let mut q_values = HashMap::new();
         for x in 0..self.env.width {
@@ -139,7 +143,7 @@ impl SimulationRunner for QTableRunner {
             width: self.env.width as usize,
             height: self.env.height as usize,
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
-            custom_data: vec![self.episodes_trained as f64],
+            custom_data: vec![f64::from(self.episodes_trained)],
             structured_data: Some(Box::new(snapshot)),
         }
     }

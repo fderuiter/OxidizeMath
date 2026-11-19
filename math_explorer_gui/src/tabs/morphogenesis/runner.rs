@@ -38,21 +38,32 @@ impl FiniteStateGuard for MorphogenesisRunner {
     }
 }
 
+impl MorphogenesisRunner {
+    fn sync_system_params(&mut self) -> Option<f64> {
+        let (a, b, d_u, d_v, dt) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.a, p.b, p.d_u, p.d_v, p.dt)
+        };
+        if !a.is_finite() || !b.is_finite() || !d_u.is_finite() || !d_v.is_finite() {
+            return None;
+        }
+        self.system.kinetics.a = a;
+        self.system.kinetics.b = b;
+        self.system.diffusion_coeffs[0] = d_u;
+        self.system.diffusion_coeffs[1] = d_v;
+        (dt.is_finite() && dt > 0.0).then_some(dt)
+    }
+}
+
 impl SimulationRunner for MorphogenesisRunner {
     fn process_command(&mut self, cmd: SimCommand) {
         match cmd {
             SimCommand::Reset => {
-                let (a, b, d_u, d_v) = {
-                    let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-                    (p.a, p.b, p.d_u, p.d_v)
-                };
-                self.system.kinetics.a = a;
-                self.system.kinetics.b = b;
-                self.system.diffusion_coeffs[0] = d_u;
-                self.system.diffusion_coeffs[1] = d_v;
+                let _ = self.sync_system_params();
                 MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
             }
             SimCommand::Custom(ref s) if s == "reinit" => {
+                let _ = self.sync_system_params();
                 MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
             }
             _ => {}
@@ -80,18 +91,9 @@ impl SimulationRunner for MorphogenesisRunner {
         if !FiniteStateGuard::is_finite_state(self) {
             return;
         }
-        let (a, b, d_u, d_v, dt) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
-        };
-        if !dt.is_finite() || dt <= 0.0 || !a.is_finite() || !b.is_finite() || !d_u.is_finite() || !d_v.is_finite() {
-            return;
+        if let Some(dt) = self.sync_system_params() {
+            self.system.step(dt);
         }
-        self.system.kinetics.a = a;
-        self.system.kinetics.b = b;
-        self.system.diffusion_coeffs[0] = d_u;
-        self.system.diffusion_coeffs[1] = d_v;
-        self.system.step(dt);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {

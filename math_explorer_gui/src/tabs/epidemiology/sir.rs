@@ -172,16 +172,16 @@ impl InteractiveTool for SirTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<SirState>(state) {
-            self.n = s.n;
-            self.i0 = s.i0;
-            self.beta = s.beta;
-            self.gamma = s.gamma;
-            self.duration = s.duration;
-            self.snapshot_manager = s.snapshot_manager;
-            self.recalculate();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s = serde_json::from_str::<SirState>(state).map_err(|e| e.to_string())?;
+        self.n = s.n;
+        self.i0 = s.i0;
+        self.beta = s.beta;
+        self.gamma = s.gamma;
+        self.duration = s.duration;
+        self.snapshot_manager = s.snapshot_manager;
+        self.recalculate();
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -233,29 +233,29 @@ impl InteractiveTool for SirTool {
             self.evaluate_sensitivity(ui);
 
             ui.separator();
+            let plot_id = ui.make_persistent_id("sir_plot");
             ui.horizontal(|ui| {
                 ui.heading("Simulation");
                 if ui.button("Import Dataset (CSV)").clicked() {
-                    egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), egui::Id::new("sir_plot"));
+                    egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
                 }
             });
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let plot = Plot::new("sir_plot")
+                .id(plot_id)
                 .view_aspect(2.0)
                 .legend(egui_plot::Legend::default());
 
             plot.show(ui, |plot_ui| {
                 plot_ui.line(
-                    Line::new("Susceptible", &self.s_points[..])
-                        .color(egui::Color32::BLUE),
+                    Line::new("Susceptible", &self.s_points[..]).color(palette.axis_z),
                 );
                 plot_ui.line(
-                    Line::new("Infected", &self.i_points[..])
-                        .color(egui::Color32::RED),
+                    Line::new("Infected", &self.i_points[..]).color(palette.axis_x),
                 );
                 plot_ui.line(
-                    Line::new("Recovered", &self.r_points[..])
-                        .color(egui::Color32::GREEN),
+                    Line::new("Recovered", &self.r_points[..]).color(palette.axis_y),
                 );
                 self.snapshot_manager.render_on_plot(plot_ui);
             });
@@ -268,7 +268,8 @@ impl InteractiveTool for SirTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "SirTool",
+        id: "SirTool",
+        display_name: "SIR Model",
         domain: "epidemiology",
         tags: &[],
         build: || Box::new(SirTool::default()),
@@ -349,9 +350,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
+    "n": 10000.0,
+    "i0": 25.0,
     "beta": 0.3,
     "gamma": 0.1,
-    "population": 10000
+    "duration": 120.0
   }
 }"#;
 
