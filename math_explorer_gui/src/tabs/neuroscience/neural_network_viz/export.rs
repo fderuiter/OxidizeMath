@@ -75,9 +75,8 @@ impl NeuralNetworkVizTool {
         ];
 
         let mut synapses = Vec::new();
-        for i in 0..n {
-            for j in 0..n {
-                let w = self.weights[i][j];
+        for (i, row) in self.weights.iter().enumerate().take(n) {
+            for (j, &w) in row.iter().enumerate().take(n) {
                 if w != 0.0 {
                     synapses.push([(j * n + i) as f64, w]);
                 }

@@ -180,15 +180,13 @@ fn count_non_bg_in_region(
     y_range: std::ops::Range<usize>,
 ) -> usize {
     let bg = pixels[0];
-    let mut count = 0usize;
-    for y in y_range {
-        for x in x_range.clone() {
-            if pixels[y * width + x] != bg {
-                count += 1;
-            }
-        }
-    }
-    count
+    pixels
+        .chunks_exact(width)
+        .skip(y_range.start)
+        .take(y_range.len())
+        .flat_map(|row| &row[x_range.clone()])
+        .filter(|&&px| px != bg)
+        .count()
 }
 
 fn verify_multi_plot_case(
