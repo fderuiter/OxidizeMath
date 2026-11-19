@@ -278,23 +278,27 @@ pub fn validate_action_pinning(yaml: &Value) -> Result<(), String> {
     validate_action_pinning_in_dir(yaml, Path::new("."))
 }
 
-/// Validates that workflow `run` scripts do not directly interpolate `${{ github.* }}` expressions.
+/// Validates that workflow `run` scripts do not interpolate unsafe `${{ github.* }}`,
+/// `${{ inputs.* }}`, or non-static/unmapped `${{ env.* }}` expressions.
 ///
-/// Untrusted or user-influenced `github` context values (such as `github.ref_name`,
-/// `github.head_ref`, or `github.event.*`) must be bound through `env:` blocks rather than
-/// interpolated directly into shell scripts.
+/// Untrusted or dynamic context values must be bound through `env:` blocks and read as shell
+/// variables rather than interpolated directly into `run` scripts; only static scalar `env:`
+/// literals without `${{` may be referenced via `${{ env.<KEY> }}` or `${{ env['<KEY>'] }}`.
 pub fn validate_run_script_expressions(yaml: &Value) -> Result<(), String> {
     let jobs = match yaml.get("jobs") {
         Some(Value::Object(map)) => map,
         Some(_) => return Err("Workflow 'jobs' block must be a mapping.".to_string()),
         None => return Ok(()),
     };
+    let root_env = expressions::SafeEnvScope::from_opt_value(yaml.get("env"), "Workflow")?;
 
     for (job_name, job_val) in jobs {
         let job_map = match job_val {
             Value::Object(map) => map,
             _ => return Err(format!("Job '{}' must be a mapping.", job_name)),
         };
+        let owner = format!("Job '{}'", job_name);
+        let job_env = root_env.merged_with(job_map.get("env"), &owner)?;
         let Some(steps_val) = job_map.get("steps") else {
             continue;
         };
@@ -304,30 +308,7 @@ pub fn validate_run_script_expressions(yaml: &Value) -> Result<(), String> {
                 job_name
             ));
         };
-
-        for (step_idx, step) in steps.iter().enumerate() {
-            let Some(run_val) = step.get("run") else {
-                continue;
-            };
-            let Some(run_script) = run_val.as_str() else {
-                return Err(format!(
-                    "Job '{}' contains a step with an invalid 'run' script.",
-                    job_name
-                ));
-            };
-            if let Some(offending_expr) = expressions::find_github_expression_in_script(run_script)
-            {
-                let default_step = format!("step #{}", step_idx + 1);
-                let step_name = step
-                    .get("name")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or(&default_step);
-                return Err(format!(
-                    "Job '{}' step '{}' interpolates '${{{{ {} }}}}' directly in a 'run' script; pass 'github' context values via 'env:' instead.",
-                    job_name, step_name, offending_expr
-                ));
-            }
-        }
+        expressions::validate_steps_run_expressions(steps, &job_env, &owner)?;
     }
 
     Ok(())
