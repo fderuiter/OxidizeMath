@@ -33,8 +33,8 @@ allow_write = ["contents"]
 reason = "Publishing GitHub Releases on version tags requires contents: write"
 
 [[workflow_linter.exceptions]]
-workflow = ".github/workflows/pages.yml"
-job = "deploy"
+workflow = ".github/workflows/ci.yml"
+job = "deploy-pages"
 allow_write = ["pages", "id-token"]
 reason = "Deploying to GitHub Pages requires pages: write and id-token: write"
 
