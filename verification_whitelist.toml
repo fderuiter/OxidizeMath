@@ -26,3 +26,16 @@ allowlist = [
     "crates/unified_verification/src/entropy_guard/tests.rs",
 ]
 
+[[workflow_linter.exceptions]]
+workflow = ".github/workflows/ci.yml"
+job = "publish-release"
+allow_write = ["contents"]
+reason = "Publishing GitHub Releases on version tags requires contents: write"
+
+[[workflow_linter.exceptions]]
+workflow = ".github/workflows/pages.yml"
+job = "deploy"
+allow_write = ["pages", "id-token"]
+reason = "Deploying to GitHub Pages requires pages: write and id-token: write"
+
+
