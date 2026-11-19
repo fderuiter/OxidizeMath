@@ -223,18 +223,8 @@ pub trait InteractiveTool {
     fn export_preset_json(&self) -> Result<String, String> {
         if let Some(state_str) = self.save_state() {
             let config: serde_json::Value = serde_json::from_str(&state_str)
-                .map_err(|e| format!("Serialization error: {}", e))?;
-            let envelope = crate::presets::PresetWrapper {
-                metadata: crate::presets::PresetMetadata {
-                    schema_version: "1.0".to_string(),
-                    title: self.name().to_string(),
-                    domain: self.domain().to_string(),
-                    timestamp: chrono::Utc::now().to_rfc3339(),
-                },
-                config,
-            };
-            serde_json::to_string_pretty(&envelope)
-                .map_err(|e| format!("Serialization error: {}", e))
+                .map_err(|e| format!("Serialization error: {e}"))?;
+            crate::presets::serialize_preset_envelope(self.name(), self.domain(), config)
         } else {
             Err(format!("Preset export not supported for {}", self.name()))
         }
@@ -242,22 +232,10 @@ pub trait InteractiveTool {
 
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let cleaned = egui_plot::export::strip_utf8_bom(json_str);
-        let envelope: crate::presets::PresetWrapper<serde_json::Value> =
-            serde_json::from_str(cleaned)
-                .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
-        let expected_domain = self.domain();
-        if expected_domain.is_empty() {
-            return Err(format!("Preset import not supported for {}", self.name()));
-        }
-        if envelope.metadata.domain != expected_domain {
-            return Err(format!(
-                "Domain mismatch: preset is for domain '{}', but active tool is '{}'",
-                envelope.metadata.domain, expected_domain
-            ));
-        }
-        let config_str = serde_json::to_string(&envelope.config)
-            .map_err(|e| format!("Config serialization error: {}", e))?;
+        let config: serde_json::Value =
+            crate::presets::deserialize_preset_envelope(json_str, self.domain(), self.name())?;
+        let config_str = serde_json::to_string(&config)
+            .map_err(|e| format!("Config serialization error: {e}"))?;
         self.try_load_state(&config_str)
     }
 

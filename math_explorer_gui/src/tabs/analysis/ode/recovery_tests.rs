@@ -435,7 +435,7 @@ fn test_ode_nan_initial_condition() {
 #[test]
 fn test_ode_untrusted_preset_and_session_step_caps() {
     use crate::framework::InteractiveTool;
-    use crate::presets::{InteractivePreset, OdePresetConfig, MAX_ODE_STEPS};
+    use crate::presets::MAX_ODE_STEPS;
     use std::collections::HashMap;
     use systems::eval_ode_final_state;
 
@@ -444,19 +444,6 @@ fn test_ode_untrusted_preset_and_session_step_caps() {
     assert!(res.is_err());
     assert!(ode.time_series.len() <= 1_000_001);
     assert!(ode.time_series.len() <= MAX_ODE_STEPS + 1);
-
-    let bad_cfg = OdePresetConfig {
-        preset: OdePreset::Exponential,
-        dt: 1e-300,
-        total_time: 10.0,
-        param_k: 1.0,
-        param_r: 1.0,
-        param_cap_k: 10.0,
-        ic_y0: 1.0,
-        ic_v0: 0.0,
-        custom_expr: String::new(),
-    };
-    assert!(ode.apply_config(bad_cfg).is_err());
 
     ode.load_state(r#"{"preset":"Exponential","dt":5e-17,"total_time":100.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0}"#);
     assert!(ode.time_series.len() <= MAX_ODE_STEPS + 1);

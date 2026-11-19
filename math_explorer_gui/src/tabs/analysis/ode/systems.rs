@@ -3,7 +3,7 @@
 //! ODE model definitions and evaluation helpers.
 
 use super::OdeSolverTool;
-use crate::presets::{InteractivePreset, OdePreset, OdePresetConfig};
+use crate::presets::OdePreset;
 use math_commons::ast::Expr;
 use math_explorer::pure_math::analysis::ode::{
     Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
@@ -261,39 +261,6 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
         map.insert("Logistic Growth".into(), "Nonlinear first-order ODE modeling population growth with carrying capacity".into());
         map.insert("Custom".into(), "Custom user-defined ordinary differential equation".into());
         map
-    }
-}
-
-impl InteractivePreset for OdeSolverTool {
-    type Config = OdePresetConfig;
-
-    fn domain(&self) -> &'static str { "analysis" }
-    fn title(&self) -> String { format!("ODE Solver - {}", self.preset.name()) }
-
-    fn export_config(&self) -> Self::Config {
-        OdePresetConfig {
-            preset: self.preset, dt: self.dt, total_time: self.total_time,
-            param_k: self.param_k, param_r: self.param_r, param_cap_k: self.param_cap_k,
-            ic_y0: self.ic_y0, ic_v0: self.ic_v0,
-            custom_expr: self.math_input.raw_text.clone(),
-        }
-    }
-
-    fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
-        config.validate()?;
-        self.preset = config.preset;
-        self.dt = config.dt;
-        self.total_time = config.total_time;
-        self.param_k = config.param_k;
-        self.param_r = config.param_r;
-        self.param_cap_k = config.param_cap_k;
-        self.ic_y0 = config.ic_y0;
-        self.ic_v0 = config.ic_v0;
-        if !config.custom_expr.is_empty() {
-            self.math_input.set_expression(&config.custom_expr);
-        }
-        self.recalculate();
-        Ok(())
     }
 }
 

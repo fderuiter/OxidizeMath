@@ -99,10 +99,10 @@ impl SimulationFramework {
             return;
         }
 
-        let imported = self
-            .active_tool
-            .as_mut()
-            .is_some_and(|tool| self.preset_dialog.poll_import_tool(tool.as_mut()));
+        let imported = self.active_tool.as_mut().is_some_and(|tool| {
+            self.preset_dialog
+                .poll_pending_import(|json_str| tool.import_preset_json(json_str))
+        });
         if imported {
             self.sync_active_baseline();
             ctx.request_repaint();
@@ -275,15 +275,8 @@ impl SimulationFramework {
 
     fn export_active_preset_json(&mut self, file_slug: &str) {
         if let Some(tool) = &self.active_tool {
-            match tool.export_preset_json() {
-                Ok(json_str) => {
-                    let filename = format!("{}_preset.json", file_slug);
-                    self.preset_dialog.trigger_export(json_str, &filename);
-                }
-                Err(err) => {
-                    self.preset_dialog.record_import_error(err);
-                }
-            }
+            self.preset_dialog
+                .export_preset_result(tool.export_preset_json(), file_slug);
         }
     }
 
