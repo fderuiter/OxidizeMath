@@ -339,13 +339,8 @@ fn test_rl_runners_step_once() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn run_attractor_key(
-    ctx: &eframe::egui::Context,
-    plotter: &mut crate::tabs::chaos::attractors::AttractorPlotter,
-    key: eframe::egui::Key,
-) {
-    use crate::framework::InteractiveTool;
-    let input = eframe::egui::RawInput {
+fn single_key_input(key: eframe::egui::Key) -> eframe::egui::RawInput {
+    eframe::egui::RawInput {
         events: vec![eframe::egui::Event::Key {
             key,
             physical_key: None,
@@ -354,8 +349,7 @@ fn run_attractor_key(
             modifiers: eframe::egui::Modifiers::NONE,
         }],
         ..Default::default()
-    };
-    let _ = ctx.run(input, |ctx| plotter.show(ctx));
+    }
 }
 
 #[test]
@@ -367,36 +361,43 @@ fn test_attractor_plotter_manual_step_keeps_paused() {
     let mut plotter = AttractorPlotter::default();
     let ctx = eframe::egui::Context::default();
 
-    // Start worker and wait until at least one running batch populates history
+    // Start worker and wait until at least one running trajectory batch lands
     for _ in 0..500 {
-        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| plotter.show(ctx));
-        if plotter.step_count > 0 {
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            plotter.show(ctx);
+        });
+        if !plotter.history.is_empty() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    assert!(plotter.step_count > 0, "Worker should advance after start");
+    assert!(
+        !plotter.history.is_empty(),
+        "AttractorPlotter worker must populate history while running"
+    );
 
-    // Pause via Space shortcut, then run one warmup manual step so any in-flight
-    // 5-step running batch has drained and worker sits idle in Ready
-    run_attractor_key(&ctx, &mut plotter, eframe::egui::Key::Space);
+    // Pause via Space shortcut and wait for worker Ready acknowledgment
+    let _ = ctx.run(single_key_input(eframe::egui::Key::Space), |ctx| {
+        plotter.show(ctx);
+    });
+    plotter.worker.wait_until_paused();
+    let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+        plotter.show(ctx);
+    });
     assert!(plotter.is_paused());
-    run_attractor_key(&ctx, &mut plotter, eframe::egui::Key::Period);
-    for _ in 0..500 {
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| plotter.show(ctx));
-        if plotter.step_count % 5 == 1 && !plotter.worker.state().is_stepping() {
-            break;
-        }
-    }
-    assert_eq!(plotter.step_count % 5, 1);
     let before_points = plotter.export_datasets()[0].1.len();
 
-    // Press Period to step once while paused and verify +1 trajectory point
-    run_attractor_key(&ctx, &mut plotter, eframe::egui::Key::Period);
+    // Press Period to step once while paused
+    let _ = ctx.run(single_key_input(eframe::egui::Key::Period), |ctx| {
+        plotter.show(ctx);
+    });
+
+    // Wait for worker step snapshot and Ready transition
     for _ in 0..500 {
         std::thread::sleep(std::time::Duration::from_millis(10));
-        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| plotter.show(ctx));
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            plotter.show(ctx);
+        });
         if plotter.export_datasets()[0].1.len() > before_points
             && !plotter.worker.state().is_stepping()
         {

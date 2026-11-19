@@ -270,6 +270,7 @@ fn test_generate_split_view_screenshots() {
 }
 
 fn run_split_frames(ctx: &egui::Context, app: &mut MathExplorerApp, frames: usize) {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut frame = eframe::Frame::_new_kittest();
     let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1280.0, 800.0));
     for _ in 0..frames {
@@ -285,9 +286,6 @@ fn run_split_frames(ctx: &egui::Context, app: &mut MathExplorerApp, frames: usiz
 
 #[test]
 fn test_same_domain_network_propagation_steps_once_per_pane_per_frame() {
-    let _guard = crate::reflective_ui::tests::TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
     let Some(epi_idx) = app.tabs.iter().position(|t| t.name() == "Epidemiology") else {
@@ -329,9 +327,6 @@ fn test_same_domain_network_propagation_steps_once_per_pane_per_frame() {
 
 #[test]
 fn test_same_domain_scoped_overlays_and_export_modal_isolation() {
-    let _guard = crate::reflective_ui::tests::TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
     let Some(epi_idx) = app.tabs.iter().position(|t| t.name() == "Epidemiology") else {
@@ -356,9 +351,6 @@ fn test_same_domain_scoped_overlays_and_export_modal_isolation() {
 
 #[test]
 fn test_same_domain_per_pane_sir_dataset_exports() {
-    let _guard = crate::reflective_ui::tests::TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
     let Some(epi_idx) = app.tabs.iter().position(|t| t.name() == "Epidemiology") else {
@@ -413,9 +405,6 @@ fn test_same_domain_per_pane_sir_dataset_exports() {
 
 #[test]
 fn test_same_domain_per_pane_fallback_plot_exports() {
-    let _guard = crate::reflective_ui::tests::TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
     let Some(ana_idx) = app

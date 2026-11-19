@@ -69,7 +69,15 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
             true
         }
         SimCommand::Pause => {
+            let was_running = *state == SimWorkerState::Running;
             *state = SimWorkerState::Ready;
+            if was_running {
+                *emit_paused_snapshot = false;
+                let snapshot = runner.get_snapshot();
+                if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
+                    return false;
+                }
+            }
             let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
             true
         }

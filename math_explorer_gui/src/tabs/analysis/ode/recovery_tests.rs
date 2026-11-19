@@ -242,9 +242,7 @@ fn test_ode_clamp_nan_and_inf_parameters_and_initial_conditions() {
 
 #[test]
 fn test_ode_divergence_and_recovery_telemetry() {
-    let _guard = crate::reflective_ui::tests::TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut found_div_event = None;
     for _ in 0..5 {
         let _ = federated_registry::global_registry().try_recv_all();

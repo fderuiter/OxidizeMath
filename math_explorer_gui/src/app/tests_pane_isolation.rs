@@ -154,9 +154,7 @@ fn test_single_pane_startup_allocates_only_primary_catalog() {
 
 #[test]
 fn test_quad_pane_contexts_inherit_active_theme_palette() {
-    let _guard = crate::reflective_ui::tests::TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
     app.set_layout(ViewportLayout::QuadGrid);

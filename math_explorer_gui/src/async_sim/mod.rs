@@ -64,6 +64,7 @@ pub struct SimulationController {
     state_rx: Receiver<SimStateUpdate>,
     latest_snapshot: Option<StateSnapshot>,
     pending_snapshot: bool,
+    awaiting_pause_ack: bool,
     state: SimWorkerState,
     diagnostic_report: Option<crate::framework::recovery::DiagnosticReport>,
     #[cfg(target_arch = "wasm32")]
@@ -87,6 +88,7 @@ impl SimulationController {
             state_rx,
             latest_snapshot: Some(initial_snapshot),
             pending_snapshot: false,
+            awaiting_pause_ack: false,
             state: SimWorkerState::Ready,
             diagnostic_report: None,
         }
@@ -116,6 +118,7 @@ impl SimulationController {
             state_rx,
             latest_snapshot: Some(initial_snapshot),
             pending_snapshot: false,
+            awaiting_pause_ack: false,
             state: SimWorkerState::Ready,
             diagnostic_report: None,
             worker: opt_worker,
@@ -131,8 +134,10 @@ impl SimulationController {
     #[allow(missing_docs)]
     pub fn set_state_for_test(&mut self, state: SimWorkerState) {
         if state.is_faulted() || state.is_terminated() {
+            while self.state_rx.try_recv().is_ok() {}
             let _ = self.cmd_tx.send(SimCommand::Pause);
             self.pending_snapshot = false;
+            self.awaiting_pause_ack = false;
         }
         self.state = state;
     }
@@ -140,6 +145,61 @@ impl SimulationController {
     #[allow(missing_docs)]
     pub fn is_running(&self) -> bool {
         self.state.is_running()
+    }
+
+    /// Returns `true` when a `Pause` command was sent to a running worker and
+    /// its `Ready` status acknowledgment has not yet been received.
+    pub fn is_pause_pending(&self) -> bool {
+        self.awaiting_pause_ack
+    }
+
+    fn record_status_pause_ack(&mut self, event: &WorkerStatusEvent) {
+        if matches!(
+            event,
+            WorkerStatusEvent::Ready
+                | WorkerStatusEvent::Faulted(_)
+                | WorkerStatusEvent::Terminated
+        ) {
+            self.awaiting_pause_ack = false;
+        }
+    }
+
+    fn drain_pre_command_updates(&mut self, is_reset: bool) {
+        while let Ok(update) = self.state_rx.try_recv() {
+            match update {
+                SimStateUpdate::Snapshot(snapshot) if !is_reset => {
+                    self.latest_snapshot = Some(snapshot);
+                    self.pending_snapshot = true;
+                }
+                SimStateUpdate::Snapshot(_) => {
+                    self.pending_snapshot = false;
+                }
+                SimStateUpdate::Divergence(report) => {
+                    self.diagnostic_report = Some(report);
+                }
+                SimStateUpdate::Status(event) => {
+                    self.record_status_pause_ack(&event);
+                }
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn wait_until_paused(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        for _ in 0..400 {
+            if self.update().is_some() {
+                self.pending_snapshot = true;
+            }
+            if !self.is_pause_pending() || self.state.is_faulted() || self.state.is_terminated() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        #[cfg(target_arch = "wasm32")]
+        if self.update().is_some() {
+            self.pending_snapshot = true;
+        }
     }
 
     #[allow(missing_docs)]
@@ -151,6 +211,8 @@ impl SimulationController {
             });
         }
 
+        let was_running = self.state.is_running();
+        let is_pause = matches!(cmd, SimCommand::Pause);
         let is_reset = matches!(cmd, SimCommand::Reset);
         let cmd_target_state = match cmd {
             SimCommand::Start | SimCommand::TrainEpisodes(_) => Some(SimWorkerState::Running),
@@ -160,26 +222,19 @@ impl SimulationController {
         };
 
         if cmd_target_state.is_some() {
-            while let Ok(update) = self.state_rx.try_recv() {
-                match update {
-                    SimStateUpdate::Snapshot(snapshot) if !is_reset => {
-                        self.latest_snapshot = Some(snapshot);
-                        self.pending_snapshot = true;
-                    }
-                    SimStateUpdate::Snapshot(_) => {
-                        self.pending_snapshot = false;
-                    }
-                    SimStateUpdate::Divergence(report) => {
-                        self.diagnostic_report = Some(report);
-                    }
-                    SimStateUpdate::Status(_) => {}
-                }
-            }
+            self.drain_pre_command_updates(is_reset);
         }
 
         if self.cmd_tx.send(cmd).is_err() {
             self.state = SimWorkerState::Faulted;
+            self.awaiting_pause_ack = false;
             return Err(SimCommandError::ChannelDisconnected);
+        }
+
+        if is_pause && was_running {
+            self.awaiting_pause_ack = true;
+        } else if cmd_target_state.is_some() {
+            self.awaiting_pause_ack = false;
         }
 
         if is_reset {
@@ -258,6 +313,7 @@ impl SimulationController {
                     }
                 }
                 Ok(SimStateUpdate::Status(event)) => {
+                    self.record_status_pause_ack(&event);
                     let next = event.to_state();
                     if !self.state.is_terminated()
                         && (!self.state.is_faulted() || next.is_terminated())
@@ -279,8 +335,11 @@ impl SimulationController {
             }
         }
 
-        if disconnected && self.state != SimWorkerState::Terminated {
-            self.state = SimWorkerState::Faulted;
+        if disconnected {
+            self.awaiting_pause_ack = false;
+            if self.state != SimWorkerState::Terminated {
+                self.state = SimWorkerState::Faulted;
+            }
         }
 
         if stepping_in_flight {
