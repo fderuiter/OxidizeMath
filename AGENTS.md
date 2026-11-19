@@ -22,8 +22,11 @@ Markdown verification gates:
 Before opening or updating a pull request, run the repository quality gates defined in [.github/workflows/ci.yml](.github/workflows/ci.yml):
 
 ```bash
-# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA action pins)
+# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA pins, and safe run expressions)
 cargo run -p unified_verification --release -- lint-workflows
+
+# Run workflow linter unit tests directly
+cargo test -p unified_verification workflow_linter
 
 # Verify crate documentation and workspace rustdoc builds
 cargo run -p unified_verification --release -- check-docs
@@ -38,6 +41,17 @@ cargo run -p unified_verification --release -- traceability
 
 # Verify architectural decision records when core crates change
 BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
+```
+
+### Workflow `run` Script Expression Policy
+
+`lint-workflows` rejects `${{ github.* }}` expressions interpolated directly inside `jobs.<id>.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, or `${{ github.event.* }}`) to prevent script and argument injection. Always bind `github` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
+
+```text
+env:
+  RELEASE_TAG: ${{ github.ref_name }}
+run: |
+  # Reference "$RELEASE_TAG" safely as a shell variable after validation
 ```
 
 ## 3. Local Release Packaging Checks

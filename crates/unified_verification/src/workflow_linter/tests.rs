@@ -345,3 +345,127 @@ jobs:
     let _ = fs::remove_dir(temp_root.join(".github"));
     let _ = fs::remove_dir(&temp_root);
 }
+
+fn validate_run_expr_str(content: &str) -> Result<(), String> {
+    let yaml: Value =
+        serde_saphyr::from_str(content).map_err(|e| format!("Invalid YAML syntax: {}", e))?;
+    validate_run_script_expressions(&yaml)
+}
+
+#[test]
+fn test_rejects_github_expressions_in_run_scripts() {
+    let ref_name_yaml = r#"
+jobs:
+  publish-release:
+    steps:
+      - name: Publish GitHub Release
+        run: gh release create "${{ github.ref_name }}"
+"#;
+    let err1 = validate_run_expr_str(ref_name_yaml).expect_err("github.ref_name must fail");
+    assert!(err1.contains("publish-release") && err1.contains("github.ref_name"));
+
+    let head_ref_yaml = r#"
+jobs:
+  pr-check:
+    steps:
+      - name: Inspect branch
+        run: echo "Branch is ${{ github.head_ref }}"
+"#;
+    let err2 = validate_run_expr_str(head_ref_yaml).expect_err("github.head_ref must fail");
+    assert!(err2.contains("pr-check") && err2.contains("github.head_ref"));
+
+    let event_yaml = r#"
+jobs:
+  audit:
+    steps:
+      - name: Title check
+        run: echo "${{ github.event.pull_request.title }}"
+"#;
+    let err3 = validate_run_expr_str(event_yaml).expect_err("github.event.* must fail");
+    assert!(err3.contains("audit") && err3.contains("github.event.pull_request.title"));
+}
+
+#[test]
+fn test_rejects_whitespace_bracket_multiline_and_compound_github_expressions() {
+    let bracket_and_ws = r#"
+jobs:
+  check:
+    steps:
+      - name: Multiline check
+        run: |
+          echo "Target: ${{ matrix.target }}"
+          echo "Ref: ${{  github['head_ref']  }}"
+"#;
+    let err1 = validate_run_expr_str(bracket_and_ws).expect_err("bracket github expr must fail");
+    assert!(err1.contains("Multiline check") && err1.contains("github['head_ref']"));
+
+    let compound_expr = r#"
+jobs:
+  verify:
+    steps:
+      - run: |
+          git diff "${{ github.event.before || github.sha }}"
+"#;
+    let err2 = validate_run_expr_str(compound_expr).expect_err("compound github expr must fail");
+    assert!(err2.contains("verify") && err2.contains("github.event.before || github.sha"));
+
+    let spacing_variation =
+        "jobs:\n  ci:\n    steps:\n      - run: echo \"${{  github.ref_name }}\"\n";
+    assert!(validate_run_expr_str(spacing_variation).is_err());
+}
+
+#[test]
+fn test_allows_env_bindings_and_static_matrix_or_env_run_expressions() {
+    let safe_workflow = r#"
+name: Safe CI
+permissions: read-all
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+jobs:
+  test-and-release:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Matrix and env interpolations
+        env:
+          CARGO_PACKAGER_VERSION: "0.11.8"
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [ -n "${{ matrix.feature }}" ]; then
+            cargo run -p xtask -- test-features ${{ matrix.feature }}
+          fi
+          echo "Installing @${{ env.CARGO_PACKAGER_VERSION }} for $RELEASE_TAG ($BASE_SHA)"
+          if [ "${{ matrix.target == 'github-runner' }}" = "true" ]; then
+            echo "Safe string literal containing github"
+          fi
+"#;
+    assert_eq!(validate_run_expr_str(safe_workflow), Ok(()));
+}
+
+#[test]
+fn test_lint_workflows_in_dir_rejects_run_github_expression() {
+    let id = WORKFLOW_TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let temp_dir = env::temp_dir().join(format!("oxidize_wf_expr_{}_{}", std::process::id(), id));
+    fs::create_dir_all(&temp_dir).unwrap();
+    let bad_wf = r#"name: Unsafe Release
+permissions: read-all
+concurrency:
+  group: release
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Unsafe tag interpolation
+        run: gh release create "${{ github.ref_name }}"
+"#;
+    let wf_path = temp_dir.join("unsafe.yml");
+    fs::write(&wf_path, bad_wf).unwrap();
+    assert!(!lint_workflows_in_dir(&temp_dir, None));
+    let _ = fs::remove_file(&wf_path);
+    let _ = fs::remove_dir(&temp_dir);
+}

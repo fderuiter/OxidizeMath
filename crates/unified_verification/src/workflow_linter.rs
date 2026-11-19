@@ -314,6 +314,101 @@ pub fn validate_action_pinning(yaml: &Value) -> Result<(), String> {
     Ok(())
 }
 
+/// Validates that workflow `run` scripts do not directly interpolate `${{ github.* }}` expressions.
+///
+/// Untrusted or user-influenced `github` context values (such as `github.ref_name`,
+/// `github.head_ref`, or `github.event.*`) must be bound through `env:` blocks rather than
+/// interpolated directly into shell scripts.
+pub fn validate_run_script_expressions(yaml: &Value) -> Result<(), String> {
+    let jobs = match yaml.get("jobs") {
+        Some(Value::Object(map)) => map,
+        Some(_) => return Err("Workflow 'jobs' block must be a mapping.".to_string()),
+        None => return Ok(()),
+    };
+
+    for (job_name, job_val) in jobs {
+        let job_map = match job_val {
+            Value::Object(map) => map,
+            _ => return Err(format!("Job '{}' must be a mapping.", job_name)),
+        };
+        let Some(steps_val) = job_map.get("steps") else {
+            continue;
+        };
+        let Some(steps) = steps_val.as_array() else {
+            return Err(format!(
+                "Job '{}' 'steps' block must be a sequence.",
+                job_name
+            ));
+        };
+
+        for (step_idx, step) in steps.iter().enumerate() {
+            let Some(run_val) = step.get("run") else {
+                continue;
+            };
+            let Some(run_script) = run_val.as_str() else {
+                return Err(format!(
+                    "Job '{}' contains a step with an invalid 'run' script.",
+                    job_name
+                ));
+            };
+            if let Some(offending_expr) = expressions::find_github_expression_in_script(run_script)
+            {
+                let default_step = format!("step #{}", step_idx + 1);
+                let step_name = step
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or(&default_step);
+                return Err(format!(
+                    "Job '{}' step '{}' interpolates '${{{{ {} }}}}' directly in a 'run' script; pass 'github' context values via 'env:' instead.",
+                    job_name, step_name, offending_expr
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn lint_workflow_file(path: &Path, exceptions: &[JobPermissionException]) -> bool {
+    let path_str = path.to_string_lossy();
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error reading {}: {}", path_str, e);
+            return false;
+        }
+    };
+
+    let yaml: Value = match serde_saphyr::from_str(&content) {
+        Ok(y) => y,
+        Err(e) => {
+            eprintln!("Invalid YAML syntax in {}: {}", path_str, e);
+            return false;
+        }
+    };
+
+    let mut passed = true;
+    let perm_res = if exceptions.is_empty() {
+        validate_permissions_block(&yaml)
+    } else {
+        validate_permissions_with_exceptions(&yaml, Some(path), exceptions)
+    };
+    for check in [
+        perm_res,
+        validate_concurrency_block(&yaml).map_err(str::to_string),
+        validate_job_timeouts(&yaml),
+        validate_action_pinning(&yaml),
+        validate_run_script_expressions(&yaml),
+    ] {
+        if let Err(msg) = check {
+            eprintln!("Error in {}: {}", path_str, msg);
+            passed = false;
+        }
+    }
+
+    passed
+}
+
 /// Lints all `.yml`/`.yaml` workflows inside `workflows_dir` using exceptions from `whitelist_path`.
 pub fn lint_workflows_in_dir(workflows_dir: &Path, whitelist_path: Option<&Path>) -> bool {
     if !workflows_dir.exists() {
@@ -330,56 +425,17 @@ pub fn lint_workflows_in_dir(workflows_dir: &Path, whitelist_path: Option<&Path>
     {
         if entry.path().is_file() {
             let path_str = entry.path().to_string_lossy();
-            if path_str.ends_with(".yml") || path_str.ends_with(".yaml") {
-                let content = match fs::read_to_string(entry.path()) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        eprintln!("Error reading {}: {}", path_str, e);
-                        all_passed = false;
-                        continue;
-                    }
-                };
-
-                let yaml: Value = match serde_saphyr::from_str(&content) {
-                    Ok(y) => y,
-                    Err(e) => {
-                        eprintln!("Invalid YAML syntax in {}: {}", path_str, e);
-                        all_passed = false;
-                        continue;
-                    }
-                };
-
-                let perm_res = if exceptions.is_empty() {
-                    validate_permissions_block(&yaml)
-                } else {
-                    validate_permissions_with_exceptions(&yaml, Some(entry.path()), &exceptions)
-                };
-                if let Err(msg) = perm_res {
-                    eprintln!("Error in {}: {}", path_str, msg);
-                    all_passed = false;
-                }
-
-                if let Err(msg) = validate_concurrency_block(&yaml) {
-                    eprintln!("Error in {}: {}", path_str, msg);
-                    all_passed = false;
-                }
-
-                if let Err(msg) = validate_job_timeouts(&yaml) {
-                    eprintln!("Error in {}: {}", path_str, msg);
-                    all_passed = false;
-                }
-
-                if let Err(msg) = validate_action_pinning(&yaml) {
-                    eprintln!("Error in {}: {}", path_str, msg);
-                    all_passed = false;
-                }
+            if (path_str.ends_with(".yml") || path_str.ends_with(".yaml"))
+                && !lint_workflow_file(entry.path(), &exceptions)
+            {
+                all_passed = false;
             }
         }
     }
 
     if all_passed {
         println!(
-            "All workflows passed linting (read-only permissions, concurrency controls, job timeouts, and action pinning enforced)."
+            "All workflows passed linting (read-only permissions, concurrency controls, job timeouts, action pinning, and safe run expressions enforced)."
         );
     }
 
@@ -391,6 +447,7 @@ pub fn lint_workflows() -> bool {
     lint_workflows_in_dir(Path::new(".github/workflows"), None)
 }
 
+mod expressions;
 #[cfg(test)]
 #[path = "workflow_linter/policy_tests.rs"]
 mod policy_tests;
