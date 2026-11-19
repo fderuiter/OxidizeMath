@@ -82,32 +82,34 @@ impl SirTool {
     }
 
     fn evaluate_sensitivity(&mut self, ui: &mut egui::Ui) {
-        let params = vec![
-            ("N".to_string(), self.n),
-            ("I0".to_string(), self.i0),
-            ("beta".to_string(), self.beta),
-            ("gamma".to_string(), self.gamma),
+        let params = [
+            ("N", self.n),
+            ("I0", self.i0),
+            ("beta", self.beta),
+            ("gamma", self.gamma),
         ];
+        let duration_bits = crate::sensitivity::canonical_f64_bits(self.duration);
 
-        self.sensitivity_engine.compute(&params, |p_map| {
-            let n = p_map.get("N").copied().unwrap_or(1000.0).max(1.0);
-            let i0 = p_map.get("I0").copied().unwrap_or(10.0).clamp(0.0, n);
-            let beta = p_map.get("beta").copied().unwrap_or(0.5).max(0.0);
-            let gamma = p_map.get("gamma").copied().unwrap_or(0.1).max(0.0001);
+        self.sensitivity_engine
+            .compute_with_context(&params, &duration_bits, |p_map| {
+                let n = p_map.get("N").copied().unwrap_or(1000.0).max(1.0);
+                let i0 = p_map.get("I0").copied().unwrap_or(10.0).clamp(0.0, n);
+                let beta = p_map.get("beta").copied().unwrap_or(0.5).max(0.0);
+                let gamma = p_map.get("gamma").copied().unwrap_or(0.1).max(0.0001);
 
-            if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
-                let dt = 0.2;
-                let steps = 250;
-                let mut max_i: f64 = 0.0;
-                for _ in 0..steps {
-                    max_i = max_i.max(model.state().i);
-                    model.step(dt);
+                if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
+                    let dt = 0.2;
+                    let steps = 250;
+                    let mut max_i: f64 = 0.0;
+                    for _ in 0..steps {
+                        max_i = max_i.max(model.state().i);
+                        model.step(dt);
+                    }
+                    max_i
+                } else {
+                    0.0
                 }
-                max_i
-            } else {
-                0.0
-            }
-        });
+            });
 
         crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "sir_tool");
     }
@@ -352,6 +354,49 @@ mod tests {
         let plot_points: egui_plot::PlotPoints<'_> = s_slice.into();
         assert!(matches!(plot_points, egui_plot::PlotPoints::Borrowed(_)));
         assert_eq!(plot_points.points().len(), tool.s_points.len());
+    }
+
+    #[test]
+    fn test_sir_sensitivity_converges_in_two_frames_and_invalidates_on_duration() {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(960.0, 640.0),
+            )),
+            ..Default::default()
+        };
+        let mut tool = SirTool::default();
+
+        let out1 = ctx.run(input.clone(), |ctx| tool.show(ctx));
+        assert!(!tool.sensitivity_engine.is_converged());
+        assert!(
+            out1.viewport_output[&egui::ViewportId::ROOT]
+                .repaint_delay
+                .is_zero()
+        );
+
+        let _ = ctx.run(input.clone(), |ctx| tool.show(ctx));
+        assert!(tool.sensitivity_engine.is_converged());
+        let out_idle = ctx.run(input.clone(), |ctx| tool.show(ctx));
+        assert!(
+            !out_idle.viewport_output[&egui::ViewportId::ROOT]
+                .repaint_delay
+                .is_zero()
+        );
+        assert!(tool.sensitivity_engine.metrics[2].partial_derivative > 0.0);
+        assert!(tool.sensitivity_engine.metrics[3].partial_derivative < 0.0);
+
+        // Changing duration invalidates the 4-parameter sensitivity cache
+        tool.duration = 180.0;
+        tool.recalculate();
+        let out_after_duration = ctx.run(input, |ctx| tool.show(ctx));
+        assert!(!tool.sensitivity_engine.is_converged());
+        assert!(
+            out_after_duration.viewport_output[&egui::ViewportId::ROOT]
+                .repaint_delay
+                .is_zero()
+        );
     }
 }
 

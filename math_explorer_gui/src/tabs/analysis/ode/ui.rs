@@ -267,39 +267,51 @@ impl OdeSolverTool {
     }
 
     fn run_sensitivity_analysis(&mut self) {
-        let params = match self.preset {
-            OdePreset::Exponential | OdePreset::Custom => vec![
-                ("k".to_string(), self.param_k),
-                ("y0".to_string(), self.ic_y0),
-            ],
-            OdePreset::HarmonicOscillator => vec![
-                ("k".to_string(), self.param_k),
-                ("y0".to_string(), self.ic_y0),
-                ("v0".to_string(), self.ic_v0),
-            ],
-            OdePreset::LogisticGrowth => vec![
-                ("r".to_string(), self.param_r),
-                ("cap_k".to_string(), self.param_cap_k),
-                ("y0".to_string(), self.ic_y0),
-            ],
+        use crate::sensitivity::canonical_f64_bits;
+
+        let exp_params = [("k", self.param_k), ("y0", self.ic_y0)];
+        let osc_params = [
+            ("k", self.param_k),
+            ("y0", self.ic_y0),
+            ("v0", self.ic_v0),
+        ];
+        let log_params = [
+            ("r", self.param_r),
+            ("cap_k", self.param_cap_k),
+            ("y0", self.ic_y0),
+        ];
+        let params: &[(&str, f64)] = match self.preset {
+            OdePreset::Exponential | OdePreset::Custom => &exp_params,
+            OdePreset::HarmonicOscillator => &osc_params,
+            OdePreset::LogisticGrowth => &log_params,
         };
 
         let current_preset = self.preset;
         let current_method = self.method;
         let current_dt = self.dt;
         let current_total_time = self.total_time;
-        let custom_expr = self.math_input.expr().cloned();
+        let custom_expr = self.math_input.expr();
+        let custom_ctx =
+            (current_preset == OdePreset::Custom).then_some(super::systems::AstContext(custom_expr));
+        let context = (
+            current_preset as u8,
+            current_method as u8,
+            canonical_f64_bits(current_dt),
+            canonical_f64_bits(current_total_time),
+            custom_ctx,
+        );
 
-        self.sensitivity_engine.compute(&params, move |p_map| {
-            eval_ode_final_state(
-                current_preset,
-                current_method,
-                current_dt,
-                current_total_time,
-                p_map,
-                custom_expr.as_ref(),
-            )
-        });
+        self.sensitivity_engine
+            .compute_with_context(params, &context, |p_map| {
+                eval_ode_final_state(
+                    current_preset,
+                    current_method,
+                    current_dt,
+                    current_total_time,
+                    p_map,
+                    custom_expr,
+                )
+            });
     }
 
     pub(super) fn render_discrepancy_panel(&self, ui: &mut egui::Ui) {

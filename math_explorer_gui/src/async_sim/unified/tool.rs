@@ -22,7 +22,9 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     cached_phonetic: String,
     cached_citation: String,
     pub(super) cached_descs: HashMap<String, String>,
-    pub(super) sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(super) cached_param_labels: Vec<String>,
+    pub(super) cached_observable_label: Option<&'static str>,
+    pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -52,6 +54,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let controller = BackgroundWorker::new(runner);
         let temp_model = M::new(&initial_params);
 
+        let cached_param_labels = param_metadata
+            .iter()
+            .map(|(name, _)| M::parameter_label(name))
+            .collect();
+
         Self {
             controller,
             params,
@@ -64,6 +71,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             cached_phonetic: temp_model.phonetic_description(),
             cached_citation: temp_model.theory_citation(),
             cached_descs: temp_model.available_descriptions(),
+            cached_param_labels,
+            cached_observable_label: None,
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             _marker: std::marker::PhantomData,
         }
