@@ -96,7 +96,10 @@ impl SimulationFramework {
             let response = ui.add(text_edit);
 
             if !self.search_query.is_empty()
-                && ui.button("❌").on_hover_text("Clear search").clicked()
+                && ui
+                    .button("❌")
+                    .accessible_hover_text("Clear search")
+                    .clicked()
             {
                 self.search_query.clear();
             }
@@ -216,30 +219,6 @@ impl SimulationFramework {
             });
     }
 
-    pub(super) fn sync_active_tool_state_after_preset(&mut self) {
-        let Some(tool) = &self.active_tool else {
-            return;
-        };
-        let active_state = tool.save_state();
-        if let Some(ref state_str) = active_state {
-            self.saved_tool_states
-                .insert(tool.name().to_string(), state_str.clone());
-        }
-        self.baseline_tool_state = active_state.clone();
-        self.is_diverged = false;
-        self.diagnostic_report = None;
-        self.step_counter = 0;
-        let datasets = persistence::capture_isolated_tool_datasets(tool.as_ref());
-        self.sync_state.datasets_owner_tool = Some(tool.name());
-        self.current_valid_plot_datasets = datasets.clone();
-        self.last_valid_snapshot = Some(StateSnapshot {
-            tool_state: active_state,
-            plot_datasets: datasets,
-            step_index: 0,
-            timestamp: crate::web_io::PlatformInstant::now(),
-        });
-    }
-
     pub(super) fn show_quick_start_cards(&mut self, ui: &mut egui::Ui) {
         if self.available_tools.is_empty() {
             ui.vertical_centered(|ui| {
@@ -298,53 +277,6 @@ impl SimulationFramework {
         });
     }
 
-    /// Launches a Starter Gallery card by selecting its target tool, importing
-    /// and validating its preset JSON, updating framework state snapshots, or
-    /// surfacing an error toast + telemetry warning on failure.
-    pub fn apply_starter_card(
-        &mut self,
-        card_title: &str,
-        tool_name: Option<&str>,
-        preset_json: Option<&str>,
-    ) -> Result<(), String> {
-        if let Some(target_name) = tool_name {
-            if let Some(pos) = self
-                .available_tools
-                .iter()
-                .position(|t| t.id == target_name || t.display_name == target_name)
-            {
-                self.select_tool(pos);
-            } else {
-                let err = format!(
-                    "Starter preset '{}' targets unavailable tool '{}'",
-                    card_title, target_name
-                );
-                self.preset_dialog.record_import_error(err.clone());
-                return Err(err);
-            }
-        }
-        let Some(json_str) = preset_json else {
-            return Ok(());
-        };
-        let Some(tool) = &mut self.active_tool else {
-            let err = format!("No active tool available to launch '{}'", card_title);
-            self.preset_dialog.record_import_error(err.clone());
-            return Err(err);
-        };
-        match tool.import_preset_json(json_str) {
-            Ok(()) => {
-                self.preset_dialog.toast_error = None;
-                self.sync_active_tool_state_after_preset();
-                Ok(())
-            }
-            Err(err) => {
-                let msg = format!("Failed to launch '{}': {}", card_title, err);
-                self.preset_dialog.record_import_error(msg.clone());
-                Err(msg)
-            }
-        }
-    }
-
     pub(super) fn show_starter_gallery_if_open(&mut self, ctx: &egui::Context, id_source: &str) {
         if self.show_starter_gallery {
             let cards = crate::starter_gallery::get_starter_cards_for_domain(
@@ -358,7 +290,7 @@ impl SimulationFramework {
                 &cards,
                 &mut is_open,
             ) {
-                let _ = self.apply_starter_card(card.title, card.tool_name, card.preset_json);
+                let _ = self.launch_starter_card(&card);
                 is_open = false;
                 ctx.request_repaint();
             }

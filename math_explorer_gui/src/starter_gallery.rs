@@ -395,3 +395,7 @@ pub fn show_starter_gallery_overlay(
 #[cfg(test)]
 #[path = "starter_gallery/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "starter_gallery/contract_tests.rs"]
+mod contract_tests;

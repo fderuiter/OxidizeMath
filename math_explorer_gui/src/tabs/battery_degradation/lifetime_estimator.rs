@@ -112,6 +112,7 @@ impl InteractiveTool for LifetimeEstimatorTool {
             let lifetime_years = lifetime_days / 365.25;
 
             // Results Display
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new("Estimated Total Cycles:")
@@ -121,7 +122,7 @@ impl InteractiveTool for LifetimeEstimatorTool {
                 ui.label(
                     egui::RichText::new(format!("{:.0}", total_cycles))
                         .size(24.0)
-                        .color(egui::Color32::GREEN)
+                        .color(palette.success)
                         .strong(),
                 );
             });
@@ -137,7 +138,7 @@ impl InteractiveTool for LifetimeEstimatorTool {
                 ui.label(
                     egui::RichText::new(format!("{:.1} years", lifetime_years))
                         .size(24.0)
-                        .color(egui::Color32::GREEN)
+                        .color(palette.success)
                         .strong(),
                 );
             });

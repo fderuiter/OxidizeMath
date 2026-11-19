@@ -170,10 +170,11 @@ impl InteractiveTool for TurbulenceTool {
             ui.heading("Results");
             ui.label(format!("Reynolds Number: {:.2}", reynolds_number));
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let (regime_text, color) = match regime {
-                FlowRegime::Laminar => ("Laminar", egui::Color32::GREEN),
-                FlowRegime::Transitional => ("Transitional", egui::Color32::YELLOW),
-                FlowRegime::Turbulent => ("Turbulent", egui::Color32::RED),
+                FlowRegime::Laminar => ("Laminar", palette.success),
+                FlowRegime::Transitional => ("Transitional", palette.warning),
+                FlowRegime::Turbulent => ("Turbulent", palette.error),
             };
             ui.colored_label(color, format!("Regime: {}", regime_text));
 
@@ -241,8 +242,11 @@ impl InteractiveTool for TurbulenceTool {
                             .collect();
 
                         // Line::new requires name as first argument in egui_plot 0.34
-                        plot_ui
-                            .line(Line::new("Streamline", points).color(egui::Color32::LIGHT_BLUE));
+                        let line_color = crate::app::SemanticPalette::from_visuals(
+                            &plot_ui.ctx().style().visuals,
+                        )
+                        .series_color(0);
+                        plot_ui.line(Line::new("Streamline", points).color(line_color));
                     }
                 });
         });
@@ -302,11 +306,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "density": 1000.0,
-    "dynamic_viscosity": 0.001,
-    "velocity": 1.0,
-    "length": 0.05,
-    "geometry": "Pipe"
+    "density": 1.225,
+    "dynamic_viscosity": 0.0000181,
+    "velocity": 25.0,
+    "length": 1.0,
+    "geometry": "FlatPlate"
   }
 }"#;
 

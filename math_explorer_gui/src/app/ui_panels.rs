@@ -38,6 +38,7 @@ pub fn render_issues_panel(
                     return;
                 }
 
+                let palette = super::SemanticPalette::from_visuals(ui.visuals());
                 let mut visible_count = 0;
                 for event in &*diagnostic_events {
                     let show = match event.severity {
@@ -51,10 +52,10 @@ pub fn render_issues_panel(
                     visible_count += 1;
 
                     let color = match event.severity {
-                        Severity::Info => egui::Color32::LIGHT_BLUE,
-                        Severity::Warning => egui::Color32::YELLOW,
-                        Severity::Error => egui::Color32::RED,
-                        Severity::Fatal => egui::Color32::DARK_RED,
+                        Severity::Info => palette.info,
+                        Severity::Warning => palette.warning,
+                        Severity::Error => palette.error,
+                        Severity::Fatal => palette.fatal,
                     };
 
                     ui.group(|ui| {

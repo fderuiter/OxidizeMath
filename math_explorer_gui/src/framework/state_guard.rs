@@ -283,6 +283,14 @@ impl SimulationFramework {
         self.step_counter = 0;
         if let Some(tool) = &self.active_tool {
             let restored_state = tool.save_state();
+            if let Some(&meta) = self
+                .selected_tool_index
+                .and_then(|idx| self.available_tools.get(idx))
+            {
+                if meta.id != tool.name() {
+                    self.saved_tool_states.remove(meta.id);
+                }
+            }
             if let Some(ref state) = restored_state {
                 self.saved_tool_states
                     .insert(tool.name().to_string(), state.clone());
@@ -303,6 +311,138 @@ impl SimulationFramework {
             "Reset All Parameters",
             "Restored default baseline configuration",
         );
+    }
+
+    pub(super) fn sync_active_baseline(&mut self) {
+        self.is_diverged = false;
+        self.diagnostic_report = None;
+        self.step_counter = 0;
+        if let Some(tool) = &self.active_tool {
+            let state = tool.save_state();
+            self.baseline_tool_state = state.clone();
+            if let Some(&meta) = self
+                .selected_tool_index
+                .and_then(|idx| self.available_tools.get(idx))
+            {
+                if meta.id != tool.name() {
+                    self.saved_tool_states.remove(meta.id);
+                }
+            }
+            if let Some(ref s) = state {
+                self.saved_tool_states
+                    .insert(tool.name().to_string(), s.clone());
+            } else {
+                self.saved_tool_states.remove(tool.name());
+            }
+            let datasets = super::persistence::capture_isolated_tool_datasets(tool.as_ref());
+            self.sync_state.datasets_owner_tool = Some(tool.name());
+            self.current_valid_plot_datasets = datasets.clone();
+            self.last_valid_snapshot = Some(StateSnapshot {
+                tool_state: state,
+                plot_datasets: datasets,
+                step_index: 0,
+                timestamp: crate::web_io::PlatformInstant::now(),
+            });
+        }
+    }
+
+    /// Applies a preset JSON envelope to the active tool, refreshing baseline/snapshot on success
+    /// or recording a toast and telemetry warning on failure.
+    pub fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let res = match &mut self.active_tool {
+            Some(tool) => tool.import_preset_json(json_str),
+            None => Err("No active tool selected for preset import".to_string()),
+        };
+        match res {
+            Ok(()) => {
+                self.preset_dialog.toast_error = None;
+                self.sync_active_baseline();
+                Ok(())
+            }
+            Err(err) => {
+                self.preset_dialog.record_import_error(err.clone());
+                Err(err)
+            }
+        }
+    }
+
+    /// Rebuilds a clean target tool instance for a starter card, validates and applies its
+    /// preset JSON, and synchronizes baseline/reset snapshots or records a toast + telemetry warning.
+    pub fn apply_starter_card(
+        &mut self,
+        card_title: &str,
+        tool_name: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        let target_idx = match tool_name {
+            Some(target_name) => {
+                let Some(idx) = self
+                    .available_tools
+                    .iter()
+                    .position(|t| t.id == target_name || t.display_name == target_name)
+                else {
+                    let err = format!(
+                        "Starter preset '{card_title}' targets unavailable tool '{target_name}'"
+                    );
+                    self.preset_dialog.record_import_error(err.clone());
+                    return Err(err);
+                };
+                Some(idx)
+            }
+            None => self.selected_tool_index,
+        };
+
+        if let Some(idx) = target_idx {
+            let meta = self.available_tools[idx];
+            let mut new_tool = (meta.build)();
+            if let Some(json_str) = preset_json {
+                if let Err(err) = new_tool.import_preset_json(json_str) {
+                    let msg = format!("Failed to launch '{card_title}': {err}");
+                    self.preset_dialog.record_import_error(msg.clone());
+                    return Err(msg);
+                }
+            }
+            if self.selected_tool_index != Some(idx) {
+                if let Some(old_tool) = &self.active_tool {
+                    if let Some(state) = old_tool.save_state() {
+                        self.saved_tool_states
+                            .insert(old_tool.name().to_string(), state);
+                    }
+                }
+            }
+            scientific_metadata::citation_registry::CitationRegistry::register(
+                new_tool.name().to_string(),
+                new_tool.theory().theory_citation(),
+            );
+            self.selected_tool_index = Some(idx);
+            self.active_tool = Some(new_tool);
+            self.preset_dialog.toast_error = None;
+            self.sync_active_baseline();
+        } else if let Some(json_str) = preset_json {
+            let Some(tool) = &mut self.active_tool else {
+                let err = format!("No active tool available to launch '{card_title}'");
+                self.preset_dialog.record_import_error(err.clone());
+                return Err(err);
+            };
+            if let Err(err) = tool.import_preset_json(json_str) {
+                let msg = format!("Failed to launch '{card_title}': {err}");
+                self.preset_dialog.record_import_error(msg.clone());
+                return Err(msg);
+            }
+            self.preset_dialog.toast_error = None;
+            self.sync_active_baseline();
+        }
+        self.show_starter_gallery = false;
+        Ok(())
+    }
+
+    /// Rebuilds a clean target tool instance for a starter card, applies its preset JSON,
+    /// and synchronizes baseline/reset snapshots.
+    pub fn launch_starter_card(
+        &mut self,
+        card: &crate::starter_gallery::StarterCard,
+    ) -> Result<(), String> {
+        self.apply_starter_card(card.title, card.tool_name, card.preset_json)
     }
 
     /// Dispatches a StateGuardAction remedy.

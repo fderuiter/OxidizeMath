@@ -247,7 +247,8 @@ impl InteractiveTool for CeraTool {
                     }
                 }
                 Some(Err(err)) => {
-                    ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                    ui.colored_label(palette.error, format!("Error: {}", err));
                 }
                 None => {
                     ui.label("Click 'Run Prediction' to test the model with random inputs.");
@@ -295,11 +296,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "in_channels": 2,
-    "latent_channels": 4,
-    "aligned_channels": 2,
-    "num_levels": 10,
-    "output_size": 5
+    "in_channels": 4,
+    "latent_channels": 8,
+    "aligned_channels": 4,
+    "num_levels": 12,
+    "output_size": 2
   }
 }"#;
 

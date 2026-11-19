@@ -299,10 +299,8 @@ impl InteractiveTool for ReplicatorDynamicsTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let config: ReplicatorPresetConfig = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid ReplicatorDynamicsTool state: {}", e))?;
-        self.apply_config(config)?;
-        self.run_simulation();
-        Ok(())
+            .map_err(|e| format!("Invalid ReplicatorDynamicsTool state: {e}"))?;
+        self.apply_config(config)
     }
 
     fn show(&mut self, ctx: &egui::Context) {

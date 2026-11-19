@@ -149,6 +149,7 @@ impl InteractiveTool for BifurcationDiagram {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let response = Plot::new("bifurcation_plot")
                 .view_aspect(2.0)
                 .x_axis_label("Growth Rate (r)")
@@ -157,7 +158,7 @@ impl InteractiveTool for BifurcationDiagram {
                     plot_ui.points(
                         Points::new("Attractor", &self.points[..])
                             .radius(1.0_f32)
-                            .color(egui::Color32::from_rgb(100, 200, 255)),
+                            .color(palette.series_color(0)),
                     );
                 })
                 .response;

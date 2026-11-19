@@ -129,8 +129,8 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "incident_fluence": 100.0,
-    "mu": 0.1
+    "incident_fluence": 150.0,
+    "mu": 0.06
   }
 }"#;
 

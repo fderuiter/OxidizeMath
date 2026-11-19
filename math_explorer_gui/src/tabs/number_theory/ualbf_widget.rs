@@ -184,9 +184,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "limit_p": 200,
-    "max_exponent": 1,
-    "stop_threshold_log": 10.0
+    "limit_p": 500,
+    "max_exponent": 2,
+    "stop_threshold_log": 12.0
   }
 }"#;
 

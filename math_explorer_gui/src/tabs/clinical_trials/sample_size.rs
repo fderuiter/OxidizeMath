@@ -107,6 +107,14 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         {
             return Err("Sample size parameters out of bounds".into());
         }
+        let result = match s.mode {
+            CalculationMode::Means => calculate_sample_size_means(s.alpha, s.power, s.delta, s.sigma)
+                .map_err(|e| e.to_string())?,
+            CalculationMode::Proportions => {
+                calculate_sample_size_proportions(s.alpha, s.power, s.p1, s.p2)
+                    .map_err(|e| e.to_string())?
+            }
+        };
         self.mode = s.mode;
         self.alpha = s.alpha;
         self.power = s.power;
@@ -114,8 +122,8 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         self.sigma = s.sigma;
         self.p1 = s.p1;
         self.p2 = s.p2;
-        self.recalculate();
-        self.result.as_ref().map(|_| ()).map_err(Clone::clone)
+        self.result = Ok(result);
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -217,6 +225,7 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             // Results Display
             match &self.result {
                 Ok(n) => {
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new("Required Sample Size per Group:")
@@ -226,14 +235,15 @@ impl InteractiveTool for SampleSizeCalculatorTool {
                         ui.label(
                             egui::RichText::new(n.to_string())
                                 .size(24.0)
-                                .color(egui::Color32::GREEN)
+                                .color(palette.success)
                                 .strong(),
                         );
                     });
                     ui.label(format!("Total participants needed: {}", n * 2));
                 }
                 Err(e) => {
-                    ui.colored_label(egui::Color32::RED, format!("Error: {}", e));
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                    ui.colored_label(palette.error, format!("Error: {}", e));
                 }
             }
         });
@@ -286,11 +296,11 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "mode": "Means",
     "alpha": 0.05,
-    "power": 0.8,
+    "power": 0.85,
     "delta": 0.5,
     "sigma": 1.0,
     "p1": 0.5,
-    "p2": 0.6
+    "p2": 0.65
   }
 }"#;
 

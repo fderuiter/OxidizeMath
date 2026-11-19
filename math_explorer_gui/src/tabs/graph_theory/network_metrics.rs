@@ -194,13 +194,14 @@ impl InteractiveTool for NetworkMetricsTool {
             );
 
             // Draw edges
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             for &(u, v, _) in &self.edges {
                 if let (Some(&pos_u), Some(&pos_v)) =
                     (self.node_positions.get(&u), self.node_positions.get(&v))
                 {
                     let screen_pos_u = to_screen.transform_pos(pos_u);
                     let screen_pos_v = to_screen.transform_pos(pos_v);
-                    painter.line_segment([screen_pos_u, screen_pos_v], (2.0, egui::Color32::GRAY));
+                    painter.line_segment([screen_pos_u, screen_pos_v], (2.0, palette.graph_edge));
                 }
             }
 
@@ -222,27 +223,29 @@ impl InteractiveTool for NetworkMetricsTool {
                 let screen_pos = to_screen.transform_pos(pos);
                 let val = self.metric_values.get(&id).copied().unwrap_or(0.0);
 
-                // Color mapping: light blue (low) to red (high)
+                // Color mapping: low metric (blue) to high metric (red)
                 let t = if range > 0.0 {
                     ((val - min_val) / range) as f32
                 } else {
                     0.5
                 };
 
-                let r = (173.0 + t * (255.0 - 173.0)) as u8;
-                let g = (216.0 - t * 216.0) as u8;
-                let b = (230.0 - t * 230.0) as u8;
+                let low = palette.axis_z;
+                let high = palette.axis_x;
+                let lerp = |a: u8, b: u8| {
+                    (f32::from(a) + (f32::from(b) - f32::from(a)) * t.clamp(0.0, 1.0)).round() as u8
+                };
+                let fill_color =
+                    egui::Color32::from_rgb(lerp(low.r(), high.r()), lerp(low.g(), high.g()), lerp(low.b(), high.b()));
 
-                let fill_color = egui::Color32::from_rgb(r, g, b);
-
-                painter.circle(screen_pos, 20.0, fill_color, (1.0, egui::Color32::WHITE));
+                painter.circle(screen_pos, 20.0, fill_color, (1.0, palette.node_stroke));
 
                 painter.text(
                     screen_pos,
                     egui::Align2::CENTER_CENTER,
                     format!("{:.2}", val),
                     egui::FontId::proportional(12.0),
-                    egui::Color32::BLACK,
+                    crate::app::contrasting_text_color(fill_color),
                 );
             }
         });
@@ -293,7 +296,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "selected_metric": "DegreeCentrality"
+    "selected_metric": "ClosenessCentrality"
   }
 }"#;
 

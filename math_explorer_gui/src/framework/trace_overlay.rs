@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 use egui_plot::{render_math_label, Line, LineStyle, PlotPoints, PlotUi};
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,15 @@ pub const SNAPSHOT_PALETTE: &[[u8; 3]] = &[
     [197, 176, 213], // Soft Purple
     [196, 156, 148], // Soft Brown
 ];
+
+fn resolve_trace_color(rgb: [u8; 3], index: usize, visuals: &egui::Visuals) -> egui::Color32 {
+    let raw = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+    if crate::app::contrast_ratio(raw, visuals.extreme_bg_color) >= 3.0 {
+        raw
+    } else {
+        crate::app::SemanticPalette::from_visuals(visuals).series_color(index)
+    }
+}
 
 /// A single named dataset series within a trace snapshot.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -218,16 +228,13 @@ impl TraceSnapshotManager {
     }
 
     pub fn render_on_plot(&self, plot_ui: &mut PlotUi) {
-        for run in &self.history_runs {
+        let visuals = plot_ui.ctx().style().visuals.clone();
+        for (idx, run) in self.history_runs.iter().enumerate() {
             if !run.visible {
                 continue;
             }
-            let color = egui::Color32::from_rgba_unmultiplied(
-                run.color_rgb[0],
-                run.color_rgb[1],
-                run.color_rgb[2],
-                160,
-            );
+            let base = resolve_trace_color(run.color_rgb, idx, &visuals);
+            let color = egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 160);
             for series in &run.series {
                 if series.points.is_empty() {
                     continue;
@@ -246,15 +253,11 @@ impl TraceSnapshotManager {
             }
         }
 
-        for snapshot in &self.snapshots {
+        for (idx, snapshot) in self.snapshots.iter().enumerate() {
             if !snapshot.visible {
                 continue;
             }
-            let color = egui::Color32::from_rgb(
-                snapshot.color_rgb[0],
-                snapshot.color_rgb[1],
-                snapshot.color_rgb[2],
-            );
+            let color = resolve_trace_color(snapshot.color_rgb, idx, &visuals);
             for series in &snapshot.series {
                 if series.points.is_empty() {
                     continue;
@@ -289,7 +292,9 @@ impl TraceSnapshotManager {
                         if !self.is_empty()
                             && ui
                                 .button("Clear All")
-                                .on_hover_text("Remove all history ghost runs and pinned baselines")
+                                .accessible_hover_text(
+                                    "Remove all history ghost runs and pinned baselines",
+                                )
                                 .clicked()
                         {
                             self.clear();
@@ -309,14 +314,14 @@ impl TraceSnapshotManager {
                         "📍 Pin Current Snapshot"
                     };
 
-                    let pin_btn = ui.add_enabled(!full, egui::Button::new(btn_text));
-                    let pin_btn = if full {
-                        pin_btn.on_hover_text("Maximum limit of 10 pinned baselines reached.")
+                    let pin_hover = if full {
+                        "Maximum limit of 10 pinned baselines reached."
                     } else {
-                        pin_btn.on_hover_text(
-                            "Save current trajectory curve as a pinned baseline reference",
-                        )
+                        "Save current trajectory curve as a pinned baseline reference"
                     };
+                    let pin_btn = ui
+                        .add_enabled(!full, egui::Button::new(btn_text))
+                        .accessible_hover_text(pin_hover);
 
                     if pin_btn.clicked() && !full {
                         if let Some((label, param_summary, series)) = pin_callback() {
@@ -345,17 +350,13 @@ impl TraceSnapshotManager {
                             let eye_symbol = if run.visible { "👁" } else { "🙈" };
                             if ui
                                 .button(eye_symbol)
-                                .on_hover_text("Toggle ghost trace visibility")
+                                .accessible_hover_text("Toggle ghost trace visibility")
                                 .clicked()
                             {
                                 run.visible = !run.visible;
                                 changed = true;
                             }
-                            let color = egui::Color32::from_rgb(
-                                run.color_rgb[0],
-                                run.color_rgb[1],
-                                run.color_rgb[2],
-                            );
+                            let color = resolve_trace_color(run.color_rgb, idx, ui.visuals());
                             ui.painter().circle_filled(
                                 ui.cursor().min + egui::vec2(6.0, 8.0),
                                 4.0,
@@ -369,7 +370,7 @@ impl TraceSnapshotManager {
                                 |ui| {
                                     if ui
                                         .button("❌")
-                                        .on_hover_text("Delete this history run")
+                                        .accessible_hover_text("Delete this history run")
                                         .clicked()
                                     {
                                         history_to_remove = Some(idx);
@@ -377,7 +378,9 @@ impl TraceSnapshotManager {
                                     if !is_full
                                         && ui
                                             .button("📍 Pin")
-                                            .on_hover_text("Pin this history run as baseline")
+                                            .accessible_hover_text(
+                                                "Pin this history run as baseline",
+                                            )
                                             .clicked()
                                     {
                                         history_to_pin = Some(idx);
@@ -407,17 +410,13 @@ impl TraceSnapshotManager {
                             let eye_symbol = if snapshot.visible { "👁" } else { "🙈" };
                             if ui
                                 .button(eye_symbol)
-                                .on_hover_text("Toggle baseline visibility")
+                                .accessible_hover_text("Toggle baseline visibility")
                                 .clicked()
                             {
                                 snapshot.visible = !snapshot.visible;
                                 changed = true;
                             }
-                            let color = egui::Color32::from_rgb(
-                                snapshot.color_rgb[0],
-                                snapshot.color_rgb[1],
-                                snapshot.color_rgb[2],
-                            );
+                            let color = resolve_trace_color(snapshot.color_rgb, idx, ui.visuals());
                             ui.painter().circle_filled(
                                 ui.cursor().min + egui::vec2(6.0, 8.0),
                                 5.0,
@@ -436,7 +435,7 @@ impl TraceSnapshotManager {
                                 |ui| {
                                     if ui
                                         .button("❌")
-                                        .on_hover_text("Delete this snapshot")
+                                        .accessible_hover_text("Delete this snapshot")
                                         .clicked()
                                     {
                                         to_remove = Some(idx);

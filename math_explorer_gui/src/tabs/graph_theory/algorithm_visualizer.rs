@@ -270,52 +270,102 @@ impl AlgorithmVisualizerTool {
                 self.run_algorithm();
             }
 
-            self.draw_edges(&painter, &to_screen);
-            self.draw_nodes(&painter, &to_screen, node_radius);
+            let visuals = ui.visuals().clone();
+            self.draw_edges(&painter, &to_screen, &visuals);
+            self.draw_nodes(&painter, &to_screen, node_radius, &visuals);
         });
     }
 
-    fn draw_edges(&self, painter: &egui::Painter, to_screen: &eframe::egui::emath::RectTransform) {
+    fn draw_edges(
+        &self,
+        painter: &egui::Painter,
+        to_screen: &eframe::egui::emath::RectTransform,
+        visuals: &egui::Visuals,
+    ) {
+        let palette = crate::app::SemanticPalette::from_visuals(visuals);
         for &(u, v, weight) in &self.edges {
-            if let (Some(&pos_u), Some(&pos_v)) = (self.node_positions.get(&u), self.node_positions.get(&v)) {
+            if let (Some(&pos_u), Some(&pos_v)) =
+                (self.node_positions.get(&u), self.node_positions.get(&v))
+            {
                 let screen_pos_u = to_screen.transform_pos(pos_u);
                 let screen_pos_v = to_screen.transform_pos(pos_v);
-                let u_visited = self.visit_order.iter().take(self.animation_step).any(|&id| id == u);
-                let v_visited = self.visit_order.iter().take(self.animation_step).any(|&id| id == v);
-                let color = if u_visited && v_visited { egui::Color32::from_rgb(100, 200, 100) } else { egui::Color32::GRAY };
+                let u_visited = self
+                    .visit_order
+                    .iter()
+                    .take(self.animation_step)
+                    .any(|&id| id == u);
+                let v_visited = self
+                    .visit_order
+                    .iter()
+                    .take(self.animation_step)
+                    .any(|&id| id == v);
+                let color = if u_visited && v_visited {
+                    palette.success
+                } else {
+                    palette.graph_edge
+                };
                 painter.line_segment([screen_pos_u, screen_pos_v], (2.0, color));
 
                 let mid_point = screen_pos_u + (screen_pos_v - screen_pos_u) * 0.5;
-                painter.text(mid_point, egui::Align2::CENTER_CENTER, format!("{:.1}", weight), egui::FontId::proportional(12.0), egui::Color32::WHITE);
+                painter.text(
+                    mid_point,
+                    egui::Align2::CENTER_CENTER,
+                    format!("{:.1}", weight),
+                    egui::FontId::proportional(12.0),
+                    visuals.text_color(),
+                );
             }
         }
     }
 
-    fn draw_nodes(&self, painter: &egui::Painter, to_screen: &eframe::egui::emath::RectTransform, node_radius: f32) {
+    fn draw_nodes(
+        &self,
+        painter: &egui::Painter,
+        to_screen: &eframe::egui::emath::RectTransform,
+        node_radius: f32,
+        visuals: &egui::Visuals,
+    ) {
+        let palette = crate::app::SemanticPalette::from_visuals(visuals);
         for (&id, &pos) in &self.node_positions {
             let screen_pos = to_screen.transform_pos(pos);
             let is_start = self.start_node == Some(id);
             let visit_index = self.visit_order.iter().position(|&vid| vid == id);
             let is_visited = visit_index.is_some_and(|idx| idx < self.animation_step);
-            let is_current = visit_index.is_some_and(|idx| idx == self.animation_step.saturating_sub(1) && self.animation_step > 0);
+            let is_current = visit_index
+                .is_some_and(|idx| idx == self.animation_step.saturating_sub(1) && self.animation_step > 0);
 
             let fill_color = if is_start {
-                egui::Color32::YELLOW
+                palette.accent
             } else if is_current {
-                egui::Color32::RED
+                palette.error
             } else if is_visited {
-                egui::Color32::GREEN
+                palette.success
             } else {
-                egui::Color32::LIGHT_BLUE
+                palette.series_color(0)
             };
 
-            painter.circle(screen_pos, node_radius, fill_color, (1.0, egui::Color32::WHITE));
+            painter.circle(
+                screen_pos,
+                node_radius,
+                fill_color,
+                (1.0, palette.node_stroke),
+            );
             let label = if self.selected_algorithm == Algorithm::Dijkstra && is_visited {
-                if let Some(dist) = self.distances.get(&id) { format!("{:.1}", dist) } else { id.to_string() }
+                if let Some(dist) = self.distances.get(&id) {
+                    format!("{:.1}", dist)
+                } else {
+                    id.to_string()
+                }
             } else {
                 id.to_string()
             };
-            painter.text(screen_pos, egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(12.0), egui::Color32::BLACK);
+            painter.text(
+                screen_pos,
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::proportional(12.0),
+                crate::app::contrasting_text_color(fill_color),
+            );
         }
     }
 }
@@ -416,8 +466,8 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "selected_algorithm": "Dijkstra",
-    "start_node": 0,
-    "playback_speed": 2.0
+    "start_node": 5,
+    "playback_speed": 3.0
   }
 }"#;
 

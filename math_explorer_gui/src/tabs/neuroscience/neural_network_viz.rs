@@ -92,6 +92,8 @@ impl NeuralNetworkVizTool {
 #[serde(deny_unknown_fields)]
 struct NeuralNetworkVizState {
     external_input: Vec<f64>,
+    #[serde(default)]
+    weights: Vec<Vec<f64>>,
     dt: f64,
     is_running: bool,
 }
@@ -108,6 +110,7 @@ impl InteractiveTool for NeuralNetworkVizTool {
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&NeuralNetworkVizState {
             external_input: self.external_input.clone(),
+            weights: self.weights.clone(),
             dt: self.dt,
             is_running: self.is_running,
         })
@@ -115,22 +118,45 @@ impl InteractiveTool for NeuralNetworkVizTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let parsed: NeuralNetworkVizState = serde_json::from_str(state)
+        let s: NeuralNetworkVizState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid neural network viz state: {e}"))?;
-        if parsed.external_input.len() != self.neurons.len()
-            || !parsed
+        let n = s.external_input.len();
+        let weights_valid = s.weights.is_empty()
+            || (s.weights.len() == n
+                && s.weights
+                    .iter()
+                    .all(|row| row.len() == n && row.iter().all(|w| w.is_finite())));
+        if !(1..=32).contains(&n)
+            || !weights_valid
+            || !s
                 .external_input
                 .iter()
                 .all(|v| v.is_finite() && (-10.0..=50.0).contains(v))
-            || !parsed.dt.is_finite()
-            || !(0.001..=0.5).contains(&parsed.dt)
+            || !s.dt.is_finite()
+            || !(0.001..=0.5).contains(&s.dt)
         {
-            return Err("NeuralNetworkViz external_input or dt out of bounds".into());
+            return Err("NeuralNetworkViz parameters or dimensions out of bounds".into());
         }
-        self.reset();
-        self.external_input = parsed.external_input;
-        self.dt = parsed.dt;
-        self.is_running = parsed.is_running;
+        if s.weights.is_empty() && n == 5 {
+            self.reset();
+        } else {
+            let radius = 100.0;
+            self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
+            self.positions = (0..n)
+                .map(|i| {
+                    let angle = i as f32 * TAU / n as f32;
+                    [angle.cos() * radius, angle.sin() * radius]
+                })
+                .collect();
+            self.weights = if s.weights.is_empty() {
+                vec![vec![0.0; n]; n]
+            } else {
+                s.weights
+            };
+        }
+        self.external_input = s.external_input;
+        self.dt = s.dt;
+        self.is_running = s.is_running;
         Ok(())
     }
 
@@ -197,6 +223,7 @@ impl InteractiveTool for NeuralNetworkVizTool {
             let num_neurons = self.neurons.len();
 
             // Draw edges
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             for i in 0..num_neurons {
                 for j in 0..num_neurons {
                     let weight = self.weights[i][j];
@@ -204,14 +231,13 @@ impl InteractiveTool for NeuralNetworkVizTool {
                         let p1 = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
                         let p2 = center + egui::vec2(self.positions[j][0], self.positions[j][1]);
 
-                        let color = if weight > 0.0 {
-                            Color32::from_rgba_premultiplied(0, 255, 0, 100) // Excitatory: green
+                        let base = if weight > 0.0 {
+                            palette.success // Excitatory
                         } else {
-                            Color32::from_rgba_premultiplied(255, 0, 0, 100) // Inhibitory: red
+                            palette.error // Inhibitory
                         };
+                        let color = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
 
-                        // To show direction, we can draw a simple line, but offset slightly
-                        // Here, just draw a line
                         painter.line_segment([p2, p1], (1.0 + weight.abs() as f32, color));
                     }
                 }
@@ -222,17 +248,21 @@ impl InteractiveTool for NeuralNetworkVizTool {
                 let v = self.neurons[i].v() as f32;
                 let p = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
 
-                // Color based on voltage
-                // Resting is ~-65, Spike is ~+40
+                // Color based on voltage: resting (~-65mV) -> spike (~+40mV)
                 let normalized_v = ((v + 65.0) / 105.0).clamp(0.0, 1.0);
+                let low = palette.axis_z;
+                let high = palette.axis_x;
+                let lerp = |a: u8, b: u8| {
+                    (f32::from(a) + (f32::from(b) - f32::from(a)) * normalized_v).round() as u8
+                };
                 let color = Color32::from_rgb(
-                    (normalized_v * 255.0) as u8,
-                    ((1.0 - normalized_v) * 100.0) as u8, // Base blue-ish
-                    255,
+                    lerp(low.r(), high.r()),
+                    lerp(low.g(), high.g()),
+                    lerp(low.b(), high.b()),
                 );
 
                 painter.circle_filled(p, 15.0, color);
-                painter.circle_stroke(p, 15.0, (1.0, Color32::WHITE));
+                painter.circle_stroke(p, 15.0, (1.0, palette.node_stroke));
 
                 // Draw text label
                 painter.text(
@@ -240,7 +270,7 @@ impl InteractiveTool for NeuralNetworkVizTool {
                     egui::Align2::CENTER_CENTER,
                     format!("N{}\n{:.0}mV", i, v),
                     egui::FontId::proportional(10.0),
-                    Color32::WHITE,
+                    crate::app::contrasting_text_color(color),
                 );
             }
         });
@@ -280,7 +310,14 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "external_input": [12.0, 0.0, 0.0, 0.0, 0.0],
+    "external_input": [15.0, 0.0, 0.0, 0.0, 0.0],
+    "weights": [
+      [0.0, -1.0, 0.0, 0.0, 2.0],
+      [2.0, 0.0, -1.0, 0.0, 0.0],
+      [0.0, 2.0, 0.0, -1.0, 0.0],
+      [0.0, 0.0, 2.0, 0.0, -1.0],
+      [-1.0, 0.0, 0.0, 2.0, 0.0]
+    ],
     "dt": 0.05,
     "is_running": false
   }

@@ -5,8 +5,11 @@ use crate::presets::OdePreset;
 use eframe::egui::{Color32, CornerRadius, Stroke, Vec2};
 use egui_plot::{Callout, PlotUi};
 
-fn callout_frame_styling(plot_ui: &PlotUi<'_>) -> (Color32, Stroke, Color32) {
+fn callout_frame_styling(
+    plot_ui: &PlotUi<'_>,
+) -> (Color32, Stroke, Color32, crate::app::SemanticPalette) {
     let visuals = plot_ui.ctx().style().visuals.clone();
+    let palette = crate::app::SemanticPalette::from_visuals(&visuals);
     let bg_fill = Color32::from_rgba_unmultiplied(
         visuals.window_fill().r(),
         visuals.window_fill().g(),
@@ -15,7 +18,7 @@ fn callout_frame_styling(plot_ui: &PlotUi<'_>) -> (Color32, Stroke, Color32) {
     );
     let frame_stroke = visuals.widgets.noninteractive.bg_stroke;
     let text_color = visuals.text_color();
-    (bg_fill, frame_stroke, text_color)
+    (bg_fill, frame_stroke, text_color, palette)
 }
 
 fn render_initial_condition_callout(
@@ -24,13 +27,14 @@ fn render_initial_condition_callout(
     bg_fill: Color32,
     frame_stroke: Stroke,
     text_color: Color32,
+    palette: &crate::app::SemanticPalette,
 ) {
     if !y0.is_finite() {
         return;
     }
     let callout_ic = Callout::new([0.0, y0], format!("Initial Condition: y(0) = {:.2}", y0))
         .offset(Vec2::new(35.0, -30.0))
-        .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(52, 152, 219)))
+        .leader_stroke(Stroke::new(1.5_f32, palette.series_color(0)))
         .frame(bg_fill, frame_stroke)
         .corner_radius(CornerRadius::same(4))
         .text_color(text_color);
@@ -44,6 +48,7 @@ fn render_preset_asymptote_callout(
     bg_fill: Color32,
     frame_stroke: Stroke,
     text_color: Color32,
+    palette: &crate::app::SemanticPalette,
 ) {
     match tool.preset {
         OdePreset::LogisticGrowth => {
@@ -53,7 +58,7 @@ fn render_preset_asymptote_callout(
                     format!("Carrying Capacity: K = {:.2}", tool.param_cap_k),
                 )
                 .offset(Vec2::new(-45.0, -25.0))
-                .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(46, 204, 113)))
+                .leader_stroke(Stroke::new(1.5_f32, palette.success))
                 .frame(bg_fill, frame_stroke)
                 .corner_radius(CornerRadius::same(4))
                 .text_color(text_color);
@@ -65,7 +70,7 @@ fn render_preset_asymptote_callout(
             if tool.param_k <= 0.0 && tool.total_time.is_finite() {
                 let callout_ss = Callout::new([tool.total_time, 0.0], "Steady State: y = 0.00")
                     .offset(Vec2::new(-40.0, -25.0))
-                    .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(230, 126, 34)))
+                    .leader_stroke(Stroke::new(1.5_f32, palette.series_color(1)))
                     .frame(bg_fill, frame_stroke)
                     .corner_radius(CornerRadius::same(4))
                     .text_color(text_color);
@@ -77,7 +82,7 @@ fn render_preset_asymptote_callout(
             if tool.total_time.is_finite() {
                 let callout_eq = Callout::new([tool.total_time * 0.5, 0.0], "Equilibrium: y = 0.00")
                     .offset(Vec2::new(30.0, 25.0))
-                    .leader_stroke(Stroke::new(1.5_f32, Color32::from_rgb(230, 126, 34)))
+                    .leader_stroke(Stroke::new(1.5_f32, palette.series_color(1)))
                     .frame(bg_fill, frame_stroke)
                     .corner_radius(CornerRadius::same(4))
                     .text_color(text_color);
@@ -91,7 +96,14 @@ fn render_preset_asymptote_callout(
 
 /// Renders simulation callout annotations onto the ODE plot canvas.
 pub fn render_ode_callouts(plot_ui: &mut PlotUi<'_>, tool: &OdeSolverTool) {
-    let (bg_fill, frame_stroke, text_color) = callout_frame_styling(plot_ui);
-    render_initial_condition_callout(plot_ui, tool.ic_y0, bg_fill, frame_stroke, text_color);
-    render_preset_asymptote_callout(plot_ui, tool, bg_fill, frame_stroke, text_color);
+    let (bg_fill, frame_stroke, text_color, palette) = callout_frame_styling(plot_ui);
+    render_initial_condition_callout(
+        plot_ui,
+        tool.ic_y0,
+        bg_fill,
+        frame_stroke,
+        text_color,
+        &palette,
+    );
+    render_preset_asymptote_callout(plot_ui, tool, bg_fill, frame_stroke, text_color, &palette);
 }

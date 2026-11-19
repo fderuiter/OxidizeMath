@@ -211,8 +211,8 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "e0": 0.0,
-    "t": 1.0,
-    "a": 1.0,
+    "t": 1.5,
+    "a": 1.2,
     "hbar": 1.0,
     "m": 1.0,
     "show_free_electron": true

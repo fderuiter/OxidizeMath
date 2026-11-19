@@ -412,13 +412,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "surface_type": "Torus",
     "curvature_type": "Gaussian",
     "sphere_radius": 1.0,
-    "torus_major_radius": 2.0,
-    "torus_minor_radius": 0.6,
+    "torus_major_radius": 2.5,
+    "torus_minor_radius": 0.8,
     "klein_radius": 2.0,
-    "u_resolution": 30,
-    "v_resolution": 30,
-    "pitch": 0.5,
-    "yaw": 0.5,
+    "u_resolution": 36,
+    "v_resolution": 36,
+    "pitch": 0.6,
+    "yaw": 0.4,
     "zoom": 1.0
   }
 }"#;

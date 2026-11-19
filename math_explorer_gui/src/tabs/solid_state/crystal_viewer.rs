@@ -110,12 +110,14 @@ impl CrystalViewer {
             (3, 7), // Verticals
         ];
 
+        let edge_color =
+            crate::app::SemanticPalette::from_visuals(&ui.ctx().style().visuals).graph_edge;
         for (start_idx, end_idx) in edges {
             let start = self.project(corners[start_idx]);
             let end = self.project(corners[end_idx]);
             ui.line(
                 Line::new("Edge", PlotPoints::new(vec![start, end]))
-                    .color(egui::Color32::GRAY)
+                    .color(edge_color)
                     .width(1.0_f32),
             );
         }
@@ -214,6 +216,7 @@ impl InteractiveTool for CrystalViewer {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             Plot::new("crystal_plot")
                 .data_aspect(1.0)
                 .show(ui, |plot_ui| {
@@ -231,7 +234,7 @@ impl InteractiveTool for CrystalViewer {
                     plot_ui.points(
                         Points::new("Atoms", points)
                             .radius(5.0_f32)
-                            .color(egui::Color32::RED),
+                            .color(palette.axis_x),
                     );
                 });
             ui.label("Drag 'Yaw' and 'Pitch' to rotate.");
@@ -284,10 +287,10 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "system": "FaceCenteredCubic",
-    "lattice_constant": 2.0,
-    "yaw": 0.5,
-    "pitch": 0.5,
-    "zoom": 50.0
+    "lattice_constant": 3.0,
+    "yaw": 0.6,
+    "pitch": 0.4,
+    "zoom": 65.0
   }
 }"#;
 

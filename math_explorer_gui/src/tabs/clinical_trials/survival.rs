@@ -154,7 +154,8 @@ impl InteractiveTool for SurvivalAnalysisTool {
             }
 
             if let Some(err) = &self.error_message {
-                ui.colored_label(egui::Color32::RED, err);
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                ui.colored_label(palette.error, err);
             }
 
             ui.separator();
@@ -231,7 +232,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "input_text": "6.0, 1\n6.0, 1\n7.0, 1\n10.0, 1\n13.0, 1\n16.0, 1\n22.0, 1\n23.0, 1\n6.0, 0\n9.0, 0\n10.0, 0\n11.0, 0\n17.0, 0\n20.0, 0\n25.0, 0"
+    "input_text": "3.0, 1\n5.0, 1\n6.0, 0\n8.0, 1\n11.0, 0\n14.0, 1\n18.0, 1\n21.0, 0\n24.0, 1\n30.0, 0"
   }
 }"#;
 

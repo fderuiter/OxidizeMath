@@ -80,7 +80,6 @@ impl InteractiveTool for SpinVisualizer {
     fn name(&self) -> &'static str {
         "Spin Dynamics (Bloch Sphere)"
     }
-
     fn domain(&self) -> &'static str {
         "quantum"
     }
@@ -228,22 +227,23 @@ impl InteractiveTool for SpinVisualizer {
             ];
             let tip = [end];
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let response = Plot::new("bloch_sphere")
                 .data_aspect(1.0)
                 .view_aspect(1.0)
                 .show(ui, |plot_ui| {
-                    plot_ui.line(Line::new("", &equator[..]).color(egui::Color32::GRAY));
-                    plot_ui.line(Line::new("", &meridian[..]).color(egui::Color32::GRAY));
-                    plot_ui.line(Line::new("", &meridian2[..]).color(egui::Color32::GRAY));
+                    plot_ui.line(Line::new("", &equator[..]).color(palette.graph_edge));
+                    plot_ui.line(Line::new("", &meridian[..]).color(palette.graph_edge));
+                    plot_ui.line(Line::new("", &meridian2[..]).color(palette.graph_edge));
 
-                    plot_ui.line(Line::new("", &x_axis[..]).color(egui::Color32::RED));
-                    plot_ui.line(Line::new("", &y_axis[..]).color(egui::Color32::GREEN));
-                    plot_ui.line(Line::new("", &z_axis[..]).color(egui::Color32::BLUE));
+                    plot_ui.line(Line::new("", &x_axis[..]).color(palette.axis_x));
+                    plot_ui.line(Line::new("", &y_axis[..]).color(palette.axis_y));
+                    plot_ui.line(Line::new("", &z_axis[..]).color(palette.axis_z));
 
                     // Draw state vector (only named line in legend)
                     plot_ui.line(
                         Line::new("State", &vec_line[..])
-                            .color(egui::Color32::YELLOW)
+                            .color(palette.accent)
                             .width(3.0_f32),
                     );
 
@@ -251,7 +251,7 @@ impl InteractiveTool for SpinVisualizer {
                     plot_ui.points(
                         Points::new("", &tip[..])
                             .radius(5.0_f32)
-                            .color(egui::Color32::YELLOW),
+                            .color(palette.accent),
                     );
                 })
                 .response;

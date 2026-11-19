@@ -196,13 +196,14 @@ impl InteractiveTool for BetSizeCalculatorTool {
             }
         };
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         match (prob_result, odds_result) {
             (Ok(prob), Ok(odds)) => {
                 let ev = expected_value(&prob, &odds);
                 ui.label(format!("Expected Value (per $1 staked): ${:.3}", ev));
 
                 if ev > 0.0 {
-                    ui.label(egui::RichText::new("Positive Edge!").color(egui::Color32::GREEN));
+                    ui.label(egui::RichText::new("Positive Edge!").color(palette.success));
 
                     match kelly_fraction(&prob, &odds) {
                         Ok(full_kelly) => {
@@ -255,26 +256,26 @@ impl InteractiveTool for BetSizeCalculatorTool {
                         Err(e) => {
                             ui.label(
                                 egui::RichText::new(format!("Error calculating Kelly: {}", e))
-                                    .color(egui::Color32::RED),
+                                    .color(palette.error),
                             );
                         }
                     }
                 } else {
                     ui.label(
                         egui::RichText::new("No Edge (Negative or Zero EV). Do not bet.")
-                            .color(egui::Color32::RED),
+                            .color(palette.error),
                     );
                 }
             }
             (Err(e), _) => {
                 ui.label(
                     egui::RichText::new(format!("Invalid Probability: {}", e))
-                        .color(egui::Color32::RED),
+                        .color(palette.error),
                 );
             }
             (_, Err(e)) => {
                 ui.label(
-                    egui::RichText::new(format!("Invalid Odds: {}", e)).color(egui::Color32::RED),
+                    egui::RichText::new(format!("Invalid Odds: {}", e)).color(palette.error),
                 );
             }
         }
@@ -314,13 +315,13 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "probability_input": 55.0,
+    "probability_input": 60.0,
     "odds_format": "Decimal",
     "decimal_odds": 2.0,
     "american_odds": 100.0,
     "fractional_numerator": 1.0,
     "fractional_denominator": 1.0,
-    "bankroll": 1000.0
+    "bankroll": 2500.0
   }
 }"#;
 

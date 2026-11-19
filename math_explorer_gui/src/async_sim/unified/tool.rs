@@ -152,15 +152,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.separator();
         }
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.horizontal(|ui| {
             ui.label("Status:");
             let (status_text, color) = match state {
-                SimWorkerState::Uninitialized => ("Uninitialized", egui::Color32::GRAY),
-                SimWorkerState::Ready => ("Ready", egui::Color32::from_rgb(80, 200, 120)),
-                SimWorkerState::Running => ("Running", egui::Color32::from_rgb(60, 160, 240)),
-                SimWorkerState::Stepping => ("Stepping", egui::Color32::from_rgb(240, 200, 60)),
-                SimWorkerState::Faulted => ("Faulted", egui::Color32::RED),
-                SimWorkerState::Terminated => ("Terminated", egui::Color32::DARK_GRAY),
+                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
+                SimWorkerState::Ready => ("Ready", palette.success),
+                SimWorkerState::Running => ("Running", palette.info),
+                SimWorkerState::Stepping => ("Stepping", palette.warning),
+                SimWorkerState::Faulted => ("Faulted", palette.error),
+                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
             };
             ui.colored_label(color, status_text);
         });
@@ -243,23 +244,35 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded = serde_json::from_str::<HashMap<String, f64>>(state)
-            .map_err(|e| format!("Invalid parameter map JSON: {}", e))?;
-        if !self.param_metadata.is_empty() && loaded.is_empty() {
-            return Err(format!("Parameter map cannot be empty for {}", M::name()));
+        let params: HashMap<String, f64> = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
+        if !self.param_metadata.is_empty() && params.is_empty() {
+            return Err(format!(
+                "Empty parameter configuration for {}; expected parameters: {}",
+                M::name(),
+                self.param_metadata
+                    .iter()
+                    .map(|m| m.0.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
-        for (key, &val) in &loaded {
-            if !self.param_metadata.iter().any(|(n, _)| n == key) {
+        for (key, value) in &params {
+            if !self.param_metadata.iter().any(|meta| &meta.0 == key) {
                 return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
             }
-            if !val.is_finite() {
-                return Err(format!("Parameter '{}' value {} must be finite", key, val));
+            if !value.is_finite() {
+                return Err(format!(
+                    "Non-finite value for parameter '{}' in {}",
+                    key,
+                    M::name()
+                ));
             }
         }
         {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (k, v) in loaded {
-                p.insert(k, v);
+            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
+            for (key, value) in params {
+                guard.insert(key, value);
             }
         }
         self.texture = None;

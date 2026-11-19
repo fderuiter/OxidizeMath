@@ -358,8 +358,9 @@ impl OdeSolverTool {
             );
         }
 
-        let line_y = Line::new("y(t)", PlotPoints::new(plot_points_y))
-            .color(egui::Color32::LIGHT_BLUE);
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let line_y =
+            Line::new("y(t)", PlotPoints::new(plot_points_y)).color(palette.series_color(0));
 
         Plot::new("ode_plot")
             .view_aspect(2.0)
@@ -371,7 +372,7 @@ impl OdeSolverTool {
                     plot_ui.line(line_y);
                     if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
                         let line_v = Line::new("y'(t)", PlotPoints::new(plot_points_v))
-                            .color(egui::Color32::LIGHT_RED);
+                            .color(palette.series_color(1));
                         plot_ui.line(line_v);
                     }
                 } else {
@@ -385,4 +386,3 @@ impl OdeSolverTool {
             });
     }
 }
-

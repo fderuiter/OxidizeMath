@@ -181,26 +181,6 @@ impl AttractorPlotter {
     }
 }
 
-const fn default_annotations_enabled() -> bool {
-    true
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AttractorState {
-    sigma: f64,
-    rho: f64,
-    beta: f64,
-    dt: f64,
-    simulation_speed: usize,
-    #[serde(default)]
-    execution_state: Option<SolverExecutionState>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    paused: Option<bool>,
-    #[serde(default = "default_annotations_enabled")]
-    show_annotations: bool,
-}
-
 impl InteractiveTool for AttractorPlotter {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -213,54 +193,11 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&AttractorState {
-            sigma: self.system.sigma,
-            rho: self.system.rho,
-            beta: self.system.beta,
-            dt: self.dt,
-            simulation_speed: self.simulation_speed,
-            execution_state: Some(self.execution_state),
-            paused: None,
-            show_annotations: self.show_annotations,
-        })
-        .ok()
+        self.serialize_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: AttractorState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid AttractorPlotter state: {}", e))?;
-        if !s.sigma.is_finite()
-            || !s.rho.is_finite()
-            || !s.beta.is_finite()
-            || !s.dt.is_finite()
-            || s.dt <= 0.0
-            || s.simulation_speed == 0
-        {
-            return Err("Attractor parameters must be finite with dt > 0 and simulation_speed > 0".to_string());
-        }
-        self.system.sigma = s.sigma;
-        self.system.rho = s.rho;
-        self.system.beta = s.beta;
-        self.dt = s.dt;
-        self.simulation_speed = s.simulation_speed;
-        self.show_annotations = s.show_annotations;
-        self.reset();
-        let _ = self.worker.update();
-        let execution_state = s.execution_state.unwrap_or(if s.paused.unwrap_or(false) {
-            SolverExecutionState::Paused
-        } else {
-            SolverExecutionState::Ready
-        });
-        self.execution_state = execution_state;
-        if let SolverExecutionState::Diverged {
-            invalid_vec,
-            diverged_at_step,
-        } = execution_state
-        {
-            self.system.state.vec = invalid_vec;
-            self.step_count = diverged_at_step;
-        }
-        Ok(())
+        self.deserialize_state(state)
     }
 
     fn step_simulation(&mut self) {
@@ -357,6 +294,8 @@ inventory::submit! {
         build: || Box::new(AttractorPlotter::default()),
     }
 }
+
+mod preset;
 
 #[cfg(test)]
 mod attractor_tests;

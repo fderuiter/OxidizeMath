@@ -342,10 +342,12 @@ impl InteractiveTool for IsingModelTool {
             p.h_field = self.h_field;
             p.steps_per_frame = self.steps_per_frame;
         }
-        let target_state = s.state.unwrap_or(if s.running.unwrap_or(false) {
-            SimWorkerState::Running
-        } else {
-            SimWorkerState::Ready
+        let target_state = s.state.unwrap_or_else(|| {
+            if s.running.unwrap_or(false) {
+                SimWorkerState::Running
+            } else {
+                SimWorkerState::Ready
+            }
         });
         if target_state == SimWorkerState::Running {
             if !self.worker.is_running() {
@@ -422,8 +424,8 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "temperature": 2.269,
     "j_coupling": 1.0,
-    "h_field": 0.0,
-    "steps_per_frame": 5000
+    "h_field": 0.05,
+    "steps_per_frame": 10000
   }
 }"#;
 

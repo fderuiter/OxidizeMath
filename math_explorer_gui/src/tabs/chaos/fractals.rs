@@ -416,8 +416,8 @@ const STARTER_PRESET_JSON: &str = r#"{
     "zoom": 1.0,
     "max_iter": 150,
     "mode": "Mandelbrot",
-    "julia_re": -0.4,
-    "julia_im": 0.6
+    "julia_re": -0.7,
+    "julia_im": 0.27015
   }
 }"#;
 

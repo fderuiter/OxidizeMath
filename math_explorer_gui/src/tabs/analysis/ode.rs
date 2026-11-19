@@ -372,7 +372,7 @@ impl InteractiveTool for OdeSolverTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: OdeState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {}", e))?;
+            serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {e}"))?;
         if !s.dt.is_finite()
             || s.dt <= 0.0
             || !s.total_time.is_finite()

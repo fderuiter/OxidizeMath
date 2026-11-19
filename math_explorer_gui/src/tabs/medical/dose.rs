@@ -208,8 +208,8 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "amplitude": 2.0,
-    "beta": 0.8,
+    "amplitude": 2.5,
+    "beta": 0.6,
     "width": 200,
     "height": 200
   }

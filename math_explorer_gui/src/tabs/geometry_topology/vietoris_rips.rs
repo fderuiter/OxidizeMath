@@ -204,8 +204,9 @@ impl InteractiveTool for VietorisRipsTool {
                 ));
             });
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             if let Some(err) = &self.error_msg {
-                ui.colored_label(egui::Color32::RED, err);
+                ui.colored_label(palette.error, err);
             }
 
             // Plotting
@@ -216,11 +217,13 @@ impl InteractiveTool for VietorisRipsTool {
                 .allow_zoom(true);
 
             plot.show(ui, |plot_ui| {
+                let s0 = palette.series_color(0);
+                let tri_fill = egui::Color32::from_rgba_unmultiplied(s0.r(), s0.g(), s0.b(), 55);
                 // Draw 2-simplices (triangles)
                 for t in &self.cached_triangles {
                     plot_ui.polygon(
                         Polygon::new("Triangle", &t[..])
-                            .fill_color(egui::Color32::from_rgba_unmultiplied(100, 150, 250, 50))
+                            .fill_color(tri_fill)
                             .stroke(egui::Stroke::new(0.0_f32, egui::Color32::TRANSPARENT)),
                     );
                 }
@@ -229,7 +232,7 @@ impl InteractiveTool for VietorisRipsTool {
                 for e in &self.cached_edges {
                     plot_ui.line(
                         Line::new("Edge", &e[..])
-                            .color(egui::Color32::from_rgb(150, 150, 150))
+                            .color(palette.graph_edge)
                             .width(1.5_f32),
                     );
                 }
@@ -237,7 +240,7 @@ impl InteractiveTool for VietorisRipsTool {
                 // Draw 0-simplices (vertices)
                 plot_ui.points(
                     Points::new("Vertices", &self.cached_vertices[..])
-                        .color(egui::Color32::from_rgb(50, 50, 200))
+                        .color(s0)
                         .radius(4.0_f32),
                 );
             });

@@ -1,57 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::framework::SimulationFramework;
-use crate::presets::{
-    InteractivePreset, MorphogenesisPresetConfig, OdePresetConfig, PresetWrapper,
-};
-use crate::tabs::morphogenesis::MorphogenesisTab;
-use federated_registry::{global_registry, Severity};
-
-fn inject_unknown_config_field(preset_json: &str) -> String {
-    let mut val: serde_json::Value = serde_json::from_str(preset_json).expect("valid preset json");
-    val["config"]
-        .as_object_mut()
-        .expect("config must be object")
-        .insert(
-            "__unknown_contract_field__".to_string(),
-            serde_json::json!(999),
-        );
-    serde_json::to_string(&val).unwrap()
-}
-
-fn inject_unknown_metadata_field(preset_json: &str) -> String {
-    let mut val: serde_json::Value = serde_json::from_str(preset_json).expect("valid preset json");
-    val["metadata"]
-        .as_object_mut()
-        .expect("metadata must be object")
-        .insert(
-            "__unknown_meta_field__".to_string(),
-            serde_json::json!("bad"),
-        );
-    serde_json::to_string(&val).unwrap()
-}
-
-fn replace_preset_domain(preset_json: &str, bad_domain: &str) -> String {
-    let mut val: serde_json::Value = serde_json::from_str(preset_json).expect("valid preset json");
-    val["metadata"]["domain"] = serde_json::json!(bad_domain);
-    serde_json::to_string(&val).unwrap()
-}
-
-fn count_gallery_buttons(output: &egui::FullOutput) -> usize {
-    let ak = output
-        .platform_output
-        .accesskit_update
-        .as_ref()
-        .expect("AccessKit update expected");
-    ak.nodes
-        .iter()
-        .filter(|(_, node)| {
-            node.role() == egui::accesskit::Role::Button
-                && node.label().unwrap_or("").contains("Starter Gallery")
-        })
-        .count()
-}
 
 #[test]
 fn test_starter_cards_presence_and_metadata() {
@@ -73,6 +22,8 @@ fn test_starter_cards_presence_and_metadata() {
 
 #[test]
 fn test_preset_json_validity() {
+    use crate::presets::{MorphogenesisPresetConfig, OdePresetConfig, PresetWrapper};
+
     let ode_env: PresetWrapper<OdePresetConfig> =
         serde_json::from_str(PRESET_HARMONIC_OSCILLATOR).unwrap();
     assert_eq!(ode_env.metadata.domain, "analysis");
@@ -107,6 +58,7 @@ fn test_all_registered_tools_have_starter_presets() {
             tool.id,
             tool.domain
         );
+
         for preset in matching {
             let parsed: serde_json::Value = serde_json::from_str(preset.generate_preset())
                 .unwrap_or_else(|e| {
@@ -115,9 +67,11 @@ fn test_all_registered_tools_have_starter_presets() {
                         tool.id, preset.title, e
                     )
                 });
-            assert_eq!(parsed["metadata"]["schema_version"], "1.0");
-            assert_eq!(parsed["metadata"]["domain"], tool.domain);
-            assert!(parsed["config"].is_object());
+            assert!(parsed.is_object(), "Payload must be a JSON object");
+            let meta = &parsed["metadata"];
+            assert_eq!(meta["schema_version"], "1.0");
+            assert_eq!(meta["domain"], tool.domain);
+            assert!(parsed["config"].is_object(), "Config must be a JSON object");
         }
     }
 }
@@ -158,235 +112,211 @@ fn test_starter_cards_for_all_registered_domains() {
     }
 }
 
+fn perturb_first_number(val: &mut serde_json::Value) -> bool {
+    match val {
+        serde_json::Value::Number(num) => {
+            if let Some(f) = num.as_f64() {
+                if num.is_i64() || num.is_u64() {
+                    let next = (num.as_i64().unwrap_or(1) + 1).max(1);
+                    *val = serde_json::json!(next);
+                } else {
+                    let next = if f.abs() > 1e-3 {
+                        f * 0.85 + 0.03
+                    } else {
+                        0.125
+                    };
+                    *val = serde_json::json!(next);
+                }
+                return true;
+            }
+            false
+        }
+        serde_json::Value::Array(items) => items.iter_mut().any(perturb_first_number),
+        serde_json::Value::Object(map) => {
+            for (k, v) in map.iter_mut() {
+                if k == "next_node_id" || k == "selected_node" || k == "start_node" {
+                    continue;
+                }
+                if perturb_first_number(v) {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetMetadata) {
+    let payload = preset.generate_preset();
+    let mut target_tool = (tool_meta.build)();
+    target_tool.import_preset_json(payload).unwrap_or_else(|e| {
+        panic!(
+            "import_preset_json failed for preset '{}' on '{}': {}",
+            preset.id, tool_meta.id, e
+        )
+    });
+    let expected_str = target_tool
+        .save_state()
+        .unwrap_or_else(|| panic!("save_state returned None for '{}'", tool_meta.id));
+    let expected_val: serde_json::Value = serde_json::from_str(&expected_str).unwrap();
+
+    let mut perturbed_tool = (tool_meta.build)();
+    let base_str = perturbed_tool.save_state().unwrap();
+    let mut perturbed_val: serde_json::Value = serde_json::from_str(&base_str).unwrap();
+    if perturbed_val == expected_val {
+        assert!(
+            perturb_first_number(&mut perturbed_val),
+            "Failed to perturb state for '{}'",
+            tool_meta.id
+        );
+        let perturbed_json = serde_json::to_string(&perturbed_val).unwrap();
+        perturbed_tool
+            .try_load_state(&perturbed_json)
+            .unwrap_or_else(|e| {
+                panic!("Perturb try_load_state failed on '{}': {}", tool_meta.id, e)
+            });
+    }
+    let before_val: serde_json::Value =
+        serde_json::from_str(&perturbed_tool.save_state().unwrap()).unwrap();
+    assert_ne!(
+        before_val, expected_val,
+        "Perturbed state must differ from preset '{}' on '{}'",
+        preset.id, tool_meta.id
+    );
+
+    perturbed_tool
+        .import_preset_json(payload)
+        .unwrap_or_else(|e| panic!("Re-import preset '{}' failed: {}", preset.id, e));
+    let after_val: serde_json::Value =
+        serde_json::from_str(&perturbed_tool.save_state().unwrap()).unwrap();
+    assert_eq!(
+        after_val, expected_val,
+        "Preset '{}' did not mutate perturbed '{}' to exact target configuration",
+        preset.id, tool_meta.id
+    );
+}
+
 #[test]
-fn test_all_57_starter_cards_launch_and_sync_framework_state() {
+fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
+    use crate::presets::InteractivePreset;
+    use crate::tabs::morphogenesis::MorphogenesisTab;
+
+    let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 57);
+    assert_eq!(
+        presets.len(),
+        57,
+        "Expected 57 StarterPresetMetadata entries"
+    );
 
     for preset in presets {
-        let json = preset.generate_preset();
         if let Some(tool_name) = preset.tool_name {
-            let mut framework = SimulationFramework::new(preset.domain);
-            framework
-                .apply_starter_card(preset.title, Some(tool_name), Some(json))
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "Starter card '{}' ({}/{}) failed to launch: {}",
-                        preset.id, preset.domain, tool_name, e
-                    )
-                });
-            assert!(framework.preset_dialog.toast_error.is_none());
-            let active = framework.active_tool.as_ref().expect("active tool set");
-            let state = active
-                .save_state()
-                .expect("active tool must serialize state");
-            assert_eq!(framework.saved_tool_states.get(active.name()), Some(&state));
-            assert_eq!(framework.baseline_tool_state.as_ref(), Some(&state));
-            assert_eq!(
-                framework
-                    .last_valid_snapshot
-                    .as_ref()
-                    .and_then(|s| s.tool_state.as_ref()),
-                Some(&state)
-            );
+            let tool_meta = tools
+                .iter()
+                .copied()
+                .find(|t| t.id == tool_name && t.domain == preset.domain)
+                .unwrap_or_else(|| panic!("Missing ToolMetadata for '{}'", tool_name));
+            verify_tool_preset_mutation(tool_meta, preset);
         } else {
-            let mut morph = MorphogenesisTab::default();
-            morph
-                .apply_starter_card(preset.title, Some(json))
-                .unwrap_or_else(|e| panic!("Morphogenesis card '{}' failed: {}", preset.id, e));
-            assert!(morph.dialog_state.toast_error.is_none());
+            let payload = preset.generate_preset();
+            let mut target_tab = MorphogenesisTab::default();
+            target_tab
+                .from_json_str(payload)
+                .unwrap_or_else(|e| panic!("Morphogenesis preset '{}' failed: {}", preset.id, e));
+            let expected_cfg = target_tab.export_config();
+
+            let mut perturbed_tab = MorphogenesisTab::default();
+            let mut custom_cfg = perturbed_tab.export_config();
+            custom_cfg.a = 0.31;
+            custom_cfg.b = 0.69;
+            assert!(perturbed_tab.apply_config(custom_cfg).is_ok());
+            assert_ne!(perturbed_tab.export_config(), expected_cfg);
+
+            assert!(perturbed_tab.from_json_str(payload).is_ok());
+            assert_eq!(perturbed_tab.export_config(), expected_cfg);
         }
     }
 }
 
 #[test]
-fn test_all_52_tools_export_and_import_preset_roundtrip() {
+fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
+    let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
+    assert_eq!(tools.len(), 52, "Expected 52 InteractiveTool registrations");
 
-    for meta in inventory::iter::<ToolMetadata> {
-        let mut tool = (meta.build)();
-        assert_eq!(
-            tool.domain(),
-            meta.domain,
-            "Tool '{}' domain() mismatch",
-            meta.id
-        );
-        let starter = presets
+    for tool_meta in tools {
+        let default_tool = (tool_meta.build)();
+        assert_eq!(default_tool.domain(), tool_meta.domain);
+        let default_json = default_tool
+            .save_state()
+            .unwrap_or_else(|| panic!("save_state returned None for '{}'", tool_meta.id));
+        let default_val: serde_json::Value = serde_json::from_str(&default_json).unwrap();
+
+        let preset = presets
             .iter()
-            .find(|p| p.tool_name == Some(meta.id))
-            .expect("starter preset exists");
-        tool.import_preset_json(starter.generate_preset())
-            .unwrap_or_else(|e| panic!("Tool '{}' starter import failed: {}", meta.id, e));
+            .find(|p| p.tool_name == Some(tool_meta.id) && p.domain == tool_meta.domain)
+            .expect("Every registered tool must have a starter preset");
+        let mut modified_tool = (tool_meta.build)();
+        modified_tool
+            .import_preset_json(preset.generate_preset())
+            .unwrap();
+        let mut non_default_json = modified_tool.save_state().unwrap();
+        let mut non_default_val: serde_json::Value =
+            serde_json::from_str(&non_default_json).unwrap();
 
-        let exported = tool
-            .export_preset_json()
-            .unwrap_or_else(|e| panic!("Tool '{}' export_preset_json failed: {}", meta.id, e));
-        let mut restored = (meta.build)();
-        restored
-            .import_preset_json(&exported)
-            .unwrap_or_else(|e| panic!("Tool '{}' roundtrip import failed: {}", meta.id, e));
-        assert_eq!(
-            restored.save_state(),
-            tool.save_state(),
-            "Tool '{}' state differed after export/import roundtrip",
-            meta.id
-        );
-    }
-
-    let mut morph = MorphogenesisTab::default();
-    morph.from_json_str(PRESET_TURING_STRIPES).unwrap();
-    let morph_json = morph.to_json_string().unwrap();
-    let mut morph_restored = MorphogenesisTab::default();
-    morph_restored.from_json_str(&morph_json).unwrap();
-    assert_eq!(morph_restored.export_config(), morph.export_config());
-}
-
-#[test]
-fn test_all_52_tools_reject_unknown_fields_and_wrong_domain() {
-    for meta in inventory::iter::<ToolMetadata> {
-        let mut tool = (meta.build)();
-        let exported = tool
-            .export_preset_json()
-            .unwrap_or_else(|e| panic!("Tool '{}' export failed: {}", meta.id, e));
-
-        let bad_cfg = inject_unknown_config_field(&exported);
-        assert!(
-            tool.import_preset_json(&bad_cfg).is_err(),
-            "Tool '{}' must reject unknown config field",
-            meta.id
-        );
-
-        let bad_meta = inject_unknown_metadata_field(&exported);
-        assert!(
-            tool.import_preset_json(&bad_meta).is_err(),
-            "Tool '{}' must reject unknown metadata field",
-            meta.id
-        );
-
-        let wrong_dom = replace_preset_domain(&exported, "wrong_domain_contract_test");
-        assert!(
-            tool.import_preset_json(&wrong_dom).is_err(),
-            "Tool '{}' must reject wrong metadata.domain",
-            meta.id
-        );
-    }
-
-    let mut morph = MorphogenesisTab::default();
-    let morph_exported = morph.to_json_string().unwrap();
-    assert!(morph
-        .from_json_str(&inject_unknown_config_field(&morph_exported))
-        .is_err());
-    assert!(morph
-        .from_json_str(&replace_preset_domain(&morph_exported, "quantum"))
-        .is_err());
-}
-
-#[test]
-fn test_failed_card_launch_surfaces_toast_and_preset_serialization_telemetry() {
-    let _guard = crate::reflective_ui::tests::TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let _ = global_registry().try_recv_all();
-
-    let mut framework = SimulationFramework::new("analysis");
-    let bad_ode_json = inject_unknown_config_field(PRESET_HARMONIC_OSCILLATOR);
-    let res = framework.apply_starter_card(
-        "Broken Harmonic",
-        Some("OdeSolverTool"),
-        Some(&bad_ode_json),
-    );
-    assert!(res.is_err());
-    assert!(framework
-        .preset_dialog
-        .toast_error
-        .as_deref()
-        .is_some_and(|m| m.contains("Broken Harmonic")));
-
-    let events = global_registry().try_recv_all();
-    assert!(
-        events.iter().any(|e| {
-            e.source == "PresetSerialization"
-                && e.severity == Severity::Warning
-                && e.message.contains("Broken Harmonic")
-        }),
-        "Expected PresetSerialization warning telemetry on failed framework card launch"
-    );
-
-    let mut morph = MorphogenesisTab::default();
-    let bad_morph_json = inject_unknown_config_field(PRESET_TURING_SPOTS);
-    assert!(morph
-        .apply_starter_card("Broken Spots", Some(&bad_morph_json))
-        .is_err());
-    assert!(morph
-        .dialog_state
-        .toast_error
-        .as_deref()
-        .is_some_and(|m| m.contains("Broken Spots")));
-    let morph_events = global_registry().try_recv_all();
-    assert!(morph_events.iter().any(|e| {
-        e.source == "PresetSerialization"
-            && e.severity == Severity::Warning
-            && e.message.contains("Broken Spots")
-    }));
-}
-
-#[test]
-fn test_single_starter_gallery_button_per_simulation_view() {
-    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
-    let mut checks: Vec<(&'static str, &'static str)> = vec![
-        ("chaos", "AttractorPlotter"),
-        ("fluid_dynamics", "PotentialFlowTool"),
-        ("analysis", "OdeSolverTool"),
-    ];
-    let mut seen_domains = std::collections::HashSet::new();
-    for meta in inventory::iter::<ToolMetadata> {
-        if seen_domains.insert(meta.domain) {
-            checks.push((meta.domain, meta.id));
+        if non_default_val == default_val {
+            assert!(perturb_first_number(&mut non_default_val));
+            let candidate = serde_json::to_string(&non_default_val).unwrap();
+            modified_tool.try_load_state(&candidate).unwrap();
+            non_default_json = modified_tool.save_state().unwrap();
+            non_default_val = serde_json::from_str(&non_default_json).unwrap();
         }
-    }
+        assert_ne!(
+            non_default_val, default_val,
+            "Non-default state must differ from default for '{}'",
+            tool_meta.id
+        );
 
-    for (domain, tool_name) in checks {
-        let ctx = egui::Context::default();
-        ctx.enable_accesskit();
-        let mut framework = SimulationFramework::new(domain);
-        assert!(
-            framework.select_tool_by_name(tool_name),
-            "Failed to select {tool_name} in {domain}"
-        );
-        let out = ctx.run(
-            egui::RawInput {
-                screen_rect: Some(screen_rect),
-                ..Default::default()
-            },
-            |ctx| framework.show(ctx, domain),
-        );
+        let mut restored_tool = (tool_meta.build)();
+        restored_tool
+            .try_load_state(&non_default_json)
+            .unwrap_or_else(|e| panic!("try_load_state failed for '{}': {}", tool_meta.id, e));
+        let restored_val: serde_json::Value =
+            serde_json::from_str(&restored_tool.save_state().unwrap()).unwrap();
         assert_eq!(
-            count_gallery_buttons(&out),
-            1,
-            "Expected exactly 1 Starter Gallery button for {domain}/{tool_name}"
+            restored_val, non_default_val,
+            "State roundtrip mismatch for '{}'",
+            tool_meta.id
+        );
+        assert!(
+            restored_tool.try_load_state("{malformed_json").is_err(),
+            "Malformed JSON must return Err for '{}'",
+            tool_meta.id
         );
     }
+}
 
-    let morph_ctx = egui::Context::default();
-    morph_ctx.enable_accesskit();
-    let mut morph = MorphogenesisTab::default();
-    let morph_out = morph_ctx.run(
-        egui::RawInput {
-            screen_rect: Some(screen_rect),
-            ..Default::default()
-        },
-        |ctx| {
-            morph.draw_controls(ctx);
-            morph.draw_canvas(ctx);
-        },
-    );
-    assert_eq!(
-        count_gallery_buttons(&morph_out),
-        1,
-        "Expected exactly 1 Starter Gallery button for MorphogenesisTab"
-    );
+#[test]
+fn test_unified_sim_tool_rejects_unknown_empty_and_non_finite_parameters() {
+    let lbm_meta = inventory::iter::<ToolMetadata>
+        .into_iter()
+        .find(|t| t.id == "LatticeBoltzmannTool")
+        .expect("LatticeBoltzmannTool must be registered");
+    let mut tool = (lbm_meta.build)();
+
+    assert!(tool.try_load_state("{}").is_err());
+    assert!(tool
+        .try_load_state(r#"{"reynolds": 100.0, "relaxation_time": 0.6}"#)
+        .is_err());
+    assert!(tool
+        .import_preset_json(
+            r#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"fluid_dynamics","timestamp":"0"},"config":{"unknown_param":1.0}}"#
+        )
+        .is_err());
+    assert!(tool.try_load_state(r#"{"viscosity": 0.04}"#).is_ok());
 }

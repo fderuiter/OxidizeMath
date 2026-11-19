@@ -1,5 +1,7 @@
 pub mod callout_overlay;
 pub mod clamp;
+#[cfg(test)]
+mod clamp_tests;
 pub mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
@@ -13,9 +15,11 @@ mod overlay_sync;
 mod persistence;
 pub mod recovery;
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod recovery_tests;
 pub mod state_guard;
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod state_guard_tests;
 pub mod trace_overlay;
 mod ui;
@@ -166,7 +170,7 @@ pub trait InteractiveTool {
         None
     }
 
-    /// Validates and restores tool-specific parameters from a serialized JSON state string.
+    /// Fallibly deserializes and restores tool-specific parameters from a JSON state string.
     fn try_load_state(&mut self, _state: &str) -> Result<(), String> {
         Err(format!(
             "Preset state deserialization not supported for {}",
@@ -212,8 +216,9 @@ pub trait InteractiveTool {
 
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
+        let cleaned = egui_plot::export::strip_utf8_bom(json_str);
         let envelope: crate::presets::PresetWrapper<serde_json::Value> =
-            serde_json::from_str(json_str)
+            serde_json::from_str(cleaned)
                 .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
         let expected_domain = self.domain();
         if expected_domain.is_empty() {

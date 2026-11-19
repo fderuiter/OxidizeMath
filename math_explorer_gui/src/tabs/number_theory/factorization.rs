@@ -111,14 +111,13 @@ impl InteractiveTool for FactorizationTool {
                             ui.label(egui::RichText::new(format!("Analysis for {}", num)).strong());
                             ui.add_space(5.0);
 
+                            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
                             ui.horizontal(|ui| {
                                 ui.label("Is Prime:");
                                 if *prime_check {
-                                    ui.label(
-                                        egui::RichText::new("Yes").color(egui::Color32::GREEN),
-                                    );
+                                    ui.label(egui::RichText::new("Yes").color(palette.success));
                                 } else {
-                                    ui.label(egui::RichText::new("No").color(egui::Color32::RED));
+                                    ui.label(egui::RichText::new("No").color(palette.error));
                                 }
                             });
 
@@ -140,7 +139,9 @@ impl InteractiveTool for FactorizationTool {
                         });
                     }
                     Err(err_msg) => {
-                        ui.label(egui::RichText::new(err_msg).color(egui::Color32::RED));
+                        let err_color =
+                            crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
+                        ui.label(egui::RichText::new(err_msg).color(err_color));
                     }
                 }
             }

@@ -85,7 +85,7 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "view": "MaxQ",
-    "gamma": 0.9,
+    "gamma": 0.95,
     "pretrain_episodes": 200
   }
 }"#;

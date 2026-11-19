@@ -74,7 +74,7 @@ impl SimulationFramework {
             .as_mut()
             .is_some_and(|tool| self.preset_dialog.poll_import_tool(tool.as_mut()));
         if imported {
-            self.sync_active_tool_state_after_preset();
+            self.sync_active_baseline();
             ctx.request_repaint();
         }
 
@@ -102,7 +102,7 @@ impl SimulationFramework {
             ui.separator();
             if ui
                 .button("🎨 Starter Gallery")
-                .on_hover_text("Toggle starter template gallery overlay")
+                .accessible_hover_text("Toggle starter template gallery overlay")
                 .clicked()
             {
                 self.show_starter_gallery = !self.show_starter_gallery;
@@ -121,7 +121,7 @@ impl SimulationFramework {
     fn render_dataset_export_buttons(&mut self, ui: &mut egui::Ui) {
         if ui
             .button("Export CSV")
-            .on_hover_text("Export dataset points to CSV file")
+            .accessible_hover_text("Export dataset points to CSV file")
             .clicked()
         {
             self.queue_export(ExportFormat::Csv);
@@ -129,7 +129,7 @@ impl SimulationFramework {
 
         if ui
             .button("Copy CSV")
-            .on_hover_text("Copy dataset points as CSV to clipboard")
+            .accessible_hover_text("Copy dataset points as CSV to clipboard")
             .clicked()
         {
             self.queue_clipboard_export();
@@ -137,7 +137,7 @@ impl SimulationFramework {
 
         if ui
             .button("Export JSON")
-            .on_hover_text("Export dataset points to JSON file")
+            .accessible_hover_text("Export dataset points to JSON file")
             .clicked()
         {
             self.queue_export(ExportFormat::Json);
@@ -145,7 +145,7 @@ impl SimulationFramework {
 
         if ui
             .button("Export PNG Image")
-            .on_hover_text("Configure and render high-resolution PNG figure")
+            .accessible_hover_text("Configure and render high-resolution PNG figure")
             .clicked()
         {
             self.open_export_modal_for_active_tool();
@@ -159,6 +159,7 @@ impl SimulationFramework {
         let mut clear_status = false;
 
         if let Some(ref mut status) = self.export_queue.status {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             if !status.is_error {
                 let exp = *status.expires_at_time.get_or_insert(now + 3.0);
                 if now > 0.0 && now >= exp {
@@ -166,20 +167,20 @@ impl SimulationFramework {
                 } else {
                     let remaining = (exp - now).max(0.05);
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
-                    ui.colored_label(egui::Color32::LIGHT_GREEN, format!("✓ {}", status.message));
+                    ui.colored_label(palette.success, format!("✓ {}", status.message));
                     if ui
                         .small_button("✖")
-                        .on_hover_text("Dismiss notification")
+                        .accessible_hover_text("Dismiss notification")
                         .clicked()
                     {
                         clear_status = true;
                     }
                 }
             } else {
-                ui.colored_label(egui::Color32::RED, format!("⚠️ {}", status.message));
+                ui.colored_label(palette.error, format!("⚠️ {}", status.message));
                 if ui
                     .small_button("✖")
-                    .on_hover_text("Dismiss warning")
+                    .accessible_hover_text("Dismiss warning")
                     .clicked()
                 {
                     clear_status = true;
@@ -212,7 +213,7 @@ impl SimulationFramework {
 
         if ui
             .button("Import Preset JSON")
-            .on_hover_text("Import parameter preset from a JSON file")
+            .accessible_hover_text("Import parameter preset from a JSON file")
             .clicked()
         {
             self.preset_dialog.trigger_import();
@@ -220,7 +221,7 @@ impl SimulationFramework {
 
         if ui
             .button("Export Preset JSON")
-            .on_hover_text("Export current parameter preset to a JSON file")
+            .accessible_hover_text("Export current parameter preset to a JSON file")
             .clicked()
         {
             self.export_active_preset_json(file_slug);
@@ -236,12 +237,13 @@ impl SimulationFramework {
             ui.ctx().request_repaint();
         }
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         if let Some(ref msg) = self.preset_dialog.toast_info {
             ui.separator();
-            ui.colored_label(egui::Color32::LIGHT_GREEN, format!("ℹ️ {}", msg));
+            ui.colored_label(palette.success, format!("ℹ️ {}", msg));
             if ui
                 .small_button("✖")
-                .on_hover_text("Dismiss notification")
+                .accessible_hover_text("Dismiss notification")
                 .clicked()
             {
                 self.preset_dialog.toast_info = None;
@@ -250,10 +252,10 @@ impl SimulationFramework {
 
         if let Some(ref err) = self.preset_dialog.toast_error {
             ui.separator();
-            ui.colored_label(egui::Color32::RED, format!("⚠️ {}", err));
+            ui.colored_label(palette.error, format!("⚠️ {}", err));
             if ui
                 .small_button("✖")
-                .on_hover_text("Dismiss warning")
+                .accessible_hover_text("Dismiss warning")
                 .clicked()
             {
                 self.preset_dialog.toast_error = None;

@@ -1,7 +1,6 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::InteractiveTool;
 use eframe::egui;
-use egui::Color32;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 
 pub struct NetworkPropagationTool {
@@ -39,7 +38,7 @@ impl NetworkPropagationTool {
     }
 }
 
-fn is_false(value: &bool) -> bool {
+const fn is_false(value: &bool) -> bool {
     !*value
 }
 
@@ -90,11 +89,13 @@ impl InteractiveTool for NetworkPropagationTool {
         {
             return Err("Network propagation parameters out of bounds".into());
         }
-        self.model
+        let mut candidate = NetworkEpidemicModel::new(50, 0.05, 0.02);
+        candidate
             .set_num_nodes(s.num_nodes)
             .map_err(|e| e.to_string())?;
-        self.model.set_beta(s.beta).map_err(|e| e.to_string())?;
-        self.model.set_gamma(s.gamma).map_err(|e| e.to_string())?;
+        candidate.set_beta(s.beta).map_err(|e| e.to_string())?;
+        candidate.set_gamma(s.gamma).map_err(|e| e.to_string())?;
+        self.model = candidate;
         self.reset_network();
         self.is_running = s.is_running;
         Ok(())
@@ -177,18 +178,22 @@ impl InteractiveTool for NetworkPropagationTool {
                     .filter(|&&s| s == NodeState::Recovered)
                     .count();
 
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
                 ui.label(
-                    egui::RichText::new(format!("Susceptible: {}", s_count)).color(Color32::BLUE),
+                    egui::RichText::new(format!("Susceptible: {}", s_count)).color(palette.axis_z),
                 );
-                ui.label(egui::RichText::new(format!("Infected: {}", i_count)).color(Color32::RED));
                 ui.label(
-                    egui::RichText::new(format!("Recovered: {}", r_count)).color(Color32::GREEN),
+                    egui::RichText::new(format!("Infected: {}", i_count)).color(palette.axis_x),
+                );
+                ui.label(
+                    egui::RichText::new(format!("Recovered: {}", r_count)).color(palette.axis_y),
                 );
             });
 
             ui.separator();
 
             ui.vertical(|ui| {
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
                 ui.heading("Network Visualization");
                 let (response, painter) =
                     ui.allocate_painter(ui.available_size(), egui::Sense::hover());
@@ -212,7 +217,7 @@ impl InteractiveTool for NetworkPropagationTool {
                                     self.model.positions()[j][0],
                                     self.model.positions()[j][1],
                                 );
-                            painter.line_segment([p1, p2], (1.0, Color32::from_gray(100)));
+                            painter.line_segment([p1, p2], (1.0, palette.graph_edge));
                         }
                     }
                 }
@@ -222,12 +227,12 @@ impl InteractiveTool for NetworkPropagationTool {
                     let p = center
                         + egui::vec2(self.model.positions()[i][0], self.model.positions()[i][1]);
                     let color = match self.model.states()[i] {
-                        NodeState::Susceptible => Color32::BLUE,
-                        NodeState::Infected => Color32::RED,
-                        NodeState::Recovered => Color32::GREEN,
+                        NodeState::Susceptible => palette.axis_z,
+                        NodeState::Infected => palette.axis_x,
+                        NodeState::Recovered => palette.axis_y,
                     };
                     painter.circle_filled(p, 5.0, color);
-                    painter.circle_stroke(p, 5.0, (1.0, Color32::WHITE));
+                    painter.circle_stroke(p, 5.0, (1.0, palette.node_stroke));
                 }
             });
         });
