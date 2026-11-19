@@ -369,36 +369,39 @@ impl InteractiveTool for IsingModelTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<IsingState>(state) {
-            self.temperature = s.temperature;
-            self.j_coupling = s.j_coupling;
-            self.h_field = s.h_field;
-            self.steps_per_frame = s.steps_per_frame;
-            {
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                p.temperature = self.temperature;
-                p.j_coupling = self.j_coupling;
-                p.h_field = self.h_field;
-                p.steps_per_frame = self.steps_per_frame;
-            }
-            let target_state = s.state.unwrap_or_else(|| {
-                if s.running.unwrap_or(false) {
-                    SimWorkerState::Running
-                } else {
-                    SimWorkerState::Ready
-                }
-            });
-            if target_state == SimWorkerState::Running {
-                if !self.worker.is_running() {
-                    let _ = self.worker.send_command(SimCommand::Start);
-                }
-            } else if self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Pause);
-            }
-            self.stepped_pixels = None;
-            self.dirty = true;
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s = serde_json::from_str::<IsingState>(state).map_err(|e| e.to_string())?;
+        if !s.temperature.is_finite() || !s.j_coupling.is_finite() || !s.h_field.is_finite() {
+            return Err("Non-finite parameters in IsingModelTool".to_string());
         }
+        self.temperature = s.temperature;
+        self.j_coupling = s.j_coupling;
+        self.h_field = s.h_field;
+        self.steps_per_frame = s.steps_per_frame;
+        {
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.temperature = self.temperature;
+            p.j_coupling = self.j_coupling;
+            p.h_field = self.h_field;
+            p.steps_per_frame = self.steps_per_frame;
+        }
+        let target_state = s.state.unwrap_or_else(|| {
+            if s.running.unwrap_or(false) {
+                SimWorkerState::Running
+            } else {
+                SimWorkerState::Ready
+            }
+        });
+        if target_state == SimWorkerState::Running {
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+        } else if self.worker.is_running() {
+            let _ = self.worker.send_command(SimCommand::Pause);
+        }
+        self.stepped_pixels = None;
+        self.dirty = true;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {

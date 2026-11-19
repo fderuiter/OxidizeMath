@@ -88,6 +88,15 @@ impl GridWorldTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct GridWorldToolState {
+    width: i32,
+    height: i32,
+    gamma: f64,
+    playback_speed: f32,
+    is_playing: bool,
+}
+
 impl InteractiveTool for GridWorldTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -97,6 +106,58 @@ impl InteractiveTool for GridWorldTool {
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::none()
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&GridWorldToolState {
+            width: self.env.width,
+            height: self.env.height,
+            gamma: self.env.gamma,
+            playback_speed: self.playback_speed,
+            is_playing: self.is_playing,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: GridWorldToolState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid GridWorldTool state: {e}"))?;
+        let gamma_iv = math_commons::primitives::UnitInterval::new(s.gamma)
+            .map_err(|e| format!("Invalid discount factor in GridWorldTool: {e}"))?;
+        if s.width < 2 || s.height < 2 || !s.playback_speed.is_finite() {
+            return Err("Invalid dimensions or playback speed in GridWorldTool".to_string());
+        }
+        let traps = vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }]
+            .into_iter()
+            .filter(|t| t.x < s.width && t.y < s.height && !(t.x == s.width - 1 && t.y == s.height - 1))
+            .collect();
+        self.env = GridWorldEnv {
+            width: s.width,
+            height: s.height,
+            start: GridState { x: 0, y: 0 },
+            goal: GridState {
+                x: s.width - 1,
+                y: s.height - 1,
+            },
+            traps,
+            gamma: s.gamma,
+        };
+        self.agent = TabularQAgent::new(
+            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+            gamma_iv,
+            math_commons::primitives::UnitInterval::new(0.1).unwrap(),
+            None,
+        );
+        self.current_state = self.env.start;
+        self.episodes = 0;
+        self.total_reward = 0.0;
+        self.steps = 0;
+        self.playback_speed = s.playback_speed;
+        self.is_playing = s.is_playing;
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -205,6 +266,7 @@ impl InteractiveTool for GridWorldTool {
                 .accessible_hover_text("Grid World Visualization");
             let rect = response.rect;
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             for x in 0..self.env.width {
                 for y in 0..self.env.height {
                     let top_left =
@@ -213,23 +275,23 @@ impl InteractiveTool for GridWorldTool {
                         egui::Rect::from_min_size(top_left, egui::vec2(cell_size, cell_size));
 
                     let state = GridState { x, y };
-                    let mut fill_color = egui::Color32::from_gray(200);
-
-                    if state == self.env.goal {
-                        fill_color = egui::Color32::GREEN;
+                    let fill_color = if state == self.env.goal {
+                        palette.success
                     } else if self.env.traps.contains(&state) {
-                        fill_color = egui::Color32::RED;
+                        palette.error
                     } else if state == self.current_state {
-                        fill_color = egui::Color32::BLUE;
+                        palette.accent
                     } else if state == self.env.start {
-                        fill_color = egui::Color32::LIGHT_BLUE;
-                    }
+                        palette.info
+                    } else {
+                        palette.surface_fill
+                    };
 
                     painter.rect_filled(cell_rect, 0.0, fill_color);
                     painter.rect_stroke(
                         cell_rect,
                         0.0,
-                        egui::Stroke::new(1.0_f32, egui::Color32::BLACK),
+                        egui::Stroke::new(1.0_f32, palette.graph_edge),
                         egui::StrokeKind::Middle,
                     );
                 }
@@ -340,8 +402,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "grid_size": 5,
-    "discount_factor": 0.95
+    "width": 5,
+    "height": 5,
+    "gamma": 0.95,
+    "playback_speed": 8.0,
+    "is_playing": false
   }
 }"#;
 

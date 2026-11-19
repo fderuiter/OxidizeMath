@@ -285,3 +285,47 @@ fn test_preset_dialog_poll_import_tool_and_read_error() {
     assert!(!dialog.poll_import_tool(tool.as_mut()));
     assert!(dialog.import_rx.is_none());
 }
+
+#[test]
+fn test_preset_dialog_invalid_json_and_export_error_toasts() {
+    let mut tool = DummyTool {
+        value: 12.5,
+        name: "Baseline".to_string(),
+    };
+    let mut dialog = PresetDialogState::default();
+
+    // Invalid JSON over import channel preserves tool state and sets toast_error
+    let (bad_tx, bad_rx) = channel();
+    dialog.import_rx = Some(bad_rx);
+    bad_tx
+        .send(Ok(("corrupt.json".to_string(), "{ malformed".to_string())))
+        .unwrap();
+    assert!(!dialog.poll_import(&mut tool));
+    assert_eq!(tool.value, 12.5);
+    assert_eq!(tool.name, "Baseline");
+    assert!(dialog
+        .toast_error
+        .as_deref()
+        .is_some_and(|m| m.contains("Invalid JSON preset schema")));
+    assert!(dialog.toast_info.is_none());
+
+    // Export error over channel sets toast_error, and export cancel clears export_rx quietly
+    let (exp_err_tx, exp_err_rx) = channel();
+    dialog.export_rx = Some(exp_err_rx);
+    exp_err_tx
+        .send(Err("Browser window is unavailable".to_string()))
+        .unwrap();
+    dialog.poll_export();
+    assert_eq!(
+        dialog.toast_error.as_deref(),
+        Some("Browser window is unavailable")
+    );
+
+    dialog.toast_error = None;
+    let (exp_cancel_tx, exp_cancel_rx) = channel::<Result<String, String>>();
+    dialog.export_rx = Some(exp_cancel_rx);
+    drop(exp_cancel_tx);
+    dialog.poll_export();
+    assert!(dialog.export_rx.is_none());
+    assert!(dialog.toast_error.is_none());
+}

@@ -64,14 +64,14 @@ impl InteractiveTool for DoseCalculationTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(loaded) = serde_json::from_str::<DoseState>(state) {
-            self.amplitude = loaded.amplitude;
-            self.beta = loaded.beta;
-            self.width = loaded.width;
-            self.height = loaded.height;
-            self.texture = None;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded = serde_json::from_str::<DoseState>(state).map_err(|e| e.to_string())?;
+        self.amplitude = loaded.amplitude;
+        self.beta = loaded.beta;
+        self.width = loaded.width;
+        self.height = loaded.height;
+        self.texture = None;
+        Ok(())
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -210,8 +210,10 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "depth_cm": 10.0,
-    "ssd_cm": 100.0
+    "amplitude": 2.5,
+    "beta": 0.6,
+    "width": 200,
+    "height": 200
   }
 }"#;
 

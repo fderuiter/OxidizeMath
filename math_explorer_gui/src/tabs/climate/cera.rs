@@ -101,17 +101,18 @@ impl InteractiveTool for CeraTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<CeraState>(state) {
-            self.in_channels = s.in_channels;
-            self.latent_channels = s.latent_channels;
-            self.aligned_channels = s.aligned_channels;
-            self.num_levels = s.num_levels;
-            self.output_size = s.output_size;
-            self.prediction_result = None;
-            self.diverged = false;
-            self.diagnostic_report = None;
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: CeraState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid CeraTool state: {e}"))?;
+        self.in_channels = s.in_channels;
+        self.latent_channels = s.latent_channels;
+        self.aligned_channels = s.aligned_channels;
+        self.num_levels = s.num_levels;
+        self.output_size = s.output_size;
+        self.prediction_result = None;
+        self.diverged = false;
+        self.diagnostic_report = None;
+        Ok(())
     }
 
     fn clamp_parameters(&mut self) -> bool {
@@ -240,7 +241,8 @@ impl InteractiveTool for CeraTool {
                     }
                 }
                 Some(Err(err)) => {
-                    ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
+                    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                    ui.colored_label(palette.error, format!("Error: {}", err));
                 }
                 None => {
                     ui.label("Click 'Run Prediction' to test the model with random inputs.");
@@ -288,8 +290,11 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "albedo": 0.3,
-    "solar_constant": 1361.0
+    "in_channels": 4,
+    "latent_channels": 8,
+    "aligned_channels": 4,
+    "num_levels": 12,
+    "output_size": 2
   }
 }"#;
 

@@ -106,15 +106,55 @@ impl Callout {
     }
 
     builder_methods_for_base!();
+    fn resolve_frame(&self, visuals: &egui::Visuals) -> Option<(Color32, Stroke)> {
+        let has_explicit_fill =
+            self.frame_fill != Color32::TRANSPARENT && self.frame_fill != Color32::PLACEHOLDER;
+        let uses_theme_fill = self.frame_fill == Color32::PLACEHOLDER;
+        let has_stroke =
+            self.frame_stroke.width > 0.0 && self.frame_stroke.color != Color32::TRANSPARENT;
+
+        if !(has_explicit_fill || uses_theme_fill || has_stroke) {
+            return None;
+        }
+
+        let window_fill = visuals.window_fill();
+        let resolved_fill = if has_explicit_fill {
+            self.frame_fill
+        } else {
+            Color32::from_rgba_unmultiplied(window_fill.r(), window_fill.g(), window_fill.b(), 230)
+        };
+        let resolved_stroke = if self.frame_stroke.color == Color32::PLACEHOLDER {
+            visuals.widgets.noninteractive.bg_stroke
+        } else {
+            self.frame_stroke
+        };
+        Some((resolved_fill, resolved_stroke))
+    }
+
+    fn resolve_leader_color(&self, visuals: &egui::Visuals) -> Color32 {
+        if self.leader_stroke.color != Color32::TRANSPARENT
+            && self.leader_stroke.color != Color32::PLACEHOLDER
+        {
+            self.leader_stroke.color
+        } else if self.frame_stroke.color != Color32::TRANSPARENT
+            && self.frame_stroke.color != Color32::PLACEHOLDER
+        {
+            self.frame_stroke.color
+        } else {
+            visuals.widgets.noninteractive.fg_stroke.color
+        }
+    }
 }
 
 impl PlotItem for Callout {
     fn shapes(&self, ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
-        let text_color = if self.text_color != Color32::TRANSPARENT {
-            self.text_color
-        } else {
-            ui.style().visuals.text_color()
-        };
+        let visuals = &ui.style().visuals;
+        let text_color =
+            if self.text_color != Color32::TRANSPARENT && self.text_color != Color32::PLACEHOLDER {
+                self.text_color
+            } else {
+                visuals.text_color()
+            };
 
         let galley = self.text.clone().into_galley(
             ui,
@@ -124,43 +164,30 @@ impl PlotItem for Callout {
         );
 
         let target_pos = transform.position_from_point(&self.target_point);
-        let anchor_pos = target_pos + self.label_offset;
-
         let padding = Vec2::new(6.0, 4.0);
-        let frame_size = galley.size() + 2.0 * padding;
-        let frame_rect = self.anchor.anchor_size(anchor_pos, frame_size);
-        let text_pos = frame_rect.min + padding;
-
+        let frame_rect = self.anchor.anchor_size(
+            target_pos + self.label_offset,
+            galley.size() + 2.0 * padding,
+        );
         let connection_pos = frame_rect.clamp(target_pos);
-
-        let leader_color = if self.leader_stroke.color != Color32::TRANSPARENT {
-            self.leader_stroke.color
-        } else if self.frame_stroke.color != Color32::TRANSPARENT {
-            self.frame_stroke.color
-        } else {
-            ui.style().visuals.widgets.noninteractive.fg_stroke.color
-        };
+        let leader_color = self.resolve_leader_color(visuals);
 
         if self.leader_stroke.width > 0.0 && target_pos.distance(connection_pos) > 0.1 {
             let stroke = Stroke::new(self.leader_stroke.width, leader_color);
             shapes.push(Shape::line_segment([target_pos, connection_pos], stroke));
         }
 
-        let has_fill = self.frame_fill != Color32::TRANSPARENT;
-        let has_stroke =
-            self.frame_stroke.width > 0.0 && self.frame_stroke.color != Color32::TRANSPARENT;
-
-        if has_fill || has_stroke {
+        if let Some((resolved_fill, resolved_stroke)) = self.resolve_frame(visuals) {
             shapes.push(Shape::Rect(RectShape::new(
                 frame_rect,
                 self.corner_radius,
-                self.frame_fill,
-                self.frame_stroke,
+                resolved_fill,
+                resolved_stroke,
                 egui::StrokeKind::Inside,
             )));
         }
 
-        shapes.push(TextShape::new(text_pos, galley, text_color).into());
+        shapes.push(TextShape::new(frame_rect.min + padding, galley, text_color).into());
 
         if self.base.highlight {
             shapes.push(Shape::rect_stroke(
@@ -175,9 +202,13 @@ impl PlotItem for Callout {
     fn initialize(&mut self, _x_range: RangeInclusive<f64>) {}
 
     fn color(&self) -> Color32 {
-        if self.frame_stroke.color != Color32::TRANSPARENT {
+        if self.frame_stroke.color != Color32::TRANSPARENT
+            && self.frame_stroke.color != Color32::PLACEHOLDER
+        {
             self.frame_stroke.color
-        } else if self.leader_stroke.color != Color32::TRANSPARENT {
+        } else if self.leader_stroke.color != Color32::TRANSPARENT
+            && self.leader_stroke.color != Color32::PLACEHOLDER
+        {
             self.leader_stroke.color
         } else {
             self.text_color
@@ -233,6 +264,9 @@ impl SavedCallout {
     }
 
     /// Convert this saved callout into a renderable [`Callout`] plot item.
+    ///
+    /// Frame fill and border stroke default to [`Color32::PLACEHOLDER`] so [`Callout::shapes`]
+    /// resolves them dynamically from `ui.visuals().window_fill()` across Dark, Light, and HighContrast themes.
     pub fn to_callout(&self) -> Callout {
         let label = if self.label.trim().is_empty() {
             format!("({:.2}, {:.2})", self.point[0], self.point[1])
@@ -246,8 +280,8 @@ impl SavedCallout {
             .offset(Vec2::new(self.offset[0], self.offset[1]))
             .leader_stroke(Stroke::new(1.5_f32, Color32::TRANSPARENT))
             .frame(
-                Color32::from_rgba_unmultiplied(28, 32, 40, 230),
-                Stroke::new(1.0_f32, Color32::from_gray(180)),
+                Color32::PLACEHOLDER,
+                Stroke::new(1.0_f32, Color32::PLACEHOLDER),
             )
             .corner_radius(CornerRadius::same(4))
             .name(&self.label)
@@ -370,5 +404,129 @@ mod tests {
         assert_eq!(callout.target_point, PlotPoint::new(10.0, 20.0));
         assert_eq!(callout.label_offset, vec2(30.0, -30.0));
         assert_ne!(callout.frame_fill, Color32::TRANSPARENT);
+    }
+
+    fn srgb_to_linear(channel: u8) -> f64 {
+        let c = f64::from(channel) / 255.0;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    fn wcag_contrast_ratio(c1: Color32, c2: Color32) -> f64 {
+        let lum = |c: Color32| {
+            0.2126 * srgb_to_linear(c.r())
+                + 0.7152 * srgb_to_linear(c.g())
+                + 0.0722 * srgb_to_linear(c.b())
+        };
+        let l1 = lum(c1);
+        let l2 = lum(c2);
+        (l1.max(l2) + 0.05) / (l1.min(l2) + 0.05)
+    }
+
+    fn blend_over(fg: Color32, bg: Color32) -> Color32 {
+        let [fr, fg_c, fb, fa] = fg.to_srgba_unmultiplied();
+        let a = f32::from(fa) / 255.0;
+        let inv = 1.0 - a;
+        let blend = |f: u8, b: u8| (f32::from(f) * a + f32::from(b) * inv).round() as u8;
+        Color32::from_rgb(blend(fr, bg.r()), blend(fg_c, bg.g()), blend(fb, bg.b()))
+    }
+
+    fn high_contrast_visuals() -> egui::Visuals {
+        let mut visuals = egui::Visuals::dark();
+        visuals.extreme_bg_color = Color32::BLACK;
+        visuals.panel_fill = Color32::BLACK;
+        visuals.window_fill = Color32::BLACK;
+        visuals.widgets.noninteractive.bg_fill = Color32::BLACK;
+        visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
+        visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
+        visuals
+    }
+
+    #[test]
+    fn test_saved_callout_wcag_contrast_across_themes_in_plot_show() {
+        for (name, visuals) in [
+            ("dark", egui::Visuals::dark()),
+            ("light", egui::Visuals::light()),
+            ("high_contrast", high_contrast_visuals()),
+        ] {
+            let ctx = egui::Context::default();
+            ctx.set_visuals(visuals.clone());
+            let mut captured_shapes = Vec::new();
+            let output = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let saved = SavedCallout::new([1.0, 2.0], "Bifurcation", [25.0, -25.0]);
+                    crate::Plot::new(format!("callout_contrast_{name}")).show(ui, |plot_ui| {
+                        plot_ui.callout(saved.to_callout());
+                    });
+
+                    let transform = PlotTransform::new(
+                        egui::Rect::from_min_size(egui::pos2(0.0, 0.0), vec2(200.0, 200.0)),
+                        PlotBounds::from_min_max([0.0, 0.0], [10.0, 10.0]),
+                        false,
+                    );
+                    saved
+                        .to_callout()
+                        .shapes(ui, &transform, &mut captured_shapes);
+                });
+            });
+            assert!(!output.shapes.is_empty());
+
+            let rect_fill = captured_shapes
+                .iter()
+                .find_map(|s| match s {
+                    Shape::Rect(r) => Some(r.fill),
+                    _ => None,
+                })
+                .expect("SavedCallout should emit a background frame RectShape");
+            let text_color = captured_shapes
+                .iter()
+                .find_map(|s| match s {
+                    Shape::Text(t) => Some(t.override_text_color.unwrap_or(visuals.text_color())),
+                    _ => None,
+                })
+                .expect("SavedCallout should emit a label TextShape");
+
+            let composite_bg = blend_over(rect_fill, visuals.extreme_bg_color);
+            let ratio = wcag_contrast_ratio(text_color, composite_bg);
+            assert!(
+                ratio >= 4.5,
+                "SavedCallout in {name} mode achieved {ratio:.2}:1 contrast (< 4.5:1)"
+            );
+        }
+    }
+
+    #[test]
+    fn test_unset_callout_frame_fill_resolves_from_window_fill() {
+        let ctx = egui::Context::default();
+        ctx.set_visuals(egui::Visuals::light());
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let transform = PlotTransform::new(
+                    egui::Rect::from_min_size(egui::pos2(0.0, 0.0), vec2(100.0, 100.0)),
+                    PlotBounds::from_min_max([0.0, 0.0], [10.0, 10.0]),
+                    false,
+                );
+                let callout = Callout::new([3.0, 3.0], "Light Note")
+                    .offset(vec2(15.0, -15.0))
+                    .frame_stroke(Stroke::new(1.0_f32, Color32::from_gray(90)));
+                let mut shapes = Vec::new();
+                callout.shapes(ui, &transform, &mut shapes);
+                let rect_fill = shapes
+                    .iter()
+                    .find_map(|s| match s {
+                        Shape::Rect(r) => Some(r.fill),
+                        _ => None,
+                    })
+                    .expect("Framed callout should resolve unset fill from window_fill");
+                let wf = ui.visuals().window_fill();
+                assert_eq!(
+                    rect_fill.to_srgba_unmultiplied(),
+                    [wf.r(), wf.g(), wf.b(), 230]
+                );
+            });
+        });
     }
 }

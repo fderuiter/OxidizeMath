@@ -24,6 +24,13 @@ impl Default for UalbfWidget {
 
 use crate::framework::InteractiveTool;
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct UalbfState {
+    limit_p: u64,
+    max_exponent: u32,
+    stop_threshold_log: f64,
+}
+
 impl InteractiveTool for UalbfWidget {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -33,6 +40,32 @@ impl InteractiveTool for UalbfWidget {
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::none()
+    }
+    fn domain(&self) -> &'static str {
+        "number_theory"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&UalbfState {
+            limit_p: self.limit_p,
+            max_exponent: self.max_exponent,
+            stop_threshold_log: self.stop_threshold_log,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: UalbfState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid UalbfWidget state: {e}"))?;
+        if s.limit_p < 2 || s.max_exponent == 0 || !s.stop_threshold_log.is_finite() {
+            return Err("Invalid parameters in UalbfWidget".to_string());
+        }
+        self.limit_p = s.limit_p;
+        self.max_exponent = s.max_exponent;
+        self.stop_threshold_log = s.stop_threshold_log;
+        self.result = None;
+        self.status_message = String::from("Ready. Configure parameters and click Run.");
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -157,8 +190,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "modulus": 17,
-    "base": 2
+    "limit_p": 500,
+    "max_exponent": 2,
+    "stop_threshold_log": 12.0
   }
 }"#;
 

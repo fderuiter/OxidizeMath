@@ -224,37 +224,57 @@ pub trait AccessibleHoverText {
 
 impl AccessibleHoverText for Response {
     fn accessible_hover_text(self, text: impl Into<WidgetText>) -> Self {
-        let text_into = text.into();
-        let text_str = text_into.text().to_string();
-
-        let is_active = self.hovered() || self.has_focus();
+        let is_hovered = if self.enabled() {
+            self.hovered()
+        } else {
+            self.contains_pointer()
+        };
         let dismiss_id = self.id.with("tooltip_dismissed");
         let mut dismissed = self
             .ctx
             .data(|d| d.get_temp::<bool>(dismiss_id))
             .unwrap_or(false);
 
+        let escape_pressed = self.ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape));
+        if escape_pressed && !dismissed && self.lost_focus() {
+            self.request_focus();
+            dismissed = true;
+            self.ctx.data_mut(|d| d.insert_temp(dismiss_id, true));
+        }
+
+        let is_focused = self.has_focus() || self.ctx.memory(|mem| mem.has_focus(self.id));
+        let is_active = is_hovered || is_focused;
+
         if is_active {
-            if self.ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape)) {
+            if escape_pressed && !dismissed {
                 dismissed = true;
                 self.ctx.data_mut(|d| d.insert_temp(dismiss_id, true));
             }
-        } else if dismissed {
-            dismissed = false;
-            self.ctx.data_mut(|d| d.insert_temp(dismiss_id, false));
+        } else {
+            if dismissed {
+                self.ctx.data_mut(|d| d.insert_temp(dismiss_id, false));
+            }
+            return if self.enabled() {
+                self.on_hover_text(text)
+            } else {
+                self.on_disabled_hover_text(text)
+            };
         }
 
-        if is_active && !dismissed {
+        if !dismissed {
+            let text_into = text.into();
+            let text_str = text_into.text().to_string();
             announce_status(&text_str);
             let active_slot = with_live_region(|r| r.active_slot);
             self.ctx.data_mut(|d| {
                 d.insert_temp(eframe::egui::Id::new("aria_live_message"), text_str);
                 d.insert_temp(eframe::egui::Id::new("aria_live_slot"), active_slot);
             });
-        }
-
-        if !dismissed {
-            self.on_hover_text(text_into)
+            if self.enabled() {
+                self.on_hover_text(text_into)
+            } else {
+                self.on_disabled_hover_text(text_into)
+            }
         } else {
             self
         }
@@ -269,37 +289,61 @@ pub trait AccessibleTheoryHover {
 
 impl AccessibleTheoryHover for Response {
     fn accessible_theory_hover(self, theory: &impl TheoryDescribable) -> Self {
-        let raw_text = theory.theory_description();
-        let speech_text = theory.phonetic_description();
-
-        let is_active = self.hovered() || self.has_focus();
+        let is_hovered = if self.enabled() {
+            self.hovered()
+        } else {
+            self.contains_pointer()
+        };
         let dismiss_id = self.id.with("tooltip_dismissed");
         let mut dismissed = self
             .ctx
             .data(|d| d.get_temp::<bool>(dismiss_id))
             .unwrap_or(false);
 
+        let escape_pressed = self.ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape));
+        if escape_pressed && !dismissed && self.lost_focus() {
+            self.request_focus();
+            dismissed = true;
+            self.ctx.data_mut(|d| d.insert_temp(dismiss_id, true));
+        }
+
+        let is_focused = self.has_focus() || self.ctx.memory(|mem| mem.has_focus(self.id));
+        let is_active = is_hovered || is_focused;
+
         if is_active {
-            if self.ctx.input(|i| i.key_pressed(eframe::egui::Key::Escape)) {
+            if escape_pressed && !dismissed {
                 dismissed = true;
                 self.ctx.data_mut(|d| d.insert_temp(dismiss_id, true));
             }
-        } else if dismissed {
-            dismissed = false;
-            self.ctx.data_mut(|d| d.insert_temp(dismiss_id, false));
+        } else {
+            if dismissed {
+                self.ctx.data_mut(|d| d.insert_temp(dismiss_id, false));
+            }
+            if self.ctx.memory(|mem| mem.everything_is_visible()) {
+                let raw_text = theory.theory_description();
+                return if self.enabled() {
+                    self.on_hover_text(raw_text)
+                } else {
+                    self.on_disabled_hover_text(raw_text)
+                };
+            }
+            return self;
         }
 
-        if is_active && !dismissed {
+        if !dismissed {
+            let raw_text = theory.theory_description();
+            let speech_text = theory.phonetic_description();
             announce_status(&speech_text);
             let active_slot = with_live_region(|r| r.active_slot);
             self.ctx.data_mut(|d| {
                 d.insert_temp(eframe::egui::Id::new("aria_live_message"), speech_text);
                 d.insert_temp(eframe::egui::Id::new("aria_live_slot"), active_slot);
             });
-        }
-
-        if !dismissed {
-            self.on_hover_text(raw_text)
+            if self.enabled() {
+                self.on_hover_text(raw_text)
+            } else {
+                self.on_disabled_hover_text(raw_text)
+            }
         } else {
             self
         }
@@ -308,59 +352,5 @@ impl AccessibleTheoryHover for Response {
 // theory_verification!
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_twin_slot_alternation() {
-        let polite_toggle = std::sync::atomic::AtomicBool::new(false);
-        let assertive_toggle = std::sync::atomic::AtomicBool::new(false);
-
-        assert_eq!(next_live_slot(&polite_toggle), 0);
-        assert_eq!(next_live_slot(&polite_toggle), 1);
-        assert_eq!(next_live_slot(&polite_toggle), 0);
-        assert_eq!(next_live_slot(&polite_toggle), 1);
-
-        assert_eq!(next_live_slot(&assertive_toggle), 0);
-        assert_eq!(next_live_slot(&assertive_toggle), 1);
-        assert_eq!(next_live_slot(&assertive_toggle), 0);
-
-        let mut region = TwinSlotLiveRegion::new();
-        assert_eq!(region.active_slot, 0);
-        assert_eq!(region.dispatch("First"), 1);
-        assert_eq!(region.slots, ["".to_string(), "First".to_string()]);
-        assert_eq!(region.dispatch("First"), 0);
-        assert_eq!(region.slots, ["First".to_string(), "".to_string()]);
-    }
-
-    #[test]
-    fn test_announcement_dispatch_on_native() {
-        clear_test_announcements();
-        assert!(all_announcements().is_empty());
-        assert_eq!(with_live_region(|r| r.active_slot), 0);
-
-        announce_status("Simulation paused");
-        assert_eq!(with_live_region(|r| r.active_slot), 1);
-
-        announce_status_with_priority("Syntax Error: missing operand", "assertive");
-        assert_eq!(with_live_region(|r| r.active_slot), 0);
-
-        let announcements = all_announcements();
-        assert_eq!(announcements.len(), 2);
-        assert_eq!(
-            announcements[0],
-            ("Simulation paused".to_string(), "polite".to_string())
-        );
-        assert_eq!(
-            announcements[1],
-            (
-                "Syntax Error: missing operand".to_string(),
-                "assertive".to_string()
-            )
-        );
-
-        clear_test_announcements();
-        assert!(all_announcements().is_empty());
-        assert_eq!(with_live_region(|r| r.active_slot), 0);
-    }
-}
+#[path = "accessibility_tests.rs"]
+mod tests;

@@ -71,13 +71,24 @@ pub enum ExportStatusSeverity {
 }
 
 impl ExportStatusSeverity {
-    /// Returns the UI status label color (`GREEN` for success, `YELLOW` for warning, `RED` for error).
+    /// Returns the default dark-theme WCAG 2.2 AA status label color from [`crate::app::palette::DARK_PALETTE`].
     #[must_use]
     pub const fn color(self) -> egui::Color32 {
         match self {
-            Self::Success => egui::Color32::GREEN,
-            Self::Warning => egui::Color32::YELLOW,
-            Self::Error => egui::Color32::RED,
+            Self::Success => crate::app::palette::DARK_PALETTE.success,
+            Self::Warning => crate::app::palette::DARK_PALETTE.warning,
+            Self::Error => crate::app::palette::DARK_PALETTE.error,
+        }
+    }
+
+    /// Resolves the WCAG 2.2 AA theme-adaptive color from [`crate::app::SemanticPalette`].
+    #[must_use]
+    pub fn palette_color(self, visuals: &egui::Visuals) -> egui::Color32 {
+        let palette = crate::app::SemanticPalette::from_visuals(visuals);
+        match self {
+            Self::Success => palette.success,
+            Self::Warning => palette.warning,
+            Self::Error => palette.error,
         }
     }
 

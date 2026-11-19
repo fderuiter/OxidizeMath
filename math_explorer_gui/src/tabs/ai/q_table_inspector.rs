@@ -12,8 +12,8 @@ use std::collections::HashMap;
 mod runner;
 pub use runner::*;
 
-#[derive(Clone, Copy, PartialEq)]
-enum HeatmapView {
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(super) enum HeatmapView {
     MaxQ,
     Up,
     Down,
@@ -46,7 +46,7 @@ impl Default for QTableInspectorTool {
 }
 
 impl QTableInspectorTool {
-    fn sync_from_latest(&mut self) {
+    pub(super) fn sync_from_latest(&mut self) {
         if let Some(snapshot) = self.worker.latest_snapshot() {
             if let Some(data) = snapshot
                 .structured_data
@@ -143,10 +143,8 @@ impl QTableInspectorTool {
             let can_train = state == SimWorkerState::Ready;
             ui.label(format!("Episodes Trained: {}", self.episodes_trained));
             if state.is_running() {
-                ui.colored_label(
-                    egui::Color32::from_rgb(60, 160, 240),
-                    "⏳ Training in background...",
-                );
+                let info = crate::app::SemanticPalette::from_visuals(ui.visuals()).info;
+                ui.colored_label(info, "⏳ Training in background...");
             }
 
             if ui
@@ -185,19 +183,20 @@ impl QTableInspectorTool {
         ui.radio_value(&mut self.view, HeatmapView::Left, "Move Left Q-Value");
         ui.radio_value(&mut self.view, HeatmapView::Right, "Move Right Q-Value");
 
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.separator();
         ui.label("Legend:");
         ui.horizontal(|ui| {
             ui.label("Goal:");
             let (response, painter) =
                 ui.allocate_painter(egui::vec2(legend_size, legend_size), egui::Sense::hover());
-            painter.rect_filled(response.rect, 0.0, egui::Color32::GREEN);
+            painter.rect_filled(response.rect, 0.0, palette.success);
         });
         ui.horizontal(|ui| {
             ui.label("Trap:");
             let (response, painter) =
                 ui.allocate_painter(egui::vec2(legend_size, legend_size), egui::Sense::hover());
-            painter.rect_filled(response.rect, 0.0, egui::Color32::RED);
+            painter.rect_filled(response.rect, 0.0, palette.error);
         });
     }
 
@@ -237,6 +236,7 @@ impl QTableInspectorTool {
             let _ = response
                 .clone()
                 .accessible_hover_text("Q-Table Heatmap Visualization");
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let rect = response.rect;
             let (min_q, max_q) = self.compute_q_bounds();
 
@@ -250,37 +250,53 @@ impl QTableInspectorTool {
                     let q_value = self.get_q_value_for_view(&state);
 
                     let fill_color = if state == self.env.goal {
-                        egui::Color32::GREEN
+                        palette.success
                     } else if self.env.traps.contains(&state) {
-                        egui::Color32::RED
+                        palette.error
                     } else {
                         let norm = ((q_value - min_q) / (max_q - min_q)).clamp(0.0, 1.0);
-                        let high = (norm * 255.0) as u8;
-                        let low = 255_u8.saturating_sub(high);
-                        egui::Color32::from_rgb(high, high, low)
+                        q_value_cell_color(norm, &palette)
                     };
 
                     painter.rect_filled(cell_rect, 0.0, fill_color);
                     painter.rect_stroke(
                         cell_rect,
                         0.0,
-                        egui::Stroke::new(1.0_f32, egui::Color32::BLACK),
+                        egui::Stroke::new(1.0_f32, palette.graph_edge),
                         egui::StrokeKind::Middle,
                     );
 
                     if state != self.env.goal && !self.env.traps.contains(&state) {
+                        let text_color = crate::app::contrasting_text_color(fill_color);
                         painter.text(
                             cell_rect.center(),
                             egui::Align2::CENTER_CENTER,
                             format!("{:.2}", q_value),
                             egui::FontId::proportional(14.0),
-                            egui::Color32::BLACK,
+                            text_color,
                         );
                     }
                 }
             }
         });
     }
+}
+
+fn lerp_q_channel(a: u8, b: u8, t: f64) -> u8 {
+    (f64::from(a) + (f64::from(b) - f64::from(a)) * t.clamp(0.0, 1.0)).round() as u8
+}
+
+pub(crate) fn q_value_cell_color(
+    normalized: f64,
+    palette: &crate::app::SemanticPalette,
+) -> egui::Color32 {
+    let low = palette.axis_z;
+    let high = palette.accent;
+    egui::Color32::from_rgb(
+        lerp_q_channel(low.r(), high.r(), normalized),
+        lerp_q_channel(low.g(), high.g(), normalized),
+        lerp_q_channel(low.b(), high.b(), normalized),
+    )
 }
 
 impl InteractiveTool for QTableInspectorTool {
@@ -292,6 +308,15 @@ impl InteractiveTool for QTableInspectorTool {
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::none()
+    }
+    fn domain(&self) -> &'static str {
+        "ai"
+    }
+    fn save_state(&self) -> Option<String> {
+        self.serialize_state()
+    }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.deserialize_state(state)
     }
 
     fn show(&mut self, ctx: &egui::Context) {

@@ -44,6 +44,13 @@ impl Default for SpikeAnalysisTool {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SpikeAnalysisState {
+    input_current: f64,
+    spike_threshold: f64,
+    simulation_speed: usize,
+}
+
 impl InteractiveTool for SpikeAnalysisTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -53,6 +60,31 @@ impl InteractiveTool for SpikeAnalysisTool {
     }
     fn step_simulation(&mut self) {
         Self::step_simulation(self);
+    }
+    fn domain(&self) -> &'static str {
+        "neuroscience"
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&SpikeAnalysisState {
+            input_current: self.input_current,
+            spike_threshold: self.spike_threshold,
+            simulation_speed: self.simulation_speed,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: SpikeAnalysisState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SpikeAnalysisTool state: {e}"))?;
+        if !s.input_current.is_finite() || !s.spike_threshold.is_finite() || s.simulation_speed == 0 {
+            return Err("Invalid parameters in SpikeAnalysisTool".to_string());
+        }
+        self.input_current = s.input_current;
+        self.spike_threshold = s.spike_threshold;
+        self.simulation_speed = s.simulation_speed;
+        self.reset();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -141,23 +173,32 @@ impl InteractiveTool for SpikeAnalysisTool {
                     .y_axis_label("Membrane Potential (mV)")
                     .show(ui, |plot_ui| {
                         // Voltage Line
+                        let palette = crate::app::SemanticPalette::from_visuals(
+                            &plot_ui.ctx().style().visuals,
+                        );
                         if self.history_points.is_empty() {
-                            plot_ui.line(Line::new("Voltage", vec![[self.time, self.neuron.v()]]));
+                            plot_ui.line(
+                                Line::new("Voltage", vec![[self.time, self.neuron.v()]])
+                                    .color(palette.series_color(0)),
+                            );
                         } else {
-                            plot_ui.line(Line::new("Voltage", &self.history_points[..]));
+                            plot_ui.line(
+                                Line::new("Voltage", &self.history_points[..])
+                                    .color(palette.series_color(0)),
+                            );
                         }
 
                         // Threshold Line
                         plot_ui.hline(
                             egui_plot::HLine::new("Threshold", self.spike_threshold)
-                                .color(egui::Color32::RED),
+                                .color(palette.error),
                         );
 
                         // Spike Markers (Raster)
                         plot_ui.points(
                             Points::new("Spikes", &self.spike_plot_points[..])
                                 .radius(3.0_f32)
-                                .color(egui::Color32::GREEN),
+                                .color(palette.success),
                         );
                     });
             });
@@ -166,15 +207,16 @@ impl InteractiveTool for SpikeAnalysisTool {
 
             // Bottom Plot: ISI Histogram
             ui.push_id("isi_histogram", |ui| {
+                let bar_color =
+                    crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(5);
                 Plot::new("isi_plot")
                     .x_axis_label("Inter-Spike Interval (ms)")
                     .y_axis_label("Count")
                     .show(ui, |plot_ui| {
                         if !self.isis.is_empty() {
                             let bars = self.compute_histogram(20); // 20 bins
-                            plot_ui.bar_chart(
-                                BarChart::new("ISI Distribution", bars).color(egui::Color32::GOLD),
-                            );
+                            plot_ui
+                                .bar_chart(BarChart::new("ISI Distribution", bars).color(bar_color));
                         }
                     });
             });
@@ -381,8 +423,9 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "firing_rate_hz": 40.0,
-    "refractory_period_ms": 2.0
+    "input_current": 15.0,
+    "spike_threshold": 0.0,
+    "simulation_speed": 20
   }
 }"#;
 

@@ -26,8 +26,9 @@ const STARTER_PRESET_JSON: &str = r#"{
   },
   "config": {
     "temperature": 2.269,
-    "coupling_j": 1.0,
-    "grid_size": 32
+    "j_coupling": 1.0,
+    "h_field": 0.05,
+    "steps_per_frame": 10000
   }
 }"#;
 

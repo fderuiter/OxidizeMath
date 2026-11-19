@@ -442,3 +442,39 @@ fn test_browser_style_open_and_direct_save_roundtrip() {
         Some(("Workspace session saved to browser_session.mws", false))
     );
 }
+
+#[test]
+fn test_poll_invalid_workspace_json_and_save_error_toasts() {
+    let ctx = egui::Context::default();
+    let mut app = crate::app::MathExplorerApp::default();
+    let mut mgr = WorkspaceSessionManager::default();
+
+    let (open_tx, open_rx) = channel();
+    mgr.open_rx = Some(open_rx);
+    mgr.lifecycle_state = SessionLifecycleState::AwaitingFileDialog;
+    open_tx
+        .send(Ok((
+            PathBuf::from("broken.mws"),
+            "{ invalid json".to_string(),
+        )))
+        .unwrap();
+    mgr.poll(&mut app, &ctx);
+    assert_eq!(mgr.lifecycle_state(), SessionLifecycleState::Error);
+    assert!(mgr
+        .toast()
+        .is_some_and(|(m, err)| *err && m.contains("Invalid workspace file format")));
+    mgr.clear_toast();
+
+    let (save_tx, save_rx) = channel();
+    mgr.save_rx = Some(save_rx);
+    mgr.lifecycle_state = SessionLifecycleState::Saving;
+    save_tx
+        .send(Err("Browser window is unavailable".to_string()))
+        .unwrap();
+    mgr.poll(&mut app, &ctx);
+    assert_eq!(mgr.lifecycle_state(), SessionLifecycleState::Error);
+    assert_eq!(
+        mgr.toast().map(|(m, err)| (m.as_str(), *err)),
+        Some(("Browser window is unavailable", true))
+    );
+}

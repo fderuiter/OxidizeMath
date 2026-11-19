@@ -267,8 +267,7 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "reynolds": 100.0,
-    "relaxation_time": 0.6
+    "viscosity": 0.02
   }
 }"#;
 

@@ -242,7 +242,7 @@ fn test_empty_payload_rejection_status_colors_and_live_region() {
     );
     assert_eq!(
         unsupported_fw.export_status_severity.color(),
-        egui::Color32::YELLOW
+        crate::app::palette::DARK_PALETTE.warning
     );
     assert_eq!(with_live_region(|r| r.active_slot), 1);
 
@@ -250,7 +250,10 @@ fn test_empty_payload_rejection_status_colors_and_live_region() {
     empty_fw.export_queue.destination_dir = Some(temp_dir.clone());
     run_deferred_frame(&mut empty_fw, ExportFormat::Csv);
     assert_eq!(empty_fw.export_status_severity, ExportStatusSeverity::Error);
-    assert_eq!(empty_fw.export_status_severity.color(), egui::Color32::RED);
+    assert_eq!(
+        empty_fw.export_status_severity.color(),
+        crate::app::palette::DARK_PALETTE.error
+    );
     assert_eq!(with_live_region(|r| r.active_slot), 0);
 
     run_deferred_frame(&mut empty_fw, ExportFormat::Json);
@@ -272,7 +275,10 @@ fn test_empty_payload_rejection_status_colors_and_live_region() {
     let mut ok_fw = new_framework_with_tool(build_registered_tool("PartitionsWidget"));
     run_deferred_frame(&mut ok_fw, ExportFormat::Png);
     assert_eq!(ok_fw.export_status_severity, ExportStatusSeverity::Success);
-    assert_eq!(ok_fw.export_status_severity.color(), egui::Color32::GREEN);
+    assert_eq!(
+        ok_fw.export_status_severity.color(),
+        crate::app::palette::DARK_PALETTE.success
+    );
 
     let announcements = all_announcements();
     assert!(announcements.iter().any(|(_, p)| p == "assertive"));

@@ -139,14 +139,15 @@ impl InteractiveTool for BankrollGrowthTool {
         .ok()
     }
 
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<BankrollState>(state) {
-            self.initial_bankroll = s.initial_bankroll;
-            self.probability = s.probability;
-            self.odds = s.odds;
-            self.num_bets = s.num_bets;
-            self.recalculate();
-        }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: BankrollState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid BankrollGrowthTool state: {e}"))?;
+        self.initial_bankroll = s.initial_bankroll;
+        self.probability = s.probability;
+        self.odds = s.odds;
+        self.num_bets = s.num_bets;
+        self.recalculate();
+        Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -202,8 +203,9 @@ impl InteractiveTool for BankrollGrowthTool {
 
             ui.separator();
 
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             if let Some(ref err) = self.error_msg {
-                ui.colored_label(egui::Color32::RED, err);
+                ui.colored_label(palette.error, err);
             } else {
                 ui.heading("Bankroll Simulation");
 
@@ -213,25 +215,16 @@ impl InteractiveTool for BankrollGrowthTool {
 
                 plot.show(ui, |plot_ui| {
                     plot_ui.line(
-                        Line::new(
-                            "Full Kelly",
-                            &self.full_kelly_points[..],
-                        )
-                        .color(egui::Color32::RED),
+                        Line::new("Full Kelly", &self.full_kelly_points[..])
+                            .color(palette.series_color(3)),
                     );
                     plot_ui.line(
-                        Line::new(
-                            "Half Kelly",
-                            &self.half_kelly_points[..],
-                        )
-                        .color(egui::Color32::YELLOW),
+                        Line::new("Half Kelly", &self.half_kelly_points[..])
+                            .color(palette.series_color(5)),
                     );
                     plot_ui.line(
-                        Line::new(
-                            "Quarter Kelly",
-                            &self.quarter_kelly_points[..],
-                        )
-                        .color(egui::Color32::GREEN),
+                        Line::new("Quarter Kelly", &self.quarter_kelly_points[..])
+                            .color(palette.series_color(2)),
                     );
                 });
             }
@@ -314,8 +307,10 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "initial_bankroll": 10000.0,
-    "time_steps": 100
+    "initial_bankroll": 5000.0,
+    "probability": 0.6,
+    "odds": 1.5,
+    "num_bets": 150
   }
 }"#;
 

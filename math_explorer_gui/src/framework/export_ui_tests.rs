@@ -263,3 +263,133 @@ fn test_framework_polls_scoped_clipboard_status_when_modal_closed() {
         Some("Pane B status")
     );
 }
+
+fn assert_framework_hover_and_escape(
+    ctx: &egui::Context,
+    framework: &mut SimulationFramework,
+    id_source: &str,
+    btn_label: &str,
+    expected_tooltip: &str,
+) {
+    let screen_rect = Some(egui::Rect::from_min_size(
+        egui::Pos2::ZERO,
+        egui::vec2(1400.0, 800.0),
+    ));
+    let out = ctx.run(
+        egui::RawInput {
+            screen_rect,
+            events: vec![egui::Event::PointerMoved(egui::pos2(1390.0, 790.0))],
+            ..Default::default()
+        },
+        |ctx| framework.show(ctx, id_source),
+    );
+    let pos = find_ak_button_center(&out, btn_label);
+
+    crate::accessibility::clear_test_announcements();
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect,
+            events: vec![egui::Event::PointerMoved(pos)],
+            ..Default::default()
+        },
+        |ctx| framework.show(ctx, id_source),
+    );
+    assert!(
+        crate::accessibility::all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg == expected_tooltip && prio == "polite"),
+        "Expected polite announcement '{expected_tooltip}' for button '{btn_label}'"
+    );
+
+    crate::accessibility::clear_test_announcements();
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect,
+            events: vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            ..Default::default()
+        },
+        |ctx| framework.show(ctx, id_source),
+    );
+    assert!(
+        crate::accessibility::all_announcements().is_empty(),
+        "Tooltip for '{btn_label}' must dismiss immediately on Escape"
+    );
+}
+
+#[test]
+fn test_export_bar_buttons_announce_and_dismiss_on_escape() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+
+    let mut framework = SimulationFramework::new("non_existent_domain_xyz");
+    framework.active_tool = Some(Box::new(CustomExportTool {
+        theory: MockTheory,
+        steps: Arc::new(AtomicUsize::new(0)),
+    }));
+
+    for (label, tooltip) in [
+        ("Starter Gallery", "Toggle starter template gallery overlay"),
+        ("Export CSV", "Export dataset points to CSV file"),
+        ("Copy CSV", "Copy dataset points as CSV to clipboard"),
+        ("Export JSON", "Export dataset points to JSON file"),
+        (
+            "Export PNG Image",
+            "Configure and render high-resolution PNG figure",
+        ),
+        (
+            "Import Preset JSON",
+            "Import parameter preset from a JSON file",
+        ),
+        (
+            "Export Preset JSON",
+            "Export current parameter preset to a JSON file",
+        ),
+        ("Reset Parameters", "Restore default baseline parameters"),
+    ] {
+        assert_framework_hover_and_escape(&ctx, &mut framework, "export_a11y_test", label, tooltip);
+    }
+}
+
+#[test]
+fn test_export_toast_buttons_announce_and_dismiss_on_escape() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+
+    let mut framework = SimulationFramework::new("non_existent_domain_xyz");
+    framework.active_tool = Some(Box::new(CustomExportTool {
+        theory: MockTheory,
+        steps: Arc::new(AtomicUsize::new(0)),
+    }));
+
+    for (is_error, expected) in [(false, "Dismiss notification"), (true, "Dismiss warning")] {
+        framework.export_queue.status = Some(crate::framework::ActionBarExportStatus {
+            message: "Toast".to_string(),
+            is_error,
+            expires_at_time: Some(999.0),
+        });
+        assert_framework_hover_and_escape(&ctx, &mut framework, "toast_a11y", "✖", expected);
+    }
+    framework.export_queue.status = None;
+
+    framework.preset_dialog.toast_info = Some("Preset loaded".to_string());
+    assert_framework_hover_and_escape(
+        &ctx,
+        &mut framework,
+        "toast_a11y",
+        "✖",
+        "Dismiss notification",
+    );
+    framework.preset_dialog.toast_info = None;
+
+    framework.preset_dialog.toast_error = Some("Bad preset".to_string());
+    assert_framework_hover_and_escape(&ctx, &mut framework, "toast_a11y", "✖", "Dismiss warning");
+}

@@ -234,8 +234,10 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "current_injection": 10.0,
-    "duration_ms": 50.0
+    "g_na": 120.0,
+    "g_k": 36.0,
+    "g_l": 0.3,
+    "i_ext": 10.0
   }
 }"#;
 
