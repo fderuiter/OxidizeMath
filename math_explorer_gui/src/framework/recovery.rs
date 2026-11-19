@@ -112,13 +112,12 @@ pub fn emit_divergence_telemetry(
     metadata.insert("step_count".to_string(), step_idx.to_string());
     metadata.insert("diverged_variable".to_string(), var_name.to_string());
 
-    federated_registry::global_registry().emit(federated_registry::TelemetryEvent {
-        source: source.to_string(),
-        severity: federated_registry::Severity::Error,
-        message: message.to_string(),
+    crate::telemetry::emit_telemetry(
+        source,
+        federated_registry::Severity::Error,
+        message.to_string(),
         metadata,
-        thread_name: None,
-    });
+    );
 }
 
 /// Publishes a structured recovery action telemetry event to the global registry.
@@ -127,13 +126,12 @@ pub fn emit_recovery_telemetry(source: &str, action_name: &str, details: &str) {
     metadata.insert("action".to_string(), action_name.to_string());
     metadata.insert("details".to_string(), details.to_string());
 
-    federated_registry::global_registry().emit(federated_registry::TelemetryEvent {
-        source: source.to_string(),
-        severity: federated_registry::Severity::Info,
-        message: format!("Applied recovery action: {}", action_name),
+    crate::telemetry::emit_telemetry(
+        source,
+        federated_registry::Severity::Info,
+        format!("Applied recovery action: {}", action_name),
         metadata,
-        thread_name: None,
-    });
+    );
 }
 
 /// Renders the recovery action buttons inside a horizontal layout.
@@ -289,8 +287,15 @@ pub fn inspect_datasets_for_divergence(
     datasets: &[(String, Vec<[f64; 2]>)],
 ) -> Result<(), DiagnosticReport> {
     for (name, points) in datasets {
-        for (idx, &[x, y]) in points.iter().enumerate() {
-            if !x.is_finite() || !y.is_finite() {
+        let slice = points.as_slice();
+        let mut idx = 0;
+        while idx < slice.len() {
+            let [x, y] = slice[idx];
+            if !(x > f64::NEG_INFINITY
+                && x < f64::INFINITY
+                && y > f64::NEG_INFINITY
+                && y < f64::INFINITY)
+            {
                 let (var_name, bad_val) = if !y.is_finite() {
                     (format!("{}.y", name), y)
                 } else {
@@ -306,6 +311,7 @@ pub fn inspect_datasets_for_divergence(
                     ),
                 ));
             }
+            idx += 1;
         }
     }
     Ok(())

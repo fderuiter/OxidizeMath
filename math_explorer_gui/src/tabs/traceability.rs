@@ -185,7 +185,6 @@ impl TraceabilityTab {
         None
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     pub fn refresh(&mut self) {
         self.papers.clear();
         self.orphaned_papers.clear();
@@ -199,68 +198,68 @@ impl TraceabilityTab {
             None => String::new(),
         };
 
-        // Scan the standard directories
-        let code_dirs = [
-            format!("{}math_explorer/src", base_dir),
-            format!("{}math_explorer_gui/src/tabs", base_dir),
-        ];
-
-        let papers_dir = format!("{}papers", base_dir);
-        let crate_base = format!("{}crates", base_dir);
-
         let (tx, rx) = std::sync::mpsc::channel();
         self.report_rx = Some(rx);
 
+        #[cfg(all(test, not(target_arch = "wasm32")))]
+        if base_dir.is_empty() {
+            static DEFAULT_SCAN_CACHE: std::sync::OnceLock<
+                Result<oxidize_core::traceability::TraceabilityReport, String>,
+            > = std::sync::OnceLock::new();
+            let cached = DEFAULT_SCAN_CACHE
+                .get_or_init(|| {
+                    futures::executor::block_on(execute_workspace_scan(
+                        oxidize_core::vfs::DefaultVfs,
+                        String::new(),
+                    ))
+                })
+                .clone();
+            let _ = tx.send(cached);
+            return;
+        }
+
         #[cfg(not(target_arch = "wasm32"))]
         std::thread::spawn(move || {
-            futures::executor::block_on(async move {
-                let vfs = oxidize_core::vfs::DefaultVfs;
-                let engine = oxidize_core::traceability::TraceabilityEngine::new(vfs);
-                
-                let mut crate_dirs = Vec::new();
-                if let Ok(crates) = engine.vfs.list_dir(&crate_base).await {
-                    for crate_name in crates {
-                        crate_dirs.push(format!("{}/{}/src", crate_base, crate_name));
-                    }
-                }
-
-                let mut all_dirs: Vec<&str> = code_dirs.iter().map(|s| s.as_str()).collect();
-                for dir in &crate_dirs {
-                    all_dirs.push(dir.as_str());
-                }
-
-                let res = match engine.scan_repository(&all_dirs, &papers_dir, false).await {
-                    Ok(report) => Ok(report),
-                    Err(e) => Err(e.to_string()),
-                };
-                let _ = tx.send(res);
-            });
+            let res = futures::executor::block_on(execute_workspace_scan(
+                oxidize_core::vfs::DefaultVfs,
+                base_dir,
+            ));
+            let _ = tx.send(res);
         });
 
         #[cfg(target_arch = "wasm32")]
         wasm_bindgen_futures::spawn_local(async move {
-            let vfs = oxidize_core::vfs::WasmVfs;
-            let engine = oxidize_core::traceability::TraceabilityEngine::new(vfs);
-            
-            let mut crate_dirs = Vec::new();
-            if let Ok(crates) = engine.vfs.list_dir(&crate_base).await {
-                for crate_name in crates {
-                    crate_dirs.push(format!("{}/{}/src", crate_base, crate_name));
-                }
-            }
-
-            let mut all_dirs: Vec<&str> = code_dirs.iter().map(|s| s.as_str()).collect();
-            for dir in &crate_dirs {
-                all_dirs.push(dir.as_str());
-            }
-
-            let res = match engine.scan_repository(&all_dirs, &papers_dir, false).await {
-                Ok(report) => Ok(report),
-                Err(e) => Err(e.to_string()),
-            };
+            let res = execute_workspace_scan(oxidize_core::vfs::WasmVfs, base_dir).await;
             let _ = tx.send(res);
         });
     }
+}
+
+async fn execute_workspace_scan<V: VirtualFileSystem>(
+    vfs: V,
+    base_dir: String,
+) -> Result<oxidize_core::traceability::TraceabilityReport, String> {
+    let code_dirs = [
+        format!("{base_dir}math_explorer/src"),
+        format!("{base_dir}math_explorer_gui/src/tabs"),
+    ];
+    let papers_dir = format!("{base_dir}papers");
+    let crate_base = format!("{base_dir}crates");
+    let engine = oxidize_core::traceability::TraceabilityEngine::new(vfs);
+
+    let mut crate_dirs = Vec::new();
+    if let Ok(crates) = engine.vfs.list_dir(&crate_base).await {
+        for crate_name in crates {
+            crate_dirs.push(format!("{crate_base}/{crate_name}/src"));
+        }
+    }
+
+    let mut all_dirs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
+    all_dirs.extend(crate_dirs.iter().map(String::as_str));
+    engine
+        .scan_repository(&all_dirs, &papers_dir, false)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

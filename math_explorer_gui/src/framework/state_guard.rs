@@ -78,31 +78,25 @@ impl SimulationFramework {
     /// Halts solver execution, records DiagnosticReport, and emits telemetry when divergence occurs.
     pub fn inspect_runtime_state(&mut self) -> Result<(), DiagnosticReport> {
         let plot_datasets = egui_plot::get_last_plot_datasets();
-        let tool_datasets = self
-            .active_tool
-            .as_ref()
-            .map(|t| t.export_datasets())
-            .unwrap_or_default();
-
         let mut check_result = inspect_datasets_for_divergence(&plot_datasets);
-        if check_result.is_ok() && !tool_datasets.is_empty() {
-            check_result = inspect_datasets_for_divergence(&tool_datasets);
-        }
-
+        let mut tool_datasets = Vec::new();
         if check_result.is_ok() {
             if let Some(tool) = &self.active_tool {
-                if let Some(state_str) = tool.save_state() {
-                    if state_str.contains("NaN")
-                        || state_str.contains("Infinity")
-                        || state_str.contains("-Infinity")
-                    {
-                        check_result = Err(DiagnosticReport::new(
-                            self.start_time.elapsed().as_secs_f64(),
-                            self.step_counter,
-                            "state",
-                            "Non-finite floating-point state encountered in serialized tool parameters.",
-                        ));
-                    }
+                tool_datasets = tool.export_datasets();
+                if !tool_datasets.is_empty() {
+                    check_result = inspect_datasets_for_divergence(&tool_datasets);
+                }
+                if check_result.is_ok()
+                    && tool.save_state().is_some_and(|s| {
+                        s.contains("NaN") || s.contains("Infinity") || s.contains("-Infinity")
+                    })
+                {
+                    check_result = Err(DiagnosticReport::new(
+                        self.start_time.elapsed().as_secs_f64(),
+                        self.step_counter,
+                        "state",
+                        "Non-finite floating-point state encountered in serialized tool parameters.",
+                    ));
                 }
             }
         }
