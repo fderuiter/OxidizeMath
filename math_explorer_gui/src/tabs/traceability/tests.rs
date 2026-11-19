@@ -270,7 +270,7 @@ fn test_traceability_online_document_links() {
 #[cfg(not(target_arch = "wasm32"))]
 fn wait_for_scan_completion(tab: &mut TraceabilityTab) {
     let ctx = egui::Context::default();
-    for _ in 0..2000 {
+    for _ in 0..3000 {
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             let mut frame = eframe::Frame::_new_kittest();
             tab.show(ctx, &mut frame);

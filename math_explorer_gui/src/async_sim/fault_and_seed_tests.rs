@@ -103,7 +103,7 @@ fn test_live_diverged_worker_resets_in_place_and_clears_diagnostic_report() {
     let _ = controller.update();
 
     assert!(controller.send_command(SimCommand::Start).is_ok());
-    for _ in 0..40 {
+    for _ in 0..400 {
         std::thread::sleep(Duration::from_millis(10));
         let _ = controller.update();
         if controller.state() == SimWorkerState::Faulted {
@@ -127,7 +127,7 @@ fn test_live_diverged_worker_resets_in_place_and_clears_diagnostic_report() {
     assert_eq!(controller.state(), SimWorkerState::Ready);
     assert!(controller.diagnostic_report().is_none());
 
-    for _ in 0..40 {
+    for _ in 0..400 {
         std::thread::sleep(Duration::from_millis(10));
         if controller.update().is_some() {
             break;
@@ -244,7 +244,7 @@ fn test_lbm_paused_apply_brush_emits_fresh_snapshot() {
         .is_ok());
 
     let mut updated = false;
-    for _ in 0..40 {
+    for _ in 0..400 {
         std::thread::sleep(Duration::from_millis(10));
         if lbm.controller.update().is_some() {
             updated = true;

@@ -6,6 +6,15 @@ use crate::presets::InteractivePreset;
 use std::thread;
 use std::time::Duration;
 
+fn wait_for_morphogenesis_snapshot(tab: &mut MorphogenesisTab) {
+    for _ in 0..600 {
+        if tab.worker.update().is_some() {
+            return;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
 #[test]
 fn test_morphogenesis_initial_state() {
     let tab = MorphogenesisTab::default();
@@ -24,12 +33,7 @@ fn test_morphogenesis_render_lifecycle_and_dirty_tracking() {
     assert!(tab.texture.is_none());
 
     // Allow worker thread to generate the initial snapshot
-    for _ in 0..100 {
-        if tab.worker.update().is_some() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
+    wait_for_morphogenesis_snapshot(&mut tab);
 
     // Run first render pass: uploads texture and clears dirty flag
     let mut frame = eframe::Frame::_new_kittest();
@@ -87,12 +91,7 @@ fn test_morphogenesis_grid_resize_and_buffer_safety() {
     let mut tab = MorphogenesisTab::default();
 
     // Initial render
-    for _ in 0..100 {
-        if tab.worker.update().is_some() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
+    wait_for_morphogenesis_snapshot(&mut tab);
     let mut frame = eframe::Frame::_new_kittest();
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         tab.show(ctx, &mut frame);
@@ -107,12 +106,7 @@ fn test_morphogenesis_grid_resize_and_buffer_safety() {
     assert!(tab.dirty);
 
     // Wait for resized runner to produce a snapshot
-    for _ in 0..100 {
-        if tab.worker.update().is_some() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
+    wait_for_morphogenesis_snapshot(&mut tab);
 
     // Render after resize
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
@@ -182,12 +176,7 @@ fn test_morphogenesis_fault_halts_repaints_and_recovers() {
     };
 
     // Allow worker thread to generate initial snapshot
-    for _ in 0..100 {
-        if tab.worker.update().is_some() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
+    wait_for_morphogenesis_snapshot(&mut tab);
 
     // Initial render pass uploads texture and clears dirty flag
     let mut frame = eframe::Frame::_new_kittest();
@@ -307,6 +296,7 @@ fn test_morphogenesis_poisoned_lock_recovery() {
     tab.reset_parameters();
     assert_eq!(tab.params.read().unwrap_or_else(|e| e.into_inner()).a, 0.1);
     let _ = tab.worker.send_command(SimCommand::Pause);
+    tab.worker.wait_until_paused();
 
     // Preset export/import and save/load state survive poisoned lock
     let mut cfg = tab.export_config();

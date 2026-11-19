@@ -270,6 +270,7 @@ fn test_generate_split_view_screenshots() {
 }
 
 fn run_split_frames(ctx: &egui::Context, app: &mut MathExplorerApp, frames: usize) {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut frame = eframe::Frame::_new_kittest();
     let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1280.0, 800.0));
     for _ in 0..frames {

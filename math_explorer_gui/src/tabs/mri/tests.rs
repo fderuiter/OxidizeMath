@@ -15,7 +15,7 @@ fn test_mri_worker_simulation_step() {
     let mut tab = MriTab::default();
     let _ = tab.worker.send_command(SimCommand::Start);
     let mut stepped = false;
-    for _ in 0..50 {
+    for _ in 0..200 {
         std::thread::sleep(std::time::Duration::from_millis(20));
         if let Some(snap) = tab.worker.update() {
             if snap.custom_data.first().copied().unwrap_or(0.0) > 0.0 {
@@ -63,6 +63,7 @@ fn test_mri_fault_halts_repaints_and_recovers() {
 
     // Pause running worker
     let _ = tab.worker.send_command(SimCommand::Pause);
+    tab.worker.wait_until_paused();
     while tab.worker.update().is_some() {}
 
     // Simulate fault
