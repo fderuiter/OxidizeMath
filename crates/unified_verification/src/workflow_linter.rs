@@ -420,6 +420,9 @@ pub fn lint_workflows() -> bool {
     lint_workflows_in_dir(Path::new(".github/workflows"), None)
 }
 
+#[cfg(test)]
+#[path = "workflow_linter/cargo_cache_tests.rs"]
+mod cargo_cache_tests;
 mod docker;
 mod expressions;
 mod pinning;
