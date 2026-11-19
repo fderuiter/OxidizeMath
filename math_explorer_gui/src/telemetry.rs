@@ -40,16 +40,20 @@ pub(crate) fn poll_app_telemetry() -> Vec<TelemetryEvent> {
     global_registry().try_recv_all()
 }
 
-/// Polls pending [`TelemetryEvent`] records for the active test thread, discarding
-/// events emitted by unrelated parallel test threads.
+/// Polls pending [`TelemetryEvent`] records for the active test thread, preserving
+/// events emitted by unrelated parallel test threads in the shared registry queue.
 #[cfg(test)]
 pub(crate) fn poll_app_telemetry() -> Vec<TelemetryEvent> {
     let current = current_thread_label();
-    global_registry()
-        .try_recv_all()
-        .into_iter()
-        .filter(|ev| ev.thread_name.is_none() || ev.thread_name == current)
-        .collect()
+    let mut local = Vec::new();
+    for ev in global_registry().try_recv_all() {
+        if ev.thread_name.is_none() || ev.thread_name == current {
+            local.push(ev);
+        } else {
+            global_registry().emit(ev);
+        }
+    }
+    local
 }
 
 #[cfg(test)]
@@ -98,5 +102,7 @@ mod tests {
             .iter()
             .any(|e| e.source == "LocalAppSource" && e.thread_name == current_thread_label()));
         assert!(events.iter().any(|e| e.source == "DirectUntaggedTest"));
+        let requeued = global_registry().try_recv_all();
+        assert!(requeued.iter().any(|e| e.source == "OdeSolverTool"));
     }
 }

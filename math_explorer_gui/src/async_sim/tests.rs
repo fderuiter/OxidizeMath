@@ -59,19 +59,25 @@ fn test_simulation_controller_start_pause() {
     assert!(!controller.is_running());
     assert_eq!(steps.load(Ordering::SeqCst), 0);
 
-    // Start simulation
+    // Start simulation and poll until the worker produces a running snapshot
     let _ = controller.send_command(SimCommand::Start);
-    thread::sleep(Duration::from_millis(50));
-    let snap_is_some = controller.update().is_some();
+    let mut snap_is_some = false;
+    for _ in 0..400 {
+        if controller.update().is_some() && steps.load(Ordering::SeqCst) > 0 {
+            snap_is_some = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
     assert!(controller.is_running());
     assert!(snap_is_some);
     let current_steps = steps.load(Ordering::SeqCst);
     assert!(current_steps > 0);
 
-    // Pause simulation
+    // Pause simulation and wait for worker acknowledgment
     let _ = controller.send_command(SimCommand::Pause);
-    thread::sleep(Duration::from_millis(50));
-    controller.update();
+    controller.wait_until_paused();
+    let _ = controller.update();
     assert!(!controller.is_running());
     let paused_steps = steps.load(Ordering::SeqCst);
 
@@ -94,7 +100,7 @@ fn test_runner_auto_completion() {
     let _ = controller.send_command(SimCommand::Start);
 
     // Wait for worker to finish max_steps
-    for _ in 0..50 {
+    for _ in 0..400 {
         thread::sleep(Duration::from_millis(15));
         controller.update();
         if !controller.is_running() && steps.load(Ordering::SeqCst) >= 15 {
@@ -235,8 +241,14 @@ fn test_worker_panic_transitions_to_faulted_within_one_frame() {
     panic_flag.store(true, Ordering::SeqCst);
     assert!(controller.send_command(SimCommand::Start).is_ok());
 
-    // Allow background thread to hit the step panic
-    std::thread::sleep(Duration::from_millis(50));
+    // Wait for background thread to hit the step panic and unwind its runner handle
+    for _ in 0..400 {
+        if Arc::strong_count(&panic_flag) == 1 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    std::thread::sleep(Duration::from_millis(15));
 
     // On the next frame update, disconnection must be detected and state set to Faulted
     assert!(controller.update().is_none());
@@ -274,20 +286,49 @@ fn test_update_returns_snapshot_only_on_new_snapshot() {
     assert!(controller.update().is_some());
     assert!(controller.update().is_none());
 
-    // Start simulation and wait briefly for a step snapshot
+    // Start simulation and poll until a step snapshot arrives
     assert!(controller.send_command(SimCommand::Start).is_ok());
-    std::thread::sleep(Duration::from_millis(30));
+    let mut got_step_snapshot = false;
+    for _ in 0..400 {
+        if controller.update().is_some() {
+            got_step_snapshot = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(got_step_snapshot);
 
-    let first_update = controller.update();
-    assert!(first_update.is_some());
-
-    // Pause simulation
+    // Pause simulation and wait for worker Ready acknowledgment
     assert!(controller.send_command(SimCommand::Pause).is_ok());
-    // Drain any remaining messages
+    controller.wait_until_paused();
+    // Drain any final pre-pause snapshot
     let _ = controller.update();
 
     // Subsequent updates while paused should return None (no new snapshots)
     assert!(controller.update().is_none());
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn test_pause_pending_clears_upon_worker_ready_acknowledgment() {
+    let steps = Arc::new(AtomicUsize::new(0));
+    let runner = MockRunner {
+        step_count: Arc::clone(&steps),
+        steps_per_frame: 4,
+        max_steps: 10_000,
+    };
+    let mut controller = SimulationController::new(runner);
+    assert!(!controller.is_pause_pending());
+
+    assert!(controller.send_command(SimCommand::Start).is_ok());
+    assert!(!controller.is_pause_pending());
+
+    assert!(controller.send_command(SimCommand::Pause).is_ok());
+    assert!(controller.is_pause_pending());
+
+    controller.wait_until_paused();
+    assert!(!controller.is_pause_pending());
+    assert_eq!(controller.state(), SimWorkerState::Ready);
 }
 
 #[test]
