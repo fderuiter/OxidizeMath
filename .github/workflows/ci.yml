@@ -240,6 +240,58 @@ jobs:
         if: matrix.target == 'wasm32-unknown-unknown'
         run: bash scripts/verify_wasm_budget.sh math_explorer_gui/dist
 
+      - name: Generate SHA-256 Manifest
+        if: matrix.target == 'wasm32-unknown-unknown'
+        shell: bash
+        run: |
+          if [ ! -d "math_explorer_gui/dist" ]; then
+            echo "Error: math_explorer_gui/dist directory does not exist" >&2
+            exit 1
+          fi
+
+          cd math_explorer_gui/dist
+
+          if command -v sha256sum >/dev/null 2>&1; then
+            SHACMD="sha256sum"
+            SHACHECK="sha256sum -c"
+          elif command -v shasum >/dev/null 2>&1; then
+            SHACMD="shasum -a 256"
+            SHACHECK="shasum -a 256 -c"
+          else
+            echo "Error: Neither sha256sum nor shasum is available" >&2
+            exit 1
+          fi
+
+          shopt -s nullglob
+          shopt -u dotglob
+          files=()
+          for f in *; do
+            if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
+              files+=("$f")
+            fi
+          done
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "Error: No build artifacts found in math_explorer_gui/dist" >&2
+            exit 1
+          fi
+
+          for f in "${files[@]}"; do
+            if [ ! -s "$f" ]; then
+              echo "Error: Build artifact $f is empty" >&2
+              exit 1
+            fi
+          done
+
+          $SHACMD "${files[@]}" > SHA256SUMS
+          $SHACHECK SHA256SUMS
+
+      - name: Upload Pages artifact
+        if: matrix.target == 'wasm32-unknown-unknown' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: math_explorer_gui/dist
+
       - name: Code Signing (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -472,10 +524,30 @@ jobs:
             !math_explorer_gui/dist/.*/**
           if-no-files-found: error
 
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [pre-flight, build-and-test, feature-matrix]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+
   publish-release:
     name: Publish Release
     if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && startsWith(github.ref, 'refs/tags/v')
-    needs: [build-and-test, package, compile-papers]
+    needs: [build-and-test, package, compile-papers, feature-matrix]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
