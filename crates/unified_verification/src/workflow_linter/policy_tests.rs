@@ -353,6 +353,64 @@ fn test_rejects_dotdot_path_traversal_and_docker_unpinned() {
 }
 
 #[test]
+fn test_dockerfile_continuations_tabs_mounts_stages_and_utf8() {
+    let temp = make_temp_workspace("dockerfile_pinning");
+    let wf = "name: DF\npermissions: read-all\nconcurrency: df\non: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - uses: ./.github/actions/df-act\n";
+    write_fixture(&temp, ".github/workflows/df.yml", wf);
+    write_fixture(
+        &temp,
+        ".github/actions/df-act/action.yml",
+        "name: DF Action\nruns:\n  using: docker\n  image: Dockerfile\n",
+    );
+    let dig = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    for bad_df in [
+        "FROM scratch\nFROM\texample.invalid/canary-image:unpinned-tab\n".to_string(),
+        "FROM scratch\nFROM\\\n example.invalid/canary-image:unpinned-continuation\n".to_string(),
+        "FROM scratch\nCOPY --from=example.invalid/canary-image:unpinned-copy /canary /canary\n"
+            .to_string(),
+        format!(
+            "FROM alpine@sha256:{dig}\nRUN --mount=type=bind,from=example.invalid/canary-image:unpinned-mount,source=/canary,target=/mnt true\n"
+        ),
+        "LABEL maintainer=\"none\"\n".to_string(),
+        format!("ARG IMG=alpine@sha256:{dig}\nFROM $IMG\n"),
+        "FROM scratch\nCOPY --from=$IMG /a /b\n".to_string(),
+        "FROM scratch\nRUN --mount=type=bind,from=$IMG,target=/mnt true\n".to_string(),
+        "FROM scratch\nCOPY --from= /a /b\n".to_string(),
+        "FROM scratch\nRUN --mount=type=bind,from=,target=/mnt true\n".to_string(),
+        "FROM scratch\nCOPY --from=1 /a /b\nFROM scratch\n".to_string(),
+        "FROM scratch\nFROM scratch\nCOPY --from=2 /a /b\n".to_string(),
+        "FROM scratch\nRUN --mount=type=bind,from=1,target=/mnt true\n".to_string(),
+        "# escape=`\nFROM scratch\nFROM`\n example.invalid/canary:unpinned\n".to_string(),
+        "FROM \\\n  # comment inside continuation\n  example.invalid/canary:unpinned\n".to_string(),
+        "FROM scratch\nONBUILD COPY --from=example.invalid/canary:unpinned /a /b\n".to_string(),
+    ] {
+        write_fixture(&temp, ".github/actions/df-act/Dockerfile", &bad_df);
+        assert!(
+            validate_action_in_dir_str(wf, &temp).is_err(),
+            "accepted bad Dockerfile: {bad_df}"
+        );
+        assert!(
+            !lint_workflows_in_dir(&temp.join(".github/workflows"), None),
+            "lint_workflows_in_dir accepted: {bad_df}"
+        );
+    }
+
+    for good_df in [
+        "FROM scratch\nLABEL \\\n  xy=\"π\"\n".to_string(),
+        format!(
+            "# escape=`\nFROM`\n  # inline comment\n\talpine@sha256:{dig} AS Builder\nFROM scratch\nCOPY --from=builder /a /b\nCOPY --from=0 /a /b\nCOPY --from=scratch /a /b\nCOPY --from=alpine@sha256:{dig} /a /b\nRUN --mount=type=cache,target=/cache --mount=type=bind,from=0,source=/a,target=/mnt true\nRUN --mount=type=bind,from=Builder,source=/a,target=/mnt true\nRUN --mount=type=bind,from=alpine@sha256:{dig},source=/a,target=/mnt true\n"
+        ),
+    ] {
+        write_fixture(&temp, ".github/actions/df-act/Dockerfile", &good_df);
+        assert_eq!(validate_action_in_dir_str(wf, &temp), Ok(()));
+        assert!(lint_workflows_in_dir(&temp.join(".github/workflows"), None));
+    }
+
+    let _ = fs::remove_dir_all(&temp);
+}
+
+#[test]
 #[cfg(unix)]
 fn test_rejects_symlink_escape_outside_repo_root() {
     let outer = make_temp_workspace("symlink_outer");

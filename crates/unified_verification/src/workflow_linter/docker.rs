@@ -8,11 +8,8 @@ fn is_sixty_four_char_hex(s: &str) -> bool {
     s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-pub(super) fn is_pinned_docker_uri(uri: &str) -> bool {
-    let Some(rest) = uri.trim().strip_prefix("docker://") else {
-        return false;
-    };
-    let Some((image, digest)) = rest.rsplit_once("@sha256:") else {
+fn is_pinned_image_digest(spec: &str) -> bool {
+    let Some((image, digest)) = spec.rsplit_once("@sha256:") else {
         return false;
     };
     !image.is_empty()
@@ -23,6 +20,12 @@ pub(super) fn is_pinned_docker_uri(uri: &str) -> bool {
         && is_sixty_four_char_hex(digest)
 }
 
+pub(super) fn is_pinned_docker_uri(uri: &str) -> bool {
+    uri.trim()
+        .strip_prefix("docker://")
+        .is_some_and(is_pinned_image_digest)
+}
+
 pub(super) fn extract_safe_local_rel_path(
     local_ref: &str,
     allow_trailing_slash: bool,
@@ -30,27 +33,23 @@ pub(super) fn extract_safe_local_rel_path(
     let trimmed = local_ref.trim();
     if !trimmed.starts_with("./") {
         return Err(format!(
-            "local reference '{}' must start with './'.",
-            local_ref
+            "local reference '{local_ref}' must start with './'."
         ));
     }
     if trimmed.contains('\\') || trimmed.contains('\0') {
         return Err(format!(
-            "local reference '{}' contains invalid path characters.",
-            local_ref
+            "local reference '{local_ref}' contains invalid path characters."
         ));
     }
     if trimmed.contains('@') {
         return Err(format!(
-            "local reference '{}' must not include an '@' version ref.",
-            local_ref
+            "local reference '{local_ref}' must not include an '@' version ref."
         ));
     }
     let raw_rel = &trimmed[2..];
     if !allow_trailing_slash && raw_rel.ends_with('/') {
         return Err(format!(
-            "local file reference '{}' must not end with '/'.",
-            local_ref
+            "local file reference '{local_ref}' must not end with '/'."
         ));
     }
     let stripped = if allow_trailing_slash {
@@ -60,14 +59,12 @@ pub(super) fn extract_safe_local_rel_path(
     };
     if stripped.is_empty() || stripped.split('/').any(|seg| seg == "..") {
         return Err(format!(
-            "local reference '{}' must not contain '..' or empty path segments.",
-            local_ref
+            "local reference '{local_ref}' must not contain '..' or empty path segments."
         ));
     }
     if stripped.split('/').any(|seg| seg.is_empty() || seg == ".") {
         return Err(format!(
-            "local reference '{}' contains redundant or empty path segments.",
-            local_ref
+            "local reference '{local_ref}' contains redundant or empty path segments."
         ));
     }
     let mut normalized = PathBuf::new();
@@ -76,8 +73,7 @@ pub(super) fn extract_safe_local_rel_path(
             Component::Normal(seg) => normalized.push(seg),
             _ => {
                 return Err(format!(
-                    "local reference '{}' must stay within the repository root without '..' segments.",
-                    local_ref
+                    "local reference '{local_ref}' must stay within the repository root without '..' segments."
                 ));
             }
         }
@@ -91,92 +87,310 @@ pub(super) fn canonicalize_within(
     raw_ref: &str,
     boundary_desc: &str,
 ) -> Result<PathBuf, String> {
+    let b_disp = boundary.display();
     let canonical_boundary = fs::canonicalize(boundary).map_err(|_| {
-        format!(
-            "{} '{}' does not exist on disk while resolving '{}'.",
-            boundary_desc,
-            boundary.display(),
-            raw_ref
-        )
+        format!("{boundary_desc} '{b_disp}' does not exist on disk while resolving '{raw_ref}'.")
     })?;
     let canonical_target = fs::canonicalize(target)
-        .map_err(|_| format!("referenced path '{}' does not exist on disk.", raw_ref))?;
+        .map_err(|_| format!("referenced path '{raw_ref}' does not exist on disk."))?;
     if !canonical_target.starts_with(&canonical_boundary) {
         return Err(format!(
-            "reference '{}' escapes {} ('{}').",
-            raw_ref,
-            boundary_desc,
-            boundary.display()
+            "reference '{raw_ref}' escapes {boundary_desc} ('{b_disp}')."
         ));
     }
     Ok(canonical_target)
 }
 
-fn validate_from_instruction(
-    rest: &str,
-    stages: &mut HashSet<String>,
-    dockerfile_path: &Path,
-    manifest_label: &str,
-) -> Result<(), String> {
-    let tokens: Vec<&str> = rest
-        .split_whitespace()
-        .filter(|tok| !tok.starts_with("--"))
-        .collect();
-    let Some(&image_spec) = tokens.first() else {
-        return Err(format!(
-            "Malformed FROM instruction in Dockerfile '{}' for '{}'.",
-            dockerfile_path.display(),
-            manifest_label
-        ));
-    };
-    let pinned = image_spec.eq_ignore_ascii_case("scratch")
-        || stages.contains(&image_spec.to_ascii_lowercase())
-        || image_spec
-            .rsplit_once("@sha256:")
-            .is_some_and(|(img, dig)| !img.is_empty() && is_sixty_four_char_hex(dig));
+#[derive(Default)]
+struct DockerfileStages {
+    count: usize,
+    aliases: HashSet<String>,
+}
 
-    if !pinned {
-        return Err(format!(
-            "Dockerfile '{}' in '{}' uses unpinned base image '{}'; pin base images to '@sha256:<64-hex>'.",
-            dockerfile_path.display(),
-            manifest_label,
-            image_spec
-        ));
+fn is_valid_stage_index(spec: &str, stage_count: usize) -> bool {
+    !spec.is_empty()
+        && spec.chars().all(|c| c.is_ascii_digit())
+        && spec.parse::<usize>().is_ok_and(|idx| idx < stage_count)
+}
+
+fn is_valid_image_or_stage(spec: &str, stages: &DockerfileStages, allow_index: bool) -> bool {
+    if spec.is_empty() {
+        return false;
     }
-    if tokens.len() >= 3 && tokens[1].eq_ignore_ascii_case("as") {
-        stages.insert(tokens[2].to_ascii_lowercase());
+    let is_local = !spec.contains('$')
+        && (spec.eq_ignore_ascii_case("scratch")
+            || stages.aliases.contains(&spec.to_ascii_lowercase())
+            || (allow_index && is_valid_stage_index(spec, stages.count)));
+    is_local || is_pinned_image_digest(spec)
+}
+
+fn require_pinned_source(val: &str, ctx: &str, stages: &DockerfileStages) -> Result<(), String> {
+    let trimmed = val.trim();
+    if trimmed.is_empty() || !is_valid_image_or_stage(trimmed, stages, true) {
+        return Err(format!(
+            "uses unpinned or invalid {ctx} source '{trimmed}'; pin external images to '@sha256:<64-hex>'."
+        ));
     }
     Ok(())
 }
 
-fn validate_dockerfile_pinning(dockerfile_path: &Path, manifest_label: &str) -> Result<(), String> {
-    let content = fs::read_to_string(dockerfile_path).map_err(|e| {
-        format!(
-            "Failed to read Dockerfile '{}' for '{}': {}",
-            dockerfile_path.display(),
-            manifest_label,
-            e
-        )
-    })?;
-    let mut stages = HashSet::new();
-    let mut saw_from = false;
+fn try_parse_directive(
+    comment_body: &str,
+    escape_char: &mut char,
+    seen_escape: &mut bool,
+) -> Result<bool, String> {
+    let Some((raw_key, raw_val)) = comment_body.split_once('=') else {
+        return Ok(false);
+    };
+    let key = raw_key.trim();
+    if key.is_empty()
+        || !key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Ok(false);
+    }
+    if key.eq_ignore_ascii_case("escape") {
+        if *seen_escape {
+            return Err("duplicate escape directive.".to_string());
+        }
+        *seen_escape = true;
+        match raw_val.trim() {
+            "\\" => *escape_char = '\\',
+            "`" => *escape_char = '`',
+            other => return Err(format!("invalid escape directive '{other}'.")),
+        }
+    }
+    Ok(true)
+}
+
+fn fold_dockerfile_instructions(content: &str) -> Result<Vec<String>, String> {
+    let content = content.strip_prefix('\u{feff}').unwrap_or(content);
+    let (mut escape_char, mut seen_escape) = ('\\', false);
+    let (mut in_directives, mut in_continuation) = (true, false);
+    let (mut current, mut instructions) = (String::new(), Vec::new());
 
     for raw_line in content.lines() {
         let trimmed = raw_line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
+        if in_directives && !in_continuation {
+            if trimmed.is_empty() {
+                in_directives = false;
+                continue;
+            }
+            if let Some(body) = trimmed.strip_prefix('#') {
+                if try_parse_directive(body, &mut escape_char, &mut seen_escape)? {
+                    continue;
+                }
+                in_directives = false;
+                continue;
+            }
+            in_directives = false;
+        }
+        if trimmed.starts_with('#') || (!in_continuation && trimmed.is_empty()) {
             continue;
         }
-        if trimmed.len() > 5 && trimmed[..5].eq_ignore_ascii_case("from ") {
-            saw_from = true;
-            validate_from_instruction(&trimmed[5..], &mut stages, dockerfile_path, manifest_label)?;
+        let trimmed_end = raw_line.trim_end();
+        if let Some(without_escape) = trimmed_end.strip_suffix(escape_char) {
+            current.push_str(without_escape);
+            in_continuation = true;
+        } else {
+            current.push_str(trimmed_end);
+            in_continuation = false;
+            if !current.trim().is_empty() {
+                instructions.push(std::mem::take(&mut current));
+            } else {
+                current.clear();
+            }
         }
     }
-    if !saw_from {
+    if !current.trim().is_empty() {
+        instructions.push(current);
+    }
+    Ok(instructions)
+}
+
+fn take_leading_flags(mut rest: &str) -> Result<(Vec<String>, &str), &'static str> {
+    let mut flags = Vec::new();
+    loop {
+        rest = rest.trim_start();
+        if !(rest.starts_with("--") || rest.starts_with("\"--") || rest.starts_with("'--")) {
+            break;
+        }
+        let (mut in_quote, mut end_idx, mut cleaned) = (None, rest.len(), String::new());
+        for (idx, ch) in rest.char_indices() {
+            match (in_quote, ch) {
+                (Some(q), c) if c == q => in_quote = None,
+                (Some(_), c) => cleaned.push(c),
+                (None, '"' | '\'') => in_quote = Some(ch),
+                (None, c) if c.is_whitespace() => {
+                    end_idx = idx;
+                    break;
+                }
+                (None, c) => cleaned.push(c),
+            }
+        }
+        if in_quote.is_some() {
+            return Err("unterminated quote in Dockerfile option");
+        }
+        rest = &rest[end_idx..];
+        if cleaned == "--" {
+            break;
+        }
+        flags.push(cleaned);
+    }
+    Ok((flags, rest))
+}
+
+fn strip_matching_quotes(s: &str) -> &str {
+    s.strip_prefix('"')
+        .and_then(|r| r.strip_suffix('"'))
+        .or_else(|| s.strip_prefix('\'').and_then(|r| r.strip_suffix('\'')))
+        .unwrap_or(s)
+}
+
+fn validate_from_instruction(rest: &str, stages: &mut DockerfileStages) -> Result<(), String> {
+    let (flags, tail) =
+        take_leading_flags(rest).map_err(|m| format!("malformed FROM instruction ({m})."))?;
+    if let Some(bad) = flags.iter().find(|f| f.ends_with('=')) {
+        return Err(format!("malformed FROM flag '{bad}'."));
+    }
+    let tokens: Vec<&str> = tail.split_whitespace().collect();
+    let Some(&raw_spec) = tokens.first() else {
+        return Err("malformed FROM instruction.".to_string());
+    };
+    let image_spec = strip_matching_quotes(raw_spec);
+    let alias = match tokens.len() {
+        1 => None,
+        3 if tokens[1].eq_ignore_ascii_case("as") => {
+            let name = strip_matching_quotes(tokens[2]);
+            if name.is_empty() || name.contains('$') {
+                return Err("malformed FROM stage alias.".to_string());
+            }
+            Some(name.to_ascii_lowercase())
+        }
+        _ => return Err("malformed FROM instruction.".to_string()),
+    };
+    if !is_valid_image_or_stage(image_spec, stages, false) {
         return Err(format!(
-            "Dockerfile '{}' in '{}' contains no FROM instruction.",
-            dockerfile_path.display(),
-            manifest_label
+            "uses unpinned base image '{image_spec}'; pin base images to '@sha256:<64-hex>'."
         ));
+    }
+    stages.count += 1;
+    if let Some(stage_name) = alias {
+        stages.aliases.insert(stage_name);
+    }
+    Ok(())
+}
+
+fn extract_stage_flags(
+    instr_name: &str,
+    rest: &str,
+    stages: &DockerfileStages,
+) -> Result<Vec<String>, String> {
+    if stages.count == 0 {
+        return Err(format!("contains {instr_name} before FROM."));
+    }
+    take_leading_flags(rest)
+        .map(|(flags, _)| flags)
+        .map_err(|msg| format!("malformed {instr_name} instruction ({msg})."))
+}
+
+fn validate_copy_instruction(rest: &str, stages: &DockerfileStages) -> Result<(), String> {
+    for flag in extract_stage_flags("COPY", rest, stages)? {
+        if flag.eq_ignore_ascii_case("--from") {
+            return Err("empty '--from' flag in COPY.".to_string());
+        }
+        if let Some((name, raw_val)) = flag.split_once('=')
+            && name.eq_ignore_ascii_case("--from")
+        {
+            require_pinned_source(raw_val, "COPY --from", stages)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_run_mount_spec(mount_spec: &str, stages: &DockerfileStages) -> Result<(), String> {
+    let trimmed_spec = mount_spec.trim();
+    if trimmed_spec.is_empty() {
+        return Err("empty '--mount=' value in RUN.".to_string());
+    }
+    for field in trimmed_spec.split(',').map(str::trim) {
+        if field.eq_ignore_ascii_case("from") {
+            return Err("empty 'from' option in RUN --mount.".to_string());
+        }
+        if let Some((key, val)) = field.split_once('=')
+            && key.trim().eq_ignore_ascii_case("from")
+        {
+            require_pinned_source(val, "RUN --mount from", stages)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_run_instruction(rest: &str, stages: &DockerfileStages) -> Result<(), String> {
+    for flag in extract_stage_flags("RUN", rest, stages)? {
+        if flag.eq_ignore_ascii_case("--mount") {
+            return Err("empty '--mount' flag in RUN.".to_string());
+        }
+        if let Some((name, raw_val)) = flag.split_once('=')
+            && name.eq_ignore_ascii_case("--mount")
+        {
+            validate_run_mount_spec(raw_val, stages)?;
+        }
+    }
+    Ok(())
+}
+
+fn split_instruction_keyword(line: &str) -> Option<(&str, &str)> {
+    let keyword = line.split_whitespace().next()?;
+    let rest = line
+        .trim_start()
+        .split_once(char::is_whitespace)
+        .map_or("", |(_, r)| r.trim_start());
+    Some((keyword, rest))
+}
+
+fn validate_dockerfile_instruction(
+    line: &str,
+    stages: &mut DockerfileStages,
+) -> Result<(), String> {
+    let (mut current, mut saw_onbuild) = (line, false);
+    loop {
+        let Some((keyword, rest)) = split_instruction_keyword(current) else {
+            return (!saw_onbuild)
+                .then_some(())
+                .ok_or_else(|| "malformed ONBUILD instruction.".to_string());
+        };
+        match keyword.to_ascii_lowercase().as_str() {
+            "onbuild" if stages.count == 0 => {
+                return Err("contains ONBUILD before FROM.".to_string());
+            }
+            "onbuild" => {
+                saw_onbuild = true;
+                current = rest;
+            }
+            "from" if saw_onbuild => return Err("invalid ONBUILD FROM instruction.".to_string()),
+            "from" => return validate_from_instruction(rest, stages),
+            "copy" => return validate_copy_instruction(rest, stages),
+            "run" => return validate_run_instruction(rest, stages),
+            _ => return Ok(()),
+        }
+    }
+}
+
+fn validate_dockerfile_pinning(dockerfile_path: &Path, manifest_label: &str) -> Result<(), String> {
+    let df = dockerfile_path.display();
+    let wrap = |msg: String| format!("Dockerfile '{df}' in '{manifest_label}': {msg}");
+    let content =
+        fs::read_to_string(dockerfile_path).map_err(|e| wrap(format!("failed to read: {e}")))?;
+    let instructions = fold_dockerfile_instructions(&content).map_err(wrap)?;
+    let mut stages = DockerfileStages::default();
+
+    for instruction in &instructions {
+        validate_dockerfile_instruction(instruction, &mut stages).map_err(wrap)?;
+    }
+    if stages.count == 0 {
+        return Err(wrap("contains no FROM instruction.".to_string()));
     }
     Ok(())
 }
@@ -188,34 +402,26 @@ pub(super) fn validate_action_runs_image(
     manifest_label: &str,
 ) -> Result<(), String> {
     let is_docker = runs_map.get("using").and_then(Value::as_str) == Some("docker");
-    let image_val = runs_map.get("image");
-    if is_docker && image_val.is_none() {
-        return Err(format!(
-            "Docker action manifest '{}' is missing 'runs.image'.",
-            manifest_label
-        ));
-    }
-    let Some(val) = image_val else {
-        return Ok(());
+    let Some(val) = runs_map.get("image") else {
+        return (!is_docker).then_some(()).ok_or_else(|| {
+            format!("Docker action manifest '{manifest_label}' is missing 'runs.image'.")
+        });
     };
     let Some(image_str) = val.as_str() else {
         return Err(format!(
-            "Action manifest '{}' has a non-string 'runs.image' attribute.",
-            manifest_label
+            "Action manifest '{manifest_label}' has a non-string 'runs.image' attribute."
         ));
     };
     let trimmed = image_str.trim();
     if trimmed.is_empty() {
         return Err(format!(
-            "Action manifest '{}' has an empty 'runs.image' attribute.",
-            manifest_label
+            "Action manifest '{manifest_label}' has an empty 'runs.image' attribute."
         ));
     }
     if trimmed.starts_with("docker://") {
         if !is_pinned_docker_uri(trimmed) {
             return Err(format!(
-                "Action manifest '{}' has unpinned Docker image '{}'; pin to 'docker://<image>@sha256:<64-hex>'.",
-                manifest_label, image_str
+                "Action manifest '{manifest_label}' has unpinned Docker image '{image_str}'; pin to 'docker://<image>@sha256:<64-hex>'."
             ));
         }
         return Ok(());
@@ -223,19 +429,17 @@ pub(super) fn validate_action_runs_image(
     let normalized_ref = if trimmed.starts_with("./") {
         trimmed.to_string()
     } else {
-        format!("./{}", trimmed)
+        format!("./{trimmed}")
     };
     let rel_df = extract_safe_local_rel_path(&normalized_ref, false).map_err(|_| {
         format!(
-            "Action manifest '{}' has invalid or unpinned 'runs.image' '{}'; use 'docker://<image>@sha256:<64-hex>'.",
-            manifest_label, image_str
+            "Action manifest '{manifest_label}' has invalid or unpinned 'runs.image' '{image_str}'; use 'docker://<image>@sha256:<64-hex>'."
         )
     })?;
     let df_path = action_dir.join(rel_df);
     if !df_path.is_file() {
         return Err(format!(
-            "Action manifest '{}' has unpinned or missing 'runs.image' '{}'; pin external images to 'docker://<image>@sha256:<64-hex>'.",
-            manifest_label, image_str
+            "Action manifest '{manifest_label}' has unpinned or missing 'runs.image' '{image_str}'; pin external images to 'docker://<image>@sha256:<64-hex>'."
         ));
     }
     canonicalize_within(&df_path, repo_root, image_str, "repository root")?;
