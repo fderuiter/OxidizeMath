@@ -1,13 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::{SimulationFramework, ToolMetadata};
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
-use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
-use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
-use crate::tabs::quantum::wave_sim::WaveUnified;
-use crate::tabs::solid_state::crystal_viewer::CrystalSystemEnum;
+#[cfg(any(feature = "applied", feature = "physics", feature = "biology"))]
+use super::SimulationFramework;
+use super::ToolMetadata;
+#[cfg(any(feature = "physics", feature = "biology"))]
 use eframe::egui;
-use scientific_metadata::theory::TheoryDescribable;
 
 fn has_raw_struct_suffix(label: &str) -> bool {
     for suffix in ["Tool", "Widget", "Plotter", "Viewer", "Simulator"] {
@@ -22,6 +19,7 @@ fn has_raw_struct_suffix(label: &str) -> bool {
     false
 }
 
+#[cfg(any(feature = "physics", feature = "biology"))]
 fn collect_accesskit_labels(output: &egui::FullOutput) -> Vec<String> {
     let mut out = Vec::new();
     if let Some(u) = output.platform_output.accesskit_update.as_ref() {
@@ -37,6 +35,7 @@ fn collect_accesskit_labels(output: &egui::FullOutput) -> Vec<String> {
     out
 }
 
+#[cfg(feature = "biology")]
 fn compact_input() -> egui::RawInput {
     egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -50,6 +49,15 @@ fn compact_input() -> egui::RawInput {
 #[test]
 fn test_all_registered_tools_separate_id_from_plain_display_name() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
+    #[cfg(all(
+        feature = "pure_math",
+        feature = "applied",
+        feature = "ai",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics"
+    ))]
     assert!(
         tools.len() >= 52,
         "Expected at least 52 registered tools, found {}",
@@ -83,6 +91,7 @@ fn test_all_registered_tools_separate_id_from_plain_display_name() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_sidebar_and_launchpad_render_display_names_without_struct_ids() {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
@@ -130,6 +139,7 @@ fn test_sidebar_and_launchpad_render_display_names_without_struct_ids() {
 }
 
 #[test]
+#[cfg(feature = "applied")]
 fn test_legacy_id_and_display_name_workspace_deserialization() {
     let mut framework = SimulationFramework::new("clinical_trials");
     assert!(framework.select_tool_by_name("SampleSizeCalculatorTool"));
@@ -176,8 +186,10 @@ fn test_legacy_id_and_display_name_workspace_deserialization() {
 }
 
 #[test]
+#[cfg(all(feature = "physics", feature = "biology"))]
 fn test_theory_citations_and_portal_have_no_raw_cite_tags_or_default_keys() {
     use math_explorer::physics::chaos::lorenz::{LorenzState, LorenzSystem};
+    use scientific_metadata::theory::TheoryDescribable;
     let lorenz = LorenzSystem::default_chaotic(LorenzState::new(1.0, 1.0, 1.0));
     assert!(!lorenz.theory_citation().contains("[cite:"));
 
@@ -239,7 +251,13 @@ fn test_theory_citations_and_portal_have_no_raw_cite_tags_or_default_keys() {
 }
 
 #[test]
+#[cfg(all(feature = "physics", feature = "biology"))]
 fn test_unified_models_expose_readable_parameter_labels_and_discrete_choices() {
+    use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+    use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+    use crate::tabs::quantum::wave_sim::WaveUnified;
+
     for key in WaveUnified::parameters().keys() {
         let label = WaveUnified::parameter_label(key);
         assert!(
@@ -289,7 +307,11 @@ fn test_unified_models_expose_readable_parameter_labels_and_discrete_choices() {
 }
 
 #[test]
+#[cfg(feature = "biology")]
 fn test_hodgkin_huxley_sensitivity_cards_separate_ids_from_display_labels() {
+    use crate::async_sim::unified::UnifiedSimTool;
+    use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+
     let hh_ctx = egui::Context::default();
     hh_ctx.enable_accesskit();
     let mut hh_tool = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
@@ -329,7 +351,10 @@ fn test_hodgkin_huxley_sensitivity_cards_separate_ids_from_display_labels() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_readable_enum_and_error_formatting() {
+    use crate::tabs::solid_state::crystal_viewer::CrystalSystemEnum;
+
     assert_eq!(CrystalSystemEnum::SimpleCubic.label(), "Simple Cubic");
     assert_eq!(
         CrystalSystemEnum::BodyCenteredCubic.label(),

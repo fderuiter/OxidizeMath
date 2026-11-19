@@ -3,15 +3,17 @@
 use super::*;
 use crate::app::domain_bar::AcademicDomain;
 use eframe::egui;
+#[cfg(feature = "biology")]
 use eframe::App;
-use std::collections::HashSet;
 
+#[cfg(any(feature = "physics", feature = "biology"))]
 fn collect_text_rects(shapes: &[egui::epaint::ClippedShape], out: &mut Vec<(String, egui::Rect)>) {
     for cs in shapes {
         collect_shape_text(&cs.shape, out);
     }
 }
 
+#[cfg(any(feature = "physics", feature = "biology"))]
 fn collect_shape_text(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
     match shape {
         egui::Shape::Text(text_shape) => {
@@ -39,6 +41,7 @@ fn screen_input(events: Vec<egui::Event>, time: f64) -> egui::RawInput {
     }
 }
 
+#[cfg(any(feature = "physics", feature = "biology"))]
 fn next_sim_time(ctx: &egui::Context) -> f64 {
     ctx.data_mut(|d| {
         let id = egui::Id::new("sim_test_clock");
@@ -48,6 +51,7 @@ fn next_sim_time(ctx: &egui::Context) -> f64 {
     })
 }
 
+#[cfg(feature = "physics")]
 fn run_menu_frame(
     ctx: &egui::Context,
     app: &mut MathExplorerApp,
@@ -64,6 +68,7 @@ fn run_menu_frame(
     texts
 }
 
+#[cfg(any(feature = "physics", feature = "biology"))]
 fn click_events(pos: egui::Pos2) -> Vec<egui::Event> {
     vec![
         egui::Event::PointerMoved(pos),
@@ -82,6 +87,7 @@ fn click_events(pos: egui::Pos2) -> Vec<egui::Event> {
     ]
 }
 
+#[cfg(any(feature = "physics", feature = "biology"))]
 fn find_text_pos(texts: &[(String, egui::Rect)], needle: &str) -> egui::Pos2 {
     texts
         .iter()
@@ -98,6 +104,15 @@ fn find_text_pos(texts: &[(String, egui::Rect)], needle: &str) -> egui::Pos2 {
 }
 
 #[test]
+#[cfg(all(
+    feature = "pure_math",
+    feature = "applied",
+    feature = "ai",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 fn test_view_menu_height_reduction_and_primary_module_domains() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();
@@ -136,7 +151,17 @@ fn test_view_menu_height_reduction_and_primary_module_domains() {
 }
 
 #[test]
+#[cfg(all(
+    feature = "pure_math",
+    feature = "applied",
+    feature = "ai",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 fn test_primary_module_each_domain_shows_only_belonging_modules() {
+    use std::collections::HashSet;
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
@@ -189,6 +214,7 @@ fn test_primary_module_each_domain_shows_only_belonging_modules() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_primary_module_selection_indicator_and_aria_announcement() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     crate::accessibility::clear_test_announcements();
@@ -243,6 +269,15 @@ fn test_primary_module_selection_indicator_and_aria_announcement() {
 }
 
 #[test]
+#[cfg(all(
+    feature = "pure_math",
+    feature = "applied",
+    feature = "ai",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 fn test_pane_assignments_quad_grid_categorized_by_domain() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();
@@ -300,6 +335,7 @@ fn test_pane_assignments_quad_grid_categorized_by_domain() {
     );
 }
 
+#[cfg(feature = "biology")]
 fn run_full_app_frame(
     ctx: &egui::Context,
     app: &mut MathExplorerApp,
@@ -315,6 +351,7 @@ fn run_full_app_frame(
     texts
 }
 
+#[cfg(feature = "biology")]
 fn hover_full_app_frame(
     ctx: &egui::Context,
     app: &mut MathExplorerApp,
@@ -325,6 +362,7 @@ fn hover_full_app_frame(
 }
 
 #[test]
+#[cfg(feature = "biology")]
 fn test_split_viewport_pane_header_flyout_assigns_biology_module() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();

@@ -79,6 +79,7 @@ fn test_command_palette_escape_key_closes_and_announces() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_command_palette_filter_and_select() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();
@@ -134,6 +135,7 @@ fn test_command_palette_view_menu_open() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_command_palette_select_dijkstra_tool() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();
@@ -170,6 +172,7 @@ fn test_command_palette_select_dijkstra_tool() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_command_palette_select_lorenz_tool() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();
@@ -206,6 +209,7 @@ fn test_command_palette_select_lorenz_tool() {
 }
 
 #[test]
+#[cfg(feature = "climate")]
 fn test_command_palette_select_cera_tool() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();
@@ -242,6 +246,7 @@ fn test_command_palette_select_cera_tool() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_command_palette_generate_tool_navigation_screenshot() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();

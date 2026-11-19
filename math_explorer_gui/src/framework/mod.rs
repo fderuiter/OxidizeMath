@@ -1,6 +1,6 @@
 pub mod callout_overlay;
 pub mod clamp;
-#[cfg(test)]
+#[cfg(all(test, feature = "physics"))]
 mod clamp_tests;
 pub mod export_queue;
 #[cfg(test)]
@@ -18,7 +18,7 @@ pub mod recovery;
 #[allow(clippy::disallowed_methods)]
 mod recovery_tests;
 pub mod state_guard;
-#[cfg(test)]
+#[cfg(all(test, feature = "pure_math"))]
 #[allow(clippy::disallowed_methods)]
 mod state_guard_tests;
 pub mod trace_overlay;

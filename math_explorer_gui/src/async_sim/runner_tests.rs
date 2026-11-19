@@ -1,6 +1,8 @@
+#[allow(unused_imports)]
 use super::*;
 
 #[test]
+#[cfg(feature = "biology")]
 fn test_morphogenesis_runner_offload() {
     use crate::tabs::morphogenesis::{
         MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
@@ -74,6 +76,7 @@ fn test_morphogenesis_runner_offload() {
 }
 
 #[test]
+#[cfg(feature = "ai")]
 fn test_reward_plots_runner_batch_training() {
     use crate::tabs::ai::reward_plots::{RewardPlotsRunner, RlSnapshotData};
 
@@ -126,6 +129,7 @@ fn test_reward_plots_runner_batch_training() {
 }
 
 #[test]
+#[cfg(feature = "ai")]
 fn test_background_worker_generic_adapter() {
     use crate::tabs::ai::reward_plots::RewardPlotsRunner;
 
@@ -148,6 +152,7 @@ fn test_background_worker_generic_adapter() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_ising_runner_offload() {
     use crate::tabs::solid_state::ising::{IsingRunner, IsingSharedParams};
     use math_explorer::physics::stat_mech::ising::SpinLattice;
@@ -188,6 +193,7 @@ fn test_ising_runner_offload() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_mri_runner_offload() {
     use crate::tabs::mri::{MriRunner, MriSharedParams, MriSnapshot};
     use math_explorer::physics::mri::bloch::BlochSimulator;

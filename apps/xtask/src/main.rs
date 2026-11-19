@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+mod features;
 mod papers;
 
 use std::env;
@@ -22,7 +23,7 @@ fn main() {
         "check-cargo-docs" | "check-workspace-docs" => check_cargo_docs(),
         "check-docs" => check_docs(),
         "check-entropy" => check_entropy(),
-        "test-features" => test_features(&args[2..]),
+        "test-features" => features::test_features(&args[2..]),
         "verify-suite" => verify_suite(&args[2..]),
         "verify-records" => verify_records(),
         "compile-papers" => compile_papers(),
@@ -184,62 +185,6 @@ fn setup() {
 
     configure_git_hooks();
     println!("=== Setup Complete ===");
-}
-
-fn test_features(args: &[String]) {
-    if args.is_empty() {
-        let features = [
-            "pure_math",
-            "applied",
-            "ai",
-            "biology",
-            "climate",
-            "epidemiology",
-            "physics",
-        ];
-        println!("=== Running core-only (no features) ===");
-        run_cmd(
-            "cargo",
-            &["test", "-p", "math_explorer", "--no-default-features"],
-        );
-        for f in features.iter() {
-            println!("=== Running tests for feature: {} ===", f);
-            run_cmd(
-                "cargo",
-                &[
-                    "test",
-                    "-p",
-                    "math_explorer",
-                    "--no-default-features",
-                    "--features",
-                    f,
-                ],
-            );
-        }
-        println!("=== Running all features ===");
-        run_cmd("cargo", &["test", "-p", "math_explorer", "--all-features"]);
-        println!("All feature combinations passed successfully!");
-    } else {
-        let feature = &args[0];
-        if feature == "core-only" || feature.is_empty() {
-            run_cmd(
-                "cargo",
-                &["test", "-p", "math_explorer", "--no-default-features"],
-            );
-        } else {
-            run_cmd(
-                "cargo",
-                &[
-                    "test",
-                    "-p",
-                    "math_explorer",
-                    "--no-default-features",
-                    "--features",
-                    feature,
-                ],
-            );
-        }
-    }
 }
 
 fn verify_suite(args: &[String]) {

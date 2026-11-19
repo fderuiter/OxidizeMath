@@ -1,9 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
+#![allow(unused_imports)]
 
 use super::recovery::*;
 use super::SimulationFramework;
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_simulation_framework_state_snapshot_caching_and_memory_limit() {
     let mut framework = SimulationFramework::new("chaos");
     assert!(framework.active_tool.is_some());
@@ -43,6 +45,7 @@ fn test_simulation_framework_state_snapshot_caching_and_memory_limit() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_simulation_framework_runtime_inspection_and_divergence_detection() {
     let mut framework = SimulationFramework::new("fluid_dynamics");
     assert!(!framework.is_diverged());
@@ -79,6 +82,7 @@ fn test_simulation_framework_runtime_inspection_and_divergence_detection() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_simulation_framework_step_back_rollback_restores_parameters_and_plot() {
     let mut framework = SimulationFramework::new("chaos");
 
@@ -121,6 +125,7 @@ fn test_simulation_framework_step_back_rollback_restores_parameters_and_plot() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_simulation_framework_auto_scale_step_size_halves_dt_and_restarts() {
     let mut framework = SimulationFramework::new("analysis");
 
@@ -182,6 +187,7 @@ fn test_simulation_framework_auto_scale_step_size_halves_dt_and_restarts() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_simulation_framework_preserves_view_and_selection_during_rollback() {
     let mut framework = SimulationFramework::new("fluid_dynamics");
 
@@ -203,6 +209,7 @@ fn test_simulation_framework_preserves_view_and_selection_during_rollback() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_simulation_framework_performance_benchmarks() {
     let mut framework = SimulationFramework::new("chaos");
 
@@ -252,6 +259,7 @@ fn test_simulation_framework_performance_benchmarks() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_simulation_framework_recovery_banner_ui_and_screenshot() {
     let mut framework = SimulationFramework::new("fluid_dynamics");
 
@@ -306,6 +314,7 @@ fn test_simulation_framework_recovery_banner_ui_and_screenshot() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
     let mut framework = SimulationFramework::new("analysis");
     assert!(framework.select_tool_by_name("OdeSolverTool"));
@@ -318,7 +327,11 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
         obj.insert("dt".to_string(), serde_json::json!(0.2));
     }
     let modified = serde_json::to_string(&val).unwrap();
-    load_active(&mut framework, &modified);
+    framework
+        .active_tool
+        .as_mut()
+        .unwrap()
+        .load_state(&modified);
     egui_plot::append_last_plot_datasets(&[("Modified Run".to_string(), vec![[0.0, 5.0]])]);
     framework.current_valid_plot_datasets = vec![("Modified Run".to_string(), vec![[0.0, 5.0]])];
     framework.cache_valid_snapshot();
@@ -350,11 +363,13 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
     assert!(empty_fw.last_valid_snapshot().is_none());
 }
 
+#[cfg(feature = "physics")]
 fn active_saved_state(fw: &SimulationFramework) -> String {
     fw.active_tool.as_ref().unwrap().save_state().unwrap()
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_starter_card_launch_updates_baseline_and_snapshot_for_reset() {
     let mut fw = SimulationFramework::new("fluid_dynamics");
     let cards =
@@ -401,6 +416,7 @@ fn test_starter_card_launch_updates_baseline_and_snapshot_for_reset() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_apply_preset_json_malformed_surfaces_toast_and_telemetry_warning() {
     let mut framework = SimulationFramework::new("analysis");
     assert!(framework.preset_dialog.toast_error.is_none());
@@ -434,6 +450,7 @@ fn test_apply_preset_json_malformed_surfaces_toast_and_telemetry_warning() {
 }
 
 #[test]
+#[cfg(feature = "epidemiology")]
 fn test_starter_card_launch_isolates_cross_pane_plot_datasets_and_syncs_owner() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX
         .lock()

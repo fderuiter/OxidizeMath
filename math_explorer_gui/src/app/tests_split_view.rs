@@ -284,6 +284,7 @@ fn run_split_frames(ctx: &egui::Context, app: &mut MathExplorerApp, frames: usiz
 }
 
 #[test]
+#[cfg(feature = "epidemiology")]
 fn test_same_domain_network_propagation_steps_once_per_pane_per_frame() {
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();

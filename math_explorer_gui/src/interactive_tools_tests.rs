@@ -1,55 +1,115 @@
 #[cfg(test)]
 mod tests {
+    #[cfg(any(
+        feature = "ai",
+        feature = "pure_math",
+        feature = "applied",
+        feature = "physics",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "biology"
+    ))]
+    fn check_tool_instance<T: Default + crate::framework::InteractiveTool>(
+        ctx: &eframe::egui::Context,
+    ) {
+        let mut tool = T::default();
+        let _ = tool.name();
+        let _ = tool.theory();
+        let _ = tool.export_datasets();
+        let _ = tool.export_figure_options();
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            tool.show(ctx);
+        });
+    }
+
     #[test]
-    fn test_additional_interactive_tools() {
-        use crate::framework::InteractiveTool;
+    #[cfg(feature = "ai")]
+    fn test_additional_interactive_tools_ai() {
         let ctx = eframe::egui::Context::default();
+        check_tool_instance::<crate::tabs::ai::q_table_inspector::QTableInspectorTool>(&ctx);
+        check_tool_instance::<crate::tabs::ai::attention_maps::AttentionMapsTool>(&ctx);
+        check_tool_instance::<crate::tabs::ai::tokenization::TokenizationTool>(&ctx);
+        check_tool_instance::<crate::tabs::ai::activation_functions::ActivationFunctionsTool>(&ctx);
+        check_tool_instance::<crate::tabs::ai::training_monitor::TrainingMonitorTool>(&ctx);
+        check_tool_instance::<crate::tabs::ai::loss_landscape::LossLandscapeTool>(&ctx);
+        check_tool_instance::<crate::tabs::ai::grid_world::GridWorldTool>(&ctx);
+    }
 
-        macro_rules! check_tool {
-            ($tool_ty:path) => {
-                let mut tool = <$tool_ty>::default();
-                let _ = tool.name();
-                let _ = tool.theory();
-                let _ = tool.export_datasets();
-                let _ = tool.export_figure_options();
-                let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
-                    tool.show(ctx);
-                });
-            };
-        }
+    #[test]
+    #[cfg(feature = "pure_math")]
+    fn test_additional_interactive_tools_pure_math() {
+        let ctx = eframe::egui::Context::default();
+        check_tool_instance::<crate::tabs::financial_math::bet_size::BetSizeCalculatorTool>(&ctx);
+        check_tool_instance::<crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool>(
+            &ctx,
+        );
+        check_tool_instance::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(&ctx);
+        check_tool_instance::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(
+            &ctx,
+        );
+        check_tool_instance::<crate::tabs::number_theory::ualbf_widget::UalbfWidget>(&ctx);
+        check_tool_instance::<crate::tabs::number_theory::partitions_widget::PartitionsWidget>(
+            &ctx,
+        );
+        check_tool_instance::<crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget>(&ctx);
+    }
 
-        check_tool!(crate::tabs::ai::q_table_inspector::QTableInspectorTool);
-        check_tool!(crate::tabs::ai::attention_maps::AttentionMapsTool);
-        check_tool!(crate::tabs::ai::tokenization::TokenizationTool);
-        check_tool!(crate::tabs::financial_math::bet_size::BetSizeCalculatorTool);
-        check_tool!(crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool);
-        check_tool!(crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool);
-        check_tool!(crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool);
-        check_tool!(crate::tabs::solid_state::band_structure::BandStructureTool);
-        check_tool!(crate::tabs::solid_state::ising::IsingModelTool);
-        check_tool!(crate::tabs::quantum::clebsch::ClebschGordanTool);
-        check_tool!(crate::tabs::graph_theory::network_metrics::NetworkMetricsTool);
-        check_tool!(crate::tabs::clinical_trials::survival::SurvivalAnalysisTool);
-        check_tool!(crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool);
-        check_tool!(crate::tabs::clinical_trials::randomization::RandomizationTool);
-        check_tool!(crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool);
-        check_tool!(crate::tabs::climate::cera::CeraTool);
-        check_tool!(crate::tabs::climate::co2_projections::Co2ProjectionsTool);
-        check_tool!(crate::tabs::climate::temperature::TemperatureAnomaliesTool);
-        check_tool!(crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool);
-        check_tool!(crate::tabs::fluid_dynamics::turbulence::TurbulenceTool);
-        check_tool!(crate::tabs::ai::activation_functions::ActivationFunctionsTool);
-        check_tool!(crate::tabs::ai::training_monitor::TrainingMonitorTool);
-        check_tool!(crate::tabs::ai::loss_landscape::LossLandscapeTool);
-        check_tool!(crate::tabs::ai::grid_world::GridWorldTool);
-        check_tool!(crate::tabs::medical::beam_profiling::BeamProfilingTool);
-        check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
-        check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
-        check_tool!(crate::tabs::number_theory::ualbf_widget::UalbfWidget);
-        check_tool!(crate::tabs::number_theory::partitions_widget::PartitionsWidget);
-        check_tool!(crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget);
-        check_tool!(crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool);
-        check_tool!(crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool);
+    #[test]
+    #[cfg(feature = "applied")]
+    fn test_additional_interactive_tools_applied() {
+        let ctx = eframe::egui::Context::default();
+        check_tool_instance::<
+            crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool,
+        >(&ctx);
+        check_tool_instance::<crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool>(
+            &ctx,
+        );
+        check_tool_instance::<crate::tabs::clinical_trials::survival::SurvivalAnalysisTool>(&ctx);
+        check_tool_instance::<crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool>(
+            &ctx,
+        );
+        check_tool_instance::<crate::tabs::clinical_trials::randomization::RandomizationTool>(&ctx);
+    }
+
+    #[test]
+    #[cfg(feature = "physics")]
+    fn test_additional_interactive_tools_physics() {
+        let ctx = eframe::egui::Context::default();
+        check_tool_instance::<crate::tabs::solid_state::band_structure::BandStructureTool>(&ctx);
+        check_tool_instance::<crate::tabs::solid_state::ising::IsingModelTool>(&ctx);
+        check_tool_instance::<crate::tabs::quantum::clebsch::ClebschGordanTool>(&ctx);
+        check_tool_instance::<crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool>(&ctx);
+        check_tool_instance::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(&ctx);
+        check_tool_instance::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(&ctx);
+        check_tool_instance::<crate::tabs::medical::dose::DoseCalculationTool>(&ctx);
+    }
+
+    #[test]
+    #[cfg(feature = "climate")]
+    fn test_additional_interactive_tools_climate() {
+        let ctx = eframe::egui::Context::default();
+        check_tool_instance::<crate::tabs::climate::cera::CeraTool>(&ctx);
+        check_tool_instance::<crate::tabs::climate::co2_projections::Co2ProjectionsTool>(&ctx);
+        check_tool_instance::<crate::tabs::climate::temperature::TemperatureAnomaliesTool>(&ctx);
+    }
+
+    #[test]
+    #[cfg(feature = "epidemiology")]
+    fn test_additional_interactive_tools_epidemiology() {
+        let ctx = eframe::egui::Context::default();
+        check_tool_instance::<crate::tabs::epidemiology::network_propagation::NetworkPropagationTool>(
+            &ctx,
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "biology")]
+    fn test_additional_interactive_tools_biology() {
+        let ctx = eframe::egui::Context::default();
+        check_tool_instance::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(&ctx);
+        check_tool_instance::<crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool>(
+            &ctx,
+        );
     }
 
     #[test]
@@ -100,7 +160,17 @@ mod tests {
 
             count += 1;
         }
+        let _ = count;
 
+        #[cfg(all(
+            feature = "pure_math",
+            feature = "applied",
+            feature = "ai",
+            feature = "biology",
+            feature = "climate",
+            feature = "epidemiology",
+            feature = "physics"
+        ))]
         assert!(
             count >= 40,
             "Expected at least 40 registered tools, got {}",
@@ -109,6 +179,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "physics")]
     fn test_theory_context_portal_citation_registration() {
         use crate::framework::SimulationFramework;
         let ctx = eframe::egui::Context::default();
@@ -146,6 +217,12 @@ mod tests {
         );
     }
 
+    #[cfg(all(
+        feature = "pure_math",
+        feature = "applied",
+        feature = "physics",
+        any(feature = "climate", feature = "epidemiology")
+    ))]
     fn assert_tool_roundtrip(tool: &mut dyn crate::framework::InteractiveTool, custom_json: &str) {
         let default_saved = tool.save_state().expect("default save_state");
         tool.load_state(custom_json);
@@ -183,6 +260,14 @@ mod tests {
             expected,
             "Roundtrip JSON mismatch for {}",
             tab.name()
+        );
+    }
+
+    #[test]
+    fn test_traceability_tab_state_roundtrip() {
+        assert_tab_roundtrip(
+            &mut crate::tabs::traceability::TraceabilityTab::default(),
+            r#"{"repo_path":"/tmp/mock_repo"}"#,
         );
     }
 

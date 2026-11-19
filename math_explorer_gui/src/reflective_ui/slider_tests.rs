@@ -241,6 +241,7 @@ fn test_animated_slider_manual_drag_pause() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_ode_animated_slider_sweep() {
     use crate::framework::InteractiveTool;
     use crate::presets::OdePreset;

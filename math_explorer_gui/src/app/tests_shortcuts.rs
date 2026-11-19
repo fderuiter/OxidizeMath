@@ -4,6 +4,7 @@
 use super::*;
 use eframe::egui;
 use eframe::App;
+#[cfg(feature = "pure_math")]
 use egui_plot::commands::{CommandMetadata, CommandRegistryData, CommandTrigger};
 
 fn run_frame_with_rect(
@@ -25,6 +26,7 @@ fn run_frame_with_rect(
     })
 }
 
+#[cfg(feature = "pure_math")]
 fn get_registered_commands(ctx: &egui::Context) -> Vec<CommandMetadata> {
     ctx.data(|d| {
         d.get_temp::<CommandRegistryData>(egui::Id::new("CMD_REGISTRY"))
@@ -33,6 +35,7 @@ fn get_registered_commands(ctx: &egui::Context) -> Vec<CommandMetadata> {
     })
 }
 
+#[cfg(feature = "pure_math")]
 fn find_tab_index(app: &MathExplorerApp, tab_name: &str) -> usize {
     app.tabs
         .iter()
@@ -40,11 +43,13 @@ fn find_tab_index(app: &MathExplorerApp, tab_name: &str) -> usize {
         .unwrap_or_else(|| panic!("Expected tab '{}' to be registered", tab_name))
 }
 
+#[cfg(feature = "pure_math")]
 fn has_cmd(cmds: &[CommandMetadata], context: &str, name: &str) -> bool {
     cmds.iter().any(|c| c.context == context && c.name == name)
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_global_and_session_shortcuts_survive_framework_tab_with_descriptions() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();
@@ -86,6 +91,7 @@ fn test_global_and_session_shortcuts_survive_framework_tab_with_descriptions() {
 }
 
 #[test]
+#[cfg(all(feature = "pure_math", feature = "applied"))]
 fn test_plot_shortcuts_appear_unfocused_in_framework_and_standalone_tabs() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();
@@ -150,6 +156,7 @@ fn test_plot_shortcuts_appear_unfocused_in_framework_and_standalone_tabs() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_camera_3d_shortcuts_appear_unfocused_and_movement_stays_focus_gated() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();
@@ -207,6 +214,7 @@ fn test_camera_3d_shortcuts_appear_unfocused_and_movement_stays_focus_gated() {
 }
 
 #[test]
+#[cfg(all(feature = "pure_math", feature = "applied"))]
 fn test_graph_editor_shortcuts_and_frame_reset_on_tab_switch() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();
@@ -234,6 +242,7 @@ fn test_graph_editor_shortcuts_and_frame_reset_on_tab_switch() {
 }
 
 #[test]
+#[cfg(all(feature = "pure_math", feature = "applied", feature = "physics"))]
 fn test_multi_pane_merges_and_deduplicates_pane_shortcuts() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
     let ctx = egui::Context::default();

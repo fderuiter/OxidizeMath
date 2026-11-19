@@ -1,17 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::async_sim::unified::UnifiedSimTool;
 use crate::framework::recovery::DiagnosticReport;
-use crate::framework::InteractiveTool;
-use crate::tabs::ai::q_table_inspector::QTableInspectorTool;
-use crate::tabs::ai::reward_plots::RewardPlotsTool;
-use crate::tabs::chaos::attractors::AttractorPlotter;
-use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
-use crate::tabs::mri::MriTab;
-use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
-use crate::tabs::quantum::wave_sim::WaveUnified;
-use crate::tabs::solid_state::ising::IsingModelTool;
 use eframe::egui;
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(not(target_arch = "wasm32"))]
@@ -174,7 +164,14 @@ fn test_disconnected_faulted_worker_preserves_diagnostic_until_respawn() {
 }
 
 #[test]
+#[cfg(all(feature = "physics", feature = "biology"))]
 fn test_unified_tools_render_non_empty_panels_on_frame_zero() {
+    use crate::async_sim::unified::UnifiedSimTool;
+    use crate::framework::InteractiveTool;
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+    use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+    use crate::tabs::quantum::wave_sim::WaveUnified;
+
     let ctx = egui::Context::default();
 
     let mut wave = UnifiedSimTool::<WaveUnified>::new();
@@ -226,8 +223,11 @@ fn test_unified_tools_render_non_empty_panels_on_frame_zero() {
 }
 
 #[test]
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "physics"))]
 fn test_lbm_paused_apply_brush_emits_fresh_snapshot() {
+    use crate::async_sim::unified::UnifiedSimTool;
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+
     let mut lbm = UnifiedSimTool::<LbmUnified>::new();
     let _ = lbm.controller.update();
     assert_eq!(lbm.state(), SimWorkerState::Ready);
@@ -264,7 +264,13 @@ fn test_lbm_paused_apply_brush_emits_fresh_snapshot() {
 }
 
 #[test]
+#[cfg(all(feature = "physics", feature = "ai"))]
 fn test_mri_and_ising_and_qtable_seed_without_duplicate_models() {
+    use crate::framework::InteractiveTool;
+    use crate::tabs::ai::q_table_inspector::QTableInspectorTool;
+    use crate::tabs::mri::MriTab;
+    use crate::tabs::solid_state::ising::IsingModelTool;
+
     let ctx = egui::Context::default();
 
     let mut mri = MriTab::default();
@@ -289,7 +295,13 @@ fn test_mri_and_ising_and_qtable_seed_without_duplicate_models() {
 }
 
 #[test]
+#[cfg(all(feature = "physics", feature = "ai"))]
 fn test_fault_banners_and_reset_across_rl_and_attractor_tools() {
+    use crate::framework::InteractiveTool;
+    use crate::tabs::ai::q_table_inspector::QTableInspectorTool;
+    use crate::tabs::ai::reward_plots::RewardPlotsTool;
+    use crate::tabs::chaos::attractors::AttractorPlotter;
+
     let ctx = egui::Context::default();
 
     let mut reward = RewardPlotsTool::default();

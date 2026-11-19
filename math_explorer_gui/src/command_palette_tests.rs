@@ -173,6 +173,7 @@ fn test_query_change_resets_selection() {
 }
 
 #[test]
+#[cfg(all(feature = "pure_math", feature = "physics", feature = "climate"))]
 fn test_palette_tool_indexing_and_fuzzy_match() {
     let tabs = mock_tabs();
     // 1. Dijkstra (via tag on AlgorithmVisualizerTool)
@@ -229,6 +230,7 @@ fn test_palette_tool_indexing_and_fuzzy_match() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_palette_keyboard_tool_selection() {
     let ctx = egui::Context::default();
     let tabs = mock_tabs();
@@ -261,6 +263,7 @@ fn test_palette_keyboard_tool_selection() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_palette_score_ranking_tabs_vs_tools() {
     let tabs = mock_tabs();
     // Query that matches both tab name and tool
@@ -282,6 +285,7 @@ fn test_palette_score_ranking_tabs_vs_tools() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_palette_domain_fallback_safely_defaults_to_zero() {
     // Create tabs without matching domains
     let tabs: Vec<Box<dyn crate::tabs::ExplorerTab>> =
@@ -315,27 +319,30 @@ fn test_palette_domain_title_formatting_and_dual_key_search() {
         "Geometry & Topology"
     );
 
-    let tabs = mock_tabs();
-    for query in [
-        "clinical_trials",
-        "Clinical Trials",
-        "Sample Size Calculator (Clinical Trials)",
-    ] {
-        let palette = CommandPalette {
-            query: query.to_string(),
-            ..Default::default()
-        };
-        let items = palette.filter_items(&tabs);
-        assert!(
-            items.iter().any(|item| matches!(
-                item,
-                PaletteItem::Tool {
-                    name: "Sample Size Calculator",
-                    domain: "clinical_trials",
-                    ..
-                }
-            )),
-            "Expected Sample Size Calculator to match query '{query}'"
-        );
+    #[cfg(feature = "applied")]
+    {
+        let tabs = mock_tabs();
+        for query in [
+            "clinical_trials",
+            "Clinical Trials",
+            "Sample Size Calculator (Clinical Trials)",
+        ] {
+            let palette = CommandPalette {
+                query: query.to_string(),
+                ..Default::default()
+            };
+            let items = palette.filter_items(&tabs);
+            assert!(
+                items.iter().any(|item| matches!(
+                    item,
+                    PaletteItem::Tool {
+                        name: "Sample Size Calculator",
+                        domain: "clinical_trials",
+                        ..
+                    }
+                )),
+                "Expected Sample Size Calculator to match query '{query}'"
+            );
+        }
     }
 }

@@ -243,6 +243,7 @@ fn test_preset_dialog_poll_import_export_and_cancel_cleanup() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_preset_dialog_poll_import_tool_and_read_error() {
     let mut framework = crate::framework::SimulationFramework::new("chaos");
     let tool = framework

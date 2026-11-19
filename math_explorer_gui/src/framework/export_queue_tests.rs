@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod tests {
     use crate::framework::*;
+    #[cfg(feature = "pure_math")]
     use std::sync::atomic::{AtomicUsize, Ordering};
+    #[cfg(feature = "pure_math")]
     use std::sync::Arc;
 
     #[test]
@@ -33,6 +35,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pure_math")]
     fn test_export_csv_end_of_frame_dispatch_non_empty() {
         let temp_dir =
             std::env::temp_dir().join(format!("oxidize_test_export_csv_{}", std::process::id()));
@@ -84,6 +87,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pure_math")]
     fn test_export_json_end_of_frame_dispatch_valid_json() {
         let temp_dir =
             std::env::temp_dir().join(format!("oxidize_test_export_json_{}", std::process::id()));
@@ -137,6 +141,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pure_math")]
     fn test_exported_coordinates_match_click_frame_visual_parameters() {
         let mut framework = SimulationFramework::new("analysis");
         framework.export_queue.custom_writer = Some(Arc::new(|_, _| {}));
@@ -182,6 +187,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pure_math")]
     fn test_rapid_repeated_clicks_produce_single_write() {
         let write_count = Arc::new(AtomicUsize::new(0));
         let write_count_clone = Arc::clone(&write_count);
@@ -219,6 +225,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pure_math")]
     fn test_export_action_bar_button_simulation() {
         let temp_dir =
             std::env::temp_dir().join(format!("oxidize_test_bar_sim_{}", std::process::id()));
@@ -258,6 +265,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pure_math")]
     fn test_deferred_dispatch_captures_frame_data_where_immediate_fails() {
         // Reproduce the problem statement:
         // When clear_last_plot_datasets is called at the beginning of the frame,
@@ -339,6 +347,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pure_math")]
     fn test_clipboard_end_of_frame_dispatch_accuracy_without_disk_writes() {
         let temp_dir = std::env::temp_dir().join(format!(
             "oxidize_test_clipboard_no_disk_{}",
@@ -451,6 +460,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pure_math")]
     fn test_clipboard_unavailable_and_confirmation_timeout() {
         let mut fw_err = SimulationFramework::new("analysis");
         fw_err.export_queue.custom_clipboard_writer =

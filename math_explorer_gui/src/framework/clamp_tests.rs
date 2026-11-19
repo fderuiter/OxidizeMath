@@ -86,6 +86,7 @@ fn test_clamp_parameters_multistep_lorenz_restores_plots_and_stabilizes() {
 }
 
 #[test]
+#[cfg(feature = "climate")]
 fn test_clamp_parameters_dispatches_domain_hooks_and_restores_datasets() {
     let mut cera_fw = SimulationFramework::new("climate");
     assert!(cera_fw.select_tool_by_name("CeraTool"));

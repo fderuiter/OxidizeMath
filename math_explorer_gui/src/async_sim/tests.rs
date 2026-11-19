@@ -309,6 +309,7 @@ fn test_state_display_and_helpers() {
 }
 
 #[test]
+#[cfg(all(feature = "physics", feature = "biology"))]
 fn test_domain_simulation_tools_initialization() {
     use crate::async_sim::unified::UnifiedSimTool;
     use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
@@ -326,6 +327,7 @@ fn test_domain_simulation_tools_initialization() {
 }
 
 #[test]
+#[cfg(all(feature = "physics", feature = "biology"))]
 fn test_unified_model_observable_hook_and_voltage_derivatives() {
     use crate::async_sim::unified::UnifiedModel;
     use crate::sensitivity::SensitivityEngine;
@@ -386,6 +388,7 @@ fn test_unified_model_observable_hook_and_voltage_derivatives() {
 }
 
 #[test]
+#[cfg(all(feature = "physics", feature = "biology"))]
 fn test_unified_sim_tool_panel_gating() {
     use crate::async_sim::unified::UnifiedSimTool;
     use crate::framework::InteractiveTool;

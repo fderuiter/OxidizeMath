@@ -2,8 +2,10 @@ use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 
 pub mod slider;
+#[allow(unused_imports)]
 pub use slider::AnimatedSlider;
 #[cfg(test)]
+#[allow(unused_imports)]
 pub use slider::AnimatedSliderState;
 
 fn format_metric_label(label: &str, value: &str) -> String {

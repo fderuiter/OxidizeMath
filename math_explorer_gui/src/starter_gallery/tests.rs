@@ -1,6 +1,7 @@
 use super::*;
 
 #[test]
+#[cfg(all(feature = "pure_math", feature = "physics", feature = "biology"))]
 fn test_starter_cards_presence_and_metadata() {
     let analysis_cards = get_starter_cards_for_domain("analysis", &[]);
     assert!(analysis_cards
@@ -38,6 +39,15 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
+    #[cfg(all(
+        feature = "pure_math",
+        feature = "applied",
+        feature = "ai",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics"
+    ))]
     assert!(
         tools.len() >= 42,
         "Expected at least 42 tools, found {}",
@@ -89,6 +99,7 @@ fn test_starter_cards_for_all_registered_domains() {
     for tool in inventory::iter::<ToolMetadata> {
         domains.insert(tool.domain);
     }
+    #[cfg(feature = "biology")]
     domains.insert("biology");
 
     for &domain in &domains {
@@ -119,6 +130,15 @@ fn test_starter_cards_for_all_registered_domains() {
     }
 }
 
+#[cfg(all(
+    feature = "pure_math",
+    feature = "applied",
+    feature = "ai",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 fn perturb_first_number(val: &mut serde_json::Value) -> bool {
     match val {
         serde_json::Value::Number(num) => {
@@ -154,6 +174,15 @@ fn perturb_first_number(val: &mut serde_json::Value) -> bool {
     }
 }
 
+#[cfg(all(
+    feature = "pure_math",
+    feature = "applied",
+    feature = "ai",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetMetadata) {
     let payload = (preset.preset_generator)();
     let mut target_tool = (tool_meta.build)();
@@ -205,6 +234,15 @@ fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetM
 }
 
 #[test]
+#[cfg(all(
+    feature = "pure_math",
+    feature = "applied",
+    feature = "ai",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
     use crate::presets::InteractivePreset;
     use crate::tabs::morphogenesis::MorphogenesisTab;
@@ -249,6 +287,15 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
 }
 
 #[test]
+#[cfg(all(
+    feature = "pure_math",
+    feature = "applied",
+    feature = "ai",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
@@ -309,6 +356,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_unified_sim_tool_rejects_unknown_empty_and_non_finite_parameters() {
     let lbm_meta = inventory::iter::<ToolMetadata>
         .into_iter()

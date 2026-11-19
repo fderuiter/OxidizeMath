@@ -1,21 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::recovery::*;
-use crate::async_sim::unified::UnifiedModel;
-use crate::async_sim::{SimCommand, SimulationRunner};
-use crate::framework::InteractiveTool;
-use crate::tabs::climate::cera::CeraTool;
-use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
-use crate::tabs::morphogenesis::{
-    MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
-};
-use crate::tabs::quantum::wave_sim::WaveUnified;
 use eframe::egui;
-use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
-use num_complex::Complex;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 struct DummyGuard {
     is_finite: bool,
@@ -82,7 +68,13 @@ fn test_generic_recovery_banner_rendering_and_actions() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_lattice_boltzmann_divergence_and_recovery() {
+    use crate::async_sim::unified::UnifiedModel;
+    use crate::async_sim::SimCommand;
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+    use std::collections::HashMap;
+
     let mut params = HashMap::new();
     params.insert("viscosity".to_string(), 0.02);
 
@@ -124,7 +116,14 @@ fn test_lattice_boltzmann_divergence_and_recovery() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_quantum_wave_sim_divergence_and_recovery() {
+    use crate::async_sim::unified::UnifiedModel;
+    use crate::async_sim::SimCommand;
+    use crate::tabs::quantum::wave_sim::WaveUnified;
+    use num_complex::Complex;
+    use std::collections::HashMap;
+
     let mut params = HashMap::new();
     params.insert("potential_type".to_string(), 0.0);
     params.insert("dt".to_string(), 0.05);
@@ -172,7 +171,16 @@ fn test_quantum_wave_sim_divergence_and_recovery() {
 }
 
 #[test]
+#[cfg(feature = "biology")]
 fn test_morphogenesis_divergence_and_recovery() {
+    use crate::async_sim::SimulationRunner;
+    use crate::tabs::morphogenesis::{
+        MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
+    };
+    use math_explorer::biology::diffusion::FiniteDifference2D;
+    use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+    use std::sync::Arc;
+
     let width = 20;
     let height = 20;
     let kinetics = SchnakenbergKinetics { a: 0.1, b: 0.9 };
@@ -239,7 +247,11 @@ fn test_morphogenesis_divergence_and_recovery() {
 }
 
 #[test]
+#[cfg(feature = "climate")]
 fn test_cera_divergence_and_recovery() {
+    use crate::framework::InteractiveTool;
+    use crate::tabs::climate::cera::CeraTool;
+
     let mut tool = CeraTool::default();
     assert!(FiniteStateGuard::is_finite_state(&tool));
     assert!(!tool.diverged());
@@ -273,7 +285,12 @@ fn test_cera_divergence_and_recovery() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_runtime_overhead_less_than_one_percent() {
+    use crate::async_sim::unified::UnifiedModel;
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+    use std::collections::HashMap;
+
     let params = HashMap::new();
     let mut lbm = LbmUnified::new(&params);
 

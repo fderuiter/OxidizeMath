@@ -46,6 +46,7 @@ fn test_viewport_layout_toggle_transitions() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_multi_pane_independent_tab_assignment() {
     let mut app = MathExplorerApp::default();
     assert!(app.tabs.len() >= 2);
@@ -173,6 +174,7 @@ fn test_multi_pane_session_envelope_serialization_and_restore() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_legacy_session_deserialization_defaults_to_single() {
     let legacy_json = r#"{
         "selected_tab": 1,
@@ -372,6 +374,7 @@ fn test_divider_drag_ratio_adjustments_and_clamping() {
 }
 
 #[test]
+#[cfg(feature = "pure_math")]
 fn test_legacy_saved_state_restores_split_ratio_and_layout() {
     let legacy_json = r#"{
         "selected_tab": 0,

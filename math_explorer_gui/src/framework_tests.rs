@@ -362,6 +362,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "epidemiology")]
     fn test_sensitivity_panel_screenshot_generation() {
         let ctx = eframe::egui::Context::default();
         let mut framework = SimulationFramework::new("epidemiology");
@@ -390,6 +391,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "physics")]
     #[allow(clippy::too_many_lines)]
     fn test_framework_starter_gallery_lifecycle_and_presets() {
         let ctx = eframe::egui::Context::default();
@@ -481,5 +483,6 @@ mod tests {
     }
 }
 
+#[cfg(feature = "pure_math")]
 #[path = "framework/toolbar_reset_tests.rs"]
 mod toolbar_reset_tests;

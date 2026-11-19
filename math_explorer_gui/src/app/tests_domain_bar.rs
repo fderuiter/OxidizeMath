@@ -3,10 +3,19 @@
 use super::*;
 use crate::app::domain_bar::AcademicDomain;
 use eframe::App;
-use std::collections::HashMap;
 
 #[test]
+#[cfg(all(
+    feature = "pure_math",
+    feature = "applied",
+    feature = "ai",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 fn test_all_21_modules_categorized_into_academic_domains() {
+    use std::collections::HashMap;
     let app = MathExplorerApp::default();
     assert_eq!(
         app.tabs.len(),
@@ -132,6 +141,7 @@ fn test_domain_switcher_bar_renders_at_720p_without_overflow() {
 }
 
 #[test]
+#[cfg(feature = "physics")]
 fn test_select_tab_updates_state_and_announces() {
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
@@ -153,6 +163,7 @@ fn test_select_tab_updates_state_and_announces() {
 }
 
 #[test]
+#[cfg(all(feature = "ai", feature = "physics"))]
 fn test_command_palette_synchronizes_active_domain_and_module() {
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
@@ -177,6 +188,7 @@ fn test_command_palette_synchronizes_active_domain_and_module() {
 }
 
 #[test]
+#[cfg(all(feature = "pure_math", feature = "ai"))]
 fn test_tab_state_preserved_across_domain_switches() {
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
