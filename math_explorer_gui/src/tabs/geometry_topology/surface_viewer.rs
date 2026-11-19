@@ -1,6 +1,6 @@
-use crate::framework::InteractiveTool;
+use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{Line, PlotPoints};
 use math_explorer::pure_math::differential_geometry::surface::{
     KleinBottle, ParametricSurface, Sphere, Torus,
 };
@@ -14,7 +14,19 @@ enum SurfaceType {
     KleinBottle,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize)]
+struct SurfaceViewerSaveState {
+    surface_type: SurfaceType,
+    sphere_radius: f64,
+    torus_major_radius: f64,
+    torus_minor_radius: f64,
+    klein_radius: f64,
+    u_resolution: usize,
+    v_resolution: usize,
+    camera: Camera3D,
+}
+
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SurfaceViewerState {
     surface_type: SurfaceType,
@@ -24,7 +36,14 @@ struct SurfaceViewerState {
     klein_radius: f64,
     u_resolution: usize,
     v_resolution: usize,
-    camera: crate::framework::Camera3D,
+    #[serde(default)]
+    camera: Option<Camera3D>,
+    #[serde(default)]
+    pitch: Option<f32>,
+    #[serde(default)]
+    yaw: Option<f32>,
+    #[serde(default)]
+    zoom: Option<f32>,
 }
 
 pub struct SurfaceViewer {
@@ -126,7 +145,7 @@ impl InteractiveTool for SurfaceViewer {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&SurfaceViewerState {
+        serde_json::to_string(&SurfaceViewerSaveState {
             surface_type: self.surface_type,
             sphere_radius: self.sphere_radius,
             torus_major_radius: self.torus_major_radius,
@@ -159,13 +178,13 @@ impl InteractiveTool for SurfaceViewer {
         {
             return Err("Surface resolution out of valid bounds".to_string());
         }
-        if !loaded.camera.pitch.is_finite()
-            || !loaded.camera.yaw.is_finite()
-            || !loaded.camera.zoom.is_finite()
-            || !(0.01..=100.0).contains(&loaded.camera.zoom)
-        {
-            return Err("Camera parameters out of valid bounds".to_string());
-        }
+        let camera = Camera3D::from_preset_fields(
+            loaded.camera,
+            loaded.pitch,
+            loaded.yaw,
+            loaded.zoom,
+            None,
+        )?;
         self.surface_type = loaded.surface_type;
         self.sphere_radius = loaded.sphere_radius;
         self.torus_major_radius = loaded.torus_major_radius;
@@ -173,7 +192,7 @@ impl InteractiveTool for SurfaceViewer {
         self.klein_radius = loaded.klein_radius;
         self.u_resolution = loaded.u_resolution;
         self.v_resolution = loaded.v_resolution;
-        self.camera = loaded.camera;
+        self.camera.apply_pose(camera);
         Ok(())
     }
 
@@ -258,22 +277,15 @@ impl InteractiveTool for SurfaceViewer {
 
             let grid_lines = self.generate_grid_lines(surface.as_ref());
 
-            let response = Plot::new("surface_plot")
-                .data_aspect(1.0)
-                .show(ui, |plot_ui| {
-                    for (i, line_points) in grid_lines.into_iter().enumerate() {
-                        plot_ui.line(
-                            Line::new("", PlotPoints::new(line_points))
-                                .name(format!("line_{}", i))
-                                .color(palette.series_color(0)),
-                        );
-                    }
-                })
-                .response;
-
-            self.camera.handle_interaction(&response, ui);
-
-            ui.label("Drag 'Yaw' and 'Pitch' in the side panel to rotate the view.");
+            Plot3DViewport::new("surface_plot", 4.0).show(ui, &mut self.camera, |plot_ui| {
+                for (i, line_points) in grid_lines.into_iter().enumerate() {
+                    plot_ui.line(
+                        Line::new("", PlotPoints::new(line_points))
+                            .name(format!("line_{}", i))
+                            .color(palette.series_color(0)),
+                    );
+                }
+            });
         });
     }
 }
@@ -347,5 +359,21 @@ inventory::submit! {
         domain: "geometry_topology",
         tool_name: Some("SurfaceViewer"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![cfg_attr(any(), verified(opt_out = "tests"))]
+
+    use super::*;
+
+    #[test]
+    fn surface_viewer_viewport_and_plot_export_work() {
+        let mut tool = SurfaceViewer::default();
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+        assert!(!egui_plot::get_last_plot_datasets().is_empty());
+        assert!(!egui_plot::get_last_plot_primitives().is_empty());
     }
 }
