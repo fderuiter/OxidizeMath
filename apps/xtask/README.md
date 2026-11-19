@@ -16,9 +16,10 @@ These commands run automated checks in git hooks or CI.
 | `check-markdown-links` | Check all internal relative markdown documentation links | Active |
 | `check-staged-duplicates` | Checks for duplicated files in staging. | Active |
 | `check-vulnerabilities` | Scans workspace dependencies for known vulnerabilities. | Active |
-| `lint-all` | Runs formatting, clippy, file-length, duplicate, doc, doctest, workflow, traceability, entropy, and vulnerability checks. | Active |
+| `lint-all` | Runs formatting, clippy, file-length, duplicate, doc, doctest, workflow, traceability, entropy, vulnerability, and policy audit checks. | Active |
 | `lint-workflows` | Validates CI workflow definitions. | Active |
 | `test-features` | Runs tests for various cargo features. | Active |
+| `test-policy-audit` | Audits workspace crates for unauthorized dead-code bypasses and unused dependencies. | Active |
 | `traceability` | Generates and checks the traceability report. | Active |
 | `verify-records` | Verifies structural records. | Active |
 | `verify-suite` | Runs the high-integrity verification suite. | Active |
