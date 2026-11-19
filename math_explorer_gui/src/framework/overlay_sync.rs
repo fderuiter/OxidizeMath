@@ -3,6 +3,14 @@
 use super::SimulationFramework;
 use eframe::egui;
 
+#[derive(Default, Clone, Copy)]
+pub(crate) struct FrameworkSyncState {
+    pub(super) theory_portal: Option<bool>,
+    pub(super) starter_gallery: Option<bool>,
+    pub(super) datasets_owner_tool: Option<&'static str>,
+    pub(super) last_modal_scope_id: Option<egui::Id>,
+}
+
 pub(super) fn next_framework_id() -> u64 {
     static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
