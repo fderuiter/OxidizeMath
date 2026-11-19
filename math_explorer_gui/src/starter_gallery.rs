@@ -17,7 +17,7 @@ pub struct StarterCard {
     pub category: &'static str,
     /// Visual icon or emoji.
     pub icon: &'static str,
-    /// Target domain string matching `InteractivePreset::domain`.
+    /// Target domain string matching [`crate::framework::InteractiveTool::domain`].
     pub domain: &'static str,
     /// Tool metadata name in the domain to select/activate.
     pub tool_name: Option<&'static str>,

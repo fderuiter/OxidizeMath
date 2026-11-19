@@ -1,7 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::*;
-use crate::presets::{InteractivePreset, MorphogenesisPresetConfig};
+use crate::presets::{
+    deserialize_preset_envelope, serialize_preset_envelope, MorphogenesisPresetConfig,
+};
 
 pub struct SimpleRng {
     state: u64,
@@ -26,18 +28,14 @@ impl SimpleRng {
     }
 }
 
-impl InteractivePreset for MorphogenesisTab {
-    type Config = MorphogenesisPresetConfig;
-
-    fn domain(&self) -> &'static str {
+impl MorphogenesisTab {
+    /// Domain category string used for preset envelope validation and filenames.
+    pub fn domain(&self) -> &'static str {
         "biology"
     }
 
-    fn title(&self) -> String {
-        "Turing Morphogenesis Simulation".to_string()
-    }
-
-    fn export_config(&self) -> Self::Config {
+    /// Exports active simulation parameters into [`MorphogenesisPresetConfig`].
+    pub fn export_config(&self) -> MorphogenesisPresetConfig {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         MorphogenesisPresetConfig {
             a: p.a,
@@ -50,7 +48,8 @@ impl InteractivePreset for MorphogenesisTab {
         }
     }
 
-    fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
+    /// Applies imported [`MorphogenesisPresetConfig`] parameters to the simulation state.
+    pub fn apply_config(&mut self, config: MorphogenesisPresetConfig) -> Result<(), String> {
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.a = config.a;
@@ -75,9 +74,24 @@ impl InteractivePreset for MorphogenesisTab {
         }
         Ok(())
     }
-}
 
-impl MorphogenesisTab {
+    /// Serializes active simulation parameters to a formatted [`crate::presets::PresetWrapper`] JSON string.
+    pub fn to_json_string(&self) -> Result<String, String> {
+        serialize_preset_envelope(
+            "Turing Morphogenesis Simulation",
+            self.domain(),
+            self.export_config(),
+        )
+    }
+
+    /// Validates a [`crate::presets::PresetWrapper`] JSON string and applies its configuration.
+    #[allow(clippy::wrong_self_convention)]
+    pub fn from_json_str(&mut self, json_str: &str) -> Result<(), String> {
+        let config: MorphogenesisPresetConfig =
+            deserialize_preset_envelope(json_str, self.domain(), self.name())?;
+        self.apply_config(config)
+    }
+
     pub(crate) fn apply_starter_card(
         &mut self,
         card_title: &str,

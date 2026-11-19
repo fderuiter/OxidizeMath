@@ -1,7 +1,6 @@
-//! Presets module providing uniform Serde JSON export and import traits
+//! Presets module providing shared Serde JSON envelope helpers, dialog state,
 //! and configuration models for Math Explorer simulation tools.
 
-use crate::framework::InteractiveTool;
 use federated_registry::Severity;
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
@@ -57,7 +56,7 @@ impl OdePreset {
     }
 }
 
-/// Maximum allowed integration step count for [`OdePresetConfig`] and ODE solvers.
+/// Maximum allowed integration step count for ODE solvers.
 pub const MAX_ODE_STEPS: usize = 200_000;
 
 /// Computes a bounded ODE integration step count when `dt` and `total_time` are finite,
@@ -72,62 +71,6 @@ pub fn checked_ode_step_count(dt: f64, total_time: f64) -> Option<usize> {
         return None;
     }
     Some(steps as usize)
-}
-
-/// Configuration struct for ODE Solver simulation parameters.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct OdePresetConfig {
-    /// System equation type.
-    pub preset: OdePreset,
-    /// Integration time step size.
-    pub dt: f64,
-    /// Total simulation time horizon.
-    pub total_time: f64,
-    /// Parameter k (rate or spring constant).
-    pub param_k: f64,
-    /// Parameter r (growth rate).
-    pub param_r: f64,
-    /// Carrying capacity K.
-    pub param_cap_k: f64,
-    /// Initial condition y(0).
-    pub ic_y0: f64,
-    /// Initial condition y'(0).
-    pub ic_v0: f64,
-    /// Custom user equation expression.
-    #[serde(default)]
-    pub custom_expr: String,
-}
-
-impl OdePresetConfig {
-    /// Validates parameter finiteness, positive time bounds, and [`MAX_ODE_STEPS`] step ratio.
-    pub fn validate(&self) -> Result<(), String> {
-        if !self.dt.is_finite()
-            || self.dt <= 0.0
-            || !self.total_time.is_finite()
-            || self.total_time <= 0.0
-        {
-            return Err("ODE preset requires finite positive dt and total_time".to_string());
-        }
-        if ![
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-            self.ic_y0,
-            self.ic_v0,
-        ]
-        .into_iter()
-        .all(f64::is_finite)
-        {
-            return Err("ODE preset parameters and initial conditions must be finite".to_string());
-        }
-        if checked_ode_step_count(self.dt, self.total_time).is_none() {
-            return Err(format!(
-                "ODE step count (total_time / dt) exceeds maximum allowed limit ({MAX_ODE_STEPS})"
-            ));
-        }
-        Ok(())
-    }
 }
 
 /// Configuration struct for Turing Morphogenesis simulation parameters.
@@ -202,52 +145,43 @@ impl ReplicatorPresetConfig {
     }
 }
 
-/// Trait providing uniform JSON export and import capabilities for interactive simulation tools.
-pub trait InteractivePreset: Sized {
-    /// Serializable parameter configuration struct.
-    type Config: Serialize + for<'de> Deserialize<'de>;
+/// Packs `config` into a `"1.0"` [`PresetWrapper`] metadata envelope and serializes it as pretty JSON.
+pub fn serialize_preset_envelope<T: Serialize>(
+    title: &str,
+    domain: &str,
+    config: T,
+) -> Result<String, String> {
+    let envelope = PresetWrapper {
+        metadata: PresetMetadata {
+            schema_version: "1.0".to_string(),
+            title: title.to_string(),
+            domain: domain.to_string(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        },
+        config,
+    };
+    serde_json::to_string_pretty(&envelope).map_err(|e| format!("Serialization error: {e}"))
+}
 
-    /// Domain category string (e.g. "analysis", "biology", "game_theory").
-    fn domain(&self) -> &'static str;
-
-    /// Human-readable title of the current preset/simulation state.
-    fn title(&self) -> String;
-
-    /// Export active UI/simulation state into the configuration struct.
-    fn export_config(&self) -> Self::Config;
-
-    /// Apply imported configuration parameters to the simulation state.
-    fn apply_config(&mut self, config: Self::Config) -> Result<(), String>;
-
-    /// Serializes active simulation state to a formatted JSON string with metadata envelope.
-    fn to_json_string(&self) -> Result<String, String> {
-        let envelope = PresetWrapper {
-            metadata: PresetMetadata {
-                schema_version: "1.0".to_string(),
-                title: self.title(),
-                domain: self.domain().to_string(),
-                timestamp: chrono::Utc::now().to_rfc3339(),
-            },
-            config: self.export_config(),
-        };
-        serde_json::to_string_pretty(&envelope).map_err(|e| format!("Serialization error: {}", e))
+/// Strips any UTF-8 BOM, parses a [`PresetWrapper`] JSON envelope, and validates `metadata.domain`.
+pub fn deserialize_preset_envelope<T: for<'de> Deserialize<'de>>(
+    json_str: &str,
+    expected_domain: &str,
+    target_name: &str,
+) -> Result<T, String> {
+    let cleaned = egui_plot::export::strip_utf8_bom(json_str);
+    let envelope: PresetWrapper<T> =
+        serde_json::from_str(cleaned).map_err(|e| format!("Invalid JSON preset schema: {e}"))?;
+    if expected_domain.is_empty() {
+        return Err(format!("Preset import not supported for {target_name}"));
     }
-
-    /// Parses and validates a JSON preset string, applying configuration if valid.
-    #[allow(clippy::wrong_self_convention)]
-    fn from_json_str(&mut self, json_str: &str) -> Result<(), String> {
-        let cleaned = egui_plot::export::strip_utf8_bom(json_str);
-        let envelope: PresetWrapper<Self::Config> = serde_json::from_str(cleaned)
-            .map_err(|e| format!("Invalid JSON preset schema: {}", e))?;
-        if envelope.metadata.domain != self.domain() {
-            return Err(format!(
-                "Domain mismatch: preset is for domain '{}', but active tool is '{}'",
-                envelope.metadata.domain,
-                self.domain()
-            ));
-        }
-        self.apply_config(envelope.config)
+    if envelope.metadata.domain != expected_domain {
+        return Err(format!(
+            "Domain mismatch: preset is for domain '{}', but active tool is '{}'",
+            envelope.metadata.domain, expected_domain
+        ));
     }
+    Ok(envelope.config)
 }
 
 /// UI helper state for non-blocking file operations and user warnings/toasts.
@@ -380,44 +314,29 @@ impl PresetDialogState {
         }
     }
 
-    /// Polls pending import channel and applies imported preset JSON to the target tool if ready.
-    pub fn poll_import<T: InteractivePreset>(&mut self, tool: &mut T) -> bool {
-        self.poll_export();
-        let mut loaded = false;
-        if let Some(rx) = &self.import_rx {
-            match rx.try_recv() {
-                Ok(res) => {
-                    self.import_rx = None;
-                    match res
-                        .and_then(|(name, json_str)| tool.from_json_str(&json_str).map(|()| name))
-                    {
-                        Ok(name) => {
-                            self.record_toast_info(format!("Loaded preset from {name}"));
-                            loaded = true;
-                        }
-                        Err(err) => self.record_import_error(err),
-                    }
-                }
-                Err(TryRecvError::Disconnected) => {
-                    self.import_rx = None;
-                }
-                Err(TryRecvError::Empty) => {}
+    /// Triggers a preset file export from serialized JSON or records any serialization error.
+    pub fn export_preset_result(&mut self, result: Result<String, String>, file_prefix: &str) {
+        match result {
+            Ok(json_str) => {
+                let filename = format!("{file_prefix}_preset.json");
+                self.trigger_export(json_str, &filename);
             }
+            Err(err) => self.record_import_error(err),
         }
-        loaded
     }
 
-    /// Polls pending import channel and applies imported preset JSON to an InteractiveTool if ready.
-    pub fn poll_import_tool(&mut self, tool: &mut dyn InteractiveTool) -> bool {
+    /// Polls pending export and import channels, applying imported preset JSON with `apply_json` if ready.
+    pub fn poll_pending_import<F>(&mut self, apply_json: F) -> bool
+    where
+        F: FnOnce(&str) -> Result<(), String>,
+    {
         self.poll_export();
         let mut loaded = false;
         if let Some(rx) = &self.import_rx {
             match rx.try_recv() {
                 Ok(res) => {
                     self.import_rx = None;
-                    match res.and_then(|(name, json_str)| {
-                        tool.import_preset_json(&json_str).map(|()| name)
-                    }) {
+                    match res.and_then(|(name, json_str)| apply_json(&json_str).map(|()| name)) {
                         Ok(name) => {
                             self.record_toast_info(format!("Loaded preset from {name}"));
                             loaded = true;
@@ -436,11 +355,18 @@ impl PresetDialogState {
 }
 
 /// Renders Export/Import buttons and any active inline toast message in the egui UI.
-pub fn render_preset_buttons<T: InteractivePreset>(
+pub fn render_preset_buttons<T, E, I>(
     dialog_state: &mut PresetDialogState,
     ui: &mut eframe::egui::Ui,
-    tool: &mut T,
-) -> bool {
+    target: &mut T,
+    file_prefix: &str,
+    export_json: E,
+    import_json: I,
+) -> bool
+where
+    E: FnOnce(&T) -> Result<String, String>,
+    I: FnOnce(&mut T, &str) -> Result<(), String>,
+{
     ui.separator();
     ui.heading("Preset Import / Export");
     let mut changed = false;
@@ -450,17 +376,11 @@ pub fn render_preset_buttons<T: InteractivePreset>(
             dialog_state.trigger_import();
         }
         if ui.button("📤 Export Preset JSON").clicked() {
-            match tool.to_json_string() {
-                Ok(json_str) => {
-                    let filename = format!("{}_preset.json", tool.domain());
-                    dialog_state.trigger_export(json_str, &filename);
-                }
-                Err(err) => dialog_state.record_import_error(err),
-            }
+            dialog_state.export_preset_result(export_json(target), file_prefix);
         }
     });
 
-    if dialog_state.poll_import(tool) {
+    if dialog_state.poll_pending_import(|json_str| import_json(target, json_str)) {
         changed = true;
     }
 
