@@ -32,6 +32,11 @@ cargo run -p xtask -- lint-all
 You can also invoke individual CI pre-flight checks directly while iterating:
 
 ```bash
+# Format and lint host and WebAssembly targets with Clippy (warnings denied, 60-line function limit in .clippy.toml)
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
+
 # Lint GitHub Actions workflows (.github/workflows/ci.yml and .github/workflows/pages.yml):
 # enforces global permissions: read-all, scoped job write exceptions in verification_whitelist.toml,
 # global concurrency, positive timeout-minutes, and 40-char hexadecimal commit SHA action pinning
@@ -40,10 +45,6 @@ cargo run -p unified_verification --release -- lint-workflows
 # Audit AST attributes for unauthorized dead_code/unused/warnings bypasses and unused dependencies
 cargo run -p xtask -- test-policy-audit
 cargo run -p unified_verification --release -- test-policy-audit
-
-# Check formatting and workspace Clippy lints (60-line function limit in .clippy.toml)
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Verify crate documentation and workspace rustdoc builds
 cargo run -p unified_verification --release -- check-docs

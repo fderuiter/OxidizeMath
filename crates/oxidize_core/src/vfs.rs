@@ -87,8 +87,7 @@ impl VirtualFileSystem for WasmVfs {
         Box::pin(async move {
             use wasm_bindgen::JsCast;
             use wasm_bindgen_futures::JsFuture;
-            let window = web_sys::window()
-                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No window"))?;
+            let window = web_sys::window().ok_or_else(|| std::io::Error::other("No window"))?;
             let mut url = path.clone();
             // ensure it can be fetched
             if !url.starts_with("http") && !url.starts_with('/') {
@@ -96,23 +95,23 @@ impl VirtualFileSystem for WasmVfs {
             }
             let response_value = JsFuture::from(window.fetch_with_str(&url))
                 .await
-                .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Fetch failed"))?;
+                .map_err(|_| std::io::Error::other("Fetch failed"))?;
             let response: web_sys::Response = response_value
                 .dyn_into()
-                .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid response"))?;
+                .map_err(|_| std::io::Error::other("Invalid response"))?;
             if !response.ok() {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     "File not found via fetch",
                 ));
             }
-            let text_value = JsFuture::from(response.text().map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::Other, "No text in response")
-            })?)
+            let text_value = JsFuture::from(
+                response
+                    .text()
+                    .map_err(|_| std::io::Error::other("No text in response"))?,
+            )
             .await
-            .map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::Other, "Text extraction failed")
-            })?;
+            .map_err(|_| std::io::Error::other("Text extraction failed"))?;
             let content = text_value.as_string().unwrap_or_default();
             Ok(content)
         })
