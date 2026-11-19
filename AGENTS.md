@@ -25,15 +25,16 @@ Markdown verification gates:
 
 Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) restore Cargo registry sources and profile-scoped `target/` caches via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (referencing `./.github/actions/cargo-cache` without caching mutable CLI binaries).
 
-Run workspace builds and the full pre-commit verification suite aligned with [CONTRIBUTING.md](CONTRIBUTING.md) via `xtask`:
+Run workspace builds and the full pre-commit verification suite aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [crates/unified_verification/README.md](crates/unified_verification/README.md) via `xtask`:
 
 ```bash
 # Type-check and build all workspace members
 cargo check --workspace
 cargo build --workspace --all-features
 
-# Run the full verification suite (formatting, host & WASM clippy, duplicates, file lengths,
-# rustdoc, doctests, markdown links, workflow lints, crate docs, traceability, entropy, vulnerabilities, policy audit)
+# Run the full verification suite (formatting, Cargo profiles, AST code duplicates, public API drift,
+# staged ADR verification, file lengths, host & WASM clippy, rustdoc, doctests, markdown links,
+# workflow lints, crate docs, traceability, entropy, vulnerabilities, and policy audit)
 cargo run -p xtask -- lint-all
 ```
 
@@ -44,6 +45,22 @@ Before opening or updating a pull request, individual quality gates defined in [
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
+
+# Check Cargo release profile invariants (overflow-checks = true and zero member [profile.release] overrides)
+cargo run -p unified_verification --release -- check-profiles
+cargo run -p xtask -- check-profiles
+
+# Run AST-level code clone detection across first-party crates
+cargo run -p unified_verification --release -- check-duplicates
+cargo run -p xtask -- check-duplicates
+
+# Validate reachable public API signatures against crates/unified_verification/api_baseline.json
+cargo run -p unified_verification --release -- check-api-drift
+cargo run -p xtask -- check-api-drift
+
+# When intentionally changing public APIs, regenerate the baseline and record an ADR under docs/adr/
+cargo run -p unified_verification --release -- regenerate-baseline
+cargo run -p xtask -- regenerate-baseline
 
 # Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA or ./ local action pins, and safe run expressions)
 cargo run -p unified_verification --release -- lint-workflows
@@ -66,8 +83,13 @@ cargo run -p unified_verification --release -- check-file-lengths
 cargo run -p unified_verification --release -- check-entropy
 cargo run -p unified_verification --release -- traceability
 
-# Verify architectural decision records when core crates change
+# Verify architectural decision records across staged index edits or commit ranges when core crates change
+cargo run -p unified_verification --release -- verify-records --staged
 BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
+
+# Run the full high-integrity verified suite (including cargo llvm-cov coverage and Verification_Certificate.json)
+cargo run -p unified_verification --release -- verify-suite
+cargo run -p xtask -- verify-suite
 
 # Native unit/integration tests and WebAssembly target checks
 cargo test --workspace --lib --tests

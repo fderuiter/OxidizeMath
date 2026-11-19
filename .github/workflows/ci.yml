@@ -51,6 +51,15 @@ jobs:
       - name: Lint CI Workflows
         run: cargo run -p unified_verification --release -- lint-workflows
 
+      - name: Check Cargo Profiles
+        run: cargo run -p unified_verification --release -- check-profiles
+
+      - name: Check AST Code Duplicates
+        run: cargo run -p unified_verification --release -- check-duplicates
+
+      - name: Check Public API Drift
+        run: cargo run -p unified_verification --release -- check-api-drift
+
       - name: Verify Architectural Records Updates
         run: cargo run -p unified_verification --release -- verify-records
         env:

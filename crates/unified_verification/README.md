@@ -10,7 +10,7 @@ By consolidating compliance checks into a unified command-line tool, developer w
 
 ### Module Structure
 
-- **`verify-records`**: Audits git commit diffs to enforce that modifying core logic (`crates/` or `math_explorer/`) is accompanied by creating or updating an Architectural Decision Record in `docs/adr/`.
+- **`verify-records`**: Audits git commit diffs or the staged git index (`--staged`) to enforce that modifying core logic (`crates/` or `math_explorer/`) is accompanied by creating or updating an Architectural Decision Record in `docs/adr/`.
 - **`traceability`**: Performs static AST scans across Rust source files to verify literature citation bindings (`papers/`) and module verification attributes.
 - **`check-file-lengths`**: Enforces the 500-line ceiling per source file across workspace members to maintain modularity.
 - **`test-policy-audit`**: Detects unauthorized bypasses such as unapproved `#[allow(dead_code)]` or `#[allow(unused)]` attributes.
@@ -18,6 +18,7 @@ By consolidating compliance checks into a unified command-line tool, developer w
 - **`check-vulnerabilities`**: Audits workspace dependencies against known vulnerabilities via OSV database.
 - **`check-duplicates` / `check-staged-duplicates`**: AST-level code clone detector identifying duplicated logic across crates.
 - **`check-api-drift` / `regenerate-baseline`**: Validates public API surface against baseline definitions to prevent accidental breaking changes.
+- **`check-profiles`**: Verifies workspace `[profile.release]` `overflow-checks = true` enforcement and rejects member-level `[profile.release]` overrides.
 - **`lint-workflows`**: Validates GitHub Actions workflow configurations, enforcing root and job-level read-only permissions (with scoped deployment exceptions in `verification_whitelist.toml`), concurrency controls, job timeouts, commit-pinned actions, and rejecting direct `${{ github.* }}` expressions in `run` scripts.
 
 ---
