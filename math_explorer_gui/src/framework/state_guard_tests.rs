@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::clamp_tests::load_active;
 use super::recovery::*;
 use super::SimulationFramework;
 
@@ -318,7 +319,7 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
         obj.insert("dt".to_string(), serde_json::json!(0.2));
     }
     let modified = serde_json::to_string(&val).unwrap();
-    super::clamp_tests::load_active(&mut framework, &modified);
+    load_active(&mut framework, &modified);
     egui_plot::append_last_plot_datasets(&[("Modified Run".to_string(), vec![[0.0, 5.0]])]);
     framework.current_valid_plot_datasets = vec![("Modified Run".to_string(), vec![[0.0, 5.0]])];
     framework.cache_valid_snapshot();

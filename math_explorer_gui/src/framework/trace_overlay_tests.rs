@@ -78,3 +78,131 @@ fn test_serde_roundtrip() {
     assert_eq!(restored.history_runs()[0].param_summary, "k=1.0");
     assert_eq!(restored.snapshots()[0].label, "Baseline 1");
 }
+
+fn find_trace_button_pos(output: &egui::FullOutput, exact_label: &str) -> egui::Pos2 {
+    let ak = output
+        .platform_output
+        .accesskit_update
+        .as_ref()
+        .expect("AccessKit tree must exist");
+    let bounds = ak
+        .nodes
+        .iter()
+        .find_map(|(_, node)| {
+            if node.role() == egui::accesskit::Role::Button && node.label() == Some(exact_label) {
+                node.bounds()
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| panic!("Trace button '{exact_label}' must exist"));
+    egui::pos2(
+        ((bounds.x0 + bounds.x1) * 0.5) as f32,
+        ((bounds.y0 + bounds.y1) * 0.5) as f32,
+    )
+}
+
+fn run_trace_frame(
+    ctx: &egui::Context,
+    manager: &mut TraceSnapshotManager,
+    events: Vec<egui::Event>,
+) -> egui::FullOutput {
+    let screen_rect = Some(egui::Rect::from_min_size(
+        egui::Pos2::ZERO,
+        egui::vec2(900.0, 600.0),
+    ));
+    ctx.run(
+        egui::RawInput {
+            screen_rect,
+            events,
+            ..Default::default()
+        },
+        |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                manager.render_ui(ui, || None);
+            });
+        },
+    )
+}
+
+fn verify_trace_hover_and_escape(
+    ctx: &egui::Context,
+    manager: &mut TraceSnapshotManager,
+    btn_label: &str,
+    expected_tooltip: &str,
+) {
+    let out = run_trace_frame(
+        ctx,
+        manager,
+        vec![egui::Event::PointerMoved(egui::pos2(890.0, 590.0))],
+    );
+    let pos = find_trace_button_pos(&out, btn_label);
+
+    crate::accessibility::clear_test_announcements();
+    let _ = run_trace_frame(ctx, manager, vec![egui::Event::PointerMoved(pos)]);
+    assert!(
+        crate::accessibility::all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg == expected_tooltip && prio == "polite"),
+        "Expected announcement '{expected_tooltip}' for '{btn_label}'"
+    );
+
+    crate::accessibility::clear_test_announcements();
+    let esc = egui::Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let _ = run_trace_frame(ctx, manager, vec![egui::Event::PointerMoved(pos), esc]);
+    assert!(
+        crate::accessibility::all_announcements().is_empty(),
+        "Trace overlay tooltip '{expected_tooltip}' must dismiss on Escape"
+    );
+}
+
+#[test]
+fn test_trace_overlay_buttons_announce_and_dismiss_on_escape() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+
+    let mut manager = TraceSnapshotManager::new();
+    manager.push_history_run("k=1.0", vec![TraceSeries::new("y(t)", vec![[0.0, 1.0]])]);
+
+    for (btn, tooltip) in [
+        (
+            "Clear All",
+            "Remove all history ghost runs and pinned baselines",
+        ),
+        (
+            "📍 Pin Current Snapshot",
+            "Save current trajectory curve as a pinned baseline reference",
+        ),
+        ("👁", "Toggle ghost trace visibility"),
+        ("❌", "Delete this history run"),
+        ("📍 Pin", "Pin this history run as baseline"),
+    ] {
+        verify_trace_hover_and_escape(&ctx, &mut manager, btn, tooltip);
+    }
+
+    let mut full_manager = TraceSnapshotManager::new();
+    for i in 1..=MAX_SNAPSHOTS {
+        full_manager.add_snapshot(
+            format!("Baseline {i}"),
+            "k=1.0",
+            vec![TraceSeries::new("y(t)", vec![[0.0, 1.0]])],
+        );
+    }
+
+    for (btn, tooltip) in [
+        (
+            "Pin Baseline (Max 10)",
+            "Maximum limit of 10 pinned baselines reached.",
+        ),
+        ("👁", "Toggle baseline visibility"),
+        ("❌", "Delete this snapshot"),
+    ] {
+        verify_trace_hover_and_escape(&ctx, &mut full_manager, btn, tooltip);
+    }
+}

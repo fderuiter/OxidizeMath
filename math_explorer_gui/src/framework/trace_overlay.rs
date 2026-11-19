@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 use egui_plot::{render_math_label, Line, LineStyle, PlotPoints, PlotUi};
 use serde::{Deserialize, Serialize};
@@ -288,7 +289,9 @@ impl TraceSnapshotManager {
                         if !self.is_empty()
                             && ui
                                 .button("Clear All")
-                                .on_hover_text("Remove all history ghost runs and pinned baselines")
+                                .accessible_hover_text(
+                                    "Remove all history ghost runs and pinned baselines",
+                                )
                                 .clicked()
                         {
                             self.clear();
@@ -308,14 +311,14 @@ impl TraceSnapshotManager {
                         "📍 Pin Current Snapshot"
                     };
 
-                    let pin_btn = ui.add_enabled(!full, egui::Button::new(btn_text));
-                    let pin_btn = if full {
-                        pin_btn.on_hover_text("Maximum limit of 10 pinned baselines reached.")
+                    let pin_hover = if full {
+                        "Maximum limit of 10 pinned baselines reached."
                     } else {
-                        pin_btn.on_hover_text(
-                            "Save current trajectory curve as a pinned baseline reference",
-                        )
+                        "Save current trajectory curve as a pinned baseline reference"
                     };
+                    let pin_btn = ui
+                        .add_enabled(!full, egui::Button::new(btn_text))
+                        .accessible_hover_text(pin_hover);
 
                     if pin_btn.clicked() && !full {
                         if let Some((label, param_summary, series)) = pin_callback() {
@@ -344,7 +347,7 @@ impl TraceSnapshotManager {
                             let eye_symbol = if run.visible { "👁" } else { "🙈" };
                             if ui
                                 .button(eye_symbol)
-                                .on_hover_text("Toggle ghost trace visibility")
+                                .accessible_hover_text("Toggle ghost trace visibility")
                                 .clicked()
                             {
                                 run.visible = !run.visible;
@@ -364,7 +367,7 @@ impl TraceSnapshotManager {
                                 |ui| {
                                     if ui
                                         .button("❌")
-                                        .on_hover_text("Delete this history run")
+                                        .accessible_hover_text("Delete this history run")
                                         .clicked()
                                     {
                                         history_to_remove = Some(idx);
@@ -372,7 +375,9 @@ impl TraceSnapshotManager {
                                     if !is_full
                                         && ui
                                             .button("📍 Pin")
-                                            .on_hover_text("Pin this history run as baseline")
+                                            .accessible_hover_text(
+                                                "Pin this history run as baseline",
+                                            )
                                             .clicked()
                                     {
                                         history_to_pin = Some(idx);
@@ -402,7 +407,7 @@ impl TraceSnapshotManager {
                             let eye_symbol = if snapshot.visible { "👁" } else { "🙈" };
                             if ui
                                 .button(eye_symbol)
-                                .on_hover_text("Toggle baseline visibility")
+                                .accessible_hover_text("Toggle baseline visibility")
                                 .clicked()
                             {
                                 snapshot.visible = !snapshot.visible;
@@ -427,7 +432,7 @@ impl TraceSnapshotManager {
                                 |ui| {
                                     if ui
                                         .button("❌")
-                                        .on_hover_text("Delete this snapshot")
+                                        .accessible_hover_text("Delete this snapshot")
                                         .clicked()
                                     {
                                         to_remove = Some(idx);
