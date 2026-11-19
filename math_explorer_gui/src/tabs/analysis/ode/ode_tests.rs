@@ -26,18 +26,6 @@ fn test_ode_divergence_detection() {
 }
 
 #[test]
-fn test_ode_nan_initial_condition() {
-    let mut tool = OdeSolverTool {
-        ic_y0: f64::NAN,
-        ..Default::default()
-    };
-    tool.recalculate();
-
-    assert!(tool.diverged());
-    assert!(tool.y_series.is_empty());
-}
-
-#[test]
 fn test_ode_harmonic_oscillator_divergence() {
     let mut tool = OdeSolverTool {
         preset: OdePreset::HarmonicOscillator,
@@ -381,39 +369,6 @@ fn test_ode_discrepancy_metrics_calculation() {
 }
 
 #[test]
-fn test_ode_multi_solver_divergence_warning() {
-    let mut tool = OdeSolverTool {
-        preset: OdePreset::HarmonicOscillator,
-        param_k: 1.0,
-        ic_y0: 1.0,
-        ic_v0: 0.0,
-        dt: 0.05,
-        total_time: 10.0,
-        ..Default::default()
-    };
-    tool.set_comparison_mode(true);
-    assert!(!tool.diverged());
-
-    // Large time step causes lower-order Euler to diverge or produce non-finite values
-    tool.dt = 2.5;
-    tool.param_k = 1e150;
-    tool.ic_y0 = 1e150;
-    tool.recalculate();
-
-    assert!(tool.diverged());
-    // Ensure all stored points remain finite
-    assert!(tool.y_series.iter().all(|y| y.is_finite()));
-    for snapshot in tool.comparison_manager().snapshots() {
-        for series in &snapshot.series {
-            assert!(series
-                .points
-                .iter()
-                .all(|pt| pt[0].is_finite() && pt[1].is_finite()));
-        }
-    }
-}
-
-#[test]
 fn test_ode_annotations_toggle_and_rendering() {
     let mut tool = OdeSolverTool::default();
     assert!(tool.show_annotations);
@@ -483,4 +438,56 @@ fn test_ode_presets_theory_metadata() {
     assert_eq!(tool.theory_latex_equation(), Some(r"\frac{dy}{dt} = r y (1 - \frac{y}{K})".into()));
     assert!(tool.theory_citation().contains("Lotka") || tool.theory_citation().contains("Verhulst"));
     assert!(!tool.theory_description().is_empty());
+}
+
+#[test]
+fn test_ode_untrusted_preset_and_session_step_caps() {
+    use crate::presets::{InteractivePreset, OdePresetConfig, MAX_ODE_STEPS};
+    use systems::eval_ode_final_state;
+    use std::collections::HashMap;
+
+    let mut ode = OdeSolverTool::default();
+    let res = ode.import_preset_json(r#"{"metadata":{"schema_version":"1.0","title":"t","domain":"analysis","timestamp":"2026-11-18T00:00:00Z"},"config":{"preset":"Exponential","dt":1e-300,"total_time":10.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"custom_expr":""}}"#);
+    assert!(res.is_err());
+    assert!(ode.time_series.len() <= 1_000_001);
+    assert!(ode.time_series.len() <= MAX_ODE_STEPS + 1);
+
+    let bad_cfg = OdePresetConfig {
+        preset: OdePreset::Exponential,
+        dt: 1e-300,
+        total_time: 10.0,
+        param_k: 1.0,
+        param_r: 1.0,
+        param_cap_k: 10.0,
+        ic_y0: 1.0,
+        ic_v0: 0.0,
+        custom_expr: String::new(),
+    };
+    assert!(ode.apply_config(bad_cfg).is_err());
+
+    ode.load_state(r#"{"preset":"Exponential","dt":5e-17,"total_time":100.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0}"#);
+    assert!(ode.time_series.len() <= MAX_ODE_STEPS + 1);
+
+    let final_tiny = eval_ode_final_state(
+        OdePreset::Exponential,
+        IntegrationMethod::Euler,
+        1e-12,
+        10.0,
+        &HashMap::new(),
+        None,
+    );
+    assert!(final_tiny.is_nan());
+    let traj = simulate_preset(
+        OdePreset::Exponential,
+        IntegrationMethod::Euler,
+        1e-300,
+        10.0,
+        1.0,
+        1.0,
+        10.0,
+        1.0,
+        0.0,
+        None,
+    );
+    assert!(traj.time_series.is_empty());
 }

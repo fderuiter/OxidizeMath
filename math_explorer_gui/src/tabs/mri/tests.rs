@@ -260,3 +260,40 @@ fn test_mri_trajectory_plot_screenshot() {
         let _ = std::fs::write("/tmp/mri_trajectory_plot.png", png_data);
     }
 }
+
+#[test]
+fn test_mri_load_state_clamps_time_scale_and_bounds_worker_steps() {
+    assert_eq!(sanitize_mri_time_scale(1e12), 100.0);
+    assert_eq!(sanitize_mri_time_scale(0.0), 1.0);
+    assert_eq!(sanitize_mri_time_scale(-25.0), 1.0);
+    assert_eq!(sanitize_mri_time_scale(f64::NAN), 1.0);
+    assert_eq!(sanitize_mri_time_scale(f64::INFINITY), 1.0);
+    assert_eq!(sanitize_mri_time_scale(f64::NEG_INFINITY), 1.0);
+
+    let mut mri = MriTab::default();
+    mri.load_state(r#"{"state":"Running","time_scale":1e12}"#);
+    assert_eq!(mri.time_scale, MAX_MRI_TIME_SCALE);
+    assert_eq!(
+        mri.params.read().unwrap_or_else(|e| e.into_inner()).time_scale,
+        MAX_MRI_TIME_SCALE
+    );
+    let _ = mri.worker.send_command(SimCommand::Pause);
+    mri.worker.wait_until_paused();
+
+    mri.load_state(r#"{"state":"Ready","time_scale":-10.0}"#);
+    assert_eq!(mri.time_scale, MIN_MRI_TIME_SCALE);
+
+    let params = Arc::new(std::sync::RwLock::new(MriSharedParams {
+        t1: 1.0,
+        t2: 0.1,
+        b_field: Vector3::zeros(),
+        time_scale: 1e12,
+    }));
+    let mut runner = MriRunner::new(Arc::clone(&params), Vector3::new(1.0, 0.0, 0.0), 1.0);
+    runner.step();
+    assert_eq!(runner.history.len(), MAX_MRI_STEPS_PER_FRAME + 1);
+
+    params.write().unwrap_or_else(|e| e.into_inner()).time_scale = f64::INFINITY;
+    runner.step();
+    assert_eq!(runner.history.len(), MAX_MRI_STEPS_PER_FRAME + 2);
+}

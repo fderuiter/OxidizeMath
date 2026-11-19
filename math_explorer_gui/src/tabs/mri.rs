@@ -396,7 +396,7 @@ impl ExplorerTab for MriTab {
 
     fn load_state(&mut self, state: &str) {
         if let Ok(s) = serde_json::from_str::<MriState>(state) {
-            self.time_scale = s.time_scale;
+            self.time_scale = sanitize_mri_time_scale(s.time_scale);
             self.params
                 .write()
                 .unwrap_or_else(|e| e.into_inner())

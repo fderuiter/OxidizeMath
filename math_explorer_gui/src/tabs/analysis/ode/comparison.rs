@@ -51,15 +51,19 @@ pub fn simulate_preset(
         divergence_info: None,
     };
 
-    if !validate_initial_state(&mut traj, preset, dt, total_time, ic_y0, ic_v0) {
+    let Some(num_steps) = validate_initial_state(&mut traj, preset, dt, total_time, ic_y0, ic_v0)
+    else {
         return traj;
-    }
+    };
 
-    let num_steps = (total_time / dt).ceil() as usize;
-    traj.time_series.reserve(num_steps + 1);
-    traj.y_series.reserve(num_steps + 1);
-    if preset == OdePreset::HarmonicOscillator {
-        traj.v_series.reserve(num_steps + 1);
+    let Some(point_cap) = num_steps.checked_add(1) else {
+        return traj;
+    };
+    if traj.time_series.try_reserve(point_cap).is_err()
+        || traj.y_series.try_reserve(point_cap).is_err()
+        || (preset == OdePreset::HarmonicOscillator && traj.v_series.try_reserve(point_cap).is_err())
+    {
+        return traj;
     }
 
     match preset {
@@ -106,21 +110,19 @@ fn validate_initial_state(
     total_time: f64,
     ic_y0: f64,
     ic_v0: f64,
-) -> bool {
-    if dt <= 0.0 || total_time <= 0.0 || !dt.is_finite() || !total_time.is_finite() {
-        return false;
-    }
+) -> Option<usize> {
+    let num_steps = crate::presets::checked_ode_step_count(dt, total_time)?;
     if !ic_y0.is_finite() {
         traj.diverged = true;
         traj.divergence_info = Some((0.0, 0, "y(t)".to_string()));
-        return false;
+        return None;
     }
     if preset == OdePreset::HarmonicOscillator && !ic_v0.is_finite() {
         traj.diverged = true;
         traj.divergence_info = Some((0.0, 0, "y'(t)".to_string()));
-        return false;
+        return None;
     }
-    true
+    Some(num_steps)
 }
 
 #[allow(clippy::too_many_arguments)]

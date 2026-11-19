@@ -125,11 +125,28 @@ impl OdeSolverTool {
 
     pub fn auto_scale_step_size(&mut self) {
         let min_dt = 1e-6;
+        if !self.total_time.is_finite() || self.total_time <= 0.0 {
+            self.total_time = 10.0;
+        } else {
+            self.total_time = self.total_time.min(100.0);
+        }
         self.dt = if !self.dt.is_finite() || self.dt <= 0.0 {
             0.05
         } else {
             (self.dt * 0.5).max(min_dt)
         };
+        let max_horizon = self.dt * crate::presets::MAX_ODE_STEPS as f64;
+        if self.total_time > max_horizon {
+            self.total_time = max_horizon;
+            for _ in 0..4 {
+                if crate::presets::checked_ode_step_count(self.dt, self.total_time).is_some()
+                    || self.total_time <= 0.0
+                {
+                    break;
+                }
+                self.total_time = self.total_time.next_down();
+            }
+        }
         self.recalculate();
     }
 

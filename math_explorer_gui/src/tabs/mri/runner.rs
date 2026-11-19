@@ -8,6 +8,23 @@ use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+/// Minimum valid simulation speed multiplier for MRI Bloch evolution.
+pub const MIN_MRI_TIME_SCALE: f64 = 1.0;
+/// Maximum valid simulation speed multiplier for MRI Bloch evolution.
+pub const MAX_MRI_TIME_SCALE: f64 = 100.0;
+/// Hard upper bound on Bloch integration sub-steps executed per worker frame.
+pub const MAX_MRI_STEPS_PER_FRAME: usize = 100;
+
+/// Sanitizes an MRI `time_scale` value into `1.0..=100.0`, defaulting non-finite inputs to `1.0`.
+#[must_use]
+pub fn sanitize_mri_time_scale(time_scale: f64) -> f64 {
+    if time_scale.is_finite() {
+        time_scale.clamp(MIN_MRI_TIME_SCALE, MAX_MRI_TIME_SCALE)
+    } else {
+        MIN_MRI_TIME_SCALE
+    }
+}
+
 #[allow(missing_docs)]
 pub struct MriSharedParams {
     pub t1: f64,
@@ -102,7 +119,7 @@ impl SimulationRunner for MriRunner {
     fn step(&mut self) {
         let time_scale = self.sync_params_and_get_scale();
         let steps = if time_scale.is_finite() && time_scale > 0.0 {
-            time_scale.ceil() as usize
+            (time_scale.ceil().min(MAX_MRI_STEPS_PER_FRAME as f64) as usize).max(1)
         } else {
             1
         };

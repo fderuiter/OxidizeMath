@@ -4,6 +4,10 @@ use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::epidemiology::compartmental::SIRModel;
 
+const MIN_SIR_DURATION: f64 = 10.0;
+const MAX_SIR_DURATION: f64 = 365.0;
+const MAX_SIR_STEPS: usize = 100_000;
+
 #[derive(serde::Serialize)]
 struct SirStateRef<'a> {
     n: f64,
@@ -141,6 +145,11 @@ impl SirTool {
         self.s_points.clear();
         self.i_points.clear();
         self.r_points.clear();
+        self.last_param_summary = self.param_summary();
+
+        if !self.duration.is_finite() || self.duration <= 0.0 {
+            return;
+        }
 
         // Ensure parameters are valid before passing to model
         let n = self.n.max(1.0);
@@ -150,7 +159,20 @@ impl SirTool {
 
         if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
             let dt = 0.1;
-            let steps = (self.duration / dt) as usize;
+            let raw_steps = self.duration / dt;
+            if !raw_steps.is_finite() || raw_steps < 0.0 {
+                return;
+            }
+            let steps = raw_steps.min(MAX_SIR_STEPS as f64) as usize;
+            let Some(point_cap) = steps.checked_add(1) else {
+                return;
+            };
+            if self.s_points.try_reserve(point_cap).is_err()
+                || self.i_points.try_reserve(point_cap).is_err()
+                || self.r_points.try_reserve(point_cap).is_err()
+            {
+                return;
+            }
 
             for i in 0..=steps {
                 let t = i as f64 * dt;
@@ -162,7 +184,6 @@ impl SirTool {
                 model.step(dt);
             }
         }
-        self.last_param_summary = self.param_summary();
     }
 
     fn load_sir_state(&mut self, state: &str, preserve_snapshots: bool) -> Result<(), String> {
@@ -175,7 +196,7 @@ impl SirTool {
             || !(1.0..=s.n).contains(&s.i0)
             || !(0.0..=5.0).contains(&s.beta)
             || !(0.0..=1.0).contains(&s.gamma)
-            || !(10.0..=365.0).contains(&s.duration)
+            || s.duration < 0.0
         {
             return Err("SIR parameters out of bounds".into());
         }
@@ -183,7 +204,7 @@ impl SirTool {
         self.i0 = s.i0;
         self.beta = s.beta;
         self.gamma = s.gamma;
-        self.duration = s.duration;
+        self.duration = s.duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION);
         if !preserve_snapshots {
             self.snapshot_manager = s.snapshot_manager;
         }
@@ -381,100 +402,7 @@ impl scientific_metadata::theory::TheoryDescribable for SirTool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_sir_trace_snapshot_pinning_and_exports() {
-        let mut tool = SirTool {
-            beta: 0.2,
-            ..Default::default()
-        };
-        tool.recalculate();
-
-        // Pin snapshot for beta = 0.2
-        let summary = tool.param_summary();
-        let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-        let series = vec![
-            TraceSeries::new("Susceptible", to_pairs(&tool.s_points)),
-            TraceSeries::new("Infected", to_pairs(&tool.i_points)),
-            TraceSeries::new("Recovered", to_pairs(&tool.r_points)),
-        ];
-        assert!(tool.snapshot_manager.add_snapshot("Run 1", summary, series));
-        assert_eq!(tool.snapshot_manager.len(), 1);
-
-        // Adjust beta to 0.5
-        tool.beta = 0.5;
-        tool.recalculate();
-
-        // Snapshot remains preserved
-        assert_eq!(tool.snapshot_manager.snapshots()[0].param_summary, r"\beta=0.20, \gamma=0.10, N=1000");
-
-        // Export includes both active simulation curves and pinned snapshot traces
-        let exported = tool.export_datasets();
-        assert!(exported.iter().any(|(name, _)| name.contains("Infected")));
-        assert!(exported.iter().any(|(name, _)| name.contains("Run 1")));
-
-        // State serialization roundtrip preserves pinned snapshot
-        let state = tool.save_state().expect("serialize state");
-        let mut restored = SirTool::default();
-        restored.load_state(&state);
-        assert_eq!(restored.snapshot_manager.len(), 1);
-        assert_eq!(restored.beta, 0.5);
-    }
-
-    #[test]
-    fn test_sir_borrowed_slice_points() {
-        let tool = SirTool::default();
-        let s_slice: &[PlotPoint] = &tool.s_points[..];
-        let plot_points: egui_plot::PlotPoints<'_> = s_slice.into();
-        assert!(matches!(plot_points, egui_plot::PlotPoints::Borrowed(_)));
-        assert_eq!(plot_points.points().len(), tool.s_points.len());
-    }
-
-    #[test]
-    fn test_sir_sensitivity_converges_in_two_frames_and_invalidates_on_duration() {
-        let ctx = egui::Context::default();
-        let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(960.0, 640.0),
-            )),
-            ..Default::default()
-        };
-        let mut tool = SirTool::default();
-
-        let out1 = ctx.run(input.clone(), |ctx| tool.show(ctx));
-        assert!(!tool.sensitivity_engine.is_converged());
-        assert!(
-            out1.viewport_output[&egui::ViewportId::ROOT]
-                .repaint_delay
-                .is_zero()
-        );
-
-        let _ = ctx.run(input.clone(), |ctx| tool.show(ctx));
-        assert!(tool.sensitivity_engine.is_converged());
-        let out_idle = ctx.run(input.clone(), |ctx| tool.show(ctx));
-        assert!(
-            !out_idle.viewport_output[&egui::ViewportId::ROOT]
-                .repaint_delay
-                .is_zero()
-        );
-        assert!(tool.sensitivity_engine.metrics[2].partial_derivative > 0.0);
-        assert!(tool.sensitivity_engine.metrics[3].partial_derivative < 0.0);
-
-        // Changing duration invalidates the 4-parameter sensitivity cache
-        tool.duration = 180.0;
-        tool.recalculate();
-        let out_after_duration = ctx.run(input, |ctx| tool.show(ctx));
-        assert!(!tool.sensitivity_engine.is_converged());
-        assert!(
-            out_after_duration.viewport_output[&egui::ViewportId::ROOT]
-                .repaint_delay
-                .is_zero()
-        );
-    }
-}
+mod tests;
 
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": { "schema_version": "1.0", "title": "Kermack-McKendrick SIR Model", "domain": "epidemiology", "timestamp": "2026-11-16T00:00:00Z" },
