@@ -8,7 +8,7 @@ We implemented a zero-dependency Pratt-parser AST evaluator in `crates/math_comm
 1. **Zero-Dependency Pratt Parser & Lexer**: Implemented in `crates/math_commons/src/ast/` with support for binary operators (`+`, `-`, `*`, `/`, `^`), unary operators (`+`, `-`), implicit multiplication, variable bindings, and standard transcendental functions (`sin`, `cos`, `tan`, `exp`, `ln`, `log10`, `sqrt`, `abs`, `sinh`, `cosh`, `tanh`, `asin`, `acos`, `atan`).
 2. **Safety & Depth Bounds**: Enforced strict recursion depth bounds (`MAX_PARSE_DEPTH = 64`, `MAX_EVAL_DEPTH = 64`) to prevent stack overflow vulnerabilities from maliciously nested expressions.
 3. **Prefix Normalization & LaTeX Generation**: Added stripping of common equation LHS patterns (`y' = ...`, `w = ...`, `f(t, y) = ...`) and AST-to-LaTeX serialization compatible with `egui_plot::render_math_label`.
-4. **Optimized Specialized Evaluators**: Provided `eval_2d(t, y)` and `eval_complex_z(z)` execution routines tailored for high-frequency inner loops in ODE numerical steppers and 2D conformal grid evaluation.
+4. **Optimized Zero-Allocation Evaluators**: Provided `eval`, `eval_2d(t, y, params)`, `eval_complex`, and `eval_complex_z(z)` execution routines tailored for high-frequency inner loops in ODE numerical steppers and 2D conformal grid evaluation, using zero-allocation ASCII case-insensitive comparisons (`str::eq_ignore_ascii_case` and `lookup_var`) verified under `VerifiedAllocator` and `VerifiedEngine::run_verified`.
 5. **Interactive UI Component**: Created `MathExpressionInputBar` in `math_explorer_gui/src/framework/math_input.rs` with live syntax validation and LaTeX preview, wired into ODE Solver and Complex Mapping tabs.
 
 ## Consequences

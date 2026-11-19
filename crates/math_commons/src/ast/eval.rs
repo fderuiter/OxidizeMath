@@ -48,22 +48,9 @@ impl Expr {
 
         match self {
             Self::Number(n) => Ok(*n),
-            Self::Variable(name) => {
-                if let Some(val) = lookup_const_f64(name) {
-                    return Ok(val);
-                }
-                if let Some(&val) = vars.get(name) {
-                    return Ok(val);
-                }
-                // Try case-insensitive lookup
-                let lower = name.to_ascii_lowercase();
-                for (k, &v) in vars {
-                    if k.to_ascii_lowercase() == lower {
-                        return Ok(v);
-                    }
-                }
-                Err(EvalError::UnknownVariable(name.clone()))
-            }
+            Self::Variable(name) => lookup_const_f64(name)
+                .or_else(|| lookup_var(vars, name))
+                .ok_or_else(|| EvalError::UnknownVariable(name.clone())),
             Self::Binary { op, left, right } => {
                 let l = left.eval_internal(vars, depth + 1)?;
                 let r = right.eval_internal(vars, depth + 1)?;
@@ -111,16 +98,9 @@ impl Expr {
                     t
                 } else if name.eq_ignore_ascii_case("y") {
                     y
-                } else if let Some(val) = lookup_const_f64(name) {
-                    val
-                } else if let Some(&val) = params.get(name) {
-                    val
                 } else {
-                    let lower = name.to_ascii_lowercase();
-                    params
-                        .iter()
-                        .find(|(k, _)| k.to_ascii_lowercase() == lower)
-                        .map(|(_, &v)| v)
+                    lookup_const_f64(name)
+                        .or_else(|| lookup_var(params, name))
                         .unwrap_or(f64::NAN)
                 }
             }
@@ -162,21 +142,9 @@ impl Expr {
 
         match self {
             Self::Number(n) => Ok(Complex64::new(*n, 0.0)),
-            Self::Variable(name) => {
-                if let Some(val) = lookup_const_complex(name) {
-                    return Ok(val);
-                }
-                if let Some(&val) = vars.get(name) {
-                    return Ok(val);
-                }
-                let lower = name.to_ascii_lowercase();
-                for (k, &v) in vars {
-                    if k.to_ascii_lowercase() == lower {
-                        return Ok(v);
-                    }
-                }
-                Err(EvalError::UnknownVariable(name.clone()))
-            }
+            Self::Variable(name) => lookup_const_complex(name)
+                .or_else(|| lookup_var(vars, name))
+                .ok_or_else(|| EvalError::UnknownVariable(name.clone())),
             Self::Binary { op, left, right } => {
                 let l = left.eval_complex_internal(vars, depth + 1)?;
                 let r = right.eval_complex_internal(vars, depth + 1)?;
@@ -324,21 +292,37 @@ fn eval_func_complex(func: Func, arg: Complex64) -> Complex64 {
     }
 }
 
+fn lookup_var<V: Copy>(map: &HashMap<String, V>, name: &str) -> Option<V> {
+    if let Some(&val) = map.get(name) {
+        return Some(val);
+    }
+    map.iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(name))
+        .map(|(_, &v)| v)
+}
+
 fn lookup_const_f64(name: &str) -> Option<f64> {
-    match name.to_ascii_lowercase().as_str() {
-        "pi" => Some(PI),
-        "e" => Some(E),
-        "tau" => Some(TAU),
-        _ => None,
+    if name.eq_ignore_ascii_case("pi") {
+        Some(PI)
+    } else if name.eq_ignore_ascii_case("e") {
+        Some(E)
+    } else if name.eq_ignore_ascii_case("tau") {
+        Some(TAU)
+    } else {
+        None
     }
 }
 
 fn lookup_const_complex(name: &str) -> Option<Complex64> {
-    match name.to_ascii_lowercase().as_str() {
-        "pi" => Some(Complex64::new(PI, 0.0)),
-        "e" => Some(Complex64::new(E, 0.0)),
-        "tau" => Some(Complex64::new(TAU, 0.0)),
-        "i" => Some(Complex64::i()),
-        _ => None,
+    if name.eq_ignore_ascii_case("pi") {
+        Some(Complex64::new(PI, 0.0))
+    } else if name.eq_ignore_ascii_case("e") {
+        Some(Complex64::new(E, 0.0))
+    } else if name.eq_ignore_ascii_case("tau") {
+        Some(Complex64::new(TAU, 0.0))
+    } else if name.eq_ignore_ascii_case("i") {
+        Some(Complex64::i())
+    } else {
+        None
     }
 }
