@@ -1843,8 +1843,10 @@ impl<'a> Plot<'a> {
 
                 if let Some((ref msg, is_error)) = access_state.import_toast {
                     ui.separator();
-                    let (color, icon) = match (is_error, ui.visuals().dark_mode) {
-                        (true, _) => (ui.visuals().error_fg_color, "⚠️"),
+                    let dark_mode = ui.visuals().dark_mode;
+                    let (color, icon) = match (is_error, dark_mode) {
+                        (true, true) => (Color32::from_rgb(255, 118, 118), "⚠️"),
+                        (true, false) => (Color32::from_rgb(180, 28, 28), "⚠️"),
                         (false, true) => (Color32::from_rgb(74, 214, 122), "ℹ️"),
                         (false, false) => (Color32::from_rgb(15, 115, 54), "ℹ️"),
                     };
