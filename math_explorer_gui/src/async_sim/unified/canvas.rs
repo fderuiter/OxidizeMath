@@ -25,12 +25,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .allow_zoom(false)
             .allow_scroll(false)
             .show(ui, |plot_ui| {
-                plot_ui.image(PlotImage::new(
+                let mut plot_img = PlotImage::new(
                     format!("{}_image", M::name()),
                     texture.id(),
                     PlotPoint::new(width as f64 / 2.0, height as f64 / 2.0),
                     [width, height],
-                ));
+                );
+                if let Some(ref img) = self.cached_image {
+                    plot_img = plot_img.color_image(std::sync::Arc::clone(img));
+                }
+                plot_ui.image(plot_img);
 
                 if plot_ui.response().hovered()
                     && ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
@@ -113,6 +117,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             return;
         }
         let image = ColorImage::new([snapshot.width, snapshot.height], guard.clone());
+        self.cached_image = Some(std::sync::Arc::new(image.clone()));
         if let Some(texture) = &mut self.texture {
             texture.set(image, TextureOptions::NEAREST);
         } else {

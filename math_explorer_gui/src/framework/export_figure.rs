@@ -15,6 +15,10 @@ use egui_plot::export_primitives::{
     ExportPrimitive,
 };
 
+use super::export_figure_subplots::{
+    try_render_subplot_color_image, try_render_subplot_svg,
+    try_sample_subplot_or_custom_primitive_gif,
+};
 use super::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework};
 
 /// Collects drawable [`ExportPrimitive`] items for `tool`, combining raster hooks, captured plot primitives, and fallback datasets.
@@ -69,6 +73,9 @@ fn render_tool_color_image_with_fallback(
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<egui::ColorImage, String> {
+    if let Some(subplot_res) = try_render_subplot_color_image(tool, options) {
+        return subplot_res;
+    }
     let plot_prims = tool.export_plot_primitives();
     if let Some(raster) = valid_raster_image(tool) {
         if !has_drawable_primitives(&plot_prims) {
@@ -132,6 +139,9 @@ fn render_tool_svg_with_fallback(
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<String, String> {
+    if let Some(subplot_res) = try_render_subplot_svg(tool, options) {
+        return subplot_res;
+    }
     let plot_prims = tool.export_plot_primitives();
     if let Some(raster) = valid_raster_image(tool) {
         if !has_drawable_primitives(&plot_prims) {
@@ -205,6 +215,10 @@ fn sample_and_encode_plot_gif(
     count: usize,
     fps: u32,
 ) -> Result<Vec<u8>, String> {
+    if let Some(stepped_res) = try_sample_subplot_or_custom_primitive_gif(tool, options, count, fps)
+    {
+        return stepped_res;
+    }
     let initial_prims = resolve_tool_primitives_with_fallback(tool, fallback_datasets);
     if has_non_polyline_primitives(&initial_prims) {
         return encode_progressive_primitive_gif(&initial_prims, options, count, fps);

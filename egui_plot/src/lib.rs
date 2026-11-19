@@ -49,9 +49,13 @@ pub use crate::{
         clipboard_status_id, exceeds_max_dimension, poll_clipboard_status, show_export_modal,
     },
     export_primitives::{
-        ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,
-        export_primitives_png, export_primitives_svg, export_raster_gif, export_raster_png,
-        export_raster_svg, get_last_plot_primitives, render_primitives_image,
+        ExportPrimitive, ExportSubplotPanel, SubplotViewport, append_last_plot_primitives,
+        append_last_plot_subplot, clear_last_plot_primitives, clear_last_plot_subplots,
+        compute_subplot_viewports, export_primitives_png, export_primitives_svg, export_raster_gif,
+        export_raster_png, export_raster_svg, export_subplot_panels_png, export_subplot_panels_svg,
+        get_last_plot_primitives, get_last_plot_subplots, prefix_subplot_series_name,
+        render_primitives_image, render_subplot_panels_image,
+        render_subplot_panels_image_with_bounds,
     },
     fit::{FitResult, FitType, fit_dataset, fit_dataset_scaled},
     items::{
@@ -181,6 +185,7 @@ pub struct PlotResponse<R> {
 pub struct Plot<'a> {
     id_source: Id,
     id: Option<Id>,
+    subplot_label: Option<String>,
 
     center_axis: Vec2b,
     allow_zoom: Vec2b,
@@ -234,6 +239,7 @@ impl<'a> Plot<'a> {
         Self {
             id_source: Id::new(id_source),
             id: None,
+            subplot_label: None,
 
             center_axis: false.into(),
             allow_zoom: true.into(),
@@ -290,6 +296,13 @@ impl<'a> Plot<'a> {
     #[inline]
     pub fn id(mut self, id: Id) -> Self {
         self.id = Some(id);
+        self
+    }
+
+    /// Assign an explicit human-readable subplot identifier for multi-panel figure and dataset exports.
+    #[inline]
+    pub fn subplot_id(mut self, id: impl Into<String>) -> Self {
+        self.subplot_label = Some(id.into());
         self
     }
 
@@ -849,6 +862,7 @@ impl<'a> Plot<'a> {
         let Self {
             id_source,
             id,
+            subplot_label,
             center_axis,
             allow_zoom,
             allow_drag,
@@ -1491,8 +1505,22 @@ impl<'a> Plot<'a> {
             .filter(|(_, p, _)| !p.is_empty())
             .map(|(n, p, _)| (n.clone(), p.clone()))
             .collect();
+        let has_datasets = export_primitives::has_finite_dataset_points(&export_datasets);
+        let has_figure =
+            export_primitives::has_drawable_primitives(&extracted_primitives) || has_datasets;
+        let resolved_subplot_id = subplot_label
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| format!("subplot_{}", get_last_plot_subplots().len() + 1));
         append_last_plot_datasets(&export_datasets);
         append_last_plot_primitives(&extracted_primitives);
+        append_last_plot_subplot(ExportSubplotPanel {
+            id: resolved_subplot_id,
+            screen_rect: plot_rect,
+            log_x: mem.log_x,
+            log_y: mem.log_y,
+            datasets: export_datasets.clone(),
+            primitives: extracted_primitives.clone(),
+        });
         // --- END EXTRACT DATASETS ---
 
         let auto_content_bounds = compute_auto_content_bounds(
@@ -1739,20 +1767,52 @@ impl<'a> Plot<'a> {
 
         let focus_response = response.interact(egui::Sense::focusable_noninteractive());
 
+        let empty_fig_tooltip = "No drawable plot data or image available to export";
+        let empty_data_tooltip =
+            "No tabular (X, Y) series available; raster image plots support figure exports only";
+        if !has_datasets {
+            access_state.show_table = false;
+        }
+
         let overlay_rect =
             egui::Rect::from_min_size(plot_rect.min, egui::vec2(plot_rect.width(), 30.0_f32));
         ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Save PNG").clicked() {
+                if ui
+                    .add_enabled(has_figure, egui::Button::new("Save PNG"))
+                    .on_disabled_hover_text(empty_fig_tooltip)
+                    .clicked()
+                {
+                    if has_figure
+                        && !has_datasets
+                        && let Ok(png_bytes) = export_primitives_png(
+                            &extracted_primitives,
+                            &access_state.export_modal.options,
+                        )
+                    {
+                        export::save_file_dialog("plot.png", &png_bytes, "PNG Image", &["png"]);
+                    }
                     access_state.export_modal.open = true;
                 }
-                if ui.button("Export CSV").clicked() {
+                if ui
+                    .add_enabled(has_datasets, egui::Button::new("Export CSV"))
+                    .on_disabled_hover_text(empty_data_tooltip)
+                    .clicked()
+                {
                     export::export_csv(&export_datasets);
                 }
-                if ui.button("Export JSON").clicked() {
+                if ui
+                    .add_enabled(has_datasets, egui::Button::new("Export JSON"))
+                    .on_disabled_hover_text(empty_data_tooltip)
+                    .clicked()
+                {
                     export::export_json(&export_datasets);
                 }
-                if ui.button("Table View").clicked() {
+                if ui
+                    .add_enabled(has_datasets, egui::Button::new("Table View"))
+                    .on_disabled_hover_text(empty_data_tooltip)
+                    .clicked()
+                {
                     access_state.show_table = !access_state.show_table;
                 }
                 if ui.button("🔧 Settings").clicked() {
@@ -1884,14 +1944,19 @@ impl<'a> Plot<'a> {
             Self::render_floating_zoom_toolbar(ui, &mut mem, &zoom_config);
         }
 
-        if access_state.show_table {
+        if access_state.show_table && has_datasets {
             egui::Window::new(format!("Data Table - {id_source:?}")).show(ui.ctx(), |ui| {
                 egui::ScrollArea::both().show(ui, |ui| {
-                    for (name, pts, _) in &accessible_datasets {
+                    for (idx, (name, pts, _)) in accessible_datasets.iter().enumerate() {
                         if pts.is_empty() {
                             continue;
                         }
-                        ui.heading(name);
+                        let heading = if name.trim().is_empty() {
+                            format!("series_{idx}")
+                        } else {
+                            name.clone()
+                        };
+                        ui.heading(heading);
                         for p in pts {
                             ui.label(format!("X: {:.4}, Y: {:.4}", p[0], p[1]));
                         }
@@ -1901,6 +1966,38 @@ impl<'a> Plot<'a> {
         }
 
         {
+            struct PlotModalExportSource<'s> {
+                datasets: &'s [(String, Vec<[f64; 2]>)],
+                primitives: &'s [ExportPrimitive],
+                has_figure: bool,
+                disabled_reason: &'static str,
+            }
+
+            impl export_modal::ExportDataSource for PlotModalExportSource<'_> {
+                fn export_datasets(&mut self) -> Vec<export::ExportDataset> {
+                    self.datasets.to_vec()
+                }
+
+                fn sample_gif_frames(&mut self, num_frames: usize) -> Vec<export::DatasetFrame> {
+                    export::sample_progressive_frames(self.datasets, num_frames)
+                }
+
+                fn export_primitives(&mut self) -> Vec<ExportPrimitive> {
+                    self.primitives.to_vec()
+                }
+
+                fn figure_capability(&self) -> (bool, &'static str) {
+                    (
+                        self.has_figure,
+                        if self.has_figure {
+                            ""
+                        } else {
+                            self.disabled_reason
+                        },
+                    )
+                }
+            }
+
             access_state.export_modal.options.log_x = mem.log_x;
             access_state.export_modal.options.log_y = mem.log_y;
             let export_window_title = format!("Export High-Res Plot - {id_source:?}");
@@ -1911,11 +2008,11 @@ impl<'a> Plot<'a> {
                 svg_filename: "plot.svg",
                 gif_filename: "plot.gif",
             };
-            let mut export_source = export_modal::CallbackExportSource {
-                datasets_fn: || export_datasets.clone(),
-                sample_frames_fn: |num_frames| {
-                    export::sample_progressive_frames(&export_datasets, num_frames)
-                },
+            let mut export_source = PlotModalExportSource {
+                datasets: &export_datasets,
+                primitives: &extracted_primitives,
+                has_figure,
+                disabled_reason: empty_fig_tooltip,
             };
             export_modal::show_export_modal(
                 ui.ctx(),
@@ -2447,19 +2544,44 @@ impl<'a> Plot<'a> {
                 export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
                 ui.close();
             }
-            if ui.button("Save PNG").clicked() {
+            if ui
+                .add_enabled(has_figure, egui::Button::new("Save PNG"))
+                .on_disabled_hover_text(empty_fig_tooltip)
+                .clicked()
+            {
+                if has_figure
+                    && !has_datasets
+                    && let Ok(png_bytes) = export_primitives_png(
+                        &extracted_primitives,
+                        &access_state.export_modal.options,
+                    )
+                {
+                    export::save_file_dialog("plot.png", &png_bytes, "PNG Image", &["png"]);
+                }
                 access_state.export_modal.open = true;
                 ui.close();
             }
-            if ui.button("Export CSV").clicked() {
+            if ui
+                .add_enabled(has_datasets, egui::Button::new("Export CSV"))
+                .on_disabled_hover_text(empty_data_tooltip)
+                .clicked()
+            {
                 export::export_csv(&export_datasets);
                 ui.close();
             }
-            if ui.button("Export JSON").clicked() {
+            if ui
+                .add_enabled(has_datasets, egui::Button::new("Export JSON"))
+                .on_disabled_hover_text(empty_data_tooltip)
+                .clicked()
+            {
                 export::export_json(&export_datasets);
                 ui.close();
             }
-            if ui.button("Table View").clicked() {
+            if ui
+                .add_enabled(has_datasets, egui::Button::new("Table View"))
+                .on_disabled_hover_text(empty_data_tooltip)
+                .clicked()
+            {
                 access_state.show_table = !access_state.show_table;
                 ui.close();
             }
@@ -3725,6 +3847,21 @@ pub fn append_last_plot_datasets(datasets: &[(String, Vec<[f64; 2]>)]) {
 
 /// Retrieves all plot datasets captured across `egui_plot::Plot` widgets rendered in the active session.
 pub fn get_last_plot_datasets() -> Vec<(String, Vec<[f64; 2]>)> {
+    let subplots = get_last_plot_subplots();
+    if subplots.len() >= 2 {
+        let mut out = Vec::new();
+        for panel in &subplots {
+            for (idx, (name, pts)) in panel.datasets.iter().enumerate() {
+                out.push((
+                    prefix_subplot_series_name(&panel.id, name, idx),
+                    pts.clone(),
+                ));
+            }
+        }
+        if !out.is_empty() {
+            return out;
+        }
+    }
     LAST_PLOT_DATASETS.with(|d| d.borrow().clone())
 }
 

@@ -2,8 +2,12 @@
 
 use crate::export::{
     AspectRatioOption, DatasetFrame, ExportDataset, ExportOptions, MAX_EXPORT_DIMENSION,
-    copy_image_to_clipboard_with_callback, export_custom_gif, export_custom_image,
-    export_custom_png, export_custom_svg, save_file_dialog,
+    color32_images_to_gif, copy_image_to_clipboard_with_callback, export_custom_gif,
+    export_custom_image, export_custom_png, export_custom_svg, save_file_dialog,
+};
+use crate::export_primitives::{
+    ExportPrimitive, export_primitives_png, export_primitives_svg, has_drawable_primitives,
+    has_finite_dataset_points, render_primitives_image,
 };
 
 /// Consistent section header rendered inside the export modal window.
@@ -125,6 +129,11 @@ pub trait ExportDataSource {
 
     /// Sample multi-frame datasets for animated GIF export.
     fn sample_gif_frames(&mut self, num_frames: usize) -> Vec<DatasetFrame>;
+
+    /// Collect current offscreen plot primitives (including `PlotImage` raster buffers, bars, arrows, and boxes).
+    fn export_primitives(&mut self) -> Vec<ExportPrimitive> {
+        Vec::new()
+    }
 
     /// Returns `(enabled, disabled_hover_reason)` for figure export buttons.
     fn figure_capability(&self) -> (bool, &'static str) {
@@ -348,14 +357,79 @@ fn render_dimension_and_status(
     }
 }
 
+fn render_source_png(
+    options: &ExportOptions,
+    source: &mut impl ExportDataSource,
+) -> Result<Vec<u8>, String> {
+    let primitives = source.export_primitives();
+    if has_drawable_primitives(&primitives) {
+        return export_primitives_png(&primitives, options);
+    }
+    let datasets = source.export_datasets();
+    if !has_finite_dataset_points(&datasets) {
+        return Err("No drawable plot data or image available for PNG export".to_string());
+    }
+    export_custom_png(&datasets, options)
+}
+
+fn render_source_svg(
+    options: &ExportOptions,
+    source: &mut impl ExportDataSource,
+) -> Result<String, String> {
+    let primitives = source.export_primitives();
+    if has_drawable_primitives(&primitives) {
+        return export_primitives_svg(&primitives, options);
+    }
+    let datasets = source.export_datasets();
+    if !has_finite_dataset_points(&datasets) {
+        return Err("No drawable plot data or image available for SVG export".to_string());
+    }
+    export_custom_svg(&datasets, options)
+}
+
+fn render_source_image(
+    options: &ExportOptions,
+    source: &mut impl ExportDataSource,
+) -> Result<egui::ColorImage, String> {
+    let primitives = source.export_primitives();
+    if has_drawable_primitives(&primitives) {
+        return render_primitives_image(&primitives, options);
+    }
+    let datasets = source.export_datasets();
+    if !has_finite_dataset_points(&datasets) {
+        return Err("No drawable plot data or image available for clipboard export".to_string());
+    }
+    export_custom_image(&datasets, options)
+}
+
+fn render_source_gif(
+    options: &ExportOptions,
+    gif_fps: u32,
+    gif_frames: u32,
+    source: &mut impl ExportDataSource,
+) -> Result<Vec<u8>, String> {
+    let sampled_frames = source.sample_gif_frames(gif_frames as usize);
+    if sampled_frames
+        .iter()
+        .any(|frame| has_finite_dataset_points(frame))
+    {
+        return export_custom_gif(&sampled_frames, options, gif_fps);
+    }
+    let primitives = source.export_primitives();
+    if has_drawable_primitives(&primitives) {
+        let img = render_primitives_image(&primitives, options)?;
+        return color32_images_to_gif(&[img], gif_fps.max(1));
+    }
+    export_custom_gif(&sampled_frames, options, gif_fps)
+}
+
 fn handle_save_png(
     options: &ExportOptions,
     filename: &str,
     source: &mut impl ExportDataSource,
     status_message: &mut Option<String>,
 ) {
-    let datasets = source.export_datasets();
-    match export_custom_png(&datasets, options) {
+    match render_source_png(options, source) {
         Ok(png_bytes) => {
             save_file_dialog(filename, &png_bytes, "PNG Image", &["png"]);
             *status_message = Some("PNG image saved successfully.".to_string());
@@ -372,8 +446,7 @@ fn handle_save_svg(
     source: &mut impl ExportDataSource,
     status_message: &mut Option<String>,
 ) {
-    let datasets = source.export_datasets();
-    match export_custom_svg(&datasets, options) {
+    match render_source_svg(options, source) {
         Ok(svg_text) => {
             save_file_dialog(filename, svg_text.as_bytes(), "SVG Vector Image", &["svg"]);
             *status_message = Some("SVG image saved successfully.".to_string());
@@ -392,8 +465,7 @@ fn handle_save_gif(
     source: &mut impl ExportDataSource,
     status_message: &mut Option<String>,
 ) {
-    let sampled_frames = source.sample_gif_frames(gif_frames as usize);
-    match export_custom_gif(&sampled_frames, options, gif_fps) {
+    match render_source_gif(options, gif_fps, gif_frames, source) {
         Ok(gif_bytes) => {
             save_file_dialog(filename, &gif_bytes, "GIF Animation", &["gif"]);
             *status_message = Some("GIF animation saved successfully.".to_string());
@@ -411,8 +483,7 @@ fn handle_copy_clipboard(
     source: &mut impl ExportDataSource,
     status_message: &mut Option<String>,
 ) {
-    let datasets = source.export_datasets();
-    match export_custom_image(&datasets, options) {
+    match render_source_image(options, source) {
         Ok(color_img) => {
             let cb_ctx = ctx.clone();
             let status_id = clipboard_status_id(scope_id);

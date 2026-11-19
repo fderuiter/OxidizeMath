@@ -377,11 +377,21 @@ pub fn escape_json_string(input: &str) -> String {
     escaped
 }
 
+#[inline]
+fn resolve_export_series_label(name: &str, index: usize) -> std::borrow::Cow<'_, str> {
+    if name.trim().is_empty() {
+        std::borrow::Cow::Owned(format!("series_{index}"))
+    } else {
+        std::borrow::Cow::Borrowed(name)
+    }
+}
+
 /// Format dataset points to CSV string.
 pub fn format_csv(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
     let mut csv = String::from("Dataset,X,Y\n");
-    for (name, pts) in datasets {
-        let escaped_name = escape_csv_field(name);
+    for (idx, (name, pts)) in datasets.iter().enumerate() {
+        let label = resolve_export_series_label(name, idx);
+        let escaped_name = escape_csv_field(&label);
         for p in pts {
             csv.push_str(&format!("{escaped_name},{},{}\n", p[0], p[1]));
         }
@@ -393,8 +403,9 @@ pub fn format_csv(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
 pub fn format_json(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
     let mut json = String::from("[\n");
     let mut first = true;
-    for (name, pts) in datasets {
-        let escaped_name = escape_json_string(name);
+    for (idx, (name, pts)) in datasets.iter().enumerate() {
+        let label = resolve_export_series_label(name, idx);
+        let escaped_name = escape_json_string(&label);
         for p in pts {
             if !first {
                 json.push_str(",\n");
@@ -1872,5 +1883,28 @@ mod tests {
         };
         let gif = export_custom_gif(&frames, &gif_opts, 10).expect("Log GIF export failed");
         assert_eq!(&gif[0..6], b"GIF89a");
+    }
+
+    #[test]
+    fn test_format_csv_and_json_replace_empty_series_names_deterministically() {
+        let datasets = vec![
+            (String::new(), vec![[0.0, 1.0], [1.0, 2.0]]),
+            ("   ".to_string(), vec![[2.0, 3.0]]),
+            ("Named".to_string(), vec![[4.0, 5.0]]),
+        ];
+        let csv = format_csv(&datasets);
+        assert!(csv.contains("series_0,0,1\n"));
+        assert!(csv.contains("series_0,1,2\n"));
+        assert!(csv.contains("series_1,2,3\n"));
+        assert!(csv.contains("Named,4,5\n"));
+        for line in csv.lines().skip(1) {
+            assert!(!line.starts_with(','), "CSV line had empty dataset: {line}");
+        }
+
+        let json = format_json(&datasets);
+        assert!(json.contains("\"dataset\": \"series_0\""));
+        assert!(json.contains("\"dataset\": \"series_1\""));
+        assert!(json.contains("\"dataset\": \"Named\""));
+        assert!(!json.contains("\"dataset\": \"\""));
     }
 }

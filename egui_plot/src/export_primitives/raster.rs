@@ -1,12 +1,108 @@
 //! Offscreen raster (`egui::ColorImage`) renderer for [`super::ExportPrimitive`] items.
 
-use crate::export::ExportOptions;
+use crate::export::{ExportOptions, color32_image_to_png};
 
 use super::pixel_ops::{blend_over, draw_dot, draw_segment, fill_triangle};
 use super::{
-    ExportPrimitive, PrimitiveCanvasLayout, compute_primitive_bounds_for_options,
-    has_drawable_primitives, resolve_canvas_dimensions, resolve_color, sanitize_bar_corners,
+    ExportPrimitive, ExportSubplotPanel, PrimitiveCanvasLayout,
+    compute_primitive_bounds_for_options, compute_subplot_viewports, has_drawable_primitives,
+    panel_export_options, resolve_canvas_dimensions, resolve_color, sanitize_bar_corners,
 };
+
+/// Renders `panels` into proportional disjoint subplot viewports on an offscreen `egui::ColorImage`.
+pub fn render_subplot_panels_image(
+    panels: &[ExportSubplotPanel],
+    options: &ExportOptions,
+) -> Result<egui::ColorImage, String> {
+    render_subplot_panels_image_with_bounds(panels, options, None)
+}
+
+/// Renders `panels` into proportional disjoint subplot viewports with optional locked per-panel bounds.
+pub fn render_subplot_panels_image_with_bounds(
+    panels: &[ExportSubplotPanel],
+    options: &ExportOptions,
+    panel_bounds: Option<&[Option<[f64; 4]>]>,
+) -> Result<egui::ColorImage, String> {
+    if panels.is_empty()
+        || !panels
+            .iter()
+            .any(|p| has_drawable_primitives(&p.primitives))
+    {
+        return Err("No drawable subplot panels available for image export".to_string());
+    }
+    let (width, height) = resolve_canvas_dimensions(options)?;
+    let viewports = compute_subplot_viewports(panels, width, height, options.scale);
+    let bg = background_pixel(options);
+    let mut pixels = vec![bg; width * height];
+    let frame_border = subplot_border_color(options.background_color);
+
+    for (idx, (panel, vp)) in panels.iter().zip(viewports.iter()).enumerate() {
+        let mut sub_pixels = vec![bg; vp.width * vp.height];
+        let panel_opts = panel_export_options(panel, options);
+        let explicit_bounds = panel_bounds.and_then(|b| b.get(idx).copied().flatten());
+        if has_drawable_primitives(&panel.primitives)
+            && let Some(bounds) = explicit_bounds
+                .or_else(|| compute_primitive_bounds_for_options(&panel.primitives, &panel_opts))
+        {
+            let tf = PrimitiveCanvasLayout::new_subplot(vp.width, vp.height, bounds, &panel_opts);
+            for (p_idx, primitive) in panel.primitives.iter().enumerate() {
+                draw_primitive(&mut sub_pixels, &tf, primitive, p_idx);
+            }
+        }
+        draw_subplot_border(&mut sub_pixels, vp.width, vp.height, frame_border);
+        copy_sub_canvas(&mut pixels, width, height, &sub_pixels, *vp);
+    }
+
+    Ok(egui::ColorImage::new([width, height], pixels))
+}
+
+/// Renders `panels` into proportional subplot viewports and encodes the canvas as PNG bytes.
+pub fn export_subplot_panels_png(
+    panels: &[ExportSubplotPanel],
+    options: &ExportOptions,
+) -> Result<Vec<u8>, String> {
+    let image = render_subplot_panels_image(panels, options)?;
+    color32_image_to_png(&image)
+}
+
+fn subplot_border_color(bg: egui::Color32) -> egui::Color32 {
+    let luma = 0.299 * (bg.r() as f32) + 0.587 * (bg.g() as f32) + 0.114 * (bg.b() as f32);
+    if luma > 128.0 {
+        egui::Color32::from_rgba_unmultiplied(180, 188, 202, 220)
+    } else {
+        egui::Color32::from_rgba_unmultiplied(82, 92, 112, 220)
+    }
+}
+
+fn draw_subplot_border(pixels: &mut [egui::Color32], w: usize, h: usize, border: egui::Color32) {
+    if w < 2 || h < 2 {
+        return;
+    }
+    for x in 0..w {
+        pixels[x] = blend_over(pixels[x], border, 1.0);
+        pixels[(h - 1) * w + x] = blend_over(pixels[(h - 1) * w + x], border, 1.0);
+    }
+    for y in 0..h {
+        pixels[y * w] = blend_over(pixels[y * w], border, 1.0);
+        pixels[y * w + (w - 1)] = blend_over(pixels[y * w + (w - 1)], border, 1.0);
+    }
+}
+
+fn copy_sub_canvas(
+    dst: &mut [egui::Color32],
+    dst_w: usize,
+    dst_h: usize,
+    src: &[egui::Color32],
+    vp: super::SubplotViewport,
+) {
+    let max_h = vp.height.min(dst_h.saturating_sub(vp.y));
+    let max_w = vp.width.min(dst_w.saturating_sub(vp.x));
+    for row in 0..max_h {
+        let dst_off = (vp.y + row) * dst_w + vp.x;
+        let src_off = row * vp.width;
+        dst[dst_off..dst_off + max_w].copy_from_slice(&src[src_off..src_off + max_w]);
+    }
+}
 
 /// Renders `primitives` into an offscreen `egui::ColorImage` using automatic bounds.
 pub fn render_primitives_image(
@@ -165,10 +261,10 @@ fn draw_raster_primitive(
         (px0.min(px1), py0.min(py1), px0.max(px1), py0.max(py1))
     } else {
         (
-            tf.padding,
-            tf.padding,
-            tf.padding + tf.draw_w,
-            tf.padding + tf.draw_h,
+            tf.draw_x,
+            tf.draw_y,
+            tf.draw_x + tf.draw_w,
+            tf.draw_y + tf.draw_h,
         )
     };
     blit_image(pixels, tf.width, tf.height, image, rect);

@@ -205,3 +205,112 @@ fn test_primitives_log_axis_projection_png_and_svg() {
         "Decade steps must be equal in log10 space: {cx_vals:?}"
     );
 }
+
+#[test]
+fn test_plot_image_color_image_extracts_raster_primitive() {
+    let img = Arc::new(egui::ColorImage::new(
+        [8, 8],
+        vec![egui::Color32::from_rgb(30, 210, 160); 64],
+    ));
+    let plot_img = crate::PlotImage::new(
+        "turing_field",
+        egui::TextureId::default(),
+        crate::PlotPoint::new(0.5, 0.5),
+        [1.0_f32, 1.0_f32],
+    )
+    .color_image(Arc::clone(&img));
+
+    let prims = plot_img.extract_export_primitives();
+    assert_eq!(prims.len(), 1);
+    match &prims[0] {
+        ExportPrimitive::RasterImage {
+            name,
+            image,
+            bounds,
+        } => {
+            assert_eq!(name, "turing_field");
+            assert_eq!(image.size, [8, 8]);
+            assert_eq!(*bounds, Some([0.0, 1.0, 0.0, 1.0]));
+        }
+        other => panic!("Expected RasterImage, got {other:?}"),
+    }
+
+    let opts = ExportOptions {
+        width: 200,
+        height: 200,
+        ..ExportOptions::default()
+    };
+    let rendered = render_primitives_image(&prims, &opts).expect("plot_image render");
+    assert!(count_non_bg_pixels(&rendered, opts.background_color) > 1000);
+}
+
+#[test]
+fn test_subplot_panels_preserve_disjoint_viewports_and_isolate_pole_bounds() {
+    let z_panel = super::ExportSubplotPanel {
+        id: "z_plane".to_string(),
+        screen_rect: egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(390.0, 400.0)),
+        log_x: false,
+        log_y: false,
+        datasets: vec![("grid".to_string(), vec![[-2.0, -2.0], [2.0, 2.0]])],
+        primitives: vec![ExportPrimitive::Polyline {
+            name: "z_plane: grid".to_string(),
+            points: vec![[-2.0, -2.0], [2.0, 2.0]],
+            color: egui::Color32::from_rgb(80, 180, 250),
+            stroke_width: 3.0,
+            closed: false,
+            fill: None,
+        }],
+    };
+    let w_panel = super::ExportSubplotPanel {
+        id: "w_plane".to_string(),
+        screen_rect: egui::Rect::from_min_max(egui::pos2(410.0, 0.0), egui::pos2(800.0, 400.0)),
+        log_x: false,
+        log_y: false,
+        datasets: vec![("contour".to_string(), vec![[-1.0, -1.0], [1e6, 1e6]])],
+        primitives: vec![ExportPrimitive::Polyline {
+            name: "w_plane: contour".to_string(),
+            points: vec![[-1.0, -1.0], [1e6, 1e6]],
+            color: egui::Color32::from_rgb(240, 110, 80),
+            stroke_width: 3.0,
+            closed: false,
+            fill: None,
+        }],
+    };
+
+    let opts = ExportOptions {
+        width: 800,
+        height: 400,
+        ..ExportOptions::default()
+    };
+    let vps = super::compute_subplot_viewports(&[z_panel.clone(), w_panel.clone()], 800, 400, 1.0);
+    assert_eq!(vps.len(), 2);
+    assert!(vps[0].x + vps[0].width <= vps[1].x);
+
+    let img = super::render_subplot_panels_image(&[z_panel.clone(), w_panel.clone()], &opts)
+        .expect("subplot image");
+    let z_color = egui::Color32::from_rgb(80, 180, 250);
+    let mut min_zx = usize::MAX;
+    let mut max_zx = 0_usize;
+    for y in 0..img.height() {
+        for x in 0..img.width() {
+            if img.pixels[y * img.width() + x] == z_color {
+                min_zx = min_zx.min(x);
+                max_zx = max_zx.max(x);
+            }
+        }
+    }
+    assert!(
+        max_zx.saturating_sub(min_zx) > 250,
+        "z_plane line must span its full subplot width despite 1e6 pole in w_plane ({min_zx}..={max_zx})"
+    );
+    assert!(
+        max_zx < vps[1].x,
+        "z_plane pixels must stay inside left viewport"
+    );
+
+    let svg = super::export_subplot_panels_svg(&[z_panel, w_panel], &opts).expect("subplot svg");
+    assert!(svg.contains("data-subplot-id=\"z_plane\""));
+    assert!(svg.contains("data-subplot-id=\"w_plane\""));
+    assert!(svg.contains("clip-path=\"url(#subplot-clip-0)\""));
+    assert!(svg.contains("clip-path=\"url(#subplot-clip-1)\""));
+}

@@ -9,6 +9,9 @@ use petgraph::graph::NodeIndex;
 use petgraph::visit::{Bfs, Dfs};
 use std::collections::HashMap;
 
+#[path = "algorithm_visualizer/export.rs"]
+mod export;
+
 #[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum Algorithm {
     Dijkstra,
@@ -380,7 +383,16 @@ impl InteractiveTool for AlgorithmVisualizerTool {
         "graph_theory"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn step_simulation(&mut self) {
+        self.step_export_traversal();
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::export_primitives::ExportPrimitive> {
+        self.cold_export_primitives()
+    }
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.cold_export_datasets()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -459,30 +471,3 @@ impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool 
 #[cfg(test)]
 #[path = "algorithm_visualizer_tests.rs"]
 mod algorithm_visualizer_tests;
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Dijkstra Shortest Path",
-    "domain": "graph_theory",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "selected_algorithm": "Dijkstra",
-    "start_node": 5,
-    "playback_speed": 3.0
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "algorithm_visualizer_starter",
-        title: "Dijkstra Shortest Path",
-        description: "Priority-queue shortest path relaxation across weighted undirected graph topologies.",
-        category: "Graph Algorithms",
-        icon: "🛤️",
-        domain: "graph_theory",
-        tool_name: Some("AlgorithmVisualizerTool"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}

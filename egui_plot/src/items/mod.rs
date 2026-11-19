@@ -1305,6 +1305,7 @@ pub struct PlotImage {
     pub(crate) rotation: f64,
     pub(super) bg_fill: Color32,
     pub(super) tint: Color32,
+    pub(super) color_image: Option<Arc<egui::ColorImage>>,
 }
 
 impl PlotImage {
@@ -1324,7 +1325,15 @@ impl PlotImage {
             rotation: 0.0,
             bg_fill: Default::default(),
             tint: Color32::WHITE,
+            color_image: None,
         }
+    }
+
+    /// Attach an offscreen [`egui::ColorImage`] buffer so PNG, SVG, and GIF exports render this image.
+    #[inline]
+    pub fn color_image(mut self, image: impl Into<Arc<egui::ColorImage>>) -> Self {
+        self.color_image = Some(image.into());
+        self
     }
 
     /// Select UV range. Default is (0,0) in top-left, (1,1) bottom right.
@@ -1448,6 +1457,38 @@ impl PlotItem for PlotImage {
 
     fn base_mut(&mut self) -> &mut PlotItemBase {
         &mut self.base
+    }
+
+    fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        let Some(ref image) = self.color_image else {
+            return Vec::new();
+        };
+        if image.width() == 0 || image.height() == 0 || image.pixels.is_empty() {
+            return Vec::new();
+        }
+        let half_w = 0.5 * f64::from(self.size.x);
+        let half_h = 0.5 * f64::from(self.size.y);
+        let bounds = if self.position.x.is_finite()
+            && self.position.y.is_finite()
+            && half_w.is_finite()
+            && half_h.is_finite()
+            && half_w > 0.0
+            && half_h > 0.0
+        {
+            Some([
+                self.position.x - half_w,
+                self.position.x + half_w,
+                self.position.y - half_h,
+                self.position.y + half_h,
+            ])
+        } else {
+            None
+        };
+        vec![crate::export_primitives::ExportPrimitive::RasterImage {
+            name: self.base.name.clone(),
+            image: Arc::clone(image),
+            bounds,
+        }]
     }
 }
 

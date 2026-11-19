@@ -6,12 +6,15 @@ use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::medical::dose::kernel::{DoseKernel, ExponentialKernel};
 
+use std::sync::Arc;
+
 pub struct DoseCalculationTool {
     amplitude: f64,
     beta: f64,
     width: usize,
     height: usize,
     texture: Option<egui::TextureHandle>,
+    cached_image: Option<Arc<ColorImage>>,
 }
 
 impl Default for DoseCalculationTool {
@@ -22,6 +25,7 @@ impl Default for DoseCalculationTool {
             width: 200,
             height: 200,
             texture: None,
+            cached_image: None,
         }
     }
 }
@@ -82,6 +86,7 @@ impl InteractiveTool for DoseCalculationTool {
         self.width = loaded.width;
         self.height = loaded.height;
         self.texture = None;
+        self.cached_image = None;
         Ok(())
     }
 
@@ -125,12 +130,16 @@ impl InteractiveTool for DoseCalculationTool {
                     .show_grid(false)
                     .show_axes([true, true])
                     .show(ui, |plot_ui| {
-                        plot_ui.image(PlotImage::new(
+                        let mut plot_img = PlotImage::new(
                             "dose_field",
                             texture.id(),
                             PlotPoint::new(0.0, 0.0),
                             [20.0, 20.0], // Physical dimensions (-10 to 10)
-                        ));
+                        );
+                        if let Some(ref img) = self.cached_image {
+                            plot_img = plot_img.color_image(Arc::clone(img));
+                        }
+                        plot_ui.image(plot_img);
                     });
             }
         });
@@ -170,6 +179,7 @@ impl DoseCalculationTool {
 
     fn recompute_texture(&mut self, ctx: &egui::Context) {
         let image = self.compute_dose_image();
+        self.cached_image = Some(Arc::new(image.clone()));
         self.texture = Some(ctx.load_texture("dose_field", image, TextureOptions::LINEAR));
     }
 }

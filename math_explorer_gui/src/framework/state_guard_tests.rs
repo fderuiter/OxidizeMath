@@ -455,12 +455,20 @@ fn test_starter_card_launch_isolates_cross_pane_plot_datasets_and_syncs_owner() 
         .expect("NetworkPropagationTool starter card expected");
     assert!(fw.launch_starter_card(net_card).is_ok());
 
-    // NetworkPropagationTool uses default egui_plot export_datasets(), so foreign pane data must
-    // neither leak into its snapshot/cache nor be wiped from egui_plot's global buffer.
-    assert!(fw.current_valid_plot_datasets.is_empty());
-    assert!(fw
-        .last_valid_snapshot()
-        .is_some_and(|s| s.plot_datasets.is_empty()));
+    // NetworkPropagationTool provides isolated cold-path tabular datasets, so foreign pane data
+    // must neither leak into its snapshot/cache nor be wiped from egui_plot's global buffer.
+    assert!(!fw.current_valid_plot_datasets.is_empty());
+    assert!(!fw
+        .current_valid_plot_datasets
+        .iter()
+        .any(|(name, _)| name == "OtherPaneCurve"));
+    assert!(fw.last_valid_snapshot().is_some_and(|s| {
+        !s.plot_datasets.is_empty()
+            && !s
+                .plot_datasets
+                .iter()
+                .any(|(name, _)| name == "OtherPaneCurve")
+    }));
     assert_eq!(
         fw.sync_state.datasets_owner_tool,
         Some("Network Propagation")

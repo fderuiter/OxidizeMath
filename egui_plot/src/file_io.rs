@@ -533,8 +533,33 @@ pub fn trigger_import_csv_for_plot(ctx: &egui::Context, plot_id: egui::Id) {
     }
 }
 
+thread_local! {
+    static CAPTURE_SAVE_DIALOG_FOR_TEST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static LAST_SAVED_DIALOG_PAYLOAD: std::cell::RefCell<Option<(String, Vec<u8>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Captures any [`save_file_dialog`] invocation performed inside `f` without opening OS/browser dialogs.
+#[doc(hidden)]
+pub fn capture_save_dialog_for_test<R>(f: impl FnOnce() -> R) -> (R, Option<(String, Vec<u8>)>) {
+    LAST_SAVED_DIALOG_PAYLOAD.with(|slot| *slot.borrow_mut() = None);
+    CAPTURE_SAVE_DIALOG_FOR_TEST.with(|flag| flag.set(true));
+    let out = f();
+    CAPTURE_SAVE_DIALOG_FOR_TEST.with(|flag| flag.set(false));
+    let captured = LAST_SAVED_DIALOG_PAYLOAD.with(|slot| slot.borrow_mut().take());
+    (out, captured)
+}
+
 /// Triggers a cross-platform file save dialog on desktop or immediate browser download on WebAssembly.
 pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _filter_ext: &[&str]) {
+    if CAPTURE_SAVE_DIALOG_FOR_TEST.with(std::cell::Cell::get) {
+        let safe_name = sanitize_download_filename(filename, "export.bin");
+        LAST_SAVED_DIALOG_PAYLOAD.with(|slot| {
+            *slot.borrow_mut() = Some((safe_name, content.to_vec()));
+        });
+        return;
+    }
+
     #[cfg(test)]
     {
         let _ = (filename, content, _filter_name, _filter_ext);

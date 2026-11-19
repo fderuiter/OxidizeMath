@@ -93,6 +93,7 @@ impl ReplicatorDynamicsTool {
     pub(super) fn show_trajectory_plot(&self, ui: &mut egui::Ui) {
         let text_color = ui.visuals().text_color();
         Plot::new("replicator_plot")
+            .subplot_id("replicator_trajectories")
             .legend(Legend::default())
             .allow_drag(true)
             .allow_zoom(true)
@@ -112,9 +113,15 @@ impl ReplicatorDynamicsTool {
                         .get(i)
                         .cloned()
                         .unwrap_or_else(|| format!("Strategy {i}"));
-                    plot_ui.line(Line::new(name, points));
+                    plot_ui.line(Line::new(
+                        format!("replicator_trajectories: {name}"),
+                        points,
+                    ));
                 }
-                plot_ui.vline(VLine::new("Current Time", self.playback_time).color(text_color));
+                plot_ui.vline(
+                    VLine::new("replicator_trajectories: Current Time", self.playback_time)
+                        .color(text_color),
+                );
             });
     }
 
@@ -182,6 +189,7 @@ impl ReplicatorDynamicsTool {
             .collect();
 
         Plot::new("population_bar_chart")
+            .subplot_id("population_distribution")
             .show_axes([false, true])
             .show_x(false)
             .legend(Legend::default())
@@ -190,7 +198,7 @@ impl ReplicatorDynamicsTool {
             .include_y(0.0)
             .include_y(1.0)
             .show(ui, |plot_ui| {
-                plot_ui.bar_chart(BarChart::new("Distribution", bars));
+                plot_ui.bar_chart(BarChart::new("population_distribution: Distribution", bars));
             });
 
         ui.horizontal(|ui| {

@@ -14,8 +14,41 @@ use crate::export::{
     color32_images_to_gif,
 };
 
-pub use raster::{render_primitives_image, render_primitives_image_with_bounds, scale_color_image};
-pub use svg::{encode_base64, export_primitives_svg, export_raster_svg};
+pub use raster::{
+    export_subplot_panels_png, render_primitives_image, render_primitives_image_with_bounds,
+    render_subplot_panels_image, render_subplot_panels_image_with_bounds, scale_color_image,
+};
+pub use svg::{encode_base64, export_primitives_svg, export_raster_svg, export_subplot_panels_svg};
+
+/// Captured per-subplot panel metadata, tabular datasets, and offscreen primitives from [`crate::Plot::show`].
+#[derive(Clone, Debug)]
+pub struct ExportSubplotPanel {
+    /// Deterministic subplot identifier (e.g., `"z_plane"`, `"loss_history"`).
+    pub id: String,
+    /// Screen-space bounding rectangle occupied by this [`crate::Plot`] widget.
+    pub screen_rect: egui::Rect,
+    /// Whether the subplot X axis uses base-10 logarithmic scaling.
+    pub log_x: bool,
+    /// Whether the subplot Y axis uses base-10 logarithmic scaling.
+    pub log_y: bool,
+    /// Tabular `(series_name, points)` datasets extracted from this subplot.
+    pub datasets: Vec<(String, Vec<[f64; 2]>)>,
+    /// Drawable [`ExportPrimitive`] items extracted from this subplot.
+    pub primitives: Vec<ExportPrimitive>,
+}
+
+/// Proportional pixel viewport rectangle assigned to a subplot on an offscreen canvas.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SubplotViewport {
+    /// Left pixel coordinate on the target canvas.
+    pub x: usize,
+    /// Top pixel coordinate on the target canvas.
+    pub y: usize,
+    /// Viewport width in pixels (`>= 1`).
+    pub width: usize,
+    /// Viewport height in pixels (`>= 1`).
+    pub height: usize,
+}
 
 /// Offscreen-drawable plot primitive extracted from [`crate::PlotItem`] instances.
 #[derive(Clone, Debug)]
@@ -116,11 +149,13 @@ pub enum ExportPrimitive {
 
 thread_local! {
     static LAST_PLOT_PRIMITIVES: RefCell<Vec<ExportPrimitive>> = const { RefCell::new(Vec::new()) };
+    static LAST_PLOT_SUBPLOTS: RefCell<Vec<ExportSubplotPanel>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Clears thread-local offscreen plot primitives captured during the current frame.
+/// Clears thread-local offscreen plot primitives and subplot panels captured during the current frame.
 pub fn clear_last_plot_primitives() {
     LAST_PLOT_PRIMITIVES.with(|p| p.borrow_mut().clear());
+    clear_last_plot_subplots();
 }
 
 /// Appends offscreen plot primitives captured from a rendered [`crate::Plot`] widget.
@@ -133,6 +168,186 @@ pub fn append_last_plot_primitives(primitives: &[ExportPrimitive]) {
 /// Returns all offscreen plot primitives captured across [`crate::Plot`] widgets in the current frame.
 pub fn get_last_plot_primitives() -> Vec<ExportPrimitive> {
     LAST_PLOT_PRIMITIVES.with(|p| p.borrow().clone())
+}
+
+/// Clears thread-local [`ExportSubplotPanel`] records captured during the current frame.
+pub fn clear_last_plot_subplots() {
+    LAST_PLOT_SUBPLOTS.with(|s| s.borrow_mut().clear());
+}
+
+/// Appends an [`ExportSubplotPanel`] captured from a rendered [`crate::Plot`] widget.
+pub fn append_last_plot_subplot(panel: ExportSubplotPanel) {
+    LAST_PLOT_SUBPLOTS.with(|s| {
+        s.borrow_mut().push(panel);
+    });
+}
+
+/// Returns all [`ExportSubplotPanel`] records captured across [`crate::Plot`] widgets in the current frame.
+pub fn get_last_plot_subplots() -> Vec<ExportSubplotPanel> {
+    LAST_PLOT_SUBPLOTS.with(|s| s.borrow().clone())
+}
+
+/// Prefixes `series_name` with `subplot_id` if not already prefixed.
+#[must_use]
+pub fn prefix_subplot_series_name(subplot_id: &str, series_name: &str, idx: usize) -> String {
+    let trimmed_id = subplot_id.trim();
+    let trimmed_series = series_name.trim();
+    let base = if trimmed_series.is_empty() {
+        format!("series_{idx}")
+    } else {
+        trimmed_series.to_string()
+    };
+    if trimmed_id.is_empty() {
+        return base;
+    }
+    let colon_prefix = format!("{trimmed_id}:");
+    let under_prefix = format!("{trimmed_id}_");
+    if base.starts_with(&colon_prefix) || base.starts_with(&under_prefix) {
+        base
+    } else {
+        format!("{trimmed_id}: {base}")
+    }
+}
+
+pub(crate) fn panel_export_options(
+    panel: &ExportSubplotPanel,
+    base: &ExportOptions,
+) -> ExportOptions {
+    ExportOptions {
+        log_x: base.log_x || panel.log_x,
+        log_y: base.log_y || panel.log_y,
+        ..base.clone()
+    }
+}
+
+/// Partitions a `canvas_w x canvas_h` target canvas into disjoint proportional [`SubplotViewport`]s.
+#[must_use]
+pub fn compute_subplot_viewports(
+    panels: &[ExportSubplotPanel],
+    canvas_w: usize,
+    canvas_h: usize,
+    scale: f32,
+) -> Vec<SubplotViewport> {
+    if panels.is_empty() {
+        return Vec::new();
+    }
+    if panels.len() == 1 {
+        return vec![SubplotViewport {
+            x: 0,
+            y: 0,
+            width: canvas_w.max(1),
+            height: canvas_h.max(1),
+        }];
+    }
+    let gap = ((6.0 * scale).round() as usize).clamp(2, 16);
+    if has_distinct_screen_rects(panels) {
+        let mut union = egui::Rect::NOTHING;
+        for p in panels {
+            union = union.union(p.screen_rect);
+        }
+        let uw = (union.width() as f64).max(1.0);
+        let uh = (union.height() as f64).max(1.0);
+        let mut out = Vec::with_capacity(panels.len());
+        for p in panels {
+            let rx0 = ((p.screen_rect.min.x - union.min.x) as f64 / uw * canvas_w as f64).round();
+            let rx1 = ((p.screen_rect.max.x - union.min.x) as f64 / uw * canvas_w as f64).round();
+            let ry0 = ((p.screen_rect.min.y - union.min.y) as f64 / uh * canvas_h as f64).round();
+            let ry1 = ((p.screen_rect.max.y - union.min.y) as f64 / uh * canvas_h as f64).round();
+            let x0 = (rx0 as usize).min(canvas_w.saturating_sub(2));
+            let y0 = (ry0 as usize).min(canvas_h.saturating_sub(2));
+            let x1 = (rx1 as usize).clamp(x0 + 1, canvas_w);
+            let y1 = (ry1 as usize).clamp(y0 + 1, canvas_h);
+            out.push(SubplotViewport {
+                x: x0,
+                y: y0,
+                width: (x1 - x0).max(1),
+                height: (y1 - y0).max(1),
+            });
+        }
+        if viewports_are_disjoint(&out) {
+            return out;
+        }
+    }
+    fallback_grid_viewports(panels.len(), canvas_w.max(1), canvas_h.max(1), gap)
+}
+
+fn has_distinct_screen_rects(panels: &[ExportSubplotPanel]) -> bool {
+    for (i, a) in panels.iter().enumerate() {
+        let r = a.screen_rect;
+        if !r.min.x.is_finite()
+            || !r.min.y.is_finite()
+            || !r.max.x.is_finite()
+            || !r.max.y.is_finite()
+            || r.width() <= 1.0
+            || r.height() <= 1.0
+        {
+            return false;
+        }
+        for b in &panels[i + 1..] {
+            let inter = r.intersect(b.screen_rect);
+            if inter.width() > 1.0 && inter.height() > 1.0 {
+                let inter_area = inter.width() * inter.height();
+                let min_area =
+                    (r.width() * r.height()).min(b.screen_rect.width() * b.screen_rect.height());
+                if inter_area > 0.1 * min_area {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn viewports_are_disjoint(viewports: &[SubplotViewport]) -> bool {
+    for (i, a) in viewports.iter().enumerate() {
+        for b in &viewports[i + 1..] {
+            let x_overlap = a.x < b.x + b.width && b.x < a.x + a.width;
+            let y_overlap = a.y < b.y + b.height && b.y < a.y + a.height;
+            if x_overlap && y_overlap {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn fallback_grid_viewports(
+    count: usize,
+    canvas_w: usize,
+    canvas_h: usize,
+    gap: usize,
+) -> Vec<SubplotViewport> {
+    let cols = if count == 2 {
+        2
+    } else {
+        (count as f64).sqrt().ceil() as usize
+    };
+    let rows = count.div_ceil(cols);
+    let total_gap_x = gap * cols.saturating_sub(1);
+    let total_gap_y = gap * rows.saturating_sub(1);
+    let cell_w = canvas_w.saturating_sub(total_gap_x).div_ceil(cols).max(1);
+    let cell_h = canvas_h.saturating_sub(total_gap_y).div_ceil(rows).max(1);
+    let mut out = Vec::with_capacity(count);
+    for idx in 0..count {
+        let row = idx / cols;
+        let col = idx % cols;
+        let is_last_lone = idx == count - 1 && col == 0 && count > 2 && cols > 1;
+        let x = (col * (cell_w + gap)).min(canvas_w.saturating_sub(1));
+        let y = (row * (cell_h + gap)).min(canvas_h.saturating_sub(1));
+        let width = if is_last_lone {
+            canvas_w.saturating_sub(x).max(1)
+        } else {
+            cell_w.min(canvas_w.saturating_sub(x)).max(1)
+        };
+        let height = cell_h.min(canvas_h.saturating_sub(y)).max(1);
+        out.push(SubplotViewport {
+            x,
+            y,
+            width,
+            height,
+        });
+    }
+    out
 }
 
 /// Returns `true` if `datasets` contains at least one finite `[x, y]` coordinate pair.
@@ -331,9 +546,11 @@ impl BoundsAccumulator {
 pub(crate) struct PrimitiveCanvasLayout {
     pub(crate) width: usize,
     pub(crate) height: usize,
-    pub(crate) padding: f64,
+    pub(crate) draw_x: f64,
+    pub(crate) draw_y: f64,
     pub(crate) draw_w: f64,
     pub(crate) draw_h: f64,
+    vp_bottom: f64,
     min_x: f64,
     max_x: f64,
     min_y: f64,
@@ -348,6 +565,76 @@ impl PrimitiveCanvasLayout {
     pub(crate) fn new(
         width: usize,
         height: usize,
+        raw_bounds: [f64; 4],
+        options: &ExportOptions,
+    ) -> Self {
+        let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
+        Self::build(
+            width,
+            height,
+            SubplotViewport {
+                x: 0,
+                y: 0,
+                width,
+                height,
+            },
+            padding,
+            raw_bounds,
+            options,
+        )
+    }
+
+    pub(crate) fn new_subplot(
+        vp_width: usize,
+        vp_height: usize,
+        raw_bounds: [f64; 4],
+        options: &ExportOptions,
+    ) -> Self {
+        let min_dim = vp_width.min(vp_height) as f64;
+        let padding = (14.0 * options.scale as f64)
+            .clamp(6.0, 48.0)
+            .min((min_dim * 0.15).max(2.0));
+        Self::build(
+            vp_width,
+            vp_height,
+            SubplotViewport {
+                x: 0,
+                y: 0,
+                width: vp_width,
+                height: vp_height,
+            },
+            padding,
+            raw_bounds,
+            options,
+        )
+    }
+
+    pub(crate) fn new_viewport(
+        canvas_width: usize,
+        canvas_height: usize,
+        vp: SubplotViewport,
+        raw_bounds: [f64; 4],
+        options: &ExportOptions,
+    ) -> Self {
+        let min_dim = vp.width.min(vp.height) as f64;
+        let padding = (14.0 * options.scale as f64)
+            .clamp(6.0, 48.0)
+            .min((min_dim * 0.15).max(2.0));
+        Self::build(
+            canvas_width,
+            canvas_height,
+            vp,
+            padding,
+            raw_bounds,
+            options,
+        )
+    }
+
+    fn build(
+        width: usize,
+        height: usize,
+        vp: SubplotViewport,
+        padding: f64,
         raw_bounds: [f64; 4],
         options: &ExportOptions,
     ) -> Self {
@@ -378,15 +665,19 @@ impl PrimitiveCanvasLayout {
             project_coord(by1, options.log_y),
         ];
         let [min_x, max_x, min_y, max_y] = padded_bounds(projected);
-        let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
-        let draw_w = (width as f64 - 2.0 * padding).max(1.0);
-        let draw_h = (height as f64 - 2.0 * padding).max(1.0);
+        let draw_x = vp.x as f64 + padding;
+        let draw_y = vp.y as f64 + padding;
+        let draw_w = (vp.width as f64 - 2.0 * padding).max(1.0);
+        let draw_h = (vp.height as f64 - 2.0 * padding).max(1.0);
+        let vp_bottom = (vp.y + vp.height) as f64 - padding;
         Self {
             width,
             height,
-            padding,
+            draw_x,
+            draw_y,
             draw_w,
             draw_h,
+            vp_bottom,
             min_x,
             max_x,
             min_y,
@@ -408,8 +699,8 @@ impl PrimitiveCanvasLayout {
         let py_val = project_coord(p[1], self.log_y);
         let x_norm = (px_val - self.min_x) / (self.max_x - self.min_x);
         let y_norm = (py_val - self.min_y) / (self.max_y - self.min_y);
-        let px = self.padding + x_norm * self.draw_w;
-        let py = (self.height as f64 - self.padding) - y_norm * self.draw_h;
+        let px = self.draw_x + x_norm * self.draw_w;
+        let py = self.vp_bottom - y_norm * self.draw_h;
         (px, py)
     }
 }

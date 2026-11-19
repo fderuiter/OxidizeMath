@@ -3,6 +3,7 @@ pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
 pub mod export_figure;
+mod export_figure_subplots;
 pub mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
@@ -274,6 +275,11 @@ pub trait InteractiveTool {
     /// Optional hook to extract offscreen drawable plot primitives (`Bar`, `Arrow`, `BoxElem`, `Polyline`, `Points`).
     fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
         egui_plot::get_last_plot_primitives()
+    }
+
+    /// Optional hook to extract multi-plot subplot panels with per-panel bounds, log axes, and primitives.
+    fn export_subplot_panels(&self) -> Vec<egui_plot::ExportSubplotPanel> {
+        egui_plot::get_last_plot_subplots()
     }
 
     /// Optional hook for texture-backed tools to expose their rendered 2D raster field for PNG, SVG, and GIF exports.

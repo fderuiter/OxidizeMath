@@ -262,16 +262,22 @@ impl InteractiveTool for RiemannIntegrationTool {
                 .y_axis_label("f(x)")
                 .show(ui, |plot_ui| {
                     plot_ui.line(true_line);
-                    for poly in &self.cached_trapezoid_polygons {
-                        let polygon =
-                            Polygon::new("", PlotPoints::new(poly.clone())).fill_color(poly_fill);
+                    for (idx, poly) in self.cached_trapezoid_polygons.iter().enumerate() {
+                        let polygon = Polygon::new(
+                            format!("trapezoid_{idx}"),
+                            PlotPoints::new(poly.clone()),
+                        )
+                        .fill_color(poly_fill);
                         plot_ui.polygon(polygon);
                     }
 
                     // Add a zero line
                     plot_ui.line(
-                        Line::new("", PlotPoints::new(vec![[plot_min, 0.0], [plot_max, 0.0]]))
-                            .color(palette.graph_edge),
+                        Line::new(
+                            "zero_axis",
+                            PlotPoints::new(vec![[plot_min, 0.0], [plot_max, 0.0]]),
+                        )
+                        .color(palette.graph_edge),
                     );
                 });
         });

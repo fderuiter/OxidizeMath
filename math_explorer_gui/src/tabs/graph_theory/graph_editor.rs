@@ -12,6 +12,7 @@ use math_explorer::pure_math::graph_theory::{
 use petgraph::graph::NodeIndex;
 use std::collections::{BTreeMap, HashMap};
 
+mod export;
 mod keyboard;
 mod snapshot;
 #[allow(unused_imports)]
@@ -57,7 +58,16 @@ impl InteractiveTool for GraphEditorTool {
         "graph_theory"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn step_simulation(&mut self) {
+        self.step_export_layout();
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::export_primitives::ExportPrimitive> {
+        self.cold_export_primitives()
+    }
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.cold_export_datasets()
     }
 
     fn state_revision(&self) -> u64 {

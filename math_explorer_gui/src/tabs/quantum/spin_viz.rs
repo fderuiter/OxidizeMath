@@ -155,13 +155,17 @@ impl SpinVisualizer {
                 .data_aspect(1.0)
                 .view_aspect(1.0)
                 .show(ui, |plot_ui| {
-                    plot_ui.line(Line::new("", &equator[..]).color(palette.graph_edge));
-                    plot_ui.line(Line::new("", &meridian[..]).color(palette.graph_edge));
-                    plot_ui.line(Line::new("", &meridian2[..]).color(palette.graph_edge));
+                    plot_ui.line(Line::new("bloch_equator", &equator[..]).color(palette.graph_edge));
+                    plot_ui.line(
+                        Line::new("bloch_meridian_yz", &meridian[..]).color(palette.graph_edge),
+                    );
+                    plot_ui.line(
+                        Line::new("bloch_meridian_xz", &meridian2[..]).color(palette.graph_edge),
+                    );
 
-                    plot_ui.line(Line::new("", &x_axis[..]).color(palette.axis_x));
-                    plot_ui.line(Line::new("", &y_axis[..]).color(palette.axis_y));
-                    plot_ui.line(Line::new("", &z_axis[..]).color(palette.axis_z));
+                    plot_ui.line(Line::new("x_axis", &x_axis[..]).color(palette.axis_x));
+                    plot_ui.line(Line::new("y_axis", &y_axis[..]).color(palette.axis_y));
+                    plot_ui.line(Line::new("z_axis", &z_axis[..]).color(palette.axis_z));
 
                     plot_ui.line(
                         Line::new("State", &vec_line[..])
@@ -169,7 +173,7 @@ impl SpinVisualizer {
                             .width(3.0_f32),
                     );
                     plot_ui.points(
-                        Points::new("", &tip[..])
+                        Points::new("state_tip", &tip[..])
                             .radius(5.0_f32)
                             .color(palette.accent),
                     );

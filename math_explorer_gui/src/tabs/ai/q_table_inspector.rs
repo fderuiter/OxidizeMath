@@ -8,6 +8,8 @@ use eframe::egui;
 use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorldEnv, Move};
 use std::collections::HashMap;
 
+#[path = "q_table_inspector/export.rs"]
+mod export;
 #[path = "q_table_inspector/runner.rs"]
 mod runner;
 pub use runner::*;
@@ -337,7 +339,16 @@ impl InteractiveTool for QTableInspectorTool {
         "Q-Table Inspector"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn step_simulation(&mut self) {
+        self.step_export_episode();
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::export_primitives::ExportPrimitive> {
+        self.cold_export_primitives()
+    }
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.cold_export_datasets()
     }
     fn domain(&self) -> &'static str {
         "ai"

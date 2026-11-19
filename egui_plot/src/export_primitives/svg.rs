@@ -5,9 +5,81 @@ use std::sync::Arc;
 use crate::export::{ExportOptions, color32_image_to_png};
 
 use super::{
-    ExportPrimitive, PrimitiveCanvasLayout, compute_primitive_bounds_for_options,
-    has_drawable_primitives, resolve_canvas_dimensions, resolve_color, sanitize_bar_corners,
+    ExportPrimitive, ExportSubplotPanel, PrimitiveCanvasLayout,
+    compute_primitive_bounds_for_options, compute_subplot_viewports, has_drawable_primitives,
+    panel_export_options, resolve_canvas_dimensions, resolve_color, sanitize_bar_corners,
 };
+
+/// Renders `panels` into proportional disjoint subplot `<g>` viewports in an SVG XML document.
+pub fn export_subplot_panels_svg(
+    panels: &[ExportSubplotPanel],
+    options: &ExportOptions,
+) -> Result<String, String> {
+    if panels.is_empty()
+        || !panels
+            .iter()
+            .any(|p| has_drawable_primitives(&p.primitives))
+    {
+        return Err("No drawable subplot panels available for SVG export".to_string());
+    }
+    let (width, height) = resolve_canvas_dimensions(options)?;
+    let viewports = compute_subplot_viewports(panels, width, height, options.scale);
+    let bg = options.background_color;
+    let bg_opacity = (bg.a() as f32 / 255.0) * options.background_opacity.clamp(0.0, 1.0);
+    let luma = 0.299 * (bg.r() as f32) + 0.587 * (bg.g() as f32) + 0.114 * (bg.b() as f32);
+    let frame_hex = if luma > 128.0 { "#b4bcca" } else { "#525c70" };
+
+    let mut svg = String::new();
+    svg.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    svg.push_str(&format!(
+        "<svg width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\" xmlns=\"http://www.w3.org/2000/svg\">\n"
+    ));
+    svg.push_str(&format!(
+        "  <rect width=\"{width}\" height=\"{height}\" fill=\"rgb({},{},{})\" fill-opacity=\"{bg_opacity:.3}\" />\n",
+        bg.r(),
+        bg.g(),
+        bg.b()
+    ));
+
+    svg.push_str("  <defs>\n");
+    for (idx, vp) in viewports.iter().enumerate() {
+        svg.push_str(&format!(
+            "    <clipPath id=\"subplot-clip-{idx}\"><rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" /></clipPath>\n",
+            vp.x, vp.y, vp.width, vp.height
+        ));
+    }
+    svg.push_str("  </defs>\n");
+
+    let mut prim_counter = 0_usize;
+    for (idx, (panel, vp)) in panels.iter().zip(viewports.iter()).enumerate() {
+        let escaped_id = escape_xml(&panel.id);
+        svg.push_str(&format!(
+            "  <g class=\"subplot-panel\" id=\"subplot-{idx}\" data-subplot-id=\"{escaped_id}\" data-vp-x=\"{}\" data-vp-y=\"{}\" data-vp-w=\"{}\" data-vp-h=\"{}\" clip-path=\"url(#subplot-clip-{idx})\">\n",
+            vp.x, vp.y, vp.width, vp.height
+        ));
+        svg.push_str(&format!(
+            "    <rect class=\"subplot-frame\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"none\" stroke=\"{frame_hex}\" stroke-width=\"1\" />\n",
+            vp.x, vp.y, vp.width, vp.height
+        ));
+
+        let panel_opts = panel_export_options(panel, options);
+        if has_drawable_primitives(&panel.primitives)
+            && let Some(bounds) =
+                compute_primitive_bounds_for_options(&panel.primitives, &panel_opts)
+        {
+            let layout =
+                PrimitiveCanvasLayout::new_viewport(width, height, *vp, bounds, &panel_opts);
+            for primitive in &panel.primitives {
+                write_primitive_svg(&mut svg, &layout, primitive, prim_counter)?;
+                prim_counter += 1;
+            }
+        }
+        svg.push_str("  </g>\n");
+    }
+
+    svg.push_str("</svg>\n");
+    Ok(svg)
+}
 
 /// Renders `primitives` into a vector SVG XML document.
 pub fn export_primitives_svg(
@@ -174,7 +246,7 @@ fn write_raster_svg(
             (py0.max(py1) - top).max(1.0),
         )
     } else {
-        (layout.padding, layout.padding, layout.draw_w, layout.draw_h)
+        (layout.draw_x, layout.draw_y, layout.draw_w, layout.draw_h)
     };
     let escaped = escape_xml(name);
     svg.push_str(&format!(
@@ -355,35 +427,60 @@ fn write_polyline_svg(
     svg.push_str(&format!(
         "  <g id=\"primitive-{idx}\" data-name=\"{escaped}\">\n"
     ));
-    let finite: Vec<(f64, f64)> = points
-        .iter()
-        .filter(|&&p| layout.is_valid_point(p))
-        .map(|&p| layout.to_pixel(p))
-        .collect();
-    if finite.len() == 1 {
-        let (px, py) = finite[0];
-        let r = (stroke_width * 0.5).max(1.5);
-        svg.push_str(&format!(
-            "    <circle cx=\"{px:.2}\" cy=\"{py:.2}\" r=\"{r:.2}\" fill=\"{hex}\" />\n"
-        ));
-    } else if finite.len() >= 2 {
-        let pts_attr: String = finite
+    if closed {
+        let finite: Vec<(f64, f64)> = points
             .iter()
-            .map(|(x, y)| format!("{x:.2},{y:.2}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-        if closed {
+            .filter(|&&p| layout.is_valid_point(p))
+            .map(|&p| layout.to_pixel(p))
+            .collect();
+        if finite.len() == 1 {
+            let (px, py) = finite[0];
+            let r = (stroke_width * 0.5).max(1.5);
+            svg.push_str(&format!(
+                "    <circle cx=\"{px:.2}\" cy=\"{py:.2}\" r=\"{r:.2}\" fill=\"{hex}\" />\n"
+            ));
+        } else if finite.len() >= 2 {
+            let pts_attr: String = finite
+                .iter()
+                .map(|(x, y)| format!("{x:.2},{y:.2}"))
+                .collect::<Vec<_>>()
+                .join(" ");
             let fc = fill.unwrap_or_else(|| stroke.linear_multiply(0.2));
             let fhex = hex_rgb(fc);
             let fop = fc.a() as f32 / 255.0;
             svg.push_str(&format!(
                 "    <polygon points=\"{pts_attr}\" fill=\"{fhex}\" fill-opacity=\"{fop:.3}\" stroke=\"{hex}\" stroke-width=\"{stroke_width:.2}\" stroke-linejoin=\"round\" />\n"
             ));
-        } else {
-            svg.push_str(&format!(
-                "    <polyline points=\"{pts_attr}\" fill=\"none\" stroke=\"{hex}\" stroke-width=\"{stroke_width:.2}\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n"
-            ));
         }
+    } else {
+        let mut segment: Vec<(f64, f64)> = Vec::new();
+        let flush = |seg: &mut Vec<(f64, f64)>, svg: &mut String| {
+            if seg.len() == 1 {
+                let (px, py) = seg[0];
+                let r = (stroke_width * 0.5).max(1.5);
+                svg.push_str(&format!(
+                    "    <circle cx=\"{px:.2}\" cy=\"{py:.2}\" r=\"{r:.2}\" fill=\"{hex}\" />\n"
+                ));
+            } else if seg.len() >= 2 {
+                let pts_attr: String = seg
+                    .iter()
+                    .map(|(x, y)| format!("{x:.2},{y:.2}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                svg.push_str(&format!(
+                    "    <polyline points=\"{pts_attr}\" fill=\"none\" stroke=\"{hex}\" stroke-width=\"{stroke_width:.2}\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n"
+                ));
+            }
+            seg.clear();
+        };
+        for &p in points {
+            if layout.is_valid_point(p) {
+                segment.push(layout.to_pixel(p));
+            } else {
+                flush(&mut segment, svg);
+            }
+        }
+        flush(&mut segment, svg);
     }
     svg.push_str("  </g>\n");
 }

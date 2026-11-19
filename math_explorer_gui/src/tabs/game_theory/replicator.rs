@@ -4,6 +4,8 @@ use eframe::egui;
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
 use nalgebra::{DMatrix, DVector};
 
+#[path = "replicator/export.rs"]
+mod export;
 #[path = "replicator/ui.rs"]
 mod ui;
 
@@ -114,6 +116,18 @@ impl InteractiveTool for ReplicatorDynamicsTool {
         let config: ReplicatorPresetConfig = serde_json::from_str(state)
             .map_err(|e| format!("Invalid ReplicatorDynamicsTool state: {e}"))?;
         self.apply_config(config)
+    }
+
+    fn step_simulation(&mut self) {
+        self.step_export_animation();
+    }
+
+    fn export_subplot_panels(&self) -> Vec<egui_plot::ExportSubplotPanel> {
+        self.cold_export_subplot_panels()
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.cold_export_datasets()
     }
 
     fn show(&mut self, ctx: &egui::Context) {

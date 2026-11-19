@@ -7,6 +7,9 @@ use math_explorer::ai::deep_learning_theory::model::TwoLayerMLP;
 use math_explorer::ai::optimization::Adam;
 use std::f64::consts::PI;
 
+#[path = "training_monitor/export.rs"]
+mod export_impl;
+
 pub struct TrainingMonitorTool {
     training_loop: TrainingLoop<TwoLayerMLP>,
     data: Vec<(Vector, Vector)>,
@@ -149,18 +152,20 @@ impl TrainingMonitorTool {
             ui.columns(2, |columns| {
                 columns[0].heading("Loss History");
                 Plot::new("loss_plot")
+                    .subplot_id("loss_history")
                     .height(200.0)
                     .show(&mut columns[0], |plot_ui| {
-                        plot_ui.line(Line::new("Loss", self.loss_history.clone()));
+                        plot_ui.line(Line::new("loss_history: Loss", self.loss_history.clone()));
                     });
 
                 let palette = crate::app::SemanticPalette::from_visuals(columns[1].visuals());
                 columns[1].heading("Accuracy History");
                 Plot::new("accuracy_plot")
+                    .subplot_id("accuracy_history")
                     .height(200.0)
                     .show(&mut columns[1], |plot_ui| {
                         plot_ui.line(
-                            Line::new("Accuracy", self.accuracy_history.clone())
+                            Line::new("accuracy_history: Accuracy", self.accuracy_history.clone())
                                 .color(palette.success),
                         );
                     });
@@ -170,30 +175,33 @@ impl TrainingMonitorTool {
 
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.heading("Decision Boundary Visualization");
-            Plot::new("data_plot").data_aspect(1.0).show(ui, |plot_ui| {
-                let mut class_0_points = Vec::new();
-                let mut class_1_points = Vec::new();
+            Plot::new("data_plot")
+                .subplot_id("decision_boundary")
+                .data_aspect(1.0)
+                .show(ui, |plot_ui| {
+                    let mut class_0_points = Vec::new();
+                    let mut class_1_points = Vec::new();
 
-                for (x, y) in &self.data {
-                    let point = [x[0], x[1]];
-                    if y[0] > 0.5 {
-                        class_0_points.push(point);
-                    } else {
-                        class_1_points.push(point);
+                    for (x, y) in &self.data {
+                        let point = [x[0], x[1]];
+                        if y[0] > 0.5 {
+                            class_0_points.push(point);
+                        } else {
+                            class_1_points.push(point);
+                        }
                     }
-                }
 
-                plot_ui.points(
-                    Points::new("Class 0", class_0_points)
-                        .color(palette.axis_x)
-                        .radius(4.0_f32),
-                );
-                plot_ui.points(
-                    Points::new("Class 1", class_1_points)
-                        .color(palette.axis_z)
-                        .radius(4.0_f32),
-                );
-            });
+                    plot_ui.points(
+                        Points::new("decision_boundary: Class 0", class_0_points)
+                            .color(palette.axis_x)
+                            .radius(4.0_f32),
+                    );
+                    plot_ui.points(
+                        Points::new("decision_boundary: Class 1", class_1_points)
+                            .color(palette.axis_z)
+                            .radius(4.0_f32),
+                    );
+                });
         });
     }
 }
@@ -241,6 +249,18 @@ impl InteractiveTool for TrainingMonitorTool {
         self.reinit_model();
         self.is_training = parsed.is_training;
         Ok(())
+    }
+
+    fn step_simulation(&mut self) {
+        self.step();
+    }
+
+    fn export_subplot_panels(&self) -> Vec<egui_plot::ExportSubplotPanel> {
+        self.cold_export_subplot_panels()
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.cold_export_datasets()
     }
 
     fn show(&mut self, ctx: &egui::Context) {

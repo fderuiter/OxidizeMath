@@ -89,6 +89,7 @@ pub(super) fn capture_isolated_tool_datasets(
 ) -> Vec<(String, Vec<[f64; 2]>)> {
     let prev = egui_plot::get_last_plot_datasets();
     let prev_prims = egui_plot::get_last_plot_primitives();
+    let prev_subplots = egui_plot::get_last_plot_subplots();
     egui_plot::clear_last_plot_datasets();
     egui_plot::clear_last_plot_primitives();
     let datasets = tool.export_datasets();
@@ -99,6 +100,9 @@ pub(super) fn capture_isolated_tool_datasets(
     }
     if !prev_prims.is_empty() {
         egui_plot::append_last_plot_primitives(&prev_prims);
+    }
+    for subplot in prev_subplots {
+        egui_plot::append_last_plot_subplot(subplot);
     }
     datasets
 }

@@ -70,6 +70,35 @@ impl SerializedGraphState {
 }
 
 impl GraphEditorTool {
+    /// Constructs a `GraphEditorTool` seeded with the 5-node wheel starter graph
+    /// while leaving undo/redo stacks empty and `revision` at `0`.
+    pub fn with_starter_graph() -> Self {
+        let mut tool = Self::default();
+        for (id, (x, y)) in [
+            (0usize, (300.0_f32, 220.0_f32)),
+            (1, (200.0, 140.0)),
+            (2, (400.0, 140.0)),
+            (3, (400.0, 300.0)),
+            (4, (200.0, 300.0)),
+        ] {
+            tool.node_positions.insert(id, Pos2::new(x, y));
+        }
+        tool.edges = vec![
+            (0, 1, 1.0),
+            (0, 2, 1.0),
+            (0, 3, 1.0),
+            (0, 4, 1.0),
+            (1, 2, 1.0),
+            (2, 3, 1.0),
+            (3, 4, 1.0),
+            (4, 1, 1.0),
+        ];
+        tool.selected_node = Some(0);
+        tool.next_node_id = 5;
+        tool.rebuild_graph();
+        tool
+    }
+
     pub(crate) fn bump_revision(&mut self) {
         self.revision = self.revision.wrapping_add(1).max(1);
     }
@@ -180,7 +209,7 @@ inventory::submit! {
         display_name: "Graph Editor",
         domain: "graph_theory",
         tags: &[],
-        build: || Box::new(GraphEditorTool::default()),
+        build: || Box::new(GraphEditorTool::with_starter_graph()),
     }
 }
 

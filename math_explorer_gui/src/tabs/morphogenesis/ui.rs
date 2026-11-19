@@ -37,6 +37,7 @@ impl MorphogenesisTab {
             pixels: self.pixels.clone(),
             ..Default::default()
         };
+        self.cached_image = Some(std::sync::Arc::new(image.clone()));
         let texture_opts = egui::TextureOptions::NEAREST;
         if let Some(texture) = &mut self.texture {
             texture.set(image, texture_opts);
@@ -61,12 +62,16 @@ impl MorphogenesisTab {
                     .allow_drag(true)
                     .allow_zoom(true)
                     .show(ui, |plot_ui| {
-                        plot_ui.image(PlotImage::new(
+                        let mut plot_img = PlotImage::new(
                             "morphogenesis_image",
                             texture.id(),
                             PlotPoint::new(f64::from(w) / 2.0, f64::from(h) / 2.0),
                             [w, h],
-                        ));
+                        );
+                        if let Some(ref img) = self.cached_image {
+                            plot_img = plot_img.color_image(std::sync::Arc::clone(img));
+                        }
+                        plot_ui.image(plot_img);
                     });
             } else {
                 render_empty_plot_guidance(

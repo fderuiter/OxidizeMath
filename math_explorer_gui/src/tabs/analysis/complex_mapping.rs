@@ -5,6 +5,9 @@ use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::complex::mapping::conformal_scale_factor;
 use num_complex::Complex64;
 
+#[path = "complex_mapping/export.rs"]
+mod export;
+
 #[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum MappingFunction {
     ZSquared,
@@ -142,6 +145,14 @@ impl InteractiveTool for ComplexMappingTool {
         "analysis"
     }
 
+    fn export_subplot_panels(&self) -> Vec<egui_plot::ExportSubplotPanel> {
+        self.cold_export_subplot_panels()
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.cold_export_datasets()
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&ComplexMappingState {
             function: self.function,
@@ -263,6 +274,7 @@ impl InteractiveTool for ComplexMappingTool {
             ui.columns(2, |columns| {
                 columns[0].label("z-plane (Input)");
                 Plot::new("z_plane_plot")
+                    .subplot_id("z_plane")
                     .view_aspect(1.0)
                     .x_axis_label("Re(z)")
                     .y_axis_label("Im(z)")
@@ -275,8 +287,11 @@ impl InteractiveTool for ComplexMappingTool {
                                 let x = self.grid_min + (i as f64) * step;
                                 let points = vec![[x, self.grid_min], [x, self.grid_max]];
                                 plot_ui.line(
-                                    Line::new("", PlotPoints::new(points))
-                                        .color(palette.series_color(0)),
+                                    Line::new(
+                                        format!("z_plane: vertical_grid_{i}"),
+                                        PlotPoints::new(points),
+                                    )
+                                    .color(palette.series_color(0)),
                                 );
                             }
 
@@ -284,15 +299,18 @@ impl InteractiveTool for ComplexMappingTool {
                                 let y = self.grid_min + (i as f64) * step;
                                 let points = vec![[self.grid_min, y], [self.grid_max, y]];
                                 plot_ui.line(
-                                    Line::new("", PlotPoints::new(points))
-                                        .color(palette.series_color(1)),
+                                    Line::new(
+                                        format!("z_plane: horizontal_grid_{i}"),
+                                        PlotPoints::new(points),
+                                    )
+                                    .color(palette.series_color(1)),
                                 );
                             }
                         }
 
                         plot_ui.points(
                             egui_plot::Points::new(
-                                "",
+                                "z_plane: inspection_point",
                                 PlotPoints::new(vec![self.inspection_point]),
                             )
                             .color(palette.error)
@@ -302,6 +320,7 @@ impl InteractiveTool for ComplexMappingTool {
 
                 columns[1].label("w-plane (Output)");
                 Plot::new("w_plane_plot")
+                    .subplot_id("w_plane")
                     .view_aspect(1.0)
                     .x_axis_label("Re(w)")
                     .y_axis_label("Im(w)")
@@ -323,8 +342,11 @@ impl InteractiveTool for ComplexMappingTool {
                                     points.push([w.re, w.im]);
                                 }
                                 plot_ui.line(
-                                    Line::new("", PlotPoints::new(points))
-                                        .color(palette.series_color(0)),
+                                    Line::new(
+                                        format!("w_plane: vertical_contour_{i}"),
+                                        PlotPoints::new(points),
+                                    )
+                                    .color(palette.series_color(0)),
                                 );
                             }
 
@@ -340,8 +362,11 @@ impl InteractiveTool for ComplexMappingTool {
                                     points.push([w.re, w.im]);
                                 }
                                 plot_ui.line(
-                                    Line::new("", PlotPoints::new(points))
-                                        .color(palette.series_color(1)),
+                                    Line::new(
+                                        format!("w_plane: horizontal_contour_{i}"),
+                                        PlotPoints::new(points),
+                                    )
+                                    .color(palette.series_color(1)),
                                 );
                             }
                         }
@@ -349,9 +374,12 @@ impl InteractiveTool for ComplexMappingTool {
                         let z0 = Complex64::new(self.inspection_point[0], self.inspection_point[1]);
                         let w0 = self.eval_z(z0);
                         plot_ui.points(
-                            egui_plot::Points::new("", PlotPoints::new(vec![[w0.re, w0.im]]))
-                                .color(palette.error)
-                                .radius(5.0_f32),
+                            egui_plot::Points::new(
+                                "w_plane: mapped_point",
+                                PlotPoints::new(vec![[w0.re, w0.im]]),
+                            )
+                            .color(palette.error)
+                            .radius(5.0_f32),
                         );
                     });
             });

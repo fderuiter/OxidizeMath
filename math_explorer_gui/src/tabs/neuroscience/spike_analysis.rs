@@ -4,6 +4,9 @@ use egui_plot::{Bar, BarChart, Line, Plot, PlotPoint, Points};
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 use std::collections::VecDeque;
 
+#[path = "spike_analysis/export.rs"]
+mod export;
+
 pub struct SpikeAnalysisTool {
     neuron: HodgkinHuxleyNeuron,
     time: f64,
@@ -58,6 +61,12 @@ impl InteractiveTool for SpikeAnalysisTool {
     }
     fn domain(&self) -> &'static str {
         "neuroscience"
+    }
+    fn export_subplot_panels(&self) -> Vec<egui_plot::ExportSubplotPanel> {
+        self.cold_export_subplot_panels()
+    }
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.cold_export_datasets()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -164,6 +173,7 @@ impl SpikeAnalysisTool {
             let height = ui.available_height() / 2.0;
             ui.push_id("voltage_trace", |ui| {
                 Plot::new("voltage_plot")
+                    .subplot_id("voltage_trace")
                     .height(height)
                     .x_axis_label("Time (ms)")
                     .y_axis_label("Membrane Potential (mV)")
@@ -173,21 +183,21 @@ impl SpikeAnalysisTool {
                         );
                         if self.history_points.is_empty() {
                             plot_ui.line(
-                                Line::new("Voltage", vec![[self.time, self.neuron.v()]])
+                                Line::new("voltage_trace: Voltage", vec![[self.time, self.neuron.v()]])
                                     .color(palette.series_color(0)),
                             );
                         } else {
                             plot_ui.line(
-                                Line::new("Voltage", &self.history_points[..])
+                                Line::new("voltage_trace: Voltage", &self.history_points[..])
                                     .color(palette.series_color(0)),
                             );
                         }
                         plot_ui.hline(
-                            egui_plot::HLine::new("Threshold", self.spike_threshold)
+                            egui_plot::HLine::new("voltage_trace: Threshold", self.spike_threshold)
                                 .color(palette.error),
                         );
                         plot_ui.points(
-                            Points::new("Spikes", &self.spike_plot_points[..])
+                            Points::new("voltage_trace: Spikes", &self.spike_plot_points[..])
                                 .radius(3.0_f32)
                                 .color(palette.success),
                         );
@@ -195,21 +205,32 @@ impl SpikeAnalysisTool {
             });
 
             ui.separator();
+            self.draw_isi_subplot(ui);
+        });
+    }
 
-            ui.push_id("isi_histogram", |ui| {
-                let bar_color =
-                    crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(5);
-                Plot::new("isi_plot")
-                    .x_axis_label("Inter-Spike Interval (ms)")
-                    .y_axis_label("Count")
-                    .show(ui, |plot_ui| {
-                        if !self.isis.is_empty() {
-                            let bars = self.compute_histogram(20);
-                            plot_ui
-                                .bar_chart(BarChart::new("ISI Distribution", bars).color(bar_color));
-                        }
-                    });
-            });
+    fn draw_isi_subplot(&self, ui: &mut egui::Ui) {
+        ui.push_id("isi_histogram", |ui| {
+            let bar_color =
+                crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(5);
+            Plot::new("isi_plot")
+                .subplot_id("isi_histogram")
+                .x_axis_label("Inter-Spike Interval (ms)")
+                .y_axis_label("Count")
+                .show(ui, |plot_ui| {
+                    if !self.isis.is_empty() {
+                        let bars = self.compute_histogram(20);
+                        plot_ui.bar_chart(
+                            BarChart::new("isi_histogram: ISI Distribution", bars)
+                                .color(bar_color),
+                        );
+                    } else {
+                        plot_ui.hline(
+                            egui_plot::HLine::new("isi_histogram: Baseline", 0.0)
+                                .color(bar_color),
+                        );
+                    }
+                });
         });
     }
 
