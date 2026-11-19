@@ -159,6 +159,173 @@ fn test_package_release_bundle_prevents_option_injection() {
     assert!(!sums.contains("CANARY_PWNED.pdf"));
 }
 
+fn command_args_strings(cmd: &Command) -> Vec<String> {
+    cmd.get_args()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect()
+}
+
+fn command_env_value(cmd: &Command, key: &str) -> Option<String> {
+    cmd.get_envs().find_map(|(k, v)| {
+        if k == key {
+            v.map(|val| val.to_string_lossy().into_owned())
+        } else {
+            None
+        }
+    })
+}
+
+#[test]
+fn test_build_pdflatex_command_hardens_flags_and_kpathsea_env() {
+    let tex_path = Path::new("papers/advanced_linear_algebra.tex");
+    let out_dir = Path::new("papers/output");
+    let cmd = build_pdflatex_command(tex_path, out_dir).expect("expected valid pdflatex command");
+
+    assert_eq!(cmd.get_program(), "pdflatex");
+    assert_eq!(
+        command_args_strings(&cmd),
+        vec![
+            "-no-shell-escape",
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "-output-directory",
+            "papers/output",
+            "papers/advanced_linear_algebra.tex",
+        ]
+    );
+    assert_eq!(
+        command_env_value(&cmd, "TEXINPUTS").as_deref(),
+        Some("papers//:")
+    );
+    assert_eq!(command_env_value(&cmd, "openin_any").as_deref(), Some("p"));
+    assert_eq!(command_env_value(&cmd, "openout_any").as_deref(), Some("p"));
+
+    assert!(build_pdflatex_command(Path::new("-shell-escape.tex"), out_dir).is_err());
+    assert!(build_pdflatex_command(Path::new("papers/-evil.tex"), out_dir).is_err());
+    assert!(build_pdflatex_command(Path::new("papers/--shell-escape.tex"), out_dir).is_err());
+    assert!(build_pdflatex_command(tex_path, Path::new("-bad-out")).is_err());
+}
+
+#[test]
+fn test_build_bibtex_command_hardens_env_and_rejects_dash_stems() {
+    let out_dir = Path::new("papers/output");
+    let bib_inputs = "/repo/papers:papers//:";
+    let cmd = build_bibtex_command("ualbf_quasiperfect", out_dir, bib_inputs)
+        .expect("expected valid bibtex command");
+
+    assert_eq!(cmd.get_program(), "bibtex");
+    assert_eq!(cmd.get_current_dir(), Some(out_dir));
+    assert_eq!(command_args_strings(&cmd), vec!["ualbf_quasiperfect"]);
+    assert_eq!(
+        command_env_value(&cmd, "BIBINPUTS").as_deref(),
+        Some(bib_inputs)
+    );
+    assert_eq!(
+        command_env_value(&cmd, "BSTINPUTS").as_deref(),
+        Some(bib_inputs)
+    );
+    assert_eq!(command_env_value(&cmd, "openin_any").as_deref(), Some("p"));
+    assert_eq!(command_env_value(&cmd, "openout_any").as_deref(), Some("p"));
+
+    for bad_stem in [
+        "",
+        "-",
+        "-terse",
+        "--version",
+        "-min-crossrefs=1",
+        "../escape",
+    ] {
+        assert!(
+            build_bibtex_command(bad_stem, out_dir, bib_inputs).is_err(),
+            "bibtex builder should reject stem {bad_stem:?}"
+        );
+    }
+
+    let err = try_run_bibtex_pass("-min-crossrefs=1", out_dir, bib_inputs)
+        .expect_err("run_bibtex_pass must reject leading-dash stem before spawning bibtex");
+    assert!(err.contains("leading dash"));
+}
+
+#[test]
+fn test_collect_tex_inputs_rejects_leading_dash_and_accepts_repo_papers() {
+    let temp = TempOutputDir::new("tex_inputs");
+    let papers_dir = temp.path.join("papers");
+    fs::create_dir_all(&papers_dir).unwrap();
+    fs::write(papers_dir.join("algebra.tex"), b"\\documentclass{article}").unwrap();
+    fs::write(papers_dir.join("references.bib"), b"@article{a,}").unwrap();
+    fs::write(
+        papers_dir.join("accessibility.sty"),
+        b"\\ProvidesPackage{accessibility}",
+    )
+    .unwrap();
+
+    let valid = collect_tex_inputs(&papers_dir).expect("valid papers dir should pass");
+    assert_eq!(valid, vec![papers_dir.join("algebra.tex")]);
+
+    let dash_tex = papers_dir.join("-option.tex");
+    fs::write(&dash_tex, b"\\documentclass{article}").unwrap();
+    assert!(collect_tex_inputs(&papers_dir).is_err());
+    assert!(try_extract_papers_metadata(&[dash_tex]).is_err());
+
+    let repo_papers = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../papers");
+    let repo_tex = collect_tex_inputs(&repo_papers).expect("repository papers/ must validate");
+    assert!(repo_tex.len() >= 28);
+    assert!(repo_tex.iter().any(|p| {
+        p.file_name()
+            .is_some_and(|n| n == "advanced_linear_algebra.tex")
+    }));
+}
+
+#[test]
+#[cfg(unix)]
+fn test_inputs_and_builders_reject_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let temp = TempOutputDir::new("symlinks");
+    let outside_secret = temp.path.join("outside.txt");
+    fs::write(&outside_secret, b"secret").unwrap();
+
+    // 1. Symlinked papers/ directory is rejected
+    let real_dir = temp.path.join("real_papers");
+    fs::create_dir_all(&real_dir).unwrap();
+    fs::write(real_dir.join("paper.tex"), b"\\documentclass{article}").unwrap();
+    let linked_papers_dir = temp.path.join("linked_papers");
+    symlink(&real_dir, &linked_papers_dir).unwrap();
+    assert!(collect_tex_inputs(&linked_papers_dir).is_err());
+
+    // 2. Symlinked papers/*.tex (valid and dangling) is rejected by collector, metadata, and builder
+    let papers_dir = temp.path.join("papers");
+    let out_dir = papers_dir.join("output");
+    fs::create_dir_all(&out_dir).unwrap();
+    fs::write(papers_dir.join("valid.tex"), b"\\documentclass{article}").unwrap();
+    let linked_tex = papers_dir.join("evil.tex");
+    symlink(&outside_secret, &linked_tex).unwrap();
+    assert!(collect_tex_inputs(&papers_dir).is_err());
+    assert!(try_extract_papers_metadata(std::slice::from_ref(&linked_tex)).is_err());
+    assert!(build_pdflatex_command(&linked_tex, &out_dir).is_err());
+    fs::remove_file(&linked_tex).unwrap();
+
+    let dangling_tex = papers_dir.join("dangling.tex");
+    symlink(temp.path.join("nonexistent.tex"), &dangling_tex).unwrap();
+    assert!(collect_tex_inputs(&papers_dir).is_err());
+    fs::remove_file(&dangling_tex).unwrap();
+
+    // 3. Symlinked papers/references.bib (valid and dangling) and output_dir are rejected
+    let linked_bib = papers_dir.join("references.bib");
+    symlink(&outside_secret, &linked_bib).unwrap();
+    assert!(collect_tex_inputs(&papers_dir).is_err());
+    fs::remove_file(&linked_bib).unwrap();
+
+    symlink(temp.path.join("missing.bib"), &linked_bib).unwrap();
+    assert!(collect_tex_inputs(&papers_dir).is_err());
+    fs::remove_file(&linked_bib).unwrap();
+
+    let linked_out = temp.path.join("linked_out");
+    symlink(&real_dir, &linked_out).unwrap();
+    assert!(build_pdflatex_command(&papers_dir.join("valid.tex"), &linked_out).is_err());
+    assert!(build_bibtex_command("valid", &linked_out, "papers//:").is_err());
+}
+
 #[test]
 fn test_encode_uri_component_rfc3986_and_special_chars() {
     let unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";

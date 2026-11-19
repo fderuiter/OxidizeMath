@@ -1,4 +1,19 @@
+mod bundle;
+mod index_html;
+
+pub use bundle::package_release_bundle;
+#[cfg(test)]
+use bundle::{
+    build_checksum_args, build_tar_args, collect_bundle_artifacts, is_safe_bundle_filename,
+};
+#[cfg(test)]
+use index_html::encode_uri_component;
+use index_html::{
+    INDEX_HTML_FOOTER, INDEX_HTML_HEADER, extract_latex_command, extract_latex_environment,
+    format_title_from_stem, render_paper_card,
+};
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
 
@@ -11,17 +26,15 @@ pub fn compile_papers() {
     let papers_dir = Path::new("papers");
     let output_dir = Path::new("papers/output");
 
-    if !output_dir.exists() {
-        fs::create_dir_all(output_dir).unwrap();
-    }
+    let tex_files = collect_tex_inputs(papers_dir).unwrap_or_else(|err| {
+        eprintln!("Error: {err}");
+        exit(1);
+    });
 
-    let mut tex_files: Vec<PathBuf> = fs::read_dir(papers_dir)
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().is_some_and(|ext| ext == "tex"))
-        .collect();
-    tex_files.sort();
+    if let Err(err) = ensure_safe_output_dir(output_dir) {
+        eprintln!("Error: {err}");
+        exit(1);
+    }
 
     println!("Found {} academic papers to compile.", tex_files.len());
 
@@ -45,6 +58,187 @@ pub fn compile_papers() {
     package_release_bundle(output_dir);
 }
 
+fn reject_if_symlink(path: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            Err(format!("Refusing symbolic link path: {}", path.display()))
+        }
+        Ok(_) => Ok(()),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!(
+            "Failed to inspect metadata for {}: {}",
+            path.display(),
+            err
+        )),
+    }
+}
+
+fn validate_output_dir_path(output_dir: &Path) -> Result<(), String> {
+    if output_dir.as_os_str().is_empty() {
+        return Err("Output directory path must not be empty".to_string());
+    }
+    if output_dir.as_os_str().to_string_lossy().starts_with('-') {
+        return Err(format!(
+            "Refusing output directory with leading dash: {}",
+            output_dir.display()
+        ));
+    }
+    reject_if_symlink(output_dir)
+}
+
+fn ensure_safe_output_dir(output_dir: &Path) -> Result<(), String> {
+    validate_output_dir_path(output_dir)?;
+    if !output_dir.exists() {
+        fs::create_dir_all(output_dir).map_err(|err| {
+            format!(
+                "Failed to create output directory {}: {}",
+                output_dir.display(),
+                err
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn validate_paper_stem(stem: &str) -> Result<(), String> {
+    if stem.is_empty() {
+        return Err("Paper stem must not be empty".to_string());
+    }
+    if stem.starts_with('-') {
+        return Err(format!("Refusing paper stem with leading dash: {stem}"));
+    }
+    if stem.contains('/') || stem.contains('\\') || stem == "." || stem == ".." {
+        return Err(format!(
+            "Refusing paper stem with path traversal components: {stem}"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_tex_input_path(path: &Path) -> Result<String, String> {
+    let raw_path = path.as_os_str().to_string_lossy();
+    if raw_path.is_empty() {
+        return Err("TeX input path must not be empty".to_string());
+    }
+    if raw_path.starts_with('-') {
+        return Err(format!(
+            "Refusing TeX input path with leading dash: {}",
+            path.display()
+        ));
+    }
+    reject_if_symlink(path)?;
+
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy())
+        .ok_or_else(|| format!("Missing file name in TeX path: {}", path.display()))?;
+    if file_name.starts_with('-') {
+        return Err(format!(
+            "Refusing TeX file name with leading dash: {}",
+            path.display()
+        ));
+    }
+    if !path.extension().is_some_and(|ext| ext == "tex") {
+        return Err(format!(
+            "Expected .tex extension for TeX input: {}",
+            path.display()
+        ));
+    }
+
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .ok_or_else(|| format!("Missing file stem in TeX path: {}", path.display()))?;
+    validate_paper_stem(&stem)?;
+    Ok(stem)
+}
+
+fn validate_papers_dir_and_bib(papers_dir: &Path) -> Result<(), String> {
+    let dir_meta = fs::symlink_metadata(papers_dir).map_err(|err| {
+        format!(
+            "Failed to inspect papers directory {}: {}",
+            papers_dir.display(),
+            err
+        )
+    })?;
+    if dir_meta.file_type().is_symlink() {
+        return Err(format!(
+            "Refusing symbolic link for papers directory: {}",
+            papers_dir.display()
+        ));
+    }
+    if !dir_meta.is_dir() {
+        return Err(format!(
+            "Papers path is not a directory: {}",
+            papers_dir.display()
+        ));
+    }
+
+    let bib_path = papers_dir.join("references.bib");
+    match fs::symlink_metadata(&bib_path) {
+        Ok(meta) if meta.file_type().is_symlink() => Err(format!(
+            "Refusing symbolic link for bibliography file: {}",
+            bib_path.display()
+        )),
+        Ok(meta) if !meta.is_file() => Err(format!(
+            "Bibliography path is not a regular file: {}",
+            bib_path.display()
+        )),
+        Ok(_) => Ok(()),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!(
+            "Failed to inspect bibliography file {}: {}",
+            bib_path.display(),
+            err
+        )),
+    }
+}
+
+fn collect_tex_inputs(papers_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    validate_papers_dir_and_bib(papers_dir)?;
+
+    let entries = fs::read_dir(papers_dir).map_err(|err| {
+        format!(
+            "Failed to read papers directory {}: {}",
+            papers_dir.display(),
+            err
+        )
+    })?;
+
+    let mut tex_files = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|err| {
+            format!(
+                "Failed to read directory entry in {}: {}",
+                papers_dir.display(),
+                err
+            )
+        })?;
+        let path = entry.path();
+        let meta = fs::symlink_metadata(&path)
+            .map_err(|err| format!("Failed to inspect metadata for {}: {}", path.display(), err))?;
+        if meta.file_type().is_symlink() {
+            return Err(format!(
+                "Refusing symbolic link in papers directory: {}",
+                path.display()
+            ));
+        }
+        if path.extension().is_some_and(|ext| ext == "tex") {
+            if !meta.is_file() {
+                return Err(format!(
+                    "TeX input is not a regular file: {}",
+                    path.display()
+                ));
+            }
+            validate_tex_input_path(&path)?;
+            tex_files.push(path);
+        }
+    }
+
+    tex_files.sort();
+    Ok(tex_files)
+}
+
 fn check_prerequisites() {
     let check_pdf = Command::new("pdflatex").arg("--version").output();
     if !check_pdf.map(|o| o.status.success()).unwrap_or(false) {
@@ -64,7 +258,10 @@ fn check_prerequisites() {
 }
 
 fn compile_single_paper(path: &Path, output_dir: &Path, bib_inputs: &str) {
-    let stem = path.file_stem().unwrap().to_string_lossy();
+    let stem = validate_tex_input_path(path).unwrap_or_else(|err| {
+        eprintln!("Error: {err}");
+        exit(1);
+    });
     println!("Compiling {:?}...", path);
 
     // Pass 1: Initial pdflatex run to generate aux file
@@ -103,40 +300,56 @@ fn compile_single_paper(path: &Path, output_dir: &Path, bib_inputs: &str) {
     println!("  Successfully compiled and verified {:?}", path);
 }
 
-fn run_bibtex_pass(stem: &str, output_dir: &Path, bib_inputs: &str) {
-    println!("  Running BibTeX for {}...", stem);
-    let bib_status = Command::new("bibtex")
-        .current_dir(output_dir)
+fn build_bibtex_command(
+    stem: &str,
+    output_dir: &Path,
+    bib_inputs: &str,
+) -> Result<Command, String> {
+    validate_paper_stem(stem)?;
+    validate_output_dir_path(output_dir)?;
+
+    let mut cmd = Command::new("bibtex");
+    cmd.current_dir(output_dir)
         .env("BIBINPUTS", bib_inputs)
         .env("BSTINPUTS", bib_inputs)
-        .arg(stem)
-        .output();
+        .env("openin_any", "p")
+        .env("openout_any", "p")
+        .arg(stem);
+    Ok(cmd)
+}
 
-    match bib_status {
-        Ok(out) if out.status.success() => {
-            let blg_path = output_dir.join(format!("{}.blg", stem));
-            if blg_path.exists() {
-                let blg = fs::read_to_string(&blg_path).unwrap_or_default();
-                if blg.contains("Warning--I didn't find a database entry")
-                    || blg.contains("error message")
-                {
-                    eprintln!("Error: BibTeX unresolved references in {}:\n{}", stem, blg);
-                    exit(1);
-                }
-            }
+fn try_run_bibtex_pass(stem: &str, output_dir: &Path, bib_inputs: &str) -> Result<(), String> {
+    let mut cmd = build_bibtex_command(stem, output_dir, bib_inputs)?;
+    println!("  Running BibTeX for {}...", stem);
+    let out = cmd
+        .output()
+        .map_err(|e| format!("Failed to execute bibtex for {stem}: {e}"))?;
+
+    if !out.status.success() {
+        return Err(format!(
+            "Error: BibTeX failed for {}:\n{}",
+            stem,
+            String::from_utf8_lossy(&out.stdout)
+        ));
+    }
+
+    let blg_path = output_dir.join(format!("{}.blg", stem));
+    if blg_path.exists() {
+        let blg = fs::read_to_string(&blg_path).unwrap_or_default();
+        if blg.contains("Warning--I didn't find a database entry") || blg.contains("error message")
+        {
+            return Err(format!(
+                "Error: BibTeX unresolved references in {stem}:\n{blg}"
+            ));
         }
-        Ok(out) => {
-            eprintln!(
-                "Error: BibTeX failed for {}:\n{}",
-                stem,
-                String::from_utf8_lossy(&out.stdout)
-            );
-            exit(1);
-        }
-        Err(e) => {
-            eprintln!("Failed to execute bibtex for {}: {}", stem, e);
-            exit(1);
-        }
+    }
+    Ok(())
+}
+
+fn run_bibtex_pass(stem: &str, output_dir: &Path, bib_inputs: &str) {
+    if let Err(err) = try_run_bibtex_pass(stem, output_dir, bib_inputs) {
+        eprintln!("{err}");
+        exit(1);
     }
 }
 
@@ -157,188 +370,39 @@ fn verify_paper_log(path: &Path, log_path: &Path) {
     }
 }
 
-fn run_pdflatex(path: &Path, output_dir: &Path) {
-    let status = Command::new("pdflatex")
-        .env("TEXINPUTS", "papers//:")
+fn build_pdflatex_command(path: &Path, output_dir: &Path) -> Result<Command, String> {
+    validate_tex_input_path(path)?;
+    validate_output_dir_path(output_dir)?;
+
+    let mut cmd = Command::new("pdflatex");
+    cmd.env("TEXINPUTS", "papers//:")
+        .env("openin_any", "p")
+        .env("openout_any", "p")
+        .arg("-no-shell-escape")
         .arg("-interaction=nonstopmode")
         .arg("-halt-on-error")
         .arg("-output-directory")
         .arg(output_dir)
-        .arg(path)
-        .status();
+        .arg(path);
+    Ok(cmd)
+}
 
-    match status {
-        Ok(s) if s.success() => {}
-        _ => {
-            eprintln!("Failed to compile {:?}", path);
-            exit(1);
-        }
+fn try_run_pdflatex(path: &Path, output_dir: &Path) -> Result<(), String> {
+    let mut cmd = build_pdflatex_command(path, output_dir)?;
+    match cmd.status() {
+        Ok(s) if s.success() => Ok(()),
+        _ => Err(format!("Failed to compile {:?}", path)),
     }
 }
 
-fn is_safe_bundle_filename(name: &str) -> bool {
-    !name.starts_with('-')
-        && (name.ends_with(".pdf")
-            || name == "Verification_Certificate.json"
-            || name == "index.html")
-        && name != "SHA256SUMS"
-}
-
-fn collect_bundle_artifacts(output_dir: &Path) -> Vec<String> {
-    let entries = fs::read_dir(output_dir).unwrap();
-    let mut artifacts = Vec::new();
-    for entry in entries.filter_map(|e| e.ok()) {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('-') {
-            eprintln!("Warning: ignoring filename with leading dash: {}", name);
-            continue;
-        }
-        if is_safe_bundle_filename(&name) {
-            artifacts.push(name);
-        }
-    }
-    artifacts.sort();
-    artifacts.dedup();
-    artifacts
-}
-
-fn build_tar_args(files_to_pack: &[String]) -> Vec<&str> {
-    let mut tar_args = vec!["-czf", "papers-bundle.tar.gz", "--"];
-    let file_refs: Vec<&str> = files_to_pack.iter().map(String::as_str).collect();
-    tar_args.extend(file_refs);
-    tar_args
-}
-
-fn build_checksum_args<'a>(cmd: &str, checksum_targets: &'a [String]) -> Vec<&'a str> {
-    let mut cmd_args: Vec<&'a str> = Vec::new();
-    if cmd == "shasum" {
-        cmd_args.push("-a");
-        cmd_args.push("256");
-    }
-    cmd_args.push("--");
-    let target_refs: Vec<&'a str> = checksum_targets.iter().map(String::as_str).collect();
-    cmd_args.extend(target_refs);
-    cmd_args
-}
-
-pub fn package_release_bundle(output_dir: &Path) {
-    let cert_path = Path::new("Verification_Certificate.json");
-    if cert_path.exists() {
-        let _ = fs::copy(cert_path, output_dir.join("Verification_Certificate.json"));
-    }
-
-    let bundle_file = output_dir.join("papers-bundle.tar.gz");
-    let files_to_pack = collect_bundle_artifacts(output_dir);
-    let tar_args = build_tar_args(&files_to_pack);
-
-    let tar_status = Command::new("tar")
-        .current_dir(output_dir)
-        .args(&tar_args)
-        .status();
-
-    if !tar_status.map(|s| s.success()).unwrap_or(false) {
-        eprintln!("Error creating papers bundle archive.");
+fn run_pdflatex(path: &Path, output_dir: &Path) {
+    if let Err(err) = try_run_pdflatex(path, output_dir) {
+        eprintln!("{err}");
         exit(1);
     }
-    println!("Created release bundle at {:?}", bundle_file);
-
-    // Generate SHA256 checksums
-    generate_sha256sums(output_dir);
 }
 
-fn generate_sha256sums(output_dir: &Path) {
-    let (cmd, flag) = if Command::new("sha256sum").arg("--version").output().is_ok() {
-        ("sha256sum", "-c")
-    } else {
-        ("shasum", "-c")
-    };
-
-    let mut checksum_targets = vec!["papers-bundle.tar.gz".to_string()];
-    checksum_targets.extend(collect_bundle_artifacts(output_dir));
-    checksum_targets.sort();
-    checksum_targets.dedup();
-
-    let cmd_args = build_checksum_args(cmd, &checksum_targets);
-
-    let output = Command::new(cmd)
-        .current_dir(output_dir)
-        .args(&cmd_args)
-        .output();
-
-    match output {
-        Ok(out) if out.status.success() => {
-            let sums_path = output_dir.join("SHA256SUMS");
-            fs::write(&sums_path, &out.stdout).unwrap();
-            println!("Generated SHA256SUMS at {:?}", sums_path);
-
-            let check_status = Command::new(cmd)
-                .current_dir(output_dir)
-                .arg(flag)
-                .arg("--")
-                .arg("SHA256SUMS")
-                .status();
-            if !check_status.map(|s| s.success()).unwrap_or(false) {
-                eprintln!("Checksum verification failed!");
-                exit(1);
-            }
-            println!("SHA256 checksums successfully verified.");
-        }
-        _ => {
-            eprintln!("Error generating SHA-256 sums.");
-            exit(1);
-        }
-    }
-}
-
-const INDEX_HTML_HEADER: &str = r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
-  <title>OxidizeMath Academic Papers</title>
-  <style>
-    :root { --bg: #0d1117; --card-bg: #161b22; --card-border: #30363d; --text: #c9d1d9; --heading: #f0f6fc; --accent: #58a6ff; --accent-hover: #79c0ff; --meta: #8b949e; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--text); line-height: 1.6; margin: 0; padding: 2rem 1rem; }
-    .container { max-width: 1100px; margin: 0 auto; }
-    header { margin-bottom: 2.5rem; border-bottom: 1px solid var(--card-border); padding-bottom: 1.5rem; }
-    h1 { color: var(--heading); font-size: 2.25rem; margin: 0 0 0.5rem 0; }
-    .subtitle { color: var(--meta); font-size: 1.1rem; margin: 0 0 1rem 0; }
-    .actions-bar { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
-    .btn { display: inline-block; padding: 0.5rem 1rem; background-color: var(--card-bg); border: 1px solid var(--card-border); border-radius: 6px; color: var(--accent); text-decoration: none; font-weight: 500; transition: all 0.2s ease; }
-    .btn:hover { background-color: #21262d; border-color: var(--accent); color: var(--accent-hover); }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; }
-    .card { background-color: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between; }
-    .card-title { color: var(--heading); font-size: 1.2rem; margin: 0 0 0.5rem 0; }
-    .card-meta { font-size: 0.85rem; color: var(--meta); margin-bottom: 0.75rem; }
-    .card-abstract { font-size: 0.9rem; color: var(--text); margin-bottom: 1.25rem; flex-grow: 1; }
-    .card-links { display: flex; justify-content: space-between; align-items: center; margin-top: auto; }
-    footer { margin-top: 4rem; text-align: center; color: var(--meta); font-size: 0.85rem; border-top: 1px solid var(--card-border); padding-top: 2rem; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <header>
-      <h1>OxidizeMath Academic Papers</h1>
-      <p class="subtitle">Permanent theoretical foundation and empirical verification publications (28 papers)</p>
-      <div class="actions-bar">
-        <a class="btn" href="papers-bundle.tar.gz">📦 Download All Papers (.tar.gz)</a>
-        <a class="btn" href="SHA256SUMS">🔒 Checksum Manifest (SHA256)</a>
-        <a class="btn" href="https://github.com/fderuiter/OxidizeMath">💻 GitHub Repository</a>
-      </div>
-    </header>
-    <main class="grid">
-"#;
-
-const INDEX_HTML_FOOTER: &str = r#"    </main>
-    <footer>
-      <p>Published by OxidizeMath Automated Continuous Verification &amp; Publishing System</p>
-    </footer>
-  </div>
-</body>
-</html>
-"#;
-
+/// Generate the static HTML index page for compiled academic papers.
 pub fn generate_index_html(tex_files: &[PathBuf], output_dir: &Path) {
     let mut papers_meta = extract_papers_metadata(tex_files);
     papers_meta.sort_by(|a, b| a.1.cmp(&b.1));
@@ -354,10 +418,12 @@ pub fn generate_index_html(tex_files: &[PathBuf], output_dir: &Path) {
     println!("Generated papers index page at {:?}", index_path);
 }
 
-fn extract_papers_metadata(tex_files: &[PathBuf]) -> Vec<(String, String, String, String)> {
-    let mut papers_meta = Vec::new();
+fn try_extract_papers_metadata(
+    tex_files: &[PathBuf],
+) -> Result<Vec<(String, String, String, String)>, String> {
+    let mut papers_meta = Vec::with_capacity(tex_files.len());
     for path in tex_files {
-        let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+        let stem = validate_tex_input_path(path)?;
         let content = fs::read_to_string(path).unwrap_or_default();
 
         let title = extract_latex_command(&content, "\\title")
@@ -369,118 +435,14 @@ fn extract_papers_metadata(tex_files: &[PathBuf]) -> Vec<(String, String, String
 
         papers_meta.push((stem, title, author, abstract_text));
     }
-    papers_meta
+    Ok(papers_meta)
 }
 
-fn render_paper_card(stem: &str, title: &str, author: &str, abstract_text: &str) -> String {
-    let escaped_stem = escape_html(stem);
-    let encoded_stem = escape_html(&encode_uri_component(stem));
-    let escaped_title = escape_html(title);
-    let escaped_author = escape_html(author);
-    let escaped_abstract = escape_html(abstract_text);
-
-    format!(
-        r#"      <article class="card">
-        <div>
-          <h2 class="card-title">{}</h2>
-          <div class="card-meta">By {} &bull; <code>{}.pdf</code></div>
-          <p class="card-abstract">{}</p>
-        </div>
-        <div class="card-links">
-          <a class="btn" href="{}.pdf" target="_blank" rel="noopener">📄 Read PDF</a>
-        </div>
-      </article>
-"#,
-        escaped_title, escaped_author, escaped_stem, escaped_abstract, encoded_stem
-    )
-}
-
-fn extract_latex_command(content: &str, cmd: &str) -> Option<String> {
-    let idx = content.find(cmd)?;
-    let after_cmd = &content[idx + cmd.len()..];
-    let open_brace = after_cmd.find('{')?;
-    let start = &after_cmd[open_brace + 1..];
-
-    let mut depth = 1;
-    let mut end = 0;
-    for (i, c) in start.char_indices() {
-        if c == '{' {
-            depth += 1;
-        } else if c == '}' {
-            depth -= 1;
-            if depth == 0 {
-                end = i;
-                break;
-            }
-        }
-    }
-
-    if depth == 0 {
-        Some(clean_latex(&start[..end]))
-    } else {
-        None
-    }
-}
-
-fn extract_latex_environment(content: &str, env: &str) -> Option<String> {
-    let begin_tag = format!("\\begin{{{}}}", env);
-    let end_tag = format!("\\end{{{}}}", env);
-
-    let start_idx = content.find(&begin_tag)?;
-    let after_begin = &content[start_idx + begin_tag.len()..];
-    let end_idx = after_begin.find(&end_tag)?;
-
-    Some(clean_latex(&after_begin[..end_idx]))
-}
-
-fn clean_latex(s: &str) -> String {
-    let s = s
-        .replace("\\texttt{", "")
-        .replace("\\textbf{", "")
-        .replace("\\textit{", "");
-    let s = s.replace(['}', '{'], "");
-    let s = s.replace("\\\\", " ").replace('\n', " ");
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn format_title_from_stem(stem: &str) -> String {
-    if stem.eq_ignore_ascii_case("grpo") {
-        return "Group Relative Policy Optimization (GRPO)".to_string();
-    }
-    stem.replace('_', " ")
-        .split_whitespace()
-        .map(|word| {
-            let mut c = word.chars();
-            match c.next() {
-                None => String::new(),
-                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
-}
-
-fn encode_uri_component(s: &str) -> String {
-    const HEX: &[u8; 16] = b"0123456789ABCDEF";
-    let mut encoded = String::with_capacity(s.len());
-    for byte in s.bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
-            encoded.push(char::from(byte));
-        } else {
-            encoded.push('%');
-            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
-            encoded.push(char::from(HEX[usize::from(byte & 0x0F)]));
-        }
-    }
-    encoded
+fn extract_papers_metadata(tex_files: &[PathBuf]) -> Vec<(String, String, String, String)> {
+    try_extract_papers_metadata(tex_files).unwrap_or_else(|err| {
+        eprintln!("Error: {err}");
+        exit(1);
+    })
 }
 
 #[cfg(test)]
