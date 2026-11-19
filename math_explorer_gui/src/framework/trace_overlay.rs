@@ -1,9 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
-use egui_plot::{render_math_label, Line, LineStyle, PlotPoints, PlotUi};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::ops::Deref;
+use std::sync::Arc;
+
+#[path = "trace_overlay/ui.rs"]
+mod ui;
 
 /// Maximum pinned trace snapshots permitted per tool instance.
 pub const MAX_SNAPSHOTS: usize = 10;
@@ -25,7 +28,11 @@ pub const SNAPSHOT_PALETTE: &[[u8; 3]] = &[
     [196, 156, 148], // Soft Brown
 ];
 
-fn resolve_trace_color(rgb: [u8; 3], index: usize, visuals: &egui::Visuals) -> egui::Color32 {
+pub(super) fn resolve_trace_color(
+    rgb: [u8; 3],
+    index: usize,
+    visuals: &egui::Visuals,
+) -> egui::Color32 {
     let raw = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
     if crate::app::contrast_ratio(raw, visuals.extreme_bg_color) >= 3.0 {
         raw
@@ -34,19 +41,92 @@ fn resolve_trace_color(rgb: [u8; 3], index: usize, visuals: &egui::Visuals) -> e
     }
 }
 
+/// Shared, reference-counted coordinate slice enabling O(1) snapshot cloning.
+#[derive(Clone, Debug, Default)]
+pub struct TracePoints(Arc<[[f64; 2]]>);
+
+impl TracePoints {
+    /// Returns `true` when both `TracePoints` handles share the same underlying allocation.
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Deref for TracePoints {
+    type Target = [[f64; 2]];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<[[f64; 2]]> for TracePoints {
+    fn as_ref(&self) -> &[[f64; 2]] {
+        &self.0
+    }
+}
+
+impl From<Vec<[f64; 2]>> for TracePoints {
+    fn from(points: Vec<[f64; 2]>) -> Self {
+        Self(Arc::from(points))
+    }
+}
+
+impl From<&[[f64; 2]]> for TracePoints {
+    fn from(points: &[[f64; 2]]) -> Self {
+        Self(Arc::from(points))
+    }
+}
+
+impl From<Arc<[[f64; 2]]>> for TracePoints {
+    fn from(points: Arc<[[f64; 2]]>) -> Self {
+        Self(points)
+    }
+}
+
+impl PartialEq for TracePoints {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0) || self.0.as_ref() == other.0.as_ref()
+    }
+}
+
+impl PartialEq<Vec<[f64; 2]>> for TracePoints {
+    fn eq(&self, other: &Vec<[f64; 2]>) -> bool {
+        self.0.as_ref() == other.as_slice()
+    }
+}
+
+impl PartialEq<[[f64; 2]]> for TracePoints {
+    fn eq(&self, other: &[[f64; 2]]) -> bool {
+        self.0.as_ref() == other
+    }
+}
+
+impl Serialize for TracePoints {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.as_ref().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TracePoints {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Vec::<[f64; 2]>::deserialize(deserializer).map(Self::from)
+    }
+}
+
 /// A single named dataset series within a trace snapshot.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TraceSeries {
     pub name: String,
-    pub points: Vec<[f64; 2]>,
+    pub points: TracePoints,
 }
 
 impl TraceSeries {
-    pub fn new(name: impl Into<String>, points: Vec<[f64; 2]>) -> Self {
+    pub fn new(name: impl Into<String>, points: impl Into<TracePoints>) -> Self {
         Self {
             name: name.into(),
-            points,
+            points: points.into(),
         }
     }
 }
@@ -79,9 +159,9 @@ impl TraceSnapshot {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TraceSnapshotManager {
-    snapshots: Vec<TraceSnapshot>,
+    pub(super) snapshots: Vec<TraceSnapshot>,
     #[serde(default)]
-    history_runs: Vec<TraceSnapshot>,
+    pub(super) history_runs: Vec<TraceSnapshot>,
     next_id: usize,
     #[serde(default)]
     history_counter: usize,
@@ -227,235 +307,6 @@ impl TraceSnapshotManager {
         self.add_snapshot(label, run.param_summary, run.series)
     }
 
-    pub fn render_on_plot(&self, plot_ui: &mut PlotUi) {
-        let visuals = plot_ui.ctx().style().visuals.clone();
-        for (idx, run) in self.history_runs.iter().enumerate() {
-            if !run.visible {
-                continue;
-            }
-            let base = resolve_trace_color(run.color_rgb, idx, &visuals);
-            let color = egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 160);
-            for series in &run.series {
-                if series.points.is_empty() {
-                    continue;
-                }
-                let line_name = if run.series.len() == 1 {
-                    format!("{} ({})", series.name, run.display_label())
-                } else {
-                    format!("{} - {}", run.display_label(), series.name)
-                };
-                plot_ui.line(
-                    Line::new(line_name, PlotPoints::new(series.points.clone()))
-                        .color(color)
-                        .style(LineStyle::Dashed { length: 5.0 })
-                        .width(1.2_f32),
-                );
-            }
-        }
-
-        for (idx, snapshot) in self.snapshots.iter().enumerate() {
-            if !snapshot.visible {
-                continue;
-            }
-            let color = resolve_trace_color(snapshot.color_rgb, idx, &visuals);
-            for series in &snapshot.series {
-                if series.points.is_empty() {
-                    continue;
-                }
-                let line_name = if snapshot.series.len() == 1 {
-                    format!("{} ({})", series.name, snapshot.display_label())
-                } else {
-                    format!("{} - {}", snapshot.display_label(), series.name)
-                };
-                plot_ui.line(
-                    Line::new(line_name, PlotPoints::new(series.points.clone()))
-                        .color(color)
-                        .style(LineStyle::Dashed { length: 6.0 })
-                        .width(1.5_f32),
-                );
-            }
-        }
-    }
-
-    #[allow(clippy::too_many_lines)]
-    pub fn render_ui<F>(&mut self, ui: &mut egui::Ui, pin_callback: F) -> bool
-    where
-        F: FnOnce() -> Option<(String, String, Vec<TraceSeries>)>,
-    {
-        let mut changed = false;
-
-        ui.group(|ui| {
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.heading("📌 Trace Overlay & Run History");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if !self.is_empty()
-                            && ui
-                                .button("Clear All")
-                                .accessible_hover_text(
-                                    "Remove all history ghost runs and pinned baselines",
-                                )
-                                .clicked()
-                        {
-                            self.clear();
-                            self.clear_history();
-                            changed = true;
-                        }
-                    });
-                });
-
-                ui.separator();
-
-                ui.horizontal(|ui| {
-                    let full = self.is_full();
-                    let btn_text = if full {
-                        "Pin Baseline (Max 10)"
-                    } else {
-                        "📍 Pin Current Snapshot"
-                    };
-
-                    let pin_hover = if full {
-                        "Maximum limit of 10 pinned baselines reached."
-                    } else {
-                        "Save current trajectory curve as a pinned baseline reference"
-                    };
-                    let pin_btn = ui
-                        .add_enabled(!full, egui::Button::new(btn_text))
-                        .accessible_hover_text(pin_hover);
-
-                    if pin_btn.clicked() && !full {
-                        if let Some((label, param_summary, series)) = pin_callback() {
-                            if self.add_snapshot(label, param_summary, series) {
-                                changed = true;
-                            }
-                        }
-                    }
-
-                    ui.label(format!("{}/10 pinned", self.snapshots.len()));
-                });
-
-                if !self.history_runs.is_empty() {
-                    ui.add_space(4.0);
-                    ui.label(
-                        egui::RichText::new("🕒 Auto History Runs (max 5 ghost traces)")
-                            .small()
-                            .strong(),
-                    );
-                    let mut history_to_remove = None;
-                    let mut history_to_pin = None;
-                    let is_full = self.is_full();
-
-                    for (idx, run) in self.history_runs.iter_mut().enumerate() {
-                        ui.horizontal(|ui| {
-                            let eye_symbol = if run.visible { "👁" } else { "🙈" };
-                            if ui
-                                .button(eye_symbol)
-                                .accessible_hover_text("Toggle ghost trace visibility")
-                                .clicked()
-                            {
-                                run.visible = !run.visible;
-                                changed = true;
-                            }
-                            let color = resolve_trace_color(run.color_rgb, idx, ui.visuals());
-                            ui.painter().circle_filled(
-                                ui.cursor().min + egui::vec2(6.0, 8.0),
-                                4.0,
-                                color,
-                            );
-                            ui.add_space(10.0);
-                            ui.label(egui::RichText::new(run.display_label()).small());
-
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui
-                                        .button("❌")
-                                        .accessible_hover_text("Delete this history run")
-                                        .clicked()
-                                    {
-                                        history_to_remove = Some(idx);
-                                    }
-                                    if !is_full
-                                        && ui
-                                            .button("📍 Pin")
-                                            .accessible_hover_text(
-                                                "Pin this history run as baseline",
-                                            )
-                                            .clicked()
-                                    {
-                                        history_to_pin = Some(idx);
-                                    }
-                                },
-                            );
-                        });
-                    }
-
-                    if let Some(idx) = history_to_pin {
-                        self.pin_history_run(idx);
-                        changed = true;
-                    }
-                    if let Some(idx) = history_to_remove {
-                        self.remove_history_run(idx);
-                        changed = true;
-                    }
-                }
-
-                if !self.snapshots.is_empty() {
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new("📌 Pinned Baselines").small().strong());
-                    let mut to_remove = None;
-
-                    for (idx, snapshot) in self.snapshots.iter_mut().enumerate() {
-                        ui.horizontal(|ui| {
-                            let eye_symbol = if snapshot.visible { "👁" } else { "🙈" };
-                            if ui
-                                .button(eye_symbol)
-                                .accessible_hover_text("Toggle baseline visibility")
-                                .clicked()
-                            {
-                                snapshot.visible = !snapshot.visible;
-                                changed = true;
-                            }
-                            let color = resolve_trace_color(snapshot.color_rgb, idx, ui.visuals());
-                            ui.painter().circle_filled(
-                                ui.cursor().min + egui::vec2(6.0, 8.0),
-                                5.0,
-                                color,
-                            );
-                            ui.add_space(12.0);
-                            render_math_label(
-                                ui,
-                                &snapshot.display_label(),
-                                egui::TextStyle::Body,
-                                ui.visuals().text_color(),
-                            );
-
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui
-                                        .button("❌")
-                                        .accessible_hover_text("Delete this snapshot")
-                                        .clicked()
-                                    {
-                                        to_remove = Some(idx);
-                                    }
-                                },
-                            );
-                        });
-                    }
-
-                    if let Some(idx) = to_remove {
-                        self.remove_snapshot(idx);
-                        changed = true;
-                    }
-                }
-            });
-        });
-
-        changed
-    }
-
     pub fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut out = Vec::new();
         for run in &self.history_runs {
@@ -468,7 +319,7 @@ impl TraceSnapshotManager {
                 } else {
                     format!("{} - {}", run.display_label(), series.name)
                 };
-                out.push((name, series.points.clone()));
+                out.push((name, series.points.to_vec()));
             }
         }
         for snapshot in &self.snapshots {
@@ -479,12 +330,22 @@ impl TraceSnapshotManager {
                 let name = if snapshot.series.len() == 1 {
                     format!("{} ({})", series.name, snapshot.display_label())
                 } else {
-                    format!("{} - {}", snapshot.display_label(), series.name)
+                    format!(
+                        "{} - {}",
+                        snapshot.display_label(),
+                        snapshot.name_or_series(series)
+                    )
                 };
-                out.push((name, series.points.clone()));
+                out.push((name, series.points.to_vec()));
             }
         }
         out
+    }
+}
+
+impl TraceSnapshot {
+    fn name_or_series<'a>(&self, series: &'a TraceSeries) -> &'a str {
+        &series.name
     }
 }
 

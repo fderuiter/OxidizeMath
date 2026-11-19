@@ -65,6 +65,14 @@ impl ExplorerTab for FavoritismTab {
         "Favoritism"
     }
 
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.selected_child_index.hash(&mut h);
+        self.new_child_name.hash(&mut h);
+        h.finish().max(1)
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&FavoritismState {
             selected_child_index: self.selected_child_index,

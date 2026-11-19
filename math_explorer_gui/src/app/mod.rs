@@ -30,6 +30,8 @@ mod tests_session_lifecycle;
 mod tests_shortcuts;
 #[cfg(test)]
 mod tests_split_view;
+#[cfg(test)]
+mod tests_tab_cache_perf;
 
 #[allow(unused_imports)]
 pub use domain_bar::AcademicDomain;
@@ -73,6 +75,8 @@ pub struct MathExplorerApp {
     pane_contexts: [egui::Context; 4],
     pane_textures: [std::collections::HashMap<egui::TextureId, egui::TextureId>; 4],
     pub is_dragging_divider: bool,
+    tab_state_cache: state::TabStateCache,
+    last_frame_had_input: bool,
 }
 
 impl Default for MathExplorerApp {
@@ -103,6 +107,8 @@ impl Default for MathExplorerApp {
             pane_contexts: std::array::from_fn(|_| egui::Context::default()),
             pane_textures: std::array::from_fn(|_| std::collections::HashMap::new()),
             is_dragging_divider: false,
+            tab_state_cache: state::TabStateCache::default(),
+            last_frame_had_input: false,
         }
     }
 }
@@ -463,9 +469,10 @@ impl eframe::App for MathExplorerApp {
         // Render Command Palette Overlay
         self.apply_command_palette_selection(ctx);
 
-        let current_app_state = self.get_app_state();
-        self.session_manager
-            .track_state_changes(ctx, current_app_state);
+        self.last_frame_had_input = state::has_frame_input(ctx);
+        let mut session_manager = std::mem::take(&mut self.session_manager);
+        session_manager.track_frame_changes(ctx, self);
+        self.session_manager = session_manager;
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

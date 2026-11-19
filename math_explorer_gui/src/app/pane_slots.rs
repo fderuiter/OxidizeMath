@@ -15,19 +15,28 @@ struct SecondarySlot {
     active: Option<(usize, Box<dyn ExplorerTab>)>,
     /// Cached serialized state per tab name (`tab.name()`) within this pane.
     saved_states: HashMap<String, String>,
+    /// Interior cache `(tab_name, state_revision, json)` for clean active secondary pane tabs.
+    active_cache: std::cell::RefCell<Option<(String, u64, Option<String>)>>,
 }
 
 impl SecondarySlot {
     fn snapshot_active(&mut self) {
         if let Some((_, ref tab)) = self.active {
+            let rev = tab.state_revision();
             if let Some(state_json) = tab.save_state() {
-                self.saved_states.insert(tab.name().to_string(), state_json);
+                let name = tab.name().to_string();
+                *self.active_cache.borrow_mut() =
+                    Some((name.clone(), rev, Some(state_json.clone())));
+                self.saved_states.insert(name, state_json);
+            } else {
+                *self.active_cache.borrow_mut() = Some((tab.name().to_string(), rev, None));
             }
         }
     }
 
     fn drop_active(&mut self) {
         self.snapshot_active();
+        *self.active_cache.borrow_mut() = None;
         self.active = None;
     }
 
@@ -42,16 +51,37 @@ impl SecondarySlot {
             if let Some(saved) = self.saved_states.get(new_tab.name()) {
                 new_tab.load_state(saved);
             }
+            *self.active_cache.borrow_mut() = None;
             self.active = Some((tab_idx, new_tab));
         }
         self.active.as_mut().map(|(_, tab)| tab)
     }
 
-    fn extract_states(&self) -> HashMap<String, String> {
+    fn extract_states(&self, had_input: bool) -> HashMap<String, String> {
         let mut states = self.saved_states.clone();
         if let Some((_, ref tab)) = self.active {
-            if let Some(state_json) = tab.save_state() {
-                states.insert(tab.name().to_string(), state_json);
+            let rev = tab.state_revision();
+            let name = tab.name();
+            let cached_hit = self.active_cache.borrow().as_ref().and_then(
+                |(cached_name, cached_rev, cached_json)| {
+                    let matches = cached_name == name
+                        && if rev > 0 {
+                            *cached_rev == rev
+                        } else {
+                            !had_input
+                        };
+                    matches.then(|| cached_json.clone())
+                },
+            );
+            let maybe_json = if let Some(cached_opt) = cached_hit {
+                cached_opt
+            } else {
+                let fresh = tab.save_state();
+                *self.active_cache.borrow_mut() = Some((name.to_string(), rev, fresh.clone()));
+                fresh
+            };
+            if let Some(state_json) = maybe_json {
+                states.insert(name.to_string(), state_json);
             }
         }
         states
@@ -180,6 +210,7 @@ impl MathExplorerApp {
 
     /// Exchanges runtime tab states between Pane 0 and Pane 1 after their assigned indices are swapped.
     pub(super) fn swap_primary_and_secondary_states(&mut self) {
+        self.tab_state_cache.clear();
         let new_p0 = self.selected_tab;
         let new_p1 = self.secondary_tab;
         if new_p0 >= self.tabs.len() || new_p1 >= self.tabs.len() {
@@ -250,13 +281,42 @@ impl MathExplorerApp {
         }
     }
 
+    /// Returns the primary `app.tabs` index rendered in Pane 0.
+    pub(super) fn active_primary_tab_index(&self) -> usize {
+        if self.viewport_layout == ViewportLayout::Single {
+            self.selected_tab
+        } else {
+            self.pane_tabs.first().copied().unwrap_or(self.selected_tab)
+        }
+    }
+
+    /// Computes a deterministic hash and tracking flag across secondary pane slots.
+    pub(super) fn secondary_slots_revision_hash(&self) -> (u64, bool) {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let mut all_tracked = true;
+        for (slot_idx, slot) in self.pane_slots.slots.iter().enumerate() {
+            slot_idx.hash(&mut h);
+            slot.saved_states.len().hash(&mut h);
+            if let Some((tab_idx, ref tab)) = slot.active {
+                tab_idx.hash(&mut h);
+                let rev = tab.state_revision();
+                if rev == 0 {
+                    all_tracked = false;
+                }
+                rev.hash(&mut h);
+            }
+        }
+        (h.finish(), all_tracked)
+    }
+
     /// Extracts serialized per-pane state maps for `AppState`.
     pub(super) fn extract_pane_tab_states(&self) -> Vec<HashMap<String, String>> {
         let mut all = Vec::with_capacity(4);
         all.push(HashMap::new());
         let mut any_non_empty = false;
         for slot in &self.pane_slots.slots {
-            let map = slot.extract_states();
+            let map = slot.extract_states(self.last_frame_had_input);
             if !map.is_empty() {
                 any_non_empty = true;
             }
@@ -285,6 +345,7 @@ impl MathExplorerApp {
             let Some(slot) = self.pane_slots.slot_mut(pane_idx) else {
                 continue;
             };
+            *slot.active_cache.borrow_mut() = None;
             if let Some(map) = pane_tab_states.get(pane_idx) {
                 slot.saved_states = map.clone();
             } else if is_legacy {

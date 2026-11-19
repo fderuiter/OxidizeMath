@@ -33,6 +33,26 @@ pub(crate) fn format_theory_context_key(key: &str) -> String {
     }
 }
 
+fn has_interactive_ui_input(ctx: &egui::Context) -> bool {
+    ctx.input(|i| {
+        i.pointer.any_down()
+            || i.pointer.any_pressed()
+            || i.pointer.any_released()
+            || i.any_touches()
+            || i.raw_scroll_delta != egui::Vec2::ZERO
+            || i.smooth_scroll_delta != egui::Vec2::ZERO
+            || (i.zoom_delta() - 1.0).abs() > f32::EPSILON
+            || i.events.iter().any(|e| {
+                !matches!(
+                    e,
+                    egui::Event::PointerMoved(_)
+                        | egui::Event::PointerGone
+                        | egui::Event::WindowFocused(_)
+                )
+            })
+    })
+}
+
 impl SimulationFramework {
     pub(super) fn show_theory_portal(&self, ctx: &egui::Context, id_source: &str) {
         if !self.show_theory_portal {
@@ -308,6 +328,10 @@ impl SimulationFramework {
     pub fn show(&mut self, ctx: &egui::Context, id_source: &str) {
         egui_plot::clear_last_plot_datasets();
         egui_plot::clear_last_plot_primitives();
+        if has_interactive_ui_input(ctx) {
+            self.rev_cache.untracked_tool_revision =
+                self.rev_cache.untracked_tool_revision.wrapping_add(1);
+        }
 
         // Display recovery banner when solver divergence is detected
         if self.is_diverged {

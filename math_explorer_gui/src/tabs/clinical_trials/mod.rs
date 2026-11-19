@@ -28,6 +28,10 @@ impl ExplorerTab for ClinicalTrialsTab {
         self.framework.show(ctx, "clinical_trials");
     }
 
+    fn state_revision(&self) -> u64 {
+        self.framework.state_revision()
+    }
+
     fn save_state(&self) -> Option<String> {
         self.framework.save_state()
     }

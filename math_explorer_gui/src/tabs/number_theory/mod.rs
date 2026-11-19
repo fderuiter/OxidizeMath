@@ -28,6 +28,10 @@ impl ExplorerTab for NumberTheoryTab {
         self.framework.show(ctx, "number_theory");
     }
 
+    fn state_revision(&self) -> u64 {
+        self.framework.state_revision()
+    }
+
     fn save_state(&self) -> Option<String> {
         self.framework.save_state()
     }

@@ -15,6 +15,7 @@ pub struct VietorisRipsTool {
     cached_triangles: Vec<[PlotPoint; 3]>,
     cached_edges: Vec<[PlotPoint; 2]>,
     cached_vertices: Vec<PlotPoint>,
+    revision: u64,
 }
 
 impl Default for VietorisRipsTool {
@@ -27,6 +28,7 @@ impl Default for VietorisRipsTool {
             cached_triangles: Vec::new(),
             cached_edges: Vec::new(),
             cached_vertices: Vec::new(),
+            revision: 1,
         };
         tool.generate_points(20);
         tool.update_complex();
@@ -54,6 +56,7 @@ impl VietorisRipsTool {
     }
 
     fn update_complex(&mut self) {
+        self.revision = self.revision.wrapping_add(1).max(1);
         match PointCloud::new(self.points.clone()) {
             Ok(cloud) => match vietoris_rips_complex(&cloud, self.radius) {
                 Ok(complex) => {
@@ -107,7 +110,26 @@ impl VietorisRipsTool {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+struct BorrowedPoints2D<'a>(&'a [Point2D]);
+
+impl serde::Serialize for BorrowedPoints2D<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
+        for pt in self.0 {
+            seq.serialize_element(&[pt.x, pt.y])?;
+        }
+        seq.end()
+    }
+}
+
+#[derive(serde::Serialize)]
+struct VietorisRipsStateRef<'a> {
+    radius: f64,
+    points: BorrowedPoints2D<'a>,
+}
+
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VietorisRipsState {
     radius: f64,
@@ -124,11 +146,24 @@ impl InteractiveTool for VietorisRipsTool {
         "geometry_topology"
     }
 
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.revision.hash(&mut h);
+        self.radius.to_bits().hash(&mut h);
+        self.points.len().hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.radius.is_finite()
+            && self.points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
+    }
+
     fn save_state(&self) -> Option<String> {
-        let pts = self.points.iter().map(|p| [p.x, p.y]).collect();
-        serde_json::to_string(&VietorisRipsState {
+        serde_json::to_string(&VietorisRipsStateRef {
             radius: self.radius,
-            points: pts,
+            points: BorrowedPoints2D(&self.points),
         })
         .ok()
     }

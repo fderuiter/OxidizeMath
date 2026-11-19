@@ -248,14 +248,16 @@ impl OdeSolverTool {
         let pv = plot_points_v.to_vec();
         let current_len = self.snapshot_manager.len();
 
-        self.snapshot_manager.render_ui(ui, || {
+        if self.snapshot_manager.render_ui(ui, || {
             let label = format!("Baseline {}", current_len + 1);
             let mut series = vec![TraceSeries::new("y(t)", py)];
             if is_harmonic && !pv.is_empty() {
                 series.push(TraceSeries::new("y'(t)", pv));
             }
             Some((label, param_summary, series))
-        });
+        }) {
+            self.bump_revision();
+        }
 
         self.run_sensitivity_analysis();
 

@@ -377,6 +377,14 @@ impl ExplorerTab for MriTab {
         "MRI Physics"
     }
 
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        std::mem::discriminant(&self.worker.state()).hash(&mut h);
+        self.time_scale.to_bits().hash(&mut h);
+        h.finish().max(1)
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&MriState {
             state: Some(self.worker.state()),

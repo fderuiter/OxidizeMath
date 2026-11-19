@@ -259,6 +259,28 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         }
     }
 
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for (key, _) in &self.param_metadata {
+            key.hash(&mut h);
+            if let Some(val) = params.get(key) {
+                val.to_bits().hash(&mut h);
+            }
+        }
+        h.finish().max(1)
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        params.values().all(|v| v.is_finite())
+            && !matches!(
+                self.controller.state(),
+                crate::async_sim::SimWorkerState::Faulted
+            )
+    }
+
     fn save_state(&self) -> Option<String> {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
         let sorted: std::collections::BTreeMap<&String, &f64> = params.iter().collect();

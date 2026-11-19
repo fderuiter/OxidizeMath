@@ -1,27 +1,54 @@
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
+use std::sync::OnceLock;
+
+fn static_temperature_series() -> &'static [[f64; 2]] {
+    static SERIES: OnceLock<Vec<[f64; 2]>> = OnceLock::new();
+    SERIES
+        .get_or_init(math_explorer::climate::dataset::get_temperature_anomalies)
+        .as_slice()
+}
 
 pub struct TemperatureAnomaliesTool {
-    time_series: Vec<[f64; 2]>,
+    custom_series: Option<Vec<[f64; 2]>>,
+    revision: u64,
 }
 
 impl Default for TemperatureAnomaliesTool {
     fn default() -> Self {
         Self {
-            time_series: math_explorer::climate::dataset::get_temperature_anomalies(),
+            custom_series: None,
+            revision: 1,
         }
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+impl TemperatureAnomaliesTool {
+    fn active_series(&self) -> &[[f64; 2]] {
+        self.custom_series
+            .as_deref()
+            .unwrap_or_else(|| static_temperature_series())
+    }
+}
+
+#[derive(serde::Serialize)]
+struct TempStateRef<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    time_series: Option<&'a [[f64; 2]]>,
+}
+
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TempState {
-    time_series: Vec<[f64; 2]>,
+    #[serde(default)]
+    time_series: Option<Vec<[f64; 2]>>,
 }
 
 impl InteractiveTool for TemperatureAnomaliesTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Temperature Anomalies"
     }
@@ -29,9 +56,19 @@ impl InteractiveTool for TemperatureAnomaliesTool {
         "climate"
     }
 
+    fn state_revision(&self) -> u64 {
+        self.revision
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.custom_series
+            .as_ref()
+            .is_none_or(|pts| pts.iter().all(|pt| pt[0].is_finite() && pt[1].is_finite()))
+    }
+
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&TempState {
-            time_series: self.time_series.clone(),
+        serde_json::to_string(&TempStateRef {
+            time_series: self.custom_series.as_deref(),
         })
         .ok()
     }
@@ -39,12 +76,19 @@ impl InteractiveTool for TemperatureAnomaliesTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: TempState =
             serde_json::from_str(state).map_err(|e| format!("Invalid temperature state: {e}"))?;
-        if s.time_series.is_empty()
-            || !s.time_series.iter().all(|pt| pt[0].is_finite() && pt[1].is_finite())
-        {
-            return Err("Temperature time_series must be non-empty and finite".into());
+        if let Some(series) = s.time_series {
+            if series.is_empty()
+                || !series
+                    .iter()
+                    .all(|pt| pt[0].is_finite() && pt[1].is_finite())
+            {
+                return Err("Temperature time_series must be non-empty and finite".into());
+            }
+            self.custom_series = Some(series);
+        } else {
+            self.custom_series = None;
         }
-        self.time_series = s.time_series;
+        self.revision = self.revision.wrapping_add(1).max(1);
         Ok(())
     }
 
@@ -53,6 +97,7 @@ impl InteractiveTool for TemperatureAnomaliesTool {
             self.show_ui(ui);
         });
     }
+
     fn show_ui(&mut self, ui: &mut egui::Ui) {
         ui.label("Global Temperature Anomalies:");
 
@@ -62,8 +107,9 @@ impl InteractiveTool for TemperatureAnomaliesTool {
             .y_axis_formatter(|y, _range| format!("{:.2}°C", y.value))
             .legend(egui_plot::Legend::default());
 
+        let active_series = self.active_series();
         plot.show(ui, |plot_ui| {
-            let points = PlotPoints::new(self.time_series.clone());
+            let points = PlotPoints::from_iter(active_series.iter().copied());
             let line = Line::new("Temperature Anomaly", points).width(2.0_f32);
             plot_ui.line(line);
         });
@@ -71,7 +117,6 @@ impl InteractiveTool for TemperatureAnomaliesTool {
 }
 
 // [cite:dwarf_galaxy_empirical_dependencies]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -87,9 +132,15 @@ impl scientific_metadata::theory::TheoryDescribable for TemperatureAnomaliesTool
     fn theory_description(&self) -> String {
         "Global surface temperature anomalies relative to the 1951-1980 climatological baseline: $\\Delta T(t) = T(t) - T_{\\text{baseline}}$, tracking global warming trends and radiative forcing.".into()
     }
-    fn phonetic_description(&self) -> String { "Global surface temperature anomalies and baseline climate theory".into() }
-    fn theory_citation(&self) -> String { "Improvements in the GISTEMP Uncertainty Analysis (Lenssen et al., 2019)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Global surface temperature anomalies and baseline climate theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Improvements in the GISTEMP Uncertainty Analysis (Lenssen et al., 2019)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

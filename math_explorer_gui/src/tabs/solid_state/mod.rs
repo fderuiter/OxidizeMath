@@ -27,6 +27,10 @@ impl ExplorerTab for SolidStateTab {
         self.framework.show(ctx, "solid_state");
     }
 
+    fn state_revision(&self) -> u64 {
+        self.framework.state_revision()
+    }
+
     fn save_state(&self) -> Option<String> {
         self.framework.save_state()
     }

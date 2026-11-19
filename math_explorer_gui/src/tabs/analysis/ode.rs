@@ -2,14 +2,15 @@
 
 mod annotations;
 pub mod comparison;
+mod persistence;
 pub mod recovery;
 pub mod systems;
 pub mod ui;
 
 use comparison::{simulate_preset, SolverDiscrepancy};
 
-pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::recovery::emit_divergence_telemetry;
+pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{
     CalloutManager, InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager,
 };
@@ -17,10 +18,6 @@ use crate::presets::OdePreset;
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 use recovery::{clamp_ode_parameters, clamp_ode_step_settings};
-
-// ----------------------------------------------------------------------------
-// Tool Implementation
-// ----------------------------------------------------------------------------
 
 pub struct OdeSolverTool {
     pub(crate) preset: OdePreset,
@@ -48,6 +45,7 @@ pub struct OdeSolverTool {
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
     pub(crate) last_param_summary: String,
     pub show_annotations: bool,
+    pub(crate) revision: u64,
 }
 
 impl Default for OdeSolverTool {
@@ -91,6 +89,7 @@ impl Default for OdeSolverTool {
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
             show_annotations: true,
+            revision: 1,
         };
         tool.recalculate();
         tool
@@ -98,6 +97,10 @@ impl Default for OdeSolverTool {
 }
 
 impl OdeSolverTool {
+    pub(crate) fn bump_revision(&mut self) {
+        self.revision = self.revision.wrapping_add(1).max(1);
+    }
+
     pub fn param_summary(&self) -> String {
         match self.preset {
             OdePreset::Exponential | OdePreset::HarmonicOscillator | OdePreset::Custom => {
@@ -219,6 +222,7 @@ impl OdeSolverTool {
     }
 
     pub fn recalculate(&mut self) {
+        self.bump_revision();
         self.time_series.clear();
         self.y_series.clear();
         self.v_series.clear();
@@ -284,36 +288,6 @@ impl OdeSolverTool {
     }
 }
 
-fn default_annotations_enabled() -> bool {
-    true
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct OdeState {
-    #[serde(default)]
-    preset: Option<OdePreset>,
-    dt: f64,
-    total_time: f64,
-    param_k: f64,
-    param_r: f64,
-    param_cap_k: f64,
-    ic_y0: f64,
-    ic_v0: f64,
-    #[serde(default)]
-    custom_expr: String,
-    #[serde(default)]
-    snapshot_manager: TraceSnapshotManager,
-    #[serde(default)]
-    callout_manager: CalloutManager,
-    #[serde(default)]
-    method: IntegrationMethod,
-    #[serde(default)]
-    comparison_mode: bool,
-    #[serde(default = "default_annotations_enabled")]
-    show_annotations: bool,
-}
-
 impl InteractiveTool for OdeSolverTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -323,6 +297,14 @@ impl InteractiveTool for OdeSolverTool {
     }
     fn domain(&self) -> &'static str {
         "analysis"
+    }
+
+    fn state_revision(&self) -> u64 {
+        self.compute_state_revision()
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        FiniteStateGuard::is_finite_state(self)
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -351,60 +333,19 @@ impl InteractiveTool for OdeSolverTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&OdeState {
-            preset: Some(self.preset),
-            dt: self.dt,
-            total_time: self.total_time,
-            param_k: self.param_k,
-            param_r: self.param_r,
-            param_cap_k: self.param_cap_k,
-            ic_y0: self.ic_y0,
-            ic_v0: self.ic_v0,
-            custom_expr: self.math_input.raw_text.clone(),
-            snapshot_manager: self.snapshot_manager.clone(),
-            callout_manager: self.callout_manager.clone(),
-            method: self.method,
-            comparison_mode: self.comparison_mode,
-            show_annotations: self.show_annotations,
-        })
-        .ok()
+        self.serialize_full_state()
+    }
+
+    fn save_recovery_state(&self) -> Option<String> {
+        self.serialize_recovery_state()
+    }
+
+    fn load_recovery_state(&mut self, state: &str) {
+        let _ = self.deserialize_state(state, true);
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: OdeState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {e}"))?;
-        if !s.dt.is_finite()
-            || s.dt <= 0.0
-            || !s.total_time.is_finite()
-            || s.total_time <= 0.0
-            || !s.param_k.is_finite()
-            || !s.param_r.is_finite()
-            || !s.param_cap_k.is_finite()
-            || !s.ic_y0.is_finite()
-            || !s.ic_v0.is_finite()
-        {
-            return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
-        }
-        if let Some(p) = s.preset {
-            self.preset = p;
-        }
-        self.dt = s.dt;
-        self.total_time = s.total_time;
-        self.param_k = s.param_k;
-        self.param_r = s.param_r;
-        self.param_cap_k = s.param_cap_k;
-        self.ic_y0 = s.ic_y0;
-        self.ic_v0 = s.ic_v0;
-        if !s.custom_expr.is_empty() {
-            self.math_input.set_expression(&s.custom_expr);
-        }
-        self.snapshot_manager = s.snapshot_manager;
-        self.callout_manager = s.callout_manager;
-        self.method = s.method;
-        self.comparison_mode = s.comparison_mode;
-        self.show_annotations = s.show_annotations;
-        self.recalculate();
-        Ok(())
+        self.deserialize_state(state, false)
     }
 
     fn clamp_parameters(&mut self) -> bool {
@@ -443,6 +384,11 @@ impl InteractiveTool for OdeSolverTool {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.render_plot_canvas(ui, plot_points_y, plot_points_v, &mut changed);
         });
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
     }
 }
 

@@ -27,6 +27,10 @@ impl ExplorerTab for MedicalTab {
         self.framework.show(ctx, "medical");
     }
 
+    fn state_revision(&self) -> u64 {
+        self.framework.state_revision()
+    }
+
     fn save_state(&self) -> Option<String> {
         self.framework.save_state()
     }
