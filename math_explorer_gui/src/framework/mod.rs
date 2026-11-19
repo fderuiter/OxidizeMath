@@ -14,6 +14,9 @@ pub mod math_input;
 #[cfg(test)]
 mod metadata_label_tests;
 mod overlay_sync;
+#[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+mod perf_guard_tests;
 mod persistence;
 pub mod playback;
 #[cfg(test)]
@@ -82,8 +85,6 @@ pub trait InteractiveTool {
     fn theory(&self) -> &dyn TheoryDescribable;
 
     /// Show the tool. Tools can implement this to take full control over rendering.
-    /// The default implementation delegates to `show_ui` and then sets up a CentralPanel
-    /// with an allocated painter to call the normalized event hooks and `draw`.
     fn show(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left(format!("{}_controls", self.name())).show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -109,14 +110,11 @@ pub trait InteractiveTool {
         egui::CentralPanel::default().show(ctx, |ui| {
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
-
             let multi_touch = ui.input(|i| i.multi_touch());
-
             let input_mode = ctx.data(|d| {
                 d.get_temp(egui::Id::new("INPUT_MODE"))
                     .unwrap_or(InputMode::Mouse)
             });
-
             let keys_down = ui.input(|i| i.keys_down.clone());
             let modifiers = ui.input(|i| i.modifiers);
 
@@ -138,7 +136,7 @@ pub trait InteractiveTool {
 
             if interaction_ctx.multi_touch.is_some() {
                 self.on_gesture(&interaction_ctx);
-            } else if let Some(_pos) = interaction_ctx.pointer_pos {
+            } else if interaction_ctx.pointer_pos.is_some() {
                 if interaction_ctx.is_dragging {
                     self.on_drag(&interaction_ctx);
                     self.on_brush(&interaction_ctx);
@@ -173,9 +171,29 @@ pub trait InteractiveTool {
     #[allow(missing_docs)]
     fn on_keyboard(&mut self, _ctx: &InteractionContext) {}
 
+    /// Revision counter for persisted tool state (`0` falls back to framework UI revision tracking).
+    fn state_revision(&self) -> u64 {
+        0
+    }
+
+    /// Direct numeric parameter finiteness hook without JSON serialization.
+    fn has_finite_parameters(&self) -> bool {
+        true
+    }
+
     /// Optional hook to serialize tool-specific parameters into a String (e.g. JSON).
     fn save_state(&self) -> Option<String> {
         None
+    }
+
+    /// Lightweight parameter-only snapshot hook used by `cache_valid_snapshot`.
+    fn save_recovery_state(&self) -> Option<String> {
+        self.save_state()
+    }
+
+    /// Restores parameter-only recovery state without clobbering pinned comparison overlays.
+    fn load_recovery_state(&mut self, state: &str) {
+        self.load_state(state);
     }
 
     /// Fallibly deserializes and restores tool-specific parameters from a JSON state string.
@@ -249,7 +267,6 @@ pub trait InteractiveTool {
     }
 
     /// Optional hook to export tool datasets.
-    /// Default implementation extracts datasets recorded from embedded `egui_plot::Plot`s if available.
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         egui_plot::get_last_plot_datasets()
     }
@@ -313,6 +330,15 @@ pub(super) struct FrameworkSyncState {
     pub(super) last_modal_scope_id: Option<egui::Id>,
 }
 
+#[derive(Default)]
+pub(super) struct FrameworkRevisionCache {
+    pub(super) framework_revision: u64,
+    pub(super) untracked_tool_revision: u64,
+    pub(super) active_tool_json:
+        std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
+    pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
+}
+
 #[allow(missing_docs)]
 pub struct SimulationFramework {
     pub available_tools: Vec<&'static ToolMetadata>,
@@ -352,6 +378,7 @@ pub struct SimulationFramework {
     pub start_time: crate::web_io::PlatformInstant,
     pub(super) instance_id: u64,
     pub(super) sync_state: FrameworkSyncState,
+    pub(super) rev_cache: FrameworkRevisionCache,
 }
 
 impl SimulationFramework {
@@ -362,7 +389,6 @@ impl SimulationFramework {
             .filter(|t| t.domain == domain)
             .collect();
 
-        // Sort by display name (then id) for deterministic order
         available_tools.sort_by_key(|t| (t.display_name, t.id));
 
         let mut framework = Self {
@@ -395,6 +421,7 @@ impl SimulationFramework {
             start_time: crate::web_io::PlatformInstant::now(),
             instance_id: overlay_sync::next_framework_id(),
             sync_state: FrameworkSyncState::default(),
+            rev_cache: FrameworkRevisionCache::default(),
         };
 
         if !framework.available_tools.is_empty() {
@@ -402,71 +429,6 @@ impl SimulationFramework {
         }
 
         framework
-    }
-
-    /// Selects and activates a tool by index in `available_tools`.
-    pub fn select_tool(&mut self, index: usize) {
-        if index >= self.available_tools.len() {
-            return;
-        }
-        if self.selected_tool_index == Some(index) && self.active_tool.is_some() {
-            return;
-        }
-        if let Some(old_tool) = &self.active_tool {
-            if let Some(state) = old_tool.save_state() {
-                self.saved_tool_states
-                    .insert(old_tool.name().to_string(), state);
-            }
-        }
-        self.selected_tool_index = Some(index);
-        let meta = self.available_tools[index];
-        let mut new_tool = (meta.build)();
-        let factory_baseline_state = new_tool.save_state();
-        if let Some(state) = self
-            .saved_tool_states
-            .get(new_tool.name())
-            .or_else(|| self.saved_tool_states.get(meta.id))
-        {
-            new_tool.load_state(state);
-        }
-        self.is_diverged = false;
-        self.diagnostic_report = None;
-        self.export_status_message = None;
-        self.export_queue.status = None;
-        self.step_counter = 0;
-        self.baseline_tool_state = factory_baseline_state;
-        let active_tool_state = new_tool.save_state();
-        let initial_datasets = persistence::capture_isolated_tool_datasets(new_tool.as_ref());
-        self.sync_state.datasets_owner_tool = Some(new_tool.name());
-        self.current_valid_plot_datasets = initial_datasets.clone();
-        self.last_valid_snapshot = Some(StateSnapshot {
-            tool_state: active_tool_state,
-            plot_datasets: initial_datasets,
-            step_index: 0,
-            timestamp: crate::web_io::PlatformInstant::now(),
-        });
-        scientific_metadata::citation_registry::CitationRegistry::register(
-            new_tool.name().to_string(),
-            new_tool.theory().theory_citation(),
-        );
-        self.active_tool = Some(new_tool);
-    }
-
-    /// Selects and activates a tool by ID, display name, or tag in `available_tools` (case-insensitively).
-    pub fn select_tool_by_name(&mut self, name: &str) -> bool {
-        let name_trimmed = name.trim();
-        if let Some(index) = self.available_tools.iter().position(|t| {
-            t.id.eq_ignore_ascii_case(name_trimmed)
-                || t.display_name.eq_ignore_ascii_case(name_trimmed)
-                || t.tags
-                    .iter()
-                    .any(|tag| tag.eq_ignore_ascii_case(name_trimmed))
-        }) {
-            self.select_tool(index);
-            true
-        } else {
-            false
-        }
     }
 }
 

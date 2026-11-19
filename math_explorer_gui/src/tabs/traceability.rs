@@ -272,6 +272,13 @@ impl ExplorerTab for TraceabilityTab {
         "Traceability Portal"
     }
 
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.repo_path.hash(&mut h);
+        h.finish().max(1)
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&TraceabilityState {
             repo_path: self.repo_path.clone(),

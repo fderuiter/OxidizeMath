@@ -192,6 +192,25 @@ impl InteractiveTool for AttractorPlotter {
         "chaos"
     }
 
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.system.sigma.to_bits().hash(&mut h);
+        self.system.rho.to_bits().hash(&mut h);
+        self.system.beta.to_bits().hash(&mut h);
+        self.dt.to_bits().hash(&mut h);
+        self.simulation_speed.hash(&mut h);
+        self.max_points.hash(&mut h);
+        self.is_paused().hash(&mut h);
+        self.diverged().hash(&mut h);
+        self.show_annotations.hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        !self.diverged() && self.is_finite_state()
+    }
+
     fn save_state(&self) -> Option<String> {
         self.serialize_state()
     }

@@ -27,6 +27,10 @@ impl ExplorerTab for ClimateTab {
         self.framework.show(ctx, "climate");
     }
 
+    fn state_revision(&self) -> u64 {
+        self.framework.state_revision()
+    }
+
     fn save_state(&self) -> Option<String> {
         self.framework.save_state()
     }

@@ -3,10 +3,16 @@
 use super::recovery::*;
 use super::SimulationFramework;
 
+#[path = "state_guard/rollback.rs"]
+mod rollback;
+
+/// Maximum permitted memory footprint (2 MiB) for a cached recovery snapshot.
+pub const MAX_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
+
 /// Pre-divergence state snapshot cached before each simulation step.
 #[derive(Clone, Debug)]
 pub struct StateSnapshot {
-    /// Serialized tool state (parameters) from `tool.save_state()`.
+    /// Serialized parameter-only recovery state from `tool.save_recovery_state()`.
     pub tool_state: Option<String>,
     /// Visual plot datasets captured prior to divergence.
     pub plot_datasets: Vec<(String, Vec<[f64; 2]>)>,
@@ -19,7 +25,7 @@ pub struct StateSnapshot {
 impl StateSnapshot {
     /// Calculates the approximate memory footprint of this snapshot in bytes.
     pub fn memory_size(&self) -> usize {
-        let state_bytes = self.tool_state.as_ref().map(|s| s.len()).unwrap_or(0);
+        let state_bytes = self.tool_state.as_ref().map_or(0, String::len);
         let plot_bytes: usize = self
             .plot_datasets
             .iter()
@@ -27,76 +33,100 @@ impl StateSnapshot {
             .sum();
         std::mem::size_of::<Self>() + state_bytes + plot_bytes
     }
+
+    pub(super) fn enforce_memory_budget(&mut self) {
+        while self.memory_size() > MAX_SNAPSHOT_BYTES {
+            let mut pruned = false;
+            for (_, pts) in &mut self.plot_datasets {
+                if pts.len() > 100 {
+                    let keep = pts.len() / 2;
+                    pts.drain(0..pts.len() - keep);
+                    pruned = true;
+                }
+            }
+            if !pruned {
+                break;
+            }
+        }
+        if self.memory_size() > MAX_SNAPSHOT_BYTES {
+            self.plot_datasets.clear();
+        }
+        if self.memory_size() > MAX_SNAPSHOT_BYTES {
+            self.tool_state = None;
+        }
+    }
 }
 
 impl SimulationFramework {
-    /// Caches a valid state snapshot before each simulation step/frame.
-    /// Memory footprint is strictly bounded to remain under 2 megabytes per tool.
+    /// Caches a valid parameter-only state snapshot before each simulation step/frame.
+    /// Memory footprint is strictly bounded to remain at or below 2 megabytes per tool.
     pub fn cache_valid_snapshot(&mut self) {
         if self.is_diverged {
             return;
         }
-        if let Some(tool) = &self.active_tool {
-            let tool_state = tool.save_state();
-            let mut datasets = self.current_valid_plot_datasets.clone();
-            if datasets.is_empty() {
-                let exported = tool.export_datasets();
-                if inspect_datasets_for_divergence(&exported).is_ok() {
-                    datasets = exported;
-                }
+        let Some(tool) = &self.active_tool else {
+            return;
+        };
+        let name = tool.name();
+        let rev = tool.state_revision();
+        let reuse_cached_state = rev > 0
+            && self
+                .rev_cache
+                .last_snapshot_rev
+                .is_some_and(|(n, r)| n == name && r == rev)
+            && self.last_valid_snapshot.is_some();
+
+        let tool_state = if reuse_cached_state {
+            self.last_valid_snapshot
+                .as_ref()
+                .and_then(|s| s.tool_state.clone())
+        } else {
+            let saved = tool.save_recovery_state();
+            if rev > 0 {
+                self.rev_cache.last_snapshot_rev = Some((name, rev));
             }
+            saved
+        };
 
-            let mut snapshot = StateSnapshot {
-                tool_state,
-                plot_datasets: datasets,
-                step_index: self.step_counter,
-                timestamp: crate::web_io::PlatformInstant::now(),
-            };
-
-            // Memory guardrail: enforce <= 2 megabytes per active tool
-            const MAX_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
-            while snapshot.memory_size() > MAX_SNAPSHOT_BYTES {
-                let mut pruned = false;
-                for (_, pts) in &mut snapshot.plot_datasets {
-                    if pts.len() > 100 {
-                        let keep = pts.len() / 2;
-                        pts.drain(0..pts.len() - keep);
-                        pruned = true;
-                    }
-                }
-                if !pruned {
-                    break;
-                }
+        let mut datasets = self.current_valid_plot_datasets.clone();
+        if datasets.is_empty() {
+            let exported = tool.export_datasets();
+            if inspect_datasets_for_divergence(&exported).is_ok() {
+                datasets = exported;
             }
-
-            self.last_valid_snapshot = Some(snapshot);
         }
+
+        let mut snapshot = StateSnapshot {
+            tool_state,
+            plot_datasets: datasets,
+            step_index: self.step_counter,
+            timestamp: crate::web_io::PlatformInstant::now(),
+        };
+        snapshot.enforce_memory_budget();
+        self.last_valid_snapshot = Some(snapshot);
     }
 
-    /// Inspects output plot datasets and serialized tool state for non-finite values (NaN / Inf).
-    /// Enforces latency under 1 millisecond per frame.
-    /// Halts solver execution, records DiagnosticReport, and emits telemetry when divergence occurs.
+    /// Inspects active tool parameters via `has_finite_parameters` and output plot datasets for `NaN`/`Inf`.
+    /// Enforces latency under 1 millisecond per frame without calling `InteractiveTool::save_state`.
     pub fn inspect_runtime_state(&mut self) -> Result<(), DiagnosticReport> {
         let plot_datasets = egui_plot::get_last_plot_datasets();
         let mut check_result = inspect_datasets_for_divergence(&plot_datasets);
         let mut tool_datasets = Vec::new();
+
         if check_result.is_ok() {
             if let Some(tool) = &self.active_tool {
-                tool_datasets = tool.export_datasets();
-                if !tool_datasets.is_empty() {
-                    check_result = inspect_datasets_for_divergence(&tool_datasets);
-                }
-                if check_result.is_ok()
-                    && tool.save_state().is_some_and(|s| {
-                        s.contains("NaN") || s.contains("Infinity") || s.contains("-Infinity")
-                    })
-                {
+                if !tool.has_finite_parameters() {
                     check_result = Err(DiagnosticReport::new(
                         self.start_time.elapsed().as_secs_f64(),
                         self.step_counter,
                         "state",
-                        "Non-finite floating-point state encountered in serialized tool parameters.",
+                        "Non-finite floating-point state encountered in active tool parameters.",
                     ));
+                } else if plot_datasets.is_empty() && tool.state_revision() == 0 {
+                    tool_datasets = tool.export_datasets();
+                    if !tool_datasets.is_empty() {
+                        check_result = inspect_datasets_for_divergence(&tool_datasets);
+                    }
                 }
             }
         }
@@ -120,8 +150,7 @@ impl SimulationFramework {
                 let tool_name = self
                     .active_tool
                     .as_ref()
-                    .map(|t| t.name())
-                    .unwrap_or("SimulationFramework");
+                    .map_or("SimulationFramework", |t| t.name());
                 emit_divergence_telemetry(
                     tool_name,
                     report.t_diverged,
@@ -132,327 +161,6 @@ impl SimulationFramework {
                 self.is_diverged = true;
                 self.diagnostic_report = Some(report.clone());
                 Err(report)
-            }
-        }
-    }
-
-    /// Executes the Step-Back action: restores the exact pre-divergence parameter configuration and plot data.
-    pub fn rollback_step_back(&mut self) -> bool {
-        if let Some(snapshot) = self.last_valid_snapshot.clone() {
-            if let Some(tool) = &mut self.active_tool {
-                if let Some(ref state_str) = snapshot.tool_state {
-                    tool.load_state(state_str);
-                }
-            }
-            self.restore_snapshot_plots(snapshot.plot_datasets);
-
-            emit_recovery_telemetry(
-                "SimulationFramework",
-                "Step Back",
-                "Restored exact pre-divergence parameter configuration and plot data",
-            );
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Executes the Auto-Scale Step Size action: restores saved snapshot, halves the time step (dt), and restarts simulation.
-    pub fn rollback_auto_scale_step_size(&mut self) -> bool {
-        if let Some(snapshot) = self.last_valid_snapshot.clone() {
-            if let Some(tool) = &mut self.active_tool {
-                if let Some(ref state_str) = snapshot.tool_state {
-                    if let Some(halved_state) = auto_scale_state_json(state_str) {
-                        tool.load_state(&halved_state);
-                    } else {
-                        tool.load_state(state_str);
-                    }
-                }
-            }
-            self.restore_snapshot_plots(snapshot.plot_datasets);
-
-            emit_recovery_telemetry(
-                "SimulationFramework",
-                "Auto-scale Step Size (dt)",
-                "Halved step size and restarted simulation from snapshot",
-            );
-            true
-        } else {
-            false
-        }
-    }
-
-    fn restore_snapshot_plots(&mut self, plot_datasets: Vec<(String, Vec<[f64; 2]>)>) {
-        egui_plot::clear_last_plot_datasets();
-        egui_plot::append_last_plot_datasets(&plot_datasets);
-        self.sync_state.datasets_owner_tool = self
-            .active_tool
-            .as_ref()
-            .filter(|_| !plot_datasets.is_empty())
-            .map(|t| t.name());
-        self.current_valid_plot_datasets = plot_datasets;
-        self.is_diverged = false;
-        self.diagnostic_report = None;
-    }
-
-    /// Coordinates parameter clamping on the active tool via domain hooks or JSON bounds fallback.
-    pub fn clamp_parameters(&mut self) {
-        let Some(snapshot) = self.last_valid_snapshot.clone() else {
-            if let (Some(tool), Some(ref base)) = (&mut self.active_tool, &self.baseline_tool_state)
-            {
-                tool.load_state(base);
-            } else if let Some(tool) = &mut self.active_tool {
-                let _ = tool.clamp_parameters();
-            }
-            let valid_plots = self.current_valid_plot_datasets.clone();
-            self.restore_snapshot_plots(valid_plots);
-            emit_recovery_telemetry(
-                "SimulationFramework",
-                "Clamp Instability Parameters",
-                "Fallback to baseline parameters: missing last_valid_snapshot",
-            );
-            return;
-        };
-
-        let mut telemetry_details = "Fallback to baseline parameters: zero snapshot fields changed";
-        if let Some(tool) = &mut self.active_tool {
-            if let Some(ref state_str) = snapshot.tool_state {
-                tool.load_state(state_str);
-            }
-            if tool.clamp_parameters() {
-                telemetry_details =
-                    "Clamped instability parameters via domain hook and restored plot datasets";
-            } else {
-                let constraints = tool.theory().theory_parameters();
-                if let Some(clamped) = snapshot.tool_state.as_deref().and_then(|s| {
-                    super::clamp::clamp_state_json(
-                        s,
-                        self.baseline_tool_state.as_deref(),
-                        &constraints,
-                    )
-                }) {
-                    tool.load_state(&clamped);
-                    telemetry_details =
-                        "Clamped snapshot JSON parameters to stable bounds and restored plot datasets";
-                } else if let Some(ref base) = self.baseline_tool_state {
-                    tool.load_state(base);
-                }
-            }
-        }
-
-        self.restore_snapshot_plots(snapshot.plot_datasets);
-        emit_recovery_telemetry(
-            "SimulationFramework",
-            "Clamp Instability Parameters",
-            telemetry_details,
-        );
-    }
-
-    /// Coordinates parameter reset to baseline on the active tool.
-    pub fn reset_parameters(&mut self) {
-        if let Some(baseline_state) = self.baseline_tool_state.clone() {
-            if let Some(tool) = &mut self.active_tool {
-                tool.load_state(&baseline_state);
-            } else if let Some(&meta) = self
-                .selected_tool_index
-                .and_then(|idx| self.available_tools.get(idx))
-            {
-                let mut new_tool = (meta.build)();
-                new_tool.load_state(&baseline_state);
-                self.active_tool = Some(new_tool);
-            }
-        } else if let Some(&meta) = self
-            .selected_tool_index
-            .and_then(|idx| self.available_tools.get(idx))
-        {
-            let new_tool = (meta.build)();
-            self.baseline_tool_state = new_tool.save_state();
-            self.active_tool = Some(new_tool);
-        }
-        egui_plot::clear_last_plot_datasets();
-        self.current_valid_plot_datasets.clear();
-        self.sync_state.datasets_owner_tool = None;
-        self.is_diverged = false;
-        self.diagnostic_report = None;
-        self.step_counter = 0;
-        if let Some(tool) = &self.active_tool {
-            let restored_state = tool.save_state();
-            if let Some(&meta) = self
-                .selected_tool_index
-                .and_then(|idx| self.available_tools.get(idx))
-            {
-                if meta.id != tool.name() {
-                    self.saved_tool_states.remove(meta.id);
-                }
-            }
-            if let Some(ref state) = restored_state {
-                self.saved_tool_states
-                    .insert(tool.name().to_string(), state.clone());
-            } else {
-                self.saved_tool_states.remove(tool.name());
-            }
-            self.last_valid_snapshot = Some(StateSnapshot {
-                tool_state: restored_state,
-                plot_datasets: Vec::new(),
-                step_index: 0,
-                timestamp: crate::web_io::PlatformInstant::now(),
-            });
-        } else {
-            self.last_valid_snapshot = None;
-        }
-        emit_recovery_telemetry(
-            "SimulationFramework",
-            "Reset All Parameters",
-            "Restored default baseline configuration",
-        );
-    }
-
-    pub(super) fn sync_active_baseline(&mut self) {
-        self.is_diverged = false;
-        self.diagnostic_report = None;
-        self.step_counter = 0;
-        if let Some(tool) = &self.active_tool {
-            let state = tool.save_state();
-            self.baseline_tool_state = state.clone();
-            if let Some(&meta) = self
-                .selected_tool_index
-                .and_then(|idx| self.available_tools.get(idx))
-            {
-                if meta.id != tool.name() {
-                    self.saved_tool_states.remove(meta.id);
-                }
-            }
-            if let Some(ref s) = state {
-                self.saved_tool_states
-                    .insert(tool.name().to_string(), s.clone());
-            } else {
-                self.saved_tool_states.remove(tool.name());
-            }
-            let datasets = super::persistence::capture_isolated_tool_datasets(tool.as_ref());
-            self.sync_state.datasets_owner_tool = Some(tool.name());
-            self.current_valid_plot_datasets = datasets.clone();
-            self.last_valid_snapshot = Some(StateSnapshot {
-                tool_state: state,
-                plot_datasets: datasets,
-                step_index: 0,
-                timestamp: crate::web_io::PlatformInstant::now(),
-            });
-        }
-    }
-
-    /// Applies a preset JSON envelope to the active tool, refreshing baseline/snapshot on success
-    /// or recording a toast and telemetry warning on failure.
-    pub fn apply_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let res = match &mut self.active_tool {
-            Some(tool) => tool.import_preset_json(json_str),
-            None => Err("No active tool selected for preset import".to_string()),
-        };
-        match res {
-            Ok(()) => {
-                self.preset_dialog.toast_error = None;
-                self.sync_active_baseline();
-                Ok(())
-            }
-            Err(err) => {
-                self.preset_dialog.record_import_error(err.clone());
-                Err(err)
-            }
-        }
-    }
-
-    /// Rebuilds a clean target tool instance for a starter card, validates and applies its
-    /// preset JSON, and synchronizes baseline/reset snapshots or records a toast + telemetry warning.
-    pub fn apply_starter_card(
-        &mut self,
-        card_title: &str,
-        tool_name: Option<&str>,
-        preset_json: Option<&str>,
-    ) -> Result<(), String> {
-        let target_idx = match tool_name {
-            Some(target_name) => {
-                let Some(idx) = self
-                    .available_tools
-                    .iter()
-                    .position(|t| t.id == target_name || t.display_name == target_name)
-                else {
-                    let err = format!(
-                        "Starter preset '{card_title}' targets unavailable tool '{target_name}'"
-                    );
-                    self.preset_dialog.record_import_error(err.clone());
-                    return Err(err);
-                };
-                Some(idx)
-            }
-            None => self.selected_tool_index,
-        };
-
-        if let Some(idx) = target_idx {
-            let meta = self.available_tools[idx];
-            let mut new_tool = (meta.build)();
-            if let Some(json_str) = preset_json {
-                if let Err(err) = new_tool.import_preset_json(json_str) {
-                    let msg = format!("Failed to launch '{card_title}': {err}");
-                    self.preset_dialog.record_import_error(msg.clone());
-                    return Err(msg);
-                }
-            }
-            if self.selected_tool_index != Some(idx) {
-                if let Some(old_tool) = &self.active_tool {
-                    if let Some(state) = old_tool.save_state() {
-                        self.saved_tool_states
-                            .insert(old_tool.name().to_string(), state);
-                    }
-                }
-            }
-            scientific_metadata::citation_registry::CitationRegistry::register(
-                new_tool.name().to_string(),
-                new_tool.theory().theory_citation(),
-            );
-            self.selected_tool_index = Some(idx);
-            self.active_tool = Some(new_tool);
-            self.preset_dialog.toast_error = None;
-            self.sync_active_baseline();
-        } else if let Some(json_str) = preset_json {
-            let Some(tool) = &mut self.active_tool else {
-                let err = format!("No active tool available to launch '{card_title}'");
-                self.preset_dialog.record_import_error(err.clone());
-                return Err(err);
-            };
-            if let Err(err) = tool.import_preset_json(json_str) {
-                let msg = format!("Failed to launch '{card_title}': {err}");
-                self.preset_dialog.record_import_error(msg.clone());
-                return Err(msg);
-            }
-            self.preset_dialog.toast_error = None;
-            self.sync_active_baseline();
-        }
-        self.show_starter_gallery = false;
-        Ok(())
-    }
-
-    /// Rebuilds a clean target tool instance for a starter card, applies its preset JSON,
-    /// and synchronizes baseline/reset snapshots.
-    pub fn launch_starter_card(
-        &mut self,
-        card: &crate::starter_gallery::StarterCard,
-    ) -> Result<(), String> {
-        self.apply_starter_card(card.title, card.tool_name, card.preset_json)
-    }
-
-    /// Dispatches a StateGuardAction remedy.
-    pub fn handle_state_guard_action(&mut self, action: StateGuardAction) {
-        match action {
-            StateGuardAction::StepBack => {
-                self.rollback_step_back();
-            }
-            StateGuardAction::AutoScaleStepSize => {
-                self.rollback_auto_scale_step_size();
-            }
-            StateGuardAction::ClampParameters => {
-                self.clamp_parameters();
-            }
-            StateGuardAction::ResetParameters => {
-                self.reset_parameters();
             }
         }
     }

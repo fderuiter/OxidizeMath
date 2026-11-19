@@ -25,6 +25,10 @@ impl ExplorerTab for GameTheoryTab {
         self.framework.show(ctx, "game_theory");
     }
 
+    fn state_revision(&self) -> u64 {
+        self.framework.state_revision()
+    }
+
     fn save_state(&self) -> Option<String> {
         self.framework.save_state()
     }

@@ -91,6 +91,10 @@ impl InteractiveTool for CeraTool {
         crate::framework::ExportCapabilities::none()
     }
 
+    fn has_finite_parameters(&self) -> bool {
+        FiniteStateGuard::is_finite_state(self)
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&CeraState {
             in_channels: self.in_channels,

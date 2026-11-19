@@ -136,6 +136,15 @@ impl ExplorerTab for MorphogenesisTab {
         "Morphogenesis"
     }
 
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.params.read().unwrap_or_else(|e| e.into_inner()).dt.to_bits().hash(&mut h);
+        std::mem::discriminant(&self.worker.state()).hash(&mut h);
+        self.show_starter_gallery.hash(&mut h);
+        h.finish().max(1)
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&MorphoState {
             dt: self.params.read().unwrap_or_else(|e| e.into_inner()).dt,

@@ -4,7 +4,27 @@ use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::epidemiology::compartmental::SIRModel;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize)]
+struct SirStateRef<'a> {
+    n: f64,
+    i0: f64,
+    beta: f64,
+    gamma: f64,
+    duration: f64,
+    #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
+    snapshot_manager: &'a TraceSnapshotManager,
+}
+
+#[derive(serde::Serialize)]
+struct SirRecoveryState {
+    n: f64,
+    i0: f64,
+    beta: f64,
+    gamma: f64,
+    duration: f64,
+}
+
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SirState {
     n: f64,
@@ -17,20 +37,21 @@ struct SirState {
 }
 
 pub struct SirTool {
-    n: f64,
-    i0: f64,
-    beta: f64,
-    gamma: f64,
-    duration: f64,
+    pub(crate) n: f64,
+    pub(crate) i0: f64,
+    pub(crate) beta: f64,
+    pub(crate) gamma: f64,
+    pub(crate) duration: f64,
 
     // Cached plot data
     s_points: Vec<PlotPoint>,
     i_points: Vec<PlotPoint>,
     r_points: Vec<PlotPoint>,
 
-    snapshot_manager: TraceSnapshotManager,
+    pub(crate) snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     last_param_summary: String,
+    revision: u64,
 }
 
 impl Default for SirTool {
@@ -47,6 +68,7 @@ impl Default for SirTool {
             snapshot_manager: TraceSnapshotManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
+            revision: 1,
         };
         tool.recalculate();
         tool
@@ -113,6 +135,7 @@ impl SirTool {
     }
 
     fn recalculate(&mut self) {
+        self.revision = self.revision.wrapping_add(1).max(1);
         self.s_points.clear();
         self.i_points.clear();
         self.r_points.clear();
@@ -139,41 +162,8 @@ impl SirTool {
         }
         self.last_param_summary = self.param_summary();
     }
-}
 
-impl InteractiveTool for SirTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
-    fn name(&self) -> &'static str {
-        "SIR Model"
-    }
-    fn domain(&self) -> &'static str {
-        "epidemiology"
-    }
-
-    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut datasets = egui_plot::get_last_plot_datasets();
-        if datasets.is_empty() {
-            datasets.push(("Susceptible".to_string(), self.s_points.iter().map(|p| [p.x, p.y]).collect()));
-            datasets.push(("Infected".to_string(), self.i_points.iter().map(|p| [p.x, p.y]).collect()));
-            datasets.push(("Recovered".to_string(), self.r_points.iter().map(|p| [p.x, p.y]).collect()));
-            datasets.extend(self.snapshot_manager.export_datasets());
-        }
-        datasets
-    }
-
-    fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&SirState {
-            n: self.n,
-            i0: self.i0,
-            beta: self.beta,
-            gamma: self.gamma,
-            duration: self.duration,
-            snapshot_manager: self.snapshot_manager.clone(),
-        })
-        .ok()
-    }
-
-    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+    fn load_sir_state(&mut self, state: &str, preserve_snapshots: bool) -> Result<(), String> {
         let s: SirState =
             serde_json::from_str(state).map_err(|e| format!("Invalid SIR state: {e}"))?;
         if ![s.n, s.i0, s.beta, s.gamma, s.duration]
@@ -192,9 +182,93 @@ impl InteractiveTool for SirTool {
         self.beta = s.beta;
         self.gamma = s.gamma;
         self.duration = s.duration;
-        self.snapshot_manager = s.snapshot_manager;
+        if !preserve_snapshots {
+            self.snapshot_manager = s.snapshot_manager;
+        }
         self.recalculate();
         Ok(())
+    }
+}
+
+impl InteractiveTool for SirTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn name(&self) -> &'static str {
+        "SIR Model"
+    }
+    fn domain(&self) -> &'static str {
+        "epidemiology"
+    }
+
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.revision.hash(&mut h);
+        self.n.to_bits().hash(&mut h);
+        self.i0.to_bits().hash(&mut h);
+        self.beta.to_bits().hash(&mut h);
+        self.gamma.to_bits().hash(&mut h);
+        self.duration.to_bits().hash(&mut h);
+        self.snapshot_manager.len().hash(&mut h);
+        self.snapshot_manager.history_len().hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        [self.n, self.i0, self.beta, self.gamma, self.duration]
+            .into_iter()
+            .all(f64::is_finite)
+            && self.n > 0.0
+            && self.duration > 0.0
+            && self.s_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
+            && self.i_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
+            && self.r_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut datasets = egui_plot::get_last_plot_datasets();
+        if datasets.is_empty() {
+            datasets.push(("Susceptible".to_string(), self.s_points.iter().map(|p| [p.x, p.y]).collect()));
+            datasets.push(("Infected".to_string(), self.i_points.iter().map(|p| [p.x, p.y]).collect()));
+            datasets.push(("Recovered".to_string(), self.r_points.iter().map(|p| [p.x, p.y]).collect()));
+            datasets.extend(self.snapshot_manager.export_datasets());
+        }
+        datasets
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&SirStateRef {
+            n: self.n,
+            i0: self.i0,
+            beta: self.beta,
+            gamma: self.gamma,
+            duration: self.duration,
+            snapshot_manager: &self.snapshot_manager,
+        })
+        .ok()
+    }
+
+    fn save_recovery_state(&self) -> Option<String> {
+        serde_json::to_string(&SirRecoveryState {
+            n: self.n,
+            i0: self.i0,
+            beta: self.beta,
+            gamma: self.gamma,
+            duration: self.duration,
+        })
+        .ok()
+    }
+
+    fn load_recovery_state(&mut self, state: &str) {
+        let _ = self.load_sir_state(state, true);
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.load_sir_state(state, false)
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -232,7 +306,7 @@ impl InteractiveTool for SirTool {
             let i_points = &self.i_points;
             let r_points = &self.r_points;
 
-            self.snapshot_manager.render_ui(ui, move || {
+            if self.snapshot_manager.render_ui(ui, move || {
                 let label = format!("Baseline {}", current_len + 1);
                 let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
                 let series = vec![
@@ -241,7 +315,9 @@ impl InteractiveTool for SirTool {
                     TraceSeries::new("Recovered", to_pairs(r_points)),
                 ];
                 Some((label, param_summary, series))
-            });
+            }) {
+                self.revision = self.revision.wrapping_add(1).max(1);
+            }
 
             self.evaluate_sensitivity(ui);
 

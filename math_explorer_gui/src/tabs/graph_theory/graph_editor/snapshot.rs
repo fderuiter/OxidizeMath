@@ -2,17 +2,38 @@
 
 use super::GraphEditorTool;
 use eframe::egui::Pos2;
-use std::collections::HashMap;
+use serde::ser::{Serialize, SerializeMap, Serializer};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct GraphSnapshot {
-    pub node_positions: HashMap<usize, Pos2>,
+    pub node_positions: BTreeMap<usize, Pos2>,
     pub edges: Vec<(usize, usize, f64)>,
     pub selected_node: Option<usize>,
     pub next_node_id: usize,
 }
 
 pub const MAX_SNAPSHOTS: usize = 50;
+
+pub(super) struct BorrowedNodePositions<'a>(pub(super) &'a BTreeMap<usize, Pos2>);
+
+impl Serialize for BorrowedNodePositions<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (&id, pos) in self.0 {
+            map.serialize_entry(&id, &(pos.x, pos.y))?;
+        }
+        map.end()
+    }
+}
+
+#[derive(serde::Serialize)]
+pub(super) struct SerializedGraphStateRef<'a> {
+    pub(super) node_positions: BorrowedNodePositions<'a>,
+    pub(super) edges: &'a [(usize, usize, f64)],
+    pub(super) selected_node: Option<usize>,
+    pub(super) next_node_id: usize,
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -49,7 +70,29 @@ impl SerializedGraphState {
 }
 
 impl GraphEditorTool {
+    pub(crate) fn bump_revision(&mut self) {
+        self.revision = self.revision.wrapping_add(1).max(1);
+    }
+
+    pub(crate) fn serialize_borrowed_state(&self) -> Option<String> {
+        serde_json::to_string(&SerializedGraphStateRef {
+            node_positions: BorrowedNodePositions(&self.node_positions),
+            edges: &self.edges,
+            selected_node: self.selected_node,
+            next_node_id: self.next_node_id,
+        })
+        .ok()
+    }
+
+    pub(crate) fn check_finite_graph(&self) -> bool {
+        self.node_positions
+            .values()
+            .all(|p| p.x.is_finite() && p.y.is_finite())
+            && self.edges.iter().all(|&(_, _, w)| w.is_finite())
+    }
+
     pub fn push_undo_snapshot(&mut self) {
+        self.bump_revision();
         let snapshot = GraphSnapshot {
             node_positions: self.node_positions.clone(),
             edges: self.edges.clone(),
@@ -90,6 +133,7 @@ impl GraphEditorTool {
     }
 
     pub(crate) fn restore_snapshot(&mut self, snapshot: GraphSnapshot) {
+        self.bump_revision();
         self.node_positions = snapshot.node_positions;
         self.edges = snapshot.edges;
         self.selected_node = snapshot

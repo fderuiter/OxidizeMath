@@ -10,7 +10,7 @@ use math_explorer::pure_math::graph_theory::{
     layout::{circular_layout, force_directed_layout, grid_layout},
 };
 use petgraph::graph::NodeIndex;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 mod keyboard;
 mod snapshot;
@@ -32,7 +32,7 @@ enum EditorMode {
 pub struct GraphEditorTool {
     graph: Graph<Pos2, f64>,
     node_indices: HashMap<usize, NodeIndex>,
-    node_positions: HashMap<usize, Pos2>,
+    node_positions: BTreeMap<usize, Pos2>,
     selected_node: Option<usize>,
     next_node_id: usize,
     edges: Vec<(usize, usize, f64)>, // We store edge representations here since graph wrapper hides index access nicely
@@ -42,6 +42,7 @@ pub struct GraphEditorTool {
     hovered_edge: Option<usize>,
     undo_stack: Vec<GraphSnapshot>,
     redo_stack: Vec<GraphSnapshot>,
+    pub(crate) revision: u64,
 }
 
 impl InteractiveTool for GraphEditorTool {
@@ -59,19 +60,23 @@ impl InteractiveTool for GraphEditorTool {
         crate::framework::ExportCapabilities::none()
     }
 
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.revision.hash(&mut h);
+        self.node_positions.len().hash(&mut h);
+        self.edges.len().hash(&mut h);
+        self.selected_node.hash(&mut h);
+        self.next_node_id.hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.check_finite_graph()
+    }
+
     fn save_state(&self) -> Option<String> {
-        let node_pos = self
-            .node_positions
-            .iter()
-            .map(|(&id, &p)| (id, (p.x, p.y)))
-            .collect();
-        serde_json::to_string(&SerializedGraphState {
-            node_positions: node_pos,
-            edges: self.edges.clone(),
-            selected_node: self.selected_node,
-            next_node_id: self.next_node_id,
-        })
-        .ok()
+        self.serialize_borrowed_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
@@ -88,6 +93,7 @@ impl InteractiveTool for GraphEditorTool {
         self.next_node_id = loaded.next_node_id;
         self.undo_stack.clear();
         self.redo_stack.clear();
+        self.bump_revision();
         self.rebuild_graph();
         Ok(())
     }
@@ -185,6 +191,7 @@ impl InteractiveTool for GraphEditorTool {
                 if let Some(dragged_id) = self.dragged_node {
                     if let Some(node_pos) = self.node_positions.get_mut(&dragged_id) {
                         *node_pos += ctx.delta;
+                        self.bump_revision();
                     }
                 }
             }

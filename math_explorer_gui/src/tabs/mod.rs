@@ -71,6 +71,11 @@ pub trait ExplorerTab {
     /// * `frame` - The eframe Frame, used for window management (e.g., resizing, closing).
     fn show(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame);
 
+    /// Monotonic or deterministic revision token for persisted tab state (`0` if untracked).
+    fn state_revision(&self) -> u64 {
+        0
+    }
+
     /// Serializes the tab's parameter and panel state into a String.
     fn save_state(&self) -> Option<String> {
         None
