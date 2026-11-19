@@ -64,7 +64,9 @@ fn reject_if_symlink(path: &Path) -> Result<(), String> {
             Err(format!("Refusing symbolic link path: {}", path.display()))
         }
         Ok(_) => Ok(()),
-        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+        Err(err) if matches!(err.kind(), ErrorKind::NotFound | ErrorKind::InvalidFilename) => {
+            Ok(())
+        }
         Err(err) => Err(format!(
             "Failed to inspect metadata for {}: {}",
             path.display(),

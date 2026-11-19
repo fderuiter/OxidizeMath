@@ -436,3 +436,17 @@ fn test_generate_index_html_canary_tex_on_unix() {
     assert!(html.contains("<code>paper_&lt;canary-marker&gt;.pdf</code>"));
     assert!(html.contains(r#"href="paper_%3Ccanary-marker%3E.pdf""#));
 }
+
+#[test]
+fn test_validate_tex_input_allows_nonexistent_synthetic_special_chars() {
+    let temp = TempOutputDir::new("synthetic_win32_chars");
+    let synthetic = temp.path.join("synthetic_<a>\"b\"?q.tex");
+    let stem = validate_tex_input_path(&synthetic)
+        .expect("non-existent synthetic path with special chars should not fail symlink check");
+    assert_eq!(stem, "synthetic_<a>\"b\"?q");
+
+    let meta = try_extract_papers_metadata(&[synthetic])
+        .expect("metadata extraction should succeed for non-existent synthetic path");
+    assert_eq!(meta.len(), 1);
+    assert_eq!(meta[0].0, "synthetic_<a>\"b\"?q");
+}
