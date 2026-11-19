@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 use domain_applied::applied::clinical_trials::survival_analysis::{
-    Observation, try_estimate_hazard_ratio,
+    Observation, kaplan_meier, try_estimate_hazard_ratio,
 };
 use domain_applied::applied::clinical_trials::types::{ClinicalTrialError, SurvivalTime};
 
@@ -63,5 +63,76 @@ fn test_hazard_ratio_negative_time() {
     match res {
         Err(e) => assert!(e.to_string().contains("Time must be non-negative")),
         _ => panic!("Expected error for negative time"),
+    }
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_survival_time_rejects_non_finite_and_overflow() {
+    assert!(SurvivalTime::new(f64::INFINITY).is_err());
+    assert!(SurvivalTime::new(f64::NEG_INFINITY).is_err());
+    assert!(SurvivalTime::new(f64::NAN).is_err());
+
+    // Arithmetic overflow and domain errors delegating to SurvivalTime::new
+    assert!(SurvivalTime::new(1000.0).unwrap().exp().is_err());
+    assert!(SurvivalTime::new(0.0).unwrap().ln().is_err());
+    assert!((SurvivalTime::new(1.0).unwrap() / 0.0).is_err());
+    assert!((SurvivalTime::new(f64::MAX).unwrap() * 2.0).is_err());
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_survival_time_normalizes_negative_zero() {
+    let neg_zero = SurvivalTime::new(-0.0).unwrap();
+    let pos_zero = SurvivalTime::new(0.0).unwrap();
+    assert_eq!(neg_zero.as_f64().to_bits(), 0.0_f64.to_bits());
+    assert_eq!(
+        neg_zero.as_f64().total_cmp(&pos_zero.as_f64()),
+        std::cmp::Ordering::Equal
+    );
+
+    let obs = vec![
+        Observation {
+            time: neg_zero,
+            event_occurred: false,
+        },
+        Observation {
+            time: pos_zero,
+            event_occurred: true,
+        },
+    ];
+    let curve = kaplan_meier(&obs);
+    assert_eq!(curve.len(), 1);
+    assert_eq!(curve[0].time.to_bits(), 0.0_f64.to_bits());
+    assert_eq!(curve[0].n_events, 1);
+    assert_eq!(curve[0].n_censored, 1);
+    assert!((curve[0].survival_probability - 0.5).abs() < 1e-12);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_kaplan_meier_near_ties_total_order() {
+    let mut x: u64 = 1;
+    let obs: Vec<Observation> = (0..40)
+        .map(|_| {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let t = ((x >> 48) % 6) as f64 * 6e-10;
+            Observation {
+                time: SurvivalTime::new(t).unwrap(),
+                event_occurred: true,
+            }
+        })
+        .collect();
+
+    let curve = kaplan_meier(&obs);
+    assert!(!curve.is_empty());
+    assert_eq!(curve[0].n_at_risk, 40);
+
+    let total_events: usize = curve.iter().map(|pt| pt.n_events).sum();
+    assert_eq!(total_events, 40);
+    assert_eq!(curve.last().unwrap().survival_probability, 0.0);
+
+    for pair in curve.windows(2) {
+        assert!(pair[0].time < pair[1].time);
     }
 }

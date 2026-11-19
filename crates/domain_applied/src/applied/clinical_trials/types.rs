@@ -150,26 +150,29 @@ impl GroupData {
     }
 }
 
-/// A strictly non-negative time value for survival analysis.
+/// A finite, non-negative time value for survival analysis.
 ///
-/// Ensures that time is valid (>= 0.0 and not NaN).
+/// Ensures that time is valid (finite and `>= 0.0`), normalizing `-0.0` to `+0.0`.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct SurvivalTime(f64);
 
 impl SurvivalTime {
     /// Creates a new `SurvivalTime`.
     ///
+    /// Normalizes `-0.0` to `+0.0` so signed zeros sort identically under `f64::total_cmp`.
+    ///
     /// # Errors
-    /// Returns `ClinicalTrialError::InvalidData` if `t` is negative or NaN.
+    /// Returns `ClinicalTrialError::InvalidData` if `t` is non-finite (`NaN` or `±Infinity`) or negative.
     #[verified_engine::verified]
     pub fn new(t: f64) -> Result<Self, ClinicalTrialError> {
-        if t.is_nan() || t < 0.0 {
+        if !t.is_finite() || t < 0.0 {
             return Err(ClinicalTrialError::InvalidData(format!(
                 "Time must be non-negative and finite, got {}",
                 t
             )));
         }
-        Ok(Self(t))
+        let normalized = if t == 0.0 { 0.0 } else { t };
+        Ok(Self(normalized))
     }
 
     /// Returns the underlying `f64` value.

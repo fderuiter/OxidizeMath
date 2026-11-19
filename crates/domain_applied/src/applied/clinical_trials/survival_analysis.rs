@@ -1,5 +1,4 @@
 use super::types::{ClinicalTrialError, SurvivalTime};
-use std::cmp::Ordering;
 
 /// Represents a single subject's outcome in a survival analysis study.
 #[derive(Debug, Clone, Copy)]
@@ -90,44 +89,25 @@ pub fn kaplan_meier(observations: &[Observation]) -> Vec<TimePoint> {
     // Use `sort_unstable_by` instead of `sort_by` since the relative order of equal elements
     // does not affect the calculation (as noted below, order doesn't matter for risk set calculation).
     // This reduces sorting time by ~30% for large datasets, saving CPU cycles.
-    obs.sort_unstable_by(|a, b| {
-        let ta = a.time / crate::applied::clinical_trials::types::SurvivalTime::new(1.0).unwrap();
-        let tb = b.time / crate::applied::clinical_trials::types::SurvivalTime::new(1.0).unwrap();
-        if (ta - tb).abs() < math_commons::registry::TOLERANCE_STANDARD {
-            // Equal time: events come first?
-            // Standard KM handles ties. Usually event is counted against risk set.
-            // If censored at T, they are in risk set at T? Yes.
-            // If event at T, they are in risk set at T.
-            // Order doesn't matter for risk set calculation if we group by time.
-            Ordering::Equal
-        } else if ta < tb {
-            Ordering::Less
-        } else {
-            Ordering::Greater
-        }
-    });
+    obs.sort_unstable_by(|a, b| a.time.as_f64().total_cmp(&b.time.as_f64()));
 
     let mut curve = Vec::new();
     let mut current_survival = 1.0;
     let total_subjects = obs.len();
 
-    // Group by unique time points
+    // Group by unique time points within TOLERANCE_STANDARD
     let mut i = 0;
     let mut n_at_risk = total_subjects;
 
     while i < obs.len() {
-        let t =
-            obs[i].time / crate::applied::clinical_trials::types::SurvivalTime::new(1.0).unwrap();
-        let mut n_events = 0;
-        let mut n_censored = 0;
+        let t = obs[i].time.as_f64();
+        let mut n_events = usize::from(obs[i].event_occurred);
+        let mut n_censored = usize::from(!obs[i].event_occurred);
+        i += 1;
 
-        // Process all events at this time t
+        // Process remaining observations grouped within TOLERANCE_STANDARD of anchor time t
         while i < obs.len()
-            && (obs[i].time
-                / crate::applied::clinical_trials::types::SurvivalTime::new(1.0).unwrap()
-                - t)
-                .abs()
-                < math_commons::registry::TOLERANCE_STANDARD
+            && (obs[i].time.as_f64() - t).abs() < math_commons::registry::TOLERANCE_STANDARD
         {
             if obs[i].event_occurred {
                 n_events += 1;
@@ -178,8 +158,7 @@ pub fn try_estimate_hazard_ratio(
             if obs.event_occurred {
                 events += 1.0;
             }
-            time +=
-                obs.time / crate::applied::clinical_trials::types::SurvivalTime::new(1.0).unwrap();
+            time += obs.time.as_f64();
         }
         Ok((events, time))
     };
