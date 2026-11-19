@@ -233,7 +233,7 @@ impl InteractiveTool for AttractorPlotter {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
-        for _ in 0..self.simulation_speed {
+        for _ in 0..self.simulation_speed.clamp(1, MAX_SIMULATION_SPEED) {
             let current_vec = self.system.state.vec;
             if !current_vec.x.is_finite()
                 || !current_vec.y.is_finite()
