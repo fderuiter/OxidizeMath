@@ -436,7 +436,8 @@ mod tests;
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "IsingModelTool",
+        id: "IsingModelTool",
+        display_name: "Ising Model",
         domain: "solid_state",
         tags: &[],
         build: || Box::new(IsingModelTool::default()),

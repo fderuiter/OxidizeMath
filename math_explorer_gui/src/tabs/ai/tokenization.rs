@@ -207,7 +207,8 @@ impl InteractiveTool for TokenizationTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "TokenizationTool",
+        id: "TokenizationTool",
+        display_name: "Tokenization & Embeddings",
         domain: "ai",
         tags: &[],
         build: || Box::new(TokenizationTool::default()),

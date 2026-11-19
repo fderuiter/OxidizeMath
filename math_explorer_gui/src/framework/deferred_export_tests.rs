@@ -8,7 +8,7 @@ use std::collections::HashSet;
 fn build_registered_tool(name: &str) -> Box<dyn InteractiveTool> {
     let meta = inventory::iter::<crate::framework::ToolMetadata>
         .into_iter()
-        .find(|m| m.name == name)
+        .find(|m| m.id == name || m.display_name == name)
         .unwrap_or_else(|| panic!("Missing registered tool {name}"));
     (meta.build)()
 }

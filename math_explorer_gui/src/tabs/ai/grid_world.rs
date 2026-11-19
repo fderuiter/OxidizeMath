@@ -242,7 +242,8 @@ impl InteractiveTool for GridWorldTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "GridWorldTool",
+        id: "GridWorldTool",
+        display_name: "Grid World (RL)",
         domain: "ai",
         tags: &[],
         build: || Box::new(GridWorldTool::default()),

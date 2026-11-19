@@ -135,7 +135,8 @@ Submit your tool metadata with the `inventory::submit!` macro at the bottom of t
 ```rust,ignore
 inventory::submit! {
     math_explorer_gui::framework::ToolMetadata {
-        name: "Harmonic Oscillator",
+        id: "HarmonicOscillatorTool",
+        display_name: "Harmonic Oscillator",
         domain: "physics",
         tags: &["mechanics", "differential_equations", "oscillator"],
         build: || Box::new(HarmonicOscillatorTool::default()),

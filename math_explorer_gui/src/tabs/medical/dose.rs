@@ -167,7 +167,8 @@ impl DoseCalculationTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "DoseCalculationTool",
+        id: "DoseCalculationTool",
+        display_name: "Dose Calculation",
         domain: "medical",
         tags: &[],
         build: || Box::new(DoseCalculationTool::default()),

@@ -251,14 +251,14 @@ pub fn get_starter_cards_for_domain(
         for meta in available_tools {
             if meta.domain == domain {
                 cards.push(StarterCard {
-                    id: meta.name,
-                    title: meta.name,
+                    id: meta.id,
+                    title: meta.display_name,
                     description:
                         "Interactive simulation tool for mathematical exploration and analysis.",
                     category: meta.domain,
                     icon: "🔬",
                     domain: meta.domain,
-                    tool_name: Some(meta.name),
+                    tool_name: Some(meta.id),
                     preset_json: None,
                 });
             }
@@ -420,12 +420,12 @@ mod tests {
         for tool in &tools {
             let matching = presets
                 .iter()
-                .filter(|p| p.tool_name == Some(tool.name) && p.domain == tool.domain)
+                .filter(|p| p.tool_name == Some(tool.id) && p.domain == tool.domain)
                 .collect::<Vec<_>>();
             assert!(
                 !matching.is_empty(),
                 "Tool '{}' in domain '{}' has no registered starter preset",
-                tool.name,
+                tool.id,
                 tool.domain
             );
 
@@ -434,7 +434,7 @@ mod tests {
                 let parsed: serde_json::Value = serde_json::from_str(payload).unwrap_or_else(|e| {
                     panic!(
                         "Invalid JSON payload for tool '{}', preset '{}': {}",
-                        tool.name, preset.title, e
+                        tool.id, preset.title, e
                     )
                 });
                 assert!(parsed.is_object(), "Payload must be a JSON object");

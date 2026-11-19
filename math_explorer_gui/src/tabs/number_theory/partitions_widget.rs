@@ -190,7 +190,8 @@ impl InteractiveTool for PartitionsWidget {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "PartitionsWidget",
+        id: "PartitionsWidget",
+        display_name: "Partition Function",
         domain: "number_theory",
         tags: &[],
         build: || Box::new(PartitionsWidget::default()),

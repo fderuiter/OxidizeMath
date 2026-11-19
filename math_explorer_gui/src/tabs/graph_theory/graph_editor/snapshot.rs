@@ -89,7 +89,8 @@ const STARTER_PRESET_JSON: &str = r#"{
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "GraphEditorTool",
+        id: "GraphEditorTool",
+        display_name: "Graph Editor",
         domain: "graph_theory",
         tags: &[],
         build: || Box::new(GraphEditorTool::default()),

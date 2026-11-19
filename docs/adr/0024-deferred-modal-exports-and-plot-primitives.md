@@ -1,4 +1,4 @@
-# ADR 0023: Deferred Modal Exports, Plot Primitive Extraction, and Raster Tool Hooks
+# ADR 0024: Deferred Modal Exports, Plot Primitive Extraction, and Raster Tool Hooks
 
 ## Status
 Accepted

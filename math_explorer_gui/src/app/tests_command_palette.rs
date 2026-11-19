@@ -163,7 +163,7 @@ fn test_command_palette_select_dijkstra_tool() {
     assert_eq!(
         aria_msg,
         Some(format!(
-            "Switched to tool AlgorithmVisualizerTool in tab {}",
+            "Switched to tool Algorithm Visualizer in tab {}",
             active_tab.name()
         ))
     );
@@ -199,7 +199,7 @@ fn test_command_palette_select_lorenz_tool() {
     assert_eq!(
         aria_msg,
         Some(format!(
-            "Switched to tool AttractorPlotter in tab {}",
+            "Switched to tool Attractor Plotter in tab {}",
             active_tab.name()
         ))
     );
@@ -235,7 +235,7 @@ fn test_command_palette_select_cera_tool() {
     assert_eq!(
         aria_msg,
         Some(format!(
-            "Switched to tool CeraTool in tab {}",
+            "Switched to tool CERA Model in tab {}",
             active_tab.name()
         ))
     );

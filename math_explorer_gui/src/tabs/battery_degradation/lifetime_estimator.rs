@@ -154,7 +154,8 @@ impl InteractiveTool for LifetimeEstimatorTool {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "LifetimeEstimatorTool",
+        id: "LifetimeEstimatorTool",
+        display_name: "Lifetime Estimator",
         domain: "battery_degradation",
         tags: &[],
         build: || Box::new(LifetimeEstimatorTool::default()),

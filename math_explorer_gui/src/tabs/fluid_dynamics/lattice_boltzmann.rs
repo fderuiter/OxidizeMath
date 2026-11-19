@@ -219,6 +219,13 @@ impl UnifiedModel for LbmUnified {
         map
     }
 
+    fn parameter_label(name: &str) -> String {
+        match name {
+            "viscosity" => "Kinematic Viscosity (ν)".to_string(),
+            other => other.to_string(),
+        }
+    }
+
     fn name() -> &'static str {
         "Lattice Boltzmann (Demo)"
     }
@@ -226,7 +233,8 @@ impl UnifiedModel for LbmUnified {
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        name: "LatticeBoltzmannTool",
+        id: "LatticeBoltzmannTool",
+        display_name: "Lattice Boltzmann (Demo)",
         domain: "fluid_dynamics",
         tags: &[],
         build: || Box::new(UnifiedSimTool::<LbmUnified>::new()),

@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 mod canvas;
+mod controls;
 pub mod tool;
 pub use tool::*;
 
@@ -34,6 +35,32 @@ pub trait UnifiedModel:
     fn parameters() -> HashMap<String, ParameterConstraint>
     where
         Self: Sized;
+
+    /// Return a user-facing display label for a parameter key.
+    fn parameter_label(name: &str) -> String
+    where
+        Self: Sized,
+    {
+        name.split('_')
+            .filter(|part| !part.is_empty())
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// Return discrete `(label, numeric_value)` choices when a parameter represents categorical options.
+    fn parameter_choices(_name: &str) -> &'static [(&'static str, f64)]
+    where
+        Self: Sized,
+    {
+        &[]
+    }
 
     /// The name of the tool.
     fn name() -> &'static str

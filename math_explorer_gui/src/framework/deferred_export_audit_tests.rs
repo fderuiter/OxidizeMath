@@ -80,7 +80,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
             assert!(
                 !caps.dataset,
                 "{} should disable dataset export when figure is unsupported",
-                meta.name
+                meta.id
             );
             assert!(!caps.dataset_disabled_reason.is_empty());
             assert!(!caps.figure_disabled_reason.is_empty());
@@ -92,7 +92,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         } else {
             raster_tool_count += 1;
         }
-        verify_single_figure_tool(meta.name, tool);
+        verify_single_figure_tool(meta.id, tool);
     }
 
     assert_eq!(plot_tool_count, 30, "Expected 30 Plot dataset+figure tools");
