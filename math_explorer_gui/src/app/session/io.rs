@@ -143,13 +143,12 @@ pub fn log_telemetry(
     ctx: &eframe::egui::Context,
     aria_key: &str,
 ) {
-    federated_registry::global_registry().emit(federated_registry::TelemetryEvent {
-        source: "WorkspaceSessionManager".to_string(),
+    crate::telemetry::emit_telemetry(
+        "WorkspaceSessionManager",
         severity,
-        message: msg.clone(),
-        metadata: std::collections::HashMap::new(),
-        thread_name: None,
-    });
+        msg.clone(),
+        std::collections::HashMap::new(),
+    );
     ctx.data_mut(|d| {
         d.insert_temp(eframe::egui::Id::new(aria_key), msg);
     });

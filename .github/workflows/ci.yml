@@ -35,18 +35,15 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Cache dependencies
-        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-preflight-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-preflight-
+          scope: preflight
+          profile: mixed
+          extra-files: |
+            apps/xtask/Cargo.toml
+            apps/xtask/README.md
+            apps/xtask/src/**
 
       - name: Build Unified Verification Tool
         run: cargo build -p unified_verification --release
@@ -122,7 +119,7 @@ jobs:
             name: Windows Native
             artifact_name: windows_installer
           - os: macos-latest
-            target: x86_64-apple-darwin
+            target: aarch64-apple-darwin
             name: macOS Native
             artifact_name: macos_app
           - os: ubuntu-latest
@@ -149,19 +146,12 @@ jobs:
           components: clippy, rustfmt, llvm-tools-preview
           targets: ${{ matrix.target }}
 
-      - name: Cache dependencies
-        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.target }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
-            ${{ runner.os }}-cargo-
+          scope: build-and-test
+          profile: mixed
+          target: ${{ matrix.target }}
 
       - name: Build Unified Verification Tool
         run: cargo build -p unified_verification --release
@@ -222,6 +212,10 @@ jobs:
         if: matrix.target == 'wasm32-unknown-unknown'
         run: cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
 
+      - name: Run Clippy (WASM)
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
+
       - name: Install cargo-binstall
         if: matrix.target == 'wasm32-unknown-unknown'
         uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
@@ -260,6 +254,58 @@ jobs:
         env:
           PYTHON: ${{ runner.temp }}/web-e2e-venv/bin/python
         run: cargo run -p xtask -- web-e2e --skip-build
+
+      - name: Generate SHA-256 Manifest
+        if: matrix.target == 'wasm32-unknown-unknown'
+        shell: bash
+        run: |
+          if [ ! -d "math_explorer_gui/dist" ]; then
+            echo "Error: math_explorer_gui/dist directory does not exist" >&2
+            exit 1
+          fi
+
+          cd math_explorer_gui/dist
+
+          if command -v sha256sum >/dev/null 2>&1; then
+            SHACMD="sha256sum"
+            SHACHECK="sha256sum -c"
+          elif command -v shasum >/dev/null 2>&1; then
+            SHACMD="shasum -a 256"
+            SHACHECK="shasum -a 256 -c"
+          else
+            echo "Error: Neither sha256sum nor shasum is available" >&2
+            exit 1
+          fi
+
+          shopt -s nullglob
+          shopt -u dotglob
+          files=()
+          for f in *; do
+            if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
+              files+=("$f")
+            fi
+          done
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "Error: No build artifacts found in math_explorer_gui/dist" >&2
+            exit 1
+          fi
+
+          for f in "${files[@]}"; do
+            if [ ! -s "$f" ]; then
+              echo "Error: Build artifact $f is empty" >&2
+              exit 1
+            fi
+          done
+
+          $SHACMD "${files[@]}" > SHA256SUMS
+          $SHACHECK SHA256SUMS
+
+      - name: Upload Pages artifact
+        if: matrix.target == 'wasm32-unknown-unknown' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: math_explorer_gui/dist
 
       - name: Code Signing (Windows)
         if: runner.os == 'Windows'
@@ -303,6 +349,16 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
+        with:
+          scope: compile-papers
+          profile: dev
+          extra-files: |
+            apps/xtask/Cargo.toml
+            apps/xtask/README.md
+            apps/xtask/src/**
 
       - name: Compile Papers
         run: cargo run -p xtask -- compile-papers
@@ -353,18 +409,15 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - name: Cache dependencies
-        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-features-${{ matrix.feature }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-features-${{ matrix.feature }}-
+          scope: features-${{ matrix.feature || 'core-only' }}
+          profile: dev
+          extra-files: |
+            apps/xtask/Cargo.toml
+            apps/xtask/README.md
+            apps/xtask/src/**
 
       - name: Run Tests
         run: |
@@ -402,6 +455,13 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
+        with:
+          scope: package-${{ matrix.target }}
+          profile: release
+          extra-files: math_explorer_gui/Cargo.toml
 
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
@@ -479,10 +539,30 @@ jobs:
             !math_explorer_gui/dist/.*/**
           if-no-files-found: error
 
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [pre-flight, build-and-test, feature-matrix]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+
   publish-release:
     name: Publish Release
     if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && startsWith(github.ref, 'refs/tags/v')
-    needs: [build-and-test, package, compile-papers]
+    needs: [build-and-test, package, compile-papers, feature-matrix]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

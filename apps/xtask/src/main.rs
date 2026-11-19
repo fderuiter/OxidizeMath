@@ -5,7 +5,7 @@ mod web_e2e;
 
 use markdown_links::check_markdown_links;
 use std::env;
-#[cfg(unix)]
+#[cfg(any(unix, test))]
 use std::fs;
 use std::path::Path;
 use std::process::{Command, exit};
@@ -101,19 +101,36 @@ fn run_cmd_with_env(cmd: &str, args: &[&str], envs: &[(&str, &str)]) {
     }
 }
 
-fn run_clippy() {
-    run_cmd(
-        "cargo",
-        &[
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--all-features",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    );
+const HOST_CLIPPY_ARGS: &[&str] = &[
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--all-features",
+    "--",
+    "-D",
+    "warnings",
+];
+
+const WASM_CLIPPY_ARGS: &[&str] = &[
+    "clippy",
+    "--workspace",
+    "--lib",
+    "--bins",
+    "--tests",
+    "--target",
+    "wasm32-unknown-unknown",
+    "--all-features",
+    "--",
+    "-D",
+    "warnings",
+];
+
+fn run_clippy_lints() {
+    println!("\n--- Step 2a: Clippy Lints (Host) ---");
+    run_cmd("cargo", HOST_CLIPPY_ARGS);
+
+    println!("\n--- Step 2b: Clippy Lints (WebAssembly) ---");
+    run_cmd("cargo", WASM_CLIPPY_ARGS);
 }
 
 fn lint_all() {
@@ -122,7 +139,7 @@ fn lint_all() {
     run_cmd("cargo", &["fmt", "--all", "--", "--check"]);
 
     println!("\n--- Step 2: Clippy Lints ---");
-    run_clippy();
+    run_clippy_lints();
 
     println!("\n--- Step 3: Staged Duplicates Check ---");
     check_staged_duplicates();
@@ -411,5 +428,45 @@ mod tests {
         assert!(help.contains("check-vulnerabilities"));
         assert!(help.contains("test-policy-audit"));
         assert!(help.contains("web-e2e"));
+    }
+
+    #[test]
+    fn test_wasm_clippy_args_and_ci_parity() {
+        assert_eq!(
+            HOST_CLIPPY_ARGS,
+            &[
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--",
+                "-D",
+                "warnings",
+            ]
+        );
+        assert_eq!(
+            WASM_CLIPPY_ARGS,
+            &[
+                "clippy",
+                "--workspace",
+                "--lib",
+                "--bins",
+                "--tests",
+                "--target",
+                "wasm32-unknown-unknown",
+                "--all-features",
+                "--",
+                "-D",
+                "warnings",
+            ]
+        );
+        assert!(!WASM_CLIPPY_ARGS.contains(&"--all-targets"));
+        assert!(!WASM_CLIPPY_ARGS.contains(&"--benches"));
+
+        let ci_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/ci.yml");
+        let ci_yaml = fs::read_to_string(&ci_path).expect("failed to read ci.yml");
+        let expected_cmd = format!("cargo {}", WASM_CLIPPY_ARGS.join(" "));
+        assert!(ci_yaml.contains("name: Run Clippy (WASM)"));
+        assert!(ci_yaml.contains(&expected_cmd));
     }
 }

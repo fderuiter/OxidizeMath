@@ -72,6 +72,25 @@ fn run_worker_step_batch<R: SimulationRunner + ?Sized>(
     true
 }
 
+fn handle_pause_command<R: SimulationRunner + ?Sized>(
+    runner: &R,
+    state: &mut SimWorkerState,
+    emit_paused_snapshot: &mut bool,
+    state_tx: &SyncSender<SimStateUpdate>,
+) -> bool {
+    let was_running = *state == SimWorkerState::Running;
+    *state = SimWorkerState::Ready;
+    if was_running {
+        *emit_paused_snapshot = false;
+        let snapshot = runner.get_snapshot();
+        if !send_state_update(state_tx, SimStateUpdate::Snapshot(snapshot)) {
+            return false;
+        }
+    }
+    let _ = send_state_update(state_tx, SimStateUpdate::Status(WorkerStatusEvent::Ready));
+    true
+}
+
 fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
     cmd: SimCommand,
     runner: &mut R,
@@ -86,11 +105,7 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
             let _ = send_state_update(state_tx, SimStateUpdate::Status(WorkerStatusEvent::Running));
             true
         }
-        SimCommand::Pause => {
-            *state = SimWorkerState::Ready;
-            let _ = send_state_update(state_tx, SimStateUpdate::Status(WorkerStatusEvent::Ready));
-            true
-        }
+        SimCommand::Pause => handle_pause_command(runner, state, emit_paused_snapshot, state_tx),
         SimCommand::Step(count) => {
             *emit_paused_snapshot = false;
             run_worker_step_batch(runner, count, state, state_tx)
