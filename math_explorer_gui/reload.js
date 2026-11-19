@@ -164,9 +164,9 @@
         }
     }
 
-    function hasFailedResourceStatus(urlHint) {
+    function getFailedResourceStatus(urlHint) {
         if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') {
-            return false;
+            return 0;
         }
         const entries = performance.getEntriesByType('resource') || [];
         for (let i = entries.length - 1; i >= 0; i -= 1) {
@@ -178,10 +178,14 @@
                 ? entry.name.indexOf(urlHint) !== -1
                 : /\.wasm(\?|$)|\.js(\?|$)/i.test(entry.name);
             if (matchesTarget && typeof entry.responseStatus === 'number' && entry.responseStatus >= 400) {
-                return true;
+                return entry.responseStatus;
             }
         }
-        return false;
+        return 0;
+    }
+
+    function hasFailedResourceStatus(urlHint) {
+        return getFailedResourceStatus(urlHint) >= 400;
     }
 
     function classifyError(reason, resourceUrl) {
@@ -224,6 +228,16 @@
             : 'network';
 
         if (bootFailed && resolvedCategory !== 'webgl') {
+            const extraDetail = formatReason(details);
+            if (extraDetail && /http\s+[45]\d\d/i.test(extraDetail)) {
+                runWhenDomReady(function () {
+                    const detailsEl = document.getElementById('error_details');
+                    if (detailsEl && !/http\s+[45]\d\d/i.test(detailsEl.textContent || '')) {
+                        detailsEl.textContent = extraDetail;
+                        detailsEl.style.display = 'block';
+                    }
+                });
+            }
             return;
         }
         if (!isBootPending() && resolvedCategory !== 'webgl') {
@@ -376,8 +390,9 @@
                 const rel = String(target.rel || '').toLowerCase();
                 if (tag === 'SCRIPT' || (tag === 'LINK' && (rel === 'modulepreload' || rel === 'preload'))) {
                     const assetUrl = target.src || target.href || 'startup resource';
-                    const category = hasFailedResourceStatus(assetUrl) ? 'network' : 'network';
-                    showError(category, 'Failed to load required startup asset: ' + assetUrl);
+                    const statusCode = getFailedResourceStatus(assetUrl);
+                    const suffix = statusCode >= 400 ? ' (HTTP ' + statusCode + ')' : '';
+                    showError('network', 'Failed to load required startup asset: ' + assetUrl + suffix);
                 }
                 return;
             }

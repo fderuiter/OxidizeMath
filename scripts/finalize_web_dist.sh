@@ -6,9 +6,28 @@ set -euo pipefail
 STAGING_DIR="${1:-${TRUNK_STAGING_DIR:-math_explorer_gui/dist}}"
 INDEX_HTML="$STAGING_DIR/index.html"
 LOADER_JS="$STAGING_DIR/trunk-loader.js"
+BOOTSTRAP_JS="$STAGING_DIR/bootstrap.js"
 
 if [ -f "$STAGING_DIR/icon.ico" ]; then
     mv "$STAGING_DIR/icon.ico" "$STAGING_DIR/favicon.ico"
+fi
+
+wasm_size=0
+for wf in "$STAGING_DIR"/*.wasm; do
+    if [ -f "$wf" ]; then
+        wasm_size=$(wc -c < "$wf" | tr -d '[:space:]')
+        break
+    fi
+done
+
+if [ -f "$BOOTSTRAP_JS" ] && [ "$wasm_size" -gt 0 ]; then
+    awk -v wasm_size="$wasm_size" '
+        /^const WASM_SOURCE_SIZE = [0-9]+;$/ {
+            print "const WASM_SOURCE_SIZE = " wasm_size ";"
+            next
+        }
+        { print }
+    ' "$BOOTSTRAP_JS" > "${BOOTSTRAP_JS}.tmp" && mv "${BOOTSTRAP_JS}.tmp" "$BOOTSTRAP_JS"
 fi
 
 if [ -f "$INDEX_HTML" ] && grep -q '<script type="module">' "$INDEX_HTML"; then
