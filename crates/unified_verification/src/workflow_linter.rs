@@ -392,4 +392,6 @@ pub fn lint_workflows() -> bool {
 }
 
 #[cfg(test)]
+mod structure_tests;
+#[cfg(test)]
 mod tests;
