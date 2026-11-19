@@ -41,6 +41,7 @@
 //! cargo run --example isosurface_torus
 //! ```
 
+mod edge_cache;
 #[allow(missing_docs)]
 pub mod gradients;
 #[allow(missing_docs)]

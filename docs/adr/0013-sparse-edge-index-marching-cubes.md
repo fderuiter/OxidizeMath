@@ -1,5 +1,8 @@
 # Architecture Decision Record 0013: Sparse Edge Index Table for Marching Cubes
 
+## Status
+Superseded in part by [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md), which replaces the global `HashMap` with a lazy rolling two-slice edge cache while preserving zero allocation on empty volumes and bit-exact mesh output.
+
 ## Context
 During Marching Cubes isosurface extraction (`crates/domain_applied/src/applied/isosurface/marching_cubes.rs`), the extractor pre-allocated a dense flat vector `edge_to_vertex` sized proportionally to `total_voxels * 3` (`vec![u32::MAX; max_vertices]`). For a typical 100^3 grid (1M voxels), this dense table consumed over 12 MB of heap space while surface voxels often occupied under 1% of the volume. For empty volumes or large sparse fields, pre-allocating the dense table incurred unnecessary memory overhead and high allocation pressure.
 

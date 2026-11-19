@@ -1,8 +1,8 @@
+use super::edge_cache::{EMPTY_EDGE_VERTEX, SliceEdgeCache};
 use super::gradients::{CentralDifferenceEstimator, GradientEstimator};
 use super::tables::{CUBE_EDGE_FLAGS, EDGE_CONNECTION, TRIANGLE_CONNECTION_TABLE};
 use super::types::{Mesh, Point3D, VoxelGrid};
 use crate::error::IsosurfaceError;
-use std::collections::HashMap;
 
 /// Interpolates between two points (p1, v1) and (p2, v2) to find the point where value == threshold.
 #[inline]
@@ -109,16 +109,22 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
         let mut vertices = Vec::new();
         let mut normals = Vec::new();
         let mut indices = Vec::new();
-        let mut edge_to_vertex: HashMap<(usize, usize, usize, u8), u32> = HashMap::new();
+        let mut edge_cache = SliceEdgeCache::new(self.grid.width(), self.grid.height());
 
         let stride_y = self.grid.width();
         let stride_z = self.grid.width() * self.grid.height();
 
         // Iterate over each cube in the grid
         for z in 0..self.grid.depth() - 1 {
+            if z > 0 {
+                edge_cache.advance_z();
+            }
             let z_interior = z > 0 && z < self.grid.depth() - 2;
 
             for y in 0..self.grid.height() - 1 {
+                if y > 0 {
+                    edge_cache.advance_y();
+                }
                 let y_interior = y > 0 && y < self.grid.height() - 2;
                 let row_is_interior = z_interior && y_interior;
 
@@ -160,7 +166,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
                         &mut vertices,
                         &mut normals,
                         &mut indices,
-                        &mut edge_to_vertex,
+                        &mut edge_cache,
                     );
                 }
             }
@@ -357,31 +363,6 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
 
     #[inline]
     #[verified_engine::verified]
-    fn get_edge_key(
-        &self,
-        coords: (usize, usize, usize),
-        edge_num: usize,
-    ) -> (usize, usize, usize, u8) {
-        let (x, y, z) = coords;
-        match edge_num {
-            0 => (x, y, z, 0),
-            1 => (x + 1, y, z, 1),
-            2 => (x, y + 1, z, 0),
-            3 => (x, y, z, 1),
-            4 => (x, y, z + 1, 0),
-            5 => (x + 1, y, z + 1, 1),
-            6 => (x, y + 1, z + 1, 0),
-            7 => (x, y, z + 1, 1),
-            8 => (x, y, z, 2),
-            9 => (x + 1, y, z, 2),
-            10 => (x + 1, y + 1, z, 2),
-            11 => (x, y + 1, z, 2),
-            _ => unreachable!(),
-        }
-    }
-
-    #[inline]
-    #[verified_engine::verified]
     fn triangulate_cube(
         &self,
         cube: &CubeData,
@@ -389,18 +370,20 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
         vertices: &mut Vec<Point3D>,
         normals: &mut Vec<Point3D>,
         indices: &mut Vec<usize>,
-        edge_to_vertex: &mut HashMap<(usize, usize, usize, u8), u32>,
+        edge_cache: &mut SliceEdgeCache,
     ) {
         let edge_flags = CUBE_EDGE_FLAGS[cube.index];
         let mut edge_vertex_indices = [0usize; 12];
+        let (x, y, _z) = cube.coords;
 
         // Interpolate vertices and normals on intersected edges
         for i in 0..12 {
             if (edge_flags & (1 << i)) != 0 {
-                let edge_key = self.get_edge_key(cube.coords, i);
+                let slot = edge_cache.slot_mut(x, y, i);
+                let cached = *slot;
 
-                if let Some(&cached_idx) = edge_to_vertex.get(&edge_key) {
-                    edge_vertex_indices[i] = cached_idx as usize;
+                if cached != EMPTY_EDGE_VERTEX {
+                    edge_vertex_indices[i] = cached as usize;
                 } else {
                     let v1_idx = EDGE_CONNECTION[i][0];
                     let v2_idx = EDGE_CONNECTION[i][1];
@@ -424,7 +407,7 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
                     let new_idx = vertices.len();
                     vertices.push(v);
                     normals.push(n);
-                    edge_to_vertex.insert(edge_key, new_idx as u32);
+                    *slot = new_idx as u32;
                     edge_vertex_indices[i] = new_idx;
                 }
             }
