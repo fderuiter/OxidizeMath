@@ -96,7 +96,10 @@ impl SimulationFramework {
             let response = ui.add(text_edit);
 
             if !self.search_query.is_empty()
-                && ui.button("❌").on_hover_text("Clear search").clicked()
+                && ui
+                    .button("❌")
+                    .accessible_hover_text("Clear search")
+                    .clicked()
             {
                 self.search_query.clear();
             }

@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 
 /// Available one-click recovery remedies for solver divergence.
@@ -157,7 +158,7 @@ pub fn render_state_guard_action_buttons(
         if has_stepback
             && ui
                 .button("⏮ Step Back")
-                .on_hover_text(
+                .accessible_hover_text(
                     "Restore the most recent valid pre-divergence state snapshot and plot data",
                 )
                 .clicked()
@@ -172,7 +173,7 @@ pub fn render_state_guard_action_buttons(
 
         if ui
             .button("Auto-scale Step Size (dt)")
-            .on_hover_text(
+            .accessible_hover_text(
                 "Halve step size (dt) and recalculate simulation trajectory from snapshot",
             )
             .clicked()
@@ -187,7 +188,7 @@ pub fn render_state_guard_action_buttons(
 
         if ui
             .button("Clamp Instability Parameters")
-            .on_hover_text(
+            .accessible_hover_text(
                 "Restrict rate parameters and initial conditions to pre-configured stable bounds",
             )
             .clicked()
@@ -202,7 +203,7 @@ pub fn render_state_guard_action_buttons(
 
         if ui
             .button("Reset All Parameters")
-            .on_hover_text("Restore default baseline configuration")
+            .accessible_hover_text("Restore default baseline configuration")
             .clicked()
         {
             emit_recovery_telemetry(
