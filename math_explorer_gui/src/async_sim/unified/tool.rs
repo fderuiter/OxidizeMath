@@ -1,10 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{UnifiedModel, UnifiedSimRunner};
-use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::InteractiveTool;
+use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
@@ -152,6 +151,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.separator();
         }
 
+        let state = self.controller.state();
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.horizontal(|ui| {
             ui.label("Status:");
@@ -167,39 +167,25 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         });
         ui.separator();
 
-        let state = self.controller.state();
-        let run_pause_enabled = matches!(state, SimWorkerState::Ready | SimWorkerState::Running);
-        let button_text = if state.is_running() {
-            "⏸ Pause"
-        } else {
-            "▶ Run"
-        };
-        let tooltip_text = match state {
-            SimWorkerState::Running => "Pause simulation",
-            SimWorkerState::Ready => "Start simulation",
-            SimWorkerState::Faulted => "Worker thread faulted. Click Reset to restore simulation.",
-            _ => "Simulation worker unavailable",
-        };
-
-        if ui
-            .add_enabled(run_pause_enabled, egui::Button::new(button_text))
-            .accessible_hover_text(tooltip_text)
-            .clicked()
+        if let Some(action) =
+            PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
+                .can_reset(true)
+                .show(ui)
         {
-            let cmd = if state.is_running() {
-                SimCommand::Pause
-            } else {
-                SimCommand::Start
-            };
-            let _ = self.controller.send_command(cmd);
-        }
-
-        if ui
-            .button("↻ Reset")
-            .accessible_hover_text("Reset simulation state")
-            .clicked()
-        {
-            self.reset_simulation(Some(ctx));
+            match action {
+                PlaybackAction::Play => {
+                    let _ = self.controller.send_command(SimCommand::Start);
+                }
+                PlaybackAction::Pause => {
+                    let _ = self.controller.send_command(SimCommand::Pause);
+                }
+                PlaybackAction::Step => {
+                    let _ = self.controller.send_command(SimCommand::Step(1));
+                }
+                PlaybackAction::Reset => {
+                    self.reset_simulation(Some(ctx));
+                }
+            }
         }
     }
 
@@ -293,7 +279,12 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         if has_update {
             self.dirty = true;
         }
-        if has_update || self.controller.state().is_running() {
+        if has_update
+            || matches!(
+                self.controller.state(),
+                SimWorkerState::Running | SimWorkerState::Stepping
+            )
+        {
             ctx.request_repaint();
         }
 

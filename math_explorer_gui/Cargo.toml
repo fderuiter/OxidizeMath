@@ -1,13 +1,13 @@
 [package]
 name = "math_explorer_gui"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
 build = "build.rs"
 
 [package.metadata.packager]
 product-name = "Math Explorer"
 identifier = "com.jules.mathexplorer"
-version = "0.1.0"
+version = "0.4.0"
 icons = ["icons/32x32.png", "icons/128x128.png", "icons/256x256.png", "icons/512x512.png", "icons/icon.icns", "icons/icon.ico"]
 out-dir = "dist"
 formats = ["wix", "dmg", "deb"]

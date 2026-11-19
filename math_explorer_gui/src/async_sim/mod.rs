@@ -3,12 +3,13 @@ mod fault_and_seed_tests;
 #[cfg(test)]
 mod runner_tests;
 #[cfg(test)]
+mod step_tests;
+#[cfg(test)]
 mod tests;
 #[allow(missing_docs)]
 pub mod ui;
 #[allow(missing_docs)]
 pub mod unified;
-#[cfg(not(target_arch = "wasm32"))]
 mod worker;
 
 pub mod state;
@@ -16,6 +17,8 @@ pub use state::*;
 
 use std::sync::mpsc::{self, Receiver, Sender};
 pub use std::sync::Arc;
+
+const STATE_CHANNEL_CAPACITY: usize = 8;
 
 #[allow(missing_docs)]
 pub enum SimStateUpdate {
@@ -33,6 +36,10 @@ pub trait SimulationRunner: Send + 'static {
     fn process_command(&mut self, cmd: SimCommand);
     #[allow(missing_docs)]
     fn step(&mut self);
+    #[allow(missing_docs)]
+    fn step_once(&mut self) {
+        self.step();
+    }
     #[allow(missing_docs)]
     fn get_snapshot(&self) -> StateSnapshot;
     #[allow(missing_docs)]
@@ -68,7 +75,7 @@ impl SimulationController {
     #[allow(missing_docs)]
     pub fn new<T: SimulationRunner>(runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(4);
+        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(STATE_CHANNEL_CAPACITY);
         let initial_snapshot = runner.get_snapshot();
         let _ = state_tx.send(SimStateUpdate::Snapshot(runner.get_snapshot()));
         let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
@@ -89,17 +96,20 @@ impl SimulationController {
     // theory_verification!
     pub fn new<T: SimulationRunner>(runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(4);
+        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(STATE_CHANNEL_CAPACITY);
         let initial_snapshot = runner.get_snapshot();
 
-        let ctx = WorkerContext {
+        let handle = register_worker_context(WorkerContext {
             runner: Box::new(runner),
             cmd_rx,
             state_tx,
-        };
-
-        let handle = register_worker_context(ctx);
-        let opt_worker = Self::spawn_web_worker_or_local(handle);
+        });
+        let opt_worker = spawn_web_worker(handle);
+        if opt_worker.is_none() {
+            wasm_bindgen_futures::spawn_local(async move {
+                run_simulation_worker(handle).await;
+            });
+        }
 
         Self {
             cmd_tx,
@@ -110,47 +120,6 @@ impl SimulationController {
             diagnostic_report: None,
             worker: opt_worker,
         }
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    // theory_verification!
-    fn spawn_web_worker_or_local(handle: u32) -> Option<web_sys::Worker> {
-        let mut opt_worker = None;
-        let worker_opts = web_sys::WorkerOptions::new();
-        worker_opts.set_type(web_sys::WorkerType::Module);
-        if let Ok(worker) = web_sys::Worker::new_with_options("worker.js", &worker_opts) {
-            let msg = js_sys::Object::new();
-            let _ = js_sys::Reflect::set(
-                &msg,
-                &wasm_bindgen::JsValue::from_str("type"),
-                &wasm_bindgen::JsValue::from_str("init"),
-            );
-            let _ = js_sys::Reflect::set(
-                &msg,
-                &wasm_bindgen::JsValue::from_str("module"),
-                &wasm_bindgen::module(),
-            );
-            let _ = js_sys::Reflect::set(
-                &msg,
-                &wasm_bindgen::JsValue::from_str("memory"),
-                &wasm_bindgen::memory(),
-            );
-            let _ = js_sys::Reflect::set(
-                &msg,
-                &wasm_bindgen::JsValue::from_str("handle"),
-                &wasm_bindgen::JsValue::from_f64(handle as f64),
-            );
-            if worker.post_message(&msg).is_ok() {
-                opt_worker = Some(worker);
-            }
-        }
-
-        if opt_worker.is_none() {
-            wasm_bindgen_futures::spawn_local(async move {
-                run_simulation_worker(handle).await;
-            });
-        }
-        opt_worker
     }
 
     #[allow(missing_docs)]
@@ -181,6 +150,7 @@ impl SimulationController {
         let is_reset = matches!(cmd, SimCommand::Reset);
         let cmd_target_state = match cmd {
             SimCommand::Start | SimCommand::TrainEpisodes(_) => Some(SimWorkerState::Running),
+            SimCommand::Step(_) => Some(SimWorkerState::Stepping),
             SimCommand::Pause | SimCommand::Reset => Some(SimWorkerState::Ready),
             _ => None,
         };
@@ -273,21 +243,23 @@ impl SimulationController {
     pub fn update(&mut self) -> Option<&StateSnapshot> {
         let mut disconnected = false;
         let mut received_new_snapshot = std::mem::take(&mut self.pending_snapshot);
+        let mut stepping_in_flight = self.state.is_stepping();
 
         loop {
             match self.state_rx.try_recv() {
-                Ok(update) => match update {
-                    SimStateUpdate::Snapshot(snapshot) => {
-                        self.latest_snapshot = Some(snapshot);
-                        received_new_snapshot = true;
+                Ok(SimStateUpdate::Snapshot(snapshot)) => {
+                    self.latest_snapshot = Some(snapshot);
+                    received_new_snapshot = true;
+                }
+                Ok(SimStateUpdate::Status(event)) => {
+                    if matches!(event, WorkerStatusEvent::Stepping) {
+                        stepping_in_flight = true;
                     }
-                    SimStateUpdate::Status(event) => {
-                        self.state = event.to_state();
-                    }
-                    SimStateUpdate::Divergence(report) => {
-                        self.diagnostic_report = Some(report);
-                    }
-                },
+                    self.state = event.to_state();
+                }
+                Ok(SimStateUpdate::Divergence(report)) => {
+                    self.diagnostic_report = Some(report);
+                }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
                     disconnected = true;
@@ -298,6 +270,16 @@ impl SimulationController {
 
         if disconnected && self.state != SimWorkerState::Terminated {
             self.state = SimWorkerState::Faulted;
+        }
+
+        if stepping_in_flight {
+            if self.state.is_faulted() {
+                crate::accessibility::announce_status(
+                    "Simulation step faulted due to numerical divergence",
+                );
+            } else if received_new_snapshot && self.state.is_ready() {
+                crate::accessibility::announce_status("Simulation step completed");
+            }
         }
 
         if received_new_snapshot {

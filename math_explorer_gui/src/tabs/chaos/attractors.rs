@@ -201,40 +201,41 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn step_simulation(&mut self) {
-        if !self.diverged() {
-            if self.execution_state == SolverExecutionState::Ready {
-                self.execution_state = SolverExecutionState::Running;
+        if self.diverged() {
+            return;
+        }
+        if self.execution_state == SolverExecutionState::Ready {
+            self.execution_state = SolverExecutionState::Running;
+        }
+        for _ in 0..self.simulation_speed {
+            let current_vec = self.system.state.vec;
+            if !current_vec.x.is_finite()
+                || !current_vec.y.is_finite()
+                || !current_vec.z.is_finite()
+            {
+                self.execution_state = SolverExecutionState::Diverged {
+                    invalid_vec: current_vec,
+                    diverged_at_step: self.step_count,
+                };
+                break;
             }
-            for _ in 0..self.simulation_speed {
-                let current_vec = self.system.state.vec;
-                if !current_vec.x.is_finite()
-                    || !current_vec.y.is_finite()
-                    || !current_vec.z.is_finite()
-                {
-                    self.execution_state = SolverExecutionState::Diverged {
-                        invalid_vec: current_vec,
-                        diverged_at_step: self.step_count,
-                    };
-                    break;
-                }
 
-                self.system.step(self.dt);
-                self.step_count += 1;
+            self.system.step(self.dt);
+            self.step_count += 1;
 
-                let vec = self.system.state.vec;
-                if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
-                    self.execution_state = SolverExecutionState::Diverged {
-                        invalid_vec: vec,
-                        diverged_at_step: self.step_count,
-                    };
-                    break;
-                }
-
-                if self.history.len() >= self.max_points {
-                    self.history.pop_front();
-                }
-                self.history.push_back(vec);
+            let vec = self.system.state.vec;
+            if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
+                self.execution_state = SolverExecutionState::Diverged {
+                    invalid_vec: vec,
+                    diverged_at_step: self.step_count,
+                };
+                break;
             }
+
+            if self.history.len() >= self.max_points {
+                self.history.pop_front();
+            }
+            self.history.push_back(vec);
         }
     }
 
@@ -255,6 +256,7 @@ impl InteractiveTool for AttractorPlotter {
         }
 
         let ui_diverged = self.diverged();
+        let was_paused = self.is_paused();
         if let Some(snapshot) = self.worker.update() {
             if !ui_diverged {
                 if let Some(data) = snapshot
@@ -265,7 +267,11 @@ impl InteractiveTool for AttractorPlotter {
                     self.history = data.history.clone();
                     self.system.state.vec = data.current_vec;
                     self.step_count = data.step_count;
-                    self.execution_state = data.execution_state;
+                    if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
+                        || !was_paused
+                    {
+                        self.execution_state = data.execution_state;
+                    }
                 }
             }
         }
@@ -278,6 +284,10 @@ impl InteractiveTool for AttractorPlotter {
             ctx.request_repaint();
         } else if self.worker.is_running() {
             let _ = self.worker.send_command(SimCommand::Pause);
+        }
+
+        if self.worker.state().is_stepping() {
+            ctx.request_repaint();
         }
 
         self.draw_side_panel(ctx);
@@ -295,7 +305,9 @@ inventory::submit! {
     }
 }
 
+#[path = "attractors/preset.rs"]
 mod preset;
 
 #[cfg(test)]
+#[path = "attractors/attractor_tests.rs"]
 mod attractor_tests;
