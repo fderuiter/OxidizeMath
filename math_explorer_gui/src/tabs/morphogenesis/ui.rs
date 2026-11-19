@@ -46,7 +46,7 @@ impl MorphogenesisTab {
         self.dirty = false;
     }
 
-    pub(super) fn draw_canvas(&mut self, ctx: &egui::Context) {
+    pub(crate) fn draw_canvas(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.sync_texture_from_snapshot(ctx);
 

@@ -36,6 +36,7 @@ fn resolve_trace_color(rgb: [u8; 3], index: usize, visuals: &egui::Visuals) -> e
 
 /// A single named dataset series within a trace snapshot.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TraceSeries {
     pub name: String,
     pub points: Vec<[f64; 2]>,
@@ -52,6 +53,7 @@ impl TraceSeries {
 
 /// A captured snapshot containing simulation curves and metadata.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TraceSnapshot {
     pub id: usize,
     pub label: String,
@@ -75,6 +77,7 @@ impl TraceSnapshot {
 
 /// Manages pinned trace snapshots and auto history runs for interactive tools.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TraceSnapshotManager {
     snapshots: Vec<TraceSnapshot>,
     #[serde(default)]

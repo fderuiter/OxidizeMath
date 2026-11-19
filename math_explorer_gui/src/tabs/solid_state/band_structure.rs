@@ -27,6 +27,7 @@ impl Default for BandStructureTool {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BandStructureState {
     e0: f64,
     t: f64,
@@ -59,7 +60,22 @@ impl InteractiveTool for BandStructureTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: BandStructureState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid BandStructureTool state: {e}"))?;
+            .map_err(|e| format!("Invalid BandStructure state: {e}"))?;
+        if !s.e0.is_finite() || !(-5.0..=5.0).contains(&s.e0) {
+            return Err(format!("e0 out of [-5.0, 5.0]: {}", s.e0));
+        }
+        if !s.t.is_finite() || !(0.0..=5.0).contains(&s.t) {
+            return Err(format!("t out of [0.0, 5.0]: {}", s.t));
+        }
+        if !s.a.is_finite()
+            || !(0.1..=5.0).contains(&s.a)
+            || !s.hbar.is_finite()
+            || !(0.1..=5.0).contains(&s.hbar)
+            || !s.m.is_finite()
+            || !(0.1..=5.0).contains(&s.m)
+        {
+            return Err("a, hbar, and m must be finite in [0.1, 5.0]".to_string());
+        }
         self.e0 = s.e0;
         self.t = s.t;
         self.a = s.a;
@@ -207,7 +223,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "band_structure_starter",
         title: "Electronic Band Structure",
-        description: "Tight-binding dispersion relations E(k) across high-symmetry Brillouin zone lines.",
+        description: "1D tight-binding E(k) = E₀ - 2t·cos(ka) and free-electron Brillouin zone dispersion.",
         category: "Condensed Matter",
         icon: "📉",
         domain: "solid_state",
