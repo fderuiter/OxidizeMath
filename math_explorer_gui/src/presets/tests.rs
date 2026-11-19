@@ -153,6 +153,50 @@ fn test_ode_preset_config_roundtrip() {
     let deserialized: PresetWrapper<OdePresetConfig> = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized.config, config);
     assert_eq!(deserialized.metadata.domain, "analysis");
+    assert!(deserialized.config.validate().is_ok());
+}
+
+#[test]
+fn test_ode_preset_config_validate_bounds_and_step_caps() {
+    assert_eq!(checked_ode_step_count(0.001, 100.0), Some(100_000));
+    assert_eq!(checked_ode_step_count(0.0005, 100.0), Some(MAX_ODE_STEPS));
+    assert_eq!(checked_ode_step_count(1e-300, 10.0), None);
+    assert_eq!(checked_ode_step_count(0.0, 10.0), None);
+    assert_eq!(checked_ode_step_count(-0.05, 10.0), None);
+    assert_eq!(checked_ode_step_count(0.05, -10.0), None);
+    assert_eq!(checked_ode_step_count(f64::NAN, 10.0), None);
+    assert_eq!(checked_ode_step_count(0.05, f64::INFINITY), None);
+
+    let base = OdePresetConfig {
+        preset: OdePreset::Exponential,
+        dt: 0.05,
+        total_time: 10.0,
+        param_k: 1.0,
+        param_r: 1.0,
+        param_cap_k: 10.0,
+        ic_y0: 1.0,
+        ic_v0: 0.0,
+        custom_expr: String::new(),
+    };
+    assert!(base.validate().is_ok());
+
+    let tiny_dt = OdePresetConfig {
+        dt: 1e-300,
+        ..base.clone()
+    };
+    assert!(tiny_dt.validate().is_err());
+
+    let non_finite_param = OdePresetConfig {
+        param_k: f64::NAN,
+        ..base.clone()
+    };
+    assert!(non_finite_param.validate().is_err());
+
+    let negative_time = OdePresetConfig {
+        total_time: -1.0,
+        ..base
+    };
+    assert!(negative_time.validate().is_err());
 }
 
 #[test]

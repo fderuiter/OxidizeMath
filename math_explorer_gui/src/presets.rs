@@ -57,6 +57,23 @@ impl OdePreset {
     }
 }
 
+/// Maximum allowed integration step count for [`OdePresetConfig`] and ODE solvers.
+pub const MAX_ODE_STEPS: usize = 200_000;
+
+/// Computes a bounded ODE integration step count when `dt` and `total_time` are finite,
+/// strictly positive, and require at most [`MAX_ODE_STEPS`] steps.
+#[must_use]
+pub fn checked_ode_step_count(dt: f64, total_time: f64) -> Option<usize> {
+    if !dt.is_finite() || dt <= 0.0 || !total_time.is_finite() || total_time <= 0.0 {
+        return None;
+    }
+    let steps = (total_time / dt).ceil();
+    if !steps.is_finite() || !(0.0..=MAX_ODE_STEPS as f64).contains(&steps) {
+        return None;
+    }
+    Some(steps as usize)
+}
+
 /// Configuration struct for ODE Solver simulation parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -80,6 +97,37 @@ pub struct OdePresetConfig {
     /// Custom user equation expression.
     #[serde(default)]
     pub custom_expr: String,
+}
+
+impl OdePresetConfig {
+    /// Validates parameter finiteness, positive time bounds, and [`MAX_ODE_STEPS`] step ratio.
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.dt.is_finite()
+            || self.dt <= 0.0
+            || !self.total_time.is_finite()
+            || self.total_time <= 0.0
+        {
+            return Err("ODE preset requires finite positive dt and total_time".to_string());
+        }
+        if ![
+            self.param_k,
+            self.param_r,
+            self.param_cap_k,
+            self.ic_y0,
+            self.ic_v0,
+        ]
+        .into_iter()
+        .all(f64::is_finite)
+        {
+            return Err("ODE preset parameters and initial conditions must be finite".to_string());
+        }
+        if checked_ode_step_count(self.dt, self.total_time).is_none() {
+            return Err(format!(
+                "ODE step count (total_time / dt) exceeds maximum allowed limit ({MAX_ODE_STEPS})"
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Configuration struct for Turing Morphogenesis simulation parameters.

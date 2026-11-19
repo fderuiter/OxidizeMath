@@ -152,6 +152,12 @@ impl OdeSolverTool {
         {
             return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
         }
+        if crate::presets::checked_ode_step_count(s.dt, s.total_time).is_none() {
+            return Err(format!(
+                "ODE step count (total_time / dt) exceeds maximum allowed limit ({})",
+                crate::presets::MAX_ODE_STEPS
+            ));
+        }
         if let Some(p) = s.preset {
             self.preset = p;
         }

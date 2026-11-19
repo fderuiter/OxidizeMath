@@ -158,12 +158,14 @@ pub fn eval_ode_final_state(
     p_map: &HashMap<String, f64>,
     custom_expr: Option<&Expr>,
 ) -> f64 {
+    let Some(steps) = crate::presets::checked_ode_step_count(dt, total_time) else {
+        return f64::NAN;
+    };
     let y0 = p_map.get("y0").copied().unwrap_or(1.0);
     let v0 = p_map.get("v0").copied().unwrap_or(0.0);
     let k = p_map.get("k").copied().unwrap_or(1.0);
     let r = p_map.get("r").copied().unwrap_or(1.0);
     let cap_k = p_map.get("cap_k").copied().unwrap_or(10.0);
-    let steps = (total_time / dt).ceil() as usize;
 
     match preset {
         OdePreset::Exponential => {
@@ -278,10 +280,18 @@ impl InteractivePreset for OdeSolverTool {
     }
 
     fn apply_config(&mut self, config: Self::Config) -> Result<(), String> {
-        self.preset = config.preset; self.dt = config.dt; self.total_time = config.total_time;
-        self.param_k = config.param_k; self.param_r = config.param_r; self.param_cap_k = config.param_cap_k;
-        self.ic_y0 = config.ic_y0; self.ic_v0 = config.ic_v0;
-        if !config.custom_expr.is_empty() { self.math_input.set_expression(&config.custom_expr); }
+        config.validate()?;
+        self.preset = config.preset;
+        self.dt = config.dt;
+        self.total_time = config.total_time;
+        self.param_k = config.param_k;
+        self.param_r = config.param_r;
+        self.param_cap_k = config.param_cap_k;
+        self.ic_y0 = config.ic_y0;
+        self.ic_v0 = config.ic_v0;
+        if !config.custom_expr.is_empty() {
+            self.math_input.set_expression(&config.custom_expr);
+        }
         self.recalculate();
         Ok(())
     }

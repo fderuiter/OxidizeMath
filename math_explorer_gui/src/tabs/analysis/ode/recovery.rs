@@ -125,15 +125,22 @@ pub fn clamp_ode_parameters(
 
 /// Clamps step size `dt` and `total_time` to valid finite solver bounds.
 pub fn clamp_ode_step_settings(dt: &mut f64, total_time: &mut f64) {
-    if !dt.is_finite() || *dt <= 0.0 {
-        *dt = 0.05;
-    } else {
-        *dt = dt.clamp(1e-6, 0.1);
-    }
     if !total_time.is_finite() || *total_time <= 0.0 {
         *total_time = 10.0;
     } else {
         *total_time = total_time.clamp(0.1, 100.0);
+    }
+    let min_dt = (*total_time / crate::presets::MAX_ODE_STEPS as f64).max(1e-6);
+    if !dt.is_finite() || *dt <= 0.0 {
+        *dt = 0.05_f64.max(min_dt);
+    } else {
+        *dt = dt.clamp(min_dt, 0.1);
+    }
+    for _ in 0..4 {
+        if crate::presets::checked_ode_step_count(*dt, *total_time).is_some() {
+            break;
+        }
+        *dt = dt.next_up();
     }
 }
 

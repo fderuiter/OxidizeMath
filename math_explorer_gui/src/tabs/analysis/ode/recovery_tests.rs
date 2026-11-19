@@ -359,3 +359,75 @@ fn test_ode_recovery_banner_and_action_dispatch() {
     assert_eq!(tool.param_k, 1.0);
     assert!(FiniteStateGuard::is_finite_state(&tool));
 }
+
+#[test]
+fn test_ode_multi_solver_divergence_warning() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::HarmonicOscillator,
+        param_k: 1.0,
+        ic_y0: 1.0,
+        ic_v0: 0.0,
+        dt: 0.05,
+        total_time: 10.0,
+        ..Default::default()
+    };
+    tool.set_comparison_mode(true);
+    assert!(!tool.diverged());
+
+    // Large time step causes lower-order Euler to diverge or produce non-finite values
+    tool.dt = 2.5;
+    tool.param_k = 1e150;
+    tool.ic_y0 = 1e150;
+    tool.recalculate();
+
+    assert!(tool.diverged());
+    // Ensure all stored points remain finite
+    assert!(tool.y_series.iter().all(|y| y.is_finite()));
+    for snapshot in tool.comparison_manager().snapshots() {
+        for series in &snapshot.series {
+            assert!(series
+                .points
+                .iter()
+                .all(|pt| pt[0].is_finite() && pt[1].is_finite()));
+        }
+    }
+}
+
+#[test]
+fn test_ode_autoscale_and_clamp_align_with_max_steps() {
+    use crate::presets::{checked_ode_step_count, MAX_ODE_STEPS};
+
+    let mut tool = OdeSolverTool {
+        dt: 0.001,
+        total_time: 100.0,
+        ..Default::default()
+    };
+    for _ in 0..12 {
+        FiniteStateGuard::auto_scale_step_size(&mut tool);
+        assert!(checked_ode_step_count(tool.dt, tool.total_time).is_some());
+        assert!(!tool.time_series.is_empty());
+        assert!(tool.time_series.len() <= MAX_ODE_STEPS + 1);
+    }
+
+    let mut clamped = OdeSolverTool {
+        dt: 1e-300,
+        total_time: 100.0,
+        ..Default::default()
+    };
+    FiniteStateGuard::clamp_parameters(&mut clamped);
+    assert!(checked_ode_step_count(clamped.dt, clamped.total_time).is_some());
+    assert!(!clamped.time_series.is_empty());
+    assert!(clamped.time_series.len() <= MAX_ODE_STEPS + 1);
+}
+
+#[test]
+fn test_ode_nan_initial_condition() {
+    let mut tool = OdeSolverTool {
+        ic_y0: f64::NAN,
+        ..Default::default()
+    };
+    tool.recalculate();
+
+    assert!(tool.diverged());
+    assert!(tool.y_series.is_empty());
+}
