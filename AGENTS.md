@@ -45,8 +45,11 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
-# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA or ./ local action pins)
+# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA or ./ local action pins, and safe run expressions)
 cargo run -p unified_verification --release -- lint-workflows
+
+# Run workflow linter unit tests directly
+cargo test -p unified_verification workflow_linter
 
 # Audit AST attributes for unauthorized dead_code/unused/warnings bypasses and unused dependencies
 cargo run -p xtask -- test-policy-audit
@@ -70,6 +73,17 @@ BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_veri
 cargo test --workspace --lib --tests
 cargo check --workspace --target wasm32-unknown-unknown --all-features
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
+```
+
+### Workflow `run` Script Expression Policy
+
+`lint-workflows` rejects `${{ github.* }}` expressions interpolated directly inside `jobs.<id>.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, or `${{ github.event.* }}`) to prevent script and argument injection. Always bind `github` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
+
+```text
+env:
+  RELEASE_TAG: ${{ github.ref_name }}
+run: |
+  # Reference "$RELEASE_TAG" safely as a shell variable after validation
 ```
 
 ## 3. Isolated Domain Feature Matrix (`test-features`)
