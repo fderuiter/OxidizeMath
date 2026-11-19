@@ -2,8 +2,12 @@
 
 use super::*;
 
+#[cfg(not(target_arch = "wasm32"))]
+mod workspace_root_tests;
+
 #[test]
 fn test_traceability_initial_state_transitions_to_scanning() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let tab = TraceabilityTab::default();
     assert_eq!(tab.state, TraceabilityScanState::Scanning);
     assert!(tab.state.is_scanning());
@@ -104,6 +108,7 @@ fn test_traceability_channel_disconnect_transitions_to_failed() {
 
 #[test]
 fn test_traceability_retry_clears_error_and_rescans() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut tab = TraceabilityTab {
         papers: HashMap::new(),
         orphaned_papers: Vec::new(),
@@ -286,6 +291,7 @@ fn wait_for_scan_completion(tab: &mut TraceabilityTab) {
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn test_traceability_load_state_rejects_outside_workspace_and_traversal() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let pid = std::process::id();
     let canary_dir = std::env::temp_dir().join(format!("oxidize_canary_outside_{}", pid));
     let canary_papers = canary_dir.join("papers");
@@ -341,7 +347,46 @@ fn test_traceability_load_state_rejects_outside_workspace_and_traversal() {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
+fn test_traceability_non_workspace_cwd_rejects_mws_session() {
+    let _mutex = crate::reflective_ui::tests::lock_test_mutex();
+    let cwd_guard = workspace_root_tests::CwdRestoreGuard::capture();
+    let expected_cwd = cwd_guard.original().to_path_buf();
+    let (external_canary_dir, fake_home, home_project_dir) =
+        workspace_root_tests::create_non_workspace_canary_dirs();
+
+    std::env::set_current_dir("/").expect("set_current_dir to /");
+    let mut app_root = crate::app::MathExplorerApp::default();
+    let mws_root = workspace_root_tests::build_mws_envelope(&external_canary_dir.to_string_lossy());
+    app_root.load_state_from_json(&mws_root);
+    workspace_root_tests::assert_mws_session_rejected(
+        &mut app_root,
+        &external_canary_dir,
+        "canary_root_escape.tex",
+    );
+
+    std::env::set_current_dir(&fake_home).expect("set_current_dir to fake_home");
+    let mut app_home = crate::app::MathExplorerApp::default();
+    let mws_home = workspace_root_tests::build_mws_envelope(&home_project_dir.to_string_lossy());
+    app_home.load_state_from_json(&mws_home);
+    workspace_root_tests::assert_mws_session_rejected(
+        &mut app_home,
+        &home_project_dir,
+        "canary_home_escape.tex",
+    );
+
+    drop(cwd_guard);
+    assert_eq!(
+        std::env::current_dir().unwrap().canonicalize().unwrap(),
+        expected_cwd
+    );
+    let _ = std::fs::remove_dir_all(&external_canary_dir);
+    let _ = std::fs::remove_dir_all(&fake_home);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
 fn test_traceability_edge_cases_empty_nonexistent_and_valid_subdir() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let pid = std::process::id();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
     let scratch_base = ws_root
@@ -392,6 +437,7 @@ fn test_traceability_edge_cases_empty_nonexistent_and_valid_subdir() {
 #[cfg(unix)]
 #[test]
 fn test_traceability_rejects_symlink_resolving_outside_workspace() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let pid = std::process::id();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
     let scratch_base = ws_root
