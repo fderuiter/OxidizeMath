@@ -2458,7 +2458,7 @@ dependencies = [
 
 [[package]]
 name = "math_explorer_gui"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "console_error_panic_hook",
