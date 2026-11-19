@@ -85,7 +85,7 @@ pub mod types;
 pub use coupling::clebsch_gordan;
 pub use fourier::{dft_operator, idft_operator};
 pub use hamiltonian::{construct_1d_hamiltonian, gaussian_wavepacket};
-pub use schrodinger::{evolve_state, time_evolution_operator};
+pub use schrodinger::{evolve_state, evolve_state_in_place, time_evolution_operator};
 pub use spin::{sigma_x, sigma_y, sigma_z};
 pub use types::{QuantumOperator, QuantumState};
 

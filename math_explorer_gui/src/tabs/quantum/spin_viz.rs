@@ -2,7 +2,10 @@ use crate::accessibility::AccessibleTheoryHover;
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint, Points};
-use math_explorer::physics::quantum::{evolve_state, spin, QuantumOperator, QuantumState};
+use math_explorer::physics::quantum::{
+    evolve_state_in_place, spin, time_evolution_operator, QuantumOperator, QuantumState,
+};
+use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
 
 pub struct SpinVisualizer {
@@ -14,6 +17,9 @@ pub struct SpinVisualizer {
     sx: QuantumOperator,
     sy: QuantumOperator,
     sz: QuantumOperator,
+    propagator: QuantumOperator,
+    cached_key: Option<[u64; 4]>,
+    scratch: DVector<Complex<f64>>,
 }
 
 impl Default for SpinVisualizer {
@@ -27,6 +33,9 @@ impl Default for SpinVisualizer {
             sx: spin::sigma_x(),
             sy: spin::sigma_y(),
             sz: spin::sigma_z(),
+            propagator: QuantumOperator::new(DMatrix::identity(2, 2)),
+            cached_key: None,
+            scratch: DVector::from_element(2, Complex::new(0.0, 0.0)),
         }
     }
 }
@@ -42,15 +51,24 @@ impl SpinVisualizer {
         self.step(0.05);
     }
 
-    fn step(&mut self, dt: f64) {
+    fn refresh_propagator(&mut self, dt: f64) {
         let [bx, by, bz] = self.b_field;
-        let h_matrix = (&self.sx.matrix * Complex::new(bx, 0.0)
-            + &self.sy.matrix * Complex::new(by, 0.0)
-            + &self.sz.matrix * Complex::new(bz, 0.0))
-            * Complex::new(0.5, 0.0);
+        let key = [bx.to_bits(), by.to_bits(), bz.to_bits(), dt.to_bits()];
+        if self.cached_key != Some(key) {
+            let h_matrix = (&self.sx.matrix * Complex::new(bx, 0.0)
+                + &self.sy.matrix * Complex::new(by, 0.0)
+                + &self.sz.matrix * Complex::new(bz, 0.0))
+                * Complex::new(0.5, 0.0);
+            let hamiltonian = QuantumOperator::new(h_matrix);
+            self.propagator = time_evolution_operator(&hamiltonian, dt, 1.0);
+            self.cached_key = Some(key);
+        }
+    }
 
-        let hamiltonian = QuantumOperator::new(h_matrix);
-        self.psi = evolve_state(&self.psi, &hamiltonian, dt, 1.0).normalize();
+    fn step(&mut self, dt: f64) {
+        self.refresh_propagator(dt);
+        evolve_state_in_place(&mut self.psi, &self.propagator, &mut self.scratch);
+        self.psi.normalize_in_place();
         self.time += dt;
     }
 
@@ -295,6 +313,44 @@ mod tests {
         assert_eq!(viz.sx.matrix, sx_ref.matrix);
         assert_eq!(viz.sy.matrix, sy_ref.matrix);
         assert_eq!(viz.sz.matrix, sz_ref.matrix);
+    }
+
+    #[test]
+    fn test_spin_visualizer_propagator_cache_and_parameter_changes() {
+        use math_explorer::physics::quantum::evolve_state;
+
+        let mut viz = SpinVisualizer::default();
+        assert_eq!(viz.cached_key, None);
+        assert_eq!(viz.scratch.len(), 2);
+
+        viz.b_field = [1.0, 0.5, -0.5];
+        viz.step(0.05);
+        let key_initial = viz.cached_key;
+        assert!(key_initial.is_some());
+        let ptr_initial = viz.propagator.matrix.as_ptr();
+
+        // Constant b_field and dt reuse the cached propagator buffer
+        viz.step(0.05);
+        assert_eq!(viz.cached_key, key_initial);
+        assert_eq!(viz.propagator.matrix.as_ptr(), ptr_initial);
+
+        // Changing dt rebuilds propagator
+        viz.step(0.02);
+        let key_dt_changed = viz.cached_key;
+        assert_ne!(key_dt_changed, key_initial);
+
+        // Changing b_field rebuilds propagator and matches evolve_state trajectory
+        viz.reset();
+        viz.b_field = [2.0, 0.0, 0.0];
+        let mut expected = QuantumState::spin_zero();
+        let h_mat = (&viz.sx.matrix * Complex::new(2.0, 0.0)) * Complex::new(0.5, 0.0);
+        let h_op = QuantumOperator::new(h_mat);
+        for _ in 0..4 {
+            viz.step(0.05);
+            expected = evolve_state(&expected, &h_op, 0.05, 1.0).normalize();
+        }
+        assert_ne!(viz.cached_key, key_dt_changed);
+        assert!((&viz.psi.vector - &expected.vector).norm() < 1e-12);
     }
 }
 

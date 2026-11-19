@@ -172,6 +172,37 @@ fn test_quantum_wave_sim_divergence_and_recovery() {
 }
 
 #[test]
+fn test_quantum_wave_sim_cached_propagator_recovery_paths() {
+    let mut params = HashMap::new();
+    params.insert("potential_type".to_string(), 1.0);
+    params.insert("dt".to_string(), 0.05);
+
+    let mut wave = WaveUnified::new(&params);
+    for bad_dt in [0.0, -0.02, f64::INFINITY, f64::NEG_INFINITY] {
+        let mut invalid = HashMap::new();
+        invalid.insert("dt".to_string(), bad_dt);
+        wave.step(&invalid);
+        assert!(wave.diverged());
+        assert_eq!(wave.diagnostic_report().unwrap().variable, "dt");
+        wave.process_command(SimCommand::Reset, &params);
+        assert!(!wave.diverged());
+        assert!(wave.diagnostic_report().is_none());
+    }
+
+    // Warm propagator once, then verify psi_norm overflow and post-reset recovery
+    wave.step(&params);
+    assert!(!wave.diverged());
+    wave.psi.vector.fill(Complex::new(1e200, 0.0));
+    wave.step(&params);
+    assert!(wave.diverged());
+    assert_eq!(wave.diagnostic_report().unwrap().variable, "psi_norm");
+
+    wave.process_command(SimCommand::Reset, &params);
+    assert!(!wave.diverged());
+    assert_eq!(wave.step_count, 0);
+}
+
+#[test]
 fn test_morphogenesis_divergence_and_recovery() {
     let width = 20;
     let height = 20;

@@ -108,6 +108,20 @@ impl QuantumState {
         }
     }
 
+    /// Normalizes the state vector in place so that its norm is 1, without heap allocations.
+    ///
+    /// |\psi'\rangle = \frac{|\psi\rangle}{\sqrt{\langle\psi|\psi\rangle}}
+    ///
+    /// Leaves zero-norm vectors unchanged.
+    #[verified_engine::verified]
+    pub fn normalize_in_place(&mut self) {
+        let norm = self.norm();
+        if norm == 0.0 {
+            return;
+        }
+        self.vector /= Complex::new(norm, 0.0);
+    }
+
     /// Calculates the inner product with another state (Bra-Ket notation: \langle\phi|\psi\rangle).
     ///
     /// This is equivalent to the dot product of the conjugate transpose of `other` (Bra)
