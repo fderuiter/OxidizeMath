@@ -1,12 +1,99 @@
+use serde::Deserialize;
 use serde_json::Value;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-pub fn validate_permissions_block(yaml: &Value) -> Result<(), &'static str> {
+#[derive(Deserialize, Debug, Clone, Default)]
+struct WhitelistFile {
+    #[serde(default)]
+    workflow_linter: Option<WorkflowLinterConfig>,
+}
+
+/// Configuration for `workflow_linter` loaded from `verification_whitelist.toml`.
+#[derive(Deserialize, Debug, Clone, Default)]
+pub struct WorkflowLinterConfig {
+    /// Explicit job-level write permission exceptions for deployment workflows.
+    #[serde(default, alias = "allowed_job_permissions")]
+    pub exceptions: Vec<JobPermissionException>,
+}
+
+/// Scoped exception allowing specific write permissions on a named job in a specific workflow.
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct JobPermissionException {
+    /// Relative path to the workflow file (e.g., `.github/workflows/pages.yml`).
+    pub workflow: String,
+    /// Job identifier within the `jobs` mapping (e.g., `deploy`).
+    pub job: String,
+    /// Permission scopes explicitly permitted to use `write` on this job (e.g., `["pages", "id-token"]`).
+    #[serde(default, alias = "permissions", alias = "write_scopes")]
+    pub allow_write: Vec<String>,
+    /// Optional human-readable justification for the exception.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// Locates `verification_whitelist.toml` relative to the current working directory.
+pub fn find_whitelist_path() -> Option<PathBuf> {
+    let candidates = [
+        Path::new("verification_whitelist.toml"),
+        Path::new("../../verification_whitelist.toml"),
+    ];
+    for candidate in &candidates {
+        if candidate.exists() {
+            return Some(candidate.to_path_buf());
+        }
+    }
+    None
+}
+
+/// Loads configured job-level permission exceptions from `verification_whitelist.toml`.
+pub fn load_workflow_exceptions(path: Option<&Path>) -> Vec<JobPermissionException> {
+    let resolved = match path {
+        Some(p) => Some(p.to_path_buf()),
+        None => find_whitelist_path(),
+    };
+    if let Some(toml_path) = resolved {
+        if let Ok(content) = fs::read_to_string(&toml_path) {
+            if let Ok(parsed) = toml::from_str::<WhitelistFile>(&content) {
+                return parsed.workflow_linter.unwrap_or_default().exceptions;
+            }
+        }
+    }
+    Vec::new()
+}
+
+fn workflow_path_matches(workflow_path: &Path, configured_workflow: &str) -> bool {
+    let norm_actual = workflow_path.to_string_lossy().replace('\\', "/");
+    let norm_actual = norm_actual.trim_start_matches("./");
+    let norm_expected = configured_workflow.replace('\\', "/");
+    let norm_expected = norm_expected.trim_start_matches("./");
+    !norm_expected.is_empty()
+        && (norm_actual == norm_expected || norm_actual.ends_with(&format!("/{}", norm_expected)))
+}
+
+fn is_job_write_scope_exempted(
+    workflow_path: Option<&Path>,
+    job_name: &str,
+    scope: &str,
+    exceptions: &[JobPermissionException],
+) -> bool {
+    let Some(path) = workflow_path else {
+        return false;
+    };
+    exceptions.iter().any(|exc| {
+        let valid_reason = exc.reason.as_deref().is_none_or(|r| !r.trim().is_empty());
+        valid_reason
+            && exc.job == job_name
+            && workflow_path_matches(path, &exc.workflow)
+            && exc.allow_write.iter().any(|allowed| allowed == scope)
+    })
+}
+
+fn validate_root_permissions(yaml: &Value) -> Result<(), String> {
     let permissions = yaml
         .get("permissions")
-        .ok_or("Workflow is missing a global 'permissions' block.")?;
+        .ok_or_else(|| "Workflow is missing a global 'permissions' block.".to_string())?;
 
     let mut is_read_only = false;
     if let Value::String(s) = permissions {
@@ -14,30 +101,106 @@ pub fn validate_permissions_block(yaml: &Value) -> Result<(), &'static str> {
             is_read_only = true;
         }
     } else if let Value::Object(map) = permissions {
-        let mut only_read = true;
-        for (_k, v) in map {
-            if let Value::String(v_str) = v {
-                if v_str != "read" && v_str != "none" {
-                    only_read = false;
-                    break;
-                }
-            } else {
-                only_read = false;
-                break;
-            }
-        }
-        if only_read {
-            is_read_only = true;
-        }
+        is_read_only = map
+            .values()
+            .all(|v| matches!(v, Value::String(s) if s == "read" || s == "none"));
     }
 
     if !is_read_only {
         return Err(
-            "Workflow 'permissions' block must explicitly be read-only globally. (e.g., 'permissions: read-all' or specific 'read' permissions)",
+            "Workflow 'permissions' block must explicitly be read-only globally. (e.g., 'permissions: read-all' or specific 'read' permissions)".to_string(),
         );
     }
 
     Ok(())
+}
+
+fn validate_single_job_permissions(
+    job_name: &str,
+    permissions: &Value,
+    workflow_path: Option<&Path>,
+    exceptions: &[JobPermissionException],
+) -> Result<(), String> {
+    match permissions {
+        Value::String(s) => {
+            if s == "read-all" || s == "none" {
+                Ok(())
+            } else {
+                Err(format!(
+                    "Job '{}' has invalid permissions '{}': job-level permissions must be read-only ('read-all' or 'none').",
+                    job_name, s
+                ))
+            }
+        }
+        Value::Object(map) => {
+            for (scope, level_val) in map {
+                let Some(level) = level_val.as_str() else {
+                    return Err(format!(
+                        "Job '{}' has invalid permission value for '{}': job-level permissions must be 'read' or 'none'.",
+                        job_name, scope
+                    ));
+                };
+                if level == "read" || level == "none" {
+                    continue;
+                }
+                if level == "write"
+                    && is_job_write_scope_exempted(workflow_path, job_name, scope, exceptions)
+                {
+                    continue;
+                }
+                return Err(format!(
+                    "Job '{}' has invalid permission '{}: {}': job-level permissions must be 'read' or 'none'.",
+                    job_name, scope, level
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(format!(
+            "Job '{}' has invalid 'permissions' block: job-level permissions must be 'read-all', 'none', or a mapping of 'read'/'none' scopes.",
+            job_name
+        )),
+    }
+}
+
+/// Validates job-level `permissions` blocks across all jobs in a workflow YAML document.
+pub fn validate_job_permissions(
+    yaml: &Value,
+    workflow_path: Option<&Path>,
+    exceptions: &[JobPermissionException],
+) -> Result<(), String> {
+    let jobs = match yaml.get("jobs") {
+        Some(Value::Object(map)) => map,
+        Some(_) => return Err("Workflow 'jobs' block must be a mapping.".to_string()),
+        None => return Ok(()),
+    };
+
+    for (job_name, job_val) in jobs {
+        let job_map = match job_val {
+            Value::Object(map) => map,
+            _ => return Err(format!("Job '{}' must be a mapping.", job_name)),
+        };
+
+        if let Some(job_permissions) = job_map.get("permissions") {
+            validate_single_job_permissions(job_name, job_permissions, workflow_path, exceptions)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Validates both root-level and job-level `permissions` blocks with explicit workflow exceptions.
+pub fn validate_permissions_with_exceptions(
+    yaml: &Value,
+    workflow_path: Option<&Path>,
+    exceptions: &[JobPermissionException],
+) -> Result<(), String> {
+    validate_root_permissions(yaml)?;
+    validate_job_permissions(yaml, workflow_path, exceptions)
+}
+
+/// Validates both root-level and job-level `permissions` blocks as strictly read-only.
+pub fn validate_permissions_block(yaml: &Value) -> Result<(), String> {
+    validate_permissions_with_exceptions(yaml, None, &[])
 }
 
 pub fn validate_concurrency_block(yaml: &Value) -> Result<(), &'static str> {
@@ -151,13 +314,14 @@ pub fn validate_action_pinning(yaml: &Value) -> Result<(), String> {
     Ok(())
 }
 
-pub fn lint_workflows() -> bool {
-    let workflows_dir = Path::new(".github/workflows");
+/// Lints all `.yml`/`.yaml` workflows inside `workflows_dir` using exceptions from `whitelist_path`.
+pub fn lint_workflows_in_dir(workflows_dir: &Path, whitelist_path: Option<&Path>) -> bool {
     if !workflows_dir.exists() {
         println!("No .github/workflows directory found. Skipping workflow linting.");
         return true;
     }
 
+    let exceptions = load_workflow_exceptions(whitelist_path);
     let mut all_passed = true;
 
     for entry in WalkDir::new(workflows_dir)
@@ -185,7 +349,12 @@ pub fn lint_workflows() -> bool {
                     }
                 };
 
-                if let Err(msg) = validate_permissions_block(&yaml) {
+                let perm_res = if exceptions.is_empty() {
+                    validate_permissions_block(&yaml)
+                } else {
+                    validate_permissions_with_exceptions(&yaml, Some(entry.path()), &exceptions)
+                };
+                if let Err(msg) = perm_res {
                     eprintln!("Error in {}: {}", path_str, msg);
                     all_passed = false;
                 }
@@ -217,262 +386,10 @@ pub fn lint_workflows() -> bool {
     all_passed
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn validate_str(content: &str) -> Result<(), String> {
-        let yaml: Value =
-            serde_saphyr::from_str(content).map_err(|e| format!("Invalid YAML syntax: {}", e))?;
-        validate_permissions_block(&yaml).map_err(|e| e.to_string())
-    }
-
-    #[test]
-    fn test_valid_read_all() {
-        let yaml = r#"
-name: CI
-permissions: read-all
-jobs:
-  test:
-    runs-on: ubuntu-latest
-"#;
-        assert!(validate_str(yaml).is_ok());
-    }
-
-    #[test]
-    fn test_valid_none() {
-        let yaml = r#"
-name: CI
-permissions: none
-"#;
-        assert!(validate_str(yaml).is_ok());
-    }
-
-    #[test]
-    fn test_valid_mapping_permissions() {
-        let yaml = r#"
-name: CI
-permissions:
-  contents: read
-  issues: read
-  pull-requests: none
-"#;
-        assert!(validate_str(yaml).is_ok());
-    }
-
-    #[test]
-    fn test_missing_permissions() {
-        let yaml = r#"
-name: CI
-jobs:
-  test:
-    runs-on: ubuntu-latest
-"#;
-        assert_eq!(
-            validate_str(yaml),
-            Err("Workflow is missing a global 'permissions' block.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_invalid_write_permission() {
-        let yaml = r#"
-name: CI
-permissions:
-  contents: write
-"#;
-        assert_eq!(
-            validate_str(yaml),
-            Err("Workflow 'permissions' block must explicitly be read-only globally. (e.g., 'permissions: read-all' or specific 'read' permissions)".to_string())
-        );
-    }
-
-    #[test]
-    fn test_invalid_yaml_syntax() {
-        let yaml = r#"
-name: CI
-permissions: [unclosed list
-"#;
-        assert!(validate_str(yaml).is_err());
-    }
-
-    fn validate_concurrency_str(content: &str) -> Result<(), String> {
-        let yaml: Value =
-            serde_saphyr::from_str(content).map_err(|e| format!("Invalid YAML syntax: {}", e))?;
-        validate_concurrency_block(&yaml).map_err(|e| e.to_string())
-    }
-
-    #[test]
-    fn test_valid_concurrency_mapping() {
-        let yaml = r#"
-name: CI
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-"#;
-        assert!(validate_concurrency_str(yaml).is_ok());
-    }
-
-    #[test]
-    fn test_valid_concurrency_string() {
-        let yaml = r#"
-name: CI
-concurrency: ci-run
-"#;
-        assert!(validate_concurrency_str(yaml).is_ok());
-    }
-
-    #[test]
-    fn test_missing_concurrency() {
-        let yaml = r#"
-name: CI
-jobs:
-  test:
-    runs-on: ubuntu-latest
-"#;
-        assert_eq!(
-            validate_concurrency_str(yaml),
-            Err("Workflow is missing a global 'concurrency' block.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_invalid_concurrency_missing_group() {
-        let yaml = r#"
-name: CI
-concurrency:
-  cancel-in-progress: true
-"#;
-        assert_eq!(
-            validate_concurrency_str(yaml),
-            Err("Workflow 'concurrency' block must specify a 'group'.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_invalid_concurrency_empty_group() {
-        let yaml = r#"
-name: CI
-concurrency:
-  group: "   "
-"#;
-        assert_eq!(
-            validate_concurrency_str(yaml),
-            Err("Workflow 'concurrency' group cannot be empty.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_invalid_concurrency_empty_string() {
-        let yaml = r#"
-name: CI
-concurrency: "   "
-"#;
-        assert_eq!(
-            validate_concurrency_str(yaml),
-            Err("Workflow 'concurrency' block cannot be empty.".to_string())
-        );
-    }
-
-    fn validate_timeouts_str(content: &str) -> Result<(), String> {
-        let yaml: Value =
-            serde_saphyr::from_str(content).map_err(|e| format!("Invalid YAML syntax: {}", e))?;
-        validate_job_timeouts(&yaml)
-    }
-
-    fn validate_action_str(content: &str) -> Result<(), String> {
-        let yaml: Value =
-            serde_saphyr::from_str(content).map_err(|e| format!("Invalid YAML syntax: {}", e))?;
-        validate_action_pinning(&yaml)
-    }
-
-    #[test]
-    fn test_valid_job_timeouts() {
-        let yaml = "jobs:\n  build:\n    timeout-minutes: 15\n  test:\n    timeout-minutes: 30\n";
-        assert!(validate_timeouts_str(yaml).is_ok());
-    }
-
-    #[test]
-    fn test_missing_job_timeout() {
-        let yaml = "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n";
-        assert_eq!(
-            validate_timeouts_str(yaml),
-            Err("Job 'deploy' is missing a 'timeout-minutes' specification.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_invalid_job_timeout_zero() {
-        let yaml = "jobs:\n  test:\n    timeout-minutes: 0\n";
-        assert_eq!(
-            validate_timeouts_str(yaml),
-            Err("Job 'test' timeout-minutes must be a positive integer.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_invalid_job_timeout_string() {
-        let yaml = "jobs:\n  test:\n    timeout-minutes: \"15\"\n";
-        assert_eq!(
-            validate_timeouts_str(yaml),
-            Err("Job 'test' timeout-minutes must be a positive integer.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_invalid_job_timeout_negative() {
-        let yaml = "jobs:\n  test:\n    timeout-minutes: -10\n";
-        assert_eq!(
-            validate_timeouts_str(yaml),
-            Err("Job 'test' timeout-minutes must be a positive integer.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_valid_action_pinning_commit_hash() {
-        let yaml = "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n";
-        assert!(validate_action_str(yaml).is_ok());
-    }
-
-    #[test]
-    fn test_valid_action_pinning_local_action() {
-        let yaml = "jobs:\n  test:\n    steps:\n      - uses: ./.github/actions/local-test\n";
-        assert!(validate_action_str(yaml).is_ok());
-    }
-
-    #[test]
-    fn test_invalid_action_pinning_tag() {
-        let yaml = "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n";
-        assert_eq!(
-            validate_action_str(yaml),
-            Err("Action 'actions/checkout@v4' in job 'test' must be pinned to a 40-character commit hash.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_invalid_action_pinning_branch() {
-        let yaml = "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@main\n";
-        assert_eq!(
-            validate_action_str(yaml),
-            Err("Action 'actions/checkout@main' in job 'test' must be pinned to a 40-character commit hash.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_invalid_action_pinning_missing_ref() {
-        let yaml = "jobs:\n  test:\n    steps:\n      - uses: actions/checkout\n";
-        assert_eq!(
-            validate_action_str(yaml),
-            Err("Action 'actions/checkout' in job 'test' must be pinned to a 40-character commit hash.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_invalid_action_pinning_non_hex_sha() {
-        let yaml = "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\n";
-        assert_eq!(
-            validate_action_str(yaml),
-            Err("Action 'actions/checkout@zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz' in job 'test' must be pinned to a 40-character commit hash.".to_string())
-        );
-    }
+/// Lints all GitHub Actions workflows in `.github/workflows`.
+pub fn lint_workflows() -> bool {
+    lint_workflows_in_dir(Path::new(".github/workflows"), None)
 }
+
+#[cfg(test)]
+mod tests;

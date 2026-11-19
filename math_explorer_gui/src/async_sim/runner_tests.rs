@@ -234,3 +234,172 @@ fn test_mri_runner_offload() {
         let _ = std::fs::write("/tmp/mri_simulation.png", png_data);
     }
 }
+
+#[test]
+fn test_physics_and_chaos_runners_step_once() {
+    use crate::tabs::chaos::attractors::{
+        AttractorRunner, AttractorSharedParams, SolverExecutionState,
+    };
+    use crate::tabs::mri::{MriRunner, MriSharedParams};
+    use crate::tabs::solid_state::ising::{IsingRunner, IsingSharedParams};
+    use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
+    use math_explorer::physics::mri::bloch::BlochSimulator;
+    use math_explorer::physics::stat_mech::ising::SpinLattice;
+    use math_explorer::pure_math::analysis::ode::RungeKutta4;
+    use nalgebra::Vector3;
+    use std::collections::VecDeque;
+
+    let mut ising = IsingRunner {
+        lattice: SpinLattice::new(8, 8, Some(7)),
+        params: Arc::new(std::sync::RwLock::new(IsingSharedParams {
+            temperature: 2.269,
+            j_coupling: 1.0,
+            h_field: 0.0,
+            steps_per_frame: 5000,
+        })),
+    };
+    ising.step_once();
+    assert!(ising.is_finite_state());
+
+    let initial_m = Vector3::new(1.0, 0.0, 0.0);
+    let mut mri = MriRunner {
+        simulator: BlochSimulator::new(initial_m, 1.0),
+        solver: RungeKutta4::new(&initial_m),
+        params: Arc::new(std::sync::RwLock::new(MriSharedParams {
+            t1: 1.0,
+            t2: 0.1,
+            b_field: Vector3::new(0.0, 0.0, 1.0),
+            time_scale: 5.0,
+        })),
+        current_time: 0.0,
+        history: VecDeque::new(),
+        max_history: 100,
+    };
+    mri.step_once();
+    assert!((mri.current_time - 0.001).abs() < 1e-12);
+    assert_eq!(mri.history.len(), 1);
+
+    let mut attractor = AttractorRunner {
+        system: LorenzBuilder::new().build(LorenzState::new(1.0, 1.0, 1.0)),
+        params: Arc::new(std::sync::RwLock::new(AttractorSharedParams {
+            sigma: 10.0,
+            rho: 28.0,
+            beta: 8.0 / 3.0,
+            dt: 0.01,
+            simulation_speed: 5,
+            max_points: 500,
+        })),
+        history: VecDeque::new(),
+        step_count: 0,
+        execution_state: SolverExecutionState::Paused,
+    };
+    attractor.step_once();
+    assert_eq!(attractor.step_count, 1);
+    assert_eq!(attractor.execution_state, SolverExecutionState::Paused);
+}
+
+#[test]
+fn test_rl_runners_step_once() {
+    use crate::tabs::ai::q_table_inspector::QTableRunner;
+    use crate::tabs::ai::reward_plots::RewardPlotsRunner;
+    use math_commons::primitives::UnitInterval;
+    use math_explorer::ai::reinforcement_learning::algorithms::TabularQAgent;
+    use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorldEnv};
+
+    let env = GridWorldEnv {
+        width: 4,
+        height: 4,
+        start: GridState { x: 0, y: 0 },
+        goal: GridState { x: 3, y: 3 },
+        traps: vec![],
+        gamma: 0.9,
+    };
+    let agent = TabularQAgent::new(
+        UnitInterval::new(0.1).unwrap(),
+        UnitInterval::new(0.9).unwrap(),
+        UnitInterval::new(0.1).unwrap(),
+        Some(42),
+    );
+    let mut q_runner = QTableRunner {
+        env,
+        agent,
+        episodes_trained: 0,
+        target_episodes: 0,
+        is_training: false,
+    };
+    q_runner.step_once();
+    assert_eq!(q_runner.episodes_trained, 1);
+    assert!(!q_runner.is_training);
+
+    let mut reward_runner = RewardPlotsRunner::new();
+    reward_runner.step_once();
+    let snap = reward_runner.get_snapshot();
+    assert_eq!(snap.custom_data, vec![1.0]);
+    assert!(reward_runner.is_complete());
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn test_attractor_plotter_manual_step_keeps_paused() {
+    use crate::framework::InteractiveTool;
+    use crate::tabs::chaos::attractors::AttractorPlotter;
+
+    let mut plotter = AttractorPlotter::default();
+    let ctx = eframe::egui::Context::default();
+
+    // Frame 1: start worker, then pause via Space shortcut
+    let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+        plotter.show(ctx);
+    });
+    let space_input = eframe::egui::RawInput {
+        events: vec![eframe::egui::Event::Key {
+            key: eframe::egui::Key::Space,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: eframe::egui::Modifiers::NONE,
+        }],
+        ..Default::default()
+    };
+    let _ = ctx.run(space_input, |ctx| {
+        plotter.show(ctx);
+    });
+    std::thread::sleep(std::time::Duration::from_millis(25));
+    let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+        plotter.show(ctx);
+    });
+    assert!(plotter.is_paused());
+    let before_points = plotter.export_datasets()[0].1.len();
+
+    // Press Period to step once while paused
+    let period_input = eframe::egui::RawInput {
+        events: vec![eframe::egui::Event::Key {
+            key: eframe::egui::Key::Period,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: eframe::egui::Modifiers::NONE,
+        }],
+        ..Default::default()
+    };
+    let _ = ctx.run(period_input, |ctx| {
+        plotter.show(ctx);
+    });
+
+    // Wait for worker snapshot and run another frame
+    for _ in 0..30 {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            plotter.show(ctx);
+        });
+        if plotter.export_datasets()[0].1.len() > before_points {
+            break;
+        }
+    }
+
+    assert!(
+        plotter.is_paused(),
+        "AttractorPlotter must remain paused after manual step"
+    );
+    assert_eq!(plotter.export_datasets()[0].1.len(), before_points + 1);
+}
