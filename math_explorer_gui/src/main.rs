@@ -6,6 +6,8 @@ mod app;
 pub mod async_sim;
 #[allow(missing_docs)]
 pub mod camera;
+#[cfg(test)]
+mod canvas_accessibility_tests;
 #[allow(missing_docs)]
 pub mod command_palette;
 #[allow(missing_docs)]
@@ -16,6 +18,8 @@ mod framework_tests;
 mod interactive_tools_tests;
 #[cfg(test)]
 mod markup_tests;
+#[cfg(test)]
+mod modal_accessibility_tests;
 pub mod presets;
 mod reflective_ui;
 #[allow(missing_docs)]
@@ -24,6 +28,8 @@ pub mod starter_gallery;
 mod tabs;
 mod telemetry;
 pub mod web_io;
+
+pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 
 use app::MathExplorerApp;
 

@@ -252,6 +252,54 @@ CommandRegistryData::register(
 );
 ```
 
+### Custom `show` Overrides, Focusable Canvases, and `AccessKit`
+
+The default `InteractiveTool::show` implementation allocates its central canvas with `egui::Sense::click_and_drag()` (which includes `egui::Sense::FOCUSABLE`) and dispatches `on_keyboard` when focused. When a tool overrides `InteractiveTool::show` directly, it must preserve keyboard reachability (`WCAG 2.2 SC 2.1.1`, `SC 2.1.2`, `SC 2.4.3`) and `AccessKit` semantics:
+
+1. **Custom Painter Regions**: Allocate custom canvases with `egui::Sense::focusable_noninteractive()` (for read-only visualizations) or `egui::Sense::click()` / `egui::Sense::click_and_drag()` (for interactive canvases) instead of `egui::Sense::hover()`. Attach an `AccessKit` role, non-empty label, and summary value via `crate::accessibility::register_canvas_accessibility` (built on `ctx.accesskit_node_builder`), and paint a focus ring via `crate::accessibility::paint_canvas_focus_ring`:
+
+```rust,ignore
+let (response, painter) =
+    ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
+crate::accessibility::register_canvas_accessibility(
+    ui,
+    &response,
+    egui::accesskit::Role::GraphicsDocument,
+    "Network Metrics Visualization",
+    Some("16 nodes, 24 edges"),
+);
+crate::accessibility::paint_canvas_focus_ring(ui, &response);
+```
+
+2. **Raster Texture Views**: Render textures with `egui::Image::new(texture).alt_text(...).sense(...)` rather than raw `ui.image(texture)` calls so `AccessKit` emits `Role::Image` with non-empty alternative text and `Tab` traversal can focus the image:
+
+```rust,ignore
+let response = ui.add(
+    egui::Image::new(texture)
+        .alt_text("Ulam Prime Spiral visualization (100x100 grid)")
+        .sense(egui::Sense::focusable_noninteractive()),
+);
+crate::accessibility::paint_canvas_focus_ring(ui, &response);
+```
+
+3. **Arrow-Key Cursors Without `Tab` Traps**: When an interactive canvas uses arrow keys to move an internal cell or node cursor, call `Memory::set_focus_lock_filter` (or `crate::accessibility::lock_canvas_arrow_keys`) **only while `response.has_focus()`** with `tab: false` and `escape: false` so `Tab` and `Shift+Tab` always move focus cleanly out of the canvas:
+
+```rust,ignore
+if response.has_focus() {
+    ui.memory_mut(|m| {
+        m.set_focus_lock_filter(
+            response.id,
+            egui::EventFilter {
+                tab: false,
+                horizontal_arrows: true,
+                vertical_arrows: true,
+                escape: false,
+            },
+        );
+    });
+}
+```
+
 ## Related References
 
 - Interactive tool trait definition: [`math_explorer_gui/src/framework/mod.rs`](../../math_explorer_gui/src/framework/mod.rs)

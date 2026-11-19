@@ -187,11 +187,25 @@ impl InteractiveTool for NetworkMetricsTool {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let (response, painter) =
-                ui.allocate_painter(ui.available_size(), egui::Sense::hover());
-            let _ = response
-                .clone()
-                .accessible_hover_text("Network Metrics Visualization");
+            let (response, painter) = ui.allocate_painter(
+                ui.available_size(),
+                egui::Sense::focusable_noninteractive(),
+            );
+            let label = "Network Metrics Visualization";
+            let _ = response.clone().accessible_hover_text(label);
+            let summary = format!(
+                "{} nodes, {} edges",
+                self.node_positions.len(),
+                self.edges.len()
+            );
+            crate::accessibility::register_canvas_accessibility(
+                ui,
+                &response,
+                egui::accesskit::Role::GraphicsDocument,
+                label,
+                Some(&summary),
+            );
+            crate::accessibility::paint_canvas_focus_ring(ui, &response);
 
             let to_screen = eframe::egui::emath::RectTransform::from_to(
                 eframe::egui::Rect::from_min_size(Pos2::ZERO, response.rect.size()),

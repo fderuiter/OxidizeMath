@@ -112,10 +112,21 @@ impl NetworkPropagationTool {
     fn draw_graph_column(&self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.heading("Network Visualization");
-        let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::hover());
-        let _ = response
-            .clone()
-            .accessible_hover_text("Network Propagation Visualization");
+        let (response, painter) = ui.allocate_painter(
+            ui.available_size(),
+            egui::Sense::focusable_noninteractive(),
+        );
+        let label = "Network Propagation Visualization";
+        let _ = response.clone().accessible_hover_text(label);
+        let summary = format!("{} network nodes", self.model.num_nodes());
+        crate::accessibility::register_canvas_accessibility(
+            ui,
+            &response,
+            egui::accesskit::Role::GraphicsDocument,
+            label,
+            Some(&summary),
+        );
+        crate::accessibility::paint_canvas_focus_ring(ui, &response);
         let center = response.rect.center();
 
         for i in 0..self.model.num_nodes() {

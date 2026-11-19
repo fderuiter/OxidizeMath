@@ -34,6 +34,7 @@ mod ui;
 
 pub use callout_overlay::*;
 pub use clamp::*;
+pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub use export_figure::*;
 pub use export_queue::*;
 pub use export_types::*;
@@ -85,6 +86,26 @@ pub trait InteractiveTool {
     fn theory(&self) -> &dyn TheoryDescribable;
 
     /// Show the tool. Tools can implement this to take full control over rendering.
+    ///
+    /// # Accessibility Requirements for Custom `show` Overrides
+    ///
+    /// The default implementation allocates its central canvas with [`egui::Sense::click_and_drag`]
+    /// (which includes [`egui::Sense::FOCUSABLE`]) and dispatches [`Self::on_keyboard`] when
+    /// `response.has_focus()` is true. When overriding `show` directly:
+    ///
+    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`] (or
+    ///   [`egui::Sense::click`] / [`egui::Sense::click_and_drag`] for interactive canvases) instead
+    ///   of `Sense::hover()` so `Tab` traversal reaches the visualization.
+    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))`
+    ///   instead of raw `ui.image(texture)` calls so `AccessKit` exposes `Role::Image` and non-empty
+    ///   alternative text.
+    /// - Populate `AccessKit` metadata (`Role`, non-empty `label`, and dynamic `value` summary) via
+    ///   `ctx.accesskit_node_builder(response.id, ...)` (or
+    ///   `crate::accessibility::register_canvas_accessibility`) and draw a high-contrast focus ring
+    ///   when `response.has_focus()`.
+    /// - If the canvas consumes arrow keys, call `Memory::set_focus_lock_filter` with
+    ///   `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
+    ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
     fn show(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left(format!("{}_controls", self.name())).show(ctx, |ui| {
             ui.horizontal(|ui| {

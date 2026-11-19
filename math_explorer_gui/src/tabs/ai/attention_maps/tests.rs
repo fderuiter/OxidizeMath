@@ -204,3 +204,95 @@ fn test_generate_attention_heatmap_screenshots() {
         cell_size,
     );
 }
+
+fn attn_screen_raw() -> egui::RawInput {
+    egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 800.0),
+        )),
+        ..Default::default()
+    }
+}
+
+fn attn_key_raw(key: egui::Key) -> egui::RawInput {
+    let mut raw = attn_screen_raw();
+    raw.events.push(egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    raw
+}
+
+fn focus_attention_weights(ctx: &egui::Context, tool: &mut AttentionMapsTool) -> egui::Id {
+    let out0 = ctx.run(attn_screen_raw(), |ctx| tool.show(ctx));
+    let update = out0
+        .platform_output
+        .accesskit_update
+        .expect("AccessKit update expected");
+    let weights_node_id = update
+        .nodes
+        .iter()
+        .find_map(|(id, node)| {
+            node.label()
+                .is_some_and(|l| l.contains("Attention Weights"))
+                .then_some(*id)
+        })
+        .expect("Attention Weights heatmap must expose AccessKit node");
+
+    let mut focus_raw = attn_screen_raw();
+    focus_raw.events.push(egui::Event::AccessKitActionRequest(
+        egui::accesskit::ActionRequest {
+            action: egui::accesskit::Action::Focus,
+            target: weights_node_id,
+            data: None,
+        },
+    ));
+    let _ = ctx.run(focus_raw, |ctx| tool.show(ctx));
+    let _ = ctx.run(attn_screen_raw(), |ctx| tool.show(ctx));
+    ctx.memory(|m| m.focused()).expect("Heatmap focused")
+}
+
+#[test]
+fn test_attention_maps_arrow_key_cursor_and_live_announcements() {
+    crate::accessibility::clear_test_announcements();
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+
+    let mut tool = AttentionMapsTool::default();
+    tool.q_matrix[(0, 0)] = 2.0;
+    tool.k_matrix[(1, 0)] = 1.5;
+    tool.v_matrix[(1, 1)] = 3.0;
+    tool.recalculate();
+
+    let heatmap_egui_id = focus_attention_weights(&ctx, &mut tool);
+    assert_eq!(tool.weights_texture().cursor(), (0, 0));
+
+    crate::accessibility::clear_test_announcements();
+    let _ = ctx.run(attn_key_raw(egui::Key::ArrowRight), |ctx| tool.show(ctx));
+    assert_eq!(tool.weights_texture().cursor(), (0, 1));
+    assert_eq!(ctx.memory(|m| m.focused()), Some(heatmap_egui_id));
+
+    let _ = ctx.run(attn_key_raw(egui::Key::ArrowDown), |ctx| tool.show(ctx));
+    assert_eq!(tool.weights_texture().cursor(), (1, 1));
+    assert_eq!(ctx.memory(|m| m.focused()), Some(heatmap_egui_id));
+
+    let announcements = crate::accessibility::all_announcements();
+    assert!(
+        announcements
+            .iter()
+            .any(|(msg, _)| msg.contains("Token: [Row 1, Col 1]") && msg.contains("Weight:")),
+        "Expected live announcement with Token and Weight, got {announcements:?}"
+    );
+
+    // Tab must never trap focus on the heatmap.
+    let _ = ctx.run(attn_key_raw(egui::Key::Tab), |ctx| tool.show(ctx));
+    assert_ne!(
+        ctx.memory(|m| m.focused()),
+        Some(heatmap_egui_id),
+        "Tab must advance focus away from the heatmap"
+    );
+}
