@@ -1,4 +1,4 @@
-use crate::framework::InteractiveTool;
+use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use egui::{Color32, ColorImage, TextureOptions};
 use egui_plot::{Plot, PlotImage, PlotPoint};
@@ -35,13 +35,23 @@ struct DoseState {
 }
 
 impl InteractiveTool for DoseCalculationTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Dose Calculation"
     }
 
     fn domain(&self) -> &'static str {
         "medical"
+    }
+
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::raster_only()
+    }
+
+    fn export_raster_image(&self) -> Option<ColorImage> {
+        Some(self.compute_dose_image())
     }
 
     fn save_state(&self) -> Option<String> {
@@ -117,21 +127,15 @@ impl InteractiveTool for DoseCalculationTool {
 }
 
 impl DoseCalculationTool {
-    fn recompute_texture(&mut self, ctx: &egui::Context) {
-        let width = self.width;
-        let height = self.height;
+    fn compute_dose_image(&self) -> ColorImage {
+        let width = self.width.max(1);
+        let height = self.height.max(1);
         let mut pixels = vec![Color32::BLACK; width * height];
 
         let kernel = ExponentialKernel::new(self.amplitude, self.beta);
-
-        // Physical range: -10.0 to 10.0
         let range = 20.0;
         let dx = range / width as f64;
         let dy = range / height as f64;
-
-        // Find max value for normalization (approx at r -> slightly > 0)
-        // Since 1/r^2 diverges at 0, we clamp/saturate.
-        // Let's sample at a small radius to get a "max" reference.
         let max_dose = kernel.value_at(0.1).unwrap_or(10.0);
 
         for y in 0..height {
@@ -139,28 +143,27 @@ impl DoseCalculationTool {
             for x in 0..width {
                 let px = (x as f64 - width as f64 / 2.0) * dx;
                 let r = (px * px + py * py).sqrt();
-
                 let dose = if r < 1e-3 {
-                    max_dose // Singularity handling
+                    max_dose
                 } else {
                     kernel.value_at(r).unwrap_or(0.0)
                 };
-
-                // Map dose to color (Heatmap: Black -> Blue -> Red -> White)
                 let intensity = (dose / max_dose).clamp(0.0, 1.0);
                 let rgb = heatmap_color(intensity);
                 pixels[flatten_2d_index(x, y, width)] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
             }
         }
 
-        let image = ColorImage::new([width, height], pixels);
+        ColorImage::new([width, height], pixels)
+    }
 
+    fn recompute_texture(&mut self, ctx: &egui::Context) {
+        let image = self.compute_dose_image();
         self.texture = Some(ctx.load_texture("dose_field", image, TextureOptions::LINEAR));
     }
 }
 
 // [cite:graph_parameters_rust]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -179,12 +182,22 @@ impl scientific_metadata::theory::TheoryDescribable for DoseCalculationTool {
             self.amplitude, self.beta
         )
     }
-    fn phonetic_description(&self) -> String { "Radiation therapy dose calculation and convolution kernel theory".into() }
-    fn theory_citation(&self) -> String { "The Physics of Radiation Therapy (Khan, 2014); Convolution/superposition dose calculation (Mackie et al., 1985)".into() }
+    fn phonetic_description(&self) -> String {
+        "Radiation therapy dose calculation and convolution kernel theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "The Physics of Radiation Therapy (Khan, 2014); Convolution/superposition dose calculation (Mackie et al., 1985)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("amplitude".into(), "Kernel primary energy fluence scaling factor A".into());
-        map.insert("beta".into(), "Radial dose attenuation and scattering decay coefficient beta".into());
+        map.insert(
+            "amplitude".into(),
+            "Kernel primary energy fluence scaling factor A".into(),
+        );
+        map.insert(
+            "beta".into(),
+            "Radial dose attenuation and scattering decay coefficient beta".into(),
+        );
         map
     }
 }
