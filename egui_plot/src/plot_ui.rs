@@ -288,10 +288,10 @@ impl<'a> PlotUi<'a> {
 
     /// Export active plot datasets to high-resolution PNG offscreen.
     pub fn save_png(&self) {
-        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
+        let primitives: Vec<crate::export_primitives::ExportPrimitive> = self
             .items
             .iter()
-            .map(|item| (item.name().to_owned(), item.extract_points()))
+            .flat_map(|item| item.extract_export_primitives())
             .collect();
         let log_axis = self.last_plot_transform.log_axis();
         let options = crate::export::ExportOptions {
@@ -299,7 +299,9 @@ impl<'a> PlotUi<'a> {
             log_y: log_axis.y,
             ..Default::default()
         };
-        if let Ok(png_bytes) = crate::export::export_custom_png(&datasets, &options) {
+        if let Ok(png_bytes) =
+            crate::export_primitives::export_primitives_png(&primitives, &options)
+        {
             crate::export::save_file_dialog("plot.png", &png_bytes, "PNG Image", &["png"]);
         }
     }
@@ -311,10 +313,10 @@ impl<'a> PlotUi<'a> {
 
     /// Export active plot datasets to vector SVG offscreen.
     pub fn save_svg(&self) {
-        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
+        let primitives: Vec<crate::export_primitives::ExportPrimitive> = self
             .items
             .iter()
-            .map(|item| (item.name().to_owned(), item.extract_points()))
+            .flat_map(|item| item.extract_export_primitives())
             .collect();
         let log_axis = self.last_plot_transform.log_axis();
         let options = crate::export::ExportOptions {
@@ -322,7 +324,8 @@ impl<'a> PlotUi<'a> {
             log_y: log_axis.y,
             ..Default::default()
         };
-        if let Ok(svg_text) = crate::export::export_custom_svg(&datasets, &options) {
+        if let Ok(svg_text) = crate::export_primitives::export_primitives_svg(&primitives, &options)
+        {
             crate::export::save_file_dialog(
                 "plot.svg",
                 svg_text.as_bytes(),
@@ -343,8 +346,11 @@ impl<'a> PlotUi<'a> {
             .items
             .iter()
             .map(|item| (item.name().to_owned(), item.extract_points()))
+            .filter(|(_, pts)| !pts.is_empty())
             .collect();
-        crate::export::export_csv(&datasets);
+        if crate::export_primitives::has_finite_dataset_points(&datasets) {
+            crate::export::export_csv(&datasets);
+        }
     }
 
     /// Export active plot datasets to JSON.
@@ -353,8 +359,11 @@ impl<'a> PlotUi<'a> {
             .items
             .iter()
             .map(|item| (item.name().to_owned(), item.extract_points()))
+            .filter(|(_, pts)| !pts.is_empty())
             .collect();
-        crate::export::export_json(&datasets);
+        if crate::export_primitives::has_finite_dataset_points(&datasets) {
+            crate::export::export_json(&datasets);
+        }
     }
 
     /// Trigger asynchronous CSV dataset import for this plot.

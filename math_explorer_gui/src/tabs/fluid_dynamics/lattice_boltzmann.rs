@@ -24,8 +24,17 @@ impl FiniteStateGuard for LbmUnified {
         if self.diverged {
             return false;
         }
-        self.solver.state.velocity_x().iter().all(|&v| v.is_finite())
-            && self.solver.state.velocity_y().iter().all(|&v| v.is_finite())
+        self.solver
+            .state
+            .velocity_x()
+            .iter()
+            .all(|&v| v.is_finite())
+            && self
+                .solver
+                .state
+                .velocity_y()
+                .iter()
+                .all(|&v| v.is_finite())
             && self.solver.state.density().iter().all(|&v| v.is_finite())
     }
 
@@ -71,6 +80,8 @@ impl UnifiedModel for LbmUnified {
             }
         }
 
+        solver.set_inlet(0, 0, 2, height, 0.1, 0.0);
+
         Self {
             solver,
             diverged: false,
@@ -96,7 +107,8 @@ impl UnifiedModel for LbmUnified {
         }
         self.step_count += 1;
         self.solver.collision_model.tau = 3.0 * viscosity + 0.5;
-        self.solver.set_inlet(0, 0, 2, self.solver.height(), 0.1, 0.0);
+        self.solver
+            .set_inlet(0, 0, 2, self.solver.height(), 0.1, 0.0);
         self.solver.step();
 
         if !FiniteStateGuard::is_finite_state(self) {
@@ -151,13 +163,24 @@ impl UnifiedModel for LbmUnified {
                 self.diagnostic_report = None;
                 self.step_count = 0;
             }
-            SimCommand::ApplyBrush { cx, cy, r, is_obstacle } => {
+            SimCommand::ApplyBrush {
+                cx,
+                cy,
+                r,
+                is_obstacle,
+            } => {
                 let width = self.solver.width() as i32;
                 let height = self.solver.height() as i32;
                 for y in (cy - r)..=(cy + r) {
                     for x in (cx - r)..=(cx + r) {
-                        if x >= 0 && x < width && y >= 0 && y < height && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r {
-                            self.solver.set_obstacle(x as usize, y as usize, is_obstacle);
+                        if x >= 0
+                            && x < width
+                            && y >= 0
+                            && y < height
+                            && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r
+                        {
+                            self.solver
+                                .set_obstacle(x as usize, y as usize, is_obstacle);
                         }
                     }
                 }
@@ -176,12 +199,23 @@ impl UnifiedModel for LbmUnified {
         vec!["Clear Obstacles"]
     }
 
+    fn is_raster_model() -> bool {
+        true
+    }
+
     fn parameters() -> HashMap<String, ParameterConstraint> {
         let mut map = HashMap::new();
 
         // We will just hardcode constraint based on tau [0.51, 2.0] -> visc = (tau-0.5)/3.0
         // visc min = 0.00333, max = 0.5
-        map.insert("viscosity".to_string(), ParameterConstraint { min: 0.00333, max: 0.5, step: 0.01 });
+        map.insert(
+            "viscosity".to_string(),
+            ParameterConstraint {
+                min: 0.00333,
+                max: 0.5,
+                step: 0.01,
+            },
+        );
         map
     }
 
@@ -211,15 +245,15 @@ impl TheoryDescribable for LbmUnified {
     fn theory_description(&self) -> String {
         LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).theory_description()
     }
-    
+
     fn phonetic_description(&self) -> String {
         LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).phonetic_description()
     }
-    
+
     fn theory_citation(&self) -> String {
         LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).theory_citation()
     }
-    
+
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).available_descriptions()
     }

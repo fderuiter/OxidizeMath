@@ -1,16 +1,26 @@
-# Agent Guide for OxidizeMath
+# OxidizeMath Agent & Developer Verification Guide
 
-This document summarizes the repository conventions, quality guardrails, and local verification commands required to maintain parity with `.githooks/pre-commit` and `.github/workflows/ci.yml`.
+This guide documents repository conventions, local build and verification gates, and release packaging checks for contributors and automated coding agents working in the OxidizeMath workspace. See [README.md](README.md) for an architectural overview, [CONTRIBUTING.md](CONTRIBUTING.md) for engineering standards, and [docs/README.md](docs/README.md) for the documentation index.
 
-## Architecture & Standards
+## 1. Architecture, Policy & Documentation Rules
 
-- Review [Contributing Guidelines](CONTRIBUTING.md) and the [Documentation Index](docs/README.md) before modifying core domain crates or UI tools.
+All Markdown files in the repository (outside excluded build directories such as `target`, `dist`, and `artifacts`) are compiled by `crates/markdown_tests/build.rs` via `rustdoc`.
+
+- Always tag non-Rust code blocks with `bash` or `text` fences so `cargo test --doc` does not attempt to compile shell commands or plain text snippets as Rust doctests.
+- Ensure all relative Markdown links resolve to existing files in the repository.
 - Keep every Rust source file at or below **500 lines** (`check-file-lengths`) and keep functions within the **60-line** Clippy ceiling configured in `.clippy.toml`.
 - Do not introduce unwhitelisted `dead_code`, `unused`, or `warnings` lint suppressions (`allow`, `expect`, or `cfg_attr`). Zero `dead_code` bypass entries are permitted per [ADR 0019](docs/adr/0019-purge-dead-code-bypasses.md); gate test-only helpers with `#[cfg(test)]` or delete unreferenced items instead.
 - Modifying core mathematical or runtime crates (`crates/` excluding `crates/unified_verification`, or `math_explorer/`) requires creating or updating an Architectural Decision Record under `docs/adr/`.
-- Use `bash` or `text` tags on non-Rust fenced code blocks in Markdown files because `crates/markdown_tests` compiles untagged fences as Rust doctests.
 
-## Local Verification & CI Parity
+```text
+Markdown verification gates:
+- cargo run -p unified_verification --release -- check-docs
+- RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+- cargo test --doc --workspace --all-features
+- cargo run -p xtask -- check-markdown-links
+```
+
+## 2. CI Pre-Flight & Quality Gates
 
 Run the full pre-commit verification suite via `xtask`:
 
@@ -18,31 +28,84 @@ Run the full pre-commit verification suite via `xtask`:
 cargo run -p xtask -- lint-all
 ```
 
-Run individual pre-flight and policy verification gates locally:
+Before opening or updating a pull request, run the repository quality gates defined in [.github/workflows/ci.yml](.github/workflows/ci.yml):
 
 ```bash
+# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA action pins)
+cargo run -p unified_verification --release -- lint-workflows
+
 # Audit AST attributes for unauthorized dead_code/unused/warnings bypasses and unused dependencies
 cargo run -p xtask -- test-policy-audit
 cargo run -p unified_verification --release -- test-policy-audit
 
-# Format, Clippy, file-length, workflow, documentation, link, traceability, and entropy gates
+# Format and Clippy lint checks
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo run -p unified_verification --release -- check-file-lengths
-cargo run -p unified_verification --release -- lint-workflows
-cargo run -p unified_verification --release -- verify-records
-cargo run -p unified_verification --release -- traceability
-cargo run -p unified_verification --release -- check-entropy
+
+# Verify crate documentation and workspace rustdoc builds
 cargo run -p unified_verification --release -- check-docs
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cargo test --doc --workspace --all-features
+
+# Validate relative Markdown links, file lengths (500-line ceiling), entropy/secrets, and traceability
 cargo run -p xtask -- check-markdown-links
-```
+cargo run -p unified_verification --release -- check-file-lengths
+cargo run -p unified_verification --release -- check-entropy
+cargo run -p unified_verification --release -- traceability
 
-Run native unit/integration tests and WebAssembly target checks:
+# Verify architectural decision records when core crates change
+BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
 
-```bash
+# Native unit/integration tests and WebAssembly target checks
 cargo test --workspace --lib --tests
 cargo check --workspace --target wasm32-unknown-unknown --all-features
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
+```
+
+## 3. Local Release Packaging Checks
+
+Pull requests automatically execute the Linux Debian (`deb`) installer build in the `package` job of [.github/workflows/ci.yml](.github/workflows/ci.yml), while `main` pushes, `v*` tag pushes, and `workflow_dispatch` runs build all three desktop installer targets (`deb`, `dmg`, and `wix`).
+
+### Prerequisites (Ubuntu / Debian)
+
+Install native GUI and packaging libraries along with `cargo-packager` `0.11.8` using `cargo-binstall` without falling back to source compilation:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libgtk-3-dev libxdo-dev build-essential
+
+# Install pinned cargo-packager prebuilt binary (fails fast if unavailable)
+cargo binstall --no-confirm --disable-strategies compile cargo-packager@0.11.8
+```
+
+### Build Linux `.deb` Installer & SHA-256 Manifest
+
+`math_explorer_gui/Cargo.toml` configures `out-dir = "dist"` under `[package.metadata.packager]`, so `cargo packager` writes installers to `math_explorer_gui/dist` alongside a hidden `.cargo-packager` metadata directory.
+
+```bash
+# 1. Build release GUI binary and package Debian installer
+cargo build --release -p math_explorer_gui
+cargo packager --release -p math_explorer_gui -f deb
+
+# 2. Generate and verify SHA256SUMS for installer files only (skipping .cargo-packager)
+(
+  cd math_explorer_gui/dist
+  shopt -s nullglob
+  shopt -u dotglob
+  files=()
+  for f in *.deb *.dmg *.msi *.exe *.wix; do
+    if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
+      files+=("$f")
+    fi
+  done
+  test "${#files[@]}" -gt 0
+  sha256sum "${files[@]}" > SHA256SUMS
+  sha256sum -c SHA256SUMS
+)
+```
+
+Clean up local `math_explorer_gui/dist` build outputs before committing so untracked installer binaries are not left in the workspace:
+
+```bash
+rm -rf math_explorer_gui/dist
 ```

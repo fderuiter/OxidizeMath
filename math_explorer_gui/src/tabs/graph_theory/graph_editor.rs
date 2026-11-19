@@ -45,13 +45,18 @@ pub struct GraphEditorTool {
 }
 
 impl InteractiveTool for GraphEditorTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Graph Editor"
     }
 
     fn domain(&self) -> &'static str {
         "graph_theory"
+    }
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -324,8 +329,12 @@ impl InteractiveTool for GraphEditorTool {
 }
 
 impl GraphEditorTool {
-    pub fn can_undo(&self) -> bool { !self.undo_stack.is_empty() }
-    pub fn can_redo(&self) -> bool { !self.redo_stack.is_empty() }
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
 
     fn show_undo_redo_toolbar(&mut self, ui: &mut egui::Ui) {
         self.register_keyboard_commands(ui.ctx());
@@ -346,7 +355,9 @@ impl GraphEditorTool {
 
             if ui
                 .add_enabled(self.can_redo(), egui::Button::new("↪ Redo"))
-                .accessible_hover_text("Redo the last undone graph modification (Ctrl+Y / Cmd+Shift+Z)")
+                .accessible_hover_text(
+                    "Redo the last undone graph modification (Ctrl+Y / Cmd+Shift+Z)",
+                )
                 .clicked()
             {
                 self.redo();
@@ -443,7 +454,9 @@ impl GraphEditorTool {
             self.node_indices.insert(id, idx);
         }
         for &(u, v, weight) in &self.edges {
-            if let (Some(&u_idx), Some(&v_idx)) = (self.node_indices.get(&u), self.node_indices.get(&v)) {
+            if let (Some(&u_idx), Some(&v_idx)) =
+                (self.node_indices.get(&u), self.node_indices.get(&v))
+            {
                 self.graph.add_edge(u_idx, v_idx, weight);
             }
         }
@@ -452,28 +465,5 @@ impl GraphEditorTool {
 
 // [cite:graph_parameters_rust]
 
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "GraphEditorTool",
-        display_name: "Graph Editor",
-        domain: "graph_theory",
-        tags: &[],
-        build: || Box::new(GraphEditorTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for GraphEditorTool {
-    fn theory_description(&self) -> String {
-        format!(
-            "Combinatorial graph structure $G = (V, E)$ with $|V| = {}$ nodes and $|E| = {}$ edges under force-directed spring-electrical embedding $F = F_{{\\text{{attr}}}} + F_{{\\text{{rep}}}}.$",
-            self.node_positions.len(), self.edges.len()
-        )
-    }
-    fn phonetic_description(&self) -> String { "Combinatorial graph theory and force-directed network embedding".into() }
-    fn theory_citation(&self) -> String { "Graph Drawing by Force-Directed Placement (Fruchterman & Reingold, 1991)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
-}
-
 #[cfg(test)]
 mod tests;
-

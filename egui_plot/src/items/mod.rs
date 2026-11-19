@@ -120,6 +120,10 @@ pub trait PlotItem {
         vec![]
     }
 
+    fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        vec![]
+    }
+
     fn highlight(&mut self) {
         self.base_mut().highlight = true;
     }
@@ -532,6 +536,21 @@ impl PlotItem for Line<'_> {
     fn extract_points(&self) -> Vec<[f64; 2]> {
         self.series.points().iter().map(|p| [p.x, p.y]).collect()
     }
+
+    fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        let points = self.extract_points();
+        if points.is_empty() {
+            return vec![];
+        }
+        vec![crate::export_primitives::ExportPrimitive::Polyline {
+            name: self.name().to_owned(),
+            points,
+            color: self.stroke.color,
+            stroke_width: self.stroke.width,
+            closed: false,
+            fill: None,
+        }]
+    }
     fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
         let Self {
             base,
@@ -716,6 +735,21 @@ impl<'a> Polygon<'a> {
 impl PlotItem for Polygon<'_> {
     fn extract_points(&self) -> Vec<[f64; 2]> {
         self.series.points().iter().map(|p| [p.x, p.y]).collect()
+    }
+
+    fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        let points = self.extract_points();
+        if points.is_empty() {
+            return vec![];
+        }
+        vec![crate::export_primitives::ExportPrimitive::Polyline {
+            name: self.name().to_owned(),
+            points,
+            color: self.stroke.color,
+            stroke_width: self.stroke.width,
+            closed: true,
+            fill: self.fill_color,
+        }]
     }
     fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
         let Self {
@@ -945,6 +979,19 @@ impl PlotItem for Points<'_> {
     fn extract_points(&self) -> Vec<[f64; 2]> {
         self.series.points().iter().map(|p| [p.x, p.y]).collect()
     }
+
+    fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        let points = self.extract_points();
+        if points.is_empty() {
+            return vec![];
+        }
+        vec![crate::export_primitives::ExportPrimitive::Points {
+            name: self.name().to_owned(),
+            points,
+            color: self.color,
+            radius: self.radius,
+        }]
+    }
     fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
         let sqrt_3 = 3_f32.sqrt();
         let frac_sqrt_3_2 = 3_f32.sqrt() / 2.0;
@@ -1150,6 +1197,32 @@ impl<'a> Arrows<'a> {
 }
 
 impl PlotItem for Arrows<'_> {
+    fn extract_points(&self) -> Vec<[f64; 2]> {
+        let mut pts = Vec::with_capacity(self.origins.points().len() * 2);
+        for (origin, tip) in self.origins.points().iter().zip(self.tips.points().iter()) {
+            pts.push([origin.x, origin.y]);
+            pts.push([tip.x, tip.y]);
+        }
+        pts
+    }
+
+    fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        self.origins
+            .points()
+            .iter()
+            .zip(self.tips.points().iter())
+            .map(
+                |(origin, tip)| crate::export_primitives::ExportPrimitive::Arrow {
+                    name: self.name().to_owned(),
+                    origin: [origin.x, origin.y],
+                    tip: [tip.x, tip.y],
+                    tip_length: self.tip_length,
+                    color: self.color,
+                },
+            )
+            .collect()
+    }
+
     fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
         let Self {
             origins,
@@ -1207,7 +1280,9 @@ impl PlotItem for Arrows<'_> {
     }
 
     fn bounds(&self) -> PlotBounds {
-        self.origins.bounds()
+        let mut bounds = self.origins.bounds();
+        bounds.merge(&self.tips.bounds());
+        bounds
     }
 
     fn base(&self) -> &PlotItemBase {
@@ -1483,6 +1558,40 @@ impl BarChart {
 }
 
 impl PlotItem for BarChart {
+    fn extract_points(&self) -> Vec<[f64; 2]> {
+        self.bars
+            .iter()
+            .map(|b| {
+                let pt = b.point_at(b.argument, b.base_offset.unwrap_or(0.0) + b.value);
+                [pt.x, pt.y]
+            })
+            .collect()
+    }
+
+    fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        let chart_name = self.name().to_owned();
+        self.bars
+            .iter()
+            .map(|b| {
+                let bmin = b.bounds_min();
+                let bmax = b.bounds_max();
+                let stroke_color = if b.stroke.color == Color32::TRANSPARENT {
+                    self.default_color
+                } else {
+                    b.stroke.color
+                };
+                crate::export_primitives::ExportPrimitive::Bar {
+                    name: chart_name.clone(),
+                    min: [bmin.x, bmin.y],
+                    max: [bmax.x, bmax.y],
+                    fill: b.fill,
+                    stroke_color,
+                    stroke_width: b.stroke.width,
+                }
+            })
+            .collect()
+    }
+
     fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
         for b in &self.bars {
             b.add_shapes(transform, self.base.highlight, shapes);
@@ -1611,6 +1720,52 @@ impl BoxPlot {
 }
 
 impl PlotItem for BoxPlot {
+    fn extract_points(&self) -> Vec<[f64; 2]> {
+        let mut pts = Vec::with_capacity(self.boxes.len() * 5);
+        for b in &self.boxes {
+            for val in [
+                b.spread.lower_whisker,
+                b.spread.quartile1,
+                b.spread.median,
+                b.spread.quartile3,
+                b.spread.upper_whisker,
+            ] {
+                let pt = b.point_at(b.argument, val);
+                pts.push([pt.x, pt.y]);
+            }
+        }
+        pts
+    }
+
+    fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        let plot_name = self.name().to_owned();
+        self.boxes
+            .iter()
+            .map(|b| {
+                let stroke_color = if b.stroke.color == Color32::TRANSPARENT {
+                    self.default_color
+                } else {
+                    b.stroke.color
+                };
+                crate::export_primitives::ExportPrimitive::BoxElem {
+                    name: plot_name.clone(),
+                    vertical: matches!(b.orientation, Orientation::Vertical),
+                    argument: b.argument,
+                    lower_whisker: b.spread.lower_whisker,
+                    quartile1: b.spread.quartile1,
+                    median: b.spread.median,
+                    quartile3: b.spread.quartile3,
+                    upper_whisker: b.spread.upper_whisker,
+                    box_width: b.box_width,
+                    whisker_width: b.whisker_width,
+                    fill: b.fill,
+                    stroke_color,
+                    stroke_width: b.stroke.width,
+                }
+            })
+            .collect()
+    }
+
     fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
         for b in &self.boxes {
             b.add_shapes(transform, self.base.highlight, shapes);

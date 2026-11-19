@@ -59,6 +59,33 @@ impl MriRunner {
             max_history: math_commons::registry::MAX_ITERATIONS,
         }
     }
+
+    fn sync_params_and_get_scale(&mut self) -> f64 {
+        let (t1, t2, b_field, time_scale) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.t1, p.t2, p.b_field, p.time_scale)
+        };
+        self.simulator.t1 = t1;
+        self.simulator.t2 = t2;
+        self.simulator.b_field = b_field;
+        time_scale
+    }
+
+    fn advance_bloch_ticks(&mut self, ticks: usize) {
+        let dt = 0.001;
+        for _ in 0..ticks {
+            TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
+            self.current_time += dt;
+            let m = self.simulator.magnetization;
+            if !m.x.is_finite() || !m.y.is_finite() || !m.z.is_finite() {
+                break;
+            }
+            if self.history.len() >= self.max_history {
+                self.history.pop_front();
+            }
+            self.history.push_back((self.current_time, m));
+        }
+    }
 }
 
 impl SimulationRunner for MriRunner {
@@ -73,33 +100,18 @@ impl SimulationRunner for MriRunner {
     }
 
     fn step(&mut self) {
-        let (t1, t2, b_field, time_scale) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.t1, p.t2, p.b_field, p.time_scale)
-        };
-        self.simulator.t1 = t1;
-        self.simulator.t2 = t2;
-        self.simulator.b_field = b_field;
-
-        let dt = 0.001;
+        let time_scale = self.sync_params_and_get_scale();
         let steps = if time_scale.is_finite() && time_scale > 0.0 {
             time_scale.ceil() as usize
         } else {
             1
         };
+        self.advance_bloch_ticks(steps);
+    }
 
-        for _ in 0..steps {
-            TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
-            self.current_time += dt;
-            let m = self.simulator.magnetization;
-            if !m.x.is_finite() || !m.y.is_finite() || !m.z.is_finite() {
-                break;
-            }
-            if self.history.len() >= self.max_history {
-                self.history.pop_front();
-            }
-            self.history.push_back((self.current_time, m));
-        }
+    fn step_once(&mut self) {
+        let _ = self.sync_params_and_get_scale();
+        self.advance_bloch_ticks(1);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -124,7 +136,7 @@ impl SimulationRunner for MriRunner {
 
     fn is_finite_state(&self) -> bool {
         let m = self.simulator.magnetization;
-        m.x.is_finite() && m.y.is_finite() && m.z.is_finite()
+        self.current_time.is_finite() && m.x.is_finite() && m.y.is_finite() && m.z.is_finite()
     }
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {

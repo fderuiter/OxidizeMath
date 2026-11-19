@@ -4,6 +4,7 @@ mod papers;
 
 use markdown_links::check_markdown_links;
 use std::env;
+#[cfg(unix)]
 use std::fs;
 use std::path::Path;
 use std::process::{Command, exit};

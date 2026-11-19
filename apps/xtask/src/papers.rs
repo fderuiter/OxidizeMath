@@ -176,6 +176,51 @@ fn run_pdflatex(path: &Path, output_dir: &Path) {
     }
 }
 
+fn is_safe_bundle_filename(name: &str) -> bool {
+    !name.starts_with('-')
+        && (name.ends_with(".pdf")
+            || name == "Verification_Certificate.json"
+            || name == "index.html")
+        && name != "SHA256SUMS"
+}
+
+fn collect_bundle_artifacts(output_dir: &Path) -> Vec<String> {
+    let entries = fs::read_dir(output_dir).unwrap();
+    let mut artifacts = Vec::new();
+    for entry in entries.filter_map(|e| e.ok()) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('-') {
+            eprintln!("Warning: ignoring filename with leading dash: {}", name);
+            continue;
+        }
+        if is_safe_bundle_filename(&name) {
+            artifacts.push(name);
+        }
+    }
+    artifacts.sort();
+    artifacts.dedup();
+    artifacts
+}
+
+fn build_tar_args(files_to_pack: &[String]) -> Vec<&str> {
+    let mut tar_args = vec!["-czf", "papers-bundle.tar.gz", "--"];
+    let file_refs: Vec<&str> = files_to_pack.iter().map(String::as_str).collect();
+    tar_args.extend(file_refs);
+    tar_args
+}
+
+fn build_checksum_args<'a>(cmd: &str, checksum_targets: &'a [String]) -> Vec<&'a str> {
+    let mut cmd_args: Vec<&'a str> = Vec::new();
+    if cmd == "shasum" {
+        cmd_args.push("-a");
+        cmd_args.push("256");
+    }
+    cmd_args.push("--");
+    let target_refs: Vec<&'a str> = checksum_targets.iter().map(String::as_str).collect();
+    cmd_args.extend(target_refs);
+    cmd_args
+}
+
 pub fn package_release_bundle(output_dir: &Path) {
     let cert_path = Path::new("Verification_Certificate.json");
     if cert_path.exists() {
@@ -183,21 +228,8 @@ pub fn package_release_bundle(output_dir: &Path) {
     }
 
     let bundle_file = output_dir.join("papers-bundle.tar.gz");
-    let mut tar_args = vec!["-czf", "papers-bundle.tar.gz"];
-
-    let dir_entries = fs::read_dir(output_dir).unwrap();
-    let mut files_to_pack = Vec::new();
-    for entry in dir_entries.filter_map(|e| e.ok()) {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.ends_with(".pdf") || name == "Verification_Certificate.json" || name == "index.html"
-        {
-            files_to_pack.push(name);
-        }
-    }
-    files_to_pack.sort();
-
-    let file_refs: Vec<&str> = files_to_pack.iter().map(|s| s.as_str()).collect();
-    tar_args.extend(file_refs);
+    let files_to_pack = collect_bundle_artifacts(output_dir);
+    let tar_args = build_tar_args(&files_to_pack);
 
     let tar_status = Command::new("tar")
         .current_dir(output_dir)
@@ -222,27 +254,11 @@ fn generate_sha256sums(output_dir: &Path) {
     };
 
     let mut checksum_targets = vec!["papers-bundle.tar.gz".to_string()];
-    let entries = fs::read_dir(output_dir).unwrap();
-    for entry in entries.filter_map(|e| e.ok()) {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if (name.ends_with(".pdf")
-            || name == "Verification_Certificate.json"
-            || name == "index.html")
-            && name != "SHA256SUMS"
-        {
-            checksum_targets.push(name);
-        }
-    }
+    checksum_targets.extend(collect_bundle_artifacts(output_dir));
     checksum_targets.sort();
     checksum_targets.dedup();
 
-    let mut cmd_args: Vec<&str> = Vec::new();
-    if cmd == "shasum" {
-        cmd_args.push("-a");
-        cmd_args.push("256");
-    }
-    let target_refs: Vec<&str> = checksum_targets.iter().map(|s| s.as_str()).collect();
-    cmd_args.extend(target_refs);
+    let cmd_args = build_checksum_args(cmd, &checksum_targets);
 
     let output = Command::new(cmd)
         .current_dir(output_dir)
@@ -258,6 +274,7 @@ fn generate_sha256sums(output_dir: &Path) {
             let check_status = Command::new(cmd)
                 .current_dir(output_dir)
                 .arg(flag)
+                .arg("--")
                 .arg("SHA256SUMS")
                 .status();
             if !check_status.map(|s| s.success()).unwrap_or(false) {
@@ -449,3 +466,6 @@ fn escape_html(s: &str) -> String {
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
 }
+
+#[cfg(test)]
+mod tests;

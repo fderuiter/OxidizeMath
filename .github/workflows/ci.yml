@@ -361,19 +361,20 @@ jobs:
 
   package:
     name: Package Installers (${{ matrix.os }})
-    if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
-    needs: build-and-test
+    needs: pre-flight
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
+      fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            target: deb
-          - os: macos-latest
-            target: dmg
-          - os: windows-latest
-            target: wix
+        include: >-
+          ${{
+            fromJSON(
+              (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+              && '[{"os":"ubuntu-latest","target":"deb"},{"os":"macos-latest","target":"dmg"},{"os":"windows-latest","target":"wix"}]'
+              || '[{"os":"ubuntu-latest","target":"deb"}]'
+            )
+          }}
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -394,7 +395,8 @@ jobs:
       - name: Install cargo-packager
         env:
           CARGO_PACKAGER_VERSION: "0.11.8"
-        run: cargo binstall --no-confirm --no-compile cargo-packager@${{ env.CARGO_PACKAGER_VERSION }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo binstall --no-confirm --disable-strategies compile cargo-packager@${{ env.CARGO_PACKAGER_VERSION }}
 
       - name: Build and Package
         shell: bash
@@ -405,12 +407,12 @@ jobs:
       - name: Generate SHA-256 Manifest
         shell: bash
         run: |
-          if [ ! -d "dist" ]; then
-            echo "Error: dist directory does not exist" >&2
+          if [ ! -d "math_explorer_gui/dist" ]; then
+            echo "Error: math_explorer_gui/dist directory does not exist" >&2
             exit 1
           fi
 
-          cd dist
+          cd math_explorer_gui/dist
 
           if command -v sha256sum >/dev/null 2>&1; then
             SHACMD="sha256sum"
@@ -424,15 +426,16 @@ jobs:
           fi
 
           shopt -s nullglob
+          shopt -u dotglob
           files=()
-          for f in *; do
+          for f in *.deb *.dmg *.msi *.exe *.wix; do
             if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
               files+=("$f")
             fi
           done
 
           if [ ${#files[@]} -eq 0 ]; then
-            echo "Error: No build artifacts found in dist" >&2
+            echo "Error: No build artifacts found in math_explorer_gui/dist" >&2
             exit 1
           fi
 
@@ -450,12 +453,21 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: math_explorer-${{ matrix.target }}
-          path: dist/*
+          path: |
+            math_explorer_gui/dist/*.deb
+            math_explorer_gui/dist/*.dmg
+            math_explorer_gui/dist/*.msi
+            math_explorer_gui/dist/*.exe
+            math_explorer_gui/dist/*.wix
+            math_explorer_gui/dist/SHA256SUMS
+            !math_explorer_gui/dist/.*
+            !math_explorer_gui/dist/.*/**
+          if-no-files-found: error
 
   publish-release:
     name: Publish Release
     if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && startsWith(github.ref, 'refs/tags/v')
-    needs: [package, compile-papers]
+    needs: [build-and-test, package, compile-papers]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
