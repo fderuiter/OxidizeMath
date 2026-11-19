@@ -318,7 +318,11 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
         obj.insert("dt".to_string(), serde_json::json!(0.2));
     }
     let modified = serde_json::to_string(&val).unwrap();
-    load_active(&mut framework, &modified);
+    framework
+        .active_tool
+        .as_mut()
+        .unwrap()
+        .load_state(&modified);
     egui_plot::append_last_plot_datasets(&[("Modified Run".to_string(), vec![[0.0, 5.0]])]);
     framework.current_valid_plot_datasets = vec![("Modified Run".to_string(), vec![[0.0, 5.0]])];
     framework.cache_valid_snapshot();
