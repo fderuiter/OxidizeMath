@@ -1,6 +1,6 @@
 # OxidizeMath Agent & Developer Verification Guide
 
-This guide documents repository conventions, local Cargo build and test commands, domain feature matrix checks, WebAssembly bundle verification, workflow linting, and release packaging checks for contributors and automated coding agents working in the OxidizeMath workspace. See [README.md](README.md) for an architectural overview, [CONTRIBUTING.md](CONTRIBUTING.md) for engineering and NASA Power of 10 safety standards (consolidated in `CONTRIBUTING.md` per [ADR 0005](docs/adr/0005-active-documentation-standard.md)), and [docs/README.md](docs/README.md) for the documentation index.
+This guide documents repository conventions, local Cargo build and test commands, domain feature matrix checks, WebAssembly bundle verification, workflow linting, release packaging checks, and academic paper compilation checks for contributors and automated coding agents working in the OxidizeMath workspace. See [README.md](README.md) for an architectural overview, [CONTRIBUTING.md](CONTRIBUTING.md) for engineering and NASA Power of 10 safety standards (consolidated in `CONTRIBUTING.md` per [ADR 0005](docs/adr/0005-active-documentation-standard.md)), and [docs/README.md](docs/README.md) for the documentation index.
 
 ## 1. Architecture, Policy & Documentation Rules
 
@@ -163,7 +163,10 @@ bash scripts/verify_wasm_budget.sh math_explorer_gui/dist
 
 ## 5. Local Release Packaging Checks
 
-Pull requests automatically execute the Linux Debian (`deb`) installer build in the `package` job of [.github/workflows/ci.yml](.github/workflows/ci.yml), while `main` pushes, `v*` tag pushes, and `workflow_dispatch` runs build all three desktop installer targets (`deb`, `dmg`, and `wix`).
+The `package` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) defines a static three-OS matrix (`ubuntu-latest`/`deb`, `macos-latest`/`dmg`, and `windows-latest`/`wix`) so every workflow event posts deterministic `Package Installers` check runs across all three operating systems:
+
+- **Linux (`deb`)**: Runs on every `pull_request`, `merge_group`, `push`, and `workflow_dispatch` event.
+- **macOS (`dmg`) & Windows (`wix`)**: Run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `pre-flight` sets `installer_changed=true` (diffs touching `math_explorer_gui/**`, [Cargo.toml](Cargo.toml), `Cargo.lock`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when git diff falls back). On unrelated pull requests (`installer_changed=false`), the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` and skip build, manifest, and upload steps via `if:`.
 
 ### Prerequisites (Ubuntu / Debian)
 
@@ -217,4 +220,31 @@ Clean up local `math_explorer_gui/dist` build outputs before committing so untra
 
 ```bash
 rm -rf math_explorer_gui/dist
+```
+
+## 6. Local Academic Paper Compilation Checks
+
+Because `traceability` only checks `.tex` filename presence in `papers/` and `.githooks/pre-commit` omits LaTeX builds so contributors do not need TeXLive for unrelated Rust commits, [.github/workflows/ci.yml](.github/workflows/ci.yml) enforces full paper compilation in the `compile-papers` (`Compile Academic Papers`) job whenever `pre-flight` sets `papers_changed=true` on `pull_request` (diffs touching `papers/**`, `apps/xtask/src/papers*`, [traceability.toml](traceability.toml), or [.github/workflows/ci.yml](.github/workflows/ci.yml), or on git diff fallback) and unconditionally on `merge_group`, `push`, and `workflow_dispatch`.
+
+### Prerequisites (Ubuntu / Debian)
+
+Install the TeXLive packages used by `compile-papers` in [.github/workflows/ci.yml](.github/workflows/ci.yml):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science texlive-binaries
+```
+
+### Compile All 28 Academic Papers via `xtask`
+
+Run the paper compiler defined in [apps/xtask/src/papers.rs](apps/xtask/src/papers.rs) to execute multi-pass `pdflatex` (`-no-shell-escape -interaction=nonstopmode -halt-on-error`) and `bibtex`, verify `.blg` and `.log` outputs for unresolved citations or undefined references across all 28 `.tex` manuscripts, generate `papers/output/index.html`, and package `papers/output/papers-bundle.tar.gz` alongside `papers/output/SHA256SUMS`:
+
+```bash
+cargo run -p xtask -- compile-papers
+```
+
+Clean up local `papers/output` build artifacts after verification so generated PDFs, auxiliary TeX logs, HTML index files, and release tarballs are not left in the workspace:
+
+```bash
+rm -rf papers/output
 ```
