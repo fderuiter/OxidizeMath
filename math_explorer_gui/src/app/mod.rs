@@ -68,6 +68,7 @@ pub struct MathExplorerApp {
     pub(super) show_errors: bool,
     pub(super) show_help_menu: bool,
     pub theme: ThemeMode,
+    pub(super) last_synced_theme: Option<ThemeMode>,
     pub command_palette: CommandPalette,
     pub session_manager: WorkspaceSessionManager,
     pub viewport_layout: ViewportLayout,
@@ -100,6 +101,7 @@ impl Default for MathExplorerApp {
             show_errors: true,
             show_help_menu: false,
             theme: ThemeMode::Dark,
+            last_synced_theme: Some(ThemeMode::Dark),
             command_palette: CommandPalette::default(),
             session_manager: WorkspaceSessionManager::new(),
             viewport_layout: ViewportLayout::Single,
@@ -128,12 +130,7 @@ impl MathExplorerApp {
 
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
-
-        if let Some(storage) = cc.storage {
-            if let Some(state_str) = storage.get_string(eframe::APP_KEY) {
-                app.load_state_from_json(&state_str);
-            }
-        }
+        theme::init_startup_theme(&mut app, cc);
 
         #[cfg(target_os = "macos")]
         macos_menu::setup_macos_menu(&app);
@@ -257,9 +254,7 @@ impl eframe::App for MathExplorerApp {
             );
         });
 
-        if ctx.style().visuals != self.theme.visuals() {
-            ctx.set_visuals(self.theme.visuals());
-        }
+        theme::sync_frame_theme(self, ctx, frame);
 
         crate::accessibility::ensure_plot_live_bridge();
 
@@ -296,6 +291,7 @@ impl eframe::App for MathExplorerApp {
         session_mgr.register_and_check_shortcuts(ctx, self);
         session_mgr.poll(self, ctx);
         self.session_manager = session_mgr;
+        theme::sync_frame_theme(self, ctx, frame);
 
         viewport::focus::register_and_handle_pane_focus_shortcuts(self, ctx);
 
@@ -479,6 +475,7 @@ impl eframe::App for MathExplorerApp {
         let mut session_manager = std::mem::take(&mut self.session_manager);
         session_manager.track_frame_changes(ctx, self);
         self.session_manager = session_manager;
+        theme::sync_frame_theme(self, ctx, frame);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 const INDEX_HTML: &str = include_str!("../index.html");
+const RELOAD_JS: &str = include_str!("../reload.js");
 const FAVICON_SVG: &str = include_str!("../icons/favicon.svg");
 const SITE_WEBMANIFEST: &str = include_str!("../site.webmanifest");
 
@@ -149,6 +150,105 @@ fn test_adaptive_shell_theme_media_queries() {
         assert!(
             INDEX_HTML.contains(rule),
             "index.html stylesheet must define adaptive theme rule: {rule}"
+        );
+    }
+}
+
+#[test]
+fn test_media_queries_scoped_to_not_data_theme_and_contrast_precedence() {
+    let light_pos = INDEX_HTML
+        .find("@media (prefers-color-scheme: light)")
+        .expect("light media query must exist");
+    let contrast_pos = INDEX_HTML
+        .find("@media (prefers-contrast: more)")
+        .expect("prefers-contrast media query must exist");
+    let forced_pos = INDEX_HTML
+        .find("@media (forced-colors: active)")
+        .expect("forced-colors media query must exist");
+
+    assert!(
+        light_pos < contrast_pos,
+        "@media (prefers-contrast: more) must follow @media (prefers-color-scheme: light)"
+    );
+    let light_block = &INDEX_HTML[light_pos..contrast_pos];
+    let contrast_block = &INDEX_HTML[contrast_pos..forced_pos];
+
+    for selector in [
+        "html:not([data-theme])",
+        "html:not([data-theme]) body",
+        "html:not([data-theme]) #loading_indicator",
+        "html:not([data-theme]) #error_container",
+        "html:not([data-theme]) .spinner",
+    ] {
+        assert!(
+            light_block.contains(selector),
+            "light media block must scope selector: {selector}"
+        );
+        assert!(
+            contrast_block.contains(selector),
+            "prefers-contrast media block must scope selector: {selector}"
+        );
+    }
+}
+
+#[test]
+fn test_explicit_data_theme_selectors_and_theme_color_tokens() {
+    for selector in [
+        "html[data-theme=\"dark\"]",
+        "html[data-theme=\"dark\"] body",
+        "html[data-theme=\"dark\"] #loading_indicator",
+        "html[data-theme=\"dark\"] #error_container",
+        "html[data-theme=\"dark\"] .spinner",
+        "html[data-theme=\"light\"]",
+        "html[data-theme=\"light\"] body",
+        "html[data-theme=\"light\"] #loading_indicator",
+        "html[data-theme=\"light\"] #error_container",
+        "html[data-theme=\"light\"] .spinner",
+        "html[data-theme=\"high-contrast\"]",
+        "html[data-theme=\"high-contrast\"] body",
+        "html[data-theme=\"high-contrast\"] #loading_indicator",
+        "html[data-theme=\"high-contrast\"] #error_container",
+        "html[data-theme=\"high-contrast\"] .spinner",
+    ] {
+        assert!(
+            INDEX_HTML.contains(selector),
+            "index.html must define explicit override selector: {selector}"
+        );
+    }
+
+    for token in [
+        "content=\"#121214\"",
+        "content=\"#f8f8f8\"",
+        "content=\"#000000\"",
+    ] {
+        assert!(
+            INDEX_HTML.contains(token),
+            "index.html head must declare theme-color token: {token}"
+        );
+    }
+}
+
+#[test]
+fn test_reload_js_syncs_saved_theme_from_local_storage_safely() {
+    for required in [
+        "window.localStorage",
+        "getItem('app')",
+        "JSON.parse",
+        "try {",
+        "catch (_err)",
+        "schema_version",
+        "app_state",
+        "dataset.theme",
+        "color-scheme",
+        "meta[name=\"theme-color\"]",
+        "#121214",
+        "#f8f8f8",
+        "#000000",
+        "high-contrast",
+    ] {
+        assert!(
+            RELOAD_JS.contains(required),
+            "reload.js must include pre-boot theme synchronization contract: {required}"
         );
     }
 }
