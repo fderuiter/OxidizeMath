@@ -93,24 +93,6 @@ impl Div<f32> for Point3D {
     }
 }
 
-// Kept for backward compatibility if needed, but Mesh now uses indexing.
-#[derive(Debug, Clone)]
-#[allow(missing_docs)]
-pub struct Triangle {
-    #[allow(missing_docs)]
-    pub v1: Point3D,
-    #[allow(missing_docs)]
-    pub v2: Point3D,
-    #[allow(missing_docs)]
-    pub v3: Point3D,
-    #[allow(missing_docs)]
-    pub n1: Point3D,
-    #[allow(missing_docs)]
-    pub n2: Point3D,
-    #[allow(missing_docs)]
-    pub n3: Point3D,
-}
-
 #[derive(Debug, Clone, Default)]
 #[allow(missing_docs)]
 pub struct Mesh {
