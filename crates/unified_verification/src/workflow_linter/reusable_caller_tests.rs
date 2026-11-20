@@ -1,19 +1,7 @@
 use super::*;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-static REUSABLE_TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn temp_repo(tag: &str) -> PathBuf {
-    let id = REUSABLE_TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let dir = std::env::temp_dir().join(format!(
-        "oxidize_reusable_caller_{}_{}_{}",
-        tag,
-        std::process::id(),
-        id
-    ));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+    crate::utils::test_utils::create_temp_test_dir(&format!("oxidize_reusable_caller_{tag}"))
 }
 
 fn write_file(root: &Path, rel: &str, content: &str) {

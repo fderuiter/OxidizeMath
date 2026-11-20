@@ -145,17 +145,7 @@ fn validate_action_in_dir_str(content: &str, repo_root: &Path) -> Result<(), Str
 }
 
 fn make_temp_workspace(tag: &str) -> PathBuf {
-    static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let dir = std::env::temp_dir().join(format!(
-        "oxidize_pinning_{}_{}_{}",
-        tag,
-        std::process::id(),
-        id
-    ));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+    crate::utils::test_utils::create_temp_test_dir(&format!("oxidize_pinning_{tag}"))
 }
 
 fn write_fixture(root: &Path, rel: &str, content: &str) {
