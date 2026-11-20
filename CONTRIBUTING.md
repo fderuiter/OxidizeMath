@@ -149,7 +149,7 @@ We take reliability seriously. Before submitting, ensure all tests pass across t
 
 ```bash
 # Run tests across all workspace member crates
-cargo test --workspace
+cargo test --workspace --all-features
 
 # Run checks across all workspace members (including GUI and tooling)
 cargo check --workspace

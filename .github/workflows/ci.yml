@@ -163,6 +163,7 @@ jobs:
           target: ${{ matrix.target }}
 
       - name: Build Unified Verification Tool
+        if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
         run: cargo build -p unified_verification --release
 
       - name: Build (Native)
@@ -173,22 +174,6 @@ jobs:
         if: matrix.target != 'wasm32-unknown-unknown'
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Check Workspace Benchmarks (Native)
-        if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo check --workspace --benches --all-features --verbose
-
-      - name: Run Clippy Benchmarks (Native)
-        if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo clippy --workspace --benches --all-features -- -D warnings
-
-      - name: Check Workspace Examples (Native)
-        if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo check --workspace --examples --all-features --verbose
-
-      - name: Run Clippy Examples (Native)
-        if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo clippy --workspace --examples --all-features -- -D warnings
-
       - name: Install cargo-llvm-cov
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
         uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
@@ -196,8 +181,8 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Run Workspace Tests (Native)
-        if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo test --workspace --lib --tests
+        if: runner.os != 'Linux' && matrix.target != 'wasm32-unknown-unknown'
+        run: cargo test --workspace --lib --tests --all-features
 
       - name: Run Integrity Verified Suite
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
@@ -233,17 +218,13 @@ jobs:
         if: matrix.target == 'wasm32-unknown-unknown'
         run: |
           sudo apt-get update
-          sudo apt-get install -y binaryen brotli
+          sudo apt-get install -y brotli
           cargo binstall --no-confirm trunk
 
       - name: Build Web Application
         if: matrix.target == 'wasm32-unknown-unknown'
         working-directory: math_explorer_gui
         run: trunk build --release
-
-      - name: Pre-compress Web Distribution Assets
-        if: matrix.target == 'wasm32-unknown-unknown'
-        run: bash scripts/compress_dist.sh math_explorer_gui/dist
 
       - name: Verify WebAssembly Size Budget
         if: matrix.target == 'wasm32-unknown-unknown'

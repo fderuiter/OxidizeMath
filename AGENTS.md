@@ -92,7 +92,7 @@ cargo run -p unified_verification --release -- verify-suite
 cargo run -p xtask -- verify-suite
 
 # Native unit/integration tests and WebAssembly target checks
-cargo test --workspace --lib --tests
+cargo test --workspace --lib --tests --all-features
 cargo check --workspace --target wasm32-unknown-unknown --all-features
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
@@ -125,13 +125,13 @@ cargo run -p xtask -- test-features core-only
 
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
-In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` compiles the web application once with `trunk build --release`, pre-compresses assets, enforces the 3 MB compressed bundle budget, generates `SHA256SUMS`, and uploads the GitHub Pages artifact on `refs/heads/main` before `deploy-pages` publishes it.
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to pre-compress assets), enforces the 3 MB compressed bundle budget, generates `SHA256SUMS`, and uploads the GitHub Pages artifact on `refs/heads/main` before `deploy-pages` publishes it.
 
 ```bash
 # 1. Install the WebAssembly Rust target, Trunk, and compression utilities (Ubuntu / Debian)
 rustup target add wasm32-unknown-unknown
 sudo apt-get update
-sudo apt-get install -y binaryen brotli
+sudo apt-get install -y brotli
 cargo binstall --no-confirm trunk
 
 # 2. Type-check and lint workspace crates and tests for WebAssembly
@@ -139,9 +139,8 @@ cargo check --workspace --target wasm32-unknown-unknown --all-features --verbose
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
 cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
-# 3. Build release WebAssembly distribution, compress assets, and verify the 3 MB size budget
+# 3. Build release WebAssembly distribution (post_build runs scripts/finalize_web_dist.sh to pre-compress assets) and verify the 3 MB size budget
 (cd math_explorer_gui && trunk build --release)
-bash scripts/compress_dist.sh math_explorer_gui/dist
 bash scripts/verify_wasm_budget.sh math_explorer_gui/dist
 
 # 4. Generate and verify the Pages SHA256SUMS manifest
