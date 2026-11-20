@@ -185,8 +185,10 @@ fn test_all_39_pane_side_panels_scroll_collapse_and_keep_positive_canvas_at_twen
             clear_pane_side_panel_records(&ctx);
             let _ = run_frame_1024(&ctx, &mut app, Vec::new());
             let records = pane_side_panel_records(&ctx);
-            let pane0_rect =
-                egui::Rect::from_min_max(egui::pos2(0.0, 60.0), egui::pos2(204.8, 740.0));
+            let pane0_rect = ctx
+                .data(|d| d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS")))
+                .and_then(|rects| rects.first().copied())
+                .expect("Pane 0 rect recorded in LAST_PANE_RECTS");
             assert_records_valid_and_positive_canvas(&ctx, pane0_rect);
 
             for rec in &records {
@@ -379,12 +381,10 @@ fn test_quad_starter_gallery_hoists_to_root_clamps_close_button_and_loads_into_s
         .load_state(r#"{"dt":0.05,"paused":true}"#);
     let _ = run_frame_1024(&ctx, &mut app, Vec::new());
 
-    let pane_search_rects = [
-        egui::Rect::from_min_max(egui::pos2(0.0, 40.0), egui::pos2(310.0, 270.0)),
-        egui::Rect::from_min_max(egui::pos2(310.0, 40.0), egui::pos2(1024.0, 270.0)),
-        egui::Rect::from_min_max(egui::pos2(0.0, 270.0), egui::pos2(310.0, 768.0)),
-        egui::Rect::from_min_max(egui::pos2(310.0, 270.0), egui::pos2(1024.0, 768.0)),
-    ];
+    let pane_search_rects = ctx
+        .data(|d| d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS")))
+        .expect("QuadGrid pane rects recorded in LAST_PANE_RECTS");
+    assert_eq!(pane_search_rects.len(), 4);
 
     for (source_pane, pane_region) in pane_search_rects.into_iter().enumerate() {
         verify_pane_starter_gallery_roundtrip(&ctx, &mut app, source_pane, pane_region);
