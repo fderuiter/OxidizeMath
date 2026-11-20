@@ -17,11 +17,6 @@ use egui_plot::export_primitives::{
 
 use super::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework};
 
-/// Collects drawable [`ExportPrimitive`] items for `tool`, combining raster hooks, captured plot primitives, and fallback datasets.
-pub fn resolve_tool_primitives(tool: &dyn InteractiveTool) -> Vec<ExportPrimitive> {
-    resolve_tool_primitives_with_fallback(tool, &[])
-}
-
 fn resolve_tool_primitives_with_fallback(
     tool: &dyn InteractiveTool,
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
@@ -54,14 +49,6 @@ fn resolve_tool_primitives_with_fallback(
 fn valid_raster_image(tool: &dyn InteractiveTool) -> Option<egui::ColorImage> {
     tool.export_raster_image()
         .filter(|img| img.width() > 0 && img.height() > 0 && !img.pixels.is_empty())
-}
-
-/// Renders the current frame of `tool` into an offscreen [`egui::ColorImage`], rejecting empty payloads.
-pub fn render_tool_color_image(
-    tool: &dyn InteractiveTool,
-    options: &ExportOptions,
-) -> Result<egui::ColorImage, String> {
-    render_tool_color_image_with_fallback(tool, &[], options)
 }
 
 fn render_tool_color_image_with_fallback(
@@ -102,14 +89,6 @@ fn render_tool_color_image_with_fallback(
     render_primitives_image(&primitives, options)
 }
 
-/// Renders the current frame of `tool` into high-resolution PNG bytes.
-pub fn render_tool_png(
-    tool: &dyn InteractiveTool,
-    options: &ExportOptions,
-) -> Result<Vec<u8>, String> {
-    render_tool_png_with_fallback(tool, &[], options)
-}
-
 fn render_tool_png_with_fallback(
     tool: &dyn InteractiveTool,
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
@@ -117,14 +96,6 @@ fn render_tool_png_with_fallback(
 ) -> Result<Vec<u8>, String> {
     let image = render_tool_color_image_with_fallback(tool, fallback_datasets, options)?;
     color32_image_to_png(&image)
-}
-
-/// Renders the current frame of `tool` into a vector (or embedded-raster) SVG string.
-pub fn render_tool_svg(
-    tool: &dyn InteractiveTool,
-    options: &ExportOptions,
-) -> Result<String, String> {
-    render_tool_svg_with_fallback(tool, &[], options)
 }
 
 fn render_tool_svg_with_fallback(
@@ -146,16 +117,6 @@ fn render_tool_svg_with_fallback(
         ));
     }
     export_primitives_svg(&primitives, options)
-}
-
-/// Samples and encodes a multi-frame GIF animation for `tool`, rejecting empty payloads and restoring saved tool state.
-pub fn render_tool_gif(
-    tool: &mut dyn InteractiveTool,
-    options: &ExportOptions,
-    frame_count: usize,
-    fps: u32,
-) -> Result<Vec<u8>, String> {
-    render_tool_gif_with_fallback(tool, &[], options, frame_count, fps)
 }
 
 fn render_tool_gif_with_fallback(
@@ -251,21 +212,6 @@ fn encode_progressive_primitive_gif(
         }
     }
     color32_images_to_gif(&images, fps)
-}
-
-/// Renders `tool` offscreen and copies the resulting `ColorImage` to the system clipboard.
-pub fn copy_tool_image_to_clipboard(
-    tool: &dyn InteractiveTool,
-    options: &ExportOptions,
-    ctx: Option<&egui::Context>,
-) -> Result<&'static str, String> {
-    copy_tool_image_to_clipboard_scoped(
-        tool,
-        &[],
-        options,
-        ctx,
-        egui::Id::new("framework_export_default"),
-    )
 }
 
 fn copy_tool_image_to_clipboard_scoped(

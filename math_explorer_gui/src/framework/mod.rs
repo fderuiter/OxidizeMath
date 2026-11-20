@@ -2,8 +2,8 @@ pub mod callout_overlay;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
-pub mod export_figure;
-pub mod export_queue;
+mod export_figure;
+mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
 pub mod export_types;
@@ -39,8 +39,7 @@ mod ui;
 pub use callout_overlay::*;
 pub use clamp::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
-pub use export_figure::*;
-pub use export_queue::*;
+pub(crate) use export_queue::*;
 pub use export_types::*;
 pub use math_input::*;
 pub use pane_scope::{
@@ -352,7 +351,7 @@ pub struct SimulationFramework {
     pub export_status_severity: ExportStatusSeverity,
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
-    pub export_queue: ExportQueue,
+    pub(crate) export_queue: ExportQueue,
 
     /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
