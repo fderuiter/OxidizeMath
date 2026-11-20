@@ -181,7 +181,7 @@ pub(super) fn sync_focused_pane_from_widget_focus(
     }
     if let Some(idx) = pane_rects
         .iter()
-        .position(|rect| rect.contains(resp.rect.center()))
+        .position(|&rect| response_belongs_to_pane(&resp, rect))
     {
         if !modal_or_popup && !has_pending_pane_focus {
             app.focus_pane(idx);
@@ -212,6 +212,14 @@ pub(super) fn finish_pending_pane_focus(ctx: &egui::Context, should_focus_this_p
     }
 }
 
+pub(crate) fn response_belongs_to_pane(resp: &egui::Response, pane_rect: egui::Rect) -> bool {
+    if resp.interact_rect.is_positive() {
+        pane_rect.expand(0.5).contains(resp.interact_rect.center())
+    } else {
+        pane_rect.contains(resp.rect.center())
+    }
+}
+
 fn surrender_widget_focus_outside_rect(ctx: &egui::Context, target_rect: egui::Rect) {
     let Some(fid) = ctx.memory(|m| m.focused()) else {
         return;
@@ -220,7 +228,7 @@ fn surrender_widget_focus_outside_rect(ctx: &egui::Context, target_rect: egui::R
         return;
     }
     let inside = ctx.read_response(fid).is_some_and(|r| {
-        r.layer_id.order != egui::Order::Background || target_rect.contains(r.rect.center())
+        r.layer_id.order != egui::Order::Background || response_belongs_to_pane(&r, target_rect)
     });
     if !inside {
         ctx.memory_mut(|m| m.surrender_focus(fid));
@@ -243,10 +251,11 @@ pub(super) fn resolve_frame_pane_focus(
     let current_target = app.active_focused_pane();
     let last_resolved =
         ctx.data(|d| d.get_temp::<usize>(egui::Id::new(LAST_RESOLVED_FOCUSED_PANE_KEY)));
-    if last_resolved.is_some_and(|prev| prev != current_target) {
-        if let Some(&target_rect) = pane_rects.get(current_target) {
-            surrender_widget_focus_outside_rect(ctx, target_rect);
-        }
+    if let Some(&target_rect) = last_resolved
+        .filter(|&prev| prev != current_target)
+        .and_then(|_| pane_rects.get(current_target))
+    {
+        surrender_widget_focus_outside_rect(ctx, target_rect);
     }
 
     let shell_focused = sync_focused_pane_from_widget_focus(

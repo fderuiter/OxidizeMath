@@ -210,11 +210,16 @@ impl MathExplorerApp {
         self.pane_slots.slot_mut(pane_idx)?.ensure_tab(tab_idx)
     }
 
-    /// Snapshots the focused secondary pane slot if active.
-    pub(super) fn snapshot_focused_secondary_slot(&mut self) {
-        let target = self.active_focused_pane();
-        if let Some(slot) = self.pane_slots.slot_mut(target) {
-            slot.snapshot_active();
+    /// Clears cached serialized JSON for active primary and secondary viewport panes.
+    pub(super) fn clear_active_pane_caches(&self) {
+        let primary_idx = self.active_primary_tab_index();
+        if let Some(tab) = self.tabs.get(primary_idx) {
+            self.tab_state_cache.invalidate_tab(tab.name());
+        }
+        for slot in &self.pane_slots.slots {
+            if slot.active.is_some() {
+                *slot.active_cache.borrow_mut() = None;
+            }
         }
     }
 
@@ -333,19 +338,22 @@ impl MathExplorerApp {
         }
         let pane_count = self.viewport_layout.pane_count().min(pane_rects.len());
         for event in &raw_input.events {
-            if let egui::Event::PointerButton {
-                pos, pressed: true, ..
-            }
-            | egui::Event::Touch {
-                pos,
-                phase: egui::TouchPhase::Start,
-                ..
-            } = event
-            {
-                if let Some(idx) = (0..pane_count).find(|&i| pane_rects[i].contains(*pos)) {
-                    self.focus_pane(idx);
-                    Self::surrender_focus_outside_pane(ctx, pane_rects[idx]);
+            let press_pos = match event {
+                egui::Event::PointerButton {
+                    pos, pressed: true, ..
                 }
+                | egui::Event::Touch {
+                    pos,
+                    phase: egui::TouchPhase::Start,
+                    ..
+                } => Some(*pos),
+                _ => None,
+            };
+            if let Some(idx) =
+                press_pos.and_then(|p| (0..pane_count).find(|&i| pane_rects[i].contains(p)))
+            {
+                self.focus_pane(idx);
+                Self::surrender_focus_outside_pane(ctx, pane_rects[idx]);
             }
         }
     }
@@ -357,9 +365,9 @@ impl MathExplorerApp {
         if super::viewport::sash::is_any_sash_id(fid) {
             return;
         }
-        let inside_target = ctx
-            .read_response(fid)
-            .is_some_and(|resp| target_pane_rect.contains(resp.rect.center()));
+        let inside_target = ctx.read_response(fid).is_some_and(|resp| {
+            super::viewport::focus::response_belongs_to_pane(&resp, target_pane_rect)
+        });
         if !inside_target {
             ctx.memory_mut(|m| m.surrender_focus(fid));
         }

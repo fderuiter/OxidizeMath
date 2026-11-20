@@ -79,7 +79,7 @@ cargo run -p xtask -- lint-all
 
 This command executes all workspace quality gates:
 1. **Formatting**: `cargo fmt --all -- --check`
-2. **Cargo Profile Verification**: `cargo run -p unified_verification --release -- check-profiles` (enforces workspace `[profile.release]` `overflow-checks = true` and rejects member `[profile.release]` overrides)
+2. **Cargo Profile & Lint Inheritance Verification**: `cargo run -p unified_verification --release -- check-profiles` (enforces workspace `[profile.release]` `overflow-checks = true`, rejects member `[profile.release]` overrides, and requires `[lints] workspace = true` in first-party member manifests)
 3. **AST Code Clone Detection**: `cargo run -p unified_verification --release -- check-duplicates` (blocks duplicated indexing and color-conversion AST patterns across first-party crates)
 4. **Public API Drift**: `cargo run -p unified_verification --release -- check-api-drift` (validates reachable public methods, traits, constants, statics, types, and `pub use` re-exports against `crates/unified_verification/api_baseline.json`)
 5. **Staged Architectural Decision Records**: `cargo run -p unified_verification --release -- verify-records --staged` (ensures staged edits to `crates/` or `math_explorer/` include an ADR under `docs/adr/`)
@@ -92,12 +92,12 @@ This command executes all workspace quality gates:
 8. **Documentation**: `cargo doc --workspace --no-deps` (with warnings treated as errors)
 9. **Documentation Tests**: `cargo test --doc --workspace --all-features`
 10. **Markdown Links**: `cargo run -p xtask -- check-markdown-links` (validates all internal relative markdown links)
-11. **CI Workflows**: `cargo run -p unified_verification --release -- lint-workflows` (validates GitHub Actions workflow permissions, concurrency controls, job timeouts, commit-pinned actions, and rejects direct `${{ github.* }}` interpolations in `run` scripts)
+11. **CI Workflows**: `cargo run -p unified_verification --release -- lint-workflows` (validates GitHub Actions workflows, local reusable workflows, and `.github/actions` composite actions for read-only permissions, concurrency controls, job timeouts with `jobs.<id>.uses` callers omitting `timeout-minutes`, commit-pinned actions, and rejects direct `${{ github.* }}`, `${{ inputs.* }}`, and non-static `${{ env.* }}` interpolations across workflow and composite `run` scripts)
 12. **Crate Documentation Audit**: `cargo run -p unified_verification --release -- check-docs` (verifies README files and entrypoint docs)
 13. **Traceability**: `cargo run -p unified_verification --release -- traceability` (validates architectural citations and test mappings)
 14. **Entropy & Secret Scanning**: `cargo run -p unified_verification --release -- check-entropy` (audits source files for secrets and unseeded entropy)
 15. **Dependency Vulnerabilities**: `cargo run -p unified_verification --release -- check-vulnerabilities` (scans dependencies against OSV advisories)
-16. **Policy Audit**: `cargo run -p unified_verification --release -- test-policy-audit` (detects unauthorized `dead_code`, `unused`, or `warnings` bypass attributes and unused dependencies)
+16. **Policy Audit**: `cargo run -p unified_verification --release -- test-policy-audit` (enforces `[lints] workspace = true` in first-party `Cargo.toml` manifests, rejects unauthorized `dead_code`/`unused`/`warnings` bypasses, blocks inner `#![allow]`/`#![expect]` and `mod` bypasses for `clippy::all`, `clippy::too_many_lines`, and `clippy::cognitive_complexity` plus item-level `clippy::all`, and detects unused dependencies)
 
 Individual gates, baseline regeneration, and the full coverage-backed verification suite can also be invoked directly:
 
@@ -149,7 +149,7 @@ We take reliability seriously. Before submitting, ensure all tests pass across t
 
 ```bash
 # Run tests across all workspace member crates
-cargo test --workspace
+cargo test --workspace --all-features
 
 # Run checks across all workspace members (including GUI and tooling)
 cargo check --workspace
@@ -267,4 +267,4 @@ To ensure reliability and verifiability, we adopt an adaptation of NASA's "Power
 
 10. **Compile with All Warnings**:
     *   **Rule**: All code must be compiled with all compiler warnings enabled.
-    *   **Implementation**: Treat warnings as errors. Run `cargo clippy -- -D warnings` regularly. Zero tolerance for compiler warnings.
+    *   **Implementation**: Treat warnings as errors. Inherit `[workspace.lints]` via `[lints] workspace = true` in every first-party `Cargo.toml`, avoid crate-level or module-level Clippy bypasses, and run `cargo clippy -- -D warnings` regularly. Zero tolerance for compiler warnings.

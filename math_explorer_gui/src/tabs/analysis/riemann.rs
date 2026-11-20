@@ -1,11 +1,17 @@
-use crate::framework::InteractiveTool;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::framework::{bounded_drag_value, enforce_ordered_drag_range, InteractiveTool};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints, Polygon};
 use math_explorer::pure_math::analysis::integration::{Integrator, Trapezoidal};
 
-#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum FunctionPreset {
+pub(crate) const RIEMANN_X_MIN_BOUND: f64 = -50.0;
+pub(crate) const RIEMANN_X_MAX_BOUND: f64 = 50.0;
+const RIEMANN_MIN_SPAN: f64 = 0.1;
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub(crate) enum FunctionPreset {
     SinX,
     XSquared,
     EToX,
@@ -13,10 +19,16 @@ enum FunctionPreset {
 
 impl FunctionPreset {
     fn evaluate(&self, x: f64) -> f64 {
+        if !x.is_finite() {
+            return 0.0;
+        }
         match self {
             FunctionPreset::SinX => x.sin(),
-            FunctionPreset::XSquared => x * x,
-            FunctionPreset::EToX => x.exp(),
+            FunctionPreset::XSquared => {
+                let clamped = x.clamp(-1e150, 1e150);
+                clamped * clamped
+            }
+            FunctionPreset::EToX => x.clamp(-700.0, 80.0).exp(),
         }
     }
 
@@ -30,11 +42,11 @@ impl FunctionPreset {
 }
 
 pub struct RiemannIntegrationTool {
-    preset: FunctionPreset,
-    min_x: f64,
-    max_x: f64,
-    steps: usize,
-    result: f64,
+    pub(crate) preset: FunctionPreset,
+    pub(crate) min_x: f64,
+    pub(crate) max_x: f64,
+    pub(crate) steps: usize,
+    pub(crate) result: f64,
     cached_trapezoid_polygons: Vec<Vec<[f64; 2]>>,
     cached_true_curve: Vec<[f64; 2]>,
 }
@@ -56,20 +68,41 @@ impl Default for RiemannIntegrationTool {
 }
 
 impl RiemannIntegrationTool {
-    fn recalculate(&mut self) {
-        if self.min_x >= self.max_x || self.steps == 0 {
+    pub(crate) fn recalculate(&mut self) {
+        if !self.min_x.is_finite()
+            || !self.max_x.is_finite()
+            || self.min_x >= self.max_x
+            || self.steps == 0
+        {
             self.result = 0.0;
             self.cached_trapezoid_polygons.clear();
             self.cached_true_curve.clear();
             return;
         }
 
+        let clamped_min = self.min_x.clamp(-700.0, 80.0);
+        let clamped_max = self.max_x.clamp(-700.0, 80.0);
         let integrator = Trapezoidal::new(self.steps);
         let f = |x: f64| self.preset.evaluate(x);
-        let res = integrator.integrate(f, self.min_x, self.max_x, 1e-6);
-        self.result = res.value;
+        let res = if matches!(self.preset, FunctionPreset::EToX)
+            && (clamped_min != self.min_x || clamped_max != self.max_x)
+        {
+            if clamped_min < clamped_max {
+                integrator.integrate(f, clamped_min, clamped_max, 1e-6).value
+            } else {
+                0.0
+            }
+        } else {
+            integrator.integrate(f, self.min_x, self.max_x, 1e-6).value
+        };
+        self.result = if res.is_finite() { res } else { 0.0 };
 
         let span = self.max_x - self.min_x;
+        if !span.is_finite() || span <= 0.0 {
+            self.cached_trapezoid_polygons.clear();
+            self.cached_true_curve.clear();
+            return;
+        }
         let plot_min = self.min_x - span * 0.1;
         let plot_max = self.max_x + span * 0.1;
 
@@ -78,144 +111,95 @@ impl RiemannIntegrationTool {
                 let x = plot_min + (plot_max - plot_min) * (i as f64 / 500.0);
                 [x, f(x)]
             })
+            .filter(|pt| pt[0].is_finite() && pt[1].is_finite())
             .collect();
 
-        let dx = (self.max_x - self.min_x) / (self.steps as f64);
+        let dx = span / (self.steps as f64);
         self.cached_trapezoid_polygons = (0..self.steps)
-            .map(|i| {
+            .filter_map(|i| {
                 let x0 = self.min_x + (i as f64) * dx;
                 let x1 = x0 + dx;
                 let y0 = f(x0);
                 let y1 = f(x1);
-
-                vec![[x0, 0.0], [x1, 0.0], [x1, y1], [x0, y0]]
+                [x0, x1, y0, y1]
+                    .iter()
+                    .all(|v| v.is_finite())
+                    .then(|| vec![[x0, 0.0], [x1, 0.0], [x1, y1], [x0, y0]])
             })
             .collect();
     }
-}
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RiemannState {
-    preset: FunctionPreset,
-    min_x: f64,
-    max_x: f64,
-    steps: usize,
-}
-
-impl InteractiveTool for RiemannIntegrationTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
-    fn name(&self) -> &'static str {
-        "Riemann Integration"
-    }
-    fn domain(&self) -> &'static str {
-        "analysis"
-    }
-
-    fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&RiemannState {
-            preset: self.preset,
-            min_x: self.min_x,
-            max_x: self.max_x,
-            steps: self.steps,
-        })
-        .ok()
-    }
-
-    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: RiemannState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid Riemann state: {e}"))?;
-        if !s.min_x.is_finite()
-            || !s.max_x.is_finite()
-            || s.min_x >= s.max_x
-            || !(1..=200).contains(&s.steps)
-        {
-            return Err("Riemann integration interval or partition count invalid".into());
-        }
-        self.preset = s.preset;
-        self.min_x = s.min_x;
-        self.max_x = s.max_x;
-        self.steps = s.steps;
-        self.recalculate();
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+    fn draw_preset_combo(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
+        ui.label("Function:");
+        egui::ComboBox::from_id_salt("function_preset")
+            .selected_text(self.preset.name())
+            .show_ui(ui, |ui| {
+                for (candidate, default_bounds) in [
+                    (FunctionPreset::SinX, (0.0, std::f64::consts::PI)),
+                    (FunctionPreset::XSquared, (-2.0, 2.0)),
+                    (FunctionPreset::EToX, (-2.0, 2.0)),
+                ] {
+                    if ui
+                        .selectable_value(&mut self.preset, candidate, candidate.name())
+                        .changed()
+                    {
+                        self.min_x = default_bounds.0;
+                        self.max_x = default_bounds.1;
+                        changed = true;
+                    }
+                }
+            });
+        changed
+    }
 
+    fn draw_controls(&mut self, parent_ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "riemann_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Integration Controls");
             ui.separator();
-
-            ui.label("Function:");
-            egui::ComboBox::from_id_salt("function_preset")
-                .selected_text(self.preset.name())
-                .show_ui(ui, |ui| {
-                    if ui
-                        .selectable_value(
-                            &mut self.preset,
-                            FunctionPreset::SinX,
-                            FunctionPreset::SinX.name(),
-                        )
-                        .changed()
-                    {
-                        changed = true;
-                        self.min_x = 0.0;
-                        self.max_x = std::f64::consts::PI;
-                    }
-                    if ui
-                        .selectable_value(
-                            &mut self.preset,
-                            FunctionPreset::XSquared,
-                            FunctionPreset::XSquared.name(),
-                        )
-                        .changed()
-                    {
-                        changed = true;
-                        self.min_x = -2.0;
-                        self.max_x = 2.0;
-                    }
-                    if ui
-                        .selectable_value(
-                            &mut self.preset,
-                            FunctionPreset::EToX,
-                            FunctionPreset::EToX.name(),
-                        )
-                        .changed()
-                    {
-                        changed = true;
-                        self.min_x = -2.0;
-                        self.max_x = 2.0;
-                    }
-                });
+            changed |= self.draw_preset_combo(ui);
 
             ui.add_space(10.0);
             ui.label("Integration Interval [min, max]");
+            let mut min_changed = false;
+            let mut max_changed = false;
             ui.horizontal(|ui| {
-                if ui
-                    .add(egui::DragValue::new(&mut self.min_x).speed(0.1))
-                    .changed()
-                {
-                    changed = true;
-                }
+                min_changed = ui
+                    .add(bounded_drag_value(
+                        &mut self.min_x,
+                        RIEMANN_X_MIN_BOUND..=RIEMANN_X_MAX_BOUND,
+                        0.1,
+                    ))
+                    .changed();
                 ui.label("to");
-                if ui
-                    .add(egui::DragValue::new(&mut self.max_x).speed(0.1))
-                    .changed()
-                {
-                    changed = true;
-                }
+                max_changed = ui
+                    .add(bounded_drag_value(
+                        &mut self.max_x,
+                        RIEMANN_X_MIN_BOUND..=RIEMANN_X_MAX_BOUND,
+                        0.1,
+                    ))
+                    .changed();
             });
-
-            if self.min_x >= self.max_x {
-                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-                ui.colored_label(palette.error, "min_x must be < max_x");
-            }
+            enforce_ordered_drag_range(
+                &mut self.min_x,
+                &mut self.max_x,
+                RIEMANN_X_MIN_BOUND,
+                RIEMANN_X_MAX_BOUND,
+                RIEMANN_MIN_SPAN,
+                min_changed,
+                max_changed,
+            );
+            changed |= min_changed || max_changed;
 
             ui.add_space(10.0);
-            if ui.add(egui::Slider::new(&mut self.steps, 1..=200).logarithmic(true).text("Partitions (N)"))
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.steps, 1..=200)
+                        .logarithmic(true)
+                        .text("Partitions (N)"),
+                )
                 .changed()
             {
                 changed = true;
@@ -225,22 +209,20 @@ impl InteractiveTool for RiemannIntegrationTool {
             ui.heading("Result");
             render_copyable_metric(ui, "Area", &format!("{:.6}", self.result));
         });
+        changed
+    }
 
-        if changed {
-            self.recalculate();
-        }
-
+    fn draw_plot(&self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Visualization");
-
-            // Calculate plotting bounds
-            let span = if self.max_x > self.min_x {
-                self.max_x - self.min_x
+            let valid_bounds =
+                self.min_x.is_finite() && self.max_x.is_finite() && self.max_x > self.min_x;
+            let (plot_min, plot_max) = if valid_bounds {
+                let span = self.max_x - self.min_x;
+                (self.min_x - span * 0.1, self.max_x + span * 0.1)
             } else {
-                2.0
+                (-1.0, 1.0)
             };
-            let plot_min = self.min_x - span * 0.1;
-            let plot_max = self.max_x + span * 0.1;
 
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let fill_base = palette.series_color(1);
@@ -262,14 +244,14 @@ impl InteractiveTool for RiemannIntegrationTool {
                 .x_axis_label("x")
                 .y_axis_label("f(x)")
                 .show(ui, |plot_ui| {
-                    plot_ui.line(true_line);
-                    for poly in &self.cached_trapezoid_polygons {
-                        let polygon =
-                            Polygon::new("", PlotPoints::new(poly.clone())).fill_color(poly_fill);
-                        plot_ui.polygon(polygon);
+                    if valid_bounds {
+                        plot_ui.line(true_line);
+                        for poly in &self.cached_trapezoid_polygons {
+                            let polygon = Polygon::new("", PlotPoints::new(poly.clone()))
+                                .fill_color(poly_fill);
+                            plot_ui.polygon(polygon);
+                        }
                     }
-
-                    // Add a zero line
                     plot_ui.line(
                         Line::new("", PlotPoints::new(vec![[plot_min, 0.0], [plot_max, 0.0]]))
                             .color(palette.graph_edge),
@@ -279,8 +261,87 @@ impl InteractiveTool for RiemannIntegrationTool {
     }
 }
 
-// [cite:graph_parameters_rust]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RiemannState {
+    preset: FunctionPreset,
+    min_x: f64,
+    max_x: f64,
+    steps: usize,
+}
 
+impl InteractiveTool for RiemannIntegrationTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+
+    fn name(&self) -> &'static str {
+        "Riemann Integration"
+    }
+
+    fn domain(&self) -> &'static str {
+        "analysis"
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.min_x.is_finite()
+            && self.max_x.is_finite()
+            && (RIEMANN_X_MIN_BOUND..=RIEMANN_X_MAX_BOUND).contains(&self.min_x)
+            && (RIEMANN_X_MIN_BOUND..=RIEMANN_X_MAX_BOUND).contains(&self.max_x)
+            && self.min_x < self.max_x
+            && (1..=200).contains(&self.steps)
+            && self.result.is_finite()
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&RiemannState {
+            preset: self.preset,
+            min_x: self.min_x,
+            max_x: self.max_x,
+            steps: self.steps,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let s: RiemannState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid Riemann state: {e}"))?;
+        if !s.min_x.is_finite()
+            || !s.max_x.is_finite()
+            || !(RIEMANN_X_MIN_BOUND..=RIEMANN_X_MAX_BOUND).contains(&s.min_x)
+            || !(RIEMANN_X_MIN_BOUND..=RIEMANN_X_MAX_BOUND).contains(&s.max_x)
+            || s.min_x >= s.max_x
+            || !(1..=200).contains(&s.steps)
+        {
+            return Err("Riemann integration interval or partition count invalid".into());
+        }
+        self.preset = s.preset;
+        self.min_x = s.min_x;
+        self.max_x = s.max_x;
+        self.steps = s.steps;
+        self.recalculate();
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        if self.draw_controls(parent_ui) {
+            self.recalculate();
+        }
+        self.draw_plot(parent_ui);
+    }
+}
+
+// [cite:graph_parameters_rust]
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -296,117 +357,37 @@ impl scientific_metadata::theory::TheoryDescribable for RiemannIntegrationTool {
     fn theory_description(&self) -> String {
         format!(
             "Numerical approximation of the definite integral $\\int_a^b f(x) dx$ for {} using composite trapezoidal rule: $T_n = \\sum_{{i=1}}^n \\frac{{f(x_{{i-1}}) + f(x_i)}}{{2}} \\Delta x$ with {} steps over interval [{:.2}, {:.2}].",
-            self.preset.name(), self.steps, self.min_x, self.max_x
+            self.preset.name(),
+            self.steps,
+            self.min_x,
+            self.max_x
         )
     }
-    fn phonetic_description(&self) -> String { "Riemann integration and composite trapezoidal approximation theory".into() }
-    fn theory_citation(&self) -> String { "Calculus, Vol. 1 (Apostol, 1967); Principles of Mathematical Analysis (Rudin, 1976)".into() }
+
+    fn phonetic_description(&self) -> String {
+        "Riemann integration and composite trapezoidal approximation theory".into()
+    }
+
+    fn theory_citation(&self) -> String {
+        "Calculus, Vol. 1 (Apostol, 1967); Principles of Mathematical Analysis (Rudin, 1976)"
+            .into()
+    }
+
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("SinX".into(), "Integral of sin(x) showing oscillatory area cancellation".into());
-        map.insert("XSquared".into(), "Integral of x^2 demonstrating parabolic quadrature".into());
-        map.insert("EToX".into(), "Integral of e^x demonstrating exponential growth integration".into());
+        map.insert(
+            "SinX".into(),
+            "Integral of sin(x) showing oscillatory area cancellation".into(),
+        );
+        map.insert(
+            "XSquared".into(),
+            "Integral of x^2 demonstrating parabolic quadrature".into(),
+        );
+        map.insert(
+            "EToX".into(),
+            "Integral of e^x demonstrating exponential growth integration".into(),
+        );
         map
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_riemann_tool_default_initialization() {
-        let tool = RiemannIntegrationTool::default();
-        assert_eq!(tool.steps, 10);
-        assert_eq!(tool.cached_trapezoid_polygons.len(), 10);
-        assert_eq!(tool.cached_true_curve.len(), 501);
-        for poly in &tool.cached_trapezoid_polygons {
-            assert_eq!(poly.len(), 4);
-        }
-        // Sin(x) from 0 to PI area is approximately 2.0
-        assert!((tool.result - 2.0).abs() < 0.05);
-    }
-
-    #[test]
-    fn test_riemann_recalculate_parameter_updates() {
-        let mut tool = RiemannIntegrationTool {
-            steps: 25,
-            preset: FunctionPreset::XSquared,
-            min_x: 0.0,
-            max_x: 3.0,
-            ..Default::default()
-        };
-        tool.recalculate();
-
-        assert_eq!(tool.cached_trapezoid_polygons.len(), 25);
-        assert_eq!(tool.cached_true_curve.len(), 501);
-        // Integral of x^2 from 0 to 3 is 9.0
-        assert!((tool.result - 9.0).abs() < 0.05);
-
-        // Verify first polygon geometry
-        let first_poly = &tool.cached_trapezoid_polygons[0];
-        let dx = 3.0 / 25.0;
-        assert_eq!(first_poly[0], [0.0, 0.0]);
-        assert_eq!(first_poly[1], [dx, 0.0]);
-        assert_eq!(first_poly[2], [dx, dx * dx]);
-        assert_eq!(first_poly[3], [0.0, 0.0]);
-
-        // Verify last polygon geometry
-        let last_poly = &tool.cached_trapezoid_polygons[24];
-        let last_x0 = 24.0 * dx;
-        let last_x1 = 3.0;
-        assert_eq!(last_poly[0], [last_x0, 0.0]);
-        assert_eq!(last_poly[1], [last_x1, 0.0]);
-        assert_eq!(last_poly[2], [last_x1, last_x1 * last_x1]);
-        assert_eq!(last_poly[3], [last_x0, last_x0 * last_x0]);
-    }
-
-    #[test]
-    fn test_riemann_recalculate_invalid_bounds_clearing() {
-        let mut tool = RiemannIntegrationTool::default();
-        assert!(!tool.cached_trapezoid_polygons.is_empty());
-        assert!(!tool.cached_true_curve.is_empty());
-
-        // When min_x > max_x
-        tool.min_x = 5.0;
-        tool.max_x = 2.0;
-        tool.recalculate();
-        assert_eq!(tool.result, 0.0);
-        assert!(tool.cached_trapezoid_polygons.is_empty());
-        assert!(tool.cached_true_curve.is_empty());
-
-        // When min_x == max_x
-        tool.min_x = 2.0;
-        tool.max_x = 2.0;
-        tool.recalculate();
-        assert_eq!(tool.result, 0.0);
-        assert!(tool.cached_trapezoid_polygons.is_empty());
-        assert!(tool.cached_true_curve.is_empty());
-    }
-
-    #[test]
-    fn test_riemann_recalculate_zero_steps() {
-        let mut tool = RiemannIntegrationTool::default();
-        assert!(!tool.cached_trapezoid_polygons.is_empty());
-        assert!(!tool.cached_true_curve.is_empty());
-
-        tool.steps = 0;
-        tool.recalculate();
-        assert_eq!(tool.result, 0.0);
-        assert!(tool.cached_trapezoid_polygons.is_empty());
-        assert!(tool.cached_true_curve.is_empty());
-    }
-
-    #[test]
-    fn test_riemann_plot_screenshot_generation() {
-        let tool = RiemannIntegrationTool::default();
-        assert!(!tool.cached_true_curve.is_empty());
-
-        let datasets = vec![("sin(x)".to_string(), tool.cached_true_curve.clone())];
-        let options = egui_plot::export::ExportOptions::default();
-        if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
-            let _ = std::fs::write("/tmp/riemann_memoized_plot.png", png_data);
-        }
     }
 }
 
@@ -437,3 +418,7 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+#[cfg(test)]
+#[path = "riemann/tests.rs"]
+mod tests;

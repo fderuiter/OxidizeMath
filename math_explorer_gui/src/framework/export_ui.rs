@@ -4,6 +4,27 @@ use eframe::egui;
 /// Pane toolbar width threshold below which `Export` and `Presets` collapse into overflow menus.
 pub const EXPORT_BAR_OVERFLOW_BREAKPOINT: f32 = 960.0;
 
+fn wrapped_colored_label(ui: &mut egui::Ui, color: egui::Color32, text: String) {
+    ui.add(egui::Label::new(egui::RichText::new(text).color(color)).wrap());
+}
+
+fn export_action_button(
+    ui: &mut egui::Ui,
+    enabled: bool,
+    label: &str,
+    tip: &str,
+    close_on_click: bool,
+) -> bool {
+    let clicked = ui
+        .add_enabled(enabled, egui::Button::new(label))
+        .accessible_hover_text(tip)
+        .clicked();
+    if clicked && close_on_click {
+        ui.close();
+    }
+    clicked
+}
+
 struct FrameworkExportSource<'a> {
     active_tool: &'a mut Option<Box<dyn InteractiveTool>>,
     cached_tool_name: Option<&'static str>,
@@ -135,6 +156,7 @@ impl SimulationFramework {
                 ui.separator();
             }
             self.render_starter_gallery_toggle(ctx, ui);
+            self.render_theory_portal_toggle(ctx, ui);
             if compact {
                 self.render_compact_preset_controls(ui, &file_slug, bar_width >= 420.0);
             } else {
@@ -158,65 +180,47 @@ impl SimulationFramework {
         caps: ExportCapabilities,
         close_on_click: bool,
     ) {
-        let csv_tip = if caps.dataset {
-            "Export dataset points to CSV file"
-        } else {
-            caps.dataset_disabled_reason
+        let ds_tip = |tip| {
+            if caps.dataset {
+                tip
+            } else {
+                caps.dataset_disabled_reason
+            }
         };
-        if ui
-            .add_enabled(caps.dataset, egui::Button::new("Export CSV"))
-            .accessible_hover_text(csv_tip)
-            .clicked()
-        {
+        if export_action_button(
+            ui,
+            caps.dataset,
+            "Export CSV",
+            ds_tip("Export dataset points to CSV file"),
+            close_on_click,
+        ) {
             self.queue_export(ExportFormat::Csv);
-            if close_on_click {
-                ui.close();
-            }
         }
-        let copy_tip = if caps.dataset {
-            "Copy dataset points as CSV to clipboard"
-        } else {
-            caps.dataset_disabled_reason
-        };
-        if ui
-            .add_enabled(caps.dataset, egui::Button::new("Copy CSV"))
-            .accessible_hover_text(copy_tip)
-            .clicked()
-        {
+        if export_action_button(
+            ui,
+            caps.dataset,
+            "Copy CSV",
+            ds_tip("Copy dataset points as CSV to clipboard"),
+            close_on_click,
+        ) {
             self.queue_clipboard_export();
-            if close_on_click {
-                ui.close();
-            }
         }
-        let json_tip = if caps.dataset {
-            "Export dataset points to JSON file"
-        } else {
-            caps.dataset_disabled_reason
-        };
-        if ui
-            .add_enabled(caps.dataset, egui::Button::new("Export JSON"))
-            .accessible_hover_text(json_tip)
-            .clicked()
-        {
+        if export_action_button(
+            ui,
+            caps.dataset,
+            "Export JSON",
+            ds_tip("Export dataset points to JSON file"),
+            close_on_click,
+        ) {
             self.queue_export(ExportFormat::Json);
-            if close_on_click {
-                ui.close();
-            }
         }
         let fig_tip = if caps.figure {
             "Configure and render high-resolution PNG figure"
         } else {
             caps.figure_disabled_reason
         };
-        if ui
-            .add_enabled(caps.figure, egui::Button::new("Export PNG Image"))
-            .accessible_hover_text(fig_tip)
-            .clicked()
-        {
+        if export_action_button(ui, caps.figure, "Export PNG Image", fig_tip, close_on_click) {
             self.open_export_modal_for_active_tool();
-            if close_on_click {
-                ui.close();
-            }
         }
     }
 
@@ -253,6 +257,26 @@ impl SimulationFramework {
         }
     }
 
+    fn render_theory_portal_toggle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .button("📖 Theory")
+            .accessible_hover_text("Toggle Theory Context Portal")
+            .clicked()
+        {
+            self.show_theory_portal = !self.show_theory_portal;
+            let next = self.show_theory_portal;
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
+                if let Some(inst_key) =
+                    d.get_temp::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"))
+                {
+                    d.insert_temp(inst_key, next);
+                }
+            });
+            ctx.request_repaint();
+        }
+    }
+
     fn poll_action_bar_clipboard_status(&mut self, ctx: &egui::Context) {
         let status_id = egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
         if let Some(async_status) =
@@ -284,13 +308,7 @@ impl SimulationFramework {
                     let remaining = (exp - now).max(0.05);
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
                     if !self.show_export_modal {
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(format!("✓ {}", status.message))
-                                    .color(palette.success),
-                            )
-                            .wrap(),
-                        );
+                        wrapped_colored_label(ui, palette.success, format!("✓ {}", status.message));
                         if ui
                             .small_button("✖")
                             .accessible_hover_text("Dismiss notification")
@@ -307,12 +325,7 @@ impl SimulationFramework {
                 } else {
                     palette.error
                 };
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(format!("⚠️ {}", status.message)).color(err_color),
-                    )
-                    .wrap(),
-                );
+                wrapped_colored_label(ui, err_color, format!("⚠️ {}", status.message));
                 if ui
                     .small_button("✖")
                     .accessible_hover_text("Dismiss warning")
@@ -358,10 +371,7 @@ impl SimulationFramework {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         if let Some(ref msg) = self.preset_dialog.toast_info {
             ui.separator();
-            ui.add(
-                egui::Label::new(egui::RichText::new(format!("ℹ️ {msg}")).color(palette.success))
-                    .wrap(),
-            );
+            wrapped_colored_label(ui, palette.success, format!("ℹ️ {msg}"));
             if ui
                 .small_button("✖")
                 .accessible_hover_text("Dismiss notification")
@@ -372,10 +382,7 @@ impl SimulationFramework {
         }
         if let Some(ref err) = self.preset_dialog.toast_error {
             ui.separator();
-            ui.add(
-                egui::Label::new(egui::RichText::new(format!("⚠️ {err}")).color(palette.error))
-                    .wrap(),
-            );
+            wrapped_colored_label(ui, palette.error, format!("⚠️ {err}"));
             if ui
                 .small_button("✖")
                 .accessible_hover_text("Dismiss warning")
@@ -386,6 +393,32 @@ impl SimulationFramework {
         }
     }
 
+    fn render_preset_json_buttons(
+        &mut self,
+        ui: &mut egui::Ui,
+        file_slug: &str,
+        close_on_click: bool,
+    ) {
+        if export_action_button(
+            ui,
+            true,
+            "Import Preset JSON",
+            "Import parameter preset from a JSON file",
+            close_on_click,
+        ) {
+            self.preset_dialog.trigger_import();
+        }
+        if export_action_button(
+            ui,
+            true,
+            "Export Preset JSON",
+            "Export current parameter preset to a JSON file",
+            close_on_click,
+        ) {
+            self.export_active_preset_json(file_slug);
+        }
+    }
+
     fn render_compact_preset_controls(
         &mut self,
         ui: &mut egui::Ui,
@@ -393,22 +426,7 @@ impl SimulationFramework {
         inline_reset: bool,
     ) {
         let resp = ui.menu_button("⚙ Presets ▾", |menu_ui| {
-            if menu_ui
-                .button("Import Preset JSON")
-                .accessible_hover_text("Import parameter preset from a JSON file")
-                .clicked()
-            {
-                self.preset_dialog.trigger_import();
-                menu_ui.close();
-            }
-            if menu_ui
-                .button("Export Preset JSON")
-                .accessible_hover_text("Export current parameter preset to a JSON file")
-                .clicked()
-            {
-                self.export_active_preset_json(file_slug);
-                menu_ui.close();
-            }
+            self.render_preset_json_buttons(menu_ui, file_slug, true);
             if !inline_reset {
                 menu_ui.separator();
                 self.render_reset_parameters_button(menu_ui, true);
@@ -425,23 +443,7 @@ impl SimulationFramework {
     fn render_preset_action_bar_controls(&mut self, ui: &mut egui::Ui, file_slug: &str) {
         ui.separator();
         ui.label(egui::RichText::new("⚙ Presets:").strong());
-
-        if ui
-            .button("Import Preset JSON")
-            .accessible_hover_text("Import parameter preset from a JSON file")
-            .clicked()
-        {
-            self.preset_dialog.trigger_import();
-        }
-
-        if ui
-            .button("Export Preset JSON")
-            .accessible_hover_text("Export current parameter preset to a JSON file")
-            .clicked()
-        {
-            self.export_active_preset_json(file_slug);
-        }
-
+        self.render_preset_json_buttons(ui, file_slug, false);
         self.render_reset_parameters_button(ui, false);
         self.render_preset_toasts(ui);
     }

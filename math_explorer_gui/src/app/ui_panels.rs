@@ -3,7 +3,7 @@
 mod viewport_menus;
 
 #[cfg(any(not(target_os = "macos"), test))]
-use crate::app::{MathExplorerApp, ThemeMode, ViewportLayout};
+use crate::app::{MathExplorerApp, ThemeMode};
 use eframe::egui;
 use federated_registry::{Severity, TelemetryEvent};
 
@@ -232,6 +232,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 )
                 .clicked()
             {
+                app.clear_active_pane_caches();
                 let state = app.get_app_state();
                 let env_json = app.session_manager.create_envelope(state);
                 app.session_manager.trigger_save(env_json);
@@ -244,6 +245,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 )
                 .clicked()
             {
+                app.clear_active_pane_caches();
                 let state = app.get_app_state();
                 let env_json = app.session_manager.create_envelope(state);
                 app.session_manager.trigger_save_as(env_json);
@@ -300,7 +302,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
             viewport_menus::render_viewport_layout_submenu(app, ui);
             viewport_menus::render_focus_pane_submenu(app, ctx, ui);
 
-            if app.viewport_layout != ViewportLayout::Single {
+            if app.viewport_layout != crate::app::ViewportLayout::Single {
                 viewport_menus::render_pane_assignments_submenu(app, ctx, ui);
             }
 

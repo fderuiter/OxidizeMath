@@ -8,6 +8,7 @@ impl MathExplorerApp {
         if pane_a >= 4 || pane_b >= 4 || pane_a == pane_b || self.tabs.is_empty() {
             return;
         }
+        self.clear_active_pane_caches();
         self.ensure_four_pane_tabs();
         self.pane_tabs[0] = self.selected_tab;
         if self.viewport_layout != ViewportLayout::QuadGrid {
@@ -130,10 +131,11 @@ impl MathExplorerApp {
         }
         if let Some(saved) = s_old_sec {
             self.tabs[new_p0].load_state(&saved);
-        } else if self.viewport_layout != ViewportLayout::Single {
-            if let Some(fresh) = crate::tabs::instantiate_tab(new_p0) {
-                self.tabs[new_p0] = fresh;
-            }
+        } else if let Some(fresh) = (self.viewport_layout != ViewportLayout::Single)
+            .then(|| crate::tabs::instantiate_tab(new_p0))
+            .flatten()
+        {
+            self.tabs[new_p0] = fresh;
         }
     }
 

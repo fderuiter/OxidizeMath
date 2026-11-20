@@ -1,22 +1,14 @@
-use serde::Deserialize;
+pub(crate) mod lint_policy;
+
+pub use crate::whitelist::DeadCodeEntry;
+use crate::whitelist::{
+    PathMatchOptions, ROOT_ONLY_WHITELIST_CANDIDATES, VerificationWhitelist,
+    WORKSPACE_WHITELIST_CANDIDATES,
+};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use syn::visit::Visit;
-use walkdir::WalkDir;
-
-#[derive(Deserialize, Debug, Default)]
-pub struct Whitelist {
-    #[serde(default)]
-    dead_code: Vec<DeadCodeEntry>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-#[serde(deny_unknown_fields)]
-pub struct DeadCodeEntry {
-    file: String,
-    identifier: Option<String>,
-}
 
 struct DependencyVisitor {
     expected_deps: HashSet<String>,
@@ -107,10 +99,10 @@ fn attr_suppresses_dead_code(attr: &syn::Attribute) -> bool {
                 continue;
             };
             for item in nested {
-                if let syn::Meta::Path(lint_path) = item {
-                    if is_dead_code_lint_path(&lint_path) {
-                        return true;
-                    }
+                if let syn::Meta::Path(lint_path) = item
+                    && is_dead_code_lint_path(&lint_path)
+                {
+                    return true;
                 }
             }
         } else if list.path.is_ident("cfg_attr") {
@@ -150,11 +142,14 @@ struct DeadCodeVisitor {
 
 impl DeadCodeVisitor {
     fn is_authorized(&self, ident: Option<&str>) -> bool {
+        let opts = PathMatchOptions {
+            trim_dot_slash: false,
+            require_non_empty: false,
+            match_file_name: false,
+        };
+        let actual_path = Path::new(&self.file_path);
         for entry in &self.allowed {
-            let norm_entry = entry.file.replace('\\', "/");
-            let path_matches =
-                self.file_path == norm_entry || self.file_path.ends_with(&format!("/{norm_entry}"));
-            if path_matches {
+            if crate::whitelist::path_matches_lossy(actual_path, &entry.file, opts) {
                 match (&entry.identifier, ident) {
                     (None, _) => return true,
                     (Some(allowed_id), Some(id)) if allowed_id == id => return true,
@@ -295,130 +290,163 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor {
     }
 }
 
-fn load_whitelist(whitelist_path: &Path) -> Option<Whitelist> {
-    if !whitelist_path.exists() {
-        return Some(Whitelist::default());
-    }
-    let content = match fs::read_to_string(whitelist_path) {
-        Ok(c) => c,
-        Err(err) => {
-            eprintln!("[!] Failed to read {}: {}", whitelist_path.display(), err);
-            return None;
-        }
-    };
-    match toml::from_str::<Whitelist>(&content) {
-        Ok(whitelist) => Some(whitelist),
-        Err(err) => {
-            eprintln!("[!] Failed to parse {}: {}", whitelist_path.display(), err);
-            None
+fn collect_expected_dependencies(parsed: &toml::Value) -> HashSet<String> {
+    let mut deps = Vec::new();
+    for section in ["dependencies", "dev-dependencies"] {
+        if let Some(table) = parsed.get(section).and_then(toml::Value::as_table) {
+            deps.extend(table.keys().cloned());
         }
     }
+
+    let mut expected_deps: HashSet<String> =
+        deps.into_iter().map(|d| d.replace('-', "_")).collect();
+
+    // Commonly implicitly used macros or dependencies without direct path usage
+    for implicit in [
+        "thiserror",
+        "serde",
+        "approx",
+        "wasm_bindgen",
+        "console_error_panic_hook",
+        "proc_macro2",
+        "quote",
+        "syn",
+        "serde_json",
+    ] {
+        expected_deps.remove(implicit);
+    }
+    expected_deps
 }
 
-pub fn run_policy_audit(members: &[&str]) -> bool {
-    run_policy_audit_with_whitelist(members, Path::new("verification_whitelist.toml"))
+fn is_implicitly_used_dep(member: &str, expected: &str) -> bool {
+    let crate_name = member
+        .split('/')
+        .next_back()
+        .unwrap_or("")
+        .replace('-', "_");
+    if expected == crate_name {
+        return true;
+    }
+    matches!(
+        expected,
+        "document_features" | "eframe" | "math_explorer" | "math_commons" | "scientific_metadata"
+    )
 }
 
-pub(crate) fn run_policy_audit_with_whitelist(members: &[&str], whitelist_path: &Path) -> bool {
-    let Some(whitelist) = load_whitelist(whitelist_path) else {
+fn audit_member_sources(
+    member_dir: &Path,
+    whitelist: &VerificationWhitelist,
+    check_clippy_bypasses: bool,
+    dep_visitor: &mut DependencyVisitor,
+) -> bool {
+    let mut success = true;
+    for path in crate::utils::collect_rs_files_filtered(&[member_dir], &["target"]) {
+        let file_path = crate::whitelist::lossy_slash_path(&path);
+        if let Ok(content) = fs::read_to_string(&path)
+            && let Ok(ast) = syn::parse_file(&content)
+        {
+            dep_visitor.visit_file(&ast);
+
+            let mut dc_visitor = DeadCodeVisitor {
+                file_path: file_path.clone(),
+                allowed: whitelist.dead_code.clone(),
+                has_unauthorized: false,
+            };
+            dc_visitor.visit_file(&ast);
+            if dc_visitor.has_unauthorized {
+                success = false;
+            }
+
+            if check_clippy_bypasses {
+                let mut clippy_visitor = lint_policy::ClippyBypassVisitor {
+                    file_path,
+                    has_unauthorized: false,
+                };
+                clippy_visitor.visit_file(&ast);
+                if clippy_visitor.has_unauthorized {
+                    success = false;
+                }
+            }
+        }
+    }
+    success
+}
+
+fn audit_single_member(member: &str, whitelist: &VerificationWhitelist) -> bool {
+    let member_dir = lint_policy::resolve_member_dir(member);
+    let cargo_toml_path = member_dir.join("Cargo.toml");
+    let Ok(content) = fs::read_to_string(&cargo_toml_path) else {
+        eprintln!("[!] Failed to read {}", cargo_toml_path.display());
         return false;
     };
-    let mut success = true;
-
-    println!("Running Policy Audit for unused dependencies and dead code bypasses...");
-
-    for member in members {
-        let member_path = member.to_string();
-
-        let cargo_toml_path = format!("{}/Cargo.toml", member_path);
-        let content = fs::read_to_string(&cargo_toml_path).unwrap_or_default();
-        let parsed: toml::Value =
-            toml::from_str(&content).unwrap_or_else(|_| toml::Value::Table(Default::default()));
-
-        let mut deps = Vec::new();
-        if let Some(d) = parsed.get("dependencies").and_then(|v| v.as_table()) {
-            for (k, _) in d {
-                deps.push(k.clone());
-            }
+    let parsed: toml::Value = match toml::from_str(&content) {
+        Ok(val) => val,
+        Err(err) => {
+            eprintln!("[!] Failed to parse {}: {}", cargo_toml_path.display(), err);
+            return false;
         }
-        if let Some(d) = parsed.get("dev-dependencies").and_then(|v| v.as_table()) {
-            for (k, _) in d {
-                deps.push(k.clone());
-            }
-        }
+    };
 
-        let mut expected_deps: HashSet<String> =
-            deps.into_iter().map(|d| d.replace("-", "_")).collect();
+    let mut success = lint_policy::check_manifest_lints(member, &cargo_toml_path, &parsed);
+    let check_clippy_bypasses = !lint_policy::is_vendored_egui_plot_exempt(member, &parsed);
+    let expected_deps = collect_expected_dependencies(&parsed);
+    let mut dep_visitor = DependencyVisitor {
+        expected_deps: expected_deps.clone(),
+        used_deps: HashSet::new(),
+    };
 
-        // Commonly implicitly used macros or dependencies without direct path usage
-        expected_deps.remove("thiserror");
-        expected_deps.remove("serde");
-        expected_deps.remove("approx");
-        expected_deps.remove("wasm_bindgen");
-        expected_deps.remove("console_error_panic_hook");
-        expected_deps.remove("proc_macro2");
-        expected_deps.remove("quote");
-        expected_deps.remove("syn");
-        expected_deps.remove("serde_json");
+    if !audit_member_sources(
+        &member_dir,
+        whitelist,
+        check_clippy_bypasses,
+        &mut dep_visitor,
+    ) {
+        success = false;
+    }
 
-        if member_path == "crates/markdown_tests" {
-            // markdown_tests generates test files in the target directory which are not scanned by WalkDir.
-            // All its dependencies are considered used.
-            continue;
-        }
-
-        let mut dep_visitor = DependencyVisitor {
-            expected_deps: expected_deps.clone(),
-            used_deps: HashSet::new(),
-        };
-
-        for entry in WalkDir::new(&member_path)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            if entry.path().extension().and_then(|s| s.to_str()) == Some("rs") {
-                let file_path = entry.path().to_string_lossy().replace("\\", "/");
-                if let Ok(content) = fs::read_to_string(entry.path()) {
-                    if let Ok(ast) = syn::parse_file(&content) {
-                        // Check dependencies
-                        dep_visitor.visit_file(&ast);
-
-                        // Check dead code
-                        let mut dc_visitor = DeadCodeVisitor {
-                            file_path: file_path.clone(),
-                            allowed: whitelist.dead_code.clone(),
-                            has_unauthorized: false,
-                        };
-                        dc_visitor.visit_file(&ast);
-                        if dc_visitor.has_unauthorized {
-                            success = false;
-                        }
-                    }
-                }
-            }
-        }
-
+    // markdown_tests generates test files in OUT_DIR which are not scanned by WalkDir.
+    if member != "crates/markdown_tests" {
         for expected in expected_deps {
-            if !dep_visitor.used_deps.contains(&expected) {
-                // If it's the current crate, ignore
-                let crate_name = member.split('/').last().unwrap_or("").replace("-", "_");
-                if expected == crate_name {
-                    continue;
-                }
-
-                // Some special cases where cargo checks might not easily see usage
-                if expected == "document_features"
-                    || expected == "eframe"
-                    || expected == "math_explorer"
-                    || expected == "math_commons"
-                    || expected == "scientific_metadata"
-                {
-                    continue;
-                }
-
+            if !dep_visitor.used_deps.contains(&expected)
+                && !is_implicitly_used_dep(member, &expected)
+            {
                 println!("[!] Unused dependency detected in {}: {}", member, expected);
                 success = false;
             }
+        }
+    }
+
+    success
+}
+
+pub fn run_policy_audit(members: &[&str]) -> bool {
+    let candidates = if lint_policy::cwd_is_member_crate_dir() {
+        WORKSPACE_WHITELIST_CANDIDATES
+    } else {
+        ROOT_ONLY_WHITELIST_CANDIDATES
+    };
+    let whitelist_path = crate::whitelist::resolve_whitelist_path(candidates)
+        .unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
+    run_policy_audit_with_whitelist(members, &whitelist_path)
+}
+
+pub(crate) fn run_policy_audit_with_whitelist(members: &[&str], whitelist_path: &Path) -> bool {
+    let whitelist = match crate::whitelist::load_whitelist_strict(None, &[whitelist_path]) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("[!] {}", err);
+            return false;
+        }
+    };
+    let mut success = true;
+
+    println!(
+        "Running Policy Audit for lint inheritance, Clippy/dead-code bypasses, and unused dependencies..."
+    );
+
+    for member in members {
+        if !audit_single_member(member, &whitelist) {
+            success = false;
         }
     }
 

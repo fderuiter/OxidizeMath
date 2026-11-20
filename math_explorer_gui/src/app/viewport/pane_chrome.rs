@@ -170,6 +170,7 @@ pub(super) fn render_pane_content(
         d.insert_temp(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY), pane_idx);
         d.insert_temp(egui::Id::new(CURRENT_PANE_RECT_KEY), content_rect);
     });
+    crate::reflective_ui::slider::begin_pane_sweep_scope(ctx, pane_idx);
     egui_plot::clear_last_plot_datasets();
     focus::with_pane_scoped_input(ctx, pane_idx, || {
         if let Some(tab) = app.pane_tab_mut(pane_idx) {
@@ -181,6 +182,7 @@ pub(super) fn render_pane_content(
         }
     });
     egui_plot::clear_last_plot_datasets();
+    crate::reflective_ui::slider::merge_pane_sweep_flags(ctx, pane_idx);
     ctx.data_mut(|d| {
         d.remove::<usize>(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY));
         d.remove::<egui::Rect>(egui::Id::new(CURRENT_PANE_RECT_KEY));

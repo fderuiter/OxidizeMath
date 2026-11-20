@@ -44,6 +44,7 @@ pub struct OdeSolverTool {
     pub callout_manager: CalloutManager,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
     pub(crate) last_param_summary: String,
+    pub(crate) pending_sweep_run: Option<(String, Vec<TraceSeries>)>,
     pub show_annotations: bool,
     pub(crate) revision: u64,
 }
@@ -88,6 +89,7 @@ impl Default for OdeSolverTool {
             callout_manager: CalloutManager::new(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
+            pending_sweep_run: None,
             show_annotations: true,
             revision: 1,
         };
@@ -235,7 +237,53 @@ impl OdeSolverTool {
         }
         self.dt = 0.05;
         self.total_time = 10.0;
+        self.pending_sweep_run = None;
         self.recalculate();
+    }
+
+    fn build_current_trace_series(
+        &self,
+        plot_points_y: &[[f64; 2]],
+        plot_points_v: &[[f64; 2]],
+    ) -> Vec<TraceSeries> {
+        let mut series = vec![TraceSeries::new("y(t)", plot_points_y.to_vec())];
+        if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
+            series.push(TraceSeries::new("y'(t)", plot_points_v.to_vec()));
+        }
+        series
+    }
+
+    fn apply_sidebar_changes(
+        &mut self,
+        changed: bool,
+        sweep_active: bool,
+        plot_points_y: &[[f64; 2]],
+        plot_points_v: &[[f64; 2]],
+    ) {
+        if sweep_active {
+            if changed {
+                if self.pending_sweep_run.is_none() {
+                    let series = self.build_current_trace_series(plot_points_y, plot_points_v);
+                    self.pending_sweep_run = Some((self.last_param_summary.clone(), series));
+                }
+                self.recalculate();
+            }
+            return;
+        }
+
+        if let Some((summary, series)) = self.pending_sweep_run.take() {
+            self.snapshot_manager.push_history_run(summary, series);
+            if changed {
+                self.recalculate();
+            } else {
+                self.bump_revision();
+            }
+        } else if changed {
+            let series = self.build_current_trace_series(plot_points_y, plot_points_v);
+            self.snapshot_manager
+                .push_history_run(&self.last_param_summary, series);
+            self.recalculate();
+        }
     }
 
     pub fn recalculate(&mut self) {
@@ -357,8 +405,9 @@ impl InteractiveTool for OdeSolverTool {
         self.serialize_recovery_state()
     }
 
-    fn load_recovery_state(&mut self, state: &str) {
-        let _ = self.deserialize_state(state, true);
+    fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
+        self.deserialize_state(state, true)
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
@@ -384,20 +433,16 @@ impl InteractiveTool for OdeSolverTool {
             }
         }
 
+        let sweeps_before =
+            crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx());
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "ode_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             changed |= self.render_sidebar_controls(ui, &plot_points_y, &plot_points_v);
         });
+        let sweep_active =
+            crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx()) > sweeps_before;
 
-        if changed {
-            let mut series = vec![TraceSeries::new("y(t)", plot_points_y.clone())];
-            if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-                series.push(TraceSeries::new("y'(t)", plot_points_v.clone()));
-            }
-            self.snapshot_manager
-                .push_history_run(&self.last_param_summary, series);
-            self.recalculate();
-        }
+        self.apply_sidebar_changes(changed, sweep_active, &plot_points_y, &plot_points_v);
 
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.render_plot_canvas(ui, plot_points_y, plot_points_v, &mut changed);

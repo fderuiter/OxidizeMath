@@ -2,6 +2,8 @@ pub mod callout_overlay;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+#[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
+mod drag_bounds_and_rollback_tests;
 mod export_figure;
 mod export_queue;
 #[cfg(test)]
@@ -157,26 +159,6 @@ pub trait InteractiveTool {
         0
     }
 
-    /// Returns true if this tool maintains local undo history with available entries.
-    fn can_undo(&self) -> bool {
-        false
-    }
-
-    /// Returns true if this tool maintains local redo history with available entries.
-    fn can_redo(&self) -> bool {
-        false
-    }
-
-    /// Attempts to undo the latest local tool edit, returning true if handled.
-    fn try_undo(&mut self) -> bool {
-        false
-    }
-
-    /// Attempts to redo the latest locally undone tool edit, returning true if handled.
-    fn try_redo(&mut self) -> bool {
-        false
-    }
-
     /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         None
@@ -197,9 +179,15 @@ pub trait InteractiveTool {
         self.save_state()
     }
 
+    /// Fallibly restores parameter-only recovery state without clobbering pinned comparison overlays.
+    fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
+        self.try_load_state(state)
+    }
+
     /// Restores parameter-only recovery state without clobbering pinned comparison overlays.
     fn load_recovery_state(&mut self, state: &str) {
-        self.load_state(state);
+        let _ = self.try_load_recovery_state(state);
     }
 
     /// Structural and byte-size budget enforced before JSON state deserialization.

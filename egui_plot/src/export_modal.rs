@@ -441,11 +441,14 @@ fn handle_copy_clipboard(
 }
 
 fn modal_fig_button(ui: &mut egui::Ui, enabled: bool, label: &str, disabled_reason: &str) -> bool {
-    let mut resp = ui.add_enabled(enabled, egui::Button::new(label));
-    if !disabled_reason.is_empty() {
-        resp = resp.on_disabled_hover_text(disabled_reason);
+    use crate::a11y::AccessibleTooltipExt as _;
+
+    let mut resp =
+        crate::a11y::focusable_action_button(ui, enabled, egui::Button::new(label), Some(label));
+    if !enabled && !disabled_reason.is_empty() {
+        resp = resp.accessible_tooltip(disabled_reason);
     }
-    resp.clicked()
+    enabled && resp.clicked()
 }
 
 fn render_action_buttons(

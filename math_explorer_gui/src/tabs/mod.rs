@@ -89,26 +89,6 @@ pub trait ExplorerTab {
     /// Deserializes and restores the tab's parameter and panel state from a String.
     fn load_state(&mut self, _state: &str) {}
 
-    /// Returns true if the active tool in this tab has local undo history.
-    fn can_undo(&self) -> bool {
-        false
-    }
-
-    /// Returns true if the active tool in this tab has local redo history.
-    fn can_redo(&self) -> bool {
-        false
-    }
-
-    /// Attempts to undo the latest local edit in this tab, returning true if handled.
-    fn try_undo(&mut self) -> bool {
-        false
-    }
-
-    /// Attempts to redo the latest locally undone edit in this tab, returning true if handled.
-    fn try_redo(&mut self) -> bool {
-        false
-    }
-
     /// Returns the active tool's interactive canvas `Id` when focus is owned by a non-text canvas.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         None

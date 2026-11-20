@@ -93,7 +93,13 @@ fn test_export_action_bar_1024x768_split_and_quad_no_clipping_and_wrapped_toast(
             (0.0..512.0_f32, "left pane"),
             (512.0..1024.0_f32, "right pane"),
         ] {
-            for ctrl in ["Export", "Starter Gallery", "Presets", "Reset Parameters"] {
+            for ctrl in [
+                "Export",
+                "Starter Gallery",
+                "Theory",
+                "Presets",
+                "Reset Parameters",
+            ] {
                 let rect = find_button_bounds_in_x_range(&out, ctrl, pane_x.clone())
                     .unwrap_or_else(|| panic!("Missing '{ctrl}' in {label_ctx} for {layout:?}"));
                 assert!(
@@ -150,7 +156,7 @@ fn assert_records_valid_and_positive_canvas(ctx: &egui::Context, pane_rect: egui
 }
 
 #[test]
-fn test_all_38_pane_side_panels_scroll_collapse_and_keep_positive_canvas_at_twenty_percent_split() {
+fn test_all_39_pane_side_panels_scroll_collapse_and_keep_positive_canvas_at_twenty_percent_split() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
@@ -205,8 +211,8 @@ fn test_all_38_pane_side_panels_scroll_collapse_and_keep_positive_canvas_at_twen
     let registered_tools = inventory::iter::<ToolMetadata>.into_iter().count();
     assert!(registered_tools >= 30);
     assert!(
-        distinct_panel_ids.len() >= 38,
-        "Expected coverage across all >=38 SidePanel sites, exercised {}",
+        distinct_panel_ids.len() >= 39,
+        "Expected coverage across all >=39 SidePanel sites, exercised {}",
         distinct_panel_ids.len()
     );
     assert!(
@@ -290,13 +296,13 @@ fn verify_pane_starter_gallery_roundtrip(
     source_pane: usize,
     pane_region: egui::Rect,
 ) {
-    if let Some(fw) = app.pane_tab_mut(source_pane).unwrap().framework_mut() {
-        fw.baseline_tool_state = Some("__before_gallery_launch__".to_string());
-    } else {
-        app.pane_tab_mut(source_pane)
-            .unwrap()
-            .load_state(r#"{"dt":0.0123,"paused":true}"#);
-    }
+    let fw = app
+        .pane_tab_mut(source_pane)
+        .unwrap()
+        .framework_mut()
+        .expect("SimulationFramework-backed tab");
+    fw.baseline_tool_state = Some("__before_gallery_launch__".to_string());
+
     let out_idle = run_frame_1024(ctx, app, Vec::new());
     let open_btn = find_button_in_rect(&out_idle, "Starter Gallery", pane_region)
         .unwrap_or_else(|| panic!("Missing Starter Gallery button in pane {source_pane}"));
@@ -323,19 +329,12 @@ fn verify_pane_starter_gallery_roundtrip(
     click_at_1024(ctx, app, launch_rect.center());
 
     assert_eq!(app.pane_tab(other_pane).unwrap().save_state(), other_before);
-    if let Some(fw) = app.pane_tab(source_pane).unwrap().framework() {
-        assert!(
-            fw.baseline_tool_state.as_deref() != Some("__before_gallery_launch__")
-                && fw.preset_dialog.toast_error.is_none(),
-            "Starter preset should load cleanly into source pane {source_pane}"
-        );
-    } else {
-        let saved = app.pane_tab(source_pane).unwrap().save_state().unwrap();
-        assert!(
-            !saved.contains("0.0123"),
-            "Morphogenesis starter preset should update parameters in pane {source_pane}: {saved}"
-        );
-    }
+    let fw_after = app.pane_tab(source_pane).unwrap().framework().unwrap();
+    assert!(
+        fw_after.baseline_tool_state.as_deref() != Some("__before_gallery_launch__")
+            && fw_after.preset_dialog.toast_error.is_none(),
+        "Starter preset should load cleanly into source pane {source_pane}"
+    );
     let out_closed = run_frame_1024(ctx, app, Vec::new());
     assert!(find_button_bounds_in_x_range(&out_closed, "Close Gallery", 0.0..1024.0).is_none());
 }
@@ -400,8 +399,9 @@ fn assert_quad_swap_and_rotation_ops(app: &mut MathExplorerApp) {
         app.swap_pane_pair(a, b);
         assert_eq!(app.pane_tabs, baseline);
     }
+    let expected_cw = vec![baseline[2], baseline[0], baseline[3], baseline[1]];
     app.rotate_panes_clockwise();
-    assert_eq!(app.pane_tabs, vec![2, 0, 3, 1]);
+    assert_eq!(app.pane_tabs, expected_cw);
     assert_eq!(app.focused_pane, 1);
     app.rotate_panes_counter_clockwise();
     assert_eq!(app.pane_tabs, baseline);
@@ -416,7 +416,7 @@ fn test_quad_grid_2d_splitters_serde_and_four_pane_swap_and_rotate() {
     let mut app = MathExplorerApp::default();
     app.set_layout(ViewportLayout::QuadGrid);
     for p in 0..4 {
-        app.set_pane_tab(p, p);
+        app.set_pane_tab(p, p % app.tabs.len());
     }
 
     let out = run_frame_1024(&ctx, &mut app, Vec::new());

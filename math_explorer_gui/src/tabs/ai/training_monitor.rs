@@ -58,8 +58,6 @@ impl TrainingMonitorTool {
     }
 
     pub fn reset(&mut self) {
-        self.learning_rate = 0.01;
-        self.hidden_dim = 16;
         self.reinit_model();
     }
 
@@ -124,7 +122,7 @@ impl TrainingMonitorTool {
                 )
                 .changed()
             {
-                ui.label("Note: Requires Reset to apply effectively");
+                self.reinit_model();
             }
 
             if ui
@@ -344,8 +342,8 @@ mod tests {
 
         tool.reset();
 
-        assert_eq!(tool.learning_rate, 0.01);
-        assert_eq!(tool.hidden_dim, 16);
+        assert_eq!(tool.learning_rate, 0.05);
+        assert_eq!(tool.hidden_dim, 32);
         assert_eq!(tool.epoch, 0);
         assert!(!tool.is_training);
         assert!(tool.loss_history.is_empty());
@@ -355,6 +353,27 @@ mod tests {
         assert!(!tool.is_training);
         assert_eq!(tool.epoch, 1);
         assert_eq!(tool.loss_history.len(), 1);
+    }
+
+    #[test]
+    fn test_training_monitor_learning_rate_reinit_applies_immediately() {
+        let mut slow = TrainingMonitorTool {
+            learning_rate: 0.001,
+            ..Default::default()
+        };
+        slow.reinit_model();
+        slow.step_once();
+        slow.step_once();
+
+        let mut fast = TrainingMonitorTool {
+            learning_rate: 0.08,
+            ..Default::default()
+        };
+        fast.reinit_model();
+        fast.step_once();
+        fast.step_once();
+
+        assert_ne!(slow.loss_history[1][1], fast.loss_history[1][1]);
     }
 }
 

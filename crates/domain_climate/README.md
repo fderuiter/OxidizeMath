@@ -16,6 +16,7 @@ Standard statistical models often fail to generalize across different climate re
 - **`config`**: `CeraConfig` specifying model topology:
   - Input/output channel counts, vertical atmospheric pressure levels, and latent dimensions.
   - Hyperparameters for prediction loss weight (`lambda_pred`) and alignment loss weight (`lambda_emd`).
+- **`dataset`**: Calibrated NASA GISTEMP v4 temperature anomalies (`1880..=2023`), Law Dome / Mauna Loa historical $CO_2$ series, IPCC AR6 carbon-cycle mass-balance projections, and seeded synthetic random-walk generators.
 - **`training`**: `CeraTrainer` executing joint training loops:
   - Balances input reconstruction loss with Earth Mover's Distance (EMD) latent alignment penalties.
 - **`loss`**: Loss computation routines including mean squared reconstruction error and statistical distribution divergence.

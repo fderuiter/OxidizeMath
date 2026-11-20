@@ -338,6 +338,7 @@ fn test_export_bar_buttons_announce_and_dismiss_on_escape() {
 
     for (label, tooltip) in [
         ("Starter Gallery", "Toggle starter template gallery overlay"),
+        ("Theory", "Toggle Theory Context Portal"),
         ("Export CSV", "Export dataset points to CSV file"),
         ("Copy CSV", "Copy dataset points as CSV to clipboard"),
         ("Export JSON", "Export dataset points to JSON file"),

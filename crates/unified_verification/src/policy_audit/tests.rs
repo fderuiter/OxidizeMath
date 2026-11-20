@@ -1,24 +1,5 @@
 use super::*;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-static TEST_DIR_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-struct CurrentDirGuard(PathBuf);
-
-impl Drop for CurrentDirGuard {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.0);
-    }
-}
-
-fn create_temp_workspace(prefix: &str) -> PathBuf {
-    let id = TEST_DIR_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let dir = std::env::temp_dir().join(format!("{}_{}_{}", prefix, std::process::id(), id));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
-}
+use crate::utils::test_utils::{CurrentDirGuard, TempTestDir};
 
 fn write_member_crate(root: &Path, member: &str, lib_source: &str) -> String {
     let member_dir = root.join(member);
@@ -26,11 +7,21 @@ fn write_member_crate(root: &Path, member: &str, lib_source: &str) -> String {
     fs::create_dir_all(&src_dir).unwrap();
     fs::write(
         member_dir.join("Cargo.toml"),
-        "[package]\nname = \"sample_member\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        "[package]\nname = \"sample_member\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lints]\nworkspace = true\n",
     )
     .unwrap();
     fs::write(src_dir.join("lib.rs"), lib_source).unwrap();
-    member_dir.to_string_lossy().replace('\\', "/")
+    crate::whitelist::lossy_slash_path(&member_dir)
+}
+
+fn scan_clippy_snippet(source: &str) -> bool {
+    let ast = syn::parse_file(source).expect("valid Rust snippet");
+    let mut visitor = lint_policy::ClippyBypassVisitor {
+        file_path: "crates/sample/src/lib.rs".to_string(),
+        has_unauthorized: false,
+    };
+    visitor.visit_file(&ast);
+    visitor.has_unauthorized
 }
 
 fn scan_snippet(source: &str, allowed: Vec<DeadCodeEntry>) -> bool {
@@ -136,7 +127,7 @@ fn test_impl_type_union_trait_and_foreign_visitors() {
 
 #[test]
 fn test_whitelist_authorization_and_unrelated_tables() {
-    let dir = create_temp_workspace("policy_audit_whitelist_ok");
+    let dir = TempTestDir::new("policy_audit_whitelist_ok");
     let member_path = write_member_crate(
         &dir,
         "crates/demo",
@@ -178,13 +169,11 @@ identifier = "OtherType"
         &[member_path.as_str()],
         &whitelist_file
     ));
-
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn test_invalid_toml_and_unknown_dead_code_fields_fail_closed() {
-    let dir = create_temp_workspace("policy_audit_bad_toml");
+    let dir = TempTestDir::new("policy_audit_bad_toml");
     let member_path = write_member_crate(&dir, "crates/clean", "pub fn ok() {}\n");
     let whitelist_file = dir.join("verification_whitelist.toml");
 
@@ -221,9 +210,113 @@ fn test_invalid_toml_and_unknown_dead_code_fields_fail_closed() {
         let _guard = CurrentDirGuard(orig);
         let _ = fs::remove_dir_all(&whitelist_file);
         fs::write(&whitelist_file, "invalid = [unclosed").unwrap();
-        std::env::set_current_dir(&dir).unwrap();
+        std::env::set_current_dir(&*dir).unwrap();
         assert!(!run_policy_audit(&["crates/clean"]));
     }
+}
 
-    let _ = fs::remove_dir_all(&dir);
+#[test]
+fn test_inner_and_mod_clippy_bypasses_are_rejected() {
+    assert!(scan_clippy_snippet("#![allow(clippy::all)]\npub fn f() {}"));
+    assert!(scan_clippy_snippet(
+        "#![allow(clippy::too_many_lines)]\npub fn f() {}"
+    ));
+    assert!(scan_clippy_snippet(
+        "#![expect(clippy::cognitive_complexity, reason = \"legacy\")]\npub fn f() {}"
+    ));
+    assert!(scan_clippy_snippet(
+        "#![cfg_attr(not(test), cfg_attr(unix, allow(clippy::too_many_lines)))]\npub fn f() {}"
+    ));
+    assert!(scan_clippy_snippet(
+        "#[allow(clippy::too_many_lines)]\nmod sub { pub fn f() {} }"
+    ));
+    assert!(scan_clippy_snippet(
+        "#[cfg_attr(unix, expect(clippy::cognitive_complexity))]\nmod sub;"
+    ));
+    assert!(scan_clippy_snippet(
+        "mod sub {\n    #![allow(clippy::too_many_lines)]\n    pub fn f() {}\n}"
+    ));
+    assert!(scan_clippy_snippet(
+        "pub fn sneaky() {\n    #![allow(clippy::too_many_lines)]\n}"
+    ));
+}
+
+#[test]
+fn test_item_clippy_all_rejected_while_fn_too_many_lines_allowed() {
+    assert!(scan_clippy_snippet("#[allow(clippy::all)]\npub fn f() {}"));
+    assert!(scan_clippy_snippet(
+        "#[expect(missing_docs, clippy::all)]\npub struct S;"
+    ));
+    assert!(scan_clippy_snippet(
+        "#[cfg_attr(test, allow(clippy::all))]\nimpl S {}\npub struct S;"
+    ));
+    assert!(!scan_clippy_snippet(
+        "#[allow(clippy::too_many_lines)]\npub fn allowed_fn() {}"
+    ));
+    assert!(!scan_clippy_snippet(
+        "#[allow(clippy::cognitive_complexity)]\npub fn complex_fn() {}"
+    ));
+    assert!(!scan_clippy_snippet(
+        "#[cfg_attr(clippy::all, derive(Debug))]\npub struct PredicateOnly;"
+    ));
+}
+
+#[test]
+fn test_missing_or_custom_lints_table_rejected_for_first_party_crates() {
+    let dir = TempTestDir::new("policy_audit_lints_manifest");
+    let whitelist_file = dir.join("verification_whitelist.toml");
+
+    let no_lints = write_member_crate(&dir, "crates/no_lints", "pub fn ok() {}\n");
+    fs::write(
+        dir.join("crates/no_lints/Cargo.toml"),
+        "[package]\nname = \"no_lints\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    assert!(!run_policy_audit_with_whitelist(
+        &[no_lints.as_str()],
+        &whitelist_file
+    ));
+
+    let custom_lints = write_member_crate(&dir, "crates/custom_lints", "pub fn ok() {}\n");
+    fs::write(
+        dir.join("crates/custom_lints/Cargo.toml"),
+        "[package]\nname = \"custom_lints\"\nversion = \"0.1.0\"\n\n[lints.rust]\nmissing_docs = \"warn\"\n[lints.clippy]\ntoo_many_lines = \"deny\"\n",
+    )
+    .unwrap();
+    assert!(!run_policy_audit_with_whitelist(
+        &[custom_lints.as_str()],
+        &whitelist_file
+    ));
+}
+
+#[test]
+fn test_vendored_egui_plot_lints_exemption_conditions() {
+    let dir = TempTestDir::new("policy_audit_egui_plot");
+    let whitelist_file = dir.join("verification_whitelist.toml");
+
+    let vendored = write_member_crate(
+        &dir,
+        "egui_plot",
+        "#![allow(clippy::too_many_lines, clippy::cognitive_complexity)]\npub fn plot() {}\n",
+    );
+    fs::write(
+        dir.join("egui_plot/Cargo.toml"),
+        "[package]\nname = \"egui_plot\"\nversion = \"0.34.0\"\n\n[lints.rust]\nmissing_docs = \"warn\"\n[lints.clippy]\ntoo_many_lines = \"deny\"\n",
+    )
+    .unwrap();
+    assert!(run_policy_audit_with_whitelist(
+        &[vendored.as_str()],
+        &whitelist_file
+    ));
+
+    // Missing [lints.clippy] revokes the vendored egui_plot exemption
+    fs::write(
+        dir.join("egui_plot/Cargo.toml"),
+        "[package]\nname = \"egui_plot\"\nversion = \"0.34.0\"\n\n[lints.rust]\nmissing_docs = \"warn\"\n",
+    )
+    .unwrap();
+    assert!(!run_policy_audit_with_whitelist(
+        &[vendored.as_str()],
+        &whitelist_file
+    ));
 }

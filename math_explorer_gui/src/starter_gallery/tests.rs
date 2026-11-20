@@ -18,6 +18,16 @@ fn test_starter_cards_presence_and_metadata() {
 
     let bio_cards = get_starter_cards_for_domain("biology", &[]);
     assert!(bio_cards.iter().any(|c| c.title == "Turing Spots"));
+
+    let mri_cards = get_starter_cards_for_domain("mri", &[]);
+    assert!(mri_cards
+        .iter()
+        .any(|c| c.title == "Off-Resonance Bloch Precession"));
+
+    let fav_cards = get_starter_cards_for_domain("favoritism", &[]);
+    assert!(fav_cards
+        .iter()
+        .any(|c| c.title == "Crisis & Proximity Showdown"));
 }
 
 #[test]
@@ -43,12 +53,12 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 52, "Expected 52 registered tools");
+    assert_eq!(tools.len(), 55, "Expected 55 registered tools");
 
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 57, "Expected 57 registered starter presets");
+    assert_eq!(presets.len(), 59, "Expected 59 registered starter presets");
 
     for tool in &tools {
         let matching: Vec<_> = presets
@@ -202,44 +212,26 @@ fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetM
 
 #[test]
 fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
-    use crate::tabs::morphogenesis::MorphogenesisTab;
-
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
     assert_eq!(
         presets.len(),
-        57,
-        "Expected 57 StarterPresetMetadata entries"
+        59,
+        "Expected 59 StarterPresetMetadata entries"
     );
 
     for preset in presets {
-        if let Some(tool_name) = preset.tool_name {
-            let tool_meta = tools
-                .iter()
-                .copied()
-                .find(|t| t.id == tool_name && t.domain == preset.domain)
-                .unwrap_or_else(|| panic!("Missing ToolMetadata for '{}'", tool_name));
-            verify_tool_preset_mutation(tool_meta, preset);
-        } else {
-            let payload = preset.generate_preset();
-            let mut target_tab = MorphogenesisTab::default();
-            target_tab
-                .from_json_str(payload)
-                .unwrap_or_else(|e| panic!("Morphogenesis preset '{}' failed: {}", preset.id, e));
-            let expected_cfg = target_tab.export_config();
-
-            let mut perturbed_tab = MorphogenesisTab::default();
-            let mut custom_cfg = perturbed_tab.export_config();
-            custom_cfg.a = 0.31;
-            custom_cfg.b = 0.69;
-            assert!(perturbed_tab.apply_config(custom_cfg).is_ok());
-            assert_ne!(perturbed_tab.export_config(), expected_cfg);
-
-            assert!(perturbed_tab.from_json_str(payload).is_ok());
-            assert_eq!(perturbed_tab.export_config(), expected_cfg);
-        }
+        let tool_name = preset
+            .tool_name
+            .unwrap_or_else(|| panic!("Preset '{}' must specify tool_name", preset.id));
+        let tool_meta = tools
+            .iter()
+            .copied()
+            .find(|t| t.id == tool_name && t.domain == preset.domain)
+            .unwrap_or_else(|| panic!("Missing ToolMetadata for '{}'", tool_name));
+        verify_tool_preset_mutation(tool_meta, preset);
     }
 }
 
@@ -249,7 +241,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(tools.len(), 52, "Expected 52 InteractiveTool registrations");
+    assert_eq!(tools.len(), 55, "Expected 55 InteractiveTool registrations");
 
     for tool_meta in tools {
         let default_tool = (tool_meta.build)();

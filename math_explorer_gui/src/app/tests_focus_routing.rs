@@ -32,6 +32,7 @@ fn key_press(key: egui::Key, modifiers: egui::Modifiers) -> egui::Event {
     }
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai"))]
 fn find_pane0_formula_input_center(out: &egui::FullOutput) -> Option<egui::Pos2> {
     let ak = out.platform_output.accesskit_update.as_ref()?;
     for (_, node) in &ak.nodes {
@@ -49,6 +50,7 @@ fn find_pane0_formula_input_center(out: &egui::FullOutput) -> Option<egui::Pos2>
     None
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai"))]
 fn click_pos(ctx: &egui::Context, app: &mut MathExplorerApp, screen: egui::Rect, pos: egui::Pos2) {
     let _ = run_frame(
         ctx,
@@ -77,6 +79,7 @@ fn click_pos(ctx: &egui::Context, app: &mut MathExplorerApp, screen: egui::Rect,
     );
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai"))]
 fn setup_ode_custom_and_training_monitor(app: &mut MathExplorerApp) {
     let analysis_idx = app
         .tabs
@@ -107,6 +110,7 @@ fn setup_ode_custom_and_training_monitor(app: &mut MathExplorerApp) {
     }
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai"))]
 fn has_rendered_text(out: &egui::FullOutput, needle: &str) -> bool {
     fn walk(shapes: &[egui::epaint::Shape], needle: &str) -> bool {
         shapes.iter().any(|s| match s {
@@ -119,6 +123,7 @@ fn has_rendered_text(out: &egui::FullOutput, needle: &str) -> bool {
     walk(&shapes, needle)
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai"))]
 fn pane1_is_training(app: &MathExplorerApp) -> bool {
     app.pane_tab(1)
         .and_then(|t| t.framework())
@@ -127,6 +132,7 @@ fn pane1_is_training(app: &MathExplorerApp) -> bool {
         .is_some_and(|s| s.contains("\"is_training\":true"))
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai"))]
 fn pane0_tool_state_json(app: &MathExplorerApp) -> String {
     app.pane_tab(0)
         .unwrap()
@@ -140,6 +146,7 @@ fn pane0_tool_state_json(app: &MathExplorerApp) -> String {
 }
 
 #[test]
+#[cfg(all(feature = "pure_math", feature = "ai"))]
 fn test_typing_in_pane_0_while_hovering_pane_1_or_pointer_gone_isolates_keys_and_clipboard() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ctx = egui::Context::default();
@@ -205,6 +212,7 @@ fn test_typing_in_pane_0_while_hovering_pane_1_or_pointer_gone_isolates_keys_and
 }
 
 #[test]
+#[cfg(all(feature = "pure_math", feature = "ai"))]
 fn test_switching_focused_pane_surrenders_stale_widget_focus_in_inactive_pane() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ctx = egui::Context::default();
@@ -252,8 +260,10 @@ fn test_f6_and_shift_f6_cycle_focused_pane_with_pointer_none_and_announce_aria()
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1024.0, 768.0));
     let mut app = MathExplorerApp::default();
     app.set_layout(ViewportLayout::QuadGrid);
-    for p in 0..4 {
-        app.set_pane_tab(p, p % app.tabs.len().max(1));
+    if !app.tabs.is_empty() {
+        for p in 0..4 {
+            app.set_pane_tab(p, p % app.tabs.len());
+        }
     }
 
     let _ = run_frame(&ctx, &mut app, screen, vec![egui::Event::PointerGone]);

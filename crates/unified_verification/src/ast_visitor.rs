@@ -3,7 +3,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use syn::visit::Visit;
-use walkdir::WalkDir;
 
 #[derive(Default)]
 struct MaliciousCodeVisitor {
@@ -46,25 +45,29 @@ struct CloneDetectorVisitor {
 
 impl CloneDetectorVisitor {
     fn is_a_b_plus_c(expr: &syn::Expr) -> bool {
-        if let syn::Expr::Binary(i) = expr {
-            if let syn::BinOp::Add(_) = i.op {
-                let left_is_mul = matches!(*i.left, syn::Expr::Binary(ref b) if matches!(b.op, syn::BinOp::Mul(_)));
-                let right_is_mul = matches!(*i.right, syn::Expr::Binary(ref b) if matches!(b.op, syn::BinOp::Mul(_)));
+        if let syn::Expr::Binary(i) = expr
+            && let syn::BinOp::Add(_) = i.op
+        {
+            let left_is_mul =
+                matches!(*i.left, syn::Expr::Binary(ref b) if matches!(b.op, syn::BinOp::Mul(_)));
+            let right_is_mul =
+                matches!(*i.right, syn::Expr::Binary(ref b) if matches!(b.op, syn::BinOp::Mul(_)));
 
-                if left_is_mul || right_is_mul {
-                    let is_ident = |expr: &syn::Expr| matches!(expr, syn::Expr::Path(p) if p.path.get_ident().is_some());
+            if left_is_mul || right_is_mul {
+                let is_ident = |expr: &syn::Expr| matches!(expr, syn::Expr::Path(p) if p.path.get_ident().is_some());
 
-                    let (mul_expr, other_expr) = if left_is_mul {
-                        (&*i.left, &*i.right)
-                    } else {
-                        (&*i.right, &*i.left)
-                    };
+                let (mul_expr, other_expr) = if left_is_mul {
+                    (&*i.left, &*i.right)
+                } else {
+                    (&*i.right, &*i.left)
+                };
 
-                    if let syn::Expr::Binary(b) = mul_expr {
-                        if is_ident(&b.left) && is_ident(&b.right) && is_ident(other_expr) {
-                            return true;
-                        }
-                    }
+                if let syn::Expr::Binary(b) = mul_expr
+                    && is_ident(&b.left)
+                    && is_ident(&b.right)
+                    && is_ident(other_expr)
+                {
+                    return true;
                 }
             }
         }
@@ -109,7 +112,7 @@ impl<'ast> Visit<'ast> for CloneDetectorVisitor {
     }
 
     fn visit_expr_index(&mut self, i: &'ast syn::ExprIndex) {
-        if Self::contains_a_b_plus_c(&*i.index) {
+        if Self::contains_a_b_plus_c(&i.index) {
             self.has_2d_index_clone = true;
         }
         syn::visit::visit_expr_index(self, i);
@@ -134,7 +137,7 @@ impl<'ast> Visit<'ast> for CloneDetectorVisitor {
                     false
                 }
             };
-            if is_255(&*i.left) || is_255(&*i.right) {
+            if is_255(&i.left) || is_255(&i.right) {
                 self.mul_255_count += 1;
             }
         }
@@ -142,10 +145,10 @@ impl<'ast> Visit<'ast> for CloneDetectorVisitor {
     }
 
     fn visit_expr_cast(&mut self, i: &'ast syn::ExprCast) {
-        if let syn::Type::Path(p) = &*i.ty {
-            if p.path.is_ident("u8") {
-                self.cast_u8_count += 1;
-            }
+        if let syn::Type::Path(p) = &*i.ty
+            && p.path.is_ident("u8")
+        {
+            self.cast_u8_count += 1;
         }
         syn::visit::visit_expr_cast(self, i);
     }
@@ -154,50 +157,41 @@ impl<'ast> Visit<'ast> for CloneDetectorVisitor {
 pub fn run_clone_detector() -> bool {
     println!("Running Clone Detector on first-party repository...");
     let mut flags_found = 0;
-    let first_party_dirs = vec!["crates", "apps", "math_explorer", "math_explorer_gui"];
-    for dir in first_party_dirs {
-        for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
-            if entry.path().extension().and_then(|s| s.to_str()) == Some("rs") {
-                let path_str = entry.path().to_string_lossy().replace("\\", "/");
-                if path_str.contains("/target/")
-                    || path_str.contains("/egui_plot/")
-                    || path_str.starts_with("egui_plot/")
-                {
-                    continue;
-                }
-                if path_str.contains("unified_verification")
-                    || path_str.contains("colormap.rs")
-                    || path_str.contains("types.rs")
-                {
-                    continue;
-                }
+    let first_party_dirs = ["crates", "apps", "math_explorer", "math_explorer_gui"];
+    for path in crate::utils::collect_rs_files_filtered(&first_party_dirs, &["target", "egui_plot"])
+    {
+        let path_str = crate::whitelist::lossy_slash_path(&path);
+        if path_str.contains("unified_verification")
+            || path_str.contains("colormap.rs")
+            || path_str.contains("types.rs")
+        {
+            continue;
+        }
 
-                if let Ok(content) = fs::read_to_string(entry.path()) {
-                    if let Ok(ast) = syn::parse_file(&content) {
-                        let mut clone_visitor = CloneDetectorVisitor {
-                            has_2d_index_clone: false,
-                            has_color_clone: false,
-                            in_function: false,
-                            cast_u8_count: 0,
-                            mul_255_count: 0,
-                        };
-                        clone_visitor.visit_file(&ast);
-                        if clone_visitor.has_2d_index_clone {
-                            println!(
-                                "[!] Code Clone Detected: 2D Grid Indexing pattern in {}",
-                                entry.path().display()
-                            );
-                            flags_found += 1;
-                        }
-                        if clone_visitor.has_color_clone {
-                            println!(
-                                "[!] Code Clone Detected: Scalar-to-Color RGB conversion pattern in {}",
-                                entry.path().display()
-                            );
-                            flags_found += 1;
-                        }
-                    }
-                }
+        if let Ok(content) = fs::read_to_string(&path)
+            && let Ok(ast) = syn::parse_file(&content)
+        {
+            let mut clone_visitor = CloneDetectorVisitor {
+                has_2d_index_clone: false,
+                has_color_clone: false,
+                in_function: false,
+                cast_u8_count: 0,
+                mul_255_count: 0,
+            };
+            clone_visitor.visit_file(&ast);
+            if clone_visitor.has_2d_index_clone {
+                println!(
+                    "[!] Code Clone Detected: 2D Grid Indexing pattern in {}",
+                    path.display()
+                );
+                flags_found += 1;
+            }
+            if clone_visitor.has_color_clone {
+                println!(
+                    "[!] Code Clone Detected: Scalar-to-Color RGB conversion pattern in {}",
+                    path.display()
+                );
+                flags_found += 1;
             }
         }
     }
@@ -355,12 +349,9 @@ pub fn run_ast_visitor() -> bool {
     println!("Running AST visitor on 100% of third-party dependencies...");
 
     let mut flags_found = 0;
-    for path in collect_crates_io_dep_paths() {
-        for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
-            if entry.path().extension().and_then(|s| s.to_str()) == Some("rs") {
-                flags_found += scan_rs_file_for_malicious_calls(entry.path());
-            }
-        }
+    let dep_paths = collect_crates_io_dep_paths();
+    for rs_file in crate::utils::collect_rs_files_filtered(&dep_paths, &[]) {
+        flags_found += scan_rs_file_for_malicious_calls(&rs_file);
     }
 
     println!("AST visitor finished. Flagged {} patterns.", flags_found);
@@ -386,12 +377,11 @@ mod tests {
     fn test_clone_detector_is_a_b_plus_c() {
         let code = "fn test() { let x = a * b + c; }";
         let file = syn::parse_file(code).unwrap();
-        if let syn::Item::Fn(f) = &file.items[0] {
-            if let syn::Stmt::Local(l) = &f.block.stmts[0] {
-                if let Some(init) = &l.init {
-                    assert!(CloneDetectorVisitor::is_a_b_plus_c(&init.expr));
-                }
-            }
+        if let syn::Item::Fn(f) = &file.items[0]
+            && let syn::Stmt::Local(l) = &f.block.stmts[0]
+            && let Some(init) = &l.init
+        {
+            assert!(CloneDetectorVisitor::is_a_b_plus_c(&init.expr));
         }
     }
 

@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{show_starter_gallery_overlay, StarterCard};
+use super::StarterCard;
 use eframe::egui;
 
 const DEFER_STARTER_GALLERY_TO_ROOT_KEY: &str = "DEFER_STARTER_GALLERY_TO_ROOT";
@@ -12,6 +12,160 @@ struct DeferredStarterGalleryRequest {
     id_source: String,
     modal_source: String,
     cards: Vec<StarterCard>,
+}
+
+struct GalleryOverlayMetrics {
+    max_w: f32,
+    max_h: f32,
+    inner_w: f32,
+    scroll_h: f32,
+    card_w: f32,
+}
+
+fn compute_gallery_metrics(ctx: &egui::Context) -> GalleryOverlayMetrics {
+    let raw_screen = ctx.content_rect();
+    let avail_w = if raw_screen.width().is_finite() && raw_screen.width() > 64.0 {
+        raw_screen.width()
+    } else {
+        1024.0
+    };
+    let avail_h = if raw_screen.height().is_finite() && raw_screen.height() > 64.0 {
+        raw_screen.height()
+    } else {
+        768.0
+    };
+    let max_w = (avail_w - 32.0).clamp(180.0, 740.0);
+    let max_h = (avail_h - 32.0).clamp(160.0, 520.0);
+    let inner_w = (max_w - 36.0).max(144.0);
+    let scroll_h = (max_h - 124.0).max(64.0);
+    let card_w = if inner_w < 460.0 {
+        (inner_w - 16.0).clamp(128.0, 215.0)
+    } else {
+        215.0
+    };
+    GalleryOverlayMetrics {
+        max_w,
+        max_h,
+        inner_w,
+        scroll_h,
+        card_w,
+    }
+}
+
+fn render_starter_card(ui: &mut egui::Ui, card: &StarterCard, card_width: f32) -> bool {
+    let mut launched = false;
+    egui::Frame::group(ui.style())
+        .inner_margin(14.0)
+        .corner_radius(8.0)
+        .show(ui, |ui| {
+            ui.set_width(card_width);
+            ui.set_min_height(150.0);
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(card.icon).size(26.0));
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new(card.title).strong().size(15.0));
+                        ui.label(
+                            egui::RichText::new(format!("[{}]", card.category))
+                                .small()
+                                .color(ui.visuals().weak_text_color()),
+                        );
+                    });
+                });
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(card.description)
+                        .size(12.0)
+                        .color(ui.visuals().text_color()),
+                );
+                ui.add_space(10.0);
+                if ui.button(format!("▶ Launch {}", card.title)).clicked() {
+                    launched = true;
+                }
+            });
+        });
+    launched
+}
+
+fn render_starter_gallery_body(
+    ui: &mut egui::Ui,
+    frame_ctx: &mut crate::ModalFrameContext,
+    cards: &[StarterCard],
+    m: &GalleryOverlayMetrics,
+) -> Option<StarterCard> {
+    let mut selected_card = None;
+    ui.set_max_width(m.inner_w);
+    ui.set_width(m.inner_w);
+    ui.horizontal(|ui| {
+        ui.set_width(m.inner_w);
+        ui.add(
+            egui::Label::new(egui::RichText::new("🚀 Starter Template Gallery").heading())
+                .truncate(),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button("✖ Close Gallery").clicked() {
+                frame_ctx.close();
+            }
+        });
+    });
+
+    ui.add(
+        egui::Label::new(
+            egui::RichText::new(
+                "Choose a guided starter model to launch pre-configured simulation parameters:",
+            )
+            .color(ui.visuals().weak_text_color()),
+        )
+        .wrap(),
+    );
+    ui.add_space(6.0);
+    ui.separator();
+    ui.add_space(8.0);
+
+    egui::ScrollArea::vertical()
+        .max_height(m.scroll_h)
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
+                for card in cards {
+                    if render_starter_card(ui, card, m.card_w) {
+                        selected_card = Some(card.clone());
+                        frame_ctx.close();
+                    }
+                }
+            });
+        });
+    selected_card
+}
+
+/// Renders the central canvas starter gallery card overlay clamped to root window bounds.
+pub fn show_starter_gallery_overlay(
+    ctx: &egui::Context,
+    id_source: &str,
+    cards: &[StarterCard],
+    is_open: &mut bool,
+) -> Option<StarterCard> {
+    if cards.is_empty() {
+        return None;
+    }
+    let m = compute_gallery_metrics(ctx);
+    let mut selected_card = None;
+    let modal_id = egui::Id::new(format!("{id_source}_starter_gallery_overlay"));
+    let frame = egui::Frame::window(&ctx.style())
+        .inner_margin(16)
+        .corner_radius(12.0)
+        .shadow(ctx.style().visuals.window_shadow);
+
+    crate::ModalLifecycle::new(modal_id)
+        .frame(frame)
+        .backdrop_color(egui::Color32::from_black_alpha(120))
+        .max_width(m.max_w)
+        .max_height(m.max_h)
+        .show(ctx, is_open, |ui, frame_ctx| {
+            selected_card = render_starter_gallery_body(ui, frame_ctx, cards, &m);
+        });
+
+    selected_card
 }
 
 /// Enables root-level hoisting of `StarterGallery` modals rendered during pane updates.

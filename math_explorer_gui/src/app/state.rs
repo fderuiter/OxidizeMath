@@ -210,6 +210,7 @@ pub struct AppState {
     pub secondary_tab_name: Option<String>,
     #[serde(default = "default_split_ratio")]
     pub split_ratio: f32,
+    /// Horizontal and vertical split ratios `(x, y)` for `ViewportLayout::QuadGrid`.
     #[serde(default = "default_quad_split_ratios")]
     pub quad_split_ratios: (f32, f32),
     #[serde(default)]

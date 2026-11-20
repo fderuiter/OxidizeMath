@@ -1,7 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{MorphogenesisTab, SimpleRng};
-use crate::async_sim::ui::render_empty_plot_guidance;
+use super::{MorphogenesisTool, SimpleRng};
+use crate::async_sim::ui::{
+    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+};
+use crate::async_sim::SimCommand;
+use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
+use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use egui_plot::{Plot, PlotImage, PlotPoint};
@@ -9,7 +14,7 @@ use math_commons::math_kernel::colormap::heatmap_color;
 use math_explorer::biology::diffusion::FiniteDifference2D;
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 
-impl MorphogenesisTab {
+impl MorphogenesisTool {
     fn sync_texture_from_snapshot(&mut self, ctx: &egui::Context) {
         if !self.dirty && self.texture.is_some() {
             return;
@@ -44,6 +49,90 @@ impl MorphogenesisTab {
             self.texture = Some(ctx.load_texture("morphogenesis_tex", image, texture_opts));
         }
         self.dirty = false;
+    }
+
+    fn draw_parameter_sliders(&self, ui: &mut egui::Ui) {
+        let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
+        ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
+        ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
+        ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
+        ui.add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"));
+    }
+
+    fn draw_presets(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.label("Presets:");
+        if ui.button("Spots").clicked() {
+            self.apply_named_preset(0.1, 0.9, 1.0, 100.0, 0.05);
+        }
+        if ui.button("Stripes").clicked() {
+            self.apply_named_preset(0.14, 0.86, 1.0, 50.0, 0.02);
+        }
+    }
+
+    fn draw_fault_and_recovery(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if let Some(action) = render_worker_fault_banner(
+            ui,
+            self.worker.state(),
+            self.worker.diagnostic_report(),
+            true,
+        ) {
+            match action {
+                WorkerFaultAction::Reset => self.reset(),
+                WorkerFaultAction::ResetParameters => FiniteStateGuard::reset_parameters(self),
+                WorkerFaultAction::Recovery(RecoveryAction::AutoScaleStepSize) => {
+                    FiniteStateGuard::auto_scale_step_size(self);
+                }
+                WorkerFaultAction::Recovery(RecoveryAction::ClampParameters) => {
+                    FiniteStateGuard::clamp_parameters(self);
+                }
+                WorkerFaultAction::Recovery(RecoveryAction::ResetParameters) => {
+                    FiniteStateGuard::reset_parameters(self);
+                }
+            }
+            ctx.request_repaint();
+            ui.separator();
+        }
+    }
+
+    pub(crate) fn draw_controls(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let panel_id = crate::framework::scoped_panel_id(ui, "morphogenesis_controls");
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
+            ui.heading("Morphogenesis Controls");
+            ui.separator();
+
+            self.draw_fault_and_recovery(ui, &ctx);
+            self.draw_parameter_sliders(ui);
+            ui.separator();
+
+            if let Some(action) = PlaybackTransport::from_worker_state(
+                "morphogenesis_transport",
+                "Morphogenesis",
+                self.worker.state(),
+            )
+            .can_reset(true)
+            .show(ui)
+            {
+                match action {
+                    PlaybackAction::Play => {
+                        let _ = self.worker.send_command(SimCommand::Start);
+                    }
+                    PlaybackAction::Pause => {
+                        let _ = self.worker.send_command(SimCommand::Pause);
+                    }
+                    PlaybackAction::Step => {
+                        let _ = self.worker.send_command(SimCommand::Step(1));
+                    }
+                    PlaybackAction::Reset => {
+                        self.reset();
+                        ctx.request_repaint();
+                    }
+                }
+            }
+
+            self.draw_presets(ui);
+        });
     }
 
     pub(crate) fn draw_canvas(&mut self, ui: &mut egui::Ui) {
