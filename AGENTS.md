@@ -167,11 +167,11 @@ Pull requests automatically execute the Linux Debian (`deb`) installer build in 
 
 ### Prerequisites (Ubuntu / Debian)
 
-Install native GUI and packaging libraries along with `cargo-packager` `0.11.8` using `cargo-binstall` without falling back to source compilation:
+Install a C toolchain (if not already present) along with `cargo-packager` `0.11.8` using `cargo-binstall` without falling back to source compilation (`rfd` uses `xdg-portal` in [Cargo.toml](Cargo.toml), so `libgtk-3-dev` and `libxdo-dev` are not required):
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y libgtk-3-dev libxdo-dev build-essential
+sudo apt-get install -y build-essential
 
 # Install pinned cargo-packager prebuilt binary (fails fast if unavailable)
 cargo binstall --no-confirm --disable-strategies compile cargo-packager@0.11.8
@@ -179,18 +179,28 @@ cargo binstall --no-confirm --disable-strategies compile cargo-packager@0.11.8
 
 ### Build Linux `.deb` Installer & SHA-256 Manifest
 
-[math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml) configures `out-dir = "dist"` under `[package.metadata.packager]`, so `cargo packager` writes installers to `math_explorer_gui/dist` alongside a hidden `.cargo-packager` metadata directory.
+[math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml) configures `before-packaging-command = "cargo build --release -p math_explorer_gui"` and `out-dir = "dist"` under `[package.metadata.packager]`, so `cargo packager` compiles the `--release` binary automatically and writes installers to `math_explorer_gui/dist` alongside a hidden `.cargo-packager` metadata directory. Because `product-name = "Math Explorer"` introduces a space in macOS `.dmg` filenames, normalize spaces to underscores on `*.dmg` files before generating `SHA256SUMS` so `gh release create` does not rewrite spaces to dots and invalidate `SHA256SUMS-dmg`:
 
 ```bash
-# 1. Build release GUI binary and package Debian installer
-cargo build --release -p math_explorer_gui
+# 1. Build release GUI binary (via before-packaging-command) and package Debian installer
 cargo packager --release -p math_explorer_gui -f deb
 
-# 2. Generate and verify SHA256SUMS for installer files only (skipping .cargo-packager)
+# 2. Inspect .deb control metadata and simulate installation
+dpkg-deb -I math_explorer_gui/dist/*.deb
+sudo dpkg --simulate -i math_explorer_gui/dist/*.deb
+
+# 3. Normalize space-containing .dmg filenames and verify SHA256SUMS (skipping .cargo-packager)
 (
   cd math_explorer_gui/dist
   shopt -s nullglob
   shopt -u dotglob
+  for dmg in *.dmg; do
+    if [ -f "$dmg" ] && [[ "$dmg" == *" "* ]]; then
+      normalized="${dmg// /_}"
+      test ! -e "$normalized"
+      mv -- "$dmg" "$normalized"
+    fi
+  done
   files=()
   for f in *.deb *.dmg *.msi *.exe *.wix; do
     if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
