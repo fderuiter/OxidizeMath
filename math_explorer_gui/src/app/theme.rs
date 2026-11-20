@@ -120,6 +120,9 @@ impl ThemeMode {
                 visuals.panel_fill = egui::Color32::BLACK;
                 visuals.window_fill = egui::Color32::BLACK;
                 visuals.widgets.noninteractive.bg_fill = egui::Color32::BLACK;
+                visuals.widgets.noninteractive.bg_stroke =
+                    egui::Stroke::new(1.0_f32, super::palette::HIGH_CONTRAST_PALETTE.graph_edge);
+                visuals.window_stroke = visuals.widgets.noninteractive.bg_stroke;
                 visuals.widgets.noninteractive.fg_stroke =
                     egui::Stroke::new(1.0_f32, egui::Color32::WHITE);
                 visuals.widgets.inactive.fg_stroke =
@@ -128,7 +131,7 @@ impl ThemeMode {
                     egui::Stroke::new(2.0_f32, egui::Color32::YELLOW);
                 visuals.widgets.active.fg_stroke = egui::Stroke::new(2.0_f32, egui::Color32::WHITE);
                 visuals.selection.bg_fill = egui::Color32::from_rgb(0, 90, 158);
-                visuals.selection.stroke = egui::Stroke::new(1.0_f32, egui::Color32::BLACK);
+                visuals.selection.stroke = egui::Stroke::new(2.0_f32, egui::Color32::WHITE);
                 visuals
             }
         }

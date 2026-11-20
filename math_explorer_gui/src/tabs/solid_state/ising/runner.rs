@@ -13,6 +13,18 @@ pub struct IsingSharedParams {
     pub j_coupling: f64,
     pub h_field: f64,
     pub steps_per_frame: usize,
+    pub theme: crate::app::ThemeMode,
+}
+
+/// Maps an Ising lattice spin (`+1` or `-1`) to a WCAG `>= 3.0:1` [`crate::app::SemanticPalette`] color.
+#[inline]
+#[must_use]
+pub fn ising_spin_color(spin: i8, palette: &crate::app::SemanticPalette) -> egui::Color32 {
+    if spin > 0 {
+        palette.axis_x
+    } else {
+        palette.axis_z
+    }
 }
 
 #[allow(missing_docs)]
@@ -71,19 +83,16 @@ impl SimulationRunner for IsingRunner {
     fn get_snapshot(&self) -> StateSnapshot {
         let width = self.lattice.width();
         let height = self.lattice.height();
+        let (j, h, theme) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.j_coupling, p.h_field, p.theme)
+        };
+        let palette = theme.palette();
         let spins_vec: Vec<i8> = self.lattice.spins().to_vec();
         let mut pixels = Vec::with_capacity(width * height);
         for &s in &spins_vec {
-            pixels.push(if s > 0 {
-                egui::Color32::from_rgb(200, 50, 50)
-            } else {
-                egui::Color32::from_rgb(50, 50, 200)
-            });
+            pixels.push(ising_spin_color(s, &palette));
         }
-        let (j, h) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.j_coupling, p.h_field)
-        };
         let m = self.lattice.magnetization();
         let max_m = (width * height) as f64;
         let m_avg = m as f64 / max_m;

@@ -233,3 +233,44 @@ fn test_generate_domain_switcher_bar_screenshot() {
         let _ = std::fs::write("/tmp/domain_switcher_bar.png", png_data);
     }
 }
+
+fn contains_rect_fill(shapes: &[egui::epaint::Shape], expected: egui::Color32) -> bool {
+    shapes.iter().any(|s| match s {
+        egui::epaint::Shape::Rect(r) => r.fill == expected,
+        egui::epaint::Shape::Vec(v) => contains_rect_fill(v, expected),
+        _ => false,
+    })
+}
+
+#[test]
+fn test_active_domain_button_renders_selection_fill_and_high_contrast() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp {
+        theme: ThemeMode::HighContrast,
+        ..Default::default()
+    };
+    let visuals = ThemeMode::HighContrast.visuals();
+    ctx.set_visuals(visuals.clone());
+    let mut frame = eframe::Frame::_new_kittest();
+    let raw_input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1920.0, 1080.0),
+        )),
+        ..Default::default()
+    };
+
+    let out = ctx.run(raw_input, |ctx| {
+        app.update(ctx, &mut frame);
+    });
+    let shapes: Vec<egui::epaint::Shape> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+    assert!(
+        contains_rect_fill(&shapes, visuals.selection.bg_fill),
+        "Active AcademicDomain button must render selection.bg_fill"
+    );
+    assert!(
+        contrast_ratio(visuals.selection.bg_fill, visuals.selection.stroke.color) >= 7.0,
+        "Active AcademicDomain button text contrast must reach >= 7.0:1 in HighContrast"
+    );
+}

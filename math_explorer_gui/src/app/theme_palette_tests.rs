@@ -102,31 +102,49 @@ fn test_contrasting_text_color_guarantees_wcag_aa_across_luminance_spectrum() {
 
 #[test]
 fn test_high_contrast_selection_contrast_ratio() {
+    assert_eq!(ThemeMode::Dark.visuals(), egui::Visuals::dark());
+    assert_eq!(ThemeMode::Light.visuals(), egui::Visuals::light());
+
     let visuals = ThemeMode::HighContrast.visuals();
+    assert_eq!(ThemeMode::from_visuals(&visuals), ThemeMode::HighContrast);
     let selection_bg = visuals.selection.bg_fill;
     assert_eq!(selection_bg, egui::Color32::from_rgb(0, 90, 158));
-
-    // WCAG 2.2 AA requires >= 4.5:1 for normal text and strokes against background
-    let active_fg = visuals.widgets.active.fg_stroke.color;
-    let active_contrast = contrast_ratio(selection_bg, active_fg);
-    assert!(
-        active_contrast >= 4.5,
-        "Selection fill contrast against active fg ({active_contrast:.2}:1) must exceed 4.5:1"
+    assert_eq!(visuals.extreme_bg_color, egui::Color32::BLACK);
+    assert_eq!(
+        visuals.selection.stroke,
+        egui::Stroke::new(2.0_f32, egui::Color32::WHITE)
     );
 
-    let noninteractive_fg = visuals.widgets.noninteractive.fg_stroke.color;
-    let noninteractive_contrast = contrast_ratio(selection_bg, noninteractive_fg);
+    let sel_stroke_vs_bg = contrast_ratio(selection_bg, visuals.selection.stroke.color);
     assert!(
-        noninteractive_contrast >= 4.5,
-        "Selection fill contrast against noninteractive fg ({noninteractive_contrast:.2}:1) must exceed 4.5:1"
+        sel_stroke_vs_bg >= 7.0,
+        "Selection stroke contrast against selection_bg ({sel_stroke_vs_bg:.2}:1) must reach >= 7.0:1"
+    );
+    let sel_stroke_vs_panel = contrast_ratio(visuals.panel_fill, visuals.selection.stroke.color);
+    assert!(
+        sel_stroke_vs_panel >= 21.0,
+        "Selection stroke contrast against BLACK panel ({sel_stroke_vs_panel:.2}:1) must reach 21.0:1"
+    );
+    let border_contrast = contrast_ratio(
+        visuals.panel_fill,
+        visuals.widgets.noninteractive.bg_stroke.color,
+    );
+    assert!(
+        border_contrast >= 3.0,
+        "Noninteractive bg_stroke contrast ({border_contrast:.2}:1) must exceed 3.0:1"
     );
 
-    let inactive_fg = visuals.widgets.inactive.fg_stroke.color;
-    let inactive_contrast = contrast_ratio(selection_bg, inactive_fg);
-    assert!(
-        inactive_contrast >= 4.5,
-        "Selection fill contrast against inactive fg ({inactive_contrast:.2}:1) must exceed 4.5:1"
-    );
+    for fg in [
+        visuals.widgets.active.fg_stroke.color,
+        visuals.widgets.noninteractive.fg_stroke.color,
+        visuals.widgets.inactive.fg_stroke.color,
+    ] {
+        let ratio = contrast_ratio(selection_bg, fg);
+        assert!(
+            ratio >= 4.5,
+            "Selection fill contrast ({ratio:.2}:1) < 4.5:1"
+        );
+    }
 }
 
 #[test]
@@ -192,8 +210,37 @@ fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     }
 }
 
+fn find_literal_from_rgb_lines(prod_part: &str) -> Vec<usize> {
+    let stripped: String = prod_part
+        .lines()
+        .map(|l| l.split("//").next().unwrap_or(l))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let needle = "Color32::from_rgb(";
+    let mut lines = Vec::new();
+    let mut offset = 0;
+    while let Some(pos) = stripped[offset..].find(needle) {
+        let abs_pos = offset + pos;
+        let after = &stripped[abs_pos + needle.len()..];
+        if after
+            .chars()
+            .find(|c| !c.is_whitespace())
+            .is_some_and(|c| c.is_ascii_digit())
+        {
+            let line_no = stripped[..abs_pos].bytes().filter(|&b| b == b'\n').count() + 1;
+            lines.push(line_no);
+        }
+        offset = abs_pos + needle.len();
+    }
+    lines
+}
+
 #[test]
 fn test_no_unguarded_hardcoded_color32_regressions() {
+    assert_eq!(
+        find_literal_from_rgb_lines("let a = egui::Color32::from_rgb(\n 200, 50, 50);\nlet b = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);"),
+        vec![1]
+    );
     const BANNED: &[&str] = &[
         "Color32::YELLOW",
         "Color32::LIGHT_BLUE",
@@ -223,7 +270,6 @@ fn test_no_unguarded_hardcoded_color32_regressions() {
         if rel_str.contains("test")
             || rel_str.ends_with("app/palette.rs")
             || rel_str.ends_with("app/theme.rs")
-            || rel_str.ends_with("tabs/number_theory/prime_spiral.rs")
         {
             continue;
         }
@@ -237,12 +283,73 @@ fn test_no_unguarded_hardcoded_color32_regressions() {
                 }
             }
         }
+        if rel_str.starts_with("math_explorer_gui/") {
+            for line_no in find_literal_from_rgb_lines(prod_part) {
+                violations.push(format!("{rel_str}:{line_no}: Color32::from_rgb(literal)"));
+            }
+        }
     }
     assert!(
         violations.is_empty(),
         "Found unguarded hardcoded Color32 constants (use SemanticPalette instead):\n{}",
         violations.join("\n")
     );
+}
+
+#[cfg(all(feature = "pure_math", feature = "physics", feature = "biology"))]
+#[test]
+fn test_high_contrast_rasters_and_progress_bars_meet_wcag() {
+    for mode in ALL_THEMES {
+        let v = mode.visuals();
+        let text_fg = v.selection.stroke.color;
+        assert!(contrast_ratio(v.extreme_bg_color, text_fg) >= 4.5);
+        assert!(contrast_ratio(v.selection.bg_fill, text_fg) >= 4.5);
+        for elasticity in [0.0, 0.5, 1.5, 2.5] {
+            let fill = SemanticPalette::progress_bar_fill(&v, elasticity);
+            assert!(contrast_ratio(fill, text_fg) >= 4.5);
+            if mode == ThemeMode::HighContrast {
+                assert!(contrast_ratio(fill, egui::Color32::BLACK) >= 3.0);
+            }
+        }
+    }
+
+    let black = egui::Color32::BLACK;
+    let hc_palette = ThemeMode::HighContrast.palette();
+    for spin in [-1_i8, 1_i8] {
+        let c = crate::tabs::solid_state::ising::ising_spin_color(spin, &hc_palette);
+        assert!(contrast_ratio(c, black) >= 3.0);
+    }
+
+    let (mut lookup, mut ulam_px) = (Vec::new(), Vec::new());
+    crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget::populate_ulam_pixels(
+        21,
+        ThemeMode::HighContrast,
+        &mut lookup,
+        &mut ulam_px,
+    );
+    for px in ulam_px.into_iter().filter(|&c| c != black) {
+        assert!(contrast_ratio(px, black) >= 3.0);
+    }
+
+    let dose = crate::tabs::medical::dose::DoseCalculationTool::default()
+        .compute_dose_image_for_contrast(true);
+    assert!(dose.pixels.iter().all(|&c| contrast_ratio(c, black) >= 3.0));
+
+    let morpho = crate::tabs::morphogenesis::MorphogenesisTool::plot_concentration_with_contrast(
+        &[0.0, 0.25, 0.5, 0.75, 1.0],
+        5,
+        1,
+        true,
+    );
+    assert!(morpho
+        .pixels
+        .iter()
+        .all(|&c| contrast_ratio(c, black) >= 3.0));
+
+    for iter in 0..50_u32 {
+        let c = crate::tabs::chaos::fractals::map_iter_to_color32(iter, 50, true);
+        assert!(contrast_ratio(c, black) >= 3.0);
+    }
 }
 
 #[test]

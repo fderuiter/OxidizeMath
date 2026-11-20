@@ -83,3 +83,122 @@ pub fn mapped_gradient(value: f64, min_val: f64, max_val: f64) -> [u8; 3] {
 
     [r, g, b]
 }
+
+const MIN_DARK_CANVAS_LUMINANCE: f64 = 0.11;
+
+#[inline]
+fn srgb_channel_to_linear(channel: u8) -> f64 {
+    let s = f64::from(channel) / 255.0;
+    if s <= 0.04045 {
+        s / 12.92
+    } else {
+        ((s + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+#[inline]
+fn linear_channel_to_srgb_ceil(linear: f64) -> u8 {
+    let clamped = linear.clamp(0.0, 1.0);
+    let encoded = if clamped <= 0.003_130_8 {
+        clamped * 12.92
+    } else {
+        1.055 * clamped.powf(1.0 / 2.4) - 0.055
+    };
+    (encoded * 255.0).ceil().clamp(0.0, 255.0) as u8
+}
+
+/// Lifts dark RGB samples in linear light so every pixel achieves WCAG 2.2 `>= 3.0:1`
+/// graphical contrast against a pure `#000000` canvas while preserving hue ordering.
+///
+/// # Example
+/// ```
+/// use math_commons::math_kernel::colormap::{ensure_dark_canvas_contrast, heatmap_color};
+///
+/// let lifted = ensure_dark_canvas_contrast(heatmap_color(0.0));
+/// assert!(lifted[0] > 0 && lifted[1] > 0 && lifted[2] == 255);
+/// ```
+#[inline]
+#[must_use]
+pub fn ensure_dark_canvas_contrast(rgb: [u8; 3]) -> [u8; 3] {
+    let lr = srgb_channel_to_linear(rgb[0]);
+    let lg = srgb_channel_to_linear(rgb[1]);
+    let lb = srgb_channel_to_linear(rgb[2]);
+    let lum = 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
+    if lum >= MIN_DARK_CANVAS_LUMINANCE {
+        return rgb;
+    }
+    let alpha = ((MIN_DARK_CANVAS_LUMINANCE - lum) / (1.0 - lum)).clamp(0.0, 1.0);
+    [
+        linear_channel_to_srgb_ceil(lr + alpha * (1.0 - lr)),
+        linear_channel_to_srgb_ceil(lg + alpha * (1.0 - lg)),
+        linear_channel_to_srgb_ceil(lb + alpha * (1.0 - lb)),
+    ]
+}
+
+/// High-contrast variant of [`heatmap_color`] guaranteed to exceed `3.0:1` contrast on `#000000`.
+///
+/// # Example
+/// ```
+/// use math_commons::math_kernel::colormap::heatmap_color_high_contrast;
+///
+/// let low = heatmap_color_high_contrast(0.0);
+/// assert_eq!(low[2], 255);
+/// assert_eq!(heatmap_color_high_contrast(1.0), [255, 0, 0]);
+/// ```
+#[inline]
+#[must_use]
+pub fn heatmap_color_high_contrast(t: f64) -> [u8; 3] {
+    ensure_dark_canvas_contrast(heatmap_color(t))
+}
+
+/// High-contrast variant of [`cyclic_cosine_palette`] guaranteed to exceed `3.0:1` contrast on `#000000`.
+///
+/// # Example
+/// ```
+/// use math_commons::math_kernel::colormap::cyclic_cosine_palette_high_contrast;
+///
+/// let sample = cyclic_cosine_palette_high_contrast(0.0);
+/// assert!(sample.iter().any(|&c| c > 0));
+/// ```
+#[inline]
+#[must_use]
+pub fn cyclic_cosine_palette_high_contrast(n: f64) -> [u8; 3] {
+    ensure_dark_canvas_contrast(cyclic_cosine_palette(n))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn contrast_on_black(rgb: [u8; 3]) -> f64 {
+        let lum = 0.2126 * srgb_channel_to_linear(rgb[0])
+            + 0.7152 * srgb_channel_to_linear(rgb[1])
+            + 0.0722 * srgb_channel_to_linear(rgb[2]);
+        (lum + 0.05) / 0.05
+    }
+
+    #[test]
+    fn test_high_contrast_colormaps_exceed_wcag_3_to_1_on_black() {
+        assert_eq!(heatmap_color(0.0), [0, 0, 255]);
+        assert!(contrast_on_black(heatmap_color(0.0)) < 3.0);
+
+        for step in 0..=200 {
+            let t = f64::from(step) / 200.0;
+            let hc = heatmap_color_high_contrast(t);
+            let ratio = contrast_on_black(hc);
+            assert!(
+                ratio >= 3.0,
+                "heatmap_color_high_contrast({t:.3}) -> {hc:?} yielded {ratio:.2}:1 (< 3.0:1)"
+            );
+        }
+
+        for iter in 0..=500 {
+            let hc = cyclic_cosine_palette_high_contrast(f64::from(iter));
+            let ratio = contrast_on_black(hc);
+            assert!(
+                ratio >= 3.0,
+                "cyclic_cosine_palette_high_contrast({iter}) -> {hc:?} yielded {ratio:.2}:1 (< 3.0:1)"
+            );
+        }
+    }
+}

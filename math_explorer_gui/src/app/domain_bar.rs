@@ -281,42 +281,44 @@ fn render_domain_button(
     }
 
     let is_active_domain = active_domain == Some(domain);
-    let domain_label = if is_active_domain {
-        egui::RichText::new(domain.active_name())
+    let domain_button = if is_active_domain {
+        let label = egui::RichText::new(domain.active_name())
             .strong()
-            .color(ui.visuals().selection.stroke.color)
+            .color(ui.visuals().selection.stroke.color);
+        egui::Button::new(label).fill(ui.visuals().selection.bg_fill)
     } else {
-        egui::RichText::new(domain.name())
+        egui::Button::new(egui::RichText::new(domain.name()))
     };
 
     let mut chosen_tab = None;
-    let menu_resp = ui.menu_button(domain_label, |ui| {
-        ui.set_min_width(180.0);
-        for (tab_idx, tab) in app.tabs.iter().enumerate() {
-            if AcademicDomain::from_str(tab.academic_domain()) != Some(domain) {
-                continue;
+    let (button_resp, _) =
+        egui::containers::menu::MenuButton::from_button(domain_button).ui(ui, |ui| {
+            ui.set_min_width(180.0);
+            for (tab_idx, tab) in app.tabs.iter().enumerate() {
+                if AcademicDomain::from_str(tab.academic_domain()) != Some(domain) {
+                    continue;
+                }
+                let tab_name = tab.name();
+                let is_active_module = tab_idx == app.focused_tab_index();
+                let resp = if is_active_module {
+                    ui.selectable_label(true, ("✓", tab_name))
+                } else {
+                    ui.selectable_label(false, tab_name)
+                };
+                let resp = attach_hover_hint(resp, || format!("Open {} simulation", tab_name));
+                if resp.clicked() {
+                    chosen_tab = Some(tab_idx);
+                    ui.close();
+                }
             }
-            let tab_name = tab.name();
-            let is_active_module = tab_idx == app.focused_tab_index();
-            let resp = if is_active_module {
-                ui.selectable_label(true, ("✓", tab_name))
-            } else {
-                ui.selectable_label(false, tab_name)
-            };
-            let resp = attach_hover_hint(resp, || format!("Open {} simulation", tab_name));
-            if resp.clicked() {
-                chosen_tab = Some(tab_idx);
-                ui.close();
-            }
-        }
-    });
+        });
 
     if let Some(tab_idx) = chosen_tab {
         select_tab(app, ctx, tab_idx);
     }
 
-    let is_clicked = menu_resp.response.clicked();
-    attach_hover_hint(menu_resp.response, || {
+    let is_clicked = button_resp.clicked();
+    attach_hover_hint(button_resp, || {
         format!("{} domain simulations", domain.name())
     });
 

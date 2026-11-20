@@ -29,8 +29,9 @@ pub(super) fn paint_pane_border(
     visuals: &egui::Visuals,
 ) {
     if is_focused {
+        let focus_width = visuals.selection.stroke.width.max(2.0_f32);
         painter.rect_stroke(
-            pane_rect.shrink(2.0),
+            pane_rect.shrink(focus_width),
             0.0,
             egui::Stroke::new(1.0_f32, visuals.panel_fill),
             egui::StrokeKind::Inside,
@@ -38,14 +39,14 @@ pub(super) fn paint_pane_border(
         painter.rect_stroke(
             pane_rect,
             0.0,
-            egui::Stroke::new(2.0_f32, pane_focus_border_color(visuals)),
+            egui::Stroke::new(focus_width, pane_focus_border_color(visuals)),
             egui::StrokeKind::Inside,
         );
     } else {
         painter.rect_stroke(
             pane_rect,
             0.0,
-            egui::Stroke::new(1.0_f32, visuals.widgets.noninteractive.bg_stroke.color),
+            visuals.widgets.noninteractive.bg_stroke,
             egui::StrokeKind::Inside,
         );
     }
