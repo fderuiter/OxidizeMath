@@ -1848,9 +1848,6 @@
       "signature": "pub use types :: Point3D"
     },
     {
-      "signature": "pub use types :: Triangle"
-    },
-    {
       "signature": "pub use types :: VoxelGrid"
     }
   ],
@@ -1931,9 +1928,6 @@
     },
     {
       "signature": "pub use oxidize_core :: mesh :: Point3D"
-    },
-    {
-      "signature": "pub use oxidize_core :: mesh :: Triangle"
     }
   ],
   "crates/domain_applied/src/applied/lorahub/ensemble.rs": [
@@ -5234,26 +5228,6 @@
       "signature": "pub trait BoundaryCondition { fn resolve (& self , x : isize , y : isize , width : usize , height : usize) -> Option < usize > }"
     }
   ],
-  "crates/oxidize_core/src/grid.rs": [
-    {
-      "signature": "impl < T : Clone > Grid2D < T > { pub fn new (width : usize , height : usize , initial_value : T) -> Self }"
-    },
-    {
-      "signature": "impl < T > Grid2D < T > { pub fn from_vec (width : usize , height : usize , data : Vec < T >) -> Self }"
-    },
-    {
-      "signature": "impl < T > Grid2D < T > { pub fn get (& self , x : usize , y : usize) -> Option < & T > }"
-    },
-    {
-      "signature": "impl < T > Grid2D < T > { pub fn get_mut (& mut self , x : usize , y : usize) -> Option < & mut T > }"
-    },
-    {
-      "signature": "impl < T > Grid2D < T > { pub fn index_1d (& self , x : usize , y : usize) -> usize }"
-    },
-    {
-      "signature": "pub struct Grid2D < T >"
-    }
-  ],
   "crates/oxidize_core/src/iteration.rs": [
     {
       "signature": "impl IterationPattern { pub fn for_each_boundary < F > (width : usize , height : usize , mut f : F) where F : FnMut (usize , usize) , }"
@@ -5343,9 +5317,6 @@
     },
     {
       "signature": "pub struct Point3D"
-    },
-    {
-      "signature": "pub struct Triangle"
     }
   ],
   "crates/oxidize_core/src/path_utils.rs": [
