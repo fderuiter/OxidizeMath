@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 /// Supported formats for deferred end-of-frame dataset and figure exports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ExportFormat {
+pub(crate) enum ExportFormat {
     /// Comma-separated values dataset format (`.csv`).
     Csv,
     /// JavaScript Object Notation dataset format (`.json`).
@@ -29,29 +29,29 @@ impl ExportFormat {
     }
 
     /// Returns the standard file extension for this format.
-    pub const fn extension(&self) -> &'static str {
+    pub(crate) const fn extension(&self) -> &'static str {
         self.meta().0
     }
 
     /// Returns the uppercase label for display messages.
-    pub const fn label(&self) -> &'static str {
+    pub(crate) const fn label(&self) -> &'static str {
         self.meta().1
     }
 
     /// Returns the file dialog filter description.
-    pub const fn filter_name(&self) -> &'static str {
+    pub(crate) const fn filter_name(&self) -> &'static str {
         self.meta().2
     }
 
     /// Returns the filename stem suffix (`dataset`, `figure`, or `animation`).
-    pub const fn stem_suffix(&self) -> &'static str {
+    pub(crate) const fn stem_suffix(&self) -> &'static str {
         self.meta().3
     }
 }
 
 /// Output destination target for deferred simulation dataset and figure export.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ExportTarget {
+pub(crate) enum ExportTarget {
     /// Save serialized dataset or figure to disk via file save dialog or browser download.
     File,
     /// Copy serialized dataset text or rendered figure image directly to the system clipboard.
@@ -60,32 +60,32 @@ pub enum ExportTarget {
 
 /// A deferred export request combining format and output destination target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ExportRequest {
+pub(crate) struct ExportRequest {
     /// Dataset or figure serialization format.
-    pub format: ExportFormat,
+    pub(crate) format: ExportFormat,
     /// Output destination target.
-    pub target: ExportTarget,
+    pub(crate) target: ExportTarget,
 }
 
 /// Inline status feedback for action-bar export operations.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct ActionBarExportStatus {
+pub(crate) struct ActionBarExportStatus {
     /// Human-readable confirmation or error message.
-    pub message: String,
+    pub(crate) message: String,
     /// Whether this status indicates an error or warning condition.
-    pub is_error: bool,
+    pub(crate) is_error: bool,
     /// Optional `egui` timestamp (`ctx.input(|i| i.time)`) when temporary confirmation expires.
-    pub expires_at_time: Option<f64>,
+    pub(crate) expires_at_time: Option<f64>,
 }
 
 /// Type alias for custom export file writer function.
-pub type CustomExportWriter = Arc<dyn Fn(&str, &[u8]) + Send + Sync>;
+pub(crate) type CustomExportWriter = Arc<dyn Fn(&str, &[u8]) + Send + Sync>;
 
 /// Type alias for custom clipboard text writer function (useful for deterministic testing).
-pub type CustomClipboardWriter = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+pub(crate) type CustomClipboardWriter = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
 /// Formats a clipboard failure error with guidance toward disk export.
-pub(super) fn format_clipboard_error(err: &str) -> String {
+fn format_clipboard_error(err: &str) -> String {
     if err.contains("Export CSV") {
         format!("Clipboard unavailable: {err}")
     } else {
@@ -95,31 +95,29 @@ pub(super) fn format_clipboard_error(err: &str) -> String {
 
 /// Manages pending dataset and figure export requests deferred to the end of the rendering frame.
 #[derive(Default)]
-pub struct ExportQueue {
-    requests: Vec<ExportFormat>,
+pub(crate) struct ExportQueue {
     target_requests: Vec<ExportRequest>,
     /// Optional directory to directly write exported files (useful in headless/automated test runs).
-    pub destination_dir: Option<PathBuf>,
+    pub(crate) destination_dir: Option<PathBuf>,
     /// Optional custom sink callback to receive exported filenames and file bytes.
-    pub custom_writer: Option<CustomExportWriter>,
+    pub(crate) custom_writer: Option<CustomExportWriter>,
     /// Optional custom clipboard sink callback to receive serialized text content.
-    pub custom_clipboard_writer: Option<CustomClipboardWriter>,
+    pub(crate) custom_clipboard_writer: Option<CustomClipboardWriter>,
     /// Retains the last exported filename (for inspection and verification).
-    pub last_exported_filename: Option<String>,
+    pub(crate) last_exported_filename: Option<String>,
     /// Retains the last exported file or clipboard text content (for CSV/JSON/SVG inspection).
-    pub last_exported_content: Option<String>,
+    pub(crate) last_exported_content: Option<String>,
     /// Retains the last exported raw byte payload (for PNG/GIF/SVG/CSV/JSON verification).
-    pub last_exported_bytes: Option<Vec<u8>>,
+    pub(crate) last_exported_bytes: Option<Vec<u8>>,
     /// Retains the last content copied directly to the clipboard.
-    pub last_clipboard_content: Option<String>,
+    pub(crate) last_clipboard_content: Option<String>,
     /// Current inline status feedback for action-bar export actions.
-    pub status: Option<ActionBarExportStatus>,
+    pub(crate) status: Option<ActionBarExportStatus>,
 }
 
 impl std::fmt::Debug for ExportQueue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExportQueue")
-            .field("requests", &self.requests)
             .field("target_requests", &self.target_requests)
             .field("destination_dir", &self.destination_dir)
             .field("last_exported_filename", &self.last_exported_filename)
@@ -136,70 +134,51 @@ impl std::fmt::Debug for ExportQueue {
 
 impl ExportQueue {
     /// Queues a file export request, preventing duplicates from rapid repeated clicks within the frame.
-    pub fn push(&mut self, format: ExportFormat) -> bool {
+    pub(crate) fn push(&mut self, format: ExportFormat) -> bool {
         self.push_target(format, ExportTarget::File)
     }
 
     /// Queues an export request for a specific output target, deduplicating identical `(format, target)` pairs.
-    pub fn push_target(&mut self, format: ExportFormat, target: ExportTarget) -> bool {
+    pub(crate) fn push_target(&mut self, format: ExportFormat, target: ExportTarget) -> bool {
         let req = ExportRequest { format, target };
         if self.target_requests.contains(&req) {
             return false;
-        }
-        if target == ExportTarget::File {
-            self.requests.push(format);
         }
         self.target_requests.push(req);
         true
     }
 
     /// Queues a direct CSV dataset export to the system clipboard, deduplicating rapid clicks.
-    pub fn queue_clipboard_export(&mut self) -> bool {
+    pub(crate) fn queue_clipboard_export(&mut self) -> bool {
         self.push_target(ExportFormat::Csv, ExportTarget::Clipboard)
     }
 
     /// Returns `true` if there are no pending export requests.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.target_requests.is_empty()
     }
 
     /// Returns the number of pending export requests across all targets.
-    pub fn len(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
         self.target_requests.len()
     }
 
-    /// Returns a slice of pending file-target export formats.
-    pub fn requests(&self) -> &[ExportFormat] {
-        &self.requests
-    }
-
     /// Returns a slice of all pending target-aware export requests.
-    pub fn export_requests(&self) -> &[ExportRequest] {
+    #[cfg(test)]
+    pub(crate) fn export_requests(&self) -> &[ExportRequest] {
         &self.target_requests
     }
 
-    /// Drains all pending file-target export formats and clears the queue.
-    pub fn drain(&mut self) -> Vec<ExportFormat> {
-        self.target_requests.clear();
-        std::mem::take(&mut self.requests)
-    }
-
     /// Drains all pending target-aware export requests from the queue.
-    pub fn drain_requests(&mut self) -> Vec<ExportRequest> {
-        self.requests.clear();
+    pub(crate) fn drain_requests(&mut self) -> Vec<ExportRequest> {
         std::mem::take(&mut self.target_requests)
-    }
-
-    /// Clears the queue without executing pending requests.
-    pub fn clear(&mut self) {
-        self.requests.clear();
-        self.target_requests.clear();
     }
 }
 
 impl SimulationFramework {
     /// Records an export status message with visual severity styling and dispatches a screen-reader announcement.
-    pub fn set_export_status(
+    pub(crate) fn set_export_status(
         &mut self,
         severity: ExportStatusSeverity,
         message: impl Into<String>,
@@ -216,7 +195,7 @@ impl SimulationFramework {
     }
 
     /// Queues a dataset or figure file export request for deferred end-of-frame dispatch.
-    pub fn queue_export(&mut self, format: ExportFormat) {
+    pub(crate) fn queue_export(&mut self, format: ExportFormat) {
         self.export_queue.push(format);
     }
 
@@ -237,27 +216,13 @@ impl SimulationFramework {
         }
     }
 
-    /// Queues a dataset or figure export request with an explicit destination target.
-    pub fn queue_export_with_target(&mut self, format: ExportFormat, target: ExportTarget) {
-        self.export_queue.push_target(format, target);
-    }
-
     /// Queues a direct CSV dataset clipboard export for deferred end-of-frame dispatch.
-    pub fn queue_clipboard_export(&mut self) {
+    pub(crate) fn queue_clipboard_export(&mut self) {
         self.export_queue.queue_clipboard_export();
     }
 
-    /// Dispatches all pending export requests accumulated in the action queue after `tool.show` completes.
-    pub fn dispatch_pending_exports(&mut self) {
-        self.dispatch_pending_exports_inner(None);
-    }
-
     /// Dispatches all pending export requests with an `egui::Context` for repaint scheduling and async callbacks.
-    pub fn dispatch_pending_exports_with_ctx(&mut self, ctx: &egui::Context) {
-        self.dispatch_pending_exports_inner(Some(ctx));
-    }
-
-    fn dispatch_pending_exports_inner(&mut self, ctx: Option<&egui::Context>) {
+    pub(crate) fn dispatch_pending_exports_with_ctx(&mut self, ctx: &egui::Context) {
         if self.export_queue.is_empty() {
             return;
         }
@@ -267,17 +232,13 @@ impl SimulationFramework {
                 ExportStatusSeverity::Warning,
                 "No active simulation tool available for export.",
             );
-            if let Some(egui_ctx) = ctx {
-                egui_ctx.request_repaint();
-            }
+            ctx.request_repaint();
             return;
         }
         for req in requests {
-            self.dispatch_single_request(req, ctx);
+            self.dispatch_single_request(req, Some(ctx));
         }
-        if let Some(egui_ctx) = ctx {
-            egui_ctx.request_repaint();
-        }
+        ctx.request_repaint();
     }
 
     fn dispatch_single_request(&mut self, req: ExportRequest, ctx: Option<&egui::Context>) {
