@@ -250,8 +250,7 @@
 
         #error_container[data-error-category="network"] #error_recovery_steps,
         #error_container[data-error-category="compile"] #error_recovery_steps,
-        #error_container[data-error-category="timeout"] #error_recovery_steps,
-        #error_container[data-error-category="isolation"] #error_recovery_steps {
+        #error_container[data-error-category="timeout"] #error_recovery_steps {
             display: block;
         }
 
@@ -930,8 +929,6 @@
             }
         }
     </style>
-    <script src="coi-serviceworker.min.js" defer></script>
-    <link data-trunk rel="copy-file" href="coi-serviceworker.min.js"/>
     <script src="reload.js" defer></script>
     <link data-trunk rel="copy-file" href="reload.js"/>
     <script type="module" src="bootstrap.js" defer></script>

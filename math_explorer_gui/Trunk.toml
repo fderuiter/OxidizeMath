@@ -3,7 +3,7 @@ target = "index.html"
 filehash = false
 inject_scripts = false
 public_url = "./"
-rustflags = ["-C", "target-feature=+atomics,+bulk-memory", "-C", "strip=debuginfo"]
+rustflags = ["-C", "target-feature=+bulk-memory", "-C", "strip=debuginfo"]
 wasm-opt = "z"
 pattern_script = ""
 pattern_preload = ""
@@ -13,7 +13,7 @@ wasm_opt = "version_123"
 
 [serve]
 no_autoreload = true
-headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp", "Content-Security-Policy" = "default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' blob:;" }
+headers = { "Content-Security-Policy" = "default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' blob:;" }
 
 [[hooks]]
 stage = "post_build"

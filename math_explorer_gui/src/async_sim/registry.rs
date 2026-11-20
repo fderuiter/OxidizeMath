@@ -1,7 +1,7 @@
-use super::{SimCommand, SimStateUpdate, SimulationRunner};
+use super::{SimCommand, SimStateSender, SimulationRunner};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::mpsc::{Receiver, SyncSender};
+use std::sync::mpsc::Receiver;
 use std::sync::Mutex;
 
 #[allow(missing_docs)]
@@ -11,7 +11,7 @@ pub struct WorkerContext {
     #[allow(missing_docs)]
     pub cmd_rx: Receiver<SimCommand>,
     #[allow(missing_docs)]
-    pub state_tx: SyncSender<SimStateUpdate>,
+    pub state_tx: SimStateSender,
 }
 
 static NEXT_HANDLE: AtomicU32 = AtomicU32::new(1);
@@ -64,7 +64,7 @@ mod tests {
 
     fn create_dummy_context() -> WorkerContext {
         let (_cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, _state_rx) = mpsc::sync_channel::<SimStateUpdate>(4);
+        let (state_tx, _state_rx) = crate::async_sim::sim_state_channel();
         WorkerContext {
             runner: Box::new(DummyRunner),
             cmd_rx,
