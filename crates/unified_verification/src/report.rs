@@ -61,6 +61,79 @@ pub struct FileMetrics {
     pub opt_outs: Vec<(String, String)>,
 }
 
+struct ReportPatterns {
+    assert_re: Regex,
+    fn_re: Regex,
+    opt_out_re: Regex,
+    wasm_re: Regex,
+    legacy_re: Regex,
+}
+
+impl ReportPatterns {
+    fn new() -> Self {
+        Self {
+            assert_re: Regex::new(r"\b(assert|assert_eq|assert_ne|debug_assert)!\s*\(").unwrap(),
+            fn_re: Regex::new(r"\bfn\s+\w+\s*(?:<[^>]*>)?\s*\(").unwrap(),
+            opt_out_re: Regex::new(
+                r#"#\[(?:verified_engine::)?verified\(opt_out\s*=\s*"([^"]+)"\)\]"#,
+            )
+            .unwrap(),
+            wasm_re: Regex::new(r#"#\[cfg\(target_arch\s*=\s*"wasm32"\)\]\s*(.*?)(?:#\[cfg|$)"#)
+                .unwrap(),
+            legacy_re: Regex::new(r"\bfn\s+([a-zA-Z0-9_]*_legacy)\b").unwrap(),
+        }
+    }
+}
+
+fn normalize_report_path(filepath: &Path) -> String {
+    let norm = filepath.to_string_lossy().replace('\\', "/");
+    norm.strip_prefix("./").unwrap_or(&norm).to_string()
+}
+
+fn analyze_file_content(
+    filepath: &Path,
+    content: &str,
+    patterns: &ReportPatterns,
+    m: &mut FileMetrics,
+) {
+    let is_verified =
+        content.contains("#[verified") || content.contains("#[verified_engine::verified");
+    let funcs = patterns.fn_re.find_iter(content).count() as f64;
+    let asserts = patterns.assert_re.find_iter(content).count() as f64;
+    let norm = normalize_report_path(filepath);
+
+    for cap in patterns.opt_out_re.captures_iter(content) {
+        m.opt_outs.push((norm.clone(), cap[1].to_string()));
+    }
+    for cap in patterns.legacy_re.captures_iter(content) {
+        m.opt_outs
+            .push((norm.clone(), format!("Legacy function call: {}", &cap[1])));
+    }
+
+    m.total_funcs += funcs;
+    m.total_asserts += asserts;
+    if is_verified {
+        m.verified_funcs += funcs;
+        m.verified_asserts += asserts;
+    } else {
+        m.unverified_funcs += funcs;
+        m.unverified_asserts += asserts;
+    }
+
+    let content_str = content.replace("\r\n", "\n").replace('\n', " ");
+    for cap in patterns.wasm_re.captures_iter(&content_str) {
+        m.wasm_paths += 1;
+        let block = &cap[1];
+        if block.contains("theory_verification!")
+            || content.contains("theory_verification!")
+            || block.contains("stochastic_signature_verification!")
+            || content.contains("stochastic_signature_verification!")
+        {
+            m.wasm_covered += 1;
+        }
+    }
+}
+
 pub fn analyze_files(rs_files: &[std::path::PathBuf]) -> FileMetrics {
     let mut m = FileMetrics {
         wasm_paths: 0,
@@ -73,62 +146,11 @@ pub fn analyze_files(rs_files: &[std::path::PathBuf]) -> FileMetrics {
         unverified_asserts: 0.0,
         opt_outs: Vec::new(),
     };
-
-    let assert_re = Regex::new(r"\b(assert|assert_eq|assert_ne|debug_assert)!\s*\(").unwrap();
-    let fn_re = Regex::new(r"\bfn\s+\w+\s*(?:<[^>]*>)?\s*\(").unwrap();
-    let opt_out_re =
-        Regex::new(r#"#\[(?:verified_engine::)?verified\(opt_out\s*=\s*"([^"]+)"\)\]"#).unwrap();
-    let wasm_re =
-        Regex::new(r#"#\[cfg\(target_arch\s*=\s*"wasm32"\)\]\s*(.*?)(?:#\[cfg|$)"#).unwrap();
-    let legacy_re = Regex::new(r"\bfn\s+([a-zA-Z0-9_]*_legacy)\b").unwrap();
+    let patterns = ReportPatterns::new();
 
     for filepath in rs_files {
         if let Ok(content) = fs::read_to_string(filepath) {
-            let is_verified =
-                content.contains("#[verified") || content.contains("#[verified_engine::verified");
-
-            let funcs = fn_re.find_iter(&content).count() as f64;
-            let asserts = assert_re.find_iter(&content).count() as f64;
-
-            for cap in opt_out_re.captures_iter(&content) {
-                let mut norm = filepath.to_string_lossy().replace("\\", "/");
-                if norm.starts_with("./") {
-                    norm = norm[2..].to_string();
-                }
-                m.opt_outs.push((norm, cap[1].to_string()));
-            }
-            for cap in legacy_re.captures_iter(&content) {
-                let mut norm = filepath.to_string_lossy().replace("\\", "/");
-                if norm.starts_with("./") {
-                    norm = norm[2..].to_string();
-                }
-                m.opt_outs
-                    .push((norm, format!("Legacy function call: {}", &cap[1])));
-            }
-
-            m.total_funcs += funcs;
-            m.total_asserts += asserts;
-
-            if is_verified {
-                m.verified_funcs += funcs;
-                m.verified_asserts += asserts;
-            } else {
-                m.unverified_funcs += funcs;
-                m.unverified_asserts += asserts;
-            }
-
-            let content_str = content.replace("\r\n", "\n").replace("\n", " ");
-            for cap in wasm_re.captures_iter(&content_str) {
-                m.wasm_paths += 1;
-                let block = &cap[1];
-                if block.contains("theory_verification!")
-                    || content.contains("theory_verification!")
-                    || block.contains("stochastic_signature_verification!")
-                    || content.contains("stochastic_signature_verification!")
-                {
-                    m.wasm_covered += 1;
-                }
-            }
+            analyze_file_content(filepath, &content, &patterns, &mut m);
         }
     }
     m.opt_outs.sort();
@@ -147,15 +169,12 @@ pub fn check_unverified_modules(members: &[String]) -> Vec<String> {
             for entry in WalkDir::new(mod_dir).into_iter().filter_map(|e| e.ok()) {
                 if entry.file_type().is_file()
                     && entry.path().extension().and_then(|s| s.to_str()) == Some("rs")
+                    && let Ok(content) = fs::read_to_string(entry.path())
+                    && (content.contains("theory_verification!")
+                        || content.contains("stochastic_signature_verification!"))
                 {
-                    if let Ok(content) = fs::read_to_string(entry.path()) {
-                        if content.contains("theory_verification!")
-                            || content.contains("stochastic_signature_verification!")
-                        {
-                            has_theory = true;
-                            break;
-                        }
-                    }
+                    has_theory = true;
+                    break;
                 }
             }
             if !has_theory {
@@ -192,27 +211,38 @@ fn save_report(report: &IntegrityReport, native_cov: f64) {
     }
 }
 
+fn ratio_or_zero(numerator: f64, denominator: f64) -> f64 {
+    if denominator > 0.0 {
+        numerator / denominator
+    } else {
+        0.0
+    }
+}
+
+fn print_debt_section(m: &FileMetrics, debt_items: &[String]) {
+    let mut all_debt = Vec::with_capacity(m.opt_outs.len() + debt_items.len());
+    for (file, reason) in &m.opt_outs {
+        all_debt.push(format!("{} bypassed: '{}'", file, reason));
+    }
+    all_debt.extend(debt_items.iter().cloned());
+
+    if !all_debt.is_empty() {
+        println!("\n--- Integrity Debt ---");
+        for (idx, item) in all_debt.iter().enumerate() {
+            println!("[{}] {}", idx + 1, item);
+        }
+    }
+}
+
 pub fn print_report(
     native_cov_pct: f64,
     wasm_cov_pct: f64,
     m: &FileMetrics,
     debt_items: &[String],
 ) -> bool {
-    let total_density = if m.total_funcs > 0.0 {
-        m.total_asserts / m.total_funcs
-    } else {
-        0.0
-    };
-    let verified_density = if m.verified_funcs > 0.0 {
-        m.verified_asserts / m.verified_funcs
-    } else {
-        0.0
-    };
-    let unverified_density = if m.unverified_funcs > 0.0 {
-        m.unverified_asserts / m.unverified_funcs
-    } else {
-        0.0
-    };
+    let total_density = ratio_or_zero(m.total_asserts, m.total_funcs);
+    let verified_density = ratio_or_zero(m.verified_asserts, m.verified_funcs);
+    let unverified_density = ratio_or_zero(m.unverified_asserts, m.unverified_funcs);
 
     println!("\n--- Integrity Report ---");
     println!("Native Execution Coverage: {:.2}%", native_cov_pct);
@@ -238,20 +268,7 @@ pub fn print_report(
         passed = false;
     }
 
-    let mut all_debt = Vec::new();
-    for (file, reason) in &m.opt_outs {
-        all_debt.push(format!("{} bypassed: '{}'", file, reason));
-    }
-    for item in debt_items {
-        all_debt.push(item.clone());
-    }
-
-    if !all_debt.is_empty() {
-        println!("\n--- Integrity Debt ---");
-        for (idx, item) in all_debt.iter().enumerate() {
-            println!("[{}] {}", idx + 1, item);
-        }
-    }
+    print_debt_section(m, debt_items);
 
     if native_cov_pct < 50.0 {
         println!(
