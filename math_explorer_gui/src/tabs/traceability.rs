@@ -1,7 +1,11 @@
 use crate::tabs::ExplorerTab;
 use eframe::egui;
-use oxidize_core::vfs::VirtualFileSystem;
 use std::collections::HashMap;
+
+#[path = "traceability/manifest.rs"]
+mod manifest;
+#[path = "traceability/scanner.rs"]
+mod scanner;
 
 #[allow(missing_docs)]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -53,7 +57,7 @@ pub struct TraceabilityTab {
     papers: HashMap<String, PaperStatus>,
     orphaned_papers: Vec<String>,
     unlinked_code: Vec<String>,
-    invalid_links: Vec<(String, String)>, // code_file, paper_name
+    invalid_links: Vec<(String, String)>,
     repo_path: Option<String>,
     report_rx: Option<
         std::sync::mpsc::Receiver<
@@ -71,7 +75,7 @@ struct PaperStatus {
 
 impl Default for TraceabilityTab {
     fn default() -> Self {
-        let mut tab = Self {
+        Self {
             papers: HashMap::new(),
             orphaned_papers: Vec::new(),
             unlinked_code: Vec::new(),
@@ -79,9 +83,7 @@ impl Default for TraceabilityTab {
             repo_path: None,
             report_rx: None,
             state: TraceabilityScanState::Idle,
-        };
-        tab.refresh();
-        tab
+        }
     }
 }
 
@@ -95,6 +97,16 @@ impl TraceabilityTab {
     #[cfg(test)]
     pub fn error_message(&self) -> Option<&str> {
         self.state.error()
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn has_workspace_header(manifest: &str) -> bool {
+        scanner::has_workspace_header(manifest)
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn canonical_workspace_root() -> Option<std::path::PathBuf> {
+        scanner::canonical_workspace_root()
     }
 
     pub fn paper_url(name: &str) -> Option<String> {
@@ -124,145 +136,277 @@ impl TraceabilityTab {
         is_tracked.then(|| Self::paper_url(name)).flatten()
     }
 
-    fn has_traversal_sequence(raw: &str) -> bool {
-        raw.contains('\0')
-            || raw.split(['/', '\\']).any(|seg| seg == "..")
-            || std::path::Path::new(raw)
-                .components()
-                .any(|c| matches!(c, std::path::Component::ParentDir))
-    }
-
     #[cfg(not(target_arch = "wasm32"))]
-    fn has_workspace_header(manifest: &str) -> bool {
-        manifest.lines().any(|line| {
-            let h = line.split('#').next().unwrap_or("").trim();
-            let k = h.strip_prefix('[').and_then(|s| s.strip_suffix(']'));
-            k.is_some_and(|s| {
-                let key = s.trim();
-                !s.starts_with('[')
-                    && !s.ends_with(']')
-                    && (key == "workspace"
-                        || key
-                            .strip_prefix("workspace")
-                            .is_some_and(|rest| rest.trim_start().starts_with('.')))
-            })
-        })
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn canonical_workspace_root() -> Option<std::path::PathBuf> {
-        let cwd = std::env::current_dir().ok()?.canonicalize().ok()?;
-        cwd.ancestors()
-            .take(64)
-            .find(|dir| {
-                std::fs::read_to_string(dir.join("Cargo.toml"))
-                    .is_ok_and(|m| Self::has_workspace_header(&m))
-            })
-            .map(std::path::Path::to_path_buf)
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn validate_repo_path(raw: &str) -> Option<String> {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() || Self::has_traversal_sequence(trimmed) {
-            return None;
+    pub fn select_directory(&mut self, path: &std::path::Path) {
+        match scanner::validate_picked_repo_path(path) {
+            Ok(normalized) => {
+                self.repo_path = Some(normalized);
+                self.refresh();
+            }
+            Err(err) => {
+                self.clear_results();
+                self.repo_path = None;
+                self.report_rx = None;
+                self.state = TraceabilityScanState::Failed(err);
+            }
         }
-        let canonical_root = Self::canonical_workspace_root()?;
-        let candidate = std::path::Path::new(trimmed);
-        let resolved = if candidate.is_absolute() {
-            candidate.to_path_buf()
-        } else {
-            canonical_root.join(candidate)
-        };
-        let canonical_candidate = resolved.canonicalize().ok()?;
-        if !canonical_candidate.is_dir() || !canonical_candidate.starts_with(&canonical_root) {
-            return None;
-        }
-        let normalized = oxidize_core::path_utils::normalize_path(&canonical_candidate);
-        (!normalized.is_empty()).then_some(normalized)
     }
 
-    #[cfg(target_arch = "wasm32")]
-    fn validate_repo_path(raw: &str) -> Option<String> {
-        let _ = Self::has_traversal_sequence(raw);
-        None
-    }
-
-    pub fn refresh(&mut self) {
+    fn clear_results(&mut self) {
         self.papers.clear();
         self.orphaned_papers.clear();
         self.unlinked_code.clear();
         self.invalid_links.clear();
-        self.repo_path = self.repo_path.as_deref().and_then(Self::validate_repo_path);
-        self.state = TraceabilityScanState::Scanning;
+    }
 
-        let base_dir = match &self.repo_path {
-            Some(p) => format!("{}/", p),
-            None => String::new(),
-        };
+    fn load_embedded_manifest(&mut self) {
+        match manifest::embedded_manifest() {
+            Ok(embedded) => {
+                self.orphaned_papers = embedded.orphaned_papers.clone();
+                self.unlinked_code = embedded.unlinked_code.clone();
+                self.invalid_links = embedded.invalid_links.clone();
+                for entry in &embedded.papers {
+                    self.papers.insert(
+                        entry.name.clone(),
+                        PaperStatus {
+                            name: entry.name.clone(),
+                            linked_code: entry.linked_code.clone(),
+                        },
+                    );
+                }
+                if self.papers.is_empty() && self.orphaned_papers.is_empty() {
+                    self.state = TraceabilityScanState::Failed(
+                        "Embedded traceability manifest contains zero papers.".to_string(),
+                    );
+                } else {
+                    self.state = TraceabilityScanState::Ready;
+                }
+            }
+            Err(err) => {
+                self.state = TraceabilityScanState::Failed(err);
+            }
+        }
+    }
 
-        let (tx, rx) = std::sync::mpsc::channel();
-        self.report_rx = Some(rx);
+    pub fn refresh(&mut self) {
+        self.clear_results();
+        self.report_rx = None;
+        self.repo_path = self
+            .repo_path
+            .as_deref()
+            .and_then(scanner::revalidate_active_repo_path);
 
-        #[cfg(all(test, not(target_arch = "wasm32")))]
-        if base_dir.is_empty() {
-            static DEFAULT_SCAN_CACHE: std::sync::OnceLock<
-                Result<oxidize_core::traceability::TraceabilityReport, String>,
-            > = std::sync::OnceLock::new();
-            let cached = DEFAULT_SCAN_CACHE
-                .get_or_init(|| {
-                    futures::executor::block_on(execute_workspace_scan(
-                        oxidize_core::vfs::DefaultVfs,
-                        String::new(),
-                    ))
-                })
-                .clone();
-            let _ = tx.send(cached);
+        if let Some(repo_dir) = self.repo_path.clone() {
+            self.state = TraceabilityScanState::Scanning;
+            let (tx, rx) = std::sync::mpsc::channel();
+            self.report_rx = Some(rx);
+            scanner::spawn_live_scan(repo_dir, tx);
             return;
         }
 
-        #[cfg(not(target_arch = "wasm32"))]
-        std::thread::spawn(move || {
-            let res = futures::executor::block_on(execute_workspace_scan(
-                oxidize_core::vfs::DefaultVfs,
-                base_dir,
-            ));
-            let _ = tx.send(res);
-        });
-
-        #[cfg(target_arch = "wasm32")]
-        wasm_bindgen_futures::spawn_local(async move {
-            let res = execute_workspace_scan(oxidize_core::vfs::WasmVfs, base_dir).await;
-            let _ = tx.send(res);
-        });
+        self.load_embedded_manifest();
     }
-}
 
-async fn execute_workspace_scan<V: VirtualFileSystem>(
-    vfs: V,
-    base_dir: String,
-) -> Result<oxidize_core::traceability::TraceabilityReport, String> {
-    let code_dirs = [
-        format!("{base_dir}math_explorer/src"),
-        format!("{base_dir}math_explorer_gui/src/tabs"),
-    ];
-    let papers_dir = format!("{base_dir}papers");
-    let crate_base = format!("{base_dir}crates");
-    let engine = oxidize_core::traceability::TraceabilityEngine::new(vfs);
+    fn apply_live_report(&mut self, report: oxidize_core::traceability::TraceabilityReport) {
+        self.clear_results();
+        self.orphaned_papers = report.orphaned_papers;
+        self.unlinked_code = report.unlinked_code;
+        self.invalid_links = report.invalid_links;
 
-    let mut crate_dirs = Vec::new();
-    if let Ok(crates) = engine.vfs.list_dir(&crate_base).await {
-        for crate_name in crates {
-            crate_dirs.push(format!("{crate_base}/{crate_name}/src"));
+        for (paper_name, linked_code) in report.paper_coverage {
+            if !paper_name.starts_with("spec:") && !paper_name.starts_with("registry:") {
+                self.papers.insert(
+                    paper_name.clone(),
+                    PaperStatus {
+                        name: paper_name,
+                        linked_code,
+                    },
+                );
+            }
+        }
+
+        if self.papers.is_empty() && self.orphaned_papers.is_empty() {
+            self.state = TraceabilityScanState::Failed(
+                "No academic papers (.tex) were discovered in the repository.".to_string(),
+            );
+        } else {
+            self.state = TraceabilityScanState::Ready;
         }
     }
 
-    let mut all_dirs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
-    all_dirs.extend(crate_dirs.iter().map(String::as_str));
-    engine
-        .scan_repository(&all_dirs, &papers_dir, false)
-        .await
-        .map_err(|e| e.to_string())
+    fn poll_scan_report(&mut self) {
+        let Some(rx) = &self.report_rx else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(Ok(report)) => {
+                self.report_rx = None;
+                self.apply_live_report(report);
+            }
+            Ok(Err(err)) => {
+                self.state = TraceabilityScanState::Failed(err);
+                self.report_rx = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.state = TraceabilityScanState::Failed(
+                    "Worker thread disconnected unexpectedly".to_string(),
+                );
+                self.report_rx = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+    }
+
+    fn render_header(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.heading("Theory-to-Code Traceability Portal");
+            if ui.button("Refresh").clicked() {
+                self.refresh();
+            }
+
+            #[cfg(not(target_arch = "wasm32"))]
+            if ui.button("Select Codebase Directory...").clicked() {
+                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    self.select_directory(&path);
+                }
+            }
+
+            if let Some(path) = &self.repo_path {
+                ui.label(format!("Scanning: {}", path));
+            } else {
+                ui.label("Scanning: default workspace");
+            }
+        });
+        ui.separator();
+    }
+
+    fn render_failed_banner(&mut self, ui: &mut egui::Ui, err: &str) {
+        let err_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
+        let mut retry_clicked = false;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut picked_dir: Option<std::path::PathBuf> = None;
+
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.label(
+                    egui::RichText::new(format!("⚠️ Scan Failed: {}", err))
+                        .color(err_color)
+                        .strong(),
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Retry").clicked() {
+                        retry_clicked = true;
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if ui.button("Select Codebase Directory...").clicked() {
+                        picked_dir = rfd::FileDialog::new().pick_folder();
+                    }
+                });
+            });
+        });
+
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = picked_dir {
+            self.select_directory(&path);
+            return;
+        }
+        if retry_clicked {
+            self.refresh();
+        }
+    }
+
+    fn render_health_section(&self, ui: &mut egui::Ui, palette: &crate::app::SemanticPalette) {
+        egui::CollapsingHeader::new("System Health & Alignment")
+            .default_open(true)
+            .show(ui, |ui| {
+                let aligned = !self.papers.is_empty()
+                    && self.orphaned_papers.is_empty()
+                    && self.unlinked_code.is_empty()
+                    && self.invalid_links.is_empty();
+                let (text, color) = if aligned {
+                    ("100% Parity Achieved", palette.success)
+                } else {
+                    ("Partial Alignment", palette.warning)
+                };
+                ui.label(egui::RichText::new(text).color(color));
+                ui.label(format!("Total Papers: {}", self.papers.len()));
+
+                if self.repo_path.is_none() {
+                    if let Ok(embedded) = manifest::embedded_manifest() {
+                        if let Some(cert) = &embedded.certificate {
+                            ui.label(format!(
+                                "Native Coverage: {:.1}% | WASM Path Coverage: {:.1}% | Verified Density: {:.2} asserts/fn",
+                                cert.native_execution_coverage_pct,
+                                cert.wasm_path_coverage_pct,
+                                cert.verified_modules_density
+                            ));
+                        }
+                    }
+                }
+            });
+    }
+
+    fn render_discrepancies(
+        &self,
+        ui: &mut egui::Ui,
+        palette: &crate::app::SemanticPalette,
+    ) {
+        if !self.orphaned_papers.is_empty() {
+            ui.add_space(10.0);
+            ui.heading(egui::RichText::new("Orphaned Papers (No Code)").color(palette.error));
+            for p in &self.orphaned_papers {
+                ui.horizontal(|ui| {
+                    ui.label(p);
+                    if let Some(url) = Self::paper_url(p) {
+                        ui.hyperlink_to("📄 View PDF", &url);
+                    }
+                });
+            }
+        }
+
+        if !self.unlinked_code.is_empty() {
+            ui.add_space(10.0);
+            ui.heading(
+                egui::RichText::new("Unlinked Code Modules (No Paper)").color(palette.error),
+            );
+            for c in &self.unlinked_code {
+                ui.label(c);
+            }
+        }
+
+        if !self.invalid_links.is_empty() {
+            ui.add_space(10.0);
+            ui.heading(egui::RichText::new("Naming Mismatches / Invalid Cites").color(palette.error));
+            for (c, p) in &self.invalid_links {
+                ui.label(format!("{} cites invalid paper: {}", c, p));
+            }
+        }
+    }
+
+    fn render_matrix(&self, ui: &mut egui::Ui, palette: &crate::app::SemanticPalette) {
+        ui.add_space(10.0);
+        ui.heading("Traceability Matrix");
+
+        let mut papers: Vec<_> = self.papers.values().collect();
+        papers.sort_by(|a, b| a.name.cmp(&b.name));
+
+        for p in papers {
+            ui.collapsing(&p.name, |ui| {
+                if let Some(url) = Self::paper_url(&p.name) {
+                    ui.horizontal(|ui| {
+                        ui.hyperlink_to("📄 View PDF Online", &url);
+                    });
+                }
+                if p.linked_code.is_empty() {
+                    ui.label(egui::RichText::new("No implementation found").color(palette.error));
+                } else {
+                    for code in &p.linked_code {
+                        ui.label(code);
+                    }
+                }
+            });
+        }
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -290,79 +434,32 @@ impl ExplorerTab for TraceabilityTab {
     }
 
     fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<TraceabilityState>(state) {
-            self.repo_path = s.repo_path.as_deref().and_then(Self::validate_repo_path);
-        } else {
-            self.repo_path = None;
+        let validated = serde_json::from_str::<TraceabilityState>(state)
+            .ok()
+            .and_then(|s| s.repo_path)
+            .as_deref()
+            .and_then(scanner::validate_session_repo_path);
+        if self.repo_path != validated {
+            self.repo_path = validated;
+            self.report_rx = None;
+            self.state = TraceabilityScanState::Idle;
         }
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        if let Some(rx) = &self.report_rx {
-            match rx.try_recv() {
-                Ok(Ok(report)) => {
-                    self.orphaned_papers = report.orphaned_papers;
-                    self.unlinked_code = report.unlinked_code;
-                    self.invalid_links = report.invalid_links;
-
-                    for (paper_name, linked_code) in report.paper_coverage {
-                        self.papers.insert(
-                            paper_name.clone(),
-                            PaperStatus {
-                                name: paper_name,
-                                linked_code,
-                            },
-                        );
-                    }
-                    self.state = TraceabilityScanState::Ready;
-                    self.report_rx = None;
-                }
-                Ok(Err(err)) => {
-                    self.state = TraceabilityScanState::Failed(err);
-                    self.report_rx = None;
-                }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.state = TraceabilityScanState::Failed(
-                        "Worker thread disconnected unexpectedly".to_string(),
-                    );
-                    self.report_rx = None;
-                }
-                Err(std::sync::mpsc::TryRecvError::Empty) => {}
-            }
+        if matches!(self.state, TraceabilityScanState::Idle) {
+            self.refresh();
         }
+        self.poll_scan_report();
 
         if self.state.is_scanning() {
             ui.ctx().request_repaint();
         }
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("Theory-to-Code Traceability Portal");
-                if ui.button("Refresh").clicked() {
-                    self.refresh();
-                }
-                
-                #[cfg(not(target_arch = "wasm32"))]
-                if ui.button("Select Codebase Directory...").clicked() {
-                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                        self.repo_path = Self::validate_repo_path(&path.to_string_lossy());
-                        self.refresh();
-                    }
-                }
-                
-                if let Some(path) = &self.repo_path {
-                    ui.label(format!("Scanning: {}", path));
-                } else {
-                    ui.label("Scanning: default workspace");
-                }
-            });
-            ui.separator();
+            self.render_header(ui);
 
-            let mut retry_clicked = false;
-            #[cfg(not(target_arch = "wasm32"))]
-            let mut new_path_picked: Option<String> = None;
-            match &self.state {
+            match self.state.clone() {
                 TraceabilityScanState::Scanning => {
                     ui.horizontal(|ui| {
                         ui.spinner();
@@ -371,36 +468,7 @@ impl ExplorerTab for TraceabilityTab {
                     return;
                 }
                 TraceabilityScanState::Failed(err) => {
-                    let err_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
-                    egui::Frame::group(ui.style()).show(ui, |ui| {
-                        ui.vertical(|ui| {
-                            ui.label(
-                                egui::RichText::new(format!("⚠️ Scan Failed: {}", err))
-                                    .color(err_color)
-                                    .strong(),
-                            );
-                            ui.horizontal(|ui| {
-                                if ui.button("Retry").clicked() {
-                                    retry_clicked = true;
-                                }
-                                #[cfg(not(target_arch = "wasm32"))]
-                                if ui.button("Select Codebase Directory...").clicked() {
-                                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                                        new_path_picked = Some(path.display().to_string());
-                                    }
-                                }
-                            });
-                        });
-                    });
-                    #[cfg(not(target_arch = "wasm32"))]
-                    if let Some(path) = new_path_picked {
-                        self.repo_path = Self::validate_repo_path(&path);
-                        self.refresh();
-                        return;
-                    }
-                    if retry_clicked {
-                        self.refresh();
-                    }
+                    self.render_failed_banner(ui, &err);
                     return;
                 }
                 TraceabilityScanState::Idle => {
@@ -412,81 +480,9 @@ impl ExplorerTab for TraceabilityTab {
 
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.collapsing("System Health & Alignment", |ui| {
-                    if self.orphaned_papers.is_empty()
-                        && self.unlinked_code.is_empty()
-                        && self.invalid_links.is_empty()
-                    {
-                        ui.label(
-                            egui::RichText::new("100% Parity Achieved").color(palette.success),
-                        );
-                    } else {
-                        ui.label(egui::RichText::new("Partial Alignment").color(palette.warning));
-                    }
-                    ui.label(format!("Total Papers: {}", self.papers.len()));
-                });
-
-                if !self.orphaned_papers.is_empty() {
-                    ui.add_space(10.0);
-                    ui.heading(
-                        egui::RichText::new("Orphaned Papers (No Code)").color(palette.error),
-                    );
-                    for p in &self.orphaned_papers {
-                        ui.horizontal(|ui| {
-                            ui.label(p);
-                            if let Some(url) = Self::paper_url(p) {
-                                ui.hyperlink_to("📄 View PDF", &url);
-                            }
-                        });
-                    }
-                }
-
-                if !self.unlinked_code.is_empty() {
-                    ui.add_space(10.0);
-                    ui.heading(
-                        egui::RichText::new("Unlinked Code Modules (No Paper)")
-                            .color(palette.error),
-                    );
-                    for c in &self.unlinked_code {
-                        ui.label(c);
-                    }
-                }
-
-                if !self.invalid_links.is_empty() {
-                    ui.add_space(10.0);
-                    ui.heading(
-                        egui::RichText::new("Naming Mismatches / Invalid Cites")
-                            .color(palette.error),
-                    );
-                    for (c, p) in &self.invalid_links {
-                        ui.label(format!("{} cites invalid paper: {}", c, p));
-                    }
-                }
-
-                ui.add_space(10.0);
-                ui.heading("Traceability Matrix");
-
-                let mut papers: Vec<_> = self.papers.values().collect();
-                papers.sort_by(|a, b| a.name.cmp(&b.name));
-
-                for p in papers {
-                    ui.collapsing(&p.name, |ui| {
-                        if let Some(url) = Self::paper_url(&p.name) {
-                            ui.horizontal(|ui| {
-                                ui.hyperlink_to("📄 View PDF Online", &url);
-                            });
-                        }
-                        if p.linked_code.is_empty() {
-                            ui.label(
-                                egui::RichText::new("No implementation found").color(palette.error),
-                            );
-                        } else {
-                            for code in &p.linked_code {
-                                ui.label(code);
-                            }
-                        }
-                    });
-                }
+                self.render_health_section(ui, &palette);
+                self.render_discrepancies(ui, &palette);
+                self.render_matrix(ui, &palette);
             });
         });
     }

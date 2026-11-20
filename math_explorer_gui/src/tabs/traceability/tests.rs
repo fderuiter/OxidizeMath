@@ -2,6 +2,7 @@
 
 use super::*;
 
+mod manifest_tests;
 #[cfg(not(target_arch = "wasm32"))]
 mod workspace_root_tests;
 
@@ -9,10 +10,11 @@ mod workspace_root_tests;
 fn test_traceability_initial_state_transitions_to_scanning() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let tab = TraceabilityTab::default();
-    assert_eq!(tab.state, TraceabilityScanState::Scanning);
-    assert!(tab.state.is_scanning());
+    assert_eq!(tab.state, TraceabilityScanState::Idle);
+    assert!(!tab.state.is_scanning());
     assert!(!tab.state.is_ready());
     assert!(!tab.state.is_failed());
+    assert!(tab.report_rx.is_none());
     assert_eq!(tab.error_message(), None);
 }
 
@@ -122,10 +124,10 @@ fn test_traceability_retry_clears_error_and_rescans() {
     assert!(tab.state.is_failed());
     tab.retry();
 
-    assert_eq!(tab.state, TraceabilityScanState::Scanning);
-    assert!(tab.state.is_scanning());
+    assert_eq!(tab.state, TraceabilityScanState::Ready);
+    assert_eq!(tab.papers.len(), 28);
     assert_eq!(tab.error_message(), None);
-    assert!(tab.report_rx.is_some());
+    assert!(tab.report_rx.is_none());
 }
 
 #[test]

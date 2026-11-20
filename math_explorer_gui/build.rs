@@ -1,4 +1,5 @@
 //! Build script for dynamic tab discovery in math_explorer_gui.
+mod build_manifest;
 #[path = "../crates/oxidize_core/src/path_utils.rs"]
 /// Path utilities.
 pub mod path_utils;
@@ -9,7 +10,9 @@ use std::path::Path;
 
 fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
-    let dest_path = Path::new(&out_dir).join("generated_tabs.rs");
+    let out_path = Path::new(&out_dir);
+    let dest_path = out_path.join("generated_tabs.rs");
+    build_manifest::generate_traceability_manifest(out_path);
 
     // Tell cargo to rerun if the build script, manifest, or tabs directory changes
     println!("cargo:rerun-if-changed=build.rs");
