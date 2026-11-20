@@ -204,9 +204,14 @@ impl SimulationFramework {
 
     /// Encodes a full shareable web URL (`https://...#tab=...&tool=...&state=...`) for the active tool.
     pub fn encode_share_url(&self) -> Result<String, String> {
+        let tab_slug = if self.domain == "biology" {
+            "morphogenesis"
+        } else {
+            self.domain.as_str()
+        };
         let preset_json = self.export_url_preset_json()?;
         let fragment = crate::url_state::encode_share_fragment(
-            &self.domain,
+            tab_slug,
             self.active_tool_id(),
             preset_json.as_deref(),
         )?;
@@ -411,34 +416,6 @@ impl SimulationFramework {
         } else {
             false
         }
-    }
-
-    /// Returns true if the active tool has local undo history available.
-    pub fn can_undo(&self) -> bool {
-        self.active_tool.as_ref().is_some_and(|t| t.can_undo())
-    }
-
-    /// Returns true if the active tool has local redo history available.
-    pub fn can_redo(&self) -> bool {
-        self.active_tool.as_ref().is_some_and(|t| t.can_redo())
-    }
-
-    /// Attempts to undo the latest local action on the active tool, invalidating cached JSON if handled.
-    pub fn try_undo(&mut self) -> bool {
-        let handled = self.active_tool.as_mut().is_some_and(|t| t.try_undo());
-        if handled {
-            self.bump_framework_revision();
-        }
-        handled
-    }
-
-    /// Attempts to redo the latest locally undone action on the active tool, invalidating cached JSON if handled.
-    pub fn try_redo(&mut self) -> bool {
-        let handled = self.active_tool.as_mut().is_some_and(|t| t.try_redo());
-        if handled {
-            self.bump_framework_revision();
-        }
-        handled
     }
 
     /// Returns the active tool's interactive canvas `Id` if applicable.

@@ -1,22 +1,10 @@
-use serde::Deserialize;
+pub use crate::whitelist::DeadCodeEntry;
+use crate::whitelist::{PathMatchOptions, ROOT_ONLY_WHITELIST_CANDIDATES};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use syn::visit::Visit;
 use walkdir::WalkDir;
-
-#[derive(Deserialize, Debug, Default)]
-pub struct Whitelist {
-    #[serde(default)]
-    dead_code: Vec<DeadCodeEntry>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-#[serde(deny_unknown_fields)]
-pub struct DeadCodeEntry {
-    file: String,
-    identifier: Option<String>,
-}
 
 struct DependencyVisitor {
     expected_deps: HashSet<String>,
@@ -150,11 +138,14 @@ struct DeadCodeVisitor {
 
 impl DeadCodeVisitor {
     fn is_authorized(&self, ident: Option<&str>) -> bool {
+        let opts = PathMatchOptions {
+            trim_dot_slash: false,
+            require_non_empty: false,
+            match_file_name: false,
+        };
+        let actual_path = Path::new(&self.file_path);
         for entry in &self.allowed {
-            let norm_entry = entry.file.replace('\\', "/");
-            let path_matches =
-                self.file_path == norm_entry || self.file_path.ends_with(&format!("/{norm_entry}"));
-            if path_matches {
+            if crate::whitelist::path_matches_lossy(actual_path, &entry.file, opts) {
                 match (&entry.identifier, ident) {
                     (None, _) => return true,
                     (Some(allowed_id), Some(id)) if allowed_id == id => return true,
@@ -295,33 +286,19 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor {
     }
 }
 
-fn load_whitelist(whitelist_path: &Path) -> Option<Whitelist> {
-    if !whitelist_path.exists() {
-        return Some(Whitelist::default());
-    }
-    let content = match fs::read_to_string(whitelist_path) {
-        Ok(c) => c,
-        Err(err) => {
-            eprintln!("[!] Failed to read {}: {}", whitelist_path.display(), err);
-            return None;
-        }
-    };
-    match toml::from_str::<Whitelist>(&content) {
-        Ok(whitelist) => Some(whitelist),
-        Err(err) => {
-            eprintln!("[!] Failed to parse {}: {}", whitelist_path.display(), err);
-            None
-        }
-    }
-}
-
 pub fn run_policy_audit(members: &[&str]) -> bool {
-    run_policy_audit_with_whitelist(members, Path::new("verification_whitelist.toml"))
+    let whitelist_path = crate::whitelist::resolve_whitelist_path(ROOT_ONLY_WHITELIST_CANDIDATES)
+        .unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
+    run_policy_audit_with_whitelist(members, &whitelist_path)
 }
 
 pub(crate) fn run_policy_audit_with_whitelist(members: &[&str], whitelist_path: &Path) -> bool {
-    let Some(whitelist) = load_whitelist(whitelist_path) else {
-        return false;
+    let whitelist = match crate::whitelist::load_whitelist_strict(None, &[whitelist_path]) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("[!] {}", err);
+            return false;
+        }
     };
     let mut success = true;
 

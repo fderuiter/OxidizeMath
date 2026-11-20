@@ -1,5 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+const FAVICON_SVG: &str = include_str!("../icons/favicon.svg");
+const SITE_WEBMANIFEST: &str = include_str!("../site.webmanifest");
 const ICON_32_PNG: &[u8] = include_bytes!("../icons/32x32.png");
 const ICON_128_PNG: &[u8] = include_bytes!("../icons/128x128.png");
 const ICON_180_PNG: &[u8] = include_bytes!("../icons/180x180.png");
@@ -11,6 +13,55 @@ const OG_IMAGE_PNG: &[u8] = include_bytes!("../icons/og-image.png");
 const ICON_ICO: &[u8] = include_bytes!("../icons/icon.ico");
 const ICON_ICNS: &[u8] = include_bytes!("../icons/icon.icns");
 const MAX_ICON_ASSET_BYTES: usize = 20_480;
+
+#[test]
+fn test_favicon_svg_and_site_webmanifest_assets() {
+    assert!(
+        FAVICON_SVG.contains("<svg") && FAVICON_SVG.contains("</svg>"),
+        "icons/favicon.svg must be a non-empty valid SVG document"
+    );
+    for rule in [
+        "<style>",
+        "@media (prefers-color-scheme: light)",
+        "#172554",
+        "#eff6ff",
+        "#2563eb",
+        "#1d4ed8",
+    ] {
+        assert!(
+            FAVICON_SVG.contains(rule),
+            "icons/favicon.svg must include dark/light brand rule: {rule}"
+        );
+    }
+
+    let manifest: serde_json::Value =
+        serde_json::from_str(SITE_WEBMANIFEST).expect("site.webmanifest must parse as valid JSON");
+    assert_eq!(manifest["name"], "Math Explorer");
+    assert_eq!(manifest["short_name"], "Math Explorer");
+    let icons = manifest["icons"]
+        .as_array()
+        .expect("site.webmanifest must define an icons array");
+    assert!(
+        icons.len() >= 7,
+        "site.webmanifest must declare vector, standard, 192x192, and maskable icons"
+    );
+    assert!(
+        icons.iter().any(|entry| {
+            entry["src"] == "192x192.png"
+                && entry["sizes"] == "192x192"
+                && entry["purpose"] == "any"
+        }),
+        "site.webmanifest must register 192x192.png with purpose 'any'"
+    );
+    assert!(
+        icons.iter().any(|entry| {
+            entry["src"] == "512x512-maskable.png"
+                && entry["sizes"] == "512x512"
+                && entry["purpose"] == "maskable"
+        }),
+        "site.webmanifest must register 512x512-maskable.png with purpose 'maskable'"
+    );
+}
 
 fn decode_rgba_png(label: &str, data: &[u8]) -> (u32, u32, Vec<[u8; 4]>) {
     assert!(

@@ -165,11 +165,53 @@ fn test_cross_platform_share_url_origin_desktop_and_web() {
     );
 
     let web_url = with_mock_web_base_url(
-        "https://sim.example.edu/OxidizeMath/?stall_timeout_ms=9000&tab=stale&state=old#prev",
+        "https://sim.example.edu/OxidizeMath/?stall_timeout_ms=9000&compile_timeout_ms=30000&tab=stale&state=old#prev",
         || build_share_url_from_fragment("#tab=chaos&tool=AttractorPlotter"),
     );
     assert_eq!(
         web_url,
-        "https://sim.example.edu/OxidizeMath/?stall_timeout_ms=9000#tab=chaos&tool=AttractorPlotter"
+        "https://sim.example.edu/OxidizeMath/?stall_timeout_ms=9000&compile_timeout_ms=30000#tab=chaos&tool=AttractorPlotter"
     );
+}
+
+#[test]
+fn test_tick_url_sync_defers_during_active_animated_slider_sweeps() {
+    let ctx = eframe::egui::Context::default();
+    let mut app = crate::app::MathExplorerApp::default();
+    let _ = ctx.run(eframe::egui::RawInput::default(), |egui_ctx| {
+        app.tick_url_sync(egui_ctx);
+    });
+    assert_eq!(app.url_sync_last_fragment_for_test(), None);
+
+    // Mark state dirty at t = 0
+    app.selected_tab = 1;
+    let _ = ctx.run(eframe::egui::RawInput::default(), |egui_ctx| {
+        app.tick_url_sync(egui_ctx);
+    });
+    assert_eq!(app.url_sync_last_fragment_for_test(), None);
+
+    // Advance past 300 ms while an AnimatedSlider sweep is active: flush must stay deferred
+    std::thread::sleep(Duration::from_millis(URL_SYNC_DEBOUNCE_MS + 20));
+    let _ = ctx.run(eframe::egui::RawInput::default(), |egui_ctx| {
+        let flags = crate::reflective_ui::slider::SweepFrameFlags {
+            pass_nr: Some(egui_ctx.cumulative_pass_nr()),
+            active_sweep_count: 1,
+            mutation_count: 1,
+        };
+        egui_ctx.data_mut(|d| {
+            d.insert_temp(eframe::egui::Id::new("ANIMATED_SLIDER_SWEEP_FLAGS"), flags)
+        });
+        app.tick_url_sync(egui_ctx);
+    });
+    assert_eq!(app.url_sync_last_fragment_for_test(), None);
+
+    // Once the sweep stops and another 300 ms elapses, the deferred URL fragment flushes cleanly
+    std::thread::sleep(Duration::from_millis(URL_SYNC_DEBOUNCE_MS + 20));
+    let _ = ctx.run(eframe::egui::RawInput::default(), |egui_ctx| {
+        crate::reflective_ui::slider::reset_frame_sweep_flags(egui_ctx);
+        app.tick_url_sync(egui_ctx);
+    });
+    assert!(app
+        .url_sync_last_fragment_for_test()
+        .is_some_and(|frag| frag.starts_with("#tab=")));
 }

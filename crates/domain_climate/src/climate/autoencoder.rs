@@ -55,12 +55,14 @@ impl ConvLayer {
     /// A new `ConvLayer`.
     #[verified_engine::verified]
     pub fn new(in_channels: usize, out_channels: usize) -> Self {
-        // Simple random initialization using from_fn
+        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        let fan_sum = in_channels.saturating_add(out_channels).max(1) as f32;
+        let limit = (6.0 / fan_sum).sqrt();
         let kernel = DMatrix::from_fn(out_channels, in_channels, |_, _| {
-            oxidize_core::rng::OxidizeRng::default().r#gen::<f32>() * 2.0 - 1.0
+            (rng.r#gen::<f32>() * 2.0 - 1.0) * limit
         });
         let bias = DVector::from_fn(out_channels, |_, _| {
-            oxidize_core::rng::OxidizeRng::default().r#gen::<f32>() * 2.0 - 1.0
+            (rng.r#gen::<f32>() * 2.0 - 1.0) * 0.1 * limit
         });
         Self { kernel, bias }
     }
@@ -386,5 +388,21 @@ mod tests {
             autoencoder.decoder.layers[2].kernel,
             initial_decoder_kernel_2
         );
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_conv_layer_shared_rng_produces_distinct_channels() {
+        let layer = ConvLayer::new(2, 4);
+        assert_ne!(layer.kernel.row(0), layer.kernel.row(1));
+        assert_ne!(layer.kernel.row(1), layer.kernel.row(2));
+        assert_ne!(layer.kernel[(0, 0)], layer.kernel[(0, 1)]);
+        assert_ne!(layer.bias[0], layer.bias[1]);
+
+        let autoencoder = Autoencoder::new(2, 4);
+        let input = DMatrix::from_row_slice(2, 2, &[0.4, -0.2, 0.8, 0.1]);
+        let (latent, recon) = autoencoder.forward(&input);
+        assert_ne!(latent.column(0), latent.column(1));
+        assert_ne!(recon[(0, 0)], recon[(0, 1)]);
     }
 }

@@ -52,7 +52,7 @@ pub struct MriRunner {
 }
 
 impl MriRunner {
-    /// Creates an initialized Bloch runner with seeded `t = 0` magnetization history.
+    /// Creates an initialized Bloch runner with pre-allocated `history` and seeded `t = 0` point.
     pub fn new(
         params: Arc<std::sync::RwLock<MriSharedParams>>,
         initial_m: Vector3<f64>,
@@ -65,7 +65,8 @@ impl MriRunner {
         let mut simulator = BlochSimulator::new(initial_m, m0);
         simulator.set_relaxation(t1, t2);
         simulator.set_b_field(b_field);
-        let mut history = VecDeque::new();
+        let max_history = math_commons::registry::MAX_ITERATIONS;
+        let mut history = VecDeque::with_capacity(max_history);
         history.push_back((0.0, initial_m));
         Self {
             simulator,
@@ -73,7 +74,7 @@ impl MriRunner {
             params,
             current_time: 0.0,
             history,
-            max_history: math_commons::registry::MAX_ITERATIONS,
+            max_history,
         }
     }
 
@@ -108,6 +109,7 @@ impl MriRunner {
 impl SimulationRunner for MriRunner {
     fn process_command(&mut self, cmd: SimCommand) {
         if let SimCommand::Reset = cmd {
+            let _ = self.sync_params_and_get_scale();
             let initial_m = Vector3::new(self.simulator.m0, 0.0, 0.0);
             self.simulator.magnetization = initial_m;
             self.current_time = 0.0;

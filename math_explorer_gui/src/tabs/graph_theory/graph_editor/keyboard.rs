@@ -193,7 +193,9 @@ impl GraphEditorTool {
     pub(super) fn handle_keyboard(&mut self, ctx: &InteractionContext) {
         let ctrl_or_cmd = ctx.modifiers.command || ctx.modifiers.ctrl || ctx.modifiers.mac_cmd;
         if ctrl_or_cmd {
-            self.handle_undo_redo_keys(ctx);
+            if !crate::app::session::shortcuts::is_workspace_history_active(&ctx.response.ctx) {
+                self.handle_undo_redo_keys(ctx);
+            }
             return;
         }
         if ctx.modifiers.alt {

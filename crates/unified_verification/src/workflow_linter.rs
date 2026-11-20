@@ -1,75 +1,32 @@
-use serde::Deserialize;
+use crate::whitelist::PathMatchOptions;
+pub use crate::whitelist::{JobPermissionException, WorkflowLinterConfig, find_whitelist_path};
 use serde_json::Value;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 use walkdir::WalkDir;
-
-#[derive(Deserialize, Debug, Clone, Default)]
-struct WhitelistFile {
-    #[serde(default)]
-    workflow_linter: Option<WorkflowLinterConfig>,
-}
-
-/// Configuration for `workflow_linter` loaded from `verification_whitelist.toml`.
-#[derive(Deserialize, Debug, Clone, Default)]
-pub struct WorkflowLinterConfig {
-    /// Explicit job-level write permission exceptions for deployment workflows.
-    #[serde(default, alias = "allowed_job_permissions")]
-    pub exceptions: Vec<JobPermissionException>,
-}
-
-/// Scoped exception allowing specific write permissions on a named job in a specific workflow.
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct JobPermissionException {
-    /// Relative path to the workflow file (e.g., `.github/workflows/pages.yml`).
-    pub workflow: String,
-    /// Job identifier within the `jobs` mapping (e.g., `deploy`).
-    pub job: String,
-    /// Permission scopes explicitly permitted to use `write` on this job (e.g., `["pages", "id-token"]`).
-    #[serde(default, alias = "permissions", alias = "write_scopes")]
-    pub allow_write: Vec<String>,
-    /// Optional human-readable justification for the exception.
-    #[serde(default)]
-    pub reason: Option<String>,
-}
-
-/// Locates `verification_whitelist.toml` relative to the current working directory.
-pub fn find_whitelist_path() -> Option<PathBuf> {
-    let candidates = [
-        Path::new("verification_whitelist.toml"),
-        Path::new("../../verification_whitelist.toml"),
-    ];
-    for candidate in &candidates {
-        if candidate.exists() {
-            return Some(candidate.to_path_buf());
-        }
-    }
-    None
-}
 
 /// Loads configured job-level permission exceptions from `verification_whitelist.toml`.
 pub fn load_workflow_exceptions(path: Option<&Path>) -> Vec<JobPermissionException> {
-    let resolved = match path {
-        Some(p) => Some(p.to_path_buf()),
-        None => find_whitelist_path(),
-    };
-    if let Some(toml_path) = resolved {
-        if let Ok(content) = fs::read_to_string(&toml_path) {
-            if let Ok(parsed) = toml::from_str::<WhitelistFile>(&content) {
-                return parsed.workflow_linter.unwrap_or_default().exceptions;
-            }
-        }
-    }
-    Vec::new()
+    let resolved = path.map(Path::to_path_buf).or_else(find_whitelist_path);
+    let cfg: WorkflowLinterConfig =
+        crate::whitelist::load_whitelist_or_default(resolved.as_deref(), &[] as &[&Path])
+            .workflow_linter
+            .unwrap_or_default();
+    cfg.exceptions
 }
 
 fn workflow_path_matches(workflow_path: &Path, configured_workflow: &str) -> bool {
-    let norm_actual = workflow_path.to_string_lossy().replace('\\', "/");
-    let norm_actual = norm_actual.trim_start_matches("./");
-    let norm_expected = configured_workflow.replace('\\', "/");
-    let norm_expected = norm_expected.trim_start_matches("./");
-    !norm_expected.is_empty()
-        && (norm_actual == norm_expected || norm_actual.ends_with(&format!("/{}", norm_expected)))
+    crate::whitelist::path_matches_lossy(
+        workflow_path,
+        configured_workflow,
+        PathMatchOptions {
+            trim_dot_slash: true,
+            require_non_empty: true,
+            match_file_name: false,
+        },
+    )
 }
 
 fn is_job_write_scope_exempted(
@@ -234,6 +191,8 @@ pub fn validate_concurrency_block(yaml: &Value) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// Validates job-level `timeout-minutes` settings, exempting `jobs.<id>.uses` reusable workflow
+/// callers and rejecting schema-invalid `timeout-minutes` on `uses` jobs.
 pub fn validate_job_timeouts(yaml: &Value) -> Result<(), String> {
     let jobs = match yaml.get("jobs") {
         Some(Value::Object(map)) => map,
@@ -246,6 +205,16 @@ pub fn validate_job_timeouts(yaml: &Value) -> Result<(), String> {
             Value::Object(map) => map,
             _ => return Err(format!("Job '{}' must be a mapping.", job_name)),
         };
+
+        if job_map.contains_key("uses") {
+            if job_map.contains_key("timeout-minutes") {
+                return Err(format!(
+                    "Job '{}' calls a reusable workflow via 'uses' and must not specify 'timeout-minutes'.",
+                    job_name
+                ));
+            }
+            continue;
+        }
 
         match job_map.get("timeout-minutes") {
             Some(Value::Number(num)) if num.as_u64().unwrap_or(0) > 0 => {}
@@ -267,10 +236,20 @@ pub fn validate_job_timeouts(yaml: &Value) -> Result<(), String> {
     Ok(())
 }
 
+/// Validates job-level reusable workflow `uses` and step-level action `uses` relative to
+/// `repo_root`, forwarding `exceptions` when validating local reusable workflows.
+pub fn validate_action_pinning_with_exceptions(
+    yaml: &Value,
+    repo_root: &Path,
+    exceptions: &[JobPermissionException],
+) -> Result<(), String> {
+    let mut state = pinning::PinningState::with_exceptions(exceptions);
+    pinning::validate_workflow_jobs(yaml, repo_root, &mut state)
+}
+
 /// Validates job-level reusable workflow `uses` and step-level action `uses` relative to `repo_root`.
 pub fn validate_action_pinning_in_dir(yaml: &Value, repo_root: &Path) -> Result<(), String> {
-    let mut state = pinning::PinningState::default();
-    pinning::validate_workflow_jobs(yaml, repo_root, &mut state)
+    validate_action_pinning_with_exceptions(yaml, repo_root, &[])
 }
 
 /// Validates job-level reusable workflow `uses` and step-level action `uses` relative to `.`.
@@ -346,10 +325,10 @@ fn lint_workflow_file(
     } else {
         validate_permissions_with_exceptions(&yaml, Some(path), exceptions)
     };
-    let pin_res = if repo_root == Path::new(".") {
-        validate_action_pinning(&yaml)
-    } else {
-        validate_action_pinning_in_dir(&yaml, repo_root)
+    let pin_res = match (exceptions.is_empty(), repo_root == Path::new(".")) {
+        (true, true) => validate_action_pinning(&yaml),
+        (true, false) => validate_action_pinning_in_dir(&yaml, repo_root),
+        (false, _) => validate_action_pinning_with_exceptions(&yaml, repo_root, exceptions),
     };
     for check in [
         perm_res,
@@ -429,5 +408,8 @@ mod pinning;
 #[cfg(test)]
 #[path = "workflow_linter/policy_tests.rs"]
 mod policy_tests;
+#[cfg(test)]
+#[path = "workflow_linter/reusable_caller_tests.rs"]
+mod reusable_caller_tests;
 #[cfg(test)]
 mod tests;

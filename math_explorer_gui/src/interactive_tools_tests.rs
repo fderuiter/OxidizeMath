@@ -39,6 +39,7 @@ mod tests {
         check_tool!(crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool);
         check_tool!(crate::tabs::fluid_dynamics::turbulence::TurbulenceTool);
         check_tool!(crate::tabs::ai::activation_functions::ActivationFunctionsTool);
+        check_tool!(crate::tabs::ai::gaussian_splatting::GaussianSplattingTool);
         check_tool!(crate::tabs::ai::training_monitor::TrainingMonitorTool);
         check_tool!(crate::tabs::ai::loss_landscape::LossLandscapeTool);
         check_tool!(crate::tabs::ai::grid_world::GridWorldTool);
@@ -106,6 +107,51 @@ mod tests {
             "Expected at least 40 registered tools, got {}",
             count
         );
+    }
+
+    #[test]
+    fn test_zero_registered_tools_render_placeholder_labels() {
+        let screen_rect = Some(eframe::egui::Rect::from_min_size(
+            eframe::egui::Pos2::ZERO,
+            eframe::egui::vec2(1280.0, 800.0),
+        ));
+        for meta in inventory::iter::<crate::framework::ToolMetadata> {
+            let mut tool = (meta.build)();
+            let ctx = eframe::egui::Context::default();
+            ctx.enable_accesskit();
+            let out = ctx.run(
+                eframe::egui::RawInput {
+                    screen_rect,
+                    ..Default::default()
+                },
+                |ctx| tool.show(ctx),
+            );
+            if let Some(ak) = out.platform_output.accesskit_update {
+                for (_, node) in &ak.nodes {
+                    let label = node.label().unwrap_or("");
+                    assert!(
+                        !label.contains("Placeholder"),
+                        "Tool '{}' rendered placeholder label: '{}'",
+                        meta.id,
+                        label
+                    );
+                }
+            }
+            let mut stack: Vec<&eframe::egui::epaint::Shape> =
+                out.shapes.iter().map(|c| &c.shape).collect();
+            while let Some(shape) = stack.pop() {
+                match shape {
+                    eframe::egui::epaint::Shape::Text(t) => assert!(
+                        !t.galley.text().contains("Placeholder"),
+                        "Tool '{}' painted placeholder text: '{}'",
+                        meta.id,
+                        t.galley.text()
+                    ),
+                    eframe::egui::epaint::Shape::Vec(v) => stack.extend(v.iter()),
+                    _ => {}
+                }
+            }
+        }
     }
 
     #[test]
@@ -288,9 +334,16 @@ mod tests {
             &mut crate::tabs::solid_state::crystal_viewer::CrystalViewer::default(),
             r#"{"system":"SimpleCubic","lattice_constant":3.5,"camera":{"pitch":0.25,"yaw":0.75,"zoom":1.2}}"#,
         );
+        let mut favoritism_tab = crate::tabs::favoritism::FavoritismTab::default();
+        crate::tabs::ExplorerTab::load_state(
+            &mut favoritism_tab,
+            r#"{"selected_child_index":1,"new_child_name":"Sibling"}"#,
+        );
+        let migrated_favoritism_json =
+            crate::tabs::ExplorerTab::save_state(&favoritism_tab).expect("favoritism save_state");
         assert_tab_roundtrip(
             &mut crate::tabs::favoritism::FavoritismTab::default(),
-            r#"{"selected_child_index":1,"new_child_name":"Sibling"}"#,
+            &migrated_favoritism_json,
         );
         let valid_repo_dir = oxidize_core::path_utils::normalize_path(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

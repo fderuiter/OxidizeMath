@@ -231,23 +231,18 @@ The `InteractiveTool` trait provides default implementations for normalized inte
 
 ### Registering Tool Shortcuts for Discovery
 
-Because `on_keyboard` only executes when the simulation canvas holds focus, tools that define keyboard shortcuts must advertise their `CommandMetadata` every frame outside focus guards so hotkeys appear in the **Keyboard Shortcuts** modal (`?` or `Ctrl+/` / `Cmd+/`). Call `egui_plot::commands::CommandRegistryData::register` inside `show_ui` or `show` to record metadata without consuming input events (or `CommandRegistryData::register_and_check` when registering and handling an unguarded shortcut together):
+Because `on_keyboard` only executes when the simulation canvas holds focus, tools that define custom keyboard shortcuts must advertise their `CommandMetadata` every frame outside focus guards so hotkeys appear in the **Keyboard Shortcuts** modal (`?` or `Ctrl+/` / `Cmd+/`). Call `egui_plot::commands::CommandRegistryData::register` inside `show_ui` or `show` to record metadata without consuming input events. Do **not** intercept global history or session shortcuts (`Ctrl+Z` / `Cmd+Z`, `Ctrl+Y`, `Ctrl+Shift+Z` / `Cmd+Shift+Z`, `Ctrl+O`, `Ctrl+S`) inside tool handlers — `WorkspaceSessionManager` owns workspace-wide undo, redo, and file persistence before panes run:
 
 ```rust,ignore
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 
-// Inside InteractiveTool::show_ui(ui):
-let modifiers = if cfg!(target_os = "macos") {
-    egui::Modifiers::MAC_CMD
-} else {
-    egui::Modifiers::CTRL
-};
+// Inside InteractiveTool::show_ui(ui): advertise custom tool shortcuts (never consume Ctrl+Z / Ctrl+Y)
 CommandRegistryData::register(
     ui.ctx(),
-    "Undo",
-    "Undo the last modification",
-    CommandTrigger::Shortcut(modifiers, egui::Key::Z),
-    true,
+    "Add Node",
+    "Insert a new node at the viewport center",
+    CommandTrigger::Key(egui::Key::N),
+    false,
     "My Tool",
 );
 ```

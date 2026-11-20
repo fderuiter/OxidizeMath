@@ -124,6 +124,7 @@ impl SimulationFramework {
             self.render_action_bar_export_status(ctx, ui);
             ui.separator();
             self.render_starter_gallery_toggle(ctx, ui);
+            self.render_theory_portal_toggle(ctx, ui);
             self.render_preset_action_bar_controls(ui, &file_slug);
         });
     }
@@ -204,6 +205,26 @@ impl SimulationFramework {
                     self.show_starter_gallery,
                 )
             });
+        }
+    }
+
+    fn render_theory_portal_toggle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .button("📖 Theory")
+            .accessible_hover_text("Toggle Theory Context Portal")
+            .clicked()
+        {
+            self.show_theory_portal = !self.show_theory_portal;
+            let next = self.show_theory_portal;
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
+                if let Some(inst_key) =
+                    d.get_temp::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"))
+                {
+                    d.insert_temp(inst_key, next);
+                }
+            });
+            ctx.request_repaint();
         }
     }
 

@@ -314,6 +314,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 )
                 .clicked()
             {
+                app.clear_active_pane_caches();
                 let state = app.get_app_state();
                 let env_json = app.session_manager.create_envelope(state);
                 app.session_manager.trigger_save(env_json);
@@ -326,6 +327,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 )
                 .clicked()
             {
+                app.clear_active_pane_caches();
                 let state = app.get_app_state();
                 let env_json = app.session_manager.create_envelope(state);
                 app.session_manager.trigger_save_as(env_json);

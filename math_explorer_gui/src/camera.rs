@@ -324,15 +324,18 @@ impl Camera3D {
 /// and delegates canvas orbit, zoom, gizmo, and reset gestures to `Camera3D`.
 pub struct Plot3DViewport<'a> {
     id_source: egui::Id,
+    title: Option<String>,
     half_extent: f64,
     helper_text: Option<&'a str>,
 }
 
 impl<'a> Plot3DViewport<'a> {
     /// Creates a 3D viewport with locked symmetric half-extent in projected plot units.
-    pub fn new(id_source: impl std::hash::Hash, half_extent: f64) -> Self {
+    pub fn new(id_source: impl egui_plot::PlotIdSource, half_extent: f64) -> Self {
+        let (id_source, title) = id_source.into_plot_id_and_title();
         Self {
-            id_source: egui::Id::new(id_source),
+            id_source,
+            title,
             half_extent: half_extent.max(0.1),
             helper_text: Some(CAMERA_3D_HELPER_TEXT),
         }
@@ -367,7 +370,7 @@ impl<'a> Plot3DViewport<'a> {
         let y_half = self.half_extent;
 
         let mut captured_plot_id = None;
-        let plot_response = egui_plot::Plot::new(self.id_source)
+        let mut plot = egui_plot::Plot::new(self.id_source)
             .height(plot_height)
             .data_aspect(1.0)
             .allow_drag(false)
@@ -378,11 +381,14 @@ impl<'a> Plot3DViewport<'a> {
             .allow_double_click_reset(false)
             .show_navigation_controls(false)
             .default_x_bounds(-x_half, x_half)
-            .default_y_bounds(-y_half, y_half)
-            .show(ui, |plot_ui| {
-                captured_plot_id = Some(plot_ui.plot_id());
-                build_fn(plot_ui)
-            });
+            .default_y_bounds(-y_half, y_half);
+        if let Some(title) = self.title {
+            plot = plot.title(title);
+        }
+        let plot_response = plot.show(ui, |plot_ui| {
+            captured_plot_id = Some(plot_ui.plot_id());
+            build_fn(plot_ui)
+        });
 
         camera.handle_interaction_with_plot(&plot_response.response, ui, captured_plot_id);
 

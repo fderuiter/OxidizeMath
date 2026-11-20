@@ -41,48 +41,40 @@ fn split_share_url(url: &str) -> (&str, &str) {
     (&url[idx..], "")
 }
 
-fn seed_standalone_custom_states(app: &mut MathExplorerApp) {
+fn seed_custom_tab_states(app: &mut MathExplorerApp) {
     for tab in &mut app.tabs {
         match tab.url_slug() {
             "morphogenesis" => {
-                let custom = crate::presets::serialize_compact_preset_envelope(
-                    "Custom Morpho",
-                    "biology",
-                    crate::presets::MorphogenesisPresetConfig {
-                        a: 0.17,
-                        b: 0.83,
-                        d_u: 1.25,
-                        d_v: 64.0,
-                        dt: 0.03,
-                        width: 72,
-                        height: 72,
-                    },
-                )
-                .unwrap();
-                tab.import_url_preset_json(None, Some(&custom)).unwrap();
+                let mut val: serde_json::Value =
+                    serde_json::from_str(&tab.export_url_preset_json().unwrap().unwrap()).unwrap();
+                val["config"]["a"] = serde_json::json!(0.17);
+                val["config"]["b"] = serde_json::json!(0.83);
+                val["config"]["d_u"] = serde_json::json!(1.25);
+                val["config"]["d_v"] = serde_json::json!(64.0);
+                val["config"]["dt"] = serde_json::json!(0.03);
+                val["config"]["width"] = serde_json::json!(72);
+                val["config"]["height"] = serde_json::json!(72);
+                tab.import_url_preset_json(Some("MorphogenesisTool"), Some(&val.to_string()))
+                    .unwrap();
             }
             "mri" => {
-                let custom = crate::presets::serialize_compact_preset_envelope(
-                    "Custom MRI",
-                    "mri",
-                    crate::tabs::mri::MriPresetConfig {
-                        t1: 2.25,
-                        t2: 0.35,
-                        bx: 0.02,
-                        by: -0.01,
-                        bz: 1.5,
-                        time_scale: 4.5,
-                    },
-                )
-                .unwrap();
-                tab.import_url_preset_json(None, Some(&custom)).unwrap();
+                let mut val: serde_json::Value =
+                    serde_json::from_str(&tab.export_url_preset_json().unwrap().unwrap()).unwrap();
+                val["config"]["t1"] = serde_json::json!(2.25);
+                val["config"]["t2"] = serde_json::json!(0.35);
+                val["config"]["bx"] = serde_json::json!(0.02);
+                val["config"]["by"] = serde_json::json!(-0.01);
+                val["config"]["bz"] = serde_json::json!(1.5);
+                val["config"]["time_scale"] = serde_json::json!(4.5);
+                tab.import_url_preset_json(Some("MriTool"), Some(&val.to_string()))
+                    .unwrap();
             }
             "favoritism" => {
                 let orig = tab.export_url_preset_json().unwrap().unwrap();
                 let mut val: serde_json::Value = serde_json::from_str(&orig).unwrap();
                 val["config"]["new_child_name"] = serde_json::json!("Shared Sibling");
-                val["config"]["children"][0]["wealth"] = serde_json::json!(6.75);
-                tab.import_url_preset_json(None, Some(&val.to_string()))
+                val["config"]["children"][0]["inputs"]["wealth"] = serde_json::json!(6.75);
+                tab.import_url_preset_json(Some("FavoritismTool"), Some(&val.to_string()))
                     .unwrap();
             }
             _ => {}
@@ -103,7 +95,7 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
             tab.url_slug()
         );
     }
-    seed_standalone_custom_states(&mut source_app);
+    seed_custom_tab_states(&mut source_app);
 
     for target_idx in 0..source_app.tabs.len() {
         source_app.selected_tab = target_idx;
@@ -138,12 +130,12 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
 }
 
 #[test]
-fn test_contract_all_52_tools_lossless_url_roundtrip() {
+fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     assert_eq!(
         tools.len(),
-        52,
-        "Expected all 52 registered InteractiveTools"
+        55,
+        "Expected all 55 registered InteractiveTools"
     );
 
     let mut source_app = MathExplorerApp::default();
@@ -151,7 +143,7 @@ fn test_contract_all_52_tools_lossless_url_roundtrip() {
         let tab_idx = source_app
             .tabs
             .iter()
-            .position(|t| t.url_slug() == meta.domain)
+            .position(|t| matches_tab_slug(meta.domain, t.url_slug(), t.name()))
             .unwrap_or_else(|| panic!("No tab found for tool domain '{}'", meta.domain));
 
         source_app.selected_tab = tab_idx;
@@ -198,14 +190,14 @@ fn test_contract_all_52_tools_lossless_url_roundtrip() {
 }
 
 #[test]
-fn test_contract_all_57_starter_presets_lossless_url_roundtrip() {
+fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
     assert_eq!(
         presets.len(),
-        57,
-        "Expected all 57 StarterPresetMetadata entries"
+        59,
+        "Expected all 59 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -213,12 +205,7 @@ fn test_contract_all_57_starter_presets_lossless_url_roundtrip() {
         let tab_idx = source_app
             .tabs
             .iter()
-            .position(|t| {
-                t.url_slug() == preset.domain
-                    || (preset.domain == "biology"
-                        && preset.tool_name.is_none()
-                        && t.url_slug() == "morphogenesis")
-            })
+            .position(|t| matches_tab_slug(preset.domain, t.url_slug(), t.name()))
             .unwrap_or_else(|| panic!("No tab found for starter preset '{}'", preset.id));
 
         source_app.selected_tab = tab_idx;
@@ -349,11 +336,26 @@ fn test_copy_share_link_populates_clipboard_and_confirmation_toast() {
     app.copy_current_share_link(&ctx);
 
     let copied = take_last_copied_share_url().expect("Share link must be copied to clipboard");
-    assert!(copied.starts_with("https://fderuiter.github.io/OxidizeMath/#tab=mri&state="));
+    assert!(
+        copied.starts_with("https://fderuiter.github.io/OxidizeMath/#tab=mri&tool=MriTool&state="),
+        "Unexpected MRI share URL: {copied}"
+    );
     let (toast_msg, is_err) = app
         .session_manager
         .toast()
         .expect("Confirmation toast expected");
     assert!(!*is_err);
     assert!(toast_msg.contains("Copied shareable simulation link"));
+
+    let trace_idx = app
+        .tabs
+        .iter()
+        .position(|t| t.url_slug() == "traceability")
+        .unwrap();
+    app.selected_tab = trace_idx;
+    app.copy_current_share_link(&ctx);
+    let trace_copied =
+        take_last_copied_share_url().expect("Traceability share link must be copied");
+    assert!(trace_copied
+        .starts_with("https://fderuiter.github.io/OxidizeMath/#tab=traceability&state="));
 }

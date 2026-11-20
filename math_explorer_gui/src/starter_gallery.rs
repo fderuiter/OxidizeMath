@@ -261,6 +261,76 @@ pub const PRESET_HAWK_DOVE: &str = r#"{
   }
 }"#;
 
+/// JSON preset envelope for MRI Physics Bloch Precession & Relaxation.
+pub const PRESET_MRI_BLOCH_RELAXATION: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "MRI Bloch Relaxation - Off-Resonance Precession",
+    "domain": "mri",
+    "timestamp": "2026-11-20T00:00:00Z"
+  },
+  "config": {
+    "t1": 1.2,
+    "t2": 0.35,
+    "bx": 0.00000002,
+    "by": 0.0,
+    "bz": 0.0000001,
+    "time_scale": 5.0
+  }
+}"#;
+
+/// JSON preset envelope for Favoritism Sibling Rivalry Strategy.
+pub const PRESET_FAVORITISM_SIBLING_RIVALRY: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Unified Favoritism - Crisis & Proximity Showdown",
+    "domain": "favoritism",
+    "timestamp": "2026-11-20T00:00:00Z"
+  },
+  "config": {
+    "children": [
+      {
+        "name": "Crisis Hero",
+        "inputs": {
+          "days_integrated": 1825.0,
+          "distance_km": 15.0,
+          "g_practical": 9.0,
+          "g_emotional": 8.5,
+          "wealth": 6.0,
+          "talent": 7.0,
+          "intelligence": 8.0,
+          "emotional_sensitivity": 7.5,
+          "helped_during_crisis": true,
+          "active_on_social_media": true,
+          "birth_order_weight": 1.2,
+          "time_since_last_contact": 2.0,
+          "f_initial": 15.0
+        }
+      },
+      {
+        "name": "Distant Heir",
+        "inputs": {
+          "days_integrated": 1825.0,
+          "distance_km": 450.0,
+          "g_practical": 9.5,
+          "g_emotional": 3.0,
+          "wealth": 9.5,
+          "talent": 8.0,
+          "intelligence": 8.5,
+          "emotional_sensitivity": 3.5,
+          "helped_during_crisis": false,
+          "active_on_social_media": false,
+          "birth_order_weight": 1.0,
+          "time_since_last_contact": 45.0,
+          "f_initial": 4.0
+        }
+      }
+    ],
+    "selected_child_index": 0,
+    "new_child_name": "Youngest Sibling"
+  }
+}"#;
+
 /// Returns curated or dynamically generated starter cards for a simulation domain.
 pub fn get_starter_cards_for_domain(
     domain: &str,

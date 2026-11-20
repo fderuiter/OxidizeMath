@@ -178,6 +178,7 @@ impl OdeSolverTool {
         self.method = s.method;
         self.comparison_mode = s.comparison_mode;
         self.show_annotations = s.show_annotations;
+        self.pending_sweep_run = None;
         self.recalculate();
         Ok(())
     }

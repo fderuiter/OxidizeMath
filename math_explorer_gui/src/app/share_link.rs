@@ -177,9 +177,16 @@ impl MathExplorerApp {
         crate::accessibility::announce_status_with_priority(&warning, "assertive");
     }
 
+    /// Returns the most recently flushed `#tab=...` fragment in tests.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn url_sync_last_fragment_for_test(&self) -> Option<&str> {
+        self.url_sync.last_synced_fragment()
+    }
+
     /// Polls the `Ctrl+Shift+L` / `Cmd+Shift+L` share shortcut, clipboard status, and 300 ms
     /// debounced `History::replaceState` synchronization at the end of each UI frame.
-    pub(super) fn tick_url_sync(&mut self, ctx: &egui::Context) {
+    pub(crate) fn tick_url_sync(&mut self, ctx: &egui::Context) {
         self.poll_share_clipboard_status(ctx);
 
         let modifiers = if cfg!(target_os = "macos") {
@@ -201,9 +208,10 @@ impl MathExplorerApp {
             self.copy_current_share_link(ctx);
         }
 
-        let pointer_down = ctx.input(|i| i.pointer.any_down());
+        let pointer_or_sweep_active = ctx.input(|i| i.pointer.any_down())
+            || crate::reflective_ui::slider::has_active_sweeps(ctx);
         let now = crate::web_io::PlatformInstant::now();
-        self.poll_url_sync_at(ctx, pointer_down, now);
+        self.poll_url_sync_at(ctx, pointer_or_sweep_active, now);
     }
 
     /// Advances the debounced URL synchronization state machine at `now`.
