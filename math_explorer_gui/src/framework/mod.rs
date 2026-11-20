@@ -152,26 +152,6 @@ pub trait InteractiveTool {
         0
     }
 
-    /// Returns true if this tool maintains local undo history with available entries.
-    fn can_undo(&self) -> bool {
-        false
-    }
-
-    /// Returns true if this tool maintains local redo history with available entries.
-    fn can_redo(&self) -> bool {
-        false
-    }
-
-    /// Attempts to undo the latest local tool edit, returning true if handled.
-    fn try_undo(&mut self) -> bool {
-        false
-    }
-
-    /// Attempts to redo the latest locally undone tool edit, returning true if handled.
-    fn try_redo(&mut self) -> bool {
-        false
-    }
-
     /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         None

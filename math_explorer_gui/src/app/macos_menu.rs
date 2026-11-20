@@ -234,12 +234,14 @@ fn handle_file_event(app: &mut MathExplorerApp, id: &str) -> bool {
             true
         }
         "file_save" => {
+            app.clear_active_pane_caches();
             let state = app.get_app_state();
             let env_json = app.session_manager.create_envelope(state);
             app.session_manager.trigger_save(env_json);
             true
         }
         "file_save_as" => {
+            app.clear_active_pane_caches();
             let state = app.get_app_state();
             let env_json = app.session_manager.create_envelope(state);
             app.session_manager.trigger_save_as(env_json);

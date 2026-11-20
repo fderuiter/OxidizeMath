@@ -283,6 +283,7 @@ fn render_pane_content(
     ctx.data_mut(|d| {
         d.insert_temp(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY), pane_idx);
     });
+    crate::reflective_ui::slider::begin_pane_sweep_scope(ctx, pane_idx);
     egui_plot::clear_last_plot_datasets();
     if let Some(tab) = app.pane_tab_mut(pane_idx) {
         tab.show_inside(&mut content_ui, frame);
@@ -292,6 +293,7 @@ fn render_pane_content(
         });
     }
     egui_plot::clear_last_plot_datasets();
+    crate::reflective_ui::slider::merge_pane_sweep_flags(ctx, pane_idx);
     ctx.data_mut(|d| {
         d.remove::<usize>(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY));
     });
