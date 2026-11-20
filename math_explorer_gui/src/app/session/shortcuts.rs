@@ -87,11 +87,13 @@ fn consume_and_strip_shortcut(
 
 impl MathExplorerApp {
     /// Returns true if an undo action is available on the workspace session.
+    #[cfg(any(not(target_os = "macos"), test))]
     pub fn can_undo(&self) -> bool {
         self.session_manager.can_undo()
     }
 
     /// Returns true if a redo action is available on the workspace session.
+    #[cfg(any(not(target_os = "macos"), test))]
     pub fn can_redo(&self) -> bool {
         self.session_manager.can_redo()
     }

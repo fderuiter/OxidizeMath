@@ -183,10 +183,16 @@ impl GaussianSplattingTool {
         egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Gaussian Splatting");
             ui.separator();
+            let prev_scale = self.scale;
             if ui
                 .add(egui::Slider::new(&mut self.scale, 0.1..=10.0).text("Scale"))
                 .changed()
             {
+                self.scale = if self.scale.is_finite() {
+                    self.scale.clamp(0.1, 10.0)
+                } else {
+                    prev_scale
+                };
                 self.cached_counts = Self::compute_density_counts_for_scale(self.scale);
             }
 

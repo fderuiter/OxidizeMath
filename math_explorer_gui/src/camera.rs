@@ -17,6 +17,9 @@ pub const CAMERA_3D_ZOOM_MIN: f32 = 0.01_f32;
 /// Maximum shared zoom scale across all 3D camera controls and gestures.
 pub const CAMERA_3D_ZOOM_MAX: f32 = 100.0_f32;
 
+/// Maximum finite camera angle magnitude (radians) safe from `f32::to_degrees()` overflow.
+pub const CAMERA_3D_MAX_ANGLE_RAD: f32 = 1_000.0_f32 * std::f32::consts::TAU;
+
 /// Canonical canvas helper text displayed below interactive 3D viewports.
 pub const CAMERA_3D_HELPER_TEXT: &str =
     "Drag canvas or use WASD to orbit, scroll or Q/E to zoom, double-click or press R to reset view.";
@@ -64,11 +67,13 @@ impl Camera3D {
         }
     }
 
-    /// Returns true if pitch, yaw, and zoom are finite and zoom lies within `[0.01, 100.0]`.
+    /// Returns true if pitch, yaw, and zoom are finite and within safe numeric bounds.
     pub fn is_valid(&self) -> bool {
         self.pitch.is_finite()
             && self.yaw.is_finite()
             && self.zoom.is_finite()
+            && self.pitch.abs() <= CAMERA_3D_MAX_ANGLE_RAD
+            && self.yaw.abs() <= CAMERA_3D_MAX_ANGLE_RAD
             && (CAMERA_3D_ZOOM_MIN..=CAMERA_3D_ZOOM_MAX).contains(&self.zoom)
     }
 
@@ -206,13 +211,17 @@ impl Camera3D {
                 self.zoom = (self.zoom * zoom_factor).clamp(CAMERA_3D_ZOOM_MIN, CAMERA_3D_ZOOM_MAX);
             }
             if touch.translation_delta != egui::Vec2::ZERO {
-                self.yaw -= touch.translation_delta.x * 0.01_f32;
-                self.pitch -= touch.translation_delta.y * 0.01_f32;
+                self.yaw = (self.yaw - touch.translation_delta.x * 0.01_f32)
+                    .clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
+                self.pitch = (self.pitch - touch.translation_delta.y * 0.01_f32)
+                    .clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
             }
         } else if !press_inside_gizmo && response.dragged_by(egui::PointerButton::Primary) {
             let delta = response.drag_delta();
-            self.yaw -= delta.x * 0.01_f32;
-            self.pitch -= delta.y * 0.01_f32;
+            self.yaw = (self.yaw - delta.x * 0.01_f32)
+                .clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
+            self.pitch = (self.pitch - delta.y * 0.01_f32)
+                .clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
         }
     }
 
@@ -311,8 +320,9 @@ impl Camera3D {
             zoom_factor *= 1.05_f32;
         }
 
-        self.yaw -= yaw_delta;
-        self.pitch -= pitch_delta;
+        self.yaw = (self.yaw - yaw_delta).clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
+        self.pitch =
+            (self.pitch - pitch_delta).clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
         self.zoom = (self.zoom * zoom_factor).clamp(CAMERA_3D_ZOOM_MIN, CAMERA_3D_ZOOM_MAX);
     }
 
@@ -356,21 +366,32 @@ impl Camera3D {
         let prev = *self;
         ui.label("Yaw");
         ui.drag_angle(&mut self.yaw);
-        if !self.yaw.is_finite() {
-            self.yaw = prev.yaw;
-        }
+        self.yaw = if self.yaw.is_finite() {
+            self.yaw
+                .clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD)
+        } else {
+            prev.yaw
+        };
 
         ui.label("Pitch");
         ui.drag_angle(&mut self.pitch);
-        if !self.pitch.is_finite() {
-            self.pitch = prev.pitch;
-        }
+        self.pitch = if self.pitch.is_finite() {
+            self.pitch
+                .clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD)
+        } else {
+            prev.pitch
+        };
 
         ui.add(
             egui::Slider::new(&mut self.zoom, CAMERA_3D_ZOOM_MIN..=CAMERA_3D_ZOOM_MAX)
                 .logarithmic(true)
                 .text("Zoom"),
         );
+        self.zoom = if self.zoom.is_finite() {
+            self.zoom.clamp(CAMERA_3D_ZOOM_MIN, CAMERA_3D_ZOOM_MAX)
+        } else {
+            prev.zoom
+        };
 
         if ui.button("↻ Reset View").clicked() {
             self.reset();

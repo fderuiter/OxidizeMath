@@ -392,15 +392,21 @@ fn test_first_interaction_zoom_scales_geometry_without_auto_bounds_cancellation(
 
 #[test]
 fn test_all_six_3d_tools_expose_reset_view_and_helper_on_initial_open() {
-    let tool_ids = [
+    let tool_ids: &[&str] = &[
+        #[cfg(feature = "pure_math")]
         "SurfaceViewer",
+        #[cfg(feature = "physics")]
         "SpinVisualizer",
+        #[cfg(feature = "physics")]
         "AttractorPlotter",
+        #[cfg(feature = "physics")]
         "CrystalViewer",
+        #[cfg(feature = "pure_math")]
         "CurvatureHeatmap",
+        #[cfg(feature = "ai")]
         "Gaussian Splatting",
     ];
-    for id in tool_ids {
+    for &id in tool_ids {
         let meta = inventory::iter::<crate::framework::ToolMetadata>
             .into_iter()
             .find(|m| m.id == id)
@@ -440,5 +446,50 @@ fn test_all_six_3d_tools_expose_reset_view_and_helper_on_initial_open() {
             has_helper,
             "3D tool '{id}' must expose shared 3D control helper caption"
         );
+    }
+}
+
+#[test]
+fn test_camera_ui_and_validation_reject_non_finite_and_overflow_angles() {
+    assert!(!Camera3D::new(1e38_f32, 0.0, 1.0).is_valid());
+    assert!(!Camera3D::new(0.0, -1e38_f32, 1.0).is_valid());
+    assert!(!Camera3D::new(0.0, 0.0, f32::NAN).is_valid());
+
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let mut cam = Camera3D::new(0.4, -0.3, 1.5);
+    let run_ui = |events, cam: &mut Camera3D| {
+        ctx.run(screen_input(events), |c| {
+            egui::CentralPanel::default().show(c, |ui| cam.ui(ui));
+        })
+    };
+    let out = run_ui(Vec::new(), &mut cam);
+    let spins: Vec<egui::Pos2> = out
+        .platform_output
+        .accesskit_update
+        .expect("accesskit")
+        .nodes
+        .iter()
+        .filter(|(_, n)| n.role() == egui::accesskit::Role::SpinButton)
+        .filter_map(|(_, n)| n.bounds())
+        .map(|b| egui::pos2(((b.x0 + b.x1) * 0.5) as f32, ((b.y0 + b.y1) * 0.5) as f32))
+        .collect();
+    assert_eq!(spins.len(), 3);
+
+    for &pos in &spins {
+        let [down, _, up] = drag_frames(pos, pos, egui::PointerButton::Primary);
+        for bad in ["NaN", "1e400", "1e38"] {
+            let _ = run_ui([down.clone(), up.clone()].concat(), &mut cam);
+            let enter = egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            };
+            let _ = run_ui(vec![egui::Event::Text(bad.into()), enter], &mut cam);
+            let _ = run_ui(Vec::new(), &mut cam);
+            assert!(cam.is_valid(), "Camera3D must remain valid after '{bad}'");
+        }
     }
 }
