@@ -145,7 +145,7 @@ impl InteractiveTool for RiemannIntegrationTool {
         let mut changed = false;
 
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "riemann_controls");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Integration Controls");
             ui.separator();
 

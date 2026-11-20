@@ -26,6 +26,7 @@ pub mod recovery;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod recovery_tests;
+pub mod side_panel;
 pub mod state_bounds;
 #[cfg(test)]
 mod state_bounds_tests;
@@ -47,6 +48,10 @@ pub use pane_scope::{
 };
 pub use playback::*;
 pub use recovery::*;
+pub use side_panel::{
+    clear_pane_side_panel_records, pane_side_panel_records, PaneSidePanel, PaneSidePanelRecord,
+    MAX_PANE_SIDE_PANEL_WIDTH_RATIO,
+};
 pub use state_bounds::*;
 pub use state_guard::*;
 pub use trace_overlay::*;

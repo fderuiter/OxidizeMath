@@ -91,7 +91,7 @@ impl ExplorerTab for FavoritismTab {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let left_id = crate::framework::scoped_panel_id(ui, "favoritism_left_panel");
-        egui::SidePanel::left(left_id).show_inside(ui, |ui| {
+        crate::framework::PaneSidePanel::left(left_id).show_inside(ui, |ui| {
             ui.heading("Family Members");
             ui.separator();
 
@@ -144,7 +144,7 @@ impl ExplorerTab for FavoritismTab {
         });
 
         let right_id = crate::framework::scoped_panel_id(ui, "favoritism_right_panel");
-        egui::SidePanel::right(right_id)
+        crate::framework::PaneSidePanel::right(right_id)
             .min_width(300.0)
             .show_inside(ui, |ui| {
                 ui.heading("Leaderboard");

@@ -59,54 +59,50 @@ impl SimulationFramework {
             return;
         }
         let panel_id = scoped_panel_id(ui, format!("{id_source}_theory_portal"));
-        egui::SidePanel::right(panel_id)
+        PaneSidePanel::right(panel_id)
             .resizable(true)
             .show_inside(ui, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    if let Some(tool) = &self.active_tool {
-                        ui.heading(format!("Theory: {}", tool.name()));
+                if let Some(tool) = &self.active_tool {
+                    ui.heading(format!("Theory: {}", tool.name()));
+                    ui.separator();
+
+                    let theory = tool.theory();
+                    // Requirement 4 & Acceptance Criteria 3: On-demand registration of bibliographic details when active/loaded
+                    scientific_metadata::citation_registry::CitationRegistry::register(
+                        tool.name().to_string(),
+                        theory.theory_citation(),
+                    );
+                    // Requirement 5: Screen readers can successfully navigate the theory text and citations
+                    use crate::accessibility::AccessibleHoverText;
+                    use crate::reflective_ui::render_theory_summary_with_export;
+
+                    let theory_desc = theory.theory_description();
+                    let latex_eq = theory.theory_latex_equation();
+                    render_theory_summary_with_export(ui, &theory_desc, latex_eq.as_deref())
+                        .accessible_hover_text("Theoretical background description");
+
+                    ui.separator();
+                    ui.heading("Citations");
+                    render_theory_summary_with_export(ui, &theory.theory_citation(), None)
+                        .accessible_hover_text("Academic citations");
+
+                    let mut entries: Vec<(String, String)> = theory
+                        .available_descriptions()
+                        .into_iter()
+                        .filter(|(k, _)| !k.trim().eq_ignore_ascii_case("default"))
+                        .collect();
+                    entries.sort_by(|a, b| a.0.cmp(&b.0));
+                    if !entries.is_empty() {
                         ui.separator();
-
-                        let theory = tool.theory();
-                        // Requirement 4 & Acceptance Criteria 3: On-demand registration of bibliographic details when active/loaded
-                        scientific_metadata::citation_registry::CitationRegistry::register(
-                            tool.name().to_string(),
-                            theory.theory_citation(),
-                        );
-                        // Requirement 5: Screen readers can successfully navigate the theory text and citations
-                        use crate::accessibility::AccessibleHoverText;
-                        use crate::reflective_ui::render_theory_summary_with_export;
-
-                        let theory_desc = theory.theory_description();
-                        let latex_eq = theory.theory_latex_equation();
-                        render_theory_summary_with_export(ui, &theory_desc, latex_eq.as_deref())
-                            .accessible_hover_text("Theoretical background description");
-
-                        ui.separator();
-                        ui.heading("Citations");
-                        render_theory_summary_with_export(ui, &theory.theory_citation(), None)
-                            .accessible_hover_text("Academic citations");
-
-                        let mut entries: Vec<(String, String)> = theory
-                            .available_descriptions()
-                            .into_iter()
-                            .filter(|(k, _)| !k.trim().eq_ignore_ascii_case("default"))
-                            .collect();
-                        entries.sort_by(|a, b| a.0.cmp(&b.0));
-                        if !entries.is_empty() {
-                            ui.separator();
-                            ui.heading("Additional Context");
-                            for (key, desc) in entries {
-                                let label = format_theory_context_key(&key);
-                                let context_entry = format!("{label}: {desc}");
-                                render_theory_summary_with_export(ui, &context_entry, None)
-                                    .accessible_hover_text(format!(
-                                        "Additional context for {label}"
-                                    ));
-                            }
+                        ui.heading("Additional Context");
+                        for (key, desc) in entries {
+                            let label = format_theory_context_key(&key);
+                            let context_entry = format!("{label}: {desc}");
+                            render_theory_summary_with_export(ui, &context_entry, None)
+                                .accessible_hover_text(format!("Additional context for {label}"));
                         }
                     }
-                });
+                }
             });
     }
 
@@ -172,28 +168,26 @@ impl SimulationFramework {
         } else {
             let mut tool_to_select = None;
             let mut open_portal_for_tool = None;
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for &(i, meta) in &filtered_tools {
-                    ui.horizontal(|ui| {
-                        let is_selected = self.selected_tool_index == Some(i);
-                        if ui
-                            .selectable_label(is_selected, meta.display_name)
-                            .clicked()
-                        {
-                            tool_to_select = Some(i);
-                        }
-                        let tool_help_btn = ui
-                            .add(egui::Button::new("❓").small())
-                            .accessible_hover_text(format!(
-                                "Open Theory Context Portal for {}",
-                                meta.display_name
-                            ));
-                        if tool_help_btn.clicked() {
-                            open_portal_for_tool = Some(i);
-                        }
-                    });
-                }
-            });
+            for &(i, meta) in &filtered_tools {
+                ui.horizontal(|ui| {
+                    let is_selected = self.selected_tool_index == Some(i);
+                    if ui
+                        .selectable_label(is_selected, meta.display_name)
+                        .clicked()
+                    {
+                        tool_to_select = Some(i);
+                    }
+                    let tool_help_btn = ui
+                        .add(egui::Button::new("❓").small())
+                        .accessible_hover_text(format!(
+                            "Open Theory Context Portal for {}",
+                            meta.display_name
+                        ));
+                    if tool_help_btn.clicked() {
+                        open_portal_for_tool = Some(i);
+                    }
+                });
+            }
             if let Some(idx) = open_portal_for_tool {
                 self.select_tool(idx);
                 self.show_theory_portal = true;
@@ -209,7 +203,7 @@ impl SimulationFramework {
     pub(super) fn show_side_panel(&mut self, ui: &mut egui::Ui, id_source: &str) {
         let ctx = ui.ctx().clone();
         let panel_id = scoped_panel_id(ui, format!("{id_source}_tool_selector"));
-        egui::SidePanel::right(panel_id)
+        PaneSidePanel::right(panel_id)
             .resizable(false)
             .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -300,32 +294,45 @@ impl SimulationFramework {
         });
     }
 
-    pub(super) fn show_starter_gallery_if_open(&mut self, ctx: &egui::Context, id_source: &str) {
-        if self.show_starter_gallery {
-            let cards = crate::starter_gallery::get_starter_cards_for_domain(
-                id_source,
-                &self.available_tools,
-            );
-            let modal_source = format!("{id_source}_{}", self.instance_id);
-            let mut is_open = self.show_starter_gallery;
-            if let Some(card) = crate::starter_gallery::show_starter_gallery_overlay(
-                ctx,
-                &modal_source,
-                &cards,
-                &mut is_open,
-            ) {
-                let _ = self.launch_starter_card(&card);
-                is_open = false;
-                ctx.request_repaint();
-            }
-            self.show_starter_gallery = is_open;
-            ctx.data_mut(|d| {
-                d.insert_temp(
-                    egui::Id::new("SHOW_STARTER_GALLERY"),
-                    self.show_starter_gallery,
-                )
-            });
+    pub(crate) fn apply_starter_gallery_outcome(
+        &mut self,
+        ctx: &egui::Context,
+        id_source: &str,
+        mut is_open: bool,
+        selected: Option<crate::starter_gallery::StarterCard>,
+    ) {
+        if let Some(card) = selected {
+            let _ = self.launch_starter_card(&card);
+            is_open = false;
+            ctx.request_repaint();
         }
+        self.show_starter_gallery = is_open;
+        self.sync_starter_gallery_state(ctx, id_source);
+    }
+
+    pub(super) fn show_starter_gallery_if_open(&mut self, ctx: &egui::Context, id_source: &str) {
+        if !self.show_starter_gallery {
+            return;
+        }
+        let cards =
+            crate::starter_gallery::get_starter_cards_for_domain(id_source, &self.available_tools);
+        let modal_source = format!("{id_source}_{}", self.instance_id);
+        if crate::starter_gallery::try_defer_starter_gallery(
+            ctx,
+            id_source,
+            &modal_source,
+            cards.clone(),
+        ) {
+            return;
+        }
+        let mut is_open = self.show_starter_gallery;
+        let selected = crate::starter_gallery::show_starter_gallery_overlay(
+            ctx,
+            &modal_source,
+            &cards,
+            &mut is_open,
+        );
+        self.apply_starter_gallery_outcome(ctx, id_source, is_open, selected);
     }
 
     #[allow(missing_docs)]
@@ -386,9 +393,9 @@ impl SimulationFramework {
 
         self.sync_overlays_before_frame(&ctx, id_source);
 
+        self.show_export_action_bar(ui, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
-        self.show_export_action_bar(ui, id_source);
 
         if !self.is_diverged {
             self.cache_valid_snapshot();

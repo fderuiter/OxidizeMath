@@ -88,7 +88,7 @@ impl InteractiveTool for BandStructureTool {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "band_structure_controls");
-        egui::SidePanel::right(panel_id)
+        crate::framework::PaneSidePanel::right(panel_id)
             .resizable(false)
             .min_width(250.0)
             .show_inside(parent_ui, |ui| {

@@ -150,7 +150,7 @@ impl InteractiveTool for FractalViewer {
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let ctx = parent_ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "fractal_settings");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Settings");
             ui.separator();
 

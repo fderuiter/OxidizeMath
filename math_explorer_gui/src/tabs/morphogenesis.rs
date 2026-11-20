@@ -210,23 +210,41 @@ impl ExplorerTab for MorphogenesisTab {
         if self.show_starter_gallery {
             let cards = crate::starter_gallery::get_starter_cards_for_domain("biology", &[]);
             let modal_source = format!("morphogenesis_{:?}", ui.id());
-            let mut is_open = self.show_starter_gallery;
-            if let Some(card) = crate::starter_gallery::show_starter_gallery_overlay(
+            if !crate::starter_gallery::try_defer_starter_gallery(
                 &ctx,
+                "biology",
                 &modal_source,
-                &cards,
-                &mut is_open,
+                cards.clone(),
             ) {
-                if self
-                    .apply_starter_card(card.title, card.preset_json)
-                    .is_ok()
-                {
-                    ctx.request_repaint();
-                }
-                is_open = false;
+                let mut is_open = self.show_starter_gallery;
+                let selected = crate::starter_gallery::show_starter_gallery_overlay(
+                    &ctx,
+                    &modal_source,
+                    &cards,
+                    &mut is_open,
+                );
+                self.apply_starter_gallery_outcome(&ctx, "biology", is_open, selected);
             }
-            self.show_starter_gallery = is_open;
         }
+    }
+
+    fn apply_starter_gallery_outcome(
+        &mut self,
+        ctx: &egui::Context,
+        _id_source: &str,
+        mut is_open: bool,
+        selected: Option<crate::starter_gallery::StarterCard>,
+    ) {
+        if let Some(card) = selected {
+            if self
+                .apply_starter_card(card.title, card.preset_json)
+                .is_ok()
+            {
+                ctx.request_repaint();
+            }
+            is_open = false;
+        }
+        self.show_starter_gallery = is_open;
     }
 }
 
@@ -340,7 +358,7 @@ impl MorphogenesisTab {
     pub(crate) fn draw_controls(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(ui, "morphogenesis_controls");
-        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Morphogenesis Controls");
             if ui.button("🎨 Starter Gallery").clicked() {
                 self.show_starter_gallery = !self.show_starter_gallery;

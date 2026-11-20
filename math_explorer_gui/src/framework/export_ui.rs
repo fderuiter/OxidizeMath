@@ -1,6 +1,9 @@
 use super::*;
 use eframe::egui;
 
+/// Pane toolbar width threshold below which `Export` and `Presets` collapse into overflow menus.
+pub const EXPORT_BAR_OVERFLOW_BREAKPOINT: f32 = 960.0;
+
 struct FrameworkExportSource<'a> {
     active_tool: &'a mut Option<Box<dyn InteractiveTool>>,
     cached_tool_name: Option<&'static str>,
@@ -111,32 +114,50 @@ impl SimulationFramework {
 
         let bar_id = scoped_panel_id(ui, format!("{id_source}_export_bar"));
         egui::TopBottomPanel::top(bar_id)
-            .exact_height(32.0)
+            .min_height(32.0)
             .show_inside(ui, |ui| {
                 self.render_export_bar_row(ui, &ctx);
             });
     }
 
     fn render_export_bar_row(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 8.0;
-            let file_slug = self.render_dataset_and_figure_buttons(ui);
+        let bar_width = ui.available_width();
+        let compact = bar_width < EXPORT_BAR_OVERFLOW_BREAKPOINT;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
+            let file_slug = if compact {
+                self.render_compact_export_menu(ui)
+            } else {
+                self.render_dataset_and_figure_buttons(ui)
+            };
             self.render_action_bar_export_status(ctx, ui);
-            ui.separator();
+            if !compact {
+                ui.separator();
+            }
             self.render_starter_gallery_toggle(ctx, ui);
-            self.render_preset_action_bar_controls(ui, &file_slug);
+            if compact {
+                self.render_compact_preset_controls(ui, &file_slug, bar_width >= 420.0);
+            } else {
+                self.render_preset_action_bar_controls(ui, &file_slug);
+            }
         });
     }
 
-    fn render_dataset_and_figure_buttons(&mut self, ui: &mut egui::Ui) -> String {
-        ui.label(egui::RichText::new("📊 Export:").strong());
+    fn active_tool_slug_and_caps(&self) -> (String, ExportCapabilities) {
         let (tool_name, caps) = if let Some(tool) = &self.active_tool {
             (tool.name(), tool.export_capabilities())
         } else {
             ("simulation", ExportCapabilities::none())
         };
-        let file_slug = tool_name.to_lowercase().replace(' ', "_");
+        (tool_name.to_lowercase().replace(' ', "_"), caps)
+    }
 
+    fn render_export_action_items(
+        &mut self,
+        ui: &mut egui::Ui,
+        caps: ExportCapabilities,
+        close_on_click: bool,
+    ) {
         let csv_tip = if caps.dataset {
             "Export dataset points to CSV file"
         } else {
@@ -148,8 +169,10 @@ impl SimulationFramework {
             .clicked()
         {
             self.queue_export(ExportFormat::Csv);
+            if close_on_click {
+                ui.close();
+            }
         }
-
         let copy_tip = if caps.dataset {
             "Copy dataset points as CSV to clipboard"
         } else {
@@ -161,8 +184,10 @@ impl SimulationFramework {
             .clicked()
         {
             self.queue_clipboard_export();
+            if close_on_click {
+                ui.close();
+            }
         }
-
         let json_tip = if caps.dataset {
             "Export dataset points to JSON file"
         } else {
@@ -174,8 +199,10 @@ impl SimulationFramework {
             .clicked()
         {
             self.queue_export(ExportFormat::Json);
+            if close_on_click {
+                ui.close();
+            }
         }
-
         let fig_tip = if caps.figure {
             "Configure and render high-resolution PNG figure"
         } else {
@@ -187,7 +214,26 @@ impl SimulationFramework {
             .clicked()
         {
             self.open_export_modal_for_active_tool();
+            if close_on_click {
+                ui.close();
+            }
         }
+    }
+
+    fn render_compact_export_menu(&mut self, ui: &mut egui::Ui) -> String {
+        let (file_slug, caps) = self.active_tool_slug_and_caps();
+        let resp = ui.menu_button("📊 Export ▾", |menu_ui| {
+            self.render_export_action_items(menu_ui, caps, true);
+        });
+        resp.response
+            .accessible_hover_text("Open dataset and figure export menu");
+        file_slug
+    }
+
+    fn render_dataset_and_figure_buttons(&mut self, ui: &mut egui::Ui) -> String {
+        ui.label(egui::RichText::new("📊 Export:").strong());
+        let (file_slug, caps) = self.active_tool_slug_and_caps();
+        self.render_export_action_items(ui, caps, false);
         file_slug
     }
 
@@ -238,7 +284,13 @@ impl SimulationFramework {
                     let remaining = (exp - now).max(0.05);
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
                     if !self.show_export_modal {
-                        ui.colored_label(palette.success, format!("✓ {}", status.message));
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(format!("✓ {}", status.message))
+                                    .color(palette.success),
+                            )
+                            .wrap(),
+                        );
                         if ui
                             .small_button("✖")
                             .accessible_hover_text("Dismiss notification")
@@ -255,7 +307,12 @@ impl SimulationFramework {
                 } else {
                     palette.error
                 };
-                ui.colored_label(err_color, format!("⚠️ {}", status.message));
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(format!("⚠️ {}", status.message)).color(err_color),
+                    )
+                    .wrap(),
+                );
                 if ui
                     .small_button("✖")
                     .accessible_hover_text("Dismiss warning")
@@ -282,6 +339,89 @@ impl SimulationFramework {
         }
     }
 
+    fn render_reset_parameters_button(&mut self, ui: &mut egui::Ui, close_on_click: bool) {
+        if ui
+            .button("↻ Reset Parameters")
+            .accessible_hover_text("Restore default baseline parameters")
+            .clicked()
+        {
+            self.reset_parameters();
+            crate::accessibility::announce_status("Parameters reset to baseline defaults");
+            ui.ctx().request_repaint();
+            if close_on_click {
+                ui.close();
+            }
+        }
+    }
+
+    fn render_preset_toasts(&mut self, ui: &mut egui::Ui) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        if let Some(ref msg) = self.preset_dialog.toast_info {
+            ui.separator();
+            ui.add(
+                egui::Label::new(egui::RichText::new(format!("ℹ️ {msg}")).color(palette.success))
+                    .wrap(),
+            );
+            if ui
+                .small_button("✖")
+                .accessible_hover_text("Dismiss notification")
+                .clicked()
+            {
+                self.preset_dialog.toast_info = None;
+            }
+        }
+        if let Some(ref err) = self.preset_dialog.toast_error {
+            ui.separator();
+            ui.add(
+                egui::Label::new(egui::RichText::new(format!("⚠️ {err}")).color(palette.error))
+                    .wrap(),
+            );
+            if ui
+                .small_button("✖")
+                .accessible_hover_text("Dismiss warning")
+                .clicked()
+            {
+                self.preset_dialog.toast_error = None;
+            }
+        }
+    }
+
+    fn render_compact_preset_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        file_slug: &str,
+        inline_reset: bool,
+    ) {
+        let resp = ui.menu_button("⚙ Presets ▾", |menu_ui| {
+            if menu_ui
+                .button("Import Preset JSON")
+                .accessible_hover_text("Import parameter preset from a JSON file")
+                .clicked()
+            {
+                self.preset_dialog.trigger_import();
+                menu_ui.close();
+            }
+            if menu_ui
+                .button("Export Preset JSON")
+                .accessible_hover_text("Export current parameter preset to a JSON file")
+                .clicked()
+            {
+                self.export_active_preset_json(file_slug);
+                menu_ui.close();
+            }
+            if !inline_reset {
+                menu_ui.separator();
+                self.render_reset_parameters_button(menu_ui, true);
+            }
+        });
+        resp.response
+            .accessible_hover_text("Open parameter presets menu");
+        if inline_reset {
+            self.render_reset_parameters_button(ui, false);
+        }
+        self.render_preset_toasts(ui);
+    }
+
     fn render_preset_action_bar_controls(&mut self, ui: &mut egui::Ui, file_slug: &str) {
         ui.separator();
         ui.label(egui::RichText::new("⚙ Presets:").strong());
@@ -302,40 +442,8 @@ impl SimulationFramework {
             self.export_active_preset_json(file_slug);
         }
 
-        if ui
-            .button("↻ Reset Parameters")
-            .accessible_hover_text("Restore default baseline parameters")
-            .clicked()
-        {
-            self.reset_parameters();
-            crate::accessibility::announce_status("Parameters reset to baseline defaults");
-            ui.ctx().request_repaint();
-        }
-
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        if let Some(ref msg) = self.preset_dialog.toast_info {
-            ui.separator();
-            ui.colored_label(palette.success, format!("ℹ️ {}", msg));
-            if ui
-                .small_button("✖")
-                .accessible_hover_text("Dismiss notification")
-                .clicked()
-            {
-                self.preset_dialog.toast_info = None;
-            }
-        }
-
-        if let Some(ref err) = self.preset_dialog.toast_error {
-            ui.separator();
-            ui.colored_label(palette.error, format!("⚠️ {}", err));
-            if ui
-                .small_button("✖")
-                .accessible_hover_text("Dismiss warning")
-                .clicked()
-            {
-                self.preset_dialog.toast_error = None;
-            }
-        }
+        self.render_reset_parameters_button(ui, false);
+        self.render_preset_toasts(ui);
     }
 
     pub(super) fn show_export_modal_dialog(&mut self, ctx: &egui::Context, id_source: &str) {

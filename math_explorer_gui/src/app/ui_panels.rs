@@ -1,4 +1,8 @@
 #[cfg(any(not(target_os = "macos"), test))]
+#[path = "ui_viewport_menus.rs"]
+mod viewport_menus;
+
+#[cfg(any(not(target_os = "macos"), test))]
 use crate::app::{MathExplorerApp, ThemeMode, ViewportLayout};
 use eframe::egui;
 use federated_registry::{Severity, TelemetryEvent};
@@ -173,92 +177,6 @@ pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
         });
 }
 
-#[cfg(any(not(target_os = "macos"), test))]
-fn render_focus_pane_submenu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
-    ui.menu_button("Focus Pane", |ui| {
-        if ui
-            .add(egui::Button::new("Next Pane").shortcut_text("F6"))
-            .clicked()
-        {
-            super::viewport::focus::cycle_focused_pane(app, ctx, false);
-            ui.close();
-            return;
-        }
-        if ui
-            .add(egui::Button::new("Previous Pane").shortcut_text("Shift+F6"))
-            .clicked()
-        {
-            super::viewport::focus::cycle_focused_pane(app, ctx, true);
-            ui.close();
-            return;
-        }
-        ui.separator();
-
-        let pane_count = app.viewport_layout.pane_count();
-        let pane_labels = app.viewport_layout.pane_labels();
-        let active_pane = app.active_focused_pane();
-        for pane_idx in 0..pane_count {
-            let label = pane_labels
-                .get(pane_idx)
-                .copied()
-                .unwrap_or("Main Viewport");
-            let tab_idx = if pane_idx == 0 {
-                app.active_primary_tab_index()
-            } else {
-                app.pane_tabs.get(pane_idx).copied().unwrap_or(0)
-            };
-            let tab_name = app.tabs.get(tab_idx).map_or("No module", |t| t.name());
-            let entry_text = format!("{} — {}", label, tab_name);
-            if ui
-                .selectable_label(pane_idx == active_pane, entry_text)
-                .clicked()
-            {
-                super::viewport::focus::focus_pane_interactive(app, ctx, pane_idx);
-                ui.close();
-                return;
-            }
-        }
-    });
-}
-
-#[cfg(any(not(target_os = "macos"), test))]
-fn render_pane_assignments_submenu(
-    app: &mut MathExplorerApp,
-    ctx: &egui::Context,
-    ui: &mut egui::Ui,
-) {
-    ui.menu_button("Pane Assignments", |ui| {
-        let pane_count = app.viewport_layout.pane_count();
-        let pane_prefixes = app.viewport_layout.pane_label_prefixes();
-        let mut pending_assignment = None;
-
-        for pane_idx in 0..pane_count {
-            let prefix = pane_prefixes.get(pane_idx).copied().unwrap_or("Pane:");
-            let assigned = app.pane_tabs.get(pane_idx).copied().unwrap_or(0);
-            let assigned_name = app
-                .tabs
-                .get(assigned)
-                .map(|t| t.name())
-                .unwrap_or("Unknown");
-
-            ui.push_id(("pane_assign", pane_idx), |ui| {
-                ui.menu_button((prefix, assigned_name), |pane_ui| {
-                    if let Some(tab_idx) = crate::app::domain_bar::render_domain_module_submenus(
-                        pane_ui, &app.tabs, assigned,
-                    ) {
-                        pending_assignment = Some((pane_idx, tab_idx));
-                    }
-                });
-            });
-        }
-
-        if let Some((pane_idx, tab_idx)) = pending_assignment {
-            app.select_pane_tab(ctx, pane_idx, tab_idx);
-            ui.close();
-        }
-    });
-}
-
 /// Renders the top menu bar in the UI.
 #[cfg(any(not(target_os = "macos"), test))]
 #[allow(clippy::too_many_lines)]
@@ -379,36 +297,11 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 ui.close();
             }
             ui.separator();
-            ui.menu_button("Viewport Layout", |ui| {
-                for layout in [
-                    ViewportLayout::Single,
-                    ViewportLayout::SplitHorizontal,
-                    ViewportLayout::SplitVertical,
-                    ViewportLayout::QuadGrid,
-                ] {
-                    let mut current = app.viewport_layout;
-                    if ui
-                        .radio_value(&mut current, layout, layout.name())
-                        .clicked()
-                    {
-                        app.set_layout(layout);
-                        ui.close();
-                    }
-                }
-
-                if app.viewport_layout != ViewportLayout::Single {
-                    ui.separator();
-                    if ui.button("⇄ Swap Panes").clicked() {
-                        app.swap_panes();
-                        ui.close();
-                    }
-                }
-            });
-
-            render_focus_pane_submenu(app, ctx, ui);
+            viewport_menus::render_viewport_layout_submenu(app, ui);
+            viewport_menus::render_focus_pane_submenu(app, ctx, ui);
 
             if app.viewport_layout != ViewportLayout::Single {
-                render_pane_assignments_submenu(app, ctx, ui);
+                viewport_menus::render_pane_assignments_submenu(app, ctx, ui);
             }
 
             ui.separator();

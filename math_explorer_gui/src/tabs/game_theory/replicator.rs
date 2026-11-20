@@ -127,7 +127,7 @@ impl InteractiveTool for ReplicatorDynamicsTool {
         }
 
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "replicator_control_panel");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             self.show_settings_panel(ui);
         });
 

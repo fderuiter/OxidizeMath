@@ -85,6 +85,35 @@ fn build_layout_submenu() -> Submenu {
             None,
         ))
         .unwrap();
+    let swap_pair_menu = Submenu::new("Swap Pane Pair", true);
+    let labels = ViewportLayout::QuadGrid.pane_labels();
+    for (a, b) in [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)] {
+        swap_pair_menu
+            .append(&MenuItem::with_id(
+                MenuId::new(format!("layout_swap_{a}_{b}")),
+                format!("{} <-> {}", labels[a], labels[b]),
+                true,
+                None,
+            ))
+            .unwrap();
+    }
+    layout_menu.append(&swap_pair_menu).unwrap();
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_rotate_cw"),
+            "Rotate Panes Clockwise",
+            true,
+            None,
+        ))
+        .unwrap();
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_rotate_ccw"),
+            "Rotate Panes Counter-Clockwise",
+            true,
+            None,
+        ))
+        .unwrap();
     layout_menu
 }
 
@@ -255,7 +284,14 @@ fn handle_view_layout_event(app: &mut MathExplorerApp, id: &str) -> bool {
         "layout_split_h" => app.set_layout(ViewportLayout::SplitHorizontal),
         "layout_split_v" => app.set_layout(ViewportLayout::SplitVertical),
         "layout_quad" => app.set_layout(ViewportLayout::QuadGrid),
-        "layout_swap" => app.swap_panes(),
+        "layout_swap" | "layout_swap_0_1" => app.swap_pane_pair(0, 1),
+        "layout_swap_0_2" => app.swap_pane_pair(0, 2),
+        "layout_swap_0_3" => app.swap_pane_pair(0, 3),
+        "layout_swap_1_2" => app.swap_pane_pair(1, 2),
+        "layout_swap_1_3" => app.swap_pane_pair(1, 3),
+        "layout_swap_2_3" => app.swap_pane_pair(2, 3),
+        "layout_rotate_cw" => app.rotate_panes_clockwise(),
+        "layout_rotate_ccw" => app.rotate_panes_counter_clockwise(),
         _ => return false,
     }
     true

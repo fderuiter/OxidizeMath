@@ -10,17 +10,17 @@ pub const MAX_SECONDARY_PANES: usize = 3;
 
 /// Per-pane lazy runtime container for a secondary viewport slot.
 #[derive(Default)]
-struct SecondarySlot {
+pub(super) struct SecondarySlot {
     /// Currently instantiated `(tab_index, tab_instance)` for this secondary pane.
-    active: Option<(usize, Box<dyn ExplorerTab>)>,
+    pub(super) active: Option<(usize, Box<dyn ExplorerTab>)>,
     /// Cached serialized state per tab name (`tab.name()`) within this pane.
-    saved_states: HashMap<String, String>,
+    pub(super) saved_states: HashMap<String, String>,
     /// Interior cache `(tab_name, state_revision, json)` for clean active secondary pane tabs.
     active_cache: std::cell::RefCell<Option<(String, u64, Option<String>)>>,
 }
 
 impl SecondarySlot {
-    fn snapshot_active(&mut self) {
+    pub(super) fn snapshot_active(&mut self) {
         if let Some((_, ref tab)) = self.active {
             let rev = tab.state_revision();
             if let Some(state_json) = tab.save_state() {
@@ -40,7 +40,7 @@ impl SecondarySlot {
         self.active = None;
     }
 
-    fn ensure_tab(&mut self, tab_idx: usize) -> Option<&mut Box<dyn ExplorerTab>> {
+    pub(super) fn ensure_tab(&mut self, tab_idx: usize) -> Option<&mut Box<dyn ExplorerTab>> {
         let needs_rebuild = match &self.active {
             Some((current_idx, _)) => *current_idx != tab_idx,
             None => true,
@@ -95,14 +95,22 @@ pub(super) struct SecondaryPaneSlots {
 }
 
 impl SecondaryPaneSlots {
-    fn slot_mut(&mut self, pane_idx: usize) -> Option<&mut SecondarySlot> {
+    pub(super) fn slot_mut(&mut self, pane_idx: usize) -> Option<&mut SecondarySlot> {
         pane_idx
             .checked_sub(1)
             .and_then(|idx| self.slots.get_mut(idx))
     }
 
-    fn slot(&self, pane_idx: usize) -> Option<&SecondarySlot> {
+    pub(super) fn slot(&self, pane_idx: usize) -> Option<&SecondarySlot> {
         pane_idx.checked_sub(1).and_then(|idx| self.slots.get(idx))
+    }
+
+    pub(super) fn swap_secondary_slots(&mut self, pane_a: usize, pane_b: usize) {
+        if let (Some(idx_a), Some(idx_b)) = (pane_a.checked_sub(1), pane_b.checked_sub(1)) {
+            if idx_a < self.slots.len() && idx_b < self.slots.len() {
+                self.slots.swap(idx_a, idx_b);
+            }
+        }
     }
 }
 
@@ -216,79 +224,6 @@ impl MathExplorerApp {
         self.pane_tab_mut(target)
     }
 
-    /// Exchanges runtime tab states between Pane 0 and Pane 1 after their assigned indices are swapped.
-    pub(super) fn swap_primary_and_secondary_states(&mut self) {
-        self.tab_state_cache.clear();
-        let new_p0 = self.selected_tab;
-        let new_p1 = self.secondary_tab;
-        if new_p0 >= self.tabs.len() || new_p1 >= self.tabs.len() {
-            return;
-        }
-        if self.viewport_layout == ViewportLayout::Single {
-            self.swap_serialized_slot1_state(new_p0, new_p1);
-            return;
-        }
-        if new_p0 == new_p1 {
-            if let Some(slot1) = self.pane_slots.slot_mut(1) {
-                if let Some(tab1) = slot1.ensure_tab(new_p0) {
-                    std::mem::swap(&mut self.tabs[new_p0], tab1);
-                }
-                slot1.snapshot_active();
-            }
-            return;
-        }
-        self.swap_distinct_slot1_instances(new_p0, new_p1);
-    }
-
-    fn swap_serialized_slot1_state(&mut self, new_p0: usize, new_p1: usize) {
-        let p0_name = self.tabs[new_p0].name().to_string();
-        let p1_name = self.tabs[new_p1].name().to_string();
-        let s_old_p0 = self.tabs[new_p1].save_state();
-        let mut s_old_p1 = None;
-        if let Some(slot1) = self.pane_slots.slot_mut(1) {
-            s_old_p1 = slot1.saved_states.get(&p0_name).cloned();
-            if let Some(s0) = s_old_p0 {
-                slot1.saved_states.insert(p1_name, s0);
-            }
-        }
-        if let Some(saved) = s_old_p1 {
-            self.tabs[new_p0].load_state(&saved);
-        } else if self.viewport_layout != ViewportLayout::Single {
-            if let Some(fresh) = crate::tabs::instantiate_tab(new_p0) {
-                self.tabs[new_p0] = fresh;
-            }
-        }
-    }
-
-    fn swap_distinct_slot1_instances(&mut self, new_p0: usize, new_p1: usize) {
-        let old_slot1 = self.pane_slots.slot_mut(1).and_then(|s| s.active.take());
-        let Some((idx, box1)) = old_slot1 else {
-            self.swap_serialized_slot1_state(new_p0, new_p1);
-            return;
-        };
-        if idx == new_p0 {
-            self.tabs[new_p0] = box1;
-        } else if let Some(slot1) = self.pane_slots.slot_mut(1) {
-            if let Some(st) = box1.save_state() {
-                slot1.saved_states.insert(box1.name().to_string(), st);
-            }
-            let p0_name = self.tabs[new_p0].name().to_string();
-            if let Some(saved) = slot1.saved_states.get(&p0_name).cloned() {
-                self.tabs[new_p0].load_state(&saved);
-            }
-        }
-        if let Some(mut fresh_primary) = crate::tabs::instantiate_tab(new_p1) {
-            if let Some(s) = self.tabs[new_p1].save_state() {
-                fresh_primary.load_state(&s);
-            }
-            let live_old_p0 = std::mem::replace(&mut self.tabs[new_p1], fresh_primary);
-            if let Some(slot1) = self.pane_slots.slot_mut(1) {
-                slot1.active = Some((new_p1, live_old_p0));
-                slot1.snapshot_active();
-            }
-        }
-    }
-
     /// Returns the primary `app.tabs` index rendered in Pane 0.
     pub(super) fn active_primary_tab_index(&self) -> usize {
         if self.viewport_layout == ViewportLayout::Single {
@@ -380,45 +315,53 @@ impl MathExplorerApp {
         }
     }
 
-    /// Updates `focused_pane` when raw input contains a click or typing event inside an active pane.
+    /// Updates `focused_pane` strictly when raw input contains a pointer press or touch start inside an active pane.
     pub(super) fn update_focused_pane_from_input(
         &mut self,
         ctx: &egui::Context,
         raw_input: &egui::RawInput,
         pane_rects: &[egui::Rect],
-        pointer_pos: Option<egui::Pos2>,
     ) {
         if self.is_dragging_divider
+            || self.dragging_quad_axes != (false, false)
             || self.command_palette.is_open
             || self.show_help_menu
             || egui::Popup::is_any_open(ctx)
+            || ctx.memory(|m| m.top_modal_layer().is_some())
         {
             return;
         }
         let pane_count = self.viewport_layout.pane_count().min(pane_rects.len());
         for event in &raw_input.events {
-            match event {
-                egui::Event::PointerButton {
-                    pos, pressed: true, ..
-                }
-                | egui::Event::Touch {
-                    pos,
-                    phase: egui::TouchPhase::Start,
-                    ..
-                } => {
-                    if let Some(idx) = (0..pane_count).find(|&i| pane_rects[i].contains(*pos)) {
-                        self.focus_pane(idx);
-                    }
-                }
-                egui::Event::Text(_) if ctx.memory(|m| m.focused().is_none()) => {
-                    if let Some(pos) = pointer_pos {
-                        if let Some(idx) = (0..pane_count).find(|&i| pane_rects[i].contains(pos)) {
-                            self.focus_pane(idx);
-                        }
-                    }
-                }
-                _ => {}
+            if let egui::Event::PointerButton {
+                pos, pressed: true, ..
             }
+            | egui::Event::Touch {
+                pos,
+                phase: egui::TouchPhase::Start,
+                ..
+            } = event
+            {
+                if let Some(idx) = (0..pane_count).find(|&i| pane_rects[i].contains(*pos)) {
+                    self.focus_pane(idx);
+                    Self::surrender_focus_outside_pane(ctx, pane_rects[idx]);
+                }
+            }
+        }
+    }
+
+    fn surrender_focus_outside_pane(ctx: &egui::Context, target_pane_rect: egui::Rect) {
+        let Some(fid) = ctx.memory(|m| m.focused()) else {
+            return;
+        };
+        if super::viewport::sash::is_any_sash_id(fid) {
+            return;
+        }
+        let inside_target = ctx
+            .read_response(fid)
+            .is_some_and(|resp| target_pane_rect.contains(resp.rect.center()));
+        if !inside_target {
+            ctx.memory_mut(|m| m.surrender_focus(fid));
         }
     }
 

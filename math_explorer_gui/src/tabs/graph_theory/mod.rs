@@ -63,12 +63,10 @@ impl ExplorerTab for GraphTheoryTab {
         self.framework.focused_canvas_id()
     }
 
-    #[cfg(test)]
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
         Some(&self.framework)
     }
 
-    #[cfg(test)]
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
     }

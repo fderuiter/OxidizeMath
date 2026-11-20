@@ -146,7 +146,7 @@ impl QTableInspectorTool {
         legend_size: f32,
     ) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "q_table_controls");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Training Controls");
             ui.separator();
 

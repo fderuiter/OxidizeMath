@@ -260,7 +260,7 @@ impl MriTab {
     fn draw_side_panel(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(ui, "controls_panel");
-        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("MRI Physics Control");
             ui.separator();
 

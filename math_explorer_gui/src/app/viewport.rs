@@ -1,11 +1,17 @@
 pub(crate) mod focus;
+mod pane_chrome;
+pub(crate) mod quad_sash;
 pub(crate) mod sash;
 #[cfg(test)]
 mod sash_tests;
 
 use crate::app::MathExplorerApp;
 use eframe::egui;
+use pane_chrome::{build_pane_region_ui, render_pane_content, render_pane_header};
 use serde::{Deserialize, Serialize};
+
+/// Temp context key storing the `egui::Rect` of the currently rendering viewport pane.
+pub(crate) const CURRENT_PANE_RECT_KEY: &str = "CURRENT_PANE_RECT";
 
 /// Supported viewport layout presets.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -74,6 +80,7 @@ impl ViewportLayout {
 }
 
 /// Computes pane bounding rectangles within the available container area using default equal split.
+#[cfg(test)]
 pub fn calculate_pane_rects(layout: ViewportLayout, total_rect: egui::Rect) -> Vec<egui::Rect> {
     match layout {
         ViewportLayout::Single => vec![total_rect],
@@ -103,20 +110,58 @@ pub fn calculate_pane_rects(layout: ViewportLayout, total_rect: egui::Rect) -> V
             let mid_x = total_rect.min.x + half_w;
             let mid_y = total_rect.min.y + half_h;
 
-            let top_left = egui::Rect::from_min_max(total_rect.min, egui::pos2(mid_x, mid_y));
-            let top_right = egui::Rect::from_min_max(
-                egui::pos2(mid_x, total_rect.min.y),
-                egui::pos2(total_rect.max.x, mid_y),
-            );
-            let bottom_left = egui::Rect::from_min_max(
-                egui::pos2(total_rect.min.x, mid_y),
-                egui::pos2(mid_x, total_rect.max.y),
-            );
-            let bottom_right = egui::Rect::from_min_max(egui::pos2(mid_x, mid_y), total_rect.max);
-
-            vec![top_left, top_right, bottom_left, bottom_right]
+            vec![
+                egui::Rect::from_min_max(total_rect.min, egui::pos2(mid_x, mid_y)),
+                egui::Rect::from_min_max(
+                    egui::pos2(mid_x, total_rect.min.y),
+                    egui::pos2(total_rect.max.x, mid_y),
+                ),
+                egui::Rect::from_min_max(
+                    egui::pos2(total_rect.min.x, mid_y),
+                    egui::pos2(mid_x, total_rect.max.y),
+                ),
+                egui::Rect::from_min_max(egui::pos2(mid_x, mid_y), total_rect.max),
+            ]
         }
     }
+}
+
+/// Computes the four `QuadGrid` pane rectangles and `(vertical_divider, horizontal_divider)`.
+pub fn calculate_quad_pane_rects_with_ratios(
+    total_rect: egui::Rect,
+    quad_ratios: (f32, f32),
+) -> (Vec<egui::Rect>, egui::Rect, egui::Rect) {
+    let rx = quad_ratios.0.clamp(0.20, 0.80);
+    let ry = quad_ratios.1.clamp(0.20, 0.80);
+    const HALF_T: f32 = 3.0;
+    let div_x = total_rect.min.x + total_rect.width() * rx;
+    let div_y = total_rect.min.y + total_rect.height() * ry;
+
+    let top_left =
+        egui::Rect::from_min_max(total_rect.min, egui::pos2(div_x - HALF_T, div_y - HALF_T));
+    let top_right = egui::Rect::from_min_max(
+        egui::pos2(div_x + HALF_T, total_rect.min.y),
+        egui::pos2(total_rect.max.x, div_y - HALF_T),
+    );
+    let bottom_left = egui::Rect::from_min_max(
+        egui::pos2(total_rect.min.x, div_y + HALF_T),
+        egui::pos2(div_x - HALF_T, total_rect.max.y),
+    );
+    let bottom_right =
+        egui::Rect::from_min_max(egui::pos2(div_x + HALF_T, div_y + HALF_T), total_rect.max);
+    let vert_div = egui::Rect::from_min_max(
+        egui::pos2(div_x - HALF_T, total_rect.min.y),
+        egui::pos2(div_x + HALF_T, total_rect.max.y),
+    );
+    let horiz_div = egui::Rect::from_min_max(
+        egui::pos2(total_rect.min.x, div_y - HALF_T),
+        egui::pos2(total_rect.max.x, div_y + HALF_T),
+    );
+    (
+        vec![top_left, top_right, bottom_left, bottom_right],
+        vert_div,
+        horiz_div,
+    )
 }
 
 /// Computes pane bounding rectangles and optional divider bar rectangle respecting split ratio limits.
@@ -163,138 +208,10 @@ pub fn calculate_pane_rects_with_ratio(
             (vec![rect_top, rect_bottom], Some(divider))
         }
         ViewportLayout::QuadGrid => (
-            calculate_pane_rects(ViewportLayout::QuadGrid, total_rect),
+            calculate_quad_pane_rects_with_ratios(total_rect, (clamped, clamped)).0,
             None,
         ),
     }
-}
-
-fn build_pane_region_ui(
-    parent_ui: &mut egui::Ui,
-    pane_idx: usize,
-    pane_rect: egui::Rect,
-    label: &str,
-) -> egui::Ui {
-    let mut pane_ui = parent_ui.new_child(
-        egui::UiBuilder::new()
-            .id_salt(("viewport_pane_region", pane_idx))
-            .max_rect(pane_rect)
-            .layout(egui::Layout::top_down(egui::Align::Min)),
-    );
-    pane_ui.expand_to_include_rect(pane_rect);
-    pane_ui.set_clip_rect(pane_rect);
-    let region_id = pane_ui.unique_id();
-    pane_ui.ctx().accesskit_node_builder(region_id, |builder| {
-        builder.set_role(egui::accesskit::Role::Region);
-        builder.set_label(label);
-        builder.set_bounds(egui::accesskit::Rect {
-            x0: f64::from(pane_rect.min.x),
-            y0: f64::from(pane_rect.min.y),
-            x1: f64::from(pane_rect.max.x),
-            y1: f64::from(pane_rect.max.y),
-        });
-    });
-    pane_ui
-}
-
-fn render_pane_header(
-    app: &mut MathExplorerApp,
-    ctx: &egui::Context,
-    pane_ui: &mut egui::Ui,
-    pane_idx: usize,
-    header_rect: egui::Rect,
-    label: &str,
-    suppress_focus_hint: bool,
-) {
-    let mut header_ui = pane_ui.new_child(
-        egui::UiBuilder::new()
-            .id_salt(("pane_header", pane_idx))
-            .max_rect(header_rect)
-            .layout(egui::Layout::left_to_right(egui::Align::Center)),
-    );
-    header_ui.expand_to_include_rect(header_rect);
-    header_ui.set_clip_rect(header_rect);
-    header_ui.painter().rect_filled(
-        header_rect,
-        0.0,
-        header_ui.visuals().widgets.noninteractive.bg_fill,
-    );
-
-    let assigned_tab_idx = app.pane_tabs.get(pane_idx).copied().unwrap_or(0);
-    let current_tab_name = app
-        .tabs
-        .get(assigned_tab_idx)
-        .map(|t| t.name())
-        .unwrap_or("Select Tab");
-
-    header_ui.add_space(8.0);
-    header_ui.strong(label);
-    header_ui.separator();
-
-    if app.viewport_layout.pane_count() == 2 && pane_idx == 0 {
-        if header_ui.small_button("⇄ Swap").clicked() {
-            app.swap_panes();
-        }
-        header_ui.separator();
-    }
-
-    let mut tab_to_switch = None;
-    header_ui.push_id(("pane_header_selector", pane_idx), |selector_ui| {
-        let menu_resp = selector_ui.menu_button((current_tab_name, "▾"), |menu_ui| {
-            tab_to_switch = crate::app::domain_bar::render_domain_module_submenus(
-                menu_ui,
-                &app.tabs,
-                assigned_tab_idx,
-            );
-        });
-        if suppress_focus_hint {
-            menu_resp
-                .response
-                .on_hover_text(format!("Select simulation module for {}", label));
-        } else {
-            crate::app::domain_bar::attach_hover_hint(menu_resp.response, || {
-                format!("Select simulation module for {}", label)
-            });
-        }
-    });
-
-    if let Some(new_idx) = tab_to_switch {
-        app.select_pane_tab(ctx, pane_idx, new_idx);
-    }
-}
-
-fn render_pane_content(
-    app: &mut MathExplorerApp,
-    ctx: &egui::Context,
-    frame: &mut eframe::Frame,
-    pane_ui: &mut egui::Ui,
-    pane_idx: usize,
-    content_rect: egui::Rect,
-) {
-    let mut content_ui = pane_ui.new_child(
-        egui::UiBuilder::new()
-            .id_salt(("pane_content", pane_idx))
-            .max_rect(content_rect)
-            .layout(egui::Layout::top_down(egui::Align::Min)),
-    );
-    content_ui.expand_to_include_rect(content_rect);
-    content_ui.set_clip_rect(content_rect);
-
-    ctx.data_mut(|d| {
-        d.insert_temp(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY), pane_idx);
-    });
-    egui_plot::clear_last_plot_datasets();
-    if let Some(tab) = app.pane_tab_mut(pane_idx) {
-        tab.show_inside(&mut content_ui, frame);
-    } else {
-        content_ui.centered_and_justified(|ui| {
-            ui.label("No module selected.");
-        });
-    }
-    egui_plot::clear_last_plot_datasets();
-    ctx.data_mut(|d| {
-        d.remove::<usize>(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY));
-    });
 }
 
 /// Renders `ViewportLayout::Single` inside the root central panel with a `Main Viewport` `Role::Region`.
@@ -304,6 +221,7 @@ pub(super) fn render_single_pane_viewport(
     frame: &mut eframe::Frame,
 ) {
     app.flush_stale_pane_focus(ctx);
+    crate::starter_gallery::begin_root_starter_gallery_scope(ctx);
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE)
         .show(ctx, |ui| {
@@ -331,7 +249,9 @@ pub(super) fn render_single_pane_viewport(
             focus::begin_pending_pane_focus(ctx, should_focus);
             render_pane_content(app, ctx, frame, &mut pane_ui, 0, total_rect);
             focus::finish_pending_pane_focus(ctx, should_focus);
+            focus::record_resolved_pane_focus(ctx, 0);
         });
+    crate::starter_gallery::flush_deferred_starter_galleries(app, ctx);
 }
 
 fn render_multi_pane_regions(
@@ -371,6 +291,57 @@ fn render_multi_pane_regions(
     }
 }
 
+struct FrameSashOutcome {
+    pane_rects: Vec<egui::Rect>,
+    dual_sash: Option<(egui::Rect, sash::SashFrameState)>,
+    quad_sashes: Option<(egui::Rect, egui::Rect, quad_sash::QuadSashFrameState)>,
+    sash_focused: bool,
+}
+
+fn resolve_sashes_and_rects(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+    total_rect: egui::Rect,
+) -> FrameSashOutcome {
+    if app.viewport_layout == ViewportLayout::QuadGrid {
+        let prev = app.quad_split_ratios;
+        let (mut rects, mut vd, mut hd) = calculate_quad_pane_rects_with_ratios(total_rect, prev);
+        let qs = quad_sash::interact_quad_sashes(app, ctx, ui, total_rect, vd, hd);
+        if (app.quad_split_ratios.0 - prev.0).abs() > 1e-6
+            || (app.quad_split_ratios.1 - prev.1).abs() > 1e-6
+        {
+            (rects, vd, hd) =
+                calculate_quad_pane_rects_with_ratios(total_rect, app.quad_split_ratios);
+        }
+        return FrameSashOutcome {
+            pane_rects: rects,
+            dual_sash: None,
+            sash_focused: qs.any_focused(),
+            quad_sashes: Some((vd, hd, qs)),
+        };
+    }
+
+    let (mut rects, mut md) =
+        calculate_pane_rects_with_ratio(app.viewport_layout, total_rect, app.split_ratio);
+    let dual = md.and_then(|div| {
+        let prev = app.split_ratio;
+        let st = sash::interact_split_sash(app, ctx, ui, total_rect, div);
+        if (app.split_ratio - prev).abs() > 1e-6 {
+            (rects, md) =
+                calculate_pane_rects_with_ratio(app.viewport_layout, total_rect, app.split_ratio);
+        }
+        md.map(|d| (d, st))
+    });
+    let sash_focused = dual.as_ref().is_some_and(|(_, s)| s.has_focus);
+    FrameSashOutcome {
+        pane_rects: rects,
+        dual_sash: dual,
+        quad_sashes: None,
+        sash_focused,
+    }
+}
+
 /// Renders the multi-pane viewport manager layout in the central panel on the root `egui::Context`.
 pub fn render_multi_pane_manager(
     app: &mut MathExplorerApp,
@@ -378,6 +349,7 @@ pub fn render_multi_pane_manager(
     frame: &mut eframe::Frame,
 ) {
     app.flush_stale_pane_focus(ctx);
+    crate::starter_gallery::begin_root_starter_gallery_scope(ctx);
     let pane_count = app.viewport_layout.pane_count();
 
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -386,39 +358,25 @@ pub fn render_multi_pane_manager(
             return;
         }
 
-        let (mut pane_rects, mut maybe_divider) =
-            calculate_pane_rects_with_ratio(app.viewport_layout, total_rect, app.split_ratio);
-
-        let sash_state = maybe_divider.map(|divider_rect| {
-            let prev_ratio = app.split_ratio;
-            let state = sash::interact_split_sash(app, ctx, ui, total_rect, divider_rect);
-            if (app.split_ratio - prev_ratio).abs() > 1e-6 {
-                let updated = calculate_pane_rects_with_ratio(
-                    app.viewport_layout,
-                    total_rect,
-                    app.split_ratio,
-                );
-                pane_rects = updated.0;
-                maybe_divider = updated.1;
-            }
-            state
+        let outcome = resolve_sashes_and_rects(app, ctx, ui, total_rect);
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("LAST_PANE_RECTS"), outcome.pane_rects.clone())
         });
+        let pending_focus =
+            focus::resolve_frame_pane_focus(app, ctx, &outcome.pane_rects, outcome.sash_focused);
 
-        let sash_focused = sash_state.as_ref().is_some_and(|s| s.has_focus);
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new("LAST_PANE_RECTS"), pane_rects.clone()));
-        let pending_focus = focus::resolve_frame_pane_focus(app, ctx, &pane_rects, sash_focused);
-
-        render_multi_pane_regions(app, ctx, frame, ui, &pane_rects, pending_focus);
+        render_multi_pane_regions(app, ctx, frame, ui, &outcome.pane_rects, pending_focus);
 
         let _ = focus::sync_focused_pane_from_widget_focus(
             app,
             ctx,
-            &pane_rects,
-            sash_focused,
+            &outcome.pane_rects,
+            outcome.sash_focused,
             pending_focus.is_some(),
         );
         let final_focused_idx = app.active_focused_pane();
-        for (pane_idx, &pane_rect) in pane_rects.iter().take(pane_count).enumerate() {
+        focus::record_resolved_pane_focus(ctx, final_focused_idx);
+        for (pane_idx, &pane_rect) in outcome.pane_rects.iter().take(pane_count).enumerate() {
             focus::paint_pane_border(
                 ui.painter(),
                 pane_rect,
@@ -427,15 +385,19 @@ pub fn render_multi_pane_manager(
             );
         }
 
-        if let (Some(divider_rect), Some(state)) = (maybe_divider, sash_state) {
+        if let Some((div, st)) = outcome.dual_sash {
             sash::paint_split_sash(
                 ui,
                 total_rect,
-                divider_rect,
+                div,
                 app.viewport_layout,
                 app.is_dragging_divider,
-                &state,
+                &st,
             );
         }
+        if let Some((vd, hd, qs)) = outcome.quad_sashes {
+            quad_sash::paint_quad_sashes(ui, total_rect, vd, hd, app.dragging_quad_axes, &qs);
+        }
     });
+    crate::starter_gallery::flush_deferred_starter_galleries(app, ctx);
 }

@@ -260,7 +260,7 @@ impl InteractiveTool for CurvatureHeatmap {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(ui, "curvature_heatmap_controls");
-        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Curvature Heatmap");
             ui.separator();
 
