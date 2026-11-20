@@ -1,4 +1,8 @@
 #[cfg(test)]
+#[path = "markup_icon_tests.rs"]
+mod icon_tests;
+
+#[cfg(test)]
 #[path = "markup_shell_tests.rs"]
 mod shell_tests;
 
