@@ -56,6 +56,22 @@ fn shape_has_stroke_color(shape: &egui::Shape, target: egui::Color32) -> bool {
     }
 }
 
+fn region_node_and_rect(ak: &egui::accesskit::TreeUpdate, label: &str) -> (NodeId, egui::Rect) {
+    let (id, node) = ak
+        .nodes
+        .iter()
+        .find(|(_, n)| n.role() == Role::Region && n.label() == Some(label))
+        .unwrap_or_else(|| panic!("Missing Role::Region '{label}'"));
+    let b = node
+        .bounds()
+        .unwrap_or_else(|| panic!("Missing bounds on Role::Region '{label}'"));
+    let rect = egui::Rect::from_min_max(
+        egui::pos2(b.x0 as f32, b.y0 as f32),
+        egui::pos2(b.x1 as f32, b.y1 as f32),
+    );
+    (*id, rect)
+}
+
 fn verify_layout_regions_and_unique_ids(layout: ViewportLayout) {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
@@ -87,17 +103,15 @@ fn verify_layout_regions_and_unique_ids(layout: ViewportLayout) {
         }
     }
 
-    let region_ids: Vec<NodeId> = layout
+    let regions: Vec<(NodeId, egui::Rect)> = layout
         .pane_labels()
         .iter()
-        .map(|&expected| {
-            ak.nodes
-                .iter()
-                .find(|(_, n)| n.role() == Role::Region && n.label() == Some(expected))
-                .unwrap_or_else(|| panic!("Missing Role::Region '{expected}' in {layout:?}"))
-                .0
-        })
+        .map(|&expected| region_node_and_rect(ak, expected))
         .collect();
+    let viewport_top_y = regions
+        .iter()
+        .map(|(_, r)| f64::from(r.min.y))
+        .fold(f64::INFINITY, f64::min);
 
     let pane_widgets: Vec<NodeId> = ak
         .nodes
@@ -106,16 +120,16 @@ fn verify_layout_regions_and_unique_ids(layout: ViewportLayout) {
             matches!(
                 n.role(),
                 Role::Button | Role::Slider | Role::TextInput | Role::CheckBox
-            ) && n.bounds().is_some_and(|b| b.y0 >= 62.0)
+            ) && n.bounds().is_some_and(|b| b.y0 >= viewport_top_y - 0.5)
         })
         .map(|(id, _)| *id)
         .collect();
     assert!(!pane_widgets.is_empty());
     for wid in pane_widgets {
         assert!(
-            region_ids
+            regions
                 .iter()
-                .any(|&rid| has_ancestor(&parents, wid, rid)),
+                .any(|&(rid, _)| has_ancestor(&parents, wid, rid)),
             "Widget {wid:?} missing Role::Region ancestor in {layout:?}"
         );
     }
@@ -137,13 +151,14 @@ fn test_accesskit_named_regions_and_zero_node_id_collisions() {
 fn test_f6_shift_f6_and_focus_pane_menu_cycle_without_pointer_hover() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ctx = egui::Context::default();
+    ctx.enable_accesskit();
     let mut app = MathExplorerApp::default();
     app.set_layout(ViewportLayout::QuadGrid);
     for p in 0..4 {
         app.set_pane_tab(p, p % app.tabs.len().max(1));
     }
 
-    let _ = run_frame(
+    let init_out = run_frame(
         &ctx,
         &mut app,
         vec![egui::Event::PointerMoved(egui::pos2(120.0, 200.0))],
@@ -151,8 +166,12 @@ fn test_f6_shift_f6_and_focus_pane_menu_cycle_without_pointer_hover() {
     assert_eq!(app.focused_pane, 0);
     clear_test_announcements();
 
-    let central_rect = egui::Rect::from_min_max(egui::pos2(0.0, 62.0), egui::pos2(1280.0, 900.0));
-    let pane_rects = viewport::calculate_pane_rects(ViewportLayout::QuadGrid, central_rect);
+    let ak = init_out.platform_output.accesskit_update.as_ref().unwrap();
+    let pane_rects: Vec<egui::Rect> = ViewportLayout::QuadGrid
+        .pane_labels()
+        .iter()
+        .map(|&lbl| region_node_and_rect(ak, lbl).1)
+        .collect();
 
     for expected_pane in [1usize, 2, 3, 0] {
         let _ = run_frame(

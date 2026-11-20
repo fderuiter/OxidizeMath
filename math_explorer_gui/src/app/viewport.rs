@@ -187,6 +187,12 @@ fn build_pane_region_ui(
     pane_ui.ctx().accesskit_node_builder(region_id, |builder| {
         builder.set_role(egui::accesskit::Role::Region);
         builder.set_label(label);
+        builder.set_bounds(egui::accesskit::Rect {
+            x0: f64::from(pane_rect.min.x),
+            y0: f64::from(pane_rect.min.y),
+            x1: f64::from(pane_rect.max.x),
+            y1: f64::from(pane_rect.max.y),
+        });
     });
     pane_ui
 }
