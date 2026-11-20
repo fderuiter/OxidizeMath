@@ -67,6 +67,17 @@ impl SimulationFramework {
         let Some(tool) = &self.active_tool else {
             return;
         };
+        if !tool.has_finite_parameters() {
+            if let Some(snap) = &mut self.last_valid_snapshot {
+                if !self.current_valid_plot_datasets.is_empty()
+                    && inspect_datasets_for_divergence(&self.current_valid_plot_datasets).is_ok()
+                {
+                    snap.plot_datasets = self.current_valid_plot_datasets.clone();
+                    snap.enforce_memory_budget();
+                }
+            }
+            return;
+        }
         let name = tool.name();
         let rev = tool.state_revision();
         let reuse_cached_state = rev > 0

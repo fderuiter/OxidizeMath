@@ -15,6 +15,37 @@ fn test_input(events: Vec<egui::Event>) -> egui::RawInput {
 }
 
 #[test]
+fn test_gaussian_splatting_image_and_density_respond_to_scale_and_camera() {
+    let small = GaussianSplattingTool {
+        scale: 0.3,
+        ..Default::default()
+    };
+    let large = GaussianSplattingTool {
+        scale: 2.5,
+        ..Default::default()
+    };
+    let orbited = GaussianSplattingTool {
+        scale: 0.3,
+        camera: Camera3D::new(-0.4, 1.2, 1.35),
+        ..Default::default()
+    };
+
+    let img_small = small.render_splat_image();
+    let img_large = large.render_splat_image();
+    let img_orbited = orbited.render_splat_image();
+    assert_eq!(img_small.size, [SPLAT_GRID_SIZE, SPLAT_GRID_SIZE]);
+    assert_ne!(img_small.pixels, img_large.pixels);
+    assert_ne!(img_small.pixels, img_orbited.pixels);
+
+    let counts_small = GaussianSplattingTool::compute_density_counts_for_scale(0.3);
+    let counts_large = GaussianSplattingTool::compute_density_counts_for_scale(2.5);
+    assert!(counts_small.clone > counts_large.clone);
+    assert!(counts_large.split > counts_small.split);
+    assert_eq!(counts_small.prune, 1);
+    assert_eq!(counts_small.keep, 3);
+}
+
+#[test]
 fn test_gaussian_splatting_renders_interactive_3d_scene_without_placeholder() {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
@@ -22,13 +53,9 @@ fn test_gaussian_splatting_renders_interactive_3d_scene_without_placeholder() {
 
     let out = ctx.run(test_input(Vec::new()), |sub_ctx| tool.show(sub_ctx));
 
-    assert_eq!(tool.projected_splats.len(), 7);
+    assert_eq!(tool.projected_splats.len(), 8);
     assert!(tool.texture.is_some());
-    let lit_pixels = tool
-        .pixel_buffer
-        .iter()
-        .filter(|px| px.a() > 16)
-        .count();
+    let lit_pixels = tool.pixel_buffer.iter().filter(|px| px.a() > 16).count();
     assert!(
         lit_pixels > 200,
         "Expected alpha-blended Gaussian splats to illuminate scene pixels, got {lit_pixels}"
@@ -53,6 +80,10 @@ fn test_gaussian_splatting_renders_interactive_3d_scene_without_placeholder() {
     assert!(
         texts.iter().any(|l| l.contains("Reset View")),
         "Reset View button must be visible on initial load"
+    );
+    assert!(
+        texts.iter().any(|l| l.contains("Adaptive Density Control")),
+        "Adaptive Density Control metrics must be rendered in side panel"
     );
     assert!(
         texts.iter().any(|l| l.contains(CAMERA_3D_HELPER_TEXT)),
@@ -107,8 +138,10 @@ fn test_gaussian_splatting_orbit_zoom_scale_and_reset() {
     tool.scale = 2.2;
     let _ = ctx.run(test_input(Vec::new()), |sub_ctx| tool.show(sub_ctx));
     let ring_after = tool.ellipse_rings[0].0;
-    let span_before = (ring_before[0][0] - ring_before[12][0]).hypot(ring_before[0][1] - ring_before[12][1]);
-    let span_after = (ring_after[0][0] - ring_after[12][0]).hypot(ring_after[0][1] - ring_after[12][1]);
+    let span_before =
+        (ring_before[0][0] - ring_before[12][0]).hypot(ring_before[0][1] - ring_before[12][1]);
+    let span_after =
+        (ring_after[0][0] - ring_after[12][0]).hypot(ring_after[0][1] - ring_after[12][1]);
     assert!(span_after > span_before * 1.8);
 
     // Keyboard R resets orientation and zoom while canvas retains focus
@@ -144,6 +177,10 @@ fn test_gaussian_splatting_state_persistence_and_legacy_presets() {
     assert!((restored.camera.pitch + 0.35).abs() < 1e-6);
     assert!((restored.camera.yaw - 1.15).abs() < 1e-6);
     assert!((restored.camera.zoom - 18.5).abs() < 1e-5);
+    assert_eq!(
+        restored.cached_counts,
+        GaussianSplattingTool::compute_density_counts_for_scale(2.75)
+    );
 
     // Legacy preset without camera fields restores default camera pose
     restored

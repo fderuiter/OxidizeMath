@@ -1,12 +1,19 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
-use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
-use math_explorer::pure_math::analysis::complex::mapping::conformal_scale_factor;
 use num_complex::Complex64;
 
-#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum MappingFunction {
+#[path = "complex_mapping/ui.rs"]
+mod ui;
+
+pub(crate) const COMPLEX_COORD_MIN: f64 = -50.0;
+pub(crate) const COMPLEX_COORD_MAX: f64 = 50.0;
+pub(super) const COMPLEX_MIN_SPAN: f64 = 0.1;
+const EXP_SIN_GUARD_LIMIT: f64 = 50.0;
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub(crate) enum MappingFunction {
     ZSquared,
     Exponential,
     Sine,
@@ -14,8 +21,16 @@ enum MappingFunction {
     Custom,
 }
 
+fn sanitize_complex(w: Complex64, fallback: Complex64) -> Complex64 {
+    if w.re.is_finite() && w.im.is_finite() {
+        w
+    } else {
+        fallback
+    }
+}
+
 impl MappingFunction {
-    fn name(&self) -> &'static str {
+    pub(super) fn name(&self) -> &'static str {
         match self {
             MappingFunction::ZSquared => "w = z^2",
             MappingFunction::Exponential => "w = e^z",
@@ -26,45 +41,63 @@ impl MappingFunction {
     }
 
     fn evaluate(&self, z: Complex64) -> Complex64 {
-        match self {
+        let fallback = Complex64::new(1e6, 1e6);
+        if !z.re.is_finite() || !z.im.is_finite() {
+            return fallback;
+        }
+        let raw = match self {
             MappingFunction::ZSquared => z * z,
-            MappingFunction::Exponential => z.exp(),
-            MappingFunction::Sine => z.sin(),
+            MappingFunction::Exponential => {
+                Complex64::new(z.re.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT), z.im).exp()
+            }
+            MappingFunction::Sine => {
+                Complex64::new(z.re, z.im.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT)).sin()
+            }
             MappingFunction::Inverse => {
                 if z.norm() < 1e-6 {
-                    Complex64::new(1e6, 1e6) // Avoid division by zero
+                    fallback
                 } else {
                     1.0 / z
                 }
             }
-            MappingFunction::Custom => Complex64::new(1e6, 1e6),
-        }
+            MappingFunction::Custom => fallback,
+        };
+        sanitize_complex(raw, fallback)
     }
 
     fn derivative(&self, z: Complex64) -> Complex64 {
-        match self {
+        let fallback = Complex64::new(0.0, 0.0);
+        if !z.re.is_finite() || !z.im.is_finite() {
+            return fallback;
+        }
+        let raw = match self {
             MappingFunction::ZSquared => 2.0 * z,
-            MappingFunction::Exponential => z.exp(),
-            MappingFunction::Sine => z.cos(),
+            MappingFunction::Exponential => {
+                Complex64::new(z.re.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT), z.im).exp()
+            }
+            MappingFunction::Sine => {
+                Complex64::new(z.re, z.im.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT)).cos()
+            }
             MappingFunction::Inverse => {
                 if z.norm() < 1e-6 {
-                    Complex64::new(1e6, 1e6) // Avoid division by zero
+                    Complex64::new(1e6, 1e6)
                 } else {
                     -1.0 / (z * z)
                 }
             }
-            MappingFunction::Custom => Complex64::new(0.0, 0.0),
-        }
+            MappingFunction::Custom => fallback,
+        };
+        sanitize_complex(raw, fallback)
     }
 }
 
 pub struct ComplexMappingTool {
-    function: MappingFunction,
-    grid_min: f64,
-    grid_max: f64,
-    grid_density: usize,
-    inspection_point: [f64; 2],
-    math_input: MathExpressionInputBar,
+    pub(crate) function: MappingFunction,
+    pub(crate) grid_min: f64,
+    pub(crate) grid_max: f64,
+    pub(crate) grid_density: usize,
+    pub(crate) inspection_point: [f64; 2],
+    pub(crate) math_input: MathExpressionInputBar,
 }
 
 impl Default for ComplexMappingTool {
@@ -92,31 +125,31 @@ impl Default for ComplexMappingTool {
 }
 
 impl ComplexMappingTool {
-    fn eval_z(&self, z: Complex64) -> Complex64 {
+    pub(crate) fn eval_z(&self, z: Complex64) -> Complex64 {
+        let fallback = Complex64::new(1e6, 1e6);
+        if !z.re.is_finite() || !z.im.is_finite() {
+            return fallback;
+        }
         match self.function {
-            MappingFunction::Custom => {
-                if let Some(expr) = self.math_input.expr() {
-                    let w = expr.eval_complex_z(z);
-                    if w.re.is_finite() && w.im.is_finite() {
-                        w
-                    } else {
-                        Complex64::new(1e6, 1e6)
-                    }
-                } else {
-                    Complex64::new(1e6, 1e6)
-                }
-            }
+            MappingFunction::Custom => self
+                .math_input
+                .expr()
+                .map_or(fallback, |expr| sanitize_complex(expr.eval_complex_z(z), fallback)),
             _ => self.function.evaluate(z),
         }
     }
 
-    fn deriv_z(&self, z: Complex64) -> Complex64 {
+    pub(crate) fn deriv_z(&self, z: Complex64) -> Complex64 {
+        let fallback = Complex64::new(0.0, 0.0);
+        if !z.re.is_finite() || !z.im.is_finite() {
+            return fallback;
+        }
         match self.function {
             MappingFunction::Custom => {
                 let h = Complex64::new(1e-7, 0.0);
                 let f_plus = self.eval_z(z + h);
                 let f_minus = self.eval_z(z - h);
-                (f_plus - f_minus) / (2.0 * h)
+                sanitize_complex((f_plus - f_minus) / (2.0 * h), fallback)
             }
             _ => self.function.derivative(z),
         }
@@ -139,11 +172,26 @@ impl InteractiveTool for ComplexMappingTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }
+
     fn name(&self) -> &'static str {
         "Complex Mapping"
     }
+
     fn domain(&self) -> &'static str {
         "analysis"
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.grid_min.is_finite()
+            && self.grid_max.is_finite()
+            && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&self.grid_min)
+            && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&self.grid_max)
+            && self.grid_min < self.grid_max
+            && (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_density)
+            && self
+                .inspection_point
+                .iter()
+                .all(|v| v.is_finite() && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(v))
     }
 
     fn save_state(&self) -> Option<String> {
@@ -166,9 +214,14 @@ impl InteractiveTool for ComplexMappingTool {
             .map_err(|e| format!("Invalid complex mapping state: {e}"))?;
         if !s.grid_min.is_finite()
             || !s.grid_max.is_finite()
+            || !(COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&s.grid_min)
+            || !(COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&s.grid_max)
             || s.grid_min >= s.grid_max
             || !(2..=math_commons::registry::MAX_GRID_SIZE).contains(&s.grid_density)
-            || !s.inspection_point.iter().all(|v| v.is_finite())
+            || !s
+                .inspection_point
+                .iter()
+                .all(|v| v.is_finite() && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(v))
         {
             return Err("Complex mapping bounds or density out of valid range".into());
         }
@@ -182,189 +235,24 @@ impl InteractiveTool for ComplexMappingTool {
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "complex_mapping_controls");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Mapping Controls");
-            ui.separator();
-
-            ui.label("Function:");
-            egui::ComboBox::from_id_salt("mapping_function")
-                .selected_text(self.function.name())
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut self.function,
-                        MappingFunction::ZSquared,
-                        MappingFunction::ZSquared.name(),
-                    );
-                    ui.selectable_value(
-                        &mut self.function,
-                        MappingFunction::Exponential,
-                        MappingFunction::Exponential.name(),
-                    );
-                    ui.selectable_value(
-                        &mut self.function,
-                        MappingFunction::Sine,
-                        MappingFunction::Sine.name(),
-                    );
-                    ui.selectable_value(
-                        &mut self.function,
-                        MappingFunction::Inverse,
-                        MappingFunction::Inverse.name(),
-                    );
-                    ui.selectable_value(
-                        &mut self.function,
-                        MappingFunction::Custom,
-                        MappingFunction::Custom.name(),
-                    );
-                });
-
-            if self.function == MappingFunction::Custom {
-                ui.add_space(6.0);
-                self.math_input.ui(ui);
-            }
-
-            ui.add_space(10.0);
-            ui.label("Grid Range [min, max]:");
-            ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut self.grid_min).speed(0.1));
-                ui.label("to");
-                ui.add(egui::DragValue::new(&mut self.grid_max).speed(0.1));
-            });
-
-            if self.grid_min >= self.grid_max {
-                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-                ui.colored_label(palette.error, "min must be < max");
-            }
-
-            ui.add_space(10.0);
-            ui.add(egui::Slider::new(&mut self.grid_density, 2..=math_commons::registry::MAX_GRID_SIZE).text("Grid Density:"));
-
-            ui.separator();
-            ui.heading("Inspection Point (z)");
-            ui.horizontal(|ui| {
-                ui.label("Re:");
-                ui.add(egui::DragValue::new(&mut self.inspection_point[0]).speed(0.1));
-                ui.label("Im:");
-                ui.add(egui::DragValue::new(&mut self.inspection_point[1]).speed(0.1));
-            });
-
-            let z0 = Complex64::new(self.inspection_point[0], self.inspection_point[1]);
-            let w0 = self.eval_z(z0);
-            let derivative_fn = |z| self.deriv_z(z);
-            let scale_factor = conformal_scale_factor(derivative_fn, z0);
-
-            render_copyable_metric(
-                ui,
-                "w = f(z)",
-                &format!("{:.3} + {:.3}i", w0.re, w0.im),
-            );
-            render_copyable_metric(
-                ui,
-                "Scale factor |f'(z)|",
-                &format!("{:.3}", scale_factor),
-            );
-        });
-
+        self.draw_controls(parent_ui);
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Conformal Mapping Visualization");
-
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.columns(2, |columns| {
-                columns[0].label("z-plane (Input)");
-                Plot::new("z_plane_plot")
-                    .view_aspect(1.0)
-                    .x_axis_label("Re(z)")
-                    .y_axis_label("Im(z)")
-                    .show(&mut columns[0], |plot_ui| {
-                        if self.grid_max > self.grid_min && self.grid_density > 1 {
-                            let step =
-                                (self.grid_max - self.grid_min) / (self.grid_density as f64 - 1.0);
-
-                            for i in 0..self.grid_density {
-                                let x = self.grid_min + (i as f64) * step;
-                                let points = vec![[x, self.grid_min], [x, self.grid_max]];
-                                plot_ui.line(
-                                    Line::new("", PlotPoints::new(points))
-                                        .color(palette.series_color(0)),
-                                );
-                            }
-
-                            for i in 0..self.grid_density {
-                                let y = self.grid_min + (i as f64) * step;
-                                let points = vec![[self.grid_min, y], [self.grid_max, y]];
-                                plot_ui.line(
-                                    Line::new("", PlotPoints::new(points))
-                                        .color(palette.series_color(1)),
-                                );
-                            }
-                        }
-
-                        plot_ui.points(
-                            egui_plot::Points::new(
-                                "",
-                                PlotPoints::new(vec![self.inspection_point]),
-                            )
-                            .color(palette.error)
-                            .radius(5.0_f32),
-                        );
-                    });
-
-                columns[1].label("w-plane (Output)");
-                Plot::new("w_plane_plot")
-                    .view_aspect(1.0)
-                    .x_axis_label("Re(w)")
-                    .y_axis_label("Im(w)")
-                    .show(&mut columns[1], |plot_ui| {
-                        if self.grid_max > self.grid_min && self.grid_density > 1 {
-                            let step =
-                                (self.grid_max - self.grid_min) / (self.grid_density as f64 - 1.0);
-                            let resolution = 50;
-
-                            for i in 0..self.grid_density {
-                                let x = self.grid_min + (i as f64) * step;
-                                let mut points = Vec::with_capacity(resolution);
-                                for j in 0..resolution {
-                                    let y = self.grid_min
-                                        + (self.grid_max - self.grid_min) * (j as f64)
-                                            / (resolution as f64 - 1.0);
-                                    let z = Complex64::new(x, y);
-                                    let w = self.eval_z(z);
-                                    points.push([w.re, w.im]);
-                                }
-                                plot_ui.line(
-                                    Line::new("", PlotPoints::new(points))
-                                        .color(palette.series_color(0)),
-                                );
-                            }
-
-                            for i in 0..self.grid_density {
-                                let y = self.grid_min + (i as f64) * step;
-                                let mut points = Vec::with_capacity(resolution);
-                                for j in 0..resolution {
-                                    let x = self.grid_min
-                                        + (self.grid_max - self.grid_min) * (j as f64)
-                                            / (resolution as f64 - 1.0);
-                                    let z = Complex64::new(x, y);
-                                    let w = self.eval_z(z);
-                                    points.push([w.re, w.im]);
-                                }
-                                plot_ui.line(
-                                    Line::new("", PlotPoints::new(points))
-                                        .color(palette.series_color(1)),
-                                );
-                            }
-                        }
-
-                        let z0 = Complex64::new(self.inspection_point[0], self.inspection_point[1]);
-                        let w0 = self.eval_z(z0);
-                        plot_ui.points(
-                            egui_plot::Points::new("", PlotPoints::new(vec![[w0.re, w0.im]]))
-                                .color(palette.error)
-                                .radius(5.0_f32),
-                        );
-                    });
+                self.draw_z_plane(&mut columns[0], &palette);
+                self.draw_w_plane(&mut columns[1], &palette);
             });
         });
     }
@@ -396,68 +284,31 @@ impl scientific_metadata::theory::TheoryDescribable for ComplexMappingTool {
             fn_desc
         )
     }
-    fn phonetic_description(&self) -> String { "Conformal complex mapping and Cauchy-Riemann equations theory".into() }
-    fn theory_citation(&self) -> String { "Visual Complex Analysis (Needham, 1997); Complex Analysis (Ahlfors, 1979)".into() }
+
+    fn phonetic_description(&self) -> String {
+        "Conformal complex mapping and Cauchy-Riemann equations theory".into()
+    }
+
+    fn theory_citation(&self) -> String {
+        "Visual Complex Analysis (Needham, 1997); Complex Analysis (Ahlfors, 1979)".into()
+    }
+
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
         map.insert("ZSquared".into(), "w = z^2 doubling angles at the origin".into());
-        map.insert("Exponential".into(), "w = e^z mapping vertical lines to circles".into());
-        map.insert("Sine".into(), "w = sin(z) mapping strips to upper half-plane".into());
-        map.insert("Inverse".into(), "w = 1/z conformal inversion through unit circle".into());
+        map.insert(
+            "Exponential".into(),
+            "w = e^z mapping vertical lines to circles".into(),
+        );
+        map.insert(
+            "Sine".into(),
+            "w = sin(z) mapping strips to upper half-plane".into(),
+        );
+        map.insert(
+            "Inverse".into(),
+            "w = 1/z conformal inversion through unit circle".into(),
+        );
         map
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_custom_complex_mapping_evaluation() {
-        let mut tool = ComplexMappingTool {
-            function: MappingFunction::Custom,
-            ..Default::default()
-        };
-        tool.math_input.set_expression("z^3 - 1/z");
-
-        let z0 = Complex64::new(2.0, 0.0);
-        let w0 = tool.eval_z(z0);
-        assert!((w0.re - 7.5).abs() < 1e-6);
-        assert!(w0.im.abs() < 1e-6);
-
-        let deriv = tool.deriv_z(z0);
-        // f'(z) = 3z^2 + 1/z^2 = 3*(4) + 0.25 = 12.25
-        assert!((deriv.re - 12.25).abs() < 1e-4);
-        assert!(deriv.im.abs() < 1e-4);
-    }
-
-    #[test]
-    fn test_custom_complex_mapping_division_by_zero_safe() {
-        let mut tool = ComplexMappingTool {
-            function: MappingFunction::Custom,
-            ..Default::default()
-        };
-        tool.math_input.set_expression("1/z");
-
-        let z_zero = Complex64::new(0.0, 0.0);
-        let w_zero = tool.eval_z(z_zero);
-        assert_eq!(w_zero, Complex64::new(1e6, 1e6));
-    }
-
-    #[test]
-    fn test_custom_expr_state_roundtrip_and_legacy_compat() {
-        let mut tool = ComplexMappingTool {
-            function: MappingFunction::Custom,
-            ..Default::default()
-        };
-        tool.math_input.set_expression("sin(z) + z^2");
-        let saved = tool.save_state().expect("serialize ComplexMappingTool");
-
-        let mut restored = ComplexMappingTool::default();
-        restored.try_load_state(&saved).expect("load saved state");
-        assert_eq!(restored.math_input.raw_text, "sin(z) + z^2");
-        assert!(restored.math_input.is_valid());
-        assert!(restored.import_preset_json(STARTER_PRESET_JSON).is_ok());
     }
 }
 
@@ -489,3 +340,7 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+#[cfg(test)]
+#[path = "complex_mapping/tests.rs"]
+mod tests;

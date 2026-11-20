@@ -202,11 +202,16 @@ impl MathExplorerApp {
         self.pane_slots.slot_mut(pane_idx)?.ensure_tab(tab_idx)
     }
 
-    /// Snapshots the focused secondary pane slot if active.
-    pub(super) fn snapshot_focused_secondary_slot(&mut self) {
-        let target = self.active_focused_pane();
-        if let Some(slot) = self.pane_slots.slot_mut(target) {
-            slot.snapshot_active();
+    /// Clears cached serialized JSON for active primary and secondary viewport panes.
+    pub(super) fn clear_active_pane_caches(&self) {
+        let primary_idx = self.active_primary_tab_index();
+        if let Some(tab) = self.tabs.get(primary_idx) {
+            self.tab_state_cache.invalidate_tab(tab.name());
+        }
+        for slot in &self.pane_slots.slots {
+            if slot.active.is_some() {
+                *slot.active_cache.borrow_mut() = None;
+            }
         }
     }
 

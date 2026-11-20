@@ -7,6 +7,10 @@ mod icon_tests;
 mod shell_tests;
 
 #[cfg(test)]
+#[path = "markup_startup_tests.rs"]
+mod startup_tests;
+
+#[cfg(test)]
 mod tests {
     const INDEX_HTML: &str = include_str!("../index.html");
     const TRUNK_TOML: &str = include_str!("../Trunk.toml");

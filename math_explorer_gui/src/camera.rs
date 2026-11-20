@@ -356,9 +356,15 @@ impl Camera3D {
         let prev = *self;
         ui.label("Yaw");
         ui.drag_angle(&mut self.yaw);
+        if !self.yaw.is_finite() {
+            self.yaw = prev.yaw;
+        }
 
         ui.label("Pitch");
         ui.drag_angle(&mut self.pitch);
+        if !self.pitch.is_finite() {
+            self.pitch = prev.pitch;
+        }
 
         ui.add(
             egui::Slider::new(&mut self.zoom, CAMERA_3D_ZOOM_MIN..=CAMERA_3D_ZOOM_MAX)

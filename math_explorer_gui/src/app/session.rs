@@ -1,6 +1,6 @@
 mod io;
 mod persistence;
-mod shortcuts;
+pub(crate) mod shortcuts;
 mod types;
 
 pub use types::{SessionLifecycleState, WorkspaceEnvelope};
@@ -193,8 +193,11 @@ impl WorkspaceSessionManager {
         }
 
         let pointer_down = ctx.input(|i| i.pointer.any_down());
+        let sweep_active = crate::reflective_ui::slider::has_active_sweeps(ctx);
+        let continuous_edit = pointer_down || sweep_active;
         if self.lifecycle_state == SessionLifecycleState::DragEditing {
-            if !pointer_down {
+            if !continuous_edit {
+                app.clear_active_pane_caches();
                 let current_state = app.get_app_state();
                 if let Some(ref last_state) = self.last_committed_state {
                     if &current_state != last_state {
@@ -202,7 +205,7 @@ impl WorkspaceSessionManager {
                     }
                 }
                 self.last_committed_state = Some(current_state);
-                self.last_committed_fingerprint = Some(fingerprint);
+                self.last_committed_fingerprint = Some(AppStateFingerprint::capture(app));
                 self.lifecycle_state = SessionLifecycleState::Idle;
             }
             return;
@@ -210,10 +213,13 @@ impl WorkspaceSessionManager {
 
         if fingerprint.all_revisions_tracked && self.last_committed_fingerprint == Some(fingerprint)
         {
+            if sweep_active && self.last_committed_state.is_some() {
+                self.lifecycle_state = SessionLifecycleState::DragEditing;
+            }
             return;
         }
 
-        if pointer_down && self.last_committed_state.is_some() {
+        if continuous_edit && self.last_committed_state.is_some() {
             self.lifecycle_state = SessionLifecycleState::DragEditing;
             return;
         }
@@ -223,30 +229,41 @@ impl WorkspaceSessionManager {
         self.last_committed_fingerprint = Some(fingerprint);
     }
 
-    /// Synchronizes `last_committed_state` after a tool handles local undo without clearing global redo.
-    pub(crate) fn sync_after_local_undo(&mut self, app: &MathExplorerApp) {
-        let current = app.get_app_state();
-        if self.undo_stack.last() == Some(&current) {
-            self.undo_stack.pop();
-        }
-        self.last_committed_state = Some(current);
-        self.last_committed_fingerprint = Some(AppStateFingerprint::capture(app));
-    }
-
-    /// Synchronizes `last_committed_state` after a tool handles local redo without clearing global redo.
-    pub(crate) fn sync_after_local_redo(
-        &mut self,
-        prev_state: Option<AppState>,
-        app: &MathExplorerApp,
-    ) {
-        let current = app.get_app_state();
-        if let Some(prev) = prev_state {
-            if prev != current {
-                self.push_undo_preserving_redo(prev);
+    /// Executes an undo step directly on this session manager and restores `app` state.
+    pub fn execute_undo(&mut self, app: &mut MathExplorerApp) {
+        if self.lifecycle_state == SessionLifecycleState::DragEditing {
+            app.clear_active_pane_caches();
+            let current = app.get_app_state();
+            if let Some(prev) = self.last_committed_state.clone() {
+                if prev != current {
+                    self.push_redo(current);
+                    app.apply_app_state(prev);
+                    self.set_is_restoring(true);
+                    return;
+                }
             }
         }
-        self.last_committed_state = Some(current);
-        self.last_committed_fingerprint = Some(AppStateFingerprint::capture(app));
+        let Some(prev) = self.pop_undo() else {
+            return;
+        };
+        let current = app.get_app_state();
+        self.push_redo(current);
+        app.apply_app_state(prev);
+        self.set_is_restoring(true);
+    }
+
+    /// Executes a redo step directly on this session manager and restores `app` state.
+    pub fn execute_redo(&mut self, app: &mut MathExplorerApp) {
+        let Some(next) = self.pop_redo() else {
+            return;
+        };
+        if self.lifecycle_state == SessionLifecycleState::DragEditing {
+            app.clear_active_pane_caches();
+        }
+        let current = app.get_app_state();
+        self.push_undo_preserving_redo(current);
+        app.apply_app_state(next);
+        self.set_is_restoring(true);
     }
 
     /// Tracks application state changes and updates the history buffer.
@@ -266,24 +283,22 @@ impl WorkspaceSessionManager {
             return;
         }
 
+        let continuous_edit = ctx.input(|i| i.pointer.any_down())
+            || crate::reflective_ui::slider::has_active_sweeps(ctx);
         if let Some(ref last_state) = self.last_committed_state {
             if &current_state != last_state {
-                let pointer_down = ctx.input(|i| i.pointer.any_down());
-                if pointer_down {
+                if continuous_edit {
                     if self.lifecycle_state != SessionLifecycleState::DragEditing {
                         self.push_undo(last_state.clone());
                         self.lifecycle_state = SessionLifecycleState::DragEditing;
                     }
+                } else if self.lifecycle_state != SessionLifecycleState::DragEditing {
+                    self.push_undo(last_state.clone());
                 } else {
-                    if self.lifecycle_state != SessionLifecycleState::DragEditing {
-                        self.push_undo(last_state.clone());
-                    } else {
-                        self.lifecycle_state = SessionLifecycleState::Idle;
-                    }
+                    self.lifecycle_state = SessionLifecycleState::Idle;
                 }
                 self.last_committed_state = Some(current_state);
-            } else if !ctx.input(|i| i.pointer.any_down())
-                && self.lifecycle_state == SessionLifecycleState::DragEditing
+            } else if !continuous_edit && self.lifecycle_state == SessionLifecycleState::DragEditing
             {
                 self.lifecycle_state = SessionLifecycleState::Idle;
             }

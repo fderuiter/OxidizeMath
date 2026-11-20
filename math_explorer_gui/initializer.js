@@ -44,7 +44,11 @@ export default function mathExplorerInitializer() {
 
             const boot = window.__mathExplorerBoot;
             if (boot) {
-                boot.recordProgress('Starting WebAssembly download');
+                if (typeof boot.enterPhase === 'function') {
+                    boot.enterPhase('transfer', 'Starting WebAssembly download');
+                } else {
+                    boot.recordProgress('Starting WebAssembly download');
+                }
                 boot.announce('Downloading Math Explorer WebAssembly module.', 'polite');
             }
 
@@ -63,14 +67,13 @@ export default function mathExplorerInitializer() {
             const safeTotal = Number.isFinite(total) && total > 0 ? Math.floor(total) : 0;
 
             const boot = window.__mathExplorerBoot;
-            if (boot) {
-                boot.recordProgress('Downloading WebAssembly (' + safeCurrent + ' bytes)');
-            }
-
             const { subtitleEl, progressEl, bytesEl } = getElements();
 
             // Indeterminate fallback when uncompressed sourceSize is unknown/zero
             if (safeTotal <= 0) {
+                if (boot) {
+                    boot.recordProgress('Downloading WebAssembly (' + safeCurrent + ' bytes)');
+                }
                 maxLoadedBytes = Math.max(maxLoadedBytes, safeCurrent);
                 const statusCopy = maxLoadedBytes > 0
                     ? formatBytes(maxLoadedBytes) + ' downloaded'
@@ -91,6 +94,14 @@ export default function mathExplorerInitializer() {
                 const firstCompileTransition = !compileStarted;
                 compileStarted = true;
 
+                if (boot) {
+                    if (typeof boot.enterPhase === 'function') {
+                        boot.enterPhase('compile', 'Compiling WebAssembly module');
+                    } else {
+                        boot.recordProgress('Compiling WebAssembly module');
+                    }
+                }
+
                 if (subtitleEl) {
                     subtitleEl.textContent = 'Compiling WebAssembly module...';
                 }
@@ -103,6 +114,10 @@ export default function mathExplorerInitializer() {
                     boot.announce('Download complete. Compiling WebAssembly module.', 'polite');
                 }
                 return;
+            }
+
+            if (boot) {
+                boot.recordProgress('Downloading WebAssembly (' + safeCurrent + ' bytes)');
             }
 
             // Monotonic determinate byte progress during transfer
@@ -140,14 +155,22 @@ export default function mathExplorerInitializer() {
         onComplete() {
             const boot = window.__mathExplorerBoot;
             if (boot) {
-                boot.recordProgress('WebAssembly initialization settled');
+                if (typeof boot.enterPhase === 'function') {
+                    boot.enterPhase('compile', 'WebAssembly initialization settled');
+                } else {
+                    boot.recordProgress('WebAssembly initialization settled');
+                }
             }
         },
 
         onSuccess() {
             const boot = window.__mathExplorerBoot;
             if (boot) {
-                boot.recordProgress('Initializing WebGL graphics context');
+                if (typeof boot.enterPhase === 'function') {
+                    boot.enterPhase('compile', 'Initializing WebGL graphics context');
+                } else {
+                    boot.recordProgress('Initializing WebGL graphics context');
+                }
             }
             const { subtitleEl, progressEl, bytesEl } = getElements();
             if (subtitleEl) {

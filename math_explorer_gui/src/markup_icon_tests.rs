@@ -62,6 +62,7 @@ fn test_favicon_svg_and_site_webmanifest_assets() {
         "site.webmanifest must register 512x512-maskable.png with purpose 'maskable'"
     );
 }
+
 fn decode_rgba_png(label: &str, data: &[u8]) -> (u32, u32, Vec<[u8; 4]>) {
     assert!(
         data.starts_with(b"\x89PNG\r\n\x1a\n"),
