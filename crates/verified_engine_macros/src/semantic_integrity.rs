@@ -4,7 +4,6 @@ use syn::visit::Visit;
 
 struct RustOpVisitor {
     ops: HashSet<MathOp>,
-    vars: HashSet<String>,
 }
 
 impl<'ast> Visit<'ast> for RustOpVisitor {
@@ -44,17 +43,10 @@ impl<'ast> Visit<'ast> for RustOpVisitor {
         }
         syn::visit::visit_expr_method_call(self, node);
     }
-
-    fn visit_expr_path(&mut self, node: &'ast syn::ExprPath) {
-        if let Some(ident) = node.path.get_ident() {
-            self.vars.insert(ident.to_string());
-        }
-        syn::visit::visit_expr_path(self, node);
-    }
 }
 
 pub fn verify_semantic_integrity(latex_str: &str, rust_fn: &syn::ItemFn) -> Result<(), String> {
-    let (_, latex_ops_vec) = crate::latex_parser::parse_latex_math(latex_str);
+    let latex_ops_vec = crate::latex_parser::parse_latex_math(latex_str);
     let mut latex_ops = HashSet::new();
     for op in latex_ops_vec {
         latex_ops.insert(op);
@@ -67,7 +59,6 @@ pub fn verify_semantic_integrity(latex_str: &str, rust_fn: &syn::ItemFn) -> Resu
 
     let mut visitor = RustOpVisitor {
         ops: HashSet::new(),
-        vars: HashSet::new(),
     };
     visitor.visit_item_fn(rust_fn);
 
@@ -82,4 +73,46 @@ pub fn verify_semantic_integrity(latex_str: &str, rust_fn: &syn::ItemFn) -> Resu
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::verify_semantic_integrity;
+
+    #[test]
+    fn test_verify_matching_operations() {
+        let func: syn::ItemFn = syn::parse_quote! {
+            fn compute(a: f64, b: f64, c: f64, d: f64) -> f64 {
+                ((a * b + c - d) / 2.0).powi(2)
+            }
+        };
+        let latex = r"\frac{a \times b + c - d}{2}^2";
+        assert_eq!(verify_semantic_integrity(latex, &func), Ok(()));
+    }
+
+    #[test]
+    fn test_verify_unary_negation_and_exponential() {
+        let func: syn::ItemFn = syn::parse_quote! {
+            fn decay(x: f64, k: f64) -> f64 {
+                (-k * x).exp()
+            }
+        };
+        assert_eq!(
+            verify_semantic_integrity(r"\exp(-k \cdot x)", &func),
+            Ok(())
+        );
+        assert_eq!(verify_semantic_integrity(r"e^{-k * x}", &func), Ok(()));
+    }
+
+    #[test]
+    fn test_verify_missing_operation_fails() {
+        let func: syn::ItemFn = syn::parse_quote! {
+            fn wrong_range(beat: f64, bw: f64) -> f64 {
+                beat * bw
+            }
+        };
+        let err = verify_semantic_integrity(r"\frac{f}{2 B}", &func).unwrap_err();
+        assert!(err.contains("Missing operation in Rust implementation"));
+        assert!(err.contains("Div"));
+    }
 }
