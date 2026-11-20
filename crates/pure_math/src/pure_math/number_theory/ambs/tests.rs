@@ -3,7 +3,15 @@ use super::*;
 #[test]
 #[verified_engine::verified]
 fn test_tonelli_shanks_branches_and_refinement() {
+    assert!(AmbsDsp::tonelli_shanks(&Integer::from(1), &Integer::from(0)).is_err());
+    assert!(AmbsDsp::tonelli_shanks(&Integer::from(1), &Integer::from(1)).is_err());
+    assert!(AmbsDsp::tonelli_shanks(&Integer::from(1), &Integer::from(-3)).is_err());
+
     let p2 = Integer::from(2);
+    assert_eq!(
+        AmbsDsp::tonelli_shanks(&Integer::from(0), &p2).unwrap(),
+        vec![Integer::from(0)]
+    );
     assert_eq!(
         AmbsDsp::tonelli_shanks(&Integer::from(1), &p2).unwrap(),
         vec![Integer::from(1)]
