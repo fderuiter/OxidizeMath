@@ -36,7 +36,7 @@ pub(super) fn fill_triangle(
     }
 }
 
-pub(super) fn draw_segment(
+pub(crate) fn draw_segment(
     pixels: &mut [egui::Color32],
     w: usize,
     h: usize,
@@ -70,7 +70,7 @@ pub(super) fn draw_segment(
     }
 }
 
-pub(super) fn draw_dot(
+pub(crate) fn draw_dot(
     pixels: &mut [egui::Color32],
     w: usize,
     h: usize,
@@ -93,7 +93,7 @@ pub(super) fn draw_dot(
     }
 }
 
-pub(super) fn blend_over(
+pub(crate) fn blend_over(
     dst: egui::Color32,
     src: egui::Color32,
     alpha_factor: f64,
