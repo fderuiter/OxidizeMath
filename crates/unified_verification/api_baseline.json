@@ -4,25 +4,13 @@
       "signature": "impl DiagnosticBus { pub fn emit (& self , event : DiagnosticEvent) }"
     },
     {
-      "signature": "impl DiagnosticBus { pub fn emit_error < E : Diagnostic > (& self , err : & E) }"
-    },
-    {
       "signature": "impl DiagnosticBus { pub fn new () -> Self }"
     },
     {
       "signature": "impl DiagnosticBus { pub fn register_listener < F > (& self , listener : F) where F : Fn (& DiagnosticEvent) + Send + Sync + 'static , }"
     },
     {
-      "signature": "impl DiagnosticBus { pub fn try_recv_all (& self) -> Vec < DiagnosticEvent > }"
-    },
-    {
       "signature": "pub enum Severity"
-    },
-    {
-      "signature": "pub fn emit (event : DiagnosticEvent)"
-    },
-    {
-      "signature": "pub fn emit_error < E : Diagnostic > (err : & E)"
     },
     {
       "signature": "pub fn global_bus () -> & 'static DiagnosticBus"
@@ -4932,9 +4920,6 @@
     },
     {
       "signature": "pub fn global_registry () -> & 'static FederatedRegistry"
-    },
-    {
-      "signature": "pub fn init_panic_hook ()"
     },
     {
       "signature": "pub struct FederatedRegistry"
