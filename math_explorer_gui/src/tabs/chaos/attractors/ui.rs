@@ -35,9 +35,9 @@ impl AttractorPlotter {
             self.draw_parameter_sliders(ui);
             self.draw_simulation_controls(ui, ctx, worker_faulted);
 
-            ui.collapsing("View", |ui| {
-                self.camera.ui(ui);
-            });
+            egui::CollapsingHeader::new("View")
+                .default_open(true)
+                .show(ui, |ui| self.camera.ui(ui));
 
             ui.separator();
             ui.checkbox(&mut self.show_annotations, "Show Fixed Points");

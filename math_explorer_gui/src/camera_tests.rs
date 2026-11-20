@@ -293,3 +293,152 @@ fn test_camera_double_click_canvas_restores_tool_defaults() {
     }
     assert_eq!(camera, Camera3D::new(0.0, 0.0, 1.0));
 }
+
+#[test]
+fn test_shared_zoom_range_across_pinch_scroll_and_slider_ui() {
+    assert_eq!(CAMERA_3D_ZOOM_MIN, 0.01_f32);
+    assert_eq!(CAMERA_3D_ZOOM_MAX, 100.0_f32);
+
+    let ctx = egui::Context::default();
+    let mut camera = Camera3D::default();
+    let mut plot_center = egui::pos2(500.0, 300.0);
+    let step = |events: Vec<egui::Event>, cam: &mut Camera3D, center: &mut egui::Pos2| {
+        let _ = ctx.run(screen_input(events), |sub_ctx| {
+            egui::SidePanel::left("cam_zoom_panel").show(sub_ctx, |ui| cam.ui(ui));
+            egui::CentralPanel::default().show(sub_ctx, |ui| {
+                *center = Plot3DViewport::new("pinch_plot", 4.0)
+                    .show(ui, cam, |_| {})
+                    .response
+                    .rect
+                    .center();
+            });
+        });
+    };
+
+    step(Vec::new(), &mut camera, &mut plot_center);
+
+    // Trackpad pinch Event::Zoom scales past legacy 5.0 ceiling while Camera3D::ui is mounted
+    let pinch = |factor: f32, pos: egui::Pos2| {
+        vec![egui::Event::PointerMoved(pos), egui::Event::Zoom(factor)]
+    };
+    step(pinch(25.0, plot_center), &mut camera, &mut plot_center);
+    step(Vec::new(), &mut camera, &mut plot_center);
+    assert!((camera.zoom - 25.0_f32).abs() < 1e-4);
+
+    // Deep zoom-out below legacy 0.1 floor stays reachable and un-clamped above 0.01
+    step(pinch(0.001, plot_center), &mut camera, &mut plot_center);
+    step(Vec::new(), &mut camera, &mut plot_center);
+    assert!((camera.zoom - 0.025_f32).abs() < 1e-5);
+
+    // Extreme pinch clamps cleanly to [0.01, 100.0]
+    step(pinch(0.01, plot_center), &mut camera, &mut plot_center);
+    assert_eq!(camera.zoom, CAMERA_3D_ZOOM_MIN);
+    step(pinch(50_000.0, plot_center), &mut camera, &mut plot_center);
+    assert_eq!(camera.zoom, CAMERA_3D_ZOOM_MAX);
+}
+
+#[test]
+fn test_first_interaction_zoom_scales_geometry_without_auto_bounds_cancellation() {
+    let ctx = egui::Context::default();
+    let mut camera = Camera3D::default();
+    let mut bounds_f0 = egui_plot::PlotBounds::NOTHING;
+    let mut span_f0 = 0.0_f32;
+
+    let _ = ctx.run(screen_input(Vec::new()), |sub_ctx| {
+        egui::CentralPanel::default().show(sub_ctx, |ui| {
+            let p_a = camera.project(&[-1.5, 0.0, 0.0]);
+            let p_b = camera.project(&[1.5, 0.0, 0.0]);
+            let pr = Plot3DViewport::new("first_zoom_plot", 5.0).show(ui, &mut camera, |plot_ui| {
+                plot_ui.line(Line::new("span", PlotPoints::new(vec![p_a, p_b])));
+            });
+            bounds_f0 = *pr.transform.bounds();
+            let s_a = pr
+                .transform
+                .position_from_point(&egui_plot::PlotPoint::new(p_a[0], p_a[1]));
+            let s_b = pr
+                .transform
+                .position_from_point(&egui_plot::PlotPoint::new(p_b[0], p_b[1]));
+            span_f0 = s_a.distance(s_b);
+        });
+    });
+
+    // Immediately change Zoom on the very first interaction of a newly opened 3D viewport
+    camera.zoom = 2.5_f32;
+    let mut bounds_f1 = egui_plot::PlotBounds::NOTHING;
+    let mut span_f1 = 0.0_f32;
+    let _ = ctx.run(screen_input(Vec::new()), |sub_ctx| {
+        egui::CentralPanel::default().show(sub_ctx, |ui| {
+            let p_a = camera.project(&[-1.5, 0.0, 0.0]);
+            let p_b = camera.project(&[1.5, 0.0, 0.0]);
+            let pr = Plot3DViewport::new("first_zoom_plot", 5.0).show(ui, &mut camera, |plot_ui| {
+                plot_ui.line(Line::new("span", PlotPoints::new(vec![p_a, p_b])));
+            });
+            bounds_f1 = *pr.transform.bounds();
+            let s_a = pr
+                .transform
+                .position_from_point(&egui_plot::PlotPoint::new(p_a[0], p_a[1]));
+            let s_b = pr
+                .transform
+                .position_from_point(&egui_plot::PlotPoint::new(p_b[0], p_b[1]));
+            span_f1 = s_a.distance(s_b);
+        });
+    });
+
+    assert_eq!(bounds_f1.min()[0], bounds_f0.min()[0]);
+    assert_eq!(bounds_f1.max()[0], bounds_f0.max()[0]);
+    assert!((bounds_f1.min()[1] - bounds_f0.min()[1]).abs() < 0.05);
+    assert!(((span_f1 / span_f0) - 2.5_f32).abs() < 0.02_f32);
+}
+
+#[test]
+fn test_all_six_3d_tools_expose_reset_view_and_helper_on_initial_open() {
+    let tool_ids = [
+        "SurfaceViewer",
+        "SpinVisualizer",
+        "AttractorPlotter",
+        "CrystalViewer",
+        "CurvatureHeatmap",
+        "Gaussian Splatting",
+    ];
+    for id in tool_ids {
+        let meta = inventory::iter::<crate::framework::ToolMetadata>
+            .into_iter()
+            .find(|m| m.id == id)
+            .unwrap_or_else(|| panic!("Missing 3D ToolMetadata for {id}"));
+        let mut tool = (meta.build)();
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        let out = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 800.0),
+                )),
+                ..Default::default()
+            },
+            |sub_ctx| tool.show(sub_ctx),
+        );
+        let ak = out
+            .platform_output
+            .accesskit_update
+            .expect("AccessKit update expected");
+        let has_reset = ak.nodes.iter().any(|(_, n)| {
+            n.role() == egui::accesskit::Role::Button
+                && n.label().unwrap_or("").contains("Reset View")
+        });
+        assert!(
+            has_reset,
+            "3D tool '{id}' must expose Reset View button on initial open"
+        );
+        let has_helper = ak.nodes.iter().any(|(_, n)| {
+            [n.label(), n.value()]
+                .into_iter()
+                .flatten()
+                .any(|s| s.contains("Drag canvas or use WASD to orbit"))
+        });
+        assert!(
+            has_helper,
+            "3D tool '{id}' must expose shared 3D control helper caption"
+        );
+    }
+}

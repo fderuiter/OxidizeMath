@@ -11,6 +11,12 @@ const fn default_zoom() -> f32 {
     1.0_f32
 }
 
+/// Minimum shared zoom scale across all 3D camera controls and gestures.
+pub const CAMERA_3D_ZOOM_MIN: f32 = 0.01_f32;
+
+/// Maximum shared zoom scale across all 3D camera controls and gestures.
+pub const CAMERA_3D_ZOOM_MAX: f32 = 100.0_f32;
+
 /// Canonical canvas helper text displayed below interactive 3D viewports.
 pub const CAMERA_3D_HELPER_TEXT: &str =
     "Drag canvas or use WASD to orbit, scroll or Q/E to zoom, double-click or press R to reset view.";
@@ -63,7 +69,7 @@ impl Camera3D {
         self.pitch.is_finite()
             && self.yaw.is_finite()
             && self.zoom.is_finite()
-            && (0.01_f32..=100.0_f32).contains(&self.zoom)
+            && (CAMERA_3D_ZOOM_MIN..=CAMERA_3D_ZOOM_MAX).contains(&self.zoom)
     }
 
     /// Applies orientation and zoom from `pose` while preserving this tool's default reset pose.
@@ -148,6 +154,7 @@ impl Camera3D {
         ui: &egui::Ui,
         plot_id: Option<egui::Id>,
     ) {
+        let prev = *self;
         let gizmo_handled = self.draw_gizmo_overlay(response, ui);
         let is_dragging_callout = ui.ctx().data(|d| {
             let by_resp = d
@@ -159,63 +166,114 @@ impl Camera3D {
             });
             by_resp || by_plot
         });
+        let multi_touch = ui.input(|i| i.multi_touch());
+
+        if !gizmo_handled && !is_dragging_callout {
+            self.apply_canvas_pointer(response, ui, multi_touch);
+        }
+
+        self.apply_pointer_zoom(response, ui, multi_touch.is_some());
+        self.register_camera_commands(ui);
+        if response.has_focus() {
+            self.handle_keyboard_interaction(ui);
+        }
+        if *self != prev {
+            ui.ctx().request_repaint();
+        }
+    }
+
+    fn apply_canvas_pointer(
+        &mut self,
+        response: &egui::Response,
+        ui: &egui::Ui,
+        multi_touch: Option<egui::MultiTouchInfo>,
+    ) {
         let press_inside_gizmo = ui.input(|i| {
             i.pointer
                 .press_origin()
                 .is_some_and(|pos| self.is_inside_gizmo(pos, response.rect))
         });
-        let multi_touch = ui.input(|i| i.multi_touch());
-
-        if !gizmo_handled && !is_dragging_callout {
-            if !press_inside_gizmo
-                && (response.clicked() || response.dragged_by(egui::PointerButton::Primary))
-            {
-                response.request_focus();
-            }
-            if !press_inside_gizmo && response.double_clicked() {
-                self.reset();
-            } else if let Some(touch) = multi_touch {
-                if touch.zoom_delta != 1.0_f32 {
-                    let zoom_factor = 1.0_f32 + (touch.zoom_delta - 1.0_f32) * 0.5_f32;
-                    self.zoom = (self.zoom * zoom_factor).clamp(0.01_f32, 100.0_f32);
-                }
-                if touch.translation_delta != egui::Vec2::ZERO {
-                    self.yaw -= touch.translation_delta.x * 0.01_f32;
-                    self.pitch -= touch.translation_delta.y * 0.01_f32;
-                }
-            } else if !press_inside_gizmo && response.dragged_by(egui::PointerButton::Primary) {
-                let delta = response.drag_delta();
-                self.yaw -= delta.x * 0.01_f32;
-                self.pitch -= delta.y * 0.01_f32;
-            }
+        if !press_inside_gizmo
+            && (response.clicked() || response.dragged_by(egui::PointerButton::Primary))
+        {
+            response.request_focus();
         }
-
-        let scroll = ui.input(|i| i.raw_scroll_delta.y);
-        if scroll != 0.0_f32 && response.hovered() && multi_touch.is_none() {
-            let factor = (1.0_f32 + scroll * 0.001_f32).max(0.1_f32);
-            self.zoom = (self.zoom * factor).clamp(0.01_f32, 100.0_f32);
-        }
-
-        self.register_camera_commands(ui);
-        if response.has_focus() {
-            self.handle_keyboard_interaction(ui);
+        if !press_inside_gizmo && response.double_clicked() {
+            self.reset();
+        } else if let Some(touch) = multi_touch {
+            if touch.zoom_delta != 1.0_f32 {
+                let zoom_factor = 1.0_f32 + (touch.zoom_delta - 1.0_f32) * 0.5_f32;
+                self.zoom = (self.zoom * zoom_factor).clamp(CAMERA_3D_ZOOM_MIN, CAMERA_3D_ZOOM_MAX);
+            }
+            if touch.translation_delta != egui::Vec2::ZERO {
+                self.yaw -= touch.translation_delta.x * 0.01_f32;
+                self.pitch -= touch.translation_delta.y * 0.01_f32;
+            }
+        } else if !press_inside_gizmo && response.dragged_by(egui::PointerButton::Primary) {
+            let delta = response.drag_delta();
+            self.yaw -= delta.x * 0.01_f32;
+            self.pitch -= delta.y * 0.01_f32;
         }
     }
 
-    pub(super) fn project_unit(&self, point: &[f64; 3]) -> (f32, f32, f32) {
-        let cy = (self.yaw as f64).cos();
-        let sy = (self.yaw as f64).sin();
-        let cp = (self.pitch as f64).cos();
-        let sp = (self.pitch as f64).sin();
+    fn apply_pointer_zoom(&mut self, response: &egui::Response, ui: &egui::Ui, has_touch: bool) {
+        if !response.hovered() || has_touch {
+            return;
+        }
+        let pinch_zoom = ui.input(|i| i.zoom_delta());
+        if (pinch_zoom - 1.0_f32).abs() > f32::EPSILON {
+            self.zoom = (self.zoom * pinch_zoom).clamp(CAMERA_3D_ZOOM_MIN, CAMERA_3D_ZOOM_MAX);
+            return;
+        }
+        let scroll = ui.input(|i| i.raw_scroll_delta.y);
+        if scroll != 0.0_f32 {
+            let factor = (1.0_f32 + scroll * 0.001_f32).max(0.1_f32);
+            self.zoom = (self.zoom * factor).clamp(CAMERA_3D_ZOOM_MIN, CAMERA_3D_ZOOM_MAX);
+        }
+    }
+
+    /// Rotates a 3D world point `[x, y, z]` into viewer-aligned `[right, up, viewer_z]` space.
+    pub fn rotate_to_camera_space(&self, point: &[f64; 3]) -> [f64; 3] {
+        let (sy, cy) = (self.yaw as f64).sin_cos();
+        let (sp, cp) = (self.pitch as f64).sin_cos();
 
         let x1 = point[0] * cy - point[1] * sy;
         let y1 = point[0] * sy + point[1] * cy;
         let z1 = point[2];
 
-        let x2 = x1;
         let y2 = y1 * cp - z1 * sp;
         let z2 = y1 * sp + z1 * cp;
 
+        [x1, y2, z2]
+    }
+
+    /// Builds a 4x4 pinhole world-to-camera matrix (`[right, up, depth]` with `depth = camera_distance - viewer_z`).
+    pub fn view_matrix(&self, camera_distance: f64) -> nalgebra::Matrix4<f64> {
+        let c0 = self.rotate_to_camera_space(&[1.0, 0.0, 0.0]);
+        let c1 = self.rotate_to_camera_space(&[0.0, 1.0, 0.0]);
+        let c2 = self.rotate_to_camera_space(&[0.0, 0.0, 1.0]);
+        nalgebra::Matrix4::new(
+            c0[0],
+            c1[0],
+            c2[0],
+            0.0,
+            c0[1],
+            c1[1],
+            c2[1],
+            0.0,
+            -c0[2],
+            -c1[2],
+            -c2[2],
+            camera_distance,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        )
+    }
+
+    pub(super) fn project_unit(&self, point: &[f64; 3]) -> (f32, f32, f32) {
+        let [x2, y2, z2] = self.rotate_to_camera_space(point);
         (x2 as f32, y2 as f32, z2 as f32)
     }
 
@@ -255,7 +313,7 @@ impl Camera3D {
 
         self.yaw -= yaw_delta;
         self.pitch -= pitch_delta;
-        self.zoom = (self.zoom * zoom_factor).clamp(0.01_f32, 100.0_f32);
+        self.zoom = (self.zoom * zoom_factor).clamp(CAMERA_3D_ZOOM_MIN, CAMERA_3D_ZOOM_MAX);
     }
 
     fn register_camera_commands(&self, ui: &egui::Ui) {
@@ -288,33 +346,31 @@ impl Camera3D {
 
     #[allow(missing_docs)]
     pub fn project(&self, point: &[f64; 3]) -> [f64; 2] {
-        let cy = (self.yaw as f64).cos();
-        let sy = (self.yaw as f64).sin();
-        let cp = (self.pitch as f64).cos();
-        let sp = (self.pitch as f64).sin();
-
-        let x1 = point[0] * cy - point[1] * sy;
-        let y1 = point[0] * sy + point[1] * cy;
-        let z1 = point[2];
-
-        let x2 = x1;
-        let y2 = y1 * cp - z1 * sp;
-
-        [x2 * (self.zoom as f64), y2 * (self.zoom as f64)]
+        let [x2, y2, _] = self.rotate_to_camera_space(point);
+        let z = self.zoom as f64;
+        [x2 * z, y2 * z]
     }
 
     #[allow(missing_docs)]
     pub fn ui(&mut self, ui: &mut egui::Ui) {
+        let prev = *self;
         ui.label("Yaw");
         ui.drag_angle(&mut self.yaw);
 
         ui.label("Pitch");
         ui.drag_angle(&mut self.pitch);
 
-        ui.add(egui::Slider::new(&mut self.zoom, 0.1..=5.0).text("Zoom"));
+        ui.add(
+            egui::Slider::new(&mut self.zoom, CAMERA_3D_ZOOM_MIN..=CAMERA_3D_ZOOM_MAX)
+                .logarithmic(true)
+                .text("Zoom"),
+        );
 
         if ui.button("↻ Reset View").clicked() {
             self.reset();
+        }
+        if *self != prev {
+            ui.ctx().request_repaint();
         }
     }
 }
@@ -380,6 +436,8 @@ impl<'a> Plot3DViewport<'a> {
             .default_x_bounds(-x_half, x_half)
             .default_y_bounds(-y_half, y_half)
             .show(ui, |plot_ui| {
+                plot_ui.set_plot_bounds_x(-x_half..=x_half);
+                plot_ui.set_plot_bounds_y(-y_half..=y_half);
                 captured_plot_id = Some(plot_ui.plot_id());
                 build_fn(plot_ui)
             });

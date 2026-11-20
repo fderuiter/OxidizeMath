@@ -122,7 +122,7 @@ impl Camera3D {
         center: egui::Pos2,
         axis_length: f32,
         knob_radius: f32,
-        mut handles: Vec<GizmoHandle>,
+        mut handles: [GizmoHandle; 4],
         hovered_axis: Option<GizmoAxis>,
     ) {
         let painter = ui.painter();
@@ -204,14 +204,7 @@ impl Camera3D {
         });
 
         let handled_click = self.check_gizmo_click(&handles, pointer_pos, is_clicked, knob_radius);
-        self.render_gizmo_painter(
-            ui,
-            center,
-            axis_length,
-            knob_radius,
-            handles.to_vec(),
-            hovered_axis,
-        );
+        self.render_gizmo_painter(ui, center, axis_length, knob_radius, handles, hovered_axis);
 
         handled_click
     }
