@@ -1,4 +1,4 @@
-pub use oxidize_core::mesh::{Mesh, Point3D, Triangle};
+pub use oxidize_core::mesh::{Mesh, Point3D};
 
 /// A 3D grid of scalar values, used as input for isosurface extraction.
 ///

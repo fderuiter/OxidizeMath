@@ -1,11 +1,9 @@
 // External WebAssembly bootstrap module for Math Explorer GUI under strict CSP ('self').
-// Delays ES module and WebAssembly requests while cross-origin isolation service worker
-// registration is pending, streams download progress via initializer.js once ready, and
-// transitions cleanly to the recovery boundary if initialization fails.
+// Streams WebAssembly download progress via initializer.js and transitions cleanly to
+// the recovery boundary if initialization fails.
 import createInitializer from './initializer.js';
 
 const WASM_SOURCE_SIZE = 0;
-const ISOLATION_TIMEOUT_MS = 5000;
 const MODULE_PATH = './math_explorer_gui.js';
 const WASM_PATH = './math_explorer_gui_bg.wasm';
 
@@ -26,22 +24,14 @@ function formatError(err) {
     }
 }
 
-function buildDiagnosticDetails(err, isolationDecision) {
-    const detailsLines = [];
-    if (!window.crossOriginIsolated) {
-        if (isolationDecision && isolationDecision.reason) {
-            detailsLines.push('Isolation status: ' + isolationDecision.reason);
-        } else {
-            detailsLines.push('Isolation status: window.crossOriginIsolated is false.');
-        }
+function buildDiagnosticDetails(err) {
+    if (!err) {
+        return '';
     }
-    if (err) {
-        detailsLines.push('Initialization error: ' + formatError(err));
-    }
-    return detailsLines.join('\n');
+    return 'Initialization error: ' + formatError(err);
 }
 
-function showBootstrapRecovery(err, isolationDecision) {
+function showBootstrapRecovery(err) {
     const applyDomErrorState = () => {
         const loading = document.getElementById('loading_indicator');
         if (loading) {
@@ -54,31 +44,24 @@ function showBootstrapRecovery(err, isolationDecision) {
             canvas.setAttribute('style', 'display: none;');
         }
 
-        const isolationUnavailable = !window.crossOriginIsolated;
         const errorContainer = document.getElementById('error_container');
         if (errorContainer) {
-            errorContainer.setAttribute(
-                'data-error-category',
-                isolationUnavailable ? 'isolation' : 'compile',
-            );
+            errorContainer.setAttribute('data-error-category', 'compile');
             errorContainer.setAttribute('style', 'display: flex;');
         }
 
         const titleEl = document.getElementById('error_title');
         if (titleEl) {
-            titleEl.textContent = isolationUnavailable
-                ? 'Cross-Origin Isolation & WebAssembly Initialization Failed'
-                : 'WebAssembly Initialization Failed';
+            titleEl.textContent = 'WebAssembly Initialization Failed';
         }
 
         const messageEl = document.getElementById('error_message');
         if (messageEl) {
-            messageEl.textContent = isolationUnavailable
-                ? 'Math Explorer could not initialize its WebAssembly engine because cross-origin isolation (Service Workers or SharedArrayBuffer) is unavailable or blocked in this browser environment.'
-                : 'Math Explorer could not load or instantiate its WebAssembly engine. Please verify your network connection and browser WebAssembly settings, then reload the page.';
+            messageEl.textContent =
+                'Math Explorer could not load or instantiate its WebAssembly engine. Please verify your network connection and browser WebAssembly settings, then reload the page.';
         }
 
-        const detailText = buildDiagnosticDetails(err, isolationDecision);
+        const detailText = buildDiagnosticDetails(err);
         const detailsEl = document.getElementById('error_details');
         if (detailsEl && detailText) {
             detailsEl.textContent = detailText;
@@ -95,57 +78,6 @@ function showBootstrapRecovery(err, isolationDecision) {
         document.addEventListener('DOMContentLoaded', applyDomErrorState, { once: true });
     } else {
         applyDomErrorState();
-    }
-}
-
-async function resolveIsolationGate() {
-    if (window.crossOriginIsolated) {
-        return { status: 'isolated', reason: null };
-    }
-
-    const controller = window.__mathExplorerIsolation;
-    if (!controller) {
-        return {
-            status: 'unavailable',
-            reason: 'Cross-origin isolation service worker controller did not initialize.',
-        };
-    }
-
-    if (controller.status === 'reloading') {
-        return { status: 'reloading', reason: controller.reason };
-    }
-
-    if (controller.status === 'isolated' || controller.status === 'unavailable') {
-        return { status: controller.status, reason: controller.reason };
-    }
-
-    if (window.__mathExplorerBoot && typeof window.__mathExplorerBoot.recordProgress === 'function') {
-        window.__mathExplorerBoot.recordProgress('Activating cross-origin isolation service worker');
-    }
-
-    let timeoutId = null;
-    const timeoutPromise = new Promise((resolve) => {
-        timeoutId = window.setTimeout(() => {
-            resolve({
-                status: 'unavailable',
-                reason: 'Timed out waiting for cross-origin isolation service worker activation.',
-            });
-        }, ISOLATION_TIMEOUT_MS);
-    });
-
-    try {
-        const decision = await Promise.race([
-            controller.waitForDecision(),
-            timeoutPromise,
-        ]);
-        if (controller.status === 'reloading') {
-            return { status: 'reloading', reason: controller.reason };
-        }
-        return decision;
-    } finally {
-        if (timeoutId !== null) {
-            window.clearTimeout(timeoutId);
-        }
     }
 }
 
@@ -207,20 +139,6 @@ async function fetchWasmWithProgress(source, hooks) {
 }
 
 async function bootstrap() {
-    const decision = await resolveIsolationGate();
-
-    // When a service worker activation reload is scheduled, exit cleanly
-    // so zero module or WebAssembly transfers start or abort during reload.
-    if (
-        decision.status === 'reloading' ||
-        (window.__mathExplorerIsolation && window.__mathExplorerIsolation.status === 'reloading')
-    ) {
-        if (window.__mathExplorerBoot && typeof window.__mathExplorerBoot.clearWatchdog === 'function') {
-            window.__mathExplorerBoot.clearWatchdog();
-        }
-        return;
-    }
-
     const hooks = typeof createInitializer === 'function' ? createInitializer() : null;
     hooks?.onStart?.();
 
@@ -247,17 +165,15 @@ async function bootstrap() {
         const boot = window.__mathExplorerBoot;
         if (boot && typeof boot.showError === 'function' && typeof boot.classifyError === 'function') {
             const category = boot.classifyError(error, WASM_PATH);
-            if (!window.crossOriginIsolated && category !== 'network' && category !== 'timeout') {
-                boot.showError('isolation', buildDiagnosticDetails(error, decision));
-            } else if (hooks && typeof hooks.onFailure === 'function') {
+            if (hooks && typeof hooks.onFailure === 'function') {
                 hooks.onFailure(error);
             } else if (typeof boot.handleFailure === 'function') {
                 boot.handleFailure(error, WASM_PATH);
             } else {
-                boot.showError(category, buildDiagnosticDetails(error, decision));
+                boot.showError(category, buildDiagnosticDetails(error));
             }
         } else {
-            showBootstrapRecovery(error, decision);
+            showBootstrapRecovery(error);
         }
     }
 }

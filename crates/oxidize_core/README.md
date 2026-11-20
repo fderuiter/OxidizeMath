@@ -1,6 +1,6 @@
 # Oxidize Core
 
-Foundational simulation traits, deterministic random generation, virtual filesystems, and spatial grids.
+Foundational simulation traits, deterministic random generation, virtual filesystems, and indexed 3D meshes.
 
 ## 1. Overview & Architecture
 
@@ -14,23 +14,23 @@ By decoupling simulation state contracts from concrete numerical algorithms and 
   - `ModelConfig`: Serializable configuration contract for simulation parameters.
   - `ModelState`: Cloneable state representation supporting checkpoints and history buffers.
   - `SimulationModel`: Lifecycle interface defining `initialize`, `step`, and `get_state`.
-- **`grid`**: Generic 2D spatial grid container (`Grid2D`) supporting coordinate flattening, row/column slicing, and element mutation.
 - **`rng`**: Deterministic pseudo-random number generator (`OxidizeRng`) based on ChaCha8, enforcing workspace reproducible simulation policies.
-- **`double_buffer`**: Ping-pong buffer abstractions (`DoubleBuffer`, `DoubleBufferedState`) to prevent race conditions during state stepping.
-- **`boundary`**: Invariant boundary condition representations (Periodic, Dirichlet, Neumann).
+- **`mesh`**: Indexed 3D geometry primitives (`Point3D`, `Mesh`) and Wavefront OBJ serialization (`export_mesh_to_obj_string`).
+- **`boundary`**: Coordinate boundary condition traits and clamping resolvers (`BoundaryCondition`, `NeumannBoundary`).
+- **`iteration`**: Interior and boundary coordinate traversal helpers (`IterationPattern`).
 - **`vfs`**: Virtual file system layer abstracting asset access across native and web environments.
-- **`workspace`**: Cargo workspace inspection and manifest parsing utilities.
+- **`workspace`**: Cargo workspace inspection, path normalization, and manifest parsing utilities.
 
 ---
 
 ## 2. Developer Instructions
 
-### Working with Spatial Grids and Deterministic RNG
+### Working with Indexed Meshes and Deterministic RNG
 
-Initialize reproducible spatial simulation environments using `Grid2D` and `OxidizeRng`:
+Initialize reproducible simulation seeds with `OxidizeRng` and construct indexed 3D surface geometry using `Mesh` and `Point3D`:
 
 ```rust
-use oxidize_core::grid::Grid2D;
+use oxidize_core::mesh::{Mesh, Point3D, export_mesh_to_obj_string};
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
 
@@ -39,15 +39,20 @@ let mut rng = OxidizeRng::new(42);
 let seed_val = rng.next_u64();
 assert!(seed_val > 0);
 
-// Allocate a 2D spatial simulation grid
-let mut grid = Grid2D::new(8, 8, 0.0);
-assert_eq!(grid.width, 8);
-assert_eq!(grid.height, 8);
+// Construct an indexed 3D triangle mesh
+let mesh = Mesh {
+    vertices: vec![
+        Point3D::new(0.0, 0.0, 0.0),
+        Point3D::new(1.0, 0.0, 0.0),
+        Point3D::new(0.0, 1.0, 0.0),
+    ],
+    normals: vec![Point3D::new(0.0, 0.0, 1.0); 3],
+    indices: vec![0, 1, 2],
+};
 
-// Access and update grid cells via (row, col) coordinates
-grid[(2, 3)] = 100.0;
-assert_eq!(grid[(2, 3)], 100.0);
-assert_eq!(grid[(0, 0)], 0.0);
+// Export the indexed mesh buffer to Wavefront OBJ format
+let obj = export_mesh_to_obj_string(&mesh).unwrap();
+assert!(obj.contains("f 1//1 2//2 3//3"));
 ```
 
 ---

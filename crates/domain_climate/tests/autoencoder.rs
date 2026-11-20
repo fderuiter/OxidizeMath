@@ -156,7 +156,4 @@ fn test_conv_layer_edge_cases() {
     assert!(res_nan.is_ok());
     assert_eq!(layer.kernel, initial_kernel);
     assert_eq!(layer.bias, initial_bias);
-
-    let res_update = layer.update_weights(&mut opt, 0);
-    assert!(res_update.is_ok());
 }

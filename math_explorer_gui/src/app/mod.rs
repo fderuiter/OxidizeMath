@@ -4,7 +4,6 @@ mod macos_menu;
 pub mod palette;
 mod pane_slots;
 mod session;
-mod split_view;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
@@ -23,6 +22,8 @@ mod tests_multi_pane;
 #[cfg(test)]
 mod tests_multi_pane_a11y;
 #[cfg(test)]
+mod tests_multi_pane_plot_live;
+#[cfg(test)]
 mod tests_pane_isolation;
 #[cfg(test)]
 mod tests_secondary_menus;
@@ -39,8 +40,7 @@ mod tests_tab_cache_perf;
 pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
-pub use split_view::{SplitLayoutMode, SplitViewState};
-pub use state::AppState;
+pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
     contrast_ratio, contrasting_text_color, relative_luminance, SemanticPalette, ThemeMode,
@@ -60,7 +60,6 @@ pub struct MathExplorerApp {
     pub split_layout_mode: SplitLayoutMode,
     pub secondary_tab: usize,
     pub split_ratio: f32,
-    split_view_state: SplitViewState,
     diagnostic_events: Vec<TelemetryEvent>,
     pub show_diagnostics_panel: bool,
     pub(super) show_info: bool,
@@ -68,6 +67,7 @@ pub struct MathExplorerApp {
     pub(super) show_errors: bool,
     pub(super) show_help_menu: bool,
     pub theme: ThemeMode,
+    pub(super) last_synced_theme: Option<ThemeMode>,
     pub command_palette: CommandPalette,
     pub session_manager: WorkspaceSessionManager,
     pub viewport_layout: ViewportLayout,
@@ -92,7 +92,6 @@ impl Default for MathExplorerApp {
             split_layout_mode: SplitLayoutMode::Single,
             secondary_tab: 1,
             split_ratio: 0.5,
-            split_view_state: SplitViewState::new(),
             diagnostic_events: Vec::new(),
             show_diagnostics_panel: false,
             show_info: true,
@@ -100,6 +99,7 @@ impl Default for MathExplorerApp {
             show_errors: true,
             show_help_menu: false,
             theme: ThemeMode::Dark,
+            last_synced_theme: Some(ThemeMode::Dark),
             command_palette: CommandPalette::default(),
             session_manager: WorkspaceSessionManager::new(),
             viewport_layout: ViewportLayout::Single,
@@ -128,12 +128,7 @@ impl MathExplorerApp {
 
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
-
-        if let Some(storage) = cc.storage {
-            if let Some(state_str) = storage.get_string(eframe::APP_KEY) {
-                app.load_state_from_json(&state_str);
-            }
-        }
+        theme::init_startup_theme(&mut app, cc);
 
         #[cfg(target_os = "macos")]
         macos_menu::setup_macos_menu(&app);
@@ -257,45 +252,17 @@ impl eframe::App for MathExplorerApp {
             );
         });
 
-        if ctx.style().visuals != self.theme.visuals() {
-            ctx.set_visuals(self.theme.visuals());
-        }
+        theme::sync_frame_theme(self, ctx, frame);
 
         crate::accessibility::ensure_plot_live_bridge();
-
-        if let Some((msg, dispatched)) = ctx.data_mut(|d| {
-            let msg = d.get_temp::<String>(egui::Id::new("aria_live_message"));
-            let dispatched = d
-                .get_temp::<bool>(egui::Id::new("aria_live_dispatched"))
-                .unwrap_or(false);
-            d.remove::<String>(egui::Id::new("aria_live_message"));
-            d.remove::<bool>(egui::Id::new("aria_live_dispatched"));
-            msg.map(|m| (m, dispatched))
-        }) {
-            if !dispatched {
-                crate::accessibility::announce_status(&msg);
-            }
-        }
-
-        if let Some((msg, dispatched)) = ctx.data_mut(|d| {
-            let msg = d.get_temp::<String>(egui::Id::new("aria_live_assertive_message"));
-            let dispatched = d
-                .get_temp::<bool>(egui::Id::new("aria_live_assertive_dispatched"))
-                .unwrap_or(false);
-            d.remove::<String>(egui::Id::new("aria_live_assertive_message"));
-            d.remove::<bool>(egui::Id::new("aria_live_assertive_dispatched"));
-            msg.map(|m| (m, dispatched))
-        }) {
-            if !dispatched {
-                crate::accessibility::announce_status_with_priority(&msg, "assertive");
-            }
-        }
+        crate::accessibility::sync_context_live_messages(ctx, true);
 
         self.flush_stale_pane_focus(ctx);
         let mut session_mgr = std::mem::take(&mut self.session_manager);
         session_mgr.register_and_check_shortcuts(ctx, self);
         session_mgr.poll(self, ctx);
         self.session_manager = session_mgr;
+        theme::sync_frame_theme(self, ctx, frame);
 
         viewport::focus::register_and_handle_pane_focus_shortcuts(self, ctx);
 
@@ -463,9 +430,7 @@ impl eframe::App for MathExplorerApp {
         self.prune_inactive_pane_slots(active_layout.pane_count());
 
         if active_layout != ViewportLayout::Single {
-            let mut split_state = std::mem::take(&mut self.split_view_state);
-            split_state.render_split(self, ctx, frame);
-            self.split_view_state = split_state;
+            viewport::render_multi_pane_manager(self, ctx, frame);
         } else {
             viewport::render_single_pane_viewport(self, ctx, frame);
         }
@@ -474,11 +439,13 @@ impl eframe::App for MathExplorerApp {
 
         // Render Command Palette Overlay
         self.apply_command_palette_selection(ctx);
+        crate::accessibility::sync_context_live_messages(ctx, false);
 
         self.last_frame_had_input = state::has_frame_input(ctx);
         let mut session_manager = std::mem::take(&mut self.session_manager);
         session_manager.track_frame_changes(ctx, self);
         self.session_manager = session_manager;
+        theme::sync_frame_theme(self, ctx, frame);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

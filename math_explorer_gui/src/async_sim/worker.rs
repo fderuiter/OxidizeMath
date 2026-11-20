@@ -1,7 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{SimCommand, SimStateUpdate, SimWorkerState, SimulationRunner, WorkerStatusEvent};
-use std::sync::mpsc::{self, Receiver, SyncSender};
+use super::{SimCommand, SimStateSender, SimWorkerState, SimulationRunner, WorkerStatusEvent};
+use std::sync::mpsc::Receiver;
+use std::time::Duration;
 
 pub(super) enum FrameTickOutcome {
     ContinueRunning,
@@ -9,10 +10,7 @@ pub(super) enum FrameTickOutcome {
     Disconnected,
 }
 
-fn emit_worker_divergence<R: SimulationRunner + ?Sized>(
-    runner: &R,
-    state_tx: &SyncSender<SimStateUpdate>,
-) {
+fn emit_worker_divergence<R: SimulationRunner + ?Sized>(runner: &R, state_tx: &SimStateSender) {
     let report = runner.diagnostic_report().unwrap_or_else(|| {
         crate::framework::recovery::DiagnosticReport::new(
             0.0,
@@ -21,22 +19,22 @@ fn emit_worker_divergence<R: SimulationRunner + ?Sized>(
             "Non-finite floating-point state encountered",
         )
     });
-    let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Faulted(
-        report.message.clone(),
-    )));
-    let _ = state_tx.send(SimStateUpdate::Divergence(report));
+    let _ = state_tx.send_status(WorkerStatusEvent::Faulted(report.message.clone()));
+    let _ = state_tx.send_divergence(report);
     let snapshot = runner.get_snapshot();
-    let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
+    let _ = state_tx.send_snapshot(snapshot);
 }
 
 fn run_worker_step_batch<R: SimulationRunner + ?Sized>(
     runner: &mut R,
     step_count: usize,
     state: &mut SimWorkerState,
-    state_tx: &SyncSender<SimStateUpdate>,
+    state_tx: &SimStateSender,
 ) -> bool {
     *state = SimWorkerState::Stepping;
-    let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Stepping));
+    if state_tx.send_status(WorkerStatusEvent::Stepping).is_err() {
+        return false;
+    }
     for _ in 0..step_count {
         runner.step_once();
         if !runner.is_finite_state() {
@@ -46,12 +44,10 @@ fn run_worker_step_batch<R: SimulationRunner + ?Sized>(
         }
     }
     let snapshot = runner.get_snapshot();
-    if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
-        return false;
-    }
     *state = SimWorkerState::Ready;
-    let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
-    true
+    state_tx
+        .send_snapshot_and_status(snapshot, WorkerStatusEvent::Ready)
+        .is_ok()
 }
 
 fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
@@ -60,13 +56,12 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
     state: &mut SimWorkerState,
     steps_per_frame: &mut usize,
     emit_paused_snapshot: &mut bool,
-    state_tx: &SyncSender<SimStateUpdate>,
+    state_tx: &SimStateSender,
 ) -> bool {
     match cmd {
         SimCommand::Start => {
             *state = SimWorkerState::Running;
-            let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Running));
-            true
+            state_tx.send_status(WorkerStatusEvent::Running).is_ok()
         }
         SimCommand::Pause => {
             let was_running = *state == SimWorkerState::Running;
@@ -74,12 +69,12 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
             if was_running {
                 *emit_paused_snapshot = false;
                 let snapshot = runner.get_snapshot();
-                if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
-                    return false;
-                }
+                state_tx
+                    .send_snapshot_and_status(snapshot, WorkerStatusEvent::Ready)
+                    .is_ok()
+            } else {
+                state_tx.send_status(WorkerStatusEvent::Ready).is_ok()
             }
-            let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
-            true
         }
         SimCommand::Step(count) => {
             *emit_paused_snapshot = false;
@@ -90,9 +85,9 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
             *emit_paused_snapshot = false;
             runner.process_command(SimCommand::Reset);
             let snapshot = runner.get_snapshot();
-            let ok = state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_ok();
-            let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
-            ok
+            state_tx
+                .send_snapshot_and_status(snapshot, WorkerStatusEvent::Ready)
+                .is_ok()
         }
         SimCommand::SetSpeed(speed) => {
             *steps_per_frame = speed;
@@ -102,8 +97,7 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
         SimCommand::TrainEpisodes(_) => {
             *state = SimWorkerState::Running;
             runner.process_command(cmd);
-            let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Running));
-            true
+            state_tx.send_status(WorkerStatusEvent::Running).is_ok()
         }
         SimCommand::ApplyBrush { .. } | SimCommand::ClearObstacles | SimCommand::Custom(_) => {
             runner.process_command(cmd);
@@ -119,7 +113,7 @@ pub(super) fn drain_worker_commands<R: SimulationRunner + ?Sized>(
     runner: &mut R,
     state: &mut SimWorkerState,
     steps_per_frame: &mut usize,
-    state_tx: &SyncSender<SimStateUpdate>,
+    state_tx: &SimStateSender,
 ) -> bool {
     let mut cmd = first_cmd;
     let mut emit_paused_snapshot = false;
@@ -144,7 +138,9 @@ pub(super) fn drain_worker_commands<R: SimulationRunner + ?Sized>(
     }
     if emit_paused_snapshot && *state == SimWorkerState::Ready {
         let snapshot = runner.get_snapshot();
-        let _ = state_tx.try_send(SimStateUpdate::Snapshot(snapshot));
+        if state_tx.send_snapshot(snapshot).is_err() {
+            return false;
+        }
     }
     true
 }
@@ -152,10 +148,19 @@ pub(super) fn drain_worker_commands<R: SimulationRunner + ?Sized>(
 pub(super) fn advance_running_frame<R: SimulationRunner + ?Sized>(
     runner: &mut R,
     steps_per_frame: usize,
+    max_slice: Option<Duration>,
     state: &mut SimWorkerState,
-    state_tx: &SyncSender<SimStateUpdate>,
+    state_tx: &SimStateSender,
 ) -> FrameTickOutcome {
-    for _ in 0..steps_per_frame {
+    let slice_start = max_slice.map(|_| crate::web_io::PlatformInstant::now());
+    for idx in 0..steps_per_frame {
+        if idx > 0 {
+            if let (Some(budget), Some(start)) = (max_slice, slice_start) {
+                if start.elapsed() >= budget {
+                    break;
+                }
+            }
+        }
         runner.step();
         if !runner.is_finite_state() {
             *state = SimWorkerState::Faulted;
@@ -170,15 +175,14 @@ pub(super) fn advance_running_frame<R: SimulationRunner + ?Sized>(
     let snapshot = runner.get_snapshot();
     if is_done {
         *state = SimWorkerState::Ready;
-        if state_tx.send(SimStateUpdate::Snapshot(snapshot)).is_err() {
+        if state_tx
+            .send_snapshot_and_status(snapshot, WorkerStatusEvent::Ready)
+            .is_err()
+        {
             return FrameTickOutcome::Disconnected;
         }
-        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
         FrameTickOutcome::CompletedOrFaulted
-    } else if matches!(
-        state_tx.try_send(SimStateUpdate::Snapshot(snapshot)),
-        Err(mpsc::TrySendError::Disconnected(_))
-    ) {
+    } else if state_tx.send_snapshot(snapshot).is_err() {
         FrameTickOutcome::Disconnected
     } else {
         FrameTickOutcome::ContinueRunning
@@ -189,7 +193,7 @@ pub(super) fn advance_running_frame<R: SimulationRunner + ?Sized>(
 pub(super) fn spawn_native_worker<T: SimulationRunner>(
     mut runner: T,
     cmd_rx: Receiver<SimCommand>,
-    state_tx: SyncSender<SimStateUpdate>,
+    state_tx: SimStateSender,
 ) {
     std::thread::spawn(move || {
         let mut state = SimWorkerState::Ready;
@@ -219,9 +223,15 @@ pub(super) fn spawn_native_worker<T: SimulationRunner>(
             }
 
             if state.is_running() {
-                match advance_running_frame(&mut runner, steps_per_frame, &mut state, &state_tx) {
+                match advance_running_frame(
+                    &mut runner,
+                    steps_per_frame,
+                    None,
+                    &mut state,
+                    &state_tx,
+                ) {
                     FrameTickOutcome::ContinueRunning => {
-                        std::thread::sleep(std::time::Duration::from_millis(16));
+                        std::thread::sleep(Duration::from_millis(16));
                     }
                     FrameTickOutcome::CompletedOrFaulted => {}
                     FrameTickOutcome::Disconnected => break,

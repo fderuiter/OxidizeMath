@@ -176,16 +176,8 @@ impl LegendEntry {
     }
 
     fn ui(&self, ui: &mut Ui, text_style: &TextStyle) -> Response {
-        let Self {
-            id: _,
-            name,
-            color,
-            checked,
-            hovered: _,
-        } = self;
-
         let job = crate::latex::parse_latex_to_layout_job(
-            name,
+            &self.name,
             text_style.clone(),
             ui,
             ui.visuals().text_color(),
@@ -199,64 +191,68 @@ impl LegendEntry {
 
         let icon_size = galley.size().y;
         let icon_spacing = icon_size / 5.0;
-        let total_extra = vec2(icon_size + icon_spacing, 0.0);
-
-        let desired_size = total_extra + galley.size();
+        let desired_size = vec2(icon_size + icon_spacing, 0.0) + galley.size();
         let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
 
         response.widget_info(|| {
             WidgetInfo::selected(
                 WidgetType::Checkbox,
                 ui.is_enabled(),
-                *checked,
+                self.checked,
                 galley.text(),
             )
         });
 
         let visuals = ui.style().interact(&response);
         let label_on_the_left = ui.layout().horizontal_placement() == Align::RIGHT;
+        self.paint_icon(ui, rect, icon_size, label_on_the_left, visuals);
 
-        let icon_position_x = if label_on_the_left {
-            rect.right() - icon_size / 2.0
-        } else {
-            rect.left() + icon_size / 2.0
-        };
-        let icon_position = pos2(icon_position_x, rect.center().y);
-        let icon_rect = Rect::from_center_size(icon_position, vec2(icon_size, icon_size));
-
-        let painter = ui.painter();
-
-        // Gray background, for interaction effects, and to sow something if we're disabled:
-        painter.add(CircleShape {
-            center: icon_rect.center(),
-            radius: icon_size * 0.35,
-            fill: visuals.bg_fill,
-            stroke: visuals.bg_stroke,
-        });
-
-        if *checked {
-            let fill = if *color == Color32::TRANSPARENT {
-                ui.visuals().noninteractive().fg_stroke.color
-            } else {
-                *color
-            };
-            painter.add(Shape::circle_filled(
-                icon_rect.center(),
-                icon_size * 0.25,
-                fill,
-            ));
-        }
-
-        let text_position_x = if label_on_the_left {
+        let text_x = if label_on_the_left {
             rect.right() - icon_size - icon_spacing - galley.size().x
         } else {
             rect.left() + icon_size + icon_spacing
         };
+        let text_pos = pos2(text_x, rect.center().y - 0.5 * galley.size().y);
+        ui.painter().galley(text_pos, galley, visuals.text_color());
 
-        let text_position = pos2(text_position_x, rect.center().y - 0.5 * galley.size().y);
-        painter.galley(text_position, galley, visuals.text_color());
+        if response.has_focus() {
+            let ring = crate::a11y::focus_ring_stroke(ui.visuals(), ui.visuals().extreme_bg_color);
+            ui.painter()
+                .rect_stroke(rect.expand(1.5), 2.0, ring, egui::StrokeKind::Outside);
+        }
 
         response
+    }
+
+    fn paint_icon(
+        &self,
+        ui: &Ui,
+        rect: Rect,
+        icon_size: f32,
+        label_on_the_left: bool,
+        visuals: &egui::style::WidgetVisuals,
+    ) {
+        let icon_x = if label_on_the_left {
+            rect.right() - icon_size / 2.0
+        } else {
+            rect.left() + icon_size / 2.0
+        };
+        let center = pos2(icon_x, rect.center().y);
+        let painter = ui.painter();
+        painter.add(CircleShape {
+            center,
+            radius: icon_size * 0.35,
+            fill: visuals.bg_fill,
+            stroke: visuals.bg_stroke,
+        });
+        if self.checked {
+            let fill = if self.color == Color32::TRANSPARENT {
+                ui.visuals().noninteractive().fg_stroke.color
+            } else {
+                self.color
+            };
+            painter.add(Shape::circle_filled(center, icon_size * 0.25, fill));
+        }
     }
 }
 
@@ -365,10 +361,11 @@ impl Widget for &mut LegendWidget {
             Corner::RightTop | Corner::RightBottom => Align::RIGHT,
         };
         let layout = Layout::from_main_dir_and_cross_align(main_dir, cross_align);
-        let legend_pad = 4.0;
-        let legend_rect = rect.shrink(legend_pad);
-        let mut legend_ui =
-            ui.new_child(egui::UiBuilder::new().max_rect(legend_rect).layout(layout));
+        let mut legend_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(rect.shrink(4.0))
+                .layout(layout),
+        );
         legend_ui
             .scope(|ui| {
                 let background_frame = Frame {
@@ -382,61 +379,7 @@ impl Widget for &mut LegendWidget {
                 .multiply_with_opacity(config.background_alpha);
                 background_frame
                     .show(ui, |ui| {
-                        // always show on top of the legend - so we need to use a new scope
-                        if main_dir == Direction::TopDown
-                            && let Some(title) = &config.title
-                        {
-                            ui.heading(title);
-                        }
-                        let mut focus_on_item = None;
-
-                        let response_union = entries
-                            .iter_mut()
-                            .map(|entry| {
-                                let response = entry.ui(ui, &config.text_style);
-
-                                // Handle interactions. Alt-clicking must be deferred to end of loop
-                                // since it may affect all entries.
-                                handle_interaction_on_legend_item(&response, entry);
-                                if crate::commands::CommandRegistryData::register_and_check(
-                                    ui.ctx(),
-                                    "Isolate Plot",
-                                    "Alt-click to isolate a plot line",
-                                    crate::commands::CommandTrigger::AltClick,
-                                    true,
-                                    "Plot Legend",
-                                    Some(ui),
-                                    Some(&response),
-                                ) {
-                                    focus_on_item = Some(entry.id);
-                                }
-
-                                response
-                            })
-                            .reduce(|r1, r2| r1.union(r2))
-                            .expect("No entries in the legend");
-
-                        if main_dir == Direction::BottomUp
-                            && let Some(title) = &config.title
-                        {
-                            ui.heading(title);
-                        }
-
-                        if let Some(focus_on_item) = focus_on_item {
-                            handle_focus_on_legend_item(&focus_on_item, entries);
-                        }
-
-                        response_union.context_menu(|ui| {
-                            if ui.button("Import CSV").clicked() {
-                                crate::export::trigger_import_csv_for_plot(
-                                    ui.ctx(),
-                                    target_plot_id,
-                                );
-                                ui.close();
-                            }
-                        });
-
-                        response_union
+                        render_legend_frame_contents(ui, main_dir, config, entries, target_plot_id)
                     })
                     .inner
             })
@@ -444,21 +387,122 @@ impl Widget for &mut LegendWidget {
     }
 }
 
-/// Handle per-entry interactions.
-fn handle_interaction_on_legend_item(response: &Response, entry: &mut LegendEntry) {
-    entry.checked ^= response.clicked();
-    entry.hovered = response.hovered();
+fn render_legend_frame_contents(
+    ui: &mut Ui,
+    main_dir: Direction,
+    config: &Legend,
+    entries: &mut [LegendEntry],
+    target_plot_id: Id,
+) -> Response {
+    if main_dir == Direction::TopDown
+        && let Some(title) = &config.title
+    {
+        ui.heading(title);
+    }
+    let mut focus_on_item = None;
+    let response_union = entries
+        .iter_mut()
+        .map(|entry| {
+            let response = entry.ui(ui, &config.text_style);
+            let isolate_triggered = check_legend_isolate_trigger(ui, &response);
+            if isolate_triggered {
+                focus_on_item = Some(entry.id);
+            }
+            handle_interaction_on_legend_item(ui.ctx(), &response, entry, isolate_triggered);
+            response
+        })
+        .reduce(|r1, r2| r1.union(r2))
+        .expect("No entries in the legend");
+
+    if main_dir == Direction::BottomUp
+        && let Some(title) = &config.title
+    {
+        ui.heading(title);
+    }
+    if let Some(focus_on_item) = focus_on_item {
+        handle_focus_on_legend_item(ui.ctx(), &focus_on_item, entries);
+    }
+    response_union.context_menu(|ui| {
+        if ui.button("Import CSV").clicked() {
+            crate::export::trigger_import_csv_for_plot(ui.ctx(), target_plot_id);
+            ui.close();
+        }
+    });
+    response_union
 }
 
-/// Handle alt-click interaction (which may affect all entries).
-fn handle_focus_on_legend_item(clicked_entry: &Id, entries: &mut [LegendEntry]) {
-    // if all other items are already hidden, we show everything
+fn check_legend_isolate_trigger(ui: &Ui, response: &Response) -> bool {
+    let alt_enter_trigger =
+        crate::commands::CommandTrigger::Shortcut(egui::Modifiers::ALT, egui::Key::Enter);
+    crate::commands::CommandRegistryData::register(
+        ui.ctx(),
+        "Isolate Plot",
+        "Alt-click or Alt+Enter to isolate or restore plot series",
+        alt_enter_trigger.clone(),
+        false,
+        "Plot Legend",
+    );
+    let alt_enter = response.has_focus()
+        && crate::commands::CommandRegistryData::register_and_check(
+            ui.ctx(),
+            "Isolate Plot",
+            "Alt-click or Alt+Enter to isolate or restore plot series",
+            alt_enter_trigger,
+            false,
+            "Plot Legend",
+            Some(ui),
+            Some(response),
+        );
+    let alt_click = crate::commands::CommandRegistryData::register_and_check(
+        ui.ctx(),
+        "Isolate Plot",
+        "Alt-click or Alt+Enter to isolate or restore plot series",
+        crate::commands::CommandTrigger::AltClick,
+        true,
+        "Plot Legend",
+        Some(ui),
+        Some(response),
+    );
+    alt_enter || alt_click
+}
+
+/// Handle per-entry interactions (keyboard Space/Enter, primary click, and focus highlight).
+fn handle_interaction_on_legend_item(
+    ctx: &egui::Context,
+    response: &Response,
+    entry: &mut LegendEntry,
+    isolate_triggered: bool,
+) {
+    entry.hovered = response.hovered() || response.has_focus();
+    if !isolate_triggered && response.clicked() {
+        entry.checked = !entry.checked;
+        let state_word = if entry.checked { "shown" } else { "hidden" };
+        crate::emit_plot_live_message(ctx, format!("Series {} {state_word}", entry.name), false);
+    }
+}
+
+/// Handle alt-click or Alt+Enter isolation/restoration across all legend entries.
+fn handle_focus_on_legend_item(
+    ctx: &egui::Context,
+    clicked_entry: &Id,
+    entries: &mut [LegendEntry],
+) {
     let is_focus_item_only_visible = entries
         .iter()
         .all(|entry| !entry.checked || (clicked_entry == &entry.id));
 
-    // either show everything or show only the focus item
+    let mut isolated_name = String::new();
     for entry in entries.iter_mut() {
+        if clicked_entry == &entry.id {
+            isolated_name.clone_from(&entry.name);
+        }
         entry.checked = is_focus_item_only_visible || clicked_entry == &entry.id;
     }
+
+    let msg = if is_focus_item_only_visible {
+        "All series shown".to_owned()
+    } else {
+        format!("Isolated series {isolated_name}")
+    };
+    crate::emit_plot_live_message(ctx, msg, false);
 }

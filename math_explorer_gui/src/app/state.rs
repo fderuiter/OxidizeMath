@@ -1,6 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::split_view::SplitLayoutMode;
 use super::theme::ThemeMode;
 use super::viewport::ViewportLayout;
 use crate::tabs::ExplorerTab;
@@ -8,6 +7,30 @@ use eframe::egui;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+
+/// Layout mode for the main simulation viewport container.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SplitLayoutMode {
+    /// Single viewport rendering one active module.
+    #[default]
+    Single,
+    /// Dual viewport split horizontally (left and right panes).
+    Horizontal,
+    /// Dual viewport split vertically (top and bottom panes).
+    Vertical,
+}
+
+impl SplitLayoutMode {
+    /// Returns the human-readable display label for the layout mode.
+    #[cfg(test)]
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Single => "Single View",
+            Self::Horizontal => "Horizontal Split",
+            Self::Vertical => "Vertical Split",
+        }
+    }
+}
 
 fn default_secondary_tab() -> usize {
     1

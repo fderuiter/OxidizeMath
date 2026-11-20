@@ -18,6 +18,74 @@ impl ThemeMode {
         }
     }
 
+    /// Returns the `html[data-theme]` attribute value for this [`ThemeMode`].
+    #[inline]
+    #[must_use]
+    pub const fn data_theme(self) -> &'static str {
+        match self {
+            ThemeMode::Dark => "dark",
+            ThemeMode::Light => "light",
+            ThemeMode::HighContrast => "high-contrast",
+        }
+    }
+
+    /// Returns the CSS and `<meta name="color-scheme">` token (`"dark"` or `"light"`).
+    #[inline]
+    #[must_use]
+    pub const fn color_scheme(self) -> &'static str {
+        match self {
+            ThemeMode::Dark | ThemeMode::HighContrast => "dark",
+            ThemeMode::Light => "light",
+        }
+    }
+
+    /// Returns the `<meta name="theme-color">` hex token (`"#121214"`, `"#f8f8f8"`, or `"#000000"`).
+    #[inline]
+    #[must_use]
+    pub const fn theme_color_hex(self) -> &'static str {
+        match self {
+            ThemeMode::Dark => "#121214",
+            ThemeMode::Light => "#f8f8f8",
+            ThemeMode::HighContrast => "#000000",
+        }
+    }
+
+    /// Returns the underlying [`egui::Theme`] slot backing this [`ThemeMode`].
+    #[inline]
+    #[must_use]
+    pub const fn egui_theme(self) -> egui::Theme {
+        match self {
+            ThemeMode::Dark | ThemeMode::HighContrast => egui::Theme::Dark,
+            ThemeMode::Light => egui::Theme::Light,
+        }
+    }
+
+    /// Locks [`egui::Context::set_theme`] and applies [`Self::visuals`] so OS `system_theme`
+    /// events cannot overwrite active canvas visuals on Frame 1 or runtime switches.
+    pub fn apply_to_context(self, ctx: &egui::Context) {
+        let base_theme = self.egui_theme();
+        ctx.set_theme(base_theme);
+        ctx.set_visuals_of(base_theme, self.visuals());
+    }
+
+    /// Parses a serialized or DOM theme token into [`ThemeMode`].
+    #[must_use]
+    pub fn from_token(raw: &str) -> Option<Self> {
+        let trimmed = raw.trim();
+        if trimmed.eq_ignore_ascii_case("dark") {
+            Some(ThemeMode::Dark)
+        } else if trimmed.eq_ignore_ascii_case("light") {
+            Some(ThemeMode::Light)
+        } else if trimmed.eq_ignore_ascii_case("highcontrast")
+            || trimmed.eq_ignore_ascii_case("high-contrast")
+            || trimmed.eq_ignore_ascii_case("high_contrast")
+        {
+            Some(ThemeMode::HighContrast)
+        } else {
+            None
+        }
+    }
+
     /// Infers the active [`ThemeMode`] directly from [`egui::Visuals`].
     ///
     /// Sub-panes in multi-pane split view clone the root [`egui::Style`], so resolving
@@ -65,6 +133,190 @@ impl ThemeMode {
             }
         }
     }
+}
+
+/// Resolves cold-boot [`ThemeMode`] precedence from media flags and `egui` system theme.
+#[inline]
+#[must_use]
+pub const fn resolve_startup_theme(
+    forced_colors: bool,
+    prefers_more_contrast: bool,
+    prefers_light: bool,
+    system_theme: Option<egui::Theme>,
+) -> ThemeMode {
+    if forced_colors || prefers_more_contrast {
+        ThemeMode::HighContrast
+    } else if prefers_light || matches!(system_theme, Some(egui::Theme::Light)) {
+        ThemeMode::Light
+    } else {
+        ThemeMode::Dark
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+// theory_verification!
+fn media_query_matches(window: &web_sys::Window, query: &str) -> bool {
+    window
+        .match_media(query)
+        .ok()
+        .flatten()
+        .is_some_and(|mql| mql.matches())
+}
+
+#[cfg(target_arch = "wasm32")]
+// theory_verification!
+fn query_browser_media_flags() -> (bool, bool, bool) {
+    if let Some(window) = web_sys::window() {
+        (
+            media_query_matches(&window, "(forced-colors: active)"),
+            media_query_matches(&window, "(prefers-contrast: more)"),
+            media_query_matches(&window, "(prefers-color-scheme: light)"),
+        )
+    } else {
+        (false, false, false)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+const fn query_browser_media_flags() -> (bool, bool, bool) {
+    (false, false, false)
+}
+
+/// Detects the startup [`ThemeMode`] from browser media queries (`wasm32`) and `egui` system theme.
+#[must_use]
+pub fn detect_startup_theme(cc: &eframe::CreationContext<'_>) -> ThemeMode {
+    let (forced_colors, prefers_more_contrast, prefers_light) = query_browser_media_flags();
+    resolve_startup_theme(
+        forced_colors,
+        prefers_more_contrast,
+        prefers_light,
+        cc.egui_ctx.system_theme(),
+    )
+}
+
+/// Synchronizes `html[data-theme]`, `color-scheme`, and `<meta name="theme-color">` on `wasm32`.
+#[cfg(target_arch = "wasm32")]
+// theory_verification!
+pub fn sync_document_theme(theme: ThemeMode) {
+    use wasm_bindgen::JsCast;
+
+    let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+        return;
+    };
+    let data_theme = theme.data_theme();
+    let color_scheme = theme.color_scheme();
+    let theme_color = theme.theme_color_hex();
+
+    if let Some(root) = document.document_element() {
+        let _ = root.set_attribute("data-theme", data_theme);
+        if let Ok(html_root) = root.dyn_into::<web_sys::HtmlElement>() {
+            let _ = html_root.style().set_property("color-scheme", color_scheme);
+        }
+    }
+
+    if let Ok(Some(scheme_meta)) = document.query_selector("meta[name=\"color-scheme\"]") {
+        let _ = scheme_meta.set_attribute("content", color_scheme);
+    }
+
+    if let Ok(nodes) = document.query_selector_all("meta[name=\"theme-color\"]") {
+        let count = nodes.length();
+        if count > 0 {
+            for idx in 0..count {
+                if let Some(el) = nodes
+                    .item(idx)
+                    .and_then(|n| n.dyn_into::<web_sys::Element>().ok())
+                {
+                    let _ = el.set_attribute("content", theme_color);
+                }
+            }
+        } else if let (Ok(Some(head)), Ok(meta)) = (
+            document.query_selector("head"),
+            document.create_element("meta"),
+        ) {
+            let _ = meta.set_attribute("name", "theme-color");
+            let _ = meta.set_attribute("content", theme_color);
+            let _ = head.append_child(&meta);
+        }
+    }
+}
+
+/// Host no-op stub for [`sync_document_theme`] outside `wasm32`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn sync_document_theme(theme: ThemeMode) {
+    let _ = (
+        theme.data_theme(),
+        theme.color_scheme(),
+        theme.theme_color_hex(),
+    );
+}
+
+/// Extracts an explicit [`ThemeMode`] from valid raw `AppState` or versioned `WorkspaceEnvelope` JSON.
+pub(crate) fn extract_explicit_theme_from_json(json_str: &str) -> Option<ThemeMode> {
+    let cleaned = egui_plot::export::strip_utf8_bom(json_str);
+    let val: serde_json::Value = serde_json::from_str(cleaned).ok()?;
+    let theme_str = if val.get("schema_version").is_some() {
+        val.get("app_state")?.get("theme")?.as_str()?
+    } else {
+        val.get("theme")?.as_str()?
+    };
+    let explicit = ThemeMode::from_token(theme_str)?;
+    super::WorkspaceSessionManager::default()
+        .parse_envelope(cleaned)
+        .ok()
+        .map(|_| explicit)
+}
+
+/// Initializes startup theme from browser/OS detection, restores `eframe::APP_KEY`, and syncs DOM.
+pub(super) fn init_startup_theme(
+    app: &mut super::MathExplorerApp,
+    cc: &eframe::CreationContext<'_>,
+) {
+    let detected = detect_startup_theme(cc);
+    app.theme = detected;
+    if let Some(storage) = cc.storage {
+        if let Some(state_str) = storage.get_string(eframe::APP_KEY) {
+            let explicit_theme = extract_explicit_theme_from_json(&state_str);
+            app.load_state_from_json(&state_str);
+            if explicit_theme.is_none() {
+                app.theme = detected;
+            }
+        }
+    }
+    app.theme.apply_to_context(&cc.egui_ctx);
+    sync_document_theme(app.theme);
+    app.last_synced_theme = Some(app.theme);
+}
+
+/// Synchronizes `egui` visuals, DOM theme metadata, and immediate `eframe::Storage` persistence.
+pub(crate) fn sync_theme_with_storage(
+    app: &mut super::MathExplorerApp,
+    ctx: &egui::Context,
+    storage: Option<&mut (dyn eframe::Storage + '_)>,
+) {
+    let target_visuals = app.theme.visuals();
+    let target_egui_theme = app.theme.egui_theme();
+    if ctx.theme() != target_egui_theme || ctx.style().visuals != target_visuals {
+        app.theme.apply_to_context(ctx);
+    }
+    if app.last_synced_theme != Some(app.theme) {
+        sync_document_theme(app.theme);
+        app.last_synced_theme = Some(app.theme);
+        if let Some(storage) = storage {
+            use eframe::App as _;
+            app.save(storage);
+            storage.flush();
+        }
+        ctx.request_repaint();
+    }
+}
+
+/// Per-frame theme synchronization hook invoked by `<MathExplorerApp as eframe::App>::update`.
+pub(super) fn sync_frame_theme(
+    app: &mut super::MathExplorerApp,
+    ctx: &egui::Context,
+    frame: &mut eframe::Frame,
+) {
+    sync_theme_with_storage(app, ctx, frame.storage_mut());
 }
 
 impl std::fmt::Display for ThemeMode {
@@ -115,260 +367,117 @@ pub fn contrasting_text_color(bg: egui::Color32) -> egui::Color32 {
 }
 
 #[cfg(test)]
+#[path = "theme_palette_tests.rs"]
+mod palette_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::MathExplorerApp;
+    use eframe::{App, Storage};
+    use std::collections::HashMap;
 
-    const ALL_THEMES: [ThemeMode; 3] = [ThemeMode::Dark, ThemeMode::Light, ThemeMode::HighContrast];
+    #[derive(Default)]
+    pub(super) struct TestStorage {
+        entries: HashMap<String, String>,
+        pub(super) flushes: usize,
+    }
+
+    impl Storage for TestStorage {
+        fn get_string(&self, key: &str) -> Option<String> {
+            self.entries.get(key).cloned()
+        }
+        fn set_string(&mut self, key: &str, value: String) {
+            self.entries.insert(key.to_string(), value);
+        }
+        fn flush(&mut self) {
+            self.flushes += 1;
+        }
+    }
 
     #[test]
-    fn test_theme_mode_roundtrips_through_visuals() {
-        for mode in ALL_THEMES {
+    fn test_theme_mode_roundtrips_through_visuals_and_dom_tokens() {
+        let cases = [
+            (ThemeMode::Dark, "dark", "dark", "#121214"),
+            (ThemeMode::Light, "light", "light", "#f8f8f8"),
+            (ThemeMode::HighContrast, "high-contrast", "dark", "#000000"),
+        ];
+        for (mode, data_tok, scheme, hex) in cases {
             let visuals = mode.visuals();
             assert_eq!(ThemeMode::from_visuals(&visuals), mode);
             assert_eq!(SemanticPalette::from_visuals(&visuals), mode.palette());
+            assert_eq!(mode.data_theme(), data_tok);
+            assert_eq!(mode.color_scheme(), scheme);
+            assert_eq!(mode.theme_color_hex(), hex);
+            assert_eq!(ThemeMode::from_token(data_tok), Some(mode));
+            assert_eq!(ThemeMode::from_token(&format!("{mode:?}")), Some(mode));
+        }
+        assert_eq!(ThemeMode::from_token("unknown"), None);
+    }
+
+    #[test]
+    fn test_startup_media_query_precedence() {
+        use egui::Theme::{Dark, Light};
+        use ThemeMode::{Dark as TD, HighContrast as THC, Light as TL};
+        for (fc, mc, pl, sys, expected) in [
+            (true, false, true, Some(Light), THC),
+            (false, true, true, Some(Light), THC),
+            (false, false, true, None, TL),
+            (false, false, false, Some(Light), TL),
+            (false, false, false, Some(Dark), TD),
+            (false, false, false, None, TD),
+        ] {
+            assert_eq!(resolve_startup_theme(fc, mc, pl, sys), expected);
         }
     }
 
     #[test]
-    fn test_semantic_palette_text_tokens_meet_wcag_aa() {
-        for mode in ALL_THEMES {
-            let visuals = mode.visuals();
-            let p = mode.palette();
-            let bgs = [
-                ("panel_fill", visuals.panel_fill),
-                ("window_fill", visuals.window_fill),
-                ("extreme_bg_color", visuals.extreme_bg_color),
-            ];
-            let text_tokens = [
-                ("info", p.info),
-                ("success", p.success),
-                ("warning", p.warning),
-                ("error", p.error),
-                ("fatal", p.fatal),
-                ("muted_text", p.muted_text),
-            ];
-
-            for (token_name, fg) in text_tokens {
-                for (bg_name, bg) in bgs {
-                    let ratio = contrast_ratio(fg, bg);
-                    assert!(
-                        ratio >= 4.5,
-                        "{mode:?} text token '{token_name}' against {bg_name} achieved {ratio:.2}:1 (< 4.5:1)"
-                    );
-                }
-            }
-
-            for (token_name, fg) in [
-                ("error", p.error),
-                ("warning", p.warning),
-                ("muted_text", p.muted_text),
-            ] {
-                let ratio = contrast_ratio(fg, p.error_banner_bg);
-                assert!(
-                    ratio >= 4.5,
-                    "{mode:?} banner text '{token_name}' against error_banner_bg achieved {ratio:.2}:1 (< 4.5:1)"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_semantic_palette_series_axes_and_strokes_meet_wcag_contrast() {
-        for mode in ALL_THEMES {
-            let visuals = mode.visuals();
-            let p = mode.palette();
-            let bgs = [
-                ("panel_fill", visuals.panel_fill),
-                ("extreme_bg_color", visuals.extreme_bg_color),
-            ];
-            let graphical_tokens = [
-                ("axis_x", p.axis_x),
-                ("axis_y", p.axis_y),
-                ("axis_z", p.axis_z),
-                ("accent", p.accent),
-                ("graph_edge", p.graph_edge),
-                ("node_stroke", p.node_stroke),
-                ("error_banner_stroke", p.error_banner_stroke),
-                ("series[0]", p.series_color(0)),
-                ("series[1]", p.series_color(1)),
-                ("series[2]", p.series_color(2)),
-                ("series[3]", p.series_color(3)),
-                ("series[4]", p.series_color(4)),
-                ("series[5]", p.series_color(5)),
-            ];
-
-            for (token_name, fg) in graphical_tokens {
-                for (bg_name, bg) in bgs {
-                    let ratio = contrast_ratio(fg, bg);
-                    assert!(
-                        ratio >= 3.0,
-                        "{mode:?} graphical token '{token_name}' against {bg_name} achieved {ratio:.2}:1 (< 3.0:1)"
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn test_contrasting_text_color_guarantees_wcag_aa_across_luminance_spectrum() {
-        for step in 0..=255_u8 {
-            for sample in [
-                egui::Color32::from_gray(step),
-                egui::Color32::from_rgb(step, 0, 255 - step),
-                egui::Color32::from_rgb(0, step, step / 2),
-            ] {
-                let fg = contrasting_text_color(sample);
-                let ratio = contrast_ratio(sample, fg);
-                assert!(
-                    ratio >= 4.5,
-                    "contrasting_text_color({sample:?}) -> {fg:?} yielded {ratio:.2}:1 (< 4.5:1)"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_high_contrast_selection_contrast_ratio() {
-        let visuals = ThemeMode::HighContrast.visuals();
-        let selection_bg = visuals.selection.bg_fill;
-        assert_eq!(selection_bg, egui::Color32::from_rgb(0, 90, 158));
-
-        // WCAG 2.2 AA requires >= 4.5:1 for normal text and strokes against background
-        let active_fg = visuals.widgets.active.fg_stroke.color;
-        let active_contrast = contrast_ratio(selection_bg, active_fg);
-        assert!(
-            active_contrast >= 4.5,
-            "Selection fill contrast against active fg ({active_contrast:.2}:1) must exceed 4.5:1"
-        );
-
-        let noninteractive_fg = visuals.widgets.noninteractive.fg_stroke.color;
-        let noninteractive_contrast = contrast_ratio(selection_bg, noninteractive_fg);
-        assert!(
-            noninteractive_contrast >= 4.5,
-            "Selection fill contrast against noninteractive fg ({noninteractive_contrast:.2}:1) must exceed 4.5:1"
-        );
-
-        let inactive_fg = visuals.widgets.inactive.fg_stroke.color;
-        let inactive_contrast = contrast_ratio(selection_bg, inactive_fg);
-        assert!(
-            inactive_contrast >= 4.5,
-            "Selection fill contrast against inactive fg ({inactive_contrast:.2}:1) must exceed 4.5:1"
-        );
-    }
-
-    #[test]
-    fn test_legacy_yellow_selection_fails_contrast_ratio() {
-        let yellow = egui::Color32::YELLOW;
-        let white = egui::Color32::WHITE;
-        let ratio = contrast_ratio(yellow, white);
-        // Demonstrates why legacy yellow fill violated WCAG contrast
-        assert!(
-            ratio < 4.5,
-            "Legacy yellow on white ({ratio:.2}:1) should fail WCAG 4.5:1 requirement"
-        );
-    }
-
-    #[cfg(feature = "ai")]
-    #[test]
-    fn test_q_table_and_tokenization_cell_labels_meet_wcag_aa() {
-        use crate::framework::InteractiveTool;
-        for mode in ALL_THEMES {
-            let visuals = mode.visuals();
-            let palette = mode.palette();
-            for step in [0.0_f64, 0.25, 0.5, 0.75, 1.0] {
-                let bg = crate::tabs::ai::q_table_inspector::q_value_cell_color(step, &palette);
-                let fg = contrasting_text_color(bg);
-                let ratio = contrast_ratio(bg, fg);
-                assert!(
-                    ratio >= 4.5,
-                    "{mode:?} Q-table cell t={step} achieved {ratio:.2}:1 (< 4.5:1)"
-                );
-            }
-            for val in [-1.0_f64, -0.5, 0.0, 0.5, 1.0] {
-                let bg = crate::tabs::ai::tokenization::embedding_cell_color(val, &palette);
-                let fg = contrasting_text_color(bg);
-                let ratio = contrast_ratio(bg, fg);
-                assert!(
-                    ratio >= 4.5,
-                    "{mode:?} Tokenization cell val={val} achieved {ratio:.2}:1 (< 4.5:1)"
-                );
-            }
-
-            let ctx = egui::Context::default();
-            ctx.set_visuals(visuals);
-            let mut q_tool = crate::tabs::ai::q_table_inspector::QTableInspectorTool::default();
-            let mut tok_tool = crate::tabs::ai::tokenization::TokenizationTool::default();
-            let _ = ctx.run(egui::RawInput::default(), |ctx| {
-                q_tool.show(ctx);
-                tok_tool.show(ctx);
-            });
-        }
-    }
-
-    fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
+    fn test_immediate_storage_writes_on_switch_undo_redo_and_session_open() {
+        let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
+        let ctx = egui::Context::default();
+        let mut app = MathExplorerApp::default();
+        let mut frame = eframe::Frame::_new_kittest();
+        let mut storage = TestStorage::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| app.update(ctx, &mut frame));
+        let saved_theme = |s: &TestStorage| {
+            extract_explicit_theme_from_json(&s.get_string(eframe::APP_KEY).unwrap())
         };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                collect_rs_files(&path, out);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-                out.push(path);
-            }
-        }
-    }
 
-    #[test]
-    fn test_no_unguarded_hardcoded_color32_regressions() {
-        const BANNED: &[&str] = &[
-            "Color32::YELLOW",
-            "Color32::LIGHT_BLUE",
-            "Color32::LIGHT_GREEN",
-            "Color32::LIGHT_RED",
-            "Color32::LIGHT_GRAY",
-            "Color32::GOLD",
-            "Color32::GREEN",
-            "Color32::RED",
-            "Color32::BLUE",
-            "Color32::GRAY",
-            "Color32::DARK_GRAY",
-            "Color32::DARK_RED",
-            "Color32::KHAKI",
-            "Color32::BROWN",
-        ];
-        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let workspace_root = manifest_dir.parent().expect("workspace root");
-        let mut files = Vec::new();
-        collect_rs_files(&manifest_dir.join("src"), &mut files);
-        collect_rs_files(&workspace_root.join("egui_plot/src"), &mut files);
-
-        let mut violations = Vec::new();
-        for file in files {
-            let rel = file.strip_prefix(workspace_root).unwrap_or(&file);
-            let rel_str = rel.to_string_lossy().replace('\\', "/");
-            if rel_str.contains("test")
-                || rel_str.ends_with("app/palette.rs")
-                || rel_str.ends_with("app/theme.rs")
-                || rel_str.ends_with("tabs/number_theory/prime_spiral.rs")
-            {
-                continue;
-            }
-            let content = std::fs::read_to_string(&file).expect("read source file");
-            let prod_part = content.split("#[cfg(test)]").next().unwrap_or(&content);
-            for (line_idx, line) in prod_part.lines().enumerate() {
-                let code = line.split("//").next().unwrap_or(line);
-                for banned in BANNED {
-                    if code.contains(banned) {
-                        violations.push(format!("{rel_str}:{}: {banned}", line_idx + 1));
-                    }
-                }
-            }
-        }
-        assert!(
-            violations.is_empty(),
-            "Found unguarded hardcoded Color32 constants (use SemanticPalette instead):\n{}",
-            violations.join("\n")
+        app.theme = ThemeMode::Light;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            let mut mgr = std::mem::take(&mut app.session_manager);
+            mgr.track_frame_changes(ctx, &app);
+            app.session_manager = mgr;
+            sync_theme_with_storage(&mut app, ctx, Some(&mut storage));
+        });
+        assert_eq!(
+            (saved_theme(&storage), storage.flushes),
+            (Some(ThemeMode::Light), 1)
         );
+
+        app.undo();
+        sync_theme_with_storage(&mut app, &ctx, Some(&mut storage));
+        assert_eq!(saved_theme(&storage), Some(ThemeMode::Dark));
+
+        app.redo();
+        sync_theme_with_storage(&mut app, &ctx, Some(&mut storage));
+        assert_eq!(saved_theme(&storage), Some(ThemeMode::Light));
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.session_manager.open_rx = Some(rx);
+        app.session_manager.lifecycle_state = crate::app::SessionLifecycleState::AwaitingFileDialog;
+        let mut hc_state = app.get_app_state();
+        hc_state.theme = ThemeMode::HighContrast;
+        tx.send(Ok((
+            "hc.mws".into(),
+            app.session_manager.create_envelope(hc_state),
+        )))
+        .unwrap();
+        let mut mgr = std::mem::take(&mut app.session_manager);
+        mgr.poll(&mut app, &ctx);
+        app.session_manager = mgr;
+        sync_theme_with_storage(&mut app, &ctx, Some(&mut storage));
+        assert_eq!(saved_theme(&storage), Some(ThemeMode::HighContrast));
+        assert_eq!(ctx.style().visuals, ThemeMode::HighContrast.visuals());
     }
 }

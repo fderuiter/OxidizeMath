@@ -4,8 +4,8 @@
 use std::{ops::RangeInclusive, sync::Arc};
 
 use egui::{
-    Align2, Color32, CornerRadius, Id, ImageOptions, Mesh, NumExt as _, PopupAnchor, Pos2, Rect,
-    Rgba, Shape, Stroke, TextStyle, TextureId, Ui, Vec2, WidgetText,
+    Align2, Color32, CornerRadius, Id, ImageOptions, Mesh, NumExt as _, Pos2, Rect, Rgba, Shape,
+    Stroke, TextStyle, TextureId, Ui, Vec2, WidgetText,
     emath::Rot2,
     epaint::{CircleShape, PathStroke, TextShape},
     pos2, vec2,
@@ -1941,57 +1941,53 @@ pub(super) fn rulers_and_tooltip_at_value(
         cursors.push(Cursor::Horizontal { y: value.y });
     }
 
-    // We show the tooltip as soon as we're hovering the plot area:
-    let mut tooltip = egui::Tooltip::always_open(
-        plot_area_response.ctx.clone(),
-        plot_area_response.layer_id,
-        plot_area_response.id,
-        PopupAnchor::Pointer,
+    let raw_anchor = plot.transform.position_from_point(&value);
+    let anchor_pos = plot.transform.frame().clamp(raw_anchor);
+    let (title, body_lines) = format_value_tooltip_content(value, name, plot, label_formatter);
+    let announce =
+        !name.is_empty() && (plot_area_response.hovered() || plot_area_response.gained_focus());
+    crate::a11y::show_snapped_point_tooltip(
+        plot_area_response,
+        anchor_pos,
+        [value.x, value.y],
+        &title,
+        &body_lines,
+        announce,
     );
+}
 
-    let tooltip_width = plot_area_response.ctx.style().spacing.tooltip_width;
+fn format_value_tooltip_content(
+    value: PlotPoint,
+    name: &str,
+    plot: &PlotConfig<'_>,
+    label_formatter: &LabelFormatter<'_>,
+) -> (String, Vec<(String, bool)>) {
+    if let Some(custom_label) = label_formatter {
+        let formatted = custom_label(name, &value);
+        return (String::new(), vec![(formatted, false)]);
+    }
 
-    tooltip.popup = tooltip.popup.width(tooltip_width);
+    let scale = plot.transform.dvalue_dpos();
+    let log_axis = plot.transform.log_axis();
+    let x_decimals = if log_axis.x && value.x > 0.0 {
+        ((-value.x.log10()).ceil().at_least(0.0) as usize + 2).clamp(1, 6)
+    } else {
+        ((-scale[0].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6)
+    };
+    let y_decimals = if log_axis.y && value.y > 0.0 {
+        ((-value.y.log10()).ceil().at_least(0.0) as usize + 2).clamp(1, 6)
+    } else {
+        ((-scale[1].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6)
+    };
 
-    tooltip.gap(12.0).show(|ui| {
-        ui.set_max_width(tooltip_width);
-        if let Some(custom_label) = label_formatter {
-            ui.label(custom_label(name, &value));
-        } else {
-            if !name.is_empty() {
-                ui.label(egui::RichText::new(name).strong());
-                ui.add_space(2.0);
-            }
-            let scale = plot.transform.dvalue_dpos();
-            let log_axis = plot.transform.log_axis();
-            let x_decimals = if log_axis.x && value.x > 0.0 {
-                ((-value.x.log10()).ceil().at_least(0.0) as usize + 2).clamp(1, 6)
-            } else {
-                ((-scale[0].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6)
-            };
-            let y_decimals = if log_axis.y && value.y > 0.0 {
-                ((-value.y.log10()).ceil().at_least(0.0) as usize + 2).clamp(1, 6)
-            } else {
-                ((-scale[1].abs().log10()).ceil().at_least(0.0) as usize).clamp(1, 6)
-            };
-            if plot.show_x && plot.show_y {
-                ui.label(
-                    egui::RichText::new(format!("x = {:.*}", x_decimals, value.x)).monospace(),
-                );
-                ui.label(
-                    egui::RichText::new(format!("y = {:.*}", y_decimals, value.y)).monospace(),
-                );
-            } else if plot.show_x {
-                ui.label(
-                    egui::RichText::new(format!("x = {:.*}", x_decimals, value.x)).monospace(),
-                );
-            } else if plot.show_y {
-                ui.label(
-                    egui::RichText::new(format!("y = {:.*}", y_decimals, value.y)).monospace(),
-                );
-            }
-        }
-    });
+    let mut lines = Vec::with_capacity(2);
+    if plot.show_x {
+        lines.push((format!("x = {:.*}", x_decimals, value.x), true));
+    }
+    if plot.show_y {
+        lines.push((format!("y = {:.*}", y_decimals, value.y), true));
+    }
+    (name.to_owned(), lines)
 }
 
 fn find_closest_rect<'a, T>(
