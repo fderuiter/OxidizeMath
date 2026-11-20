@@ -256,6 +256,9 @@ fn build_invalid_share_url_cases() -> Vec<String> {
     let bad_morpho_b64 = encode_base64url(
         br#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"biology","timestamp":"0"},"config":{"a":0.1,"b":0.9,"d_u":1.0,"d_v":50.0,"dt":-0.5,"width":64,"height":64}}"#,
     );
+    let bad_fractal_b64 = encode_base64url(
+        br#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"chaos","timestamp":"0"},"config":{"center_re":0.0,"center_im":0.0,"zoom":-5.0,"max_iter":100,"mode":"Mandelbrot","julia_re":0.0,"julia_im":0.0}}"#,
+    );
     let traversal_trace_b64 = encode_base64url(
         br#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"traceability","timestamp":"0"},"config":{"repo_path":"../../etc/passwd"}}"#,
     );
@@ -265,6 +268,7 @@ fn build_invalid_share_url_cases() -> Vec<String> {
         format!("#tab=chaos&tool=AttractorPlotter&state={wrong_domain_b64}"),
         format!("#tab=chaos&tool=AttractorPlotter&state={wrong_schema_b64}"),
         format!("#tab=morphogenesis&state={bad_morpho_b64}"),
+        format!("#tab=chaos&tool=FractalViewer&state={bad_fractal_b64}"),
         format!("#tab=traceability&state={traversal_trace_b64}"),
         "#tab=nonexistent_domain".to_string(),
         "#tab=chaos&tool=NonExistentTool".to_string(),
