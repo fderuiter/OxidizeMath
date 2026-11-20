@@ -204,7 +204,14 @@ fn build_help_menu() -> Submenu {
     help_menu
 }
 
+fn can_init_nsapp_menu() -> bool {
+    !cfg!(test) && std::thread::current().name() == Some("main")
+}
+
 pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
+    if !can_init_nsapp_menu() {
+        return;
+    }
     let menu = Menu::new();
 
     // App Menu
@@ -443,5 +450,6 @@ mod tests {
             &ctx,
             "focus_pane_unknown"
         ));
+        setup_macos_menu(&app);
     }
 }

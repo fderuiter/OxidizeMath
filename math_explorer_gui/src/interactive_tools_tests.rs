@@ -334,17 +334,25 @@ mod tests {
             &mut crate::tabs::solid_state::crystal_viewer::CrystalViewer::default(),
             r#"{"system":"SimpleCubic","lattice_constant":3.5,"camera":{"pitch":0.25,"yaw":0.75,"zoom":1.2}}"#,
         );
-        let mut favoritism_tab = crate::tabs::favoritism::FavoritismTab::default();
-        crate::tabs::ExplorerTab::load_state(
-            &mut favoritism_tab,
-            r#"{"selected_child_index":1,"new_child_name":"Sibling"}"#,
-        );
-        let migrated_favoritism_json =
-            crate::tabs::ExplorerTab::save_state(&favoritism_tab).expect("favoritism save_state");
-        assert_tab_roundtrip(
-            &mut crate::tabs::favoritism::FavoritismTab::default(),
-            &migrated_favoritism_json,
-        );
+    }
+
+    #[test]
+    fn test_hoisted_explorer_tabs_state_roundtrip() {
+        let _guard = crate::reflective_ui::tests::lock_test_mutex();
+        #[cfg(feature = "applied")]
+        {
+            let mut favoritism_tab = crate::tabs::favoritism::FavoritismTab::default();
+            crate::tabs::ExplorerTab::load_state(
+                &mut favoritism_tab,
+                r#"{"selected_child_index":1,"new_child_name":"Sibling"}"#,
+            );
+            let migrated_favoritism_json = crate::tabs::ExplorerTab::save_state(&favoritism_tab)
+                .expect("favoritism save_state");
+            assert_tab_roundtrip(
+                &mut crate::tabs::favoritism::FavoritismTab::default(),
+                &migrated_favoritism_json,
+            );
+        }
         let valid_repo_dir = oxidize_core::path_utils::normalize_path(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .canonicalize()
