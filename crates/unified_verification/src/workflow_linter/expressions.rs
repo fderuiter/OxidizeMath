@@ -367,13 +367,14 @@ jobs:
         // Local reusable workflow with unsafe run script fails validate_action_pinning_in_dir directly
         fs::write(
             root.join(".github/workflows/reusable.yml"),
-            "on: workflow_call\njobs:\n  inner:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - run: echo \"${{ inputs.ref }}\"\n",
+            "permissions: read-all\nconcurrency: c\non: workflow_call\njobs:\n  inner:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - run: echo \"${{ inputs.ref }}\"\n",
         )
         .unwrap();
         let reuse_caller: Value =
             serde_saphyr::from_str("jobs:\n  call:\n    uses: ./.github/workflows/reusable.yml\n")
                 .unwrap();
-        assert!(validate_action_pinning_in_dir(&reuse_caller, &root).is_err());
+        let reuse_err = validate_action_pinning_in_dir(&reuse_caller, &root).unwrap_err();
+        assert!(reuse_err.contains("inputs.ref"), "err: {reuse_err}");
 
         let _ = fs::remove_dir_all(&root);
     }

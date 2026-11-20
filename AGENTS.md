@@ -97,15 +97,16 @@ cargo check --workspace --target wasm32-unknown-unknown --all-features
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
 
-### Workflow `run` Script Expression Policy
+### Workflow `run` Script Expression & Reusable Caller Policy
 
-`lint-workflows` rejects `${{ github.* }}` expressions interpolated directly inside `jobs.<id>.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, or `${{ github.event.* }}`) to prevent script and argument injection. Always bind `github` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
+`lint-workflows` audits `.github/workflows` (including full permission, concurrency, timeout, pinning, and `run` expression checks on local reusable workflows) and `.github/actions` manifests. It rejects `${{ github.* }}`, `${{ inputs.* }}`, and non-static or unmapped `${{ env.* }}` expressions interpolated directly inside workflow `jobs.<id>.steps[*].run` and composite action `runs.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, `${{ github.event.* }}`, or `${{ inputs.target }}`) to prevent script and argument injection. Reusable workflow caller jobs (`jobs.<id>.uses`) are exempt from `timeout-minutes` and must omit `timeout-minutes` at the caller level (configure `timeout-minutes` on concrete jobs inside the called workflow instead). Always bind `github` and `inputs` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
 
 ```text
 env:
   RELEASE_TAG: ${{ github.ref_name }}
+  INPUT_TARGET: ${{ inputs.target }}
 run: |
-  # Reference "$RELEASE_TAG" safely as a shell variable after validation
+  # Reference "$RELEASE_TAG" and "$INPUT_TARGET" safely as shell variables after validation
 ```
 
 ## 3. Isolated Domain Feature Matrix (`test-features`)
