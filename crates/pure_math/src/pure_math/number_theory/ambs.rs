@@ -245,6 +245,9 @@ impl AmbsDsp {
         if n_mod == 0 {
             return Ok(vec![Integer::from(0)]);
         }
+        if *p == 2 {
+            return Ok(vec![n_mod]);
+        }
 
         let p_minus_one = p.clone() - Integer::from(1);
         let legendre = n_mod

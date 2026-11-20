@@ -1,5 +1,5 @@
 use super::*;
-use crate::utils::test_utils::{CurrentDirGuard, create_temp_test_dir};
+use crate::utils::test_utils::{CurrentDirGuard, TempTestDir, create_temp_test_dir};
 use std::path::PathBuf;
 
 fn create_temp_workspace(prefix: &str) -> PathBuf {
@@ -16,7 +16,7 @@ fn write_member_crate(root: &Path, member: &str, lib_source: &str) -> String {
     )
     .unwrap();
     fs::write(src_dir.join("lib.rs"), lib_source).unwrap();
-    member_dir.to_string_lossy().replace('\\', "/")
+    crate::whitelist::lossy_slash_path(&member_dir)
 }
 
 fn scan_clippy_snippet(source: &str) -> bool {
@@ -272,7 +272,7 @@ fn test_item_clippy_all_rejected_while_fn_too_many_lines_allowed() {
 
 #[test]
 fn test_missing_or_custom_lints_table_rejected_for_first_party_crates() {
-    let dir = create_temp_workspace("policy_audit_lints_manifest");
+    let dir = TempTestDir::new("policy_audit_lints_manifest");
     let whitelist_file = dir.join("verification_whitelist.toml");
 
     let no_lints = write_member_crate(&dir, "crates/no_lints", "pub fn ok() {}\n");
@@ -296,13 +296,11 @@ fn test_missing_or_custom_lints_table_rejected_for_first_party_crates() {
         &[custom_lints.as_str()],
         &whitelist_file
     ));
-
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn test_vendored_egui_plot_lints_exemption_conditions() {
-    let dir = create_temp_workspace("policy_audit_egui_plot");
+    let dir = TempTestDir::new("policy_audit_egui_plot");
     let whitelist_file = dir.join("verification_whitelist.toml");
 
     let vendored = write_member_crate(
@@ -330,6 +328,4 @@ fn test_vendored_egui_plot_lints_exemption_conditions() {
         &[vendored.as_str()],
         &whitelist_file
     ));
-
-    let _ = fs::remove_dir_all(&dir);
 }
