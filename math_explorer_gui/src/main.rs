@@ -33,6 +33,14 @@ pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 
 use app::MathExplorerApp;
 
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
+#[cfg(test)]
+pub(crate) static VERIFIED_ALLOC_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     diagnostics::init_panic_hook();

@@ -109,6 +109,7 @@ wasm-bindgen-futures = { workspace = true }
 
 [dev-dependencies]
 png = "0.18"
+verified_engine = { path = "../crates/verified_engine" }
 
 [package.metadata.cargo-machete]
 
