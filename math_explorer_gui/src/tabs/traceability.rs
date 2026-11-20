@@ -1,12 +1,14 @@
 use crate::tabs::ExplorerTab;
 use eframe::egui;
-#[cfg(not(target_arch = "wasm32"))]
-use oxidize_core::vfs::VirtualFileSystem;
 use std::collections::HashMap;
 
+#[path = "traceability/scanner.rs"]
+mod scanner;
 #[path = "traceability/web_snapshot.rs"]
 mod web_snapshot;
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+use scanner::execute_workspace_scan;
 use web_snapshot::PaperStatus;
 
 #[allow(missing_docs)]
@@ -59,8 +61,9 @@ pub struct TraceabilityTab {
     papers: HashMap<String, PaperStatus>,
     orphaned_papers: Vec<String>,
     unlinked_code: Vec<String>,
-    invalid_links: Vec<(String, String)>, // code_file, paper_name
+    invalid_links: Vec<(String, String)>,
     repo_path: Option<String>,
+    user_picked_repo: bool,
     report_rx: Option<
         std::sync::mpsc::Receiver<
             Result<oxidize_core::traceability::TraceabilityReport, String>,
@@ -80,6 +83,7 @@ impl Default for TraceabilityTab {
             unlinked_code: Vec::new(),
             invalid_links: Vec::new(),
             repo_path: None,
+            user_picked_repo: false,
             report_rx: None,
             cert_rx: None,
             certificate: None,
@@ -99,6 +103,16 @@ impl TraceabilityTab {
     #[cfg(test)]
     pub fn error_message(&self) -> Option<&str> {
         self.state.error()
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn has_workspace_header(manifest: &str) -> bool {
+        scanner::has_workspace_header(manifest)
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn canonical_workspace_root() -> Option<std::path::PathBuf> {
+        scanner::canonical_workspace_root()
     }
 
     pub(crate) fn paper_url_for_target(name: &str, is_wasm: bool) -> Option<String> {
@@ -138,121 +152,53 @@ impl TraceabilityTab {
         is_tracked.then(|| Self::paper_url(name)).flatten()
     }
 
-    fn has_traversal_sequence(raw: &str) -> bool {
-        raw.contains('\0')
-            || raw.split(['/', '\\']).any(|seg| seg == "..")
-            || std::path::Path::new(raw)
-                .components()
-                .any(|c| matches!(c, std::path::Component::ParentDir))
-    }
-
     #[cfg(not(target_arch = "wasm32"))]
-    fn has_workspace_header(manifest: &str) -> bool {
-        manifest.lines().any(|line| {
-            let h = line.split('#').next().unwrap_or("").trim();
-            let k = h.strip_prefix('[').and_then(|s| s.strip_suffix(']'));
-            k.is_some_and(|s| {
-                let key = s.trim();
-                !s.starts_with('[')
-                    && !s.ends_with(']')
-                    && (key == "workspace"
-                        || key
-                            .strip_prefix("workspace")
-                            .is_some_and(|rest| rest.trim_start().starts_with('.')))
-            })
-        })
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn canonical_workspace_root() -> Option<std::path::PathBuf> {
-        let cwd = std::env::current_dir().ok()?.canonicalize().ok()?;
-        cwd.ancestors()
-            .take(64)
-            .find(|dir| {
-                std::fs::read_to_string(dir.join("Cargo.toml"))
-                    .is_ok_and(|m| Self::has_workspace_header(&m))
-            })
-            .map(std::path::Path::to_path_buf)
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn validate_repo_path(raw: &str) -> Option<String> {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() || Self::has_traversal_sequence(trimmed) {
-            return None;
+    pub fn select_directory(&mut self, path: &std::path::Path) {
+        match scanner::validate_picked_repo_path(path) {
+            Ok(normalized) => {
+                self.repo_path = Some(normalized);
+                self.user_picked_repo = true;
+                self.refresh();
+            }
+            Err(err) => {
+                self.clear_results();
+                self.repo_path = None;
+                self.user_picked_repo = false;
+                self.report_rx = None;
+                self.cert_rx = None;
+                self.has_initial_scan = true;
+                self.state = TraceabilityScanState::Failed(err);
+            }
         }
-        let canonical_root = Self::canonical_workspace_root()?;
-        let candidate = std::path::Path::new(trimmed);
-        let resolved = if candidate.is_absolute() {
-            candidate.to_path_buf()
-        } else {
-            canonical_root.join(candidate)
-        };
-        let canonical_candidate = resolved.canonicalize().ok()?;
-        if !canonical_candidate.is_dir() || !canonical_candidate.starts_with(&canonical_root) {
-            return None;
-        }
-        let normalized = oxidize_core::path_utils::normalize_path(&canonical_candidate);
-        (!normalized.is_empty()).then_some(normalized)
     }
 
-    #[cfg(target_arch = "wasm32")]
-    fn validate_repo_path(raw: &str) -> Option<String> {
-        let _ = Self::has_traversal_sequence(raw);
-        None
-    }
-
-    pub fn refresh(&mut self) {
-        self.has_initial_scan = true;
+    fn clear_results(&mut self) {
         self.papers.clear();
         self.orphaned_papers.clear();
         self.unlinked_code.clear();
         self.invalid_links.clear();
         self.certificate = None;
-        self.repo_path = self.repo_path.as_deref().and_then(Self::validate_repo_path);
-        self.state = TraceabilityScanState::Scanning;
+    }
 
-        #[cfg(not(target_arch = "wasm32"))]
-        let base_dir = match &self.repo_path {
-            Some(p) => format!("{p}/"),
-            None => Self::canonical_workspace_root()
-                .map(|root| format!("{}/", oxidize_core::path_utils::normalize_path(&root)))
-                .unwrap_or_default(),
-        };
+    pub fn refresh(&mut self) {
+        self.has_initial_scan = true;
+        self.clear_results();
+        self.repo_path = self
+            .repo_path
+            .as_deref()
+            .and_then(|raw| scanner::revalidate_repo_path(raw, self.user_picked_repo));
+        if self.repo_path.is_none() {
+            self.user_picked_repo = false;
+        }
+        self.state = TraceabilityScanState::Scanning;
 
         let (tx, rx) = std::sync::mpsc::channel();
         let (cert_tx, cert_rx) = std::sync::mpsc::channel();
         self.report_rx = Some(rx);
         self.cert_rx = Some(cert_rx);
 
-        #[cfg(all(test, not(target_arch = "wasm32")))]
-        if self.repo_path.is_none() && !base_dir.is_empty() {
-            static DEFAULT_SCAN_CACHE: std::sync::OnceLock<
-                Result<oxidize_core::traceability::TraceabilityReport, String>,
-            > = std::sync::OnceLock::new();
-            let cached = DEFAULT_SCAN_CACHE
-                .get_or_init(|| {
-                    futures::executor::block_on(execute_workspace_scan(
-                        oxidize_core::vfs::DefaultVfs,
-                        base_dir.clone(),
-                    ))
-                })
-                .clone();
-            let _ = cert_tx.send(web_snapshot::load_local_certificate(&base_dir));
-            let _ = tx.send(cached);
-            return;
-        }
-
         #[cfg(not(target_arch = "wasm32"))]
-        std::thread::spawn(move || {
-            let cert = web_snapshot::load_local_certificate(&base_dir);
-            let res = futures::executor::block_on(execute_workspace_scan(
-                oxidize_core::vfs::DefaultVfs,
-                base_dir,
-            ));
-            let _ = cert_tx.send(cert);
-            let _ = tx.send(res);
-        });
+        scanner::dispatch_native_refresh(self.repo_path.clone(), tx, cert_tx);
 
         #[cfg(target_arch = "wasm32")]
         // theory_verification!
@@ -268,62 +214,46 @@ impl TraceabilityTab {
             }
         });
     }
-}
 
-#[cfg(not(target_arch = "wasm32"))]
-async fn execute_workspace_scan<V: VirtualFileSystem>(
-    vfs: V,
-    base_dir: String,
-) -> Result<oxidize_core::traceability::TraceabilityReport, String> {
-    let code_dirs = [
-        format!("{base_dir}math_explorer/src"),
-        format!("{base_dir}math_explorer_gui/src/tabs"),
-    ];
-    let papers_dir = format!("{base_dir}papers");
-    let crate_base = format!("{base_dir}crates");
-    let engine = oxidize_core::traceability::TraceabilityEngine::new(vfs);
+    fn apply_scan_report(&mut self, report: oxidize_core::traceability::TraceabilityReport) {
+        self.clear_results();
+        self.orphaned_papers = report
+            .orphaned_papers
+            .into_iter()
+            .filter(|p| !p.starts_with("spec:") && !p.starts_with("registry:"))
+            .collect();
+        self.unlinked_code = report.unlinked_code;
+        self.invalid_links = report.invalid_links;
 
-    let mut crate_dirs = Vec::new();
-    if let Ok(crates) = engine.vfs.list_dir(&crate_base).await {
-        for crate_name in crates {
-            crate_dirs.push(format!("{crate_base}/{crate_name}/src"));
+        for (paper_name, linked_code) in report.paper_coverage {
+            if !paper_name.starts_with("spec:") && !paper_name.starts_with("registry:") {
+                self.papers.insert(
+                    paper_name.clone(),
+                    PaperStatus {
+                        name: paper_name,
+                        linked_code,
+                    },
+                );
+            }
+        }
+
+        if self.papers.is_empty() && self.orphaned_papers.is_empty() {
+            self.state = TraceabilityScanState::Failed(
+                "No academic papers (.tex) were discovered in the repository.".to_string(),
+            );
+        } else {
+            self.state = TraceabilityScanState::Ready;
         }
     }
 
-    let mut all_dirs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
-    all_dirs.extend(crate_dirs.iter().map(String::as_str));
-    engine
-        .scan_repository(&all_dirs, &papers_dir, false)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct TraceabilityState {
-    repo_path: Option<String>,
-}
-
-impl TraceabilityTab {
     fn poll_scan_channels(&mut self) {
         let Some(rx) = &self.report_rx else {
             return;
         };
         match rx.try_recv() {
             Ok(Ok(report)) => {
-                self.orphaned_papers = report.orphaned_papers;
-                self.unlinked_code = report.unlinked_code;
-                self.invalid_links = report.invalid_links;
-                for (paper_name, linked_code) in report.paper_coverage {
-                    self.papers.insert(
-                        paper_name.clone(),
-                        PaperStatus {
-                            name: paper_name,
-                            linked_code,
-                        },
-                    );
-                }
-                self.state = TraceabilityScanState::Ready;
                 self.report_rx = None;
+                self.apply_scan_report(report);
                 self.certificate = self
                     .cert_rx
                     .as_ref()
@@ -353,15 +283,16 @@ impl TraceabilityTab {
             if ui.button("Refresh").clicked() {
                 self.refresh();
             }
+
             #[cfg(not(target_arch = "wasm32"))]
             if ui.button("Select Codebase Directory...").clicked() {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    self.repo_path = Self::validate_repo_path(&path.to_string_lossy());
-                    self.refresh();
+                    self.select_directory(&path);
                 }
             }
+
             if let Some(path) = &self.repo_path {
-                ui.label(format!("Scanning: {path}"));
+                ui.label(format!("Scanning: {}", path));
             } else {
                 ui.label("Scanning: default workspace");
             }
@@ -373,37 +304,41 @@ impl TraceabilityTab {
         let err_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
         let mut retry_clicked = false;
         #[cfg(not(target_arch = "wasm32"))]
-        let mut new_path_picked: Option<String> = None;
+        let mut picked_dir: Option<std::path::PathBuf> = None;
 
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.vertical(|ui| {
                 ui.label(
-                    egui::RichText::new(format!("⚠️ Scan Failed: {err}"))
+                    egui::RichText::new(format!("⚠️ Scan Failed: {}", err))
                         .color(err_color)
                         .strong(),
                 );
                 ui.horizontal(|ui| {
-                    retry_clicked = ui.button("Retry").clicked();
+                    if ui.button("Retry").clicked() {
+                        retry_clicked = true;
+                    }
                     #[cfg(not(target_arch = "wasm32"))]
                     if ui.button("Select Codebase Directory...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                            new_path_picked = Some(path.display().to_string());
-                        }
+                        picked_dir = rfd::FileDialog::new().pick_folder();
                     }
                 });
             });
         });
 
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(path) = new_path_picked {
-            self.repo_path = Self::validate_repo_path(&path);
-            self.refresh();
+        if let Some(path) = picked_dir {
+            self.select_directory(&path);
             return;
         }
         if retry_clicked {
             self.refresh();
         }
     }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TraceabilityState {
+    repo_path: Option<String>,
 }
 
 impl ExplorerTab for TraceabilityTab {
@@ -426,10 +361,18 @@ impl ExplorerTab for TraceabilityTab {
     }
 
     fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<TraceabilityState>(state) {
-            self.repo_path = s.repo_path.as_deref().and_then(Self::validate_repo_path);
-        } else {
-            self.repo_path = None;
+        let validated = serde_json::from_str::<TraceabilityState>(state)
+            .ok()
+            .and_then(|s| s.repo_path)
+            .as_deref()
+            .and_then(scanner::validate_session_repo_path);
+        self.user_picked_repo = false;
+        if self.repo_path != validated {
+            self.repo_path = validated;
+            self.report_rx = None;
+            self.cert_rx = None;
+            self.has_initial_scan = false;
+            self.state = TraceabilityScanState::Idle;
         }
     }
 

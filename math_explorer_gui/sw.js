@@ -44,11 +44,19 @@ function normalizeRelativeShellPath(requestUrl) {
     return requestUrl.pathname.slice(scopePath.length);
 }
 
+function isShellNavigationPath(relPath) {
+    return relPath === '' || relPath === 'index.html';
+}
+
 function isShellAssetPath(relPath) {
     if (relPath === null) {
         return false;
     }
-    if (/\.wasm$/i.test(relPath) || /(^|\/)math_explorer_gui\.js$/i.test(relPath)) {
+    if (
+        /\.wasm$/i.test(relPath) ||
+        /\.pdf$/i.test(relPath) ||
+        /(^|\/)math_explorer_gui\.js$/i.test(relPath)
+    ) {
         return false;
     }
     return SHELL_PATH_SET.has(relPath);
@@ -172,11 +180,13 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    const isNavigate = request.mode === 'navigate' || request.destination === 'document';
     const relPath = normalizeRelativeShellPath(requestUrl);
+    const isShellNavigate =
+        (request.mode === 'navigate' || request.destination === 'document') &&
+        isShellNavigationPath(relPath);
 
-    if (isNavigate || isShellAssetPath(relPath)) {
-        event.respondWith(handleShellOrNavigateFetch(request, isNavigate));
+    if (isShellNavigate || isShellAssetPath(relPath)) {
+        event.respondWith(handleShellOrNavigateFetch(request, isShellNavigate));
         return;
     }
 

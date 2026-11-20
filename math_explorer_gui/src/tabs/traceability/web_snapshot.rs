@@ -2,10 +2,11 @@
 // theory_verification!
 
 use eframe::egui;
-#[cfg(any(target_arch = "wasm32", test))]
 use oxidize_core::traceability::TraceabilityReport;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::OnceLock;
 
 /// Document-relative path to the precomputed traceability manifest in `dist/`.
 #[cfg(any(target_arch = "wasm32", test))]
@@ -33,7 +34,6 @@ pub struct VerificationCertificate {
 }
 
 /// Deserializable web manifest envelope flattening [`TraceabilityReport`] with optional certificate metadata.
-#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct TraceabilityManifestPayload {
     #[serde(flatten)]
@@ -43,7 +43,6 @@ pub struct TraceabilityManifestPayload {
 }
 
 /// Parses a `traceability_manifest.json` payload into a [`TraceabilityReport`] and optional [`VerificationCertificate`].
-#[cfg(any(target_arch = "wasm32", test))]
 pub fn parse_manifest_json(
     raw: &str,
 ) -> Result<(TraceabilityReport, Option<VerificationCertificate>), String> {
@@ -91,6 +90,29 @@ pub fn load_local_certificate(base_dir: &str) -> Option<VerificationCertificate>
     };
     let raw = std::fs::read_to_string(candidate).ok()?;
     parse_certificate_json(&raw).ok()
+}
+
+/// Returns the compile-time precomputed traceability report and certificate for packaged desktop runs.
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) fn embedded_traceability()
+-> Result<(TraceabilityReport, Option<VerificationCertificate>), String> {
+    static CACHE: OnceLock<Result<(TraceabilityReport, Option<VerificationCertificate>), String>> =
+        OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            const MANIFEST_JSON: &str =
+                include_str!(concat!(env!("OUT_DIR"), "/traceability_manifest.json"));
+            let (report, embedded_cert) = parse_manifest_json(MANIFEST_JSON)?;
+            let cert = embedded_cert.or_else(|| {
+                const CERT_JSON: &str = include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../Verification_Certificate.json"
+                ));
+                parse_certificate_json(CERT_JSON).ok()
+            });
+            Ok((report, cert))
+        })
+        .clone()
 }
 
 /// Fetches `./traceability_manifest.json` via [`oxidize_core::vfs::WasmVfs`] on `wasm32`.
@@ -171,15 +193,21 @@ pub(super) fn render_ready_report(
 ) {
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
     egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.collapsing("System Health & Alignment", |ui| {
-            if orphaned_papers.is_empty() && unlinked_code.is_empty() && invalid_links.is_empty() {
-                ui.label(egui::RichText::new("100% Parity Achieved").color(palette.success));
-            } else {
-                ui.label(egui::RichText::new("Partial Alignment").color(palette.warning));
-            }
-            ui.label(format!("Total Papers: {}", papers_map.len()));
-            render_certificate_metrics(ui, certificate, &palette);
-        });
+        egui::CollapsingHeader::new("System Health & Alignment")
+            .default_open(true)
+            .show(ui, |ui| {
+                let full_parity = !papers_map.is_empty()
+                    && orphaned_papers.is_empty()
+                    && unlinked_code.is_empty()
+                    && invalid_links.is_empty();
+                if full_parity {
+                    ui.label(egui::RichText::new("100% Parity Achieved").color(palette.success));
+                } else {
+                    ui.label(egui::RichText::new("Partial Alignment").color(palette.warning));
+                }
+                ui.label(format!("Total Papers: {}", papers_map.len()));
+                render_certificate_metrics(ui, certificate, &palette);
+            });
 
         render_diagnostics(
             ui,

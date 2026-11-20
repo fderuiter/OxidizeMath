@@ -30,6 +30,18 @@ for cand in \
     fi
 done
 if [ -z "$MANIFEST_SRC" ]; then
+    for out_cand in \
+        "${CARGO_TARGET_DIR:-}"/wasm32-unknown-unknown/release/build/math_explorer_gui-*/out/traceability_manifest.json \
+        "${CARGO_TARGET_DIR:-}"/wasm32-unknown-unknown/debug/build/math_explorer_gui-*/out/traceability_manifest.json \
+        "$REPO_ROOT"/target/wasm32-unknown-unknown/release/build/math_explorer_gui-*/out/traceability_manifest.json \
+        "$REPO_ROOT"/target/wasm32-unknown-unknown/debug/build/math_explorer_gui-*/out/traceability_manifest.json; do
+        if [ -f "$out_cand" ]; then
+            MANIFEST_SRC="$out_cand"
+            break
+        fi
+    done
+fi
+if [ -z "$MANIFEST_SRC" ]; then
     echo "Error: traceability_manifest.json not found in Cargo target directory" >&2
     exit 1
 fi
