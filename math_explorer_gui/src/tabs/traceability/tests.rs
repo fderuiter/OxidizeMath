@@ -346,7 +346,7 @@ fn test_traceability_non_workspace_cwd_rejects_mws_session() {
     let (external_canary_dir, fake_home, home_project_dir) =
         workspace_root_tests::create_non_workspace_canary_dirs();
 
-    std::env::set_current_dir("/").expect("set_current_dir to /");
+    std::env::set_current_dir(cwd_guard.filesystem_root()).expect("set_current_dir to root");
     let mut app_root = crate::app::MathExplorerApp::default();
     let mws_root = workspace_root_tests::build_mws_envelope(&external_canary_dir.to_string_lossy());
     app_root.load_state_from_json(&mws_root);

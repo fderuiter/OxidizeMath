@@ -81,9 +81,10 @@ fn test_app_startup_does_not_scan_when_traceability_tab_unopened() {
 #[test]
 fn test_generated_snapshot_matches_live_workspace_scan_and_certificate_parses() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let cwd_guard = super::workspace_root_tests::CwdRestoreGuard::capture();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
-    let orig_cwd = std::env::current_dir().expect("cwd");
-    std::env::set_current_dir(&ws_root).expect("chdir workspace root");
+    let chdir_root = super::workspace_root_tests::strip_verbatim_prefix(&ws_root);
+    std::env::set_current_dir(&chdir_root).expect("chdir workspace root");
 
     let embedded_json = include_str!(concat!(env!("OUT_DIR"), "/traceability_snapshot.json"));
     let snap_report =
@@ -95,7 +96,7 @@ fn test_generated_snapshot_matches_live_workspace_scan_and_certificate_parses() 
     ))
     .expect("live workspace scan");
 
-    std::env::set_current_dir(orig_cwd).expect("restore cwd");
+    drop(cwd_guard);
 
     assert_eq!(snap_report.scanned_files, live_report.scanned_files);
     assert_eq!(snap_report.orphaned_papers, live_report.orphaned_papers);

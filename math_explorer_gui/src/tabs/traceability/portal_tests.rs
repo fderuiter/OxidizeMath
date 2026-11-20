@@ -32,9 +32,9 @@ fn render_tab_text_hit(tab: &mut TraceabilityTab, needle: &str) -> bool {
 #[test]
 fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    let _cwd_guard = super::workspace_root_tests::CwdRestoreGuard::capture();
+    let cwd_guard = super::workspace_root_tests::CwdRestoreGuard::capture();
 
-    std::env::set_current_dir("/").expect("set_current_dir to /");
+    std::env::set_current_dir(cwd_guard.filesystem_root()).expect("set_current_dir to root");
     assert_eq!(TraceabilityTab::canonical_workspace_root(), None);
 
     let mut tab = TraceabilityTab::default();
@@ -84,7 +84,7 @@ fn test_zero_paper_live_scan_transitions_to_failed_instead_of_vacuous_parity() {
 #[test]
 fn test_external_clone_picker_scans_live_while_load_state_stays_sandboxed() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    let _cwd_guard = super::workspace_root_tests::CwdRestoreGuard::capture();
+    let cwd_guard = super::workspace_root_tests::CwdRestoreGuard::capture();
 
     let pid = std::process::id();
     let clone_dir = std::env::temp_dir().join(format!("oxidize_external_clone_{pid}"));
@@ -122,7 +122,7 @@ fn test_external_clone_picker_scans_live_while_load_state_stays_sandboxed() {
         "Untrusted load_state must reject external clone outside workspace"
     );
 
-    std::env::set_current_dir("/").expect("set_current_dir to /");
+    std::env::set_current_dir(cwd_guard.filesystem_root()).expect("set_current_dir to root");
     tab.select_directory(&clone_dir);
     assert!(tab.repo_path.is_some());
     assert!(tab.state.is_scanning());
@@ -134,7 +134,7 @@ fn test_external_clone_picker_scans_live_while_load_state_stays_sandboxed() {
     assert!(tab.orphaned_papers.is_empty());
     assert!(tab.online_document_url("external_manuscript.tex").is_some());
 
-    drop(_cwd_guard);
+    drop(cwd_guard);
     let _ = std::fs::remove_dir_all(&clone_dir);
 }
 
