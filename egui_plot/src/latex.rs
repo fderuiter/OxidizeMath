@@ -30,6 +30,27 @@ pub enum MathBox {
     },
 }
 
+const MAX_LATEX_INPUT_BYTES: usize = 2_048;
+const MAX_LATEX_DEPTH: usize = 16;
+const MAX_MATH_BOX_NODES: usize = 256;
+const MAX_LAYOUT_CHARS: usize = 4_096;
+const MAX_FALLBACK_CHARS: usize = 2_048;
+
+fn truncate_chars(text: &str, max_chars: usize) -> &str {
+    match text.char_indices().nth(max_chars) {
+        Some((byte_idx, _)) => &text[..byte_idx],
+        None => text,
+    }
+}
+
+fn consume_node(remaining_nodes: &mut usize) -> Result<(), ()> {
+    if *remaining_nodes == 0 {
+        return Err(());
+    }
+    *remaining_nodes -= 1;
+    Ok(())
+}
+
 /// Renders a mathematical LaTeX formula using 2D box layout in egui UI.
 pub fn render_math_label(
     ui: &mut Ui,
@@ -40,7 +61,7 @@ pub fn render_math_label(
     let font_id = style.resolve(ui.style());
     let color = default_color;
     let math_box = parse_latex_to_box(text, &font_id, color).unwrap_or_else(|_| MathBox::Text {
-        text: text.to_string(),
+        text: truncate_chars(text, MAX_FALLBACK_CHARS).to_string(),
         font_id: font_id.clone(),
         color,
         italics: false,
@@ -86,7 +107,7 @@ pub fn parse_latex_with_font(text: &str, font_id: FontId, color: Color32) -> Lay
         }
         Err(_) => {
             job.append(
-                text,
+                truncate_chars(text, MAX_FALLBACK_CHARS),
                 0.0,
                 TextFormat {
                     font_id,
@@ -107,7 +128,25 @@ pub fn parse_latex_to_box(
     base_font_id: &FontId,
     color: Color32,
 ) -> Result<MathBox, ()> {
+    if text.len() > MAX_LATEX_INPUT_BYTES {
+        return Err(());
+    }
+    let mut remaining_nodes = MAX_MATH_BOX_NODES;
+    parse_latex_to_box_bounded(text, base_font_id, color, 0, &mut remaining_nodes)
+}
+
+fn parse_latex_to_box_bounded(
+    text: &str,
+    base_font_id: &FontId,
+    color: Color32,
+    depth: usize,
+    remaining_nodes: &mut usize,
+) -> Result<MathBox, ()> {
+    if text.len() > MAX_LATEX_INPUT_BYTES || depth > MAX_LATEX_DEPTH {
+        return Err(());
+    }
     if text.is_empty() {
+        consume_node(remaining_nodes)?;
         return Ok(MathBox::Row(Vec::new()));
     }
 
@@ -121,9 +160,16 @@ pub fn parse_latex_to_box(
                 }
                 let is_math = idx % 2 == 1;
                 if is_math {
-                    let sub_boxes = parse_math_expression_boxes(part, base_font_id, color)?;
+                    let sub_boxes = parse_math_expression_boxes(
+                        part,
+                        base_font_id,
+                        color,
+                        depth + 1,
+                        remaining_nodes,
+                    )?;
                     boxes.extend(sub_boxes);
                 } else {
+                    consume_node(remaining_nodes)?;
                     boxes.push(MathBox::Text {
                         text: (*part).to_string(),
                         font_id: base_font_id.clone(),
@@ -132,19 +178,20 @@ pub fn parse_latex_to_box(
                     });
                 }
             }
-            return Ok(simplify_boxes(boxes));
+            return simplify_boxes(boxes, remaining_nodes);
         }
     }
 
-    let boxes = parse_math_expression_boxes(text, base_font_id, color)?;
-    Ok(simplify_boxes(boxes))
+    let boxes = parse_math_expression_boxes(text, base_font_id, color, depth, remaining_nodes)?;
+    simplify_boxes(boxes, remaining_nodes)
 }
 
-fn simplify_boxes(boxes: Vec<MathBox>) -> MathBox {
+fn simplify_boxes(boxes: Vec<MathBox>, remaining_nodes: &mut usize) -> Result<MathBox, ()> {
     if boxes.len() == 1 {
-        boxes.into_iter().next().unwrap()
+        Ok(boxes.into_iter().next().unwrap())
     } else {
-        MathBox::Row(boxes)
+        consume_node(remaining_nodes)?;
+        Ok(MathBox::Row(boxes))
     }
 }
 
@@ -152,7 +199,13 @@ fn parse_math_expression_boxes(
     expr: &str,
     base_font_id: &FontId,
     color: Color32,
+    depth: usize,
+    remaining_nodes: &mut usize,
 ) -> Result<Vec<MathBox>, ()> {
+    if depth > MAX_LATEX_DEPTH {
+        return Err(());
+    }
+
     let chars: Vec<char> = expr.chars().collect();
     let mut i = 0;
     let len = chars.len();
@@ -170,7 +223,13 @@ fn parse_math_expression_boxes(
             let (script_str, next_i) = read_script_arg(&chars, i)?;
             i = next_i;
 
-            let script_box = parse_latex_to_box(&script_str, &script_font_id, color)?;
+            let script_box = parse_latex_to_box_bounded(
+                &script_str,
+                &script_font_id,
+                color,
+                depth + 1,
+                remaining_nodes,
+            )?;
             let prev_box = if !boxes.is_empty() { boxes.pop() } else { None };
 
             let (sup_val, sub_val) = if is_sup {
@@ -190,6 +249,7 @@ fn parse_math_expression_boxes(
                     });
                 }
                 Some(b) => {
+                    consume_node(remaining_nodes)?;
                     boxes.push(MathBox::Script {
                         base: Some(Box::new(b)),
                         sup: sup_val,
@@ -197,6 +257,7 @@ fn parse_math_expression_boxes(
                     });
                 }
                 None => {
+                    consume_node(remaining_nodes)?;
                     boxes.push(MathBox::Script {
                         base: None,
                         sup: sup_val,
@@ -208,12 +269,27 @@ fn parse_math_expression_boxes(
             i += 1;
             let (cmd, next_i) = read_command(&chars, i)?;
             i = next_i;
-            process_command_box(&cmd, &chars, &mut i, base_font_id, color, &mut boxes)?;
+            process_command_box(
+                &cmd,
+                &chars,
+                &mut i,
+                base_font_id,
+                color,
+                depth,
+                remaining_nodes,
+                &mut boxes,
+            )?;
         } else if c == '{' {
             i += 1;
             let (group_str, next_i) = read_group_arg(&chars, i)?;
             i = next_i;
-            let group_box = parse_latex_to_box(&group_str, base_font_id, color)?;
+            let group_box = parse_latex_to_box_bounded(
+                &group_str,
+                base_font_id,
+                color,
+                depth + 1,
+                remaining_nodes,
+            )?;
             boxes.push(group_box);
         } else if c == '}' {
             return Err(());
@@ -224,6 +300,7 @@ fn parse_math_expression_boxes(
             }
             let word: String = chars[start..i].iter().collect();
             let italics = word.len() == 1;
+            consume_node(remaining_nodes)?;
             boxes.push(MathBox::Text {
                 text: word,
                 font_id: base_font_id.clone(),
@@ -232,6 +309,7 @@ fn parse_math_expression_boxes(
             });
         } else {
             let s: String = std::iter::once(c).collect();
+            consume_node(remaining_nodes)?;
             boxes.push(MathBox::Text {
                 text: s,
                 font_id: base_font_id.clone(),
@@ -251,6 +329,8 @@ fn process_command_box(
     i: &mut usize,
     base_font_id: &FontId,
     color: Color32,
+    depth: usize,
+    remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
 ) -> Result<(), ()> {
     if let Some(sym) = map_latex_symbol(cmd) {
@@ -260,11 +340,19 @@ fn process_command_box(
                 *i += 1;
                 let (arg, next_i) = read_group_arg(chars, *i)?;
                 *i = next_i;
-                let radicand_box = parse_latex_to_box(&arg, base_font_id, color)?;
+                let radicand_box = parse_latex_to_box_bounded(
+                    &arg,
+                    base_font_id,
+                    color,
+                    depth + 1,
+                    remaining_nodes,
+                )?;
+                consume_node(remaining_nodes)?;
                 boxes.push(MathBox::Sqrt(Box::new(radicand_box)));
                 return Ok(());
             }
         }
+        consume_node(remaining_nodes)?;
         boxes.push(MathBox::Text {
             text: sym.to_string(),
             font_id: base_font_id.clone(),
@@ -281,6 +369,7 @@ fn process_command_box(
                 *i += 1;
                 let (arg, next_i) = read_group_arg(chars, *i)?;
                 *i = next_i;
+                consume_node(remaining_nodes)?;
                 boxes.push(MathBox::Text {
                     text: arg,
                     font_id: base_font_id.clone(),
@@ -303,8 +392,21 @@ fn process_command_box(
                     let (den, next_i) = read_group_arg(chars, *i)?;
                     *i = next_i;
 
-                    let num_box = parse_latex_to_box(&num, base_font_id, color)?;
-                    let den_box = parse_latex_to_box(&den, base_font_id, color)?;
+                    let num_box = parse_latex_to_box_bounded(
+                        &num,
+                        base_font_id,
+                        color,
+                        depth + 1,
+                        remaining_nodes,
+                    )?;
+                    let den_box = parse_latex_to_box_bounded(
+                        &den,
+                        base_font_id,
+                        color,
+                        depth + 1,
+                        remaining_nodes,
+                    )?;
+                    consume_node(remaining_nodes)?;
                     boxes.push(MathBox::Fraction {
                         numerator: Box::new(num_box),
                         denominator: Box::new(den_box),
@@ -318,6 +420,7 @@ fn process_command_box(
         }
         "sin" | "cos" | "tan" | "exp" | "ln" | "log" | "lim" | "max" | "min" | "det" | "arcsin"
         | "arccos" | "arctan" | "sinh" | "cosh" | "tanh" => {
+            consume_node(remaining_nodes)?;
             boxes.push(MathBox::Text {
                 text: cmd.to_string(),
                 font_id: base_font_id.clone(),
@@ -326,6 +429,7 @@ fn process_command_box(
             });
         }
         "quad" => {
+            consume_node(remaining_nodes)?;
             boxes.push(MathBox::Text {
                 text: "  ".to_string(),
                 font_id: base_font_id.clone(),
@@ -334,6 +438,7 @@ fn process_command_box(
             });
         }
         "qquad" => {
+            consume_node(remaining_nodes)?;
             boxes.push(MathBox::Text {
                 text: "    ".to_string(),
                 font_id: base_font_id.clone(),
@@ -342,6 +447,7 @@ fn process_command_box(
             });
         }
         "," | ":" | ";" => {
+            consume_node(remaining_nodes)?;
             boxes.push(MathBox::Text {
                 text: " ".to_string(),
                 font_id: base_font_id.clone(),
@@ -350,6 +456,7 @@ fn process_command_box(
             });
         }
         "\\" | "newline" => {
+            consume_node(remaining_nodes)?;
             boxes.push(MathBox::Text {
                 text: "\n".to_string(),
                 font_id: base_font_id.clone(),
@@ -358,6 +465,7 @@ fn process_command_box(
             });
         }
         _ => {
+            consume_node(remaining_nodes)?;
             boxes.push(MathBox::Text {
                 text: cmd.to_string(),
                 font_id: base_font_id.clone(),
@@ -496,6 +604,63 @@ fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
 
 /// Converts a `MathBox` tree into an `egui::text::LayoutJob`.
 pub fn math_box_to_layout_job(box_node: &MathBox, job: &mut LayoutJob) {
+    let existing_chars = job.text.chars().take(MAX_LAYOUT_CHARS + 1).count();
+    let mut remaining_chars = MAX_LAYOUT_CHARS.saturating_sub(existing_chars);
+    math_box_to_layout_job_bounded(box_node, job, 0, &mut remaining_chars);
+}
+
+fn append_bounded(
+    job: &mut LayoutJob,
+    text: &str,
+    leading_space: f32,
+    format: TextFormat,
+    remaining_chars: &mut usize,
+) {
+    if *remaining_chars == 0 || text.is_empty() {
+        return;
+    }
+    let truncated = truncate_chars(text, *remaining_chars);
+    let added = truncated.chars().count();
+    if added > 0 {
+        job.append(truncated, leading_space, format);
+        *remaining_chars = remaining_chars.saturating_sub(added);
+    }
+}
+
+fn append_script_job(
+    script_box: &MathBox,
+    job: &mut LayoutJob,
+    valign: Align,
+    depth: usize,
+    remaining_chars: &mut usize,
+) {
+    if *remaining_chars == 0 {
+        return;
+    }
+    let mut sub_budget = *remaining_chars;
+    let mut script_job = LayoutJob::default();
+    math_box_to_layout_job_bounded(script_box, &mut script_job, depth, &mut sub_budget);
+    for section in script_job.sections {
+        if *remaining_chars == 0 {
+            break;
+        }
+        let txt = &script_job.text[section.byte_range];
+        let mut fmt = section.format;
+        fmt.valign = valign;
+        append_bounded(job, txt, section.leading_space, fmt, remaining_chars);
+    }
+}
+
+fn math_box_to_layout_job_bounded(
+    box_node: &MathBox,
+    job: &mut LayoutJob,
+    depth: usize,
+    remaining_chars: &mut usize,
+) {
+    if depth > MAX_LATEX_DEPTH || *remaining_chars == 0 {
+        return;
+    }
+
     match box_node {
         MathBox::Text {
             text,
@@ -503,7 +668,8 @@ pub fn math_box_to_layout_job(box_node: &MathBox, job: &mut LayoutJob) {
             color,
             italics,
         } => {
-            job.append(
+            append_bounded(
+                job,
                 text,
                 0.0,
                 TextFormat {
@@ -513,21 +679,26 @@ pub fn math_box_to_layout_job(box_node: &MathBox, job: &mut LayoutJob) {
                     valign: Align::Center,
                     ..Default::default()
                 },
+                remaining_chars,
             );
         }
         MathBox::Row(boxes) => {
             for b in boxes {
-                math_box_to_layout_job(b, job);
+                if *remaining_chars == 0 {
+                    break;
+                }
+                math_box_to_layout_job_bounded(b, job, depth + 1, remaining_chars);
             }
         }
         MathBox::Fraction {
             numerator,
             denominator,
         } => {
+            let mut sub_budget = *remaining_chars;
             let mut num_job = LayoutJob::default();
-            math_box_to_layout_job(numerator, &mut num_job);
+            math_box_to_layout_job_bounded(numerator, &mut num_job, depth + 1, &mut sub_budget);
             let mut den_job = LayoutJob::default();
-            math_box_to_layout_job(denominator, &mut den_job);
+            math_box_to_layout_job_bounded(denominator, &mut den_job, depth + 1, &mut sub_budget);
 
             let num_text = &num_job.text;
             let den_text = &den_job.text;
@@ -535,59 +706,67 @@ pub fn math_box_to_layout_job(box_node: &MathBox, job: &mut LayoutJob) {
                 .chars()
                 .count()
                 .max(den_text.chars().count())
-                .max(1);
-            let bar = "─".repeat(width_chars);
+                .clamp(1, MAX_LAYOUT_CHARS);
 
             let first_fmt = num_job
                 .sections
                 .first()
+                .or_else(|| den_job.sections.first())
                 .map(|s| s.format.clone())
                 .unwrap_or_default();
 
-            job.append(num_text, 0.0, first_fmt.clone());
-            job.append(&format!("\n{}\n", bar), 0.0, first_fmt.clone());
-            job.append(den_text, 0.0, first_fmt);
+            append_bounded(job, num_text, 0.0, first_fmt.clone(), remaining_chars);
+            if *remaining_chars > 0 {
+                let bar_len = width_chars.min(*remaining_chars);
+                let bar = "─".repeat(bar_len);
+                append_bounded(
+                    job,
+                    &format!("\n{bar}\n"),
+                    0.0,
+                    first_fmt.clone(),
+                    remaining_chars,
+                );
+            }
+            append_bounded(job, den_text, 0.0, first_fmt, remaining_chars);
         }
         MathBox::Sqrt(radicand) => {
+            let mut rad_budget = *remaining_chars;
             let mut rad_job = LayoutJob::default();
-            math_box_to_layout_job(radicand, &mut rad_job);
+            math_box_to_layout_job_bounded(radicand, &mut rad_job, depth + 1, &mut rad_budget);
             let first_fmt = rad_job
                 .sections
                 .first()
                 .map(|s| s.format.clone())
                 .unwrap_or_default();
 
-            job.append("√", 0.0, first_fmt.clone());
-            let overbar_text: String = rad_job
-                .text
-                .chars()
-                .flat_map(|c| vec![c, '\u{0305}'])
-                .collect();
-            job.append(&overbar_text, 0.0, first_fmt);
+            append_bounded(job, "√", 0.0, first_fmt.clone(), remaining_chars);
+            let mut overbar_text = String::new();
+            let mut count = 0;
+            for c in rad_job.text.chars().filter(|&c| c != '\u{0305}') {
+                if count >= *remaining_chars {
+                    break;
+                }
+                overbar_text.push(c);
+                count += 1;
+                if count < *remaining_chars {
+                    overbar_text.push('\u{0305}');
+                    count += 1;
+                }
+            }
+            if !overbar_text.is_empty() {
+                job.append(&overbar_text, 0.0, first_fmt);
+                *remaining_chars = remaining_chars.saturating_sub(count);
+            }
         }
         MathBox::Script { base, sup, sub } => {
             if let Some(b) = base {
-                math_box_to_layout_job(b, job);
+                math_box_to_layout_job_bounded(b, job, depth + 1, remaining_chars);
             }
             if let Some(s) = sup {
-                let mut sup_job = LayoutJob::default();
-                math_box_to_layout_job(s, &mut sup_job);
-                for section in sup_job.sections {
-                    let txt = &sup_job.text[section.byte_range.clone()];
-                    let mut fmt = section.format;
-                    fmt.valign = Align::Min;
-                    job.append(txt, section.leading_space, fmt);
-                }
+                append_script_job(s, job, Align::Min, depth + 1, remaining_chars);
             }
             if let Some(s) = sub {
-                let mut sub_job = LayoutJob::default();
-                math_box_to_layout_job(s, &mut sub_job);
-                for section in sub_job.sections {
-                    let txt = &sub_job.text[section.byte_range.clone()];
-                    let mut fmt = section.format;
-                    fmt.valign = Align::Max;
-                    job.append(txt, section.leading_space, fmt);
-                }
+                append_script_job(s, job, Align::Max, depth + 1, remaining_chars);
             }
         }
     }
@@ -600,6 +779,17 @@ struct BoxGeom {
 }
 
 fn measure_math_box(ui: &Ui, b: &MathBox) -> BoxGeom {
+    measure_math_box_bounded(ui, b, 0)
+}
+
+fn measure_math_box_bounded(ui: &Ui, b: &MathBox, depth: usize) -> BoxGeom {
+    if depth > MAX_LATEX_DEPTH {
+        return BoxGeom {
+            size: Vec2::ZERO,
+            children: Vec::new(),
+        };
+    }
+
     match b {
         MathBox::Text {
             text,
@@ -607,9 +797,10 @@ fn measure_math_box(ui: &Ui, b: &MathBox) -> BoxGeom {
             color,
             ..
         } => {
+            let bounded_text = truncate_chars(text, MAX_LAYOUT_CHARS).to_owned();
             let galley = ui
                 .painter()
-                .layout_no_wrap(text.clone(), font_id.clone(), *color);
+                .layout_no_wrap(bounded_text, font_id.clone(), *color);
             let size = galley.size();
             BoxGeom {
                 size,
@@ -622,7 +813,7 @@ fn measure_math_box(ui: &Ui, b: &MathBox) -> BoxGeom {
             let mut children = Vec::new();
 
             for child in boxes {
-                let cg = measure_math_box(ui, child);
+                let cg = measure_math_box_bounded(ui, child, depth + 1);
                 width += cg.size.x;
                 height = height.max(cg.size.y);
                 children.push(cg);
@@ -637,8 +828,8 @@ fn measure_math_box(ui: &Ui, b: &MathBox) -> BoxGeom {
             numerator,
             denominator,
         } => {
-            let num_g = measure_math_box(ui, numerator);
-            let den_g = measure_math_box(ui, denominator);
+            let num_g = measure_math_box_bounded(ui, numerator, depth + 1);
+            let den_g = measure_math_box_bounded(ui, denominator, depth + 1);
 
             let width = num_g.size.x.max(den_g.size.x) + 6.0;
             let height = num_g.size.y + den_g.size.y + 4.0;
@@ -649,7 +840,7 @@ fn measure_math_box(ui: &Ui, b: &MathBox) -> BoxGeom {
             }
         }
         MathBox::Sqrt(radicand) => {
-            let rad_g = measure_math_box(ui, radicand);
+            let rad_g = measure_math_box_bounded(ui, radicand, depth + 1);
             let sqrt_w = rad_g.size.y * 0.6;
             let width = sqrt_w + rad_g.size.x + 4.0;
             let height = rad_g.size.y + 3.0;
@@ -665,7 +856,7 @@ fn measure_math_box(ui: &Ui, b: &MathBox) -> BoxGeom {
             let mut base_h: f32 = 12.0;
 
             if let Some(b) = base {
-                let bg = measure_math_box(ui, b);
+                let bg = measure_math_box_bounded(ui, b, depth + 1);
                 width += bg.size.x;
                 base_h = bg.size.y;
                 children.push(bg);
@@ -673,12 +864,12 @@ fn measure_math_box(ui: &Ui, b: &MathBox) -> BoxGeom {
 
             let mut script_w: f32 = 0.0;
             if let Some(sp) = sup {
-                let spg = measure_math_box(ui, sp);
+                let spg = measure_math_box_bounded(ui, sp, depth + 1);
                 script_w = script_w.max(spg.size.x);
                 children.push(spg);
             }
             if let Some(sb) = sub {
-                let sbg = measure_math_box(ui, sb);
+                let sbg = measure_math_box_bounded(ui, sb, depth + 1);
                 script_w = script_w.max(sbg.size.x);
                 children.push(sbg);
             }
@@ -694,6 +885,20 @@ fn measure_math_box(ui: &Ui, b: &MathBox) -> BoxGeom {
 }
 
 fn paint_math_box(painter: &egui::Painter, origin: Pos2, math_box: &MathBox, geom: &BoxGeom) {
+    paint_math_box_bounded(painter, origin, math_box, geom, 0);
+}
+
+fn paint_math_box_bounded(
+    painter: &egui::Painter,
+    origin: Pos2,
+    math_box: &MathBox,
+    geom: &BoxGeom,
+    depth: usize,
+) {
+    if depth > MAX_LATEX_DEPTH {
+        return;
+    }
+
     match (math_box, geom.children.as_slice()) {
         (
             MathBox::Text {
@@ -704,13 +909,20 @@ fn paint_math_box(painter: &egui::Painter, origin: Pos2, math_box: &MathBox, geo
             },
             _,
         ) => {
-            let galley = painter.layout_no_wrap(text.clone(), font_id.clone(), *color);
+            let bounded_text = truncate_chars(text, MAX_LAYOUT_CHARS).to_owned();
+            let galley = painter.layout_no_wrap(bounded_text, font_id.clone(), *color);
             painter.galley(origin, galley, *color);
         }
         (MathBox::Row(boxes), children) => {
             let mut x = origin.x;
             for (child_box, child_geom) in boxes.iter().zip(children) {
-                paint_math_box(painter, Pos2::new(x, origin.y), child_box, child_geom);
+                paint_math_box_bounded(
+                    painter,
+                    Pos2::new(x, origin.y),
+                    child_box,
+                    child_geom,
+                    depth + 1,
+                );
                 x += child_geom.size.x;
             }
         }
@@ -724,10 +936,16 @@ fn paint_math_box(painter: &egui::Painter, origin: Pos2, math_box: &MathBox, geo
             let width = geom.size.x;
 
             let num_x = origin.x + (width - num_g.size.x) / 2.0;
-            paint_math_box(painter, Pos2::new(num_x, origin.y), numerator, num_g);
+            paint_math_box_bounded(
+                painter,
+                Pos2::new(num_x, origin.y),
+                numerator,
+                num_g,
+                depth + 1,
+            );
 
             let line_y = origin.y + num_g.size.y + 2.0;
-            let stroke_color = get_color(numerator).unwrap_or(Color32::WHITE);
+            let stroke_color = get_color(numerator, depth + 1).unwrap_or(Color32::WHITE);
             painter.line_segment(
                 [
                     Pos2::new(origin.x, line_y),
@@ -738,18 +956,24 @@ fn paint_math_box(painter: &egui::Painter, origin: Pos2, math_box: &MathBox, geo
 
             let den_x = origin.x + (width - den_g.size.x) / 2.0;
             let den_y = line_y + 2.0;
-            paint_math_box(painter, Pos2::new(den_x, den_y), denominator, den_g);
+            paint_math_box_bounded(
+                painter,
+                Pos2::new(den_x, den_y),
+                denominator,
+                den_g,
+                depth + 1,
+            );
         }
         (MathBox::Sqrt(radicand), [rad_g]) => {
             let sqrt_w = rad_g.size.y * 0.5;
-            let color = get_color(radicand).unwrap_or(Color32::WHITE);
+            let color = get_color(radicand, depth + 1).unwrap_or(Color32::WHITE);
 
             let galley =
                 painter.layout_no_wrap("√".to_string(), FontId::proportional(rad_g.size.y), color);
             painter.galley(origin, galley, color);
 
             let rad_origin = Pos2::new(origin.x + sqrt_w + 2.0, origin.y + 3.0);
-            paint_math_box(painter, rad_origin, radicand, rad_g);
+            paint_math_box_bounded(painter, rad_origin, radicand, rad_g, depth + 1);
 
             let bar_y = origin.y + 2.0;
             let bar_start = origin.x + sqrt_w + 1.0;
@@ -764,33 +988,38 @@ fn paint_math_box(painter: &egui::Painter, origin: Pos2, math_box: &MathBox, geo
             let mut x = origin.x;
 
             if let (Some(b), Some(bg)) = (base, children.get(idx)) {
-                paint_math_box(painter, Pos2::new(x, origin.y), b, bg);
+                paint_math_box_bounded(painter, Pos2::new(x, origin.y), b, bg, depth + 1);
                 x += bg.size.x;
                 idx += 1;
             }
 
             let script_x = x;
             if let (Some(sp), Some(spg)) = (sup, children.get(idx)) {
-                paint_math_box(painter, Pos2::new(script_x, origin.y), sp, spg);
+                paint_math_box_bounded(painter, Pos2::new(script_x, origin.y), sp, spg, depth + 1);
                 idx += 1;
             }
 
             if let (Some(sb), Some(sbg)) = (sub, children.get(idx)) {
                 let sub_y = origin.y + geom.size.y - sbg.size.y;
-                paint_math_box(painter, Pos2::new(script_x, sub_y), sb, sbg);
+                paint_math_box_bounded(painter, Pos2::new(script_x, sub_y), sb, sbg, depth + 1);
             }
         }
         _ => {}
     }
 }
 
-fn get_color(b: &MathBox) -> Option<Color32> {
+fn get_color(b: &MathBox, depth: usize) -> Option<Color32> {
+    if depth > MAX_LATEX_DEPTH {
+        return None;
+    }
     match b {
         MathBox::Text { color, .. } => Some(*color),
-        MathBox::Row(vec) => vec.first().and_then(get_color),
-        MathBox::Fraction { numerator, .. } => get_color(numerator),
-        MathBox::Sqrt(r) => get_color(r),
-        MathBox::Script { base, .. } => base.as_deref().and_then(get_color),
+        MathBox::Row(vec) => vec.first().and_then(|child| get_color(child, depth + 1)),
+        MathBox::Fraction { numerator, .. } => get_color(numerator, depth + 1),
+        MathBox::Sqrt(r) => get_color(r, depth + 1),
+        MathBox::Script { base, .. } => base
+            .as_deref()
+            .and_then(|child| get_color(child, depth + 1)),
     }
 }
 
@@ -952,5 +1181,101 @@ mod tests {
         if let Ok(png_bytes) = crate::export::export_custom_png(&datasets, &options) {
             let _ = std::fs::write("/tmp/latex_2d_box_layout.png", png_bytes);
         }
+    }
+
+    #[test]
+    fn test_nested_sqrt_and_csv_header_output_bounds() {
+        let header = format!("{}x{}", r"\sqrt{".repeat(19), "}".repeat(19));
+        let datasets = crate::parse_csv(&format!("x,{header}\n0,1\n"));
+        let job = parse_latex_with_font(&datasets[0].name, test_font(), Color32::WHITE);
+        assert!(job.text.chars().count() <= MAX_LAYOUT_CHARS);
+
+        let nested_in_budget = format!("{}x{}", r"\sqrt{".repeat(16), "}".repeat(16));
+        let in_budget_job = parse_latex_with_font(&nested_in_budget, test_font(), Color32::WHITE);
+        assert_eq!(in_budget_job.text.chars().count(), 2 * 16 + 1);
+        assert!(!in_budget_job.text.contains("\u{0305}\u{0305}"));
+    }
+
+    #[test]
+    fn test_deep_group_recursion_bounded_on_small_stack() {
+        let deep = format!("{}x{}", "{".repeat(2500), "}".repeat(2500));
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(move || {
+                let job = parse_latex_with_font(&deep, FontId::proportional(14.0), Color32::WHITE);
+                assert!(job.text.chars().count() <= MAX_FALLBACK_CHARS);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+
+        let deep_under_input_cap = format!("{}x{}", "{".repeat(900), "}".repeat(900));
+        assert!(deep_under_input_cap.len() <= MAX_LATEX_INPUT_BYTES);
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(move || {
+                assert!(
+                    parse_latex_to_box(
+                        &deep_under_input_cap,
+                        &FontId::proportional(14.0),
+                        Color32::WHITE,
+                    )
+                    .is_err()
+                );
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn test_node_budget_and_utf8_fallback_truncation() {
+        let font = test_font();
+        let many_nodes = "+".repeat(MAX_MATH_BOX_NODES + 10);
+        assert!(many_nodes.len() <= MAX_LATEX_INPUT_BYTES);
+        assert!(parse_latex_to_box(&many_nodes, &font, Color32::WHITE).is_err());
+
+        let multibyte = "αβγ√∑".repeat(600);
+        let job = parse_latex_with_font(&multibyte, font, Color32::WHITE);
+        assert_eq!(job.text.chars().count(), MAX_FALLBACK_CHARS);
+
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                render_math_label(ui, &multibyte, TextStyle::Body, Color32::WHITE);
+            });
+        });
+    }
+
+    #[test]
+    fn test_direct_math_box_traversal_and_layout_caps() {
+        let font = test_font();
+        let mut deep_box = MathBox::Text {
+            text: "x".repeat(MAX_LAYOUT_CHARS * 2),
+            font_id: font.clone(),
+            color: Color32::WHITE,
+            italics: false,
+        };
+        let mut job = LayoutJob::default();
+        math_box_to_layout_job(&deep_box, &mut job);
+        assert_eq!(job.text.chars().count(), MAX_LAYOUT_CHARS);
+
+        let frac_box = MathBox::Fraction {
+            numerator: Box::new(deep_box.clone()),
+            denominator: Box::new(deep_box.clone()),
+        };
+        let mut frac_job = LayoutJob::default();
+        math_box_to_layout_job(&frac_box, &mut frac_job);
+        assert_eq!(frac_job.text.chars().count(), MAX_LAYOUT_CHARS);
+
+        for _ in 0..64 {
+            deep_box = MathBox::Sqrt(Box::new(deep_box));
+        }
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                render_math_box_ui(ui, &deep_box);
+            });
+        });
     }
 }
