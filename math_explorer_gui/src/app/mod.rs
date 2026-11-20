@@ -4,6 +4,7 @@ mod macos_menu;
 pub mod palette;
 mod pane_slots;
 mod session;
+mod share_link;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
@@ -76,6 +77,7 @@ pub struct MathExplorerApp {
     tab_state_cache: state::TabStateCache,
     last_frame_had_input: bool,
     pending_focus_prune: bool,
+    url_sync: crate::url_state::UrlSyncController,
 }
 
 impl Default for MathExplorerApp {
@@ -108,6 +110,7 @@ impl Default for MathExplorerApp {
             tab_state_cache: state::TabStateCache::default(),
             last_frame_had_input: false,
             pending_focus_prune: false,
+            url_sync: crate::url_state::UrlSyncController::default(),
         }
     }
 }
@@ -127,6 +130,7 @@ impl MathExplorerApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
         theme::init_startup_theme(&mut app, cc);
+        app.hydrate_from_browser_url(&cc.egui_ctx);
 
         #[cfg(target_os = "macos")]
         macos_menu::setup_macos_menu(&app);
@@ -470,6 +474,7 @@ impl eframe::App for MathExplorerApp {
         session_manager.track_frame_changes(ctx, self);
         self.session_manager = session_manager;
         theme::sync_frame_theme(self, ctx, frame);
+        self.tick_url_sync(ctx);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

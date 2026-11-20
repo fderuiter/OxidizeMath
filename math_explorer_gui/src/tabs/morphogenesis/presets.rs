@@ -2,8 +2,10 @@
 
 use super::*;
 use crate::presets::{
-    deserialize_preset_envelope, serialize_preset_envelope, MorphogenesisPresetConfig,
+    deserialize_preset_envelope_bounded, serialize_compact_preset_envelope,
+    serialize_preset_envelope, MorphogenesisPresetConfig,
 };
+use std::hash::{Hash, Hasher};
 
 pub struct SimpleRng {
     state: u64,
@@ -28,10 +30,55 @@ impl SimpleRng {
     }
 }
 
+fn validate_morphogenesis_config(config: &MorphogenesisPresetConfig) -> Result<(), String> {
+    let all_finite = config.a.is_finite()
+        && config.b.is_finite()
+        && config.d_u.is_finite()
+        && config.d_v.is_finite()
+        && config.dt.is_finite();
+    if !all_finite {
+        return Err("Morphogenesis preset contains non-finite numeric parameters".to_string());
+    }
+    if !(0.0..=10.0).contains(&config.a) || !(0.0..=10.0).contains(&config.b) {
+        return Err("Morphogenesis kinetic parameters (a, b) must lie within [0.0, 10.0]".to_string());
+    }
+    if (config.a + config.b).abs() <= 1e-9 {
+        return Err("Morphogenesis equilibrium (a + b) must be strictly positive".to_string());
+    }
+    if !(1e-4..=1_000.0).contains(&config.d_u) || !(1e-4..=10_000.0).contains(&config.d_v) {
+        return Err("Morphogenesis diffusion coefficients are out of valid bounds".to_string());
+    }
+    if !(1e-5..=10.0).contains(&config.dt) {
+        return Err(format!("Morphogenesis dt ({}) is outside [1e-5, 10.0]", config.dt));
+    }
+    if !(4..=512).contains(&config.width) || !(4..=512).contains(&config.height) {
+        return Err(format!(
+            "Morphogenesis grid ({}x{}) is outside [4, 512]",
+            config.width, config.height
+        ));
+    }
+    Ok(())
+}
+
 impl MorphogenesisTab {
     /// Domain category string used for preset envelope validation and filenames.
     pub fn domain(&self) -> &'static str {
         "biology"
+    }
+
+    /// Computes a deterministic hash of shareable simulation parameters for URL debouncing.
+    #[must_use]
+    pub fn url_param_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+        p.a.to_bits().hash(&mut h);
+        p.b.to_bits().hash(&mut h);
+        p.d_u.to_bits().hash(&mut h);
+        p.d_v.to_bits().hash(&mut h);
+        p.dt.to_bits().hash(&mut h);
+        self.width.hash(&mut h);
+        self.height.hash(&mut h);
+        h.finish().max(1)
     }
 
     /// Exports active simulation parameters into [`MorphogenesisPresetConfig`].
@@ -50,6 +97,7 @@ impl MorphogenesisTab {
 
     /// Applies imported [`MorphogenesisPresetConfig`] parameters to the simulation state.
     pub fn apply_config(&mut self, config: MorphogenesisPresetConfig) -> Result<(), String> {
+        validate_morphogenesis_config(&config)?;
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.a = config.a;
@@ -85,11 +133,32 @@ impl MorphogenesisTab {
         )
     }
 
+    /// Serializes active simulation parameters to a compact deterministic [`crate::presets::PresetWrapper`] JSON string.
+    pub fn to_compact_url_json(&self) -> Result<String, String> {
+        serialize_compact_preset_envelope(
+            "Turing Morphogenesis Simulation",
+            self.domain(),
+            self.export_config(),
+        )
+    }
+
+    /// Builds a shareable web simulation URL for the current Morphogenesis parameters.
+    pub fn encode_share_url(&self) -> Result<String, String> {
+        let json = self.to_compact_url_json()?;
+        let frag = crate::url_state::encode_share_fragment(self.url_slug(), None, Some(&json))?;
+        Ok(crate::url_state::build_share_url_from_fragment(&frag))
+    }
+
     /// Validates a [`crate::presets::PresetWrapper`] JSON string and applies its configuration.
     #[allow(clippy::wrong_self_convention)]
     pub fn from_json_str(&mut self, json_str: &str) -> Result<(), String> {
+        let bounds = crate::framework::ToolStateBounds::new(
+            crate::url_state::MAX_DECODED_URL_STATE_BYTES,
+            crate::framework::MAX_JSON_NESTING_DEPTH,
+            crate::framework::MAX_JSON_ARRAY_LEN,
+        );
         let config: MorphogenesisPresetConfig =
-            deserialize_preset_envelope(json_str, self.domain(), self.name())?;
+            deserialize_preset_envelope_bounded(json_str, self.domain(), self.name(), bounds)?;
         self.apply_config(config)
     }
 

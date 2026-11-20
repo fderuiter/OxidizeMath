@@ -27,6 +27,7 @@ pub mod sensitivity;
 pub mod starter_gallery;
 mod tabs;
 mod telemetry;
+pub mod url_state;
 pub mod web_io;
 
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};

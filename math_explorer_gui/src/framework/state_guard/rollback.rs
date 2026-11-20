@@ -334,6 +334,69 @@ impl SimulationFramework {
         self.apply_starter_card(card.title, card.tool_name, card.preset_json)
     }
 
+    /// Validates and atomically applies a shared URL tool identifier and `PresetWrapper` JSON payload.
+    ///
+    /// Builds and validates a candidate tool instance prior to committing so malformed, mismatched,
+    /// or non-finite states never mutate the currently active tool.
+    pub fn import_url_preset_json(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        let target_idx = match tool_id {
+            Some(requested) => self
+                .available_tools
+                .iter()
+                .position(|meta| {
+                    meta.id.eq_ignore_ascii_case(requested)
+                        || meta.display_name.eq_ignore_ascii_case(requested)
+                        || crate::url_state::matches_tab_slug(requested, meta.id, meta.display_name)
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "Tool '{requested}' is not available in domain '{}'",
+                        self.domain
+                    )
+                })?,
+            None => self
+                .selected_tool_index
+                .or_else(|| (!self.available_tools.is_empty()).then_some(0))
+                .ok_or_else(|| format!("No simulation tools registered for '{}'", self.domain))?,
+        };
+
+        let meta = self.available_tools[target_idx];
+        let mut candidate = (meta.build)();
+        if let Some(json_str) = preset_json {
+            crate::url_state::validate_url_preset_json(json_str)?;
+            candidate.import_preset_json(json_str)?;
+            if !candidate.has_finite_parameters() {
+                return Err(format!(
+                    "Shared URL parameters for '{}' are non-finite or unstable",
+                    candidate.name()
+                ));
+            }
+        }
+
+        if self.selected_tool_index != Some(target_idx) {
+            if let Some((old_name, old_json)) = self.serialized_active_tool() {
+                self.saved_tool_states
+                    .insert(old_name.to_string(), old_json.to_string());
+            }
+        }
+        scientific_metadata::citation_registry::CitationRegistry::register(
+            candidate.name().to_string(),
+            candidate.theory().theory_citation(),
+        );
+        self.selected_tool_index = Some(target_idx);
+        self.active_tool = Some(candidate);
+        self.is_diverged = false;
+        self.diagnostic_report = None;
+        self.show_starter_gallery = false;
+        self.preset_dialog.toast_error = None;
+        self.sync_active_baseline();
+        Ok(())
+    }
+
     /// Dispatches a StateGuardAction remedy.
     pub fn handle_state_guard_action(&mut self, action: StateGuardAction) {
         match action {

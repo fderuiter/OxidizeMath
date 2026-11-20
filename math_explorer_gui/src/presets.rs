@@ -163,8 +163,26 @@ pub fn serialize_preset_envelope<T: Serialize>(
     serde_json::to_string_pretty(&envelope).map_err(|e| format!("Serialization error: {e}"))
 }
 
+/// Packs `config` into a deterministic, compact `"1.0"` [`PresetWrapper`] JSON envelope for URL state sharing.
+pub fn serialize_compact_preset_envelope<T: Serialize>(
+    title: &str,
+    domain: &str,
+    config: T,
+) -> Result<String, String> {
+    let envelope = PresetWrapper {
+        metadata: PresetMetadata {
+            schema_version: "1.0".to_string(),
+            title: title.to_string(),
+            domain: domain.to_string(),
+            timestamp: "1970-01-01T00:00:00Z".to_string(),
+        },
+        config,
+    };
+    serde_json::to_string(&envelope).map_err(|e| format!("Serialization error: {e}"))
+}
+
 /// Strips any UTF-8 BOM, enforces `bounds.for_preset_envelope()`, parses a [`PresetWrapper`]
-/// JSON envelope, and validates `metadata.domain`.
+/// JSON envelope, and validates `metadata.schema_version` and `metadata.domain`.
 pub fn deserialize_preset_envelope_bounded<T: for<'de> Deserialize<'de>>(
     json_str: &str,
     expected_domain: &str,
@@ -175,6 +193,12 @@ pub fn deserialize_preset_envelope_bounded<T: for<'de> Deserialize<'de>>(
     bounds.for_preset_envelope().validate_json(cleaned)?;
     let envelope: PresetWrapper<T> =
         serde_json::from_str(cleaned).map_err(|e| format!("Invalid JSON preset schema: {e}"))?;
+    if envelope.metadata.schema_version != "1.0" {
+        return Err(format!(
+            "Unsupported preset schema version '{}': expected '1.0'",
+            envelope.metadata.schema_version
+        ));
+    }
     if expected_domain.is_empty() {
         return Err(format!("Preset import not supported for {target_name}"));
     }
@@ -346,16 +370,72 @@ where
     E: FnOnce(&T) -> Result<String, String>,
     I: FnOnce(&mut T, &str) -> Result<(), String>,
 {
+    render_preset_buttons_with_share(
+        dialog_state,
+        ui,
+        target,
+        file_prefix,
+        export_json,
+        import_json,
+        None::<fn(&T) -> Result<String, String>>,
+    )
+}
+
+/// Renders Export/Import preset buttons plus an optional one-click `🔗 Copy Share Link` control.
+pub fn render_preset_buttons_with_share<T, E, I, S>(
+    dialog_state: &mut PresetDialogState,
+    ui: &mut eframe::egui::Ui,
+    target: &mut T,
+    file_prefix: &str,
+    export_json: E,
+    import_json: I,
+    share_url: Option<S>,
+) -> bool
+where
+    E: FnOnce(&T) -> Result<String, String>,
+    I: FnOnce(&mut T, &str) -> Result<(), String>,
+    S: FnOnce(&T) -> Result<String, String>,
+{
+    use crate::accessibility::AccessibleHoverText;
+    let status_id = eframe::egui::Id::new(("preset_share_clipboard_status", file_prefix));
+    if let Some((is_err, msg)) = ui
+        .ctx()
+        .data_mut(|d| d.remove_temp::<(bool, String)>(status_id))
+    {
+        if is_err {
+            dialog_state.record_import_error(msg);
+        } else {
+            dialog_state.record_toast_info(msg);
+        }
+    }
+
     ui.separator();
     ui.heading("Preset Import / Export");
     let mut changed = false;
 
-    ui.horizontal(|ui| {
-        if ui.button("📥 Import Preset JSON").clicked() {
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .button("📥 Import Preset JSON")
+            .accessible_hover_text("Import parameter preset from a JSON file")
+            .clicked()
+        {
             dialog_state.trigger_import();
         }
-        if ui.button("📤 Export Preset JSON").clicked() {
+        if ui
+            .button("📤 Export Preset JSON")
+            .accessible_hover_text("Export current parameter preset to a JSON file")
+            .clicked()
+        {
             dialog_state.export_preset_result(export_json(target), file_prefix);
+        }
+        if let Some(build_url) = share_url {
+            if ui
+                .button("🔗 Copy Share Link")
+                .accessible_hover_text("Copy a shareable simulation link to the clipboard")
+                .clicked()
+            {
+                dispatch_preset_share_copy(dialog_state, ui.ctx(), status_id, build_url(target));
+            }
         }
     });
 
@@ -363,6 +443,35 @@ where
         changed = true;
     }
 
+    render_preset_dialog_toasts(dialog_state, ui);
+    changed
+}
+
+fn dispatch_preset_share_copy(
+    dialog_state: &mut PresetDialogState,
+    ctx: &eframe::egui::Context,
+    status_id: eframe::egui::Id,
+    url_res: Result<String, String>,
+) {
+    match url_res {
+        Ok(url) => {
+            let ctx_cb = ctx.clone();
+            crate::url_state::copy_share_url_to_clipboard(ctx, url, move |res| {
+                let entry = match res {
+                    Ok(()) => (
+                        false,
+                        "Copied shareable simulation link to clipboard".to_string(),
+                    ),
+                    Err(err) => (true, err),
+                };
+                ctx_cb.data_mut(|d| d.insert_temp(status_id, entry));
+            });
+        }
+        Err(err) => dialog_state.record_import_error(err),
+    }
+}
+
+fn render_preset_dialog_toasts(dialog_state: &mut PresetDialogState, ui: &mut eframe::egui::Ui) {
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
     if let Some(ref msg) = dialog_state.toast_info {
         ui.add_space(4.0);
@@ -379,8 +488,6 @@ where
             dialog_state.toast_error = None;
         }
     }
-
-    changed
 }
 
 #[cfg(test)]

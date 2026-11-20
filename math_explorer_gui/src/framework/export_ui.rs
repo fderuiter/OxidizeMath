@@ -111,14 +111,14 @@ impl SimulationFramework {
 
         let bar_id = scoped_panel_id(ui, format!("{id_source}_export_bar"));
         egui::TopBottomPanel::top(bar_id)
-            .exact_height(32.0)
+            .min_height(32.0)
             .show_inside(ui, |ui| {
                 self.render_export_bar_row(ui, &ctx);
             });
     }
 
     fn render_export_bar_row(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             let file_slug = self.render_dataset_and_figure_buttons(ui);
             self.render_action_bar_export_status(ctx, ui);
@@ -282,6 +282,32 @@ impl SimulationFramework {
         }
     }
 
+    fn copy_active_share_link(&mut self, ctx: &egui::Context) {
+        match self.encode_share_url() {
+            Ok(url) => {
+                let status_id =
+                    egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
+                let ctx_cb = ctx.clone();
+                crate::url_state::copy_share_url_to_clipboard(ctx, url, move |res| {
+                    let status = match res {
+                        Ok(()) => ActionBarExportStatus {
+                            message: "Copied shareable simulation link to clipboard!".to_string(),
+                            is_error: false,
+                            expires_at_time: None,
+                        },
+                        Err(err) => ActionBarExportStatus {
+                            message: err,
+                            is_error: true,
+                            expires_at_time: None,
+                        },
+                    };
+                    ctx_cb.data_mut(|d| d.insert_temp(status_id, status));
+                });
+            }
+            Err(err) => self.preset_dialog.record_import_error(err),
+        }
+    }
+
     fn render_preset_action_bar_controls(&mut self, ui: &mut egui::Ui, file_slug: &str) {
         ui.separator();
         ui.label(egui::RichText::new("⚙ Presets:").strong());
@@ -300,6 +326,15 @@ impl SimulationFramework {
             .clicked()
         {
             self.export_active_preset_json(file_slug);
+        }
+
+        if ui
+            .button("🔗 Copy Share Link")
+            .accessible_hover_text("Copy a shareable simulation link to the clipboard")
+            .clicked()
+        {
+            let ctx = ui.ctx().clone();
+            self.copy_active_share_link(&ctx);
         }
 
         if ui

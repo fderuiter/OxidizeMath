@@ -16,6 +16,10 @@ use std::sync::Arc;
 #[path = "mri/runner.rs"]
 mod runner;
 pub use runner::*;
+#[path = "mri/presets.rs"]
+mod presets_impl;
+#[cfg(test)]
+pub use presets_impl::*;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct MriState {
@@ -38,6 +42,7 @@ pub struct MriTab {
     pub mz_points: Vec<PlotPoint>,
     pub params: Arc<std::sync::RwLock<MriSharedParams>>,
     pub worker: BackgroundWorker<MriRunner>,
+    pub(crate) dialog_state: crate::presets::PresetDialogState,
 }
 
 impl Default for MriTab {
@@ -71,6 +76,7 @@ impl Default for MriTab {
             mz_points: Vec::new(),
             params,
             worker,
+            dialog_state: crate::presets::PresetDialogState::default(),
         }
     }
 }
@@ -288,6 +294,19 @@ impl MriTab {
             ui.label(format!("Mx: {:.3}", self.simulator.magnetization.x));
             ui.label(format!("My: {:.3}", self.simulator.magnetization.y));
             ui.label(format!("Mz: {:.3}", self.simulator.magnetization.z));
+
+            let mut dialog_state = std::mem::take(&mut self.dialog_state);
+            let domain = self.domain();
+            crate::presets::render_preset_buttons_with_share(
+                &mut dialog_state,
+                ui,
+                self,
+                domain,
+                Self::to_json_string,
+                Self::from_json_str,
+                Some(Self::encode_share_url),
+            );
+            self.dialog_state = dialog_state;
         });
     }
 
@@ -390,8 +409,36 @@ impl ExplorerTab for MriTab {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
-        self.time_scale.to_bits().hash(&mut h);
+        self.url_param_revision().hash(&mut h);
         h.finish().max(1)
+    }
+
+    fn url_state_revision(&self) -> u64 {
+        self.url_param_revision()
+    }
+
+    fn export_url_preset_json(&self) -> Result<Option<String>, String> {
+        self.to_compact_url_json().map(Some)
+    }
+
+    fn import_url_preset_json(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        if let Some(req_tool) = tool_id {
+            if !crate::url_state::matches_tab_slug(req_tool, self.url_slug(), self.name()) {
+                return Err(format!(
+                    "Tab '{}' does not support sub-tool '{req_tool}'",
+                    self.name()
+                ));
+            }
+        }
+        if let Some(json_str) = preset_json {
+            crate::url_state::validate_url_preset_json(json_str)?;
+            self.from_json_str(json_str)?;
+        }
+        Ok(())
     }
 
     fn save_state(&self) -> Option<String> {
