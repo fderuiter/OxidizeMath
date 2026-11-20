@@ -3,7 +3,7 @@ pub mod domain_bar;
 mod macos_menu;
 pub mod palette;
 mod pane_slots;
-mod session;
+pub(crate) mod session;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
@@ -182,6 +182,9 @@ impl MathExplorerApp {
 
     /// Serializes the entire application state (selected tab, panel toggles, individual tab states) to JSON.
     pub fn save_state_to_json(&self) -> String {
+        if self.session_manager.lifecycle_state == SessionLifecycleState::DragEditing {
+            self.clear_active_pane_caches();
+        }
         serde_json::to_string(&self.get_app_state()).unwrap_or_default()
     }
 
@@ -213,36 +216,25 @@ impl MathExplorerApp {
         domain_bar::select_pane_tab(self, ctx, pane_idx, tab_idx);
     }
 
-    /// Restores the previous application state from the focused tool or undo history stack.
+    /// Restores the previous application state from the workspace undo history stack.
     pub fn undo(&mut self) {
-        if !self.can_undo() || self.try_focused_pane_undo() {
-            return;
-        }
-        if let Some(prev) = self.session_manager.pop_undo() {
-            let current = self.get_app_state();
-            self.session_manager.push_redo(current);
-            self.apply_app_state(prev);
-            self.session_manager.set_is_restoring(true);
-        }
+        let mut sm = std::mem::take(&mut self.session_manager);
+        sm.execute_undo(self);
+        self.session_manager = sm;
     }
 
-    /// Re-applies an undone application state from the focused tool or redo history stack.
+    /// Re-applies an undone application state from the workspace redo history stack.
     pub fn redo(&mut self) {
-        if !self.can_redo() || self.try_focused_pane_redo() {
-            return;
-        }
-        if let Some(next) = self.session_manager.pop_redo() {
-            let current = self.get_app_state();
-            self.session_manager.push_undo_preserving_redo(current);
-            self.apply_app_state(next);
-            self.session_manager.set_is_restoring(true);
-        }
+        let mut sm = std::mem::take(&mut self.session_manager);
+        sm.execute_redo(self);
+        self.session_manager = sm;
     }
 }
 
 impl eframe::App for MathExplorerApp {
     #[allow(clippy::too_many_lines)]
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        crate::reflective_ui::slider::reset_frame_sweep_flags(ctx);
         ctx.data_mut(|d| {
             d.insert_temp(
                 egui::Id::new("CMD_REGISTRY"),
@@ -453,19 +445,22 @@ impl eframe::App for MathExplorerApp {
         };
 
         self.prune_inactive_pane_slots(active_layout.pane_count());
+        self.sync_workspace_history_bridge(ctx);
 
         if active_layout != ViewportLayout::Single {
             viewport::render_multi_pane_manager(self, ctx, frame);
         } else {
             viewport::render_single_pane_viewport(self, ctx, frame);
         }
+        self.drain_workspace_history_bridge(ctx);
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
 
         // Render Command Palette Overlay
         self.apply_command_palette_selection(ctx);
 
-        self.last_frame_had_input = state::has_frame_input(ctx);
+        self.last_frame_had_input =
+            state::has_frame_input(ctx) || crate::reflective_ui::slider::has_sweep_mutation(ctx);
         let mut session_manager = std::mem::take(&mut self.session_manager);
         session_manager.track_frame_changes(ctx, self);
         self.session_manager = session_manager;
@@ -473,6 +468,7 @@ impl eframe::App for MathExplorerApp {
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        self.clear_active_pane_caches();
         let json_str = self.save_state_to_json();
         storage.set_string(eframe::APP_KEY, json_str);
     }

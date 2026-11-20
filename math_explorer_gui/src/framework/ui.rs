@@ -342,10 +342,12 @@ impl SimulationFramework {
         let ctx = ui.ctx().clone();
         egui_plot::clear_last_plot_datasets();
         egui_plot::clear_last_plot_primitives();
-        if has_interactive_ui_input(&ctx) {
+        let interactive_input = has_interactive_ui_input(&ctx);
+        if interactive_input {
             self.rev_cache.untracked_tool_revision =
                 self.rev_cache.untracked_tool_revision.wrapping_add(1);
         }
+        let sweep_mut_before = crate::reflective_ui::slider::live_sweep_mutation_count(&ctx);
 
         // Display recovery banner when solver divergence is detected
         if self.is_diverged {
@@ -411,6 +413,13 @@ impl SimulationFramework {
             egui::CentralPanel::default().show_inside(ui, |ui| {
                 self.show_quick_start_cards(ui);
             });
+        }
+
+        if !interactive_input
+            && crate::reflective_ui::slider::live_sweep_mutation_count(&ctx) > sweep_mut_before
+        {
+            self.rev_cache.untracked_tool_revision =
+                self.rev_cache.untracked_tool_revision.wrapping_add(1);
         }
 
         ctx.data_mut(|d| {

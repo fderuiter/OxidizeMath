@@ -361,34 +361,6 @@ impl SimulationFramework {
         }
     }
 
-    /// Returns true if the active tool has local undo history available.
-    pub fn can_undo(&self) -> bool {
-        self.active_tool.as_ref().is_some_and(|t| t.can_undo())
-    }
-
-    /// Returns true if the active tool has local redo history available.
-    pub fn can_redo(&self) -> bool {
-        self.active_tool.as_ref().is_some_and(|t| t.can_redo())
-    }
-
-    /// Attempts to undo the latest local action on the active tool, invalidating cached JSON if handled.
-    pub fn try_undo(&mut self) -> bool {
-        let handled = self.active_tool.as_mut().is_some_and(|t| t.try_undo());
-        if handled {
-            self.bump_framework_revision();
-        }
-        handled
-    }
-
-    /// Attempts to redo the latest locally undone action on the active tool, invalidating cached JSON if handled.
-    pub fn try_redo(&mut self) -> bool {
-        let handled = self.active_tool.as_mut().is_some_and(|t| t.try_redo());
-        if handled {
-            self.bump_framework_revision();
-        }
-        handled
-    }
-
     /// Returns the active tool's interactive canvas `Id` if applicable.
     pub fn focused_canvas_id(&self) -> Option<egui::Id> {
         self.active_tool
