@@ -251,15 +251,11 @@ fn handle_file_event(app: &mut MathExplorerApp, id: &str) -> bool {
 
 fn handle_view_layout_event(app: &mut MathExplorerApp, id: &str) -> bool {
     match id {
-        "view_split_single" | "layout_single" => app.set_layout(ViewportLayout::Single),
-        "view_split_horizontal" | "layout_split_h" => {
-            app.set_layout(ViewportLayout::SplitHorizontal);
-        }
-        "view_split_vertical" | "layout_split_v" => {
-            app.set_layout(ViewportLayout::SplitVertical);
-        }
+        "layout_single" => app.set_layout(ViewportLayout::Single),
+        "layout_split_h" => app.set_layout(ViewportLayout::SplitHorizontal),
+        "layout_split_v" => app.set_layout(ViewportLayout::SplitVertical),
         "layout_quad" => app.set_layout(ViewportLayout::QuadGrid),
-        "view_split_swap" | "layout_swap" => app.swap_panes(),
+        "layout_swap" => app.swap_panes(),
         _ => return false,
     }
     true
@@ -292,15 +288,15 @@ fn handle_palette_theme_event(app: &mut MathExplorerApp, ctx: &egui::Context, id
         "help_commands" => app.show_help_menu = !app.show_help_menu,
         "theme_dark" => {
             app.theme = ThemeMode::Dark;
-            ctx.set_visuals(app.theme.visuals());
+            app.theme.apply_to_context(ctx);
         }
         "theme_light" => {
             app.theme = ThemeMode::Light;
-            ctx.set_visuals(app.theme.visuals());
+            app.theme.apply_to_context(ctx);
         }
         "theme_high_contrast" => {
             app.theme = ThemeMode::HighContrast;
-            ctx.set_visuals(app.theme.visuals());
+            app.theme.apply_to_context(ctx);
         }
         "view_toggle_diagnostics" => {
             app.show_diagnostics_panel = !app.show_diagnostics_panel;
@@ -329,6 +325,82 @@ pub(super) fn handle_macos_menu_events(app: &mut MathExplorerApp, ctx: &egui::Co
                 }
             }
             _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::SplitLayoutMode;
+
+    #[test]
+    fn test_handle_view_layout_event_updates_viewport_layout_and_swaps_panes() {
+        let mut app = MathExplorerApp::default();
+
+        for (menu_id, expected_layout, expected_split_mode) in [
+            (
+                "layout_split_h",
+                ViewportLayout::SplitHorizontal,
+                SplitLayoutMode::Horizontal,
+            ),
+            (
+                "layout_split_v",
+                ViewportLayout::SplitVertical,
+                SplitLayoutMode::Vertical,
+            ),
+            (
+                "layout_quad",
+                ViewportLayout::QuadGrid,
+                SplitLayoutMode::Single,
+            ),
+            (
+                "layout_single",
+                ViewportLayout::Single,
+                SplitLayoutMode::Single,
+            ),
+        ] {
+            assert!(handle_view_layout_event(&mut app, menu_id));
+            assert_eq!(app.viewport_layout, expected_layout);
+            assert_eq!(app.split_layout_mode, expected_split_mode);
+        }
+
+        if app.tabs.len() > 1 {
+            app.selected_tab = 0;
+            app.secondary_tab = 1;
+            app.pane_tabs[0] = 0;
+            app.pane_tabs[1] = 1;
+            assert!(handle_view_layout_event(&mut app, "layout_swap"));
+            assert_eq!(app.selected_tab, 1);
+            assert_eq!(app.secondary_tab, 0);
+            assert_eq!(app.pane_tabs[0], 1);
+            assert_eq!(app.pane_tabs[1], 0);
+        } else {
+            assert!(handle_view_layout_event(&mut app, "layout_swap"));
+        }
+    }
+
+    #[test]
+    fn test_handle_view_layout_event_rejects_removed_view_split_ids() {
+        let mut app = MathExplorerApp::default();
+        app.set_layout(ViewportLayout::SplitHorizontal);
+        let initial_primary = app.selected_tab;
+        let initial_secondary = app.secondary_tab;
+
+        for legacy_id in [
+            "view_split_single",
+            "view_split_horizontal",
+            "view_split_vertical",
+            "view_split_swap",
+            "unknown_layout_id",
+        ] {
+            assert!(
+                !handle_view_layout_event(&mut app, legacy_id),
+                "Removed or unknown menu ID '{legacy_id}' must return false"
+            );
+            assert_eq!(app.viewport_layout, ViewportLayout::SplitHorizontal);
+            assert_eq!(app.selected_tab, initial_primary);
+            assert_eq!(app.secondary_tab, initial_secondary);
         }
     }
 }

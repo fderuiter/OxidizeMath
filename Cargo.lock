@@ -2477,6 +2477,7 @@ dependencies = [
  "num-complex",
  "oxidize_core",
  "petgraph",
+ "png",
  "rand",
  "rfd",
  "scientific_metadata",

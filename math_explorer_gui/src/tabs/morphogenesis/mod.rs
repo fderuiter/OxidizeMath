@@ -41,6 +41,9 @@ pub struct LegacyMorphoState {
     /// Legacy starter gallery visibility flag (ignored on load; managed by framework).
     #[serde(default)]
     pub show_starter_gallery: bool,
+    /// Deferred start flag keeping hidden tabs idle until first rendered frame.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pending_initial_start: bool,
 }
 
 /// Biology tab hosting [`MorphogenesisTool`] inside [`crate::framework::SimulationFramework`].
@@ -136,6 +139,16 @@ impl MorphogenesisTab {
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
+        let current_state = tool
+            .save_state()
+            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok())
+            .and_then(|s| s.state)
+            .unwrap_or(SimWorkerState::Ready);
+        let target_state = if current_state == SimWorkerState::Running {
+            SimWorkerState::Running
+        } else {
+            SimWorkerState::Ready
+        };
         let state = MorphogenesisToolState {
             a: config.a,
             b: config.b,
@@ -144,8 +157,9 @@ impl MorphogenesisTab {
             dt: config.dt,
             width: config.width,
             height: config.height,
-            state: None,
+            state: Some(target_state),
             paused: None,
+            pending_initial_start: false,
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;
@@ -200,6 +214,7 @@ impl MorphogenesisTab {
         current_state.dt = legacy.dt.clamp(1e-4, 0.1);
         current_state.state = legacy.state;
         current_state.paused = legacy.paused;
+        current_state.pending_initial_start = legacy.pending_initial_start;
         if let Ok(updated_json) = serde_json::to_string(&current_state) {
             if tool.try_load_state(&updated_json).is_ok() {
                 self.framework.show_starter_gallery = false;

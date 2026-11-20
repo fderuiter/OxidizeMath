@@ -142,7 +142,7 @@ fn test_disconnected_faulted_worker_preserves_diagnostic_until_respawn() {
     let panic_flag = Arc::new(AtomicBool::new(false));
     let runner = DivergeOnStepRunner::new(Arc::clone(&diverge_flag), Arc::clone(&panic_flag));
     let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-    let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(4);
+    let (state_tx, state_rx) = sim_state_channel();
     let seed = runner.get_snapshot();
     drop(cmd_rx);
     drop(state_tx);
@@ -156,7 +156,7 @@ fn test_disconnected_faulted_worker_preserves_diagnostic_until_respawn() {
         state: SimWorkerState::Faulted,
         diagnostic_report: Some(DiagnosticReport::new(0.2, 2, "x", "Diverged before drop")),
         #[cfg(target_arch = "wasm32")]
-        worker: None,
+        handle: 0,
     };
 
     assert!(matches!(
@@ -324,4 +324,31 @@ fn test_fault_banners_and_reset_across_rl_and_attractor_tools() {
     assert_eq!(attractor.worker.state(), SimWorkerState::Faulted);
     attractor.reset();
     assert_eq!(attractor.worker.state(), SimWorkerState::Ready);
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn test_unpolled_running_worker_diverges_without_blocking_sender() {
+    let diverge_flag = Arc::new(AtomicBool::new(false));
+    let panic_flag = Arc::new(AtomicBool::new(false));
+    let mut controller = SimulationController::new(DivergeOnStepRunner::new(
+        Arc::clone(&diverge_flag),
+        Arc::clone(&panic_flag),
+    ));
+
+    // Start running and intentionally do not call update() while > 8 snapshots accumulate.
+    assert!(controller.send_command(SimCommand::Start).is_ok());
+    std::thread::sleep(Duration::from_millis(220));
+    diverge_flag.store(true, Ordering::SeqCst);
+
+    for _ in 0..100 {
+        std::thread::sleep(Duration::from_millis(10));
+        let _ = controller.update();
+        if controller.state() == SimWorkerState::Faulted {
+            break;
+        }
+    }
+
+    assert_eq!(controller.state(), SimWorkerState::Faulted);
+    assert!(controller.diagnostic_report().is_some());
 }

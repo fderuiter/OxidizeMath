@@ -9,11 +9,21 @@ use std::time::Duration;
 
 fn wait_for_morphogenesis_snapshot(tool: &mut MorphogenesisTool) {
     for _ in 0..600 {
-        if tool.worker.update().is_some() {
+        if tool.worker.update().is_some() || tool.worker.latest_snapshot().is_some() {
             return;
         }
         thread::sleep(Duration::from_millis(5));
     }
+}
+
+fn active_morpho_tool_state(tab: &MorphogenesisTab) -> MorphogenesisToolState {
+    let json = tab
+        .framework
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.save_state())
+        .expect("MorphogenesisTool must serialize state");
+    serde_json::from_str(&json).expect("valid MorphogenesisToolState")
 }
 
 fn render_tool_frame(ctx: &egui::Context, tool: &mut MorphogenesisTool) -> egui::FullOutput {
@@ -35,6 +45,8 @@ fn get_repaint_delay(output: &egui::FullOutput) -> Duration {
 #[test]
 fn test_morphogenesis_initial_state() {
     let tool = MorphogenesisTool::default();
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
+    assert!(tool.pending_initial_start);
     assert!(tool.dirty);
     assert!(tool.texture.is_none());
     assert!(tool.pixels.is_empty());
@@ -201,11 +213,11 @@ fn test_morphogenesis_fault_halts_repaints_and_recovers() {
 
 #[test]
 fn test_morphogenesis_all_controls_update_state_revision_and_legacy_compatibility() {
-    let tab = MorphogenesisTab::default();
+    let mut tab = MorphogenesisTab::default();
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Ready));
     let mut prev_rev = tab.state_revision();
     assert!(prev_rev > 0);
 
-    // Mutate all 4 sliders + dt and verify state_revision updates on each edit
     for mutate in [
         |p: &mut MorphogenesisSharedParams| p.a = 0.22,
         |p: &mut MorphogenesisSharedParams| p.b = 1.15,
@@ -220,19 +232,30 @@ fn test_morphogenesis_all_controls_update_state_revision_and_legacy_compatibilit
     }
 
     let saved = tab.save_state().expect("save_state should succeed");
+    assert!(!saved.contains("\"paused\""));
     let mut restored = MorphogenesisTab::default();
     restored.load_state(&saved);
     assert_eq!(restored.export_config(), tab.export_config());
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Ready));
+
+    // Running state roundtrips cleanly
+    let ctx = egui::Context::default();
+    let mut frame = eframe::Frame::_new_kittest();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Running));
+    let saved_running = tab.save_state().expect("save_state should succeed");
+    restored.load_state(&saved_running);
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Running));
 
     // Load legacy flat MorphoState JSON payloads
-    let legacy_paused = r#"{"dt":0.02,"paused":true,"show_starter_gallery":true}"#;
-    restored.load_state(legacy_paused);
+    restored.load_state(r#"{"dt":0.02,"paused":true,"show_starter_gallery":true}"#);
     assert!(!restored.framework.show_starter_gallery);
     assert_eq!(restored.params.read().unwrap().dt, 0.02);
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Ready));
 
-    let legacy_running = r#"{"dt":0.08,"paused":false,"show_starter_gallery":false}"#;
-    restored.load_state(legacy_running);
+    restored.load_state(r#"{"dt":0.08,"paused":false,"show_starter_gallery":false}"#);
     assert_eq!(restored.params.read().unwrap().dt, 0.08);
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Running));
 }
 
 #[test]
@@ -406,4 +429,35 @@ fn test_morphogenesis_undo_mws_reset_live_region_theory_and_preset_io() {
 
     let prev = mgr.pop_undo().expect("undo snapshot");
     assert_eq!(prev.tab_states["Morphogenesis"], baseline_json);
+}
+
+#[test]
+fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
+    let ctx = egui::Context::default();
+    let mut tab = MorphogenesisTab::default();
+    let mut tool = MorphogenesisTool::default();
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Ready));
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
+
+    // Hidden tab and tool remain idle before first render
+    thread::sleep(Duration::from_millis(40));
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Ready));
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
+
+    // First render starts stepping; default d_v=100, dt=0.05 diverges to Faulted
+    let mut frame = eframe::Frame::_new_kittest();
+    for _ in 0..400 {
+        let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+        let _ = render_tool_frame(&ctx, &mut tool);
+        if active_morpho_tool_state(&tab).state == Some(SimWorkerState::Faulted)
+            && tool.worker.state() == SimWorkerState::Faulted
+        {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Faulted));
+    assert_eq!(tool.worker.state(), SimWorkerState::Faulted);
+    assert!(tool.worker.diagnostic_report().is_some());
 }

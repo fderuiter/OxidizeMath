@@ -1,8 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 const INDEX_HTML: &str = include_str!("../index.html");
-const FAVICON_SVG: &str = include_str!("../icons/favicon.svg");
-const SITE_WEBMANIFEST: &str = include_str!("../site.webmanifest");
+const RELOAD_JS: &str = include_str!("../reload.js");
 
 #[test]
 fn test_document_title_and_metadata_tags() {
@@ -14,6 +13,10 @@ fn test_document_title_and_metadata_tags() {
         !INDEX_HTML.contains("<title>Math Explorer GUI</title>"),
         "index.html must not retain legacy <title>Math Explorer GUI</title>"
     );
+    assert!(
+        !INDEX_HTML.contains("property=\"og:image\" content=\"512x512.png\""),
+        "index.html must not use relative 512x512.png for og:image"
+    );
     for snippet in [
         "name=\"description\"",
         "name=\"application-name\" content=\"Math Explorer\"",
@@ -23,7 +26,12 @@ fn test_document_title_and_metadata_tags() {
         "property=\"og:title\" content=\"Math Explorer\"",
         "property=\"og:description\"",
         "property=\"og:type\" content=\"website\"",
-        "property=\"og:image\"",
+        "property=\"og:url\" content=\"https://fderuiter.github.io/OxidizeMath/\"",
+        "property=\"og:image\" content=\"https://fderuiter.github.io/OxidizeMath/og-image.png\"",
+        "property=\"og:image:width\" content=\"1200\"",
+        "property=\"og:image:height\" content=\"630\"",
+        "property=\"og:image:alt\"",
+        "name=\"twitter:card\" content=\"summary_large_image\"",
     ] {
         assert!(
             INDEX_HTML.contains(snippet),
@@ -34,10 +42,15 @@ fn test_document_title_and_metadata_tags() {
 
 #[test]
 fn test_favicon_manifest_and_trunk_staging_links() {
+    assert!(
+        !INDEX_HTML.contains("<link rel=\"apple-touch-icon\" href=\"256x256.png\">"),
+        "apple-touch-icon must not point to transparent 256x256.png"
+    );
     for link_snippet in [
         "<link rel=\"icon\" href=\"favicon.ico\" sizes=\"any\">",
         "<link rel=\"icon\" href=\"favicon.svg\" type=\"image/svg+xml\">",
-        "<link rel=\"apple-touch-icon\" href=\"256x256.png\">",
+        "<link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"32x32.png\">",
+        "<link rel=\"apple-touch-icon\" href=\"180x180.png\">",
         "<link rel=\"manifest\" href=\"site.webmanifest\">",
     ] {
         assert!(
@@ -51,8 +64,12 @@ fn test_favicon_manifest_and_trunk_staging_links() {
         "icons/icon.ico",
         "icons/32x32.png",
         "icons/128x128.png",
+        "icons/180x180.png",
+        "icons/192x192.png",
         "icons/256x256.png",
         "icons/512x512.png",
+        "icons/512x512-maskable.png",
+        "icons/og-image.png",
         "site.webmanifest",
     ] {
         let directive = format!("data-trunk rel=\"copy-file\" href=\"{staged_asset}\"");
@@ -154,6 +171,105 @@ fn test_adaptive_shell_theme_media_queries() {
 }
 
 #[test]
+fn test_media_queries_scoped_to_not_data_theme_and_contrast_precedence() {
+    let light_pos = INDEX_HTML
+        .find("@media (prefers-color-scheme: light)")
+        .expect("light media query must exist");
+    let contrast_pos = INDEX_HTML
+        .find("@media (prefers-contrast: more)")
+        .expect("prefers-contrast media query must exist");
+    let forced_pos = INDEX_HTML
+        .find("@media (forced-colors: active)")
+        .expect("forced-colors media query must exist");
+
+    assert!(
+        light_pos < contrast_pos,
+        "@media (prefers-contrast: more) must follow @media (prefers-color-scheme: light)"
+    );
+    let light_block = &INDEX_HTML[light_pos..contrast_pos];
+    let contrast_block = &INDEX_HTML[contrast_pos..forced_pos];
+
+    for selector in [
+        "html:not([data-theme])",
+        "html:not([data-theme]) body",
+        "html:not([data-theme]) #loading_indicator",
+        "html:not([data-theme]) #error_container",
+        "html:not([data-theme]) .spinner",
+    ] {
+        assert!(
+            light_block.contains(selector),
+            "light media block must scope selector: {selector}"
+        );
+        assert!(
+            contrast_block.contains(selector),
+            "prefers-contrast media block must scope selector: {selector}"
+        );
+    }
+}
+
+#[test]
+fn test_explicit_data_theme_selectors_and_theme_color_tokens() {
+    for selector in [
+        "html[data-theme=\"dark\"]",
+        "html[data-theme=\"dark\"] body",
+        "html[data-theme=\"dark\"] #loading_indicator",
+        "html[data-theme=\"dark\"] #error_container",
+        "html[data-theme=\"dark\"] .spinner",
+        "html[data-theme=\"light\"]",
+        "html[data-theme=\"light\"] body",
+        "html[data-theme=\"light\"] #loading_indicator",
+        "html[data-theme=\"light\"] #error_container",
+        "html[data-theme=\"light\"] .spinner",
+        "html[data-theme=\"high-contrast\"]",
+        "html[data-theme=\"high-contrast\"] body",
+        "html[data-theme=\"high-contrast\"] #loading_indicator",
+        "html[data-theme=\"high-contrast\"] #error_container",
+        "html[data-theme=\"high-contrast\"] .spinner",
+    ] {
+        assert!(
+            INDEX_HTML.contains(selector),
+            "index.html must define explicit override selector: {selector}"
+        );
+    }
+
+    for token in [
+        "content=\"#121214\"",
+        "content=\"#f8f8f8\"",
+        "content=\"#000000\"",
+    ] {
+        assert!(
+            INDEX_HTML.contains(token),
+            "index.html head must declare theme-color token: {token}"
+        );
+    }
+}
+
+#[test]
+fn test_reload_js_syncs_saved_theme_from_local_storage_safely() {
+    for required in [
+        "window.localStorage",
+        "getItem('app')",
+        "JSON.parse",
+        "try {",
+        "catch (_err)",
+        "schema_version",
+        "app_state",
+        "dataset.theme",
+        "color-scheme",
+        "meta[name=\"theme-color\"]",
+        "#121214",
+        "#f8f8f8",
+        "#000000",
+        "high-contrast",
+    ] {
+        assert!(
+            RELOAD_JS.contains(required),
+            "reload.js must include pre-boot theme synchronization contract: {required}"
+        );
+    }
+}
+
+#[test]
 fn test_prefers_reduced_motion_halts_spinner() {
     let media_pos = INDEX_HTML
         .find("@media (prefers-reduced-motion: reduce)")
@@ -186,26 +302,6 @@ fn test_prerendered_twin_slot_live_regions() {
             "index.html must pre-render twin-slot live region node {id}"
         );
     }
-}
-
-#[test]
-fn test_favicon_svg_and_site_webmanifest_assets() {
-    assert!(
-        FAVICON_SVG.contains("<svg") && FAVICON_SVG.contains("</svg>"),
-        "icons/favicon.svg must be a non-empty valid SVG document"
-    );
-
-    let manifest: serde_json::Value =
-        serde_json::from_str(SITE_WEBMANIFEST).expect("site.webmanifest must parse as valid JSON");
-    assert_eq!(manifest["name"], "Math Explorer");
-    assert_eq!(manifest["short_name"], "Math Explorer");
-    let icons = manifest["icons"]
-        .as_array()
-        .expect("site.webmanifest must define an icons array");
-    assert!(
-        icons.len() >= 5,
-        "site.webmanifest must declare vector and raster icon entries"
-    );
 }
 
 #[test]

@@ -45,6 +45,9 @@ pub struct MorphogenesisToolState {
     /// Legacy boolean pause flag accepted on deserialization.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused: Option<bool>,
+    /// Deferred start flag keeping hidden tabs idle until first rendered frame.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pending_initial_start: bool,
 }
 
 impl MorphogenesisToolState {
@@ -97,6 +100,7 @@ pub struct MorphogenesisTool {
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
     pub(crate) step_runner: Option<MorphogenesisRunner>,
+    pub(crate) pending_initial_start: bool,
     theory: MorphogenesisTheory,
 }
 
@@ -113,8 +117,7 @@ impl Default for MorphogenesisTool {
         }));
 
         let runner = Self::create_runner(&params, width, height);
-        let mut worker = BackgroundWorker::new(runner);
-        let _ = worker.send_command(SimCommand::Start);
+        let worker = BackgroundWorker::new(runner);
 
         Self {
             worker,
@@ -126,6 +129,7 @@ impl Default for MorphogenesisTool {
             dirty: true,
             stepped_pixels: None,
             step_runner: None,
+            pending_initial_start: true,
             theory: MorphogenesisTheory::default(),
         }
     }
@@ -173,6 +177,7 @@ impl MorphogenesisTool {
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
         self.step_runner = None;
+        self.pending_initial_start = false;
         self.dirty = true;
     }
 
@@ -191,6 +196,7 @@ impl MorphogenesisTool {
             .reset_or_respawn(|| Self::create_runner(&params, width, height));
         self.stepped_pixels = None;
         self.step_runner = None;
+        self.pending_initial_start = false;
         self.dirty = true;
     }
 
@@ -199,15 +205,12 @@ impl MorphogenesisTool {
         let _ = self.worker.send_command(SimCommand::Start);
     }
 
-    fn apply_worker_state(&mut self, target: SimWorkerState) {
-        if target == SimWorkerState::Running && !self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Start);
-        } else if target != SimWorkerState::Running && self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-        }
-    }
-
     pub(crate) fn apply_named_preset(&mut self, a: f64, b: f64, d_u: f64, d_v: f64, dt: f64) {
+        let target_state = if self.worker.is_running() {
+            SimWorkerState::Running
+        } else {
+            SimWorkerState::Ready
+        };
         let preset_state = MorphogenesisToolState {
             a,
             b,
@@ -216,8 +219,9 @@ impl MorphogenesisTool {
             dt,
             width: self.width,
             height: self.height,
-            state: Some(self.worker.state()),
+            state: Some(target_state),
             paused: None,
+            pending_initial_start: false,
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);
@@ -325,17 +329,20 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        if std::mem::take(&mut self.pending_initial_start) && self.worker.state().is_ready() {
+            let _ = self.worker.send_command(SimCommand::Start);
+        }
         if self.worker.update().is_some() {
             self.dirty = true;
         }
+        self.draw_controls(ui);
+        self.draw_canvas(ui);
         if matches!(
             self.worker.state(),
             SimWorkerState::Running | SimWorkerState::Stepping
         ) {
             ctx.request_repaint();
         }
-        self.draw_controls(ui);
-        self.draw_canvas(ui);
     }
 
     fn theory(&self) -> &dyn TheoryDescribable {
@@ -355,6 +362,7 @@ impl InteractiveTool for MorphogenesisTool {
         self.width.hash(&mut h);
         self.height.hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
+        self.pending_initial_start.hash(&mut h);
         h.finish().max(1)
     }
 
@@ -373,6 +381,7 @@ impl InteractiveTool for MorphogenesisTool {
             height: self.height,
             state: Some(self.worker.state()),
             paused: None,
+            pending_initial_start: self.pending_initial_start,
         })
         .ok()
     }
@@ -401,7 +410,17 @@ impl InteractiveTool for MorphogenesisTool {
         } else {
             self.reset();
         }
-        self.apply_worker_state(target_state);
+        if target_state == SimWorkerState::Running {
+            self.pending_initial_start = false;
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+        } else {
+            self.pending_initial_start = parsed.pending_initial_start;
+            if self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+        }
         Ok(())
     }
 

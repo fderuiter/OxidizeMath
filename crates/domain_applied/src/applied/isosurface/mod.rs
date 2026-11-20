@@ -53,7 +53,7 @@ pub mod types;
 
 pub use gradients::{CentralDifferenceEstimator, GradientEstimator};
 pub use marching_cubes::extract_isosurface;
-pub use types::{Mesh, Point3D, Triangle, VoxelGrid};
+pub use types::{Mesh, Point3D, VoxelGrid};
 
 // [cite:isosurface_extraction]
 

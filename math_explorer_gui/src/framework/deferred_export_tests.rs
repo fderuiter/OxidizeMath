@@ -293,7 +293,9 @@ fn test_deferred_png_clipboard_and_raster_csv_clipboard_capability_guard() {
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         egui_plot::clear_last_plot_datasets();
         ok_fw.show_export_modal = true;
-        ok_fw.queue_export_with_target(ExportFormat::Png, ExportTarget::Clipboard);
+        ok_fw
+            .export_queue
+            .push_target(ExportFormat::Png, ExportTarget::Clipboard);
         ok_fw.show(ctx, "export_clipboard_img_test");
     });
     assert_eq!(ok_fw.export_status_severity, ExportStatusSeverity::Success);
@@ -305,7 +307,7 @@ fn test_deferred_png_clipboard_and_raster_csv_clipboard_capability_guard() {
 
     let mut raster_fw = new_framework_with_tool(build_registered_tool("DoseCalculationTool"));
     raster_fw.queue_clipboard_export();
-    raster_fw.dispatch_pending_exports();
+    raster_fw.dispatch_pending_exports_with_ctx(&ctx);
     assert_eq!(
         raster_fw.export_status_severity,
         ExportStatusSeverity::Warning

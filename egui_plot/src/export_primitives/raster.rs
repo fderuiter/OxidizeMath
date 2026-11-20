@@ -69,7 +69,7 @@ pub fn scale_color_image(
     egui::ColorImage::new([width, height], pixels)
 }
 
-fn background_pixel(options: &ExportOptions) -> egui::Color32 {
+pub(crate) fn background_pixel(options: &ExportOptions) -> egui::Color32 {
     let bg_a = (options.background_color.a() as f32 * options.background_opacity.clamp(0.0, 1.0))
         .round() as u8;
     egui::Color32::from_rgba_unmultiplied(
