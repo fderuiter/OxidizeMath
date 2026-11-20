@@ -30,6 +30,18 @@ for cand in \
     fi
 done
 if [ -z "$SNAPSHOT_SRC" ]; then
+    for out_cand in \
+        "${CARGO_TARGET_DIR:-}"/wasm32-unknown-unknown/release/build/math_explorer_gui-*/out/traceability_snapshot.json \
+        "${CARGO_TARGET_DIR:-}"/wasm32-unknown-unknown/debug/build/math_explorer_gui-*/out/traceability_snapshot.json \
+        "$REPO_ROOT"/target/wasm32-unknown-unknown/release/build/math_explorer_gui-*/out/traceability_snapshot.json \
+        "$REPO_ROOT"/target/wasm32-unknown-unknown/debug/build/math_explorer_gui-*/out/traceability_snapshot.json; do
+        if [ -f "$out_cand" ]; then
+            SNAPSHOT_SRC="$out_cand"
+            break
+        fi
+    done
+fi
+if [ -z "$SNAPSHOT_SRC" ]; then
     echo "Error: traceability_snapshot.json not found in Cargo target directory" >&2
     exit 1
 fi

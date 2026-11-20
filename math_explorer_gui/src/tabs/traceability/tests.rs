@@ -2,9 +2,10 @@
 
 use super::*;
 
+mod portal_tests;
+mod snapshot_tests;
 #[cfg(not(target_arch = "wasm32"))]
 mod workspace_root_tests;
-mod snapshot_tests;
 
 #[test]
 fn test_traceability_initial_state_transitions_to_scanning() {
