@@ -1,23 +1,9 @@
 use super::*;
+use crate::utils::test_utils::{CurrentDirGuard, create_temp_test_dir};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-static TEST_DIR_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-struct CurrentDirGuard(PathBuf);
-
-impl Drop for CurrentDirGuard {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.0);
-    }
-}
 
 fn create_temp_workspace(prefix: &str) -> PathBuf {
-    let id = TEST_DIR_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let dir = std::env::temp_dir().join(format!("{}_{}_{}", prefix, std::process::id(), id));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+    create_temp_test_dir(prefix)
 }
 
 fn write_member_crate(root: &Path, member: &str, lib_source: &str) -> String {

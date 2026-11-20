@@ -1,146 +1,16 @@
-// @explorer_feature = "physics"
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use super::runner::MriSnapshot;
+use super::tool::MriTool;
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
+use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport};
-use crate::tabs::ExplorerTab;
 use eframe::egui;
-use egui_plot::{Legend, Line, Plot, PlotPoint, Points};
-use math_explorer::physics::mri::bloch::BlochSimulator;
-use math_explorer::pure_math::analysis::ode::RungeKutta4;
-use nalgebra::Vector3;
-use std::collections::VecDeque;
-use std::sync::Arc;
+use egui_plot::{Legend, Line, Plot, Points};
 
-#[path = "mri/runner.rs"]
-mod runner;
-pub use runner::*;
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct MriState {
-    #[serde(default)]
-    state: Option<SimWorkerState>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    paused: Option<bool>,
-    time_scale: f64,
-}
-
-pub struct MriTab {
-    simulator: BlochSimulator,
-    _solver: RungeKutta4<Vector3<f64>>,
-    time_scale: f64,
-    current_time: f64,
-    history: VecDeque<(f64, Vector3<f64>)>,
-    _max_history: usize,
-    pub mx_points: Vec<PlotPoint>,
-    pub my_points: Vec<PlotPoint>,
-    pub mz_points: Vec<PlotPoint>,
-    pub params: Arc<std::sync::RwLock<MriSharedParams>>,
-    pub worker: BackgroundWorker<MriRunner>,
-}
-
-impl Default for MriTab {
-    fn default() -> Self {
-        let initial_m = Vector3::new(1.0, 0.0, 0.0);
-        let m0 = 1.0;
-        let mut simulator = BlochSimulator::new(initial_m, m0);
-        simulator.set_relaxation(1.0, 0.1);
-        simulator.set_b_field(Vector3::new(0.0, 0.0, 1.0));
-        let solver = RungeKutta4::new(&initial_m);
-
-        let params = Arc::new(std::sync::RwLock::new(MriSharedParams {
-            t1: 1.0,
-            t2: 0.1,
-            b_field: Vector3::new(0.0, 0.0, 1.0),
-            time_scale: 1.0,
-        }));
-
-        let runner = MriRunner::new(Arc::clone(&params), initial_m, m0);
-        let worker = BackgroundWorker::new(runner);
-
-        Self {
-            simulator,
-            _solver: solver,
-            time_scale: 1.0,
-            current_time: 0.0,
-            history: VecDeque::new(),
-            _max_history: math_commons::registry::MAX_ITERATIONS,
-            mx_points: Vec::new(),
-            my_points: Vec::new(),
-            mz_points: Vec::new(),
-            params,
-            worker,
-        }
-    }
-}
-
-impl MriTab {
-    #[cfg(test)]
-    #[allow(missing_docs)]
-    pub fn restart_worker(&mut self) {
-        let (t1, t2, b_field) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.t1, p.t2, p.b_field)
-        };
-        self.simulator.t1 = t1;
-        self.simulator.t2 = t2;
-        self.simulator.b_field = b_field;
-        let mut runner_simulator =
-            BlochSimulator::new(self.simulator.magnetization, self.simulator.m0);
-        runner_simulator.set_relaxation(t1, t2);
-        runner_simulator.set_b_field(b_field);
-        let mut history = self.history.clone();
-        if history.is_empty() {
-            history.push_back((self.current_time, self.simulator.magnetization));
-        }
-        let runner = MriRunner {
-            simulator: runner_simulator,
-            solver: RungeKutta4::new(&self.simulator.magnetization),
-            params: Arc::clone(&self.params),
-            current_time: self.current_time,
-            history,
-            max_history: math_commons::registry::MAX_ITERATIONS,
-        };
-        self.worker = BackgroundWorker::new(runner);
-    }
-
-    #[cfg(test)]
-    #[allow(missing_docs)]
-    pub fn retry(&mut self) {
-        self.restart_worker();
-    }
-
-    /// Repopulates cached plot point buffers from history while preserving allocated capacity
-    pub fn update_plot_buffers(&mut self) {
-        self.mx_points.clear();
-        self.my_points.clear();
-        self.mz_points.clear();
-        self.mx_points.reserve(self.history.len());
-        self.my_points.reserve(self.history.len());
-        self.mz_points.reserve(self.history.len());
-        for (t, m) in &self.history {
-            self.mx_points.push(PlotPoint::new(*t, m.x));
-            self.my_points.push(PlotPoint::new(*t, m.y));
-            self.mz_points.push(PlotPoint::new(*t, m.z));
-        }
-    }
-
-    /// Resets the simulation to the initial state defined by current parameters
-    pub fn reset(&mut self) {
-        let initial_m = Vector3::new(self.simulator.m0, 0.0, 0.0);
-        self.simulator.magnetization = initial_m;
-        self.current_time = 0.0;
-        self.history.clear();
-        self.mx_points.clear();
-        self.my_points.clear();
-        self.mz_points.clear();
-        let params = Arc::clone(&self.params);
-        let m0 = self.simulator.m0;
-        self.worker
-            .reset_or_respawn(|| MriRunner::new(params, initial_m, m0));
-    }
-
+impl MriTool {
     fn draw_relaxation_controls(&mut self, ui: &mut egui::Ui) {
         ui.collapsing("Relaxation Parameters", |ui| {
             if ui
@@ -354,8 +224,7 @@ impl MriTab {
             .show(ctx, |ui| self.show_ui_inside(ui));
     }
 
-    /// Updates from the background worker and renders the MRI tab UI at root context level.
-    fn show_ui_inside(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn show_ui_inside(&mut self, ui: &mut egui::Ui) {
         if let Some(snapshot) = self.worker.update() {
             if let Some(data) = snapshot
                 .structured_data
@@ -380,62 +249,3 @@ impl MriTab {
         self.draw_central_panel(ui);
     }
 }
-
-impl ExplorerTab for MriTab {
-    fn name(&self) -> &'static str {
-        "MRI Physics"
-    }
-
-    fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        std::mem::discriminant(&self.worker.state()).hash(&mut h);
-        self.time_scale.to_bits().hash(&mut h);
-        h.finish().max(1)
-    }
-
-    fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&MriState {
-            state: Some(self.worker.state()),
-            paused: None,
-            time_scale: self.time_scale,
-        })
-        .ok()
-    }
-
-    fn load_state(&mut self, state: &str) {
-        if let Ok(s) = serde_json::from_str::<MriState>(state) {
-            self.time_scale = sanitize_mri_time_scale(s.time_scale);
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .time_scale = self.time_scale;
-            let target_state = s.state.unwrap_or_else(|| {
-                if s.paused.unwrap_or(false) {
-                    SimWorkerState::Ready
-                } else {
-                    SimWorkerState::Running
-                }
-            });
-            if target_state == SimWorkerState::Running {
-                if !self.worker.is_running() {
-                    let _ = self.worker.send_command(SimCommand::Start);
-                }
-            } else if self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Pause);
-            }
-        }
-    }
-
-    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.show_ui_inside(ui);
-    }
-}
-
-// [cite:graph_parameters_rust]
-
-#[cfg(test)]
-use crate::async_sim::SimulationRunner;
-#[cfg(test)]
-#[path = "mri/tests.rs"]
-mod tests;

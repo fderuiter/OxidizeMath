@@ -8,9 +8,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Default)]
-pub(super) struct PinningState {
+pub(super) struct PinningState<'a> {
     active_stack: HashSet<PathBuf>,
     validated: HashSet<PathBuf>,
+    exceptions: &'a [super::JobPermissionException],
+}
+
+impl<'a> PinningState<'a> {
+    pub(super) fn with_exceptions(exceptions: &'a [super::JobPermissionException]) -> Self {
+        Self {
+            exceptions,
+            ..Self::default()
+        }
+    }
 }
 
 fn is_forty_char_hex(s: &str) -> bool {
@@ -58,7 +68,7 @@ fn read_and_validate_reusable_workflow(
     canonical_wf: &Path,
     uses_str: &str,
     repo_root: &Path,
-    state: &mut PinningState,
+    state: &mut PinningState<'_>,
 ) -> Result<(), String> {
     let content = fs::read_to_string(canonical_wf).map_err(|e| {
         format!(
@@ -72,16 +82,20 @@ fn read_and_validate_reusable_workflow(
             uses_str, e
         )
     })?;
-    super::validate_run_script_expressions(&yaml)
-        .map_err(|e| format!("Local reusable workflow '{}': {}", uses_str, e))?;
-    validate_workflow_jobs(&yaml, repo_root, state)
+    let wrap = |e: String| format!("Local reusable workflow '{}': {}", uses_str, e);
+    super::validate_permissions_with_exceptions(&yaml, Some(canonical_wf), state.exceptions)
+        .map_err(wrap)?;
+    super::validate_concurrency_block(&yaml).map_err(|e| wrap(e.to_string()))?;
+    super::validate_job_timeouts(&yaml).map_err(wrap)?;
+    super::validate_run_script_expressions(&yaml).map_err(wrap)?;
+    validate_workflow_jobs(&yaml, repo_root, state).map_err(wrap)
 }
 
 fn validate_local_reusable_workflow(
     uses_str: &str,
     job_name: &str,
     repo_root: &Path,
-    state: &mut PinningState,
+    state: &mut PinningState<'_>,
 ) -> Result<(), String> {
     let rel_path = extract_safe_local_rel_path(uses_str, false)
         .map_err(|e| format!("Job '{}' invalid local reusable workflow: {}", job_name, e))?;
@@ -131,7 +145,7 @@ fn validate_job_uses(
     uses_val: &Value,
     job_name: &str,
     repo_root: &Path,
-    state: &mut PinningState,
+    state: &mut PinningState<'_>,
 ) -> Result<(), String> {
     let Some(uses_str) = uses_val.as_str() else {
         return Err(format!(
@@ -197,7 +211,7 @@ fn validate_step_uses(
     owner_desc: &str,
     invalid_attr_msg: &str,
     repo_root: &Path,
-    state: &mut PinningState,
+    state: &mut PinningState<'_>,
 ) -> Result<(), String> {
     let Some(uses_val) = step.get("uses") else {
         return Ok(());
@@ -239,7 +253,7 @@ fn validate_action_manifest_body(
     canonical_manifest: &Path,
     manifest_label: &str,
     repo_root: &Path,
-    state: &mut PinningState,
+    state: &mut PinningState<'_>,
 ) -> Result<(), String> {
     let Some(runs_map) = yaml.get("runs").and_then(Value::as_object) else {
         return Err(format!(
@@ -284,7 +298,7 @@ fn validate_action_manifest_body(
 pub(super) fn validate_action_manifest_with_state(
     manifest_path: &Path,
     repo_root: &Path,
-    state: &mut PinningState,
+    state: &mut PinningState<'_>,
 ) -> Result<(), String> {
     let label = manifest_path.to_string_lossy().to_string();
     let canonical_manifest =
@@ -318,7 +332,7 @@ pub(super) fn validate_action_manifest_with_state(
 pub(super) fn validate_workflow_jobs(
     yaml: &Value,
     repo_root: &Path,
-    state: &mut PinningState,
+    state: &mut PinningState<'_>,
 ) -> Result<(), String> {
     let jobs = match yaml.get("jobs") {
         Some(Value::Object(map)) => map,

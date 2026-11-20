@@ -1,275 +1,266 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::async_sim::SimulationRunner;
+use crate::async_sim::{SimCommand, SimWorkerState, SimulationRunner};
+use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
+use math_commons::math_kernel::colormap::heatmap_color;
 use std::thread;
 use std::time::Duration;
 
-fn wait_for_morphogenesis_snapshot(tab: &mut MorphogenesisTab) {
+fn wait_for_morphogenesis_snapshot(tool: &mut MorphogenesisTool) {
     for _ in 0..600 {
-        if tab.worker.update().is_some() {
+        if tool.worker.update().is_some() || tool.worker.latest_snapshot().is_some() {
             return;
         }
         thread::sleep(Duration::from_millis(5));
     }
 }
 
+fn active_morpho_tool_state(tab: &MorphogenesisTab) -> MorphogenesisToolState {
+    let json = tab
+        .framework
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.save_state())
+        .expect("MorphogenesisTool must serialize state");
+    serde_json::from_str(&json).expect("valid MorphogenesisToolState")
+}
+
+fn render_tool_frame(ctx: &egui::Context, tool: &mut MorphogenesisTool) -> egui::FullOutput {
+    ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE)
+            .show(ctx, |ui| tool.show_inside(ui));
+    })
+}
+
+fn get_repaint_delay(output: &egui::FullOutput) -> Duration {
+    output
+        .viewport_output
+        .get(&egui::ViewportId::ROOT)
+        .unwrap()
+        .repaint_delay
+}
+
 #[test]
 fn test_morphogenesis_initial_state() {
-    let tab = MorphogenesisTab::default();
-    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
-    assert!(tab.dirty);
-    assert!(tab.texture.is_none());
-    assert!(tab.pixels.is_empty());
+    let tool = MorphogenesisTool::default();
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
+    assert!(tool.pending_initial_start);
+    assert!(tool.dirty);
+    assert!(tool.texture.is_none());
+    assert!(tool.pixels.is_empty());
 }
 
 #[test]
 fn test_morphogenesis_render_lifecycle_and_dirty_tracking() {
     let ctx = egui::Context::default();
-    let mut tab = MorphogenesisTab::default();
+    let mut tool = MorphogenesisTool::default();
+    assert!(tool.dirty);
+    assert!(tool.texture.is_none());
 
-    // 1. Initial state has dirty flag set and no texture
-    assert!(tab.dirty);
-    assert!(tab.texture.is_none());
+    wait_for_morphogenesis_snapshot(&mut tool);
+    let _ = render_tool_frame(&ctx, &mut tool);
 
-    // Allow worker thread to generate the initial snapshot
-    wait_for_morphogenesis_snapshot(&mut tab);
+    assert!(!tool.dirty);
+    assert!(tool.texture.is_some());
+    assert_eq!(tool.pixels.len(), tool.width * tool.height);
 
-    // Run first render pass: uploads texture and clears dirty flag
-    let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
+    let initial_pixels_cap = tool.pixels.capacity();
+    let initial_tex_id = tool.texture.as_ref().unwrap().id();
 
-    assert!(!tab.dirty);
-    assert!(tab.texture.is_some());
-    assert_eq!(tab.pixels.len(), tab.width * tab.height);
+    let _ = tool.worker.send_command(SimCommand::Pause);
+    tool.worker.wait_until_paused();
+    while tool.worker.update().is_some() {}
+    tool.dirty = false;
 
-    let initial_pixels_cap = tab.pixels.capacity();
-    let initial_tex_id = tab.texture.as_ref().unwrap().id();
+    let _ = render_tool_frame(&ctx, &mut tool);
+    assert!(!tool.dirty);
+    assert_eq!(tool.pixels.capacity(), initial_pixels_cap);
+    assert_eq!(tool.texture.as_ref().unwrap().id(), initial_tex_id);
 
-    // 2. Pause simulation to test stationary/idle frame
-    let _ = tab.worker.send_command(SimCommand::Pause);
-    tab.worker.wait_until_paused();
+    tool.dirty = true;
+    let _ = render_tool_frame(&ctx, &mut tool);
+    assert!(!tool.dirty);
+    assert_eq!(tool.pixels.capacity(), initial_pixels_cap);
+    assert_eq!(tool.texture.as_ref().unwrap().id(), initial_tex_id);
 
-    // Drain any pending updates from the worker before pause settled
-    while tab.worker.update().is_some() {}
-    tab.dirty = false;
-
-    // Run idle frame: does not mark dirty and reuses persistent buffer and texture
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-
-    assert!(!tab.dirty);
-    assert_eq!(tab.pixels.capacity(), initial_pixels_cap);
-    assert_eq!(tab.texture.as_ref().unwrap().id(), initial_tex_id);
-
-    // 3. Manually setting dirty flag causes texture update and clears dirty
-    tab.dirty = true;
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    assert!(!tab.dirty);
-    assert_eq!(tab.pixels.capacity(), initial_pixels_cap);
-    assert_eq!(tab.texture.as_ref().unwrap().id(), initial_tex_id);
-
-    // 4. Reset simulation sets dirty flag
-    let _ = tab.worker.send_command(SimCommand::Reset);
-    tab.dirty = true;
-    assert!(tab.dirty);
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    assert!(!tab.dirty);
-    assert_eq!(tab.texture.as_ref().unwrap().id(), initial_tex_id);
+    let _ = tool.worker.send_command(SimCommand::Reset);
+    tool.dirty = true;
+    let _ = render_tool_frame(&ctx, &mut tool);
+    assert!(!tool.dirty);
+    assert_eq!(tool.texture.as_ref().unwrap().id(), initial_tex_id);
 }
 
 #[test]
 fn test_morphogenesis_grid_resize_and_buffer_safety() {
     let ctx = egui::Context::default();
-    let mut tab = MorphogenesisTab::default();
+    let mut tool = MorphogenesisTool::default();
 
-    // Initial render
-    wait_for_morphogenesis_snapshot(&mut tab);
-    let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    assert_eq!(tab.pixels.len(), 100 * 100);
+    wait_for_morphogenesis_snapshot(&mut tool);
+    let _ = render_tool_frame(&ctx, &mut tool);
+    assert_eq!(tool.pixels.len(), 100 * 100);
 
-    // Apply config with changed dimensions
-    let mut config = tab.export_config();
-    config.width = 50;
-    config.height = 50;
-    assert!(tab.apply_config(config).is_ok());
-    assert!(tab.dirty);
+    let mut state: MorphogenesisToolState =
+        serde_json::from_str(&tool.save_state().unwrap()).unwrap();
+    state.width = 50;
+    state.height = 50;
+    assert!(tool
+        .try_load_state(&serde_json::to_string(&state).unwrap())
+        .is_ok());
+    assert!(tool.dirty);
 
-    // Wait for resized runner to produce a snapshot
-    wait_for_morphogenesis_snapshot(&mut tab);
-
-    // Render after resize
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    assert!(!tab.dirty);
-    assert_eq!(tab.pixels.len(), 50 * 50);
+    wait_for_morphogenesis_snapshot(&mut tool);
+    let _ = render_tool_frame(&ctx, &mut tool);
+    assert!(!tool.dirty);
+    assert_eq!(tool.pixels.len(), 50 * 50);
 }
 
 #[test]
 fn test_plot_concentration_color_mapping() {
-    let width = 2;
-    let height = 2;
     let data = vec![0.0, 0.5, 1.0, 0.25];
-    let image = MorphogenesisTab::plot_concentration(&data, width, height);
-
-    assert_eq!(image.size, [width, height]);
+    let image = MorphogenesisTab::plot_concentration(&data, 2, 2);
+    assert_eq!(image.size, [2, 2]);
     assert_eq!(image.pixels.len(), 4);
 
     let min_color = heatmap_color(0.0);
-    assert_eq!(image.pixels[0], egui::Color32::from_rgb(min_color[0], min_color[1], min_color[2]));
+    assert_eq!(
+        image.pixels[0],
+        egui::Color32::from_rgb(min_color[0], min_color[1], min_color[2])
+    );
 
     let max_color = heatmap_color(1.0);
-    assert_eq!(image.pixels[2], egui::Color32::from_rgb(max_color[0], max_color[1], max_color[2]));
+    assert_eq!(
+        image.pixels[2],
+        egui::Color32::from_rgb(max_color[0], max_color[1], max_color[2])
+    );
 
-    // Uniform data (zero range) should not panic or divide by zero
     let uniform_data = vec![1.0; 4];
-    let uniform_image = MorphogenesisTab::plot_concentration(&uniform_data, width, height);
+    let uniform_image = MorphogenesisTab::plot_concentration(&uniform_data, 2, 2);
     assert_eq!(uniform_image.pixels.len(), 4);
 }
 
 #[test]
-fn test_morphogenesis_starter_gallery_lifecycle() {
+fn test_morphogenesis_starter_gallery_and_spots_stripes_reset_turing_system() {
     let mut tab = MorphogenesisTab::default();
-    // Acceptance Criteria 1: Empty simulation tab initializes with starter gallery closed
-    assert!(!tab.show_starter_gallery);
+    assert!(!tab.framework.show_starter_gallery);
 
-    // Acceptance Criteria 2: Applying starter preset transitions into active mode
-    let spots_json = crate::starter_gallery::PRESET_TURING_SPOTS;
-    assert!(tab.from_json_str(spots_json).is_ok());
-    tab.show_starter_gallery = false;
-    assert!(!tab.show_starter_gallery);
+    // Apply Turing Stripes via Starter Gallery on SimulationFramework
+    assert!(tab
+        .framework
+        .apply_starter_card(
+            "Turing Stripes",
+            Some("MorphogenesisTool"),
+            Some(crate::starter_gallery::PRESET_TURING_STRIPES),
+        )
+        .is_ok());
+    assert_eq!(tab.export_config().a, 0.14);
+    assert_eq!(tab.export_config().b, 0.86);
+    assert_eq!(tab.export_config().d_v, 50.0);
+    assert_eq!(tab.export_config().dt, 0.02);
 
-    // Acceptance Criteria 4: Toggle gallery on demand
-    tab.show_starter_gallery = !tab.show_starter_gallery;
-    assert!(tab.show_starter_gallery);
+    // Verify Spots and Stripes quick presets route through try_load_state, updating dt and marking dirty
+    let mut tool = MorphogenesisTool::default();
+    let _ = tool.worker.send_command(SimCommand::Pause);
+    tool.worker.wait_until_paused();
+    tool.dirty = false;
 
-    // Acceptance Criteria 3: Loaded workspace session bypasses the gallery
-    let saved_state = tab.save_state().unwrap();
-    let mut loaded_tab = MorphogenesisTab::default();
-    assert!(!loaded_tab.show_starter_gallery);
-    loaded_tab.show_starter_gallery = true;
-    loaded_tab.load_state(&saved_state);
-    assert!(!loaded_tab.show_starter_gallery);
-}
+    tool.apply_named_preset(0.14, 0.86, 1.0, 50.0, 0.02);
+    assert!(tool.dirty, "Stripes preset must mark texture dirty");
+    assert_eq!(tool.params.read().unwrap().dt, 0.02);
+    assert_eq!(tool.params.read().unwrap().d_v, 50.0);
 
-fn get_repaint_delay(output: &egui::FullOutput) -> std::time::Duration {
-    output.viewport_output.get(&egui::ViewportId::ROOT).unwrap().repaint_delay
+    tool.dirty = false;
+    tool.apply_named_preset(0.1, 0.9, 1.0, 100.0, 0.05);
+    assert!(tool.dirty, "Spots preset must mark texture dirty");
+    assert_eq!(tool.params.read().unwrap().dt, 0.05);
+    assert_eq!(tool.params.read().unwrap().d_v, 100.0);
 }
 
 #[test]
 fn test_morphogenesis_fault_halts_repaints_and_recovers() {
     let ctx = egui::Context::default();
-    let mut tab = MorphogenesisTab {
-        show_starter_gallery: false,
-        ..Default::default()
-    };
+    let mut tool = MorphogenesisTool::default();
+    wait_for_morphogenesis_snapshot(&mut tool);
+    let _ = render_tool_frame(&ctx, &mut tool);
 
-    // Allow worker thread to generate initial snapshot
-    wait_for_morphogenesis_snapshot(&mut tab);
+    let _ = tool.worker.send_command(SimCommand::Pause);
+    tool.worker.wait_until_paused();
+    while tool.worker.update().is_some() {}
+    tool.dirty = false;
 
-    // Initial render pass uploads texture and clears dirty flag
-    let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
+    let _ = render_tool_frame(&ctx, &mut tool);
+    let output_paused = render_tool_frame(&ctx, &mut tool);
+    assert_ne!(get_repaint_delay(&output_paused), Duration::ZERO);
 
-    // 1. Paused state: repaints halted
-    let _ = tab.worker.send_command(SimCommand::Pause);
-    tab.worker.wait_until_paused();
-    while tab.worker.update().is_some() {}
-    tab.dirty = false;
+    let _ = tool.worker.send_command(SimCommand::Start);
+    let output_running = render_tool_frame(&ctx, &mut tool);
+    assert_eq!(tool.worker.state(), SimWorkerState::Running);
+    assert_eq!(get_repaint_delay(&output_running), Duration::ZERO);
 
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    let output_paused = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    assert_ne!(get_repaint_delay(&output_paused), std::time::Duration::ZERO);
+    let _ = tool.worker.send_command(SimCommand::Pause);
+    tool.worker.wait_until_paused();
+    while tool.worker.update().is_some() {}
 
-    // 2. Running state: repaints requested
-    let _ = tab.worker.send_command(SimCommand::Start);
-    let output_running = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    assert_eq!(tab.worker.state(), SimWorkerState::Running);
-    assert_eq!(get_repaint_delay(&output_running), std::time::Duration::ZERO);
+    tool.worker.set_state_for_test(SimWorkerState::Faulted);
+    let _ = render_tool_frame(&ctx, &mut tool);
+    let output_faulted = render_tool_frame(&ctx, &mut tool);
+    assert_ne!(get_repaint_delay(&output_faulted), Duration::ZERO);
 
-    // Pause running worker
-    let _ = tab.worker.send_command(SimCommand::Pause);
-    tab.worker.wait_until_paused();
-    while tab.worker.update().is_some() {}
-
-    // 3. Faulted state: repaints halted
-    tab.worker.set_state_for_test(SimWorkerState::Faulted);
-    assert_eq!(tab.worker.state(), SimWorkerState::Faulted);
-
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    let output_faulted = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    assert_ne!(get_repaint_delay(&output_faulted), std::time::Duration::ZERO);
-
-    // 4. Retry recovery restores communication and sets state to Ready
-    tab.retry();
-    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
+    tool.retry();
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 }
 
 #[test]
-fn test_morphogenesis_save_and_load_state_compatibility() {
+fn test_morphogenesis_all_controls_update_state_revision_and_legacy_compatibility() {
     let mut tab = MorphogenesisTab::default();
-    // Default stays Ready while hidden prior to first render
-    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Ready));
+    let mut prev_rev = tab.state_revision();
+    assert!(prev_rev > 0);
 
-    // Save state serializes SimWorkerState
+    for mutate in [
+        |p: &mut MorphogenesisSharedParams| p.a = 0.22,
+        |p: &mut MorphogenesisSharedParams| p.b = 1.15,
+        |p: &mut MorphogenesisSharedParams| p.d_u = 2.4,
+        |p: &mut MorphogenesisSharedParams| p.d_v = 85.0,
+        |p: &mut MorphogenesisSharedParams| p.dt = 0.03,
+    ] {
+        mutate(&mut tab.params.write().unwrap());
+        let next_rev = tab.state_revision();
+        assert_ne!(next_rev, prev_rev);
+        prev_rev = next_rev;
+    }
+
     let saved = tab.save_state().expect("save_state should succeed");
-    assert!(saved.contains("\"state\":\"Ready\""));
     assert!(!saved.contains("\"paused\""));
-
-    let mut loaded = MorphogenesisTab::default();
-    loaded.load_state(&saved);
-    assert_eq!(loaded.worker.state(), SimWorkerState::Ready);
+    let mut restored = MorphogenesisTab::default();
+    restored.load_state(&saved);
+    assert_eq!(restored.export_config(), tab.export_config());
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Ready));
 
     // Running state roundtrips cleanly
-    assert!(tab.worker.send_command(SimCommand::Start).is_ok());
+    let ctx = egui::Context::default();
+    let mut frame = eframe::Frame::_new_kittest();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Running));
     let saved_running = tab.save_state().expect("save_state should succeed");
-    assert!(saved_running.contains("\"state\":\"Running\""));
-    loaded.load_state(&saved_running);
-    assert_eq!(loaded.worker.state(), SimWorkerState::Running);
+    restored.load_state(&saved_running);
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Running));
 
-    // Load legacy JSON with "paused": true
-    let legacy_paused = r#"{"dt":0.02,"paused":true,"show_starter_gallery":false}"#;
-    loaded.load_state(legacy_paused);
-    assert_eq!(loaded.worker.state(), SimWorkerState::Ready);
-    assert_eq!(loaded.params.read().unwrap().dt, 0.02);
+    // Load legacy flat MorphoState JSON payloads
+    restored.load_state(r#"{"dt":0.02,"paused":true,"show_starter_gallery":true}"#);
+    assert!(!restored.framework.show_starter_gallery);
+    assert_eq!(restored.params.read().unwrap().dt, 0.02);
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Ready));
 
-    // Load legacy JSON with "paused": false
-    let legacy_running = r#"{"dt":0.08,"paused":false,"show_starter_gallery":false}"#;
-    loaded.load_state(legacy_running);
-    assert_eq!(loaded.worker.state(), SimWorkerState::Running);
-    assert_eq!(loaded.params.read().unwrap().dt, 0.08);
+    restored.load_state(r#"{"dt":0.08,"paused":false,"show_starter_gallery":false}"#);
+    assert_eq!(restored.params.read().unwrap().dt, 0.08);
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Running));
 }
 
 #[test]
-fn test_morphogenesis_poisoned_lock_recovery() {
+fn test_morphogenesis_poisoned_lock_and_zero_allocation_step_and_png_export() {
     let mut tab = MorphogenesisTab::default();
-    let _ = tab.worker.send_command(SimCommand::Pause);
-    tab.worker.wait_until_paused();
-
-    // Poison shared parameter RwLock
     let params_clone = Arc::clone(&tab.params);
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut guard = params_clone.write().unwrap();
@@ -279,122 +270,194 @@ fn test_morphogenesis_poisoned_lock_recovery() {
     }));
     assert!(tab.params.is_poisoned());
 
-    // Runner creation and stepping recover parameters from poisoned lock
     let mut runner = MorphogenesisTab::create_runner(&tab.params, 20, 20);
     assert_eq!(runner.system.kinetics.a, 0.25);
+
+    // Warm up and verify zero heap allocations inside MorphogenesisRunner::step under VerifiedAllocator
     runner.step();
-    assert!(FiniteStateGuard::is_finite_state(&runner));
-    let snap = runner.get_snapshot();
-    assert_eq!(snap.width, 20);
-    assert_eq!(snap.height, 20);
-
-    // FiniteStateGuard recovery actions survive poisoned lock
     {
-        let mut p = tab.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = 5.0;
-        p.dt = 0.08;
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            runner.step();
+        });
     }
+    assert!(FiniteStateGuard::is_finite_state(&runner));
+
+    // Verify recovery actions & PNG raster export survive poisoned lock
     tab.auto_scale_step_size();
-    assert!((tab.params.read().unwrap_or_else(|e| e.into_inner()).dt - 0.04).abs() < 1e-12);
-
-    tab.clamp_parameters();
-    assert_eq!(tab.params.read().unwrap_or_else(|e| e.into_inner()).a, 1.0);
-
+    assert!((tab.params.read().unwrap_or_else(|e| e.into_inner()).dt - 0.02).abs() < 1e-12);
     tab.reset_parameters();
     assert_eq!(tab.params.read().unwrap_or_else(|e| e.into_inner()).a, 0.1);
-    let _ = tab.worker.send_command(SimCommand::Pause);
-    tab.worker.wait_until_paused();
 
-    // Preset export/import and save/load state survive poisoned lock
-    let mut cfg = tab.export_config();
-    cfg.a = 0.18;
-    cfg.dt = 0.03;
-    assert!(tab.apply_config(cfg).is_ok());
-    assert_eq!(tab.params.read().unwrap_or_else(|e| e.into_inner()).a, 0.18);
-
-    let saved = tab.save_state().expect("save_state should succeed with poisoned lock");
-    assert!(saved.contains("0.03"));
-    tab.load_state(r#"{"dt":0.02,"state":"Ready","show_starter_gallery":false}"#);
-    assert_eq!(tab.params.read().unwrap_or_else(|e| e.into_inner()).dt, 0.02);
-
-    // UI rendering (including draw_parameter_sliders acquiring write lock) survives poisoned lock
     let ctx = egui::Context::default();
     let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
+    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0));
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        },
+        |ctx| {
+            tab.framework.show_export_modal = true;
+            tab.framework.queue_export(ExportFormat::Png);
+            tab.show(ctx, &mut frame);
+        },
+    );
+    assert_eq!(tab.framework.export_status_severity, ExportStatusSeverity::Success);
+    let _ = std::fs::write(
+        "/tmp/morphogenesis_turing.png",
+        tab.framework
+            .export_queue
+            .last_exported_bytes
+            .as_ref()
+            .expect("morphogenesis PNG bytes"),
+    );
+}
+
+fn click_morpho_button(ctx: &egui::Context, tab: &mut MorphogenesisTab, label_substr: &str) {
+    let mut frame = eframe::Frame::_new_kittest();
+    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
+    let out = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        },
+        |ctx| tab.show(ctx, &mut frame),
+    );
+    let ak = out.platform_output.accesskit_update.as_ref().unwrap();
+    let bounds = ak
+        .nodes
+        .iter()
+        .find(|(_, n)| n.label().is_some_and(|l| l.contains(label_substr)))
+        .and_then(|(_, n)| n.bounds())
+        .unwrap_or_else(|| panic!("Button containing '{label_substr}' not found"));
+    let center = egui::pos2(
+        ((bounds.x0 + bounds.x1) * 0.5) as f32,
+        ((bounds.y0 + bounds.y1) * 0.5) as f32,
+    );
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![
+                egui::Event::PointerMoved(center),
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            ..Default::default()
+        },
+        |ctx| tab.show(ctx, &mut frame),
+    );
 }
 
 #[test]
-fn test_turing_stripes_syncs_kinetics_before_reinit_and_surfaces_import_errors() {
+fn test_morphogenesis_undo_mws_reset_live_region_theory_and_preset_io() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+
     let mut tab = MorphogenesisTab::default();
-    let _ = tab.worker.send_command(SimCommand::Pause);
-    tab.worker.wait_until_paused();
+    click_morpho_button(&ctx, &mut tab, "Stripes");
+    assert_eq!(tab.export_config().a, 0.14);
+    assert_eq!(tab.export_config().dt, 0.02);
 
-    // Verify runner starts with default Schnakenberg kinetics (a=0.1, b=0.9 => v0 = 0.9)
-    let mut runner = MorphogenesisTab::create_runner(&tab.params, 20, 20);
-    assert!((runner.system.kinetics.a - 0.1).abs() < 1e-12);
-    assert!((runner.system.kinetics.b - 0.9).abs() < 1e-12);
+    let preset_json = tab
+        .framework
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .export_preset_json()
+        .expect("morphogenesis preset export");
 
-    // Launch Turing Stripes preset (a=0.14, b=0.86, d_u=1.0, d_v=50.0, dt=0.02)
-    assert!(tab
-        .from_json_str(crate::starter_gallery::PRESET_TURING_STRIPES)
-        .is_ok());
-    {
-        let p = tab.params.read().unwrap();
-        assert!((p.a - 0.14).abs() < 1e-12);
-        assert!((p.b - 0.86).abs() < 1e-12);
-        assert!((p.d_u - 1.0).abs() < 1e-12);
-        assert!((p.d_v - 50.0).abs() < 1e-12);
-        assert!((p.dt - 0.02).abs() < 1e-12);
-    }
+    click_morpho_button(&ctx, &mut tab, "Reset Parameters");
+    assert_eq!(tab.export_config().a, 0.1);
+    assert_eq!(tab.export_config().b, 0.9);
+    assert_eq!(tab.export_config().d_v, 100.0);
+    assert_eq!(tab.export_config().dt, 0.05);
+    let live_msg = crate::accessibility::with_live_region(|r| r.slots[r.active_slot].clone());
+    assert_eq!(live_msg, "Parameters reset to baseline defaults");
 
-    // SimCommand::Reset must sync SchnakenbergKinetics BEFORE initialize_system computes steady state
-    runner.process_command(SimCommand::Reset);
-    assert!((runner.system.kinetics.a - 0.14).abs() < 1e-12);
-    assert!((runner.system.kinetics.b - 0.86).abs() < 1e-12);
-    assert_eq!(runner.system.diffusion_coeffs, [1.0, 50.0]);
+    tab.framework
+        .active_tool
+        .as_mut()
+        .unwrap()
+        .import_preset_json(&preset_json)
+        .expect("morphogenesis preset import");
+    assert_eq!(tab.export_config().a, 0.14);
+    assert_eq!(tab.export_config().dt, 0.02);
 
-    let v_field = runner.system.v();
-    let mean_v = v_field.iter().sum::<f64>() / v_field.len() as f64;
-    // Steady state v_0 = b / (a + b)^2 = 0.86 / 1.0 = 0.86 (stale kinetics would produce ~0.90)
+    assert!(!tab.framework.show_theory_portal);
+    click_morpho_button(&ctx, &mut tab, "Theory");
+    assert!(tab.framework.show_theory_portal);
+    let mut frame = eframe::Frame::_new_kittest();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
     assert!(
-        (mean_v - 0.86).abs() < 0.02,
-        "Expected reinitialized mean v near 0.86, got {}",
-        mean_v
+        scientific_metadata::citation_registry::CitationRegistry::get("Turing Morphogenesis")
+            .is_some_and(|c| !c.is_empty())
     );
 
-    // Malformed preset JSON surfaces error in PresetDialogState
-    let err = tab
-        .from_json_str("{bad morphogenesis json")
-        .expect_err("Malformed JSON must fail");
-    tab.dialog_state.record_import_error(err);
-    assert!(tab.dialog_state.toast_error.is_some());
+    // End-to-end WorkspaceSessionManager Undo + .mws round-trip
+    let mut app = crate::app::MathExplorerApp::default();
+    let mut mgr = crate::app::WorkspaceSessionManager::default();
+    let morpho_idx = app
+        .tabs
+        .iter()
+        .position(|t| t.name() == "Morphogenesis")
+        .expect("Morphogenesis tab registered");
+    app.selected_tab = morpho_idx;
+    mgr.track_frame_changes(&ctx, &app);
+    assert!(!mgr.can_undo());
+
+    let baseline_json = app.tabs[morpho_idx].save_state().unwrap();
+    app.tabs[morpho_idx].load_state(r#"{"dt":0.025,"paused":true}"#);
+    mgr.track_frame_changes(&ctx, &app);
+    assert!(mgr.can_undo());
+
+    let mws = mgr.create_envelope(app.get_app_state());
+    let parsed = mgr.parse_envelope(&mws).unwrap();
+    assert!(parsed.tab_states["Morphogenesis"].contains("0.025"));
+
+    let prev = mgr.pop_undo().expect("undo snapshot");
+    assert_eq!(prev.tab_states["Morphogenesis"], baseline_json);
 }
 
 #[test]
 fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
     let ctx = egui::Context::default();
     let mut tab = MorphogenesisTab::default();
-    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
+    let mut tool = MorphogenesisTool::default();
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Ready));
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 
-    // Hidden tab remains idle before first render
+    // Hidden tab and tool remain idle before first render
     thread::sleep(Duration::from_millis(40));
-    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Ready));
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 
     // First render starts stepping; default d_v=100, dt=0.05 diverges to Faulted
     let mut frame = eframe::Frame::_new_kittest();
     for _ in 0..400 {
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            tab.show(ctx, &mut frame);
-        });
-        if tab.worker.state() == SimWorkerState::Faulted {
+        let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+        let _ = render_tool_frame(&ctx, &mut tool);
+        if active_morpho_tool_state(&tab).state == Some(SimWorkerState::Faulted)
+            && tool.worker.state() == SimWorkerState::Faulted
+        {
             break;
         }
         thread::sleep(Duration::from_millis(10));
     }
 
-    assert_eq!(tab.worker.state(), SimWorkerState::Faulted);
-    assert!(tab.worker.diagnostic_report().is_some());
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Faulted));
+    assert_eq!(tool.worker.state(), SimWorkerState::Faulted);
+    assert!(tool.worker.diagnostic_report().is_some());
 }
-

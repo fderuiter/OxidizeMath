@@ -1,24 +1,14 @@
 pub(crate) mod lint_policy;
 
-use serde::Deserialize;
+pub use crate::whitelist::DeadCodeEntry;
+use crate::whitelist::{
+    PathMatchOptions, ROOT_ONLY_WHITELIST_CANDIDATES, VerificationWhitelist,
+    WORKSPACE_WHITELIST_CANDIDATES,
+};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use syn::visit::Visit;
-use walkdir::WalkDir;
-
-#[derive(Deserialize, Debug, Default)]
-pub struct Whitelist {
-    #[serde(default)]
-    dead_code: Vec<DeadCodeEntry>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-#[serde(deny_unknown_fields)]
-pub struct DeadCodeEntry {
-    file: String,
-    identifier: Option<String>,
-}
 
 struct DependencyVisitor {
     expected_deps: HashSet<String>,
@@ -152,11 +142,14 @@ struct DeadCodeVisitor {
 
 impl DeadCodeVisitor {
     fn is_authorized(&self, ident: Option<&str>) -> bool {
+        let opts = PathMatchOptions {
+            trim_dot_slash: false,
+            require_non_empty: false,
+            match_file_name: false,
+        };
+        let actual_path = Path::new(&self.file_path);
         for entry in &self.allowed {
-            let norm_entry = entry.file.replace('\\', "/");
-            let path_matches =
-                self.file_path == norm_entry || self.file_path.ends_with(&format!("/{norm_entry}"));
-            if path_matches {
+            if crate::whitelist::path_matches_lossy(actual_path, &entry.file, opts) {
                 match (&entry.identifier, ident) {
                     (None, _) => return true,
                     (Some(allowed_id), Some(id)) if allowed_id == id => return true,
@@ -297,26 +290,6 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor {
     }
 }
 
-fn load_whitelist(whitelist_path: &Path) -> Option<Whitelist> {
-    if !whitelist_path.exists() {
-        return Some(Whitelist::default());
-    }
-    let content = match fs::read_to_string(whitelist_path) {
-        Ok(c) => c,
-        Err(err) => {
-            eprintln!("[!] Failed to read {}: {}", whitelist_path.display(), err);
-            return None;
-        }
-    };
-    match toml::from_str::<Whitelist>(&content) {
-        Ok(whitelist) => Some(whitelist),
-        Err(err) => {
-            eprintln!("[!] Failed to parse {}: {}", whitelist_path.display(), err);
-            None
-        }
-    }
-}
-
 fn collect_expected_dependencies(parsed: &toml::Value) -> HashSet<String> {
     let mut deps = Vec::new();
     for section in ["dependencies", "dev-dependencies"] {
@@ -361,22 +334,15 @@ fn is_implicitly_used_dep(member: &str, expected: &str) -> bool {
 }
 
 fn audit_member_sources(
-    member_path: &str,
-    whitelist: &Whitelist,
+    member_dir: &Path,
+    whitelist: &VerificationWhitelist,
     check_clippy_bypasses: bool,
     dep_visitor: &mut DependencyVisitor,
 ) -> bool {
     let mut success = true;
-    for entry in WalkDir::new(member_path)
-        .into_iter()
-        .filter_entry(|e| e.file_name() != "target")
-        .filter_map(Result::ok)
-    {
-        if entry.path().extension().and_then(|s| s.to_str()) != Some("rs") {
-            continue;
-        }
-        let file_path = entry.path().to_string_lossy().replace('\\', "/");
-        if let Ok(content) = fs::read_to_string(entry.path())
+    for path in crate::utils::collect_rs_files_filtered(&[member_dir], &["target"]) {
+        let file_path = crate::whitelist::lossy_slash_path(&path);
+        if let Ok(content) = fs::read_to_string(&path)
             && let Ok(ast) = syn::parse_file(&content)
         {
             dep_visitor.visit_file(&ast);
@@ -406,7 +372,7 @@ fn audit_member_sources(
     success
 }
 
-fn audit_single_member(member: &str, whitelist: &Whitelist) -> bool {
+fn audit_single_member(member: &str, whitelist: &VerificationWhitelist) -> bool {
     let member_dir = lint_policy::resolve_member_dir(member);
     let cargo_toml_path = member_dir.join("Cargo.toml");
     let Ok(content) = fs::read_to_string(&cargo_toml_path) else {
@@ -429,9 +395,8 @@ fn audit_single_member(member: &str, whitelist: &Whitelist) -> bool {
         used_deps: HashSet::new(),
     };
 
-    let member_scan_path = member_dir.to_string_lossy();
     if !audit_member_sources(
-        &member_scan_path,
+        &member_dir,
         whitelist,
         check_clippy_bypasses,
         &mut dep_visitor,
@@ -455,14 +420,23 @@ fn audit_single_member(member: &str, whitelist: &Whitelist) -> bool {
 }
 
 pub fn run_policy_audit(members: &[&str]) -> bool {
-    let whitelist_path =
-        lint_policy::resolve_whitelist_path(Path::new("verification_whitelist.toml"));
+    let candidates = if lint_policy::cwd_is_workspace_root() {
+        ROOT_ONLY_WHITELIST_CANDIDATES
+    } else {
+        WORKSPACE_WHITELIST_CANDIDATES
+    };
+    let whitelist_path = crate::whitelist::resolve_whitelist_path(candidates)
+        .unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
     run_policy_audit_with_whitelist(members, &whitelist_path)
 }
 
 pub(crate) fn run_policy_audit_with_whitelist(members: &[&str], whitelist_path: &Path) -> bool {
-    let Some(whitelist) = load_whitelist(whitelist_path) else {
-        return false;
+    let whitelist = match crate::whitelist::load_whitelist_strict(None, &[whitelist_path]) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("[!] {}", err);
+            return false;
+        }
     };
     let mut success = true;
 

@@ -7,22 +7,10 @@ const MOD_EXTRA_BLOCKED_LINTS: &[&str] = &["too_many_lines", "cognitive_complexi
 const ITEM_BLOCKED_LINTS: &[&str] = &["all"];
 const MAX_ATTR_STACK_STEPS: usize = 256;
 
-fn cwd_is_workspace_root() -> bool {
+pub(crate) fn cwd_is_workspace_root() -> bool {
     fs::read_to_string("Cargo.toml")
         .map(|c| c.contains("[workspace]"))
         .unwrap_or(false)
-}
-
-pub(crate) fn resolve_whitelist_path(whitelist_path: &Path) -> PathBuf {
-    if whitelist_path.exists() || whitelist_path.is_absolute() || cwd_is_workspace_root() {
-        return whitelist_path.to_path_buf();
-    }
-    let candidate = Path::new("../..").join(whitelist_path);
-    if candidate.exists() {
-        candidate
-    } else {
-        whitelist_path.to_path_buf()
-    }
 }
 
 pub(crate) fn resolve_member_dir(member: &str) -> PathBuf {

@@ -94,6 +94,7 @@ web-sys = { workspace = true, features = [
     "Event",
     "HtmlCanvasElement",
     "HtmlElement",
+    "Location",
     "MediaQueryList",
     "MessageEvent",
     "Node",
@@ -109,6 +110,7 @@ wasm-bindgen-futures = { workspace = true }
 
 [dev-dependencies]
 png = "0.18"
+verified_engine = { path = "../crates/verified_engine" }
 
 [package.metadata.cargo-machete]
 

@@ -1,6 +1,7 @@
 use super::*;
 
 #[test]
+#[verified_engine::verified]
 fn test_tonelli_shanks_branches_and_refinement() {
     let p7 = Integer::from(7);
     assert_eq!(
