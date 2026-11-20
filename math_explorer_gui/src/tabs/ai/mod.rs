@@ -29,8 +29,8 @@ impl ExplorerTab for AiTab {
         "Artificial Intelligence"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.framework.show(ctx, "ai");
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.framework.show_inside(ui, "ai");
     }
 
     fn state_revision(&self) -> u64 {

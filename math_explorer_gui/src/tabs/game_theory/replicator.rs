@@ -116,23 +116,24 @@ impl InteractiveTool for ReplicatorDynamicsTool {
         self.apply_config(config)
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         if self.is_playing && !self.trajectory.is_empty() {
-            let dt = f64::from(ctx.input(|i| i.stable_dt));
+            let dt = f64::from(parent_ui.ctx().input(|i| i.stable_dt));
             self.playback_time += dt * self.playback_speed;
             if self.playback_time > self.time_horizon {
                 self.playback_time = 0.0;
             }
-            ctx.request_repaint();
+            parent_ui.ctx().request_repaint();
         }
 
-        egui::SidePanel::left("replicator_control_panel").show(ctx, |ui| {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "replicator_control_panel");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             self.show_settings_panel(ui);
         });
 
-        self.show_bottom_panel(ctx);
+        self.show_bottom_panel(parent_ui);
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.show_trajectory_plot(ui);
         });
     }

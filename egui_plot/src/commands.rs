@@ -155,7 +155,7 @@ impl CommandRegistryData {
 
         if triggered {
             let msg = format!("Action executed: {name}");
-            ctx.data_mut(|d| d.insert_temp(Id::new("aria_live_message"), msg));
+            crate::emit_plot_live_message(ctx, msg, false);
         }
 
         triggered

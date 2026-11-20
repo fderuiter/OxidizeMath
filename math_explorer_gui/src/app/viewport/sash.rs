@@ -1,7 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::ViewportLayout;
-use crate::accessibility::announce_status;
 use crate::app::MathExplorerApp;
 use eframe::egui;
 
@@ -36,7 +35,6 @@ pub fn split_sash_id() -> egui::Id {
 pub(super) struct SashFrameState {
     pub is_hovered: bool,
     pub has_focus: bool,
-    pub consumed_keys: bool,
 }
 
 /// Returns the high-contrast focus outline color for the active [`egui::Visuals`].
@@ -88,11 +86,11 @@ fn sash_accessible_label(layout: ViewportLayout) -> &'static str {
     }
 }
 
-fn announce_split_ratio(split_ratio: f32) {
+fn announce_split_ratio(ctx: &egui::Context, split_ratio: f32) {
     let clamped = split_ratio.clamp(MIN_SPLIT_RATIO, MAX_SPLIT_RATIO);
     let pct = (clamped * 100.0).round() as i32;
     debug_assert!((20..=80).contains(&pct));
-    announce_status(&format!("Split ratio {pct}%"));
+    crate::accessibility::announce_live_status(ctx, format!("Split ratio {pct}%"));
 }
 
 fn apply_keyboard_adjustments(ctx: &egui::Context, split_ratio: &mut f32) -> (bool, bool, bool) {
@@ -227,7 +225,7 @@ fn handle_pointer_drag(
             val
         });
         if start_ratio.is_some_and(|r| (app.split_ratio - r).abs() > 1e-4) {
-            announce_split_ratio(app.split_ratio);
+            announce_split_ratio(ctx, app.split_ratio);
         }
     }
 
@@ -305,7 +303,6 @@ pub(super) fn interact_split_sash(
         handle_pointer_drag(app, ctx, &sash_resp, total_rect, divider_rect);
 
     let mut ratio_changed = drag_changed;
-    let mut consumed_keys = false;
 
     if sash_resp.has_focus() {
         ctx.memory_mut(|m| {
@@ -323,22 +320,21 @@ pub(super) fn interact_split_sash(
         let modal_open =
             app.command_palette.is_open || app.show_help_menu || egui::Popup::is_any_open(ctx);
         if !modal_open {
-            let (kb_changed, kb_consumed, arrow_pressed) =
+            let (kb_changed, _kb_consumed, arrow_pressed) =
                 apply_keyboard_adjustments(ctx, &mut app.split_ratio);
-            consumed_keys = kb_consumed;
             if arrow_pressed {
                 ctx.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
             }
             if kb_changed {
                 ratio_changed = true;
-                announce_split_ratio(app.split_ratio);
+                announce_split_ratio(ctx, app.split_ratio);
             }
         }
     }
 
     if apply_accesskit_actions(ctx, sash_id, &mut app.split_ratio) {
         ratio_changed = true;
-        announce_split_ratio(app.split_ratio);
+        announce_split_ratio(ctx, app.split_ratio);
     }
 
     if ratio_changed {
@@ -351,7 +347,6 @@ pub(super) fn interact_split_sash(
     SashFrameState {
         is_hovered,
         has_focus: sash_resp.has_focus(),
-        consumed_keys,
     }
 }
 

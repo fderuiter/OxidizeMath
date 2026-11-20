@@ -372,20 +372,22 @@ impl GraphEditorTool {
             }
         });
 
-        ui.input_mut(|i| {
-            let ctrl_or_cmd = i.modifiers.command || i.modifiers.ctrl || i.modifiers.mac_cmd;
-            if ctrl_or_cmd && i.key_pressed(egui::Key::Z) {
-                if i.modifiers.shift {
-                    if self.can_redo() {
-                        self.redo();
+        if crate::framework::is_pane_shortcut_allowed(ui) {
+            ui.input_mut(|i| {
+                let ctrl_or_cmd = i.modifiers.command || i.modifiers.ctrl || i.modifiers.mac_cmd;
+                if ctrl_or_cmd && i.key_pressed(egui::Key::Z) {
+                    if i.modifiers.shift {
+                        if self.can_redo() {
+                            self.redo();
+                        }
+                    } else if self.can_undo() {
+                        self.undo();
                     }
-                } else if self.can_undo() {
-                    self.undo();
+                } else if ctrl_or_cmd && i.key_pressed(egui::Key::Y) && self.can_redo() {
+                    self.redo();
                 }
-            } else if ctrl_or_cmd && i.key_pressed(egui::Key::Y) && self.can_redo() {
-                self.redo();
-            }
-        });
+            });
+        }
     }
 
     fn show_clear_button(&mut self, ui: &mut egui::Ui) {

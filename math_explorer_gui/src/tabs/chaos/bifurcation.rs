@@ -107,8 +107,9 @@ impl InteractiveTool for BifurcationDiagram {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("bifurcation_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(ui, "bifurcation_controls");
+        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Logistic Map");
             ui.separator();
 
@@ -148,7 +149,7 @@ impl InteractiveTool for BifurcationDiagram {
             ui.label("Double-click to reset view.");
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let response = Plot::new("bifurcation_plot")
                 .view_aspect(2.0)

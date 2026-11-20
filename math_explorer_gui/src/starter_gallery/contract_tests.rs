@@ -272,8 +272,12 @@ fn test_single_starter_gallery_button_per_simulation_view() {
             ..Default::default()
         },
         |ctx| {
-            morph.draw_controls(ctx);
-            morph.draw_canvas(ctx);
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show(ctx, |ui| {
+                    morph.draw_controls(ui);
+                    morph.draw_canvas(ui);
+                });
         },
     );
     assert_eq!(

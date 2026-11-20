@@ -92,8 +92,8 @@ impl InteractiveTool for TemperatureAnomaliesTool {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
-        eframe::egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
             self.show_ui(ui);
         });
     }

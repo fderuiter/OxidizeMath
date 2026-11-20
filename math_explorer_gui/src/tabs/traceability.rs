@@ -298,7 +298,7 @@ impl ExplorerTab for TraceabilityTab {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if let Some(rx) = &self.report_rx {
             match rx.try_recv() {
                 Ok(Ok(report)) => {
@@ -333,10 +333,10 @@ impl ExplorerTab for TraceabilityTab {
         }
 
         if self.state.is_scanning() {
-            ctx.request_repaint();
+            ui.ctx().request_repaint();
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("Theory-to-Code Traceability Portal");
                 if ui.button("Refresh").clicked() {

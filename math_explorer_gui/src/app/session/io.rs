@@ -99,7 +99,9 @@ pub fn log_telemetry(
         msg.clone(),
         std::collections::HashMap::new(),
     );
-    ctx.data_mut(|d| {
-        d.insert_temp(eframe::egui::Id::new(aria_key), msg);
-    });
+    if aria_key == "aria_live_assertive_message" {
+        crate::accessibility::announce_live_assertive_status(ctx, msg);
+    } else {
+        crate::accessibility::announce_live_status(ctx, msg);
+    }
 }

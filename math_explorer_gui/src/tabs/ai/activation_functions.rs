@@ -79,8 +79,10 @@ impl InteractiveTool for ActivationFunctionsTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("activation_functions_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id =
+            crate::framework::scoped_panel_id(parent_ui, "activation_functions_controls");
+        egui::SidePanel::right(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Controls");
             ui.separator();
 
@@ -171,7 +173,7 @@ impl InteractiveTool for ActivationFunctionsTool {
             }
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             // Generate x values
             let step = (self.x_max - self.x_min) / (self.points as f64 - 1.0);
             let mut x_vals = Vec::with_capacity(self.points);

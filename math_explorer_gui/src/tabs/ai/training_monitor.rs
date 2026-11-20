@@ -90,8 +90,9 @@ impl TrainingMonitorTool {
         self.epoch += 1;
     }
 
-    fn draw_controls(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("training_monitor_controls").show(ctx, |ui| {
+    fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "training_monitor_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Controls");
             ui.separator();
 
@@ -144,8 +145,8 @@ impl TrainingMonitorTool {
         });
     }
 
-    fn draw_plots(&self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn draw_plots(&self, parent_ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.columns(2, |columns| {
                 columns[0].heading("Loss History");
                 Plot::new("loss_plot")
@@ -243,13 +244,13 @@ impl InteractiveTool for TrainingMonitorTool {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
         if self.is_training {
             self.step();
-            ctx.request_repaint();
+            ui.ctx().request_repaint();
         }
-        self.draw_controls(ctx);
-        self.draw_plots(ctx);
+        self.draw_controls(ui);
+        self.draw_plots(ui);
     }
 }
 

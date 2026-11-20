@@ -23,8 +23,8 @@ impl ExplorerTab for SolidStateTab {
         "Solid State Physics"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.framework.show(ctx, "solid_state");
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.framework.show_inside(ui, "solid_state");
     }
 
     fn state_revision(&self) -> u64 {

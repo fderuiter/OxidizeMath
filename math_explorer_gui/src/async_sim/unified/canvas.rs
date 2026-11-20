@@ -121,16 +121,17 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.dirty = false;
     }
 
-    pub(super) fn draw_central_panel(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    pub(super) fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             if M::custom_central_panel(ui, self.controller.latest_snapshot()) {
                 return;
             }
 
-            self.refresh_texture_if_dirty(ctx);
+            self.refresh_texture_if_dirty(&ctx);
 
             if let Some(texture) = self.texture.clone() {
-                self.draw_image_plot(ui, ctx, &texture);
+                self.draw_image_plot(ui, &ctx, &texture);
             } else if let Some(snapshot) = self.controller.latest_snapshot() {
                 self.draw_line_plot(ui, snapshot);
             } else {

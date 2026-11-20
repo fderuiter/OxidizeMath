@@ -24,8 +24,8 @@ impl ExplorerTab for ClinicalTrialsTab {
         "Clinical Trials"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.framework.show(ctx, "clinical_trials");
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.framework.show_inside(ui, "clinical_trials");
     }
 
     fn state_revision(&self) -> u64 {

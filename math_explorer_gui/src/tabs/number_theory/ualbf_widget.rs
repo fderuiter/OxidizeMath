@@ -74,8 +74,8 @@ impl InteractiveTool for UalbfWidget {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("UALBF: Unified Algebraic-Lattice Bipartition Framework");
             ui.label(
                 "A synthesis of ALCF and AMBS for proving lower bounds on quasiperfect numbers.",

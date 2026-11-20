@@ -163,7 +163,7 @@ impl MathExplorerApp {
     /// Returns a mutable reference to the `ExplorerTab` assigned to `pane_idx`, instantiating lazily for secondary panes.
     pub fn pane_tab_mut(&mut self, pane_idx: usize) -> Option<&mut Box<dyn ExplorerTab>> {
         if pane_idx == 0 {
-            let tab_idx = self.pane_tabs.first().copied().unwrap_or(self.selected_tab);
+            let tab_idx = self.active_primary_tab_index();
             return self.tabs.get_mut(tab_idx);
         }
         let tab_idx = self.pane_tabs.get(pane_idx).copied()?;
@@ -177,35 +177,6 @@ impl MathExplorerApp {
     pub fn focused_pane_tab_mut(&mut self) -> Option<&mut Box<dyn ExplorerTab>> {
         let target = self.active_focused_pane();
         self.pane_tab_mut(target)
-    }
-
-    /// Split-borrows the pane's `ExplorerTab`, sub-`egui::Context`, and texture map for rendering.
-    #[allow(clippy::type_complexity)]
-    pub(super) fn pane_render_parts_mut(
-        &mut self,
-        pane_idx: usize,
-    ) -> Option<(
-        &mut dyn ExplorerTab,
-        &egui::Context,
-        &mut HashMap<egui::TextureId, egui::TextureId>,
-    )> {
-        if pane_idx >= 4 {
-            return None;
-        }
-        let tab_idx = self.pane_tabs.get(pane_idx).copied().unwrap_or(0);
-        if tab_idx >= self.tabs.len() {
-            return None;
-        }
-        let pane_ctx = &self.pane_contexts[pane_idx];
-        let tex_map = &mut self.pane_textures[pane_idx];
-        if pane_idx == 0 {
-            let tab = self.tabs.get_mut(tab_idx)?.as_mut();
-            Some((tab, pane_ctx, tex_map))
-        } else {
-            let slot = self.pane_slots.slot_mut(pane_idx)?;
-            let tab = slot.ensure_tab(tab_idx)?.as_mut();
-            Some((tab, pane_ctx, tex_map))
-        }
     }
 
     /// Exchanges runtime tab states between Pane 0 and Pane 1 after their assigned indices are swapped.
@@ -402,18 +373,7 @@ impl MathExplorerApp {
                         self.focus_pane(idx);
                     }
                 }
-                egui::Event::Text(_) => {
-                    if let Some(pos) = pointer_pos {
-                        if let Some(idx) = (0..pane_count).find(|&i| pane_rects[i].contains(pos)) {
-                            self.focus_pane(idx);
-                        }
-                    }
-                }
-                egui::Event::Key {
-                    pressed: true,
-                    modifiers,
-                    ..
-                } if !modifiers.ctrl && !modifiers.mac_cmd && !modifiers.command => {
+                egui::Event::Text(_) if ctx.memory(|m| m.focused().is_none()) => {
                     if let Some(pos) = pointer_pos {
                         if let Some(idx) = (0..pane_count).find(|&i| pane_rects[i].contains(pos)) {
                             self.focus_pane(idx);
@@ -447,10 +407,7 @@ impl MathExplorerApp {
                 })
                 .map_or(tool_name.as_str(), |m| m.display_name);
             let msg = format!("Switched to tool {} in tab {}", display_label, tab.name());
-            crate::accessibility::announce_status(&msg);
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("aria_live_message"), msg);
-            });
+            crate::accessibility::announce_live_status(ctx, msg);
         }
     }
 
@@ -468,7 +425,7 @@ impl MathExplorerApp {
     #[cfg(test)]
     pub fn pane_tab(&self, pane_idx: usize) -> Option<&dyn ExplorerTab> {
         if pane_idx == 0 {
-            let tab_idx = self.pane_tabs.first().copied().unwrap_or(self.selected_tab);
+            let tab_idx = self.active_primary_tab_index();
             self.tabs.get(tab_idx).map(|b| b.as_ref())
         } else {
             self.pane_slots

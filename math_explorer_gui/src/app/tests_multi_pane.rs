@@ -2,9 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use super::*;
-use crate::app::viewport::{
-    calculate_pane_rects, calculate_pane_rects_with_ratio, filter_raw_input_for_pane,
-};
+use crate::app::viewport::{calculate_pane_rects, calculate_pane_rects_with_ratio};
 use eframe::egui;
 use eframe::App;
 
@@ -112,42 +110,42 @@ fn test_multi_pane_rect_calculation_quad_grid() {
 
 #[test]
 fn test_multi_pane_input_isolation() {
-    let pane_left = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(500.0, 800.0));
-    let pane_right = egui::Rect::from_min_size(egui::pos2(500.0, 0.0), egui::vec2(500.0, 800.0));
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let mut frame = eframe::Frame::_new_kittest();
+    app.set_layout(ViewportLayout::SplitHorizontal);
 
-    let click_left = egui::Event::PointerButton {
-        pos: egui::pos2(100.0, 100.0),
-        button: egui::PointerButton::Primary,
-        pressed: true,
-        modifiers: egui::Modifiers::NONE,
-    };
-    let click_right = egui::Event::PointerButton {
-        pos: egui::pos2(700.0, 100.0),
-        button: egui::PointerButton::Primary,
-        pressed: true,
-        modifiers: egui::Modifiers::NONE,
-    };
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 800.0));
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen),
+            events: vec![egui::Event::PointerButton {
+                pos: egui::pos2(750.0, 300.0),
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        },
+        |c| app.update(c, &mut frame),
+    );
+    assert_eq!(app.focused_pane, 1);
 
-    let raw_input = egui::RawInput {
-        events: vec![click_left, click_right],
-        ..Default::default()
-    };
-
-    let left_filtered =
-        filter_raw_input_for_pane(&raw_input, pane_left, Some(egui::pos2(100.0, 100.0)));
-    assert_eq!(left_filtered.events.len(), 1);
-    match &left_filtered.events[0] {
-        egui::Event::PointerButton { pos, .. } => assert_eq!(*pos, egui::pos2(100.0, 100.0)),
-        _ => panic!("Expected pointer button event"),
-    }
-
-    let right_filtered =
-        filter_raw_input_for_pane(&raw_input, pane_right, Some(egui::pos2(700.0, 100.0)));
-    assert_eq!(right_filtered.events.len(), 1);
-    match &right_filtered.events[0] {
-        egui::Event::PointerButton { pos, .. } => assert_eq!(*pos, egui::pos2(700.0, 100.0)),
-        _ => panic!("Expected pointer button event"),
-    }
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen),
+            events: vec![egui::Event::PointerButton {
+                pos: egui::pos2(150.0, 300.0),
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        },
+        |c| app.update(c, &mut frame),
+    );
+    assert_eq!(app.focused_pane, 0);
 }
 
 #[test]

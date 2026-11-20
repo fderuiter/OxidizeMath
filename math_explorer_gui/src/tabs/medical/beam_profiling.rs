@@ -60,8 +60,9 @@ impl InteractiveTool for BeamProfilingTool {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("beam_profiling_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "beam_profiling_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Beam Parameters");
             ui.separator();
 
@@ -79,7 +80,7 @@ impl InteractiveTool for BeamProfilingTool {
             ui.label("TERMA (Total Energy Released per Mass) represents the primary energy fluence released into the medium at a point, before accounting for secondary electron transport (scatter).");
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let points: PlotPoints = (0..300)
                 .map(|i| {
                     let depth = i as f64 * 0.1;

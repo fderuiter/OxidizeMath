@@ -273,7 +273,8 @@ impl InteractiveTool for AttractorPlotter {
         vec![("Trajectory".to_string(), points)]
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
         let current_vec = self.system.state.vec;
         if (!current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite())
             && !self.diverged()
@@ -319,8 +320,8 @@ impl InteractiveTool for AttractorPlotter {
             ctx.request_repaint();
         }
 
-        self.draw_side_panel(ctx);
-        self.draw_central_panel(ctx);
+        self.draw_side_panel(ui, &ctx);
+        self.draw_central_panel(ui, &ctx);
     }
 }
 

@@ -1,11 +1,10 @@
-mod pane_sync;
-mod sash;
+pub(crate) mod focus;
+pub(crate) mod sash;
 #[cfg(test)]
 mod sash_tests;
 
 use crate::app::MathExplorerApp;
 use eframe::egui;
-use pane_sync::{merge_pane_commands, remap_shape_textures, sync_pane_textures};
 use serde::{Deserialize, Serialize};
 
 /// Supported viewport layout presets.
@@ -170,42 +169,51 @@ pub fn calculate_pane_rects_with_ratio(
     }
 }
 
-/// Filters raw input events to isolate interaction within a specific pane rectangle.
-pub fn filter_raw_input_for_pane(
-    raw_input: &egui::RawInput,
+fn build_pane_region_ui(
+    parent_ui: &mut egui::Ui,
+    pane_idx: usize,
     pane_rect: egui::Rect,
-    pointer_pos: Option<egui::Pos2>,
-) -> egui::RawInput {
-    let mut pane_input = raw_input.clone();
-    pane_input.screen_rect = Some(pane_rect);
-
-    let is_pointer_inside = pointer_pos.is_some_and(|pos| pane_rect.contains(pos));
-
-    pane_input.events.retain(|event| match event {
-        egui::Event::PointerMoved(pos) => pane_rect.contains(*pos),
-        egui::Event::PointerButton { pos, .. } => pane_rect.contains(*pos),
-        egui::Event::PointerGone => true,
-        egui::Event::MouseWheel { .. } => is_pointer_inside,
-        egui::Event::Key { .. } | egui::Event::Text(_) => is_pointer_inside,
-        _ => true,
+    label: &str,
+) -> egui::Ui {
+    let mut pane_ui = parent_ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(("viewport_pane_region", pane_idx))
+            .max_rect(pane_rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    pane_ui.expand_to_include_rect(pane_rect);
+    pane_ui.set_clip_rect(pane_rect);
+    let region_id = pane_ui.unique_id();
+    pane_ui.ctx().accesskit_node_builder(region_id, |builder| {
+        builder.set_role(egui::accesskit::Role::Region);
+        builder.set_label(label);
+        builder.set_bounds(egui::accesskit::Rect {
+            x0: f64::from(pane_rect.min.x),
+            y0: f64::from(pane_rect.min.y),
+            x1: f64::from(pane_rect.max.x),
+            y1: f64::from(pane_rect.max.y),
+        });
     });
-
-    pane_input
+    pane_ui
 }
 
 fn render_pane_header(
     app: &mut MathExplorerApp,
     ctx: &egui::Context,
-    ui: &mut egui::Ui,
+    pane_ui: &mut egui::Ui,
     pane_idx: usize,
     header_rect: egui::Rect,
     label: &str,
+    suppress_focus_hint: bool,
 ) {
-    let mut header_ui = ui.new_child(
+    let mut header_ui = pane_ui.new_child(
         egui::UiBuilder::new()
+            .id_salt(("pane_header", pane_idx))
             .max_rect(header_rect)
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
+    header_ui.expand_to_include_rect(header_rect);
+    header_ui.set_clip_rect(header_rect);
     header_ui.painter().rect_filled(
         header_rect,
         0.0,
@@ -239,9 +247,15 @@ fn render_pane_header(
                 assigned_tab_idx,
             );
         });
-        crate::app::domain_bar::attach_hover_hint(menu_resp.response, || {
-            format!("Select simulation module for {}", label)
-        });
+        if suppress_focus_hint {
+            menu_resp
+                .response
+                .on_hover_text(format!("Select simulation module for {}", label));
+        } else {
+            crate::app::domain_bar::attach_hover_hint(menu_resp.response, || {
+                format!("Select simulation module for {}", label)
+            });
+        }
     });
 
     if let Some(new_idx) = tab_to_switch {
@@ -253,55 +267,115 @@ fn render_pane_content(
     app: &mut MathExplorerApp,
     ctx: &egui::Context,
     frame: &mut eframe::Frame,
-    ui: &mut egui::Ui,
+    pane_ui: &mut egui::Ui,
     pane_idx: usize,
     content_rect: egui::Rect,
-    pane_input: egui::RawInput,
 ) {
-    if let Some((tab, pane_ctx, tex_map)) = app.pane_render_parts_mut(pane_idx) {
-        pane_ctx.set_style((*ctx.style()).clone());
-        pane_ctx.data_mut(|d| {
-            d.insert_temp(
-                egui::Id::new("CMD_REGISTRY"),
-                egui_plot::commands::CommandRegistryData::default(),
+    let mut content_ui = pane_ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(("pane_content", pane_idx))
+            .max_rect(content_rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    content_ui.expand_to_include_rect(content_rect);
+    content_ui.set_clip_rect(content_rect);
+
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY), pane_idx);
+    });
+    egui_plot::clear_last_plot_datasets();
+    if let Some(tab) = app.pane_tab_mut(pane_idx) {
+        tab.show_inside(&mut content_ui, frame);
+    } else {
+        content_ui.centered_and_justified(|ui| {
+            ui.label("No module selected.");
+        });
+    }
+    egui_plot::clear_last_plot_datasets();
+    ctx.data_mut(|d| {
+        d.remove::<usize>(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY));
+    });
+}
+
+/// Renders `ViewportLayout::Single` inside the root central panel with a `Main Viewport` `Role::Region`.
+pub(super) fn render_single_pane_viewport(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    frame: &mut eframe::Frame,
+) {
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE)
+        .show(ctx, |ui| {
+            let total_rect = ui.available_rect_before_wrap();
+            let pending_focus = ctx
+                .data_mut(|d| d.remove_temp::<usize>(egui::Id::new(focus::PENDING_PANE_FOCUS_KEY)));
+            let shell_focused = focus::sync_focused_pane_from_widget_focus(
+                app,
+                ctx,
+                &[total_rect],
+                false,
+                pending_focus.is_some(),
             );
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new(focus::ACTIVE_FOCUSED_PANE_KEY), 0usize);
+                d.insert_temp(
+                    egui::Id::new(focus::SHELL_MODAL_OR_SASH_FOCUSED_KEY),
+                    shell_focused,
+                );
+            });
+
+            let mut pane_ui = build_pane_region_ui(ui, 0, total_rect, "Main Viewport");
+            let should_focus = pending_focus == Some(0);
+            focus::begin_pending_pane_focus(ctx, should_focus);
+            render_pane_content(app, ctx, frame, &mut pane_ui, 0, total_rect);
+            focus::finish_pending_pane_focus(ctx, should_focus);
         });
-        let output = pane_ctx.run(pane_input, |sub_ctx| {
-            tab.show(sub_ctx, frame);
-        });
-        egui_plot::clear_last_plot_datasets();
-        merge_pane_commands(ctx, pane_ctx);
+}
 
-        sync_pane_textures(ctx, pane_idx, tex_map, output.textures_delta);
+fn render_multi_pane_regions(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    frame: &mut eframe::Frame,
+    ui: &mut egui::Ui,
+    pane_rects: &[egui::Rect],
+    pending_focus: Option<usize>,
+) {
+    let pane_count = app.viewport_layout.pane_count();
+    let pane_labels = app.viewport_layout.pane_labels();
+    const HEADER_HEIGHT: f32 = 28.0;
+    for (pane_idx, &pane_rect) in pane_rects.iter().take(pane_count).enumerate() {
+        let label = pane_labels.get(pane_idx).copied().unwrap_or("Pane");
+        let header_rect =
+            egui::Rect::from_min_size(pane_rect.min, egui::vec2(pane_rect.width(), HEADER_HEIGHT));
+        let content_rect = egui::Rect::from_min_max(
+            egui::pos2(pane_rect.min.x, pane_rect.min.y + HEADER_HEIGHT),
+            pane_rect.max,
+        );
 
-        let should_repaint = output
-            .viewport_output
-            .values()
-            .any(|v| v.repaint_delay < std::time::Duration::from_millis(500))
-            || pane_ctx.has_requested_repaint();
-        if should_repaint {
-            ctx.request_repaint();
-        }
-
-        for mut clipped_shape in output.shapes {
-            if !tex_map.is_empty() {
-                remap_shape_textures(&mut clipped_shape.shape, tex_map);
-            }
-            let clip = clipped_shape.clip_rect.intersect(content_rect);
-            ui.painter().with_clip_rect(clip).add(clipped_shape.shape);
-        }
+        let mut pane_ui = build_pane_region_ui(ui, pane_idx, pane_rect, label);
+        let should_focus = pending_focus == Some(pane_idx);
+        focus::begin_pending_pane_focus(ctx, should_focus);
+        render_pane_header(
+            app,
+            ctx,
+            &mut pane_ui,
+            pane_idx,
+            header_rect,
+            label,
+            should_focus,
+        );
+        render_pane_content(app, ctx, frame, &mut pane_ui, pane_idx, content_rect);
+        focus::finish_pending_pane_focus(ctx, should_focus);
     }
 }
 
-/// Renders the multi-pane viewport manager layout in the central panel.
-#[allow(clippy::too_many_lines)]
+/// Renders the multi-pane viewport manager layout in the central panel on the root `egui::Context`.
 pub fn render_multi_pane_manager(
     app: &mut MathExplorerApp,
     ctx: &egui::Context,
     frame: &mut eframe::Frame,
 ) {
     let pane_count = app.viewport_layout.pane_count();
-    let pane_labels = app.viewport_layout.pane_labels();
 
     egui::CentralPanel::default().show(ctx, |ui| {
         let total_rect = ui.available_rect_before_wrap();
@@ -327,70 +401,26 @@ pub fn render_multi_pane_manager(
             state
         });
 
-        let mut raw_input = ctx.input(|i| i.raw.clone());
-        if sash_state.as_ref().is_some_and(|s| s.consumed_keys) {
-            raw_input
-                .events
-                .retain(|ev| !sash::is_sash_adjustment_event(ev));
-        }
         let sash_focused = sash_state.as_ref().is_some_and(|s| s.has_focus);
-        if sash_focused {
-            for pane_ctx in &app.pane_contexts {
-                if let Some(fid) = pane_ctx.memory(|m| m.focused()) {
-                    pane_ctx.memory_mut(|m| m.surrender_focus(fid));
-                }
-            }
-        }
-        let pointer_pos = if app.is_dragging_divider {
-            None
-        } else {
-            ctx.input(|i| i.pointer.latest_pos())
-        };
+        let pending_focus = focus::resolve_frame_pane_focus(app, ctx, &pane_rects, sash_focused);
 
-        app.update_focused_pane_from_input(ctx, &raw_input, &pane_rects, pointer_pos);
-        let focused_idx = app.active_focused_pane();
-        const HEADER_HEIGHT: f32 = 28.0;
+        render_multi_pane_regions(app, ctx, frame, ui, &pane_rects, pending_focus);
 
-        for pane_idx in 0..pane_count {
-            if pane_idx >= pane_rects.len() {
-                break;
-            }
-            let pane_rect = pane_rects[pane_idx];
-            let label = pane_labels.get(pane_idx).copied().unwrap_or("Pane");
-
-            let header_rect = egui::Rect::from_min_size(
-                pane_rect.min,
-                egui::vec2(pane_rect.width(), HEADER_HEIGHT),
-            );
-            let content_rect = egui::Rect::from_min_max(
-                egui::pos2(pane_rect.min.x, pane_rect.min.y + HEADER_HEIGHT),
-                pane_rect.max,
-            );
-
-            let stroke_color = if pane_idx == focused_idx {
-                ui.visuals().selection.stroke.color
-            } else {
-                ui.visuals().widgets.noninteractive.bg_stroke.color
-            };
-            ui.painter().rect_stroke(
+        let _ = focus::sync_focused_pane_from_widget_focus(
+            app,
+            ctx,
+            &pane_rects,
+            sash_focused,
+            pending_focus.is_some(),
+        );
+        let final_focused_idx = app.active_focused_pane();
+        for (pane_idx, &pane_rect) in pane_rects.iter().take(pane_count).enumerate() {
+            focus::paint_pane_border(
+                ui.painter(),
                 pane_rect,
-                0.0,
-                egui::Stroke::new(1.0_f32, stroke_color),
-                egui::StrokeKind::Inside,
+                pane_idx == final_focused_idx,
+                ui.visuals(),
             );
-
-            render_pane_header(app, ctx, ui, pane_idx, header_rect, label);
-
-            let effective_pos = pointer_pos.or_else(|| {
-                (!app.is_dragging_divider
-                    && !sash_focused
-                    && !app.command_palette.is_open
-                    && !app.show_help_menu
-                    && pane_idx == app.active_focused_pane())
-                .then(|| content_rect.center())
-            });
-            let pane_input = filter_raw_input_for_pane(&raw_input, content_rect, effective_pos);
-            render_pane_content(app, ctx, frame, ui, pane_idx, content_rect, pane_input);
         }
 
         if let (Some(divider_rect), Some(state)) = (maybe_divider, sash_state) {

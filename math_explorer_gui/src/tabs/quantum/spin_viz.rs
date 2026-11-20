@@ -91,8 +91,9 @@ impl SpinVisualizer {
         ring
     }
 
-    fn draw_controls(&mut self, ctx: &egui::Context, ex: f64, ey: f64, ez: f64) {
-        egui::SidePanel::left("spin_controls").show(ctx, |ui| {
+    fn draw_controls(&mut self, parent_ui: &mut egui::Ui, ex: f64, ey: f64, ez: f64) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "spin_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Controls");
             ui.separator();
 
@@ -132,8 +133,8 @@ impl SpinVisualizer {
         });
     }
 
-    fn draw_bloch_sphere(&mut self, ctx: &egui::Context, ex: f64, ey: f64, ez: f64) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn draw_bloch_sphere(&mut self, parent_ui: &mut egui::Ui, ex: f64, ey: f64, ez: f64) {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let equator = self.project_circle(0);
             let meridian = self.project_circle(1);
             let meridian2 = self.project_circle(2);
@@ -245,18 +246,18 @@ impl InteractiveTool for SpinVisualizer {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
         if !self.paused {
             self.step(0.05);
-            ctx.request_repaint();
+            ui.ctx().request_repaint();
         }
 
         let ex = self.sx.expectation_value(&self.psi).re;
         let ey = self.sy.expectation_value(&self.psi).re;
         let ez = self.sz.expectation_value(&self.psi).re;
 
-        self.draw_controls(ctx, ex, ey, ez);
-        self.draw_bloch_sphere(ctx, ex, ey, ez);
+        self.draw_controls(ui, ex, ey, ez);
+        self.draw_bloch_sphere(ui, ex, ey, ez);
     }
 }
 

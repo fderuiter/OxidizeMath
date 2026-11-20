@@ -39,8 +39,8 @@ fn next_node_in_direction(
 }
 
 impl AlgorithmVisualizerTool {
-    pub(super) fn render_canvas(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    pub(super) fn render_canvas(&mut self, parent_ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::click());
             let _ = response

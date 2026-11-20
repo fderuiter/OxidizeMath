@@ -80,8 +80,8 @@ impl InteractiveTool for RandomizationTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Interactive Subject Allocation");
 
             ui.add_space(10.0);
@@ -116,7 +116,8 @@ impl InteractiveTool for RandomizationTool {
 
             ui.add_space(10.0);
 
-            let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let enter_pressed = crate::framework::is_pane_activation_shortcut_allowed(ui)
+                && ui.input(|i| i.key_pressed(egui::Key::Enter));
             if ui
                 .button("▶ Allocate Subjects")
                 .accessible_hover_text("Randomly assign subjects to treatment and control groups")

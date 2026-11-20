@@ -69,13 +69,13 @@ impl InteractiveTool for LifetimeEstimatorTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
         // Enforce valid ranges
         self.target_capacity = self.target_capacity.clamp(0.1, 99.9);
         self.dod = self.dod.clamp(0.1, 100.0);
         self.cycles_per_day = self.cycles_per_day.max(0.1);
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Battery Lifetime Estimator");
             ui.label("Calculate the expected battery life based on specific usage profiles.");
             ui.add_space(10.0);

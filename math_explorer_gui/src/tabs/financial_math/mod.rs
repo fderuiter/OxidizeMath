@@ -22,8 +22,8 @@ impl ExplorerTab for FinancialMathTab {
         "Financial Math"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.framework.show(ctx, "financial_math");
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.framework.show_inside(ui, "financial_math");
     }
 
     fn state_revision(&self) -> u64 {

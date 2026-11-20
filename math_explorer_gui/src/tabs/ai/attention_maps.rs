@@ -128,13 +128,13 @@ impl InteractiveTool for AttentionMapsTool {
         preset::render_attention_raster(&self.attention_weights, &self.output_matrix)
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
-        let input_mode = ctx.data(|d| {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let input_mode = parent_ui.ctx().data(|d| {
             d.get_temp(egui::Id::new("INPUT_MODE"))
                 .unwrap_or(InputMode::Mouse)
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Self-Attention Mechanism");
 
             ui.label("Explore how Queries (Q), Keys (K), and Values (V) interact.");

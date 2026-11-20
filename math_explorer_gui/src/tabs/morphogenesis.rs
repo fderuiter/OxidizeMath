@@ -175,7 +175,8 @@ impl ExplorerTab for MorphogenesisTab {
         }
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         if self.worker.update().is_some() {
             self.dirty = true;
         }
@@ -187,15 +188,16 @@ impl ExplorerTab for MorphogenesisTab {
             ctx.request_repaint();
         }
 
-        self.draw_controls(ctx);
-        self.draw_canvas(ctx);
+        self.draw_controls(ui);
+        self.draw_canvas(ui);
 
         if self.show_starter_gallery {
             let cards = crate::starter_gallery::get_starter_cards_for_domain("biology", &[]);
+            let modal_source = format!("morphogenesis_{:?}", ui.id());
             let mut is_open = self.show_starter_gallery;
             if let Some(card) = crate::starter_gallery::show_starter_gallery_overlay(
-                ctx,
-                "morphogenesis",
+                &ctx,
+                &modal_source,
                 &cards,
                 &mut is_open,
             ) {
@@ -319,15 +321,17 @@ impl MorphogenesisTab {
         }
     }
 
-    pub(crate) fn draw_controls(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("morphogenesis_controls").show(ctx, |ui| {
+    pub(crate) fn draw_controls(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let panel_id = crate::framework::scoped_panel_id(ui, "morphogenesis_controls");
+        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Morphogenesis Controls");
             if ui.button("🎨 Starter Gallery").clicked() {
                 self.show_starter_gallery = !self.show_starter_gallery;
             }
             ui.separator();
 
-            self.draw_fault_and_recovery(ui, ctx);
+            self.draw_fault_and_recovery(ui, &ctx);
             self.draw_parameter_sliders(ui);
             ui.separator();
 

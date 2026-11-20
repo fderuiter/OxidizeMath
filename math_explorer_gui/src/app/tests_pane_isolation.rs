@@ -165,19 +165,18 @@ fn test_quad_pane_contexts_inherit_active_theme_palette() {
     for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::HighContrast] {
         app.theme = mode;
         run_screen_events(&ctx, &mut app, Vec::new());
-        for (pane_idx, pane_ctx) in app.pane_contexts.iter().enumerate() {
-            let pane_visuals = &pane_ctx.style().visuals;
-            assert_eq!(
-                ThemeMode::from_visuals(pane_visuals),
-                mode,
-                "pane {pane_idx} did not inherit ThemeMode::{mode:?}"
-            );
-            assert_eq!(
-                SemanticPalette::from_visuals(pane_visuals),
-                mode.palette(),
-                "pane {pane_idx} did not resolve SemanticPalette for {mode:?}"
-            );
-        }
+        let root_visuals = &ctx.style().visuals;
+        assert_eq!(
+            ThemeMode::from_visuals(root_visuals),
+            mode,
+            "Unified quad viewport did not apply ThemeMode::{mode:?}"
+        );
+        assert_eq!(
+            SemanticPalette::from_visuals(root_visuals),
+            mode.palette(),
+            "Unified quad viewport did not resolve SemanticPalette for {mode:?}"
+        );
+        assert_eq!(app.active_secondary_slot_count(), 3);
     }
 }
 
