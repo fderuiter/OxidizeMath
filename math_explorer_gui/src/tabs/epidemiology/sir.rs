@@ -281,8 +281,9 @@ impl InteractiveTool for SirTool {
         .ok()
     }
 
-    fn load_recovery_state(&mut self, state: &str) {
-        let _ = self.load_sir_state(state, true);
+    fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
+        self.load_sir_state(state, true)
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {

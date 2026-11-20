@@ -49,6 +49,12 @@ impl InteractiveTool for SaveStateTrapTool {
     fn load_state(&mut self, state: &str) {
         self.inner.load_state(state);
     }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.inner.try_load_state(state)
+    }
+    fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
+        self.inner.try_load_recovery_state(state)
+    }
     fn load_recovery_state(&mut self, state: &str) {
         self.inner.load_recovery_state(state);
     }
