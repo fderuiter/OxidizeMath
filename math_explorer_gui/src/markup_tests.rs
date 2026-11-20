@@ -1,4 +1,8 @@
 #[cfg(test)]
+#[path = "markup_icon_tests.rs"]
+mod icon_tests;
+
+#[cfg(test)]
 #[path = "markup_shell_tests.rs"]
 mod shell_tests;
 
@@ -231,13 +235,17 @@ mod tests {
             search_from = close_start + "</script>".len();
         }
 
-        for script_file in ["coi-serviceworker.min.js", "reload.js", "bootstrap.js"] {
+        for script_file in ["reload.js", "bootstrap.js"] {
             let src_attr = format!("src=\"{script_file}\"");
             assert!(
                 script_sources.iter().any(|t| t.contains(&src_attr)),
                 "index.html must include deferred {script_file}"
             );
         }
+        assert!(
+            !INDEX_HTML.contains("coi-serviceworker"),
+            "index.html must not register or copy coi-serviceworker.min.js"
+        );
         assert!(
             INDEX_HTML.contains("<link data-trunk rel=\"copy-file\" href=\"bootstrap.js\"/>"),
             "index.html must copy bootstrap.js via data-trunk copy-file"
@@ -278,7 +286,6 @@ mod tests {
             "./math_explorer_gui_bg.wasm",
             "window.wasmBindings",
             "TrunkApplicationStarted",
-            "__mathExplorerIsolation",
             "loading_indicator",
             "error_container",
             "error_details",
@@ -288,5 +295,19 @@ mod tests {
                 "bootstrap.js must reference '{required}'"
             );
         }
+        for forbidden in [
+            "resolveIsolationGate",
+            "__mathExplorerIsolation",
+            "coi-serviceworker",
+        ] {
+            assert!(
+                !BOOTSTRAP_JS.contains(forbidden),
+                "bootstrap.js must not gate startup on '{forbidden}'"
+            );
+        }
+        assert!(
+            !TRUNK_TOML.contains("+atomics"),
+            "Trunk.toml must not enable +atomics on stable Rust"
+        );
     }
 }

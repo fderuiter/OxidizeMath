@@ -39,6 +39,10 @@ fn format_key(key: Key) -> &'static str {
     match key {
         Key::Questionmark => "?",
         Key::Slash => "/",
+        Key::Plus => "+",
+        Key::Equals => "=",
+        Key::Minus => "-",
+        Key::Home => "Home",
         Key::ArrowUp => "Up",
         Key::ArrowDown => "Down",
         Key::ArrowLeft => "Left",
@@ -247,6 +251,10 @@ mod tests {
     #[test]
     fn test_display_label_formats_readable_keys() {
         assert_eq!(CommandTrigger::Key(Key::Questionmark).display_label(), "?");
+        assert_eq!(CommandTrigger::Key(Key::Plus).display_label(), "+");
+        assert_eq!(CommandTrigger::Key(Key::Equals).display_label(), "=");
+        assert_eq!(CommandTrigger::Key(Key::Minus).display_label(), "-");
+        assert_eq!(CommandTrigger::Key(Key::Home).display_label(), "Home");
         assert_eq!(CommandTrigger::Key(Key::ArrowDown).display_label(), "Down");
         assert_eq!(
             CommandTrigger::Shortcut(Modifiers::CTRL | Modifiers::SHIFT, Key::D).display_label(),

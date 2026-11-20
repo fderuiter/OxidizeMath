@@ -438,14 +438,14 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 .radio_value(&mut app.theme, ThemeMode::Dark, ThemeMode::Dark.name())
                 .clicked()
             {
-                ctx.set_visuals(app.theme.visuals());
+                app.theme.apply_to_context(ctx);
                 ui.close();
             }
             if ui
                 .radio_value(&mut app.theme, ThemeMode::Light, ThemeMode::Light.name())
                 .clicked()
             {
-                ctx.set_visuals(app.theme.visuals());
+                app.theme.apply_to_context(ctx);
                 ui.close();
             }
             if ui
@@ -456,7 +456,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 )
                 .clicked()
             {
-                ctx.set_visuals(app.theme.visuals());
+                app.theme.apply_to_context(ctx);
                 ui.close();
             }
         });

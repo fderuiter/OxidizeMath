@@ -1848,9 +1848,6 @@
       "signature": "pub use types :: Point3D"
     },
     {
-      "signature": "pub use types :: Triangle"
-    },
-    {
       "signature": "pub use types :: VoxelGrid"
     }
   ],
@@ -1931,9 +1928,6 @@
     },
     {
       "signature": "pub use oxidize_core :: mesh :: Point3D"
-    },
-    {
-      "signature": "pub use oxidize_core :: mesh :: Triangle"
     }
   ],
   "crates/domain_applied/src/applied/lorahub/ensemble.rs": [
@@ -2862,13 +2856,7 @@
       "signature": "impl ConvLayer { pub fn backward_update < O : Optimizer < f32 > > (& mut self , input : & DMatrix < f32 > , loss_grad : & DMatrix < f32 > , optimizer : & mut O , layer_idx : usize ,) -> Result < DMatrix < f32 > , pure_math :: pure_math :: analysis :: optimization :: OptimizationError > }"
     },
     {
-      "signature": "impl ConvLayer { pub fn backward_update_vector < O : Optimizer < f32 > > (& mut self , input : & DVector < f32 > , loss_grad : & DVector < f32 > , optimizer : & mut O , layer_idx : usize ,) -> Result < DVector < f32 > , pure_math :: pure_math :: analysis :: optimization :: OptimizationError > }"
-    },
-    {
       "signature": "impl ConvLayer { pub fn new (in_channels : usize , out_channels : usize) -> Self }"
-    },
-    {
-      "signature": "impl ConvLayer { pub fn update_weights < O : Optimizer < f32 > > (& mut self , optimizer : & mut O , layer_idx : usize ,) -> Result < () , pure_math :: pure_math :: analysis :: optimization :: OptimizationError > }"
     },
     {
       "signature": "impl Decoder { pub fn forward < S : Storage < f32 , Dyn , Dyn > > (& self , latent_representation : & Matrix < f32 , Dyn , Dyn , S > ,) -> DMatrix < f32 > }"
@@ -2880,9 +2868,6 @@
       "signature": "impl Decoder { pub fn new_from_layers (layers : [ConvLayer ; 3]) -> Self }"
     },
     {
-      "signature": "impl Decoder { pub fn update_weights < O : Optimizer < f32 > > (& mut self , optimizer : & mut O , start_idx : usize ,) -> Result < () , pure_math :: pure_math :: analysis :: optimization :: OptimizationError > }"
-    },
-    {
       "signature": "impl Encoder { pub fn forward < S : Storage < f32 , Dyn , Dyn > > (& self , input : & Matrix < f32 , Dyn , Dyn , S > ,) -> DMatrix < f32 > }"
     },
     {
@@ -2890,9 +2875,6 @@
     },
     {
       "signature": "impl Encoder { pub fn new_from_layers (layers : [ConvLayer ; 3]) -> Self }"
-    },
-    {
-      "signature": "impl Encoder { pub fn update_weights < O : Optimizer < f32 > > (& mut self , optimizer : & mut O , start_idx : usize ,) -> Result < () , pure_math :: pure_math :: analysis :: optimization :: OptimizationError > }"
     },
     {
       "signature": "pub fn leaky_relu (x : & mut DMatrix < f32 > , alpha : f32)"
@@ -5246,26 +5228,6 @@
       "signature": "pub trait BoundaryCondition { fn resolve (& self , x : isize , y : isize , width : usize , height : usize) -> Option < usize > }"
     }
   ],
-  "crates/oxidize_core/src/grid.rs": [
-    {
-      "signature": "impl < T : Clone > Grid2D < T > { pub fn new (width : usize , height : usize , initial_value : T) -> Self }"
-    },
-    {
-      "signature": "impl < T > Grid2D < T > { pub fn from_vec (width : usize , height : usize , data : Vec < T >) -> Self }"
-    },
-    {
-      "signature": "impl < T > Grid2D < T > { pub fn get (& self , x : usize , y : usize) -> Option < & T > }"
-    },
-    {
-      "signature": "impl < T > Grid2D < T > { pub fn get_mut (& mut self , x : usize , y : usize) -> Option < & mut T > }"
-    },
-    {
-      "signature": "impl < T > Grid2D < T > { pub fn index_1d (& self , x : usize , y : usize) -> usize }"
-    },
-    {
-      "signature": "pub struct Grid2D < T >"
-    }
-  ],
   "crates/oxidize_core/src/iteration.rs": [
     {
       "signature": "impl IterationPattern { pub fn for_each_boundary < F > (width : usize , height : usize , mut f : F) where F : FnMut (usize , usize) , }"
@@ -5355,9 +5317,6 @@
     },
     {
       "signature": "pub struct Point3D"
-    },
-    {
-      "signature": "pub struct Triangle"
     }
   ],
   "crates/oxidize_core/src/path_utils.rs": [

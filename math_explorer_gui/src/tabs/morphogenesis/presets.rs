@@ -58,6 +58,7 @@ impl MorphogenesisTab {
             p.d_v = config.d_v;
             p.dt = config.dt;
         }
+        self.pending_initial_start = false;
         if config.width != self.width || config.height != self.height {
             self.width = config.width;
             self.height = config.height;

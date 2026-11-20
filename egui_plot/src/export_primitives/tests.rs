@@ -205,3 +205,76 @@ fn test_primitives_log_axis_projection_png_and_svg() {
         "Decade steps must be equal in log10 space: {cx_vals:?}"
     );
 }
+
+#[test]
+fn test_canvas_layout_from_projected_bounds_and_log_clamp() {
+    use super::{PrimitiveCanvasLayout, project_coord};
+
+    let log_opts = ExportOptions {
+        width: 500,
+        height: 400,
+        aspect_ratio: crate::AspectRatioOption::Free,
+        log_x: true,
+        log_y: true,
+        ..ExportOptions::default()
+    };
+
+    // Direct 1e-6 clamping when raw_bounds are non-positive on log axes
+    let clamped = PrimitiveCanvasLayout::new(500, 400, [-5.0, 0.0, 0.0, -2.0], &log_opts);
+    let expected =
+        PrimitiveCanvasLayout::from_projected_bounds(500, 400, [-6.0, -5.0, -6.0, -5.0], &log_opts);
+    assert_eq!(
+        clamped.to_pixel([1e-6, 1e-6]),
+        expected.to_pixel([1e-6, 1e-6])
+    );
+    assert_eq!(
+        clamped.to_pixel([1e-5, 1e-5]),
+        expected.to_pixel([1e-5, 1e-5])
+    );
+
+    // Positive bounds parity between new and from_projected_bounds
+    let raw = [2.0, 200.0, 5.0, 5000.0];
+    let projected = [
+        project_coord(raw[0], true),
+        project_coord(raw[1], true),
+        project_coord(raw[2], true),
+        project_coord(raw[3], true),
+    ];
+    let via_new = PrimitiveCanvasLayout::new(500, 400, raw, &log_opts);
+    let via_proj = PrimitiveCanvasLayout::from_projected_bounds(500, 400, projected, &log_opts);
+    for pt in [[2.0, 5.0], [20.0, 500.0], [200.0, 5000.0]] {
+        assert_eq!(via_new.to_pixel(pt), via_proj.to_pixel(pt));
+    }
+}
+
+#[test]
+fn test_shared_pixel_ops_and_svg_header_helpers() {
+    use super::pixel_ops::{blend_over, draw_dot, draw_segment};
+    use super::raster::background_pixel;
+    use super::svg::{escape_xml, svg_document_header};
+
+    assert_eq!(
+        escape_xml("A & B <C> \"D\" 'E'"),
+        "A &amp; B &lt;C&gt; &quot;D&quot; &apos;E&apos;"
+    );
+
+    let opts = ExportOptions {
+        background_color: egui::Color32::from_rgb(10, 20, 30),
+        background_opacity: 0.5,
+        ..ExportOptions::default()
+    };
+    let bg = background_pixel(&opts);
+    assert_eq!(bg, egui::Color32::from_rgba_unmultiplied(10, 20, 30, 128));
+
+    let header = svg_document_header(320, 180, &opts);
+    assert!(header.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"));
+    assert!(header.contains("width=\"320\" height=\"180\""));
+    assert!(header.contains("fill=\"rgb(10,20,30)\" fill-opacity=\"0.500\""));
+
+    let mut pixels = vec![egui::Color32::TRANSPARENT; 64];
+    let src = egui::Color32::from_rgb(200, 100, 50);
+    draw_dot(&mut pixels, 8, 8, (4.0, 4.0), 1.5, src);
+    draw_segment(&mut pixels, 8, 8, (1.0, 1.0), (6.0, 6.0), 1.0, src);
+    assert!(pixels.iter().any(|&c| c.a() > 0));
+    assert_eq!(blend_over(src, egui::Color32::TRANSPARENT, 1.0), src);
+}

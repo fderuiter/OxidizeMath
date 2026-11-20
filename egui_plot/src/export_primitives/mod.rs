@@ -1,8 +1,8 @@
 //! Offscreen plot primitive representation, capture, and rendering for PNG, SVG, and GIF exports.
 
-mod pixel_ops;
-mod raster;
-mod svg;
+pub(crate) mod pixel_ops;
+pub(crate) mod raster;
+pub(crate) mod svg;
 #[cfg(test)]
 mod tests;
 
@@ -377,6 +377,15 @@ impl PrimitiveCanvasLayout {
             project_coord(by0, options.log_y),
             project_coord(by1, options.log_y),
         ];
+        Self::from_projected_bounds(width, height, projected, options)
+    }
+
+    pub(crate) fn from_projected_bounds(
+        width: usize,
+        height: usize,
+        projected: [f64; 4],
+        options: &ExportOptions,
+    ) -> Self {
         let [min_x, max_x, min_y, max_y] = padded_bounds(projected);
         let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
         let draw_w = (width as f64 - 2.0 * padding).max(1.0);

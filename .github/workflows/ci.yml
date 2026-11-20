@@ -24,11 +24,63 @@ jobs:
     name: Pre-flight Checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      papers_changed: ${{ steps.detect-changes.outputs.papers_changed }}
+      installer_changed: ${{ steps.detect-changes.outputs.installer_changed }}
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
+
+      - name: Detect Scoped Change Paths
+        id: detect-changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          papers_changed="true"
+          installer_changed="true"
+
+          SHA_RE='^[0-9a-fA-F]{7,64}$'
+          ZERO_RE='^0+$'
+
+          if [ "${EVENT_NAME:-}" = "pull_request" ]; then
+            if [[ "${BASE_SHA:-}" =~ $SHA_RE ]] && [[ "${HEAD_SHA:-}" =~ $SHA_RE ]] \
+              && ! [[ "$BASE_SHA" =~ $ZERO_RE ]] && ! [[ "$HEAD_SHA" =~ $ZERO_RE ]] \
+              && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null \
+              && git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null \
+              && changed_files="$(git -c core.quotepath=false diff --no-renames --name-only "${BASE_SHA}...${HEAD_SHA}" --)"; then
+              papers_changed="false"
+              installer_changed="false"
+              while IFS= read -r file_path; do
+                [ -z "$file_path" ] && continue
+                case "$file_path" in
+                  papers/*|apps/xtask/src/papers*|traceability.toml|.github/workflows/ci.yml)
+                    papers_changed="true"
+                    ;;
+                esac
+                case "$file_path" in
+                  math_explorer_gui/*|Cargo.toml|Cargo.lock|.github/workflows/ci.yml)
+                    installer_changed="true"
+                    ;;
+                esac
+              done <<< "$changed_files"
+            else
+              echo "Warning: Unable to compute pull_request git diff for ${BASE_SHA:-<unset>}...${HEAD_SHA:-<unset>}; forcing scoped gates to true."
+            fi
+          fi
+
+          echo "papers_changed=${papers_changed}"
+          echo "installer_changed=${installer_changed}"
+          {
+            printf 'papers_changed=%s\n' "$papers_changed"
+            printf 'installer_changed=%s\n' "$installer_changed"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
@@ -163,6 +215,7 @@ jobs:
           target: ${{ matrix.target }}
 
       - name: Build Unified Verification Tool
+        if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
         run: cargo build -p unified_verification --release
 
       - name: Build (Native)
@@ -173,22 +226,6 @@ jobs:
         if: matrix.target != 'wasm32-unknown-unknown'
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Check Workspace Benchmarks (Native)
-        if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo check --workspace --benches --all-features --verbose
-
-      - name: Run Clippy Benchmarks (Native)
-        if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo clippy --workspace --benches --all-features -- -D warnings
-
-      - name: Check Workspace Examples (Native)
-        if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo check --workspace --examples --all-features --verbose
-
-      - name: Run Clippy Examples (Native)
-        if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo clippy --workspace --examples --all-features -- -D warnings
-
       - name: Install cargo-llvm-cov
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
         uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
@@ -196,8 +233,8 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Run Workspace Tests (Native)
-        if: matrix.target != 'wasm32-unknown-unknown'
-        run: cargo test --workspace --lib --tests
+        if: runner.os != 'Linux' && matrix.target != 'wasm32-unknown-unknown'
+        run: cargo test --workspace --lib --tests --all-features
 
       - name: Run Integrity Verified Suite
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
@@ -233,17 +270,13 @@ jobs:
         if: matrix.target == 'wasm32-unknown-unknown'
         run: |
           sudo apt-get update
-          sudo apt-get install -y binaryen brotli
+          sudo apt-get install -y brotli
           cargo binstall --no-confirm trunk
 
       - name: Build Web Application
         if: matrix.target == 'wasm32-unknown-unknown'
         working-directory: math_explorer_gui
         run: trunk build --release
-
-      - name: Pre-compress Web Distribution Assets
-        if: matrix.target == 'wasm32-unknown-unknown'
-        run: bash scripts/compress_dist.sh math_explorer_gui/dist
 
       - name: Verify WebAssembly Size Budget
         if: matrix.target == 'wasm32-unknown-unknown'
@@ -328,7 +361,7 @@ jobs:
 
   compile-papers:
     name: Compile Academic Papers
-    if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+    if: github.event_name != 'pull_request' || needs.pre-flight.outputs.papers_changed == 'true'
     needs: pre-flight
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -424,33 +457,34 @@ jobs:
   package:
     name: Package Installers (${{ matrix.os }})
     needs: pre-flight
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ (matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true') && matrix.os || 'ubuntu-latest' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        include: >-
-          ${{
-            fromJSON(
-              (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-              && '[{"os":"ubuntu-latest","target":"deb"},{"os":"macos-latest","target":"dmg"},{"os":"windows-latest","target":"wix"}]'
-              || '[{"os":"ubuntu-latest","target":"deb"}]'
-            )
-          }}
+        include:
+          - os: ubuntu-latest
+            target: deb
+          - os: macos-latest
+            target: dmg
+          - os: windows-latest
+            target: wix
 
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Skip Unchanged Cross-OS Installer Build
+        if: matrix.os != 'ubuntu-latest' && github.event_name == 'pull_request' && needs.pre-flight.outputs.installer_changed != 'true'
+        run: echo "No GUI or workspace manifest changes detected; skipping ${{ matrix.target }} installer build on pull_request."
 
-      - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libxdo-dev build-essential
+      - name: Checkout code
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Rust
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       - name: Cache Cargo dependencies
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
         uses: ./.github/actions/cargo-cache
         with:
           scope: package-${{ matrix.target }}
@@ -458,22 +492,24 @@ jobs:
           extra-files: math_explorer_gui/Cargo.toml
 
       - name: Install cargo-binstall
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
         uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
 
       # Pinned cargo-packager version for reproducible packaging builds without source compilation fallback
       - name: Install cargo-packager
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
         env:
           CARGO_PACKAGER_VERSION: "0.11.8"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cargo binstall --no-confirm --disable-strategies compile cargo-packager@${{ env.CARGO_PACKAGER_VERSION }}
 
       - name: Build and Package
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
         shell: bash
-        run: |
-          cargo build --release -p math_explorer_gui
-          cargo packager --release -p math_explorer_gui -f ${{ matrix.target }}
+        run: cargo packager --release -p math_explorer_gui -f ${{ matrix.target }}
 
       - name: Generate SHA-256 Manifest
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
         shell: bash
         run: |
           if [ ! -d "math_explorer_gui/dist" ]; then
@@ -496,6 +532,17 @@ jobs:
 
           shopt -s nullglob
           shopt -u dotglob
+          for dmg in *.dmg; do
+            if [ -f "$dmg" ] && [[ "$dmg" == *" "* ]]; then
+              normalized="${dmg// /_}"
+              if [ -e "$normalized" ]; then
+                echo "Error: Normalized DMG target $normalized already exists" >&2
+                exit 1
+              fi
+              mv -- "$dmg" "$normalized"
+            fi
+          done
+
           files=()
           for f in *.deb *.dmg *.msi *.exe *.wix; do
             if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
@@ -519,6 +566,7 @@ jobs:
           $SHACHECK SHA256SUMS
 
       - name: Upload Artifacts
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: math_explorer-${{ matrix.target }}

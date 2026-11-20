@@ -17,6 +17,7 @@ fn wait_for_morphogenesis_snapshot(tab: &mut MorphogenesisTab) {
 #[test]
 fn test_morphogenesis_initial_state() {
     let tab = MorphogenesisTab::default();
+    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
     assert!(tab.dirty);
     assert!(tab.texture.is_none());
     assert!(tab.pixels.is_empty());
@@ -229,17 +230,24 @@ fn test_morphogenesis_fault_halts_repaints_and_recovers() {
 
 #[test]
 fn test_morphogenesis_save_and_load_state_compatibility() {
-    let tab = MorphogenesisTab::default();
-    // Default is running
-    assert_eq!(tab.worker.state(), SimWorkerState::Running);
+    let mut tab = MorphogenesisTab::default();
+    // Default stays Ready while hidden prior to first render
+    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
 
     // Save state serializes SimWorkerState
     let saved = tab.save_state().expect("save_state should succeed");
-    assert!(saved.contains("\"state\":\"Running\""));
+    assert!(saved.contains("\"state\":\"Ready\""));
     assert!(!saved.contains("\"paused\""));
 
     let mut loaded = MorphogenesisTab::default();
     loaded.load_state(&saved);
+    assert_eq!(loaded.worker.state(), SimWorkerState::Ready);
+
+    // Running state roundtrips cleanly
+    assert!(tab.worker.send_command(SimCommand::Start).is_ok());
+    let saved_running = tab.save_state().expect("save_state should succeed");
+    assert!(saved_running.contains("\"state\":\"Running\""));
+    loaded.load_state(&saved_running);
     assert_eq!(loaded.worker.state(), SimWorkerState::Running);
 
     // Load legacy JSON with "paused": true
@@ -362,5 +370,31 @@ fn test_turing_stripes_syncs_kinetics_before_reinit_and_surfaces_import_errors()
         .expect_err("Malformed JSON must fail");
     tab.dialog_state.record_import_error(err);
     assert!(tab.dialog_state.toast_error.is_some());
+}
+
+#[test]
+fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
+    let ctx = egui::Context::default();
+    let mut tab = MorphogenesisTab::default();
+    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
+
+    // Hidden tab remains idle before first render
+    thread::sleep(Duration::from_millis(40));
+    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
+
+    // First render starts stepping; default d_v=100, dt=0.05 diverges to Faulted
+    let mut frame = eframe::Frame::_new_kittest();
+    for _ in 0..400 {
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            tab.show(ctx, &mut frame);
+        });
+        if tab.worker.state() == SimWorkerState::Faulted {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    assert_eq!(tab.worker.state(), SimWorkerState::Faulted);
+    assert!(tab.worker.diagnostic_report().is_some());
 }
 

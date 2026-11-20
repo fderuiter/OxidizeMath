@@ -162,6 +162,7 @@ impl<'a> PlaybackTransport<'a> {
 
         if let Some(triggered) = action {
             self.announce_action(ui.ctx(), base_id, ui_enabled, triggered);
+            ui.ctx().request_repaint();
         }
 
         action

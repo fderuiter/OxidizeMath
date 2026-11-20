@@ -9,6 +9,7 @@
     clippy::too_many_arguments
 )]
 
+mod a11y;
 mod axis;
 pub mod commands;
 pub mod data_table;
@@ -27,6 +28,7 @@ mod transform;
 
 use std::{cmp::Ordering, ops::RangeInclusive, sync::Arc};
 
+use crate::a11y::AccessibleTooltipExt as _;
 use ahash::HashMap;
 use egui::{
     Align2, Color32, CursorIcon, Id, Layout, NumExt as _, PointerButton, Pos2, Rangef, Rect,
@@ -1099,7 +1101,7 @@ impl<'a> Plot<'a> {
         );
 
         // Allocate the plot window.
-        let response = ui.allocate_rect(plot_rect, sense);
+        let response = ui.allocate_rect(plot_rect, sense | egui::Sense::focusable_noninteractive());
 
         let x_axis_responses = x_axis_widgets
             .iter()
@@ -1229,7 +1231,17 @@ impl<'a> Plot<'a> {
             ..
         } = plot_ui;
 
+        let persisted_point_tooltip = a11y::preprocess_point_tooltip_frame(
+            &response,
+            response.hovered() || response.has_focus(),
+        );
+
         // Background
+        let plot_border_stroke = if response.has_focus() {
+            a11y::focus_ring_stroke(ui.visuals(), ui.visuals().extreme_bg_color)
+        } else {
+            ui.visuals().widgets.noninteractive.bg_stroke
+        };
         if show_background {
             ui.painter()
                 .with_clip_rect(plot_rect)
@@ -1237,7 +1249,7 @@ impl<'a> Plot<'a> {
                     plot_rect,
                     2,
                     ui.visuals().extreme_bg_color,
-                    ui.visuals().widgets.noninteractive.bg_stroke,
+                    plot_border_stroke,
                     egui::StrokeKind::Inside,
                 ));
         }
@@ -1246,8 +1258,8 @@ impl<'a> Plot<'a> {
         let legend = legend_config.and_then(|config| {
             LegendWidget::try_new(plot_id, plot_rect, config, &items, &mem.hidden_items)
         });
-        // Don't show hover cursor when hovering over legend.
-        if mem.hovered_legend_item.is_some() {
+        // Don't show hover cursor when hovering over legend unless Plot holds keyboard focus.
+        if mem.hovered_legend_item.is_some() && !response.has_focus() {
             show_x = false;
             show_y = false;
         }
@@ -1661,6 +1673,53 @@ impl<'a> Plot<'a> {
             log_axes,
         );
 
+        let mut access_state = Self::load_frame_access_state(ui, plot_id, &mem);
+        if response.has_focus() {
+            let arrow_pressed = ui.input(|i| {
+                !i.key_pressed(egui::Key::Tab)
+                    && (i.key_pressed(egui::Key::ArrowLeft)
+                        || i.key_pressed(egui::Key::ArrowRight)
+                        || i.key_pressed(egui::Key::ArrowUp)
+                        || i.key_pressed(egui::Key::ArrowDown))
+            });
+            ui.memory_mut(|m| {
+                m.set_focus_lock_filter(
+                    response.id,
+                    egui::EventFilter {
+                        tab: false,
+                        horizontal_arrows: true,
+                        vertical_arrows: true,
+                        escape: false,
+                    },
+                );
+                if arrow_pressed {
+                    m.move_focus(egui::FocusDirection::None);
+                }
+            });
+            if response.gained_focus() {
+                ui.ctx().request_repaint();
+            }
+        }
+
+        let viewport_key_cfg = ViewportKeyboardConfig {
+            plot_id,
+            allow_zoom,
+            allow_pan: allow_drag.or(allow_scroll),
+            data_aspect,
+            linked_axes: &linked_axes,
+            auto_content_bounds,
+            default_auto_bounds,
+        };
+        Self::register_and_handle_viewport_keys(ui, &response, &mut mem, &viewport_key_cfg);
+        register_plot_dataset_commands(ui.ctx(), &accessible_datasets, access_state.focused_item);
+        if response.has_focus() {
+            handle_focused_plot_dataset_keys(ui, &accessible_datasets, &mut access_state);
+        }
+        let focused_point = response
+            .has_focus()
+            .then(|| resolve_focused_plot_point(&items, &accessible_datasets, &mut access_state))
+            .flatten();
+
         let prepared = PreparedPlot {
             plot_area_response: &response,
             items,
@@ -1679,9 +1738,22 @@ impl<'a> Plot<'a> {
             grid_spacers: active_grid_spacers,
             clamp_grid: active_clamp_grid,
             plot_id,
+            focused_point,
+            persisted_tooltip: persisted_point_tooltip,
         };
 
         let (plot_cursors, mut hovered_plot_item) = prepared.ui(ui, &response);
+        if response.has_focus() {
+            let focus_stroke = a11y::focus_ring_stroke(ui.visuals(), ui.visuals().extreme_bg_color);
+            ui.painter()
+                .with_clip_rect(plot_rect)
+                .add(epaint::RectShape::stroke(
+                    plot_rect,
+                    2,
+                    focus_stroke,
+                    egui::StrokeKind::Inside,
+                ));
+        }
 
         if let Some(boxed_zoom_rect) = boxed_zoom_rect {
             ui.painter()
@@ -1731,21 +1803,6 @@ impl<'a> Plot<'a> {
         let transform = mem.transform;
 
         // --- ACCESSIBILITY LOGIC INJECTED ---
-        let mut access_state = ui
-            .data_mut(|d| d.get_temp::<AccessState>(plot_id))
-            .unwrap_or_else(|| AccessState {
-                show_settings_modal: mem.show_settings_modal,
-                log_x: mem.log_x,
-                log_y: mem.log_y,
-                grid_density: mem.grid_density,
-                show_x_labels: mem.show_x_labels,
-                show_y_labels: mem.show_y_labels,
-                clamp_grid: mem.clamp_grid,
-                ..Default::default()
-            });
-        access_state.log_x = mem.log_x;
-        access_state.log_y = mem.log_y;
-
         if let Some(status) = export::drain_import_status(plot_id) {
             access_state.import_toast = Some(status);
         }
@@ -1835,14 +1892,16 @@ impl<'a> Plot<'a> {
             }
         }
 
-        let focus_response = response.interact(egui::Sense::focusable_noninteractive());
+        let focus_response = &response;
+        let series_count = accessible_datasets.len();
         let plot_a11y_label = match title.as_deref() {
-            Some(t) => format!("Interactive Plot ({t})"),
-            None => "Interactive Plot".to_owned(),
+            Some(t) => format!("Interactive Plot ({t}), {series_count} series"),
+            None => format!("Interactive Plot, {series_count} series"),
         };
+        let plot_enabled = ui.is_enabled();
         focus_response.widget_info({
             let label = plot_a11y_label.clone();
-            move || egui::WidgetInfo::labeled(egui::WidgetType::Other, true, label.clone())
+            move || egui::WidgetInfo::labeled(egui::WidgetType::Other, plot_enabled, label.clone())
         });
         ui.ctx()
             .accesskit_node_builder(focus_response.id, |builder| {
@@ -1877,11 +1936,15 @@ impl<'a> Plot<'a> {
                 ui.separator();
 
                 if valid_fit_datasets.is_empty() {
-                    ui.add_enabled_ui(false, |ui| {
-                        let _ = ui.button("Fit Curve").on_hover_text(
-                            "Requires a dataset with at least 2 points for curve fitting",
-                        );
-                    });
+                    let _ = a11y::focusable_action_button(
+                        ui,
+                        false,
+                        egui::Button::new("Fit Curve"),
+                        Some("Fit Curve"),
+                    )
+                    .accessible_tooltip(
+                        "Requires a dataset with at least 2 points for curve fitting",
+                    );
                 } else {
                     ui.menu_button("Fit Curve", |ui| {
                         if valid_fit_datasets.len() > 1 {
@@ -1976,10 +2039,14 @@ impl<'a> Plot<'a> {
                         (false, false) => (Color32::from_rgb(15, 115, 54), "ℹ️"),
                     };
                     ui.colored_label(color, format!("{icon} {msg}"));
-                    if ui
-                        .small_button("✖")
-                        .on_hover_text("Dismiss import notification")
-                        .clicked()
+                    if a11y::focusable_action_button(
+                        ui,
+                        true,
+                        egui::Button::new("✖").small(),
+                        Some("Dismiss import notification"),
+                    )
+                    .accessible_tooltip("Dismiss import notification")
+                    .clicked()
                     {
                         access_state.import_toast = None;
                     }
@@ -2311,126 +2378,6 @@ impl<'a> Plot<'a> {
         mem.show_y_labels = access_state.show_y_labels;
         mem.clamp_grid = access_state.clamp_grid;
 
-        let num_items = accessible_datasets.len();
-        if num_items > 0 {
-            crate::commands::CommandRegistryData::register(
-                ui.ctx(),
-                "Next Dataset",
-                "Navigate to the next dataset",
-                crate::commands::CommandTrigger::Key(egui::Key::ArrowDown),
-                false,
-                "Plot Accessibility",
-            );
-            crate::commands::CommandRegistryData::register(
-                ui.ctx(),
-                "Previous Dataset",
-                "Navigate to the previous dataset",
-                crate::commands::CommandTrigger::Key(egui::Key::ArrowUp),
-                false,
-                "Plot Accessibility",
-            );
-            if accessible_datasets
-                .get(access_state.focused_item)
-                .or_else(|| accessible_datasets.first())
-                .is_some_and(|(_, pts, _)| !pts.is_empty())
-            {
-                crate::commands::CommandRegistryData::register(
-                    ui.ctx(),
-                    "Next Point",
-                    "Navigate to the next point in the dataset",
-                    crate::commands::CommandTrigger::Key(egui::Key::ArrowRight),
-                    false,
-                    "Plot Accessibility",
-                );
-                crate::commands::CommandRegistryData::register(
-                    ui.ctx(),
-                    "Previous Point",
-                    "Navigate to the previous point in the dataset",
-                    crate::commands::CommandTrigger::Key(egui::Key::ArrowLeft),
-                    false,
-                    "Plot Accessibility",
-                );
-            }
-        }
-
-        if focus_response.has_focus() && num_items > 0 {
-            let mut changed = false;
-            let down_triggered = crate::commands::CommandRegistryData::register_and_check(
-                ui.ctx(),
-                "Next Dataset",
-                "Navigate to the next dataset",
-                crate::commands::CommandTrigger::Key(egui::Key::ArrowDown),
-                false,
-                "Plot Accessibility",
-                Some(ui),
-                None,
-            );
-            if down_triggered && access_state.focused_item + 1 < num_items {
-                access_state.focused_item += 1;
-                access_state.focused_point = 0;
-                changed = true;
-            }
-
-            let up_triggered = crate::commands::CommandRegistryData::register_and_check(
-                ui.ctx(),
-                "Previous Dataset",
-                "Navigate to the previous dataset",
-                crate::commands::CommandTrigger::Key(egui::Key::ArrowUp),
-                false,
-                "Plot Accessibility",
-                Some(ui),
-                None,
-            );
-            if up_triggered && access_state.focused_item > 0 {
-                access_state.focused_item -= 1;
-                access_state.focused_point = 0;
-                changed = true;
-            }
-
-            if let Some((_, pts, _)) = accessible_datasets.get(access_state.focused_item) {
-                let num_pts = pts.len();
-                if num_pts > 0 {
-                    let right_triggered = crate::commands::CommandRegistryData::register_and_check(
-                        ui.ctx(),
-                        "Next Point",
-                        "Navigate to the next point in the dataset",
-                        crate::commands::CommandTrigger::Key(egui::Key::ArrowRight),
-                        false,
-                        "Plot Accessibility",
-                        Some(ui),
-                        None,
-                    );
-                    if right_triggered && access_state.focused_point + 1 < num_pts {
-                        access_state.focused_point += 1;
-                        changed = true;
-                    }
-
-                    let left_triggered = crate::commands::CommandRegistryData::register_and_check(
-                        ui.ctx(),
-                        "Previous Point",
-                        "Navigate to the previous point in the dataset",
-                        crate::commands::CommandTrigger::Key(egui::Key::ArrowLeft),
-                        false,
-                        "Plot Accessibility",
-                        Some(ui),
-                        None,
-                    );
-                    if left_triggered && access_state.focused_point > 0 {
-                        access_state.focused_point -= 1;
-                        changed = true;
-                    }
-                }
-            }
-
-            if changed
-                && let Some((name, pts, _)) = accessible_datasets.get(access_state.focused_item)
-                && let Some(p) = pts.get(access_state.focused_point)
-            {
-                let msg = format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]);
-                emit_plot_live_message(ui.ctx(), msg, false);
-            }
-        }
-
         // Track pointer position on secondary click (right-click) for callout placement
         if response.secondary_clicked()
             || (response.hovered()
@@ -2589,20 +2536,21 @@ impl<'a> Plot<'a> {
 
             ui.menu_button("Fit Curve", |ui| {
                 if valid_fit_datasets.is_empty() {
-                    ui.add_enabled_ui(false, |ui| {
-                        let _ = ui.button("Linear (Degree 1)").on_hover_text(
-                            "Requires a dataset with at least 2 points for curve fitting",
-                        );
-                        let _ = ui.button("Polynomial (Degree 2)").on_hover_text(
-                            "Requires a dataset with at least 2 points for curve fitting",
-                        );
-                        let _ = ui.button("Polynomial (Degree 3)").on_hover_text(
-                            "Requires a dataset with at least 2 points for curve fitting",
-                        );
-                        let _ = ui.button("Polynomial (Degree 4)").on_hover_text(
-                            "Requires a dataset with at least 2 points for curve fitting",
-                        );
-                    });
+                    let reason = "Requires a dataset with at least 2 points for curve fitting";
+                    for degree_label in [
+                        "Linear (Degree 1)",
+                        "Polynomial (Degree 2)",
+                        "Polynomial (Degree 3)",
+                        "Polynomial (Degree 4)",
+                    ] {
+                        let _ = a11y::focusable_action_button(
+                            ui,
+                            false,
+                            egui::Button::new(degree_label),
+                            Some(degree_label),
+                        )
+                        .accessible_tooltip(reason);
+                    }
                 } else {
                     if valid_fit_datasets.len() > 1 {
                         ui.label(egui::RichText::new("Select Dataset:").small().weak());
@@ -2680,6 +2628,88 @@ impl<'a> Plot<'a> {
         }
     }
 
+    fn load_frame_access_state(ui: &mut Ui, plot_id: Id, mem: &PlotMemory) -> AccessState {
+        let mut access_state = ui
+            .data_mut(|d| d.get_temp::<AccessState>(plot_id))
+            .unwrap_or_else(|| AccessState {
+                show_settings_modal: mem.show_settings_modal,
+                log_x: mem.log_x,
+                log_y: mem.log_y,
+                grid_density: mem.grid_density,
+                show_x_labels: mem.show_x_labels,
+                show_y_labels: mem.show_y_labels,
+                clamp_grid: mem.clamp_grid,
+                ..Default::default()
+            });
+        access_state.log_x = mem.log_x;
+        access_state.log_y = mem.log_y;
+        access_state
+    }
+
+    fn register_and_handle_viewport_keys(
+        ui: &mut Ui,
+        response: &Response,
+        mem: &mut PlotMemory,
+        cfg: &ViewportKeyboardConfig<'_>,
+    ) {
+        let zoom_axes = cfg.allow_zoom.and(ui.is_enabled());
+        let pan_axes = cfg.allow_pan.and(ui.is_enabled());
+        let reset_enabled = ui.is_enabled();
+        register_plot_viewport_commands(ui.ctx(), zoom_axes.any(), pan_axes, reset_enabled);
+
+        if !response.has_focus()
+            || ui.input(|i| i.modifiers.ctrl || i.modifiers.command || i.modifiers.alt)
+        {
+            return;
+        }
+
+        if pan_axes.any() && try_pan_focused_plot(ui, mem, cfg, pan_axes) {
+            return;
+        }
+
+        let zoom_cfg = FloatingZoomConfig {
+            plot_id: cfg.plot_id,
+            allow_zoom: cfg.allow_zoom,
+            data_aspect: cfg.data_aspect,
+            linked_axes: cfg.linked_axes,
+            auto_content_bounds: cfg.auto_content_bounds,
+            default_auto_bounds: cfg.default_auto_bounds,
+        };
+        if zoom_axes.any() {
+            let plus = check_plot_key(ui, "Zoom In", "Zoom into the plot canvas", egui::Key::Plus);
+            let eq = check_plot_key(
+                ui,
+                "Zoom In",
+                "Zoom into the plot canvas",
+                egui::Key::Equals,
+            );
+            if plus || eq {
+                apply_zoom_step(ui, mem, &zoom_cfg, zoom_axes, 1.25);
+                emit_plot_live_message(ui.ctx(), "Plot zoomed in".to_owned(), false);
+            }
+            if check_plot_key(
+                ui,
+                "Zoom Out",
+                "Zoom out from the plot canvas",
+                egui::Key::Minus,
+            ) {
+                apply_zoom_step(ui, mem, &zoom_cfg, zoom_axes, 0.8);
+                emit_plot_live_message(ui.ctx(), "Plot zoomed out".to_owned(), false);
+            }
+        }
+        if reset_enabled
+            && check_plot_key(
+                ui,
+                "Reset Bounds",
+                "Restore default plot bounds to fit all data",
+                egui::Key::Home,
+            )
+        {
+            apply_bounds_reset(ui, mem, &zoom_cfg);
+            emit_plot_live_message(ui.ctx(), "Plot bounds reset".to_owned(), false);
+        }
+    }
+
     fn render_floating_zoom_toolbar(
         ui: &mut Ui,
         mem: &mut PlotMemory,
@@ -2695,7 +2725,6 @@ impl<'a> Plot<'a> {
             frame.right_top() + egui::vec2(-30.0, 34.0),
             egui::vec2(24.0, 80.0),
         );
-
         let mut zoom_ui = ui.new_child(
             egui::UiBuilder::new()
                 .max_rect(nav_rect)
@@ -2708,186 +2737,41 @@ impl<'a> Plot<'a> {
         let zoom_enabled = effective_allow_zoom.any();
         let reset_enabled = ui.is_enabled();
 
-        let mut zoom_in_clicked = false;
-        let mut zoom_out_clicked = false;
-        let mut reset_clicked = false;
+        let (mut zoom_in, mut zoom_out, mut reset) =
+            render_zoom_toolbar_buttons(&mut zoom_ui, btn_size, zoom_enabled, reset_enabled);
+        let (sig_in, sig_out, sig_reset) = drain_headless_zoom_signals(ui.ctx(), config.plot_id);
+        zoom_in |= sig_in;
+        zoom_out |= sig_out;
+        reset |= sig_reset;
 
-        let in_btn = egui::Button::new(egui::RichText::new("+").size(14.0).strong())
-            .min_size(btn_size)
-            .corner_radius(4.0);
-        if zoom_ui
-            .add_enabled(zoom_enabled, in_btn)
-            .on_hover_text("Zoom in (Scroll up / +)\nZooms into the plot canvas")
-            .clicked()
-        {
-            zoom_in_clicked = true;
+        if zoom_in && zoom_enabled {
+            apply_zoom_step(ui, mem, config, effective_allow_zoom, 1.25);
         }
-
-        let out_btn = egui::Button::new(egui::RichText::new("-").size(14.0).strong())
-            .min_size(btn_size)
-            .corner_radius(4.0);
-        if zoom_ui
-            .add_enabled(zoom_enabled, out_btn)
-            .on_hover_text("Zoom out (Scroll down / -)\nZooms out from the plot canvas")
-            .clicked()
-        {
-            zoom_out_clicked = true;
+        if zoom_out && zoom_enabled {
+            apply_zoom_step(ui, mem, config, effective_allow_zoom, 0.8);
         }
-
-        let reset_btn = egui::Button::new(egui::RichText::new("🏠").size(12.0))
-            .min_size(btn_size)
-            .corner_radius(4.0);
-        if zoom_ui
-            .add_enabled(reset_enabled, reset_btn)
-            .on_hover_text(
-                "Reset bounds (Home / Double-click)\nRestores default plot bounds to fit all data",
-            )
-            .clicked()
-        {
-            reset_clicked = true;
-        }
-
-        // Signals for headless or automated testing
-        let signal_in = ui.ctx().data_mut(|d| {
-            d.get_temp::<bool>(config.plot_id.with("zoom_in"))
-                .unwrap_or(false)
-        });
-        if signal_in {
-            ui.ctx()
-                .data_mut(|d| d.insert_temp(config.plot_id.with("zoom_in"), false));
-            zoom_in_clicked = true;
-        }
-        let signal_out = ui.ctx().data_mut(|d| {
-            d.get_temp::<bool>(config.plot_id.with("zoom_out"))
-                .unwrap_or(false)
-        });
-        if signal_out {
-            ui.ctx()
-                .data_mut(|d| d.insert_temp(config.plot_id.with("zoom_out"), false));
-            zoom_out_clicked = true;
-        }
-        let signal_reset = ui.ctx().data_mut(|d| {
-            d.get_temp::<bool>(config.plot_id.with("reset_view"))
-                .unwrap_or(false)
-        });
-        if signal_reset {
-            ui.ctx()
-                .data_mut(|d| d.insert_temp(config.plot_id.with("reset_view"), false));
-            reset_clicked = true;
-        }
-
-        if zoom_in_clicked && zoom_enabled {
-            let mut factor = egui::Vec2::splat(1.25);
-            if !effective_allow_zoom.x {
-                factor.x = 1.0;
-            }
-            if !effective_allow_zoom.y {
-                factor.y = 1.0;
-            }
-            let center = mem.transform.frame().center();
-            mem.transform.zoom(factor, center);
-            if let Some(aspect) = config.data_aspect {
-                if let Some((_, linked)) = config.linked_axes {
-                    let change_x = linked.y && !linked.x;
-                    mem.transform.set_aspect_by_changing_axis(
-                        aspect as f64,
-                        if change_x { Axis::X } else { Axis::Y },
-                    );
-                } else if config.default_auto_bounds.any() {
-                    mem.transform.set_aspect_by_expanding(aspect as f64);
-                } else {
-                    mem.transform
-                        .set_aspect_by_changing_axis(aspect as f64, Axis::Y);
-                }
-            }
-            mem.auto_bounds = mem.auto_bounds.and(!config.allow_zoom);
-            if let Some((id, _)) = config.linked_axes {
-                ui.data_mut(|data| {
-                    let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
-                    link_groups.0.insert(
-                        *id,
-                        LinkedBounds {
-                            bounds: *mem.transform.bounds(),
-                            auto_bounds: mem.auto_bounds,
-                        },
-                    );
-                });
-            }
-            ui.ctx().request_repaint();
-        }
-
-        if zoom_out_clicked && zoom_enabled {
-            let mut factor = egui::Vec2::splat(0.8);
-            if !effective_allow_zoom.x {
-                factor.x = 1.0;
-            }
-            if !effective_allow_zoom.y {
-                factor.y = 1.0;
-            }
-            let center = mem.transform.frame().center();
-            mem.transform.zoom(factor, center);
-            if let Some(aspect) = config.data_aspect {
-                if let Some((_, linked)) = config.linked_axes {
-                    let change_x = linked.y && !linked.x;
-                    mem.transform.set_aspect_by_changing_axis(
-                        aspect as f64,
-                        if change_x { Axis::X } else { Axis::Y },
-                    );
-                } else if config.default_auto_bounds.any() {
-                    mem.transform.set_aspect_by_expanding(aspect as f64);
-                } else {
-                    mem.transform
-                        .set_aspect_by_changing_axis(aspect as f64, Axis::Y);
-                }
-            }
-            mem.auto_bounds = mem.auto_bounds.and(!config.allow_zoom);
-            if let Some((id, _)) = config.linked_axes {
-                ui.data_mut(|data| {
-                    let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
-                    link_groups.0.insert(
-                        *id,
-                        LinkedBounds {
-                            bounds: *mem.transform.bounds(),
-                            auto_bounds: mem.auto_bounds,
-                        },
-                    );
-                });
-            }
-            ui.ctx().request_repaint();
-        }
-
-        if reset_clicked && reset_enabled {
-            mem.auto_bounds = true.into();
-            mem.transform.set_bounds(config.auto_content_bounds);
-            if let Some(aspect) = config.data_aspect {
-                if let Some((_, linked)) = config.linked_axes {
-                    let change_x = linked.y && !linked.x;
-                    mem.transform.set_aspect_by_changing_axis(
-                        aspect as f64,
-                        if change_x { Axis::X } else { Axis::Y },
-                    );
-                } else if config.default_auto_bounds.any() {
-                    mem.transform.set_aspect_by_expanding(aspect as f64);
-                } else {
-                    mem.transform
-                        .set_aspect_by_changing_axis(aspect as f64, Axis::Y);
-                }
-            }
-            if let Some((id, _)) = config.linked_axes {
-                ui.data_mut(|data| {
-                    let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
-                    link_groups.0.insert(
-                        *id,
-                        LinkedBounds {
-                            bounds: *mem.transform.bounds(),
-                            auto_bounds: mem.auto_bounds,
-                        },
-                    );
-                });
-            }
-            ui.ctx().request_repaint();
+        if reset && reset_enabled {
+            apply_bounds_reset(ui, mem, config);
         }
     }
+}
+
+#[derive(Clone)]
+struct FocusedPlotPoint {
+    item_id: Id,
+    series_name: String,
+    point: PlotPoint,
+    color: Color32,
+}
+
+struct ViewportKeyboardConfig<'a> {
+    plot_id: Id,
+    allow_zoom: Vec2b,
+    allow_pan: Vec2b,
+    data_aspect: Option<f32>,
+    linked_axes: &'a Option<(Id, Vec2b)>,
+    auto_content_bounds: PlotBounds,
+    default_auto_bounds: Vec2b,
 }
 
 struct FloatingZoomConfig<'a> {
@@ -2897,6 +2781,486 @@ struct FloatingZoomConfig<'a> {
     linked_axes: &'a Option<(Id, Vec2b)>,
     auto_content_bounds: PlotBounds,
     default_auto_bounds: Vec2b,
+}
+
+fn render_zoom_toolbar_buttons(
+    zoom_ui: &mut Ui,
+    btn_size: Vec2,
+    zoom_enabled: bool,
+    reset_enabled: bool,
+) -> (bool, bool, bool) {
+    let in_btn = egui::Button::new(egui::RichText::new("+").size(14.0).strong())
+        .min_size(btn_size)
+        .corner_radius(4.0);
+    let zoom_in = a11y::focusable_action_button(zoom_ui, zoom_enabled, in_btn, Some("Zoom in"))
+        .accessible_tooltip("Zoom in (Scroll up / +)\nZooms into the plot canvas")
+        .clicked()
+        && zoom_enabled;
+
+    let out_btn = egui::Button::new(egui::RichText::new("-").size(14.0).strong())
+        .min_size(btn_size)
+        .corner_radius(4.0);
+    let zoom_out = a11y::focusable_action_button(zoom_ui, zoom_enabled, out_btn, Some("Zoom out"))
+        .accessible_tooltip("Zoom out (Scroll down / -)\nZooms out from the plot canvas")
+        .clicked()
+        && zoom_enabled;
+
+    let reset_btn = egui::Button::new(egui::RichText::new("🏠").size(12.0))
+        .min_size(btn_size)
+        .corner_radius(4.0);
+    let reset =
+        a11y::focusable_action_button(zoom_ui, reset_enabled, reset_btn, Some("Reset plot bounds"))
+            .accessible_tooltip(
+                "Reset bounds (Home / Double-click)\nRestores default plot bounds to fit all data",
+            )
+            .clicked()
+            && reset_enabled;
+    (zoom_in, zoom_out, reset)
+}
+
+fn drain_headless_zoom_signals(ctx: &egui::Context, plot_id: Id) -> (bool, bool, bool) {
+    ctx.data_mut(|d| {
+        let take = |d: &mut egui::util::IdTypeMap, suffix: &'static str| -> bool {
+            let key = plot_id.with(suffix);
+            let val = d.get_temp::<bool>(key).unwrap_or(false);
+            if val {
+                d.insert_temp(key, false);
+            }
+            val
+        };
+        (
+            take(d, "zoom_in"),
+            take(d, "zoom_out"),
+            take(d, "reset_view"),
+        )
+    })
+}
+
+fn apply_aspect_and_sync_linked(
+    ui: &mut Ui,
+    mem: &mut PlotMemory,
+    data_aspect: Option<f32>,
+    linked_axes: &Option<(Id, Vec2b)>,
+    default_auto_bounds: Vec2b,
+) {
+    if let Some(aspect) = data_aspect {
+        if let Some((_, linked)) = linked_axes {
+            let change_x = linked.y && !linked.x;
+            mem.transform.set_aspect_by_changing_axis(
+                f64::from(aspect),
+                if change_x { Axis::X } else { Axis::Y },
+            );
+        } else if default_auto_bounds.any() {
+            mem.transform.set_aspect_by_expanding(f64::from(aspect));
+        } else {
+            mem.transform
+                .set_aspect_by_changing_axis(f64::from(aspect), Axis::Y);
+        }
+    }
+    if let Some((id, _)) = linked_axes {
+        ui.data_mut(|data| {
+            let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
+            link_groups.0.insert(
+                *id,
+                LinkedBounds {
+                    bounds: *mem.transform.bounds(),
+                    auto_bounds: mem.auto_bounds,
+                },
+            );
+        });
+    }
+    ui.ctx().request_repaint();
+}
+
+fn apply_zoom_step(
+    ui: &mut Ui,
+    mem: &mut PlotMemory,
+    config: &FloatingZoomConfig<'_>,
+    effective_allow_zoom: Vec2b,
+    scalar: f32,
+) {
+    let mut factor = egui::Vec2::splat(scalar);
+    if !effective_allow_zoom.x {
+        factor.x = 1.0;
+    }
+    if !effective_allow_zoom.y {
+        factor.y = 1.0;
+    }
+    let center = mem.transform.frame().center();
+    mem.transform.zoom(factor, center);
+    mem.auto_bounds = mem.auto_bounds.and(!config.allow_zoom);
+    apply_aspect_and_sync_linked(
+        ui,
+        mem,
+        config.data_aspect,
+        config.linked_axes,
+        config.default_auto_bounds,
+    );
+}
+
+fn apply_bounds_reset(ui: &mut Ui, mem: &mut PlotMemory, config: &FloatingZoomConfig<'_>) {
+    mem.auto_bounds = true.into();
+    mem.transform.set_bounds(config.auto_content_bounds);
+    apply_aspect_and_sync_linked(
+        ui,
+        mem,
+        config.data_aspect,
+        config.linked_axes,
+        config.default_auto_bounds,
+    );
+}
+
+fn register_plot_viewport_commands(
+    ctx: &egui::Context,
+    zoom_enabled: bool,
+    pan_axes: Vec2b,
+    reset_enabled: bool,
+) {
+    use crate::commands::{CommandRegistryData, CommandTrigger};
+    if zoom_enabled {
+        for key in [egui::Key::Plus, egui::Key::Equals] {
+            CommandRegistryData::register(
+                ctx,
+                "Zoom In",
+                "Zoom into the plot canvas",
+                CommandTrigger::Key(key),
+                false,
+                "Plot Viewport",
+            );
+        }
+        CommandRegistryData::register(
+            ctx,
+            "Zoom Out",
+            "Zoom out from the plot canvas",
+            CommandTrigger::Key(egui::Key::Minus),
+            false,
+            "Plot Viewport",
+        );
+    }
+    if reset_enabled {
+        CommandRegistryData::register(
+            ctx,
+            "Reset Bounds",
+            "Restore default plot bounds to fit all data",
+            CommandTrigger::Key(egui::Key::Home),
+            false,
+            "Plot Viewport",
+        );
+    }
+    register_plot_pan_commands(ctx, pan_axes);
+}
+
+fn register_plot_pan_commands(ctx: &egui::Context, pan_axes: Vec2b) {
+    use crate::commands::{CommandRegistryData, CommandTrigger};
+    if pan_axes.x {
+        for (name, desc, key) in [
+            ("Pan Left", "Pan plot viewport left", egui::Key::ArrowLeft),
+            (
+                "Pan Right",
+                "Pan plot viewport right",
+                egui::Key::ArrowRight,
+            ),
+        ] {
+            CommandRegistryData::register(
+                ctx,
+                name,
+                desc,
+                CommandTrigger::Shortcut(egui::Modifiers::SHIFT, key),
+                false,
+                "Plot Viewport",
+            );
+        }
+    }
+    if pan_axes.y {
+        for (name, desc, key) in [
+            ("Pan Up", "Pan plot viewport up", egui::Key::ArrowUp),
+            ("Pan Down", "Pan plot viewport down", egui::Key::ArrowDown),
+        ] {
+            CommandRegistryData::register(
+                ctx,
+                name,
+                desc,
+                CommandTrigger::Shortcut(egui::Modifiers::SHIFT, key),
+                false,
+                "Plot Viewport",
+            );
+        }
+    }
+}
+
+fn check_plot_key(ui: &Ui, name: &str, desc: &str, key: egui::Key) -> bool {
+    crate::commands::CommandRegistryData::register_and_check(
+        ui.ctx(),
+        name,
+        desc,
+        crate::commands::CommandTrigger::Key(key),
+        false,
+        "Plot Viewport",
+        Some(ui),
+        None,
+    )
+}
+
+fn try_pan_focused_plot(
+    ui: &mut Ui,
+    mem: &mut PlotMemory,
+    cfg: &ViewportKeyboardConfig<'_>,
+    pan_axes: Vec2b,
+) -> bool {
+    use crate::commands::{CommandRegistryData, CommandTrigger};
+    let frame = *mem.transform.frame();
+    let step_x = f64::from(frame.width().max(10.0) * 0.1);
+    let step_y = f64::from(frame.height().max(10.0) * 0.1);
+    let mut delta = (0.0_f64, 0.0_f64);
+    let mut direction_label = "";
+
+    let candidates = [
+        (
+            pan_axes.x,
+            "Pan Left",
+            "Pan plot viewport left",
+            egui::Key::ArrowLeft,
+            (-step_x, 0.0),
+            "left",
+        ),
+        (
+            pan_axes.x,
+            "Pan Right",
+            "Pan plot viewport right",
+            egui::Key::ArrowRight,
+            (step_x, 0.0),
+            "right",
+        ),
+        (
+            pan_axes.y,
+            "Pan Up",
+            "Pan plot viewport up",
+            egui::Key::ArrowUp,
+            (0.0, -step_y),
+            "up",
+        ),
+        (
+            pan_axes.y,
+            "Pan Down",
+            "Pan plot viewport down",
+            egui::Key::ArrowDown,
+            (0.0, step_y),
+            "down",
+        ),
+    ];
+    for (allowed, name, desc, key, step, dir) in candidates {
+        if allowed
+            && CommandRegistryData::register_and_check(
+                ui.ctx(),
+                name,
+                desc,
+                CommandTrigger::Shortcut(egui::Modifiers::SHIFT, key),
+                false,
+                "Plot Viewport",
+                Some(ui),
+                None,
+            )
+        {
+            delta.0 += step.0;
+            delta.1 += step.1;
+            direction_label = dir;
+        }
+    }
+    if delta == (0.0, 0.0) {
+        return false;
+    }
+    mem.transform.translate_bounds(delta);
+    mem.auto_bounds = mem.auto_bounds.and(!pan_axes);
+    apply_aspect_and_sync_linked(
+        ui,
+        mem,
+        cfg.data_aspect,
+        cfg.linked_axes,
+        cfg.default_auto_bounds,
+    );
+    emit_plot_live_message(ui.ctx(), format!("Plot panned {direction_label}"), false);
+    true
+}
+
+fn register_plot_dataset_commands(
+    ctx: &egui::Context,
+    accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    focused_item: usize,
+) {
+    use crate::commands::{CommandRegistryData, CommandTrigger};
+    if accessible_datasets.is_empty() {
+        return;
+    }
+    CommandRegistryData::register(
+        ctx,
+        "Next Dataset",
+        "Navigate to the next dataset",
+        CommandTrigger::Key(egui::Key::ArrowDown),
+        false,
+        "Plot Accessibility",
+    );
+    CommandRegistryData::register(
+        ctx,
+        "Previous Dataset",
+        "Navigate to the previous dataset",
+        CommandTrigger::Key(egui::Key::ArrowUp),
+        false,
+        "Plot Accessibility",
+    );
+    if accessible_datasets
+        .get(focused_item)
+        .or_else(|| accessible_datasets.first())
+        .is_some_and(|(_, pts, _)| !pts.is_empty())
+    {
+        CommandRegistryData::register(
+            ctx,
+            "Next Point",
+            "Navigate to the next point in the dataset",
+            CommandTrigger::Key(egui::Key::ArrowRight),
+            false,
+            "Plot Accessibility",
+        );
+        CommandRegistryData::register(
+            ctx,
+            "Previous Point",
+            "Navigate to the previous point in the dataset",
+            CommandTrigger::Key(egui::Key::ArrowLeft),
+            false,
+            "Plot Accessibility",
+        );
+    }
+}
+
+fn handle_focused_plot_dataset_keys(
+    ui: &Ui,
+    accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    access_state: &mut AccessState,
+) {
+    use crate::commands::{CommandRegistryData, CommandTrigger};
+    let num_items = accessible_datasets.len();
+    if num_items == 0
+        || ui.input(|i| {
+            i.modifiers.shift || i.modifiers.alt || i.modifiers.ctrl || i.modifiers.command
+        })
+    {
+        return;
+    }
+
+    let mut changed = false;
+    if CommandRegistryData::register_and_check(
+        ui.ctx(),
+        "Next Dataset",
+        "Navigate to the next dataset",
+        CommandTrigger::Key(egui::Key::ArrowDown),
+        false,
+        "Plot Accessibility",
+        Some(ui),
+        None,
+    ) && access_state.focused_item + 1 < num_items
+    {
+        access_state.focused_item += 1;
+        access_state.focused_point = 0;
+        changed = true;
+    }
+    if CommandRegistryData::register_and_check(
+        ui.ctx(),
+        "Previous Dataset",
+        "Navigate to the previous dataset",
+        CommandTrigger::Key(egui::Key::ArrowUp),
+        false,
+        "Plot Accessibility",
+        Some(ui),
+        None,
+    ) && access_state.focused_item > 0
+    {
+        access_state.focused_item -= 1;
+        access_state.focused_point = 0;
+        changed = true;
+    }
+    if let Some((_, pts, _)) = accessible_datasets.get(access_state.focused_item)
+        && !pts.is_empty()
+    {
+        changed |= step_focused_point_index(ui, pts.len(), &mut access_state.focused_point);
+    }
+    if changed
+        && let Some((name, pts, _)) = accessible_datasets.get(access_state.focused_item)
+        && let Some(p) = pts.get(access_state.focused_point)
+    {
+        emit_plot_live_message(
+            ui.ctx(),
+            format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]),
+            false,
+        );
+    }
+}
+
+fn step_focused_point_index(ui: &Ui, num_pts: usize, focused_point: &mut usize) -> bool {
+    use crate::commands::{CommandRegistryData, CommandTrigger};
+    let mut changed = false;
+    if CommandRegistryData::register_and_check(
+        ui.ctx(),
+        "Next Point",
+        "Navigate to the next point in the dataset",
+        CommandTrigger::Key(egui::Key::ArrowRight),
+        false,
+        "Plot Accessibility",
+        Some(ui),
+        None,
+    ) && *focused_point + 1 < num_pts
+    {
+        *focused_point += 1;
+        changed = true;
+    }
+    if CommandRegistryData::register_and_check(
+        ui.ctx(),
+        "Previous Point",
+        "Navigate to the previous point in the dataset",
+        CommandTrigger::Key(egui::Key::ArrowLeft),
+        false,
+        "Plot Accessibility",
+        Some(ui),
+        None,
+    ) && *focused_point > 0
+    {
+        *focused_point -= 1;
+        changed = true;
+    }
+    changed
+}
+
+fn resolve_focused_plot_point<'a>(
+    items: &[Box<dyn PlotItem + 'a>],
+    accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    access_state: &mut AccessState,
+) -> Option<FocusedPlotPoint> {
+    if accessible_datasets.is_empty() {
+        return None;
+    }
+    if access_state.focused_item >= accessible_datasets.len() {
+        access_state.focused_item = 0;
+    }
+    let (_, pts, _) = accessible_datasets.get(access_state.focused_item)?;
+    if pts.is_empty() {
+        let fallback_idx = accessible_datasets
+            .iter()
+            .position(|(_, p, _)| !p.is_empty())?;
+        access_state.focused_item = fallback_idx;
+        access_state.focused_point = 0;
+    }
+    let (name, pts, color) = accessible_datasets.get(access_state.focused_item)?;
+    if access_state.focused_point >= pts.len() {
+        access_state.focused_point = pts.len().saturating_sub(1);
+    }
+    let pt = *pts.get(access_state.focused_point)?;
+    let item_id = items
+        .get(access_state.focused_item)
+        .map_or_else(|| Id::new(name.as_str()), |it| it.id());
+    Some(FocusedPlotPoint {
+        item_id,
+        series_name: name.clone(),
+        point: PlotPoint::new(pt[0], pt[1]),
+        color: *color,
+    })
 }
 
 /// Returns the rect left after adding axes.
@@ -3382,26 +3746,23 @@ struct PreparedPlot<'a> {
 
     clamp_grid: bool,
     plot_id: Id,
+    focused_point: Option<FocusedPlotPoint>,
+    persisted_tooltip: Option<a11y::PointTooltipState>,
 }
 
 impl PreparedPlot<'_> {
     fn ui(self, ui: &mut Ui, response: &Response) -> (Vec<Cursor>, Option<Id>) {
         let mut axes_shapes = Vec::new();
-
         if self.show_grid.x {
             self.paint_grid(ui, &mut axes_shapes, Axis::X, self.grid_spacing);
         }
         if self.show_grid.y {
             self.paint_grid(ui, &mut axes_shapes, Axis::Y, self.grid_spacing);
         }
-
-        // Sort the axes by strength so that those with higher strength are drawn in front.
-        axes_shapes.sort_by(|(_, strength1), (_, strength2)| strength1.total_cmp(strength2));
-
-        let mut shapes = axes_shapes.into_iter().map(|(shape, _)| shape).collect();
+        axes_shapes.sort_by(|(_, s1), (_, s2)| s1.total_cmp(s2));
+        let mut shapes: Vec<Shape> = axes_shapes.into_iter().map(|(shape, _)| shape).collect();
 
         let transform = &self.transform;
-
         let mut plot_ui = ui.new_child(
             egui::UiBuilder::new()
                 .max_rect(*transform.frame())
@@ -3413,78 +3774,154 @@ impl PreparedPlot<'_> {
         }
 
         let hover_pos = response.hover_pos();
-        let (cursors, hovered_item_id, hovered_point) = if let Some(pointer) = hover_pos {
-            self.hover(ui, pointer, &mut shapes)
-        } else {
-            (Vec::new(), None, None)
-        };
+        let (cursors, hovered_item_id, hovered_point) =
+            if let Some(state) = self.persisted_tooltip.as_ref() {
+                self.render_persisted_tooltip(state)
+            } else if let Some(pointer) = hover_pos {
+                self.hover(ui, pointer, &mut shapes)
+            } else if let Some(target) = self.focused_point.as_ref() {
+                self.render_focused_point(ui, target, &mut shapes)
+            } else {
+                (Vec::new(), None, None)
+            };
 
-        // Draw cursors
-        let line_color = self.cursor_color.unwrap_or_else(|| rulers_color(ui));
-
-        let mut draw_cursor = |cursors: &Vec<Cursor>, always| {
-            for &cursor in cursors {
-                match cursor {
-                    Cursor::Horizontal { y } => {
-                        if self.draw_cursor_y || always {
-                            shapes.push(horizontal_line(
-                                transform.position_from_point(&PlotPoint::new(0.0, y)),
-                                &self.transform,
-                                line_color,
-                            ));
-                        }
-                    }
-                    Cursor::Vertical { x } => {
-                        if self.draw_cursor_x || always {
-                            shapes.push(vertical_line(
-                                transform.position_from_point(&PlotPoint::new(x, 0.0)),
-                                &self.transform,
-                                line_color,
-                            ));
-                        }
-                    }
-                }
-            }
-        };
-
-        draw_cursor(&self.draw_cursors, false);
-        draw_cursor(&cursors, true);
+        self.append_cursor_lines(ui, &cursors, &mut shapes);
 
         let painter = ui.painter().with_clip_rect(*transform.frame());
         painter.extend(shapes);
 
-        // Show coordinates in a corner of the plot:
-        if let Some((corner, formatter)) = self.coordinates_formatter.as_ref() {
-            let hover_pos = response.hover_pos();
-            if let Some(pointer) = hover_pos {
-                let font_id = TextStyle::Monospace.resolve(ui.style());
-                let coordinate =
-                    hovered_point.unwrap_or_else(|| transform.value_from_position(pointer));
-                let text = formatter.format(&coordinate, transform.bounds());
-                let padded_frame = transform.frame().shrink(4.0);
-                let (anchor, position) = match corner {
-                    Corner::LeftTop => (Align2::LEFT_TOP, padded_frame.left_top()),
-                    Corner::RightTop => (Align2::RIGHT_TOP, padded_frame.right_top()),
-                    Corner::LeftBottom => (Align2::LEFT_BOTTOM, padded_frame.left_bottom()),
-                    Corner::RightBottom => (Align2::RIGHT_BOTTOM, padded_frame.right_bottom()),
-                };
+        let active_coord = hover_pos
+            .map(|p| hovered_point.unwrap_or_else(|| transform.value_from_position(p)))
+            .or(hovered_point);
+        self.paint_corner_coordinates(ui, &painter, active_coord);
+        self.render_wrench_button(ui);
 
-                let text_color = ui.visuals().text_color();
-                let galley = painter.layout_no_wrap(text, font_id, text_color);
-                let rect = anchor.anchor_size(position, galley.size());
-                painter.rect_filled(
-                    rect.expand(4.0),
-                    ui.style().visuals.window_corner_radius,
-                    ui.style().visuals.extreme_bg_color.gamma_multiply(0.75),
-                );
-                painter.galley(rect.min, galley, text_color);
+        (cursors, hovered_item_id)
+    }
+
+    fn render_persisted_tooltip(
+        &self,
+        state: &a11y::PointTooltipState,
+    ) -> (Vec<Cursor>, Option<Id>, Option<PlotPoint>) {
+        let mut cursors = Vec::new();
+        if self.show_x {
+            cursors.push(Cursor::Vertical { x: state.point[0] });
+        }
+        if self.show_y {
+            cursors.push(Cursor::Horizontal { y: state.point[1] });
+        }
+        a11y::show_snapped_point_tooltip(
+            self.plot_area_response,
+            state.anchor_pos,
+            state.point,
+            &state.title,
+            &state.body_lines,
+            false,
+        );
+        (
+            cursors,
+            None,
+            Some(PlotPoint::new(state.point[0], state.point[1])),
+        )
+    }
+
+    fn render_focused_point(
+        &self,
+        ui: &Ui,
+        target: &FocusedPlotPoint,
+        shapes: &mut Vec<Shape>,
+    ) -> (Vec<Cursor>, Option<Id>, Option<PlotPoint>) {
+        if !self.show_x && !self.show_y {
+            return (Vec::new(), Some(target.item_id), Some(target.point));
+        }
+        let screen_pos = self.transform.position_from_point(&target.point);
+        let marker_fill = if target.color == Color32::TRANSPARENT {
+            ui.visuals().selection.stroke.color
+        } else {
+            target.color
+        };
+        let outline = a11y::focus_ring_stroke(ui.visuals(), ui.visuals().extreme_bg_color);
+        shapes.push(Shape::circle_filled(screen_pos, 5.0, marker_fill));
+        shapes.push(Shape::circle_stroke(screen_pos, 7.0, outline));
+
+        let plot_cfg = items::PlotConfig {
+            ui,
+            transform: &self.transform,
+            show_x: self.show_x,
+            show_y: self.show_y,
+        };
+        let mut cursors = Vec::new();
+        items::rulers_and_tooltip_at_value(
+            self.plot_area_response,
+            target.point,
+            &target.series_name,
+            &plot_cfg,
+            &mut cursors,
+            &self.label_formatter,
+        );
+        (cursors, Some(target.item_id), Some(target.point))
+    }
+
+    fn append_cursor_lines(&self, ui: &Ui, cursors: &[Cursor], shapes: &mut Vec<Shape>) {
+        let line_color = self.cursor_color.unwrap_or_else(|| rulers_color(ui));
+        for (slice, always) in [(self.draw_cursors.as_slice(), false), (cursors, true)] {
+            for &cursor in slice {
+                match cursor {
+                    Cursor::Horizontal { y } if self.draw_cursor_y || always => {
+                        shapes.push(horizontal_line(
+                            self.transform.position_from_point(&PlotPoint::new(0.0, y)),
+                            &self.transform,
+                            line_color,
+                        ));
+                    }
+                    Cursor::Vertical { x } if self.draw_cursor_x || always => {
+                        shapes.push(vertical_line(
+                            self.transform.position_from_point(&PlotPoint::new(x, 0.0)),
+                            &self.transform,
+                            line_color,
+                        ));
+                    }
+                    _ => {}
+                }
             }
         }
+    }
 
-        // Render persistent top-right wrench button overlay
+    fn paint_corner_coordinates(
+        &self,
+        ui: &Ui,
+        painter: &egui::Painter,
+        active_coord: Option<PlotPoint>,
+    ) {
+        let (Some((corner, formatter)), Some(coordinate)) =
+            (self.coordinates_formatter.as_ref(), active_coord)
+        else {
+            return;
+        };
+        let font_id = TextStyle::Monospace.resolve(ui.style());
+        let text = formatter.format(&coordinate, self.transform.bounds());
+        let padded_frame = self.transform.frame().shrink(4.0);
+        let (anchor, position) = match corner {
+            Corner::LeftTop => (Align2::LEFT_TOP, padded_frame.left_top()),
+            Corner::RightTop => (Align2::RIGHT_TOP, padded_frame.right_top()),
+            Corner::LeftBottom => (Align2::LEFT_BOTTOM, padded_frame.left_bottom()),
+            Corner::RightBottom => (Align2::RIGHT_BOTTOM, padded_frame.right_bottom()),
+        };
+        let text_color = ui.visuals().text_color();
+        let galley = painter.layout_no_wrap(text, font_id, text_color);
+        let rect = anchor.anchor_size(position, galley.size());
+        painter.rect_filled(
+            rect.expand(4.0),
+            ui.style().visuals.window_corner_radius,
+            ui.style().visuals.extreme_bg_color.gamma_multiply(0.75),
+        );
+        painter.galley(rect.min, galley, text_color);
+    }
+
+    fn render_wrench_button(&self, ui: &mut Ui) {
         let wrench_size = Vec2::splat(24.0);
         let wrench_rect = Rect::from_min_size(
-            transform.frame().right_top() + vec2(-30.0, 6.0),
+            self.transform.frame().right_top() + vec2(-30.0, 6.0),
             wrench_size,
         );
         let mut wrench_ui = ui.new_child(
@@ -3492,18 +3929,20 @@ impl PreparedPlot<'_> {
                 .max_rect(wrench_rect)
                 .layout(Layout::centered_and_justified(egui::Direction::LeftToRight)),
         );
-        wrench_ui.set_clip_rect(transform.frame().intersect(ui.clip_rect()));
-        if wrench_ui
-            .add(egui::Button::new("🔧").corner_radius(4.0))
-            .on_hover_text("Plot Grid & Axis Settings")
-            .clicked()
+        wrench_ui.set_clip_rect(self.transform.frame().intersect(ui.clip_rect()));
+        if a11y::focusable_action_button(
+            &mut wrench_ui,
+            ui.is_enabled(),
+            egui::Button::new("🔧").corner_radius(4.0),
+            Some("Plot grid and axis settings"),
+        )
+        .accessible_tooltip("Plot Grid & Axis Settings")
+        .clicked()
         {
             ui.ctx().data_mut(|d| {
                 d.insert_temp(self.plot_id.with("toggle_settings"), true);
             });
         }
-
-        (cursors, hovered_item_id)
     }
 
     fn paint_grid(&self, ui: &Ui, shapes: &mut Vec<(Shape, f32)>, axis: Axis, fade_range: Rangef) {

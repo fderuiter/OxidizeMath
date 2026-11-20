@@ -12,23 +12,13 @@ pub mod ui;
 pub mod unified;
 mod worker;
 
+pub mod channel;
+pub use channel::*;
 pub mod state;
 pub use state::*;
 
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Sender};
 pub use std::sync::Arc;
-
-const STATE_CHANNEL_CAPACITY: usize = 8;
-
-#[allow(missing_docs)]
-pub enum SimStateUpdate {
-    #[allow(missing_docs)]
-    Snapshot(StateSnapshot),
-    #[allow(missing_docs)]
-    Status(WorkerStatusEvent),
-    #[allow(missing_docs)]
-    Divergence(crate::framework::recovery::DiagnosticReport),
-}
 
 #[allow(missing_docs)]
 pub trait SimulationRunner: Send + 'static {
@@ -61,14 +51,23 @@ pub trait SimulationRunner: Send + 'static {
 #[allow(missing_docs)]
 pub struct SimulationController {
     cmd_tx: Sender<SimCommand>,
-    state_rx: Receiver<SimStateUpdate>,
+    state_rx: SimStateReceiver,
     latest_snapshot: Option<StateSnapshot>,
     pending_snapshot: bool,
     awaiting_pause_ack: bool,
     state: SimWorkerState,
     diagnostic_report: Option<crate::framework::recovery::DiagnosticReport>,
     #[cfg(target_arch = "wasm32")]
-    worker: Option<web_sys::Worker>,
+    handle: u32,
+}
+
+#[cfg(target_arch = "wasm32")]
+// theory_verification!
+impl Drop for SimulationController {
+    fn drop(&mut self) {
+        let _ = unregister_worker_context(self.handle);
+        wake_worker(self.handle);
+    }
 }
 
 impl SimulationController {
@@ -76,10 +75,12 @@ impl SimulationController {
     #[allow(missing_docs)]
     pub fn new<T: SimulationRunner>(runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(STATE_CHANNEL_CAPACITY);
+        let (state_tx, state_rx) = sim_state_channel();
         let initial_snapshot = runner.get_snapshot();
-        let _ = state_tx.send(SimStateUpdate::Snapshot(runner.get_snapshot()));
-        let _ = state_tx.send(SimStateUpdate::Status(WorkerStatusEvent::Ready));
+        if !state_tx.mark_seeded() {
+            let _ =
+                state_tx.send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready);
+        }
 
         worker::spawn_native_worker(runner, cmd_rx, state_tx);
 
@@ -98,20 +99,21 @@ impl SimulationController {
     // theory_verification!
     pub fn new<T: SimulationRunner>(runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = mpsc::sync_channel::<SimStateUpdate>(STATE_CHANNEL_CAPACITY);
+        let (state_tx, state_rx) = sim_state_channel();
         let initial_snapshot = runner.get_snapshot();
+        if !state_tx.mark_seeded() {
+            let _ =
+                state_tx.send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready);
+        }
 
         let handle = register_worker_context(WorkerContext {
             runner: Box::new(runner),
             cmd_rx,
             state_tx,
         });
-        let opt_worker = spawn_web_worker(handle);
-        if opt_worker.is_none() {
-            wasm_bindgen_futures::spawn_local(async move {
-                run_simulation_worker(handle).await;
-            });
-        }
+        wasm_bindgen_futures::spawn_local(async move {
+            run_simulation_worker(handle).await;
+        });
 
         Self {
             cmd_tx,
@@ -121,7 +123,7 @@ impl SimulationController {
             awaiting_pause_ack: false,
             state: SimWorkerState::Ready,
             diagnostic_report: None,
-            worker: opt_worker,
+            handle,
         }
     }
 
@@ -134,7 +136,7 @@ impl SimulationController {
     #[allow(missing_docs)]
     pub fn set_state_for_test(&mut self, state: SimWorkerState) {
         if state.is_faulted() || state.is_terminated() {
-            while self.state_rx.try_recv().is_ok() {}
+            self.state_rx.clear();
             let _ = self.cmd_tx.send(SimCommand::Pause);
             self.pending_snapshot = false;
             self.awaiting_pause_ack = false;
@@ -165,21 +167,23 @@ impl SimulationController {
     }
 
     fn drain_pre_command_updates(&mut self, is_reset: bool) {
-        while let Ok(update) = self.state_rx.try_recv() {
-            match update {
-                SimStateUpdate::Snapshot(snapshot) if !is_reset => {
-                    self.latest_snapshot = Some(snapshot);
-                    self.pending_snapshot = true;
-                }
-                SimStateUpdate::Snapshot(_) => {
-                    self.pending_snapshot = false;
-                }
-                SimStateUpdate::Divergence(report) => {
+        let batch = self.state_rx.drain();
+        for event in batch.events {
+            match event {
+                SimControlEvent::Divergence(report) => {
                     self.diagnostic_report = Some(report);
                 }
-                SimStateUpdate::Status(event) => {
+                SimControlEvent::Status(event) => {
                     self.record_status_pause_ack(&event);
                 }
+            }
+        }
+        if let Some(snapshot) = batch.latest_snapshot {
+            if is_reset {
+                self.pending_snapshot = false;
+            } else if !self.state.is_faulted() && !self.state.is_terminated() {
+                self.latest_snapshot = Some(snapshot);
+                self.pending_snapshot = true;
             }
         }
     }
@@ -255,17 +259,7 @@ impl SimulationController {
     #[cfg(target_arch = "wasm32")]
     // theory_verification!
     fn wake_wasm_worker(&self) {
-        if let Some(worker) = &self.worker {
-            let msg = js_sys::Object::new();
-            let _ = js_sys::Reflect::set(
-                &msg,
-                &wasm_bindgen::JsValue::from_str("type"),
-                &wasm_bindgen::JsValue::from_str("wake"),
-            );
-            let _ = worker.post_message(&msg);
-        } else {
-            wake_worker();
-        }
+        wake_worker(self.handle);
     }
 
     /// Resets the simulation worker in place if the command channel is alive,
@@ -300,19 +294,13 @@ impl SimulationController {
 
     #[allow(missing_docs)]
     pub fn update(&mut self) -> Option<&StateSnapshot> {
-        let mut disconnected = false;
         let mut received_new_snapshot = std::mem::take(&mut self.pending_snapshot);
         let mut stepping_in_flight = self.state.is_stepping();
+        let batch = self.state_rx.drain();
 
-        loop {
-            match self.state_rx.try_recv() {
-                Ok(SimStateUpdate::Snapshot(snapshot)) => {
-                    if !self.state.is_faulted() && !self.state.is_terminated() {
-                        self.latest_snapshot = Some(snapshot);
-                        received_new_snapshot = true;
-                    }
-                }
-                Ok(SimStateUpdate::Status(event)) => {
+        for control in batch.events {
+            match control {
+                SimControlEvent::Status(event) => {
                     self.record_status_pause_ack(&event);
                     let next = event.to_state();
                     if !self.state.is_terminated()
@@ -324,18 +312,20 @@ impl SimulationController {
                         self.state = next;
                     }
                 }
-                Ok(SimStateUpdate::Divergence(report)) => {
+                SimControlEvent::Divergence(report) => {
                     self.diagnostic_report = Some(report);
-                }
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    disconnected = true;
-                    break;
                 }
             }
         }
 
-        if disconnected {
+        if let Some(snapshot) = batch.latest_snapshot {
+            if !self.state.is_faulted() && !self.state.is_terminated() {
+                self.latest_snapshot = Some(snapshot);
+                received_new_snapshot = true;
+            }
+        }
+
+        if batch.disconnected {
             self.awaiting_pause_ack = false;
             if self.state != SimWorkerState::Terminated {
                 self.state = SimWorkerState::Faulted;

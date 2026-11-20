@@ -18,7 +18,13 @@ mod tests {
         assert!(!queue.push(ExportFormat::Csv));
         assert!(!queue.push(ExportFormat::Csv));
         assert_eq!(queue.len(), 1);
-        assert_eq!(queue.requests(), &[ExportFormat::Csv]);
+        assert_eq!(
+            queue.export_requests(),
+            &[ExportRequest {
+                format: ExportFormat::Csv,
+                target: ExportTarget::File,
+            }]
+        );
 
         // A different format can still be queued
         assert!(queue.push(ExportFormat::Json));
@@ -26,9 +32,21 @@ mod tests {
         assert!(!queue.push(ExportFormat::Json));
         assert_eq!(queue.len(), 2);
 
-        // Draining clears the queue and yields queued formats
-        let drained = queue.drain();
-        assert_eq!(drained, vec![ExportFormat::Csv, ExportFormat::Json]);
+        // Draining clears the queue and yields queued requests
+        let drained = queue.drain_requests();
+        assert_eq!(
+            drained,
+            vec![
+                ExportRequest {
+                    format: ExportFormat::Csv,
+                    target: ExportTarget::File,
+                },
+                ExportRequest {
+                    format: ExportFormat::Json,
+                    target: ExportTarget::File,
+                },
+            ]
+        );
         assert!(queue.is_empty());
     }
 
@@ -435,16 +453,17 @@ mod tests {
 
     #[test]
     fn test_clipboard_empty_and_no_tool_edge_cases() {
+        let ctx = eframe::egui::Context::default();
         let mut framework = SimulationFramework::new("analysis");
         framework.active_tool = None;
         framework.queue_clipboard_export();
-        framework.dispatch_pending_exports();
+        framework.dispatch_pending_exports_with_ctx(&ctx);
         let msg_none = framework.export_status_message.clone().unwrap();
         assert!(msg_none.contains("No active simulation tool"));
 
         framework.active_tool = Some(Box::new(EmptyTool));
         framework.queue_clipboard_export();
-        framework.dispatch_pending_exports();
+        framework.dispatch_pending_exports_with_ctx(&ctx);
         let msg_empty = framework.export_status_message.clone().unwrap();
         assert!(msg_empty.contains("No dataset points available"));
         assert!(framework.export_queue.last_clipboard_content.is_none());

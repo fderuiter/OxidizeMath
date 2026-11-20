@@ -22,6 +22,17 @@ pub fn export_primitives_svg(
         .ok_or_else(|| "Unable to compute finite plot bounds for SVG export".to_string())?;
     let layout = PrimitiveCanvasLayout::new(width, height, bounds, options);
 
+    let mut svg = svg_document_header(width, height, options);
+
+    for (idx, primitive) in primitives.iter().enumerate() {
+        write_primitive_svg(&mut svg, &layout, primitive, idx)?;
+    }
+
+    svg.push_str("</svg>\n");
+    Ok(svg)
+}
+
+pub(crate) fn svg_document_header(width: usize, height: usize, options: &ExportOptions) -> String {
     let bg = options.background_color;
     let bg_opacity = (bg.a() as f32 / 255.0) * options.background_opacity.clamp(0.0, 1.0);
     let mut svg = String::new();
@@ -35,13 +46,7 @@ pub fn export_primitives_svg(
         bg.g(),
         bg.b()
     ));
-
-    for (idx, primitive) in primitives.iter().enumerate() {
-        write_primitive_svg(&mut svg, &layout, primitive, idx)?;
-    }
-
-    svg.push_str("</svg>\n");
-    Ok(svg)
+    svg
 }
 
 /// Embeds a raster `ColorImage` inside a standalone SVG document at `options` resolution.
@@ -417,7 +422,7 @@ fn hex_rgb(color: egui::Color32) -> String {
     format!("#{:02x}{:02x}{:02x}", color.r(), color.g(), color.b())
 }
 
-fn escape_xml(input: &str) -> String {
+pub(crate) fn escape_xml(input: &str) -> String {
     input
         .replace('&', "&amp;")
         .replace('<', "&lt;")

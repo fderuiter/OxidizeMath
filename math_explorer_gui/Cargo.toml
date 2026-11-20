@@ -2,15 +2,48 @@
 name = "math_explorer_gui"
 version = "0.4.0"
 edition = "2021"
+authors = ["Frederick de Ruiter <127706008+fderuiter@users.noreply.github.com>"]
+description = "Interactive scientific simulation and mathematical visualization desktop and web GUI"
+homepage = "https://github.com/fderuiter/OxidizeMath"
+license = "AGPL-3.0-or-later"
 build = "build.rs"
 
 [package.metadata.packager]
 product-name = "Math Explorer"
 identifier = "com.jules.mathexplorer"
 version = "0.4.0"
+publisher = "OxidizeMath"
+homepage = "https://github.com/fderuiter/OxidizeMath"
+long-description = "Math Explorer provides an interactive desktop environment built on eframe and egui for exploring verified mathematical and scientific simulations across physics, biology, climate modeling, epidemiology, artificial intelligence, applied mathematics, and pure mathematics."
+license-file = "../LICENSE"
+copyright = "Copyright (c) 2024-2026 Frederick de Ruiter and OxidizeMath Contributors"
+category = "Education"
+before-packaging-command = "cargo build --release -p math_explorer_gui"
 icons = ["icons/32x32.png", "icons/128x128.png", "icons/256x256.png", "icons/512x512.png", "icons/icon.icns", "icons/icon.ico"]
 out-dir = "dist"
 formats = ["wix", "dmg", "deb"]
+
+[package.metadata.packager.deb]
+section = "science"
+files = { "../LICENSE" = "usr/share/doc/math-explorer/copyright" }
+depends = [
+    "libc6",
+    "libgcc-s1",
+    "libgl1",
+    "libegl1",
+    "libx11-6",
+    "libx11-xcb1",
+    "libxcb1",
+    "libxcursor1",
+    "libxi6",
+    "libxrender1",
+    "libxkbcommon0",
+    "libxkbcommon-x11-0",
+    "libwayland-client0",
+    "libwayland-cursor0",
+    "libwayland-egl1",
+    "libdbus-1-3",
+]
 
 [features]
 default = ["math_explorer", "ai", "applied", "biology", "climate", "epidemiology", "physics", "pure_math"]
@@ -53,6 +86,7 @@ getrandom = { workspace = true, features = ["js"] }
 wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 web-sys = { workspace = true, features = [
+    "CssStyleDeclaration",
     "DedicatedWorkerGlobalScope",
     "Document",
     "Element",
@@ -60,8 +94,10 @@ web-sys = { workspace = true, features = [
     "Event",
     "HtmlCanvasElement",
     "HtmlElement",
+    "MediaQueryList",
     "MessageEvent",
     "Node",
+    "NodeList",
     "Window",
     "Worker",
     "WorkerOptions",
@@ -70,6 +106,9 @@ web-sys = { workspace = true, features = [
 
 [target.wasm32-unknown-unknown.dependencies]
 wasm-bindgen-futures = { workspace = true }
+
+[dev-dependencies]
+png = "0.18"
 
 [package.metadata.cargo-machete]
 
