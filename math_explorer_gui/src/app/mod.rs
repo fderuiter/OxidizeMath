@@ -23,6 +23,8 @@ mod tests_multi_pane;
 #[cfg(test)]
 mod tests_multi_pane_a11y;
 #[cfg(test)]
+mod tests_multi_pane_plot_live;
+#[cfg(test)]
 mod tests_pane_isolation;
 #[cfg(test)]
 mod tests_secondary_menus;
@@ -262,34 +264,7 @@ impl eframe::App for MathExplorerApp {
         }
 
         crate::accessibility::ensure_plot_live_bridge();
-
-        if let Some((msg, dispatched)) = ctx.data_mut(|d| {
-            let msg = d.get_temp::<String>(egui::Id::new("aria_live_message"));
-            let dispatched = d
-                .get_temp::<bool>(egui::Id::new("aria_live_dispatched"))
-                .unwrap_or(false);
-            d.remove::<String>(egui::Id::new("aria_live_message"));
-            d.remove::<bool>(egui::Id::new("aria_live_dispatched"));
-            msg.map(|m| (m, dispatched))
-        }) {
-            if !dispatched {
-                crate::accessibility::announce_status(&msg);
-            }
-        }
-
-        if let Some((msg, dispatched)) = ctx.data_mut(|d| {
-            let msg = d.get_temp::<String>(egui::Id::new("aria_live_assertive_message"));
-            let dispatched = d
-                .get_temp::<bool>(egui::Id::new("aria_live_assertive_dispatched"))
-                .unwrap_or(false);
-            d.remove::<String>(egui::Id::new("aria_live_assertive_message"));
-            d.remove::<bool>(egui::Id::new("aria_live_assertive_dispatched"));
-            msg.map(|m| (m, dispatched))
-        }) {
-            if !dispatched {
-                crate::accessibility::announce_status_with_priority(&msg, "assertive");
-            }
-        }
+        crate::accessibility::sync_context_live_messages(ctx, true);
 
         self.flush_stale_pane_focus(ctx);
         let mut session_mgr = std::mem::take(&mut self.session_manager);
@@ -474,6 +449,7 @@ impl eframe::App for MathExplorerApp {
 
         // Render Command Palette Overlay
         self.apply_command_palette_selection(ctx);
+        crate::accessibility::sync_context_live_messages(ctx, false);
 
         self.last_frame_had_input = state::has_frame_input(ctx);
         let mut session_manager = std::mem::take(&mut self.session_manager);
