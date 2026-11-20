@@ -71,6 +71,9 @@ web-sys = { workspace = true, features = [
 [target.wasm32-unknown-unknown.dependencies]
 wasm-bindgen-futures = { workspace = true }
 
+[dev-dependencies]
+verified_engine = { path = "../crates/verified_engine" }
+
 [package.metadata.cargo-machete]
 
 [lints]

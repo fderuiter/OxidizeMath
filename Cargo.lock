@@ -2482,6 +2482,7 @@ dependencies = [
  "scientific_metadata",
  "serde",
  "serde_json",
+ "verified_engine",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

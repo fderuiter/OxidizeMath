@@ -8,7 +8,7 @@ use crate::tabs::ai::q_table_inspector::QTableInspectorTool;
 use crate::tabs::ai::reward_plots::RewardPlotsTool;
 use crate::tabs::chaos::attractors::AttractorPlotter;
 use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
-use crate::tabs::mri::MriTab;
+use crate::tabs::mri::MriTool;
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 use crate::tabs::quantum::wave_sim::WaveUnified;
 use crate::tabs::solid_state::ising::IsingModelTool;
@@ -268,7 +268,7 @@ fn test_lbm_paused_apply_brush_emits_fresh_snapshot() {
 fn test_mri_and_ising_and_qtable_seed_without_duplicate_models() {
     let ctx = egui::Context::default();
 
-    let mut mri = MriTab::default();
+    let mut mri = MriTool::default();
     let mri_out = ctx.run(egui::RawInput::default(), |ctx| {
         mri.show_ui(ctx);
     });
