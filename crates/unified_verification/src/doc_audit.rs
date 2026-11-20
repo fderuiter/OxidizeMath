@@ -9,7 +9,6 @@
 //! 5. Documented allowlist and staging flag support for transitional legacy crates.
 
 use regex::Regex;
-use serde::Deserialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -47,16 +46,6 @@ pub const PROHIBITED_PLACEHOLDERS: &[&str] = &[
     "TBD: Document",
 ];
 
-#[derive(Deserialize, Default, Debug)]
-struct WhitelistConfig {
-    doc_verification: Option<DocVerificationConfig>,
-}
-
-#[derive(Deserialize, Default, Debug)]
-struct DocVerificationConfig {
-    allowlist: Option<Vec<String>>,
-}
-
 /// Audit report containing all found documentation violations.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct AuditReport {
@@ -91,16 +80,9 @@ pub fn load_allowlist(whitelist_path: &Path) -> HashSet<String> {
         .map(|s| (*s).to_string())
         .collect();
 
-    if let Ok(content) = fs::read_to_string(whitelist_path) {
-        if let Ok(config) = toml::from_str::<WhitelistConfig>(&content) {
-            if let Some(doc_cfg) = config.doc_verification {
-                if let Some(crates) = doc_cfg.allowlist {
-                    for c in crates {
-                        allowlist.insert(c);
-                    }
-                }
-            }
-        }
+    let cfg = crate::whitelist::load_whitelist_or_default(None, &[whitelist_path]);
+    if let Some(crates) = cfg.doc_verification.and_then(|d| d.allowlist) {
+        allowlist.extend(crates);
     }
 
     allowlist
@@ -286,10 +268,12 @@ pub fn run_doc_audit(args: &[String]) -> bool {
         Path::new("")
     };
 
-    let whitelist_file = base_dir.join("verification_whitelist.toml");
+    let candidate = base_dir.join(crate::whitelist::WHITELIST_FILE_NAME);
     let allowlist = if strict_mode {
         HashSet::new()
     } else {
+        let whitelist_file =
+            crate::whitelist::resolve_whitelist_path(&[candidate.as_path()]).unwrap_or(candidate);
         load_allowlist(&whitelist_file)
     };
 
@@ -326,16 +310,9 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static TEST_DIR_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     fn create_test_dir() -> PathBuf {
-        let n = TEST_DIR_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("test_doc_audit_{}_{}", std::process::id(), n));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        dir
+        crate::utils::test_utils::create_temp_test_dir("test_doc_audit")
     }
 
     #[test]
@@ -452,6 +429,30 @@ mod tests {
 
         let report = audit_crate("test_crate", &test_dir, false);
         assert!(report.is_success());
+
+        let _ = fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn test_load_allowlist_merges_and_falls_back() {
+        let test_dir = create_test_dir();
+        let missing = test_dir.join("missing.toml");
+        let defaults = load_allowlist(&missing);
+        assert!(defaults.contains("crates/diagnostics"));
+
+        let valid = test_dir.join("valid.toml");
+        fs::write(
+            &valid,
+            "[doc_verification]\nallowlist = [\"crates/extra\"]\n",
+        )
+        .unwrap();
+        let merged = load_allowlist(&valid);
+        assert!(merged.contains("crates/diagnostics"));
+        assert!(merged.contains("crates/extra"));
+
+        let broken = test_dir.join("broken.toml");
+        fs::write(&broken, "[doc_verification\nbad =").unwrap();
+        assert_eq!(load_allowlist(&broken), defaults);
 
         let _ = fs::remove_dir_all(&test_dir);
     }

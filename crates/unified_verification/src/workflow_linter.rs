@@ -1,75 +1,32 @@
-use serde::Deserialize;
+use crate::whitelist::PathMatchOptions;
+pub use crate::whitelist::{JobPermissionException, WorkflowLinterConfig, find_whitelist_path};
 use serde_json::Value;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 use walkdir::WalkDir;
-
-#[derive(Deserialize, Debug, Clone, Default)]
-struct WhitelistFile {
-    #[serde(default)]
-    workflow_linter: Option<WorkflowLinterConfig>,
-}
-
-/// Configuration for `workflow_linter` loaded from `verification_whitelist.toml`.
-#[derive(Deserialize, Debug, Clone, Default)]
-pub struct WorkflowLinterConfig {
-    /// Explicit job-level write permission exceptions for deployment workflows.
-    #[serde(default, alias = "allowed_job_permissions")]
-    pub exceptions: Vec<JobPermissionException>,
-}
-
-/// Scoped exception allowing specific write permissions on a named job in a specific workflow.
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct JobPermissionException {
-    /// Relative path to the workflow file (e.g., `.github/workflows/pages.yml`).
-    pub workflow: String,
-    /// Job identifier within the `jobs` mapping (e.g., `deploy`).
-    pub job: String,
-    /// Permission scopes explicitly permitted to use `write` on this job (e.g., `["pages", "id-token"]`).
-    #[serde(default, alias = "permissions", alias = "write_scopes")]
-    pub allow_write: Vec<String>,
-    /// Optional human-readable justification for the exception.
-    #[serde(default)]
-    pub reason: Option<String>,
-}
-
-/// Locates `verification_whitelist.toml` relative to the current working directory.
-pub fn find_whitelist_path() -> Option<PathBuf> {
-    let candidates = [
-        Path::new("verification_whitelist.toml"),
-        Path::new("../../verification_whitelist.toml"),
-    ];
-    for candidate in &candidates {
-        if candidate.exists() {
-            return Some(candidate.to_path_buf());
-        }
-    }
-    None
-}
 
 /// Loads configured job-level permission exceptions from `verification_whitelist.toml`.
 pub fn load_workflow_exceptions(path: Option<&Path>) -> Vec<JobPermissionException> {
-    let resolved = match path {
-        Some(p) => Some(p.to_path_buf()),
-        None => find_whitelist_path(),
-    };
-    if let Some(toml_path) = resolved {
-        if let Ok(content) = fs::read_to_string(&toml_path) {
-            if let Ok(parsed) = toml::from_str::<WhitelistFile>(&content) {
-                return parsed.workflow_linter.unwrap_or_default().exceptions;
-            }
-        }
-    }
-    Vec::new()
+    let resolved = path.map(Path::to_path_buf).or_else(find_whitelist_path);
+    let cfg: WorkflowLinterConfig =
+        crate::whitelist::load_whitelist_or_default(resolved.as_deref(), &[] as &[&Path])
+            .workflow_linter
+            .unwrap_or_default();
+    cfg.exceptions
 }
 
 fn workflow_path_matches(workflow_path: &Path, configured_workflow: &str) -> bool {
-    let norm_actual = workflow_path.to_string_lossy().replace('\\', "/");
-    let norm_actual = norm_actual.trim_start_matches("./");
-    let norm_expected = configured_workflow.replace('\\', "/");
-    let norm_expected = norm_expected.trim_start_matches("./");
-    !norm_expected.is_empty()
-        && (norm_actual == norm_expected || norm_actual.ends_with(&format!("/{}", norm_expected)))
+    crate::whitelist::path_matches_lossy(
+        workflow_path,
+        configured_workflow,
+        PathMatchOptions {
+            trim_dot_slash: true,
+            require_non_empty: true,
+            match_file_name: false,
+        },
+    )
 }
 
 fn is_job_write_scope_exempted(

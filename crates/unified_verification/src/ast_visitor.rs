@@ -154,50 +154,41 @@ impl<'ast> Visit<'ast> for CloneDetectorVisitor {
 pub fn run_clone_detector() -> bool {
     println!("Running Clone Detector on first-party repository...");
     let mut flags_found = 0;
-    let first_party_dirs = vec!["crates", "apps", "math_explorer", "math_explorer_gui"];
-    for dir in first_party_dirs {
-        for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
-            if entry.path().extension().and_then(|s| s.to_str()) == Some("rs") {
-                let path_str = entry.path().to_string_lossy().replace("\\", "/");
-                if path_str.contains("/target/")
-                    || path_str.contains("/egui_plot/")
-                    || path_str.starts_with("egui_plot/")
-                {
-                    continue;
-                }
-                if path_str.contains("unified_verification")
-                    || path_str.contains("colormap.rs")
-                    || path_str.contains("types.rs")
-                    || path_str.contains("grid.rs")
-                {
-                    continue;
-                }
+    let first_party_dirs = ["crates", "apps", "math_explorer", "math_explorer_gui"];
+    for path in crate::utils::collect_rs_files_filtered(&first_party_dirs, &["target", "egui_plot"])
+    {
+        let path_str = crate::whitelist::lossy_slash_path(&path);
+        if path_str.contains("unified_verification")
+            || path_str.contains("colormap.rs")
+            || path_str.contains("types.rs")
+            || path_str.contains("grid.rs")
+        {
+            continue;
+        }
 
-                if let Ok(content) = fs::read_to_string(entry.path()) {
-                    if let Ok(ast) = syn::parse_file(&content) {
-                        let mut clone_visitor = CloneDetectorVisitor {
-                            has_2d_index_clone: false,
-                            has_color_clone: false,
-                            in_function: false,
-                            cast_u8_count: 0,
-                            mul_255_count: 0,
-                        };
-                        clone_visitor.visit_file(&ast);
-                        if clone_visitor.has_2d_index_clone {
-                            println!(
-                                "[!] Code Clone Detected: 2D Grid Indexing pattern in {}",
-                                entry.path().display()
-                            );
-                            flags_found += 1;
-                        }
-                        if clone_visitor.has_color_clone {
-                            println!(
-                                "[!] Code Clone Detected: Scalar-to-Color RGB conversion pattern in {}",
-                                entry.path().display()
-                            );
-                            flags_found += 1;
-                        }
-                    }
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(ast) = syn::parse_file(&content) {
+                let mut clone_visitor = CloneDetectorVisitor {
+                    has_2d_index_clone: false,
+                    has_color_clone: false,
+                    in_function: false,
+                    cast_u8_count: 0,
+                    mul_255_count: 0,
+                };
+                clone_visitor.visit_file(&ast);
+                if clone_visitor.has_2d_index_clone {
+                    println!(
+                        "[!] Code Clone Detected: 2D Grid Indexing pattern in {}",
+                        path.display()
+                    );
+                    flags_found += 1;
+                }
+                if clone_visitor.has_color_clone {
+                    println!(
+                        "[!] Code Clone Detected: Scalar-to-Color RGB conversion pattern in {}",
+                        path.display()
+                    );
+                    flags_found += 1;
                 }
             }
         }

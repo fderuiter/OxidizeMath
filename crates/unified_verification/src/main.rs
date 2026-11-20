@@ -13,8 +13,11 @@ mod profile;
 #[deny(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod records;
 mod report;
+#[deny(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod utils;
 mod vulnerabilities;
+#[deny(clippy::too_many_lines, clippy::cognitive_complexity)]
+mod whitelist;
 mod workflow_linter;
 use utils::{check_file_lengths, check_staged_duplicates};
 
