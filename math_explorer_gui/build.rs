@@ -1,4 +1,8 @@
 //! Build script for dynamic tab discovery in math_explorer_gui.
+#[path = "../crates/oxidize_core/src/path_utils.rs"]
+/// Path utilities.
+pub mod path_utils;
+
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -7,7 +11,9 @@ fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("generated_tabs.rs");
 
-    // Tell cargo to rerun if the tabs directory changes
+    // Tell cargo to rerun if the build script, manifest, or tabs directory changes
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=../crates/oxidize_core/src/path_utils.rs");
     println!("cargo:rerun-if-changed=src/tabs");
     println!("cargo:rerun-if-changed=Cargo.toml");
 
@@ -26,8 +32,15 @@ fn main() {
     // Sort by order, then by instantiation string
     discovered_tabs.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
 
-    let mut generated_code = String::new();
-    generated_code.push_str(&generated_mods);
+    let generated_code = render_generated_tabs_code(&discovered_tabs, &generated_mods);
+    fs::write(&dest_path, generated_code).unwrap();
+}
+
+fn render_generated_tabs_code(
+    discovered_tabs: &[(String, Option<String>, i32)],
+    generated_mods: &str,
+) -> String {
+    let mut generated_code = String::from(generated_mods);
 
     generated_code.push_str("\n#[allow(clippy::vec_init_then_push)]\n");
     generated_code
@@ -36,7 +49,7 @@ fn main() {
         "    let mut builders: Vec<fn() -> Box<dyn crate::tabs::ExplorerTab>> = vec![];\n",
     );
 
-    for (instantiation, feature, _) in &discovered_tabs {
+    for (instantiation, feature, _) in discovered_tabs {
         if let Some(feat) = feature {
             generated_code.push_str(&format!("    #[cfg(feature = \"{}\")]\n", feat));
         }
@@ -57,8 +70,7 @@ fn main() {
     );
     generated_code.push_str("    tab_constructors().get(index).map(|build| build())\n");
     generated_code.push_str("}\n");
-
-    fs::write(&dest_path, generated_code).unwrap();
+    generated_code
 }
 
 fn scan_local_tabs(
@@ -66,8 +78,13 @@ fn scan_local_tabs(
     discovered_tabs: &mut Vec<(String, Option<String>, i32)>,
     generated_mods: &mut String,
 ) {
-    for entry in fs::read_dir(tabs_dir).unwrap() {
-        let entry = entry.unwrap();
+    let mut entries: Vec<_> = fs::read_dir(tabs_dir)
+        .unwrap()
+        .map(|e| e.unwrap())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
         let path = entry.path();
         let file_name = entry.file_name().into_string().unwrap();
 
@@ -83,69 +100,85 @@ fn scan_local_tabs(
             continue;
         }
 
-        let mod_name = if is_dir {
-            file_name.clone()
-        } else if let Some(stripped) = file_name.strip_suffix(".rs") {
-            stripped.to_string()
-        } else {
-            file_name.clone()
-        };
-
-        let target_file = if is_dir {
-            path.join("mod.rs")
-        } else {
-            path.clone()
-        };
-
-        if !target_file.exists() {
-            continue;
+        if is_dir {
+            println!(
+                "cargo:rerun-if-changed={}",
+                path_utils::normalize_path(&path)
+            );
         }
 
-        let content = fs::read_to_string(&target_file).unwrap();
+        register_local_tab(&path, &file_name, is_dir, discovered_tabs, generated_mods);
+    }
+}
 
-        if let Some(s_name) = extract_struct_name(&content) {
-            let (feature, order) = extract_metadata(&content);
+fn register_local_tab(
+    path: &Path,
+    file_name: &str,
+    is_dir: bool,
+    discovered_tabs: &mut Vec<(String, Option<String>, i32)>,
+    generated_mods: &mut String,
+) {
+    let mod_name = if is_dir {
+        file_name.to_string()
+    } else {
+        file_name
+            .strip_suffix(".rs")
+            .unwrap_or(file_name)
+            .to_string()
+    };
 
-            // Add to generated mods
-            if let Some(feat) = &feature {
-                generated_mods.push_str(&format!("#[cfg(feature = \"{}\")]\n", feat));
-            }
-            let rel_path_str = target_file.to_string_lossy().replace('\\', "/");
-            generated_mods.push_str(&format!(
-                "pub mod {} {{\n    include!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/\", \"{}\"));\n}}\n",
-                mod_name, rel_path_str
-            ));
+    let target_file = if is_dir {
+        path.join("mod.rs")
+    } else {
+        path.to_path_buf()
+    };
 
-            let instantiation = format!("{}::{}::default()", mod_name, s_name);
-            discovered_tabs.push((instantiation, feature, order));
+    if !target_file.exists() {
+        return;
+    }
+
+    let rel_path_str = path_utils::normalize_path(&target_file);
+    println!("cargo:rerun-if-changed={}", rel_path_str);
+
+    let content = fs::read_to_string(&target_file).unwrap();
+    if let Some(s_name) = extract_struct_name(&content) {
+        let (feature, order) = extract_metadata(&content);
+
+        if let Some(feat) = &feature {
+            generated_mods.push_str(&format!("#[cfg(feature = \"{}\")]\n", feat));
         }
+        generated_mods.push_str(&format!(
+            "pub mod {} {{\n    include!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/\", \"{}\"));\n}}\n",
+            mod_name, rel_path_str
+        ));
+
+        let instantiation = format!("{}::{}::default()", mod_name, s_name);
+        discovered_tabs.push((instantiation, feature, order));
     }
 }
 
 fn scan_cargo_toml_deps(discovered_tabs: &mut Vec<(String, Option<String>, i32)>) {
     let cargo_toml = fs::read_to_string("Cargo.toml").unwrap_or_default();
     for line in cargo_toml.lines() {
-        if line.contains("path = ") {
-            let parts: Vec<&str> = line.split('=').collect();
-            if parts.len() < 2 {
-                continue;
-            }
-            let crate_name = parts[0].trim().to_string();
+        if !line.contains("path = ") {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('=').collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        let crate_name = parts[0].trim().to_string();
 
-            if let Some(start) = line.find("path = \"") {
-                let rest = &line[start + 8..];
-                if let Some(end) = rest.find('"') {
-                    let dep_path = &rest[..end];
-                    let abs_dep_path = env::current_dir().unwrap().join(dep_path).join("src");
+        if let Some(start) = line.find("path = \"") {
+            let rest = &line[start + 8..];
+            if let Some(end) = rest.find('"') {
+                let dep_path = &rest[..end];
+                let dep_src_str = path_utils::join_and_normalize(dep_path, "src");
+                let dep_src = Path::new(&dep_src_str);
 
-                    if abs_dep_path.exists() {
-                        scan_external_crate(
-                            &abs_dep_path,
-                            &crate_name,
-                            discovered_tabs,
-                            &abs_dep_path,
-                        );
-                    }
+                if dep_src.is_dir() {
+                    println!("cargo:rerun-if-changed={}", dep_src_str);
+                    scan_external_crate(dep_src, &crate_name, discovered_tabs, dep_src);
                 }
             }
         }
@@ -158,45 +191,70 @@ fn scan_external_crate(
     tabs: &mut Vec<(String, Option<String>, i32)>,
     root_src: &Path,
 ) {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current_dir) = stack.pop() {
+        let Ok(read_dir) = fs::read_dir(&current_dir) else {
+            continue;
+        };
+        let mut entries: Vec<_> = read_dir.flatten().map(|e| e.path()).collect();
+        entries.sort();
+        for path in entries {
             if path.is_dir() {
-                scan_external_crate(&path, crate_name, tabs, root_src);
+                println!(
+                    "cargo:rerun-if-changed={}",
+                    path_utils::normalize_path(&path)
+                );
+                stack.push(path);
             } else if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
-                if let Ok(content) = fs::read_to_string(&path) {
-                    if let Some(s_name) = extract_struct_name(&content) {
-                        let (feature, order) = extract_metadata(&content);
-
-                        // Construct module path
-                        let mut mod_path = String::new();
-                        if let Ok(rel_path) = path.strip_prefix(root_src) {
-                            let mut comps = Vec::new();
-                            for comp in rel_path.components() {
-                                let c = comp.as_os_str().to_string_lossy();
-                                if c == "mod.rs" || c == "lib.rs" || c == "main.rs" {
-                                    continue;
-                                }
-                                if let Some(stripped) = c.strip_suffix(".rs") {
-                                    comps.push(stripped.to_string());
-                                } else {
-                                    comps.push(c.to_string());
-                                }
-                            }
-                            if !comps.is_empty() {
-                                mod_path = format!("::{}", comps.join("::"));
-                            }
-                        }
-
-                        let clean_crate_name = crate_name.replace("-", "_");
-                        let full_path = format!("{}{}{}", clean_crate_name, mod_path, "::");
-
-                        tabs.push((format!("{}{}", full_path, s_name), feature, order));
-                    }
-                }
+                println!(
+                    "cargo:rerun-if-changed={}",
+                    path_utils::normalize_path(&path)
+                );
+                inspect_external_rs_file(&path, crate_name, tabs, root_src);
             }
         }
     }
+}
+
+fn inspect_external_rs_file(
+    path: &Path,
+    crate_name: &str,
+    tabs: &mut Vec<(String, Option<String>, i32)>,
+    root_src: &Path,
+) {
+    let Ok(content) = fs::read_to_string(path) else {
+        return;
+    };
+    let Some(s_name) = extract_struct_name(&content) else {
+        return;
+    };
+    let (feature, order) = extract_metadata(&content);
+
+    let mut mod_path = String::new();
+    if let Ok(rel_path) = path.strip_prefix(root_src) {
+        let mut comps = Vec::new();
+        for comp in rel_path.components() {
+            let c = comp.as_os_str().to_string_lossy();
+            if c == "mod.rs" || c == "lib.rs" || c == "main.rs" {
+                continue;
+            }
+            if let Some(stripped) = c.strip_suffix(".rs") {
+                comps.push(stripped.to_string());
+            } else {
+                comps.push(c.to_string());
+            }
+        }
+        if !comps.is_empty() {
+            mod_path = format!("::{}", comps.join("::"));
+        }
+    }
+
+    let clean_crate_name = crate_name.replace('-', "_");
+    tabs.push((
+        format!("{}{}::{}", clean_crate_name, mod_path, s_name),
+        feature,
+        order,
+    ));
 }
 
 fn extract_struct_name(content: &str) -> Option<String> {

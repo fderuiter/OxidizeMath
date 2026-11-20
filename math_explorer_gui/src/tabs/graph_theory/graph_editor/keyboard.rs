@@ -154,9 +154,22 @@ impl GraphEditorTool {
     }
 
     pub(super) fn consume_toolbar_undo_redo(&mut self, ui: &mut egui::Ui, m: egui::Modifiers) {
-        let other_focused = ui.ctx().wants_keyboard_input()
-            && ui.ctx().memory(|mem| mem.focused()) != self.canvas_id;
-        if other_focused {
+        let ctx = ui.ctx();
+        let other_focused =
+            ctx.wants_keyboard_input() && ctx.memory(|mem| mem.focused()) != self.canvas_id;
+        let pane_blocked = egui::Popup::is_any_open(ctx)
+            || ctx.memory(|mem| mem.top_modal_layer().is_some())
+            || ctx.data(|d| {
+                d.get_temp::<bool>(egui::Id::new("SHELL_MODAL_OR_SASH_FOCUSED"))
+                    .unwrap_or(false)
+                    || d.get_temp::<usize>(egui::Id::new("CURRENT_RENDERING_PANE"))
+                        .is_some_and(|rp| {
+                            rp != d
+                                .get_temp::<usize>(egui::Id::new("ACTIVE_FOCUSED_PANE"))
+                                .unwrap_or(0)
+                        })
+            });
+        if other_focused || pane_blocked {
             return;
         }
         let sm = m | egui::Modifiers::SHIFT;

@@ -295,3 +295,53 @@ fn test_preset_dialog_invalid_json_and_export_error_toasts() {
     assert!(dialog.export_rx.is_none());
     assert!(dialog.toast_error.is_none());
 }
+
+#[test]
+fn test_poll_pending_import_keeps_receivers_while_channels_empty() {
+    let mut dialog = PresetDialogState::default();
+    let (_imp_tx, imp_rx) = channel::<Result<(String, String), String>>();
+    let (_exp_tx, exp_rx) = channel::<Result<String, String>>();
+    dialog.import_rx = Some(imp_rx);
+    dialog.export_rx = Some(exp_rx);
+
+    assert!(!dialog.poll_pending_import(|_| Ok(())));
+    assert!(dialog.import_rx.is_some());
+    assert!(dialog.export_rx.is_some());
+    assert!(dialog.toast_info.is_none());
+    assert!(dialog.toast_error.is_none());
+}
+
+#[test]
+fn test_preset_filename_sanitization_matches_web_io_contract() {
+    assert_eq!(
+        crate::web_io::sanitize_download_filename("/nested/dir/stripes.json", "preset.json"),
+        "stripes.json"
+    );
+    assert_eq!(
+        crate::web_io::sanitize_download_filename("C:\\fakepath\\chaos_preset.json", "preset.json"),
+        "chaos_preset.json"
+    );
+    assert_eq!(
+        crate::web_io::sanitize_download_filename("..", "biology_preset.json"),
+        "biology_preset.json"
+    );
+}
+
+#[test]
+fn test_morphogenesis_tab_shares_poll_pending_import_lifecycle() {
+    let mut tab = crate::tabs::morphogenesis::MorphogenesisTab::default();
+    let exported = tab.to_json_string().unwrap();
+
+    let mut dialog = PresetDialogState::default();
+    let (tx, rx) = channel();
+    dialog.import_rx = Some(rx);
+    tx.send(Ok(("morphogenesis_preset.json".to_string(), exported)))
+        .unwrap();
+
+    assert!(dialog.poll_pending_import(|json_str| tab.from_json_str(json_str)));
+    assert_eq!(
+        dialog.toast_info.as_deref(),
+        Some("Loaded preset from morphogenesis_preset.json")
+    );
+    assert!(dialog.toast_error.is_none());
+}

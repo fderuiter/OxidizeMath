@@ -138,25 +138,45 @@ impl MathExplorerApp {
     /// Drops instantiated secondary pane tabs whose pane index is inactive under `active_pane_count`.
     pub fn prune_inactive_pane_slots(&mut self, active_pane_count: usize) {
         let keep_secondary = active_pane_count.saturating_sub(1);
+        let mut dropped_active = false;
         for (slot_idx, slot) in self.pane_slots.slots.iter_mut().enumerate() {
             if slot_idx >= keep_secondary {
+                dropped_active |= slot.active.is_some();
                 slot.drop_active();
             }
         }
-        let active_sub_contexts = if active_pane_count <= 1 {
-            0
-        } else {
-            active_pane_count.min(self.pane_contexts.len())
-        };
-        for pane_ctx in &self.pane_contexts[active_sub_contexts..] {
-            if let Some(fid) = pane_ctx.memory(|m| m.focused()) {
-                pane_ctx.memory_mut(|m| m.surrender_focus(fid));
-            }
+        if dropped_active || self.focused_pane >= active_pane_count {
+            self.pending_focus_prune = true;
         }
         if active_pane_count <= 1 {
             self.focused_pane = 0;
         } else if self.focused_pane >= active_pane_count {
             self.focused_pane = active_pane_count - 1;
+        }
+    }
+
+    /// Surrenders focus on the root `egui::Context` when the focused widget belonged to a pruned viewport pane.
+    pub(super) fn flush_stale_pane_focus(&mut self, ctx: &egui::Context) {
+        if !std::mem::take(&mut self.pending_focus_prune) {
+            return;
+        }
+        let Some(fid) = ctx.memory(|m| m.focused()) else {
+            return;
+        };
+        let keep = self.viewport_layout.pane_count();
+        let in_kept_pane = ctx.read_response(fid).is_some_and(|resp| {
+            ctx.data(|d| {
+                d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS"))
+                    .is_none_or(|rects| {
+                        rects
+                            .iter()
+                            .take(keep)
+                            .any(|r| r.contains(resp.rect.center()))
+                    })
+            })
+        });
+        if !in_kept_pane {
+            ctx.memory_mut(|m| m.surrender_focus(fid));
         }
     }
 
@@ -194,35 +214,6 @@ impl MathExplorerApp {
     pub fn focused_pane_tab_mut(&mut self) -> Option<&mut Box<dyn ExplorerTab>> {
         let target = self.active_focused_pane();
         self.pane_tab_mut(target)
-    }
-
-    /// Split-borrows the pane's `ExplorerTab`, sub-`egui::Context`, and texture map for rendering.
-    #[allow(clippy::type_complexity)]
-    pub(super) fn pane_render_parts_mut(
-        &mut self,
-        pane_idx: usize,
-    ) -> Option<(
-        &mut dyn ExplorerTab,
-        &egui::Context,
-        &mut HashMap<egui::TextureId, egui::TextureId>,
-    )> {
-        if pane_idx >= 4 {
-            return None;
-        }
-        let tab_idx = self.pane_tabs.get(pane_idx).copied().unwrap_or(0);
-        if tab_idx >= self.tabs.len() {
-            return None;
-        }
-        let pane_ctx = &self.pane_contexts[pane_idx];
-        let tex_map = &mut self.pane_textures[pane_idx];
-        if pane_idx == 0 {
-            let tab = self.tabs.get_mut(tab_idx)?.as_mut();
-            Some((tab, pane_ctx, tex_map))
-        } else {
-            let slot = self.pane_slots.slot_mut(pane_idx)?;
-            let tab = slot.ensure_tab(tab_idx)?.as_mut();
-            Some((tab, pane_ctx, tex_map))
-        }
     }
 
     /// Exchanges runtime tab states between Pane 0 and Pane 1 after their assigned indices are swapped.
@@ -419,18 +410,7 @@ impl MathExplorerApp {
                         self.focus_pane(idx);
                     }
                 }
-                egui::Event::Text(_) => {
-                    if let Some(pos) = pointer_pos {
-                        if let Some(idx) = (0..pane_count).find(|&i| pane_rects[i].contains(pos)) {
-                            self.focus_pane(idx);
-                        }
-                    }
-                }
-                egui::Event::Key {
-                    pressed: true,
-                    modifiers,
-                    ..
-                } if !modifiers.ctrl && !modifiers.mac_cmd && !modifiers.command => {
+                egui::Event::Text(_) if ctx.memory(|m| m.focused().is_none()) => {
                     if let Some(pos) = pointer_pos {
                         if let Some(idx) = (0..pane_count).find(|&i| pane_rects[i].contains(pos)) {
                             self.focus_pane(idx);
@@ -464,10 +444,7 @@ impl MathExplorerApp {
                 })
                 .map_or(tool_name.as_str(), |m| m.display_name);
             let msg = format!("Switched to tool {} in tab {}", display_label, tab.name());
-            crate::accessibility::announce_status(&msg);
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("aria_live_message"), msg);
-            });
+            crate::accessibility::announce_live_status(ctx, msg);
         }
     }
 

@@ -24,8 +24,8 @@ impl ExplorerTab for NumberTheoryTab {
         "Number Theory"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.framework.show(ctx, "number_theory");
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.framework.show_inside(ui, "number_theory");
     }
 
     fn state_revision(&self) -> u64 {

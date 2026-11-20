@@ -161,8 +161,9 @@ impl InteractiveTool for PotentialFlowTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("potential_flow_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(ui, "potential_flow_controls");
+        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Potential Flow Controls");
             ui.separator();
 
@@ -233,7 +234,7 @@ impl InteractiveTool for PotentialFlowTool {
             ui.add(egui::Slider::new(&mut self.view_range, 5.0..=50.0).text("View Range"));
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             Plot::new("potential_flow_plot")
                 .data_aspect(1.0)
                 .view_aspect(1.0)

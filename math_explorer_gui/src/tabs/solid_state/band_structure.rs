@@ -86,11 +86,12 @@ impl InteractiveTool for BandStructureTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("band_structure_controls")
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "band_structure_controls");
+        egui::SidePanel::right(panel_id)
             .resizable(false)
             .min_width(250.0)
-            .show(ctx, |ui| {
+            .show_inside(parent_ui, |ui| {
                 ui.heading("Parameters");
                 ui.separator();
 
@@ -127,7 +128,7 @@ impl InteractiveTool for BandStructureTool {
                 }
             });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("E-k Diagram");
 
             // Generate points for the Brillouin Zone

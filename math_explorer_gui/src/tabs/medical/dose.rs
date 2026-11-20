@@ -85,10 +85,12 @@ impl InteractiveTool for DoseCalculationTool {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let ctx = parent_ui.ctx().clone();
         let mut changed = false;
 
-        egui::SidePanel::left("dose_controls").show(ctx, |ui| {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "dose_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Dose Parameters");
             ui.separator();
 
@@ -112,10 +114,10 @@ impl InteractiveTool for DoseCalculationTool {
             ui.small("Visualizing dose from a point source at (0,0)");
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             // Recompute texture if needed or if params changed
             if self.texture.is_none() || changed {
-                self.recompute_texture(ctx);
+                self.recompute_texture(&ctx);
             }
 
             if let Some(texture) = &self.texture {

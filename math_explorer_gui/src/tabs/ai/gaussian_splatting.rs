@@ -46,14 +46,16 @@ impl InteractiveTool for GaussianSplattingTool {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("gaussian_splatting_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id =
+            crate::framework::scoped_panel_id(parent_ui, "gaussian_splatting_controls");
+        egui::SidePanel::right(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Controls");
             ui.separator();
             ui.add(egui::Slider::new(&mut self.scale, 0.1..=10.0).text("Scale"));
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("3D Gaussian Splatting Visualization");
             ui.label("Placeholder for Gaussian Splatting Viewer.");
         });

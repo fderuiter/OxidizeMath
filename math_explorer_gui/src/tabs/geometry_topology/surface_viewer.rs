@@ -197,8 +197,9 @@ impl InteractiveTool for SurfaceViewer {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("surface_viewer_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(ui, "surface_viewer_controls");
+        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Surface Viewer");
             ui.separator();
 
@@ -271,7 +272,7 @@ impl InteractiveTool for SurfaceViewer {
             }
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let surface = self.create_surface();
 

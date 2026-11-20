@@ -14,6 +14,7 @@ pub mod math_input;
 #[cfg(test)]
 mod metadata_label_tests;
 mod overlay_sync;
+mod pane_scope;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod perf_guard_tests;
@@ -25,6 +26,9 @@ pub mod recovery;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod recovery_tests;
+pub mod state_bounds;
+#[cfg(test)]
+mod state_bounds_tests;
 pub mod state_guard;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
@@ -39,13 +43,18 @@ pub use export_figure::*;
 pub use export_queue::*;
 pub use export_types::*;
 pub use math_input::*;
+pub use pane_scope::{
+    is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id,
+};
 pub use playback::*;
 pub use recovery::*;
+pub use state_bounds::*;
 pub use state_guard::*;
 pub use trace_overlay::*;
 
-use crate::accessibility::AccessibleHoverText;
+pub(super) use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
+use overlay_sync::FrameworkSyncState;
 use scientific_metadata::theory::TheoryDescribable;
 
 pub struct ToolMetadata {
@@ -85,13 +94,22 @@ pub trait InteractiveTool {
     /// Provide theoretical context.
     fn theory(&self) -> &dyn TheoryDescribable;
 
-    /// Show the tool. Tools can implement this to take full control over rendering.
+    /// Show the tool at the root `egui::Context` level by delegating to [`Self::show_inside`].
+    fn show(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE)
+            .show(ctx, |ui| {
+                self.show_inside(ui);
+            });
+    }
+
+    /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
     ///
-    /// # Accessibility Requirements for Custom `show` Overrides
+    /// # Accessibility Requirements for Custom `show_inside` Overrides
     ///
     /// The default implementation allocates its central canvas with [`egui::Sense::click_and_drag`]
     /// (which includes [`egui::Sense::FOCUSABLE`]) and dispatches [`Self::on_keyboard`] when
-    /// `response.has_focus()` is true. When overriding `show` directly:
+    /// `response.has_focus()` is true. When overriding `show_inside` directly:
     ///
     /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`] (or
     ///   [`egui::Sense::click`] / [`egui::Sense::click_and_drag`] for interactive canvases) instead
@@ -106,70 +124,8 @@ pub trait InteractiveTool {
     /// - If the canvas consumes arrow keys, call `Memory::set_focus_lock_filter` with
     ///   `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
     ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left(format!("{}_controls", self.name())).show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading(self.name());
-                let help_btn = ui
-                    .add(egui::Button::new("❓").small())
-                    .accessible_hover_text(format!(
-                        "Toggle Theory Context Portal for {}",
-                        self.name()
-                    ));
-                if help_btn.clicked() {
-                    let current = ctx.data(|d| {
-                        d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL"))
-                            .unwrap_or(false)
-                    });
-                    ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), !current));
-                }
-            });
-            ui.separator();
-            self.show_ui(ui);
-        });
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let (response, painter) =
-                ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
-            let multi_touch = ui.input(|i| i.multi_touch());
-            let input_mode = ctx.data(|d| {
-                d.get_temp(egui::Id::new("INPUT_MODE"))
-                    .unwrap_or(InputMode::Mouse)
-            });
-            let keys_down = ui.input(|i| i.keys_down.clone());
-            let modifiers = ui.input(|i| i.modifiers);
-
-            let interaction_ctx = InteractionContext {
-                pointer_pos: response.interact_pointer_pos(),
-                delta: response.drag_delta(),
-                is_dragging: response.dragged(),
-                is_clicked: response.clicked(),
-                response: &response,
-                input_mode,
-                multi_touch,
-                keys_down,
-                modifiers,
-            };
-
-            if interaction_ctx.response.has_focus() {
-                self.on_keyboard(&interaction_ctx);
-            }
-
-            if interaction_ctx.multi_touch.is_some() {
-                self.on_gesture(&interaction_ctx);
-            } else if interaction_ctx.pointer_pos.is_some() {
-                if interaction_ctx.is_dragging {
-                    self.on_drag(&interaction_ctx);
-                    self.on_brush(&interaction_ctx);
-                } else if interaction_ctx.is_clicked {
-                    self.on_click(&interaction_ctx);
-                } else {
-                    self.on_hover(&interaction_ctx);
-                }
-            }
-
-            self.draw(ui, &response, &painter);
-        });
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        pane_scope::render_default_tool_inside(self, ui);
     }
 
     /// Optional: UI rendering for the tool's specific side-panel controls.
@@ -242,6 +198,11 @@ pub trait InteractiveTool {
         self.load_state(state);
     }
 
+    /// Structural and byte-size budget enforced before JSON state deserialization.
+    fn state_bounds(&self) -> ToolStateBounds {
+        ToolStateBounds::DEFAULT
+    }
+
     /// Fallibly deserializes and restores tool-specific parameters from a JSON state string.
     fn try_load_state(&mut self, _state: &str) -> Result<(), String> {
         Err(format!(
@@ -252,6 +213,9 @@ pub trait InteractiveTool {
 
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, state: &str) {
+        if self.state_bounds().validate_json(state).is_err() {
+            return;
+        }
         let _ = self.try_load_state(state);
     }
 
@@ -278,11 +242,17 @@ pub trait InteractiveTool {
 
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let config: serde_json::Value =
-            crate::presets::deserialize_preset_envelope(json_str, self.domain(), self.name())?;
-        let config_str = serde_json::to_string(&config)
-            .map_err(|e| format!("Config serialization error: {e}"))?;
-        self.try_load_state(&config_str)
+        let bounds = self.state_bounds();
+        let config: Box<serde_json::value::RawValue> =
+            crate::presets::deserialize_preset_envelope_bounded(
+                json_str,
+                self.domain(),
+                self.name(),
+                bounds,
+            )?;
+        let config_str = config.get();
+        bounds.validate_json(config_str)?;
+        self.try_load_state(config_str)
     }
 
     /// Declares which dataset and figure export formats this tool supports.
@@ -350,14 +320,6 @@ pub trait InteractiveTool {
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
     }
-}
-
-#[derive(Default, Clone, Copy)]
-pub(super) struct FrameworkSyncState {
-    pub(super) theory_portal: Option<bool>,
-    pub(super) starter_gallery: Option<bool>,
-    pub(super) datasets_owner_tool: Option<&'static str>,
-    pub(super) last_modal_scope_id: Option<egui::Id>,
 }
 
 #[derive(Default)]

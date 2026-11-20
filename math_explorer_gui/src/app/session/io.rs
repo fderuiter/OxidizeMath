@@ -5,70 +5,32 @@ use std::sync::mpsc::Sender;
 
 /// Spawns a file picker dialog (or browser `<input type="file">`) to open a workspace session.
 pub fn spawn_open_dialog(tx: Sender<Result<(PathBuf, String), String>>) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::thread::spawn(move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("Workspace Session (*.mws, *.json)", &["mws", "json"])
-                .pick_file()
-            {
-                match std::fs::read_to_string(&path) {
-                    Ok(content) => {
-                        let _ = tx.send(Ok((path, content)));
-                    }
-                    Err(e) => {
-                        let _ = tx.send(Err(format!("Failed to read workspace file: {}", e)));
-                    }
-                }
-            }
-        });
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        egui_plot::export::open_browser_file_picker(
-            ".mws,.json,application/json",
-            move |outcome| {
-                if let Some(res) = outcome {
-                    let _ = tx.send(res.map(|(name, content)| (PathBuf::from(name), content)));
-                }
-            },
-        );
-    }
+    crate::web_io::spawn_open_file_dialog(
+        tx,
+        crate::web_io::OpenDialogConfig {
+            filter_name: "Workspace Session (*.mws, *.json)",
+            extensions: &["mws", "json"],
+            accept: ".mws,.json,application/json",
+            read_error_prefix: "Failed to read workspace file",
+        },
+        std::convert::identity,
+    );
 }
 
 /// Spawns a save file dialog (or triggers browser download) to export a workspace session.
 pub fn spawn_save_as_dialog(tx: Sender<Result<PathBuf, String>>, envelope_json: String) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let default_name = "workspace.mws".to_string();
-        std::thread::spawn(move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .set_file_name(&default_name)
-                .add_filter("Workspace Session (*.mws, *.json)", &["mws", "json"])
-                .save_file()
-            {
-                match std::fs::write(&path, envelope_json) {
-                    Ok(_) => {
-                        let _ = tx.send(Ok(path));
-                    }
-                    Err(e) => {
-                        let _ = tx.send(Err(format!("Failed to write workspace file: {}", e)));
-                    }
-                }
-            }
-        });
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let filename =
-            egui_plot::export::sanitize_download_filename("workspace.mws", "workspace.mws");
-        let res = egui_plot::export::download_browser_file(&filename, envelope_json.as_bytes())
-            .map(|()| PathBuf::from(filename));
-        let _ = tx.send(res);
-        egui_plot::export::request_browser_repaint();
-    }
+    crate::web_io::spawn_save_as_file_dialog(
+        tx,
+        crate::web_io::SaveAsDialogConfig {
+            filter_name: "Workspace Session (*.mws, *.json)",
+            extensions: &["mws", "json"],
+            fallback_filename: "workspace.mws",
+            write_error_prefix: "Failed to write workspace file",
+        },
+        "workspace.mws",
+        envelope_json,
+        |path, _default_name| path,
+    );
 }
 
 /// Persists a workspace session directly to disk on desktop or triggers a browser download on WebAssembly.
@@ -77,27 +39,15 @@ pub fn spawn_save_direct(
     path: PathBuf,
     envelope_json: String,
 ) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::thread::spawn(move || match std::fs::write(&path, envelope_json) {
-            Ok(_) => {
-                let _ = tx.send(Ok(path));
-            }
-            Err(e) => {
-                let _ = tx.send(Err(format!("Failed to write workspace file: {}", e)));
-            }
-        });
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let filename =
-            egui_plot::export::sanitize_download_filename(file_name_str(&path), "workspace.mws");
-        let res = egui_plot::export::download_browser_file(&filename, envelope_json.as_bytes())
-            .map(|()| PathBuf::from(filename));
-        let _ = tx.send(res);
-        egui_plot::export::request_browser_repaint();
-    }
+    crate::web_io::spawn_save_direct_file(
+        tx,
+        crate::web_io::DirectSaveConfig {
+            fallback_filename: "workspace.mws",
+            write_error_prefix: "Failed to write workspace file",
+        },
+        path,
+        envelope_json,
+    );
 }
 
 pub fn file_name_str(path: &std::path::Path) -> &str {
@@ -149,7 +99,9 @@ pub fn log_telemetry(
         msg.clone(),
         std::collections::HashMap::new(),
     );
-    ctx.data_mut(|d| {
-        d.insert_temp(eframe::egui::Id::new(aria_key), msg);
-    });
+    if aria_key == "aria_live_assertive_message" {
+        crate::accessibility::announce_live_assertive_status(ctx, msg);
+    } else {
+        crate::accessibility::announce_live_status(ctx, msg);
+    }
 }

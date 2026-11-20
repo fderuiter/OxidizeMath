@@ -81,8 +81,9 @@ impl NeuralNetworkVizTool {
         }
     }
 
-    fn draw_controls(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("nn_viz_controls").show(ctx, |ui| {
+    fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "nn_viz_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Controls");
             ui.separator();
 
@@ -145,8 +146,8 @@ impl NeuralNetworkVizTool {
         }
     }
 
-    fn draw_network(&self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn draw_network(&self, parent_ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Network Visualization");
 
             let (response, painter) = ui.allocate_painter(
@@ -274,16 +275,16 @@ impl InteractiveTool for NeuralNetworkVizTool {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
         if self.is_running {
             for _ in 0..10 {
                 self.step();
             }
-            ctx.request_repaint();
+            ui.ctx().request_repaint();
         }
 
-        self.draw_controls(ctx);
-        self.draw_network(ctx);
+        self.draw_controls(ui);
+        self.draw_network(ui);
     }
 }
 

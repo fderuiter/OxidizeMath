@@ -70,8 +70,8 @@ impl InteractiveTool for PrimeSpiralWidget {
         Some(Self::build_spiral_image(size))
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Prime Spiral (Ulam Spiral)");
             ui.label("A graphical depiction of the set of prime numbers...");
             ui.add_space(10.0);

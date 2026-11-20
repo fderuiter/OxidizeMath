@@ -163,13 +163,16 @@ pub fn serialize_preset_envelope<T: Serialize>(
     serde_json::to_string_pretty(&envelope).map_err(|e| format!("Serialization error: {e}"))
 }
 
-/// Strips any UTF-8 BOM, parses a [`PresetWrapper`] JSON envelope, and validates `metadata.domain`.
-pub fn deserialize_preset_envelope<T: for<'de> Deserialize<'de>>(
+/// Strips any UTF-8 BOM, enforces `bounds.for_preset_envelope()`, parses a [`PresetWrapper`]
+/// JSON envelope, and validates `metadata.domain`.
+pub fn deserialize_preset_envelope_bounded<T: for<'de> Deserialize<'de>>(
     json_str: &str,
     expected_domain: &str,
     target_name: &str,
+    bounds: crate::framework::ToolStateBounds,
 ) -> Result<T, String> {
     let cleaned = egui_plot::export::strip_utf8_bom(json_str);
+    bounds.for_preset_envelope().validate_json(cleaned)?;
     let envelope: PresetWrapper<T> =
         serde_json::from_str(cleaned).map_err(|e| format!("Invalid JSON preset schema: {e}"))?;
     if expected_domain.is_empty() {
@@ -182,6 +185,21 @@ pub fn deserialize_preset_envelope<T: for<'de> Deserialize<'de>>(
         ));
     }
     Ok(envelope.config)
+}
+
+/// Strips any UTF-8 BOM, enforces default preset envelope bounds, parses a [`PresetWrapper`]
+/// JSON envelope, and validates `metadata.domain`.
+pub fn deserialize_preset_envelope<T: for<'de> Deserialize<'de>>(
+    json_str: &str,
+    expected_domain: &str,
+    target_name: &str,
+) -> Result<T, String> {
+    deserialize_preset_envelope_bounded(
+        json_str,
+        expected_domain,
+        target_name,
+        crate::framework::ToolStateBounds::DEFAULT,
+    )
 }
 
 /// UI helper state for non-blocking file operations and user warnings/toasts.
@@ -202,77 +220,38 @@ impl PresetDialogState {
     pub fn trigger_import(&mut self) {
         let (tx, rx) = channel();
         self.import_rx = Some(rx);
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            std::thread::spawn(move || {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("JSON Preset", &["json"])
-                    .pick_file()
-                {
-                    let name = egui_plot::export::sanitize_download_filename(
-                        &path.to_string_lossy(),
-                        "preset.json",
-                    );
-                    match std::fs::read_to_string(path) {
-                        Ok(content) => {
-                            let _ = tx.send(Ok((name, content)));
-                        }
-                        Err(e) => {
-                            let _ = tx.send(Err(format!("Failed to read file: {}", e)));
-                        }
-                    }
-                }
-            });
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            egui_plot::export::open_browser_file_picker(".json,application/json", move |outcome| {
-                if let Some(res) = outcome {
-                    let _ = tx.send(res);
-                }
-            });
-        }
+        crate::web_io::spawn_open_file_dialog(
+            tx,
+            crate::web_io::OpenDialogConfig {
+                filter_name: "JSON Preset",
+                extensions: &["json"],
+                accept: ".json,application/json",
+                read_error_prefix: "Failed to read file",
+            },
+            |path| {
+                crate::web_io::sanitize_download_filename(&path.to_string_lossy(), "preset.json")
+            },
+        );
     }
 
     /// Spawns file save dialog or triggers browser download to export preset JSON string.
     pub fn trigger_export(&mut self, json_content: String, default_filename: &str) {
-        let filename =
-            egui_plot::export::sanitize_download_filename(default_filename, "preset.json");
         let (tx, rx) = channel();
         self.export_rx = Some(rx);
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            std::thread::spawn(move || {
-                if let Some(path) = rfd::FileDialog::new()
-                    .set_file_name(&filename)
-                    .add_filter("JSON Preset", &["json"])
-                    .save_file()
-                {
-                    let saved_name = egui_plot::export::sanitize_download_filename(
-                        &path.to_string_lossy(),
-                        &filename,
-                    );
-                    match std::fs::write(path, json_content) {
-                        Ok(()) => {
-                            let _ = tx.send(Ok(saved_name));
-                        }
-                        Err(e) => {
-                            let _ = tx.send(Err(format!("Failed to write file: {}", e)));
-                        }
-                    }
-                }
-            });
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let res = egui_plot::export::download_browser_file(&filename, json_content.as_bytes())
-                .map(|()| filename);
-            let _ = tx.send(res);
-            egui_plot::export::request_browser_repaint();
-        }
+        crate::web_io::spawn_save_as_file_dialog(
+            tx,
+            crate::web_io::SaveAsDialogConfig {
+                filter_name: "JSON Preset",
+                extensions: &["json"],
+                fallback_filename: "preset.json",
+                write_error_prefix: "Failed to write file",
+            },
+            default_filename,
+            json_content,
+            |path, default_name| {
+                crate::web_io::sanitize_download_filename(&path.to_string_lossy(), default_name)
+            },
+        );
     }
 
     pub(crate) fn record_toast_info(&mut self, msg: String) {

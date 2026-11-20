@@ -141,10 +141,11 @@ impl InteractiveTool for RiemannIntegrationTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let mut changed = false;
 
-        egui::SidePanel::left("riemann_controls").show(ctx, |ui| {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "riemann_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Integration Controls");
             ui.separator();
 
@@ -229,7 +230,7 @@ impl InteractiveTool for RiemannIntegrationTool {
             self.recalculate();
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Visualization");
 
             // Calculate plotting bounds

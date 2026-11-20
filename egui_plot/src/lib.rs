@@ -72,6 +72,34 @@ use axis::AxisWidget;
 use items::{horizontal_line, rulers_color, vertical_line};
 use legend::LegendWidget;
 
+/// Callback signature invoked whenever `egui_plot` dispatches a polite or assertive live announcement.
+pub type PlotLiveRegionAnnouncer = fn(&egui::Context, &str, bool);
+
+static PLOT_LIVE_ANNOUNCER: std::sync::RwLock<Option<PlotLiveRegionAnnouncer>> =
+    std::sync::RwLock::new(None);
+
+/// Registers an application-level live-region announcer callback for `egui_plot` announcements.
+pub fn set_live_region_announcer(announcer: PlotLiveRegionAnnouncer) {
+    if let Ok(mut slot) = PLOT_LIVE_ANNOUNCER.write() {
+        *slot = Some(announcer);
+    }
+}
+
+/// Dispatches a polite (`assertive = false`) or assertive (`assertive = true`) plot live message.
+pub fn emit_plot_live_message(ctx: &egui::Context, message: String, assertive: bool) {
+    let announcer = PLOT_LIVE_ANNOUNCER.read().ok().and_then(|slot| *slot);
+    if let Some(callback) = announcer {
+        callback(ctx, &message, assertive);
+    } else {
+        let key = if assertive {
+            "aria_live_assertive_message"
+        } else {
+            "aria_live_message"
+        };
+        ctx.data_mut(|d| d.insert_temp(Id::new(key), message));
+    }
+}
+
 type LabelFormatterFn<'a> = dyn Fn(&str, &PlotPoint) -> String + 'a;
 pub type LabelFormatter<'a> = Option<Box<LabelFormatterFn<'a>>>;
 
@@ -1681,6 +1709,16 @@ impl<'a> Plot<'a> {
         }
 
         let focus_response = response.interact(egui::Sense::focusable_noninteractive());
+        let plot_a11y_label = format!("Interactive Plot ({id_source:?})");
+        focus_response.widget_info({
+            let label = plot_a11y_label.clone();
+            move || egui::WidgetInfo::labeled(egui::WidgetType::Other, true, label.clone())
+        });
+        ui.ctx()
+            .accesskit_node_builder(focus_response.id, |builder| {
+                builder.set_role(egui::accesskit::Role::GraphicsDocument);
+                builder.set_label(plot_a11y_label);
+            });
 
         let overlay_rect =
             egui::Rect::from_min_size(plot_rect.min, egui::vec2(plot_rect.width(), 30.0_f32));
@@ -2265,8 +2303,7 @@ impl<'a> Plot<'a> {
                 && let Some(p) = pts.get(access_state.focused_point)
             {
                 let msg = format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]);
-                ui.ctx()
-                    .data_mut(|d| d.insert_temp(egui::Id::new("aria_live_message"), msg));
+                emit_plot_live_message(ui.ctx(), msg, false);
             }
         }
 

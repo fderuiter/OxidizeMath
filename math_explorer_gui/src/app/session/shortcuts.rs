@@ -3,10 +3,6 @@ use crate::app::{MathExplorerApp, SplitLayoutMode, ViewportLayout};
 use eframe::egui;
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 
-fn context_wants_non_canvas_input(sub_ctx: &egui::Context, canvas_id: Option<egui::Id>) -> bool {
-    sub_ctx.wants_keyboard_input() && sub_ctx.memory(|m| m.focused()) != canvas_id
-}
-
 fn consume_and_strip_shortcut(
     ctx: &egui::Context,
     mods: egui::Modifiers,
@@ -31,8 +27,7 @@ fn consume_and_strip_shortcut(
         consumed
     });
     if triggered {
-        let msg = format!("Action executed: {action_name}");
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new("aria_live_message"), msg));
+        crate::accessibility::announce_live_status(ctx, format!("Action executed: {action_name}"));
     }
     triggered
 }
@@ -100,24 +95,28 @@ impl MathExplorerApp {
     }
 
     pub(super) fn wants_non_canvas_keyboard_input(&self, ctx: &egui::Context) -> bool {
-        let sub_pane_count = if self.viewport_layout != ViewportLayout::Single {
+        if self.command_palette.is_open
+            || self.show_help_menu
+            || egui::Popup::is_any_open(ctx)
+            || ctx.memory(|m| m.top_modal_layer().is_some())
+        {
+            return true;
+        }
+        if !ctx.wants_keyboard_input() {
+            return false;
+        }
+        let Some(fid) = ctx.memory(|m| m.focused()) else {
+            return true;
+        };
+        let pane_count = if self.viewport_layout != ViewportLayout::Single {
             self.viewport_layout.pane_count()
         } else if self.split_layout_mode != SplitLayoutMode::Single {
             2
         } else {
-            0
+            1
         };
-        if sub_pane_count == 0 {
-            let canvas_id = self.pane_tab(0).and_then(|t| t.focused_canvas_id());
-            return context_wants_non_canvas_input(ctx, canvas_id);
-        }
-        if context_wants_non_canvas_input(ctx, None) {
-            return true;
-        }
-        (0..sub_pane_count.min(self.pane_contexts.len())).any(|idx| {
-            let canvas_id = self.pane_tab(idx).and_then(|t| t.focused_canvas_id());
-            context_wants_non_canvas_input(&self.pane_contexts[idx], canvas_id)
-        })
+        !(0..pane_count)
+            .any(|idx| self.pane_tab(idx).and_then(|t| t.focused_canvas_id()) == Some(fid))
     }
 }
 

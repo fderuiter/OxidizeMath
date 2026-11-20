@@ -59,6 +59,7 @@ impl AttractorPlotter {
     }
 
     pub(super) fn deserialize_state(&mut self, state: &str) -> Result<(), String> {
+        <Self as crate::framework::InteractiveTool>::state_bounds(self).validate_json(state)?;
         let s: AttractorState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid AttractorPlotter state: {e}"))?;
         if !s.sigma.is_finite()
@@ -66,12 +67,12 @@ impl AttractorPlotter {
             || !s.beta.is_finite()
             || !s.dt.is_finite()
             || s.dt <= 0.0
-            || s.simulation_speed == 0
+            || !(1..=super::MAX_SIMULATION_SPEED).contains(&s.simulation_speed)
         {
-            return Err(
-                "AttractorPlotter parameters must be finite with dt > 0 and simulation_speed > 0"
-                    .to_string(),
-            );
+            return Err(format!(
+                "AttractorPlotter parameters must be finite with dt > 0 and simulation_speed in 1..={}",
+                super::MAX_SIMULATION_SPEED
+            ));
         }
         let camera = Camera3D::from_preset_fields(
             s.camera,

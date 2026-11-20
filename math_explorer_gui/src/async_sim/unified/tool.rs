@@ -201,11 +201,13 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
-    fn draw_left_panel(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left(format!("{}_controls", M::name())).show(ctx, |ui| {
+    fn draw_left_panel(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let panel_id = crate::framework::scoped_panel_id(ui, format!("{}_controls", M::name()));
+        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading(M::name());
             ui.separator();
-            self.draw_status_and_transport(ui, ctx);
+            self.draw_status_and_transport(ui, &ctx);
             ui.separator();
             ui.label("Simulation Constants");
             if ui
@@ -219,7 +221,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     .controller
                     .send_command(SimCommand::SetSpeed(self.steps_per_frame));
             }
-            self.draw_model_parameters(ui, ctx);
+            self.draw_model_parameters(ui, &ctx);
         });
     }
 }
@@ -341,7 +343,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         true
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
         let has_update = self.controller.update().is_some();
         if has_update {
             self.stepped_snapshot = None;
@@ -353,10 +355,10 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                 SimWorkerState::Running | SimWorkerState::Stepping
             )
         {
-            ctx.request_repaint();
+            ui.ctx().request_repaint();
         }
-        self.draw_left_panel(ctx);
-        self.draw_central_panel(ctx);
+        self.draw_left_panel(ui);
+        self.draw_central_panel(ui);
     }
 }
 

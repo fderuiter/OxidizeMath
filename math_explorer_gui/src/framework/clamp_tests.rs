@@ -85,14 +85,22 @@ fn test_clamp_parameters_multistep_lorenz_restores_plots_and_stabilizes() {
     }
 }
 
+fn set_unstable_cera(fw: &mut SimulationFramework) {
+    fw.active_tool = Some(Box::new(crate::tabs::climate::cera::CeraTool {
+        in_channels: 99,
+        latent_channels: 4,
+        aligned_channels: 18,
+        num_levels: 90,
+        output_size: 40,
+        ..Default::default()
+    }));
+}
+
 #[test]
 fn test_clamp_parameters_dispatches_domain_hooks_and_restores_datasets() {
     let mut cera_fw = SimulationFramework::new("climate");
     assert!(cera_fw.select_tool_by_name("CeraTool"));
-    load_active(
-        &mut cera_fw,
-        r#"{"in_channels":99,"latent_channels":4,"aligned_channels":18,"num_levels":90,"output_size":40}"#,
-    );
+    set_unstable_cera(&mut cera_fw);
     let plots = vec![("CERA".to_string(), vec![[0.0, 0.4], [1.0, 0.8]])];
     cera_fw.current_valid_plot_datasets = plots.clone();
     cera_fw.cache_valid_snapshot();
@@ -102,10 +110,7 @@ fn test_clamp_parameters_dispatches_domain_hooks_and_restores_datasets() {
             .unwrap_or_else(|e| e.into_inner());
         assert_clamp_emits(
             |f| {
-                load_active(
-                    f,
-                    r#"{"in_channels":99,"latent_channels":4,"aligned_channels":18,"num_levels":90,"output_size":40}"#,
-                );
+                set_unstable_cera(f);
                 f.current_valid_plot_datasets = plots.clone();
                 f.cache_valid_snapshot();
                 f.clamp_parameters();

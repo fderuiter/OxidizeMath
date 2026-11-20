@@ -24,8 +24,8 @@ impl ExplorerTab for FluidDynamicsTab {
         "Fluid Dynamics"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.framework.show(ctx, "fluid_dynamics");
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.framework.show_inside(ui, "fluid_dynamics");
     }
 
     fn state_revision(&self) -> u64 {

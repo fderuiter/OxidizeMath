@@ -167,8 +167,8 @@ impl InteractiveTool for BankrollGrowthTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        eframe::egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
             self.show_ui(ui);
         });
     }

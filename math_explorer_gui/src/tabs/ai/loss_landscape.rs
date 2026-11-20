@@ -89,8 +89,9 @@ impl InteractiveTool for LossLandscapeTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("loss_landscape_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "loss_landscape_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Parameters");
             ui.separator();
 
@@ -130,7 +131,7 @@ impl InteractiveTool for LossLandscapeTool {
             ui.label("Loss: Mean Squared Error (MSE)");
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let mut points = Vec::with_capacity(self.resolution * self.resolution);
 
             let w_step = (self.w_max - self.w_min) / (self.resolution as f64 - 1.0);

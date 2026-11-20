@@ -65,12 +65,13 @@ impl InteractiveTool for CapacityFadeTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
         // Enforce valid ranges for internal state before using it
         self.dod = self.dod.clamp(0.0, 100.0);
         self.cycles_to_simulate = self.cycles_to_simulate.max(100.0);
 
-        egui::SidePanel::left("battery_controls").show(ctx, |ui| {
+        let panel_id = crate::framework::scoped_panel_id(ui, "battery_controls");
+        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Parameters");
             ui.add_space(5.0);
 
@@ -92,7 +93,7 @@ impl InteractiveTool for CapacityFadeTool {
             ui.add(egui::Slider::new(&mut self.cycles_to_simulate, 100.0..=10000.0).text("Simulation Range - Cycles"));
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Capacity Fade Projection");
             ui.label("Estimation based on Power Law Model for Li-ion batteries.");
 

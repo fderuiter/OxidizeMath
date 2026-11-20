@@ -164,8 +164,9 @@ impl InteractiveTool for CrystalViewer {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("crystal_controls").show(ctx, |ui| {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "crystal_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Crystal Lattice");
             ui.separator();
 
@@ -198,7 +199,7 @@ impl InteractiveTool for CrystalViewer {
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let mut camera = self.camera;
             Plot3DViewport::new("crystal_plot", 3.5).show(ui, &mut camera, |plot_ui| {

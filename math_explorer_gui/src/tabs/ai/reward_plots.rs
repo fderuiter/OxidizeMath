@@ -196,8 +196,9 @@ impl RewardPlotsTool {
         self.target_episodes = 0;
     }
 
-    fn draw_controls(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("reward_plots_controls").show(ctx, |ui| {
+    fn draw_controls(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "reward_plots_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Training Controls");
             ui.separator();
 
@@ -285,8 +286,8 @@ impl RewardPlotsTool {
         }
     }
 
-    fn draw_plot(&self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn draw_plot(&self, parent_ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Cumulative Reward over Episodes");
 
             if self.rewards_per_episode.is_empty() {
@@ -351,7 +352,8 @@ impl InteractiveTool for RewardPlotsTool {
         Ok(())
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
         if let Some(snapshot) = self.controller.update() {
             if let Some(data) = snapshot
                 .structured_data
@@ -371,8 +373,8 @@ impl InteractiveTool for RewardPlotsTool {
             ctx.request_repaint();
         }
 
-        self.draw_controls(ctx);
-        self.draw_plot(ctx);
+        self.draw_controls(ui, &ctx);
+        self.draw_plot(ui);
     }
 }
 

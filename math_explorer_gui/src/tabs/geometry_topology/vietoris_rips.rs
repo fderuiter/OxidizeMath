@@ -7,6 +7,8 @@ use math_explorer::pure_math::statistics::tda::{
 };
 use rand::Rng;
 
+const MAX_VIETORIS_RIPS_POINTS: usize = 20;
+
 pub struct VietorisRipsTool {
     radius: f64,
     points: Vec<Point2D>,
@@ -16,6 +18,8 @@ pub struct VietorisRipsTool {
     cached_edges: Vec<[PlotPoint; 2]>,
     cached_vertices: Vec<PlotPoint>,
     revision: u64,
+    #[cfg(test)]
+    complex_builds: usize,
 }
 
 impl Default for VietorisRipsTool {
@@ -29,9 +33,10 @@ impl Default for VietorisRipsTool {
             cached_edges: Vec::new(),
             cached_vertices: Vec::new(),
             revision: 1,
+            #[cfg(test)]
+            complex_builds: 0,
         };
-        tool.generate_points(20);
-        tool.update_complex();
+        tool.generate_points(MAX_VIETORIS_RIPS_POINTS);
         tool
     }
 }
@@ -55,48 +60,56 @@ impl VietorisRipsTool {
         self.update_complex();
     }
 
+    fn compute_complex(
+        &mut self,
+        cloud: &PointCloud,
+        radius: f64,
+    ) -> Result<SimplicialComplex, String> {
+        #[cfg(test)]
+        {
+            self.complex_builds += 1;
+        }
+        vietoris_rips_complex(cloud, radius).map_err(|e| e.to_string())
+    }
+
+    fn apply_complex(&mut self, complex: SimplicialComplex) {
+        self.cached_triangles = complex
+            .get_simplices(2)
+            .into_iter()
+            .map(|t| {
+                let p0 = &self.points[t.vertices[0]];
+                let p1 = &self.points[t.vertices[1]];
+                let p2 = &self.points[t.vertices[2]];
+                [
+                    PlotPoint::new(p0.x, p0.y),
+                    PlotPoint::new(p1.x, p1.y),
+                    PlotPoint::new(p2.x, p2.y),
+                ]
+            })
+            .collect();
+        self.cached_edges = complex
+            .get_simplices(1)
+            .into_iter()
+            .map(|e| {
+                let p0 = &self.points[e.vertices[0]];
+                let p1 = &self.points[e.vertices[1]];
+                [PlotPoint::new(p0.x, p0.y), PlotPoint::new(p1.x, p1.y)]
+            })
+            .collect();
+        self.cached_vertices = self
+            .points
+            .iter()
+            .map(|p| PlotPoint::new(p.x, p.y))
+            .collect();
+        self.complex = complex;
+        self.error_msg = None;
+    }
+
     fn update_complex(&mut self) {
         self.revision = self.revision.wrapping_add(1).max(1);
         match PointCloud::new(self.points.clone()) {
-            Ok(cloud) => match vietoris_rips_complex(&cloud, self.radius) {
-                Ok(complex) => {
-                    let triangles = complex.get_simplices(2);
-                    self.cached_triangles = triangles
-                        .into_iter()
-                        .map(|t| {
-                            let p0 = &self.points[t.vertices[0]];
-                            let p1 = &self.points[t.vertices[1]];
-                            let p2 = &self.points[t.vertices[2]];
-                            [
-                                PlotPoint::new(p0.x, p0.y),
-                                PlotPoint::new(p1.x, p1.y),
-                                PlotPoint::new(p2.x, p2.y),
-                            ]
-                        })
-                        .collect();
-
-                    let edges = complex.get_simplices(1);
-                    self.cached_edges = edges
-                        .into_iter()
-                        .map(|e| {
-                            let p0 = &self.points[e.vertices[0]];
-                            let p1 = &self.points[e.vertices[1]];
-                            [
-                                PlotPoint::new(p0.x, p0.y),
-                                PlotPoint::new(p1.x, p1.y),
-                            ]
-                        })
-                        .collect();
-
-                    self.cached_vertices = self
-                        .points
-                        .iter()
-                        .map(|p| PlotPoint::new(p.x, p.y))
-                        .collect();
-
-                    self.complex = complex;
-                    self.error_msg = None;
-                }
+            Ok(cloud) => match self.compute_complex(&cloud, self.radius) {
+                Ok(complex) => self.apply_complex(complex),
                 Err(e) => {
                     self.clear_cache();
                     self.error_msg = Some(format!("Error building complex: {e}"));
@@ -169,15 +182,22 @@ impl InteractiveTool for VietorisRipsTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let loaded: VietorisRipsState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Vietoris-Rips state: {e}"))?;
         if !loaded.radius.is_finite() || !(0.0..=15.0).contains(&loaded.radius) {
             return Err(format!("radius out of [0.0, 15.0]: {}", loaded.radius));
         }
-        if loaded.points.is_empty()
-            || !loaded.points.iter().all(|p| p[0].is_finite() && p[1].is_finite())
+        if !(1..=MAX_VIETORIS_RIPS_POINTS).contains(&loaded.points.len())
+            || !loaded
+                .points
+                .iter()
+                .all(|p| p[0].is_finite() && p[1].is_finite())
         {
-            return Err("points must be non-empty and finite".to_string());
+            return Err(format!(
+                "points must contain 1..={MAX_VIETORIS_RIPS_POINTS} finite coordinates (got {})",
+                loaded.points.len()
+            ));
         }
         let pts: Vec<Point2D> = loaded
             .points
@@ -185,16 +205,19 @@ impl InteractiveTool for VietorisRipsTool {
             .map(|[x, y]| Point2D::new(x, y))
             .collect();
         let cloud = PointCloud::new(pts.clone()).map_err(|e| format!("{e:?}"))?;
-        vietoris_rips_complex(&cloud, loaded.radius).map_err(|e| format!("{e:?}"))?;
+        let complex = self
+            .compute_complex(&cloud, loaded.radius)
+            .map_err(|e| format!("{e:?}"))?;
         self.radius = loaded.radius;
         self.points = pts;
-        self.update_complex();
+        self.revision = self.revision.wrapping_add(1).max(1);
+        self.apply_complex(complex);
         Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Vietoris-Rips Complex (TDA)");
 
             ui.horizontal(|ui| {
@@ -388,6 +411,28 @@ mod tests {
         let t_plot: PlotPoints<'_> = t_slice.into();
         assert!(matches!(t_plot, PlotPoints::Borrowed(_)));
         assert_eq!(t_plot.points().len(), 3);
+    }
+
+    #[test]
+    fn test_vietoris_rips_try_load_state_bounds_and_single_build() {
+        let mut tool = VietorisRipsTool::default();
+        let before = tool.complex_builds;
+
+        assert!(tool.try_load_state(r#"{"radius":1.5,"points":[]}"#).is_err());
+        assert!(tool
+            .try_load_state(r#"{"radius":1.5,"points":[[0.0,"NaN"]]}"#)
+            .is_err());
+        let over_20 = serde_json::json!({
+            "radius": 2.0,
+            "points": (0..21).map(|i| [i as f64, 0.0]).collect::<Vec<_>>()
+        });
+        assert!(tool.try_load_state(&over_20.to_string()).is_err());
+        assert_eq!(tool.complex_builds, before);
+
+        let valid = r#"{"radius":2.0,"points":[[0.0,0.0],[1.0,0.0],[0.0,1.0]]}"#;
+        assert!(tool.try_load_state(valid).is_ok());
+        assert_eq!(tool.complex_builds, before + 1);
+        assert_eq!(tool.points.len(), 3);
     }
 }
 

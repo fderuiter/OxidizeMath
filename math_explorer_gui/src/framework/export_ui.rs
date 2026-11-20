@@ -94,11 +94,12 @@ impl SimulationFramework {
         egui::Id::new(("framework_export", id_source, self.instance_id))
     }
 
-    pub(super) fn show_export_action_bar(&mut self, ctx: &egui::Context, id_source: &str) {
+    pub(super) fn show_export_action_bar(&mut self, ui: &mut egui::Ui, id_source: &str) {
         if self.active_tool.is_none() {
             return;
         }
 
+        let ctx = ui.ctx().clone();
         let imported = self.active_tool.as_mut().is_some_and(|tool| {
             self.preset_dialog
                 .poll_pending_import(|json_str| tool.import_preset_json(json_str))
@@ -108,10 +109,11 @@ impl SimulationFramework {
             ctx.request_repaint();
         }
 
-        egui::TopBottomPanel::top(format!("{}_export_bar", id_source))
+        let bar_id = scoped_panel_id(ui, format!("{id_source}_export_bar"));
+        egui::TopBottomPanel::top(bar_id)
             .exact_height(32.0)
-            .show(ctx, |ui| {
-                self.render_export_bar_row(ui, ctx);
+            .show_inside(ui, |ui| {
+                self.render_export_bar_row(ui, &ctx);
             });
     }
 

@@ -13,9 +13,10 @@ use egui_plot::{Callout, Line, PlotPoint, PlotPoints, Points};
 use nalgebra::Vector3;
 
 impl AttractorPlotter {
-    pub(super) fn draw_side_panel(&mut self, ctx: &egui::Context) {
+    pub(super) fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         let worker_faulted = self.worker.state() == SimWorkerState::Faulted;
-        egui::SidePanel::left("attractor_controls").show(ctx, |ui| {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "attractor_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Lorenz Attractor");
             ui.separator();
 
@@ -129,7 +130,7 @@ impl AttractorPlotter {
 
                 if ui
                     .add(
-                        egui::Slider::new(&mut self.simulation_speed, 1..=50)
+                        egui::Slider::new(&mut self.simulation_speed, 1..=super::MAX_SIMULATION_SPEED)
                             .text("Speed (steps/frame)"),
                     )
                     .changed()
@@ -351,8 +352,8 @@ impl AttractorPlotter {
         plot_ui.callout(callout_neg);
     }
 
-    pub(super) fn draw_central_panel(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.draw_central_fault_banner(ui, ctx);
 
             if self.history.is_empty() && !self.diverged() {

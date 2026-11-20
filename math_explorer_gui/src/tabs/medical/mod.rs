@@ -23,8 +23,8 @@ impl ExplorerTab for MedicalTab {
         "Medical Physics"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.framework.show(ctx, "medical");
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.framework.show_inside(ui, "medical");
     }
 
     fn state_revision(&self) -> u64 {

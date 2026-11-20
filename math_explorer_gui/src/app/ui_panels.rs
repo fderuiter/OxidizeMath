@@ -174,6 +174,54 @@ pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
 }
 
 #[cfg(any(not(target_os = "macos"), test))]
+fn render_focus_pane_submenu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
+    ui.menu_button("Focus Pane", |ui| {
+        if ui
+            .add(egui::Button::new("Next Pane").shortcut_text("F6"))
+            .clicked()
+        {
+            super::viewport::focus::cycle_focused_pane(app, ctx, false);
+            ui.close();
+            return;
+        }
+        if ui
+            .add(egui::Button::new("Previous Pane").shortcut_text("Shift+F6"))
+            .clicked()
+        {
+            super::viewport::focus::cycle_focused_pane(app, ctx, true);
+            ui.close();
+            return;
+        }
+        ui.separator();
+
+        let pane_count = app.viewport_layout.pane_count();
+        let pane_labels = app.viewport_layout.pane_labels();
+        let active_pane = app.active_focused_pane();
+        for pane_idx in 0..pane_count {
+            let label = pane_labels
+                .get(pane_idx)
+                .copied()
+                .unwrap_or("Main Viewport");
+            let tab_idx = if pane_idx == 0 {
+                app.active_primary_tab_index()
+            } else {
+                app.pane_tabs.get(pane_idx).copied().unwrap_or(0)
+            };
+            let tab_name = app.tabs.get(tab_idx).map_or("No module", |t| t.name());
+            let entry_text = format!("{} — {}", label, tab_name);
+            if ui
+                .selectable_label(pane_idx == active_pane, entry_text)
+                .clicked()
+            {
+                super::viewport::focus::focus_pane_interactive(app, ctx, pane_idx);
+                ui.close();
+                return;
+            }
+        }
+    });
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
 fn render_pane_assignments_submenu(
     app: &mut MathExplorerApp,
     ctx: &egui::Context,
@@ -327,9 +375,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 } else {
                     "Command palette closed"
                 };
-                ctx.data_mut(|d| {
-                    d.insert_temp(egui::Id::new("aria_live_message"), status_msg.to_string());
-                });
+                crate::accessibility::announce_live_status(ctx, status_msg);
                 ui.close();
             }
             ui.separator();
@@ -358,6 +404,8 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                     }
                 }
             });
+
+            render_focus_pane_submenu(app, ctx, ui);
 
             if app.viewport_layout != ViewportLayout::Single {
                 render_pane_assignments_submenu(app, ctx, ui);

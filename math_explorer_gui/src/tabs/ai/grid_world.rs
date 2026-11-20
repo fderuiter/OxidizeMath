@@ -171,7 +171,8 @@ impl InteractiveTool for GridWorldTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let ctx = parent_ui.ctx().clone();
         if self.is_playing {
             let speed_hz = self.playback_speed.clamp(1.0, 20.0);
             let interval = std::time::Duration::from_secs_f32(1.0 / speed_hz);
@@ -188,7 +189,9 @@ impl InteractiveTool for GridWorldTool {
                 .unwrap_or(InputMode::Mouse)
         });
 
-        egui::Window::new("Grid World Navigation (Q-Learning)").show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
+            ui.heading("Grid World Navigation (Q-Learning)");
+            ui.separator();
             ui.horizontal(|ui| {
                 if ui
                     .button("▶ Step")

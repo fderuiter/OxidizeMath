@@ -46,9 +46,10 @@ impl MorphogenesisTab {
         self.dirty = false;
     }
 
-    pub(crate) fn draw_canvas(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.sync_texture_from_snapshot(ctx);
+    pub(crate) fn draw_canvas(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            self.sync_texture_from_snapshot(&ctx);
 
             if let Some(texture) = &self.texture {
                 let w = self.width as f32;

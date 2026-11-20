@@ -370,7 +370,7 @@ impl InteractiveTool for OdeSolverTool {
         true
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let mut changed = false;
 
         let mut plot_points_y = Vec::new();
@@ -384,7 +384,8 @@ impl InteractiveTool for OdeSolverTool {
             }
         }
 
-        egui::SidePanel::left("ode_controls").show(ctx, |ui| {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "ode_controls");
+        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             changed |= self.render_sidebar_controls(ui, &plot_points_y, &plot_points_v);
         });
 
@@ -398,7 +399,7 @@ impl InteractiveTool for OdeSolverTool {
             self.recalculate();
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.render_plot_canvas(ui, plot_points_y, plot_points_v, &mut changed);
         });
     }

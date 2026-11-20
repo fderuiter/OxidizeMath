@@ -99,8 +99,8 @@ impl InteractiveTool for TokenizationTool {
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Tokenization & Input Embeddings");
             ui.label(
                 "Explore how text is broken down into discrete tokens and mapped \

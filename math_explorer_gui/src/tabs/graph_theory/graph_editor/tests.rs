@@ -496,5 +496,3 @@ fn test_try_load_state_equality_and_single_fire_toolbar_shortcuts() {
     assert!(tool.import_preset_json(snapshot::STARTER_PRESET_JSON).is_ok());
     assert!(!tool.can_undo() && !tool.can_redo());
 }
-
-

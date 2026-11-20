@@ -54,13 +54,14 @@ fn has_interactive_ui_input(ctx: &egui::Context) -> bool {
 }
 
 impl SimulationFramework {
-    pub(super) fn show_theory_portal(&self, ctx: &egui::Context, id_source: &str) {
+    pub(super) fn show_theory_portal(&self, ui: &mut egui::Ui, id_source: &str) {
         if !self.show_theory_portal {
             return;
         }
-        egui::SidePanel::right(format!("{}_theory_portal", id_source))
+        let panel_id = scoped_panel_id(ui, format!("{id_source}_theory_portal"));
+        egui::SidePanel::right(panel_id)
             .resizable(true)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     if let Some(tool) = &self.active_tool {
                         ui.heading(format!("Theory: {}", tool.name()));
@@ -205,10 +206,12 @@ impl SimulationFramework {
         }
     }
 
-    pub(super) fn show_side_panel(&mut self, ctx: &egui::Context, id_source: &str) {
-        egui::SidePanel::right(format!("{}_tool_selector", id_source))
+    pub(super) fn show_side_panel(&mut self, ui: &mut egui::Ui, id_source: &str) {
+        let ctx = ui.ctx().clone();
+        let panel_id = scoped_panel_id(ui, format!("{id_source}_tool_selector"));
+        egui::SidePanel::right(panel_id)
             .resizable(false)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Tools");
                     let help_btn = ui
@@ -303,10 +306,11 @@ impl SimulationFramework {
                 id_source,
                 &self.available_tools,
             );
+            let modal_source = format!("{id_source}_{}", self.instance_id);
             let mut is_open = self.show_starter_gallery;
             if let Some(card) = crate::starter_gallery::show_starter_gallery_overlay(
                 ctx,
-                id_source,
+                &modal_source,
                 &cards,
                 &mut is_open,
             ) {
@@ -324,18 +328,29 @@ impl SimulationFramework {
         }
     }
 
-    #[allow(missing_docs, clippy::too_many_lines)]
+    #[allow(missing_docs)]
     pub fn show(&mut self, ctx: &egui::Context, id_source: &str) {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE)
+            .show(ctx, |ui| {
+                self.show_inside(ui, id_source);
+            });
+    }
+
+    #[allow(missing_docs, clippy::too_many_lines)]
+    pub fn show_inside(&mut self, ui: &mut egui::Ui, id_source: &str) {
+        let ctx = ui.ctx().clone();
         egui_plot::clear_last_plot_datasets();
         egui_plot::clear_last_plot_primitives();
-        if has_interactive_ui_input(ctx) {
+        if has_interactive_ui_input(&ctx) {
             self.rev_cache.untracked_tool_revision =
                 self.rev_cache.untracked_tool_revision.wrapping_add(1);
         }
 
         // Display recovery banner when solver divergence is detected
         if self.is_diverged {
-            egui::TopBottomPanel::top(format!("{}_recovery_banner", id_source)).show(ctx, |ui| {
+            let banner_id = scoped_panel_id(ui, format!("{id_source}_recovery_banner"));
+            egui::TopBottomPanel::top(banner_id).show_inside(ui, |ui| {
                 if let Some(action) = render_state_guard_banner(
                     ui,
                     self.diagnostic_report.as_ref(),
@@ -352,29 +367,33 @@ impl SimulationFramework {
             if i.any_touches() || i.multi_touch().is_some() {
                 self.input_mode = InputMode::Touch;
             } else if i.pointer.is_moving() && !i.any_touches() {
-                // Heuristic: if pointer is moving but no touches, likely mouse
                 self.input_mode = InputMode::Mouse;
             }
         });
+        let inst_portal = egui::Id::new(("SHOW_THEORY_PORTAL_INST", id_source, self.instance_id));
         ctx.data_mut(|d| {
             d.insert_temp(egui::Id::new("INPUT_MODE"), self.input_mode);
             d.insert_temp(
                 egui::Id::new("INPUT_MODE_TOUCH"),
                 self.input_mode == InputMode::Touch,
             );
+            d.insert_temp(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"), inst_portal);
+            d.insert_temp(
+                egui::Id::new("SCOPED_ANIMATED_SLIDER_OWNER"),
+                self.instance_id,
+            );
         });
 
-        self.sync_overlays_before_frame(ctx, id_source);
+        self.sync_overlays_before_frame(&ctx, id_source);
 
-        self.show_side_panel(ctx, id_source);
-        self.show_theory_portal(ctx, id_source);
-        self.show_export_action_bar(ctx, id_source);
-        self.show_export_modal_dialog(ctx, id_source);
+        self.show_side_panel(ui, id_source);
+        self.show_theory_portal(ui, id_source);
+        self.show_export_action_bar(ui, id_source);
 
         if !self.is_diverged {
             self.cache_valid_snapshot();
             if let Some(tool) = &mut self.active_tool {
-                tool.show(ctx);
+                tool.show_inside(ui);
             }
             let _ = self.inspect_runtime_state();
             if self.is_diverged {
@@ -387,16 +406,22 @@ impl SimulationFramework {
                 egui_plot::clear_last_plot_primitives();
                 egui_plot::append_last_plot_datasets(&snapshot.plot_datasets);
             }
-            tool.show(ctx);
+            tool.show_inside(ui);
         } else {
-            egui::CentralPanel::default().show(ctx, |ui| {
+            egui::CentralPanel::default().show_inside(ui, |ui| {
                 self.show_quick_start_cards(ui);
             });
         }
 
-        self.show_starter_gallery_if_open(ctx, id_source);
-        self.sync_overlays_after_frame(ctx, id_source);
+        ctx.data_mut(|d| {
+            d.remove::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"));
+            d.remove::<u64>(egui::Id::new("SCOPED_ANIMATED_SLIDER_OWNER"));
+        });
 
-        self.dispatch_pending_exports_with_ctx(ctx);
+        self.show_export_modal_dialog(&ctx, id_source);
+        self.show_starter_gallery_if_open(&ctx, id_source);
+        self.sync_overlays_after_frame(&ctx, id_source);
+
+        self.dispatch_pending_exports_with_ctx(&ctx);
     }
 }
