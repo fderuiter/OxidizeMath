@@ -12,6 +12,7 @@
 mod a11y;
 mod axis;
 pub mod commands;
+pub mod data_table;
 pub mod export;
 pub mod export_modal;
 pub mod export_primitives;
@@ -38,6 +39,10 @@ use emath::Float as _;
 
 pub use crate::{
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
+    data_table::{
+        DataTableState, TableSeriesRef, data_table_clipboard_status_id, format_table_value,
+        format_tsv, poll_data_table_clipboard_status, series_share_x, show_data_table_modal,
+    },
     export::{
         AspectRatioOption, ExportFrame, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
         color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard,
@@ -194,6 +199,113 @@ pub struct PlotResponse<R> {
 
 // ----------------------------------------------------------------------------
 
+/// Converts a plot identifier into its hashed [`egui::Id`] and an optional humanized modal title.
+///
+/// String identifiers (`&str`, `String`, `&String`, [`std::borrow::Cow`]) are humanized into
+/// readable titles (for example, `"sir_plot"` becomes `Some("SIR Plot")`), whereas raw
+/// [`egui::Id`] callers retain `None` unless overridden via [`Plot::title`].
+pub trait PlotIdSource {
+    /// Resolve the hashed plot identifier and optional humanized display title.
+    fn into_plot_id_and_title(self) -> (Id, Option<String>);
+}
+
+/// Humanizes a snake_case, kebab-case, or plain-text plot label into a readable title.
+#[must_use]
+pub fn humanize_plot_label(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let words: Vec<String> = trimmed
+        .split(|c: char| c == '_' || c == '-' || c.is_whitespace())
+        .filter(|tok| !tok.is_empty())
+        .map(humanize_plot_word)
+        .collect();
+    (!words.is_empty()).then(|| words.join(" "))
+}
+
+fn humanize_plot_word(token: &str) -> String {
+    match token.to_ascii_lowercase().as_str() {
+        "ode" => return "ODE".to_owned(),
+        "pde" => return "PDE".to_owned(),
+        "sir" => return "SIR".to_owned(),
+        "isi" => return "ISI".to_owned(),
+        "mri" => return "MRI".to_owned(),
+        "co2" => return "CO2".to_owned(),
+        "ai" => return "AI".to_owned(),
+        "fft" => return "FFT".to_owned(),
+        "rk4" => return "RK4".to_owned(),
+        "2d" => return "2D".to_owned(),
+        "3d" => return "3D".to_owned(),
+        "csv" => return "CSV".to_owned(),
+        "tsv" => return "TSV".to_owned(),
+        "png" => return "PNG".to_owned(),
+        "svg" => return "SVG".to_owned(),
+        _ => {}
+    }
+    if token.chars().any(char::is_uppercase) {
+        return token.to_owned();
+    }
+    let mut chars = token.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    let mut out = first.to_uppercase().to_string();
+    out.push_str(chars.as_str());
+    out
+}
+
+fn format_modal_title(base: &str, plot_title: Option<&str>) -> String {
+    match plot_title.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) => format!("{base} - {t}"),
+        None => base.to_owned(),
+    }
+}
+
+impl PlotIdSource for &str {
+    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
+        (Id::new(self), humanize_plot_label(self))
+    }
+}
+
+impl PlotIdSource for String {
+    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
+        let title = humanize_plot_label(&self);
+        (Id::new(self), title)
+    }
+}
+
+impl PlotIdSource for &String {
+    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
+        (Id::new(self), humanize_plot_label(self))
+    }
+}
+
+impl PlotIdSource for std::borrow::Cow<'_, str> {
+    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
+        let title = humanize_plot_label(self.as_ref());
+        (Id::new(self), title)
+    }
+}
+
+impl PlotIdSource for &std::borrow::Cow<'_, str> {
+    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
+        (Id::new(self), humanize_plot_label(self.as_ref()))
+    }
+}
+
+impl PlotIdSource for Id {
+    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
+        (Id::new(self), None)
+    }
+}
+
+impl PlotIdSource for &Id {
+    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
+        (Id::new(self), None)
+    }
+}
+
 /// A 2D plot, e.g. a graph of a function.
 ///
 /// [`Plot`] supports multiple lines and points.
@@ -213,6 +325,7 @@ pub struct PlotResponse<R> {
 pub struct Plot<'a> {
     id_source: Id,
     id: Option<Id>,
+    title: Option<String>,
 
     center_axis: Vec2b,
     allow_zoom: Vec2b,
@@ -262,10 +375,12 @@ pub struct Plot<'a> {
 
 impl<'a> Plot<'a> {
     /// Give a unique id for each plot within the same [`Ui`].
-    pub fn new(id_source: impl std::hash::Hash) -> Self {
+    pub fn new(id_source: impl PlotIdSource) -> Self {
+        let (id_source, title) = id_source.into_plot_id_and_title();
         Self {
-            id_source: Id::new(id_source),
+            id_source,
             id: None,
+            title,
 
             center_axis: false.into(),
             allow_zoom: true.into(),
@@ -322,6 +437,17 @@ impl<'a> Plot<'a> {
     #[inline]
     pub fn id(mut self, id: Id) -> Self {
         self.id = Some(id);
+        self
+    }
+
+    /// Set an explicit human-readable display title used in plot modals and accessibility labels.
+    ///
+    /// Passing an empty or whitespace-only string clears the title to `None`.
+    #[inline]
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        let raw = title.into();
+        let trimmed = raw.trim();
+        self.title = (!trimmed.is_empty()).then(|| trimmed.to_owned());
         self
     }
 
@@ -881,6 +1007,7 @@ impl<'a> Plot<'a> {
         let Self {
             id_source,
             id,
+            title,
             center_axis,
             allow_zoom,
             allow_drag,
@@ -1767,7 +1894,10 @@ impl<'a> Plot<'a> {
 
         let focus_response = &response;
         let series_count = accessible_datasets.len();
-        let plot_a11y_label = format!("Interactive Plot ({id_source:?}), {series_count} series");
+        let plot_a11y_label = match title.as_deref() {
+            Some(t) => format!("Interactive Plot ({t}), {series_count} series"),
+            None => format!("Interactive Plot, {series_count} series"),
+        };
         let plot_enabled = ui.is_enabled();
         focus_response.widget_info({
             let label = plot_a11y_label.clone();
@@ -1792,7 +1922,11 @@ impl<'a> Plot<'a> {
                 if ui.button("Export JSON").clicked() {
                     export::export_json(&export_datasets);
                 }
-                if ui.button("Table View").clicked() {
+                if ui
+                    .add_enabled(!export_datasets.is_empty(), egui::Button::new("Table View"))
+                    .on_disabled_hover_text("No tabular data points available for this plot")
+                    .clicked()
+                {
                     access_state.show_table = !access_state.show_table;
                 }
                 if ui.button("🔧 Settings").clicked() {
@@ -1932,32 +2066,22 @@ impl<'a> Plot<'a> {
             Self::render_floating_zoom_toolbar(ui, &mut mem, &zoom_config);
         }
 
-        ModalLifecycle::new(plot_id.with("data_table_modal"))
-            .title(format!("Data Table - {id_source:?}"))
-            .default_width(360.0)
-            .max_height(420.0)
-            .show(ui.ctx(), &mut access_state.show_table, |ui, frame_ctx| {
-                egui::ScrollArea::both().max_height(320.0).show(ui, |ui| {
-                    for (name, pts, _) in &accessible_datasets {
-                        if pts.is_empty() {
-                            continue;
-                        }
-                        ui.heading(name);
-                        for p in pts {
-                            ui.label(format!("X: {:.4}, Y: {:.4}", p[0], p[1]));
-                        }
-                    }
-                });
-                ui.separator();
-                if ui.button("Close").clicked() {
-                    frame_ctx.close();
-                }
-            });
+        {
+            let table_window_title = format_modal_title("Data Table", title.as_deref());
+            data_table::show_data_table_modal(
+                ui.ctx(),
+                plot_id,
+                &table_window_title,
+                &mut access_state.show_table,
+                &mut access_state.data_table,
+                &accessible_datasets,
+            );
+        }
 
         {
             access_state.export_modal.options.log_x = mem.log_x;
             access_state.export_modal.options.log_y = mem.log_y;
-            let export_window_title = format!("Export High-Res Plot - {id_source:?}");
+            let export_window_title = format_modal_title("Export High-Res Plot", title.as_deref());
             let export_config = export_modal::ExportModalConfig {
                 window_title: &export_window_title,
                 id: plot_id,
@@ -1980,7 +2104,7 @@ impl<'a> Plot<'a> {
         }
 
         ModalLifecycle::new(plot_id.with("plot_settings_modal"))
-            .title(format!("Plot Settings 🔧 - {id_source:?}"))
+            .title(format_modal_title("Plot Settings 🔧", title.as_deref()))
             .default_width(320.0)
             .show(
                 ui.ctx(),
@@ -2043,7 +2167,7 @@ impl<'a> Plot<'a> {
         {
             let mut add_confirmed = false;
             ModalLifecycle::new(plot_id.with("add_callout_modal"))
-                .title(format!("Add Callout - {id_source:?}"))
+                .title(format_modal_title("Add Callout", title.as_deref()))
                 .default_width(320.0)
                 .show(
                     ui.ctx(),
@@ -2146,7 +2270,7 @@ impl<'a> Plot<'a> {
             let mut delete_requested = false;
             let mut update_confirmed = false;
             ModalLifecycle::new(plot_id.with("edit_callout_modal"))
-                .title(format!("Edit Callout - {id_source:?}"))
+                .title(format_modal_title("Edit Callout", title.as_deref()))
                 .default_width(320.0)
                 .show(
                     ui.ctx(),
@@ -2394,7 +2518,11 @@ impl<'a> Plot<'a> {
                 export::export_json(&export_datasets);
                 ui.close();
             }
-            if ui.button("Table View").clicked() {
+            if ui
+                .add_enabled(!export_datasets.is_empty(), egui::Button::new("Table View"))
+                .on_disabled_hover_text("No tabular data points available for this plot")
+                .clicked()
+            {
                 access_state.show_table = !access_state.show_table;
                 ui.close();
             }
@@ -5670,6 +5798,7 @@ mod log_space_projection_tests {
 #[derive(Clone)]
 pub(crate) struct AccessState {
     pub(crate) show_table: bool,
+    pub(crate) data_table: data_table::DataTableState,
     pub(crate) export_modal: export_modal::ExportModalState,
     pub(crate) focused_item: usize,
     pub(crate) focused_point: usize,
@@ -5699,6 +5828,7 @@ impl Default for AccessState {
     fn default() -> Self {
         Self {
             show_table: false,
+            data_table: data_table::DataTableState::default(),
             export_modal: export_modal::ExportModalState::default(),
             focused_item: 0,
             focused_point: 0,
