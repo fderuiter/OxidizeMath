@@ -292,15 +292,15 @@ fn handle_palette_theme_event(app: &mut MathExplorerApp, ctx: &egui::Context, id
         "help_commands" => app.show_help_menu = !app.show_help_menu,
         "theme_dark" => {
             app.theme = ThemeMode::Dark;
-            ctx.set_visuals(app.theme.visuals());
+            app.theme.apply_to_context(ctx);
         }
         "theme_light" => {
             app.theme = ThemeMode::Light;
-            ctx.set_visuals(app.theme.visuals());
+            app.theme.apply_to_context(ctx);
         }
         "theme_high_contrast" => {
             app.theme = ThemeMode::HighContrast;
-            ctx.set_visuals(app.theme.visuals());
+            app.theme.apply_to_context(ctx);
         }
         "view_toggle_diagnostics" => {
             app.show_diagnostics_panel = !app.show_diagnostics_panel;

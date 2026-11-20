@@ -6,6 +6,7 @@
     <meta name="description" content="Interactive scientific simulations and mathematical visualizations across physics, biology, climate, epidemiology, AI, and pure mathematics.">
     <meta name="application-name" content="Math Explorer">
     <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" media="(prefers-contrast: more)" content="#000000">
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121214">
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f8f8">
     <meta property="og:title" content="Math Explorer">
@@ -44,6 +45,7 @@
             height: 100%;
             width: 100%;
             overflow: hidden;
+            color-scheme: dark;
             background-color: #121214;
             color: #e2e8f0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -171,290 +173,6 @@
             color: #cbd5e1;
             font-variant-numeric: tabular-nums;
             margin: 10px 0 0 0;
-        }
-
-        @media (prefers-color-scheme: light) {
-            html, body, #loading_indicator {
-                background-color: #f8f8f8;
-                color: #18181b;
-            }
-
-            .brand-badge {
-                fill: #eff6ff;
-                stroke: #2563eb;
-            }
-
-            .brand-axes {
-                stroke: #60a5fa;
-                stroke-opacity: 0.65;
-            }
-
-            .brand-wave {
-                stroke: #1d4ed8;
-            }
-
-            .brand-node {
-                fill: #2563eb;
-            }
-
-            .spinner {
-                border-color: rgba(24, 24, 27, 0.14);
-                border-top-color: #2563eb;
-            }
-
-            .loading-subtitle {
-                color: #475569;
-            }
-
-            .loading-progress {
-                border-color: #64748b;
-                background-color: #e2e8f0;
-                accent-color: #2563eb;
-            }
-
-            .loading-progress::-webkit-progress-bar {
-                background-color: #e2e8f0;
-            }
-
-            .loading-progress::-webkit-progress-value {
-                background-color: #2563eb;
-            }
-
-            .loading-progress::-moz-progress-bar {
-                background-color: #2563eb;
-            }
-
-            .loading-bytes {
-                color: #334155;
-            }
-
-            #error_container {
-                background-color: rgba(248, 248, 248, 0.96);
-            }
-
-            .error-card {
-                background-color: #ffffff;
-                border-color: #cbd5e1;
-                box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
-            }
-
-            .error-title {
-                color: #dc2626;
-            }
-
-            .error-message {
-                color: #334155;
-            }
-
-            .instructions-card {
-                background-color: #f8fafc;
-                border-color: #e2e8f0;
-            }
-
-            .instructions-card h2 {
-                color: #0f172a;
-            }
-
-            .recovery-list {
-                color: #475569;
-            }
-
-            .browser-item h3 {
-                color: #1d4ed8;
-            }
-
-            .browser-item ol, .additional-info {
-                color: #475569;
-                border-top-color: #e2e8f0;
-            }
-
-            .browser-item ol li strong {
-                color: #0f172a;
-            }
-
-            .additional-info a {
-                color: #1d4ed8;
-            }
-
-            .error-details {
-                background-color: #fef2f2;
-                border-color: #fecaca;
-                color: #991b1b;
-            }
-
-            noscript .noscript-banner {
-                background-color: #f8f8f8;
-                color: #b91c1c;
-            }
-        }
-
-        @media (prefers-contrast: more) {
-            html, body, #loading_indicator {
-                background-color: #000000;
-                color: #ffffff;
-            }
-
-            .brand-badge {
-                fill: #000000;
-                stroke: #ffffff;
-            }
-
-            .brand-axes {
-                stroke: #ffffff;
-                stroke-opacity: 0.85;
-            }
-
-            .brand-wave {
-                stroke: #ffff00;
-            }
-
-            .brand-node {
-                fill: #ffff00;
-            }
-
-            .spinner {
-                border-color: rgba(255, 255, 255, 0.35);
-                border-top-color: #ffff00;
-            }
-
-            .loading-subtitle {
-                color: #ffffff;
-            }
-
-            .loading-progress {
-                border: 2px solid #ffffff;
-                background-color: #000000;
-                accent-color: #ffff00;
-            }
-
-            .loading-progress::-webkit-progress-bar {
-                background-color: #000000;
-            }
-
-            .loading-progress::-webkit-progress-value {
-                background-color: #ffff00;
-            }
-
-            .loading-progress::-moz-progress-bar {
-                background-color: #ffff00;
-            }
-
-            .loading-bytes {
-                color: #ffffff;
-            }
-
-            #error_container {
-                background-color: #000000;
-            }
-
-            .error-card, .instructions-card, .error-details {
-                background-color: #000000;
-                border: 2px solid #ffffff;
-                box-shadow: none;
-            }
-
-            .error-title, .error-icon-wrapper, .error-details, noscript .noscript-banner {
-                background-color: #000000;
-                color: #ffff00;
-            }
-
-            .error-message, .instructions-card h2, .recovery-list, .browser-item ol, .browser-item ol li strong, .additional-info {
-                color: #ffffff;
-                border-top-color: #ffffff;
-            }
-
-            .browser-item h3, .additional-info a {
-                color: #ffff00;
-            }
-
-            .reload-btn {
-                background-color: #005a9e;
-                color: #ffffff;
-                border: 2px solid #ffffff;
-            }
-
-            .reload-btn:hover, .reload-btn:focus-visible {
-                outline: 2px solid #ffff00;
-                border-color: #ffff00;
-            }
-        }
-
-        @media (forced-colors: active) {
-            .brand-mark {
-                forced-color-adjust: none;
-            }
-
-            .brand-badge {
-                fill: Canvas;
-                stroke: CanvasText;
-            }
-
-            .brand-axes {
-                stroke: GrayText;
-                stroke-opacity: 1;
-            }
-
-            .brand-wave {
-                stroke: Highlight;
-            }
-
-            .brand-node {
-                fill: Highlight;
-            }
-
-            .spinner {
-                forced-color-adjust: none;
-                border-color: GrayText;
-                border-top-color: Highlight;
-            }
-
-            .loading-progress {
-                border-color: CanvasText;
-                accent-color: Highlight;
-            }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            .spinner {
-                animation: none !important;
-                border-color: #60a5fa;
-                background-color: rgba(96, 165, 250, 0.16);
-            }
-
-            .loading-progress,
-            .reload-btn {
-                animation: none !important;
-                transition: none !important;
-            }
-
-            .loading-progress::-webkit-progress-value {
-                transition: none !important;
-            }
-
-            .loading-progress::-moz-progress-bar {
-                transition: none !important;
-            }
-        }
-
-        @media (prefers-color-scheme: light) and (prefers-reduced-motion: reduce) {
-            .spinner {
-                border-color: #2563eb;
-                background-color: rgba(37, 99, 235, 0.12);
-            }
-        }
-
-        @media (prefers-contrast: more) and (prefers-reduced-motion: reduce) {
-            .spinner {
-                border-color: #ffff00;
-                background-color: transparent;
-            }
-        }
-
-        @media (forced-colors: active) and (prefers-reduced-motion: reduce) {
-            .spinner {
-                border-color: Highlight;
-                background-color: transparent;
-            }
         }
 
         /* Error boundary / recovery container styles */
@@ -655,6 +373,561 @@
             padding: 24px;
             text-align: center;
             z-index: 3000;
+        }
+
+        @media (prefers-color-scheme: light) {
+            html:not([data-theme]),
+            html:not([data-theme]) body,
+            html:not([data-theme]) #loading_indicator {
+                color-scheme: light;
+                background-color: #f8f8f8;
+                color: #18181b;
+            }
+
+            html:not([data-theme]) .brand-badge {
+                fill: #eff6ff;
+                stroke: #2563eb;
+            }
+
+            html:not([data-theme]) .brand-axes {
+                stroke: #60a5fa;
+                stroke-opacity: 0.65;
+            }
+
+            html:not([data-theme]) .brand-wave {
+                stroke: #1d4ed8;
+            }
+
+            html:not([data-theme]) .brand-node {
+                fill: #2563eb;
+            }
+
+            html:not([data-theme]) .spinner {
+                border-color: rgba(24, 24, 27, 0.14);
+                border-top-color: #2563eb;
+            }
+
+            html:not([data-theme]) .loading-subtitle {
+                color: #475569;
+            }
+
+            html:not([data-theme]) .loading-progress {
+                border-color: #64748b;
+                background-color: #e2e8f0;
+                accent-color: #2563eb;
+            }
+
+            html:not([data-theme]) .loading-progress::-webkit-progress-bar {
+                background-color: #e2e8f0;
+            }
+
+            html:not([data-theme]) .loading-progress::-webkit-progress-value {
+                background-color: #2563eb;
+            }
+
+            html:not([data-theme]) .loading-progress::-moz-progress-bar {
+                background-color: #2563eb;
+            }
+
+            html:not([data-theme]) .loading-bytes {
+                color: #334155;
+            }
+
+            html:not([data-theme]) #error_container {
+                background-color: rgba(248, 248, 248, 0.96);
+            }
+
+            html:not([data-theme]) .error-card {
+                background-color: #ffffff;
+                border-color: #cbd5e1;
+                box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+            }
+
+            html:not([data-theme]) .error-title {
+                color: #dc2626;
+            }
+
+            html:not([data-theme]) .error-message {
+                color: #334155;
+            }
+
+            html:not([data-theme]) .instructions-card {
+                background-color: #f8fafc;
+                border-color: #e2e8f0;
+            }
+
+            html:not([data-theme]) .instructions-card h2 {
+                color: #0f172a;
+            }
+
+            html:not([data-theme]) .recovery-list {
+                color: #475569;
+            }
+
+            html:not([data-theme]) .browser-item h3 {
+                color: #1d4ed8;
+            }
+
+            html:not([data-theme]) .browser-item ol,
+            html:not([data-theme]) .additional-info {
+                color: #475569;
+                border-top-color: #e2e8f0;
+            }
+
+            html:not([data-theme]) .browser-item ol li strong {
+                color: #0f172a;
+            }
+
+            html:not([data-theme]) .additional-info a {
+                color: #1d4ed8;
+            }
+
+            html:not([data-theme]) .error-details {
+                background-color: #fef2f2;
+                border-color: #fecaca;
+                color: #991b1b;
+            }
+
+            html:not([data-theme]) noscript .noscript-banner {
+                background-color: #f8f8f8;
+                color: #b91c1c;
+            }
+        }
+
+        @media (prefers-contrast: more) {
+            html:not([data-theme]),
+            html:not([data-theme]) body,
+            html:not([data-theme]) #loading_indicator {
+                color-scheme: dark;
+                background-color: #000000;
+                color: #ffffff;
+            }
+
+            html:not([data-theme]) .brand-badge {
+                fill: #000000;
+                stroke: #ffffff;
+            }
+
+            html:not([data-theme]) .brand-axes {
+                stroke: #ffffff;
+                stroke-opacity: 0.85;
+            }
+
+            html:not([data-theme]) .brand-wave {
+                stroke: #ffff00;
+            }
+
+            html:not([data-theme]) .brand-node {
+                fill: #ffff00;
+            }
+
+            html:not([data-theme]) .spinner {
+                border-color: rgba(255, 255, 255, 0.35);
+                border-top-color: #ffff00;
+            }
+
+            html:not([data-theme]) .loading-subtitle {
+                color: #ffffff;
+            }
+
+            html:not([data-theme]) .loading-progress {
+                border: 2px solid #ffffff;
+                background-color: #000000;
+                accent-color: #ffff00;
+            }
+
+            html:not([data-theme]) .loading-progress::-webkit-progress-bar {
+                background-color: #000000;
+            }
+
+            html:not([data-theme]) .loading-progress::-webkit-progress-value {
+                background-color: #ffff00;
+            }
+
+            html:not([data-theme]) .loading-progress::-moz-progress-bar {
+                background-color: #ffff00;
+            }
+
+            html:not([data-theme]) .loading-bytes {
+                color: #ffffff;
+            }
+
+            html:not([data-theme]) #error_container {
+                background-color: #000000;
+            }
+
+            html:not([data-theme]) .error-card,
+            html:not([data-theme]) .instructions-card,
+            html:not([data-theme]) .error-details {
+                background-color: #000000;
+                border: 2px solid #ffffff;
+                box-shadow: none;
+            }
+
+            html:not([data-theme]) .error-title,
+            html:not([data-theme]) .error-icon-wrapper,
+            html:not([data-theme]) .error-details,
+            html:not([data-theme]) noscript .noscript-banner {
+                background-color: #000000;
+                color: #ffff00;
+            }
+
+            html:not([data-theme]) .error-message,
+            html:not([data-theme]) .instructions-card h2,
+            html:not([data-theme]) .recovery-list,
+            html:not([data-theme]) .browser-item ol,
+            html:not([data-theme]) .browser-item ol li strong,
+            html:not([data-theme]) .additional-info {
+                color: #ffffff;
+                border-top-color: #ffffff;
+            }
+
+            html:not([data-theme]) .browser-item h3,
+            html:not([data-theme]) .additional-info a {
+                color: #ffff00;
+            }
+
+            html:not([data-theme]) .reload-btn {
+                background-color: #005a9e;
+                color: #ffffff;
+                border: 2px solid #ffffff;
+            }
+
+            html:not([data-theme]) .reload-btn:hover,
+            html:not([data-theme]) .reload-btn:focus-visible {
+                outline: 2px solid #ffff00;
+                border-color: #ffff00;
+            }
+        }
+
+        @media (forced-colors: active) {
+            .brand-mark {
+                forced-color-adjust: none;
+            }
+
+            .brand-badge {
+                fill: Canvas;
+                stroke: CanvasText;
+            }
+
+            .brand-axes {
+                stroke: GrayText;
+                stroke-opacity: 1;
+            }
+
+            .brand-wave {
+                stroke: Highlight;
+            }
+
+            .brand-node {
+                fill: Highlight;
+            }
+
+            .spinner {
+                forced-color-adjust: none;
+                border-color: GrayText;
+                border-top-color: Highlight;
+            }
+
+            .loading-progress {
+                border-color: CanvasText;
+                accent-color: Highlight;
+            }
+        }
+
+        /* Explicit data-theme overrides synchronized with localStorage["app"] and MathExplorerApp */
+        html[data-theme="dark"],
+        html[data-theme="dark"] body,
+        html[data-theme="dark"] #loading_indicator {
+            color-scheme: dark;
+            background-color: #121214;
+            color: #e2e8f0;
+        }
+
+        html[data-theme="dark"] .spinner {
+            border-color: rgba(255, 255, 255, 0.12);
+            border-top-color: #3b82f6;
+        }
+
+        html[data-theme="dark"] #error_container {
+            background-color: rgba(10, 10, 12, 0.96);
+        }
+
+        html[data-theme="light"],
+        html[data-theme="light"] body,
+        html[data-theme="light"] #loading_indicator {
+            color-scheme: light;
+            background-color: #f8f8f8;
+            color: #18181b;
+        }
+
+        html[data-theme="light"] .brand-badge {
+            fill: #eff6ff;
+            stroke: #2563eb;
+        }
+
+        html[data-theme="light"] .brand-axes {
+            stroke: #60a5fa;
+            stroke-opacity: 0.65;
+        }
+
+        html[data-theme="light"] .brand-wave {
+            stroke: #1d4ed8;
+        }
+
+        html[data-theme="light"] .brand-node {
+            fill: #2563eb;
+        }
+
+        html[data-theme="light"] .spinner {
+            border-color: rgba(24, 24, 27, 0.14);
+            border-top-color: #2563eb;
+        }
+
+        html[data-theme="light"] .loading-subtitle {
+            color: #475569;
+        }
+
+        html[data-theme="light"] .loading-progress {
+            border-color: #64748b;
+            background-color: #e2e8f0;
+            accent-color: #2563eb;
+        }
+
+        html[data-theme="light"] .loading-progress::-webkit-progress-bar {
+            background-color: #e2e8f0;
+        }
+
+        html[data-theme="light"] .loading-progress::-webkit-progress-value {
+            background-color: #2563eb;
+        }
+
+        html[data-theme="light"] .loading-progress::-moz-progress-bar {
+            background-color: #2563eb;
+        }
+
+        html[data-theme="light"] .loading-bytes {
+            color: #334155;
+        }
+
+        html[data-theme="light"] #error_container {
+            background-color: rgba(248, 248, 248, 0.96);
+        }
+
+        html[data-theme="light"] .error-card {
+            background-color: #ffffff;
+            border-color: #cbd5e1;
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+        }
+
+        html[data-theme="light"] .error-title {
+            color: #dc2626;
+        }
+
+        html[data-theme="light"] .error-message {
+            color: #334155;
+        }
+
+        html[data-theme="light"] .instructions-card {
+            background-color: #f8fafc;
+            border-color: #e2e8f0;
+        }
+
+        html[data-theme="light"] .instructions-card h2 {
+            color: #0f172a;
+        }
+
+        html[data-theme="light"] .recovery-list {
+            color: #475569;
+        }
+
+        html[data-theme="light"] .browser-item h3 {
+            color: #1d4ed8;
+        }
+
+        html[data-theme="light"] .browser-item ol,
+        html[data-theme="light"] .additional-info {
+            color: #475569;
+            border-top-color: #e2e8f0;
+        }
+
+        html[data-theme="light"] .browser-item ol li strong {
+            color: #0f172a;
+        }
+
+        html[data-theme="light"] .additional-info a {
+            color: #1d4ed8;
+        }
+
+        html[data-theme="light"] .error-details {
+            background-color: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        html[data-theme="light"] noscript .noscript-banner {
+            background-color: #f8f8f8;
+            color: #b91c1c;
+        }
+
+        html[data-theme="high-contrast"],
+        html[data-theme="high-contrast"] body,
+        html[data-theme="high-contrast"] #loading_indicator {
+            color-scheme: dark;
+            background-color: #000000;
+            color: #ffffff;
+        }
+
+        html[data-theme="high-contrast"] .brand-badge {
+            fill: #000000;
+            stroke: #ffffff;
+        }
+
+        html[data-theme="high-contrast"] .brand-axes {
+            stroke: #ffffff;
+            stroke-opacity: 0.85;
+        }
+
+        html[data-theme="high-contrast"] .brand-wave {
+            stroke: #ffff00;
+        }
+
+        html[data-theme="high-contrast"] .brand-node {
+            fill: #ffff00;
+        }
+
+        html[data-theme="high-contrast"] .spinner {
+            border-color: rgba(255, 255, 255, 0.35);
+            border-top-color: #ffff00;
+        }
+
+        html[data-theme="high-contrast"] .loading-subtitle {
+            color: #ffffff;
+        }
+
+        html[data-theme="high-contrast"] .loading-progress {
+            border: 2px solid #ffffff;
+            background-color: #000000;
+            accent-color: #ffff00;
+        }
+
+        html[data-theme="high-contrast"] .loading-progress::-webkit-progress-bar {
+            background-color: #000000;
+        }
+
+        html[data-theme="high-contrast"] .loading-progress::-webkit-progress-value {
+            background-color: #ffff00;
+        }
+
+        html[data-theme="high-contrast"] .loading-progress::-moz-progress-bar {
+            background-color: #ffff00;
+        }
+
+        html[data-theme="high-contrast"] .loading-bytes {
+            color: #ffffff;
+        }
+
+        html[data-theme="high-contrast"] #error_container {
+            background-color: #000000;
+        }
+
+        html[data-theme="high-contrast"] .error-card,
+        html[data-theme="high-contrast"] .instructions-card,
+        html[data-theme="high-contrast"] .error-details {
+            background-color: #000000;
+            border: 2px solid #ffffff;
+            box-shadow: none;
+        }
+
+        html[data-theme="high-contrast"] .error-title,
+        html[data-theme="high-contrast"] .error-icon-wrapper,
+        html[data-theme="high-contrast"] .error-details,
+        html[data-theme="high-contrast"] noscript .noscript-banner {
+            background-color: #000000;
+            color: #ffff00;
+        }
+
+        html[data-theme="high-contrast"] .error-message,
+        html[data-theme="high-contrast"] .instructions-card h2,
+        html[data-theme="high-contrast"] .recovery-list,
+        html[data-theme="high-contrast"] .browser-item ol,
+        html[data-theme="high-contrast"] .browser-item ol li strong,
+        html[data-theme="high-contrast"] .additional-info {
+            color: #ffffff;
+            border-top-color: #ffffff;
+        }
+
+        html[data-theme="high-contrast"] .browser-item h3,
+        html[data-theme="high-contrast"] .additional-info a {
+            color: #ffff00;
+        }
+
+        html[data-theme="high-contrast"] .reload-btn {
+            background-color: #005a9e;
+            color: #ffffff;
+            border: 2px solid #ffffff;
+        }
+
+        html[data-theme="high-contrast"] .reload-btn:hover,
+        html[data-theme="high-contrast"] .reload-btn:focus-visible {
+            outline: 2px solid #ffff00;
+            border-color: #ffff00;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .spinner,
+            html[data-theme="dark"] .spinner {
+                animation: none !important;
+                border-color: #60a5fa;
+                background-color: rgba(96, 165, 250, 0.16);
+            }
+
+            html[data-theme="light"] .spinner {
+                animation: none !important;
+                border-color: #2563eb;
+                background-color: rgba(37, 99, 235, 0.12);
+            }
+
+            html[data-theme="high-contrast"] .spinner {
+                animation: none !important;
+                border-color: #ffff00;
+                background-color: transparent;
+            }
+
+            .loading-progress,
+            .reload-btn {
+                animation: none !important;
+                transition: none !important;
+            }
+
+            .loading-progress::-webkit-progress-value {
+                transition: none !important;
+            }
+
+            .loading-progress::-moz-progress-bar {
+                transition: none !important;
+            }
+        }
+
+        @media (prefers-color-scheme: light) and (prefers-reduced-motion: reduce) {
+            html:not([data-theme]) .spinner {
+                border-color: #2563eb;
+                background-color: rgba(37, 99, 235, 0.12);
+            }
+        }
+
+        @media (prefers-contrast: more) and (prefers-reduced-motion: reduce) {
+            html:not([data-theme]) .spinner {
+                border-color: #ffff00;
+                background-color: transparent;
+            }
+        }
+
+        @media (forced-colors: active) and (prefers-reduced-motion: reduce) {
+            .spinner {
+                border-color: Highlight;
+                background-color: transparent;
+            }
         }
     </style>
     <script src="coi-serviceworker.min.js" defer></script>
