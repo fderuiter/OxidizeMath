@@ -349,6 +349,8 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
             self.stepped_snapshot = None;
             self.dirty = true;
         }
+        self.draw_left_panel(ui);
+        self.draw_central_panel(ui);
         if has_update
             || matches!(
                 self.controller.state(),
@@ -357,8 +359,6 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         {
             ui.ctx().request_repaint();
         }
-        self.draw_left_panel(ui);
-        self.draw_central_panel(ui);
     }
 }
 
