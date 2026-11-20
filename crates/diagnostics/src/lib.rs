@@ -1,7 +1,6 @@
 #![doc = include_str!("../README.md")]
 
 use std::collections::HashMap;
-use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,18 +57,13 @@ pub type ListenerFn = Arc<dyn Fn(&DiagnosticEvent) + Send + Sync + 'static>;
 
 #[allow(missing_docs)]
 pub struct DiagnosticBus {
-    sender: Sender<DiagnosticEvent>,
-    receiver: Arc<Mutex<Receiver<DiagnosticEvent>>>,
     listeners: Arc<Mutex<Vec<ListenerFn>>>,
 }
 
 impl DiagnosticBus {
     #[allow(missing_docs)]
     pub fn new() -> Self {
-        let (sender, receiver) = channel();
         Self {
-            sender,
-            receiver: Arc::new(Mutex::new(receiver)),
             listeners: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -88,12 +82,6 @@ impl DiagnosticBus {
 
     #[allow(missing_docs)]
     pub fn emit(&self, event: DiagnosticEvent) {
-        if self.sender.send(event.clone()).is_err() {
-            eprintln!(
-                "[{}] {} - Metadata: {:?}",
-                event.severity, event.message, event.metadata
-            );
-        }
         let listeners = match self.listeners.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
@@ -110,32 +98,6 @@ impl DiagnosticBus {
             }
         }
     }
-
-    #[allow(missing_docs)]
-    pub fn emit_error<E: Diagnostic>(&self, err: &E) {
-        let metadata = err.metadata();
-        let thread = std::thread::current();
-        let thread_name = thread.name().map(|s| s.to_string());
-        self.emit(DiagnosticEvent {
-            severity: err.severity(),
-            message: err.to_string(),
-            metadata,
-            thread_name,
-        });
-    }
-
-    #[allow(missing_docs)]
-    pub fn try_recv_all(&self) -> Vec<DiagnosticEvent> {
-        let mut events = Vec::new();
-        let rx = match self.receiver.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        while let Ok(event) = rx.try_recv() {
-            events.push(event);
-        }
-        events
-    }
 }
 
 impl Default for DiagnosticBus {
@@ -148,16 +110,6 @@ impl Default for DiagnosticBus {
 pub fn global_bus() -> &'static DiagnosticBus {
     static BUS: OnceLock<DiagnosticBus> = OnceLock::new();
     BUS.get_or_init(DiagnosticBus::new)
-}
-
-#[allow(missing_docs)]
-pub fn emit(event: DiagnosticEvent) {
-    global_bus().emit(event);
-}
-
-#[allow(missing_docs)]
-pub fn emit_error<E: Diagnostic>(err: &E) {
-    global_bus().emit_error(err);
 }
 
 #[allow(missing_docs)]
@@ -188,4 +140,102 @@ pub fn init_panic_hook() {
 
         default_hook(panic_info);
     }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_diagnostic_bus_delivers_events_to_registered_listeners() {
+        let bus = DiagnosticBus::default();
+        let first_log = Arc::new(Mutex::new(Vec::new()));
+        let second_log = Arc::new(Mutex::new(Vec::new()));
+
+        let first_clone = Arc::clone(&first_log);
+        bus.register_listener(move |ev| {
+            first_clone
+                .lock()
+                .unwrap()
+                .push((ev.severity.clone(), ev.message.clone()));
+        });
+
+        let second_clone = Arc::clone(&second_log);
+        bus.register_listener(move |ev| {
+            second_clone
+                .lock()
+                .unwrap()
+                .push((ev.metadata.get("source").cloned(), ev.thread_name.clone()));
+        });
+
+        let mut metadata = HashMap::new();
+        metadata.insert("source".to_string(), "solver".to_string());
+        bus.emit(DiagnosticEvent {
+            severity: Severity::Warning,
+            message: "Step clamped".to_string(),
+            metadata,
+            thread_name: Some("worker-1".to_string()),
+        });
+
+        assert_eq!(
+            *first_log.lock().unwrap(),
+            vec![(Severity::Warning, "Step clamped".to_string())]
+        );
+        assert_eq!(
+            *second_log.lock().unwrap(),
+            vec![(Some("solver".to_string()), Some("worker-1".to_string()))]
+        );
+    }
+
+    #[test]
+    fn test_diagnostic_bus_isolates_listener_panics() {
+        let bus = DiagnosticBus::new();
+        let delivered = Arc::new(Mutex::new(Vec::new()));
+
+        bus.register_listener(|_ev| {
+            panic!("intentional listener failure");
+        });
+
+        let delivered_clone = Arc::clone(&delivered);
+        bus.register_listener(move |ev| {
+            delivered_clone.lock().unwrap().push(ev.message.clone());
+        });
+
+        bus.emit(DiagnosticEvent {
+            severity: Severity::Error,
+            message: "Survives preceding panic".to_string(),
+            metadata: HashMap::new(),
+            thread_name: None,
+        });
+
+        assert_eq!(
+            *delivered.lock().unwrap(),
+            vec!["Survives preceding panic".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_diagnostic_bus_recovers_from_poisoned_listener_lock() {
+        let bus = DiagnosticBus::new();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = bus.listeners.lock().unwrap();
+            panic!("poison listeners mutex");
+        }));
+        assert!(bus.listeners.is_poisoned());
+
+        let received = Arc::new(Mutex::new(Vec::new()));
+        let received_clone = Arc::clone(&received);
+        bus.register_listener(move |ev| {
+            received_clone.lock().unwrap().push(ev.severity.to_string());
+        });
+
+        bus.emit(DiagnosticEvent {
+            severity: Severity::Fatal,
+            message: "Recovered after poison".to_string(),
+            metadata: HashMap::new(),
+            thread_name: None,
+        });
+
+        assert_eq!(*received.lock().unwrap(), vec!["FATAL".to_string()]);
+    }
 }

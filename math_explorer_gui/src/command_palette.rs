@@ -186,6 +186,7 @@ impl CommandPalette {
                         let t_clean = t_name.replace('&', "").replace("__", "_");
                         t_clean.contains(meta.domain)
                             || (meta.domain == "ai" && t.name() == "Artificial Intelligence")
+                            || (meta.domain == "biology" && t.name() == "Morphogenesis")
                     })
                     .unwrap_or(0);
 

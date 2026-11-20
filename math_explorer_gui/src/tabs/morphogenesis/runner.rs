@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::MorphogenesisTab;
+use super::MorphogenesisTool;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_explorer::biology::diffusion::FiniteDifference2D;
@@ -26,7 +26,8 @@ pub struct MorphogenesisRunner {
 
 impl FiniteStateGuard for MorphogenesisRunner {
     fn is_finite_state(&self) -> bool {
-        self.system.u().iter().all(|&x| x.is_finite()) && self.system.v().iter().all(|&x| x.is_finite())
+        self.system.u().iter().all(|&x| x.is_finite())
+            && self.system.v().iter().all(|&x| x.is_finite())
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -60,11 +61,11 @@ impl SimulationRunner for MorphogenesisRunner {
         match cmd {
             SimCommand::Reset => {
                 let _ = self.sync_system_params();
-                MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
+                MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
             }
             SimCommand::Custom(ref s) if s == "reinit" => {
                 let _ = self.sync_system_params();
-                MorphogenesisTab::initialize_system(&mut self.system, self.width, self.height);
+                MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
             }
             _ => {}
         }
@@ -98,7 +99,7 @@ impl SimulationRunner for MorphogenesisRunner {
 
     fn get_snapshot(&self) -> StateSnapshot {
         let image =
-            MorphogenesisTab::plot_concentration(self.system.u(), self.width, self.height);
+            MorphogenesisTool::plot_concentration(self.system.u(), self.width, self.height);
         let pixels: Vec<eframe::egui::Color32> = image.pixels;
         StateSnapshot {
             width: self.width,

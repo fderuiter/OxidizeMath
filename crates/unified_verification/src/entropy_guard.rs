@@ -1,35 +1,12 @@
+use crate::whitelist::PathMatchOptions;
+pub use crate::whitelist::{EntropyGuardConfig, find_whitelist_path};
 use regex::Regex;
-use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 use walkdir::WalkDir;
-
-#[derive(Deserialize, Debug, Clone, Default)]
-#[serde(deny_unknown_fields)]
-pub struct WhitelistConfig {
-    #[serde(default)]
-    pub entropy_guard: Option<EntropyGuardConfig>,
-    #[serde(default)]
-    pub doc_verification: Option<toml::Value>,
-    #[serde(default)]
-    pub dead_code: Option<toml::Value>,
-    #[serde(default)]
-    pub workflow_linter: Option<toml::Value>,
-}
-
-#[derive(Deserialize, Debug, Clone, Default)]
-#[serde(deny_unknown_fields)]
-pub struct EntropyGuardConfig {
-    #[serde(default, alias = "targets", alias = "paths", alias = "scan_targets")]
-    pub scan_paths: Option<Vec<String>>,
-    #[serde(default, alias = "extensions", alias = "file_extensions")]
-    pub target_extensions: Option<Vec<String>>,
-    #[serde(default, alias = "exemptions", alias = "path_exemptions")]
-    pub allowlist: Option<Vec<String>>,
-}
 
 pub const DEFAULT_SCAN_PATHS: &[&str] = &[
     "crates",
@@ -270,52 +247,21 @@ impl<'a, 'ast> Visit<'ast> for SecurityVisitor<'a> {
     }
 }
 
-pub fn find_whitelist_path() -> Option<PathBuf> {
-    let candidates = [
-        Path::new("verification_whitelist.toml"),
-        Path::new("../../verification_whitelist.toml"),
-    ];
-    for p in &candidates {
-        if p.exists() {
-            return Some(p.to_path_buf());
-        }
-    }
-    None
-}
-
 pub fn load_whitelist_config(path: Option<&Path>) -> Result<EntropyGuardConfig, String> {
-    let toml_path = match path {
-        Some(p) => Some(p.to_path_buf()),
-        None => find_whitelist_path(),
-    };
-    let Some(p) = toml_path else {
-        return Ok(EntropyGuardConfig::default());
-    };
-    let content =
-        fs::read_to_string(&p).map_err(|err| format!("Failed to read {}: {}", p.display(), err))?;
-    let cfg = toml::from_str::<WhitelistConfig>(&content)
-        .map_err(|err| format!("Failed to parse {}: {}", p.display(), err))?;
-    let _ = (&cfg.doc_verification, &cfg.dead_code, &cfg.workflow_linter);
-    Ok(cfg.entropy_guard.unwrap_or_default())
+    let resolved = path.map(Path::to_path_buf).or_else(find_whitelist_path);
+    crate::whitelist::load_whitelist_strict(resolved.as_deref(), &[] as &[&Path])
+        .map(|cfg| cfg.entropy_guard.unwrap_or_default())
 }
 
 pub fn is_file_allowlisted(path: &Path, allowlist: &[String]) -> bool {
-    if allowlist.is_empty() {
-        return false;
-    }
-    let path_str = path.to_string_lossy().replace('\\', "/");
-    let norm_path = path_str.trim_start_matches("./");
-    for allowed in allowlist {
-        let norm_allowed = allowed.replace('\\', "/");
-        let norm_allowed = norm_allowed.trim_start_matches("./");
-        if norm_path == norm_allowed
-            || norm_path.ends_with(&format!("/{}", norm_allowed))
-            || path.file_name().and_then(|f| f.to_str()) == Some(norm_allowed)
-        {
-            return true;
-        }
-    }
-    false
+    let opts = PathMatchOptions {
+        trim_dot_slash: true,
+        require_non_empty: false,
+        match_file_name: true,
+    };
+    allowlist
+        .iter()
+        .any(|allowed| crate::whitelist::path_matches_lossy(path, allowed, opts))
 }
 
 fn is_ignored_dir(entry: &walkdir::DirEntry) -> bool {

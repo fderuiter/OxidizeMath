@@ -43,6 +43,13 @@ fn test_web_snapshot_relative_urls_and_tex_fallback_links() {
     );
     assert_eq!(web_snapshot::paper_tex_url("spec:transformer_v1"), None);
     assert_eq!(web_snapshot::paper_tex_url("registry:internal"), None);
+
+    const SW_JS: &str = include_str!("../../../sw.js");
+    assert!(
+        !SW_JS.contains("traceability_snapshot.json")
+            && !SW_JS.contains("Verification_Certificate.json"),
+        "sw.js must keep traceability JSON out of install precache so startup makes zero traceability requests"
+    );
 }
 
 #[test]

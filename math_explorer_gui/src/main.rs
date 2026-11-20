@@ -33,6 +33,14 @@ pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 
 use app::MathExplorerApp;
 
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
+#[cfg(test)]
+pub(crate) static VERIFIED_ALLOC_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     diagnostics::init_panic_hook();
@@ -58,9 +66,101 @@ fn main() -> eframe::Result {
 
 #[cfg(target_arch = "wasm32")]
 // theory_verification!
+fn mark_boot_initialized(doc: &web_sys::Document) {
+    if let Some(root) = doc.document_element() {
+        let _ = root.set_attribute("data-boot-initialized", "true");
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+// theory_verification!
+fn is_error_boundary_active(doc: &web_sys::Document) -> bool {
+    if doc
+        .document_element()
+        .and_then(|root| root.get_attribute("data-boot-failed"))
+        .as_deref()
+        == Some("true")
+    {
+        return true;
+    }
+    let Some(error_container) = doc.get_element_by_id("error_container") else {
+        return false;
+    };
+    if error_container
+        .get_attribute("data-error-active")
+        .as_deref()
+        == Some("true")
+    {
+        return true;
+    }
+    error_container
+        .get_attribute("style")
+        .is_some_and(|style| style.contains("display: flex") || style.contains("display:flex"))
+}
+
+#[cfg(target_arch = "wasm32")]
+// theory_verification!
+fn clear_global_wasm_bindings(window: Option<&web_sys::Window>) {
+    if let Some(win) = window {
+        let _ = js_sys::Reflect::delete_property(
+            win.as_ref(),
+            &wasm_bindgen::JsValue::from_str("wasmBindings"),
+        );
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+// theory_verification!
+fn notify_js_boot_complete(window: Option<&web_sys::Window>) {
+    let Some(win) = window else {
+        return;
+    };
+    let Ok(boot) = js_sys::Reflect::get(
+        win.as_ref(),
+        &wasm_bindgen::JsValue::from_str("__mathExplorerBoot"),
+    ) else {
+        return;
+    };
+    if boot.is_undefined() || boot.is_null() {
+        return;
+    }
+    if let Ok(mark_fn) =
+        js_sys::Reflect::get(&boot, &wasm_bindgen::JsValue::from_str("markBootComplete"))
+    {
+        use wasm_bindgen::JsCast;
+        if let Ok(func) = mark_fn.dyn_into::<js_sys::Function>() {
+            let _ = func.call0(&boot);
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+// theory_verification!
+fn bind_fallback_reload_listener(doc: &web_sys::Document) {
+    use wasm_bindgen::JsCast;
+    let Some(reload_btn) = doc.get_element_by_id("webgl_reload_button") else {
+        return;
+    };
+    if reload_btn.get_attribute("data-reload-bound").as_deref() == Some("true") {
+        return;
+    }
+    let _ = reload_btn.set_attribute("data-reload-bound", "true");
+    let listener = wasm_bindgen::closure::Closure::wrap(Box::new(|event: web_sys::Event| {
+        event.prevent_default();
+        if let Some(win) = web_sys::window() {
+            let _ = win.location().reload();
+        }
+    }) as Box<dyn FnMut(web_sys::Event)>);
+    let _ = reload_btn.add_event_listener_with_callback("click", listener.as_ref().unchecked_ref());
+    listener.forget();
+}
+
+#[cfg(target_arch = "wasm32")]
+// theory_verification!
 fn select_webgl_error_category(doc: &web_sys::Document) {
     if let Some(error_container) = doc.get_element_by_id("error_container") {
         let _ = error_container.set_attribute("data-error-category", "webgl");
+        let _ = error_container.set_attribute("data-error-active", "true");
     }
     if let Some(title_el) = doc.get_element_by_id("error_title") {
         title_el.set_text_content(Some("WebGL Initialization Failed"));
@@ -81,6 +181,11 @@ fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) 
     );
 
     if let Some(doc) = document {
+        mark_boot_initialized(doc);
+        if let Some(root) = doc.document_element() {
+            let _ = root.set_attribute("data-boot-failed", "true");
+        }
+
         if let Some(loading) = doc.get_element_by_id("loading_indicator") {
             let _ = loading.set_attribute("aria-busy", "false");
             loading.remove();
@@ -101,6 +206,8 @@ fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) 
             let _ = details_el.set_attribute("style", "display: block;");
         }
 
+        bind_fallback_reload_listener(doc);
+
         use wasm_bindgen::JsCast;
         if let Some(reload_btn) = doc
             .get_element_by_id("webgl_reload_button")
@@ -113,7 +220,58 @@ fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) 
 
 #[cfg(target_arch = "wasm32")]
 // theory_verification!
+fn finish_wasm_startup(
+    doc: &web_sys::Document,
+    window: Option<&web_sys::Window>,
+    runner: &eframe::WebRunner,
+    start_res: Result<(), wasm_bindgen::JsValue>,
+) {
+    use wasm_bindgen::JsCast;
+
+    if is_error_boundary_active(doc) {
+        runner.destroy();
+        clear_global_wasm_bindings(window);
+        return;
+    }
+
+    match start_res {
+        Ok(()) => {
+            mark_boot_initialized(doc);
+            notify_js_boot_complete(window);
+
+            if let Some(loading) = doc.get_element_by_id("loading_indicator") {
+                let _ = loading.set_attribute("aria-busy", "false");
+                loading.remove();
+            }
+
+            if let Some(canvas) = doc
+                .get_element_by_id("the_canvas_id")
+                .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
+            {
+                let _ = canvas.focus();
+            }
+        }
+        Err(err) => {
+            let err_msg = format!("{err:?}");
+            eprintln!("Failed to start eframe WebRunner: {err_msg}");
+            handle_webgl_failure(Some(doc), &err_msg);
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+// theory_verification!
 fn main() {
+    let initial_window = web_sys::window();
+    if let Some(doc) = initial_window.as_ref().and_then(web_sys::Window::document) {
+        mark_boot_initialized(&doc);
+        bind_fallback_reload_listener(&doc);
+        if is_error_boundary_active(&doc) {
+            clear_global_wasm_bindings(initial_window.as_ref());
+            return;
+        }
+    }
+
     console_error_panic_hook::set_once();
     diagnostics::init_panic_hook();
     let _ = federated_registry::global_registry();
@@ -122,12 +280,17 @@ fn main() {
         use wasm_bindgen::JsCast;
 
         let window = web_sys::window();
-        let document = window.as_ref().and_then(|w| w.document());
+        let document = window.as_ref().and_then(web_sys::Window::document);
 
         let Some(ref doc) = document else {
             eprintln!("Failed to obtain DOM Document during initialization.");
             return;
         };
+
+        if is_error_boundary_active(doc) {
+            clear_global_wasm_bindings(window.as_ref());
+            return;
+        }
 
         let canvas_el = doc.get_element_by_id("the_canvas_id");
         let canvas = match canvas_el.and_then(|el| el.dyn_into::<web_sys::HtmlCanvasElement>().ok())
@@ -157,26 +320,7 @@ fn main() {
             )
             .await;
 
-        match start_res {
-            Ok(()) => {
-                if let Some(loading) = doc.get_element_by_id("loading_indicator") {
-                    let _ = loading.set_attribute("aria-busy", "false");
-                    loading.remove();
-                }
-
-                if let Some(canvas) = doc
-                    .get_element_by_id("the_canvas_id")
-                    .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
-                {
-                    let _ = canvas.focus();
-                }
-            }
-            Err(err) => {
-                let err_msg = format!("{err:?}");
-                eprintln!("Failed to start eframe WebRunner: {err_msg}");
-                handle_webgl_failure(Some(doc), &err_msg);
-            }
-        }
+        finish_wasm_startup(doc, window.as_ref(), &runner, start_res);
     });
 }
 // theory_verification!

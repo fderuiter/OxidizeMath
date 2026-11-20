@@ -119,12 +119,4 @@ if [ -f "$INDEX_HTML" ] && grep -q '<script type="module">' "$INDEX_HTML"; then
     fi
 fi
 
-shopt -s nullglob
-for ext in wasm js html css svg webmanifest json; do
-    for f in "$STAGING_DIR"/*."$ext"; do
-        if [ -f "$f" ]; then
-            gzip -k -9 -f "$f"
-            brotli -k -9 -f "$f"
-        fi
-    done
-done
+bash "$SCRIPT_DIR/compress_dist.sh" "$STAGING_DIR"
