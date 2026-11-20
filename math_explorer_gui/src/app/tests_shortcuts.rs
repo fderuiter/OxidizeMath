@@ -301,3 +301,4 @@ fn test_keyboard_shortcuts_modal_renders_and_closes_with_updated_aria() {
 }
 
 mod history;
+mod sweep_and_undo;

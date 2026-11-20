@@ -184,3 +184,48 @@ fn push_scope(
     stack.push(scope);
     Ok(())
 }
+
+/// Constructs a bounded [`eframe::egui::DragValue`] that clamps finite inputs to `range`
+/// and rejects non-finite text literals such as `1e400`, `inf`, or `NaN`.
+pub fn bounded_drag_value(
+    value: &mut f64,
+    range: std::ops::RangeInclusive<f64>,
+    speed: f64,
+) -> eframe::egui::DragValue<'_> {
+    eframe::egui::DragValue::new(value)
+        .range(range)
+        .speed(speed)
+        .custom_parser(|s| s.trim().parse::<f64>().ok().filter(|v| v.is_finite()))
+}
+
+/// Enforces strict `min_val < max_val` ordering within `[bound_min, bound_max]` after UI edits.
+pub fn enforce_ordered_drag_range(
+    min_val: &mut f64,
+    max_val: &mut f64,
+    bound_min: f64,
+    bound_max: f64,
+    min_span: f64,
+    min_changed: bool,
+    max_changed: bool,
+) {
+    if !min_changed && !max_changed {
+        return;
+    }
+    if !min_val.is_finite() {
+        *min_val = bound_min;
+    }
+    if !max_val.is_finite() {
+        *max_val = bound_max;
+    }
+    *min_val = min_val.clamp(bound_min, bound_max);
+    *max_val = max_val.clamp(bound_min, bound_max);
+    if *min_val >= *max_val {
+        if max_changed && !min_changed {
+            *max_val = max_val.clamp(bound_min + min_span, bound_max);
+            *min_val = (*max_val - min_span).max(bound_min);
+        } else {
+            *min_val = min_val.clamp(bound_min, bound_max - min_span);
+            *max_val = (*min_val + min_span).min(bound_max);
+        }
+    }
+}
