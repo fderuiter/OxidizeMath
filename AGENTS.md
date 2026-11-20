@@ -9,8 +9,8 @@ All Markdown files in the repository (outside excluded build directories such as
 - Always tag non-Rust code blocks with `bash`, `yaml`, or `text` fences so `cargo test --doc` does not attempt to compile shell commands, workflow YAML, or plain text snippets as Rust doctests.
 - Keep core engineering safety rules (such as the NASA Power of 10 standards) in [CONTRIBUTING.md](CONTRIBUTING.md) rather than duplicating them here.
 - Ensure all relative Markdown links resolve to existing files in the repository.
-- Keep every Rust source file at or below **500 lines** (`check-file-lengths`) and keep functions within the **60-line** Clippy ceiling configured in `.clippy.toml`.
-- Do not introduce unwhitelisted `dead_code`, `unused`, or `warnings` lint suppressions (`allow`, `expect`, or `cfg_attr`). Zero `dead_code` bypass entries are permitted per [ADR 0019](docs/adr/0019-purge-dead-code-bypasses.md); gate test-only helpers with `#[cfg(test)]` or delete unreferenced items instead.
+- Keep every Rust source file at or below **500 lines** (`check-file-lengths`), keep functions within the **60-line** Clippy ceiling configured in `.clippy.toml`, and declare `[lints] workspace = true` in every first-party `Cargo.toml` manifest (`check-profiles` / `test-policy-audit`).
+- Do not introduce unwhitelisted `dead_code`, `unused`, or `warnings` lint suppressions (`allow`, `expect`, or `cfg_attr`), nor crate/module-level Clippy bypasses (`#![allow]` / `#![expect]` or `mod` attributes for `clippy::all`, `clippy::too_many_lines`, or `clippy::cognitive_complexity`, or item-level `clippy::all`) per [ADR 0019](docs/adr/0019-purge-dead-code-bypasses.md) and [ADR 0027](docs/adr/0027-enforce-workspace-clippy-lints.md). Gate test-only helpers with `#[cfg(test)]` or decompose large functions instead.
 - Modifying core mathematical or runtime crates (`crates/` excluding `crates/unified_verification`, or `math_explorer/`) requires creating or updating an Architectural Decision Record under `docs/adr/`.
 
 ```text
@@ -46,7 +46,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
-# Check Cargo release profile invariants (overflow-checks = true and zero member [profile.release] overrides)
+# Check Cargo release profile invariants (overflow-checks = true, zero member [profile.release] overrides, and [lints] workspace = true inheritance)
 cargo run -p unified_verification --release -- check-profiles
 cargo run -p xtask -- check-profiles
 
@@ -68,7 +68,7 @@ cargo run -p unified_verification --release -- lint-workflows
 # Run workflow linter unit tests directly
 cargo test -p unified_verification workflow_linter
 
-# Audit AST attributes for unauthorized dead_code/unused/warnings bypasses and unused dependencies
+# Audit member [lints] inheritance, AST dead_code/unused/warnings/Clippy bypasses, and unused dependencies
 cargo run -p xtask -- test-policy-audit
 cargo run -p unified_verification --release -- test-policy-audit
 
