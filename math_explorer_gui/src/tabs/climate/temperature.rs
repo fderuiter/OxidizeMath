@@ -10,8 +10,19 @@ fn static_temperature_series() -> &'static [[f64; 2]] {
         .as_slice()
 }
 
+fn static_synthetic_temperature_series() -> &'static [[f64; 2]] {
+    static SYNTHETIC: OnceLock<Vec<[f64; 2]>> = OnceLock::new();
+    SYNTHETIC
+        .get_or_init(|| {
+            let mut rng = oxidize_core::rng::OxidizeRng::default();
+            math_explorer::climate::dataset::get_temperature_anomalies_with_rng(&mut rng)
+        })
+        .as_slice()
+}
+
 pub struct TemperatureAnomaliesTool {
     custom_series: Option<Vec<[f64; 2]>>,
+    synthetic_walk: bool,
     revision: u64,
 }
 
@@ -19,16 +30,21 @@ impl Default for TemperatureAnomaliesTool {
     fn default() -> Self {
         Self {
             custom_series: None,
+            synthetic_walk: false,
             revision: 1,
         }
     }
 }
 
 impl TemperatureAnomaliesTool {
-    fn active_series(&self) -> &[[f64; 2]] {
-        self.custom_series
-            .as_deref()
-            .unwrap_or_else(|| static_temperature_series())
+    pub(crate) fn active_series(&self) -> &[[f64; 2]] {
+        if let Some(custom) = self.custom_series.as_deref() {
+            custom
+        } else if self.synthetic_walk {
+            static_synthetic_temperature_series()
+        } else {
+            static_temperature_series()
+        }
     }
 }
 
@@ -36,6 +52,8 @@ impl TemperatureAnomaliesTool {
 struct TempStateRef<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     time_series: Option<&'a [[f64; 2]]>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    synthetic_walk: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -43,6 +61,8 @@ struct TempStateRef<'a> {
 struct TempState {
     #[serde(default)]
     time_series: Option<Vec<[f64; 2]>>,
+    #[serde(default)]
+    synthetic_walk: bool,
 }
 
 impl InteractiveTool for TemperatureAnomaliesTool {
@@ -69,6 +89,7 @@ impl InteractiveTool for TemperatureAnomaliesTool {
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&TempStateRef {
             time_series: self.custom_series.as_deref(),
+            synthetic_walk: self.synthetic_walk,
         })
         .ok()
     }
@@ -88,6 +109,7 @@ impl InteractiveTool for TemperatureAnomaliesTool {
         } else {
             self.custom_series = None;
         }
+        self.synthetic_walk = s.synthetic_walk;
         self.revision = self.revision.wrapping_add(1).max(1);
         Ok(())
     }
@@ -99,7 +121,18 @@ impl InteractiveTool for TemperatureAnomaliesTool {
     }
 
     fn show_ui(&mut self, ui: &mut egui::Ui) {
-        ui.label("Global Temperature Anomalies:");
+        ui.horizontal(|ui| {
+            ui.heading("Global Temperature Anomalies (1951–1980 Baseline)");
+            if ui
+                .checkbox(&mut self.synthetic_walk, "Synthetic Random Walk")
+                .changed()
+            {
+                if self.synthetic_walk {
+                    self.custom_series = None;
+                }
+                self.revision = self.revision.wrapping_add(1).max(1);
+            }
+        });
 
         let plot = Plot::new("temperature_anomalies_plot")
             .view_aspect(2.0)
@@ -107,10 +140,15 @@ impl InteractiveTool for TemperatureAnomaliesTool {
             .y_axis_formatter(|y, _range| format!("{:.2}°C", y.value))
             .legend(egui_plot::Legend::default());
 
+        let series_name = if self.custom_series.is_none() && self.synthetic_walk {
+            "Synthetic Random Walk"
+        } else {
+            "GISTEMP Temperature Anomaly"
+        };
         let active_series = self.active_series();
         plot.show(ui, |plot_ui| {
             let points = PlotPoints::from_iter(active_series.iter().copied());
-            let line = Line::new("Temperature Anomaly", points).width(2.0_f32);
+            let line = Line::new(series_name, points).width(2.0_f32);
             plot_ui.line(line);
         });
     }
@@ -176,5 +214,29 @@ inventory::submit! {
         domain: "climate",
         tool_name: Some("TemperatureAnomaliesTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_temperature_baseline_1951_1980_and_synthetic_toggle() {
+        let mut tool = TemperatureAnomaliesTool::default();
+        assert_eq!(tool.save_state().as_deref(), Some("{}"));
+
+        let calibrated = tool.active_series().to_vec();
+        let baseline: Vec<f64> = calibrated
+            .iter()
+            .filter(|pt| (1951.0..=1980.0).contains(&pt[0]))
+            .map(|pt| pt[1])
+            .collect();
+        assert_eq!(baseline.len(), 30);
+        let mean = baseline.iter().sum::<f64>() / baseline.len() as f64;
+        assert!(mean.abs() < 0.01, "Expected ~0.0°C baseline mean, got {mean}");
+
+        tool.synthetic_walk = true;
+        assert_ne!(tool.active_series(), calibrated.as_slice());
     }
 }

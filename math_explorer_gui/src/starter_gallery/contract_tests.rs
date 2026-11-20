@@ -3,6 +3,7 @@
 use super::*;
 use crate::framework::SimulationFramework;
 use crate::tabs::morphogenesis::MorphogenesisTab;
+use crate::tabs::ExplorerTab;
 use federated_registry::{global_registry, Severity};
 
 fn inject_unknown_config_field(preset_json: &str) -> String {
@@ -55,41 +56,36 @@ fn test_all_57_starter_cards_launch_and_sync_framework_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 57);
+    assert_eq!(presets.len(), 59);
 
     for preset in presets {
         let json = preset.generate_preset();
-        if let Some(tool_name) = preset.tool_name {
-            let mut framework = SimulationFramework::new(preset.domain);
+        let tool_name = preset
+            .tool_name
+            .unwrap_or_else(|| panic!("Starter card '{}' must specify tool_name", preset.id));
+        let mut framework = SimulationFramework::new(preset.domain);
+        framework
+            .apply_starter_card(preset.title, Some(tool_name), Some(json))
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Starter card '{}' ({}/{}) failed to launch: {}",
+                    preset.id, preset.domain, tool_name, e
+                )
+            });
+        assert!(framework.preset_dialog.toast_error.is_none());
+        let active = framework.active_tool.as_ref().expect("active tool set");
+        let state = active
+            .save_state()
+            .expect("active tool must serialize state");
+        assert_eq!(framework.saved_tool_states.get(active.name()), Some(&state));
+        assert_eq!(framework.baseline_tool_state.as_ref(), Some(&state));
+        assert_eq!(
             framework
-                .apply_starter_card(preset.title, Some(tool_name), Some(json))
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "Starter card '{}' ({}/{}) failed to launch: {}",
-                        preset.id, preset.domain, tool_name, e
-                    )
-                });
-            assert!(framework.preset_dialog.toast_error.is_none());
-            let active = framework.active_tool.as_ref().expect("active tool set");
-            let state = active
-                .save_state()
-                .expect("active tool must serialize state");
-            assert_eq!(framework.saved_tool_states.get(active.name()), Some(&state));
-            assert_eq!(framework.baseline_tool_state.as_ref(), Some(&state));
-            assert_eq!(
-                framework
-                    .last_valid_snapshot
-                    .as_ref()
-                    .and_then(|s| s.tool_state.as_ref()),
-                Some(&state)
-            );
-        } else {
-            let mut morph = MorphogenesisTab::default();
-            morph
-                .apply_starter_card(preset.title, Some(json))
-                .unwrap_or_else(|e| panic!("Morphogenesis card '{}' failed: {}", preset.id, e));
-            assert!(morph.dialog_state.toast_error.is_none());
-        }
+                .last_valid_snapshot
+                .as_ref()
+                .and_then(|s| s.tool_state.as_ref()),
+            Some(&state)
+        );
     }
 }
 
@@ -208,13 +204,17 @@ fn test_failed_card_launch_surfaces_toast_and_preset_serialization_telemetry() {
         "Expected PresetSerialization warning telemetry on failed framework card launch"
     );
 
-    let mut morph = MorphogenesisTab::default();
+    let mut morph_fw = SimulationFramework::new("biology");
     let bad_morph_json = inject_unknown_config_field(PRESET_TURING_SPOTS);
-    assert!(morph
-        .apply_starter_card("Broken Spots", Some(&bad_morph_json))
+    assert!(morph_fw
+        .apply_starter_card(
+            "Broken Spots",
+            Some("MorphogenesisTool"),
+            Some(&bad_morph_json)
+        )
         .is_err());
-    assert!(morph
-        .dialog_state
+    assert!(morph_fw
+        .preset_dialog
         .toast_error
         .as_deref()
         .is_some_and(|m| m.contains("Broken Spots")));
@@ -266,19 +266,13 @@ fn test_single_starter_gallery_button_per_simulation_view() {
     let morph_ctx = egui::Context::default();
     morph_ctx.enable_accesskit();
     let mut morph = MorphogenesisTab::default();
+    let mut frame = eframe::Frame::_new_kittest();
     let morph_out = morph_ctx.run(
         egui::RawInput {
             screen_rect: Some(screen_rect),
             ..Default::default()
         },
-        |ctx| {
-            egui::CentralPanel::default()
-                .frame(egui::Frame::NONE)
-                .show(ctx, |ui| {
-                    morph.draw_controls(ui);
-                    morph.draw_canvas(ui);
-                });
-        },
+        |ctx| morph.show(ctx, &mut frame),
     );
     assert_eq!(
         count_gallery_buttons(&morph_out),

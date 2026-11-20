@@ -269,4 +269,11 @@ fn test_ci_pages_workflow_stages_all_28_paper_pdfs() {
         .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("tex"))
         .count();
     assert_eq!(tex_count, 28);
+
+    let sw_js =
+        std::fs::read_to_string(ws_root.join("math_explorer_gui/sw.js")).expect("read sw.js");
+    assert!(
+        sw_js.contains("isShellNavigationPath") && sw_js.contains(r"/\.pdf$/i.test(relPath)"),
+        "sw.js must keep staged paper PDF navigations out of the app-shell index.html cache"
+    );
 }

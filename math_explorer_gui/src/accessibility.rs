@@ -126,6 +126,40 @@ pub fn ensure_plot_live_bridge() {
     });
 }
 
+/// Synchronizes `aria_live_message` and `aria_live_assertive_message` temp keys on `ctx`
+/// with [`TwinSlotLiveRegion`], optionally clearing previous-frame keys after dispatch.
+pub fn sync_context_live_messages(ctx: &eframe::egui::Context, clear_keys: bool) {
+    for (msg_key, flag_key, priority) in [
+        ("aria_live_message", "aria_live_dispatched", "polite"),
+        (
+            "aria_live_assertive_message",
+            "aria_live_assertive_dispatched",
+            "assertive",
+        ),
+    ] {
+        let pending = ctx.data_mut(|d| {
+            let m_id = eframe::egui::Id::new(msg_key);
+            let f_id = eframe::egui::Id::new(flag_key);
+            let msg = d.get_temp::<String>(m_id);
+            let dispatched = d.get_temp::<bool>(f_id).unwrap_or(false);
+            if clear_keys {
+                d.remove::<String>(m_id);
+                d.remove::<bool>(f_id);
+            } else if msg.is_some() && !dispatched {
+                d.insert_temp(f_id, true);
+            }
+            msg.filter(|_| !dispatched)
+        });
+        if let Some(msg) = pending {
+            announce_status_with_priority(&msg, priority);
+            if !clear_keys {
+                let slot = with_live_region(|r| r.active_slot);
+                ctx.data_mut(|d| d.insert_temp(eframe::egui::Id::new("aria_live_slot"), slot));
+            }
+        }
+    }
+}
+
 thread_local! {
     static LIVE_REGION: std::cell::RefCell<TwinSlotLiveRegion> =
         std::cell::RefCell::new(TwinSlotLiveRegion::new());

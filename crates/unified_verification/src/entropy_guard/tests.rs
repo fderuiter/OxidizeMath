@@ -1,39 +1,9 @@
 use super::*;
-use std::ops::Deref;
+use crate::utils::test_utils::{CurrentDirGuard, TempTestDir};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-static TEST_DIR_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-struct CurrentDirGuard(PathBuf);
-
-impl Drop for CurrentDirGuard {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.0);
-    }
-}
-
-struct TempDir(PathBuf);
-
-impl Deref for TempDir {
-    type Target = Path;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn create_test_dir(prefix: &str) -> TempDir {
-    let n = TEST_DIR_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let dir = std::env::temp_dir().join(format!("{}_{}_{}", prefix, std::process::id(), n));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    TempDir(dir)
+fn create_test_dir(prefix: &str) -> TempTestDir {
+    TempTestDir::new(prefix)
 }
 
 fn write_fixture(dir: &Path, name: &str, body: &str) -> PathBuf {

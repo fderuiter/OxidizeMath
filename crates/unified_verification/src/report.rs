@@ -22,26 +22,7 @@ pub fn get_llvm_cov_output() -> std::process::Output {
 }
 
 pub fn collect_rs_files() -> Vec<std::path::PathBuf> {
-    let mut rs_files = Vec::new();
-    for entry in WalkDir::new(".").into_iter().filter_map(|e| e.ok()) {
-        let path_str = entry.path().to_string_lossy().replace("\\", "/");
-        if path_str.contains("/target/")
-            || path_str.contains("/.git/")
-            || path_str.contains("/egui_plot/")
-            || path_str.starts_with("target/")
-            || path_str.starts_with(".git/")
-            || path_str.starts_with("egui_plot/")
-        {
-            continue;
-        }
-        if entry.file_type().is_file()
-            && entry.path().extension().and_then(|s| s.to_str()) == Some("rs")
-        {
-            rs_files.push(entry.path().to_path_buf());
-        }
-    }
-    rs_files.sort();
-    rs_files
+    crate::utils::collect_rs_files_filtered(&[Path::new(".")], &["target", ".git", "egui_plot"])
 }
 
 pub fn parse_coverage(cov_json: &serde_json::Value) -> (f64, f64) {

@@ -1,7 +1,59 @@
-use super::WorkspaceSessionManager;
+use super::{SessionLifecycleState, WorkspaceSessionManager};
 use crate::app::{MathExplorerApp, SplitLayoutMode, ViewportLayout};
 use eframe::egui;
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
+
+#[cfg(any(feature = "pure_math", test))]
+const WORKSPACE_HISTORY_BRIDGE_ID: &str = "WORKSPACE_HISTORY_BRIDGE";
+
+#[cfg(any(feature = "pure_math", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PendingHistoryAction {
+    Undo,
+    Redo,
+}
+
+#[cfg(any(feature = "pure_math", test))]
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct WorkspaceHistoryBridge {
+    pub(crate) active: bool,
+    pub(crate) can_undo: bool,
+    pub(crate) can_redo: bool,
+    pub(crate) pending: Option<PendingHistoryAction>,
+}
+
+#[cfg(any(feature = "pure_math", test))]
+pub(crate) fn read_workspace_history_bridge(ctx: &egui::Context) -> WorkspaceHistoryBridge {
+    ctx.data(|d| {
+        d.get_temp::<WorkspaceHistoryBridge>(egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID))
+            .unwrap_or_default()
+    })
+}
+
+#[cfg(any(feature = "pure_math", test))]
+pub(crate) fn is_workspace_history_active(ctx: &egui::Context) -> bool {
+    read_workspace_history_bridge(ctx).active
+}
+
+#[cfg(any(feature = "pure_math", test))]
+pub(crate) fn request_workspace_undo(ctx: &egui::Context) {
+    ctx.data_mut(|d| {
+        let id = egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID);
+        let mut bridge = d.get_temp::<WorkspaceHistoryBridge>(id).unwrap_or_default();
+        bridge.pending = Some(PendingHistoryAction::Undo);
+        d.insert_temp(id, bridge);
+    });
+}
+
+#[cfg(any(feature = "pure_math", test))]
+pub(crate) fn request_workspace_redo(ctx: &egui::Context) {
+    ctx.data_mut(|d| {
+        let id = egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID);
+        let mut bridge = d.get_temp::<WorkspaceHistoryBridge>(id).unwrap_or_default();
+        bridge.pending = Some(PendingHistoryAction::Redo);
+        d.insert_temp(id, bridge);
+    });
+}
 
 fn consume_and_strip_shortcut(
     ctx: &egui::Context,
@@ -12,6 +64,7 @@ fn consume_and_strip_shortcut(
     let triggered = ctx.input_mut(|i| {
         let consumed = i.consume_shortcut(&egui::KeyboardShortcut::new(mods, key));
         if consumed {
+            i.keys_down.remove(&key);
             i.raw.events.retain(|ev| {
                 !matches!(
                     ev,
@@ -33,66 +86,50 @@ fn consume_and_strip_shortcut(
 }
 
 impl MathExplorerApp {
-    /// Returns true if an undo action is available on the focused tool or workspace session.
+    /// Returns true if an undo action is available on the workspace session.
+    #[cfg(any(not(target_os = "macos"), test))]
     pub fn can_undo(&self) -> bool {
-        let target = self.active_focused_pane();
-        self.pane_tab(target).is_some_and(|t| t.can_undo()) || self.session_manager.can_undo()
+        self.session_manager.can_undo()
     }
 
-    /// Returns true if a redo action is available on the focused tool or workspace session.
+    /// Returns true if a redo action is available on the workspace session.
+    #[cfg(any(not(target_os = "macos"), test))]
     pub fn can_redo(&self) -> bool {
-        let target = self.active_focused_pane();
-        self.pane_tab(target).is_some_and(|t| t.can_redo()) || self.session_manager.can_redo()
+        self.session_manager.can_redo()
     }
 
-    pub(crate) fn try_focused_pane_undo(&mut self) -> bool {
-        if !self
-            .pane_tab(self.active_focused_pane())
-            .is_some_and(|t| t.can_undo())
-        {
-            return false;
-        }
-        let Some((handled, tab_name)) = self
-            .focused_pane_tab_mut()
-            .map(|t| (t.try_undo(), t.name().to_string()))
-        else {
-            return false;
+    #[cfg(any(feature = "pure_math", test))]
+    pub(crate) fn sync_workspace_history_bridge(&self, ctx: &egui::Context) {
+        let bridge = WorkspaceHistoryBridge {
+            active: true,
+            can_undo: self.session_manager.can_undo(),
+            can_redo: self.session_manager.can_redo(),
+            pending: None,
         };
-        if !handled {
-            return false;
-        }
-        self.tab_state_cache.invalidate_tab(&tab_name);
-        self.snapshot_focused_secondary_slot();
-        let mut sm = std::mem::take(&mut self.session_manager);
-        sm.sync_after_local_undo(self);
-        self.session_manager = sm;
-        true
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID), bridge));
     }
 
-    pub(crate) fn try_focused_pane_redo(&mut self) -> bool {
-        if !self
-            .pane_tab(self.active_focused_pane())
-            .is_some_and(|t| t.can_redo())
-        {
-            return false;
+    #[cfg(not(any(feature = "pure_math", test)))]
+    pub(crate) fn sync_workspace_history_bridge(&self, _ctx: &egui::Context) {}
+
+    #[cfg(any(feature = "pure_math", test))]
+    pub(crate) fn drain_workspace_history_bridge(&mut self, ctx: &egui::Context) {
+        let pending = ctx.data_mut(|d| {
+            let id = egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID);
+            let mut bridge = d.get_temp::<WorkspaceHistoryBridge>(id).unwrap_or_default();
+            let action = bridge.pending.take();
+            d.insert_temp(id, bridge);
+            action
+        });
+        match pending {
+            Some(PendingHistoryAction::Undo) => self.undo(),
+            Some(PendingHistoryAction::Redo) => self.redo(),
+            None => {}
         }
-        let prev = self.session_manager.last_committed_state.clone();
-        let Some((handled, tab_name)) = self
-            .focused_pane_tab_mut()
-            .map(|t| (t.try_redo(), t.name().to_string()))
-        else {
-            return false;
-        };
-        if !handled {
-            return false;
-        }
-        self.tab_state_cache.invalidate_tab(&tab_name);
-        self.snapshot_focused_secondary_slot();
-        let mut sm = std::mem::take(&mut self.session_manager);
-        sm.sync_after_local_redo(prev, self);
-        self.session_manager = sm;
-        true
     }
+
+    #[cfg(not(any(feature = "pure_math", test)))]
+    pub(crate) fn drain_workspace_history_bridge(&mut self, _ctx: &egui::Context) {}
 
     pub(super) fn wants_non_canvas_keyboard_input(&self, ctx: &egui::Context) -> bool {
         if self.command_palette.is_open
@@ -129,16 +166,12 @@ impl WorkspaceSessionManager {
         k: egui::Key,
         m: egui::Modifiers,
     ) -> bool {
-        CommandRegistryData::register_and_check(
-            ctx,
-            name,
-            desc,
-            CommandTrigger::Shortcut(m, k),
-            true,
-            cat,
-            None,
-            None,
-        )
+        CommandRegistryData::register(ctx, name, desc, CommandTrigger::Shortcut(m, k), true, cat);
+        let touch_mode = ctx.data(|d| {
+            d.get_temp::<bool>(egui::Id::new("INPUT_MODE_TOUCH"))
+                .unwrap_or(false)
+        });
+        !touch_mode && consume_and_strip_shortcut(ctx, m, k, name)
     }
 
     /// Registers global workspace session keyboard shortcuts and checks for user triggers.
@@ -154,20 +187,26 @@ impl WorkspaceSessionManager {
         let (open, save_as, save) = Self::check_file_shortcuts(ctx, modifiers, shift_modifiers);
 
         if undo {
-            std::mem::swap(self, &mut app.session_manager);
-            app.undo();
-            std::mem::swap(self, &mut app.session_manager);
+            self.execute_undo(app);
         } else if redo {
-            std::mem::swap(self, &mut app.session_manager);
-            app.redo();
-            std::mem::swap(self, &mut app.session_manager);
+            self.execute_redo(app);
         } else if open {
             self.trigger_open();
         } else if save_as {
+            if self.lifecycle_state == SessionLifecycleState::DragEditing
+                || crate::reflective_ui::slider::has_active_sweeps(ctx)
+            {
+                app.clear_active_pane_caches();
+            }
             let state = app.get_app_state();
             let env_json = self.create_envelope(state);
             self.trigger_save_as(env_json);
         } else if save {
+            if self.lifecycle_state == SessionLifecycleState::DragEditing
+                || crate::reflective_ui::slider::has_active_sweeps(ctx)
+            {
+                app.clear_active_pane_caches();
+            }
             let state = app.get_app_state();
             let env_json = self.create_envelope(state);
             self.trigger_save(env_json);
@@ -225,7 +264,7 @@ impl WorkspaceSessionManager {
         (undo, redo)
     }
 
-    fn check_file_shortcuts(
+    pub(crate) fn check_file_shortcuts(
         ctx: &egui::Context,
         m: egui::Modifiers,
         sm: egui::Modifiers,

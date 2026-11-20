@@ -170,33 +170,48 @@ pub fn global_registry() -> &'static FederatedRegistry {
     })
 }
 
-#[allow(missing_docs)]
-pub fn init_panic_hook() {
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |panic_info| {
-        let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-            (*s).to_string()
-        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "Unknown panic".to_string()
-        };
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        let location = panic_info
-            .location()
-            .map(|l| format!("{}:{}", l.file(), l.line()))
-            .unwrap_or_default();
-        let mut metadata = HashMap::new();
-        metadata.insert("location".to_string(), location);
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
-        global_registry().emit(TelemetryEvent {
-            source: "PanicHook".to_string(),
+    #[test]
+    fn test_global_registry_forwards_diagnostics_global_bus_events() {
+        let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let registry = global_registry();
+        let _ = registry.try_recv_all();
+
+        diagnostics::global_bus().emit(diagnostics::DiagnosticEvent {
             severity: Severity::Fatal,
-            message: format!("Thread panicked: {}", message),
-            metadata,
-            thread_name: std::thread::current().name().map(|s| s.to_string()),
+            message: "Thread panicked: simulated fatal panic".to_string(),
+            metadata: HashMap::new(),
+            thread_name: Some("sim-worker".to_string()),
         });
 
-        default_hook(panic_info);
-    }));
+        let mut custom_meta = HashMap::new();
+        custom_meta.insert("source".to_string(), "domain_solver".to_string());
+        diagnostics::global_bus().emit(diagnostics::DiagnosticEvent {
+            severity: Severity::Warning,
+            message: "Adaptive step reduced".to_string(),
+            metadata: custom_meta,
+            thread_name: None,
+        });
+
+        let events = registry.try_recv_all();
+        assert_eq!(events.len(), 2);
+
+        assert_eq!(events[0].source, "diagnostics");
+        assert_eq!(events[0].severity, Severity::Fatal);
+        assert_eq!(events[0].message, "Thread panicked: simulated fatal panic");
+        assert_eq!(events[0].thread_name.as_deref(), Some("sim-worker"));
+
+        assert_eq!(events[1].source, "domain_solver");
+        assert_eq!(events[1].severity, Severity::Warning);
+        assert_eq!(events[1].message, "Adaptive step reduced");
+        assert_eq!(
+            events[1].metadata.get("source").map(String::as_str),
+            Some("domain_solver")
+        );
+    }
 }

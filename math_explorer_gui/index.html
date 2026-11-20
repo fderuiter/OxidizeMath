@@ -250,7 +250,8 @@
 
         #error_container[data-error-category="network"] #error_recovery_steps,
         #error_container[data-error-category="compile"] #error_recovery_steps,
-        #error_container[data-error-category="timeout"] #error_recovery_steps {
+        #error_container[data-error-category="timeout"] #error_recovery_steps,
+        #error_container[data-error-category="isolation"] #error_recovery_steps {
             display: block;
         }
 
@@ -357,6 +358,45 @@
             box-sizing: border-box;
             word-break: break-all;
             text-align: left;
+        }
+
+        /* Pure-CSS delayed recovery fallback when all external startup JS fails to load */
+        @keyframes preboot-fallback-reveal {
+            from {
+                visibility: visible;
+                opacity: 1;
+                pointer-events: auto;
+            }
+            to {
+                visibility: visible;
+                opacity: 1;
+                pointer-events: auto;
+            }
+        }
+
+        @keyframes preboot-fallback-hide {
+            from {
+                visibility: hidden;
+                opacity: 0;
+                pointer-events: none;
+            }
+            to {
+                visibility: hidden;
+                opacity: 0;
+                pointer-events: none;
+            }
+        }
+
+        html:not([data-boot-initialized]) #error_container {
+            display: flex;
+            visibility: hidden;
+            opacity: 0;
+            pointer-events: none;
+            animation: preboot-fallback-reveal 0.01s linear 2s forwards;
+        }
+
+        html:not([data-boot-initialized]) #loading_indicator {
+            animation: preboot-fallback-hide 0.01s linear 2s forwards;
         }
 
         /* Fallback for noscript */
@@ -931,6 +971,7 @@
     </style>
     <script src="reload.js" defer></script>
     <link data-trunk rel="copy-file" href="reload.js"/>
+    <link data-trunk rel="copy-file" href="sw.js"/>
     <script type="module" src="bootstrap.js" defer></script>
     <link data-trunk rel="copy-file" href="bootstrap.js"/>
     <link data-trunk rel="copy-file" href="initializer.js"/>
@@ -1018,9 +1059,9 @@
                     Additional checks: Verify your graphics drivers are current, test WebGL compatibility at <a href="https://get.webgl.org" target="_blank" rel="noopener noreferrer">get.webgl.org</a>, and ensure browser extensions or privacy modes are not blocking WebGL contexts.
                 </div>
             </div>
-            <div class="action-buttons">
-                <button type="button" id="webgl_reload_button" class="reload-btn">Reload Page</button>
-            </div>
+            <form class="action-buttons" method="get" action="">
+                <button type="submit" id="webgl_reload_button" class="reload-btn">Reload Page</button>
+            </form>
             <pre id="error_details" class="error-details" style="display: none;"></pre>
         </div>
     </div>
