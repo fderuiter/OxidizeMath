@@ -235,7 +235,7 @@ impl TraceabilityTab {
         }
     }
 
-    fn poll_scan_report(&mut self) {
+    fn poll_scan_channels(&mut self) {
         let Some(rx) = &self.report_rx else {
             return;
         };
@@ -266,7 +266,7 @@ impl TraceabilityTab {
         }
     }
 
-    fn render_header(&mut self, ui: &mut egui::Ui) {
+    fn render_portal_toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.heading("Theory-to-Code Traceability Portal");
             if ui.button("Refresh").clicked() {
@@ -366,47 +366,37 @@ impl ExplorerTab for TraceabilityTab {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.poll_scan_report();
-
+        self.poll_scan_channels();
         if !self.has_initial_scan {
             self.refresh();
         }
-
         if self.state.is_scanning() {
             ui.ctx().request_repaint();
         }
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.render_header(ui);
-
+            self.render_portal_toolbar(ui);
             match self.state.clone() {
                 TraceabilityScanState::Scanning => {
                     ui.horizontal(|ui| {
                         ui.spinner();
                         ui.label("Scanning repository via Virtual File System...");
                     });
-                    return;
                 }
-                TraceabilityScanState::Failed(err) => {
-                    self.render_failed_banner(ui, &err);
-                    return;
-                }
+                TraceabilityScanState::Failed(err) => self.render_failed_banner(ui, &err),
                 TraceabilityScanState::Idle => {
                     ui.label("Traceability scan is idle. Click Refresh to scan.");
-                    return;
                 }
-                TraceabilityScanState::Ready => {}
+                TraceabilityScanState::Ready => web_snapshot::render_ready_report(
+                    ui,
+                    &self.papers,
+                    &self.orphaned_papers,
+                    &self.unlinked_code,
+                    &self.invalid_links,
+                    self.certificate.as_ref(),
+                    Self::paper_url,
+                ),
             }
-
-            web_snapshot::render_ready_report(
-                ui,
-                &self.papers,
-                &self.orphaned_papers,
-                &self.unlinked_code,
-                &self.invalid_links,
-                self.certificate.as_ref(),
-                Self::paper_url,
-            );
         });
     }
 }

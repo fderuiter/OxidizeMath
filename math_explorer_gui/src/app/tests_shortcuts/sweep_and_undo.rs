@@ -479,16 +479,16 @@ fn test_continuous_physics_trajectories_excluded_from_undo_history() {
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
     let mut frame = eframe::Frame::_new_kittest();
+    let play = key_event(egui::Key::Space, egui::Modifiers::NONE);
 
-    let qm_idx = find_tab_index(&app, "Quantum Mechanics");
-    assert!(app.tabs[qm_idx].select_tool_by_name("SpinVisualizer"));
-    app.tabs[qm_idx].load_state(
-        r#"{"selected_tool_index":0,"selected_tool_name":"SpinVisualizer","show_theory_portal":false,"show_starter_gallery":false,"tool_states":{"Spin Dynamics (Bloch Sphere)":{"b_field":[1.0,0.0,1.0],"paused":false}}}"#,
-    );
-    for tab_name in ["MRI Physics", "Quantum Mechanics"] {
-        let idx = find_tab_index(&app, tab_name);
+    for (tab, tool) in [("MRI Physics", ""), ("Quantum Mechanics", "SpinVisualizer")] {
+        let idx = find_tab_index(&app, tab);
         app.selected_tab = idx;
+        assert!(tool.is_empty() || app.tabs[idx].select_tool_by_name(tool));
         let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
+        if !tool.is_empty() {
+            let _ = step_events(&ctx, &mut app, &mut frame, play.clone());
+        }
         let baseline_undo = app.session_manager.undo_stack.len();
         for _ in 0..20 {
             let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
