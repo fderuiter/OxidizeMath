@@ -163,10 +163,10 @@ fn meta_requires_test(meta: &syn::Meta) -> bool {
             syn::Meta::List(list) if list.path.is_ident("any") => {
                 if let Ok(nested) = list.parse_args_with(
                     syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-                ) {
-                    if !nested.is_empty() && nested.iter().all(meta_is_direct_test) {
-                        return true;
-                    }
+                ) && !nested.is_empty()
+                    && nested.iter().all(meta_is_direct_test)
+                {
+                    return true;
                 }
             }
             _ => {}

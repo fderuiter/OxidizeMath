@@ -13,6 +13,151 @@ pub struct AnimatedSliderState {
     pub direction: f64,
 }
 
+/// Per-frame animated slider sweep counters stored in `egui::Context` temporary memory.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SweepFrameFlags {
+    /// Cumulative egui pass number when these flags were recorded.
+    pub pass_nr: Option<u64>,
+    /// Number of `AnimatedSlider` widgets actively playing during the frame.
+    pub active_sweep_count: usize,
+    /// Number of `AnimatedSlider` widgets that mutated bound parameters during the frame.
+    pub mutation_count: u64,
+}
+
+const ROOT_SWEEP_FLAGS_KEY: &str = "ANIMATED_SLIDER_SWEEP_FLAGS";
+const LIVE_SWEEP_FLAGS_KEY: &str = "ANIMATED_SLIDER_LIVE_SWEEP_FLAGS";
+const PANE_SWEEP_FLAGS_KEY: &str = "ANIMATED_SLIDER_PANE_SWEEP_FLAGS";
+
+/// Resets root and live frame sweep flags at the start of an application frame.
+pub fn reset_frame_sweep_flags(ctx: &egui::Context) {
+    let flags = SweepFrameFlags {
+        pass_nr: Some(ctx.cumulative_pass_nr()),
+        active_sweep_count: 0,
+        mutation_count: 0,
+    };
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new(ROOT_SWEEP_FLAGS_KEY), flags);
+        d.insert_temp(egui::Id::new(LIVE_SWEEP_FLAGS_KEY), flags);
+    });
+}
+
+/// Starts a per-pane sweep accumulation scope prior to rendering `pane_idx`.
+pub fn begin_pane_sweep_scope(ctx: &egui::Context, pane_idx: usize) {
+    let flags = SweepFrameFlags {
+        pass_nr: Some(ctx.cumulative_pass_nr()),
+        active_sweep_count: 0,
+        mutation_count: 0,
+    };
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new((PANE_SWEEP_FLAGS_KEY, pane_idx)), flags);
+    });
+}
+
+/// Merges per-pane sweep flags recorded while rendering `pane_idx` into the root `egui::Context`.
+pub fn merge_pane_sweep_flags(ctx: &egui::Context, pane_idx: usize) {
+    let pass_nr = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| {
+        let Some(pane_flags) =
+            d.remove_temp::<SweepFrameFlags>(egui::Id::new((PANE_SWEEP_FLAGS_KEY, pane_idx)))
+        else {
+            return;
+        };
+        let root_id = egui::Id::new(ROOT_SWEEP_FLAGS_KEY);
+        let mut root = d.get_temp::<SweepFrameFlags>(root_id).unwrap_or_default();
+        if root.pass_nr != Some(pass_nr) {
+            root = SweepFrameFlags {
+                pass_nr: Some(pass_nr),
+                active_sweep_count: 0,
+                mutation_count: 0,
+            };
+        }
+        root.active_sweep_count = root
+            .active_sweep_count
+            .saturating_add(pane_flags.active_sweep_count);
+        root.mutation_count = root
+            .mutation_count
+            .saturating_add(pane_flags.mutation_count);
+        d.insert_temp(root_id, root);
+    });
+}
+
+fn read_valid_flags(ctx: &egui::Context, id: egui::Id) -> SweepFrameFlags {
+    let current_pass = ctx.cumulative_pass_nr();
+    ctx.data(|d| d.get_temp::<SweepFrameFlags>(id))
+        .filter(|f| {
+            f.pass_nr
+                .is_some_and(|p| current_pass <= p.saturating_add(1))
+        })
+        .unwrap_or_default()
+}
+
+/// Returns the merged count of actively playing `AnimatedSlider` sweeps in the root context.
+pub fn active_sweep_count(ctx: &egui::Context) -> usize {
+    read_valid_flags(ctx, egui::Id::new(ROOT_SWEEP_FLAGS_KEY)).active_sweep_count
+}
+
+/// Returns `true` when at least one `AnimatedSlider` sweep is active on the current frame.
+pub fn has_active_sweeps(ctx: &egui::Context) -> bool {
+    active_sweep_count(ctx) > 0 || live_active_sweep_count(ctx) > 0
+}
+
+/// Returns the merged count of `AnimatedSlider` sweep mutations in the root context.
+pub fn frame_sweep_mutation_count(ctx: &egui::Context) -> u64 {
+    read_valid_flags(ctx, egui::Id::new(ROOT_SWEEP_FLAGS_KEY)).mutation_count
+}
+
+/// Returns `true` when at least one `AnimatedSlider` sweep mutated a bound value this frame.
+pub fn has_sweep_mutation(ctx: &egui::Context) -> bool {
+    frame_sweep_mutation_count(ctx) > 0
+}
+
+/// Returns the live intra-pass count of actively playing `AnimatedSlider` sweeps.
+pub fn live_active_sweep_count(ctx: &egui::Context) -> usize {
+    read_valid_flags(ctx, egui::Id::new(LIVE_SWEEP_FLAGS_KEY)).active_sweep_count
+}
+
+/// Returns the live intra-pass count of `AnimatedSlider` parameter mutations.
+pub fn live_sweep_mutation_count(ctx: &egui::Context) -> u64 {
+    read_valid_flags(ctx, egui::Id::new(LIVE_SWEEP_FLAGS_KEY)).mutation_count
+}
+
+fn record_slider_frame(ctx: &egui::Context, playing: bool, mutated: bool) {
+    let pass_nr = ctx.cumulative_pass_nr();
+    let add_active = usize::from(playing);
+    let add_mut = u64::from(mutated);
+    ctx.data_mut(|d| {
+        let live_id = egui::Id::new(LIVE_SWEEP_FLAGS_KEY);
+        let mut live = d.get_temp::<SweepFrameFlags>(live_id).unwrap_or_default();
+        if live.pass_nr != Some(pass_nr) {
+            live = SweepFrameFlags {
+                pass_nr: Some(pass_nr),
+                active_sweep_count: 0,
+                mutation_count: 0,
+            };
+        }
+        live.active_sweep_count = live.active_sweep_count.saturating_add(add_active);
+        live.mutation_count = live.mutation_count.saturating_add(add_mut);
+        d.insert_temp(live_id, live);
+
+        let target_id = d
+            .get_temp::<usize>(egui::Id::new("CURRENT_RENDERING_PANE"))
+            .map(|p| egui::Id::new((PANE_SWEEP_FLAGS_KEY, p)))
+            .filter(|pane_id| d.get_temp::<SweepFrameFlags>(*pane_id).is_some())
+            .unwrap_or_else(|| egui::Id::new(ROOT_SWEEP_FLAGS_KEY));
+        let mut flags = d.get_temp::<SweepFrameFlags>(target_id).unwrap_or_default();
+        if flags.pass_nr != Some(pass_nr) {
+            flags = SweepFrameFlags {
+                pass_nr: Some(pass_nr),
+                active_sweep_count: 0,
+                mutation_count: 0,
+            };
+        }
+        flags.active_sweep_count = flags.active_sweep_count.saturating_add(add_active);
+        flags.mutation_count = flags.mutation_count.saturating_add(add_mut);
+        d.insert_temp(target_id, flags);
+    });
+}
+
 impl Default for AnimatedSliderState {
     fn default() -> Self {
         Self {
@@ -254,10 +399,12 @@ impl<'a> egui::Widget for AnimatedSlider<'a> {
             })
             .response;
 
-        if state.playing && self.advance_animation(ui, &mut state) {
+        let swept_this_frame = state.playing && self.advance_animation(ui, &mut state);
+        if swept_this_frame {
             changed = true;
         }
 
+        record_slider_frame(ui.ctx(), state.playing, swept_this_frame);
         ui.ctx().data_mut(|d| d.insert_temp(id, state));
 
         let mut response = response;

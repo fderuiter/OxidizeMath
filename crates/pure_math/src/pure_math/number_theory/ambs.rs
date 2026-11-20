@@ -1,4 +1,3 @@
-#![allow(clippy::too_many_lines)]
 use crate::math_types::{Integer, ops::Pow, ops::RemRounding};
 use crate::pure_math::number_theory::primes::is_prime;
 use thiserror::Error;
@@ -160,7 +159,85 @@ impl AmbsDsp {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[verified_engine::verified]
+    fn pair_modular_roots(root: Integer, p: &Integer) -> Vec<Integer> {
+        debug_assert!(*p > 1, "modulus p must exceed 1");
+        debug_assert!(root >= 0 && root < *p, "root must be reduced modulo p");
+        let root2 = p.clone() - &root;
+        if root == root2 {
+            vec![root]
+        } else {
+            vec![root, root2]
+        }
+    }
+
+    #[verified_engine::verified]
+    fn tonelli_factor_and_nonresidue(p: &Integer) -> Result<(Integer, u32, Integer), AmbsError> {
+        debug_assert!(*p > 2, "modulus p must exceed 2");
+        let p_minus_one = p.clone() - Integer::from(1);
+        let mut q = p_minus_one.clone();
+        let mut s = 0_u32;
+        while q.is_even() {
+            s += 1;
+            q /= Integer::from(2);
+        }
+        debug_assert!(q >= 1, "odd factor q must be positive");
+
+        let euler_exp = p_minus_one.clone() / Integer::from(2);
+        let mut z = Integer::from(2);
+        while z
+            .clone()
+            .pow_mod(&euler_exp, p)
+            .map_err(|_| AmbsError::ModuloError)?
+            != p_minus_one
+        {
+            z += Integer::from(1);
+        }
+        Ok((q, s, z))
+    }
+
+    #[verified_engine::verified]
+    fn tonelli_refine_root(
+        mut m: u32,
+        mut c: Integer,
+        mut t: Integer,
+        mut r: Integer,
+        p: &Integer,
+    ) -> Result<Vec<Integer>, AmbsError> {
+        debug_assert!(*p > 2, "modulus p must exceed 2");
+        debug_assert!(r >= 0 && r < *p, "initial root estimate must be reduced");
+        while t != 0 && t != 1 {
+            let mut t2i = t.clone();
+            let mut i = 0_u32;
+            for j in 1..m {
+                t2i = t2i
+                    .pow_mod(&Integer::from(2), p)
+                    .map_err(|_| AmbsError::ModuloError)?;
+                if t2i == 1 {
+                    i = j;
+                    break;
+                }
+            }
+            if i == 0 {
+                return Ok(vec![]);
+            }
+            let b = c
+                .pow_mod(&Integer::from(2).pow(m - i - 1), p)
+                .map_err(|_| AmbsError::ModuloError)?;
+            m = i;
+            c = b
+                .clone()
+                .pow_mod(&Integer::from(2), p)
+                .map_err(|_| AmbsError::ModuloError)?;
+            t = (t * &c).rem_euc(p);
+            r = (r * b).rem_euc(p);
+        }
+        if t == 0 {
+            return Ok(vec![Integer::from(0)]);
+        }
+        Ok(Self::pair_modular_roots(r, p))
+    }
+
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn tonelli_shanks(n: &Integer, p: &Integer) -> Result<Vec<Integer>, AmbsError> {
@@ -178,89 +255,25 @@ impl AmbsDsp {
             return Ok(vec![]);
         }
 
-        let p_mod_4 = p.clone().rem_euc(&Integer::from(4));
-        if p_mod_4 == 3 {
+        if p.clone().rem_euc(&Integer::from(4)) == 3 {
             let power = (p.clone() + Integer::from(1)) / Integer::from(4);
             let root = n_mod
                 .pow_mod(&power, p)
                 .map_err(|_| AmbsError::ModuloError)?;
-            let root2 = p.clone() - &root;
-            if root == root2 {
-                return Ok(vec![root]);
-            }
-            return Ok(vec![root, root2]);
+            return Ok(Self::pair_modular_roots(root, p));
         }
 
-        let mut q = p.clone() - Integer::from(1);
-        let mut s = 0;
-        while q.is_even() {
-            s += 1;
-            q /= Integer::from(2);
-        }
-
-        let mut z = Integer::from(2);
-        let power_z = (p.clone() - Integer::from(1)) / Integer::from(2);
-        let p_minus_1 = p.clone() - Integer::from(1);
-        while z
-            .clone()
-            .pow_mod(&power_z, p)
-            .map_err(|_| AmbsError::ModuloError)?
-            != p_minus_1
-        {
-            z += Integer::from(1);
-        }
-
-        let mut m = s;
-        let mut c = z.pow_mod(&q, p).map_err(|_| AmbsError::ModuloError)?;
-        let mut t = n_mod
+        let (q, s, z) = Self::tonelli_factor_and_nonresidue(p)?;
+        let c = z.pow_mod(&q, p).map_err(|_| AmbsError::ModuloError)?;
+        let t = n_mod
             .clone()
             .pow_mod(&q, p)
             .map_err(|_| AmbsError::ModuloError)?;
-        let power_r = (q.clone() + Integer::from(1)) / Integer::from(2);
-        let mut r = n_mod
+        let power_r = (q + Integer::from(1)) / Integer::from(2);
+        let r = n_mod
             .pow_mod(&power_r, p)
             .map_err(|_| AmbsError::ModuloError)?;
-
-        while t != 0 && t != 1 {
-            let mut t2i = t.clone();
-            let mut i = 0;
-            for j in 1..m {
-                t2i = t2i
-                    .pow_mod(&Integer::from(2), p)
-                    .map_err(|_| AmbsError::ModuloError)?;
-                if t2i == 1 {
-                    i = j;
-                    break;
-                }
-            }
-
-            if i == 0 {
-                return Ok(vec![]);
-            }
-
-            let b = c
-                .clone()
-                .pow_mod(&Integer::from(1_u32 << (m - i - 1)), p)
-                .map_err(|_| AmbsError::ModuloError)?;
-            m = i;
-            c = b
-                .clone()
-                .pow_mod(&Integer::from(2), p)
-                .map_err(|_| AmbsError::ModuloError)?;
-            t = (t * &c).rem_euc(p);
-            r = (r * b).rem_euc(p);
-        }
-
-        if t == 0 {
-            return Ok(vec![Integer::from(0)]);
-        }
-
-        let root2 = p.clone() - &r;
-        if r == root2 {
-            Ok(vec![r])
-        } else {
-            Ok(vec![r, root2])
-        }
+        Self::tonelli_refine_root(s, c, t, r, p)
     }
 
     #[verified_engine::verified]
@@ -380,6 +393,46 @@ impl AmbsDsp {
         Ok(final_roots)
     }
 
+    #[verified_engine::verified]
+    fn sieve_candidate_offsets(
+        &self,
+        n_l: u64,
+        n_l_int: &Integer,
+        s_l: &Integer,
+        r_i: &Integer,
+        c_max: usize,
+    ) -> Result<(), AmbsError> {
+        debug_assert!(n_l > 0, "prefix factor n_l must be positive");
+        debug_assert!(*s_l > 0, "divisor sum s_l must be positive");
+        let mut c_valid = vec![true; c_max];
+        let b_stop_sqrt = (self.b_stop / (n_l as f64)).sqrt() as u64;
+        let primes: Vec<u64> = (2..=std::cmp::max(2, b_stop_sqrt))
+            .filter(|&q| is_prime(q))
+            .collect();
+
+        for q in primes {
+            let q_int = Integer::from(q);
+            if let Some(s_l_inv) = modular_inverse(s_l, &q_int) {
+                let target_c = ((Integer::from(0) - r_i) * s_l_inv)
+                    .rem_euc(&q_int)
+                    .to_usize()
+                    .ok_or(AmbsError::ConversionError)?;
+                for c in (target_c..c_max).step_by(q as usize) {
+                    c_valid[c] = false;
+                }
+            }
+        }
+
+        for (c, &is_valid) in c_valid.iter().enumerate().take(c_max) {
+            if is_valid {
+                let z = Integer::from(r_i + &(Integer::from(c) * s_l));
+                let z_sq = Integer::from(&z * &z);
+                let _target_sigma = (Integer::from(2) * n_l_int * &z_sq + Integer::from(1)) / s_l;
+            }
+        }
+        Ok(())
+    }
+
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn search(&mut self, n_max_str: &str) -> Result<Option<Integer>, AmbsError> {
@@ -389,8 +442,7 @@ impl AmbsDsp {
         self.build_prefix(1, 0, 3.0);
 
         for &n_l in &self.prefix_pool {
-            let s_l_u64 = sigma(n_l);
-            let s_l = Integer::from(s_l_u64);
+            let s_l = Integer::from(sigma(n_l));
             let n_l_int = Integer::from(n_l);
 
             let Some(x_l) = modular_inverse(&(Integer::from(-2) * &n_l_int), &s_l) else {
@@ -403,40 +455,10 @@ impl AmbsDsp {
             }
 
             let z_max = (n_max.clone() / &n_l_int).sqrt();
-            let c_max_int = z_max / &s_l;
-
-            let c_max = c_max_int.to_usize().unwrap_or(10_000_000);
+            let c_max = (z_max / &s_l).to_usize().unwrap_or(10_000_000);
 
             for r_i in roots {
-                let mut c_valid = vec![true; c_max];
-                let b_stop_sqrt = (self.b_stop / (n_l as f64)).sqrt() as u64;
-
-                let primes: Vec<u64> = (2..=std::cmp::max(2, b_stop_sqrt))
-                    .filter(|&q| is_prime(q))
-                    .collect();
-
-                for q in primes {
-                    let q_int = Integer::from(q);
-                    if let Some(s_l_inv) = modular_inverse(&s_l, &q_int) {
-                        let target_c = ((Integer::from(0) - &r_i) * s_l_inv)
-                            .rem_euc(&q_int)
-                            .to_usize()
-                            .ok_or(AmbsError::ConversionError)?;
-                        let q_usize = q as usize;
-                        for c in (target_c..c_max).step_by(q_usize) {
-                            c_valid[c] = false;
-                        }
-                    }
-                }
-
-                for (c, &is_valid) in c_valid.iter().enumerate().take(c_max) {
-                    if is_valid {
-                        let z = Integer::from(&r_i + &(Integer::from(c) * &s_l));
-                        let z_sq = Integer::from(&z * &z);
-                        let _target_sigma =
-                            (Integer::from(2) * &n_l_int * &z_sq + Integer::from(1)) / &s_l;
-                    }
-                }
+                self.sieve_candidate_offsets(n_l, &n_l_int, &s_l, &r_i, c_max)?;
             }
         }
         Ok(None)
@@ -458,3 +480,6 @@ pub fn solve_quasiperfect_modularity(
         Ok("None".to_string())
     }
 }
+
+#[cfg(test)]
+mod tests;
