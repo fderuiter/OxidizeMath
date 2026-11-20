@@ -163,8 +163,16 @@ impl ReplicatorDynamicsTool {
             return;
         }
 
-        let idx = ((self.playback_time / self.dt).round() as usize)
-            .min(self.trajectory.len().saturating_sub(1));
+        let idx = if self.dt.is_finite() && self.dt > 0.0 && self.playback_time.is_finite() {
+            let step = (self.playback_time.max(0.0) / self.dt).round();
+            if step.is_finite() && step >= 0.0 {
+                (step as usize).min(self.trajectory.len().saturating_sub(1))
+            } else {
+                0
+            }
+        } else {
+            0
+        };
         let (current_time, current_state) = &self.trajectory[idx];
 
         let bars: Vec<Bar> = current_state

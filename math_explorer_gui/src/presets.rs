@@ -110,7 +110,7 @@ pub struct ReplicatorPresetConfig {
 }
 
 impl ReplicatorPresetConfig {
-    /// Validates matrix dimensions and strategy counts.
+    /// Validates matrix dimensions, finite numeric parameters, and bounded step counts.
     pub fn validate(&self) -> Result<(), String> {
         let rows = self.payoff_matrix.len();
         if rows == 0 {
@@ -123,6 +123,12 @@ impl ReplicatorPresetConfig {
                     i,
                     row.len(),
                     rows
+                ));
+            }
+            if row.iter().any(|val| !val.is_finite()) {
+                return Err(format!(
+                    "Payoff matrix row {} contains non-finite entries",
+                    i
                 ));
             }
         }
@@ -139,6 +145,30 @@ impl ReplicatorPresetConfig {
                 "Initial population count ({}) does not match strategy count ({})",
                 self.initial_population.len(),
                 rows
+            ));
+        }
+        if self
+            .initial_population
+            .iter()
+            .any(|val| !val.is_finite() || *val < 0.0)
+        {
+            return Err("Initial population entries must be finite and non-negative".to_string());
+        }
+        if !self.dt.is_finite() || self.dt <= 0.0 {
+            return Err(format!(
+                "Time step dt must be finite and strictly positive (got {})",
+                self.dt
+            ));
+        }
+        if !self.time_horizon.is_finite() || self.time_horizon <= 0.0 {
+            return Err(format!(
+                "Time horizon must be finite and strictly positive (got {})",
+                self.time_horizon
+            ));
+        }
+        if checked_ode_step_count(self.dt, self.time_horizon).is_none() {
+            return Err(format!(
+                "Simulation step count exceeds maximum allowed ({MAX_ODE_STEPS} steps)"
             ));
         }
         Ok(())

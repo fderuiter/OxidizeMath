@@ -27,6 +27,7 @@ pub mod sensitivity;
 pub mod starter_gallery;
 mod tabs;
 mod telemetry;
+mod wasm_crash_bridge;
 pub mod web_io;
 
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
@@ -44,6 +45,7 @@ pub(crate) static VERIFIED_ALLOC_TEST_MUTEX: std::sync::Mutex<()> = std::sync::M
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     diagnostics::init_panic_hook();
+    wasm_crash_bridge::init_fatal_panic_bridge();
     let _ = federated_registry::global_registry();
     accessibility::init_accessibility_bridge();
     let native_options = eframe::NativeOptions {
@@ -223,7 +225,7 @@ fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) 
 fn finish_wasm_startup(
     doc: &web_sys::Document,
     window: Option<&web_sys::Window>,
-    runner: &eframe::WebRunner,
+    runner: eframe::WebRunner,
     start_res: Result<(), wasm_bindgen::JsValue>,
 ) {
     use wasm_bindgen::JsCast;
@@ -236,6 +238,7 @@ fn finish_wasm_startup(
 
     match start_res {
         Ok(()) => {
+            wasm_crash_bridge::keep_web_runner_alive(runner, window);
             mark_boot_initialized(doc);
             notify_js_boot_complete(window);
 
@@ -252,6 +255,7 @@ fn finish_wasm_startup(
             }
         }
         Err(err) => {
+            runner.destroy();
             let err_msg = format!("{err:?}");
             eprintln!("Failed to start eframe WebRunner: {err_msg}");
             handle_webgl_failure(Some(doc), &err_msg);
@@ -274,6 +278,7 @@ fn main() {
 
     console_error_panic_hook::set_once();
     diagnostics::init_panic_hook();
+    wasm_crash_bridge::init_fatal_panic_bridge();
     let _ = federated_registry::global_registry();
     accessibility::init_accessibility_bridge();
     wasm_bindgen_futures::spawn_local(async {
@@ -320,7 +325,7 @@ fn main() {
             )
             .await;
 
-        finish_wasm_startup(doc, window.as_ref(), &runner, start_res);
+        finish_wasm_startup(doc, window.as_ref(), runner, start_res);
     });
 }
 // theory_verification!

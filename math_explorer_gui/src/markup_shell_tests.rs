@@ -1,7 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 const INDEX_HTML: &str = include_str!("../index.html");
+const RECOVERY_JS: &str = include_str!("../recovery.js");
 const RELOAD_JS: &str = include_str!("../reload.js");
+const BOOTSTRAP_JS: &str = include_str!("../bootstrap.js");
+const INITIALIZER_JS: &str = include_str!("../initializer.js");
+const SW_JS: &str = include_str!("../sw.js");
+const WORKER_JS: &str = include_str!("../worker.js");
 
 #[test]
 fn test_document_title_and_metadata_tags() {
@@ -320,10 +325,61 @@ fn test_error_container_supports_categories_and_webgl_instructions() {
         "data-error-category=\"network\"",
         "data-error-category=\"compile\"",
         "data-error-category=\"timeout\"",
+        "data-error-category=\"runtime\"",
     ] {
         assert!(
             INDEX_HTML.contains(required),
             "index.html must include {required} for multi-category error recovery"
+        );
+    }
+}
+
+#[test]
+fn test_runtime_recovery_reset_and_safe_mode_markup_contracts() {
+    for required in [
+        "id=\"workspace_reset_button\"",
+        "id=\"quarantine_download_button\"",
+        "id=\"safe_mode_banner\"",
+        "id=\"safe_mode_download_button\"",
+        "id=\"safe_mode_reset_button\"",
+        "id=\"safe_mode_dismiss_button\"",
+        "<script src=\"recovery.js\" defer></script>",
+        "<link data-trunk rel=\"copy-file\" href=\"recovery.js\"/>",
+    ] {
+        assert!(
+            INDEX_HTML.contains(required),
+            "index.html must include recovery and Safe Mode control: {required}"
+        );
+    }
+    for token in [
+        "math_explorer_boot_sentinel",
+        "math_explorer_quarantined_app",
+        "aria-live-assertive-slot-",
+        "resetWorkspaceAndReload",
+        "downloadQuarantinedState",
+        "quarantineAbortedBoot",
+    ] {
+        assert!(
+            RECOVERY_JS.contains(token),
+            "recovery.js must define recovery/quarantine contract: {token}"
+        );
+    }
+}
+
+#[test]
+fn test_all_shell_javascript_files_respect_500_line_limit() {
+    for (name, source) in [
+        ("recovery.js", RECOVERY_JS),
+        ("reload.js", RELOAD_JS),
+        ("bootstrap.js", BOOTSTRAP_JS),
+        ("initializer.js", INITIALIZER_JS),
+        ("sw.js", SW_JS),
+        ("worker.js", WORKER_JS),
+    ] {
+        let line_count = source.lines().count();
+        assert!(
+            line_count <= 500,
+            "{name} must not exceed 500 lines (found {line_count} lines)"
         );
     }
 }

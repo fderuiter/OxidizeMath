@@ -248,6 +248,7 @@
             display: none;
         }
 
+        #error_container[data-error-category="runtime"] #error_recovery_steps,
         #error_container[data-error-category="network"] #error_recovery_steps,
         #error_container[data-error-category="compile"] #error_recovery_steps,
         #error_container[data-error-category="timeout"] #error_recovery_steps,
@@ -319,6 +320,7 @@
 
         .action-buttons {
             display: flex;
+            flex-wrap: wrap;
             gap: 12px;
             justify-content: center;
             width: 100%;
@@ -343,6 +345,64 @@
         .reload-btn:focus-visible {
             outline: 2px solid #60a5fa;
             outline-offset: 2px;
+        }
+
+        .secondary-action-btn {
+            background-color: #262630;
+            color: #e2e8f0;
+            border: 1px solid #3f3f4e;
+            border-radius: 6px;
+            padding: 10px 18px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .secondary-action-btn:hover {
+            background-color: #323240;
+            border-color: #60a5fa;
+        }
+
+        .secondary-action-btn:focus-visible {
+            outline: 2px solid #60a5fa;
+            outline-offset: 2px;
+        }
+
+        .safe-mode-banner {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            max-width: min(560px, calc(100vw - 32px));
+            background-color: rgba(24, 24, 30, 0.96);
+            color: #f1f5f9;
+            border: 1px solid #f59e0b;
+            border-radius: 10px;
+            padding: 12px 16px;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+            z-index: 1500;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 0.875rem;
+            line-height: 1.45;
+            box-sizing: border-box;
+        }
+
+        .safe-mode-banner[hidden],
+        .secondary-action-btn[hidden] {
+            display: none !important;
+        }
+
+        .safe-mode-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .safe-mode-actions .secondary-action-btn {
+            padding: 6px 12px;
+            font-size: 0.82rem;
         }
 
         .error-details {
@@ -809,6 +869,24 @@
             color: #b91c1c;
         }
 
+        html[data-theme="light"] .secondary-action-btn {
+            background-color: #f1f5f9;
+            color: #0f172a;
+            border-color: #cbd5e1;
+        }
+
+        html[data-theme="light"] .secondary-action-btn:hover {
+            background-color: #e2e8f0;
+            border-color: #2563eb;
+        }
+
+        html[data-theme="light"] .safe-mode-banner {
+            background-color: rgba(255, 255, 255, 0.97);
+            color: #0f172a;
+            border-color: #d97706;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+        }
+
         html[data-theme="high-contrast"],
         html[data-theme="high-contrast"] body,
         html[data-theme="high-contrast"] #loading_indicator {
@@ -913,6 +991,26 @@
             border-color: #ffff00;
         }
 
+        html[data-theme="high-contrast"] .secondary-action-btn {
+            background-color: #000000;
+            color: #ffffff;
+            border: 2px solid #ffffff;
+        }
+
+        html[data-theme="high-contrast"] .secondary-action-btn:hover,
+        html[data-theme="high-contrast"] .secondary-action-btn:focus-visible {
+            outline: 2px solid #ffff00;
+            border-color: #ffff00;
+            color: #ffff00;
+        }
+
+        html[data-theme="high-contrast"] .safe-mode-banner {
+            background-color: #000000;
+            color: #ffffff;
+            border: 2px solid #ffff00;
+            box-shadow: none;
+        }
+
         @media (prefers-reduced-motion: reduce) {
             .spinner,
             html[data-theme="dark"] .spinner {
@@ -934,7 +1032,8 @@
             }
 
             .loading-progress,
-            .reload-btn {
+            .reload-btn,
+            .secondary-action-btn {
                 animation: none !important;
                 transition: none !important;
             }
@@ -969,6 +1068,8 @@
             }
         }
     </style>
+    <script src="recovery.js" defer></script>
+    <link data-trunk rel="copy-file" href="recovery.js"/>
     <script src="reload.js" defer></script>
     <link data-trunk rel="copy-file" href="reload.js"/>
     <link data-trunk rel="copy-file" href="sw.js"/>
@@ -1061,10 +1162,23 @@
             </div>
             <form class="action-buttons" method="get" action="">
                 <button type="submit" id="webgl_reload_button" class="reload-btn">Reload Page</button>
+                <button type="button" id="workspace_reset_button" class="secondary-action-btn">Reset Workspace &amp; Reload</button>
+                <button type="button" id="quarantine_download_button" class="secondary-action-btn" hidden>Download Quarantined State</button>
             </form>
             <pre id="error_details" class="error-details" style="display: none;"></pre>
         </div>
     </div>
+
+    <aside id="safe_mode_banner" class="safe-mode-banner" role="region" aria-label="Safe Mode workspace recovery" hidden>
+        <div class="safe-mode-copy">
+            <strong>Safe Mode:</strong> Saved workspace state was quarantined after an interrupted startup so Math Explorer could launch cleanly.
+        </div>
+        <div class="safe-mode-actions">
+            <button type="button" id="safe_mode_download_button" class="secondary-action-btn">Download Quarantined State</button>
+            <button type="button" id="safe_mode_reset_button" class="secondary-action-btn">Clear Quarantined Backup</button>
+            <button type="button" id="safe_mode_dismiss_button" class="secondary-action-btn">Dismiss</button>
+        </div>
+    </aside>
 
     <canvas id="the_canvas_id" tabindex="0" role="application" aria-label="Math Explorer Application">
         Math Explorer interactive scientific simulation and mathematical visualization canvas. Your browser does not support the HTML5 canvas element or WebGL.

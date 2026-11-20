@@ -2,12 +2,13 @@
 // Caches only lightweight shell HTML/JS/metadata (excluding the ~4.5 MB .wasm bundle)
 // using network-first resolution so offline reloads render #error_container cleanly
 // instead of failing navigation with net::ERR_FAILED.
-const SHELL_CACHE_NAME = 'math-explorer-shell-v1';
+const SHELL_CACHE_NAME = 'math-explorer-shell-v2';
 const SHELL_CACHE_PREFIX = 'math-explorer-shell-';
 
 const CORE_SHELL_PATHS = [
     './',
     './index.html',
+    './recovery.js',
     './reload.js',
     './bootstrap.js',
     './initializer.js',

@@ -55,7 +55,9 @@ fn main() {
     let time_horizon = steps as f64 * dt;
 
     let start_sim = Instant::now();
-    let _traj = system.simulate_with_strategy(initial_state.clone(), time_horizon, dt, &mut solver);
+    let _traj = system
+        .simulate_with_strategy(initial_state.clone(), time_horizon, dt, &mut solver)
+        .expect("benchmark replicator parameters must be valid");
     let duration_sim = start_sim.elapsed();
     println!("Simulation Time: {:.2?}", duration_sim);
 }

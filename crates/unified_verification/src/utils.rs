@@ -38,12 +38,13 @@ fn should_visit_entry(root: &Path, entry: &walkdir::DirEntry, excluded_dirs: &[&
     true
 }
 
-/// Collects sorted `.rs` file paths across `roots`, skipping any directories in `excluded_dirs`.
-pub(crate) fn collect_rs_files_filtered<P: AsRef<Path>>(
+/// Collects sorted source file paths matching `extensions` across `roots`, skipping `excluded_dirs`.
+pub(crate) fn collect_source_files_filtered<P: AsRef<Path>>(
     roots: &[P],
+    extensions: &[&str],
     excluded_dirs: &[&str],
 ) -> Vec<PathBuf> {
-    let mut rs_files = Vec::new();
+    let mut files = Vec::new();
     for root_ref in roots {
         let root = root_ref.as_ref();
         if !root.exists() {
@@ -55,20 +56,36 @@ pub(crate) fn collect_rs_files_filtered<P: AsRef<Path>>(
             .filter_map(Result::ok)
         {
             if entry.file_type().is_file()
-                && entry.path().extension().and_then(|s| s.to_str()) == Some("rs")
+                && entry
+                    .path()
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|ext| extensions.contains(&ext))
             {
-                rs_files.push(entry.path().to_path_buf());
+                files.push(entry.path().to_path_buf());
             }
         }
     }
-    rs_files.sort();
-    rs_files
+    files.sort();
+    files
+}
+
+/// Collects sorted `.rs` file paths across `roots`, skipping any directories in `excluded_dirs`.
+pub(crate) fn collect_rs_files_filtered<P: AsRef<Path>>(
+    roots: &[P],
+    excluded_dirs: &[&str],
+) -> Vec<PathBuf> {
+    collect_source_files_filtered(roots, &["rs"], excluded_dirs)
 }
 
 pub fn check_file_lengths(members: &[String]) -> Vec<String> {
     let mut exceeding = Vec::new();
 
-    for path in collect_rs_files_filtered(members, &["target", "egui_plot"]) {
+    for path in collect_source_files_filtered(
+        members,
+        &["rs", "js"],
+        &["target", "dist", "node_modules", "egui_plot"],
+    ) {
         if let Ok(content) = fs::read_to_string(&path) {
             let lines = content.lines().count();
             if lines > 500 {
@@ -226,5 +243,21 @@ mod tests {
                 dir.join("src/z.rs")
             ]
         );
+    }
+
+    #[test]
+    fn test_check_file_lengths_enforces_js_limit_and_skips_dist() {
+        let dir = test_utils::TempTestDir::new("test_js_file_lengths");
+        let oversize_js = dir.join("shell.js");
+        let dist_js = dir.join("dist/bundle.js");
+        let ok_js = dir.join("small.js");
+        fs::create_dir_all(dist_js.parent().unwrap()).unwrap();
+        fs::write(&oversize_js, "// line\n".repeat(501)).unwrap();
+        fs::write(&dist_js, "// line\n".repeat(650)).unwrap();
+        fs::write(&ok_js, "// line\n".repeat(120)).unwrap();
+
+        let violations = check_file_lengths(&[dir.to_string_lossy().to_string()]);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("shell.js (501 lines)"));
     }
 }

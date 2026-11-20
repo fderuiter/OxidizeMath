@@ -114,32 +114,38 @@ pub fn global_bus() -> &'static DiagnosticBus {
 
 #[allow(missing_docs)]
 pub fn init_panic_hook() {
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |panic_info| {
-        let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-            (*s).to_string()
-        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "Unknown panic".to_string()
-        };
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |panic_info| {
+            let message = format_panic_payload(panic_info.payload());
+            let location = panic_info
+                .location()
+                .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+                .unwrap_or_default();
+            let mut metadata = HashMap::new();
+            metadata.insert("location".to_string(), location);
 
-        let location = panic_info
-            .location()
-            .map(|l| format!("{}:{}", l.file(), l.line()))
-            .unwrap_or_default();
-        let mut metadata = HashMap::new();
-        metadata.insert("location".to_string(), location);
+            global_bus().emit(DiagnosticEvent {
+                severity: Severity::Fatal,
+                message: format!("Thread panicked: {message}"),
+                metadata,
+                thread_name: std::thread::current().name().map(ToString::to_string),
+            });
 
-        global_bus().emit(DiagnosticEvent {
-            severity: Severity::Fatal,
-            message: format!("Thread panicked: {}", message),
-            metadata,
-            thread_name: std::thread::current().name().map(|s| s.to_string()),
-        });
+            default_hook(panic_info);
+        }));
+    });
+}
 
-        default_hook(panic_info);
-    }));
+fn format_panic_payload(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "Unknown panic".to_string()
+    }
 }
 
 #[cfg(test)]
@@ -237,5 +243,35 @@ mod tests {
         });
 
         assert_eq!(*received.lock().unwrap(), vec!["FATAL".to_string()]);
+    }
+
+    #[test]
+    fn test_init_panic_hook_emits_fatal_event_with_location() {
+        init_panic_hook();
+        init_panic_hook();
+
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let captured_clone = Arc::clone(&captured);
+        global_bus().register_listener(move |ev| {
+            if ev.severity == Severity::Fatal && ev.message.contains("diagnostic_hook_probe") {
+                captured_clone.lock().unwrap().push((
+                    ev.message.clone(),
+                    ev.metadata.get("location").cloned().unwrap_or_default(),
+                ));
+            }
+        });
+
+        let _ = std::panic::catch_unwind(|| {
+            panic!("diagnostic_hook_probe");
+        });
+
+        let events = captured.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(
+            events[0]
+                .0
+                .contains("Thread panicked: diagnostic_hook_probe")
+        );
+        assert!(events[0].1.contains("crates/diagnostics/src/lib.rs:"));
     }
 }

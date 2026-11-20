@@ -105,6 +105,30 @@ fn test_replicator_matrix_validation() {
         strategy_names: vec!["A".to_string()],
     };
     assert!(strategy_mismatch.validate().is_err());
+
+    let zero_dt = ReplicatorPresetConfig {
+        dt: 0.0,
+        ..valid.clone()
+    };
+    assert!(zero_dt.validate().is_err());
+
+    let negative_dt = ReplicatorPresetConfig {
+        dt: -0.01,
+        ..valid.clone()
+    };
+    assert!(negative_dt.validate().is_err());
+
+    let excessive_steps = ReplicatorPresetConfig {
+        dt: 1e-300,
+        ..valid.clone()
+    };
+    assert!(excessive_steps.validate().is_err());
+
+    let nan_matrix = ReplicatorPresetConfig {
+        payoff_matrix: vec![vec![f64::NAN, 2.0], vec![0.0, 1.0]],
+        ..valid
+    };
+    assert!(nan_matrix.validate().is_err());
 }
 
 #[test]

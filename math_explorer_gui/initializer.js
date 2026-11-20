@@ -23,17 +23,94 @@ function setIndeterminateProgress(progressEl, stageLabel) {
     progressEl.setAttribute('aria-valuetext', stageLabel);
 }
 
+function getLoadingElements() {
+    return {
+        subtitleEl: document.getElementById('loading_subtitle'),
+        progressEl: document.getElementById('loading_progress'),
+        bytesEl: document.getElementById('loading_bytes'),
+    };
+}
+
+function notifyCompilePhase(boot, label) {
+    if (!boot) {
+        return;
+    }
+    if (typeof boot.enterPhase === 'function') {
+        boot.enterPhase('compile', label);
+    } else if (typeof boot.recordProgress === 'function') {
+        boot.recordProgress(label);
+    }
+}
+
 export default function mathExplorerInitializer() {
     let maxLoadedBytes = 0;
     let compileStarted = false;
     let lastAnnouncedBucket = 0;
 
-    function getElements() {
-        return {
-            subtitleEl: document.getElementById('loading_subtitle'),
-            progressEl: document.getElementById('loading_progress'),
-            bytesEl: document.getElementById('loading_bytes'),
-        };
+    function updateIndeterminateTransfer(safeCurrent, boot, els) {
+        if (boot) {
+            boot.recordProgress('Downloading WebAssembly (' + safeCurrent + ' bytes)');
+        }
+        maxLoadedBytes = Math.max(maxLoadedBytes, safeCurrent);
+        const statusCopy =
+            maxLoadedBytes > 0 ? formatBytes(maxLoadedBytes) + ' downloaded' : 'Downloading...';
+        if (els.subtitleEl) {
+            els.subtitleEl.textContent = 'Downloading WebAssembly module...';
+        }
+        setIndeterminateProgress(els.progressEl, statusCopy);
+        if (els.bytesEl) {
+            els.bytesEl.textContent = statusCopy;
+        }
+    }
+
+    function updateCompileTransition(safeTotal, boot, els) {
+        maxLoadedBytes = safeTotal;
+        const firstCompileTransition = !compileStarted;
+        compileStarted = true;
+        notifyCompilePhase(boot, 'Compiling WebAssembly module');
+        if (els.subtitleEl) {
+            els.subtitleEl.textContent = 'Compiling WebAssembly module...';
+        }
+        setIndeterminateProgress(els.progressEl, 'Compiling WebAssembly module');
+        if (els.bytesEl) {
+            els.bytesEl.textContent =
+                formatBytes(safeTotal) + ' / ' + formatBytes(safeTotal) + ' (100%) — compiling...';
+        }
+        if (firstCompileTransition && boot) {
+            boot.announce('Download complete. Compiling WebAssembly module.', 'polite');
+        }
+    }
+
+    function updateDeterminateTransfer(safeCurrent, safeTotal, boot, els) {
+        if (boot) {
+            boot.recordProgress('Downloading WebAssembly (' + safeCurrent + ' bytes)');
+        }
+        maxLoadedBytes = Math.max(maxLoadedBytes, Math.min(safeCurrent, safeTotal));
+        const pct = Math.min(99, Math.floor((maxLoadedBytes / safeTotal) * 100));
+        const formattedLoaded = formatBytes(maxLoadedBytes);
+        const formattedTotal = formatBytes(safeTotal);
+        if (els.subtitleEl) {
+            els.subtitleEl.textContent = 'Downloading WebAssembly module...';
+        }
+        if (els.progressEl) {
+            els.progressEl.max = safeTotal;
+            els.progressEl.value = maxLoadedBytes;
+            els.progressEl.setAttribute('aria-valuemin', '0');
+            els.progressEl.setAttribute('aria-valuemax', String(safeTotal));
+            els.progressEl.setAttribute('aria-valuenow', String(maxLoadedBytes));
+            els.progressEl.setAttribute(
+                'aria-valuetext',
+                pct + '% (' + formattedLoaded + ' of ' + formattedTotal + ')'
+            );
+        }
+        if (els.bytesEl) {
+            els.bytesEl.textContent = formattedLoaded + ' / ' + formattedTotal + ' (' + pct + '%)';
+        }
+        const bucket = Math.floor(pct / 25) * 25;
+        if (bucket > lastAnnouncedBucket && bucket < 100 && boot) {
+            lastAnnouncedBucket = bucket;
+            boot.announce('WebAssembly download ' + bucket + '% complete.', 'polite');
+        }
     }
 
     return {
@@ -41,7 +118,6 @@ export default function mathExplorerInitializer() {
             maxLoadedBytes = 0;
             compileStarted = false;
             lastAnnouncedBucket = 0;
-
             const boot = window.__mathExplorerBoot;
             if (boot) {
                 if (typeof boot.enterPhase === 'function') {
@@ -51,134 +127,46 @@ export default function mathExplorerInitializer() {
                 }
                 boot.announce('Downloading Math Explorer WebAssembly module.', 'polite');
             }
-
-            const { subtitleEl, progressEl, bytesEl } = getElements();
-            if (subtitleEl) {
-                subtitleEl.textContent = 'Downloading WebAssembly module...';
+            const els = getLoadingElements();
+            if (els.subtitleEl) {
+                els.subtitleEl.textContent = 'Downloading WebAssembly module...';
             }
-            setIndeterminateProgress(progressEl, 'Starting WebAssembly download');
-            if (bytesEl) {
-                bytesEl.textContent = 'Starting download...';
+            setIndeterminateProgress(els.progressEl, 'Starting WebAssembly download');
+            if (els.bytesEl) {
+                els.bytesEl.textContent = 'Starting download...';
             }
         },
 
         onProgress({ current, total } = {}) {
             const safeCurrent = Number.isFinite(current) && current > 0 ? Math.floor(current) : 0;
             const safeTotal = Number.isFinite(total) && total > 0 ? Math.floor(total) : 0;
-
             const boot = window.__mathExplorerBoot;
-            const { subtitleEl, progressEl, bytesEl } = getElements();
-
-            // Indeterminate fallback when uncompressed sourceSize is unknown/zero
+            const els = getLoadingElements();
             if (safeTotal <= 0) {
-                if (boot) {
-                    boot.recordProgress('Downloading WebAssembly (' + safeCurrent + ' bytes)');
-                }
-                maxLoadedBytes = Math.max(maxLoadedBytes, safeCurrent);
-                const statusCopy = maxLoadedBytes > 0
-                    ? formatBytes(maxLoadedBytes) + ' downloaded'
-                    : 'Downloading...';
-                if (subtitleEl) {
-                    subtitleEl.textContent = 'Downloading WebAssembly module...';
-                }
-                setIndeterminateProgress(progressEl, statusCopy);
-                if (bytesEl) {
-                    bytesEl.textContent = statusCopy;
-                }
+                updateIndeterminateTransfer(safeCurrent, boot, els);
                 return;
             }
-
-            // Transition to indeterminate compilation stage once all bytes arrive
             if (safeCurrent >= safeTotal || compileStarted) {
-                maxLoadedBytes = safeTotal;
-                const firstCompileTransition = !compileStarted;
-                compileStarted = true;
-
-                if (boot) {
-                    if (typeof boot.enterPhase === 'function') {
-                        boot.enterPhase('compile', 'Compiling WebAssembly module');
-                    } else {
-                        boot.recordProgress('Compiling WebAssembly module');
-                    }
-                }
-
-                if (subtitleEl) {
-                    subtitleEl.textContent = 'Compiling WebAssembly module...';
-                }
-                setIndeterminateProgress(progressEl, 'Compiling WebAssembly module');
-                if (bytesEl) {
-                    bytesEl.textContent =
-                        formatBytes(safeTotal) + ' / ' + formatBytes(safeTotal) + ' (100%) — compiling...';
-                }
-                if (firstCompileTransition && boot) {
-                    boot.announce('Download complete. Compiling WebAssembly module.', 'polite');
-                }
+                updateCompileTransition(safeTotal, boot, els);
                 return;
             }
-
-            if (boot) {
-                boot.recordProgress('Downloading WebAssembly (' + safeCurrent + ' bytes)');
-            }
-
-            // Monotonic determinate byte progress during transfer
-            const clampedCurrent = Math.min(safeCurrent, safeTotal);
-            maxLoadedBytes = Math.max(maxLoadedBytes, clampedCurrent);
-            const pct = Math.min(99, Math.floor((maxLoadedBytes / safeTotal) * 100));
-            const formattedLoaded = formatBytes(maxLoadedBytes);
-            const formattedTotal = formatBytes(safeTotal);
-
-            if (subtitleEl) {
-                subtitleEl.textContent = 'Downloading WebAssembly module...';
-            }
-            if (progressEl) {
-                progressEl.max = safeTotal;
-                progressEl.value = maxLoadedBytes;
-                progressEl.setAttribute('aria-valuemin', '0');
-                progressEl.setAttribute('aria-valuemax', String(safeTotal));
-                progressEl.setAttribute('aria-valuenow', String(maxLoadedBytes));
-                progressEl.setAttribute(
-                    'aria-valuetext',
-                    pct + '% (' + formattedLoaded + ' of ' + formattedTotal + ')'
-                );
-            }
-            if (bytesEl) {
-                bytesEl.textContent = formattedLoaded + ' / ' + formattedTotal + ' (' + pct + '%)';
-            }
-
-            const bucket = Math.floor(pct / 25) * 25;
-            if (bucket > lastAnnouncedBucket && bucket < 100 && boot) {
-                lastAnnouncedBucket = bucket;
-                boot.announce('WebAssembly download ' + bucket + '% complete.', 'polite');
-            }
+            updateDeterminateTransfer(safeCurrent, safeTotal, boot, els);
         },
 
         onComplete() {
-            const boot = window.__mathExplorerBoot;
-            if (boot) {
-                if (typeof boot.enterPhase === 'function') {
-                    boot.enterPhase('compile', 'WebAssembly initialization settled');
-                } else {
-                    boot.recordProgress('WebAssembly initialization settled');
-                }
-            }
+            notifyCompilePhase(window.__mathExplorerBoot, 'WebAssembly initialization settled');
         },
 
         onSuccess() {
-            const boot = window.__mathExplorerBoot;
-            if (boot) {
-                if (typeof boot.enterPhase === 'function') {
-                    boot.enterPhase('compile', 'Initializing WebGL graphics context');
-                } else {
-                    boot.recordProgress('Initializing WebGL graphics context');
-                }
+            notifyCompilePhase(window.__mathExplorerBoot, 'Initializing WebGL graphics context');
+            const els = getLoadingElements();
+            if (els.subtitleEl) {
+                els.subtitleEl.textContent = 'Initializing WebGL & graphics engine...';
             }
-            const { subtitleEl, progressEl, bytesEl } = getElements();
-            if (subtitleEl) {
-                subtitleEl.textContent = 'Initializing WebGL & graphics engine...';
-            }
-            setIndeterminateProgress(progressEl, 'Initializing WebGL and graphics engine');
-            if (bytesEl && maxLoadedBytes > 0) {
-                bytesEl.textContent = formatBytes(maxLoadedBytes) + ' loaded — starting graphics...';
+            setIndeterminateProgress(els.progressEl, 'Initializing WebGL and graphics engine');
+            if (els.bytesEl && maxLoadedBytes > 0) {
+                els.bytesEl.textContent =
+                    formatBytes(maxLoadedBytes) + ' loaded — starting graphics...';
             }
         },
 

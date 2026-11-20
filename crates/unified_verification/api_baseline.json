@@ -1555,10 +1555,10 @@
       "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn new_with_fitness (strategy : S) -> Self }"
     },
     {
-      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate (& self , initial_population : DVector < f64 > , time_horizon : f64 , dt : f64 ,) -> Vec < (f64 , DVector < f64 >) > }"
+      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate (& self , initial_population : DVector < f64 > , time_horizon : f64 , dt : f64 ,) -> Result < Vec < (f64 , DVector < f64 >) > , GameTheoryError > }"
     },
     {
-      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate_with_strategy < Solve > (& self , initial_population : DVector < f64 > , time_horizon : f64 , dt : f64 , solver : & mut Solve ,) -> Vec < (f64 , DVector < f64 >) > where Solve : Solver < DVector < f64 > > , }"
+      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate_with_strategy < Solve > (& self , initial_population : DVector < f64 > , time_horizon : f64 , dt : f64 , solver : & mut Solve ,) -> Result < Vec < (f64 , DVector < f64 >) > , GameTheoryError > where Solve : Solver < DVector < f64 > > , }"
     },
     {
       "signature": "impl ReplicatorDynamics < MatrixPayoff > { pub fn new (payoff_matrix : DMatrix < f64 >) -> Result < Self , GameTheoryError > }"

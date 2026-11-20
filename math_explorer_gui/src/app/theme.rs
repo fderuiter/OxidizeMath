@@ -271,7 +271,8 @@ pub(super) fn init_startup_theme(
     app: &mut super::MathExplorerApp,
     cc: &eframe::CreationContext<'_>,
 ) {
-    let detected = detect_startup_theme(cc);
+    let detected = crate::wasm_crash_bridge::read_document_shell_theme()
+        .unwrap_or_else(|| detect_startup_theme(cc));
     app.theme = detected;
     if let Some(storage) = cc.storage {
         if let Some(state_str) = storage.get_string(eframe::APP_KEY) {

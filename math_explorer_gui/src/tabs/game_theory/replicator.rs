@@ -41,19 +41,40 @@ impl Default for ReplicatorDynamicsTool {
 
 impl ReplicatorDynamicsTool {
     pub(crate) fn run_simulation(&mut self) {
+        let _ = self.try_run_simulation();
+    }
+
+    fn try_run_simulation(&mut self) -> Result<(), String> {
         let sum = self.initial_population.sum();
-        if sum > 0.0 {
+        if sum.is_finite() && sum > 0.0 {
             self.initial_population /= sum;
         } else {
-            let n = self.initial_population.len();
+            let n = self.initial_population.len().max(1);
             self.initial_population = DVector::from_element(n, 1.0 / n as f64);
         }
 
-        if let Ok(system) = ReplicatorDynamics::new(self.payoff_matrix.clone()) {
-            self.trajectory =
-                system.simulate(self.initial_population.clone(), self.time_horizon, self.dt);
-            self.playback_time = 0.0;
-            self.is_playing = false;
+        let system = ReplicatorDynamics::new(self.payoff_matrix.clone())
+            .map_err(|e| format!("Invalid ReplicatorDynamics payoff matrix: {e}"))?;
+        match system.simulate(self.initial_population.clone(), self.time_horizon, self.dt) {
+            Ok(trajectory) => {
+                self.trajectory = trajectory;
+                self.playback_time = 0.0;
+                self.is_playing = false;
+                Ok(())
+            }
+            Err(err) => {
+                let msg = format!("Replicator simulation rejected invalid parameters: {err}");
+                crate::telemetry::emit_telemetry(
+                    "ReplicatorDynamicsTool",
+                    federated_registry::Severity::Warning,
+                    msg.clone(),
+                    std::collections::HashMap::new(),
+                );
+                self.trajectory.clear();
+                self.playback_time = 0.0;
+                self.is_playing = false;
+                Err(msg)
+            }
         }
     }
 
@@ -203,8 +224,7 @@ impl ReplicatorDynamicsTool {
         self.time_horizon = config.time_horizon;
         self.dt = config.dt;
         self.strategy_names = config.strategy_names;
-        self.run_simulation();
-        Ok(())
+        self.try_run_simulation()
     }
 }
 
@@ -225,6 +245,31 @@ mod tests {
         tool.reset_playback();
         assert!(!tool.is_playing);
         assert_eq!(tool.playback_time, 0.0);
+    }
+
+    #[test]
+    fn test_try_load_state_rejects_non_positive_dt_and_preserves_state() {
+        let mut tool = ReplicatorDynamicsTool::default();
+        let baseline_len = tool.trajectory.len();
+        let zero_dt_json = r#"{
+            "payoff_matrix": [[-1.0, 2.0], [0.0, 1.0]],
+            "initial_population": [0.2, 0.8],
+            "time_horizon": 20.0,
+            "dt": 0.0,
+            "strategy_names": ["Hawk", "Dove"]
+        }"#;
+        assert!(tool.try_load_state(zero_dt_json).is_err());
+        assert_eq!(tool.trajectory.len(), baseline_len);
+
+        let negative_dt_json = r#"{
+            "payoff_matrix": [[-1.0, 2.0], [0.0, 1.0]],
+            "initial_population": [0.2, 0.8],
+            "time_horizon": 20.0,
+            "dt": -0.05,
+            "strategy_names": ["Hawk", "Dove"]
+        }"#;
+        assert!(tool.try_load_state(negative_dt_json).is_err());
+        assert_eq!(tool.trajectory.len(), baseline_len);
     }
 }
 

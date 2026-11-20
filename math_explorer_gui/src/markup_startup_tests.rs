@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 const INDEX_HTML: &str = include_str!("../index.html");
+const RECOVERY_JS: &str = include_str!("../recovery.js");
 const RELOAD_JS: &str = include_str!("../reload.js");
 const BOOTSTRAP_JS: &str = include_str!("../bootstrap.js");
 const INITIALIZER_JS: &str = include_str!("../initializer.js");
@@ -16,6 +17,7 @@ fn test_service_worker_caches_shell_only_and_returns_valid_offline_responses() {
     for shell_entry in [
         "'./'",
         "'./index.html'",
+        "'./recovery.js'",
         "'./reload.js'",
         "'./bootstrap.js'",
         "'./initializer.js'",
@@ -130,5 +132,45 @@ fn test_bootstrap_dynamic_import_abort_signal_and_fallback_reload_bindings() {
             && MAIN_RS.contains("runner.destroy()")
             && MAIN_RS.contains("is_error_boundary_active"),
         "src/main.rs must guard WebRunner::start and bind a fallback reload listener"
+    );
+}
+
+#[test]
+fn test_recovery_precedes_reload_and_wires_panic_and_sentinel_bridge() {
+    let recovery_pos = INDEX_HTML
+        .find("<script src=\"recovery.js\" defer></script>")
+        .expect("recovery.js deferred script tag must exist");
+    let reload_pos = INDEX_HTML
+        .find("<script src=\"reload.js\" defer></script>")
+        .expect("reload.js deferred script tag must exist");
+    assert!(
+        recovery_pos < reload_pos,
+        "recovery.js must execute before reload.js"
+    );
+    assert!(
+        RECOVERY_JS.contains("quarantineAbortedBoot")
+            && RECOVERY_JS.contains("markBootStarting")
+            && RECOVERY_JS.contains("markFirstFrameRendered"),
+        "recovery.js must manage boot sentinel and aborted-boot quarantine"
+    );
+    for contract in [
+        "reportFatalPanic",
+        "markFirstFrameRendered",
+        "__mathExplorerReadPanicSummary",
+        "return 'runtime';",
+    ] {
+        assert!(
+            RELOAD_JS.contains(contract),
+            "reload.js must wire runtime crash bridge contract: {contract}"
+        );
+    }
+    assert!(
+        BOOTSTRAP_JS.contains("recordBootSentinelBeforeStart()"),
+        "bootstrap.js must record boot-in-progress sentinel before starting WebAssembly"
+    );
+    assert!(
+        MAIN_RS.contains("wasm_crash_bridge::init_fatal_panic_bridge()")
+            && MAIN_RS.contains("wasm_crash_bridge::keep_web_runner_alive"),
+        "src/main.rs must retain WebRunner and initialize fatal panic bridge"
     );
 }

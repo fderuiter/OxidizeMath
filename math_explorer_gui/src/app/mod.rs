@@ -398,26 +398,7 @@ impl eframe::App for MathExplorerApp {
             });
 
         // Render Active Tab(s) or Multi-Pane Viewports
-        let active_layout = if self.viewport_layout != ViewportLayout::Single {
-            self.sync_layout();
-            self.viewport_layout
-        } else if self.split_layout_mode != SplitLayoutMode::Single {
-            let layout = match self.split_layout_mode {
-                SplitLayoutMode::Horizontal => ViewportLayout::SplitHorizontal,
-                SplitLayoutMode::Vertical => ViewportLayout::SplitVertical,
-                SplitLayoutMode::Single => ViewportLayout::Single,
-            };
-            self.viewport_layout = layout;
-            if !self.pane_tabs.is_empty() {
-                self.pane_tabs[0] = self.selected_tab;
-            }
-            if self.pane_tabs.len() > 1 {
-                self.pane_tabs[1] = self.secondary_tab;
-            }
-            layout
-        } else {
-            ViewportLayout::Single
-        };
+        let active_layout = self.resolve_active_viewport_layout();
 
         self.prune_inactive_pane_slots(active_layout.pane_count());
         self.sync_workspace_history_bridge(ctx);
@@ -441,9 +422,13 @@ impl eframe::App for MathExplorerApp {
         session_manager.track_frame_changes(ctx, self);
         self.session_manager = session_manager;
         theme::sync_frame_theme(self, ctx, frame);
+        crate::wasm_crash_bridge::notify_first_interactive_frame_rendered();
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        if crate::wasm_crash_bridge::should_suppress_app_save() {
+            return;
+        }
         self.clear_active_pane_caches();
         let json_str = self.save_state_to_json();
         storage.set_string(eframe::APP_KEY, json_str);
@@ -451,5 +436,30 @@ impl eframe::App for MathExplorerApp {
 
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(5)
+    }
+}
+
+impl MathExplorerApp {
+    fn resolve_active_viewport_layout(&mut self) -> ViewportLayout {
+        if self.viewport_layout != ViewportLayout::Single {
+            self.sync_layout();
+            self.viewport_layout
+        } else if self.split_layout_mode != SplitLayoutMode::Single {
+            let layout = match self.split_layout_mode {
+                SplitLayoutMode::Horizontal => ViewportLayout::SplitHorizontal,
+                SplitLayoutMode::Vertical => ViewportLayout::SplitVertical,
+                SplitLayoutMode::Single => ViewportLayout::Single,
+            };
+            self.viewport_layout = layout;
+            if !self.pane_tabs.is_empty() {
+                self.pane_tabs[0] = self.selected_tab;
+            }
+            if self.pane_tabs.len() > 1 {
+                self.pane_tabs[1] = self.secondary_tab;
+            }
+            layout
+        } else {
+            ViewportLayout::Single
+        }
     }
 }

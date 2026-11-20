@@ -55,7 +55,9 @@ fn test_mean_field_integration() {
 fn test_evolutionary_integration() {
     let payoff = DMatrix::from_row_slice(2, 2, &[3.0, 0.0, 5.0, 1.0]); // Prisoner's Dilemma-ish
     let system = ReplicatorDynamics::new(payoff).unwrap();
-    let traj = system.simulate(DVector::from_vec(vec![0.5, 0.5]), 1.0, 0.1);
+    let traj = system
+        .simulate(DVector::from_vec(vec![0.5, 0.5]), 1.0, 0.1)
+        .expect("valid replicator simulation parameters");
     assert!(!traj.is_empty());
 }
 
