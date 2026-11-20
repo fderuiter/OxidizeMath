@@ -13,9 +13,17 @@ pub(crate) fn cwd_is_workspace_root() -> bool {
         .unwrap_or(false)
 }
 
+pub(crate) fn cwd_is_member_crate_dir() -> bool {
+    !cwd_is_workspace_root()
+        && Path::new("Cargo.toml").exists()
+        && fs::read_to_string("../../Cargo.toml")
+            .map(|c| c.contains("[workspace]"))
+            .unwrap_or(false)
+}
+
 pub(crate) fn resolve_member_dir(member: &str) -> PathBuf {
     let direct = PathBuf::from(member);
-    if direct.join("Cargo.toml").exists() || direct.is_absolute() || cwd_is_workspace_root() {
+    if direct.join("Cargo.toml").exists() || direct.is_absolute() || !cwd_is_member_crate_dir() {
         return direct;
     }
     let candidate = Path::new("../..").join(member);
