@@ -968,8 +968,11 @@ fn paint_math_box_bounded(
             let sqrt_w = rad_g.size.y * 0.5;
             let color = get_color(radicand, depth + 1).unwrap_or(Color32::WHITE);
 
-            let galley =
-                painter.layout_no_wrap("√".to_string(), FontId::proportional(rad_g.size.y), color);
+            let galley = painter.layout_no_wrap(
+                "√".to_string(),
+                FontId::proportional(rad_g.size.y.max(1.0)),
+                color,
+            );
             painter.galley(origin, galley, color);
 
             let rad_origin = Pos2::new(origin.x + sqrt_w + 2.0, origin.y + 3.0);

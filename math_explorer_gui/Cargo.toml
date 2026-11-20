@@ -99,6 +99,7 @@ web-sys = { workspace = true, features = [
     "MessageEvent",
     "Node",
     "NodeList",
+    "Response",
     "Window",
     "Worker",
     "WorkerOptions",

@@ -328,11 +328,11 @@ jobs:
           $SHACMD "${files[@]}" > SHA256SUMS
           $SHACHECK SHA256SUMS
 
-      - name: Upload Web Distribution Artifact
+      - name: Upload Web Dist Artifact
         if: matrix.target == 'wasm32-unknown-unknown' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: wasm_dist
+          name: wasm_web_dist
           path: math_explorer_gui/dist
           if-no-files-found: error
           retention-days: 7
@@ -598,6 +598,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
     steps:
@@ -608,29 +609,31 @@ jobs:
             papers
           sparse-checkout-cone-mode: true
 
-      - name: Download Web Distribution Artifact
+      - name: Download Web Dist Artifact
         uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
         with:
-          name: wasm_dist
-          path: math_explorer_gui/dist
+          name: wasm_web_dist
+          path: pages_dist
 
       - name: Download Compiled Paper PDFs
         uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
         with:
           name: compiled_papers
-          path: artifacts/compiled_papers
+          path: compiled_papers
 
-      - name: Stage Paper PDFs and Refresh SHA-256 Manifest
+      - name: Stage Compiled PDFs and Refresh SHA-256 Manifest
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ ! -d "math_explorer_gui/dist" ]; then
-            echo "Error: math_explorer_gui/dist directory does not exist" >&2
+          if [ ! -d "pages_dist" ]; then
+            echo "Error: pages_dist directory does not exist" >&2
             exit 1
           fi
 
-          find artifacts/compiled_papers -type f -name "*.pdf" -exec cp -- {} math_explorer_gui/dist/ \;
+          mkdir -p pages_dist/papers
+          find compiled_papers -type f -name "*.pdf" -exec cp -f -- {} pages_dist/ \;
+          find compiled_papers -type f -name "*.pdf" -exec cp -f -- {} pages_dist/papers/ \;
 
           shopt -s nullglob
           tex_files=(papers/*.tex)
@@ -641,15 +644,22 @@ jobs:
 
           for tex in "${tex_files[@]}"; do
             stem="$(basename "$tex" .tex)"
-            pdf_path="math_explorer_gui/dist/${stem}.pdf"
-            if [ ! -s "$pdf_path" ]; then
-              echo "Error: Missing or empty staged PDF for ${tex} at ${pdf_path}" >&2
+            for pdf_path in "pages_dist/${stem}.pdf" "pages_dist/papers/${stem}.pdf"; do
+              if [ ! -s "$pdf_path" ]; then
+                echo "Error: Missing or empty staged PDF for ${tex} at ${pdf_path}" >&2
+                exit 1
+              fi
+            done
+          done
+
+          for req in traceability_snapshot.json Verification_Certificate.json; do
+            if [ ! -s "pages_dist/$req" ]; then
+              echo "Error: Required static traceability file pages_dist/$req is missing or empty" >&2
               exit 1
             fi
           done
 
-          cd math_explorer_gui/dist
-
+          cd pages_dist
           if command -v sha256sum >/dev/null 2>&1; then
             SHACMD="sha256sum"
             SHACHECK="sha256sum -c"
@@ -663,14 +673,14 @@ jobs:
 
           shopt -u dotglob
           files=()
-          for f in *; do
+          for f in * papers/*.pdf; do
             if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
               files+=("$f")
             fi
           done
 
           if [ ${#files[@]} -eq 0 ]; then
-            echo "Error: No Pages artifacts found in math_explorer_gui/dist" >&2
+            echo "Error: No Pages artifacts found in pages_dist" >&2
             exit 1
           fi
 
@@ -687,7 +697,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
-          path: math_explorer_gui/dist
+          path: pages_dist
 
       - name: Deploy to GitHub Pages
         id: deployment

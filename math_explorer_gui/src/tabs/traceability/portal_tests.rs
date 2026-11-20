@@ -28,76 +28,6 @@ fn render_tab_text_hit(tab: &mut TraceabilityTab, needle: &str) -> bool {
         .any(|cs| shape_contains(&cs.shape, needle))
 }
 
-#[test]
-fn test_app_startup_leaves_traceability_idle_until_opened() {
-    use eframe::App;
-
-    let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    let mut app = crate::app::MathExplorerApp::default();
-    assert_ne!(
-        app.tabs[app.selected_tab].name(),
-        "Traceability Portal",
-        "Default startup tab is not Traceability Portal"
-    );
-
-    let ctx = egui::Context::default();
-    let raw = egui::RawInput {
-        screen_rect: Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(1024.0, 768.0),
-        )),
-        ..Default::default()
-    };
-    let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(raw, |ctx| app.update(ctx, &mut frame));
-
-    let mut fresh_tab = TraceabilityTab::default();
-    assert_eq!(fresh_tab.state, TraceabilityScanState::Idle);
-    assert!(fresh_tab.report_rx.is_none());
-    assert!(fresh_tab.papers.is_empty());
-
-    assert!(render_tab_text_hit(
-        &mut fresh_tab,
-        "Theory-to-Code Traceability Portal"
-    ));
-    assert_eq!(fresh_tab.state, TraceabilityScanState::Ready);
-    assert_eq!(fresh_tab.papers.len(), 28);
-    assert!(fresh_tab.orphaned_papers.is_empty());
-}
-
-#[test]
-fn test_embedded_manifest_contains_28_verified_papers_and_certificate() {
-    let embedded = manifest::embedded_manifest().expect("embedded manifest should parse");
-    assert_eq!(embedded.papers.len(), 28);
-    assert!(embedded.orphaned_papers.is_empty());
-    assert!(embedded.unlinked_code.is_empty());
-    assert!(embedded.invalid_links.is_empty());
-
-    let cert = embedded
-        .certificate
-        .as_ref()
-        .expect("Verification_Certificate.json metrics should be embedded");
-    assert!(cert.native_execution_coverage_pct > 0.0);
-    assert!(cert.verified_modules_density > 0.0);
-    assert!(cert.passed);
-
-    for paper in &embedded.papers {
-        assert!(
-            paper.name.ends_with(".tex"),
-            "Expected .tex paper name, got {}",
-            paper.name
-        );
-        assert!(
-            !paper.linked_code.is_empty(),
-            "Paper {} must have at least one linked module",
-            paper.name
-        );
-        let url = TraceabilityTab::paper_url(&paper.name).expect("valid PDF URL");
-        assert!(url.starts_with("https://fderuiter.github.io/OxidizeMath/"));
-        assert!(url.ends_with(".pdf"));
-    }
-}
-
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
@@ -109,22 +39,35 @@ fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
 
     let mut tab = TraceabilityTab::default();
     assert_eq!(tab.state, TraceabilityScanState::Idle);
+    assert!(!tab.has_initial_scan);
 
-    assert!(render_tab_text_hit(&mut tab, "Theory-to-Code Traceability Portal"));
-    assert!(render_tab_text_hit(&mut tab, "100% Parity Achieved"));
-    assert!(render_tab_text_hit(&mut tab, "Total Papers: 28"));
+    assert!(render_tab_text_hit(
+        &mut tab,
+        "Theory-to-Code Traceability Portal"
+    ));
+    super::wait_for_scan_completion(&mut tab);
     assert_eq!(tab.state, TraceabilityScanState::Ready);
     assert_eq!(tab.papers.len(), 28);
     assert!(tab.orphaned_papers.is_empty());
+    assert!(tab.certificate.as_ref().is_some_and(|c| c.passed));
+    assert!(render_tab_text_hit(&mut tab, "100% Parity Achieved"));
+    assert!(render_tab_text_hit(&mut tab, "Total Papers: 28"));
+    assert!(render_tab_text_hit(
+        &mut tab,
+        "Verification Certificate: Passed"
+    ));
     assert!(tab.online_document_url("cera_framework.tex").is_some());
 }
 
 #[test]
 fn test_zero_paper_live_scan_transitions_to_failed_instead_of_vacuous_parity() {
-    let mut tab = TraceabilityTab::default();
     let (tx, rx) = std::sync::mpsc::channel();
-    tab.report_rx = Some(rx);
-    tab.state = TraceabilityScanState::Scanning;
+    let mut tab = TraceabilityTab {
+        report_rx: Some(rx),
+        has_initial_scan: true,
+        state: TraceabilityScanState::Scanning,
+        ..TraceabilityTab::default()
+    };
 
     let mut empty_report = oxidize_core::traceability::TraceabilityReport::default();
     empty_report
@@ -182,14 +125,10 @@ fn test_external_clone_picker_scans_live_while_load_state_stays_sandboxed() {
 
     super::wait_for_scan_completion(&mut tab);
     assert_eq!(tab.state, TraceabilityScanState::Ready);
+    assert_eq!(tab.papers.len(), 1);
     assert!(tab.papers.contains_key("external_manuscript.tex"));
     assert!(tab.orphaned_papers.is_empty());
     assert!(tab.online_document_url("external_manuscript.tex").is_some());
-
-    tab.state = TraceabilityScanState::Failed("Transient scan error".to_string());
-    tab.retry();
-    assert_eq!(tab.state, TraceabilityScanState::Scanning);
-    assert!(tab.report_rx.is_some());
 
     drop(_cwd_guard);
     let _ = std::fs::remove_dir_all(&clone_dir);
@@ -239,19 +178,22 @@ fn test_invalid_external_folders_show_inline_error_feedback() {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
-fn test_ci_pages_workflow_stages_all_28_paper_pdfs() {
+fn test_ci_pages_workflow_verifies_all_28_paper_pdfs_and_sw_shell_scope() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
     let ci_yaml =
         std::fs::read_to_string(ws_root.join(".github/workflows/ci.yml")).expect("read ci.yml");
 
-    assert!(ci_yaml.contains("name: wasm_dist"));
+    assert!(ci_yaml.contains("name: wasm_web_dist"));
     assert!(ci_yaml.contains("name: compiled_papers"));
-    assert!(ci_yaml.contains("needs: [pre-flight, build-and-test, compile-papers, feature-matrix]"));
-    assert!(ci_yaml.contains("find artifacts/compiled_papers -type f -name \"*.pdf\" -exec cp -- {} math_explorer_gui/dist/"));
+    assert!(
+        ci_yaml.contains("needs: [pre-flight, build-and-test, compile-papers, feature-matrix]")
+    );
+    assert!(ci_yaml.contains("pages_dist/${stem}.pdf"));
+    assert!(ci_yaml.contains("pages_dist/papers/${stem}.pdf"));
 
     let stage_idx = ci_yaml
-        .find("Stage Paper PDFs and Refresh SHA-256 Manifest")
+        .find("Stage Compiled PDFs and Refresh SHA-256 Manifest")
         .expect("PDF staging step in deploy-pages");
     let upload_idx = ci_yaml[stage_idx..]
         .find("actions/upload-pages-artifact@")

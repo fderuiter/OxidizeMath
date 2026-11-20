@@ -3,6 +3,24 @@ use super::*;
 #[test]
 #[verified_engine::verified]
 fn test_tonelli_shanks_branches_and_refinement() {
+    assert!(AmbsDsp::tonelli_shanks(&Integer::from(1), &Integer::from(0)).is_err());
+    assert!(AmbsDsp::tonelli_shanks(&Integer::from(1), &Integer::from(1)).is_err());
+    assert!(AmbsDsp::tonelli_shanks(&Integer::from(1), &Integer::from(-3)).is_err());
+
+    let p2 = Integer::from(2);
+    assert_eq!(
+        AmbsDsp::tonelli_shanks(&Integer::from(0), &p2).unwrap(),
+        vec![Integer::from(0)]
+    );
+    assert_eq!(
+        AmbsDsp::tonelli_shanks(&Integer::from(1), &p2).unwrap(),
+        vec![Integer::from(1)]
+    );
+    assert_eq!(
+        AmbsDsp::compute_modular_square_roots(&Integer::from(1), &Integer::from(6)).unwrap(),
+        vec![Integer::from(1), Integer::from(5)]
+    );
+
     let p7 = Integer::from(7);
     assert_eq!(
         AmbsDsp::tonelli_shanks(&Integer::from(0), &p7).unwrap(),

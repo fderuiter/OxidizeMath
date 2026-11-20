@@ -2,37 +2,58 @@
 
 use super::*;
 
-mod manifest_tests;
+mod portal_tests;
+mod snapshot_tests;
 #[cfg(not(target_arch = "wasm32"))]
 mod workspace_root_tests;
 
 #[test]
 fn test_traceability_initial_state_transitions_to_scanning() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    let tab = TraceabilityTab::default();
+    let mut tab = TraceabilityTab::default();
     assert_eq!(tab.state, TraceabilityScanState::Idle);
+    assert!(!tab.has_initial_scan);
+    assert!(tab.report_rx.is_none());
     assert!(!tab.state.is_scanning());
     assert!(!tab.state.is_ready());
     assert!(!tab.state.is_failed());
-    assert!(tab.report_rx.is_none());
     assert_eq!(tab.error_message(), None);
+
+    let ctx = egui::Context::default();
+    let first_out = ctx.run(egui::RawInput::default(), |ctx| {
+        let mut frame = eframe::Frame::_new_kittest();
+        tab.show(ctx, &mut frame);
+    });
+    assert!(tab.has_initial_scan);
+    assert_eq!(tab.state, TraceabilityScanState::Scanning);
+    assert!(tab.state.is_scanning());
+    assert!(tab.report_rx.is_some());
+    assert_eq!(
+        first_out
+            .viewport_output
+            .get(&egui::ViewportId::ROOT)
+            .unwrap()
+            .repaint_delay,
+        std::time::Duration::ZERO
+    );
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        wait_for_scan_completion(&mut tab);
+        assert_eq!(tab.state, TraceabilityScanState::Ready);
+        assert!(tab.state.is_ready());
+    }
 }
 
 #[test]
 fn test_traceability_successful_scan_transitions_to_ready() {
-    let mut tab = TraceabilityTab {
-        papers: HashMap::new(),
-        orphaned_papers: Vec::new(),
-        unlinked_code: Vec::new(),
-        invalid_links: Vec::new(),
-        repo_path: None,
-        report_rx: None,
-        state: TraceabilityScanState::Idle,
-    };
-
     let (tx, rx) = std::sync::mpsc::channel();
-    tab.report_rx = Some(rx);
-    tab.state = TraceabilityScanState::Scanning;
+    let mut tab = TraceabilityTab {
+        report_rx: Some(rx),
+        has_initial_scan: true,
+        state: TraceabilityScanState::Scanning,
+        ..TraceabilityTab::default()
+    };
 
     let mut report = oxidize_core::traceability::TraceabilityReport::default();
     report.orphaned_papers.push("paper_alpha".to_string());
@@ -52,19 +73,13 @@ fn test_traceability_successful_scan_transitions_to_ready() {
 
 #[test]
 fn test_traceability_failed_scan_displays_error() {
-    let mut tab = TraceabilityTab {
-        papers: HashMap::new(),
-        orphaned_papers: Vec::new(),
-        unlinked_code: Vec::new(),
-        invalid_links: Vec::new(),
-        repo_path: None,
-        report_rx: None,
-        state: TraceabilityScanState::Idle,
-    };
-
     let (tx, rx) = std::sync::mpsc::channel();
-    tab.report_rx = Some(rx);
-    tab.state = TraceabilityScanState::Scanning;
+    let mut tab = TraceabilityTab {
+        report_rx: Some(rx),
+        has_initial_scan: true,
+        state: TraceabilityScanState::Scanning,
+        ..TraceabilityTab::default()
+    };
 
     let err_text = "Permission denied while accessing repository";
     tx.send(Err(err_text.to_string())).unwrap();
@@ -82,19 +97,13 @@ fn test_traceability_failed_scan_displays_error() {
 
 #[test]
 fn test_traceability_channel_disconnect_transitions_to_failed() {
-    let mut tab = TraceabilityTab {
-        papers: HashMap::new(),
-        orphaned_papers: Vec::new(),
-        unlinked_code: Vec::new(),
-        invalid_links: Vec::new(),
-        repo_path: None,
-        report_rx: None,
-        state: TraceabilityScanState::Idle,
-    };
-
     let (tx, rx) = std::sync::mpsc::channel();
-    tab.report_rx = Some(rx);
-    tab.state = TraceabilityScanState::Scanning;
+    let mut tab = TraceabilityTab {
+        report_rx: Some(rx),
+        has_initial_scan: true,
+        state: TraceabilityScanState::Scanning,
+        ..TraceabilityTab::default()
+    };
 
     drop(tx);
 
@@ -112,34 +121,26 @@ fn test_traceability_channel_disconnect_transitions_to_failed() {
 fn test_traceability_retry_clears_error_and_rescans() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut tab = TraceabilityTab {
-        papers: HashMap::new(),
-        orphaned_papers: Vec::new(),
-        unlinked_code: Vec::new(),
-        invalid_links: Vec::new(),
-        repo_path: None,
-        report_rx: None,
+        has_initial_scan: true,
         state: TraceabilityScanState::Failed("IO error".to_string()),
+        ..TraceabilityTab::default()
     };
 
     assert!(tab.state.is_failed());
     tab.retry();
 
-    assert_eq!(tab.state, TraceabilityScanState::Ready);
-    assert_eq!(tab.papers.len(), 28);
+    assert_eq!(tab.state, TraceabilityScanState::Scanning);
+    assert!(tab.state.is_scanning());
     assert_eq!(tab.error_message(), None);
-    assert!(tab.report_rx.is_none());
+    assert!(tab.report_rx.is_some());
 }
 
 #[test]
 fn test_traceability_no_repaint_in_terminal_states() {
     let mut tab = TraceabilityTab {
-        papers: HashMap::new(),
-        orphaned_papers: Vec::new(),
-        unlinked_code: Vec::new(),
-        invalid_links: Vec::new(),
-        repo_path: None,
-        report_rx: None,
+        has_initial_scan: true,
         state: TraceabilityScanState::Failed("Scan failure".to_string()),
+        ..TraceabilityTab::default()
     };
 
     let ctx = egui::Context::default();
@@ -235,13 +236,10 @@ fn test_traceability_online_document_links() {
     assert_eq!(TraceabilityTab::paper_url("spec:transformer_v1"), None);
 
     let mut tab = TraceabilityTab {
-        papers: HashMap::new(),
         orphaned_papers: vec!["papers/chaos_theory.tex".to_string()],
-        unlinked_code: Vec::new(),
-        invalid_links: Vec::new(),
-        repo_path: None,
-        report_rx: None,
+        has_initial_scan: true,
         state: TraceabilityScanState::Ready,
+        ..TraceabilityTab::default()
     };
     tab.papers.insert(
         "partitions_implementation.tex".to_string(),
@@ -304,15 +302,7 @@ fn test_traceability_load_state_rejects_outside_workspace_and_traversal() {
     )
     .unwrap();
 
-    let mut tab = TraceabilityTab {
-        papers: HashMap::new(),
-        orphaned_papers: Vec::new(),
-        unlinked_code: Vec::new(),
-        invalid_links: Vec::new(),
-        repo_path: None,
-        report_rx: None,
-        state: TraceabilityScanState::Idle,
-    };
+    let mut tab = TraceabilityTab::default();
 
     let canary_path = oxidize_core::path_utils::normalize_path(&canary_dir);
     let payload = format!("{{\"repo_path\":\"{}\"}}", canary_path);
@@ -396,15 +386,7 @@ fn test_traceability_edge_cases_empty_nonexistent_and_valid_subdir() {
         .join(format!("traceability_boundary_test_{}", pid));
     std::fs::create_dir_all(&scratch_base).unwrap();
 
-    let mut tab = TraceabilityTab {
-        papers: HashMap::new(),
-        orphaned_papers: Vec::new(),
-        unlinked_code: Vec::new(),
-        invalid_links: Vec::new(),
-        repo_path: None,
-        report_rx: None,
-        state: TraceabilityScanState::Idle,
-    };
+    let mut tab = TraceabilityTab::default();
 
     for invalid in ["", "   ", "nonexistent_dir_xyz_987654"] {
         let payload = serde_json::json!({ "repo_path": invalid }).to_string();
@@ -454,15 +436,7 @@ fn test_traceability_rejects_symlink_resolving_outside_workspace() {
     let _ = std::fs::remove_file(&symlink_inside);
     std::os::unix::fs::symlink(&external_dir, &symlink_inside).unwrap();
 
-    let mut tab = TraceabilityTab {
-        papers: HashMap::new(),
-        orphaned_papers: Vec::new(),
-        unlinked_code: Vec::new(),
-        invalid_links: Vec::new(),
-        repo_path: None,
-        report_rx: None,
-        state: TraceabilityScanState::Idle,
-    };
+    let mut tab = TraceabilityTab::default();
 
     tab.load_state(&serde_json::json!({ "repo_path": symlink_inside }).to_string());
     assert_eq!(tab.repo_path, None);

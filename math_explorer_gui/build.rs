@@ -1,5 +1,5 @@
 //! Build script for dynamic tab discovery in math_explorer_gui.
-mod build_manifest;
+mod build_snapshot;
 #[path = "../crates/oxidize_core/src/path_utils.rs"]
 /// Path utilities.
 pub mod path_utils;
@@ -12,7 +12,6 @@ fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let out_path = Path::new(&out_dir);
     let dest_path = out_path.join("generated_tabs.rs");
-    build_manifest::generate_traceability_manifest(out_path);
 
     // Tell cargo to rerun if the build script, manifest, or tabs directory changes
     println!("cargo:rerun-if-changed=build.rs");
@@ -37,6 +36,9 @@ fn main() {
 
     let generated_code = render_generated_tabs_code(&discovered_tabs, &generated_mods);
     fs::write(&dest_path, generated_code).unwrap();
+
+    // 3. Generate deterministic precomputed traceability snapshot for static web builds
+    build_snapshot::generate_traceability_snapshot(out_path);
 }
 
 fn render_generated_tabs_code(

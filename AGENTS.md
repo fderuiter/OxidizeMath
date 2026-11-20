@@ -126,7 +126,7 @@ cargo run -p xtask -- test-features core-only
 
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
-In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to pre-compress assets), enforces the 3 MB compressed bundle budget, generates `SHA256SUMS`, and uploads the `wasm_dist` artifact on `refs/heads/main` before `deploy-pages` stages the 28 compiled paper PDFs into `math_explorer_gui/dist`, refreshes `SHA256SUMS`, uploads the GitHub Pages artifact, and publishes it.
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed traceability JSON metadata and pre-compress assets), enforces the 3 MB compressed bundle budget, generates `SHA256SUMS`, and uploads `wasm_web_dist` on `refs/heads/main` before `deploy-pages` stages and verifies all 28 `compiled_papers` PDFs, refreshes `SHA256SUMS`, and publishes the GitHub Pages artifact.
 
 ```bash
 # 1. Install the WebAssembly Rust target, Trunk, and compression utilities (Ubuntu / Debian)

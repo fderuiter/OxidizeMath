@@ -1,4 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+// theory_verification!
 
 #[cfg(not(target_arch = "wasm32"))]
 use oxidize_core::vfs::VirtualFileSystem;
@@ -135,13 +136,16 @@ pub(super) fn validate_picked_repo_path(path: &Path) -> Result<String, String> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(super) fn revalidate_active_repo_path(raw: &str) -> Option<String> {
-    validate_session_repo_path(raw)
-        .or_else(|| validate_picked_repo_path(Path::new(raw.trim())).ok())
+pub(super) fn revalidate_repo_path(raw: &str, user_picked: bool) -> Option<String> {
+    if user_picked {
+        validate_picked_repo_path(Path::new(raw.trim())).ok()
+    } else {
+        validate_session_repo_path(raw)
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
-pub(super) fn revalidate_active_repo_path(raw: &str) -> Option<String> {
+pub(super) fn revalidate_repo_path(raw: &str, _user_picked: bool) -> Option<String> {
     validate_session_repo_path(raw)
 }
 
@@ -227,43 +231,90 @@ impl VirtualFileSystem for RootedVfs {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-async fn execute_rooted_scan(
-    repo_dir: &Path,
+pub(super) async fn execute_workspace_scan<V: VirtualFileSystem>(
+    vfs: V,
+    base_dir: String,
 ) -> Result<oxidize_core::traceability::TraceabilityReport, String> {
-    let vfs = RootedVfs::new(repo_dir).map_err(|e| e.to_string())?;
+    let code_dirs = [
+        format!("{base_dir}math_explorer/src"),
+        format!("{base_dir}math_explorer_gui/src/tabs"),
+    ];
+    let papers_dir = format!("{base_dir}papers");
+    let crate_base = format!("{base_dir}crates");
     let engine = oxidize_core::traceability::TraceabilityEngine::new(vfs);
+
     let mut crate_dirs = Vec::new();
-    if let Ok(crates) = engine.vfs.list_dir("crates").await {
+    if let Ok(crates) = engine.vfs.list_dir(&crate_base).await {
         for crate_name in crates {
-            crate_dirs.push(format!("crates/{crate_name}/src"));
+            crate_dirs.push(format!("{crate_base}/{crate_name}/src"));
         }
     }
-    let mut all_dirs: Vec<&str> = vec!["math_explorer/src", "math_explorer_gui/src/tabs"];
+
+    let mut all_dirs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
     all_dirs.extend(crate_dirs.iter().map(String::as_str));
     engine
-        .scan_repository(&all_dirs, "papers", false)
+        .scan_repository(&all_dirs, &papers_dir, false)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(super) fn spawn_live_scan(
-    repo_dir: String,
-    tx: std::sync::mpsc::Sender<Result<oxidize_core::traceability::TraceabilityReport, String>>,
-) {
-    std::thread::spawn(move || {
-        let res = futures::executor::block_on(execute_rooted_scan(Path::new(&repo_dir)));
-        let _ = tx.send(res);
-    });
+fn execute_rooted_scan_blocking(
+    repo_dir: &Path,
+) -> Result<oxidize_core::traceability::TraceabilityReport, String> {
+    let vfs = RootedVfs::new(repo_dir).map_err(|e| e.to_string())?;
+    futures::executor::block_on(execute_workspace_scan(vfs, String::new()))
 }
 
-#[cfg(target_arch = "wasm32")]
-// theory_verification!
-pub(super) fn spawn_live_scan(
-    _repo_dir: String,
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) fn dispatch_native_refresh(
+    repo_path: Option<String>,
     tx: std::sync::mpsc::Sender<Result<oxidize_core::traceability::TraceabilityReport, String>>,
+    cert_tx: std::sync::mpsc::Sender<Option<super::web_snapshot::VerificationCertificate>>,
 ) {
-    let _ = tx.send(Err(
-        "Live directory scanning is only supported on desktop builds.".to_string(),
-    ));
+    if let Some(repo_dir) = repo_path {
+        std::thread::spawn(move || {
+            let cert = super::web_snapshot::load_local_certificate(&repo_dir);
+            let res = execute_rooted_scan_blocking(Path::new(&repo_dir));
+            let _ = cert_tx.send(cert);
+            let _ = tx.send(res);
+        });
+        return;
+    }
+
+    if let Some(ws_root) = canonical_workspace_root() {
+        #[cfg(test)]
+        {
+            static DEFAULT_SCAN_CACHE: std::sync::OnceLock<
+                Result<oxidize_core::traceability::TraceabilityReport, String>,
+            > = std::sync::OnceLock::new();
+            let cached = DEFAULT_SCAN_CACHE
+                .get_or_init(|| execute_rooted_scan_blocking(&ws_root))
+                .clone();
+            let cert = super::web_snapshot::load_local_certificate(&ws_root.to_string_lossy());
+            let _ = cert_tx.send(cert);
+            let _ = tx.send(cached);
+            return;
+        }
+        #[cfg(not(test))]
+        {
+            std::thread::spawn(move || {
+                let cert = super::web_snapshot::load_local_certificate(&ws_root.to_string_lossy());
+                let res = execute_rooted_scan_blocking(&ws_root);
+                let _ = cert_tx.send(cert);
+                let _ = tx.send(res);
+            });
+            return;
+        }
+    }
+
+    match super::web_snapshot::embedded_traceability() {
+        Ok((report, cert)) => {
+            let _ = cert_tx.send(cert);
+            let _ = tx.send(Ok(report));
+        }
+        Err(err) => {
+            let _ = tx.send(Err(err));
+        }
+    }
 }

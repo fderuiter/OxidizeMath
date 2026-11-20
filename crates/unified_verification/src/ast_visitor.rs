@@ -3,7 +3,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use syn::visit::Visit;
-use walkdir::WalkDir;
 
 #[derive(Default)]
 struct MaliciousCodeVisitor {
@@ -350,12 +349,9 @@ pub fn run_ast_visitor() -> bool {
     println!("Running AST visitor on 100% of third-party dependencies...");
 
     let mut flags_found = 0;
-    for path in collect_crates_io_dep_paths() {
-        for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
-            if entry.path().extension().and_then(|s| s.to_str()) == Some("rs") {
-                flags_found += scan_rs_file_for_malicious_calls(entry.path());
-            }
-        }
+    let dep_paths = collect_crates_io_dep_paths();
+    for rs_file in crate::utils::collect_rs_files_filtered(&dep_paths, &[]) {
+        flags_found += scan_rs_file_for_malicious_calls(&rs_file);
     }
 
     println!("AST visitor finished. Flagged {} patterns.", flags_found);
