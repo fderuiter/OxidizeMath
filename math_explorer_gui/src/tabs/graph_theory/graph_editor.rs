@@ -4,7 +4,6 @@ use crate::accessibility::AccessibleHoverText;
 use crate::framework::{InteractionContext, InteractiveTool};
 use eframe::egui;
 use eframe::egui::Pos2;
-use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 use math_explorer::pure_math::graph_theory::{
     graph::Graph,
     layout::{circular_layout, force_directed_layout, grid_layout},
@@ -42,6 +41,7 @@ pub struct GraphEditorTool {
     hovered_edge: Option<usize>,
     undo_stack: Vec<GraphSnapshot>,
     redo_stack: Vec<GraphSnapshot>,
+    canvas_id: Option<egui::Id>,
     pub(crate) revision: u64,
 }
 
@@ -79,23 +79,44 @@ impl InteractiveTool for GraphEditorTool {
         self.serialize_borrowed_state()
     }
 
+    fn can_undo(&self) -> bool {
+        Self::can_undo(self)
+    }
+
+    fn can_redo(&self) -> bool {
+        Self::can_redo(self)
+    }
+
+    fn try_undo(&mut self) -> bool {
+        Self::can_undo(self) && {
+            self.undo();
+            true
+        }
+    }
+
+    fn try_redo(&mut self) -> bool {
+        Self::can_redo(self) && {
+            self.redo();
+            true
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.canvas_id
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded: SerializedGraphState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid graph state: {e}"))?;
-        loaded.validate()?;
-        self.node_positions = loaded
-            .node_positions
-            .into_iter()
-            .map(|(id, (x, y))| (id, Pos2::new(x, y)))
-            .collect();
-        self.edges = loaded.edges;
-        self.selected_node = loaded.selected_node;
-        self.next_node_id = loaded.next_node_id;
-        self.undo_stack.clear();
-        self.redo_stack.clear();
-        self.bump_revision();
-        self.rebuild_graph();
-        Ok(())
+        self.load_serialized_state(state)
     }
 
     fn show_ui(&mut self, ui: &mut egui::Ui) {
@@ -345,13 +366,7 @@ impl GraphEditorTool {
     }
 
     fn show_undo_redo_toolbar(&mut self, ui: &mut egui::Ui) {
-        self.register_keyboard_commands(ui.ctx());
-        let m = if cfg!(target_os = "macos") { egui::Modifiers::MAC_CMD } else { egui::Modifiers::CTRL };
-        CommandRegistryData::register(ui.ctx(), "Undo", "Undo the last graph modification", CommandTrigger::Shortcut(m, egui::Key::Z), true, "Graph Editor");
-        CommandRegistryData::register(ui.ctx(), "Redo", "Redo the last undone graph modification", CommandTrigger::Shortcut(m | egui::Modifiers::SHIFT, egui::Key::Z), true, "Graph Editor");
-        if !cfg!(target_os = "macos") {
-            CommandRegistryData::register(ui.ctx(), "Redo", "Redo the last undone graph modification", CommandTrigger::Shortcut(m, egui::Key::Y), true, "Graph Editor");
-        }
+        let m = self.register_keyboard_commands(ui.ctx());
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(self.can_undo(), egui::Button::new("↩ Undo"))
@@ -372,22 +387,7 @@ impl GraphEditorTool {
             }
         });
 
-        if crate::framework::is_pane_shortcut_allowed(ui) {
-            ui.input_mut(|i| {
-                let ctrl_or_cmd = i.modifiers.command || i.modifiers.ctrl || i.modifiers.mac_cmd;
-                if ctrl_or_cmd && i.key_pressed(egui::Key::Z) {
-                    if i.modifiers.shift {
-                        if self.can_redo() {
-                            self.redo();
-                        }
-                    } else if self.can_undo() {
-                        self.undo();
-                    }
-                } else if ctrl_or_cmd && i.key_pressed(egui::Key::Y) && self.can_redo() {
-                    self.redo();
-                }
-            });
-        }
+        self.consume_toolbar_undo_redo(ui, m);
     }
 
     fn show_clear_button(&mut self, ui: &mut egui::Ui) {

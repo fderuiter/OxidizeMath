@@ -303,6 +303,7 @@ pub(super) fn render_single_pane_viewport(
     ctx: &egui::Context,
     frame: &mut eframe::Frame,
 ) {
+    app.flush_stale_pane_focus(ctx);
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE)
         .show(ctx, |ui| {
@@ -317,6 +318,7 @@ pub(super) fn render_single_pane_viewport(
                 pending_focus.is_some(),
             );
             ctx.data_mut(|d| {
+                d.remove::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS"));
                 d.insert_temp(egui::Id::new(focus::ACTIVE_FOCUSED_PANE_KEY), 0usize);
                 d.insert_temp(
                     egui::Id::new(focus::SHELL_MODAL_OR_SASH_FOCUSED_KEY),
@@ -375,6 +377,7 @@ pub fn render_multi_pane_manager(
     ctx: &egui::Context,
     frame: &mut eframe::Frame,
 ) {
+    app.flush_stale_pane_focus(ctx);
     let pane_count = app.viewport_layout.pane_count();
 
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -402,6 +405,7 @@ pub fn render_multi_pane_manager(
         });
 
         let sash_focused = sash_state.as_ref().is_some_and(|s| s.has_focus);
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("LAST_PANE_RECTS"), pane_rects.clone()));
         let pending_focus = focus::resolve_frame_pane_focus(app, ctx, &pane_rects, sash_focused);
 
         render_multi_pane_regions(app, ctx, frame, ui, &pane_rects, pending_focus);

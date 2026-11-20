@@ -478,3 +478,23 @@ fn test_poll_invalid_workspace_json_and_save_error_toasts() {
         Some(("Browser window is unavailable", true))
     );
 }
+
+#[test]
+fn test_drag_editing_retains_redo_on_non_mutating_click() {
+    let (app, ctx) = (super::MathExplorerApp::default(), egui::Context::default());
+    let mut mgr = WorkspaceSessionManager::default();
+    mgr.track_frame_changes(&ctx, &app);
+    mgr.push_redo(make_dummy_state(2, ThemeMode::HighContrast));
+    for pressed in [true, false] {
+        let mut raw = egui::RawInput::default();
+        raw.events.push(egui::Event::PointerButton {
+            pos: egui::Pos2::ZERO,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+        let _ = ctx.run(raw, |_| {});
+        mgr.track_frame_changes(&ctx, &app);
+    }
+    assert!(mgr.can_redo() && !mgr.can_undo());
+}

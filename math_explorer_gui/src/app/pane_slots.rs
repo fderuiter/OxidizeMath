@@ -101,7 +101,6 @@ impl SecondaryPaneSlots {
             .and_then(|idx| self.slots.get_mut(idx))
     }
 
-    #[cfg(test)]
     fn slot(&self, pane_idx: usize) -> Option<&SecondarySlot> {
         pane_idx.checked_sub(1).and_then(|idx| self.slots.get(idx))
     }
@@ -139,15 +138,45 @@ impl MathExplorerApp {
     /// Drops instantiated secondary pane tabs whose pane index is inactive under `active_pane_count`.
     pub fn prune_inactive_pane_slots(&mut self, active_pane_count: usize) {
         let keep_secondary = active_pane_count.saturating_sub(1);
+        let mut dropped_active = false;
         for (slot_idx, slot) in self.pane_slots.slots.iter_mut().enumerate() {
             if slot_idx >= keep_secondary {
+                dropped_active |= slot.active.is_some();
                 slot.drop_active();
             }
+        }
+        if dropped_active || self.focused_pane >= active_pane_count {
+            self.pending_focus_prune = true;
         }
         if active_pane_count <= 1 {
             self.focused_pane = 0;
         } else if self.focused_pane >= active_pane_count {
             self.focused_pane = active_pane_count - 1;
+        }
+    }
+
+    /// Surrenders focus on the root `egui::Context` when the focused widget belonged to a pruned viewport pane.
+    pub(super) fn flush_stale_pane_focus(&mut self, ctx: &egui::Context) {
+        if !std::mem::take(&mut self.pending_focus_prune) {
+            return;
+        }
+        let Some(fid) = ctx.memory(|m| m.focused()) else {
+            return;
+        };
+        let keep = self.viewport_layout.pane_count();
+        let in_kept_pane = ctx.read_response(fid).is_some_and(|resp| {
+            ctx.data(|d| {
+                d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS"))
+                    .is_none_or(|rects| {
+                        rects
+                            .iter()
+                            .take(keep)
+                            .any(|r| r.contains(resp.rect.center()))
+                    })
+            })
+        });
+        if !in_kept_pane {
+            ctx.memory_mut(|m| m.surrender_focus(fid));
         }
     }
 
@@ -171,6 +200,14 @@ impl MathExplorerApp {
             return None;
         }
         self.pane_slots.slot_mut(pane_idx)?.ensure_tab(tab_idx)
+    }
+
+    /// Snapshots the focused secondary pane slot if active.
+    pub(super) fn snapshot_focused_secondary_slot(&mut self) {
+        let target = self.active_focused_pane();
+        if let Some(slot) = self.pane_slots.slot_mut(target) {
+            slot.snapshot_active();
+        }
     }
 
     /// Returns a mutable reference to the `ExplorerTab` of the currently focused pane.
@@ -422,7 +459,6 @@ impl MathExplorerApp {
     }
 
     /// Returns an immutable reference to a pane's instantiated `ExplorerTab` if currently allocated.
-    #[cfg(test)]
     pub fn pane_tab(&self, pane_idx: usize) -> Option<&dyn ExplorerTab> {
         if pane_idx == 0 {
             let tab_idx = self.active_primary_tab_index();

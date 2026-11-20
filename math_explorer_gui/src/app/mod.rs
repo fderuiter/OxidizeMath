@@ -77,6 +77,7 @@ pub struct MathExplorerApp {
     pub is_dragging_divider: bool,
     tab_state_cache: state::TabStateCache,
     last_frame_had_input: bool,
+    pending_focus_prune: bool,
 }
 
 impl Default for MathExplorerApp {
@@ -108,6 +109,7 @@ impl Default for MathExplorerApp {
             is_dragging_divider: false,
             tab_state_cache: state::TabStateCache::default(),
             last_frame_had_input: false,
+            pending_focus_prune: false,
         }
     }
 }
@@ -218,9 +220,9 @@ impl MathExplorerApp {
         domain_bar::select_pane_tab(self, ctx, pane_idx, tab_idx);
     }
 
-    /// Restores the previous application state from the undo history stack.
+    /// Restores the previous application state from the focused tool or undo history stack.
     pub fn undo(&mut self) {
-        if !self.session_manager.can_undo() {
+        if !self.can_undo() || self.try_focused_pane_undo() {
             return;
         }
         if let Some(prev) = self.session_manager.pop_undo() {
@@ -231,9 +233,9 @@ impl MathExplorerApp {
         }
     }
 
-    /// Re-applies an undone application state from the redo history stack.
+    /// Re-applies an undone application state from the focused tool or redo history stack.
     pub fn redo(&mut self) {
-        if !self.session_manager.can_redo() {
+        if !self.can_redo() || self.try_focused_pane_redo() {
             return;
         }
         if let Some(next) = self.session_manager.pop_redo() {
@@ -289,6 +291,7 @@ impl eframe::App for MathExplorerApp {
             }
         }
 
+        self.flush_stale_pane_focus(ctx);
         let mut session_mgr = std::mem::take(&mut self.session_manager);
         session_mgr.register_and_check_shortcuts(ctx, self);
         session_mgr.poll(self, ctx);

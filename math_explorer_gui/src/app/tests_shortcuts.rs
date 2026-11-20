@@ -299,3 +299,5 @@ fn test_keyboard_shortcuts_modal_renders_and_closes_with_updated_aria() {
     let close_aria = ctx.data(|d| d.get_temp::<String>(egui::Id::new("aria_live_message")));
     assert_eq!(close_aria, Some("Keyboard shortcuts closed".to_string()));
 }
+
+mod history;

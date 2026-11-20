@@ -196,8 +196,10 @@ impl WorkspaceSessionManager {
         if self.lifecycle_state == SessionLifecycleState::DragEditing {
             if !pointer_down {
                 let current_state = app.get_app_state();
-                if self.undo_stack.last() == Some(&current_state) {
-                    self.undo_stack.pop();
+                if let Some(ref last_state) = self.last_committed_state {
+                    if &current_state != last_state {
+                        self.push_undo(last_state.clone());
+                    }
                 }
                 self.last_committed_state = Some(current_state);
                 self.last_committed_fingerprint = Some(fingerprint);
@@ -211,17 +213,40 @@ impl WorkspaceSessionManager {
             return;
         }
 
-        if pointer_down {
-            if let Some(last_state) = self.last_committed_state.clone() {
-                self.push_undo(last_state);
-                self.lifecycle_state = SessionLifecycleState::DragEditing;
-                return;
-            }
+        if pointer_down && self.last_committed_state.is_some() {
+            self.lifecycle_state = SessionLifecycleState::DragEditing;
+            return;
         }
 
         let current_state = app.get_app_state();
         self.track_state_changes(ctx, current_state);
         self.last_committed_fingerprint = Some(fingerprint);
+    }
+
+    /// Synchronizes `last_committed_state` after a tool handles local undo without clearing global redo.
+    pub(crate) fn sync_after_local_undo(&mut self, app: &MathExplorerApp) {
+        let current = app.get_app_state();
+        if self.undo_stack.last() == Some(&current) {
+            self.undo_stack.pop();
+        }
+        self.last_committed_state = Some(current);
+        self.last_committed_fingerprint = Some(AppStateFingerprint::capture(app));
+    }
+
+    /// Synchronizes `last_committed_state` after a tool handles local redo without clearing global redo.
+    pub(crate) fn sync_after_local_redo(
+        &mut self,
+        prev_state: Option<AppState>,
+        app: &MathExplorerApp,
+    ) {
+        let current = app.get_app_state();
+        if let Some(prev) = prev_state {
+            if prev != current {
+                self.push_undo_preserving_redo(prev);
+            }
+        }
+        self.last_committed_state = Some(current);
+        self.last_committed_fingerprint = Some(AppStateFingerprint::capture(app));
     }
 
     /// Tracks application state changes and updates the history buffer.

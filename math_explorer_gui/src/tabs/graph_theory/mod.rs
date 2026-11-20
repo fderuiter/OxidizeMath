@@ -42,6 +42,36 @@ impl ExplorerTab for GraphTheoryTab {
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
     }
+
+    fn can_undo(&self) -> bool {
+        self.framework.can_undo()
+    }
+
+    fn can_redo(&self) -> bool {
+        self.framework.can_redo()
+    }
+
+    fn try_undo(&mut self) -> bool {
+        self.framework.try_undo()
+    }
+
+    fn try_redo(&mut self) -> bool {
+        self.framework.try_redo()
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.framework.focused_canvas_id()
+    }
+
+    #[cfg(test)]
+    fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
+        Some(&self.framework)
+    }
+
+    #[cfg(test)]
+    fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
+        Some(&mut self.framework)
+    }
 }
 
 // [cite:graph_parameters_rust]
