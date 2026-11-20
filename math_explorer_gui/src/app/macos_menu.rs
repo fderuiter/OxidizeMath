@@ -308,25 +308,39 @@ fn handle_palette_theme_event(app: &mut MathExplorerApp, ctx: &egui::Context, id
     true
 }
 
+fn handle_edit_event(app: &mut MathExplorerApp, id: &str) -> bool {
+    match id {
+        "edit_undo" => {
+            if app.can_undo() {
+                app.undo();
+            }
+            true
+        }
+        "edit_redo" => {
+            if app.can_redo() {
+                app.redo();
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn handle_macos_menu_events(app: &mut MathExplorerApp, ctx: &egui::Context) {
     if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
         let id = event.id.0.as_str();
         if handle_file_event(app, id)
+            || handle_edit_event(app, id)
             || handle_view_layout_event(app, id)
             || handle_focus_pane_event(app, ctx, id)
             || handle_palette_theme_event(app, ctx, id)
         {
             return;
         }
-        match id {
-            "edit_undo" => app.undo(),
-            "edit_redo" => app.redo(),
-            other if other.starts_with("tab_") => {
-                if let Ok(idx) = other[4..].parse::<usize>() {
-                    super::domain_bar::select_primary_tab(app, ctx, idx);
-                }
+        if let Some(rest) = id.strip_prefix("tab_") {
+            if let Ok(idx) = rest.parse::<usize>() {
+                super::domain_bar::select_primary_tab(app, ctx, idx);
             }
-            _ => {}
         }
     }
 }
@@ -404,5 +418,15 @@ mod tests {
             assert_eq!(app.selected_tab, initial_primary);
             assert_eq!(app.secondary_tab, initial_secondary);
         }
+    }
+
+    #[test]
+    fn test_handle_edit_event_respects_undo_redo_availability() {
+        let mut app = MathExplorerApp::default();
+        assert!(!app.can_undo());
+        assert!(!app.can_redo());
+        assert!(handle_edit_event(&mut app, "edit_undo"));
+        assert!(handle_edit_event(&mut app, "edit_redo"));
+        assert!(!handle_edit_event(&mut app, "unknown_edit_id"));
     }
 }

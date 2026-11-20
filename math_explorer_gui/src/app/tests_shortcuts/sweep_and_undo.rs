@@ -479,9 +479,14 @@ fn test_continuous_physics_trajectories_excluded_from_undo_history() {
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
     let mut frame = eframe::Frame::_new_kittest();
+    let mri_idx = find_tab_index(&app, "MRI Physics");
+    app.tabs[mri_idx].load_state(r#"{"paused":false,"time_scale":1.0}"#);
+    let qm_idx = find_tab_index(&app, "Quantum Mechanics");
+    assert!(app.tabs[qm_idx].select_tool_by_name("SpinVisualizer"));
+    let qm_json = app.tabs[qm_idx].save_state().unwrap();
+    app.tabs[qm_idx].load_state(&qm_json.replace("\"paused\":true", "\"paused\":false"));
 
-    for tab_name in ["MRI Physics", "Spin Dynamics"] {
-        let idx = find_tab_index(&app, tab_name);
+    for idx in [mri_idx, qm_idx] {
         app.selected_tab = idx;
         let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
         let baseline_undo = app.session_manager.undo_stack.len();

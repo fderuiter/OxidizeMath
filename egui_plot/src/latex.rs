@@ -965,6 +965,9 @@ fn paint_math_box_bounded(
             );
         }
         (MathBox::Sqrt(radicand), [rad_g]) => {
+            if rad_g.size.y <= 0.0 || !rad_g.size.y.is_finite() {
+                return;
+            }
             let sqrt_w = rad_g.size.y * 0.5;
             let color = get_color(radicand, depth + 1).unwrap_or(Color32::WHITE);
 
