@@ -4,9 +4,47 @@
 set -euo pipefail
 
 STAGING_DIR="${1:-${TRUNK_STAGING_DIR:-math_explorer_gui/dist}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 INDEX_HTML="$STAGING_DIR/index.html"
 LOADER_JS="$STAGING_DIR/trunk-loader.js"
 BOOTSTRAP_JS="$STAGING_DIR/bootstrap.js"
+
+if [ ! -f "$REPO_ROOT/Verification_Certificate.json" ]; then
+    echo "Error: $REPO_ROOT/Verification_Certificate.json not found for web staging" >&2
+    exit 1
+fi
+cp -f "$REPO_ROOT/Verification_Certificate.json" "$STAGING_DIR/Verification_Certificate.json"
+
+SNAPSHOT_SRC=""
+for cand in \
+    "${CARGO_TARGET_DIR:-}/wasm32-unknown-unknown/release/traceability_snapshot.json" \
+    "${CARGO_TARGET_DIR:-}/wasm32-unknown-unknown/debug/traceability_snapshot.json" \
+    "${CARGO_TARGET_DIR:-}/traceability_snapshot.json" \
+    "$REPO_ROOT/target/wasm32-unknown-unknown/release/traceability_snapshot.json" \
+    "$REPO_ROOT/target/wasm32-unknown-unknown/debug/traceability_snapshot.json" \
+    "$REPO_ROOT/target/traceability_snapshot.json"; do
+    if [ -n "$cand" ] && [ -f "$cand" ]; then
+        SNAPSHOT_SRC="$cand"
+        break
+    fi
+done
+if [ -z "$SNAPSHOT_SRC" ]; then
+    echo "Error: traceability_snapshot.json not found in Cargo target directory" >&2
+    exit 1
+fi
+cp -f "$SNAPSHOT_SRC" "$STAGING_DIR/traceability_snapshot.json"
+
+if [ -d "$REPO_ROOT/papers/output" ]; then
+    shopt -s nullglob
+    pdfs=("$REPO_ROOT"/papers/output/*.pdf)
+    if [ ${#pdfs[@]} -gt 0 ]; then
+        mkdir -p "$STAGING_DIR/papers"
+        cp -f "${pdfs[@]}" "$STAGING_DIR/"
+        cp -f "${pdfs[@]}" "$STAGING_DIR/papers/"
+    fi
+    shopt -u nullglob
+fi
 
 if [ -f "$STAGING_DIR/icon.ico" ]; then
     mv "$STAGING_DIR/icon.ico" "$STAGING_DIR/favicon.ico"
@@ -82,7 +120,7 @@ if [ -f "$INDEX_HTML" ] && grep -q '<script type="module">' "$INDEX_HTML"; then
 fi
 
 shopt -s nullglob
-for ext in wasm js html css svg webmanifest; do
+for ext in wasm js html css svg webmanifest json; do
     for f in "$STAGING_DIR"/*."$ext"; do
         if [ -f "$f" ]; then
             gzip -k -9 -f "$f"
