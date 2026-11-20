@@ -191,15 +191,18 @@ jobs:
     assert!(err2.contains("contents"), "error was: {}", err2);
 }
 
-#[test]
-fn test_job_permission_exception_scoped_enforcement() {
-    let exceptions = vec![JobPermissionException {
+fn pages_deploy_exceptions() -> Vec<JobPermissionException> {
+    vec![JobPermissionException {
         workflow: ".github/workflows/pages.yml".to_string(),
         job: "deploy".to_string(),
         allow_write: vec!["pages".to_string(), "id-token".to_string()],
         reason: Some("GitHub Pages deployment".to_string()),
-    }];
+    }]
+}
 
+#[test]
+fn test_job_permission_exception_scoped_enforcement() {
+    let exceptions = pages_deploy_exceptions();
     let compliant_deploy = r#"
 name: Deploy
 permissions: read-all
@@ -239,8 +242,11 @@ jobs:
     )
     .expect_err("non-exempted workflow must fail");
     assert!(wrong_workflow_err.contains("deploy"));
+}
 
-    // Different job in the exempted workflow must fail
+#[test]
+fn test_job_permission_exception_rejects_unexempted_jobs_and_scopes() {
+    let exceptions = pages_deploy_exceptions();
     let wrong_job = r#"
 name: Deploy
 permissions: read-all
@@ -259,7 +265,6 @@ jobs:
     assert!(wrong_job_err.contains("build"));
     assert!(wrong_job_err.contains("pages: write"));
 
-    // Unlisted write scope on the exempted job must still fail
     let extra_scope = r#"
 name: Deploy
 permissions: read-all
@@ -279,7 +284,6 @@ jobs:
     assert!(extra_scope_err.contains("deploy"));
     assert!(extra_scope_err.contains("contents: write"));
 
-    // write-all on an exempted job must still fail
     let write_all_on_exempt = r#"
 name: Deploy
 permissions: read-all

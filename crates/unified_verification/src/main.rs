@@ -1,22 +1,16 @@
 #![doc = include_str!("../README.md")]
-#![allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-#![allow(clippy::all)]
 use std::env;
 use std::process::Command;
-#[deny(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod api_drift;
 mod ast_visitor;
 mod doc_audit;
 mod entropy_guard;
 mod policy_audit;
 mod profile;
-#[deny(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod records;
 mod report;
-#[deny(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod utils;
 mod vulnerabilities;
-#[deny(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod whitelist;
 mod workflow_linter;
 use utils::{check_file_lengths, check_staged_duplicates};
@@ -130,54 +124,37 @@ fn traceability() {
     }
 }
 
-fn verify_suite(args: &[String]) {
-    println!("=== High-Integrity Verified Suite ===");
-
+fn run_security_checks(member_refs: &[&str], auto_fix: bool) -> Vec<String> {
     println!("Running security checks...");
     let mut passed_security = true;
-    let auto_fix = args.contains(&"--auto-fix".to_string());
 
-    let (_, members) = oxidize_core::workspace::get_workspace_members();
-    let member_refs: Vec<&str> = members.iter().map(|s| s.as_str()).collect();
-
-    if !profile::check_profiles(&member_refs, auto_fix) {
+    if !profile::check_profiles(member_refs, auto_fix) {
         passed_security = false;
     }
-
     if !vulnerabilities::check_osv_vulnerabilities() {
         passed_security = false;
     }
-
     if !ast_visitor::run_ast_visitor() {
         passed_security = false;
     }
-
     if !ast_visitor::run_clone_detector() {
         passed_security = false;
     }
-
-    if !policy_audit::run_policy_audit(&member_refs) {
+    if !policy_audit::run_policy_audit(member_refs) {
         passed_security = false;
     }
-
     let entropy_debt = entropy_guard::check_entropy(&[]);
     if !entropy_debt.is_empty() {
         passed_security = false;
     }
-
     if !passed_security {
         eprintln!("Security verification failed!");
         std::process::exit(1);
     }
+    entropy_debt
+}
 
-    println!("Running ADR and API drift checks...");
-    if !records::verify_records(&[]) {
-        std::process::exit(1);
-    }
-    if !api_drift::check_api_drift() {
-        std::process::exit(1);
-    }
-
+fn evaluate_coverage_and_report(members: &[String], entropy_debt: Vec<String>) -> bool {
     println!("Gathering native execution coverage...");
 
     let output = report::get_llvm_cov_output();
@@ -195,8 +172,8 @@ fn verify_suite(args: &[String]) {
     let (native_lines_total, native_lines_covered) = report::parse_coverage(&cov_json);
     let m = report::analyze_files(&rs_files);
     let mut all_debt = Vec::new();
-    all_debt.extend(report::check_unverified_modules(&members));
-    all_debt.extend(check_file_lengths(&members));
+    all_debt.extend(report::check_unverified_modules(members));
+    all_debt.extend(check_file_lengths(members));
     all_debt.extend(entropy_debt);
 
     let native_cov_pct = if native_lines_total > 0.0 {
@@ -210,9 +187,26 @@ fn verify_suite(args: &[String]) {
         100.0
     };
 
-    let passed = report::print_report(native_cov_pct, wasm_cov_pct, &m, &all_debt);
+    report::print_report(native_cov_pct, wasm_cov_pct, &m, &all_debt)
+}
 
-    if !passed {
+fn verify_suite(args: &[String]) {
+    println!("=== High-Integrity Verified Suite ===");
+    let auto_fix = args.contains(&"--auto-fix".to_string());
+
+    let (_, members) = oxidize_core::workspace::get_workspace_members();
+    let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
+    let entropy_debt = run_security_checks(&member_refs, auto_fix);
+
+    println!("Running ADR and API drift checks...");
+    if !records::verify_records(&[]) {
+        std::process::exit(1);
+    }
+    if !api_drift::check_api_drift() {
+        std::process::exit(1);
+    }
+
+    if !evaluate_coverage_and_report(&members, entropy_debt) {
         std::process::exit(1);
     }
     println!("\nAll integrity checks passed!");

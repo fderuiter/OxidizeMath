@@ -102,8 +102,8 @@ pub fn check_staged_duplicates() {
         Regex::new(r"(fovy|aspect|projection|look_at|Perspective|matrix element)").unwrap();
 
     for line in diff.lines() {
-        if line.starts_with("+++ b/") {
-            current_file = line["+++ b/".len()..].to_string();
+        if let Some(stripped) = line.strip_prefix("+++ b/") {
+            current_file = stripped.to_string();
         } else if line.starts_with('+') && !line.starts_with("+++") {
             let content = &line[1..];
             if trait_re.is_match(content) {
