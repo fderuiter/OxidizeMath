@@ -5334,9 +5334,6 @@
       "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub fn new (vfs : V) -> Self }"
     },
     {
-      "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub fn verify_module_registered (_module_name : & str) -> bool }"
-    },
-    {
       "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub fn verify_module_registered (module_name : & str) -> bool }"
     },
     {

@@ -397,6 +397,7 @@ jobs:
         with:
           name: compiled_papers
           path: papers/output/*.pdf
+          if-no-files-found: error
           retention-days: 7
 
       - name: Upload Papers Release Bundle
@@ -616,17 +617,24 @@ jobs:
       - name: Stage Compiled PDFs and Refresh SHA-256 Manifest
         shell: bash
         run: |
+          set -euo pipefail
           shopt -s nullglob
           pdfs=(compiled_papers/*.pdf)
           if [ ${#pdfs[@]} -eq 0 ]; then
             echo "Error: No compiled PDFs found in compiled_papers artifact" >&2
             exit 1
           fi
+          for pdf in "${pdfs[@]}"; do
+            if [ ! -s "$pdf" ]; then
+              echo "Error: Compiled PDF $pdf is empty" >&2
+              exit 1
+            fi
+          done
           mkdir -p pages_dist/papers
           cp -f "${pdfs[@]}" pages_dist/
           cp -f "${pdfs[@]}" pages_dist/papers/
 
-          for req in traceability_snapshot.json Verification_Certificate.json; do
+          for req in traceability_manifest.json Verification_Certificate.json; do
             if [ ! -s "pages_dist/$req" ]; then
               echo "Error: Required static traceability file pages_dist/$req is missing or empty" >&2
               exit 1

@@ -16,24 +16,24 @@ if [ ! -f "$REPO_ROOT/Verification_Certificate.json" ]; then
 fi
 cp -f "$REPO_ROOT/Verification_Certificate.json" "$STAGING_DIR/Verification_Certificate.json"
 
-SNAPSHOT_SRC=""
+MANIFEST_SRC=""
 for cand in \
-    "${CARGO_TARGET_DIR:-}/wasm32-unknown-unknown/release/traceability_snapshot.json" \
-    "${CARGO_TARGET_DIR:-}/wasm32-unknown-unknown/debug/traceability_snapshot.json" \
-    "${CARGO_TARGET_DIR:-}/traceability_snapshot.json" \
-    "$REPO_ROOT/target/wasm32-unknown-unknown/release/traceability_snapshot.json" \
-    "$REPO_ROOT/target/wasm32-unknown-unknown/debug/traceability_snapshot.json" \
-    "$REPO_ROOT/target/traceability_snapshot.json"; do
+    "${CARGO_TARGET_DIR:-}/wasm32-unknown-unknown/release/traceability_manifest.json" \
+    "${CARGO_TARGET_DIR:-}/wasm32-unknown-unknown/debug/traceability_manifest.json" \
+    "${CARGO_TARGET_DIR:-}/traceability_manifest.json" \
+    "$REPO_ROOT/target/wasm32-unknown-unknown/release/traceability_manifest.json" \
+    "$REPO_ROOT/target/wasm32-unknown-unknown/debug/traceability_manifest.json" \
+    "$REPO_ROOT/target/traceability_manifest.json"; do
     if [ -n "$cand" ] && [ -f "$cand" ]; then
-        SNAPSHOT_SRC="$cand"
+        MANIFEST_SRC="$cand"
         break
     fi
 done
-if [ -z "$SNAPSHOT_SRC" ]; then
-    echo "Error: traceability_snapshot.json not found in Cargo target directory" >&2
+if [ -z "$MANIFEST_SRC" ]; then
+    echo "Error: traceability_manifest.json not found in Cargo target directory" >&2
     exit 1
 fi
-cp -f "$SNAPSHOT_SRC" "$STAGING_DIR/traceability_snapshot.json"
+cp -f "$MANIFEST_SRC" "$STAGING_DIR/traceability_manifest.json"
 
 if [ -d "$REPO_ROOT/papers/output" ]; then
     shopt -s nullglob

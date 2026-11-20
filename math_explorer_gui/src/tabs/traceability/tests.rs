@@ -214,26 +214,31 @@ fn test_traceability_failure_screenshot_generation() {
 
 #[test]
 fn test_traceability_online_document_links() {
-    let url_tex = TraceabilityTab::paper_url("partitions_implementation.tex");
     assert_eq!(
-        url_tex,
+        TraceabilityTab::paper_url_for_target("partitions_implementation.tex", false),
         Some("https://fderuiter.github.io/OxidizeMath/partitions_implementation.pdf".to_string())
     );
-
-    let url_prefixed = TraceabilityTab::paper_url("papers/cera_framework.tex");
     assert_eq!(
-        url_prefixed,
-        Some("https://fderuiter.github.io/OxidizeMath/cera_framework.pdf".to_string())
+        TraceabilityTab::paper_url_for_target("partitions_implementation.tex", true),
+        Some("./partitions_implementation.pdf".to_string())
+    );
+    assert_eq!(
+        TraceabilityTab::paper_url_for_target("papers/cera_framework.tex", true),
+        Some("./cera_framework.pdf".to_string())
+    );
+    assert_eq!(
+        TraceabilityTab::paper_url_for_target("win_ratio.pdf", true),
+        Some("./win_ratio.pdf".to_string())
+    );
+    assert_eq!(
+        TraceabilityTab::paper_url("spec:transformer_v1"),
+        None
     );
 
-    let url_pdf = TraceabilityTab::paper_url("win_ratio.pdf");
-    assert_eq!(
-        url_pdf,
-        Some("https://fderuiter.github.io/OxidizeMath/win_ratio.pdf".to_string())
+    let expected_native_or_wasm = TraceabilityTab::paper_url_for_target(
+        "partitions_implementation.tex",
+        cfg!(target_arch = "wasm32"),
     );
-
-    assert_eq!(TraceabilityTab::paper_url("spec:transformer_v1"), None);
-
     let mut tab = TraceabilityTab {
         orphaned_papers: vec!["papers/chaos_theory.tex".to_string()],
         has_initial_scan: true,
@@ -250,7 +255,7 @@ fn test_traceability_online_document_links() {
 
     assert_eq!(
         tab.online_document_url("partitions_implementation.tex"),
-        Some("https://fderuiter.github.io/OxidizeMath/partitions_implementation.pdf".to_string())
+        expected_native_or_wasm
     );
 
     let ctx = egui::Context::default();
@@ -258,17 +263,6 @@ fn test_traceability_online_document_links() {
         let mut frame = eframe::Frame::_new_kittest();
         tab.show(ctx, &mut frame);
     });
-
-    let sample_datasets = vec![
-        (
-            "Hosted Papers".to_string(),
-            vec![[0.0, 0.0], [1.0, 28.0]],
-        ),
-    ];
-    let options = egui_plot::export::ExportOptions::default();
-    if let Ok(png_data) = egui_plot::export::export_custom_png(&sample_datasets, &options) {
-        let _ = std::fs::write("/tmp/traceability_paper_links.png", png_data);
-    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -101,18 +101,28 @@ impl TraceabilityTab {
         self.state.error()
     }
 
-    pub fn paper_url(name: &str) -> Option<String> {
-        const BASE: &str = "https://fderuiter.github.io/OxidizeMath";
-        let clean = name.strip_prefix("papers/").unwrap_or(name);
-        if let Some(stem) = clean.strip_suffix(".tex") {
-            Some(format!("{BASE}/{stem}.pdf"))
-        } else if clean.ends_with(".pdf") {
-            Some(format!("{BASE}/{clean}"))
-        } else if !clean.starts_with("spec:") && !clean.starts_with("registry:") {
-            Some(format!("{BASE}/{clean}.pdf"))
-        } else {
-            None
+    pub(crate) fn paper_url_for_target(name: &str, is_wasm: bool) -> Option<String> {
+        let trimmed = name.trim();
+        let clean = trimmed.strip_prefix("papers/").unwrap_or(trimmed);
+        if clean.is_empty() || clean.starts_with("spec:") || clean.starts_with("registry:") {
+            return None;
         }
+        let base = if is_wasm {
+            "."
+        } else {
+            "https://fderuiter.github.io/OxidizeMath"
+        };
+        if let Some(stem) = clean.strip_suffix(".tex") {
+            (!stem.is_empty()).then(|| format!("{base}/{stem}.pdf"))
+        } else if let Some(stem) = clean.strip_suffix(".pdf") {
+            (!stem.is_empty()).then(|| format!("{base}/{stem}.pdf"))
+        } else {
+            Some(format!("{base}/{clean}.pdf"))
+        }
+    }
+
+    pub fn paper_url(name: &str) -> Option<String> {
+        Self::paper_url_for_target(name, cfg!(target_arch = "wasm32"))
     }
 
     #[cfg(test)]
@@ -204,8 +214,10 @@ impl TraceabilityTab {
 
         #[cfg(not(target_arch = "wasm32"))]
         let base_dir = match &self.repo_path {
-            Some(p) => format!("{}/", p),
-            None => String::new(),
+            Some(p) => format!("{p}/"),
+            None => Self::canonical_workspace_root()
+                .map(|root| format!("{}/", oxidize_core::path_utils::normalize_path(&root)))
+                .unwrap_or_default(),
         };
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -214,7 +226,7 @@ impl TraceabilityTab {
         self.cert_rx = Some(cert_rx);
 
         #[cfg(all(test, not(target_arch = "wasm32")))]
-        if base_dir.is_empty() && Self::canonical_workspace_root().is_some() {
+        if self.repo_path.is_none() && !base_dir.is_empty() {
             static DEFAULT_SCAN_CACHE: std::sync::OnceLock<
                 Result<oxidize_core::traceability::TraceabilityReport, String>,
             > = std::sync::OnceLock::new();
@@ -222,11 +234,11 @@ impl TraceabilityTab {
                 .get_or_init(|| {
                     futures::executor::block_on(execute_workspace_scan(
                         oxidize_core::vfs::DefaultVfs,
-                        String::new(),
+                        base_dir.clone(),
                     ))
                 })
                 .clone();
-            let _ = cert_tx.send(web_snapshot::load_local_certificate(""));
+            let _ = cert_tx.send(web_snapshot::load_local_certificate(&base_dir));
             let _ = tx.send(cached);
             return;
         }
@@ -243,10 +255,11 @@ impl TraceabilityTab {
         });
 
         #[cfg(target_arch = "wasm32")]
+        // theory_verification!
         wasm_bindgen_futures::spawn_local(async move {
             match web_snapshot::fetch_web_traceability().await {
                 Ok((report, cert)) => {
-                    let _ = cert_tx.send(Some(cert));
+                    let _ = cert_tx.send(cert);
                     let _ = tx.send(Ok(report));
                 }
                 Err(err) => {
