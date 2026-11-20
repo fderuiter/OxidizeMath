@@ -36,6 +36,17 @@ pub(super) fn has_workspace_header(manifest: &str) -> bool {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+pub(super) fn join_relative_segments(base: &Path, rel: &str) -> PathBuf {
+    let mut out = base.to_path_buf();
+    for seg in rel.split(['/', '\\']) {
+        if !seg.is_empty() && seg != "." {
+            out.push(seg);
+        }
+    }
+    out
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub(super) fn canonical_workspace_root() -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok()?.canonicalize().ok()?;
     cwd.ancestors()
@@ -58,7 +69,7 @@ pub(super) fn validate_session_repo_path(raw: &str) -> Option<String> {
     let resolved = if candidate.is_absolute() {
         candidate.to_path_buf()
     } else {
-        canonical_root.join(candidate)
+        join_relative_segments(&canonical_root, trimmed)
     };
     let canonical_candidate = resolved.canonicalize().ok()?;
     if !canonical_candidate.is_dir() || !canonical_candidate.starts_with(&canonical_root) {
@@ -168,11 +179,11 @@ impl RootedVfs {
                 "Path traversal rejected",
             ));
         }
-        let clean = rel.trim_start_matches("./").trim_start_matches('/');
+        let clean = rel.trim_start_matches("./").trim_start_matches(['/', '\\']);
         let joined = if clean.is_empty() {
             self.root.clone()
         } else {
-            self.root.join(clean)
+            join_relative_segments(&self.root, clean)
         };
         let canonical = joined.canonicalize()?;
         if !canonical.starts_with(&self.root) {
@@ -283,6 +294,7 @@ pub(super) fn dispatch_native_refresh(
     }
 
     if let Some(ws_root) = canonical_workspace_root() {
+        let ws_norm = oxidize_core::path_utils::normalize_path(&ws_root);
         #[cfg(test)]
         {
             static DEFAULT_SCAN_CACHE: std::sync::OnceLock<
@@ -291,7 +303,7 @@ pub(super) fn dispatch_native_refresh(
             let cached = DEFAULT_SCAN_CACHE
                 .get_or_init(|| execute_rooted_scan_blocking(&ws_root))
                 .clone();
-            let cert = super::web_snapshot::load_local_certificate(&ws_root.to_string_lossy());
+            let cert = super::web_snapshot::load_local_certificate(&ws_norm);
             let _ = cert_tx.send(cert);
             let _ = tx.send(cached);
             return;
@@ -299,7 +311,7 @@ pub(super) fn dispatch_native_refresh(
         #[cfg(not(test))]
         {
             std::thread::spawn(move || {
-                let cert = super::web_snapshot::load_local_certificate(&ws_root.to_string_lossy());
+                let cert = super::web_snapshot::load_local_certificate(&ws_norm);
                 let res = execute_rooted_scan_blocking(&ws_root);
                 let _ = cert_tx.send(cert);
                 let _ = tx.send(res);

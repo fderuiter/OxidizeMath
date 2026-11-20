@@ -90,19 +90,23 @@ fn test_external_clone_picker_scans_live_while_load_state_stays_sandboxed() {
     let clone_dir = std::env::temp_dir().join(format!("oxidize_external_clone_{pid}"));
     let _ = std::fs::remove_dir_all(&clone_dir);
     std::fs::create_dir_all(clone_dir.join("papers")).unwrap();
-    std::fs::create_dir_all(clone_dir.join("crates/ext_math/src")).unwrap();
+    std::fs::create_dir_all(clone_dir.join("crates").join("ext_math").join("src")).unwrap();
     std::fs::write(
         clone_dir.join("traceability.toml"),
         "[links]\next_math = \"external_manuscript.tex\"\n",
     )
     .unwrap();
     std::fs::write(
-        clone_dir.join("papers/external_manuscript.tex"),
+        clone_dir.join("papers").join("external_manuscript.tex"),
         "\\documentclass{article}\\begin{document}External\\end{document}",
     )
     .unwrap();
     std::fs::write(
-        clone_dir.join("crates/ext_math/src/lib.rs"),
+        clone_dir
+            .join("crates")
+            .join("ext_math")
+            .join("src")
+            .join("lib.rs"),
         concat!(
             "// [cite",
             ":ext_math]\npub fn check() -> usize { let x = 1; assert_eq!(x, 1); x }\n"
@@ -181,8 +185,10 @@ fn test_invalid_external_folders_show_inline_error_feedback() {
 fn test_ci_pages_workflow_verifies_all_28_paper_pdfs_and_sw_shell_scope() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
-    let ci_yaml =
-        std::fs::read_to_string(ws_root.join(".github/workflows/ci.yml")).expect("read ci.yml");
+    let ci_yaml = std::fs::read_to_string(
+        ws_root.join(".github").join("workflows").join("ci.yml"),
+    )
+    .expect("read ci.yml");
 
     assert!(ci_yaml.contains("name: wasm_web_dist"));
     assert!(ci_yaml.contains("name: compiled_papers"));
@@ -212,8 +218,8 @@ fn test_ci_pages_workflow_verifies_all_28_paper_pdfs_and_sw_shell_scope() {
         .count();
     assert_eq!(tex_count, 28);
 
-    let sw_js =
-        std::fs::read_to_string(ws_root.join("math_explorer_gui/sw.js")).expect("read sw.js");
+    let sw_js = std::fs::read_to_string(ws_root.join("math_explorer_gui").join("sw.js"))
+        .expect("read sw.js");
     assert!(
         sw_js.contains("isShellNavigationPath") && sw_js.contains(r"/\.pdf$/i.test(relPath)"),
         "sw.js must keep staged paper PDF navigations out of the app-shell index.html cache"

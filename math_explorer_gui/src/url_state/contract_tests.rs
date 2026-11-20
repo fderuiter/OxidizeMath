@@ -84,6 +84,7 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
 
 #[test]
 fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut source_app = MathExplorerApp::default();
     assert_eq!(source_app.tabs.len(), 21, "Expected all 21 ExplorerTabs");
 
@@ -131,6 +132,7 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
 
 #[test]
 fn test_contract_all_55_tools_lossless_url_roundtrip() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     assert_eq!(
         tools.len(),
@@ -191,6 +193,7 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
 
 #[test]
 fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
@@ -278,6 +281,7 @@ fn build_invalid_share_url_cases() -> Vec<String> {
 
 #[test]
 fn test_invalid_share_urls_fail_atomically_and_emit_toast_telemetry_and_assertive_aria() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
     let chaos_idx = app
@@ -331,10 +335,12 @@ fn test_invalid_share_urls_fail_atomically_and_emit_toast_telemetry_and_assertiv
 
 #[test]
 fn test_copy_share_link_populates_clipboard_and_confirmation_toast() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ctx = egui::Context::default();
     let _ = take_last_copied_share_url();
 
-    let mut app = MathExplorerApp::default();
+    let cc = eframe::CreationContext::_new_kittest(ctx.clone());
+    let mut app = MathExplorerApp::new(&cc);
     let mri_idx = app.tabs.iter().position(|t| t.url_slug() == "mri").unwrap();
     app.selected_tab = mri_idx;
     app.copy_current_share_link(&ctx);
@@ -362,6 +368,25 @@ fn test_copy_share_link_populates_clipboard_and_confirmation_toast() {
         take_last_copied_share_url().expect("Traceability share link must be copied");
     assert!(trace_copied
         .starts_with("https://fderuiter.github.io/OxidizeMath/#tab=traceability&state="));
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let subdir_preset = crate::presets::serialize_compact_preset_envelope(
+            "Traceability Portal",
+            "traceability",
+            serde_json::json!({ "repo_path": "papers" }),
+        )
+        .unwrap();
+        app.tabs[trace_idx]
+            .import_url_preset_json(None, Some(&subdir_preset))
+            .unwrap();
+        let exported = app.tabs[trace_idx]
+            .export_url_preset_json()
+            .unwrap()
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&exported).unwrap();
+        assert_eq!(parsed["config"]["repo_path"], serde_json::json!("papers"));
+    }
 }
 
 #[test]

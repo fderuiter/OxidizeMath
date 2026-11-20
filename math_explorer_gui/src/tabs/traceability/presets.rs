@@ -71,12 +71,39 @@ impl TraceabilityTab {
         "traceability"
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn portable_share_repo_path(raw: &str) -> Option<String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() || scanner::has_traversal_sequence(trimmed) {
+            return None;
+        }
+        let ws_root = scanner::canonical_workspace_root()?;
+        let candidate = std::path::Path::new(trimmed);
+        let resolved = if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            scanner::join_relative_segments(&ws_root, trimmed)
+        };
+        let canonical = resolved.canonicalize().ok()?;
+        let rel = canonical.strip_prefix(&ws_root).ok()?;
+        let norm = oxidize_core::path_utils::normalize_path(rel);
+        let clean = norm.trim_matches('/');
+        (!clean.is_empty()).then(|| clean.to_string())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn portable_share_repo_path(_raw: &str) -> Option<String> {
+        None
+    }
+
     /// Exports current `TraceabilityTab` configuration as compact `PresetWrapper` JSON.
     pub fn to_compact_url_json(&self) -> Result<String, String> {
         let shareable_repo_path = if self.user_picked_repo {
             None
         } else {
-            self.repo_path.clone()
+            self.repo_path
+                .as_deref()
+                .and_then(Self::portable_share_repo_path)
         };
         serialize_compact_preset_envelope(
             "Traceability Portal",

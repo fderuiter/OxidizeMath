@@ -218,7 +218,14 @@ fn build_help_menu() -> Submenu {
     help_menu
 }
 
+fn can_init_nsapp_menu() -> bool {
+    !cfg!(test) && std::thread::current().name() == Some("main")
+}
+
 pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
+    if !can_init_nsapp_menu() {
+        return;
+    }
     let menu = Menu::new();
 
     // App Menu
@@ -416,5 +423,19 @@ mod tests {
             assert_eq!(app.selected_tab, initial_primary);
             assert_eq!(app.secondary_tab, initial_secondary);
         }
+    }
+
+    #[test]
+    fn test_setup_macos_menu_and_share_link_event_safe_on_worker_threads() {
+        let _guard = crate::reflective_ui::tests::lock_test_mutex();
+        let _ = crate::url_state::take_last_copied_share_url();
+        let ctx = egui::Context::default();
+        let mut app = MathExplorerApp::default();
+
+        setup_macos_menu(&app);
+        assert!(handle_file_event(&mut app, &ctx, "file_share_link"));
+        let copied =
+            crate::url_state::take_last_copied_share_url().expect("macOS menu copied share link");
+        assert!(copied.starts_with("https://fderuiter.github.io/OxidizeMath/#tab="));
     }
 }

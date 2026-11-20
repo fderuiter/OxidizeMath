@@ -72,6 +72,14 @@ impl TraceabilityTab {
         scanner::canonical_workspace_root()
     }
 
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn join_relative_segments(
+        base: &std::path::Path,
+        rel: &str,
+    ) -> std::path::PathBuf {
+        scanner::join_relative_segments(base, rel)
+    }
+
     pub fn paper_url(name: &str) -> Option<String> {
         const BASE: &str = "https://fderuiter.github.io/OxidizeMath";
         let clean = name.strip_prefix("papers/").unwrap_or(name);
