@@ -10,8 +10,9 @@ When creating a new error type in a library module, you must implement the
 
 ## Example
 ```rust
-use diagnostics::{Diagnostic, Severity};
+use diagnostics::{Diagnostic, DiagnosticBus, DiagnosticEvent, Severity};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -37,6 +38,24 @@ impl Diagnostic for MyModuleError {
         meta
     }
 }
+
+let err = MyModuleError::Instability {
+    state: "t=1.0".to_string(),
+};
+let bus = DiagnosticBus::new();
+let observed = Arc::new(Mutex::new(Vec::new()));
+let observed_clone = Arc::clone(&observed);
+bus.register_listener(move |event| {
+    observed_clone.lock().unwrap().push(event.message.clone());
+});
+
+bus.emit(DiagnosticEvent {
+    severity: err.severity(),
+    message: err.to_string(),
+    metadata: err.metadata(),
+    thread_name: None,
+});
+assert_eq!(observed.lock().unwrap().len(), 1);
 ```
 
-Emit the error to the bus using `diagnostics::emit_error(&my_error)`.
+Subscribe downstream consumers with `DiagnosticBus::register_listener` and dispatch structured `DiagnosticEvent` records via `DiagnosticBus::emit` (or `diagnostics::global_bus().emit(...)` for process-wide panic and telemetry forwarding).
