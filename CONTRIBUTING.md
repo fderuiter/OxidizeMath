@@ -92,7 +92,7 @@ This command executes all workspace quality gates:
 8. **Documentation**: `cargo doc --workspace --no-deps` (with warnings treated as errors)
 9. **Documentation Tests**: `cargo test --doc --workspace --all-features`
 10. **Markdown Links**: `cargo run -p xtask -- check-markdown-links` (validates all internal relative markdown links)
-11. **CI Workflows**: `cargo run -p unified_verification --release -- lint-workflows` (validates GitHub Actions workflow permissions, concurrency controls, job timeouts, commit-pinned actions, and rejects direct `${{ github.* }}` interpolations in `run` scripts)
+11. **CI Workflows**: `cargo run -p unified_verification --release -- lint-workflows` (validates GitHub Actions workflows, local reusable workflows, and `.github/actions` composite actions for read-only permissions, concurrency controls, job timeouts with `jobs.<id>.uses` callers omitting `timeout-minutes`, commit-pinned actions, and rejects direct `${{ github.* }}`, `${{ inputs.* }}`, and non-static `${{ env.* }}` interpolations across workflow and composite `run` scripts)
 12. **Crate Documentation Audit**: `cargo run -p unified_verification --release -- check-docs` (verifies README files and entrypoint docs)
 13. **Traceability**: `cargo run -p unified_verification --release -- traceability` (validates architectural citations and test mappings)
 14. **Entropy & Secret Scanning**: `cargo run -p unified_verification --release -- check-entropy` (audits source files for secrets and unseeded entropy)
