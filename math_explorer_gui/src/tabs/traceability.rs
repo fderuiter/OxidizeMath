@@ -290,6 +290,109 @@ struct TraceabilityState {
     repo_path: Option<String>,
 }
 
+impl TraceabilityTab {
+    fn poll_scan_channels(&mut self) {
+        let Some(rx) = &self.report_rx else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(Ok(report)) => {
+                self.orphaned_papers = report.orphaned_papers;
+                self.unlinked_code = report.unlinked_code;
+                self.invalid_links = report.invalid_links;
+                for (paper_name, linked_code) in report.paper_coverage {
+                    self.papers.insert(
+                        paper_name.clone(),
+                        PaperStatus {
+                            name: paper_name,
+                            linked_code,
+                        },
+                    );
+                }
+                self.state = TraceabilityScanState::Ready;
+                self.report_rx = None;
+                self.certificate = self
+                    .cert_rx
+                    .as_ref()
+                    .and_then(|crx| crx.try_recv().ok())
+                    .flatten();
+                self.cert_rx = None;
+            }
+            Ok(Err(err)) => {
+                self.state = TraceabilityScanState::Failed(err);
+                self.report_rx = None;
+                self.cert_rx = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.state = TraceabilityScanState::Failed(
+                    "Worker thread disconnected unexpectedly".to_string(),
+                );
+                self.report_rx = None;
+                self.cert_rx = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+    }
+
+    fn render_portal_toolbar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.heading("Theory-to-Code Traceability Portal");
+            if ui.button("Refresh").clicked() {
+                self.refresh();
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            if ui.button("Select Codebase Directory...").clicked() {
+                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    self.repo_path = Self::validate_repo_path(&path.to_string_lossy());
+                    self.refresh();
+                }
+            }
+            if let Some(path) = &self.repo_path {
+                ui.label(format!("Scanning: {path}"));
+            } else {
+                ui.label("Scanning: default workspace");
+            }
+        });
+        ui.separator();
+    }
+
+    fn render_failed_banner(&mut self, ui: &mut egui::Ui, err: &str) {
+        let err_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
+        let mut retry_clicked = false;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut new_path_picked: Option<String> = None;
+
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.label(
+                    egui::RichText::new(format!("⚠️ Scan Failed: {err}"))
+                        .color(err_color)
+                        .strong(),
+                );
+                ui.horizontal(|ui| {
+                    retry_clicked = ui.button("Retry").clicked();
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if ui.button("Select Codebase Directory...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                            new_path_picked = Some(path.display().to_string());
+                        }
+                    }
+                });
+            });
+        });
+
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = new_path_picked {
+            self.repo_path = Self::validate_repo_path(&path);
+            self.refresh();
+            return;
+        }
+        if retry_clicked {
+            self.refresh();
+        }
+    }
+}
+
 impl ExplorerTab for TraceabilityTab {
     fn name(&self) -> &'static str {
         "Traceability Portal"
@@ -317,140 +420,38 @@ impl ExplorerTab for TraceabilityTab {
         }
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        if let Some(rx) = &self.report_rx {
-            match rx.try_recv() {
-                Ok(Ok(report)) => {
-                    self.orphaned_papers = report.orphaned_papers;
-                    self.unlinked_code = report.unlinked_code;
-                    self.invalid_links = report.invalid_links;
-
-                    for (paper_name, linked_code) in report.paper_coverage {
-                        self.papers.insert(
-                            paper_name.clone(),
-                            PaperStatus {
-                                name: paper_name,
-                                linked_code,
-                            },
-                        );
-                    }
-                    self.state = TraceabilityScanState::Ready;
-                    self.report_rx = None;
-                    self.certificate = self
-                        .cert_rx
-                        .as_ref()
-                        .and_then(|crx| crx.try_recv().ok())
-                        .flatten();
-                    self.cert_rx = None;
-                }
-                Ok(Err(err)) => {
-                    self.state = TraceabilityScanState::Failed(err);
-                    self.report_rx = None;
-                    self.cert_rx = None;
-                }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.state = TraceabilityScanState::Failed(
-                        "Worker thread disconnected unexpectedly".to_string(),
-                    );
-                    self.report_rx = None;
-                    self.cert_rx = None;
-                }
-                Err(std::sync::mpsc::TryRecvError::Empty) => {}
-            }
-        }
-
+        self.poll_scan_channels();
         if !self.has_initial_scan {
             self.refresh();
         }
-
         if self.state.is_scanning() {
             ui.ctx().request_repaint();
         }
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("Theory-to-Code Traceability Portal");
-                if ui.button("Refresh").clicked() {
-                    self.refresh();
-                }
-
-                #[cfg(not(target_arch = "wasm32"))]
-                if ui.button("Select Codebase Directory...").clicked() {
-                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                        self.repo_path = Self::validate_repo_path(&path.to_string_lossy());
-                        self.refresh();
-                    }
-                }
-
-                if let Some(path) = &self.repo_path {
-                    ui.label(format!("Scanning: {}", path));
-                } else {
-                    ui.label("Scanning: default workspace");
-                }
-            });
-            ui.separator();
-
-            let mut retry_clicked = false;
-            #[cfg(not(target_arch = "wasm32"))]
-            let mut new_path_picked: Option<String> = None;
-            match &self.state {
+            self.render_portal_toolbar(ui);
+            match self.state.clone() {
                 TraceabilityScanState::Scanning => {
                     ui.horizontal(|ui| {
                         ui.spinner();
                         ui.label("Scanning repository via Virtual File System...");
                     });
-                    return;
                 }
-                TraceabilityScanState::Failed(err) => {
-                    let err_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
-                    egui::Frame::group(ui.style()).show(ui, |ui| {
-                        ui.vertical(|ui| {
-                            ui.label(
-                                egui::RichText::new(format!("⚠️ Scan Failed: {}", err))
-                                    .color(err_color)
-                                    .strong(),
-                            );
-                            ui.horizontal(|ui| {
-                                if ui.button("Retry").clicked() {
-                                    retry_clicked = true;
-                                }
-                                #[cfg(not(target_arch = "wasm32"))]
-                                if ui.button("Select Codebase Directory...").clicked() {
-                                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                                        new_path_picked = Some(path.display().to_string());
-                                    }
-                                }
-                            });
-                        });
-                    });
-                    #[cfg(not(target_arch = "wasm32"))]
-                    if let Some(path) = new_path_picked {
-                        self.repo_path = Self::validate_repo_path(&path);
-                        self.refresh();
-                        return;
-                    }
-                    if retry_clicked {
-                        self.refresh();
-                    }
-                    return;
-                }
+                TraceabilityScanState::Failed(err) => self.render_failed_banner(ui, &err),
                 TraceabilityScanState::Idle => {
                     ui.label("Traceability scan is idle. Click Refresh to scan.");
-                    return;
                 }
-                TraceabilityScanState::Ready => {}
+                TraceabilityScanState::Ready => web_snapshot::render_ready_report(
+                    ui,
+                    &self.papers,
+                    &self.orphaned_papers,
+                    &self.unlinked_code,
+                    &self.invalid_links,
+                    self.certificate.as_ref(),
+                    Self::paper_url,
+                ),
             }
-
-            web_snapshot::render_ready_report(
-                ui,
-                &self.papers,
-                &self.orphaned_papers,
-                &self.unlinked_code,
-                &self.invalid_links,
-                self.certificate.as_ref(),
-                Self::paper_url,
-            );
         });
     }
 }
