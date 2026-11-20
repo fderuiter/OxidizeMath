@@ -91,15 +91,13 @@ pub fn load_allowlist(whitelist_path: &Path) -> HashSet<String> {
         .map(|s| (*s).to_string())
         .collect();
 
-    if let Ok(content) = fs::read_to_string(whitelist_path) {
-        if let Ok(config) = toml::from_str::<WhitelistConfig>(&content) {
-            if let Some(doc_cfg) = config.doc_verification {
-                if let Some(crates) = doc_cfg.allowlist {
-                    for c in crates {
-                        allowlist.insert(c);
-                    }
-                }
-            }
+    if let Ok(content) = fs::read_to_string(whitelist_path)
+        && let Ok(config) = toml::from_str::<WhitelistConfig>(&content)
+        && let Some(doc_cfg) = config.doc_verification
+        && let Some(crates) = doc_cfg.allowlist
+    {
+        for c in crates {
+            allowlist.insert(c);
         }
     }
 

@@ -13,12 +13,12 @@ By consolidating compliance checks into a unified command-line tool, developer w
 - **`verify-records`**: Audits git commit diffs or the staged git index (`--staged`) to enforce that modifying core logic (`crates/` or `math_explorer/`) is accompanied by creating or updating an Architectural Decision Record in `docs/adr/`.
 - **`traceability`**: Performs static AST scans across Rust source files to verify literature citation bindings (`papers/`) and module verification attributes.
 - **`check-file-lengths`**: Enforces the 500-line ceiling per source file across workspace members to maintain modularity.
-- **`test-policy-audit`**: Detects unauthorized bypasses such as unapproved `#[allow(dead_code)]` or `#[allow(unused)]` attributes.
+- **`test-policy-audit`**: Enforces `[lints] workspace = true` inheritance in first-party `Cargo.toml` manifests, detects unauthorized `#[allow(dead_code)]`, `#[allow(unused)]`, or `#[allow(warnings)]` bypasses, blocks inner `#![allow]` / `#![expect]` and `mod` attributes (including `cfg_attr`) for `clippy::all`, `clippy::too_many_lines`, and `clippy::cognitive_complexity` plus item-level `clippy::all`, and flags unused dependencies.
 - **`check-entropy`**: Audits sources against the No-Entropy policy, ensuring that all random number generation relies on explicit seeds via `OxidizeRng`.
 - **`check-vulnerabilities`**: Audits workspace dependencies against known vulnerabilities via OSV database.
 - **`check-duplicates` / `check-staged-duplicates`**: AST-level code clone detector identifying duplicated logic across crates.
 - **`check-api-drift` / `regenerate-baseline`**: Validates public API surface against baseline definitions to prevent accidental breaking changes.
-- **`check-profiles`**: Verifies workspace `[profile.release]` `overflow-checks = true` enforcement and rejects member-level `[profile.release]` overrides.
+- **`check-profiles`**: Verifies workspace `[profile.release]` `overflow-checks = true` enforcement, rejects member-level `[profile.release]` overrides, and validates `[lints] workspace = true` inheritance across member manifests (allowing vendored `egui_plot` only with explicit `[lints.rust]` and `[lints.clippy]` tables).
 - **`lint-workflows`**: Validates GitHub Actions workflow configurations, enforcing root and job-level read-only permissions (with scoped deployment exceptions in `verification_whitelist.toml`), concurrency controls, job timeouts, commit-pinned actions, and rejecting direct `${{ github.* }}` expressions in `run` scripts.
 
 ---

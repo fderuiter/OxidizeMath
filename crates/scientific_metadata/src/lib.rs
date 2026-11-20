@@ -8,8 +8,6 @@
 //! - [`citation_registry`]: Provides [`CitationRegistry`](citation_registry::CitationRegistry),
 //!   a thread-safe global registry for storing and querying academic citations.
 
-#![warn(missing_docs)]
-
 /// Centralized academic citation registry module.
 pub mod citation_registry;
 

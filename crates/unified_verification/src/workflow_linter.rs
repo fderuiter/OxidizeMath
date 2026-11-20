@@ -53,12 +53,11 @@ pub fn load_workflow_exceptions(path: Option<&Path>) -> Vec<JobPermissionExcepti
         Some(p) => Some(p.to_path_buf()),
         None => find_whitelist_path(),
     };
-    if let Some(toml_path) = resolved {
-        if let Ok(content) = fs::read_to_string(&toml_path) {
-            if let Ok(parsed) = toml::from_str::<WhitelistFile>(&content) {
-                return parsed.workflow_linter.unwrap_or_default().exceptions;
-            }
-        }
+    if let Some(toml_path) = resolved
+        && let Ok(content) = fs::read_to_string(&toml_path)
+        && let Ok(parsed) = toml::from_str::<WhitelistFile>(&content)
+    {
+        return parsed.workflow_linter.unwrap_or_default().exceptions;
     }
     Vec::new()
 }

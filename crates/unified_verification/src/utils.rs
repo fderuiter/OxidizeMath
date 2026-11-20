@@ -22,16 +22,15 @@ pub fn check_file_lengths(members: &[String]) -> Vec<String> {
                 }
                 if entry.file_type().is_file()
                     && entry.path().extension().and_then(|s| s.to_str()) == Some("rs")
+                    && let Ok(content) = fs::read_to_string(entry.path())
                 {
-                    if let Ok(content) = fs::read_to_string(entry.path()) {
-                        let lines = content.lines().count();
-                        if lines > 500 {
-                            exceeding.push(format!(
-                                "File length violation: {} ({} lines)",
-                                entry.path().display(),
-                                lines
-                            ));
-                        }
+                    let lines = content.lines().count();
+                    if lines > 500 {
+                        exceeding.push(format!(
+                            "File length violation: {} ({} lines)",
+                            entry.path().display(),
+                            lines
+                        ));
                     }
                 }
             }
@@ -59,8 +58,8 @@ pub fn check_staged_duplicates() {
         Regex::new(r"(fovy|aspect|projection|look_at|Perspective|matrix element)").unwrap();
 
     for line in diff.lines() {
-        if line.starts_with("+++ b/") {
-            current_file = line["+++ b/".len()..].to_string();
+        if let Some(stripped) = line.strip_prefix("+++ b/") {
+            current_file = stripped.to_string();
         } else if line.starts_with('+') && !line.starts_with("+++") {
             let content = &line[1..];
             if trait_re.is_match(content) {
