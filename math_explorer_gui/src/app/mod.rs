@@ -349,6 +349,8 @@ impl eframe::App for MathExplorerApp {
             crate::accessibility::announce_live_status(ctx, status_msg);
         }
 
+        self.poll_share_shortcut_and_clipboard(ctx);
+
         // Fetch new events
         let new_events = crate::telemetry::poll_app_telemetry();
         let mut has_error_or_fatal = false;

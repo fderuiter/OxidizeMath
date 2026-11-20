@@ -12,7 +12,7 @@ fi
 echo "Pre-compressing static distribution assets in $TARGET_DIR..."
 
 shopt -s nullglob
-for ext in wasm js html css svg webmanifest; do
+for ext in wasm js html css svg webmanifest json; do
     for f in "$TARGET_DIR"/*."$ext"; do
         if [ -f "$f" ]; then
             gzip -k -9 -f "$f"

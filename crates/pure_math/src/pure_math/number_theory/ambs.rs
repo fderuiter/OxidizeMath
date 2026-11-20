@@ -241,9 +241,15 @@ impl AmbsDsp {
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn tonelli_shanks(n: &Integer, p: &Integer) -> Result<Vec<Integer>, AmbsError> {
+        if *p < 2 {
+            return Err(AmbsError::ModuloError);
+        }
         let n_mod = n.clone().rem_euc(p);
         if n_mod == 0 {
             return Ok(vec![Integer::from(0)]);
+        }
+        if *p == 2 {
+            return Ok(vec![n_mod]);
         }
 
         let p_minus_one = p.clone() - Integer::from(1);

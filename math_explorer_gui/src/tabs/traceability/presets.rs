@@ -116,7 +116,9 @@ impl TraceabilityTab {
         };
         if self.repo_path != validated {
             self.repo_path = validated;
-            self.refresh();
+            if self.has_initial_scan {
+                self.refresh();
+            }
         }
         Ok(())
     }

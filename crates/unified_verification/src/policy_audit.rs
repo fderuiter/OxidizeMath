@@ -420,10 +420,10 @@ fn audit_single_member(member: &str, whitelist: &VerificationWhitelist) -> bool 
 }
 
 pub fn run_policy_audit(members: &[&str]) -> bool {
-    let candidates = if lint_policy::cwd_is_workspace_root() {
-        ROOT_ONLY_WHITELIST_CANDIDATES
-    } else {
+    let candidates = if lint_policy::cwd_is_member_crate_dir() {
         WORKSPACE_WHITELIST_CANDIDATES
+    } else {
+        ROOT_ONLY_WHITELIST_CANDIDATES
     };
     let whitelist_path = crate::whitelist::resolve_whitelist_path(candidates)
         .unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());

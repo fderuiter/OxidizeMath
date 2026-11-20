@@ -12,25 +12,37 @@ use std::time::Duration;
 const APP_SHARE_CLIPBOARD_ID: &str = "app_share_clipboard_status";
 
 impl MathExplorerApp {
-    /// Captures the O(1) shareable URL signature for the primary simulation tab.
+    fn active_share_tab(&self) -> Option<(usize, &dyn crate::tabs::ExplorerTab)> {
+        let pane = self.active_focused_pane();
+        let tab_idx = self.focused_tab_index();
+        let tab = self
+            .pane_tab(pane)
+            .or_else(|| self.tabs.get(tab_idx).map(Box::as_ref))?;
+        Some((tab_idx, tab))
+    }
+
+    /// Captures the O(1) shareable URL signature for the active focused simulation pane.
     #[must_use]
     pub fn current_url_signature(&self) -> UrlStateSignature {
-        let (active_tool_id, state_revision) =
-            self.tabs.get(self.selected_tab).map_or((None, 0), |tab| {
-                (tab.active_tool_id(), tab.url_state_revision())
-            });
-        UrlStateSignature {
-            selected_tab: self.selected_tab,
-            active_tool_id,
-            state_revision,
+        if let Some((selected_tab, tab)) = self.active_share_tab() {
+            UrlStateSignature {
+                selected_tab,
+                active_tool_id: tab.active_tool_id(),
+                state_revision: tab.url_state_revision(),
+            }
+        } else {
+            UrlStateSignature {
+                selected_tab: self.selected_tab,
+                active_tool_id: None,
+                state_revision: 0,
+            }
         }
     }
 
-    /// Encodes the primary tab's active simulation state as a `#tab=...` URL fragment.
+    /// Encodes the active focused simulation pane's state as a `#tab=...` URL fragment.
     pub fn encode_current_share_fragment(&self) -> Result<String, String> {
-        let tab = self
-            .tabs
-            .get(self.selected_tab)
+        let (_, tab) = self
+            .active_share_tab()
             .ok_or_else(|| "No active simulation tab selected".to_string())?;
         let preset_json = tab.export_url_preset_json()?;
         crate::url_state::encode_share_fragment(
@@ -184,9 +196,9 @@ impl MathExplorerApp {
         self.url_sync.last_synced_fragment()
     }
 
-    /// Polls the `Ctrl+Shift+L` / `Cmd+Shift+L` share shortcut, clipboard status, and 300 ms
-    /// debounced `History::replaceState` synchronization at the end of each UI frame.
-    pub(crate) fn tick_url_sync(&mut self, ctx: &egui::Context) {
+    /// Registers `Ctrl+Shift+L` / `Cmd+Shift+L` in `CMD_REGISTRY` and drains clipboard callbacks
+    /// prior to rendering menus, toasts, and the Keyboard Shortcuts modal.
+    pub(crate) fn poll_share_shortcut_and_clipboard(&mut self, ctx: &egui::Context) {
         self.poll_share_clipboard_status(ctx);
 
         let modifiers = if cfg!(target_os = "macos") {
@@ -207,6 +219,11 @@ impl MathExplorerApp {
         if shortcut_triggered {
             self.copy_current_share_link(ctx);
         }
+    }
+
+    /// Polls end-of-frame clipboard status and 300 ms debounced `History::replaceState` sync.
+    pub(crate) fn tick_url_sync(&mut self, ctx: &egui::Context) {
+        self.poll_share_clipboard_status(ctx);
 
         let pointer_or_sweep_active = ctx.input(|i| i.pointer.any_down())
             || crate::reflective_ui::slider::has_active_sweeps(ctx);
@@ -221,23 +238,14 @@ impl MathExplorerApp {
         pointer_down: bool,
         now: crate::web_io::PlatformInstant,
     ) {
-        let sig = self.current_url_signature();
-        let tab_ref = self.tabs.get(self.selected_tab);
         let mut sync = std::mem::take(&mut self.url_sync);
+        let sig = self.current_url_signature();
         let remaining = sync.poll_with_now(
             sig,
             pointer_down,
             now,
             Duration::from_millis(URL_SYNC_DEBOUNCE_MS),
-            || {
-                let tab = tab_ref.ok_or_else(|| "No active simulation tab".to_string())?;
-                let preset_json = tab.export_url_preset_json()?;
-                crate::url_state::encode_share_fragment(
-                    tab.url_slug(),
-                    tab.active_tool_id(),
-                    preset_json.as_deref(),
-                )
-            },
+            || self.encode_current_share_fragment(),
         );
         self.url_sync = sync;
         if let Some(wait) = remaining {

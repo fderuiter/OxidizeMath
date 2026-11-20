@@ -909,11 +909,9 @@ fn paint_math_box_bounded(
             },
             _,
         ) => {
-            if font_id.size > 0.0 {
-                let bounded_text = truncate_chars(text, MAX_LAYOUT_CHARS).to_owned();
-                let galley = painter.layout_no_wrap(bounded_text, font_id.clone(), *color);
-                painter.galley(origin, galley, *color);
-            }
+            let bounded_text = truncate_chars(text, MAX_LAYOUT_CHARS).to_owned();
+            let galley = painter.layout_no_wrap(bounded_text, font_id.clone(), *color);
+            painter.galley(origin, galley, *color);
         }
         (MathBox::Row(boxes), children) => {
             let mut x = origin.x;
@@ -967,14 +965,14 @@ fn paint_math_box_bounded(
             );
         }
         (MathBox::Sqrt(radicand), [rad_g]) => {
-            if rad_g.size.y <= 0.0 {
-                return;
-            }
             let sqrt_w = rad_g.size.y * 0.5;
             let color = get_color(radicand, depth + 1).unwrap_or(Color32::WHITE);
 
-            let galley =
-                painter.layout_no_wrap("√".to_string(), FontId::proportional(rad_g.size.y), color);
+            let galley = painter.layout_no_wrap(
+                "√".to_string(),
+                FontId::proportional(rad_g.size.y.max(1.0)),
+                color,
+            );
             painter.galley(origin, galley, color);
 
             let rad_origin = Pos2::new(origin.x + sqrt_w + 2.0, origin.y + 3.0);

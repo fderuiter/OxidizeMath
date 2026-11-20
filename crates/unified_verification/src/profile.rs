@@ -127,35 +127,16 @@ fn remove_profile_release(content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::test_utils::{CurrentDirGuard, TempTestDir};
     use std::env;
     use std::fs;
-    use std::path::PathBuf;
-
-    struct DirGuard {
-        original: PathBuf,
-        temp: PathBuf,
-    }
-
-    impl Drop for DirGuard {
-        fn drop(&mut self) {
-            let _ = env::set_current_dir(&self.original);
-            let _ = fs::remove_dir_all(&self.temp);
-        }
-    }
 
     #[test]
     fn test_member_shadowing_failure() {
         let _lock = crate::DIR_LOCK.lock().unwrap();
-        let temp_dir = env::temp_dir().join("unified_verification_test");
-        let _ = fs::remove_dir_all(&temp_dir);
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let original_dir = env::current_dir().unwrap();
-        env::set_current_dir(&temp_dir).unwrap();
-        let _guard = DirGuard {
-            original: original_dir,
-            temp: temp_dir,
-        };
+        let temp_dir = TempTestDir::new("unified_verification_profile_shadow");
+        let _cwd_guard = CurrentDirGuard(env::current_dir().unwrap());
+        env::set_current_dir(&*temp_dir).unwrap();
 
         fs::write(
             "Cargo.toml",
@@ -180,16 +161,9 @@ mod tests {
     #[test]
     fn test_member_lints_inheritance_enforced() {
         let _lock = crate::DIR_LOCK.lock().unwrap();
-        let temp_dir = env::temp_dir().join("unified_verification_profile_lints_test");
-        let _ = fs::remove_dir_all(&temp_dir);
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let original_dir = env::current_dir().unwrap();
-        env::set_current_dir(&temp_dir).unwrap();
-        let _guard = DirGuard {
-            original: original_dir,
-            temp: temp_dir,
-        };
+        let temp_dir = TempTestDir::new("unified_verification_profile_lints");
+        let _cwd_guard = CurrentDirGuard(env::current_dir().unwrap());
+        env::set_current_dir(&*temp_dir).unwrap();
 
         fs::write(
             "Cargo.toml",
