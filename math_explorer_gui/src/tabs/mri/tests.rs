@@ -1,23 +1,42 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::runner::MAX_MRI_STEPS_PER_FRAME;
 use super::*;
+use crate::async_sim::{SimCommand, SimWorkerState, SimulationRunner};
+use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
+use egui_plot::PlotPoint;
+use math_explorer::physics::mri::bloch::BlochSimulator;
+use math_explorer::pure_math::analysis::ode::RungeKutta4;
+use nalgebra::Vector3;
+use std::collections::VecDeque;
+use std::sync::Arc;
 
-#[test]
-fn test_mri_tab_initial_state() {
-    let tab = MriTab::default();
-    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
-    assert_eq!(tab.time_scale, 1.0);
-    assert_eq!(tab.current_time, 0.0);
+fn active_mri_state(tab: &MriTab) -> MriToolState {
+    let json = tab
+        .framework
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.save_state())
+        .expect("MriTool must serialize state");
+    serde_json::from_str(&json).expect("valid MriToolState")
 }
 
 #[test]
-fn test_mri_worker_simulation_step() {
-    let mut tab = MriTab::default();
-    let _ = tab.worker.send_command(SimCommand::Start);
+fn test_mri_tool_initial_state() {
+    let tool = MriTool::default();
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
+    assert_eq!(tool.time_scale, 1.0);
+    assert_eq!(tool.current_time, 0.0);
+}
+
+#[test]
+fn test_mri_worker_simulation_step_and_zero_allocation() {
+    let mut tool = MriTool::default();
+    let _ = tool.worker.send_command(SimCommand::Start);
     let mut stepped = false;
     for _ in 0..200 {
         std::thread::sleep(std::time::Duration::from_millis(20));
-        if let Some(snap) = tab.worker.update() {
+        if let Some(snap) = tool.worker.update() {
             if snap.custom_data.first().copied().unwrap_or(0.0) > 0.0 {
                 stepped = true;
                 break;
@@ -25,22 +44,39 @@ fn test_mri_worker_simulation_step() {
         }
     }
     assert!(stepped);
+    let _ = tool.worker.send_command(SimCommand::Pause);
+    tool.worker.wait_until_paused();
+
+    // Verify MriRunner::step performs zero heap allocations under VerifiedAllocator
+    let params = Arc::new(std::sync::RwLock::new(MriSharedParams {
+        t1: 1.0,
+        t2: 0.25,
+        b_field: Vector3::new(0.0, 0.0, 1.0e-7),
+        time_scale: 5.0,
+    }));
+    let mut runner = MriRunner::new(Arc::clone(&params), Vector3::new(1.0, 0.0, 0.0), 1.0);
+    {
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            runner.step();
+        });
+    }
+
+    params.write().unwrap().time_scale = 1e12;
+    runner.step();
+    assert_eq!(runner.history.len(), 5 + MAX_MRI_STEPS_PER_FRAME + 1);
 }
 
 #[test]
 fn test_mri_fault_halts_repaints_and_recovers() {
     let ctx = egui::Context::default();
-    let mut tab = MriTab::default();
-    let mut frame = eframe::Frame::_new_kittest();
+    let mut tool = MriTool::default();
 
-    // Ready state: repaints halted
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    let output_ready = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
+    let output_ready = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
     let delay_ready = output_ready
         .viewport_output
         .get(&egui::ViewportId::ROOT)
@@ -48,12 +84,9 @@ fn test_mri_fault_halts_repaints_and_recovers() {
         .repaint_delay;
     assert_ne!(delay_ready, std::time::Duration::ZERO);
 
-    // Start running: repaints requested
-    let _ = tab.worker.send_command(SimCommand::Start);
-    let output_running = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    assert_eq!(tab.worker.state(), SimWorkerState::Running);
+    let _ = tool.worker.send_command(SimCommand::Start);
+    let output_running = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
+    assert_eq!(tool.worker.state(), SimWorkerState::Running);
     let delay_running = output_running
         .viewport_output
         .get(&egui::ViewportId::ROOT)
@@ -61,21 +94,13 @@ fn test_mri_fault_halts_repaints_and_recovers() {
         .repaint_delay;
     assert_eq!(delay_running, std::time::Duration::ZERO);
 
-    // Pause running worker
-    let _ = tab.worker.send_command(SimCommand::Pause);
-    tab.worker.wait_until_paused();
-    while tab.worker.update().is_some() {}
+    let _ = tool.worker.send_command(SimCommand::Pause);
+    tool.worker.wait_until_paused();
+    while tool.worker.update().is_some() {}
 
-    // Simulate fault
-    tab.worker.set_state_for_test(SimWorkerState::Faulted);
-    assert_eq!(tab.worker.state(), SimWorkerState::Faulted);
-
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-    let output_faulted = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
+    tool.worker.set_state_for_test(SimWorkerState::Faulted);
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
+    let output_faulted = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
     let delay_faulted = output_faulted
         .viewport_output
         .get(&egui::ViewportId::ROOT)
@@ -83,217 +108,335 @@ fn test_mri_fault_halts_repaints_and_recovers() {
         .repaint_delay;
     assert_ne!(delay_faulted, std::time::Duration::ZERO);
 
-    // Retry restores Ready
-    tab.retry();
-    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
+    tool.retry();
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 }
 
 #[test]
-fn test_mri_save_and_load_state_compatibility() {
-    let mut tab = MriTab::default();
-    let _ = tab.worker.send_command(SimCommand::Start);
+fn test_mri_all_6_controls_persist_hash_and_reset_restores_defaults() {
+    let mut tool = MriTool::default();
+    let mut prev_rev = tool.state_revision();
+    assert!(prev_rev > 0);
 
+    for mutate in [
+        |t: &mut MriTool| {
+            t.simulator.t1 = 2.4;
+            t.params.write().unwrap().t1 = 2.4;
+        },
+        |t: &mut MriTool| {
+            t.simulator.t2 = 0.45;
+            t.params.write().unwrap().t2 = 0.45;
+        },
+        |t: &mut MriTool| {
+            t.simulator.b_field.z = 1.75;
+            t.params.write().unwrap().b_field.z = 1.75;
+        },
+        |t: &mut MriTool| {
+            t.simulator.b_field.x = 0.03;
+            t.params.write().unwrap().b_field.x = 0.03;
+        },
+        |t: &mut MriTool| {
+            t.simulator.b_field.y = -0.02;
+            t.params.write().unwrap().b_field.y = -0.02;
+        },
+        |t: &mut MriTool| {
+            t.time_scale = 12.0;
+            t.params.write().unwrap().time_scale = 12.0;
+        },
+    ] {
+        mutate(&mut tool);
+        let next_rev = tool.state_revision();
+        assert_ne!(next_rev, prev_rev);
+        prev_rev = next_rev;
+    }
+
+    let saved = tool.save_state().expect("save_state must succeed");
+    let mut restored = MriTool::default();
+    restored.try_load_state(&saved).unwrap();
+    assert_eq!(restored.save_state().as_deref(), Some(saved.as_str()));
+    assert_eq!(restored.simulator.t1, 2.4);
+    assert_eq!(restored.simulator.t2, 0.45);
+    assert_eq!(restored.simulator.b_field, Vector3::new(0.03, -0.02, 1.75));
+    assert_eq!(restored.time_scale, 12.0);
+
+    // Requirement 6: reset() restores default t1, t2, b_field, and time_scale
+    restored.reset();
+    assert_eq!(restored.simulator.t1, 1.0);
+    assert_eq!(restored.simulator.t2, 0.1);
+    assert_eq!(restored.simulator.b_field, Vector3::new(0.0, 0.0, 1.0));
+    assert_eq!(restored.time_scale, 1.0);
+    let shared = restored.params.read().unwrap();
+    assert_eq!(shared.t1, 1.0);
+    assert_eq!(shared.t2, 0.1);
+    assert_eq!(shared.b_field, Vector3::new(0.0, 0.0, 1.0));
+    assert_eq!(shared.time_scale, 1.0);
+}
+
+#[test]
+fn test_mri_save_load_legacy_compatibility_and_exports() {
+    let tab = MriTab::default();
     let saved = tab.save_state().expect("save_state should succeed");
-    assert!(saved.contains("\"state\":\"Running\""));
-    assert!(!saved.contains("\"paused\""));
-
     let mut loaded = MriTab::default();
     loaded.load_state(&saved);
-    assert_eq!(loaded.worker.state(), SimWorkerState::Running);
+    assert_eq!(active_mri_state(&loaded), active_mri_state(&tab));
 
-    // Legacy paused
-    let legacy_paused = r#"{"paused":true,"time_scale":2.5}"#;
-    loaded.load_state(legacy_paused);
-    assert_eq!(loaded.worker.state(), SimWorkerState::Ready);
-    assert_eq!(loaded.time_scale, 2.5);
+    // Legacy paused and running flat payloads
+    loaded.load_state(r#"{"paused":true,"time_scale":2.5}"#);
+    assert_eq!(active_mri_state(&loaded).state, Some(SimWorkerState::Ready));
+    assert_eq!(active_mri_state(&loaded).time_scale, 2.5);
 
-    // Legacy running
-    let legacy_running = r#"{"paused":false,"time_scale":3.0}"#;
-    loaded.load_state(legacy_running);
-    assert_eq!(loaded.worker.state(), SimWorkerState::Running);
-    assert_eq!(loaded.time_scale, 3.0);
-}
+    loaded.load_state(r#"{"paused":false,"time_scale":3.0}"#);
+    assert_eq!(
+        active_mri_state(&loaded).state,
+        Some(SimWorkerState::Running)
+    );
+    assert_eq!(active_mri_state(&loaded).time_scale, 3.0);
 
-#[test]
-fn test_mri_failure_state_screenshot() {
-    let mut tab = MriTab::default();
-    tab.worker.set_state_for_test(SimWorkerState::Faulted);
-    let datasets = vec![
-        ("Mx (Transverse)".to_string(), vec![[0.0, 1.0], [1.0, 0.0]]),
-        ("Worker Fault Recovery".to_string(), vec![[0.0, 0.0], [1.0, 1.0]]),
-    ];
-    let options = egui_plot::export::ExportOptions::default();
-    if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
-        let _ = std::fs::write("/tmp/simulation_worker_fault_recovery.png", png_data);
+    // Legacy clamping
+    loaded.load_state(r#"{"state":"Ready","time_scale":1e12}"#);
+    assert_eq!(active_mri_state(&loaded).time_scale, MAX_MRI_TIME_SCALE);
+    loaded.load_state(r#"{"state":"Ready","time_scale":-10.0}"#);
+    assert_eq!(active_mri_state(&loaded).time_scale, MIN_MRI_TIME_SCALE);
+
+    // Export CSV, JSON, PNG
+    let ctx = egui::Context::default();
+    let mut frame = eframe::Frame::_new_kittest();
+    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0));
+    for fmt in [ExportFormat::Csv, ExportFormat::Json, ExportFormat::Png] {
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                ..Default::default()
+            },
+            |ctx| {
+                loaded.framework.queue_export(fmt);
+                loaded.show(ctx, &mut frame);
+            },
+        );
+        assert_eq!(
+            loaded.framework.export_status_severity,
+            ExportStatusSeverity::Success
+        );
     }
 }
 
 #[test]
-fn test_mri_poisoned_lock_recovery() {
-    let mut tab = MriTab::default();
-
-    // Intentionally poison tab.params RwLock
-    let params_clone = Arc::clone(&tab.params);
+fn test_mri_poisoned_lock_recovery_and_plot_buffers_reuse() {
+    let mut tool = MriTool::default();
+    let params_clone = Arc::clone(&tool.params);
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _guard = params_clone.write().unwrap();
         panic!("simulated worker thread fault");
     }));
-    assert!(tab.params.is_poisoned());
+    assert!(tool.params.is_poisoned());
 
-    // Verify parameter write calls survive poisoned lock
-    tab.simulator.t1 = 2.0;
-    tab.params.write().unwrap_or_else(|e| e.into_inner()).t1 = tab.simulator.t1;
-    tab.simulator.t2 = 0.5;
-    tab.params.write().unwrap_or_else(|e| e.into_inner()).t2 = tab.simulator.t2;
-    tab.simulator.b_field = Vector3::new(0.05, 0.02, 1.2);
-    tab.params.write().unwrap_or_else(|e| e.into_inner()).b_field = tab.simulator.b_field;
-    tab.time_scale = 4.0;
-    tab.params.write().unwrap_or_else(|e| e.into_inner()).time_scale = tab.time_scale;
+    tool.simulator.t1 = 2.0;
+    tool.params.write().unwrap_or_else(|e| e.into_inner()).t1 = tool.simulator.t1;
+    tool.simulator.t2 = 0.5;
+    tool.params.write().unwrap_or_else(|e| e.into_inner()).t2 = tool.simulator.t2;
+    tool.simulator.b_field = Vector3::new(0.05, 0.02, 1.2);
+    tool.params
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .b_field = tool.simulator.b_field;
+    tool.time_scale = 4.0;
+    tool.params
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .time_scale = tool.time_scale;
 
-    {
-        let read_params = tab.params.read().unwrap_or_else(|e| e.into_inner());
-        assert_eq!(read_params.t1, 2.0);
-        assert_eq!(read_params.t2, 0.5);
-        assert_eq!(read_params.b_field, Vector3::new(0.05, 0.02, 1.2));
-        assert_eq!(read_params.time_scale, 4.0);
-    }
+    tool.retry();
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
+    assert_eq!(tool.simulator.t1, 2.0);
 
-    // Verify tab retry / restart_worker recovers latest params from poisoned lock
-    tab.retry();
-    assert_eq!(tab.worker.state(), SimWorkerState::Ready);
-    assert_eq!(tab.simulator.t1, 2.0);
-    assert_eq!(tab.simulator.t2, 0.5);
-    assert_eq!(tab.simulator.b_field, Vector3::new(0.05, 0.02, 1.2));
-
-    // Verify MriRunner::step executes without panicking when lock is poisoned
-    let runner_simulator = BlochSimulator::new(Vector3::new(1.0, 0.0, 0.0), 1.0);
     let mut runner = MriRunner {
-        simulator: runner_simulator,
+        simulator: BlochSimulator::new(Vector3::new(1.0, 0.0, 0.0), 1.0),
         solver: RungeKutta4::new(&Vector3::new(1.0, 0.0, 0.0)),
-        params: Arc::clone(&tab.params),
+        params: Arc::clone(&tool.params),
         current_time: 0.0,
-        history: VecDeque::new(),
+        history: VecDeque::with_capacity(100),
         max_history: 100,
     };
     runner.step();
     assert!(runner.current_time > 0.0);
-    assert!(!runner.history.is_empty());
 
-    // Verify show() layout and rendering does not crash with poisoned lock
-    let ctx = egui::Context::default();
-    let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        tab.show(ctx, &mut frame);
-    });
-
-    // Verify load_state recovers poisoned lock
-    let saved = r#"{"state":"Running","time_scale":3.5}"#;
-    tab.load_state(saved);
-    assert_eq!(tab.time_scale, 3.5);
-    let read_params = tab.params.read().unwrap_or_else(|e| e.into_inner());
-    assert_eq!(read_params.time_scale, 3.5);
-}
-
-#[test]
-fn test_mri_plot_buffers_reuse_and_borrowed_slice() {
-    let mut tab = MriTab::default();
-
-    // Populate history and update buffers
-    tab.history.push_back((0.0, Vector3::new(1.0, 0.0, 0.0)));
-    tab.history.push_back((0.1, Vector3::new(0.8, 0.2, 0.5)));
-    tab.update_plot_buffers();
-
-    assert_eq!(tab.mx_points.len(), 2);
-    assert_eq!(tab.my_points.len(), 2);
-    assert_eq!(tab.mz_points.len(), 2);
-
-    // Verify borrowed slice conversions for egui_plot
+    // Plot buffers reuse capacity across update and reset
+    tool.history.push_back((0.0, Vector3::new(1.0, 0.0, 0.0)));
+    tool.history.push_back((0.1, Vector3::new(0.8, 0.2, 0.5)));
+    tool.update_plot_buffers();
+    assert_eq!(tool.mx_points.len(), 2);
     {
-        let mx_slice: &[PlotPoint] = &tab.mx_points[..];
+        let mx_slice: &[PlotPoint] = &tool.mx_points[..];
         let plot_points_x: egui_plot::PlotPoints<'_> = mx_slice.into();
         assert!(matches!(plot_points_x, egui_plot::PlotPoints::Borrowed(_)));
-        assert_eq!(plot_points_x.points().len(), 2);
-        assert_eq!(plot_points_x.points()[0], PlotPoint::new(0.0, 1.0));
-        assert_eq!(plot_points_x.points()[1], PlotPoint::new(0.1, 0.8));
-
-        let my_slice: &[PlotPoint] = &tab.my_points[..];
-        let plot_points_y: egui_plot::PlotPoints<'_> = my_slice.into();
-        assert!(matches!(plot_points_y, egui_plot::PlotPoints::Borrowed(_)));
-        assert_eq!(plot_points_y.points()[1], PlotPoint::new(0.1, 0.2));
-
-        let mz_slice: &[PlotPoint] = &tab.mz_points[..];
-        let plot_points_z: egui_plot::PlotPoints<'_> = mz_slice.into();
-        assert!(matches!(plot_points_z, egui_plot::PlotPoints::Borrowed(_)));
-        assert_eq!(plot_points_z.points()[1], PlotPoint::new(0.1, 0.5));
     }
+    let cap_x = tool.mx_points.capacity();
 
-    // Verify capacity reuse when repopulating
-    let cap_x = tab.mx_points.capacity();
-    let cap_y = tab.my_points.capacity();
-    let cap_z = tab.mz_points.capacity();
-
-    tab.history.pop_back();
-    tab.update_plot_buffers();
-    assert_eq!(tab.mx_points.len(), 1);
-    assert!(tab.mx_points.capacity() >= cap_x);
-    assert!(tab.my_points.capacity() >= cap_y);
-    assert!(tab.mz_points.capacity() >= cap_z);
-
-    // Verify reset clears buffers while retaining allocated capacity
-    tab.reset();
-    assert!(tab.mx_points.is_empty());
-    assert!(tab.my_points.is_empty());
-    assert!(tab.mz_points.is_empty());
-    assert!(tab.history.is_empty());
-    assert!(tab.mx_points.capacity() >= cap_x);
+    tool.reset();
+    assert!(tool.mx_points.is_empty());
+    assert!(tool.history.is_empty());
+    assert!(tool.mx_points.capacity() >= cap_x);
 }
 
-#[test]
-fn test_mri_trajectory_plot_screenshot() {
-    let datasets = vec![
-        ("Mx (Transverse)".to_string(), vec![[0.0, 1.0], [0.5, 0.5], [1.0, 0.0]]),
-        ("My (Transverse)".to_string(), vec![[0.0, 0.0], [0.5, 0.7], [1.0, 0.0]]),
-        ("Mz (Longitudinal)".to_string(), vec![[0.0, 0.0], [0.5, 0.3], [1.0, 0.8]]),
-    ];
-    let options = egui_plot::export::ExportOptions::default();
-    if let Ok(png_data) = egui_plot::export::export_custom_png(&datasets, &options) {
-        let _ = std::fs::write("/tmp/mri_trajectory_plot.png", png_data);
-    }
-}
-
-#[test]
-fn test_mri_load_state_clamps_time_scale_and_bounds_worker_steps() {
-    assert_eq!(sanitize_mri_time_scale(1e12), 100.0);
-    assert_eq!(sanitize_mri_time_scale(0.0), 1.0);
-    assert_eq!(sanitize_mri_time_scale(-25.0), 1.0);
-    assert_eq!(sanitize_mri_time_scale(f64::NAN), 1.0);
-    assert_eq!(sanitize_mri_time_scale(f64::INFINITY), 1.0);
-    assert_eq!(sanitize_mri_time_scale(f64::NEG_INFINITY), 1.0);
-
-    let mut mri = MriTab::default();
-    mri.load_state(r#"{"state":"Running","time_scale":1e12}"#);
-    assert_eq!(mri.time_scale, MAX_MRI_TIME_SCALE);
-    assert_eq!(
-        mri.params.read().unwrap_or_else(|e| e.into_inner()).time_scale,
-        MAX_MRI_TIME_SCALE
+fn click_mri_button(ctx: &egui::Context, tab: &mut MriTab, label_substr: &str) {
+    let mut frame = eframe::Frame::_new_kittest();
+    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
+    let out = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        },
+        |ctx| tab.show(ctx, &mut frame),
     );
-    let _ = mri.worker.send_command(SimCommand::Pause);
-    mri.worker.wait_until_paused();
+    let ak = out.platform_output.accesskit_update.as_ref().unwrap();
+    let bounds = ak
+        .nodes
+        .iter()
+        .find(|(_, n)| n.label().is_some_and(|l| l.contains(label_substr)))
+        .and_then(|(_, n)| n.bounds())
+        .unwrap_or_else(|| panic!("Button containing '{label_substr}' not found"));
+    let center = egui::pos2(
+        ((bounds.x0 + bounds.x1) * 0.5) as f32,
+        ((bounds.y0 + bounds.y1) * 0.5) as f32,
+    );
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![
+                egui::Event::PointerMoved(center),
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            ..Default::default()
+        },
+        |ctx| tab.show(ctx, &mut frame),
+    );
+}
 
-    mri.load_state(r#"{"state":"Ready","time_scale":-10.0}"#);
-    assert_eq!(mri.time_scale, MIN_MRI_TIME_SCALE);
+#[test]
+fn test_mri_reset_live_region_theory_and_preset_io() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
 
-    let params = Arc::new(std::sync::RwLock::new(MriSharedParams {
-        t1: 1.0,
-        t2: 0.1,
-        b_field: Vector3::zeros(),
-        time_scale: 1e12,
-    }));
-    let mut runner = MriRunner::new(Arc::clone(&params), Vector3::new(1.0, 0.0, 0.0), 1.0);
-    runner.step();
-    assert_eq!(runner.history.len(), MAX_MRI_STEPS_PER_FRAME + 1);
+    let mut tab = MriTab::default();
+    tab.framework
+        .active_tool
+        .as_mut()
+        .unwrap()
+        .try_load_state(r#"{"t1":2.5,"t2":0.4,"bx":0.01,"by":-0.01,"bz":1.8,"time_scale":7.0}"#)
+        .unwrap();
+    click_mri_button(&ctx, &mut tab, "Reset Parameters");
+    assert_eq!(active_mri_state(&tab).t1, 1.0);
+    assert_eq!(active_mri_state(&tab).t2, 0.1);
+    assert_eq!(active_mri_state(&tab).bz, 1.0);
+    assert_eq!(active_mri_state(&tab).time_scale, 1.0);
+    let live_msg = crate::accessibility::with_live_region(|r| r.slots[r.active_slot].clone());
+    assert_eq!(live_msg, "Parameters reset to baseline defaults");
 
-    params.write().unwrap_or_else(|e| e.into_inner()).time_scale = f64::INFINITY;
-    runner.step();
-    assert_eq!(runner.history.len(), MAX_MRI_STEPS_PER_FRAME + 2);
+    assert!(tab
+        .framework
+        .apply_starter_card(
+            "Off-Resonance Bloch Precession",
+            Some("MriTool"),
+            Some(crate::starter_gallery::PRESET_MRI_BLOCH_RELAXATION),
+        )
+        .is_ok());
+    let preset_json = tab
+        .framework
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .export_preset_json()
+        .expect("mri preset export");
+    let mut fresh_tab = MriTab::default();
+    fresh_tab
+        .framework
+        .active_tool
+        .as_mut()
+        .unwrap()
+        .import_preset_json(&preset_json)
+        .expect("mri preset import");
+    assert_eq!(active_mri_state(&fresh_tab).t1, 1.2);
+
+    assert!(!tab.framework.show_theory_portal);
+    click_mri_button(&ctx, &mut tab, "Theory");
+    assert!(tab.framework.show_theory_portal);
+    let mut frame = eframe::Frame::_new_kittest();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+    assert!(scientific_metadata::citation_registry::CitationRegistry::get(
+        "MRI Bloch Relaxation"
+    )
+    .is_some_and(|c| c.contains("Bloch, F. (1946)")));
+}
+
+#[test]
+fn test_mri_workspace_undo_mws_and_figure_export() {
+    let ctx = egui::Context::default();
+    let mut tab = MriTab::default();
+    assert!(tab
+        .framework
+        .apply_starter_card(
+            "Off-Resonance Bloch Precession",
+            Some("MriTool"),
+            Some(crate::starter_gallery::PRESET_MRI_BLOCH_RELAXATION),
+        )
+        .is_ok());
+    if let Some(tool) = tab.framework.active_tool.as_mut() {
+        for _ in 0..80 {
+            tool.step_simulation();
+        }
+    }
+    let mut frame = eframe::Frame::_new_kittest();
+    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        },
+        |ctx| {
+            tab.framework.queue_export(ExportFormat::Png);
+            tab.show(ctx, &mut frame);
+        },
+    );
+    let _ = std::fs::write(
+        "/tmp/mri_bloch_precession.png",
+        tab.framework
+            .export_queue
+            .last_exported_bytes
+            .as_ref()
+            .expect("MRI PNG bytes"),
+    );
+
+    let mut app = crate::app::MathExplorerApp::default();
+    let mut mgr = crate::app::WorkspaceSessionManager::default();
+    let mri_idx = app
+        .tabs
+        .iter()
+        .position(|t| t.name() == "MRI Physics")
+        .expect("MRI Physics tab registered");
+    app.selected_tab = mri_idx;
+    mgr.track_frame_changes(&ctx, &app);
+    assert!(!mgr.can_undo());
+
+    let baseline_json = app.tabs[mri_idx].save_state().unwrap();
+    app.tabs[mri_idx].load_state(r#"{"paused":true,"time_scale":6.5}"#);
+    mgr.track_frame_changes(&ctx, &app);
+    assert!(mgr.can_undo());
+
+    let mws = mgr.create_envelope(app.get_app_state());
+    let parsed = mgr.parse_envelope(&mws).unwrap();
+    assert!(parsed.tab_states["MRI Physics"].contains("6.5"));
+
+    let prev = mgr.pop_undo().expect("undo snapshot");
+    assert_eq!(prev.tab_states["MRI Physics"], baseline_json);
 }

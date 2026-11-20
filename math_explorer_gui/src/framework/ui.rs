@@ -207,6 +207,9 @@ impl SimulationFramework {
     }
 
     pub(super) fn show_side_panel(&mut self, ui: &mut egui::Ui, id_source: &str) {
+        if self.available_tools.len() <= 1 {
+            return;
+        }
         let ctx = ui.ctx().clone();
         let panel_id = scoped_panel_id(ui, format!("{id_source}_tool_selector"));
         egui::SidePanel::right(panel_id)

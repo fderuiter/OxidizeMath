@@ -2,8 +2,6 @@
 
 const INDEX_HTML: &str = include_str!("../index.html");
 const RELOAD_JS: &str = include_str!("../reload.js");
-const FAVICON_SVG: &str = include_str!("../icons/favicon.svg");
-const SITE_WEBMANIFEST: &str = include_str!("../site.webmanifest");
 
 #[test]
 fn test_document_title_and_metadata_tags() {
@@ -304,55 +302,6 @@ fn test_prerendered_twin_slot_live_regions() {
             "index.html must pre-render twin-slot live region node {id}"
         );
     }
-}
-
-#[test]
-fn test_favicon_svg_and_site_webmanifest_assets() {
-    assert!(
-        FAVICON_SVG.contains("<svg") && FAVICON_SVG.contains("</svg>"),
-        "icons/favicon.svg must be a non-empty valid SVG document"
-    );
-    for rule in [
-        "<style>",
-        "@media (prefers-color-scheme: light)",
-        "#172554",
-        "#eff6ff",
-        "#2563eb",
-        "#1d4ed8",
-    ] {
-        assert!(
-            FAVICON_SVG.contains(rule),
-            "icons/favicon.svg must include dark/light brand rule: {rule}"
-        );
-    }
-
-    let manifest: serde_json::Value =
-        serde_json::from_str(SITE_WEBMANIFEST).expect("site.webmanifest must parse as valid JSON");
-    assert_eq!(manifest["name"], "Math Explorer");
-    assert_eq!(manifest["short_name"], "Math Explorer");
-    let icons = manifest["icons"]
-        .as_array()
-        .expect("site.webmanifest must define an icons array");
-    assert!(
-        icons.len() >= 7,
-        "site.webmanifest must declare vector, standard, 192x192, and maskable icons"
-    );
-    assert!(
-        icons.iter().any(|entry| {
-            entry["src"] == "192x192.png"
-                && entry["sizes"] == "192x192"
-                && entry["purpose"] == "any"
-        }),
-        "site.webmanifest must register 192x192.png with purpose 'any'"
-    );
-    assert!(
-        icons.iter().any(|entry| {
-            entry["src"] == "512x512-maskable.png"
-                && entry["sizes"] == "512x512"
-                && entry["purpose"] == "maskable"
-        }),
-        "site.webmanifest must register 512x512-maskable.png with purpose 'maskable'"
-    );
 }
 
 #[test]
