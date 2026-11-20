@@ -12,7 +12,8 @@ impl CwdRestoreGuard {
             .canonicalize()
             .expect("canonicalize current_dir");
         // Ensure DEFAULT_SCAN_CACHE is initialized while still inside the workspace.
-        let _ = TraceabilityTab::default();
+        let mut warm_tab = TraceabilityTab::default();
+        warm_tab.refresh();
         Self(original)
     }
 
@@ -112,13 +113,8 @@ pub(super) fn assert_mws_session_rejected(
         .any(|cs| shape_has_text(&cs.shape, canary_tex)));
 
     let mut tab = TraceabilityTab {
-        papers: HashMap::new(),
-        orphaned_papers: Vec::new(),
-        unlinked_code: Vec::new(),
-        invalid_links: Vec::new(),
         repo_path: Some(canary_dir.to_string_lossy().into_owned()),
-        report_rx: None,
-        state: TraceabilityScanState::Idle,
+        ..TraceabilityTab::default()
     };
     tab.refresh();
     assert_eq!(tab.repo_path, None);
