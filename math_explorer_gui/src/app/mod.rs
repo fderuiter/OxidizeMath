@@ -4,7 +4,6 @@ mod macos_menu;
 pub mod palette;
 mod pane_slots;
 mod session;
-mod split_view;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
@@ -39,8 +38,7 @@ mod tests_tab_cache_perf;
 pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
-pub use split_view::{SplitLayoutMode, SplitViewState};
-pub use state::AppState;
+pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
     contrast_ratio, contrasting_text_color, relative_luminance, SemanticPalette, ThemeMode,
@@ -60,7 +58,6 @@ pub struct MathExplorerApp {
     pub split_layout_mode: SplitLayoutMode,
     pub secondary_tab: usize,
     pub split_ratio: f32,
-    split_view_state: SplitViewState,
     diagnostic_events: Vec<TelemetryEvent>,
     pub show_diagnostics_panel: bool,
     pub(super) show_info: bool,
@@ -92,7 +89,6 @@ impl Default for MathExplorerApp {
             split_layout_mode: SplitLayoutMode::Single,
             secondary_tab: 1,
             split_ratio: 0.5,
-            split_view_state: SplitViewState::new(),
             diagnostic_events: Vec::new(),
             show_diagnostics_panel: false,
             show_info: true,
@@ -463,9 +459,7 @@ impl eframe::App for MathExplorerApp {
         self.prune_inactive_pane_slots(active_layout.pane_count());
 
         if active_layout != ViewportLayout::Single {
-            let mut split_state = std::mem::take(&mut self.split_view_state);
-            split_state.render_split(self, ctx, frame);
-            self.split_view_state = split_state;
+            viewport::render_multi_pane_manager(self, ctx, frame);
         } else {
             viewport::render_single_pane_viewport(self, ctx, frame);
         }

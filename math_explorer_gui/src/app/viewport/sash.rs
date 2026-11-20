@@ -201,7 +201,6 @@ fn handle_pointer_drag(
     if !is_down {
         app.is_dragging_divider = false;
     }
-    app.split_view_state.is_dragging_divider = app.is_dragging_divider;
 
     let mut changed = false;
     if app.is_dragging_divider {
