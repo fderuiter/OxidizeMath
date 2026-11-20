@@ -225,13 +225,16 @@ fn test_simulation_framework_performance_benchmarks() {
     let inspect_duration = inspect_start.elapsed();
 
     assert!(res.is_ok());
+    #[cfg(not(debug_assertions))]
+    let max_inspect = std::time::Duration::from_millis(1);
+    #[cfg(debug_assertions)]
+    let max_inspect = std::time::Duration::from_millis(50);
     assert!(
-        inspect_duration < std::time::Duration::from_millis(1),
-        "Inspection duration ({:?}) must be less than 1 millisecond per frame",
-        inspect_duration
+        inspect_duration < max_inspect,
+        "Inspection duration ({inspect_duration:?}) exceeded {max_inspect:?}"
     );
 
-    // Benchmark 2: Step-back state restoration latency (< 16 ms constraint)
+    // Benchmark 2: Step-back state restoration latency (< 16 ms constraint in release)
     framework.current_valid_plot_datasets = large_datasets;
     framework.cache_valid_snapshot();
 
@@ -244,10 +247,13 @@ fn test_simulation_framework_performance_benchmarks() {
     let restore_duration = restore_start.elapsed();
 
     assert!(restored);
+    #[cfg(not(debug_assertions))]
+    let max_restore = std::time::Duration::from_millis(16);
+    #[cfg(debug_assertions)]
+    let max_restore = std::time::Duration::from_millis(200);
     assert!(
-        restore_duration < std::time::Duration::from_millis(16),
-        "Step-back state restoration ({:?}) must be less than 16 milliseconds per frame",
-        restore_duration
+        restore_duration < max_restore,
+        "Step-back state restoration ({restore_duration:?}) exceeded {max_restore:?}"
     );
 }
 

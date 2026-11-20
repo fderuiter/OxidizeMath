@@ -128,7 +128,7 @@ jobs:
         run: rm -rf cargo-machete*
 
       - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
 
       - name: Install cargo-audit
         run: cargo binstall --no-confirm --version 0.23.0 cargo-audit
@@ -264,7 +264,7 @@ jobs:
 
       - name: Install cargo-binstall
         if: matrix.target == 'wasm32-unknown-unknown'
-        uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
 
       - name: Install WASM Tools and Compression Utilities
         if: matrix.target == 'wasm32-unknown-unknown'
@@ -495,15 +495,16 @@ jobs:
 
       - name: Install cargo-binstall
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
-        uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
 
       # Pinned cargo-packager version for reproducible packaging builds without source compilation fallback
       - name: Install cargo-packager
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
+        shell: bash
         env:
           CARGO_PACKAGER_VERSION: "0.11.8"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo binstall --no-confirm --disable-strategies compile cargo-packager@${{ env.CARGO_PACKAGER_VERSION }}
+        run: cargo binstall --no-confirm --disable-strategies compile "cargo-packager@${CARGO_PACKAGER_VERSION}"
 
       - name: Build and Package
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'

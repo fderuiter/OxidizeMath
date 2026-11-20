@@ -7,9 +7,11 @@ use std::sync::{Mutex, Once, OnceLock};
 static BRIDGE_INIT: Once = Once::new();
 static FIRST_FRAME_REPORTED: AtomicBool = AtomicBool::new(false);
 
-fn last_fatal_panic_slot() -> &'static Mutex<Option<String>> {
-    static SLOT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
-    SLOT.get_or_init(|| Mutex::new(None))
+const MAX_RECORDED_FATAL_SUMMARIES: usize = 32;
+
+fn recorded_fatal_panics() -> &'static Mutex<Vec<String>> {
+    static SLOT: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 /// Formats a [`diagnostics::DiagnosticEvent`] into a crash summary when its severity is `Fatal`.
@@ -47,9 +49,14 @@ pub(crate) fn init_fatal_panic_bridge() {
             let Some(summary) = format_fatal_diagnostic(event) else {
                 return;
             };
-            if let Ok(mut guard) = last_fatal_panic_slot().lock() {
-                *guard = Some(summary.clone());
+            let mut guard = recorded_fatal_panics()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if guard.len() >= MAX_RECORDED_FATAL_SUMMARIES {
+                guard.remove(0);
             }
+            guard.push(summary.clone());
+            drop(guard);
             #[cfg(target_arch = "wasm32")]
             wasm_support::forward_fatal_panic_to_js(&summary);
         });
@@ -290,12 +297,16 @@ mod tests {
             panic!("wasm_bridge_unit_probe");
         });
 
-        let recorded = last_fatal_panic_slot()
+        let guard = recorded_fatal_panics()
             .lock()
-            .unwrap()
-            .clone()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let recorded = guard
+            .iter()
+            .find(|entry| entry.contains("Thread panicked: wasm_bridge_unit_probe"))
+            .cloned()
             .expect("fatal panic should be recorded by bridge");
-        assert!(recorded.contains("Thread panicked: wasm_bridge_unit_probe"));
+        drop(guard);
         assert!(recorded.contains("Location: "));
+        assert!(!recorded.contains('\\'));
     }
 }

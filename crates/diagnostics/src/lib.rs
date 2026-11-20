@@ -121,7 +121,7 @@ pub fn init_panic_hook() {
             let message = format_panic_payload(panic_info.payload());
             let location = panic_info
                 .location()
-                .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+                .map(|l| format_panic_location(l.file(), l.line(), l.column()))
                 .unwrap_or_default();
             let mut metadata = HashMap::new();
             metadata.insert("location".to_string(), location);
@@ -136,6 +136,11 @@ pub fn init_panic_hook() {
             default_hook(panic_info);
         }));
     });
+}
+
+fn format_panic_location(file: &str, line: u32, column: u32) -> String {
+    let normalized_file = file.replace('\\', "/");
+    format!("{normalized_file}:{line}:{column}")
 }
 
 fn format_panic_payload(payload: &(dyn std::any::Any + Send)) -> String {
@@ -273,5 +278,18 @@ mod tests {
                 .contains("Thread panicked: diagnostic_hook_probe")
         );
         assert!(events[0].1.contains("crates/diagnostics/src/lib.rs:"));
+        assert!(!events[0].1.contains('\\'));
+    }
+
+    #[test]
+    fn test_format_panic_location_normalizes_windows_backslashes() {
+        assert_eq!(
+            format_panic_location(r"crates\diagnostics\src\lib.rs", 265, 13),
+            "crates/diagnostics/src/lib.rs:265:13"
+        );
+        assert_eq!(
+            format_panic_location("crates/diagnostics/src/lib.rs", 42, 9),
+            "crates/diagnostics/src/lib.rs:42:9"
+        );
     }
 }
