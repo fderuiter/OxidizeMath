@@ -191,6 +191,8 @@ pub fn validate_concurrency_block(yaml: &Value) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// Validates job-level `timeout-minutes` settings, exempting `jobs.<id>.uses` reusable workflow
+/// callers and rejecting schema-invalid `timeout-minutes` on `uses` jobs.
 pub fn validate_job_timeouts(yaml: &Value) -> Result<(), String> {
     let jobs = match yaml.get("jobs") {
         Some(Value::Object(map)) => map,
@@ -203,6 +205,16 @@ pub fn validate_job_timeouts(yaml: &Value) -> Result<(), String> {
             Value::Object(map) => map,
             _ => return Err(format!("Job '{}' must be a mapping.", job_name)),
         };
+
+        if job_map.contains_key("uses") {
+            if job_map.contains_key("timeout-minutes") {
+                return Err(format!(
+                    "Job '{}' calls a reusable workflow via 'uses' and must not specify 'timeout-minutes'.",
+                    job_name
+                ));
+            }
+            continue;
+        }
 
         match job_map.get("timeout-minutes") {
             Some(Value::Number(num)) if num.as_u64().unwrap_or(0) > 0 => {}
@@ -224,10 +236,20 @@ pub fn validate_job_timeouts(yaml: &Value) -> Result<(), String> {
     Ok(())
 }
 
+/// Validates job-level reusable workflow `uses` and step-level action `uses` relative to
+/// `repo_root`, forwarding `exceptions` when validating local reusable workflows.
+pub fn validate_action_pinning_with_exceptions(
+    yaml: &Value,
+    repo_root: &Path,
+    exceptions: &[JobPermissionException],
+) -> Result<(), String> {
+    let mut state = pinning::PinningState::with_exceptions(exceptions);
+    pinning::validate_workflow_jobs(yaml, repo_root, &mut state)
+}
+
 /// Validates job-level reusable workflow `uses` and step-level action `uses` relative to `repo_root`.
 pub fn validate_action_pinning_in_dir(yaml: &Value, repo_root: &Path) -> Result<(), String> {
-    let mut state = pinning::PinningState::default();
-    pinning::validate_workflow_jobs(yaml, repo_root, &mut state)
+    validate_action_pinning_with_exceptions(yaml, repo_root, &[])
 }
 
 /// Validates job-level reusable workflow `uses` and step-level action `uses` relative to `.`.
@@ -303,10 +325,10 @@ fn lint_workflow_file(
     } else {
         validate_permissions_with_exceptions(&yaml, Some(path), exceptions)
     };
-    let pin_res = if repo_root == Path::new(".") {
-        validate_action_pinning(&yaml)
-    } else {
-        validate_action_pinning_in_dir(&yaml, repo_root)
+    let pin_res = match (exceptions.is_empty(), repo_root == Path::new(".")) {
+        (true, true) => validate_action_pinning(&yaml),
+        (true, false) => validate_action_pinning_in_dir(&yaml, repo_root),
+        (false, _) => validate_action_pinning_with_exceptions(&yaml, repo_root, exceptions),
     };
     for check in [
         perm_res,
@@ -386,5 +408,8 @@ mod pinning;
 #[cfg(test)]
 #[path = "workflow_linter/policy_tests.rs"]
 mod policy_tests;
+#[cfg(test)]
+#[path = "workflow_linter/reusable_caller_tests.rs"]
+mod reusable_caller_tests;
 #[cfg(test)]
 mod tests;

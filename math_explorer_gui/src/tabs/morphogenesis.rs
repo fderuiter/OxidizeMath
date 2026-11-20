@@ -19,6 +19,8 @@ struct MorphoState {
     paused: Option<bool>,
     #[serde(default)]
     show_starter_gallery: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pending_initial_start: bool,
 }
 
 #[path = "morphogenesis/runner.rs"]
@@ -39,6 +41,7 @@ pub struct MorphogenesisTab {
     pixels: Vec<egui::Color32>,
     dirty: bool,
     pub show_starter_gallery: bool,
+    pub(crate) pending_initial_start: bool,
 }
 
 impl MorphogenesisTab {
@@ -81,6 +84,7 @@ impl MorphogenesisTab {
     pub fn restart_worker(&mut self) {
         let runner = Self::create_runner(&self.params, self.width, self.height);
         self.worker = BackgroundWorker::new(runner);
+        self.pending_initial_start = false;
         self.dirty = true;
     }
 
@@ -97,6 +101,7 @@ impl MorphogenesisTab {
         let height = self.height;
         self.worker
             .reset_or_respawn(|| Self::create_runner(&params, width, height));
+        self.pending_initial_start = false;
         self.dirty = true;
     }
 }
@@ -114,8 +119,7 @@ impl Default for MorphogenesisTab {
         }));
 
         let runner = Self::create_runner(&params, width, height);
-        let mut worker = BackgroundWorker::new(runner);
-        let _ = worker.send_command(SimCommand::Start);
+        let worker = BackgroundWorker::new(runner);
 
         Self {
             worker,
@@ -127,6 +131,7 @@ impl Default for MorphogenesisTab {
             pixels: Vec::new(),
             dirty: true,
             show_starter_gallery: false,
+            pending_initial_start: true,
         }
     }
 }
@@ -142,6 +147,7 @@ impl ExplorerTab for MorphogenesisTab {
         self.params.read().unwrap_or_else(|e| e.into_inner()).dt.to_bits().hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         self.show_starter_gallery.hash(&mut h);
+        self.pending_initial_start.hash(&mut h);
         h.finish().max(1)
     }
 
@@ -151,6 +157,7 @@ impl ExplorerTab for MorphogenesisTab {
             state: Some(self.worker.state()),
             paused: None,
             show_starter_gallery: self.show_starter_gallery,
+            pending_initial_start: self.pending_initial_start,
         })
         .ok()
     }
@@ -166,10 +173,16 @@ impl ExplorerTab for MorphogenesisTab {
                     SimWorkerState::Running
                 }
             });
-            if target == SimWorkerState::Running && !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            } else if target != SimWorkerState::Running && self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Pause);
+            if target == SimWorkerState::Running {
+                self.pending_initial_start = false;
+                if !self.worker.is_running() {
+                    let _ = self.worker.send_command(SimCommand::Start);
+                }
+            } else {
+                self.pending_initial_start = s.pending_initial_start;
+                if self.worker.is_running() {
+                    let _ = self.worker.send_command(SimCommand::Pause);
+                }
             }
             self.dirty = true;
         }
@@ -177,9 +190,15 @@ impl ExplorerTab for MorphogenesisTab {
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        if std::mem::take(&mut self.pending_initial_start) && self.worker.state().is_ready() {
+            let _ = self.worker.send_command(SimCommand::Start);
+        }
         if self.worker.update().is_some() {
             self.dirty = true;
         }
+
+        self.draw_controls(ui);
+        self.draw_canvas(ui);
 
         if matches!(
             self.worker.state(),
@@ -187,9 +206,6 @@ impl ExplorerTab for MorphogenesisTab {
         ) {
             ctx.request_repaint();
         }
-
-        self.draw_controls(ui);
-        self.draw_canvas(ui);
 
         if self.show_starter_gallery {
             let cards = crate::starter_gallery::get_starter_cards_for_domain("biology", &[]);

@@ -103,35 +103,6 @@ impl ConvLayer {
 
         Ok(grad_input)
     }
-
-    /// Performs an analytical backward update for a single 1D vector input.
-    #[verified_engine::verified]
-    pub fn backward_update_vector<O: Optimizer<f32>>(
-        &mut self,
-        input: &DVector<f32>,
-        loss_grad: &DVector<f32>,
-        optimizer: &mut O,
-        layer_idx: usize,
-    ) -> Result<DVector<f32>, pure_math::pure_math::analysis::optimization::OptimizationError> {
-        let input_mat = DMatrix::from_row_slice(1, input.len(), input.as_slice());
-        let loss_mat = DMatrix::from_row_slice(1, loss_grad.len(), loss_grad.as_slice());
-        let grad_in_mat = self.backward_update(&input_mat, &loss_mat, optimizer, layer_idx)?;
-        Ok(DVector::from_column_slice(grad_in_mat.as_slice()))
-    }
-
-    /// Updates the weights of the layer using the provided optimizer.
-    #[verified_engine::verified]
-    pub fn update_weights<O: Optimizer<f32>>(
-        &mut self,
-        optimizer: &mut O,
-        layer_idx: usize,
-    ) -> Result<(), pure_math::pure_math::analysis::optimization::OptimizationError> {
-        let grad_k = DMatrix::zeros(self.kernel.nrows(), self.kernel.ncols());
-        let grad_b = DVector::zeros(self.bias.len());
-        optimizer.update_matrix((layer_idx, ParamType::Weight), &mut self.kernel, &grad_k)?;
-        optimizer.update_vector((layer_idx, ParamType::Bias), &mut self.bias, &grad_b)?;
-        Ok(())
-    }
 }
 
 /// The encoder component of the autoencoder.
@@ -174,18 +145,6 @@ impl Encoder {
         }
         x
     }
-
-    /// Updates weights for all layers using the provided optimizer.
-    pub fn update_weights<O: Optimizer<f32>>(
-        &mut self,
-        optimizer: &mut O,
-        start_idx: usize,
-    ) -> Result<(), pure_math::pure_math::analysis::optimization::OptimizationError> {
-        for (i, layer) in self.layers.iter_mut().enumerate() {
-            layer.update_weights(optimizer, start_idx + i)?;
-        }
-        Ok(())
-    }
 }
 
 /// The decoder component of the autoencoder.
@@ -226,18 +185,6 @@ impl Decoder {
             }
         }
         x
-    }
-
-    /// Updates weights for all layers using the provided optimizer.
-    pub fn update_weights<O: Optimizer<f32>>(
-        &mut self,
-        optimizer: &mut O,
-        start_idx: usize,
-    ) -> Result<(), pure_math::pure_math::analysis::optimization::OptimizationError> {
-        for (i, layer) in self.layers.iter_mut().enumerate() {
-            layer.update_weights(optimizer, start_idx + i)?;
-        }
-        Ok(())
     }
 }
 

@@ -1,22 +1,99 @@
-// Pre-boot error boundary, stall watchdog, ARIA announcer, and reload handler for Math Explorer GUI
+// Pre-boot theme sync, error boundary, stall watchdog, ARIA announcer, and reload handler for Math Explorer GUI
 (function () {
     const DEFAULT_STALL_TIMEOUT_MS = 12000;
+    const SHELL_THEME_TOKENS = {
+        dark: { colorScheme: 'dark', themeColor: '#121214' },
+        light: { colorScheme: 'light', themeColor: '#f8f8f8' },
+        'high-contrast': { colorScheme: 'dark', themeColor: '#000000' }
+    };
 
-    function clearStaleIsolationFlags() {
+    function normalizeSavedTheme(rawTheme) {
+        if (typeof rawTheme !== 'string') {
+            return null;
+        }
+        const normalized = rawTheme.trim().toLowerCase();
+        if (normalized === 'dark') {
+            return 'dark';
+        }
+        if (normalized === 'light') {
+            return 'light';
+        }
+        if (
+            normalized === 'highcontrast' ||
+            normalized === 'high-contrast' ||
+            normalized === 'high_contrast'
+        ) {
+            return 'high-contrast';
+        }
+        return null;
+    }
+
+    function readSavedThemeFromStorage() {
         try {
-            window.sessionStorage.removeItem('coiReloadedBySelf');
-            window.sessionStorage.removeItem('coiCoepHasFailed');
+            if (!window.localStorage) {
+                return null;
+            }
+            const raw = window.localStorage.getItem('app');
+            if (!raw) {
+                return null;
+            }
+            const parsed = JSON.parse(raw.replace(/^\uFEFF/, ''));
+            if (!parsed || typeof parsed !== 'object') {
+                return null;
+            }
+            if (typeof parsed.schema_version === 'string') {
+                const major = parseInt(parsed.schema_version.split('.')[0], 10);
+                if (
+                    !Number.isFinite(major) ||
+                    major > 1 ||
+                    typeof parsed.app_version !== 'string' ||
+                    typeof parsed.timestamp !== 'string' ||
+                    !parsed.app_state ||
+                    typeof parsed.app_state !== 'object'
+                ) {
+                    return null;
+                }
+                return normalizeSavedTheme(parsed.app_state.theme);
+            }
+            if (
+                typeof parsed.selected_tab !== 'number' ||
+                !parsed.tab_states ||
+                typeof parsed.tab_states !== 'object'
+            ) {
+                return null;
+            }
+            return normalizeSavedTheme(parsed.theme);
         } catch (_err) {
-            // Ignore storage errors in restricted browser modes
+            // Fall back to OS media queries on SecurityError or invalid JSON
+            return null;
         }
     }
 
-    function isIsolationReloading() {
-        return Boolean(
-            window.__mathExplorerIsolation &&
-            window.__mathExplorerIsolation.status === 'reloading'
-        );
+    function syncShellThemeFromStorage() {
+        const savedTheme = readSavedThemeFromStorage();
+        const tokens = savedTheme && SHELL_THEME_TOKENS[savedTheme];
+        if (!tokens) {
+            return null;
+        }
+        const root = document.documentElement;
+        if (root) {
+            root.dataset.theme = savedTheme;
+            if (root.style && typeof root.style.setProperty === 'function') {
+                root.style.setProperty('color-scheme', tokens.colorScheme);
+            }
+        }
+        const schemeMeta = document.querySelector('meta[name="color-scheme"]');
+        if (schemeMeta) {
+            schemeMeta.setAttribute('content', tokens.colorScheme);
+        }
+        const themeMetas = document.querySelectorAll('meta[name="theme-color"]');
+        for (let i = 0; i < themeMetas.length; i += 1) {
+            themeMetas[i].setAttribute('content', tokens.themeColor);
+        }
+        return savedTheme;
     }
+
+    syncShellThemeFromStorage();
 
     const ERROR_CATEGORIES = {
         network: {
@@ -44,19 +121,6 @@
             ],
             alert:
                 'WebAssembly startup error. Cached files may be corrupted. Select Reload Page to retry.'
-        },
-        isolation: {
-            title: 'Cross-Origin Isolation & WebAssembly Initialization Failed',
-            message:
-                'Math Explorer could not initialize its WebAssembly engine because cross-origin isolation (Service Workers or SharedArrayBuffer) is unavailable or blocked in this browser environment.',
-            heading: 'Restore Browser Isolation & Site Data Support',
-            steps: [
-                'Open Math Explorer in a standard browser window instead of Private or Incognito mode (Firefox Private Browsing and restricted WebViews disable Service Workers).',
-                'Allow site data and Service Worker registration for this site over HTTPS or localhost.',
-                'Temporarily disable extensions or enterprise policies that block Service Workers, SharedArrayBuffer, or WebAssembly compilation, then select Reload Page.'
-            ],
-            alert:
-                'Cross-origin isolation and WebAssembly initialization failed. Allow Service Workers and SharedArrayBuffer, then select Reload Page.'
         },
         timeout: {
             title: 'Startup Timed Out',
@@ -249,7 +313,7 @@
     }
 
     function showError(category, details) {
-        if (isUnloading || isIsolationReloading()) {
+        if (isUnloading) {
             return;
         }
         const resolvedCategory = Object.prototype.hasOwnProperty.call(ERROR_CATEGORIES, category)
@@ -366,7 +430,7 @@
         const timeoutMs = resolveStallTimeoutMs();
         stallTimerId = window.setTimeout(function () {
             stallTimerId = null;
-            if (!isBootPending() || isUnloading || isIsolationReloading()) {
+            if (!isBootPending() || isUnloading) {
                 return;
             }
             showError(
@@ -381,7 +445,6 @@
         if (reloadButton && !reloadButton.dataset.reloadBound) {
             reloadButton.dataset.reloadBound = 'true';
             reloadButton.addEventListener('click', function () {
-                clearStaleIsolationFlags();
                 window.location.reload();
             });
         }
@@ -456,7 +519,8 @@
         classifyError: classifyError,
         showError: showError,
         handleFailure: handleFailure,
-        clearWatchdog: clearWatchdog
+        clearWatchdog: clearWatchdog,
+        syncShellThemeFromStorage: syncShellThemeFromStorage
     };
 
     recordProgress('Loading startup scripts');

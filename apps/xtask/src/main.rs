@@ -296,10 +296,18 @@ mod tests {
         assert!(!WASM_CLIPPY_ARGS.contains(&"--benches"));
 
         let ci_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/ci.yml");
-        let ci_yaml = fs::read_to_string(&ci_path).expect("failed to read ci.yml");
-        let expected_cmd = format!("cargo {}", WASM_CLIPPY_ARGS.join(" "));
+        let ci_yaml = fs::read_to_string(&ci_path)
+            .expect("failed to read ci.yml")
+            .replace("\r\n", "\n");
+        let expected_host_cmd = format!("cargo {}", HOST_CLIPPY_ARGS.join(" "));
+        assert!(ci_yaml.contains("name: Run Clippy (Native)"));
+        assert!(ci_yaml.contains(&expected_host_cmd));
+        let expected_wasm_cmd = format!("cargo {}", WASM_CLIPPY_ARGS.join(" "));
         assert!(ci_yaml.contains("name: Run Clippy (WASM)"));
-        assert!(ci_yaml.contains(&expected_cmd));
+        assert!(ci_yaml.contains(&expected_wasm_cmd));
+        assert!(ci_yaml.contains(
+            "- name: Run Workspace Tests (Native)\n        if: runner.os != 'Linux' && matrix.target != 'wasm32-unknown-unknown'\n        run: cargo test --workspace --lib --tests --all-features"
+        ));
 
         for preflight_cmd in [
             "cargo run -p unified_verification --release -- check-profiles",

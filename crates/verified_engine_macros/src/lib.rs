@@ -69,7 +69,6 @@ impl VisitMut for InjectorVisitor {
 
 struct DeepAstVisitor {
     statements: usize,
-    assertions: usize,
     direct_recursion: Option<proc_macro2::Span>,
     function_name: String,
 }
@@ -78,20 +77,6 @@ impl<'ast> Visit<'ast> for DeepAstVisitor {
     fn visit_stmt(&mut self, node: &'ast syn::Stmt) {
         self.statements += 1;
         syn::visit::visit_stmt(self, node);
-    }
-
-    #[allow(clippy::collapsible_if)]
-    fn visit_macro(&mut self, node: &'ast syn::Macro) {
-        if let Some(ident) = node.path.segments.last().map(|s| s.ident.to_string()) {
-            if ident == "assert"
-                || ident == "assert_eq"
-                || ident == "assert_ne"
-                || ident == "debug_assert"
-            {
-                self.assertions += 1;
-            }
-        }
-        syn::visit::visit_macro(self, node);
     }
 
     #[allow(clippy::collapsible_if)]
@@ -175,7 +160,6 @@ pub fn verified(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let mut visitor = DeepAstVisitor {
         statements: 0,
-        assertions: 0,
         direct_recursion: None,
         function_name: input_fn.sig.ident.to_string(),
     };

@@ -1,5 +1,14 @@
 //! Cross-platform dataset and canvas snapshot export utilities.
 
+use crate::export_primitives::{
+    PrimitiveCanvasLayout, is_valid_coord_pair,
+    pixel_ops::{draw_dot, draw_segment},
+    project_coord,
+    raster::background_pixel,
+    resolve_canvas_dimensions,
+    svg::{escape_xml, svg_document_header},
+};
+
 /// Maximum resolution dimension (width or height) allowed for offscreen rendering.
 pub const MAX_EXPORT_DIMENSION: u32 = 4096;
 
@@ -432,30 +441,36 @@ pub fn export_json(datasets: &[(String, Vec<[f64; 2]>)]) {
     export_json_filename(datasets, "export.json");
 }
 
-/// Helper function to escape special XML characters in text attributes or content.
-fn escape_xml(input: &str) -> String {
-    input
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
-}
-
-#[inline]
-fn is_valid_export_point(p: [f64; 2], options: &ExportOptions) -> bool {
-    p[0].is_finite()
-        && p[1].is_finite()
-        && (!options.log_x || p[0] > 0.0)
-        && (!options.log_y || p[1] > 0.0)
-}
-
-#[inline]
-fn transform_export_coord(val: f64, is_log: bool) -> f64 {
-    if is_log {
-        val.log10().clamp(-300.0, 300.0)
+fn resolve_custom_log_axis(
+    bound_min: f64,
+    bound_max: f64,
+    data_min: f64,
+    data_max: f64,
+    is_log: bool,
+) -> (f64, f64) {
+    let b0 = if is_log && (!bound_min.is_finite() || bound_min <= 0.0) {
+        if data_min.is_finite() { data_min } else { 1e-6 }
     } else {
-        val
+        bound_min
+    };
+    let b1 = if is_log && (!bound_max.is_finite() || bound_max <= b0) {
+        if data_max > b0 { data_max } else { b0 * 10.0 }
+    } else {
+        bound_max
+    };
+    (b0, b1)
+}
+
+fn project_axis_bounds(raw_min: f64, raw_max: f64, is_log: bool) -> (f64, f64) {
+    if raw_min.is_finite() && raw_max.is_finite() {
+        (
+            project_coord(raw_min, is_log),
+            project_coord(raw_max, is_log),
+        )
+    } else if is_log {
+        (-6.0, 0.0)
+    } else {
+        (-1.0, 1.0)
     }
 }
 
@@ -463,7 +478,7 @@ fn compute_export_bounds(
     datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
     custom_bounds: Option<[f64; 4]>,
-) -> (f64, f64, f64, f64) {
+) -> [f64; 4] {
     let mut data_min_x = f64::INFINITY;
     let mut data_max_x = -f64::INFINITY;
     let mut data_min_y = f64::INFINITY;
@@ -471,7 +486,7 @@ fn compute_export_bounds(
 
     for (_, pts) in datasets {
         for &p in pts {
-            if is_valid_export_point(p, options) {
+            if is_valid_coord_pair(p, options.log_x, options.log_y) {
                 data_min_x = data_min_x.min(p[0]);
                 data_max_x = data_max_x.max(p[0]);
                 data_min_y = data_min_y.min(p[1]);
@@ -481,86 +496,16 @@ fn compute_export_bounds(
     }
 
     let (raw_min_x, raw_max_x, raw_min_y, raw_max_y) = if let Some(b) = custom_bounds {
-        let bx0 = if options.log_x && (!b[0].is_finite() || b[0] <= 0.0) {
-            if data_min_x.is_finite() {
-                data_min_x
-            } else {
-                1e-6
-            }
-        } else {
-            b[0]
-        };
-        let bx1 = if options.log_x && (!b[1].is_finite() || b[1] <= bx0) {
-            if data_max_x > bx0 {
-                data_max_x
-            } else {
-                bx0 * 10.0
-            }
-        } else {
-            b[1]
-        };
-        let by0 = if options.log_y && (!b[2].is_finite() || b[2] <= 0.0) {
-            if data_min_y.is_finite() {
-                data_min_y
-            } else {
-                1e-6
-            }
-        } else {
-            b[2]
-        };
-        let by1 = if options.log_y && (!b[3].is_finite() || b[3] <= by0) {
-            if data_max_y > by0 {
-                data_max_y
-            } else {
-                by0 * 10.0
-            }
-        } else {
-            b[3]
-        };
+        let (bx0, bx1) = resolve_custom_log_axis(b[0], b[1], data_min_x, data_max_x, options.log_x);
+        let (by0, by1) = resolve_custom_log_axis(b[2], b[3], data_min_y, data_max_y, options.log_y);
         (bx0, bx1, by0, by1)
     } else {
         (data_min_x, data_max_x, data_min_y, data_max_y)
     };
 
-    let (mut min_x, mut max_x) = if raw_min_x.is_finite() && raw_max_x.is_finite() {
-        (
-            transform_export_coord(raw_min_x, options.log_x),
-            transform_export_coord(raw_max_x, options.log_x),
-        )
-    } else if options.log_x {
-        (-6.0, 0.0)
-    } else {
-        (-1.0, 1.0)
-    };
-
-    let (mut min_y, mut max_y) = if raw_min_y.is_finite() && raw_max_y.is_finite() {
-        (
-            transform_export_coord(raw_min_y, options.log_y),
-            transform_export_coord(raw_max_y, options.log_y),
-        )
-    } else if options.log_y {
-        (-6.0, 0.0)
-    } else {
-        (-1.0, 1.0)
-    };
-
-    if min_x >= max_x {
-        min_x -= 1.0;
-        max_x += 1.0;
-    }
-    if min_y >= max_y {
-        min_y -= 1.0;
-        max_y += 1.0;
-    }
-
-    let margin_x = (max_x - min_x) * 0.05;
-    let margin_y = (max_y - min_y) * 0.05;
-    (
-        min_x - margin_x,
-        max_x + margin_x,
-        min_y - margin_y,
-        max_y + margin_y,
-    )
+    let (min_x, max_x) = project_axis_bounds(raw_min_x, raw_max_x, options.log_x);
+    let (min_y, max_y) = project_axis_bounds(raw_min_y, raw_max_y, options.log_y);
+    [min_x, max_x, min_y, max_y]
 }
 
 /// Render plot datasets into vector SVG XML string.
@@ -568,60 +513,14 @@ pub fn export_custom_svg(
     datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<String, String> {
-    let target_w = (options.width as f32 * options.scale).round() as u32;
-    let mut target_h = (options.height as f32 * options.scale).round() as u32;
-
-    if let Some(ratio) = options.aspect_ratio.ratio().filter(|&r| r > 0.0) {
-        target_h = (target_w as f32 / ratio).round() as u32;
-    }
-
-    if target_w > MAX_EXPORT_DIMENSION || target_h > MAX_EXPORT_DIMENSION {
-        return Err(format!(
-            "Requested dimensions ({}x{}) exceed maximum limit of {}x{}",
-            target_w, target_h, MAX_EXPORT_DIMENSION, MAX_EXPORT_DIMENSION
-        ));
-    }
-
-    let width = target_w.max(1) as usize;
-    let height = target_h.max(1) as usize;
-
-    let bg_r = options.background_color.r();
-    let bg_g = options.background_color.g();
-    let bg_b = options.background_color.b();
-    let bg_a_factor =
-        (options.background_color.a() as f32 / 255.0) * options.background_opacity.clamp(0.0, 1.0);
-
-    let (min_x, max_x, min_y, max_y) = compute_export_bounds(datasets, options, None);
-
-    let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
-    let draw_w = (width as f64 - 2.0 * padding).max(1.0);
-    let draw_h = (height as f64 - 2.0 * padding).max(1.0);
-
-    let to_pixel = |p: [f64; 2]| -> (f64, f64) {
-        let tx = transform_export_coord(p[0], options.log_x);
-        let ty = transform_export_coord(p[1], options.log_y);
-        let x_norm = (tx - min_x) / (max_x - min_x);
-        let y_norm = (ty - min_y) / (max_y - min_y);
-        let px = padding + x_norm * draw_w;
-        let py = (height as f64 - padding) - y_norm * draw_h;
-        (px, py)
-    };
+    let (width, height) = resolve_canvas_dimensions(options)?;
+    let projected = compute_export_bounds(datasets, options, None);
+    let layout = PrimitiveCanvasLayout::from_projected_bounds(width, height, projected, options);
 
     let stroke_width = (options.line_thickness * options.scale).max(1.0);
     let marker_radius = (stroke_width / 2.0).max(1.5);
 
-    let mut svg = String::new();
-    svg.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    svg.push_str(&format!(
-        "<svg width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" xmlns=\"http://www.w3.org/2000/svg\">\n",
-        width, height, width, height
-    ));
-
-    // Background rect
-    svg.push_str(&format!(
-        "  <rect width=\"{}\" height=\"{}\" fill=\"rgb({},{},{})\" fill-opacity=\"{:.3}\" />\n",
-        width, height, bg_r, bg_g, bg_b, bg_a_factor
-    ));
+    let mut svg = svg_document_header(width, height, options);
 
     for (d_idx, (name, pts)) in datasets.iter().enumerate() {
         if pts.is_empty() {
@@ -669,8 +568,8 @@ pub fn export_custom_svg(
         };
 
         for &p in pts {
-            if is_valid_export_point(p, options) {
-                current_segment.push(to_pixel(p));
+            if layout.is_valid_point(p) {
+                current_segment.push(layout.to_pixel(p));
             } else {
                 flush_segment(&mut current_segment, &mut svg);
             }
@@ -699,48 +598,10 @@ pub fn export_custom_image_with_bounds(
     options: &ExportOptions,
     custom_bounds: Option<[f64; 4]>,
 ) -> Result<egui::ColorImage, String> {
-    let target_w = (options.width as f32 * options.scale).round() as u32;
-    let mut target_h = (options.height as f32 * options.scale).round() as u32;
-
-    if let Some(ratio) = options.aspect_ratio.ratio().filter(|&r| r > 0.0) {
-        target_h = (target_w as f32 / ratio).round() as u32;
-    }
-
-    if target_w > MAX_EXPORT_DIMENSION || target_h > MAX_EXPORT_DIMENSION {
-        return Err(format!(
-            "Requested dimensions ({}x{}) exceed maximum limit of {}x{}",
-            target_w, target_h, MAX_EXPORT_DIMENSION, MAX_EXPORT_DIMENSION
-        ));
-    }
-
-    let width = target_w.max(1) as usize;
-    let height = target_h.max(1) as usize;
-
-    let bg_r = options.background_color.r();
-    let bg_g = options.background_color.g();
-    let bg_b = options.background_color.b();
-    let bg_a = (options.background_color.a() as f32 * options.background_opacity.clamp(0.0, 1.0))
-        .round() as u8;
-    let bg_pixel = egui::Color32::from_rgba_unmultiplied(bg_r, bg_g, bg_b, bg_a);
-
-    let mut pixels = vec![bg_pixel; width * height];
-
-    let (min_x, max_x, min_y, max_y) = compute_export_bounds(datasets, options, custom_bounds);
-
-    let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
-    let draw_w = (width as f64 - 2.0 * padding).max(1.0);
-    let draw_h = (height as f64 - 2.0 * padding).max(1.0);
-
-    let to_pixel = |p: [f64; 2]| -> (f64, f64) {
-        let tx = transform_export_coord(p[0], options.log_x);
-        let ty = transform_export_coord(p[1], options.log_y);
-        let x_norm = (tx - min_x) / (max_x - min_x);
-        let y_norm = (ty - min_y) / (max_y - min_y);
-        let px = padding + x_norm * draw_w;
-        let py = (height as f64 - padding) - y_norm * draw_h;
-        (px, py)
-    };
-
+    let (width, height) = resolve_canvas_dimensions(options)?;
+    let mut pixels = vec![background_pixel(options); width * height];
+    let projected = compute_export_bounds(datasets, options, custom_bounds);
+    let layout = PrimitiveCanvasLayout::from_projected_bounds(width, height, projected, options);
     let line_radius = (options.line_thickness * options.scale / 2.0).max(0.5) as f64;
 
     for (d_idx, (_, pts)) in datasets.iter().enumerate() {
@@ -751,11 +612,11 @@ pub fn export_custom_image_with_bounds(
 
         let mut prev_pixel: Option<(f64, f64)> = None;
         for &p in pts {
-            if !is_valid_export_point(p, options) {
+            if !layout.is_valid_point(p) {
                 prev_pixel = None;
                 continue;
             }
-            let curr = to_pixel(p);
+            let curr = layout.to_pixel(p);
             if let Some(prev) = prev_pixel {
                 draw_segment(&mut pixels, width, height, prev, curr, line_radius, color);
             } else {
@@ -793,13 +654,7 @@ pub fn color32_images_to_gif(images: &[egui::ColorImage], fps: u32) -> Result<Ve
                 continue;
             }
 
-            let mut rgba_buf = Vec::with_capacity((width * height * 4) as usize);
-            for p in &img.pixels {
-                rgba_buf.push(p.r());
-                rgba_buf.push(p.g());
-                rgba_buf.push(p.b());
-                rgba_buf.push(p.a());
-            }
+            let rgba_buf = color_image_to_rgba_bytes(img);
 
             let rgba_img = image::RgbaImage::from_raw(width, height, rgba_buf)
                 .ok_or_else(|| "Failed to construct RGBA buffer for GIF frame".to_string())?;
@@ -860,7 +715,7 @@ pub fn export_custom_gif(
     for frame in frames {
         for (_, pts) in frame {
             for &p in pts {
-                if is_valid_export_point(p, options) {
+                if is_valid_coord_pair(p, options.log_x, options.log_y) {
                     min_x = min_x.min(p[0]);
                     max_x = max_x.max(p[0]);
                     min_y = min_y.min(p[1]);
@@ -894,117 +749,19 @@ pub fn export_custom_png(
     color32_image_to_png(&image)
 }
 
-fn blend_over(dst: egui::Color32, src: egui::Color32, alpha_factor: f64) -> egui::Color32 {
-    let src_a = (src.a() as f64 / 255.0) * alpha_factor.clamp(0.0, 1.0);
-    if src_a <= 0.0 {
-        return dst;
+fn color_image_to_rgba_bytes(image: &egui::ColorImage) -> Vec<u8> {
+    let mut rgba = Vec::with_capacity(image.pixels.len() * 4);
+    for p in &image.pixels {
+        rgba.extend_from_slice(&[p.r(), p.g(), p.b(), p.a()]);
     }
-    let dst_a = dst.a() as f64 / 255.0;
-    let out_a = src_a + dst_a * (1.0 - src_a);
-    if out_a <= 0.0 {
-        return egui::Color32::TRANSPARENT;
-    }
-
-    let blend_c = |s_c: u8, d_c: u8| -> u8 {
-        let s = s_c as f64 / 255.0;
-        let d = d_c as f64 / 255.0;
-        let out = (s * src_a + d * dst_a * (1.0 - src_a)) / out_a;
-        (out * 255.0).round().clamp(0.0, 255.0) as u8
-    };
-
-    egui::Color32::from_rgba_unmultiplied(
-        blend_c(src.r(), dst.r()),
-        blend_c(src.g(), dst.g()),
-        blend_c(src.b(), dst.b()),
-        (out_a * 255.0).round().clamp(0.0, 255.0) as u8,
-    )
-}
-
-fn draw_segment(
-    pixels: &mut [egui::Color32],
-    w: usize,
-    h: usize,
-    p0: (f64, f64),
-    p1: (f64, f64),
-    radius: f64,
-    color: egui::Color32,
-) {
-    let min_x =
-        ((p0.0.min(p1.0) - radius - 1.0).floor() as isize).clamp(0, w as isize - 1) as usize;
-    let max_x = ((p0.0.max(p1.0) + radius + 1.0).ceil() as isize).clamp(0, w as isize - 1) as usize;
-    let min_y =
-        ((p0.1.min(p1.1) - radius - 1.0).floor() as isize).clamp(0, h as isize - 1) as usize;
-    let max_y = ((p0.1.max(p1.1) + radius + 1.0).ceil() as isize).clamp(0, h as isize - 1) as usize;
-
-    let dx = p1.0 - p0.0;
-    let dy = p1.1 - p0.1;
-    let len_sq = dx * dx + dy * dy;
-
-    for y in min_y..=max_y {
-        for x in min_x..=max_x {
-            let px = x as f64 + 0.5;
-            let py = y as f64 + 0.5;
-
-            let dist = if len_sq == 0.0 {
-                let d2x = px - p0.0;
-                let d2y = py - p0.1;
-                (d2x * d2x + d2y * d2y).sqrt()
-            } else {
-                let t = (((px - p0.0) * dx + (py - p0.1) * dy) / len_sq).clamp(0.0, 1.0);
-                let proj_x = p0.0 + t * dx;
-                let proj_y = p0.1 + t * dy;
-                let d2x = px - proj_x;
-                let d2y = py - proj_y;
-                (d2x * d2x + d2y * d2y).sqrt()
-            };
-
-            let coverage = (radius + 0.5 - dist).clamp(0.0, 1.0);
-            if coverage > 0.0 {
-                let idx = y * w + x;
-                pixels[idx] = blend_over(pixels[idx], color, coverage);
-            }
-        }
-    }
-}
-
-fn draw_dot(
-    pixels: &mut [egui::Color32],
-    w: usize,
-    h: usize,
-    p: (f64, f64),
-    radius: f64,
-    color: egui::Color32,
-) {
-    let min_x = ((p.0 - radius - 1.0).floor() as isize).clamp(0, w as isize - 1) as usize;
-    let max_x = ((p.0 + radius + 1.0).ceil() as isize).clamp(0, w as isize - 1) as usize;
-    let min_y = ((p.1 - radius - 1.0).floor() as isize).clamp(0, h as isize - 1) as usize;
-    let max_y = ((p.1 + radius + 1.0).ceil() as isize).clamp(0, h as isize - 1) as usize;
-
-    for y in min_y..=max_y {
-        for x in min_x..=max_x {
-            let dx = x as f64 + 0.5 - p.0;
-            let dy = y as f64 + 0.5 - p.1;
-            let dist = (dx * dx + dy * dy).sqrt();
-            let coverage = (radius + 0.5 - dist).clamp(0.0, 1.0);
-            if coverage > 0.0 {
-                let idx = y * w + x;
-                pixels[idx] = blend_over(pixels[idx], color, coverage);
-            }
-        }
-    }
+    rgba
 }
 
 /// Copy an `egui::ColorImage` to the system clipboard.
 pub fn copy_image_to_clipboard(image: &egui::ColorImage) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let mut rgba = Vec::with_capacity(image.pixels.len() * 4);
-        for p in &image.pixels {
-            rgba.push(p.r());
-            rgba.push(p.g());
-            rgba.push(p.b());
-            rgba.push(p.a());
-        }
+        let rgba = color_image_to_rgba_bytes(image);
         let img_data = arboard::ImageData {
             width: image.width(),
             height: image.height(),
@@ -1213,13 +970,7 @@ pub fn color32_image_to_png(image: &egui::ColorImage) -> Result<Vec<u8>, String>
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
 
-    let mut raw_rgba = Vec::with_capacity(image.pixels.len() * 4);
-    for p in &image.pixels {
-        raw_rgba.push(p.r());
-        raw_rgba.push(p.g());
-        raw_rgba.push(p.b());
-        raw_rgba.push(p.a());
-    }
+    let raw_rgba = color_image_to_rgba_bytes(image);
     writer
         .write_image_data(&raw_rgba)
         .map_err(|e| e.to_string())?;
@@ -1856,5 +1607,125 @@ mod tests {
         };
         let gif = export_custom_gif(&frames, &gif_opts, 10).expect("Log GIF export failed");
         assert_eq!(&gif[0..6], b"GIF89a");
+    }
+
+    #[test]
+    fn test_color_image_to_rgba_bytes_packing_and_empty() {
+        let empty = egui::ColorImage::new([0, 0], vec![]);
+        assert!(color_image_to_rgba_bytes(&empty).is_empty());
+
+        let p0 = egui::Color32::from_rgba_unmultiplied(12, 34, 56, 255);
+        let p1 = egui::Color32::from_rgba_unmultiplied(200, 100, 50, 128);
+        let p2 = egui::Color32::TRANSPARENT;
+        let p3 = egui::Color32::from_rgb(7, 8, 9);
+        let img = egui::ColorImage::new([2, 2], vec![p0, p1, p2, p3]);
+
+        let packed = color_image_to_rgba_bytes(&img);
+        assert_eq!(
+            packed,
+            vec![
+                p0.r(),
+                p0.g(),
+                p0.b(),
+                p0.a(),
+                p1.r(),
+                p1.g(),
+                p1.b(),
+                p1.a(),
+                0,
+                0,
+                0,
+                0,
+                7,
+                8,
+                9,
+                255,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_compute_export_bounds_log_fallbacks_and_empty_defaults() {
+        let empty: Vec<ExportDataset> = Vec::new();
+        let lin_opts = ExportOptions::default();
+        assert_eq!(
+            compute_export_bounds(&empty, &lin_opts, None),
+            [-1.0, 1.0, -1.0, 1.0]
+        );
+
+        let log_opts = ExportOptions {
+            log_x: true,
+            log_y: true,
+            ..ExportOptions::default()
+        };
+        assert_eq!(
+            compute_export_bounds(&empty, &log_opts, None),
+            [-6.0, 0.0, -6.0, 0.0]
+        );
+        assert_eq!(
+            compute_export_bounds(&empty, &log_opts, Some([0.0, -5.0, -2.0, 0.0])),
+            [-6.0, -5.0, -6.0, -5.0]
+        );
+
+        let datasets = vec![(
+            "Decades".to_string(),
+            vec![[-1.0, 5.0], [10.0, 100.0], [1000.0, 10_000.0]],
+        )];
+        assert_eq!(
+            compute_export_bounds(&datasets, &log_opts, Some([0.0, -1.0, -3.0, 50.0])),
+            [1.0, 3.0, 2.0, 4.0]
+        );
+    }
+
+    #[test]
+    fn test_dataset_and_primitive_layout_pixel_parity() {
+        use crate::export_primitives::{
+            compute_primitive_bounds_for_options, datasets_to_primitives, export_primitives_svg,
+        };
+
+        let datasets = vec![(
+            "Signal".to_string(),
+            vec![[1.0, 10.0], [10.0, 100.0], [100.0, 1000.0]],
+        )];
+        let prims = datasets_to_primitives(&datasets);
+        for log_axes in [false, true] {
+            let opts = ExportOptions {
+                width: 640,
+                height: 360,
+                log_x: log_axes,
+                log_y: log_axes,
+                ..ExportOptions::default()
+            };
+            let (w, h) = resolve_canvas_dimensions(&opts).unwrap();
+            let ds_layout = PrimitiveCanvasLayout::from_projected_bounds(
+                w,
+                h,
+                compute_export_bounds(&datasets, &opts, None),
+                &opts,
+            );
+            let prim_bounds = compute_primitive_bounds_for_options(&prims, &opts).unwrap();
+            let prim_layout = PrimitiveCanvasLayout::new(w, h, prim_bounds, &opts);
+
+            for pt in &datasets[0].1 {
+                assert_eq!(ds_layout.to_pixel(*pt), prim_layout.to_pixel(*pt));
+            }
+            let ds_svg = export_custom_svg(&datasets, &opts).unwrap();
+            let prim_svg = export_primitives_svg(&prims, &opts).unwrap();
+            let ds_pts = ds_svg
+                .split("<polyline points=\"")
+                .nth(1)
+                .unwrap()
+                .split('"')
+                .next()
+                .unwrap();
+            let prim_pts = prim_svg
+                .split("<polyline points=\"")
+                .nth(1)
+                .unwrap()
+                .split('"')
+                .next()
+                .unwrap();
+            assert_eq!(ds_pts, prim_pts);
+        }
     }
 }

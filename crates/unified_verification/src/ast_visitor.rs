@@ -161,7 +161,6 @@ pub fn run_clone_detector() -> bool {
         if path_str.contains("unified_verification")
             || path_str.contains("colormap.rs")
             || path_str.contains("types.rs")
-            || path_str.contains("grid.rs")
         {
             continue;
         }

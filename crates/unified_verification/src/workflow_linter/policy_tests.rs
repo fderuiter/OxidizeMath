@@ -245,7 +245,7 @@ fn test_job_uses_local_reusable_workflow_resolution() {
     write_fixture(
         &temp,
         ".github/workflows/reusable.yml",
-        "on: workflow_call\njobs:\n  build:\n    steps:\n      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n",
+        "permissions: read-all\nconcurrency: reusable-ci\non: workflow_call\njobs:\n  build:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    steps:\n      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n",
     );
     let valid_caller = "jobs:\n  call-local:\n    uses: ./.github/workflows/reusable.yml\n";
     assert_eq!(validate_action_in_dir_str(valid_caller, &temp), Ok(()));
@@ -260,7 +260,7 @@ fn test_job_uses_local_reusable_workflow_resolution() {
     write_fixture(
         &temp,
         ".github/workflows/unpinned_called.yaml",
-        "on: workflow_call\njobs:\n  inner:\n    steps:\n      - uses: actions/checkout@v4\n",
+        "permissions: read-all\nconcurrency: reusable-ci\non: workflow_call\njobs:\n  inner:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    steps:\n      - uses: actions/checkout@v4\n",
     );
     let unpinned_caller =
         "jobs:\n  call-unpinned:\n    uses: ./.github/workflows/unpinned_called.yaml\n";
@@ -432,7 +432,7 @@ fn test_lint_workflows_audits_standalone_actions_and_canary_cases() {
     write_fixture(
         &temp1,
         ".github/workflows/reusable_canary.yml",
-        "name: Canary Reusable Workflow\npermissions: read-all\nconcurrency: canary-reusable-group\non: push\njobs:\n  external-reusable:\n    timeout-minutes: 10\n    uses: example-org/canary-repo/.github/workflows/reusable-build.yml@main\n",
+        "name: Canary Reusable Workflow\npermissions: read-all\nconcurrency: canary-reusable-group\non: push\njobs:\n  external-reusable:\n    uses: example-org/canary-repo/.github/workflows/reusable-build.yml@main\n",
     );
     assert!(!lint_workflows_in_dir(
         &temp1.join(".github/workflows"),
