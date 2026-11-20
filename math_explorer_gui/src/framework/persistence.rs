@@ -338,6 +338,16 @@ impl SimulationFramework {
             {
                 tool.load_state(saved);
             }
+            if !tool.has_finite_parameters() {
+                if let Some(ref base) = self.baseline_tool_state {
+                    let _ = tool.try_load_recovery_state(base);
+                }
+                if !tool.has_finite_parameters() {
+                    let fresh = (meta.build)();
+                    self.baseline_tool_state = fresh.save_state();
+                    *tool = fresh;
+                }
+            }
             let refreshed = capture_isolated_tool_datasets(tool.as_ref());
             let recovery = tool.save_recovery_state();
             let rev = tool.state_revision();

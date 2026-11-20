@@ -5,24 +5,102 @@ use crate::framework::recovery::*;
 use crate::framework::SimulationFramework;
 
 impl SimulationFramework {
+    fn try_restore_snapshot_or_clamped(&mut self, state_str: &str) -> Option<(&'static str, bool)> {
+        let base_ref = self.baseline_tool_state.as_deref();
+        let tool = self.active_tool.as_mut()?;
+        if tool.try_load_recovery_state(state_str).is_ok() && tool.has_finite_parameters() {
+            return Some((
+                "Restored exact pre-divergence parameter configuration and plot data",
+                false,
+            ));
+        }
+        let constraints = tool.theory().theory_parameters();
+        let clamped = crate::framework::clamp::clamp_state_json(state_str, base_ref, &constraints)?;
+        if tool.try_load_recovery_state(&clamped).is_ok() && tool.has_finite_parameters() {
+            return Some((
+                "Snapshot validation failed; restored clamped parameter configuration",
+                true,
+            ));
+        }
+        None
+    }
+
+    fn restore_verified_recovery_state(
+        &mut self,
+        snapshot_state: Option<&str>,
+    ) -> (&'static str, bool) {
+        if self.active_tool.is_none() {
+            return (
+                "Restored exact pre-divergence parameter configuration and plot data",
+                false,
+            );
+        }
+        if let Some(state_str) = snapshot_state {
+            if let Some(outcome) = self.try_restore_snapshot_or_clamped(state_str) {
+                return outcome;
+            }
+        } else if self
+            .active_tool
+            .as_ref()
+            .is_some_and(|t| t.has_finite_parameters())
+        {
+            return (
+                "Restored exact pre-divergence parameter configuration and plot data",
+                false,
+            );
+        }
+
+        let base_clone = self.baseline_tool_state.clone();
+        if let (Some(tool), Some(ref base)) = (&mut self.active_tool, &base_clone) {
+            if tool.try_load_recovery_state(base).is_ok() && tool.has_finite_parameters() {
+                return (
+                    "Snapshot validation failed; restored baseline parameter configuration",
+                    true,
+                );
+            }
+        }
+        if let Some(tool) = &mut self.active_tool {
+            if tool.clamp_parameters() && tool.has_finite_parameters() {
+                return (
+                    "Snapshot validation failed; clamped active tool parameters",
+                    true,
+                );
+            }
+            if let Some(&meta) = self
+                .selected_tool_index
+                .and_then(|idx| self.available_tools.get(idx))
+            {
+                let fresh = (meta.build)();
+                self.baseline_tool_state = fresh.save_state();
+                *tool = fresh;
+            }
+        }
+        (
+            "Snapshot validation failed; rebuilt default baseline tool",
+            true,
+        )
+    }
+
     /// Executes the Step-Back action: restores pre-divergence parameters without clobbering pinned baselines.
     pub fn rollback_step_back(&mut self) -> bool {
         let Some(snapshot) = self.last_valid_snapshot.clone() else {
             return false;
         };
-        if let Some(tool) = &mut self.active_tool {
-            if let Some(ref state_str) = snapshot.tool_state {
-                tool.load_recovery_state(state_str);
-            }
-        }
+        let (details, used_fallback) =
+            self.restore_verified_recovery_state(snapshot.tool_state.as_deref());
         self.bump_framework_revision();
-        self.restore_snapshot_plots(snapshot.plot_datasets);
+        let plots =
+            if !used_fallback && inspect_datasets_for_divergence(&snapshot.plot_datasets).is_ok() {
+                snapshot.plot_datasets
+            } else {
+                Vec::new()
+            };
+        self.restore_snapshot_plots(plots);
+        if used_fallback {
+            self.refresh_saved_and_snapshot_after_reset();
+        }
 
-        emit_recovery_telemetry(
-            "SimulationFramework",
-            "Step Back",
-            "Restored exact pre-divergence parameter configuration and plot data",
-        );
+        emit_recovery_telemetry("SimulationFramework", "Step Back", details);
         true
     }
 
@@ -31,17 +109,32 @@ impl SimulationFramework {
         let Some(snapshot) = self.last_valid_snapshot.clone() else {
             return false;
         };
-        if let Some(tool) = &mut self.active_tool {
-            if let Some(ref state_str) = snapshot.tool_state {
-                if let Some(halved_state) = auto_scale_state_json(state_str) {
-                    tool.load_recovery_state(&halved_state);
-                } else {
-                    tool.load_recovery_state(state_str);
-                }
+        let scaled = snapshot
+            .tool_state
+            .as_deref()
+            .and_then(auto_scale_state_json);
+        let mut applied_scaled = false;
+        if let (Some(tool), Some(ref halved_state)) = (&mut self.active_tool, &scaled) {
+            if tool.try_load_recovery_state(halved_state).is_ok() && tool.has_finite_parameters() {
+                applied_scaled = true;
             }
         }
+        let mut used_fallback = false;
+        if !applied_scaled {
+            let (_, fb) = self.restore_verified_recovery_state(snapshot.tool_state.as_deref());
+            used_fallback = fb;
+        }
         self.bump_framework_revision();
-        self.restore_snapshot_plots(snapshot.plot_datasets);
+        let plots =
+            if !used_fallback && inspect_datasets_for_divergence(&snapshot.plot_datasets).is_ok() {
+                snapshot.plot_datasets
+            } else {
+                Vec::new()
+            };
+        self.restore_snapshot_plots(plots);
+        if used_fallback {
+            self.refresh_saved_and_snapshot_after_reset();
+        }
 
         emit_recovery_telemetry(
             "SimulationFramework",
@@ -74,6 +167,9 @@ impl SimulationFramework {
 
         let mut telemetry_details = "Fallback to baseline parameters: zero snapshot fields changed";
         if let Some(tool) = &mut self.active_tool {
+            let live_diverged = (!tool.has_finite_parameters())
+                .then(|| tool.save_recovery_state())
+                .flatten();
             if let Some(ref state_str) = snapshot.tool_state {
                 tool.load_recovery_state(state_str);
             }
@@ -82,17 +178,23 @@ impl SimulationFramework {
                     "Clamped instability parameters via domain hook and restored plot datasets";
             } else {
                 let constraints = tool.theory().theory_parameters();
-                if let Some(clamped) = snapshot.tool_state.as_deref().and_then(|s| {
-                    crate::framework::clamp::clamp_state_json(
-                        s,
-                        self.baseline_tool_state.as_deref(),
-                        &constraints,
-                    )
-                }) {
-                    tool.load_recovery_state(&clamped);
+                let base_ref = self.baseline_tool_state.as_deref();
+                let clamped = snapshot
+                    .tool_state
+                    .as_deref()
+                    .and_then(|s| {
+                        crate::framework::clamp::clamp_state_json(s, base_ref, &constraints)
+                    })
+                    .or_else(|| {
+                        live_diverged.as_deref().and_then(|s| {
+                            crate::framework::clamp::clamp_state_json(s, base_ref, &constraints)
+                        })
+                    });
+                if let Some(clamped_json) = clamped {
+                    tool.load_recovery_state(&clamped_json);
                     telemetry_details =
                         "Clamped snapshot JSON parameters to stable bounds and restored plot datasets";
-                } else if let Some(ref base) = self.baseline_tool_state {
+                } else if let Some(base) = base_ref {
                     tool.load_recovery_state(base);
                 }
             }

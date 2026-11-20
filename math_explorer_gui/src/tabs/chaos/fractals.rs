@@ -1,38 +1,77 @@
-use crate::accessibility::AccessibleTheoryHover;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::InteractiveTool;
 use eframe::egui;
-use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::physics::chaos::fractals::{escape_time_julia, escape_time_mandelbrot};
 use num_complex::Complex;
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 
-#[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-enum FractalMode {
-    Mandelbrot,
-    Julia,
-}
+#[path = "fractals/runner.rs"]
+mod runner;
+pub use runner::*;
 
+#[path = "fractals/ui.rs"]
+mod ui;
+
+/// Interactive Mandelbrot and Julia fractal viewer backed by progressive background passes.
 pub struct FractalViewer {
-    center: Complex<f64>,
-    zoom: f64,
-    max_iter: u32,
-    mode: FractalMode,
-    julia_c: Complex<f64>,
-    texture: Option<egui::TextureHandle>,
-    dirty: bool,
+    pub(crate) center: Complex<f64>,
+    pub(crate) zoom: f64,
+    pub(crate) max_iter: u32,
+    pub(crate) mode: FractalMode,
+    pub(crate) julia_c: Complex<f64>,
+    pub(crate) texture: Option<egui::TextureHandle>,
+    pub(crate) dirty: bool,
+    pub(crate) requested_size: (usize, usize),
+    pub(crate) request_generation: u64,
+    pub(crate) completed_generation: u64,
+    pub(crate) current_stride: usize,
+    pub(crate) shared_request: Arc<RwLock<FractalRenderRequest>>,
+    pub(crate) latest_generation: Arc<AtomicU64>,
+    pub(crate) worker: BackgroundWorker<FractalRunner>,
 }
 
 impl Default for FractalViewer {
     fn default() -> Self {
+        let center = Complex::new(-0.75, 0.0);
+        let zoom = 1.0;
+        let max_iter = 100;
+        let mode = FractalMode::Mandelbrot;
+        let julia_c = Complex::new(-0.4, 0.6);
+        let initial_req = FractalRenderRequest {
+            generation: 0,
+            width: INITIAL_PREVIEW_SIZE.0,
+            height: INITIAL_PREVIEW_SIZE.1,
+            center,
+            zoom,
+            max_iter,
+            mode,
+            julia_c,
+        };
+        let shared_request = Arc::new(RwLock::new(initial_req));
+        let latest_generation = Arc::new(AtomicU64::new(0));
+        let worker = BackgroundWorker::new(FractalRunner::new(
+            Arc::clone(&shared_request),
+            Arc::clone(&latest_generation),
+        ));
         Self {
-            center: Complex::new(-0.75, 0.0),
-            zoom: 1.0,
-            max_iter: 100,
-            mode: FractalMode::Mandelbrot,
-            julia_c: Complex::new(-0.4, 0.6),
+            center,
+            zoom,
+            max_iter,
+            mode,
+            julia_c,
             texture: None,
             dirty: true,
+            requested_size: INITIAL_PREVIEW_SIZE,
+            request_generation: 0,
+            completed_generation: 0,
+            current_stride: 1,
+            shared_request,
+            latest_generation,
+            worker,
         }
     }
 }
@@ -67,20 +106,8 @@ impl TheoryDescribable for FractalViewer {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct FractalState {
-    center_re: f64,
-    center_im: f64,
-    zoom: f64,
-    max_iter: u32,
-    mode: FractalMode,
-    julia_re: f64,
-    julia_im: f64,
-}
-
 impl InteractiveTool for FractalViewer {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+    fn theory(&self) -> &dyn TheoryDescribable {
         self
     }
 
@@ -97,20 +124,49 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
-        let (width, height) = (480, 320);
-        let zoom = if self.zoom.is_finite() && self.zoom > 0.0 {
+        let zoom = if self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom) {
             self.zoom
         } else {
             1.0
         };
-        let scale_y = 3.0 / zoom;
-        let scale_x = scale_y * (width as f64 / height as f64);
-        Some(self.generate_image(width, height, scale_x, scale_y))
+        let req = FractalRenderRequest {
+            generation: self.request_generation,
+            width: 480,
+            height: 320,
+            center: Complex::new(
+                self.center.re.clamp(COORD_MIN, COORD_MAX),
+                self.center.im.clamp(COORD_MIN, COORD_MAX),
+            ),
+            zoom,
+            max_iter: self
+                .max_iter
+                .clamp(10, math_commons::registry::MAX_ITERATIONS as u32),
+            mode: self.mode,
+            julia_c: Complex::new(
+                self.julia_c.re.clamp(COORD_MIN, COORD_MAX),
+                self.julia_c.im.clamp(COORD_MIN, COORD_MAX),
+            ),
+        };
+        Some(render_fractal_color_image(&req))
     }
 
     fn step_simulation(&mut self) {
-        self.zoom = (self.zoom * 1.06).min(10_000.0);
+        self.zoom = (self.zoom * 1.06).clamp(ZOOM_MIN, ZOOM_MAX);
         self.dirty = true;
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        FractalState {
+            center_re: self.center.re,
+            center_im: self.center.im,
+            zoom: self.zoom,
+            max_iter: self.max_iter,
+            mode: self.mode,
+            julia_re: self.julia_c.re,
+            julia_im: self.julia_c.im,
+        }
+        .validate()
+        .is_ok()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -129,14 +185,7 @@ impl InteractiveTool for FractalViewer {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: FractalState =
             serde_json::from_str(state).map_err(|e| format!("Invalid fractal state: {e}"))?;
-        if ![s.center_re, s.center_im, s.zoom, s.julia_re, s.julia_im]
-            .iter()
-            .all(|v| v.is_finite())
-            || !(0.1..=10_000.0).contains(&s.zoom)
-            || !(10..=math_commons::registry::MAX_ITERATIONS as u32).contains(&s.max_iter)
-        {
-            return Err("Fractal view parameters out of bounds".into());
-        }
+        s.validate()?;
         self.center = Complex::new(s.center_re, s.center_im);
         self.zoom = s.zoom;
         self.max_iter = s.max_iter;
@@ -146,281 +195,117 @@ impl InteractiveTool for FractalViewer {
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let ctx = parent_ui.ctx().clone();
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "fractal_settings");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Settings");
-            ui.separator();
-
-            ui.horizontal(|ui| {
-                if ui
-                    .radio_value(&mut self.mode, FractalMode::Mandelbrot, "Mandelbrot")
-                    .clicked()
-                {
-                    self.dirty = true;
-                    // Reset to standard Mandelbrot view
-                    self.center = Complex::new(-0.75, 0.0);
-                    self.zoom = 1.0;
-                }
-                if ui
-                    .radio_value(&mut self.mode, FractalMode::Julia, "Julia")
-                    .clicked()
-                {
-                    self.dirty = true;
-                    // Reset to standard Julia view
-                    self.center = Complex::new(0.0, 0.0);
-                    self.zoom = 1.0;
-                }
-            });
-
-            if self.mode == FractalMode::Julia {
-                ui.separator();
-                ui.label("Julia Constant (c):");
-                let mut changed = false;
-                changed |= ui
-                    .add(
-                        egui::DragValue::new(&mut self.julia_c.re)
-                            .speed(0.005)
-                            .prefix("Re: "),
-                    )
-                    .changed();
-                changed |= ui
-                    .add(
-                        egui::DragValue::new(&mut self.julia_c.im)
-                            .speed(0.005)
-                            .prefix("Im: "),
-                    )
-                    .changed();
-                if changed {
-                    self.dirty = true;
-                }
-            }
-
-            ui.separator();
-            ui.label("View Controls:");
-
-            // Zoom
-            if ui
-                .add(
-                    egui::Slider::new(&mut self.zoom, 0.1..=10000.0)
-                        .logarithmic(true)
-                        .text("Zoom"),
-                )
-                .changed()
-            {
-                self.dirty = true;
-            }
-
-            // Center
-            ui.label("Center:");
-            let speed = 0.1 / self.zoom;
-            let mut center_changed = false;
-            center_changed |= ui
-                .add(
-                    egui::DragValue::new(&mut self.center.re)
-                        .speed(speed)
-                        .prefix("Re: "),
-                )
-                .changed();
-            center_changed |= ui
-                .add(
-                    egui::DragValue::new(&mut self.center.im)
-                        .speed(speed)
-                        .prefix("Im: "),
-                )
-                .changed();
-
-            if center_changed {
-                self.dirty = true;
-            }
-
-            // Max Iterations
-            if ui
-                .add(
-                    egui::Slider::new(
-                        &mut self.max_iter,
-                        10..=math_commons::registry::MAX_ITERATIONS as u32,
-                    )
-                    .logarithmic(true)
-                    .text("Max Iter"),
-                )
-                .changed()
-            {
-                self.dirty = true;
-            }
-
-            ui.separator();
-            if ui.button("↻ Reset View").clicked() {
-                match self.mode {
-                    FractalMode::Mandelbrot => {
-                        self.center = Complex::new(-0.75, 0.0);
-                    }
-                    FractalMode::Julia => {
-                        self.center = Complex::new(0.0, 0.0);
-                    }
-                }
-                self.zoom = 1.0;
-                self.dirty = true;
-            }
-
-            ui.label("Navigation:");
-            ui.label("- Drag to Pan (Single Touch/Mouse)");
-            ui.label("- Scroll/Pinch to Zoom");
-            ui.label("- Two-Finger Pan (Touch)");
-        });
-
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            let available_size = ui.available_size();
-            let (width, height) = (available_size.x as usize, available_size.y as usize);
-
-            if width == 0 || height == 0 {
-                return;
-            }
-
-            // Check if texture needs update due to resize or dirty state
-            let texture_needs_update = if let Some(texture) = &self.texture {
-                texture.size() != [width, height]
-            } else {
-                true
-            };
-
-            if self.dirty || texture_needs_update {
-                // Determine aspect ratio to map pixels to complex plane correctly
-                let aspect = width as f64 / height as f64;
-                let scale_y = 3.0 / self.zoom; // Height in complex plane
-                let scale_x = scale_y * aspect; // Width in complex plane
-
-                let image = self.generate_image(width, height, scale_x, scale_y);
-
-                self.texture =
-                    Some(ctx.load_texture("fractal_texture", image, egui::TextureOptions::LINEAR));
-                self.dirty = false;
-            }
-
-            if let Some(texture) = &self.texture {
-                let alt_label = self.theory_description();
-                let response = ui
-                    .add(
-                        egui::Image::new(texture)
-                            .alt_text(alt_label)
-                            .sense(egui::Sense::click_and_drag()),
-                    )
-                    .accessible_theory_hover(self);
-                crate::accessibility::paint_canvas_focus_ring(ui, &response);
-
-                let multi_touch = ui.input(|i| i.multi_touch());
-
-                // Handle multi-touch pinch-to-zoom and panning
-                if let Some(touch) = multi_touch {
-                    if touch.zoom_delta != 1.0 {
-                        // Dampen zoom velocity to prevent erratic zooming on high-refresh screens
-                        let dampened_zoom = 1.0 + (touch.zoom_delta - 1.0) * 0.5;
-                        self.zoom *= dampened_zoom as f64;
-                        self.dirty = true;
-                    }
-
-                    if touch.translation_delta != egui::Vec2::ZERO {
-                        let aspect = width as f64 / height as f64;
-                        let scale_y = 3.0 / self.zoom;
-                        let scale_x = scale_y * aspect;
-
-                        let dx = -touch.translation_delta.x as f64 / width as f64 * scale_x;
-                        let dy = touch.translation_delta.y as f64 / height as f64 * scale_y;
-
-                        self.center.re += dx;
-                        self.center.im += dy;
-                        self.dirty = true;
-                    }
-                } else if response.dragged() {
-                    // Handle single-pointer drag to pan
-                    let delta = response.drag_delta();
-                    // Map pixel delta to complex delta
-                    let aspect = width as f64 / height as f64;
-                    let scale_y = 3.0 / self.zoom;
-                    let scale_x = scale_y * aspect;
-
-                    // Invert x because dragging right should move camera left (to see left content)
-                    let dx = -delta.x as f64 / width as f64 * scale_x;
-                    // Invert y because dragging down (+y screen) should move camera up (to see top content)
-                    // Screen Y is down positive. Complex Im is up positive.
-                    // Dragging down (+delta.y) means we want to shift the view so that what was above (higher Im) comes into view?
-                    // No, dragging down usually means we want to see what is ABOVE.
-                    // Wait, standard map drag: Drag down -> Map moves down. We see what was above.
-                    // So center of view moves UP (higher Im).
-                    let dy = delta.y as f64 / height as f64 * scale_y;
-
-                    self.center.re += dx;
-                    self.center.im += dy;
-
-                    self.dirty = true;
-                }
-
-                // Handle scroll to zoom
-                if response.hovered() {
-                    let scroll_delta = ui.input(|i| i.raw_scroll_delta.y);
-                    if scroll_delta != 0.0 {
-                        // Zoom in (factor > 1) if scroll up (>0)
-                        let zoom_factor = if scroll_delta > 0.0 { 1.1 } else { 0.9 };
-                        self.zoom *= zoom_factor;
-                        self.dirty = true;
-                    }
-                }
-            }
-        });
+        let max_side = ctx.input(|i| i.max_texture_side);
+        self.sync_texture_from_worker(&ctx, max_side);
+        self.draw_side_panel(parent_ui);
+        self.draw_central_panel(parent_ui, &ctx, max_side);
     }
 }
 
 impl FractalViewer {
-    fn generate_image(
-        &self,
-        width: usize,
-        height: usize,
-        scale_x: f64,
-        scale_y: f64,
-    ) -> egui::ColorImage {
-        let mut pixels = vec![0u8; width * height * 4];
-
-        // Parallel iteration would be great here, but for now single threaded.
-        // We iterate pixels and map to complex plane.
-
-        let x_start = self.center.re - scale_x / 2.0;
-        let y_start = self.center.im + scale_y / 2.0; // Top-left corner (max imaginary)
-
-        for y in 0..height {
-            // Map y to Im. y=0 -> Im=y_start. y=height -> Im=y_start - scale_y
-            let im = y_start - (y as f64 / height as f64) * scale_y;
-
-            for x in 0..width {
-                // Map x to Re. x=0 -> Re=x_start. x=width -> Re=x_start + scale_x
-                let re = x_start + (x as f64 / width as f64) * scale_x;
-
-                let c = Complex::new(re, im);
-                let iterations = match self.mode {
-                    FractalMode::Mandelbrot => escape_time_mandelbrot(c, self.max_iter),
-                    FractalMode::Julia => escape_time_julia(c, self.julia_c, self.max_iter),
-                };
-
-                let color = self.map_iter_to_color(iterations);
-
-                let idx = flatten_2d_index(x, y, width) * 4;
-                pixels[idx] = color[0];
-                pixels[idx + 1] = color[1];
-                pixels[idx + 2] = color[2];
-                pixels[idx + 3] = color[3];
-            }
+    fn upload_clamped_snapshot(
+        texture_slot: &mut Option<egui::TextureHandle>,
+        ctx: &egui::Context,
+        snapshot: &StateSnapshot,
+        max_texture_side: usize,
+    ) -> Option<FractalPassMeta> {
+        let image = snapshot_to_clamped_color_image(snapshot, max_texture_side)?;
+        let opts = egui::TextureOptions::LINEAR;
+        if let Some(tex) = texture_slot {
+            tex.set(image, opts);
+        } else {
+            *texture_slot = Some(ctx.load_texture("fractal_texture", image, opts));
         }
-
-        egui::ColorImage::from_rgba_unmultiplied([width, height], &pixels)
+        snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<FractalPassMeta>())
+            .copied()
     }
 
-    fn map_iter_to_color(&self, iter: u32) -> [u8; 4] {
-        if iter == self.max_iter {
-            [0, 0, 0, 255] // Black inside
+    fn sync_texture_from_worker(&mut self, ctx: &egui::Context, max_texture_side: usize) {
+        let uploaded_meta = if let Some(snapshot) = self.worker.update() {
+            Self::upload_clamped_snapshot(&mut self.texture, ctx, snapshot, max_texture_side)
+        } else if self.texture.is_none() {
+            self.worker.latest_snapshot().and_then(|snapshot| {
+                Self::upload_clamped_snapshot(&mut self.texture, ctx, snapshot, max_texture_side)
+            })
         } else {
-            let rgb = math_commons::math_kernel::colormap::cyclic_cosine_palette(iter as f64);
-            [rgb[0], rgb[1], rgb[2], 255]
+            None
+        };
+        if let Some(meta) = uploaded_meta {
+            self.current_stride = meta.stride;
+            if meta.is_final {
+                self.completed_generation = meta.generation;
+            }
+        }
+    }
+
+    pub(super) fn dispatch_render_request(
+        &mut self,
+        render_w: usize,
+        render_h: usize,
+        ctx: &egui::Context,
+    ) {
+        if !self.has_finite_parameters() {
+            return;
+        }
+        if self.dirty || self.requested_size != (render_w, render_h) {
+            self.dirty = false;
+            self.requested_size = (render_w, render_h);
+            self.request_generation = self.request_generation.wrapping_add(1).max(1);
+            let req = FractalRenderRequest {
+                generation: self.request_generation,
+                width: render_w,
+                height: render_h,
+                center: self.center,
+                zoom: self.zoom,
+                max_iter: self.max_iter,
+                mode: self.mode,
+                julia_c: self.julia_c,
+            };
+            *self
+                .shared_request
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) = req;
+            self.latest_generation
+                .store(self.request_generation, Ordering::Release);
+
+            match self.worker.state() {
+                SimWorkerState::Ready => {
+                    let _ = self.worker.send_command(SimCommand::Start);
+                }
+                SimWorkerState::Running => {
+                    let _ = self
+                        .worker
+                        .send_command(SimCommand::Custom("cancel_pass".to_string()));
+                }
+                SimWorkerState::Faulted | SimWorkerState::Terminated => {
+                    let shared = Arc::clone(&self.shared_request);
+                    let latest = Arc::clone(&self.latest_generation);
+                    self.worker = BackgroundWorker::new(FractalRunner::new(shared, latest));
+                    let _ = self.worker.send_command(SimCommand::Start);
+                }
+                SimWorkerState::Uninitialized | SimWorkerState::Stepping => {}
+            }
+        }
+        if self.completed_generation != self.request_generation && self.worker.state().is_ready() {
+            let _ = self.worker.send_command(SimCommand::Start);
+        }
+        if self.completed_generation != self.request_generation || self.worker.is_running() {
+            ctx.request_repaint();
         }
     }
 }
@@ -467,3 +352,7 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+#[cfg(test)]
+#[path = "fractals/tests.rs"]
+mod tests;
