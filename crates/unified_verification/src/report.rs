@@ -3,7 +3,6 @@ use serde::Serialize;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use walkdir::WalkDir;
 
 #[derive(Serialize)]
 pub struct IntegrityReport {
@@ -86,7 +85,7 @@ impl ReportPatterns {
 }
 
 fn normalize_report_path(filepath: &Path) -> String {
-    let norm = filepath.to_string_lossy().replace('\\', "/");
+    let norm = crate::whitelist::lossy_slash_path(filepath);
     norm.strip_prefix("./").unwrap_or(&norm).to_string()
 }
 
@@ -165,18 +164,13 @@ pub fn check_unverified_modules(members: &[String]) -> Vec<String> {
         }
         let mod_dir = Path::new(fm).join("src");
         if mod_dir.exists() {
-            let mut has_theory = false;
-            for entry in WalkDir::new(mod_dir).into_iter().filter_map(|e| e.ok()) {
-                if entry.file_type().is_file()
-                    && entry.path().extension().and_then(|s| s.to_str()) == Some("rs")
-                    && let Ok(content) = fs::read_to_string(entry.path())
-                    && (content.contains("theory_verification!")
-                        || content.contains("stochastic_signature_verification!"))
-                {
-                    has_theory = true;
-                    break;
-                }
-            }
+            let has_theory = crate::utils::collect_rs_files_filtered(&[&mod_dir], &["target"])
+                .into_iter()
+                .filter_map(|path| fs::read_to_string(path).ok())
+                .any(|content| {
+                    content.contains("theory_verification!")
+                        || content.contains("stochastic_signature_verification!")
+                });
             if !has_theory {
                 unverified_modules.push(format!("Unverified Module: {}", fm));
             }
@@ -359,7 +353,7 @@ mod tests {
         assert!(!files.is_empty());
         for f in &files {
             assert!(f.extension().and_then(|s| s.to_str()) == Some("rs"));
-            let p_str = f.to_string_lossy().replace("\\", "/");
+            let p_str = crate::whitelist::lossy_slash_path(f);
             assert!(!p_str.contains("/target/"));
             assert!(!p_str.contains("/egui_plot/"));
         }

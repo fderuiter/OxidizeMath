@@ -968,10 +968,9 @@ fn paint_math_box_bounded(
             let sqrt_w = rad_g.size.y * 0.5;
             let color = get_color(radicand, depth + 1).unwrap_or(Color32::WHITE);
 
-            let radical_font_size = rad_g.size.y.max(1.0_f32);
             let galley = painter.layout_no_wrap(
                 "√".to_string(),
-                FontId::proportional(radical_font_size),
+                FontId::proportional(rad_g.size.y.max(1.0)),
                 color,
             );
             painter.galley(origin, galley, color);

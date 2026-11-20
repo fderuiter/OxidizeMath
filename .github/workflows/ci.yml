@@ -128,7 +128,7 @@ jobs:
         run: rm -rf cargo-machete*
 
       - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
 
       - name: Install cargo-audit
         run: cargo binstall --no-confirm --version 0.23.0 cargo-audit
@@ -264,7 +264,7 @@ jobs:
 
       - name: Install cargo-binstall
         if: matrix.target == 'wasm32-unknown-unknown'
-        uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
 
       - name: Install WASM Tools and Compression Utilities
         if: matrix.target == 'wasm32-unknown-unknown'
@@ -328,11 +328,14 @@ jobs:
           $SHACMD "${files[@]}" > SHA256SUMS
           $SHACHECK SHA256SUMS
 
-      - name: Upload Pages artifact
+      - name: Upload Web Dist Artifact
         if: matrix.target == 'wasm32-unknown-unknown' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
+          name: wasm_web_dist
           path: math_explorer_gui/dist
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Code Signing (Windows)
         if: runner.os == 'Windows'
@@ -493,7 +496,7 @@ jobs:
 
       - name: Install cargo-binstall
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.pre-flight.outputs.installer_changed == 'true'
-        uses: cargo-bins/cargo-binstall@c4abcb90a5fac18f5f8744cbf7bd11b00a37ca41 # v1.10.2
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
 
       # Pinned cargo-packager version for reproducible packaging builds without source compilation fallback
       - name: Install cargo-packager
@@ -584,7 +587,7 @@ jobs:
   deploy-pages:
     name: Deploy to GitHub Pages
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: [pre-flight, build-and-test, feature-matrix]
+    needs: [pre-flight, build-and-test, compile-papers, feature-matrix]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -594,9 +597,108 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     permissions:
+      contents: read
+      actions: read
       pages: write
       id-token: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          sparse-checkout: |
+            papers
+          sparse-checkout-cone-mode: true
+
+      - name: Download Web Dist Artifact
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        with:
+          name: wasm_web_dist
+          path: pages_dist
+
+      - name: Download Compiled Paper PDFs
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        with:
+          name: compiled_papers
+          path: compiled_papers
+
+      - name: Stage Compiled PDFs and Refresh SHA-256 Manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -d "pages_dist" ]; then
+            echo "Error: pages_dist directory does not exist" >&2
+            exit 1
+          fi
+
+          mkdir -p pages_dist/papers
+          find compiled_papers -type f -name "*.pdf" -exec cp -f -- {} pages_dist/ \;
+          find compiled_papers -type f -name "*.pdf" -exec cp -f -- {} pages_dist/papers/ \;
+
+          shopt -s nullglob
+          tex_files=(papers/*.tex)
+          if [ ${#tex_files[@]} -eq 0 ]; then
+            echo "Error: Expected academic .tex manuscripts in papers/" >&2
+            exit 1
+          fi
+
+          for tex in "${tex_files[@]}"; do
+            stem="$(basename "$tex" .tex)"
+            for pdf_path in "pages_dist/${stem}.pdf" "pages_dist/papers/${stem}.pdf"; do
+              if [ ! -s "$pdf_path" ]; then
+                echo "Error: Missing or empty staged PDF for ${tex} at ${pdf_path}" >&2
+                exit 1
+              fi
+            done
+          done
+
+          for req in traceability_snapshot.json Verification_Certificate.json; do
+            if [ ! -s "pages_dist/$req" ]; then
+              echo "Error: Required static traceability file pages_dist/$req is missing or empty" >&2
+              exit 1
+            fi
+          done
+
+          cd pages_dist
+          if command -v sha256sum >/dev/null 2>&1; then
+            SHACMD="sha256sum"
+            SHACHECK="sha256sum -c"
+          elif command -v shasum >/dev/null 2>&1; then
+            SHACMD="shasum -a 256"
+            SHACHECK="shasum -a 256 -c"
+          else
+            echo "Error: Neither sha256sum nor shasum is available" >&2
+            exit 1
+          fi
+
+          shopt -u dotglob
+          files=()
+          for f in * papers/*.pdf; do
+            if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
+              files+=("$f")
+            fi
+          done
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "Error: No Pages artifacts found in pages_dist" >&2
+            exit 1
+          fi
+
+          for f in "${files[@]}"; do
+            if [ ! -s "$f" ]; then
+              echo "Error: Pages artifact $f is empty" >&2
+              exit 1
+            fi
+          done
+
+          $SHACMD "${files[@]}" > SHA256SUMS
+          $SHACHECK SHA256SUMS
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: pages_dist
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

@@ -479,17 +479,16 @@ fn test_continuous_physics_trajectories_excluded_from_undo_history() {
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
     let mut frame = eframe::Frame::_new_kittest();
+    let play = key_event(egui::Key::Space, egui::Modifiers::NONE);
 
-    for (tab_name, tool_id) in [
-        ("MRI Physics", None),
-        ("Quantum Mechanics", Some("SpinVisualizer")),
-    ] {
-        let idx = find_tab_index(&app, tab_name);
+    for (tab, tool) in [("MRI Physics", ""), ("Quantum Mechanics", "SpinVisualizer")] {
+        let idx = find_tab_index(&app, tab);
         app.selected_tab = idx;
-        if let Some(id) = tool_id {
-            assert!(app.tabs[idx].select_tool_by_name(id));
-        }
+        assert!(tool.is_empty() || app.tabs[idx].select_tool_by_name(tool));
         let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
+        if !tool.is_empty() {
+            let _ = step_events(&ctx, &mut app, &mut frame, play.clone());
+        }
         let baseline_undo = app.session_manager.undo_stack.len();
         for _ in 0..20 {
             let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());

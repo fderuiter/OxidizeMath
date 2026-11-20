@@ -334,6 +334,11 @@ mod tests {
             &mut crate::tabs::solid_state::crystal_viewer::CrystalViewer::default(),
             r#"{"system":"SimpleCubic","lattice_constant":3.5,"camera":{"pitch":0.25,"yaw":0.75,"zoom":1.2}}"#,
         );
+    }
+
+    #[test]
+    fn test_hoisted_explorer_tabs_state_roundtrip() {
+        let _guard = crate::reflective_ui::tests::lock_test_mutex();
         let mut favoritism_tab = crate::tabs::favoritism::FavoritismTab::default();
         crate::tabs::ExplorerTab::load_state(
             &mut favoritism_tab,

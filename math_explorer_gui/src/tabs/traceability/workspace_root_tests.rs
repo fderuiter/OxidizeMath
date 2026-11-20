@@ -12,7 +12,8 @@ impl CwdRestoreGuard {
             .canonicalize()
             .expect("canonicalize current_dir");
         // Ensure DEFAULT_SCAN_CACHE is initialized while still inside the workspace.
-        let _ = TraceabilityTab::default();
+        let mut warm_tab = TraceabilityTab::default();
+        warm_tab.refresh();
         Self(original)
     }
 
@@ -33,16 +34,20 @@ pub(super) fn create_non_workspace_canary_dirs() -> (PathBuf, PathBuf, PathBuf) 
         std::env::temp_dir().join(format!("oxidize_canary_root_escape_{pid}"));
     std::fs::create_dir_all(external_canary_dir.join("papers")).unwrap();
     std::fs::write(
-        external_canary_dir.join("papers/canary_root_escape.tex"),
+        external_canary_dir
+            .join("papers")
+            .join("canary_root_escape.tex"),
         "\\documentclass{article}\\begin{document}RootCanary\\end{document}",
     )
     .unwrap();
 
     let fake_home = std::env::temp_dir().join(format!("oxidize_fake_home_{pid}"));
-    let home_project_dir = fake_home.join("projects/untrusted_repo");
+    let home_project_dir = fake_home.join("projects").join("untrusted_repo");
     std::fs::create_dir_all(home_project_dir.join("papers")).unwrap();
     std::fs::write(
-        home_project_dir.join("papers/canary_home_escape.tex"),
+        home_project_dir
+            .join("papers")
+            .join("canary_home_escape.tex"),
         "\\documentclass{article}\\begin{document}HomeCanary\\end{document}",
     )
     .unwrap();
@@ -112,13 +117,8 @@ pub(super) fn assert_mws_session_rejected(
         .any(|cs| shape_has_text(&cs.shape, canary_tex)));
 
     let mut tab = TraceabilityTab {
-        papers: HashMap::new(),
-        orphaned_papers: Vec::new(),
-        unlinked_code: Vec::new(),
-        invalid_links: Vec::new(),
         repo_path: Some(canary_dir.to_string_lossy().into_owned()),
-        report_rx: None,
-        state: TraceabilityScanState::Idle,
+        ..TraceabilityTab::default()
     };
     tab.refresh();
     assert_eq!(tab.repo_path, None);
@@ -166,7 +166,7 @@ fn test_spoofed_cargo_toml_comments_outside_workspace_fail_closed() {
         "# [workspace]\n[package]\nname = \"spoof\" # [workspace.package]\ndescription = \"[workspace]\"\n",
     )
     .unwrap();
-    std::fs::write(sub_dir.join("papers/spoof_canary.tex"), "x").unwrap();
+    std::fs::write(sub_dir.join("papers").join("spoof_canary.tex"), "x").unwrap();
 
     std::env::set_current_dir(&spoof_root).expect("set_current_dir to spoof_root");
     assert_eq!(TraceabilityTab::canonical_workspace_root(), None);
@@ -178,4 +178,25 @@ fn test_spoofed_cargo_toml_comments_outside_workspace_fail_closed() {
 
     drop(_cwd_guard);
     let _ = std::fs::remove_dir_all(&spoof_root);
+}
+
+#[test]
+fn test_join_relative_segments_normalizes_separators_on_canonical_root() {
+    let _mutex = crate::reflective_ui::tests::lock_test_mutex();
+    let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
+    let joined = TraceabilityTab::join_relative_segments(&ws_root, "./.github/workflows\\ci.yml");
+    assert_eq!(
+        joined,
+        ws_root.join(".github").join("workflows").join("ci.yml")
+    );
+    assert!(joined.is_file());
+    assert_eq!(TraceabilityTab::join_relative_segments(&ws_root, "./"), ws_root);
+
+    let mut tab = TraceabilityTab::default();
+    tab.load_state(r#"{"repo_path":"crates/pure_math"}"#);
+    assert!(
+        tab.repo_path
+            .as_deref()
+            .is_some_and(|p| p.ends_with("crates/pure_math"))
+    );
 }

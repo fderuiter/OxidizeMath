@@ -211,6 +211,10 @@ fn build_help_menu() -> Submenu {
 }
 
 pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
+    if cfg!(test) || std::thread::current().name() != Some("main") {
+        return;
+    }
+
     let menu = Menu::new();
 
     // App Menu
