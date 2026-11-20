@@ -73,11 +73,16 @@ impl TraceabilityTab {
 
     /// Exports current `TraceabilityTab` configuration as compact `PresetWrapper` JSON.
     pub fn to_compact_url_json(&self) -> Result<String, String> {
+        let shareable_repo_path = if self.user_picked_repo {
+            None
+        } else {
+            self.repo_path.clone()
+        };
         serialize_compact_preset_envelope(
             "Traceability Portal",
             self.domain(),
             TraceabilityPresetConfig {
-                repo_path: self.repo_path.clone(),
+                repo_path: shareable_repo_path,
             },
         )
     }
@@ -95,12 +100,12 @@ impl TraceabilityTab {
         let validated = match config.repo_path {
             None => None,
             Some(ref raw) => {
-                if Self::has_traversal_sequence(raw) || raw.trim().is_empty() {
+                if scanner::has_traversal_sequence(raw) || raw.trim().is_empty() {
                     return Err("Invalid repository path in shared Traceability URL".to_string());
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    let Some(clean) = Self::validate_repo_path(raw) else {
+                    let Some(clean) = scanner::validate_session_repo_path(raw) else {
                         return Err(
                             "Shared Traceability repository path is outside the active workspace"
                                 .to_string(),
@@ -114,6 +119,7 @@ impl TraceabilityTab {
                 }
             }
         };
+        self.user_picked_repo = false;
         if self.repo_path != validated {
             self.repo_path = validated;
             if self.has_initial_scan {
