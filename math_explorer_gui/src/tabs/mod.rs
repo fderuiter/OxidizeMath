@@ -132,16 +132,85 @@ pub trait ExplorerTab {
         false
     }
 
-    /// Returns a reference to the underlying `SimulationFramework` in test builds.
-    #[cfg(test)]
+    /// Returns a reference to the underlying `SimulationFramework` when backed by one.
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
         None
     }
 
-    /// Returns a mutable reference to the underlying `SimulationFramework` in test builds.
-    #[cfg(test)]
+    /// Returns a mutable reference to the underlying `SimulationFramework` when backed by one.
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         None
+    }
+
+    /// Canonical URL slug identifying this tab in `#tab=<slug>` share links.
+    fn url_slug(&self) -> &'static str {
+        match self.name() {
+            "Artificial Intelligence" => "ai",
+            "Analysis & Calculus" => "analysis",
+            "Battery Degradation" => "battery_degradation",
+            "Chaos Theory" => "chaos",
+            "Climate" => "climate",
+            "Clinical Trials" => "clinical_trials",
+            "Epidemiology" => "epidemiology",
+            "Favoritism" => "favoritism",
+            "Financial Math" => "financial_math",
+            "Fluid Dynamics" => "fluid_dynamics",
+            "Game Theory" => "game_theory",
+            "Geometry & Topology" => "geometry_topology",
+            "Graph Theory" => "graph_theory",
+            "Medical Physics" => "medical",
+            "Morphogenesis" => "morphogenesis",
+            "MRI Physics" => "mri",
+            "Neuroscience" => "neuroscience",
+            "Number Theory" => "number_theory",
+            "Quantum Mechanics" => "quantum",
+            "Solid State Physics" => "solid_state",
+            "Traceability Portal" => "traceability",
+            _ => "simulation",
+        }
+    }
+
+    /// Active `InteractiveTool` identifier for `#tool=<id>` share links (`None` for single-view tabs).
+    fn active_tool_id(&self) -> Option<&'static str> {
+        self.framework().and_then(|fw| fw.active_tool_id())
+    }
+
+    /// Deterministic parameter-only revision token for 300 ms debounced URL sync.
+    fn url_state_revision(&self) -> u64 {
+        self.framework()
+            .map_or_else(|| self.state_revision(), |fw| fw.url_state_revision())
+    }
+
+    /// Exports active simulation parameters as a compact `PresetWrapper` JSON envelope for URL sharing.
+    fn export_url_preset_json(&self) -> Result<Option<String>, String> {
+        match self.framework() {
+            Some(fw) => fw.export_url_preset_json(),
+            None => Ok(None),
+        }
+    }
+
+    /// Validates and applies a shared URL tool identifier and `PresetWrapper` JSON payload.
+    fn import_url_preset_json(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        if let Some(fw) = self.framework_mut() {
+            return fw.import_url_preset_json(tool_id, preset_json);
+        }
+        if let Some(unexpected_tool) = tool_id {
+            return Err(format!(
+                "Tab '{}' does not support sub-tool '{unexpected_tool}'",
+                self.name()
+            ));
+        }
+        if preset_json.is_some() {
+            return Err(format!(
+                "URL parameter state import is not supported for '{}'",
+                self.name()
+            ));
+        }
+        Ok(())
     }
 }
 

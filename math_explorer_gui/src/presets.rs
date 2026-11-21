@@ -163,8 +163,26 @@ pub fn serialize_preset_envelope<T: Serialize>(
     serde_json::to_string_pretty(&envelope).map_err(|e| format!("Serialization error: {e}"))
 }
 
+/// Packs `config` into a deterministic, compact `"1.0"` [`PresetWrapper`] JSON envelope for URL state sharing.
+pub fn serialize_compact_preset_envelope<T: Serialize>(
+    title: &str,
+    domain: &str,
+    config: T,
+) -> Result<String, String> {
+    let envelope = PresetWrapper {
+        metadata: PresetMetadata {
+            schema_version: "1.0".to_string(),
+            title: title.to_string(),
+            domain: domain.to_string(),
+            timestamp: "1970-01-01T00:00:00Z".to_string(),
+        },
+        config,
+    };
+    serde_json::to_string(&envelope).map_err(|e| format!("Serialization error: {e}"))
+}
+
 /// Strips any UTF-8 BOM, enforces `bounds.for_preset_envelope()`, parses a [`PresetWrapper`]
-/// JSON envelope, and validates `metadata.domain`.
+/// JSON envelope, and validates `metadata.schema_version` and `metadata.domain`.
 pub fn deserialize_preset_envelope_bounded<T: for<'de> Deserialize<'de>>(
     json_str: &str,
     expected_domain: &str,
@@ -175,6 +193,12 @@ pub fn deserialize_preset_envelope_bounded<T: for<'de> Deserialize<'de>>(
     bounds.for_preset_envelope().validate_json(cleaned)?;
     let envelope: PresetWrapper<T> =
         serde_json::from_str(cleaned).map_err(|e| format!("Invalid JSON preset schema: {e}"))?;
+    if envelope.metadata.schema_version != "1.0" {
+        return Err(format!(
+            "Unsupported preset schema version '{}': expected '1.0'",
+            envelope.metadata.schema_version
+        ));
+    }
     if expected_domain.is_empty() {
         return Err(format!("Preset import not supported for {target_name}"));
     }

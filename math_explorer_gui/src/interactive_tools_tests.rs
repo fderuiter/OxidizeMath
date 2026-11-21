@@ -345,6 +345,12 @@ mod tests {
             &mut crate::tabs::favoritism::FavoritismTab::default(),
             &migrated_favoritism_json,
         );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_traceability_tab_state_roundtrip() {
+        let _guard = crate::reflective_ui::tests::lock_test_mutex();
         let valid_repo_dir = oxidize_core::path_utils::normalize_path(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .canonicalize()
