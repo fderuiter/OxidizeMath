@@ -1,2 +1,3 @@
 [target.wasm32-unknown-unknown]
+runner = "scripts/wasm_test_runner.py"
 rustflags = ["-C", "target-feature=+bulk-memory", "-C", "strip=debuginfo"]

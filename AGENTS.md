@@ -126,23 +126,24 @@ cargo run -p xtask -- test-features core-only
 
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
-In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed traceability JSON metadata and pre-compress assets), enforces the 3 MB compressed bundle budget, generates `SHA256SUMS`, and uploads `wasm_web_dist` on `refs/heads/main` before `deploy-pages` stages and verifies all 28 `compiled_papers` PDFs, refreshes `SHA256SUMS`, and publishes the GitHub Pages artifact.
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed traceability JSON metadata and pre-compress assets), enforces the 3 MB compressed bundle budget, executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, generates `SHA256SUMS`, and uploads `wasm_web_dist` on `refs/heads/main` before `deploy-pages` stages and verifies all 28 `compiled_papers` PDFs, refreshes `SHA256SUMS`, and publishes the GitHub Pages artifact.
 
 ```bash
-# 1. Install the WebAssembly Rust target, Trunk, and compression utilities (Ubuntu / Debian)
+# 1. Install the WebAssembly Rust target, Trunk, wasm-bindgen-cli, compression utilities, and Playwright Chromium (Ubuntu / Debian)
 rustup target add wasm32-unknown-unknown
 sudo apt-get update
 sudo apt-get install -y brotli
-cargo binstall --no-confirm trunk
+cargo binstall --no-confirm trunk wasm-bindgen-cli@0.2.130
+python3 -m pip install --user playwright
+python3 -m playwright install --with-deps chromium
 
 # 2. Type-check and lint workspace crates and tests for WebAssembly
 cargo check --workspace --target wasm32-unknown-unknown --all-features --verbose
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
 cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
-# 3. Build release WebAssembly distribution (post_build runs scripts/finalize_web_dist.sh to pre-compress assets) and verify the 3 MB size budget
-(cd math_explorer_gui && trunk build --release)
-bash scripts/verify_wasm_budget.sh math_explorer_gui/dist
+# 3. Run wasm32 browser unit tests, build math_explorer_gui/dist, verify the 3 MB budget, and run Playwright Chromium CSP & fault-injection smoke checks
+cargo run -p xtask -- test-wasm
 
 # 4. Generate and verify the Pages SHA256SUMS manifest
 (

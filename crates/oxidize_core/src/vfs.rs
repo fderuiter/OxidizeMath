@@ -282,3 +282,7 @@ mod tests {
         assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::NotFound);
     }
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "vfs_wasm_tests.rs"]
+mod wasm_tests;

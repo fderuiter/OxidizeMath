@@ -64,7 +64,6 @@ struct ReportPatterns {
     assert_re: Regex,
     fn_re: Regex,
     opt_out_re: Regex,
-    wasm_re: Regex,
     legacy_re: Regex,
 }
 
@@ -77,8 +76,6 @@ impl ReportPatterns {
                 r#"#\[(?:verified_engine::)?verified\(opt_out\s*=\s*"([^"]+)"\)\]"#,
             )
             .unwrap(),
-            wasm_re: Regex::new(r#"#\[cfg\(target_arch\s*=\s*"wasm32"\)\]\s*(.*?)(?:#\[cfg|$)"#)
-                .unwrap(),
             legacy_re: Regex::new(r"\bfn\s+([a-zA-Z0-9_]*_legacy)\b").unwrap(),
         }
     }
@@ -119,18 +116,10 @@ fn analyze_file_content(
         m.unverified_asserts += asserts;
     }
 
-    let content_str = content.replace("\r\n", "\n").replace('\n', " ");
-    for cap in patterns.wasm_re.captures_iter(&content_str) {
-        m.wasm_paths += 1;
-        let block = &cap[1];
-        if block.contains("theory_verification!")
-            || content.contains("theory_verification!")
-            || block.contains("stochastic_signature_verification!")
-            || content.contains("stochastic_signature_verification!")
-        {
-            m.wasm_covered += 1;
-        }
-    }
+    let (file_wasm_paths, file_wasm_covered) =
+        crate::wasm_coverage::count_file_wasm_coverage(filepath, content);
+    m.wasm_paths += file_wasm_paths;
+    m.wasm_covered += file_wasm_covered;
 }
 
 pub fn analyze_files(rs_files: &[std::path::PathBuf]) -> FileMetrics {
@@ -361,5 +350,77 @@ mod tests {
         let unverified = check_unverified_modules(&["crates/pure_math".to_string()]);
         // pure_math has theory_verification! so it should not be unverified
         assert!(!unverified.iter().any(|u| u.contains("crates/pure_math")));
+    }
+
+    fn empty_file_metrics() -> FileMetrics {
+        FileMetrics {
+            wasm_paths: 0,
+            wasm_covered: 0,
+            total_funcs: 0.0,
+            total_asserts: 0.0,
+            verified_funcs: 0.0,
+            verified_asserts: 0.0,
+            unverified_funcs: 0.0,
+            unverified_asserts: 0.0,
+            opt_outs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn test_wasm_coverage_ignores_theory_and_attribute_comments() {
+        let patterns = ReportPatterns::new();
+        let comment_only_src = r#"
+            #[cfg(target_arch = "wasm32")]
+            // theory_verification!
+            // stochastic_signature_verification!
+            // #[wasm_bindgen_test]
+            fn mark_boot_initialized() {
+                let _marker = "theory_verification! #[wasm_bindgen_test]";
+            }
+
+            #[cfg(target_arch = "wasm32")]
+            // theory_verification!
+            fn handle_webgl_failure() {}
+        "#;
+        let mut m = empty_file_metrics();
+        analyze_file_content(
+            Path::new("math_explorer_gui/src/comment_only_probe.rs"),
+            comment_only_src,
+            &patterns,
+            &mut m,
+        );
+        assert_eq!(m.wasm_paths, 2);
+        assert_eq!(
+            m.wasm_covered, 0,
+            "// theory_verification! comments must never count as covered WASM paths"
+        );
+    }
+
+    #[test]
+    fn test_wasm_coverage_counts_real_wasm_bindgen_tests() {
+        let patterns = ReportPatterns::new();
+        let tested_src = r#"
+            #[cfg(target_arch = "wasm32")]
+            pub fn browser_helper() -> u32 { 42 }
+
+            #[cfg(all(test, target_arch = "wasm32"))]
+            mod wasm_tests {
+                use wasm_bindgen_test::wasm_bindgen_test;
+
+                #[wasm_bindgen_test]
+                fn verifies_browser_helper() {
+                    assert_eq!(super::browser_helper(), 42);
+                }
+            }
+        "#;
+        let mut m = empty_file_metrics();
+        analyze_file_content(
+            Path::new("math_explorer_gui/src/tested_probe.rs"),
+            tested_src,
+            &patterns,
+            &mut m,
+        );
+        assert_eq!(m.wasm_paths, 1);
+        assert_eq!(m.wasm_covered, 1);
     }
 }

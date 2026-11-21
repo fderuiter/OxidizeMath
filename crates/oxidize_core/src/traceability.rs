@@ -369,3 +369,23 @@ fn module_child_dir(norm_file_path: &str) -> String {
     }
     dir_parts.join("/")
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests {
+    use super::TraceabilityEngine;
+    use crate::vfs::DefaultVfs;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[wasm_bindgen_test]
+    fn wasm_traceability_verifies_embedded_registry_modules() {
+        assert!(TraceabilityEngine::<DefaultVfs>::verify_module_registered(
+            "quantum"
+        ));
+        assert!(TraceabilityEngine::<DefaultVfs>::verify_module_registered(
+            "pure_math"
+        ));
+        assert!(!TraceabilityEngine::<DefaultVfs>::verify_module_registered(
+            "unregistered_module_xyz"
+        ));
+    }
+}
