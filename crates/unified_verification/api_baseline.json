@@ -5135,7 +5135,16 @@
       "signature": "pub fn cyclic_cosine_palette (n : f64) -> [u8 ; 3]"
     },
     {
+      "signature": "pub fn cyclic_cosine_palette_high_contrast (n : f64) -> [u8 ; 3]"
+    },
+    {
+      "signature": "pub fn ensure_dark_canvas_contrast (rgb : [u8 ; 3]) -> [u8 ; 3]"
+    },
+    {
       "signature": "pub fn heatmap_color (mut t : f64) -> [u8 ; 3]"
+    },
+    {
+      "signature": "pub fn heatmap_color_high_contrast (t : f64) -> [u8 ; 3]"
     },
     {
       "signature": "pub fn mapped_gradient (value : f64 , min_val : f64 , max_val : f64) -> [u8 ; 3]"

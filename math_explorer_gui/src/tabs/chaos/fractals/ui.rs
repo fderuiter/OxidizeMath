@@ -172,6 +172,12 @@ impl FractalViewer {
                             .sense(egui::Sense::click_and_drag()),
                     )
                     .accessible_theory_hover(self);
+                ui.painter().rect_stroke(
+                    response.rect,
+                    0.0,
+                    ui.visuals().widgets.noninteractive.bg_stroke,
+                    egui::StrokeKind::Inside,
+                );
                 crate::accessibility::paint_canvas_focus_ring(ui, &response);
                 self.handle_canvas_navigation(
                     ui,

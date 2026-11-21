@@ -2,7 +2,7 @@ use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use egui::{Color32, ColorImage, TextureOptions};
 use egui_plot::{Plot, PlotImage, PlotPoint};
-use math_commons::math_kernel::colormap::heatmap_color;
+use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::medical::dose::kernel::{DoseKernel, ExponentialKernel};
 
@@ -11,6 +11,7 @@ pub struct DoseCalculationTool {
     beta: f64,
     width: usize,
     height: usize,
+    high_contrast: bool,
     texture: Option<egui::TextureHandle>,
 }
 
@@ -21,6 +22,7 @@ impl Default for DoseCalculationTool {
             beta: 1.0,
             width: 200,
             height: 200,
+            high_contrast: false,
             texture: None,
         }
     }
@@ -87,7 +89,13 @@ impl InteractiveTool for DoseCalculationTool {
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let ctx = parent_ui.ctx().clone();
+        let is_high_contrast = crate::app::ThemeMode::from_visuals(parent_ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
         let mut changed = false;
+        if self.high_contrast != is_high_contrast {
+            self.high_contrast = is_high_contrast;
+            changed = true;
+        }
 
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "dose_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
@@ -140,7 +148,7 @@ impl InteractiveTool for DoseCalculationTool {
 }
 
 impl DoseCalculationTool {
-    fn compute_dose_image(&self) -> ColorImage {
+    pub(crate) fn compute_dose_image_for_contrast(&self, high_contrast: bool) -> ColorImage {
         let width = self.width.max(1);
         let height = self.height.max(1);
         let mut pixels = vec![Color32::BLACK; width * height];
@@ -162,12 +170,20 @@ impl DoseCalculationTool {
                     kernel.value_at(r).unwrap_or(0.0)
                 };
                 let intensity = (dose / max_dose).clamp(0.0, 1.0);
-                let rgb = heatmap_color(intensity);
+                let rgb = if high_contrast {
+                    heatmap_color_high_contrast(intensity)
+                } else {
+                    heatmap_color(intensity)
+                };
                 pixels[flatten_2d_index(x, y, width)] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
             }
         }
 
         ColorImage::new([width, height], pixels)
+    }
+
+    fn compute_dose_image(&self) -> ColorImage {
+        self.compute_dose_image_for_contrast(self.high_contrast)
     }
 
     fn recompute_texture(&mut self, ctx: &egui::Context) {

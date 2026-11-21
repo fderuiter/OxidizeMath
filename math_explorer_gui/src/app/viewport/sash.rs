@@ -54,11 +54,7 @@ pub(super) struct SashFrameState {
 
 /// Returns the high-contrast focus outline color for the active [`egui::Visuals`].
 pub(super) fn focus_outline_color(visuals: &egui::Visuals) -> egui::Color32 {
-    if visuals.dark_mode {
-        egui::Color32::from_rgb(255, 214, 10)
-    } else {
-        egui::Color32::from_rgb(0, 72, 186)
-    }
+    crate::app::SemanticPalette::sash_focus_outline(visuals)
 }
 
 /// Returns `true` when `event` is a sash keyboard resize or reset key press.

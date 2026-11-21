@@ -23,6 +23,7 @@ pub struct FractalViewer {
     pub(crate) max_iter: u32,
     pub(crate) mode: FractalMode,
     pub(crate) julia_c: Complex<f64>,
+    pub(crate) high_contrast: bool,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) dirty: bool,
     pub(crate) requested_size: (usize, usize),
@@ -50,6 +51,7 @@ impl Default for FractalViewer {
             max_iter,
             mode,
             julia_c,
+            high_contrast: false,
         };
         let shared_request = Arc::new(RwLock::new(initial_req));
         let latest_generation = Arc::new(AtomicU64::new(0));
@@ -63,6 +65,7 @@ impl Default for FractalViewer {
             max_iter,
             mode,
             julia_c,
+            high_contrast: false,
             texture: None,
             dirty: true,
             requested_size: INITIAL_PREVIEW_SIZE,
@@ -146,6 +149,7 @@ impl InteractiveTool for FractalViewer {
                 self.julia_c.re.clamp(COORD_MIN, COORD_MAX),
                 self.julia_c.im.clamp(COORD_MIN, COORD_MAX),
             ),
+            high_contrast: self.high_contrast,
         };
         Some(render_fractal_color_image(&req))
     }
@@ -207,6 +211,12 @@ impl InteractiveTool for FractalViewer {
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let ctx = parent_ui.ctx().clone();
+        let is_high_contrast = crate::app::ThemeMode::from_visuals(parent_ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
+        if self.high_contrast != is_high_contrast {
+            self.high_contrast = is_high_contrast;
+            self.dirty = true;
+        }
         let max_side = ctx.input(|i| i.max_texture_side);
         self.sync_texture_from_worker(&ctx, max_side);
         self.draw_side_panel(parent_ui);
@@ -275,6 +285,7 @@ impl FractalViewer {
                 max_iter: self.max_iter,
                 mode: self.mode,
                 julia_c: self.julia_c,
+                high_contrast: self.high_contrast,
             };
             *self
                 .shared_request
