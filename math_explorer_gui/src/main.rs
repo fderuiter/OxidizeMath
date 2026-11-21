@@ -27,6 +27,7 @@ pub mod sensitivity;
 pub mod starter_gallery;
 mod tabs;
 mod telemetry;
+pub mod url_state;
 mod wasm_crash_bridge;
 pub mod web_io;
 

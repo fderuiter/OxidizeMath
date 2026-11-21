@@ -1,250 +1,248 @@
 #![cfg(target_os = "macos")]
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::domain_bar::AcademicDomain;
 use super::{MathExplorerApp, ThemeMode, ViewportLayout};
 use eframe::egui;
+use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 
-#[cfg(not(test))]
-mod native_menu_bar {
-    use super::super::domain_bar::AcademicDomain;
-    use super::{MathExplorerApp, ThemeMode, ViewportLayout};
-    use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
-
-    fn build_file_menu() -> Submenu {
-        let file_menu = Submenu::new("File", true);
-        let open_item = MenuItem::with_id(
-            MenuId::new("file_open"),
-            "Open Workspace Session...",
-            true,
-            None,
-        );
-        let save_item = MenuItem::with_id(
-            MenuId::new("file_save"),
-            "Save Workspace Session",
-            true,
-            None,
-        );
-        let save_as_item = MenuItem::with_id(
-            MenuId::new("file_save_as"),
-            "Save Workspace Session As...",
-            true,
-            None,
-        );
-        file_menu.append(&open_item).unwrap();
-        file_menu.append(&save_item).unwrap();
-        file_menu.append(&save_as_item).unwrap();
-        file_menu
-    }
-
-    fn build_edit_menu() -> Submenu {
-        let edit_menu = Submenu::new("Edit", true);
-        let undo_item = MenuItem::with_id(MenuId::new("edit_undo"), "Undo", true, None);
-        let redo_item = MenuItem::with_id(MenuId::new("edit_redo"), "Redo", true, None);
-        edit_menu.append(&undo_item).unwrap();
-        edit_menu.append(&redo_item).unwrap();
-        edit_menu
-    }
-    fn build_layout_submenu() -> Submenu {
-        let layout_menu = Submenu::new("Viewport Layout", true);
-        layout_menu
-            .append(&MenuItem::with_id(
-                MenuId::new("layout_single"),
-                ViewportLayout::Single.name(),
-                true,
-                None,
-            ))
-            .unwrap();
-        layout_menu
-            .append(&MenuItem::with_id(
-                MenuId::new("layout_split_h"),
-                ViewportLayout::SplitHorizontal.name(),
-                true,
-                None,
-            ))
-            .unwrap();
-        layout_menu
-            .append(&MenuItem::with_id(
-                MenuId::new("layout_split_v"),
-                ViewportLayout::SplitVertical.name(),
-                true,
-                None,
-            ))
-            .unwrap();
-        layout_menu
-            .append(&MenuItem::with_id(
-                MenuId::new("layout_quad"),
-                ViewportLayout::QuadGrid.name(),
-                true,
-                None,
-            ))
-            .unwrap();
-        layout_menu
-            .append(&PredefinedMenuItem::separator())
-            .unwrap();
-        layout_menu
-            .append(&MenuItem::with_id(
-                MenuId::new("layout_swap"),
-                "Swap Panes",
-                true,
-                None,
-            ))
-            .unwrap();
-        layout_menu
-    }
-
-    fn build_focus_pane_submenu() -> Submenu {
-        let focus_menu = Submenu::new("Focus Pane", true);
-        focus_menu
-            .append(&MenuItem::with_id(
-                MenuId::new("focus_pane_next"),
-                "Next Pane",
-                true,
-                None,
-            ))
-            .unwrap();
-        focus_menu
-            .append(&MenuItem::with_id(
-                MenuId::new("focus_pane_prev"),
-                "Previous Pane",
-                true,
-                None,
-            ))
-            .unwrap();
-        focus_menu.append(&PredefinedMenuItem::separator()).unwrap();
-        for (idx, label) in [
-            (0, "Pane 1 (Primary / Top-Left)"),
-            (1, "Pane 2 (Secondary / Top-Right)"),
-            (2, "Pane 3 (Bottom-Left)"),
-            (3, "Pane 4 (Bottom-Right)"),
-        ] {
-            focus_menu
-                .append(&MenuItem::with_id(
-                    MenuId::new(format!("focus_pane_{idx}")),
-                    label,
-                    true,
-                    None,
-                ))
-                .unwrap();
-        }
-        focus_menu
-    }
-
-    fn build_primary_module_submenu(app: &MathExplorerApp) -> Submenu {
-        let primary_menu = Submenu::new("Primary Module", true);
-        for &domain in AcademicDomain::ALL {
-            let domain_menu = Submenu::new(domain.name(), true);
-            let mut has_items = false;
-            for (i, tab) in app.tabs.iter().enumerate() {
-                if AcademicDomain::from_str(tab.academic_domain()) == Some(domain) {
-                    let item = MenuItem::with_id(
-                        MenuId::new(format!("tab_{}", i)),
-                        tab.name(),
-                        true,
-                        None,
-                    );
-                    domain_menu.append(&item).unwrap();
-                    has_items = true;
-                }
-            }
-            if has_items {
-                primary_menu.append(&domain_menu).unwrap();
-            }
-        }
-        primary_menu
-    }
-
-    fn build_view_menu(app: &MathExplorerApp) -> Submenu {
-        let view_menu = Submenu::new("View", true);
-        let palette_item =
-            MenuItem::with_id(MenuId::new("cmd_palette"), "Command Palette...", true, None);
-        view_menu.append(&palette_item).unwrap();
-        view_menu.append(&PredefinedMenuItem::separator()).unwrap();
-
-        view_menu.append(&build_layout_submenu()).unwrap();
-        view_menu.append(&build_focus_pane_submenu()).unwrap();
-        view_menu.append(&PredefinedMenuItem::separator()).unwrap();
-
-        view_menu
-            .append(&build_primary_module_submenu(app))
-            .unwrap();
-        view_menu.append(&PredefinedMenuItem::separator()).unwrap();
-
-        let diag_item = CheckMenuItem::with_id(
-            MenuId::new("view_toggle_diagnostics"),
-            "Issues & Diagnostics Panel",
-            true,
-            app.show_diagnostics_panel,
-            None,
-        );
-        view_menu.append(&diag_item).unwrap();
-        view_menu
-    }
-
-    fn build_appearance_menu() -> Submenu {
-        let appearance_menu = Submenu::new("Appearance", true);
-        let dark_item = MenuItem::with_id(
-            MenuId::new("theme_dark"),
-            ThemeMode::Dark.name(),
-            true,
-            None,
-        );
-        let light_item = MenuItem::with_id(
-            MenuId::new("theme_light"),
-            ThemeMode::Light.name(),
-            true,
-            None,
-        );
-        let hc_item = MenuItem::with_id(
-            MenuId::new("theme_high_contrast"),
-            ThemeMode::HighContrast.name(),
-            true,
-            None,
-        );
-        appearance_menu.append(&dark_item).unwrap();
-        appearance_menu.append(&light_item).unwrap();
-        appearance_menu.append(&hc_item).unwrap();
-        appearance_menu
-    }
-
-    fn build_help_menu() -> Submenu {
-        let help_menu = Submenu::new("Help", true);
-        let shortcuts_item = MenuItem::with_id(
-            MenuId::new("help_commands"),
-            "Keyboard Shortcuts",
-            true,
-            None,
-        );
-        help_menu.append(&shortcuts_item).unwrap();
-        help_menu
-    }
-
-    pub(in crate::app) fn setup_macos_menu(app: &MathExplorerApp) {
-        let menu = Menu::new();
-
-        // App Menu
-        let app_menu = Submenu::new("Math Explorer", true);
-        app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
-        menu.append(&app_menu).unwrap();
-
-        menu.append(&build_file_menu()).unwrap();
-        menu.append(&build_edit_menu()).unwrap();
-        menu.append(&build_view_menu(app)).unwrap();
-        menu.append(&build_appearance_menu()).unwrap();
-        menu.append(&build_help_menu()).unwrap();
-
-        menu.init_for_nsapp();
-    }
+fn build_file_menu() -> Submenu {
+    let file_menu = Submenu::new("File", true);
+    let open_item = MenuItem::with_id(
+        MenuId::new("file_open"),
+        "Open Workspace Session...",
+        true,
+        None,
+    );
+    let save_item = MenuItem::with_id(
+        MenuId::new("file_save"),
+        "Save Workspace Session",
+        true,
+        None,
+    );
+    let save_as_item = MenuItem::with_id(
+        MenuId::new("file_save_as"),
+        "Save Workspace Session As...",
+        true,
+        None,
+    );
+    let share_link_item = MenuItem::with_id(
+        MenuId::new("file_share_link"),
+        "Copy Share Link",
+        true,
+        None,
+    );
+    file_menu.append(&open_item).unwrap();
+    file_menu.append(&save_item).unwrap();
+    file_menu.append(&save_as_item).unwrap();
+    file_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    file_menu.append(&share_link_item).unwrap();
+    file_menu
 }
 
-#[cfg(not(test))]
-pub(super) use native_menu_bar::setup_macos_menu;
+fn build_edit_menu() -> Submenu {
+    let edit_menu = Submenu::new("Edit", true);
+    let undo_item = MenuItem::with_id(MenuId::new("edit_undo"), "Undo", true, None);
+    let redo_item = MenuItem::with_id(MenuId::new("edit_redo"), "Redo", true, None);
+    edit_menu.append(&undo_item).unwrap();
+    edit_menu.append(&redo_item).unwrap();
+    edit_menu
+}
+fn build_layout_submenu() -> Submenu {
+    let layout_menu = Submenu::new("Viewport Layout", true);
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_single"),
+            ViewportLayout::Single.name(),
+            true,
+            None,
+        ))
+        .unwrap();
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_split_h"),
+            ViewportLayout::SplitHorizontal.name(),
+            true,
+            None,
+        ))
+        .unwrap();
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_split_v"),
+            ViewportLayout::SplitVertical.name(),
+            true,
+            None,
+        ))
+        .unwrap();
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_quad"),
+            ViewportLayout::QuadGrid.name(),
+            true,
+            None,
+        ))
+        .unwrap();
+    layout_menu
+        .append(&PredefinedMenuItem::separator())
+        .unwrap();
+    layout_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("layout_swap"),
+            "Swap Panes",
+            true,
+            None,
+        ))
+        .unwrap();
+    layout_menu
+}
 
-/// Skips AppKit `NSApp` global menu bar creation during `libtest` runs, which execute on worker
-/// threads where `muda::Menu::new` panics via `MainThreadMarker`.
-#[cfg(test)]
-pub(super) fn setup_macos_menu(_app: &MathExplorerApp) {}
+fn build_focus_pane_submenu() -> Submenu {
+    let focus_menu = Submenu::new("Focus Pane", true);
+    focus_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("focus_pane_next"),
+            "Next Pane",
+            true,
+            None,
+        ))
+        .unwrap();
+    focus_menu
+        .append(&MenuItem::with_id(
+            MenuId::new("focus_pane_prev"),
+            "Previous Pane",
+            true,
+            None,
+        ))
+        .unwrap();
+    focus_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    for (idx, label) in [
+        (0, "Pane 1 (Primary / Top-Left)"),
+        (1, "Pane 2 (Secondary / Top-Right)"),
+        (2, "Pane 3 (Bottom-Left)"),
+        (3, "Pane 4 (Bottom-Right)"),
+    ] {
+        focus_menu
+            .append(&MenuItem::with_id(
+                MenuId::new(format!("focus_pane_{idx}")),
+                label,
+                true,
+                None,
+            ))
+            .unwrap();
+    }
+    focus_menu
+}
 
-fn handle_file_event(app: &mut MathExplorerApp, id: &str) -> bool {
+fn build_primary_module_submenu(app: &MathExplorerApp) -> Submenu {
+    let primary_menu = Submenu::new("Primary Module", true);
+    for &domain in AcademicDomain::ALL {
+        let domain_menu = Submenu::new(domain.name(), true);
+        let mut has_items = false;
+        for (i, tab) in app.tabs.iter().enumerate() {
+            if AcademicDomain::from_str(tab.academic_domain()) == Some(domain) {
+                let item =
+                    MenuItem::with_id(MenuId::new(format!("tab_{}", i)), tab.name(), true, None);
+                domain_menu.append(&item).unwrap();
+                has_items = true;
+            }
+        }
+        if has_items {
+            primary_menu.append(&domain_menu).unwrap();
+        }
+    }
+    primary_menu
+}
+
+fn build_view_menu(app: &MathExplorerApp) -> Submenu {
+    let view_menu = Submenu::new("View", true);
+    let palette_item =
+        MenuItem::with_id(MenuId::new("cmd_palette"), "Command Palette...", true, None);
+    view_menu.append(&palette_item).unwrap();
+    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
+
+    view_menu.append(&build_layout_submenu()).unwrap();
+    view_menu.append(&build_focus_pane_submenu()).unwrap();
+    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
+
+    view_menu
+        .append(&build_primary_module_submenu(app))
+        .unwrap();
+    view_menu.append(&PredefinedMenuItem::separator()).unwrap();
+
+    let diag_item = CheckMenuItem::with_id(
+        MenuId::new("view_toggle_diagnostics"),
+        "Issues & Diagnostics Panel",
+        true,
+        app.show_diagnostics_panel,
+        None,
+    );
+    view_menu.append(&diag_item).unwrap();
+    view_menu
+}
+
+fn build_appearance_menu() -> Submenu {
+    let appearance_menu = Submenu::new("Appearance", true);
+    let dark_item = MenuItem::with_id(
+        MenuId::new("theme_dark"),
+        ThemeMode::Dark.name(),
+        true,
+        None,
+    );
+    let light_item = MenuItem::with_id(
+        MenuId::new("theme_light"),
+        ThemeMode::Light.name(),
+        true,
+        None,
+    );
+    let hc_item = MenuItem::with_id(
+        MenuId::new("theme_high_contrast"),
+        ThemeMode::HighContrast.name(),
+        true,
+        None,
+    );
+    appearance_menu.append(&dark_item).unwrap();
+    appearance_menu.append(&light_item).unwrap();
+    appearance_menu.append(&hc_item).unwrap();
+    appearance_menu
+}
+
+fn build_help_menu() -> Submenu {
+    let help_menu = Submenu::new("Help", true);
+    let shortcuts_item = MenuItem::with_id(
+        MenuId::new("help_commands"),
+        "Keyboard Shortcuts",
+        true,
+        None,
+    );
+    help_menu.append(&shortcuts_item).unwrap();
+    help_menu
+}
+
+fn can_init_nsapp_menu() -> bool {
+    !cfg!(test) && std::thread::current().name() == Some("main")
+}
+
+pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
+    if !can_init_nsapp_menu() {
+        return;
+    }
+    let menu = Menu::new();
+
+    // App Menu
+    let app_menu = Submenu::new("Math Explorer", true);
+    app_menu.append(&PredefinedMenuItem::quit(None)).unwrap();
+    menu.append(&app_menu).unwrap();
+
+    menu.append(&build_file_menu()).unwrap();
+    menu.append(&build_edit_menu()).unwrap();
+    menu.append(&build_view_menu(app)).unwrap();
+    menu.append(&build_appearance_menu()).unwrap();
+    menu.append(&build_help_menu()).unwrap();
+
+    menu.init_for_nsapp();
+}
+
+fn handle_file_event(app: &mut MathExplorerApp, ctx: &egui::Context, id: &str) -> bool {
     match id {
         "file_open" => {
             app.session_manager.trigger_open();
@@ -262,6 +260,10 @@ fn handle_file_event(app: &mut MathExplorerApp, id: &str) -> bool {
             let state = app.get_app_state();
             let env_json = app.session_manager.create_envelope(state);
             app.session_manager.trigger_save_as(env_json);
+            true
+        }
+        "file_share_link" => {
+            app.copy_current_share_link(ctx);
             true
         }
         _ => false,
@@ -328,7 +330,7 @@ fn handle_palette_theme_event(app: &mut MathExplorerApp, ctx: &egui::Context, id
 pub(super) fn handle_macos_menu_events(app: &mut MathExplorerApp, ctx: &egui::Context) {
     if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
         let id = event.id.0.as_str();
-        if handle_file_event(app, id)
+        if handle_file_event(app, ctx, id)
             || handle_view_layout_event(app, id)
             || handle_focus_pane_event(app, ctx, id)
             || handle_palette_theme_event(app, ctx, id)
@@ -440,5 +442,19 @@ mod tests {
             handle.join().expect("worker thread must not panic"),
             ThemeMode::Dark
         );
+    }
+
+    #[test]
+    fn test_setup_macos_menu_and_share_link_event_safe_on_worker_threads() {
+        let _guard = crate::reflective_ui::tests::lock_test_mutex();
+        let _ = crate::url_state::take_last_copied_share_url();
+        let ctx = egui::Context::default();
+        let mut app = MathExplorerApp::default();
+
+        setup_macos_menu(&app);
+        assert!(handle_file_event(&mut app, &ctx, "file_share_link"));
+        let copied =
+            crate::url_state::take_last_copied_share_url().expect("macOS menu copied share link");
+        assert!(copied.starts_with("https://fderuiter.github.io/OxidizeMath/#tab="));
     }
 }

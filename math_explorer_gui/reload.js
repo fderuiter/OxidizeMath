@@ -369,8 +369,19 @@
 
     function attachDomBindings() {
         markBootManaged();
-        recovery?.syncActionButtons?.();
-        recovery?.syncSafeModeBanner?.();
+        if (recovery) {
+            recovery.syncActionButtons?.();
+            recovery.syncSafeModeBanner?.();
+        } else {
+            const btn = document.getElementById('webgl_reload_button');
+            if (btn && !btn.dataset.reloadBound) {
+                btn.dataset.reloadBound = 'true';
+                btn.addEventListener('click', function (ev) {
+                    ev.preventDefault();
+                    window.location.reload();
+                });
+            }
+        }
         const queued = pendingActions.slice();
         pendingActions = [];
         for (let i = 0; i < queued.length; i += 1) {

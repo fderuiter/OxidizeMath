@@ -335,6 +335,7 @@ jobs:
           name: wasm_web_dist
           path: math_explorer_gui/dist
           if-no-files-found: error
+          retention-days: 7
 
       - name: Code Signing (Windows)
         if: runner.os == 'Windows'
@@ -602,6 +603,13 @@ jobs:
       pages: write
       id-token: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          sparse-checkout: |
+            papers
+          sparse-checkout-cone-mode: true
+
       - name: Download Web Dist Artifact
         uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
         with:
@@ -617,15 +625,33 @@ jobs:
       - name: Stage Compiled PDFs and Refresh SHA-256 Manifest
         shell: bash
         run: |
-          shopt -s nullglob
-          pdfs=(compiled_papers/*.pdf)
-          if [ ${#pdfs[@]} -eq 0 ]; then
-            echo "Error: No compiled PDFs found in compiled_papers artifact" >&2
+          set -euo pipefail
+
+          if [ ! -d "pages_dist" ]; then
+            echo "Error: pages_dist directory does not exist" >&2
             exit 1
           fi
+
           mkdir -p pages_dist/papers
-          cp -f "${pdfs[@]}" pages_dist/
-          cp -f "${pdfs[@]}" pages_dist/papers/
+          find compiled_papers -type f -name "*.pdf" -exec cp -f -- {} pages_dist/ \;
+          find compiled_papers -type f -name "*.pdf" -exec cp -f -- {} pages_dist/papers/ \;
+
+          shopt -s nullglob
+          tex_files=(papers/*.tex)
+          if [ ${#tex_files[@]} -eq 0 ]; then
+            echo "Error: Expected academic .tex manuscripts in papers/" >&2
+            exit 1
+          fi
+
+          for tex in "${tex_files[@]}"; do
+            stem="$(basename "$tex" .tex)"
+            for pdf_path in "pages_dist/${stem}.pdf" "pages_dist/papers/${stem}.pdf"; do
+              if [ ! -s "$pdf_path" ]; then
+                echo "Error: Missing or empty staged PDF for ${tex} at ${pdf_path}" >&2
+                exit 1
+              fi
+            done
+          done
 
           for req in traceability_snapshot.json Verification_Certificate.json; do
             if [ ! -s "pages_dist/$req" ]; then
@@ -648,11 +674,24 @@ jobs:
 
           shopt -u dotglob
           files=()
-          for f in *; do
+          for f in * papers/*.pdf; do
             if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
               files+=("$f")
             fi
           done
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "Error: No Pages artifacts found in pages_dist" >&2
+            exit 1
+          fi
+
+          for f in "${files[@]}"; do
+            if [ ! -s "$f" ]; then
+              echo "Error: Pages artifact $f is empty" >&2
+              exit 1
+            fi
+          done
+
           $SHACMD "${files[@]}" > SHA256SUMS
           $SHACHECK SHA256SUMS
 
