@@ -220,7 +220,6 @@ pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
     if !can_init_nsapp_menu() {
         return;
     }
-
     let menu = Menu::new();
 
     // App Menu

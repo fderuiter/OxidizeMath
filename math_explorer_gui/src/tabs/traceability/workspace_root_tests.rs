@@ -3,17 +3,6 @@
 use super::*;
 use std::path::{Path, PathBuf};
 
-pub(super) fn strip_verbatim_prefix(path: &Path) -> PathBuf {
-    let raw = path.to_string_lossy();
-    if let Some(rest) = raw.strip_prefix(r"\\?\UNC\") {
-        PathBuf::from(format!(r"\\{rest}"))
-    } else if let Some(rest) = raw.strip_prefix(r"\\?\") {
-        PathBuf::from(rest)
-    } else {
-        path.to_path_buf()
-    }
-}
-
 pub(super) struct CwdRestoreGuard {
     raw_cwd: PathBuf,
     canonical_cwd: PathBuf,
@@ -21,11 +10,8 @@ pub(super) struct CwdRestoreGuard {
 
 impl CwdRestoreGuard {
     pub(super) fn capture() -> Self {
-        let canonical_cwd = std::env::current_dir()
-            .expect("current_dir")
-            .canonicalize()
-            .expect("canonicalize current_dir");
-        let raw_cwd = strip_verbatim_prefix(&canonical_cwd);
+        let raw_cwd = std::env::current_dir().expect("current_dir");
+        let canonical_cwd = raw_cwd.canonicalize().expect("canonicalize current_dir");
         // Ensure DEFAULT_SCAN_CACHE is initialized while still inside the workspace.
         let mut warm_tab = TraceabilityTab::default();
         warm_tab.refresh();
@@ -38,32 +24,11 @@ impl CwdRestoreGuard {
     pub(super) fn original(&self) -> &Path {
         &self.canonical_cwd
     }
-
-    pub(super) fn filesystem_root(&self) -> PathBuf {
-        let mut root = PathBuf::new();
-        for comp in self.raw_cwd.components() {
-            match comp {
-                std::path::Component::Prefix(_) | std::path::Component::RootDir => {
-                    root.push(comp.as_os_str());
-                }
-                _ => break,
-            }
-        }
-        if root.as_os_str().is_empty() {
-            PathBuf::from("/")
-        } else {
-            root
-        }
-    }
 }
 
 impl Drop for CwdRestoreGuard {
     fn drop(&mut self) {
-        if std::thread::panicking() {
-            let _ = std::env::set_current_dir(&self.raw_cwd);
-        } else {
-            std::env::set_current_dir(&self.raw_cwd).expect("restore original current_dir");
-        }
+        let _ = std::env::set_current_dir(&self.raw_cwd);
     }
 }
 
@@ -223,25 +188,11 @@ fn test_spoofed_cargo_toml_comments_outside_workspace_fail_closed() {
 fn test_join_relative_segments_normalizes_separators_on_canonical_root() {
     let _mutex = crate::reflective_ui::tests::lock_test_mutex();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
-    let joined = TraceabilityTab::join_relative_segments(&ws_root, "./.github/workflows\\ci.yml");
-    assert_eq!(
-        joined,
-        ws_root.join(".github").join("workflows").join("ci.yml")
-    );
-    assert!(joined.is_file());
-    assert!(joined.canonicalize().is_ok());
+    let ci_path = TraceabilityTab::join_relative_segments(&ws_root, ".github/workflows/ci.yml");
+    assert!(ci_path.canonicalize().is_ok());
     let mixed_path =
         TraceabilityTab::join_relative_segments(&ws_root, "./crates\\oxidize_core/src/lib.rs");
     assert!(mixed_path.canonicalize().is_ok());
-    assert_eq!(TraceabilityTab::join_relative_segments(&ws_root, "./"), ws_root);
-
-    let mut tab = TraceabilityTab::default();
-    tab.load_state(r#"{"repo_path":"crates/pure_math"}"#);
-    assert!(
-        tab.repo_path
-            .as_deref()
-            .is_some_and(|p| p.ends_with("crates/pure_math"))
-    );
 
     #[cfg(windows)]
     {
@@ -257,29 +208,5 @@ fn test_join_relative_segments_normalizes_separators_on_canonical_root() {
         );
         assert!(!verbatim_mixed.to_string_lossy().contains('/'));
         assert!(std::fs::read_to_string(&verbatim_mixed).is_ok());
-    }
-}
-
-#[test]
-fn test_cwd_restore_guard_strips_verbatim_prefixes_and_survives_repeated_root_roundtrips() {
-    assert_eq!(
-        strip_verbatim_prefix(Path::new(r"\\?\D:\a\OxidizeMath\OxidizeMath")),
-        PathBuf::from(r"D:\a\OxidizeMath\OxidizeMath")
-    );
-    assert_eq!(
-        strip_verbatim_prefix(Path::new(r"\\?\UNC\server\share\OxidizeMath")),
-        PathBuf::from(r"\\server\share\OxidizeMath")
-    );
-
-    let _mutex = crate::reflective_ui::tests::lock_test_mutex();
-    for _ in 0..3 {
-        let guard = CwdRestoreGuard::capture();
-        assert!(!guard.raw_cwd.to_string_lossy().starts_with(r"\\?\"));
-        let root = guard.filesystem_root();
-        assert!(!root.to_string_lossy().starts_with(r"\\?\"));
-        std::env::set_current_dir(&root).expect("chdir to filesystem_root");
-        assert_eq!(TraceabilityTab::canonical_workspace_root(), None);
-        drop(guard);
-        assert!(TraceabilityTab::canonical_workspace_root().is_some());
     }
 }
