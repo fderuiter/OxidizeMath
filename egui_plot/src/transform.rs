@@ -245,11 +245,11 @@ impl PlotBounds {
                 let new_min = (c_log + (min_log - c_log) / zf).clamp(MIN_LOG_EXP, MAX_LOG_EXP);
                 let new_max = (c_log + (max_log - c_log) / zf).clamp(MIN_LOG_EXP, MAX_LOG_EXP);
                 if new_max > new_min {
-                    let lo = exp10_clamped(new_min);
-                    let hi = exp10_clamped(new_max);
-                    if hi > lo {
-                        self.min[d] = lo;
-                        self.max[d] = hi;
+                    let min_cand = exp10_clamped(new_min);
+                    let max_cand = exp10_clamped(new_max);
+                    if max_cand > min_cand {
+                        self.min[d] = min_cand;
+                        self.max[d] = max_cand;
                     }
                 }
             } else {
@@ -282,11 +282,11 @@ impl PlotBounds {
         let pad = frac * span;
         let new_min_log = (min_log - pad).clamp(MIN_LOG_EXP, MAX_LOG_EXP - 1e-6);
         let new_max_log = (max_log + pad).clamp(new_min_log + 1e-6, MAX_LOG_EXP);
-        let lo = exp10_clamped(new_min_log);
-        let hi = exp10_clamped(new_max_log);
-        if hi > lo {
-            self.min[axis] = lo;
-            self.max[axis] = hi;
+        let min_cand = exp10_clamped(new_min_log);
+        let max_cand = exp10_clamped(new_max_log);
+        if max_cand > min_cand {
+            self.min[axis] = min_cand;
+            self.max[axis] = max_cand;
         }
     }
 
@@ -316,10 +316,10 @@ impl PlotBounds {
 }
 
 const DEFAULT_MIN_LOG_BOUND: f64 = 1e-6;
-const MIN_LOG_EXP: f64 = -300.0;
-const MAX_LOG_EXP: f64 = 300.0;
 const MIN_LOG_BOUND: f64 = 1e-300;
 const MAX_LOG_BOUND: f64 = 1e300;
+const MIN_LOG_EXP: f64 = -300.0;
+const MAX_LOG_EXP: f64 = 300.0;
 
 #[inline]
 fn exp10_clamped(exp: f64) -> f64 {
@@ -560,11 +560,11 @@ impl PlotTransform {
         } else {
             0.0
         };
-        let lo = exp10_clamped(min_log + clamped_delta);
-        let hi = exp10_clamped(max_log + clamped_delta);
-        if hi > lo {
-            self.bounds.min[axis] = lo;
-            self.bounds.max[axis] = hi;
+        let min_cand = exp10_clamped(min_log + clamped_delta);
+        let max_cand = exp10_clamped(max_log + clamped_delta);
+        if max_cand > min_cand {
+            self.bounds.min[axis] = min_cand;
+            self.bounds.max[axis] = max_cand;
         }
     }
 
@@ -801,26 +801,28 @@ impl PlotTransform {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use egui::vec2;
 
     #[test]
-    fn test_exp10_clamped_and_extreme_log_bounds_stay_within_domain() {
-        assert_eq!(exp10_clamped(-300.0), 1e-300);
-        assert_eq!(exp10_clamped(-500.0), 1e-300);
-        assert_eq!(exp10_clamped(300.0), 1e300);
-        assert_eq!(exp10_clamped(500.0), 1e300);
+    fn test_exp10_clamped_respects_log_bounds_at_extremes() {
+        assert_eq!(exp10_clamped(-300.0), MIN_LOG_BOUND);
+        assert_eq!(exp10_clamped(-500.0), MIN_LOG_BOUND);
+        assert_eq!(exp10_clamped(300.0), MAX_LOG_BOUND);
+        assert_eq!(exp10_clamped(500.0), MAX_LOG_BOUND);
 
-        let mut bounds = PlotBounds::from_min_max([1e-295, 1e-295], [1e295, 1e295]);
+        let mut bounds = PlotBounds::from_min_max([1e-299, 1e-299], [1e299, 1e299]);
         bounds.add_log_margin_axis(0, 0.5);
         bounds.add_log_margin_axis(1, 0.5);
-        assert!(bounds.min()[0] >= 1e-300 && bounds.max()[0] <= 1e300);
-        assert!(bounds.min()[1] >= 1e-300 && bounds.max()[1] <= 1e300);
+        assert!(bounds.is_valid());
+        assert!(bounds.min()[0] >= MIN_LOG_BOUND && bounds.max()[0] <= MAX_LOG_BOUND);
+        assert!(bounds.min()[1] >= MIN_LOG_BOUND && bounds.max()[1] <= MAX_LOG_BOUND);
 
-        let frame = Rect::from_min_size(Pos2::ZERO, emath::vec2(200.0, 200.0));
+        let frame = Rect::from_min_size(Pos2::ZERO, vec2(300.0, 300.0));
         let mut tf = PlotTransform::new(frame, bounds, Vec2b::FALSE);
         tf.set_log_axis(Vec2b::TRUE);
-        let lo_pt = tf.value_from_position(Pos2::new(-1000.0, 2000.0));
-        let hi_pt = tf.value_from_position(Pos2::new(2000.0, -1000.0));
-        assert!(lo_pt.x >= 1e-300 && lo_pt.y >= 1e-300);
-        assert!(hi_pt.x <= 1e300 && hi_pt.y <= 1e300);
+        let far_lo = tf.value_from_position(pos2(-1e6, 1e6));
+        let far_hi = tf.value_from_position(pos2(1e6, -1e6));
+        assert!(far_lo.x >= MIN_LOG_BOUND && far_hi.x <= MAX_LOG_BOUND);
+        assert!(far_lo.y >= MIN_LOG_BOUND && far_hi.y <= MAX_LOG_BOUND);
     }
 }

@@ -74,7 +74,7 @@ impl ActivationFunctionsTool {
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id =
             crate::framework::scoped_panel_id(parent_ui, "activation_functions_controls");
-        egui::SidePanel::right(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::right(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Controls");
             ui.separator();
             ui.label("Select Activation Function:");

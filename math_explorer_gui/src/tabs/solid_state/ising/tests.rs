@@ -35,13 +35,9 @@ fn test_ising_model_render_lifecycle_and_dirty_tracking() {
         .and_then(|s| s.structured_data.as_ref())
         .and_then(|d| d.downcast_ref::<Vec<i8>>())
         .expect("Seeded worker snapshot must contain spin vector");
+    let dark_palette = crate::app::ThemeMode::Dark.palette();
     for (pixel, &s) in tool.pixels.iter().zip(spins.iter()) {
-        let expected = if s > 0 {
-            egui::Color32::from_rgb(200, 50, 50)
-        } else {
-            egui::Color32::from_rgb(50, 50, 200)
-        };
-        assert_eq!(*pixel, expected);
+        assert_eq!(*pixel, ising_spin_color(s, &dark_palette));
     }
 
     let initial_pixels_cap = tool.pixels.capacity();

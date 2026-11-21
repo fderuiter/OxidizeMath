@@ -109,7 +109,7 @@ impl InteractiveTool for BifurcationDiagram {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(ui, "bifurcation_controls");
-        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Logistic Map");
             ui.separator();
 

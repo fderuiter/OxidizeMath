@@ -89,6 +89,7 @@ fn test_progressive_strides_and_exact_final_parity_mandelbrot_and_julia() {
             max_iter: 120,
             mode,
             julia_c: Complex::new(-0.7, 0.27015),
+            high_contrast: false,
         };
         let init_req = FractalRenderRequest {
             generation: 0,
@@ -322,6 +323,7 @@ fn test_generate_progressive_fractal_verification_png() {
         max_iter: 200,
         mode: FractalMode::Mandelbrot,
         julia_c: Complex::new(-0.7, 0.27015),
+        high_contrast: false,
     };
     let seed = FractalRenderRequest {
         generation: 0,

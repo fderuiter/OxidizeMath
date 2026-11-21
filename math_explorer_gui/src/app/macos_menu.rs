@@ -48,51 +48,45 @@ fn build_edit_menu() -> Submenu {
     edit_menu.append(&redo_item).unwrap();
     edit_menu
 }
+fn build_swap_pair_submenu() -> Submenu {
+    let swap_pair_menu = Submenu::new("Swap Pane Pair", true);
+    let labels = ViewportLayout::QuadGrid.pane_labels();
+    for (a, b) in [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)] {
+        let item = MenuItem::with_id(
+            MenuId::new(format!("layout_swap_{a}_{b}")),
+            format!("{} <-> {}", labels[a], labels[b]),
+            true,
+            None,
+        );
+        swap_pair_menu.append(&item).unwrap();
+    }
+    swap_pair_menu
+}
+
 fn build_layout_submenu() -> Submenu {
     let layout_menu = Submenu::new("Viewport Layout", true);
-    layout_menu
-        .append(&MenuItem::with_id(
-            MenuId::new("layout_single"),
-            ViewportLayout::Single.name(),
-            true,
-            None,
-        ))
-        .unwrap();
-    layout_menu
-        .append(&MenuItem::with_id(
-            MenuId::new("layout_split_h"),
-            ViewportLayout::SplitHorizontal.name(),
-            true,
-            None,
-        ))
-        .unwrap();
-    layout_menu
-        .append(&MenuItem::with_id(
-            MenuId::new("layout_split_v"),
-            ViewportLayout::SplitVertical.name(),
-            true,
-            None,
-        ))
-        .unwrap();
-    layout_menu
-        .append(&MenuItem::with_id(
-            MenuId::new("layout_quad"),
-            ViewportLayout::QuadGrid.name(),
-            true,
-            None,
-        ))
-        .unwrap();
+    for (id, layout) in [
+        ("layout_single", ViewportLayout::Single),
+        ("layout_split_h", ViewportLayout::SplitHorizontal),
+        ("layout_split_v", ViewportLayout::SplitVertical),
+        ("layout_quad", ViewportLayout::QuadGrid),
+    ] {
+        let item = MenuItem::with_id(MenuId::new(id), layout.name(), true, None);
+        layout_menu.append(&item).unwrap();
+    }
     layout_menu
         .append(&PredefinedMenuItem::separator())
         .unwrap();
-    layout_menu
-        .append(&MenuItem::with_id(
-            MenuId::new("layout_swap"),
-            "Swap Panes",
-            true,
-            None,
-        ))
-        .unwrap();
+    let swap_item = MenuItem::with_id(MenuId::new("layout_swap"), "Swap Panes", true, None);
+    layout_menu.append(&swap_item).unwrap();
+    layout_menu.append(&build_swap_pair_submenu()).unwrap();
+    for (id, label) in [
+        ("layout_rotate_cw", "Rotate Panes Clockwise"),
+        ("layout_rotate_ccw", "Rotate Panes Counter-Clockwise"),
+    ] {
+        let item = MenuItem::with_id(MenuId::new(id), label, true, None);
+        layout_menu.append(&item).unwrap();
+    }
     layout_menu
 }
 
@@ -276,7 +270,14 @@ fn handle_view_layout_event(app: &mut MathExplorerApp, id: &str) -> bool {
         "layout_split_h" => app.set_layout(ViewportLayout::SplitHorizontal),
         "layout_split_v" => app.set_layout(ViewportLayout::SplitVertical),
         "layout_quad" => app.set_layout(ViewportLayout::QuadGrid),
-        "layout_swap" => app.swap_panes(),
+        "layout_swap" | "layout_swap_0_1" => app.swap_pane_pair(0, 1),
+        "layout_swap_0_2" => app.swap_pane_pair(0, 2),
+        "layout_swap_0_3" => app.swap_pane_pair(0, 3),
+        "layout_swap_1_2" => app.swap_pane_pair(1, 2),
+        "layout_swap_1_3" => app.swap_pane_pair(1, 3),
+        "layout_swap_2_3" => app.swap_pane_pair(2, 3),
+        "layout_rotate_cw" => app.rotate_panes_clockwise(),
+        "layout_rotate_ccw" => app.rotate_panes_counter_clockwise(),
         _ => return false,
     }
     true
@@ -340,121 +341,18 @@ pub(super) fn handle_macos_menu_events(app: &mut MathExplorerApp, ctx: &egui::Co
         match id {
             "edit_undo" => app.undo(),
             "edit_redo" => app.redo(),
-            other if other.starts_with("tab_") => {
-                if let Ok(idx) = other[4..].parse::<usize>() {
+            _ => {
+                if let Some(idx) = id
+                    .strip_prefix("tab_")
+                    .and_then(|s| s.parse::<usize>().ok())
+                {
                     super::domain_bar::select_primary_tab(app, ctx, idx);
                 }
             }
-            _ => {}
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::app::SplitLayoutMode;
-
-    #[test]
-    fn test_handle_view_layout_event_updates_viewport_layout_and_swaps_panes() {
-        let mut app = MathExplorerApp::default();
-
-        for (menu_id, expected_layout, expected_split_mode) in [
-            (
-                "layout_split_h",
-                ViewportLayout::SplitHorizontal,
-                SplitLayoutMode::Horizontal,
-            ),
-            (
-                "layout_split_v",
-                ViewportLayout::SplitVertical,
-                SplitLayoutMode::Vertical,
-            ),
-            (
-                "layout_quad",
-                ViewportLayout::QuadGrid,
-                SplitLayoutMode::Single,
-            ),
-            (
-                "layout_single",
-                ViewportLayout::Single,
-                SplitLayoutMode::Single,
-            ),
-        ] {
-            assert!(handle_view_layout_event(&mut app, menu_id));
-            assert_eq!(app.viewport_layout, expected_layout);
-            assert_eq!(app.split_layout_mode, expected_split_mode);
-        }
-
-        if app.tabs.len() > 1 {
-            app.selected_tab = 0;
-            app.secondary_tab = 1;
-            app.pane_tabs[0] = 0;
-            app.pane_tabs[1] = 1;
-            assert!(handle_view_layout_event(&mut app, "layout_swap"));
-            assert_eq!(app.selected_tab, 1);
-            assert_eq!(app.secondary_tab, 0);
-            assert_eq!(app.pane_tabs[0], 1);
-            assert_eq!(app.pane_tabs[1], 0);
-        } else {
-            assert!(handle_view_layout_event(&mut app, "layout_swap"));
-        }
-    }
-
-    #[test]
-    fn test_handle_view_layout_event_rejects_removed_view_split_ids() {
-        let mut app = MathExplorerApp::default();
-        app.set_layout(ViewportLayout::SplitHorizontal);
-        let initial_primary = app.selected_tab;
-        let initial_secondary = app.secondary_tab;
-
-        for legacy_id in [
-            "view_split_single",
-            "view_split_horizontal",
-            "view_split_vertical",
-            "view_split_swap",
-            "unknown_layout_id",
-        ] {
-            assert!(
-                !handle_view_layout_event(&mut app, legacy_id),
-                "Removed or unknown menu ID '{legacy_id}' must return false"
-            );
-            assert_eq!(app.viewport_layout, ViewportLayout::SplitHorizontal);
-            assert_eq!(app.selected_tab, initial_primary);
-            assert_eq!(app.secondary_tab, initial_secondary);
-        }
-    }
-
-    #[test]
-    fn test_new_succeeds_on_worker_thread_without_appkit_main_thread_panic() {
-        let handle = std::thread::spawn(|| {
-            let _guard = crate::reflective_ui::tests::lock_test_mutex();
-            let ctx = egui::Context::default();
-            let cc = eframe::CreationContext::_new_kittest(ctx.clone());
-            let mut app = MathExplorerApp::new(&cc);
-            let mut frame = eframe::Frame::_new_kittest();
-            let _ = ctx.run(egui::RawInput::default(), |ui_ctx| {
-                eframe::App::update(&mut app, ui_ctx, &mut frame);
-            });
-            app.theme
-        });
-        assert_eq!(
-            handle.join().expect("worker thread must not panic"),
-            ThemeMode::Dark
-        );
-    }
-
-    #[test]
-    fn test_setup_macos_menu_and_share_link_event_safe_on_worker_threads() {
-        let _guard = crate::reflective_ui::tests::lock_test_mutex();
-        let _ = crate::url_state::take_last_copied_share_url();
-        let ctx = egui::Context::default();
-        let mut app = MathExplorerApp::default();
-
-        setup_macos_menu(&app);
-        assert!(handle_file_event(&mut app, &ctx, "file_share_link"));
-        let copied =
-            crate::url_state::take_last_copied_share_url().expect("macOS menu copied share link");
-        assert!(copied.starts_with("https://fderuiter.github.io/OxidizeMath/#tab="));
-    }
-}
+#[path = "macos_menu_tests.rs"]
+mod tests;

@@ -3,10 +3,51 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::SimulationFramework;
+use super::{ActionBarExportStatus, ExportStatusSeverity, SimulationFramework};
+use eframe::egui;
 use std::hash::{Hash, Hasher};
 
 impl SimulationFramework {
+    pub(super) fn poll_action_bar_clipboard_status(&mut self, ctx: &egui::Context) {
+        let status_id = egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
+        if let Some(async_status) =
+            ctx.data_mut(|d| d.remove_temp::<ActionBarExportStatus>(status_id))
+        {
+            let sev = if async_status.is_error {
+                ExportStatusSeverity::Error
+            } else {
+                ExportStatusSeverity::Success
+            };
+            self.set_export_status(sev, async_status.message);
+        }
+    }
+
+    pub(super) fn copy_active_share_link(&mut self, ctx: &egui::Context) {
+        match self.encode_share_url() {
+            Ok(url) => {
+                let status_id =
+                    egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
+                let ctx_cb = ctx.clone();
+                crate::url_state::copy_share_url_to_clipboard(ctx, url, move |res| {
+                    let status = match res {
+                        Ok(()) => ActionBarExportStatus {
+                            message: "Copied shareable simulation link to clipboard!".to_string(),
+                            is_error: false,
+                            expires_at_time: None,
+                        },
+                        Err(err) => ActionBarExportStatus {
+                            message: err,
+                            is_error: true,
+                            expires_at_time: None,
+                        },
+                    };
+                    ctx_cb.data_mut(|d| d.insert_temp(status_id, status));
+                });
+            }
+            Err(err) => self.preset_dialog.record_import_error(err),
+        }
+    }
+
     /// Returns the canonical `ToolMetadata::id` of the currently selected tool, if any.
     #[must_use]
     pub fn active_tool_id(&self) -> Option<&'static str> {

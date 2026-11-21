@@ -2,22 +2,27 @@ pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
 pub mod palette;
+mod pane_ops;
 mod pane_slots;
 pub(crate) mod session;
 mod share_link;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
-mod viewport;
+pub(crate) mod viewport;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_adaptive_chrome;
 #[cfg(test)]
 mod tests_command_palette;
 #[cfg(test)]
 mod tests_diagnostics;
 #[cfg(test)]
 mod tests_domain_bar;
+#[cfg(test)]
+mod tests_focus_routing;
 #[cfg(test)]
 mod tests_multi_pane;
 #[cfg(test)]
@@ -76,6 +81,9 @@ pub struct MathExplorerApp {
     pub focused_pane: usize,
     pane_slots: pane_slots::SecondaryPaneSlots,
     pub is_dragging_divider: bool,
+    /// Horizontal and vertical split ratios `(x, y)` for `ViewportLayout::QuadGrid`.
+    pub quad_split_ratios: (f32, f32),
+    pub(super) dragging_quad_axes: (bool, bool),
     tab_state_cache: state::TabStateCache,
     last_frame_had_input: bool,
     pending_focus_prune: bool,
@@ -109,6 +117,8 @@ impl Default for MathExplorerApp {
             focused_pane: 0,
             pane_slots: pane_slots::SecondaryPaneSlots::default(),
             is_dragging_divider: false,
+            quad_split_ratios: (0.5, 0.5),
+            dragging_quad_axes: (false, false),
             tab_state_cache: state::TabStateCache::default(),
             last_frame_had_input: false,
             pending_focus_prune: false,
@@ -120,13 +130,7 @@ impl Default for MathExplorerApp {
 impl MathExplorerApp {
     /// Swaps the primary and secondary pane active tabs and their per-pane states immediately.
     pub fn swap_panes(&mut self) {
-        if self.tabs.len() > 1 {
-            std::mem::swap(&mut self.selected_tab, &mut self.secondary_tab);
-            if self.pane_tabs.len() > 1 {
-                self.pane_tabs.swap(0, 1);
-            }
-            self.swap_primary_and_secondary_states();
-        }
+        self.swap_pane_pair(0, 1);
     }
 
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {

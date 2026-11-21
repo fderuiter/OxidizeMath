@@ -101,6 +101,7 @@ pub struct MorphogenesisTool {
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
     pub(crate) step_runner: Option<MorphogenesisRunner>,
     pub(crate) pending_initial_start: bool,
+    pub(crate) last_high_contrast: Option<bool>,
     theory: MorphogenesisTheory,
 }
 
@@ -114,6 +115,7 @@ impl Default for MorphogenesisTool {
             d_u: 1.0,
             d_v: 100.0,
             dt: 0.05,
+            high_contrast: false,
         }));
 
         let runner = Self::create_runner(&params, width, height);
@@ -130,6 +132,7 @@ impl Default for MorphogenesisTool {
             stepped_pixels: None,
             step_runner: None,
             pending_initial_start: true,
+            last_high_contrast: None,
             theory: MorphogenesisTheory::default(),
         }
     }
@@ -329,6 +332,16 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        let high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
+        if self.last_high_contrast != Some(high_contrast) {
+            self.last_high_contrast = Some(high_contrast);
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .high_contrast = high_contrast;
+            self.dirty = true;
+        }
         if std::mem::take(&mut self.pending_initial_start) && self.worker.state().is_ready() {
             let _ = self.worker.send_command(SimCommand::Start);
         }

@@ -80,18 +80,28 @@ impl TraceabilityTab {
         scanner::join_relative_segments(base, rel)
     }
 
-    pub fn paper_url(name: &str) -> Option<String> {
-        const BASE: &str = "https://fderuiter.github.io/OxidizeMath";
-        let clean = name.strip_prefix("papers/").unwrap_or(name);
-        if let Some(stem) = clean.strip_suffix(".tex") {
-            Some(format!("{BASE}/{stem}.pdf"))
-        } else if clean.ends_with(".pdf") {
-            Some(format!("{BASE}/{clean}"))
-        } else if !clean.starts_with("spec:") && !clean.starts_with("registry:") {
-            Some(format!("{BASE}/{clean}.pdf"))
-        } else {
-            None
+    pub(crate) fn paper_url_for_target(name: &str, is_wasm: bool) -> Option<String> {
+        let trimmed = name.trim();
+        let clean = trimmed.strip_prefix("papers/").unwrap_or(trimmed);
+        if clean.is_empty() || clean.starts_with("spec:") || clean.starts_with("registry:") {
+            return None;
         }
+        let base = if is_wasm {
+            "."
+        } else {
+            "https://fderuiter.github.io/OxidizeMath"
+        };
+        if let Some(stem) = clean.strip_suffix(".tex") {
+            (!stem.is_empty()).then(|| format!("{base}/{stem}.pdf"))
+        } else if let Some(stem) = clean.strip_suffix(".pdf") {
+            (!stem.is_empty()).then(|| format!("{base}/{stem}.pdf"))
+        } else {
+            Some(format!("{base}/{clean}.pdf"))
+        }
+    }
+
+    pub fn paper_url(name: &str) -> Option<String> {
+        Self::paper_url_for_target(name, cfg!(target_arch = "wasm32"))
     }
 
     #[cfg(test)]
@@ -156,10 +166,11 @@ impl TraceabilityTab {
         scanner::dispatch_native_refresh(self.repo_path.clone(), tx, cert_tx);
 
         #[cfg(target_arch = "wasm32")]
+        // theory_verification!
         wasm_bindgen_futures::spawn_local(async move {
             match web_snapshot::fetch_web_traceability().await {
                 Ok((report, cert)) => {
-                    let _ = cert_tx.send(Some(cert));
+                    let _ = cert_tx.send(cert);
                     let _ = tx.send(Ok(report));
                 }
                 Err(err) => {

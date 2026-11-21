@@ -16,7 +16,7 @@ impl AttractorPlotter {
     pub(super) fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         let worker_faulted = self.worker.state() == SimWorkerState::Faulted;
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "attractor_controls");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Lorenz Attractor");
             ui.separator();
 

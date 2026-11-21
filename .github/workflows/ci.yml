@@ -398,6 +398,7 @@ jobs:
         with:
           name: compiled_papers
           path: papers/output/*.pdf
+          if-no-files-found: error
           retention-days: 7
 
       - name: Upload Papers Release Bundle
@@ -632,9 +633,24 @@ jobs:
             exit 1
           fi
 
+          pdfs=()
+          while IFS= read -r -d '' pdf; do
+            pdfs+=("$pdf")
+          done < <(find compiled_papers -type f -name "*.pdf" -print0)
+          if [ ${#pdfs[@]} -eq 0 ]; then
+            echo "Error: No compiled PDFs found in compiled_papers artifact" >&2
+            exit 1
+          fi
+          for pdf in "${pdfs[@]}"; do
+            if [ ! -s "$pdf" ]; then
+              echo "Error: Compiled PDF $pdf is empty" >&2
+              exit 1
+            fi
+          done
+
           mkdir -p pages_dist/papers
-          find compiled_papers -type f -name "*.pdf" -exec cp -f -- {} pages_dist/ \;
-          find compiled_papers -type f -name "*.pdf" -exec cp -f -- {} pages_dist/papers/ \;
+          cp -f -- "${pdfs[@]}" pages_dist/
+          cp -f -- "${pdfs[@]}" pages_dist/papers/
 
           shopt -s nullglob
           tex_files=(papers/*.tex)
@@ -653,7 +669,7 @@ jobs:
             done
           done
 
-          for req in traceability_snapshot.json Verification_Certificate.json; do
+          for req in traceability_manifest.json Verification_Certificate.json; do
             if [ ! -s "pages_dist/$req" ]; then
               echo "Error: Required static traceability file pages_dist/$req is missing or empty" >&2
               exit 1

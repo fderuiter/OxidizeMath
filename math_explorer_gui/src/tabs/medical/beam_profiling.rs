@@ -62,7 +62,7 @@ impl InteractiveTool for BeamProfilingTool {
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "beam_profiling_controls");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Beam Parameters");
             ui.separator();
 

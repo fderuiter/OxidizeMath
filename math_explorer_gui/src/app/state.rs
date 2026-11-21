@@ -40,6 +40,10 @@ fn default_split_ratio() -> f32 {
     0.5
 }
 
+fn default_quad_split_ratios() -> (f32, f32) {
+    (0.5, 0.5)
+}
+
 pub(super) fn has_frame_input(ctx: &egui::Context) -> bool {
     ctx.input(|i| {
         i.pointer.any_down()
@@ -114,6 +118,7 @@ pub(crate) struct AppStateFingerprint {
     split_mode_discriminant: u8,
     viewport_discriminant: u8,
     split_ratio_bits: u32,
+    quad_split_ratio_bits: (u32, u32),
     focused_pane: usize,
     pane_tabs: [usize; 4],
     primary_revisions_hash: u64,
@@ -172,6 +177,10 @@ impl AppStateFingerprint {
                 ViewportLayout::QuadGrid => 3,
             },
             split_ratio_bits: app.split_ratio.clamp(0.20, 0.80).to_bits(),
+            quad_split_ratio_bits: (
+                app.quad_split_ratios.0.clamp(0.20, 0.80).to_bits(),
+                app.quad_split_ratios.1.clamp(0.20, 0.80).to_bits(),
+            ),
             focused_pane: app.active_focused_pane(),
             pane_tabs,
             primary_revisions_hash: primary_hasher.finish(),
@@ -201,6 +210,9 @@ pub struct AppState {
     pub secondary_tab_name: Option<String>,
     #[serde(default = "default_split_ratio")]
     pub split_ratio: f32,
+    /// Horizontal and vertical split ratios `(x, y)` for `ViewportLayout::QuadGrid`.
+    #[serde(default = "default_quad_split_ratios")]
+    pub quad_split_ratios: (f32, f32),
     #[serde(default)]
     pub viewport_layout: ViewportLayout,
     #[serde(default)]
@@ -226,6 +238,7 @@ impl Default for AppState {
             secondary_tab: 1,
             secondary_tab_name: None,
             split_ratio: 0.5,
+            quad_split_ratios: (0.5, 0.5),
             viewport_layout: ViewportLayout::Single,
             pane_tabs: vec![0, 1, 2, 3],
             focused_pane: 0,
@@ -276,6 +289,10 @@ impl AppState {
             secondary_tab: app.secondary_tab,
             secondary_tab_name,
             split_ratio: app.split_ratio.clamp(0.20, 0.80),
+            quad_split_ratios: (
+                app.quad_split_ratios.0.clamp(0.20, 0.80),
+                app.quad_split_ratios.1.clamp(0.20, 0.80),
+            ),
             viewport_layout,
             pane_tabs,
             focused_pane: app.active_focused_pane(),
@@ -314,6 +331,10 @@ impl AppState {
         app.theme = self.theme;
         app.split_layout_mode = self.split_layout_mode;
         app.split_ratio = self.split_ratio.clamp(0.20, 0.80);
+        app.quad_split_ratios = (
+            self.quad_split_ratios.0.clamp(0.20, 0.80),
+            self.quad_split_ratios.1.clamp(0.20, 0.80),
+        );
         app.viewport_layout = self.viewport_layout;
 
         if app.viewport_layout == ViewportLayout::Single

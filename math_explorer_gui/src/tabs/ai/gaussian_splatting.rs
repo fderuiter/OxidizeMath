@@ -202,17 +202,20 @@ impl GaussianSplattingTool {
 
     pub fn render_splat_image(&self) -> egui::ColorImage {
         let splats = self.project_scene();
-        let mut pixels =
-            vec![egui::Color32::from_rgb(12, 15, 22); SPLAT_GRID_SIZE * SPLAT_GRID_SIZE];
+        let bg = egui::Visuals::dark().extreme_bg_color;
+        let mut pixels = vec![bg; SPLAT_GRID_SIZE * SPLAT_GRID_SIZE];
+        let bg_r = f64::from(bg.r());
+        let bg_g = f64::from(bg.g());
+        let bg_b = f64::from(bg.b());
 
         for (row_idx, row) in pixels.as_chunks_mut::<SPLAT_GRID_SIZE>().0.iter_mut().enumerate() {
             let py = row_idx as f64 + 0.5;
             for (col_idx, px) in row.iter_mut().enumerate() {
                 let pt = Point2::new(col_idx as f64 + 0.5, py);
                 let c = blend_gaussians(&splats, &pt);
-                let r = (c.x.clamp(0.0, 1.0) * 243.0 + 12.0).round() as u8;
-                let g = (c.y.clamp(0.0, 1.0) * 240.0 + 15.0).round() as u8;
-                let b = (c.z.clamp(0.0, 1.0) * 233.0 + 22.0).round() as u8;
+                let r = (c.x.clamp(0.0, 1.0) * (255.0 - bg_r) + bg_r).round() as u8;
+                let g = (c.y.clamp(0.0, 1.0) * (255.0 - bg_g) + bg_g).round() as u8;
+                let b = (c.z.clamp(0.0, 1.0) * (255.0 - bg_b) + bg_b).round() as u8;
                 *px = egui::Color32::from_rgb(r, g, b);
             }
         }
@@ -236,7 +239,7 @@ impl GaussianSplattingTool {
     fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id =
             crate::framework::scoped_panel_id(parent_ui, "gaussian_splatting_controls");
-        egui::SidePanel::right(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::right(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Controls");
             ui.separator();
             if ui

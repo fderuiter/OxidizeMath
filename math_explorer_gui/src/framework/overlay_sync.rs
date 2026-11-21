@@ -111,6 +111,27 @@ impl SimulationFramework {
         self.sync_state.starter_gallery = Some(self.show_starter_gallery);
     }
 
+    pub(crate) fn sync_starter_gallery_state(&mut self, ctx: &egui::Context, id_source: &str) {
+        self.sync_state.starter_gallery = Some(self.show_starter_gallery);
+        let owner_id = egui::Id::new("FRAMEWORK_OVERLAY_OWNER");
+        let inst_gallery =
+            egui::Id::new(("SHOW_STARTER_GALLERY_INST", id_source, self.instance_id));
+        let dom_gallery = egui::Id::new("SHOW_STARTER_GALLERY").with(id_source);
+        ctx.data_mut(|d| {
+            d.insert_temp(inst_gallery, self.show_starter_gallery);
+            let is_owner = d
+                .get_temp::<(String, u64)>(owner_id)
+                .is_some_and(|(src, id)| src == id_source && id == self.instance_id);
+            if is_owner {
+                d.insert_temp(dom_gallery, self.show_starter_gallery);
+                d.insert_temp(
+                    egui::Id::new("SHOW_STARTER_GALLERY"),
+                    self.show_starter_gallery,
+                );
+            }
+        });
+    }
+
     fn write_overlay_keys(&self, ctx: &egui::Context, id_source: &str) {
         let owner_id = egui::Id::new("FRAMEWORK_OVERLAY_OWNER");
         let inst_portal = egui::Id::new(("SHOW_THEORY_PORTAL_INST", id_source, self.instance_id));

@@ -339,13 +339,7 @@ fn render_sensitivity_metric_card(
         });
 
         let progress = (metric.elasticity / 3.0).clamp(0.0, 1.0) as f32;
-        let color = if metric.elasticity > 2.0 {
-            palette.error
-        } else if metric.elasticity > 1.0 {
-            palette.warning
-        } else {
-            palette.success
-        };
+        let color = crate::app::SemanticPalette::progress_bar_fill(ui.visuals(), metric.elasticity);
 
         let progress_bar = egui::ProgressBar::new(progress)
             .fill(color)

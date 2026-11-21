@@ -71,7 +71,7 @@ impl InteractiveTool for CapacityFadeTool {
         self.cycles_to_simulate = self.cycles_to_simulate.max(100.0);
 
         let panel_id = crate::framework::scoped_panel_id(ui, "battery_controls");
-        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Parameters");
             ui.add_space(5.0);
 

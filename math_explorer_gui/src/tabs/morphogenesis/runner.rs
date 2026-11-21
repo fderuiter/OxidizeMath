@@ -14,6 +14,7 @@ pub struct MorphogenesisSharedParams {
     pub d_u: f64,
     pub d_v: f64,
     pub dt: f64,
+    pub high_contrast: bool,
 }
 
 #[allow(missing_docs)]
@@ -98,15 +99,25 @@ impl SimulationRunner for MorphogenesisRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let image =
-            MorphogenesisTool::plot_concentration(self.system.u(), self.width, self.height);
+        let high_contrast = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .high_contrast;
+        let u_vec = self.system.u().to_vec();
+        let image = MorphogenesisTool::plot_concentration_with_contrast(
+            &u_vec,
+            self.width,
+            self.height,
+            high_contrast,
+        );
         let pixels: Vec<eframe::egui::Color32> = image.pixels;
         StateSnapshot {
             width: self.width,
             height: self.height,
             pixels: Arc::new(std::sync::RwLock::new(pixels)),
             custom_data: Vec::new(),
-            structured_data: None,
+            structured_data: Some(Box::new(u_vec)),
         }
     }
 

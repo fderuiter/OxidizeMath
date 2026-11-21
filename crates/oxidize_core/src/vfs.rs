@@ -55,16 +55,28 @@ impl VirtualFileSystem for DefaultVfs {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<String>, std::io::Error>> + '_>> {
         let path = path.to_string();
         Box::pin(async move {
+            let entries = std::fs::read_dir(&path)?;
             let mut files = Vec::new();
-            if let Ok(entries) = std::fs::read_dir(&path) {
-                for entry in entries.flatten() {
-                    if let Some(s) = entry.file_name().to_str() {
-                        files.push(s.to_string());
-                    }
+            for entry in entries.flatten() {
+                if let Some(s) = entry.file_name().to_str() {
+                    files.push(s.to_string());
                 }
             }
             Ok(files)
         })
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn resolve_wasm_fetch_url(path: &str) -> String {
+    if path.starts_with("http://")
+        || path.starts_with("https://")
+        || path.starts_with('/')
+        || path.starts_with("./")
+    {
+        path.to_string()
+    } else {
+        format!("./{path}")
     }
 }
 
@@ -88,21 +100,17 @@ impl VirtualFileSystem for WasmVfs {
             use wasm_bindgen::JsCast;
             use wasm_bindgen_futures::JsFuture;
             let window = web_sys::window().ok_or_else(|| std::io::Error::other("No window"))?;
-            let mut url = path.clone();
-            // ensure it can be fetched
-            if !url.starts_with("http") && !url.starts_with('/') {
-                url = format!("/{}", url);
-            }
+            let url = resolve_wasm_fetch_url(&path);
             let response_value = JsFuture::from(window.fetch_with_str(&url))
                 .await
-                .map_err(|_| std::io::Error::other("Fetch failed"))?;
+                .map_err(|_| std::io::Error::other(format!("Fetch failed for {url}")))?;
             let response: web_sys::Response = response_value
                 .dyn_into()
                 .map_err(|_| std::io::Error::other("Invalid response"))?;
             if !response.ok() {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
-                    "File not found via fetch",
+                    format!("HTTP {} while fetching {}", response.status(), url),
                 ));
             }
             let text_value = JsFuture::from(
@@ -237,5 +245,40 @@ mod tests {
                 "Missing expected cargo:rerun-if-changed={expected} in oxidize_core output"
             );
         }
+    }
+
+    #[test]
+    fn test_resolve_wasm_fetch_url_prefixes_relative_paths_within_subpath() {
+        assert_eq!(
+            super::resolve_wasm_fetch_url("traceability_manifest.json"),
+            "./traceability_manifest.json"
+        );
+        assert_eq!(
+            super::resolve_wasm_fetch_url("./traceability_manifest.json"),
+            "./traceability_manifest.json"
+        );
+        assert_eq!(
+            super::resolve_wasm_fetch_url("papers/essay.tex"),
+            "./papers/essay.tex"
+        );
+        assert_eq!(
+            super::resolve_wasm_fetch_url("/OxidizeMath/essay.pdf"),
+            "/OxidizeMath/essay.pdf"
+        );
+        assert_eq!(
+            super::resolve_wasm_fetch_url("https://example.com/essay.pdf"),
+            "https://example.com/essay.pdf"
+        );
+    }
+
+    #[test]
+    fn test_default_vfs_list_dir_propagates_not_found() {
+        use super::{DefaultVfs, VirtualFileSystem};
+
+        let res = futures::executor::block_on(
+            DefaultVfs.list_dir("nonexistent_oxidize_vfs_dir_987654321"),
+        );
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::NotFound);
     }
 }

@@ -33,6 +33,7 @@ fn test_morphogenesis_runner_offload() {
         d_u: 1.0,
         d_v: 100.0,
         dt: 0.05,
+        high_contrast: false,
     }));
 
     let mut runner = MorphogenesisRunner {
@@ -157,6 +158,7 @@ fn test_ising_runner_offload() {
         j_coupling: 1.0,
         h_field: 0.0,
         steps_per_frame: 500,
+        theme: crate::app::ThemeMode::Dark,
     }));
     let mut runner = IsingRunner {
         lattice: SpinLattice::new(20, 20, Some(42)),
@@ -256,6 +258,7 @@ fn test_physics_and_chaos_runners_step_once() {
             j_coupling: 1.0,
             h_field: 0.0,
             steps_per_frame: 5000,
+            theme: crate::app::ThemeMode::Dark,
         })),
     };
     ising.step_once();

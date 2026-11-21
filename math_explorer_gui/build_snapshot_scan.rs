@@ -18,11 +18,11 @@ pub(super) fn emit_rerun(path: &Path) {
 pub(super) fn discover_workspace_active_files(ws_root: &Path) -> BTreeMap<PathBuf, String> {
     let mut roots: Vec<(PathBuf, String)> = vec![
         (
-            ws_root.join("math_explorer/src"),
+            ws_root.join("math_explorer").join("src"),
             "math_explorer/src".to_string(),
         ),
         (
-            PathBuf::from("src/tabs"),
+            Path::new("src").join("tabs"),
             "math_explorer_gui/src/tabs".to_string(),
         ),
     ];
@@ -121,6 +121,7 @@ fn gather_fallback_files(
 ) {
     let mut stack = vec![(start_disk.to_path_buf(), start_repo.to_string())];
     while let Some((curr_disk, curr_repo)) = stack.pop() {
+        emit_rerun(&curr_disk);
         let Ok(entries) = fs::read_dir(&curr_disk) else {
             continue;
         };
