@@ -101,6 +101,7 @@ web-sys = { workspace = true, features = [
     "Node",
     "NodeList",
     "Response",
+    "Storage",
     "Window",
     "Worker",
     "WorkerOptions",

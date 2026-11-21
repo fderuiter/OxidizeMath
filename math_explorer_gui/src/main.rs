@@ -29,6 +29,8 @@ mod tabs;
 mod telemetry;
 pub mod url_state;
 pub mod web_io;
+#[cfg(target_arch = "wasm32")]
+mod webgl_recovery;
 
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 
@@ -75,7 +77,7 @@ fn mark_boot_initialized(doc: &web_sys::Document) {
 
 #[cfg(target_arch = "wasm32")]
 // theory_verification!
-fn is_error_boundary_active(doc: &web_sys::Document) -> bool {
+pub(crate) fn is_error_boundary_active(doc: &web_sys::Document) -> bool {
     if doc
         .document_element()
         .and_then(|root| root.get_attribute("data-boot-failed"))
@@ -175,7 +177,7 @@ fn select_webgl_error_category(doc: &web_sys::Document) {
 
 #[cfg(target_arch = "wasm32")]
 // theory_verification!
-fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) {
+pub(crate) fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) {
     accessibility::announce_status_with_priority(
         "WebGL initialization failed. Please enable hardware acceleration in your browser settings.",
         "assertive",
@@ -224,7 +226,8 @@ fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) 
 fn finish_wasm_startup(
     doc: &web_sys::Document,
     window: Option<&web_sys::Window>,
-    runner: &eframe::WebRunner,
+    canvas: &web_sys::HtmlCanvasElement,
+    runner: eframe::WebRunner,
     start_res: Result<(), wasm_bindgen::JsValue>,
 ) {
     use wasm_bindgen::JsCast;
@@ -245,14 +248,17 @@ fn finish_wasm_startup(
                 loading.remove();
             }
 
-            if let Some(canvas) = doc
+            webgl_recovery::install_webgl_recovery(canvas, doc, window, runner);
+
+            if let Some(canvas_el) = doc
                 .get_element_by_id("the_canvas_id")
                 .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
             {
-                let _ = canvas.focus();
+                let _ = canvas_el.focus();
             }
         }
         Err(err) => {
+            runner.destroy();
             let err_msg = format!("{err:?}");
             eprintln!("Failed to start eframe WebRunner: {err_msg}");
             handle_webgl_failure(Some(doc), &err_msg);
@@ -312,7 +318,7 @@ fn main() {
 
         let start_res = runner
             .start(
-                canvas,
+                canvas.clone(),
                 web_options,
                 Box::new(|cc| {
                     cc.egui_ctx.options_mut(|o| o.screen_reader = true);
@@ -321,7 +327,7 @@ fn main() {
             )
             .await;
 
-        finish_wasm_startup(doc, window.as_ref(), &runner, start_res);
+        finish_wasm_startup(doc, window.as_ref(), &canvas, runner, start_res);
     });
 }
 // theory_verification!

@@ -2,6 +2,9 @@
 
 const INDEX_HTML: &str = include_str!("../index.html");
 const RELOAD_JS: &str = include_str!("../reload.js");
+const WEBGL_RECOVERY_RS: &str = include_str!("webgl_recovery.rs");
+const WEBGL_RECOVERY_BRIDGE_RS: &str = include_str!("webgl_recovery/bridge.rs");
+const APP_MOD_RS: &str = include_str!("app/mod.rs");
 
 #[test]
 fn test_document_title_and_metadata_tags() {
@@ -326,4 +329,127 @@ fn test_error_container_supports_categories_and_webgl_instructions() {
             "index.html must include {required} for multi-category error recovery"
         );
     }
+}
+
+#[test]
+fn test_webgl_recovery_overlay_and_theme_synchronization() {
+    let overlay_start = INDEX_HTML
+        .find("id=\"webgl_recovery_overlay\"")
+        .expect("#webgl_recovery_overlay must exist in index.html");
+    let canvas_start = INDEX_HTML
+        .find("id=\"the_canvas_id\"")
+        .expect("#the_canvas_id must exist after #webgl_recovery_overlay");
+    assert!(
+        overlay_start < canvas_start,
+        "#webgl_recovery_overlay must precede #the_canvas_id"
+    );
+
+    let overlay_block = &INDEX_HTML[overlay_start..canvas_start];
+    for attr in [
+        "role=\"status\"",
+        "aria-busy=\"false\"",
+        "hidden",
+        "id=\"webgl_recovery_title\"",
+        "id=\"webgl_recovery_subtitle\"",
+        "class=\"spinner\"",
+    ] {
+        assert!(
+            overlay_block.contains(attr),
+            "#webgl_recovery_overlay must contain {attr}"
+        );
+    }
+
+    for theme_selector in [
+        "html:not([data-theme]) #webgl_recovery_overlay",
+        "html[data-theme=\"dark\"] #webgl_recovery_overlay",
+        "html[data-theme=\"light\"] #webgl_recovery_overlay",
+        "html[data-theme=\"high-contrast\"] #webgl_recovery_overlay",
+        "html[data-theme=\"light\"] .secondary-btn",
+        "html[data-theme=\"high-contrast\"] .secondary-btn",
+    ] {
+        assert!(
+            INDEX_HTML.contains(theme_selector),
+            "index.html must synchronize recovery UI selector: {theme_selector}"
+        );
+    }
+}
+
+#[test]
+fn test_recovery_screen_download_workspace_envelope_button_and_blob_export() {
+    let error_start = INDEX_HTML
+        .find("id=\"error_container\"")
+        .expect("#error_container must exist");
+    let overlay_start = INDEX_HTML
+        .find("id=\"webgl_recovery_overlay\"")
+        .expect("#webgl_recovery_overlay must exist");
+    let error_section = &INDEX_HTML[error_start..overlay_start];
+
+    assert!(
+        error_section.contains(
+            "<button type=\"button\" id=\"download_workspace_button\" class=\"secondary-btn\" hidden>"
+        ),
+        "#error_container must include hidden type=\"button\" #download_workspace_button"
+    );
+
+    for contract in [
+        "setSavedWorkspaceEnvelope",
+        "downloadSavedWorkspace",
+        "data-storage-blocked",
+        "new Blob([payload], { type: 'application/json' })",
+        "URL.createObjectURL(blob)",
+        "URL.revokeObjectURL(objectUrl)",
+        "math-explorer-recovery.mws",
+    ] {
+        assert!(
+            RELOAD_JS.contains(contract),
+            "reload.js must support saved workspace envelope download via {contract}"
+        );
+    }
+}
+
+#[test]
+fn test_webgl_in_place_recovery_and_timeout_fallback_contracts() {
+    for js_contract in [
+        "DEFAULT_WEBGL_RESTORE_TIMEOUT_MS",
+        "webgl_restore_timeout_ms",
+        "addEventListener('webglcontextlost'",
+        "event.preventDefault()",
+        "addEventListener('webglcontextrestored'",
+        "beginWebglContextRecovery",
+        "completeWebglContextRecovery",
+        "failWebglContextRecovery",
+        "registerWebglRecoveryHandlers",
+        "WEBGL_CONTEXT_LOST_COPY",
+        "announce(cfg.alert, 'assertive')",
+        "reloadBtn.focus()",
+    ] {
+        assert!(
+            RELOAD_JS.contains(js_contract),
+            "reload.js must implement WebGL recovery & timeout fallback contract: {js_contract}"
+        );
+    }
+
+    for rust_contract in [
+        "\"webglcontextlost\"",
+        "\"webglcontextrestored\"",
+        "event.prevent_default()",
+        "capture_recovery_snapshot()",
+        "restore_recovery_snapshot(",
+        "runner.destroy()",
+        "eframe::WebRunner::new()",
+        "beginWebglContextRecovery",
+        "completeWebglContextRecovery",
+        "failWebglContextRecovery",
+    ] {
+        assert!(
+            WEBGL_RECOVERY_RS.contains(rust_contract)
+                || WEBGL_RECOVERY_BRIDGE_RS.contains(rust_contract),
+            "webgl_recovery module must implement WebRunner lifecycle contract: {rust_contract}"
+        );
+    }
+
+    assert!(
+        APP_MOD_RS.contains("fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any>"),
+        "MathExplorerApp must implement eframe::App::as_any_mut on wasm32 for WebRunner::app_mut"
+    );
 }

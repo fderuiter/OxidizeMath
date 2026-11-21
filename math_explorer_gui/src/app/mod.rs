@@ -87,7 +87,7 @@ pub struct MathExplorerApp {
     tab_state_cache: state::TabStateCache,
     last_frame_had_input: bool,
     pending_focus_prune: bool,
-    url_sync: crate::url_state::UrlSyncController,
+    pub(super) url_sync: crate::url_state::UrlSyncController,
 }
 
 impl Default for MathExplorerApp {
@@ -462,5 +462,11 @@ impl eframe::App for MathExplorerApp {
 
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(5)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    // theory_verification!
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
