@@ -1,273 +1,302 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+#[path = "gaussian_splatting_scene.rs"]
+mod scene;
+
 use crate::accessibility::AccessibleTheoryHover;
-use crate::framework::{ExportCapabilities, InteractiveTool};
+use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Plot3DViewport};
 use eframe::egui;
-use math_explorer::ai::gaussian_splatting::{
-    optimization::{determine_density_action, DensityAction},
-    projection::{compute_jacobian, project_covariance},
-    rendering::blend_gaussians,
-    Gaussian2D, Gaussian3D,
+use egui_plot::{Line, PlotImage, PlotPoint, PlotPoints, Points};
+use math_explorer::ai::gaussian_splatting::{projection, Gaussian2D, Gaussian3D, Scene};
+use nalgebra::{Matrix2, Point2, Vector3};
+use scene::{
+    build_default_scene, covariance_ellipse_ring, evaluate_density_counts, rasterize_splats_into,
+    splat_stroke_color, CAMERA_DISTANCE, ELLIPSE_POINTS, OPACITY_THRESHOLD, VIEWPORT_HALF_EXTENT,
 };
-use nalgebra::{Matrix4, Point2, Point3, UnitQuaternion, Vector3};
 use scientific_metadata::theory::TheoryDescribable;
 
-const SPLAT_GRID_SIZE: usize = 96;
-const FOCAL_LENGTH_PX: f64 = 64.0;
-const GRAD_THRESHOLD: f64 = 0.10;
-const SCALE_THRESHOLD: f64 = 0.45;
-const OPACITY_THRESHOLD: f64 = 0.05;
+pub use scene::DensityActionCounts;
+#[cfg(test)]
+pub(crate) use scene::SPLAT_GRID_SIZE;
+#[cfg(not(test))]
+use scene::SPLAT_GRID_SIZE;
 
-struct SplatSpec {
-    position: [f64; 3],
-    base_scale: [f64; 3],
-    axis_angle: [f64; 3],
-    opacity: f64,
-    color: [f64; 3],
-    grad_magnitude: f64,
-}
+type RenderCacheKey = (u64, u64, u64, u64);
 
-const CANONICAL_SCENE: [SplatSpec; 8] = [
-    SplatSpec {
-        position: [-0.65, 0.45, 3.4],
-        base_scale: [0.28, 0.16, 0.20],
-        axis_angle: [0.0, 0.0, 0.45],
-        opacity: 0.90,
-        color: [0.96, 0.32, 0.28],
-        grad_magnitude: 0.24,
-    },
-    SplatSpec {
-        position: [0.60, 0.42, 3.6],
-        base_scale: [0.18, 0.30, 0.22],
-        axis_angle: [0.2, -0.1, -0.55],
-        opacity: 0.86,
-        color: [0.22, 0.82, 0.56],
-        grad_magnitude: 0.19,
-    },
-    SplatSpec {
-        position: [0.0, -0.15, 3.1],
-        base_scale: [0.36, 0.24, 0.26],
-        axis_angle: [0.15, 0.25, 0.10],
-        opacity: 0.82,
-        color: [0.28, 0.58, 0.98],
-        grad_magnitude: 0.31,
-    },
-    SplatSpec {
-        position: [-0.48, -0.58, 4.0],
-        base_scale: [0.58, 0.32, 0.28],
-        axis_angle: [-0.2, 0.1, 0.35],
-        opacity: 0.78,
-        color: [0.95, 0.76, 0.22],
-        grad_magnitude: 0.16,
-    },
-    SplatSpec {
-        position: [0.55, -0.52, 4.2],
-        base_scale: [0.25, 0.22, 0.20],
-        axis_angle: [0.0, 0.2, -0.30],
-        opacity: 0.80,
-        color: [0.78, 0.36, 0.94],
-        grad_magnitude: 0.06,
-    },
-    SplatSpec {
-        position: [0.02, 0.68, 4.5],
-        base_scale: [0.34, 0.20, 0.24],
-        axis_angle: [0.1, -0.15, 0.05],
-        opacity: 0.74,
-        color: [0.20, 0.86, 0.90],
-        grad_magnitude: 0.04,
-    },
-    SplatSpec {
-        position: [-0.15, 0.08, 4.9],
-        base_scale: [0.65, 0.52, 0.40],
-        axis_angle: [0.05, 0.1, -0.20],
-        opacity: 0.52,
-        color: [0.92, 0.46, 0.68],
-        grad_magnitude: 0.07,
-    },
-    SplatSpec {
-        position: [0.85, 0.82, 5.4],
-        base_scale: [0.22, 0.18, 0.18],
-        axis_angle: [0.0, 0.0, 0.0],
-        opacity: 0.02,
-        color: [0.50, 0.55, 0.65],
-        grad_magnitude: 0.14,
-    },
-];
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct DensityActionCounts {
-    pub split: usize,
-    pub clone: usize,
-    pub keep: usize,
-    pub prune: usize,
-}
-
-#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
+/// Interactive 3D Gaussian Splatting radiance field viewer built on `Plot3DViewport`.
 pub struct GaussianSplattingTool {
+    /// Uniform multiplier applied to 3D Gaussian principal semi-axes.
     pub scale: f64,
+    /// Shared 3D orbit and zoom camera state.
+    pub camera: Camera3D,
+    scene: Scene,
+    projected_splats: Vec<Gaussian2D>,
+    ellipse_rings: Vec<([[f64; 2]; ELLIPSE_POINTS], egui::Color32)>,
+    splat_centers: Vec<[f64; 2]>,
+    pixel_buffer: Vec<egui::Color32>,
     texture: Option<egui::TextureHandle>,
-    cached_scale_bits: Option<u64>,
+    cached_key: Option<RenderCacheKey>,
     cached_counts: DensityActionCounts,
 }
 
 impl Default for GaussianSplattingTool {
     fn default() -> Self {
         let scale = 1.0;
+        let scene = build_default_scene();
+        let count = scene.gaussians.len();
         Self {
             scale,
+            camera: Camera3D::new(0.5, 0.5, 1.0),
+            scene,
+            projected_splats: Vec::with_capacity(count),
+            ellipse_rings: Vec::with_capacity(count),
+            splat_centers: Vec::with_capacity(count),
+            pixel_buffer: vec![egui::Color32::TRANSPARENT; SPLAT_GRID_SIZE * SPLAT_GRID_SIZE],
             texture: None,
-            cached_scale_bits: None,
+            cached_key: None,
             cached_counts: Self::compute_density_counts_for_scale(scale),
         }
     }
 }
 
 impl GaussianSplattingTool {
+    /// Evaluates `determine_density_action` across the canonical 3D scene for a given `scale`.
     pub fn compute_density_counts_for_scale(scale: f64) -> DensityActionCounts {
-        let safe_scale = if scale.is_finite() {
-            scale.clamp(0.1, 10.0)
-        } else {
-            1.0
-        };
-        let mut counts = DensityActionCounts::default();
-        for spec in &CANONICAL_SCENE {
-            let max_base = spec.base_scale[0]
-                .max(spec.base_scale[1])
-                .max(spec.base_scale[2]);
-            let action = determine_density_action(
-                spec.grad_magnitude,
-                max_base * safe_scale,
-                spec.opacity,
-                GRAD_THRESHOLD,
-                SCALE_THRESHOLD,
-                OPACITY_THRESHOLD,
-            );
-            match action {
-                DensityAction::Split => counts.split += 1,
-                DensityAction::Clone => counts.clone += 1,
-                DensityAction::Keep => counts.keep += 1,
-                DensityAction::Prune => counts.prune += 1,
-            }
-        }
-        counts
+        evaluate_density_counts(scale)
     }
 
-    fn project_scene(&self) -> Vec<Gaussian2D> {
-        let safe_scale = if self.scale.is_finite() {
+    /// Renders the projected 3D Gaussian radiance field at the current `scale` and `camera` pose.
+    #[cfg(test)]
+    pub fn render_splat_image(&self) -> egui::ColorImage {
+        let mut projected = Vec::with_capacity(self.scene.gaussians.len());
+        let mut rings = Vec::new();
+        let mut centers = Vec::new();
+        self.project_into(&mut projected, &mut rings, &mut centers);
+        let mut pixels = vec![egui::Color32::TRANSPARENT; SPLAT_GRID_SIZE * SPLAT_GRID_SIZE];
+        rasterize_splats_into(&projected, &mut pixels);
+        egui::ColorImage {
+            size: [SPLAT_GRID_SIZE, SPLAT_GRID_SIZE],
+            source_size: egui::vec2(SPLAT_GRID_SIZE as f32, SPLAT_GRID_SIZE as f32),
+            pixels,
+        }
+    }
+
+    fn render_key(&self) -> RenderCacheKey {
+        (
+            self.scale.to_bits(),
+            self.camera.pitch.to_bits() as u64,
+            self.camera.yaw.to_bits() as u64,
+            self.camera.zoom.to_bits() as u64,
+        )
+    }
+
+    fn refresh_projection_and_raster(&mut self, ctx: &egui::Context) {
+        let key = self.render_key();
+        if self.cached_key == Some(key) && self.texture.is_some() {
+            return;
+        }
+        self.cached_counts = Self::compute_density_counts_for_scale(self.scale);
+        let mut splats = std::mem::take(&mut self.projected_splats);
+        let mut rings = std::mem::take(&mut self.ellipse_rings);
+        let mut centers = std::mem::take(&mut self.splat_centers);
+        self.project_into(&mut splats, &mut rings, &mut centers);
+        rasterize_splats_into(&splats, &mut self.pixel_buffer);
+        self.projected_splats = splats;
+        self.ellipse_rings = rings;
+        self.splat_centers = centers;
+
+        let image = egui::ColorImage {
+            size: [SPLAT_GRID_SIZE, SPLAT_GRID_SIZE],
+            source_size: egui::vec2(SPLAT_GRID_SIZE as f32, SPLAT_GRID_SIZE as f32),
+            pixels: self.pixel_buffer.clone(),
+        };
+        if let Some(tex) = &mut self.texture {
+            tex.set(image, egui::TextureOptions::LINEAR);
+        } else {
+            self.texture = Some(ctx.load_texture(
+                "gaussian_splatting_radiance_field",
+                image,
+                egui::TextureOptions::LINEAR,
+            ));
+        }
+        self.cached_key = Some(key);
+    }
+
+    fn project_into(
+        &self,
+        out_splats: &mut Vec<Gaussian2D>,
+        out_rings: &mut Vec<([[f64; 2]; ELLIPSE_POINTS], egui::Color32)>,
+        out_centers: &mut Vec<[f64; 2]>,
+    ) {
+        out_splats.clear();
+        out_rings.clear();
+        out_centers.clear();
+
+        let scale_factor = if self.scale.is_finite() {
             self.scale.clamp(0.1, 10.0)
         } else {
             1.0
         };
-        let view_matrix = Matrix4::identity();
-        let center = SPLAT_GRID_SIZE as f64 * 0.5;
-        let mut projected = Vec::with_capacity(CANONICAL_SCENE.len());
+        let view_matrix = self.camera.view_matrix(CAMERA_DISTANCE);
+        let focal = CAMERA_DISTANCE * (self.camera.zoom as f64);
 
-        for spec in &CANONICAL_SCENE {
-            let g3d = Gaussian3D {
-                mean: Point3::new(spec.position[0], spec.position[1], spec.position[2]),
-                scale: Vector3::new(
-                    spec.base_scale[0] * safe_scale,
-                    spec.base_scale[1] * safe_scale,
-                    spec.base_scale[2] * safe_scale,
-                ),
-                rotation: UnitQuaternion::new(Vector3::new(
-                    spec.axis_angle[0],
-                    spec.axis_angle[1],
-                    spec.axis_angle[2],
-                )),
-                opacity: spec.opacity,
-                color: Vector3::new(spec.color[0], spec.color[1], spec.color[2]),
+        for base in &self.scene.gaussians {
+            let scaled = Gaussian3D {
+                mean: base.mean,
+                scale: base.scale * scale_factor,
+                rotation: base.rotation,
+                opacity: base.opacity,
+                color: base.color,
             };
-            let t = g3d.mean.coords;
-            let cov3d = g3d.compute_covariance();
-            let jacobian = compute_jacobian(&t, FOCAL_LENGTH_PX, FOCAL_LENGTH_PX);
-            let mut cov2d = project_covariance(&cov3d, &view_matrix, &jacobian);
-            cov2d[(0, 0)] += 0.3;
-            cov2d[(1, 1)] += 0.3;
+            let [tx, ty, vz] = self
+                .camera
+                .rotate_to_camera_space(&[scaled.mean.x, scaled.mean.y, scaled.mean.z]);
+            let tz = (CAMERA_DISTANCE - vz).max(0.25);
+            let cam_pos = Vector3::new(tx, ty, tz);
+            let jacobian = projection::compute_jacobian(&cam_pos, focal, focal);
+            let cov3d = scaled.compute_covariance();
+            let cov2d = projection::project_covariance(&cov3d, &view_matrix, &jacobian)
+                + Matrix2::from_diagonal_element(1e-4);
             let Some(inv_cov) = cov2d.try_inverse() else {
                 continue;
             };
-            projected.push(Gaussian2D {
-                mean: Point2::new(
-                    center + FOCAL_LENGTH_PX * t.x / t.z,
-                    center - FOCAL_LENGTH_PX * t.y / t.z,
-                ),
+            let mean2d = Point2::new(focal * tx / tz, focal * ty / tz);
+            out_rings.push((
+                covariance_ellipse_ring(mean2d, &cov2d),
+                splat_stroke_color(&scaled.color, scaled.opacity),
+            ));
+            out_centers.push([mean2d.x, mean2d.y]);
+            out_splats.push(Gaussian2D {
+                mean: mean2d,
                 conic: -0.5 * inv_cov,
-                opacity: g3d.opacity,
-                color: g3d.color,
-                depth: t.z,
+                opacity: scaled.opacity,
+                color: scaled.color,
+                depth: tz,
             });
         }
-        projected.sort_by(|a, b| a.depth.total_cmp(&b.depth));
-        projected
-    }
 
-    pub fn render_splat_image(&self) -> egui::ColorImage {
-        let splats = self.project_scene();
-        let bg = egui::Visuals::dark().extreme_bg_color;
-        let mut pixels = vec![bg; SPLAT_GRID_SIZE * SPLAT_GRID_SIZE];
-        let bg_r = f64::from(bg.r());
-        let bg_g = f64::from(bg.g());
-        let bg_b = f64::from(bg.b());
-
-        for (row_idx, row) in pixels.as_chunks_mut::<SPLAT_GRID_SIZE>().0.iter_mut().enumerate() {
-            let py = row_idx as f64 + 0.5;
-            for (col_idx, px) in row.iter_mut().enumerate() {
-                let pt = Point2::new(col_idx as f64 + 0.5, py);
-                let c = blend_gaussians(&splats, &pt);
-                let r = (c.x.clamp(0.0, 1.0) * (255.0 - bg_r) + bg_r).round() as u8;
-                let g = (c.y.clamp(0.0, 1.0) * (255.0 - bg_g) + bg_g).round() as u8;
-                let b = (c.z.clamp(0.0, 1.0) * (255.0 - bg_b) + bg_b).round() as u8;
-                *px = egui::Color32::from_rgb(r, g, b);
-            }
-        }
-        egui::ColorImage::new([SPLAT_GRID_SIZE, SPLAT_GRID_SIZE], pixels)
-    }
-
-    fn ensure_cached_texture(&mut self, ctx: &egui::Context) {
-        let bits = self.scale.to_bits();
-        if self.texture.is_none() || self.cached_scale_bits != Some(bits) {
-            let image = self.render_splat_image();
-            self.texture = Some(ctx.load_texture(
-                "gaussian_splatting_raster",
-                image,
-                egui::TextureOptions::LINEAR,
-            ));
-            self.cached_counts = Self::compute_density_counts_for_scale(self.scale);
-            self.cached_scale_bits = Some(bits);
-        }
+        out_splats.sort_unstable_by(|a, b| a.depth.total_cmp(&b.depth));
     }
 
     fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id =
-            crate::framework::scoped_panel_id(parent_ui, "gaussian_splatting_controls");
-        crate::framework::PaneSidePanel::right(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Controls");
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "gaussian_splatting_controls");
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+            ui.heading("Gaussian Splatting");
             ui.separator();
+            let prev_scale = self.scale;
             if ui
                 .add(egui::Slider::new(&mut self.scale, 0.1..=10.0).text("Scale"))
                 .changed()
             {
+                self.scale = if self.scale.is_finite() {
+                    self.scale.clamp(0.1, 10.0)
+                } else {
+                    prev_scale
+                };
                 self.cached_counts = Self::compute_density_counts_for_scale(self.scale);
             }
 
             ui.separator();
+            egui::CollapsingHeader::new("View")
+                .default_open(true)
+                .show(ui, |ui| self.camera.ui(ui));
+
+            ui.separator();
             ui.heading("Adaptive Density Control");
-            ui.label(format!("Split (large grad & scale): {}", self.cached_counts.split));
-            ui.label(format!("Clone (large grad, small scale): {}", self.cached_counts.clone));
+            ui.label(format!(
+                "Split (large grad & scale): {}",
+                self.cached_counts.split
+            ));
+            ui.label(format!(
+                "Clone (large grad, small scale): {}",
+                self.cached_counts.clone
+            ));
             ui.label(format!("Keep (converged): {}", self.cached_counts.keep));
-            ui.label(format!("Prune (opacity < {:.2}): {}", OPACITY_THRESHOLD, self.cached_counts.prune));
+            ui.label(format!(
+                "Prune (opacity < {OPACITY_THRESHOLD:.2}): {}",
+                self.cached_counts.prune
+            ));
             ui.separator();
             ui.small(format!(
                 "Raster grid: {SPLAT_GRID_SIZE}×{SPLAT_GRID_SIZE} px ({} Gaussians)",
-                CANONICAL_SCENE.len()
+                self.scene.gaussians.len()
             ));
+        });
+    }
+
+    fn draw_viewport(&mut self, parent_ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
+            self.refresh_projection_and_raster(ui.ctx());
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            let origin = self.camera.project(&[0.0, 0.0, 0.0]);
+            let axes = [
+                (self.camera.project(&[1.4, 0.0, 0.0]), palette.axis_x, "X Axis"),
+                (self.camera.project(&[0.0, 1.4, 0.0]), palette.axis_y, "Y Axis"),
+                (self.camera.project(&[0.0, 0.0, 1.4]), palette.axis_z, "Z Axis"),
+            ];
+            let tex_id = self.texture.as_ref().map(egui::TextureHandle::id);
+            let extent_size = (2.0 * VIEWPORT_HALF_EXTENT) as f32;
+            let mut camera = self.camera;
+
+            let response = Plot3DViewport::new("gaussian_splatting_plot", VIEWPORT_HALF_EXTENT)
+                .show(ui, &mut camera, |plot_ui| {
+                    if let Some(tid) = tex_id {
+                        plot_ui.image(PlotImage::new(
+                            "Radiance Field",
+                            tid,
+                            PlotPoint::new(0.0, 0.0),
+                            egui::vec2(extent_size, extent_size),
+                        ));
+                    }
+                    for (end, color, label) in axes {
+                        plot_ui.line(
+                            Line::new(label, PlotPoints::new(vec![origin, end]))
+                                .color(color)
+                                .width(1.5_f32),
+                        );
+                    }
+                    for (idx, (ring, color)) in self.ellipse_rings.iter().enumerate() {
+                        plot_ui.line(
+                            Line::new(
+                                format!("Splat {idx} (1.5σ)"),
+                                PlotPoints::new(ring.to_vec()),
+                            )
+                            .color(*color)
+                            .width(1.25_f32),
+                        );
+                    }
+                    plot_ui.points(
+                        Points::new("Splat Means", self.splat_centers.clone())
+                            .radius(3.0_f32)
+                            .color(palette.accent),
+                    );
+                })
+                .response;
+
+            self.camera = camera;
+            response.accessible_theory_hover(self);
         });
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize)]
+struct GaussianSplattingSaveState {
+    scale: f64,
+    camera: Camera3D,
+}
+
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GaussianSplattingState {
     scale: f64,
+    #[serde(default)]
+    camera: Option<Camera3D>,
+    #[serde(default)]
+    pitch: Option<f32>,
+    #[serde(default)]
+    yaw: Option<f32>,
+    #[serde(default)]
+    zoom: Option<f32>,
 }
 
 impl InteractiveTool for GaussianSplattingTool {
@@ -284,43 +313,76 @@ impl InteractiveTool for GaussianSplattingTool {
         "ai"
     }
 
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.scale.to_bits().hash(&mut h);
+        self.camera.pitch.to_bits().hash(&mut h);
+        self.camera.yaw.to_bits().hash(&mut h);
+        self.camera.zoom.to_bits().hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.scale.is_finite() && (0.1..=10.0).contains(&self.scale) && self.camera.is_valid()
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        self.scale = if self.scale.is_finite() {
+            self.scale.clamp(0.1, 10.0)
+        } else {
+            1.0
+        };
+        if !self.camera.is_valid() {
+            self.camera.reset();
+        }
+        self.cached_counts = Self::compute_density_counts_for_scale(self.scale);
+        self.cached_key = None;
+        true
+    }
+
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&GaussianSplattingState { scale: self.scale }).ok()
+        serde_json::to_string(&GaussianSplattingSaveState {
+            scale: self.scale,
+            camera: self.camera,
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let parsed: GaussianSplattingState =
             serde_json::from_str(state).map_err(|e| format!("Invalid splatting state: {e}"))?;
         if !parsed.scale.is_finite() || !(0.1..=10.0).contains(&parsed.scale) {
             return Err("Gaussian splat scale must be finite within [0.1, 10.0]".into());
         }
+        let camera = Camera3D::from_preset_fields(
+            parsed.camera,
+            parsed.pitch,
+            parsed.yaw,
+            parsed.zoom,
+            Some(Camera3D::default()),
+        )?;
         self.scale = parsed.scale;
+        self.camera.apply_pose(camera);
         self.cached_counts = Self::compute_density_counts_for_scale(self.scale);
-        self.cached_scale_bits = None;
+        self.cached_key = None;
         Ok(())
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
-        let ctx = parent_ui.ctx().clone();
         self.draw_side_panel(parent_ui);
-        self.ensure_cached_texture(&ctx);
+        self.draw_viewport(parent_ui);
+    }
 
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            ui.heading("3D Gaussian Splatting Visualization");
-            if let Some(texture) = &self.texture {
-                let avail = ui.available_size();
-                let side = avail.x.min(avail.y).clamp(96.0, 420.0);
-                let alt_text = self.phonetic_description();
-                let response = ui
-                    .add(
-                        egui::Image::new((texture.id(), egui::vec2(side, side)))
-                            .alt_text(alt_text)
-                            .sense(egui::Sense::focusable_noninteractive()),
-                    )
-                    .accessible_theory_hover(self);
-                crate::accessibility::paint_canvas_focus_ring(ui, &response);
-            }
-        });
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
@@ -355,7 +417,7 @@ inventory::submit! {
         id: "Gaussian Splatting",
         display_name: "Gaussian Splatting",
         domain: "ai",
-        tags: &["ai", "graphics"],
+        tags: &["ai", "graphics", "3d"],
         build: || Box::new(GaussianSplattingTool::default()),
     }
 }
@@ -368,7 +430,12 @@ const STARTER_PRESET_JSON: &str = r#"{
     "timestamp": "2026-11-16T00:00:00Z"
   },
   "config": {
-    "scale": 1.5
+    "scale": 1.5,
+    "camera": {
+      "pitch": 0.45,
+      "yaw": 0.65,
+      "zoom": 1.15
+    }
   }
 }"#;
 
@@ -376,7 +443,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "gaussian_splatting_starter",
         title: "Gaussian Splatting",
-        description: "3D Gaussian radiance field scale parameter control and theoretical model overview.",
+        description: "Interactive 3D Gaussian radiance field splatting with EWA covariance projection and alpha blending.",
         category: "Neural Rendering",
         icon: "🎨",
         domain: "ai",
@@ -385,31 +452,8 @@ inventory::submit! {
     }
 }
 
+// [cite:gaussian_splatting]
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_gaussian_splatting_image_and_density_respond_to_scale() {
-        let small = GaussianSplattingTool {
-            scale: 0.3,
-            ..Default::default()
-        };
-        let large = GaussianSplattingTool {
-            scale: 2.5,
-            ..Default::default()
-        };
-
-        let img_small = small.render_splat_image();
-        let img_large = large.render_splat_image();
-        assert_eq!(img_small.size, [SPLAT_GRID_SIZE, SPLAT_GRID_SIZE]);
-        assert_ne!(img_small.pixels, img_large.pixels);
-
-        let counts_small = GaussianSplattingTool::compute_density_counts_for_scale(0.3);
-        let counts_large = GaussianSplattingTool::compute_density_counts_for_scale(2.5);
-        assert!(counts_small.clone > counts_large.clone);
-        assert!(counts_large.split > counts_small.split);
-        assert_eq!(counts_small.prune, 1);
-        assert_eq!(counts_small.keep, 3);
-    }
-}
+#[path = "gaussian_splatting_tests.rs"]
+mod tests;

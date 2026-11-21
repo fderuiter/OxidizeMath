@@ -237,7 +237,7 @@ impl InteractiveTool for SpinVisualizer {
             loaded.pitch,
             loaded.yaw,
             loaded.zoom,
-            None,
+            Some(Camera3D::default()),
         )?;
         self.b_field = loaded.b_field;
         self.paused = loaded.paused;
