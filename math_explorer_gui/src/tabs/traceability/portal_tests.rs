@@ -186,10 +186,7 @@ fn test_ci_pages_workflow_verifies_all_28_paper_pdfs_and_sw_shell_scope() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
     let ci_yaml = std::fs::read_to_string(
-        ws_root
-            .join(".github")
-            .join("workflows")
-            .join("ci.yml"),
+        ws_root.join(".github").join("workflows").join("ci.yml"),
     )
     .expect("read ci.yml");
 

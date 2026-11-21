@@ -229,6 +229,10 @@ fn test_join_relative_segments_normalizes_separators_on_canonical_root() {
         ws_root.join(".github").join("workflows").join("ci.yml")
     );
     assert!(joined.is_file());
+    assert!(joined.canonicalize().is_ok());
+    let mixed_path =
+        TraceabilityTab::join_relative_segments(&ws_root, "./crates\\oxidize_core/src/lib.rs");
+    assert!(mixed_path.canonicalize().is_ok());
     assert_eq!(TraceabilityTab::join_relative_segments(&ws_root, "./"), ws_root);
 
     let mut tab = TraceabilityTab::default();

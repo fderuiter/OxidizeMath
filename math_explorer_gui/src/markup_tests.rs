@@ -314,4 +314,29 @@ mod tests {
             "Trunk.toml must not enable +atomics on stable Rust"
         );
     }
+
+    #[test]
+    fn test_reload_and_startup_scripts_preserve_url_hash_and_search() {
+        const RELOAD_JS: &str = include_str!("../reload.js");
+        const INITIALIZER_JS: &str = include_str!("../initializer.js");
+        const SW_JS: &str = include_str!("../sw.js");
+
+        assert!(
+            RELOAD_JS.contains("window.location.reload()"),
+            "reload.js must reload in-place so shared #tab=... hashes survive recovery reloads"
+        );
+        for script in [RELOAD_JS, BOOTSTRAP_JS, INITIALIZER_JS, SW_JS] {
+            for forbidden in [
+                "location.hash =",
+                "location.href =",
+                "location.assign(",
+                "location.replace(",
+            ] {
+                assert!(
+                    !script.contains(forbidden),
+                    "Startup script must not overwrite shared URL fragment via '{forbidden}'"
+                );
+            }
+        }
+    }
 }

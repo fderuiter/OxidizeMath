@@ -26,9 +26,17 @@ fn build_file_menu() -> Submenu {
         true,
         None,
     );
+    let share_link_item = MenuItem::with_id(
+        MenuId::new("file_share_link"),
+        "Copy Share Link",
+        true,
+        None,
+    );
     file_menu.append(&open_item).unwrap();
     file_menu.append(&save_item).unwrap();
     file_menu.append(&save_as_item).unwrap();
+    file_menu.append(&PredefinedMenuItem::separator()).unwrap();
+    file_menu.append(&share_link_item).unwrap();
     file_menu
 }
 
@@ -210,8 +218,12 @@ fn build_help_menu() -> Submenu {
     help_menu
 }
 
+fn can_init_nsapp_menu() -> bool {
+    !cfg!(test) && std::thread::current().name() == Some("main")
+}
+
 pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
-    if cfg!(test) || std::thread::current().name() != Some("main") {
+    if !can_init_nsapp_menu() {
         return;
     }
 
@@ -231,7 +243,7 @@ pub(super) fn setup_macos_menu(app: &MathExplorerApp) {
     menu.init_for_nsapp();
 }
 
-fn handle_file_event(app: &mut MathExplorerApp, id: &str) -> bool {
+fn handle_file_event(app: &mut MathExplorerApp, ctx: &egui::Context, id: &str) -> bool {
     match id {
         "file_open" => {
             app.session_manager.trigger_open();
@@ -249,6 +261,10 @@ fn handle_file_event(app: &mut MathExplorerApp, id: &str) -> bool {
             let state = app.get_app_state();
             let env_json = app.session_manager.create_envelope(state);
             app.session_manager.trigger_save_as(env_json);
+            true
+        }
+        "file_share_link" => {
+            app.copy_current_share_link(ctx);
             true
         }
         _ => false,
@@ -315,7 +331,7 @@ fn handle_palette_theme_event(app: &mut MathExplorerApp, ctx: &egui::Context, id
 pub(super) fn handle_macos_menu_events(app: &mut MathExplorerApp, ctx: &egui::Context) {
     if let Ok(event) = muda::MenuEvent::receiver().try_recv() {
         let id = event.id.0.as_str();
-        if handle_file_event(app, id)
+        if handle_file_event(app, ctx, id)
             || handle_view_layout_event(app, id)
             || handle_focus_pane_event(app, ctx, id)
             || handle_palette_theme_event(app, ctx, id)
@@ -408,5 +424,19 @@ mod tests {
             assert_eq!(app.selected_tab, initial_primary);
             assert_eq!(app.secondary_tab, initial_secondary);
         }
+    }
+
+    #[test]
+    fn test_setup_macos_menu_and_share_link_event_safe_on_worker_threads() {
+        let _guard = crate::reflective_ui::tests::lock_test_mutex();
+        let _ = crate::url_state::take_last_copied_share_url();
+        let ctx = egui::Context::default();
+        let mut app = MathExplorerApp::default();
+
+        setup_macos_menu(&app);
+        assert!(handle_file_event(&mut app, &ctx, "file_share_link"));
+        let copied =
+            crate::url_state::take_last_copied_share_url().expect("macOS menu copied share link");
+        assert!(copied.starts_with("https://fderuiter.github.io/OxidizeMath/#tab="));
     }
 }
