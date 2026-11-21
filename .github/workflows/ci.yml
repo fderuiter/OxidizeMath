@@ -271,7 +271,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y brotli
-          cargo binstall --no-confirm trunk
+          cargo binstall --no-confirm trunk wasm-bindgen-cli@0.2.130
+
+      - name: Install Playwright Headless Chromium
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: |
+          python3 -m pip install --user playwright || python3 -m pip install --break-system-packages playwright
+          python3 -m playwright install --with-deps chromium
 
       - name: Build Web Application
         if: matrix.target == 'wasm32-unknown-unknown'
@@ -281,6 +287,10 @@ jobs:
       - name: Verify WebAssembly Size Budget
         if: matrix.target == 'wasm32-unknown-unknown'
         run: bash scripts/verify_wasm_budget.sh math_explorer_gui/dist
+
+      - name: Run WASM Unit Tests and Chromium Smoke Checks
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: cargo run -p xtask -- test-wasm --skip-build
 
       - name: Generate SHA-256 Manifest
         if: matrix.target == 'wasm32-unknown-unknown'

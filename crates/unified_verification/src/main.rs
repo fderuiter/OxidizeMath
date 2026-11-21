@@ -11,6 +11,7 @@ mod records;
 mod report;
 mod utils;
 mod vulnerabilities;
+mod wasm_coverage;
 mod whitelist;
 mod workflow_linter;
 use utils::{check_file_lengths, check_staged_duplicates};

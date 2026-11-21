@@ -23,9 +23,23 @@ These commands run automated checks in git hooks or CI.
 | `lint-workflows` | Validates CI workflow definitions. | Active |
 | `test-features` | Runs tests for various cargo features. | Active |
 | `test-policy-audit` | Audits workspace crates for unauthorized dead-code bypasses and unused dependencies. | Active |
+| `test-wasm` | Executes `wasm32-unknown-unknown` browser unit tests, builds `math_explorer_gui/dist` (unless `--skip-build` is passed), verifies the 3 MB bundle budget, and runs headless Chromium CSP & fault-injection smoke checks (`--screenshot-dir <dir>` supported). | Active |
 | `traceability` | Generates and checks the traceability report. | Active |
 | `verify-records` | Verifies architectural decision records (`--staged` supported). | Active |
 | `verify-suite` | Runs the high-integrity verification suite. | Active |
+
+### WebAssembly & Browser Smoke Prerequisites (`test-wasm`)
+
+Running `cargo run -p xtask -- test-wasm` locally requires the `wasm32-unknown-unknown` Rust target, `trunk`, `wasm-bindgen-cli` (matching the workspace `wasm-bindgen` version), `brotli`, and Python `playwright` with headless Chromium installed:
+
+```bash
+rustup target add wasm32-unknown-unknown
+sudo apt-get install -y brotli
+cargo binstall --no-confirm trunk wasm-bindgen-cli@0.2.130
+python3 -m pip install --user playwright
+python3 -m playwright install --with-deps chromium
+cargo run -p xtask -- test-wasm
+```
 
 ### Legacy Utility Tasks
 These commands are used for manual repository maintenance or legacy workflows.

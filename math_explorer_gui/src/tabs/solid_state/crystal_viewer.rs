@@ -156,8 +156,13 @@ impl InteractiveTool for CrystalViewer {
                 z
             }
         });
-        let camera =
-            Camera3D::from_preset_fields(s.camera, s.pitch, s.yaw, normalized_zoom, None)?;
+        let camera = Camera3D::from_preset_fields(
+            s.camera,
+            s.pitch,
+            s.yaw,
+            normalized_zoom,
+            Some(Camera3D::default()),
+        )?;
         self.system = s.system;
         self.lattice_constant = s.lattice_constant;
         self.camera.apply_pose(camera);
@@ -194,9 +199,9 @@ impl InteractiveTool for CrystalViewer {
             ui.add(egui::Slider::new(&mut self.lattice_constant, 0.5..=5.0).text("Lattice Constant (a)"));
 
             ui.separator();
-            ui.collapsing("View", |ui| {
-                self.camera.ui(ui);
-            });
+            egui::CollapsingHeader::new("View")
+                .default_open(true)
+                .show(ui, |ui| self.camera.ui(ui));
         });
 
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {

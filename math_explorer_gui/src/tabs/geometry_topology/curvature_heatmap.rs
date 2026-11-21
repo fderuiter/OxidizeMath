@@ -243,7 +243,7 @@ impl InteractiveTool for CurvatureHeatmap {
             loaded.pitch,
             loaded.yaw,
             loaded.zoom,
-            None,
+            Some(Camera3D::default()),
         )?;
         self.surface_type = loaded.surface_type;
         self.curvature_type = loaded.curvature_type;
@@ -302,9 +302,9 @@ impl InteractiveTool for CurvatureHeatmap {
                 }
             });
 
-            ui.collapsing("View", |ui| {
-                self.camera.ui(ui);
-            });
+            egui::CollapsingHeader::new("View")
+                .default_open(true)
+                .show(ui, |ui| self.camera.ui(ui));
 
             ui.collapsing("Resolution", |ui| {
                 ui.add(egui::Slider::new(&mut self.u_resolution, 10..=math_commons::registry::MAX_GRID_SIZE).text("Grid Size U"));

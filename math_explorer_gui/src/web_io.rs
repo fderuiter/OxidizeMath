@@ -415,3 +415,7 @@ mod tests {
         assert!(rx.try_recv().is_ok());
     }
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "web_io_wasm_tests.rs"]
+mod wasm_tests;

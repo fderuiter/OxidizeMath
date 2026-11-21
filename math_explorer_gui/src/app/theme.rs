@@ -485,3 +485,7 @@ mod tests {
         assert_eq!(ctx.style().visuals, ThemeMode::HighContrast.visuals());
     }
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "theme_wasm_tests.rs"]
+mod wasm_tests;
