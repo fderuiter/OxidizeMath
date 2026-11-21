@@ -274,11 +274,13 @@ fn is_ignored_dir(entry: &walkdir::DirEntry) -> bool {
     false
 }
 
-fn scan_rust_file(path: &Path, scanner: &SecretScanner, violations: &mut Vec<String>) {
-    let Ok(content) = fs::read_to_string(path) else {
-        return;
-    };
-    let Ok(ast) = syn::parse_file(&content) else {
+fn scan_rust_file(
+    path: &Path,
+    scanner: &SecretScanner,
+    violations: &mut Vec<String>,
+    cache: &mut oxidize_core::traceability::AstCache,
+) {
+    let Some(ast) = cache.get_or_load_fs(path).and_then(|e| e.ast.as_ref()) else {
         return;
     };
     let mut visitor = SecurityVisitor {
@@ -287,7 +289,7 @@ fn scan_rust_file(path: &Path, scanner: &SecretScanner, violations: &mut Vec<Str
         secret_warnings: Vec::new(),
         scanner,
     };
-    visitor.visit_file(&ast);
+    visitor.visit_file(ast);
 
     for (name, line_num) in visitor.entropy_violations {
         let msg = format!(
@@ -331,10 +333,21 @@ fn scan_text_file(path: &Path, scanner: &SecretScanner, violations: &mut Vec<Str
     }
 }
 
+#[cfg(test)]
 pub fn scan_paths_internal(
     scan_targets: &[String],
     target_extensions: &[String],
     allowlist: &[String],
+) -> Vec<String> {
+    let mut cache = oxidize_core::traceability::AstCache::new();
+    scan_paths_internal_with_cache(scan_targets, target_extensions, allowlist, &mut cache)
+}
+
+pub fn scan_paths_internal_with_cache(
+    scan_targets: &[String],
+    target_extensions: &[String],
+    allowlist: &[String],
+    cache: &mut oxidize_core::traceability::AstCache,
 ) -> Vec<String> {
     let mut all_violations = Vec::new();
     let scanner = SecretScanner::new();
@@ -383,7 +396,7 @@ pub fn scan_paths_internal(
             }
 
             if ext.eq_ignore_ascii_case("rs") {
-                scan_rust_file(entry.path(), &scanner, &mut all_violations);
+                scan_rust_file(entry.path(), &scanner, &mut all_violations, cache);
             } else {
                 scan_text_file(entry.path(), &scanner, &mut all_violations);
             }
@@ -394,6 +407,14 @@ pub fn scan_paths_internal(
 }
 
 pub fn check_entropy(members: &[String]) -> Vec<String> {
+    let mut cache = oxidize_core::traceability::AstCache::new();
+    check_entropy_with_cache(members, &mut cache)
+}
+
+pub fn check_entropy_with_cache(
+    members: &[String],
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> Vec<String> {
     println!("Running Entropy Guard and Secrets Scanner...");
     let config = match load_whitelist_config(None) {
         Ok(cfg) => cfg,
@@ -426,7 +447,7 @@ pub fn check_entropy(members: &[String]) -> Vec<String> {
         });
 
     let allowlist: Vec<String> = config.allowlist.unwrap_or_default();
-    scan_paths_internal(&scan_targets, &target_extensions, &allowlist)
+    scan_paths_internal_with_cache(&scan_targets, &target_extensions, &allowlist, cache)
 }
 
 #[cfg(test)]

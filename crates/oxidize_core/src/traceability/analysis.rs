@@ -93,6 +93,23 @@ pub(super) fn finalize_report_orphans(report: &mut TraceabilityReport) {
     report.invalid_links.dedup();
 }
 
+pub(super) fn collect_valid_citations(
+    file: &str,
+    citations: Vec<String>,
+    registered_modules: &HashSet<String>,
+    report: &mut TraceabilityReport,
+) -> Vec<String> {
+    let mut final_citations = Vec::new();
+    for cite in citations {
+        if registered_modules.contains(&cite) {
+            final_citations.push(cite);
+        } else {
+            report.invalid_links.push((file.to_string(), cite));
+        }
+    }
+    final_citations
+}
+
 pub(super) fn fix_and_collect_citations(
     file: &str,
     content: &mut String,
@@ -148,20 +165,20 @@ fn find_best_autofix_key(
     best_key
 }
 
-pub(super) fn analyze_file_ast(
+pub(super) fn analyze_parsed_ast(
     file: &str,
-    content: &str,
+    ast: Option<&syn::File>,
     is_module: bool,
     final_citations: &[String],
     registered_modules: &HashSet<String>,
     report: &mut TraceabilityReport,
 ) {
-    let Ok(ast) = syn::parse_file(content) else {
+    let Some(ast) = ast else {
         return;
     };
     let mut visitor = crate::ast_visitor::AstVisitor::new();
     visitor.verified_modules.extend(final_citations.to_vec());
-    syn::visit::Visit::visit_file(&mut visitor, &ast);
+    syn::visit::Visit::visit_file(&mut visitor, ast);
 
     report.total_funcs += visitor.total_funcs;
     report.total_asserts += visitor.total_asserts;

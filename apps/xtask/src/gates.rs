@@ -69,11 +69,11 @@ pub fn run_cmd_with_env(cmd: &str, args: &[&str], envs: &[(&str, &str)]) {
     }
 }
 
-fn unified_verification_bin() -> PathBuf {
+pub(crate) fn unified_verification_bin() -> PathBuf {
     let target_dir = std::env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("target"));
-    let mut bin = target_dir.join("release").join("unified_verification");
+    let mut bin = target_dir.join("debug").join("unified_verification");
     if !std::env::consts::EXE_EXTENSION.is_empty() {
         bin.set_extension(std::env::consts::EXE_EXTENSION);
     }
@@ -82,32 +82,55 @@ fn unified_verification_bin() -> PathBuf {
 
 fn ensure_verification_built() -> PathBuf {
     if !VERIFICATION_BUILT.swap(true, Ordering::SeqCst) {
-        run_cmd(
-            "cargo",
-            &["build", "-p", "unified_verification", "--release", "-q"],
-        );
+        run_cmd("cargo", &["build", "-p", "unified_verification", "-q"]);
     }
     unified_verification_bin()
 }
 
-pub fn run_verification_with_args(subcmd: &str, extra_args: &[&str]) {
+pub fn run_verification_with_env(subcmd: &str, extra_args: &[&str], envs: &[(&str, &str)]) {
     let bin = ensure_verification_built();
     let bin_str = bin.to_string_lossy();
     let mut args = Vec::with_capacity(1 + extra_args.len());
     args.push(subcmd);
     args.extend_from_slice(extra_args);
-    run_cmd(&bin_str, &args);
+    run_cmd_with_env(&bin_str, &args, envs);
+}
+
+pub fn run_verification_with_args(subcmd: &str, extra_args: &[&str]) {
+    run_verification_with_env(subcmd, extra_args, &[]);
 }
 
 pub fn run_verification(subcmd: &str) {
     run_verification_with_args(subcmd, &[]);
 }
 
+fn git_trim_stdout(args: &[&str]) -> Option<String> {
+    Command::new("git")
+        .args(args)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn branch_records_base_sha() -> Option<String> {
+    if std::env::var_os("BASE_SHA").is_some() {
+        return None;
+    }
+    if git_trim_stdout(&["diff", "--cached", "--name-only"]).is_some() {
+        return None;
+    }
+    let head = git_trim_stdout(&["rev-parse", "HEAD"])?;
+    let merge_base = git_trim_stdout(&["merge-base", "HEAD", "main"])?;
+    (merge_base != head).then_some(merge_base)
+}
+
 fn run_clippy_lints() {
-    println!("\n--- Step 7a: Clippy Lints (Host) ---");
+    println!("\n--- Step 3a: Clippy Lints (Host) ---");
     run_cmd("cargo", HOST_CLIPPY_ARGS);
 
-    println!("\n--- Step 7b: Clippy Lints (WebAssembly) ---");
+    println!("\n--- Step 3b: Clippy Lints (WebAssembly) ---");
     run_cmd("cargo", WASM_CLIPPY_ARGS);
 }
 
@@ -115,54 +138,35 @@ fn run_fast_preflight_gates() {
     println!("\n--- Step 1: Format Check ---");
     run_cmd("cargo", &["fmt", "--all", "--", "--check"]);
 
-    println!("\n--- Step 2: Cargo Profile Verification ---");
-    check_profiles();
-
-    println!("\n--- Step 3: AST Code Clone Detection ---");
-    check_duplicates();
-
-    println!("\n--- Step 4: Public API Drift Check ---");
-    check_api_drift();
-
-    println!("\n--- Step 5: Staged Architectural Decision Records ---");
-    verify_records_staged();
-
-    println!("\n--- Step 6: File Length Checks ---");
-    check_file_lengths();
+    println!("\n--- Step 2: Batched Static & Single-Pass AST Verification ---");
+    if let Some(base_sha) = branch_records_base_sha() {
+        run_verification_with_env(
+            "batch-static",
+            &[],
+            &[("BASE_SHA", base_sha.as_str()), ("HEAD_SHA", "HEAD")],
+        );
+    } else {
+        run_verification("batch-static");
+    }
 }
 
 fn run_compile_and_doc_gates() {
-    println!("\n--- Step 7: Clippy Lints ---");
+    println!("\n--- Step 3: Clippy Lints ---");
     run_clippy_lints();
 
-    println!("\n--- Step 8: Cargo Doc Verification ---");
+    println!("\n--- Step 4: Cargo Doc Verification ---");
     check_cargo_docs();
 
-    println!("\n--- Step 9: Doc Tests ---");
+    println!("\n--- Step 5: Doc Tests ---");
     run_cmd("cargo", &["test", "--doc", "--workspace", "--all-features"]);
 
-    println!("\n--- Step 10: Markdown Documentation Links ---");
+    println!("\n--- Step 6: Markdown Documentation Links ---");
     check_markdown_links();
 }
 
 fn run_audit_gates() {
-    println!("\n--- Step 11: CI Workflow Linting ---");
-    lint_workflows();
-
-    println!("\n--- Step 12: Crate Documentation Audit ---");
-    check_docs();
-
-    println!("\n--- Step 13: Traceability Check ---");
-    traceability();
-
-    println!("\n--- Step 14: Entropy and Secret Scanning ---");
-    check_entropy();
-
-    println!("\n--- Step 15: Dependency Vulnerability Check ---");
+    println!("\n--- Step 7: Dependency Vulnerability Check ---");
     check_vulnerabilities();
-
-    println!("\n--- Step 16: Policy Audit ---");
-    test_policy_audit();
 }
 
 pub fn lint_all() {
@@ -183,11 +187,6 @@ pub fn verify_records(args: &[String]) {
     println!("=== Verify Records ===");
     let extra: Vec<&str> = args.iter().map(String::as_str).collect();
     run_verification_with_args("verify-records", &extra);
-}
-
-pub fn verify_records_staged() {
-    println!("=== Verify Staged Records ===");
-    run_verification_with_args("verify-records", &["--staged"]);
 }
 
 pub fn traceability() {

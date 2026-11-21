@@ -19,7 +19,8 @@ These commands run automated checks in git hooks or CI.
 | `check-profiles` | Verifies Cargo `[profile.release]` `overflow-checks = true` and rejects member overrides. | Active |
 | `check-staged-duplicates` | Checks for duplicated patterns in git staging (non-blocking legacy helper). | Active |
 | `check-vulnerabilities` | Scans workspace dependencies for known vulnerabilities. | Active |
-| `lint-all` | Runs formatting, profile, AST duplicate, API drift, staged ADR, file-length, clippy, doc, doctest, markdown-link, workflow, traceability, entropy, vulnerability, and policy audit checks. | Active |
+| `lint-all` | Runs the full PR verification suite (formatting, single-pass batched static & AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift, traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, markdown links, and OSV vulnerabilities). | Active |
+| `lint-staged` | Runs fast diff-scoped pre-commit checks on staged files (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged`, conditional `.github/` workflow linting, conditional `.md` link checks, and targeted host/`wasm32` Clippy. | Active |
 | `lint-workflows` | Validates CI workflow definitions. | Active |
 | `test-features` | Runs tests for various cargo features. | Active |
 | `test-policy-audit` | Audits workspace crates for unauthorized dead-code bypasses and unused dependencies. | Active |
@@ -48,4 +49,4 @@ These commands are used for manual repository maintenance or legacy workflows.
 |---|---|---|
 | `compile-papers` | Compiles academic papers using Tectonic. | Legacy |
 | `regenerate-baseline` | Regenerates the public API baseline. | Legacy |
-| `setup` | Configures version-controlled git hooks and runs initial checks. | Legacy |
+| `setup` | Installs `wasm32-unknown-unknown`, builds and tests the workspace, and configures version-controlled git hooks. | Legacy |

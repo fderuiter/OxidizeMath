@@ -1,8 +1,8 @@
 #![doc = include_str!("../README.md")]
 use std::env;
-use std::process::Command;
 mod api_drift;
 mod ast_visitor;
+mod batch;
 mod doc_audit;
 mod entropy_guard;
 mod policy_audit;
@@ -28,9 +28,13 @@ fn run_check_profiles_cli() {
     }
 }
 
-fn run_policy_audit_cli() {
-    let (_, members) = oxidize_core::workspace::get_workspace_members();
-    let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
+fn run_policy_audit_cli(args: &[String]) {
+    let targets = if args.is_empty() {
+        oxidize_core::workspace::get_workspace_members().1
+    } else {
+        args.to_vec()
+    };
+    let member_refs: Vec<&str> = targets.iter().map(String::as_str).collect();
     if !policy_audit::run_policy_audit(&member_refs) {
         std::process::exit(1);
     }
@@ -47,14 +51,24 @@ fn run_check_entropy_cli(args: &[String]) {
     }
 }
 
-fn run_check_file_lengths_cli() {
-    let (_, members) = oxidize_core::workspace::get_workspace_members();
-    let debt = check_file_lengths(&members);
+fn run_check_file_lengths_cli(args: &[String]) {
+    let targets = if args.is_empty() {
+        oxidize_core::workspace::get_workspace_members().1
+    } else {
+        args.to_vec()
+    };
+    let debt = check_file_lengths(&targets);
     let has_debt = !debt.is_empty();
     for d in debt {
         println!("{}", d);
     }
     if has_debt {
+        std::process::exit(1);
+    }
+}
+
+fn exit_if_failed(passed: bool) {
+    if !passed {
         std::process::exit(1);
     }
 }
@@ -66,44 +80,23 @@ fn main() {
         std::process::exit(1);
     }
     match args[1].as_str() {
-        "verify-records" => {
-            if !records::verify_records(&args[2..]) {
-                std::process::exit(1);
-            }
-        }
-        "traceability" => traceability(),
+        "verify-records" => exit_if_failed(records::verify_records(&args[2..])),
+        "traceability" => exit_if_failed(batch::run_traceability_in_process(&args[2..])),
+        "batch-ast" | "check-ast-batch" => exit_if_failed(batch::run_batch_ast()),
+        "batch-static" => exit_if_failed(batch::run_batch_static(&args[2..])),
+        "batch-staged" | "lint-staged" => exit_if_failed(batch::run_batch_staged()),
         "verify-suite" => verify_suite(&args[2..]),
         "regenerate-baseline" => api_drift::regenerate_baseline(),
-        "check-api-drift" => {
-            if !api_drift::check_api_drift() {
-                std::process::exit(1);
-            }
-        }
-        "check-duplicates" => {
-            if !ast_visitor::run_clone_detector() {
-                std::process::exit(1);
-            }
-        }
+        "check-api-drift" => exit_if_failed(api_drift::check_api_drift()),
+        "check-duplicates" => exit_if_failed(ast_visitor::run_clone_detector()),
         "check-profiles" => run_check_profiles_cli(),
         "check-staged-duplicates" => check_staged_duplicates(),
-        "test-policy-audit" => run_policy_audit_cli(),
+        "test-policy-audit" => run_policy_audit_cli(&args[2..]),
         "check-entropy" => run_check_entropy_cli(&args[2..]),
-        "check-vulnerabilities" => {
-            if !vulnerabilities::check_osv_vulnerabilities() {
-                std::process::exit(1);
-            }
-        }
-        "check-file-lengths" => run_check_file_lengths_cli(),
-        "lint-workflows" => {
-            if !workflow_linter::lint_workflows() {
-                std::process::exit(1);
-            }
-        }
-        "check-docs" => {
-            if !doc_audit::run_doc_audit(&args[2..]) {
-                std::process::exit(1);
-            }
-        }
+        "check-vulnerabilities" => exit_if_failed(vulnerabilities::check_osv_vulnerabilities()),
+        "check-file-lengths" => run_check_file_lengths_cli(&args[2..]),
+        "lint-workflows" => exit_if_failed(workflow_linter::lint_workflows()),
+        "check-docs" => exit_if_failed(doc_audit::run_doc_audit(&args[2..])),
         _ => {
             eprintln!("Unknown command: {}", args[1]);
             std::process::exit(1);
@@ -111,21 +104,11 @@ fn main() {
     }
 }
 
-fn traceability() {
-    println!("=== Traceability Report ===");
-    println!("Delegating to unified Rust Traceability Engine...");
-
-    let status = Command::new("cargo")
-        .args(["run", "--bin", "traceability_cli"])
-        .status()
-        .expect("Failed to run traceability_cli");
-
-    if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
-    }
-}
-
-fn run_security_checks(member_refs: &[&str], auto_fix: bool) -> Vec<String> {
+fn run_security_checks(
+    member_refs: &[&str],
+    auto_fix: bool,
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> Vec<String> {
     println!("Running security checks...");
     let mut passed_security = true;
 
@@ -138,13 +121,13 @@ fn run_security_checks(member_refs: &[&str], auto_fix: bool) -> Vec<String> {
     if !ast_visitor::run_ast_visitor() {
         passed_security = false;
     }
-    if !ast_visitor::run_clone_detector() {
+    if !ast_visitor::run_clone_detector_with_cache(cache) {
         passed_security = false;
     }
-    if !policy_audit::run_policy_audit(member_refs) {
+    if !policy_audit::run_policy_audit_with_cache(member_refs, cache) {
         passed_security = false;
     }
-    let entropy_debt = entropy_guard::check_entropy(&[]);
+    let entropy_debt = entropy_guard::check_entropy_with_cache(&[], cache);
     if !entropy_debt.is_empty() {
         passed_security = false;
     }
@@ -197,13 +180,14 @@ fn verify_suite(args: &[String]) {
 
     let (_, members) = oxidize_core::workspace::get_workspace_members();
     let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
-    let entropy_debt = run_security_checks(&member_refs, auto_fix);
+    let mut cache = oxidize_core::traceability::AstCache::new();
+    let entropy_debt = run_security_checks(&member_refs, auto_fix, &mut cache);
 
     println!("Running ADR and API drift checks...");
     if !records::verify_records(&[]) {
         std::process::exit(1);
     }
-    if !api_drift::check_api_drift() {
+    if !api_drift::check_api_drift_with_cache(&mut cache) {
         std::process::exit(1);
     }
 

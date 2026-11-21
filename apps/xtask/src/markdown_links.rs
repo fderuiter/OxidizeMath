@@ -6,13 +6,19 @@ pub(crate) fn check_markdown_links() {
     println!("=== Checking Markdown Documentation Links ===");
     let mut md_files = Vec::new();
     collect_md_files(Path::new("."), &mut md_files);
+    check_markdown_links_for_files(&md_files);
+}
+
+pub(crate) fn check_markdown_links_for_files(md_files: &[PathBuf]) {
+    if md_files.is_empty() {
+        return;
+    }
 
     let mut broken = Vec::new();
-    for file in &md_files {
+    for file in md_files {
         if let Ok(content) = fs::read_to_string(file) {
             let parent = file.parent().unwrap_or(Path::new("."));
-            let links = extract_md_links(&content);
-            for link in links {
+            for link in extract_md_links(&content) {
                 let target = link.split_whitespace().next().unwrap_or(&link);
                 if target.starts_with("http://")
                     || target.starts_with("https://")
