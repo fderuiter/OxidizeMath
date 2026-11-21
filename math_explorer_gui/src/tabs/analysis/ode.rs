@@ -436,7 +436,7 @@ impl InteractiveTool for OdeSolverTool {
         let sweeps_before =
             crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx());
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "ode_controls");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             changed |= self.render_sidebar_controls(ui, &plot_points_y, &plot_points_v);
         });
         let sweep_active =

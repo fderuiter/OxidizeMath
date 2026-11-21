@@ -153,7 +153,7 @@ impl IsingModelTool {
 
     fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "ising_controls");
-        egui::SidePanel::left(panel_id)
+        crate::framework::PaneSidePanel::left(panel_id)
             .resizable(false)
             .default_width(220.0)
             .show_inside(parent_ui, |ui| {

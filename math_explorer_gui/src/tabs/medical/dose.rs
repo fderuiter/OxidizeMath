@@ -90,7 +90,7 @@ impl InteractiveTool for DoseCalculationTool {
         let mut changed = false;
 
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "dose_controls");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Dose Parameters");
             ui.separator();
 

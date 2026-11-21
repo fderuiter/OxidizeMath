@@ -286,7 +286,7 @@ impl PotentialFlowTool {
 
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "potential_flow_controls");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Potential Flow Controls");
             ui.separator();
             self.draw_add_element_controls(ui);

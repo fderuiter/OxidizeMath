@@ -86,18 +86,23 @@ impl InteractiveTool for FactorizationTool {
                 ui.label("Number:");
                 let response =
                     ui.add(egui::TextEdit::singleline(&mut self.input_text).hint_text("e.g. 42"));
-                let enter_shortcut_triggered =
-                    egui_plot::commands::CommandRegistryData::register_and_check(
+                egui_plot::commands::CommandRegistryData::register(
+                    ui.ctx(),
+                    "Analyze Factorization",
+                    "Analyze the number for primality and calculate its prime factors",
+                    egui_plot::commands::CommandTrigger::Key(egui::Key::Enter),
+                    false,
+                    "Factorization Tool",
+                );
+                let enter_pressed =
+                    response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if enter_pressed {
+                    egui_plot::emit_plot_live_message(
                         ui.ctx(),
-                        "Analyze Factorization",
-                        "Analyze the number for primality and calculate its prime factors",
-                        egui_plot::commands::CommandTrigger::Key(egui::Key::Enter),
+                        "Action executed: Analyze Factorization".to_string(),
                         false,
-                        "Factorization Tool",
-                        Some(ui),
-                        None,
                     );
-                let enter_pressed = response.lost_focus() && enter_shortcut_triggered;
+                }
 
                 if ui
                     .button("▶ Analyze")

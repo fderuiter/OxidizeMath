@@ -102,7 +102,7 @@ impl FavoritismTool {
 
     fn render_family_list_panel(&mut self, ui: &mut egui::Ui) {
         let left_id = crate::framework::scoped_panel_id(ui, "favoritism_left_panel");
-        egui::SidePanel::left(left_id).show_inside(ui, |ui| {
+        crate::framework::PaneSidePanel::left(left_id).show_inside(ui, |ui| {
             ui.heading("Family Members");
             ui.separator();
 
@@ -166,7 +166,7 @@ impl FavoritismTool {
 
     fn render_leaderboard_panel(&self, ui: &mut egui::Ui) {
         let right_id = crate::framework::scoped_panel_id(ui, "favoritism_right_panel");
-        egui::SidePanel::right(right_id)
+        crate::framework::PaneSidePanel::right(right_id)
             .min_width(300.0)
             .show_inside(ui, |ui| {
                 ui.heading("Leaderboard");

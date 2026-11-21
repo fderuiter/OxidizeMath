@@ -129,16 +129,21 @@ fn test_quad_grid_and_single_layouts_do_not_expose_split_sash() {
             steps.is_none(),
             "Layout {layout:?} must not allocate a dual-pane split sash"
         );
-        let has_splitter = out
+        let splitter_count = out
             .platform_output
             .accesskit_update
             .as_ref()
-            .is_some_and(|ak| {
+            .map_or(0, |ak| {
                 ak.nodes
                     .iter()
-                    .any(|(_, n)| n.role() == egui::accesskit::Role::Splitter)
+                    .filter(|(_, n)| n.role() == egui::accesskit::Role::Splitter)
+                    .count()
             });
-        assert!(!has_splitter);
+        match layout {
+            ViewportLayout::Single => assert_eq!(splitter_count, 0),
+            ViewportLayout::QuadGrid => assert_eq!(splitter_count, 2),
+            _ => unreachable!(),
+        }
     }
 }
 

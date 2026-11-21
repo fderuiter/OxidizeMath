@@ -132,14 +132,27 @@ pub trait ExplorerTab {
         false
     }
 
-    /// Returns a reference to the underlying `SimulationFramework` when backed by one.
+    /// Returns a reference to the underlying [`crate::framework::SimulationFramework`] when backed by one.
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
         None
     }
 
-    /// Returns a mutable reference to the underlying `SimulationFramework` when backed by one.
+    /// Returns a mutable reference to the underlying [`crate::framework::SimulationFramework`] when backed by one.
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         None
+    }
+
+    /// Applies the root-hoisted `StarterGallery` modal outcome to this tab instance.
+    fn apply_starter_gallery_outcome(
+        &mut self,
+        ctx: &egui::Context,
+        id_source: &str,
+        is_open: bool,
+        selected: Option<crate::starter_gallery::StarterCard>,
+    ) {
+        if let Some(fw) = self.framework_mut() {
+            fw.apply_starter_gallery_outcome(ctx, id_source, is_open, selected);
+        }
     }
 
     /// Canonical URL slug identifying this tab in `#tab=<slug>` share links.

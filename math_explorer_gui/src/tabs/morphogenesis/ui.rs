@@ -98,7 +98,7 @@ impl MorphogenesisTool {
     pub(crate) fn draw_controls(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(ui, "morphogenesis_controls");
-        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("Morphogenesis Controls");
             ui.separator();
 
