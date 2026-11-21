@@ -1,5 +1,3 @@
-// theory_verification!
-
 use super::{SessionLifecycleState, WorkspaceSessionManager};
 use crate::app::{AppState, MathExplorerApp};
 use crate::framework::CalloutManager;

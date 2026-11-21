@@ -41,6 +41,8 @@ mod tests_shortcuts;
 mod tests_split_view;
 #[cfg(test)]
 mod tests_tab_cache_perf;
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests;
 
 #[allow(unused_imports)]
 pub use domain_bar::AcademicDomain;
@@ -465,7 +467,6 @@ impl eframe::App for MathExplorerApp {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }

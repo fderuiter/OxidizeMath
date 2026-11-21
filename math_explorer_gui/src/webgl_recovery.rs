@@ -6,8 +6,6 @@
 //! hardware rendering returns before timeout, and transitions to `#error_container` via
 //! `reload.js` (with `.mws` workspace download support) when restoration times out or fails.
 
-// theory_verification!
-
 mod bridge;
 
 use crate::accessibility;

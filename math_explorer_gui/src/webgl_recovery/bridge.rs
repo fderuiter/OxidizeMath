@@ -1,7 +1,5 @@
 //! DOM, `localStorage`, and `window.__mathExplorerBoot` bridge helpers for [`super`].
 
-// theory_verification!
-
 use crate::accessibility;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};

@@ -44,6 +44,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-markdown-links" => check_markdown_links(),
         "check-vulnerabilities" => gates::check_vulnerabilities(),
         "test-policy-audit" => gates::test_policy_audit(),
+        "test-wasm" => gates::test_wasm(rest),
         "lint-workflows" => gates::lint_workflows(),
         "regenerate-baseline" => gates::regenerate_baseline(),
         _ => {
@@ -77,6 +78,9 @@ fn print_help() {
     println!("  test-features            - Run tests across feature combinations");
     println!(
         "  test-policy-audit        - Detect unauthorized dead-code bypasses and unused dependencies"
+    );
+    println!(
+        "  test-wasm                - Run wasm32 unit tests and headless Chromium smoke checks"
     );
     println!("  traceability             - Generate traceability report");
     println!(
@@ -193,7 +197,9 @@ fn test_features(args: &[String]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gates::{HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS};
+    use crate::gates::{
+        HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, WASM_GUI_TEST_ARGS, WASM_OXIDIZE_CORE_TEST_ARGS,
+    };
     use crate::markdown_links::{collect_md_files, extract_md_links};
     use std::process::Command;
 
@@ -254,6 +260,7 @@ mod tests {
             "check-entropy",
             "check-vulnerabilities",
             "test-policy-audit",
+            "test-wasm",
             "verify-records",
             "verify-suite",
             "regenerate-baseline",
@@ -319,5 +326,46 @@ mod tests {
                 "ci.yml missing pre-flight command: {preflight_cmd}"
             );
         }
+    }
+
+    #[test]
+    fn test_wasm_test_and_smoke_ci_parity() {
+        assert_eq!(
+            WASM_OXIDIZE_CORE_TEST_ARGS,
+            &[
+                "test",
+                "--target",
+                "wasm32-unknown-unknown",
+                "-p",
+                "oxidize_core",
+                "--lib"
+            ]
+        );
+        assert_eq!(
+            WASM_GUI_TEST_ARGS,
+            &[
+                "test",
+                "--target",
+                "wasm32-unknown-unknown",
+                "-p",
+                "math_explorer_gui",
+                "--bin",
+                "math_explorer_gui"
+            ]
+        );
+        let ci_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/ci.yml");
+        let ci_yaml = fs::read_to_string(&ci_path)
+            .expect("failed to read ci.yml")
+            .replace("\r\n", "\n");
+        let build_pos = ci_yaml
+            .find("trunk build --release")
+            .expect("ci.yml must build web app with trunk");
+        let smoke_pos = ci_yaml
+            .find("cargo run -p xtask -- test-wasm --skip-build")
+            .expect("ci.yml must run xtask test-wasm gate");
+        let upload_pos = ci_yaml
+            .find("name: Upload Web Dist Artifact")
+            .expect("ci.yml must upload wasm_web_dist artifact");
+        assert!(smoke_pos > build_pos && smoke_pos < upload_pos);
     }
 }

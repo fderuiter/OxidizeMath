@@ -29,6 +29,25 @@ pub const WASM_CLIPPY_ARGS: &[&str] = &[
     "warnings",
 ];
 
+pub const WASM_OXIDIZE_CORE_TEST_ARGS: &[&str] = &[
+    "test",
+    "--target",
+    "wasm32-unknown-unknown",
+    "-p",
+    "oxidize_core",
+    "--lib",
+];
+
+pub const WASM_GUI_TEST_ARGS: &[&str] = &[
+    "test",
+    "--target",
+    "wasm32-unknown-unknown",
+    "-p",
+    "math_explorer_gui",
+    "--bin",
+    "math_explorer_gui",
+];
+
 pub fn run_cmd(cmd: &str, args: &[&str]) {
     run_cmd_with_env(cmd, args, &[]);
 }
@@ -237,4 +256,72 @@ pub fn check_staged_duplicates() {
 pub fn regenerate_baseline() {
     println!("=== Regenerate Public API Baseline ===");
     run_verification("regenerate-baseline");
+}
+
+fn run_cmd_in_dir(cmd: &str, args: &[&str], dir: &str) {
+    println!("Running (in {dir}): {cmd} {}", args.join(" "));
+    let status = Command::new(cmd).args(args).current_dir(dir).status();
+    match status {
+        Ok(s) if s.success() => (),
+        _ => {
+            eprintln!("Command failed!");
+            exit(1);
+        }
+    }
+}
+
+pub fn test_wasm(args: &[String]) {
+    println!("=== Running WebAssembly Unit Tests & Headless Chromium Smoke Suite ===");
+    let mut skip_build = false;
+    let mut screenshot_dir: Option<&str> = None;
+    let mut idx = 0;
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--skip-build" => skip_build = true,
+            "--screenshot-dir" if idx + 1 < args.len() => {
+                screenshot_dir = Some(args[idx + 1].as_str());
+                idx += 1;
+            }
+            other => {
+                eprintln!("Unknown test-wasm argument: {other}");
+                exit(1);
+            }
+        }
+        idx += 1;
+    }
+
+    let runner_script = std::fs::canonicalize("scripts/wasm_test_runner.py")
+        .unwrap_or_else(|_| PathBuf::from("scripts/wasm_test_runner.py"));
+    let runner_val = format!("python3 {}", runner_script.display());
+    let runner_env = [(
+        "CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER",
+        runner_val.as_str(),
+    )];
+    println!("\n--- Step 1a: WASM Unit Tests (oxidize_core) ---");
+    run_cmd_with_env("cargo", WASM_OXIDIZE_CORE_TEST_ARGS, &runner_env);
+
+    println!("\n--- Step 1b: WASM Unit Tests (math_explorer_gui) ---");
+    run_cmd_with_env("cargo", WASM_GUI_TEST_ARGS, &runner_env);
+
+    if !skip_build {
+        println!("\n--- Step 2: Build Release Web Bundle & Verify Budget ---");
+        run_cmd_in_dir("trunk", &["build", "--release"], "math_explorer_gui");
+        run_cmd(
+            "bash",
+            &["scripts/verify_wasm_budget.sh", "math_explorer_gui/dist"],
+        );
+    }
+
+    println!("\n--- Step 3: Headless Chromium CSP & Fault-Injection Smoke Checks ---");
+    let mut smoke_args = vec![
+        "scripts/playwright_smoke.py",
+        "--dist",
+        "math_explorer_gui/dist",
+        "--verify-regression-detection",
+    ];
+    if let Some(dir) = screenshot_dir {
+        smoke_args.push("--screenshot-dir");
+        smoke_args.push(dir);
+    }
+    run_cmd("python3", &smoke_args);
 }

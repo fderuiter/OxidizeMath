@@ -417,4 +417,6 @@ impl SimulationFramework {
     }
 }
 
-pub use crate::camera::{Camera3D, Plot3DViewport, CAMERA_3D_HELPER_TEXT};
+pub use crate::camera::{
+    Camera3D, Plot3DViewport, CAMERA_3D_HELPER_TEXT, CAMERA_3D_ZOOM_MAX, CAMERA_3D_ZOOM_MIN,
+};
