@@ -79,7 +79,8 @@ impl FlowElement for UniformFlow {
 /// # Example
 ///
 /// ```rust
-/// use domain_physics::physics::fluid_dynamics::potential_flow::{FlowElement, Source};
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::fluid_dynamics::potential_flow::{FlowElement, Source};
 ///
 /// let source = Source::new(10.0, 0.0, 0.0);
 /// let velocity = source.velocity(1.0, 0.0);
@@ -148,7 +149,8 @@ impl FlowElement for Source {
 /// # Example
 ///
 /// ```rust
-/// use domain_physics::physics::fluid_dynamics::potential_flow::{FlowElement, Vortex};
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::fluid_dynamics::potential_flow::{FlowElement, Vortex};
 ///
 /// let vortex = Vortex::new(10.0, 0.0, 0.0);
 /// let velocity = vortex.velocity(1.0, 0.0);
@@ -223,7 +225,8 @@ impl FlowElement for Vortex {
 /// # Example
 ///
 /// ```rust
-/// use domain_physics::physics::fluid_dynamics::potential_flow::{FlowElement, Doublet};
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::fluid_dynamics::potential_flow::{FlowElement, Doublet};
 ///
 /// let doublet = Doublet::new(20.0, 0.0, 0.0);
 /// let velocity = doublet.velocity(1.0, 0.0);
@@ -321,7 +324,8 @@ impl FlowElement for Doublet {
 /// # Example
 ///
 /// ```rust
-/// use domain_physics::physics::fluid_dynamics::potential_flow::{
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::fluid_dynamics::potential_flow::{
 ///     Doublet, FlowElement, PotentialFlowField, UniformFlow
 /// };
 ///

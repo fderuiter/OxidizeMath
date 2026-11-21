@@ -120,7 +120,8 @@ impl<const Q: usize, L: Lattice2D<Q>> CollisionModel<Q, L> for BgkCollision {
 /// # Examples
 ///
 /// ```rust
-/// use domain_physics::physics::fluid_dynamics::lattice_boltzmann::{LatticeBoltzmannD2Q9, BgkCollision};
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{LatticeBoltzmannD2Q9, BgkCollision};
 ///
 /// // Create a 20x10 lattice with a relaxation time (tau) of 1.0.
 /// // Tau determines the kinematic viscosity: nu = (tau - 0.5) / 3.

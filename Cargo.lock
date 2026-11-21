@@ -2450,6 +2450,7 @@ dependencies = [
  "nalgebra 0.34.2",
  "num-complex",
  "oxidize_core",
+ "petgraph",
  "pure_math",
  "rand",
  "serde_json",

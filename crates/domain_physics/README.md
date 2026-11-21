@@ -29,7 +29,8 @@ Simulation models implement standardized time-stepping interfaces and energy con
 Initialize and advance non-linear dynamical systems:
 
 ```rust
-use domain_physics::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
 
 // Initialize system state near the attractor coordinates
 let state = LorenzState::new(10.0, 10.0, 10.0);

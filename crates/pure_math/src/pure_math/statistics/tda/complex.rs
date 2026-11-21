@@ -59,7 +59,8 @@ impl SimplicialComplex {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::tda::{SimplicialComplex, Simplex};
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::tda::{SimplicialComplex, Simplex};
     ///
     /// let mut complex = SimplicialComplex::new();
     /// complex.add_simplex(Simplex::new(vec![0, 1]).unwrap()).unwrap();
@@ -143,7 +144,8 @@ impl Default for SimplicialComplex {
 /// # Example
 ///
 /// ```
-/// use pure_math::pure_math::statistics::tda::{
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::tda::{
 ///     PointCloud, Point2D, vietoris_rips_complex
 /// };
 ///

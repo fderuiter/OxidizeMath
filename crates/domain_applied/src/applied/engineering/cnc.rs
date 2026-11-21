@@ -122,7 +122,8 @@ impl ToolLife {
 /// # Example
 ///
 /// ```
-/// use domain_applied::applied::engineering::{calculate_taylor_tool_life, CuttingSpeed, MaterialConstant, ToolExponent};
+/// # use domain_applied::__doctest_facade as math_explorer;
+/// use math_explorer::applied::engineering::{calculate_taylor_tool_life, CuttingSpeed, MaterialConstant, ToolExponent};
 ///
 /// // High Speed Steel (HSS) tool cutting steel
 /// let life = calculate_taylor_tool_life(

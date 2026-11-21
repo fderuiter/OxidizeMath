@@ -37,8 +37,9 @@ pub type SimilarityFn<U> = Box<dyn Fn(&U, &U) -> bool>;
 /// # Example
 ///
 /// ```
+/// # use pure_math::__doctest_facade as math_explorer;
 /// use std::collections::{HashMap, HashSet};
-/// use pure_math::pure_math::algorithmic_information::combinatorics::{combinatorial_lemma, SimilarityFn};
+/// use math_explorer::pure_math::algorithmic_information::combinatorics::{combinatorial_lemma, SimilarityFn};
 ///
 /// // 1. Define the feature space X
 /// let mut x_set = HashSet::new();

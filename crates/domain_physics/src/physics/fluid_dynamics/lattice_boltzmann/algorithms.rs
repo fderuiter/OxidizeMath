@@ -316,7 +316,8 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
     /// # Examples
     ///
     /// ```rust
-    /// use domain_physics::physics::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannD2Q9;
+    /// # use domain_physics::__doctest_facade as math_explorer;
+    /// use math_explorer::physics::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannD2Q9;
     ///
     /// let solver = LatticeBoltzmannD2Q9::new(10, 10, 1.0);
     /// let (ux, uy) = solver.get_velocity(5, 5);
@@ -378,7 +379,8 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
     /// # Examples
     ///
     /// ```rust
-    /// use domain_physics::physics::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannD2Q9;
+    /// # use domain_physics::__doctest_facade as math_explorer;
+    /// use math_explorer::physics::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannD2Q9;
     ///
     /// let mut solver = LatticeBoltzmannD2Q9::new(10, 10, 1.0);
     /// solver.set_obstacle(5, 5, true);

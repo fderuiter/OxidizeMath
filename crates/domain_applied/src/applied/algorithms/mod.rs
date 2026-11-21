@@ -31,8 +31,9 @@
 //! Track a moving object in 1D space using a Constant Velocity model.
 //!
 //! ```rust
-//! use domain_applied::applied::algorithms::kalman::{KalmanFilter, KalmanModel};
-//! use nalgebra::{DMatrix, DVector};
+//! # use domain_applied::__doctest_facade as math_explorer;
+//! use math_explorer::applied::algorithms::kalman::{KalmanFilter, KalmanModel};
+//! use math_explorer::nalgebra::{DMatrix, DVector};
 //!
 //! // Define a Constant Velocity Model (Position + Velocity)
 //! struct ConstantVelocityModel {
@@ -83,7 +84,7 @@
 //!     kf.predict();
 //!
 //!     // Predicted State: Pos = 5.0, Vel = 5.0
-//!     assert!((kf.state[0] - 5.0).abs() < math_commons::registry::TOLERANCE_FAST);
+//!     assert!((kf.state[0] - 5.0).abs() < math_explorer::registry::TOLERANCE_FAST);
 //!
 //!     // 3. Update Step (New Measurement arrives)
 //!     // Sensor says Position = 5.2 (slightly off due to noise)

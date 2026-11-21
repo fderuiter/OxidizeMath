@@ -49,8 +49,9 @@
 //! Create a standard Transformer Encoder stack to process sequential data.
 //!
 //! ```rust
-//! use domain_ai::ai::transformer::Encoder;
-//! use nalgebra::DMatrix;
+//! # use domain_ai::__doctest_facade as math_explorer;
+//! use math_explorer::ai::transformer::Encoder;
+//! use math_explorer::nalgebra::DMatrix;
 //!
 //! // 1. Configure the Architecture
 //! let num_layers = 2;
@@ -109,6 +110,9 @@ pub mod utils;
 pub use transformer::attention;
 pub use transformer::feed_forward;
 pub use transformer::positional_encoding;
+
+/// Error types for AI modules.
+pub use crate::error;
 
 // [cite:graph_parameters_rust]
 

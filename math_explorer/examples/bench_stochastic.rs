@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 use math_explorer::epidemiology::compartmental::SIRModel;
 use math_explorer::epidemiology::stochastic::GillespieSolver;
+use math_explorer::rng::OxidizeRng;
 use verified_engine::engine::VerifiedEngine;
 
 #[global_allocator]
@@ -12,7 +13,7 @@ fn main() {
     println!("Benchmarking Gillespie Solver with {} steps...", steps);
 
     // Setup
-    let rng = oxidize_core::rng::OxidizeRng::default();
+    let rng = OxidizeRng::default();
     let mut solver = GillespieSolver::new(rng);
 
     // Large population to prevent extinction early
@@ -28,7 +29,7 @@ fn main() {
 
     // Reset state for actual bench
     state = *model.state();
-    let rng = oxidize_core::rng::OxidizeRng::default();
+    let rng = OxidizeRng::default();
     solver = GillespieSolver::new(rng);
 
     let (_, metrics) = VerifiedEngine::run_verified(|| {

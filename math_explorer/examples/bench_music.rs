@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
+use math_explorer::num_complex::Complex;
 use math_explorer::physics::medical::radar_gating::super_resolution::MusicEstimator;
-use num_complex::Complex;
 use std::time::Instant;
 
 fn main() {

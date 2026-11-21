@@ -67,7 +67,8 @@
 //! ## Example: Basic Usage
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::kelly::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::kelly::{
 //!     kelly_fraction, expected_value, UnitInterval, Odds
 //! };
 //!
@@ -92,7 +93,8 @@
 //! ## Example: Fractional Kelly
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::kelly::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::kelly::{
 //!     kelly_fraction, fractional_kelly, expected_growth_rate,
 //!     UnitInterval, Odds, variants
 //! };
@@ -116,7 +118,8 @@
 //! ## Example: Converting Odds Formats
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::kelly::Odds;
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::kelly::Odds;
 //!
 //! // American odds
 //! let underdog = Odds::from_american(200.0).unwrap(); // +200
@@ -136,7 +139,8 @@
 //! ## Example: Realistic Sports Betting
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::kelly::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::kelly::{
 //!     kelly_fraction, expected_value, UnitInterval, Odds, variants
 //! };
 //!

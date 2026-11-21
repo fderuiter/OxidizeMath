@@ -41,8 +41,9 @@
 //! $$ K(n) \le \log_2(n) + 2 \log_2(\log_2(n)) + O(1) $$
 //!
 //! ```rust
-//! use pure_math::pure_math::algorithmic_information::kolmogorov::kolmogorov_complexity;
-//! use pure_math::math_types::Integer;
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::algorithmic_information::kolmogorov::kolmogorov_complexity;
+//! use math_explorer::math_types::Integer;
 //!
 //! // Calculate complexity of a large number
 //! let n = Integer::from(1000000);

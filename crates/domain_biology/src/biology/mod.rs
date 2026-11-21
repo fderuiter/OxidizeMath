@@ -8,7 +8,8 @@
 //! Simulate a single neuron firing an action potential using the Hodgkin-Huxley model.
 //!
 //! ```rust
-//! use domain_biology::biology::neuroscience::HodgkinHuxleyNeuron;
+//! # use domain_biology::__doctest_facade as math_explorer;
+//! use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 //!
 //! // 1. Initialize neuron at resting potential (-65.0 mV)
 //! let mut neuron = HodgkinHuxleyNeuron::new(-65.0);
@@ -76,6 +77,9 @@ pub mod evolution;
 
 /// Generic reaction-diffusion framework.
 pub mod reaction_diffusion;
+
+/// Error types for computational biology modules.
+pub use crate::error;
 
 // [cite:favorite_child]
 

@@ -73,9 +73,10 @@ impl<M: Trainable<f64>> TrainingLoop<M> {
     /// # Examples
     ///
     /// ```rust
-    /// use nalgebra::DVector;
-    /// use domain_ai::ai::optimization::SGD;
-    /// use domain_ai::ai::deep_learning_theory::cycle::TrainingLoop;
+    /// # use domain_ai::__doctest_facade as math_explorer;
+    /// use math_explorer::nalgebra::DVector;
+    /// use math_explorer::ai::optimization::SGD;
+    /// use math_explorer::ai::deep_learning_theory::cycle::TrainingLoop;
     ///
     /// let x = DVector::from_vec(vec![1.0, 0.5]);
     /// let y_true = DVector::from_vec(vec![1.0, 0.0]);

@@ -1,4 +1,4 @@
-use crate::error::BatteryError;
+pub use crate::error::BatteryError;
 
 use std::fmt;
 use std::ops::{Add, Div, Mul, Sub};

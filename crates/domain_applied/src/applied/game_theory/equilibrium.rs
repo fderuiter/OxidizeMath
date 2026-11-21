@@ -44,8 +44,9 @@ impl BoxSet {
     /// # Examples
     ///
     /// ```
-    /// use domain_applied::applied::game_theory::equilibrium::{BoxSet, ConvexSet};
-    /// use nalgebra::DVector;
+    /// # use domain_applied::__doctest_facade as math_explorer;
+    /// use math_explorer::applied::game_theory::equilibrium::{BoxSet, ConvexSet};
+    /// use math_explorer::nalgebra::DVector;
     ///
     /// let box_set = BoxSet::new(vec![0.0, -1.0], vec![1.0, 1.0]);
     ///

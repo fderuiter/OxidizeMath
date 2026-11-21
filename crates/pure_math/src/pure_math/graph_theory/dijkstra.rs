@@ -74,8 +74,9 @@ impl<W: PartialOrd> PartialOrd for State<W> {
 /// # Examples
 ///
 /// ```rust
-/// use pure_math::pure_math::graph_theory::dijkstra::dijkstra;
-/// use petgraph::graph::Graph;
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::graph_theory::dijkstra::dijkstra;
+/// use math_explorer::petgraph::graph::Graph;
 ///
 /// let mut graph = Graph::<(), f64>::new();
 /// let n0 = graph.add_node(());

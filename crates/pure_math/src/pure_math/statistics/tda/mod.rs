@@ -107,7 +107,8 @@
 //! ## Example: Basic TDA Workflow
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::tda::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::tda::{
 //!     PointCloud, Point2D, vietoris_rips_complex, betti_numbers
 //! };
 //!
@@ -131,7 +132,8 @@
 //! ## Example: Detecting Clusters
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::tda::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::tda::{
 //!     PointCloud, Point2D, vietoris_rips_complex, betti_number_0
 //! };
 //!
@@ -157,7 +159,8 @@
 //! ## Example: Detecting Circular Patterns
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::tda::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::tda::{
 //!     PointCloud, Point2D, vietoris_rips_complex, betti_numbers
 //! };
 //!
@@ -182,7 +185,8 @@
 //! ## Example: Persistence Analysis
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::tda::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::tda::{
 //!     PointCloud, Point2D, compute_persistence
 //! };
 //!

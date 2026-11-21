@@ -34,7 +34,8 @@
 //! Calculate the thickness between the white matter surface (inner) and pial surface (outer).
 //!
 //! ```rust
-//! use domain_applied::applied::freesurfer::{cortical_thickness, Surface};
+//! # use domain_applied::__doctest_facade as math_explorer;
+//! use math_explorer::applied::freesurfer::{cortical_thickness, Surface};
 //!
 //! // 1. Define the White Matter Surface (Inner Boundary)
 //! let white_surface = Surface {

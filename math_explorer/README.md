@@ -24,7 +24,7 @@ math_explorer = { path = "path/to/math_explorer" }
 Simulate a neuron's membrane potential using the Hodgkin-Huxley model:
 
 ```bash
-cargo run --release --package math_explorer --example hodgkin_huxley_demo
+cargo run --release --package math_explorer --features biology --example hodgkin_huxley_demo
 ```
 
 *(See `math_explorer/examples/hodgkin_huxley_demo.rs` for implementation details)*
@@ -56,7 +56,7 @@ fn main() {
 Calculate the Lyapunov exponent for a Lorenz System:
 
 ```bash
-cargo run --release --package math_explorer --example lorenz_chaos
+cargo run --release --package math_explorer --features physics --example lorenz_chaos
 ```
 
 *(See `math_explorer/examples/lorenz_chaos.rs` for implementation details)*
@@ -89,7 +89,7 @@ fn main() {
 Initialize a Transformer Encoder stack:
 
 ```bash
-cargo run --release --package math_explorer --example transformer_demo
+cargo run --release --package math_explorer --features ai --example transformer_demo
 ```
 
 *(See `math_explorer/examples/transformer_demo.rs` for implementation details)*
@@ -98,7 +98,7 @@ cargo run --release --package math_explorer --example transformer_demo
 # #[cfg(feature = "ai")]
 use math_explorer::ai::transformer::Encoder;
 # #[cfg(feature = "ai")]
-use nalgebra::DMatrix;
+use math_explorer::nalgebra::DMatrix;
 
 # #[cfg(feature = "ai")]
 fn main() {

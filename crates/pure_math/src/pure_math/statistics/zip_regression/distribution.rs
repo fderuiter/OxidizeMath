@@ -47,7 +47,8 @@ impl ZipDistribution {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::zip_regression::{ZipDistribution, ZipParams};
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::zip_regression::{ZipDistribution, ZipParams};
     ///
     /// let params = ZipParams::from_values(0.3, 2.0).unwrap();
     /// let dist = ZipDistribution::new(params);
@@ -97,7 +98,8 @@ impl ZipDistribution {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::zip_regression::{ZipDistribution, Count};
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::zip_regression::{ZipDistribution, Count};
     ///
     /// let dist = ZipDistribution::from_values(0.2, 3.0).unwrap();
     /// let prob_zero = dist.pmf(Count::new(0));
@@ -148,11 +150,12 @@ impl ZipDistribution {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::zip_regression::ZipDistribution;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::zip_regression::ZipDistribution;
     ///
     /// let dist = ZipDistribution::from_values(0.2, 3.0).unwrap();
     /// let mean = dist.mean();
-    /// assert!((mean - 2.4).abs() < math_commons::registry::TOLERANCE_STANDARD);  // (1-0.2)*3.0 = 2.4
+    /// assert!((mean - 2.4).abs() < math_explorer::registry::TOLERANCE_STANDARD);  // (1-0.2)*3.0 = 2.4
     /// ```
     #[verified_engine::verified]
     pub fn mean(&self) -> f64 {
@@ -174,7 +177,8 @@ impl ZipDistribution {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::zip_regression::ZipDistribution;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::zip_regression::ZipDistribution;
     ///
     /// let dist = ZipDistribution::from_values(0.2, 3.0).unwrap();
     /// let variance = dist.variance();

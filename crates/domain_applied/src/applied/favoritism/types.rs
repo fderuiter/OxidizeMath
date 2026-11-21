@@ -188,7 +188,8 @@ impl Default for FamilyParams {
 /// # Example
 ///
 /// ```rust
-/// use domain_applied::applied::favoritism::FavoritismInputs;
+/// # use domain_applied::__doctest_facade as math_explorer;
+/// use math_explorer::applied::favoritism::FavoritismInputs;
 ///
 /// let mut inputs = FavoritismInputs::default();
 /// inputs.personality.wealth = 10.0; // The "Golden Child" strategy

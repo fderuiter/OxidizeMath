@@ -4,7 +4,7 @@
 //! `cargo run --example transformer_simple`
 
 use math_explorer::ai::transformer::{Decoder, Encoder, Transformer};
-use nalgebra::DMatrix;
+use math_explorer::nalgebra::DMatrix;
 
 fn main() {
     // 1. Configure Model Parameters

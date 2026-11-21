@@ -46,8 +46,9 @@ use nalgebra::DMatrix;
 /// # Examples
 ///
 /// ```
-/// use pure_math::pure_math::algebra::linear_algebra::eigen::is_stable;
-/// use nalgebra::DMatrix;
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::algebra::linear_algebra::eigen::is_stable;
+/// use math_explorer::nalgebra::DMatrix;
 ///
 /// let stable_matrix = DMatrix::from_row_slice(2, 2, &[-2.0, 0.0, 0.0, -3.0]);
 /// assert!(is_stable(&stable_matrix));
@@ -77,8 +78,9 @@ pub fn is_stable(matrix: &DMatrix<f64>) -> bool {
 /// # Examples
 ///
 /// ```
-/// use pure_math::pure_math::algebra::linear_algebra::eigen::natural_frequencies;
-/// use nalgebra::DMatrix;
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::algebra::linear_algebra::eigen::natural_frequencies;
+/// use math_explorer::nalgebra::DMatrix;
 ///
 /// // System with eigenvalues -4 and -9
 /// let matrix = DMatrix::from_row_slice(2, 2, &[-4.0, 0.0, 0.0, -9.0]);

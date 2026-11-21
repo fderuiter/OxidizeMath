@@ -2,7 +2,8 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use math_explorer::applied::algorithms::sorting::divide_conquer::{merge_sort, quick_sort};
 use math_explorer::applied::algorithms::sorting::linear::radix_sort;
-use rand::Rng;
+use math_explorer::rand::Rng;
+use math_explorer::rng::OxidizeRng;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("Sorting");
@@ -16,7 +17,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("merge_sort", |b| b.iter(|| merge_sort(black_box(&data))));
     group.bench_function("quick_sort", |b| b.iter(|| quick_sort(black_box(&data))));
 
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = OxidizeRng::default();
     let mut radix_data = Vec::with_capacity(100_000);
     for _ in 0..100_000 {
         radix_data.push(rng.r#gen::<u32>() as u64); // avoid overflow

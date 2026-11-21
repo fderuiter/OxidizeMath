@@ -40,10 +40,11 @@ use nalgebra::DMatrix;
 /// # Examples
 ///
 /// ```
-/// use pure_math::pure_math::algebra::linear_algebra::decomposition::effective_rank;
-/// use nalgebra::DMatrix;
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::algebra::linear_algebra::decomposition::effective_rank;
+/// use math_explorer::nalgebra::DMatrix;
 ///
-/// let diag = DMatrix::from_diagonal(&nalgebra::DVector::from_vec(vec![1.0, 0.00000000001, 3.0]));
+/// let diag = DMatrix::from_diagonal(&math_explorer::nalgebra::DVector::from_vec(vec![1.0, 0.00000000001, 3.0]));
 /// // With high tolerance, rank is 2.
 /// assert_eq!(effective_rank(&diag, Some(1e-5)), 2);
 /// ```

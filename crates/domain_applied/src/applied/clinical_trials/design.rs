@@ -97,11 +97,12 @@ impl AllocationStrategy for BlockRandomizer {
     /// # Examples
     ///
     /// ```
-    /// use domain_applied::applied::clinical_trials::design::{BlockRandomizer, AllocationStrategy, Group};
-    /// use rand::SeedableRng;
-    /// use rand::rngs::StdRng;
+    /// # use domain_applied::__doctest_facade as math_explorer;
+    /// use math_explorer::applied::clinical_trials::design::{BlockRandomizer, AllocationStrategy, Group};
+    /// use math_explorer::rand::SeedableRng;
+    /// use math_explorer::rand::rngs::StdRng;
     ///
-    /// let mut rng = oxidize_core::rng::OxidizeRng::default();
+    /// let mut rng = math_explorer::rng::OxidizeRng::default();
     /// let randomizer = BlockRandomizer::new(4).unwrap();
     ///
     /// // Request 5 subjects (1 full block + 1 partial block)
