@@ -277,20 +277,6 @@ impl SimulationFramework {
         }
     }
 
-    fn poll_action_bar_clipboard_status(&mut self, ctx: &egui::Context) {
-        let status_id = egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
-        if let Some(async_status) =
-            ctx.data_mut(|d| d.remove_temp::<ActionBarExportStatus>(status_id))
-        {
-            let sev = if async_status.is_error {
-                ExportStatusSeverity::Error
-            } else {
-                ExportStatusSeverity::Success
-            };
-            self.set_export_status(sev, async_status.message);
-        }
-    }
-
     fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         self.poll_action_bar_clipboard_status(ctx);
 
@@ -416,6 +402,16 @@ impl SimulationFramework {
             close_on_click,
         ) {
             self.export_active_preset_json(file_slug);
+        }
+        if export_action_button(
+            ui,
+            true,
+            "🔗 Copy Share Link",
+            "Copy a shareable simulation link to the clipboard",
+            close_on_click,
+        ) {
+            let ctx = ui.ctx().clone();
+            self.copy_active_share_link(&ctx);
         }
     }
 

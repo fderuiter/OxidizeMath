@@ -92,6 +92,7 @@ web-sys = { workspace = true, features = [
     "Element",
     "ErrorEvent",
     "Event",
+    "History",
     "HtmlCanvasElement",
     "HtmlElement",
     "Location",

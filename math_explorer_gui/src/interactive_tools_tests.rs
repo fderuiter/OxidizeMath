@@ -336,23 +336,26 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "applied")]
     #[test]
-    fn test_hoisted_explorer_tabs_state_roundtrip() {
+    fn test_favoritism_tab_state_roundtrip() {
+        let mut favoritism_tab = crate::tabs::favoritism::FavoritismTab::default();
+        crate::tabs::ExplorerTab::load_state(
+            &mut favoritism_tab,
+            r#"{"selected_child_index":1,"new_child_name":"Sibling"}"#,
+        );
+        let migrated_favoritism_json =
+            crate::tabs::ExplorerTab::save_state(&favoritism_tab).expect("favoritism save_state");
+        assert_tab_roundtrip(
+            &mut crate::tabs::favoritism::FavoritismTab::default(),
+            &migrated_favoritism_json,
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_traceability_tab_state_roundtrip() {
         let _guard = crate::reflective_ui::tests::lock_test_mutex();
-        #[cfg(feature = "applied")]
-        {
-            let mut favoritism_tab = crate::tabs::favoritism::FavoritismTab::default();
-            crate::tabs::ExplorerTab::load_state(
-                &mut favoritism_tab,
-                r#"{"selected_child_index":1,"new_child_name":"Sibling"}"#,
-            );
-            let migrated_favoritism_json = crate::tabs::ExplorerTab::save_state(&favoritism_tab)
-                .expect("favoritism save_state");
-            assert_tab_roundtrip(
-                &mut crate::tabs::favoritism::FavoritismTab::default(),
-                &migrated_favoritism_json,
-            );
-        }
         let valid_repo_dir = oxidize_core::path_utils::normalize_path(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .canonicalize()

@@ -311,6 +311,22 @@ impl ExplorerTab for MorphogenesisTab {
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
     }
+
+    fn import_url_preset_json(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        self.framework.import_url_preset_json(tool_id, preset_json)?;
+        let cfg = self.export_config();
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.a = cfg.a;
+        p.b = cfg.b;
+        p.d_u = cfg.d_u;
+        p.d_v = cfg.d_v;
+        p.dt = cfg.dt;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

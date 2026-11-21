@@ -38,6 +38,7 @@ pub mod state_guard;
 mod state_guard_tests;
 pub mod trace_overlay;
 mod ui;
+mod url_share;
 
 pub use callout_overlay::*;
 pub use clamp::*;

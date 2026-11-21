@@ -252,6 +252,8 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 ui.close();
             }
             ui.separator();
+            super::share_link::render_file_share_menu_item(app, ctx, ui);
+            ui.separator();
             if ui
                 .add(egui::Button::new("Quit").shortcut_text(format!("{}Q", cmd_str)))
                 .clicked()
