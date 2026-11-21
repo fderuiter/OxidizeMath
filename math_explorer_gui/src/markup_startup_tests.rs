@@ -6,6 +6,7 @@ const RELOAD_JS: &str = include_str!("../reload.js");
 const BOOTSTRAP_JS: &str = include_str!("../bootstrap.js");
 const INITIALIZER_JS: &str = include_str!("../initializer.js");
 const SW_JS: &str = include_str!("../sw.js");
+const WORKER_JS: &str = include_str!("../worker.js");
 const MAIN_RS: &str = include_str!("main.rs");
 
 #[test]
@@ -173,4 +174,54 @@ fn test_recovery_precedes_reload_and_wires_panic_and_sentinel_bridge() {
             && MAIN_RS.contains("wasm_crash_bridge::keep_web_runner_alive"),
         "src/main.rs must retain WebRunner and initialize fatal panic bridge"
     );
+}
+
+#[test]
+fn test_runtime_recovery_reset_and_safe_mode_markup_contracts() {
+    for required in [
+        "id=\"workspace_reset_button\"",
+        "id=\"quarantine_download_button\"",
+        "id=\"safe_mode_banner\"",
+        "id=\"safe_mode_download_button\"",
+        "id=\"safe_mode_reset_button\"",
+        "id=\"safe_mode_dismiss_button\"",
+        "<script src=\"recovery.js\" defer></script>",
+        "<link data-trunk rel=\"copy-file\" href=\"recovery.js\"/>",
+    ] {
+        assert!(
+            INDEX_HTML.contains(required),
+            "index.html must include recovery and Safe Mode control: {required}"
+        );
+    }
+    for token in [
+        "math_explorer_boot_sentinel",
+        "math_explorer_quarantined_app",
+        "aria-live-assertive-slot-",
+        "resetWorkspaceAndReload",
+        "downloadQuarantinedState",
+        "quarantineAbortedBoot",
+    ] {
+        assert!(
+            RECOVERY_JS.contains(token),
+            "recovery.js must define recovery/quarantine contract: {token}"
+        );
+    }
+}
+
+#[test]
+fn test_all_shell_javascript_files_respect_500_line_limit() {
+    for (name, source) in [
+        ("recovery.js", RECOVERY_JS),
+        ("reload.js", RELOAD_JS),
+        ("bootstrap.js", BOOTSTRAP_JS),
+        ("initializer.js", INITIALIZER_JS),
+        ("sw.js", SW_JS),
+        ("worker.js", WORKER_JS),
+    ] {
+        let line_count = source.lines().count();
+        assert!(
+            line_count <= 500,
+            "{name} must not exceed 500 lines (found {line_count} lines)"
+        );
+    }
 }

@@ -1,8 +1,13 @@
 mod io;
 mod persistence;
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) mod recovery;
 pub(crate) mod shortcuts;
 mod types;
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(unused_imports)]
+pub(crate) use recovery::WorkspaceRecoverySnapshot;
 pub use types::{SessionLifecycleState, WorkspaceEnvelope};
 
 use crate::app::state::AppStateFingerprint;

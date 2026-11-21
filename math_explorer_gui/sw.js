@@ -78,33 +78,29 @@ async function precacheShell() {
     const cache = await caches.open(SHELL_CACHE_NAME);
     const base = scopeBaseUrl();
 
-    await Promise.all(
-        CORE_SHELL_PATHS.map(async (relPath) => {
-            const targetUrl = new URL(relPath, base).href;
-            try {
-                const response = await fetch(targetUrl, { cache: 'reload' });
-                if (response && response.ok) {
-                    await cache.put(targetUrl, response);
-                }
-            } catch (_err) {
-                // Best-effort during install; runtime network-first populates cache on online loads
+    for (const relPath of CORE_SHELL_PATHS) {
+        const targetUrl = new URL(relPath, base).href;
+        try {
+            const response = await fetch(targetUrl, { cache: 'reload' });
+            if (response && response.ok) {
+                await cache.put(targetUrl, response);
             }
-        })
-    );
+        } catch (_err) {
+            // Best-effort during install; runtime network-first populates cache on online loads
+        }
+    }
 
-    await Promise.all(
-        OPTIONAL_SHELL_PATHS.map(async (relPath) => {
-            const targetUrl = new URL(relPath, base).href;
-            try {
-                const response = await fetch(targetUrl, { cache: 'no-cache' });
-                if (response && response.ok) {
-                    await cache.put(targetUrl, response);
-                }
-            } catch (_err) {
-                // Optional icon/manifest errors never block service worker installation
+    for (const relPath of OPTIONAL_SHELL_PATHS) {
+        const targetUrl = new URL(relPath, base).href;
+        try {
+            const response = await fetch(targetUrl, { cache: 'no-cache' });
+            if (response && response.ok) {
+                await cache.put(targetUrl, response);
             }
-        })
-    );
+        } catch (_err) {
+            // Optional icon/manifest errors never block service worker installation
+        }
+    }
 }
 
 self.addEventListener('install', (event) => {

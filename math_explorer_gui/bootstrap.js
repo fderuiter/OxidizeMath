@@ -314,7 +314,10 @@ async function fetchWasmWithProgress(source, hooks, signal) {
 }
 
 function handleBootstrapCatch(error, signal, currentAssetPath) {
-    if ((error?.name === 'AbortError' && isBootAborted(signal)) || (!window.__mathExplorerBoot && isBootAborted(signal))) {
+    if (
+        (isBootAborted(signal) && (error === signal?.reason || error?.name === 'AbortError')) ||
+        (!window.__mathExplorerBoot && isBootAborted(signal))
+    ) {
         return;
     }
     console.error('Failed to bootstrap Math Explorer WebAssembly bundle:', error);
@@ -323,10 +326,11 @@ function handleBootstrapCatch(error, signal, currentAssetPath) {
     if (activeBoot?.showError && activeBoot?.classifyError) {
         const category = activeBoot.classifyError(error, currentAssetPath);
         activeBoot.showError(category, enrichedDetail);
-        if (category === 'network' && lookupResourceHttpStatus(currentAssetPath) === 0) {
+        if (lookupResourceHttpStatus(currentAssetPath) === 0) {
             window.setTimeout(() => {
-                if (lookupResourceHttpStatus(currentAssetPath) >= 400) {
-                    activeBoot.showError('network', enrichAssetError(error, currentAssetPath));
+                const lateDetail = enrichAssetError(error, currentAssetPath);
+                if (lateDetail !== enrichedDetail || lookupResourceHttpStatus(currentAssetPath) >= 400) {
+                    activeBoot.showError('network', lateDetail);
                 }
             }, 0);
         }

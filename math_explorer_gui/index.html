@@ -175,6 +175,28 @@
             margin: 10px 0 0 0;
         }
 
+        /* Post-boot WebGL context restoration overlay */
+        #webgl_recovery_overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(18, 18, 20, 0.94);
+            backdrop-filter: blur(6px);
+            color: #e2e8f0;
+            z-index: 1500;
+            padding: 24px;
+            box-sizing: border-box;
+            text-align: center;
+            user-select: none;
+        }
+
+        #webgl_recovery_overlay[hidden] {
+            display: none !important;
+        }
+
         /* Error boundary / recovery container styles */
         #error_container {
             position: fixed;
@@ -347,6 +369,28 @@
             outline-offset: 2px;
         }
 
+        .secondary-btn {
+            background-color: #1e293b;
+            color: #f1f5f9;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .secondary-btn:hover {
+            background-color: #334155;
+            border-color: #64748b;
+        }
+
+        .secondary-btn:focus-visible {
+            outline: 2px solid #60a5fa;
+            outline-offset: 2px;
+        }
+
         .secondary-action-btn {
             background-color: #262630;
             color: #e2e8f0;
@@ -390,6 +434,7 @@
         }
 
         .safe-mode-banner[hidden],
+        .secondary-btn[hidden],
         .secondary-action-btn[hidden] {
             display: none !important;
         }
@@ -532,8 +577,30 @@
                 color: #334155;
             }
 
-            html:not([data-theme]) #error_container {
+            html:not([data-theme]) #error_container,
+            html:not([data-theme]) #webgl_recovery_overlay {
                 background-color: rgba(248, 248, 248, 0.96);
+                color: #18181b;
+            }
+
+            html:not([data-theme]) .secondary-btn,
+            html:not([data-theme]) .secondary-action-btn {
+                background-color: #f1f5f9;
+                color: #0f172a;
+                border-color: #94a3b8;
+            }
+
+            html:not([data-theme]) .secondary-btn:hover,
+            html:not([data-theme]) .secondary-action-btn:hover {
+                background-color: #e2e8f0;
+                border-color: #64748b;
+            }
+
+            html:not([data-theme]) .safe-mode-banner {
+                background-color: rgba(255, 255, 255, 0.97);
+                color: #0f172a;
+                border-color: #d97706;
+                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
             }
 
             html:not([data-theme]) .error-card {
@@ -651,8 +718,10 @@
                 color: #ffffff;
             }
 
-            html:not([data-theme]) #error_container {
+            html:not([data-theme]) #error_container,
+            html:not([data-theme]) #webgl_recovery_overlay {
                 background-color: #000000;
+                color: #ffffff;
             }
 
             html:not([data-theme]) .error-card,
@@ -693,9 +762,27 @@
             }
 
             html:not([data-theme]) .reload-btn:hover,
-            html:not([data-theme]) .reload-btn:focus-visible {
+            html:not([data-theme]) .reload-btn:focus-visible,
+            html:not([data-theme]) .secondary-btn:hover,
+            html:not([data-theme]) .secondary-btn:focus-visible,
+            html:not([data-theme]) .secondary-action-btn:hover,
+            html:not([data-theme]) .secondary-action-btn:focus-visible {
                 outline: 2px solid #ffff00;
                 border-color: #ffff00;
+            }
+
+            html:not([data-theme]) .secondary-btn,
+            html:not([data-theme]) .secondary-action-btn {
+                background-color: #000000;
+                color: #ffffff;
+                border: 2px solid #ffffff;
+            }
+
+            html:not([data-theme]) .safe-mode-banner {
+                background-color: #000000;
+                color: #ffffff;
+                border: 2px solid #ffff00;
+                box-shadow: none;
             }
         }
 
@@ -732,6 +819,24 @@
                 border-color: CanvasText;
                 accent-color: Highlight;
             }
+
+            #webgl_recovery_overlay {
+                background-color: Canvas;
+                color: CanvasText;
+            }
+
+            .secondary-btn,
+            .secondary-action-btn {
+                background-color: ButtonFace;
+                color: ButtonText;
+                border-color: ButtonText;
+            }
+
+            .safe-mode-banner {
+                background-color: Canvas;
+                color: CanvasText;
+                border-color: Highlight;
+            }
         }
 
         /* Explicit data-theme overrides synchronized with localStorage["app"] and MathExplorerApp */
@@ -750,6 +855,11 @@
 
         html[data-theme="dark"] #error_container {
             background-color: rgba(10, 10, 12, 0.96);
+        }
+
+        html[data-theme="dark"] #webgl_recovery_overlay {
+            background-color: rgba(18, 18, 20, 0.94);
+            color: #e2e8f0;
         }
 
         html[data-theme="light"],
@@ -811,6 +921,22 @@
 
         html[data-theme="light"] #error_container {
             background-color: rgba(248, 248, 248, 0.96);
+        }
+
+        html[data-theme="light"] #webgl_recovery_overlay {
+            background-color: rgba(248, 248, 248, 0.96);
+            color: #18181b;
+        }
+
+        html[data-theme="light"] .secondary-btn {
+            background-color: #f1f5f9;
+            color: #0f172a;
+            border-color: #94a3b8;
+        }
+
+        html[data-theme="light"] .secondary-btn:hover {
+            background-color: #e2e8f0;
+            border-color: #64748b;
         }
 
         html[data-theme="light"] .error-card {
@@ -948,6 +1074,11 @@
             background-color: #000000;
         }
 
+        html[data-theme="high-contrast"] #webgl_recovery_overlay {
+            background-color: #000000;
+            color: #ffffff;
+        }
+
         html[data-theme="high-contrast"] .error-card,
         html[data-theme="high-contrast"] .instructions-card,
         html[data-theme="high-contrast"] .error-details {
@@ -986,9 +1117,17 @@
         }
 
         html[data-theme="high-contrast"] .reload-btn:hover,
-        html[data-theme="high-contrast"] .reload-btn:focus-visible {
+        html[data-theme="high-contrast"] .reload-btn:focus-visible,
+        html[data-theme="high-contrast"] .secondary-btn:hover,
+        html[data-theme="high-contrast"] .secondary-btn:focus-visible {
             outline: 2px solid #ffff00;
             border-color: #ffff00;
+        }
+
+        html[data-theme="high-contrast"] .secondary-btn {
+            background-color: #000000;
+            color: #ffffff;
+            border: 2px solid #ffffff;
         }
 
         html[data-theme="high-contrast"] .secondary-action-btn {
@@ -1033,6 +1172,7 @@
 
             .loading-progress,
             .reload-btn,
+            .secondary-btn,
             .secondary-action-btn {
                 animation: none !important;
                 transition: none !important;
@@ -1164,10 +1304,22 @@
                 <button type="submit" id="webgl_reload_button" class="reload-btn">Reload Page</button>
                 <button type="button" id="workspace_reset_button" class="secondary-action-btn">Reset Workspace &amp; Reload</button>
                 <button type="button" id="quarantine_download_button" class="secondary-action-btn" hidden>Download Quarantined State</button>
+                <button type="button" id="download_workspace_button" class="secondary-btn" hidden>Download Saved Workspace (.mws)</button>
             </form>
             <pre id="error_details" class="error-details" style="display: none;"></pre>
         </div>
     </div>
+
+    <!-- Status overlay shown while awaiting automatic WebGL context restoration -->
+    <div id="webgl_recovery_overlay" role="status" aria-busy="false" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <div id="webgl_recovery_title" class="loading-title">Restoring Graphics Session...</div>
+        <p id="webgl_recovery_subtitle" class="loading-subtitle">Waiting for your browser to restore WebGL rendering. Your workspace is preserved.</p>
+    </div>
+
+    <canvas id="the_canvas_id" tabindex="0" role="application" aria-label="Math Explorer Application">
+        Math Explorer interactive scientific simulation and mathematical visualization canvas. Your browser does not support the HTML5 canvas element or WebGL.
+    </canvas>
 
     <aside id="safe_mode_banner" class="safe-mode-banner" role="region" aria-label="Safe Mode workspace recovery" hidden>
         <div class="safe-mode-copy">
@@ -1179,9 +1331,5 @@
             <button type="button" id="safe_mode_dismiss_button" class="secondary-action-btn">Dismiss</button>
         </div>
     </aside>
-
-    <canvas id="the_canvas_id" tabindex="0" role="application" aria-label="Math Explorer Application">
-        Math Explorer interactive scientific simulation and mathematical visualization canvas. Your browser does not support the HTML5 canvas element or WebGL.
-    </canvas>
 </body>
 </html>

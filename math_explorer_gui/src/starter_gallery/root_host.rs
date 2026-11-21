@@ -20,6 +20,7 @@ struct GalleryOverlayMetrics {
     inner_w: f32,
     scroll_h: f32,
     card_w: f32,
+    cols: usize,
 }
 
 fn compute_gallery_metrics(ctx: &egui::Context) -> GalleryOverlayMetrics {
@@ -38,10 +39,13 @@ fn compute_gallery_metrics(ctx: &egui::Context) -> GalleryOverlayMetrics {
     let max_h = (avail_h - 32.0).clamp(160.0, 520.0);
     let inner_w = (max_w - 36.0).max(144.0);
     let scroll_h = (max_h - 124.0).max(64.0);
-    let card_w = if inner_w < 460.0 {
-        (inner_w - 16.0).clamp(128.0, 215.0)
+    let grid_avail_w = (inner_w - 14.0).max(130.0);
+    let (cols, card_w) = if grid_avail_w >= 660.0 {
+        (3, ((grid_avail_w - 28.0) / 3.0 - 30.0).floor())
+    } else if grid_avail_w >= 430.0 {
+        (2, ((grid_avail_w - 14.0) / 2.0 - 30.0).floor().min(215.0))
     } else {
-        215.0
+        (1, (grid_avail_w - 30.0).clamp(98.0, 215.0))
     };
     GalleryOverlayMetrics {
         max_w,
@@ -49,6 +53,7 @@ fn compute_gallery_metrics(ctx: &egui::Context) -> GalleryOverlayMetrics {
         inner_w,
         scroll_h,
         card_w,
+        cols,
     }
 }
 
@@ -59,27 +64,41 @@ fn render_starter_card(ui: &mut egui::Ui, card: &StarterCard, card_width: f32) -
         .corner_radius(8.0)
         .show(ui, |ui| {
             ui.set_width(card_width);
+            ui.set_max_width(card_width);
             ui.set_min_height(150.0);
             ui.vertical(|ui| {
+                ui.set_max_width(card_width);
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new(card.icon).size(26.0));
+                    let text_w = (card_width - 42.0).max(56.0);
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(card.title).strong().size(15.0));
-                        ui.label(
-                            egui::RichText::new(format!("[{}]", card.category))
-                                .small()
-                                .color(ui.visuals().weak_text_color()),
+                        ui.set_max_width(text_w);
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(card.title).strong().size(15.0))
+                                .wrap(),
+                        );
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(format!("[{}]", card.category))
+                                    .small()
+                                    .color(ui.visuals().weak_text_color()),
+                            )
+                            .truncate(),
                         );
                     });
                 });
                 ui.add_space(8.0);
-                ui.label(
-                    egui::RichText::new(card.description)
-                        .size(12.0)
-                        .color(ui.visuals().text_color()),
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(card.description)
+                            .size(12.0)
+                            .color(ui.visuals().text_color()),
+                    )
+                    .wrap(),
                 );
                 ui.add_space(10.0);
-                if ui.button(format!("▶ Launch {}", card.title)).clicked() {
+                let launch_btn = egui::Button::new(format!("▶ Launch {}", card.title)).truncate();
+                if ui.add_sized([card_width, 26.0], launch_btn).clicked() {
                     launched = true;
                 }
             });
@@ -124,16 +143,21 @@ fn render_starter_gallery_body(
 
     egui::ScrollArea::vertical()
         .max_height(m.scroll_h)
+        .auto_shrink([false, true])
         .show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-                for card in cards {
-                    if render_starter_card(ui, card, m.card_w) {
-                        selected_card = Some(card.clone());
-                        frame_ctx.close();
+            ui.set_max_width(m.inner_w);
+            ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
+            for row in cards.chunks(m.cols.max(1)) {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
+                    for card in row {
+                        if render_starter_card(ui, card, m.card_w) {
+                            selected_card = Some(card.clone());
+                            frame_ctx.close();
+                        }
                     }
-                }
-            });
+                });
+            }
         });
     selected_card
 }

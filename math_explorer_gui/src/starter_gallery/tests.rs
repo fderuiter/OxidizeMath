@@ -314,3 +314,61 @@ fn test_unified_sim_tool_rejects_unknown_empty_and_non_finite_parameters() {
         .is_err());
     assert!(tool.try_load_state(r#"{"viscosity": 0.04}"#).is_ok());
 }
+
+fn assert_overlay_launch_buttons_clamped(cards: &[StarterCard], size: egui::Vec2) {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, size);
+    let mut is_open = true;
+    let raw = || egui::RawInput {
+        screen_rect: Some(screen),
+        ..Default::default()
+    };
+    let _ = ctx.run(raw(), |ctx| {
+        let _ = show_starter_gallery_overlay(ctx, "analysis", cards, &mut is_open);
+    });
+    let out = ctx.run(raw(), |ctx| {
+        let _ = show_starter_gallery_overlay(ctx, "analysis", cards, &mut is_open);
+    });
+    let ak = out.platform_output.accesskit_update.as_ref().unwrap();
+    let launch_bounds: Vec<egui::Rect> = ak
+        .nodes
+        .iter()
+        .filter_map(|(_, n)| {
+            n.label()
+                .filter(|l| l.contains("▶ Launch "))
+                .and_then(|_| n.bounds())
+                .map(|b| {
+                    egui::Rect::from_min_max(
+                        egui::pos2(b.x0 as f32, b.y0 as f32),
+                        egui::pos2(b.x1 as f32, b.y1 as f32),
+                    )
+                })
+        })
+        .collect();
+    assert!(!launch_bounds.is_empty());
+    for rect in launch_bounds {
+        assert!(
+            rect.min.x >= 0.0 && rect.max.x <= size.x,
+            "Launch button {rect:?} escaped horizontal viewport 0..{}",
+            size.x
+        );
+    }
+}
+
+#[test]
+fn test_starter_cards_sorted_and_overlay_buttons_clamped_within_viewport() {
+    let cards = get_starter_cards_for_domain("analysis", &[]);
+    assert!(cards.len() >= 5);
+    let keys: Vec<(&str, &str)> = cards.iter().map(|c| (c.title, c.id)).collect();
+    let mut sorted_keys = keys.clone();
+    sorted_keys.sort_unstable();
+    assert_eq!(
+        keys, sorted_keys,
+        "Starter cards must be deterministically sorted"
+    );
+
+    for size in [egui::vec2(1024.0, 768.0), egui::vec2(360.0, 640.0)] {
+        assert_overlay_launch_buttons_clamped(&cards, size);
+    }
+}

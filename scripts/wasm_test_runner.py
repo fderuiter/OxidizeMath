@@ -7,6 +7,10 @@ import functools
 import http.server
 import mimetypes
 import os
+try:
+    import resource
+except ImportError:  # pragma: no cover - Windows
+    resource = None  # type: ignore[assignment]
 import shutil
 import socketserver
 import subprocess
@@ -15,7 +19,7 @@ import tempfile
 import threading
 import urllib.parse
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
 PRODUCTION_CSP = (
     "default-src 'self'; "
@@ -117,6 +121,7 @@ runSuite();
 class ReusableThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
     daemon_threads = True
+    request_queue_size = 128
 
 
 class WasmTestRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -161,7 +166,19 @@ def parse_cargo_test_args(extra_args: list[str]) -> tuple[str, bool, bool]:
     return name_filter, include_ignored, list_only
 
 
+def raise_nofile_limit() -> None:
+    if resource is None:
+        return
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if hard > soft:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+    except (OSError, ValueError):
+        pass
+
+
 def main() -> int:
+    raise_nofile_limit()
     if len(sys.argv) < 2:
         print("Usage: wasm_test_runner.py <path-to-test.wasm> [test-args...]", file=sys.stderr)
         return 2
@@ -235,34 +252,49 @@ def main() -> int:
                 }
             )
             url = f"http://127.0.0.1:{port}/index.html?{query}"
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--enable-webgl",
-                        "--use-gl=angle",
-                        "--use-angle=swiftshader",
-                        "--enable-unsafe-swiftshader",
-                    ],
-                )
-                context = browser.new_context(accept_downloads=True)
-                page = context.new_page()
-                page.on(
-                    "console",
-                    lambda msg: csp_errors.append(msg.text)
-                    if msg.type == "error" and "Content Security Policy" in msg.text
-                    else None,
-                )
-                page.on("pageerror", lambda exc: page_errors.append(str(exc)))
+            status = None
+            rendered_output = ""
+            for attempt in range(3):
+                csp_errors.clear()
+                page_errors.clear()
+                try:
+                    with sync_playwright() as playwright:
+                        browser = playwright.chromium.launch(
+                            headless=True,
+                            args=[
+                                "--enable-webgl",
+                                "--use-gl=angle",
+                                "--use-angle=swiftshader",
+                                "--enable-unsafe-swiftshader",
+                            ],
+                        )
+                        try:
+                            context = browser.new_context(accept_downloads=True)
+                            page = context.new_page()
+                            page.on(
+                                "console",
+                                lambda msg: csp_errors.append(msg.text)
+                                if msg.type == "error" and "Content Security Policy" in msg.text
+                                else None,
+                            )
+                            page.on("pageerror", lambda exc: page_errors.append(str(exc)))
 
-                page.goto(url, wait_until="domcontentloaded")
-                page.locator("#output[data-test-status]").wait_for(
-                    state="attached",
-                    timeout=90_000,
-                )
-                status = page.locator("#output").get_attribute("data-test-status")
-                rendered_output = page.locator("#output").inner_text()
-                browser.close()
+                            page.goto(url, wait_until="domcontentloaded")
+                            page.locator("#output[data-test-status]").wait_for(
+                                state="attached",
+                                timeout=90_000,
+                            )
+                            status = page.locator("#output").get_attribute("data-test-status")
+                            rendered_output = page.locator("#output").inner_text()
+                        finally:
+                            browser.close()
+                    break
+                except PlaywrightError as exc:
+                    if attempt < 2 and any(
+                        t in str(exc) for t in ("Page crashed", "Target crashed", "net::ERR_ABORTED")
+                    ):
+                        continue
+                    raise
         finally:
             server.shutdown()
             server.server_close()

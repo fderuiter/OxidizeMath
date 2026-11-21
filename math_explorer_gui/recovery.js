@@ -381,14 +381,18 @@
         }
     }
 
-    function renderErrorBoundary(category, detailText, currentPhase) {
-        errorBoundaryActive = true;
+    function resolveErrorCopy(category, detailText, currentPhase) {
         const resolved = Object.prototype.hasOwnProperty.call(ERROR_CATEGORIES, category)
             ? category
             : 'network';
         const copy = resolved === 'timeout' && (currentPhase === 'compile' || /compil|graphics|webrunner/i.test(detailText || ''))
             ? COMPILE_TIMEOUT_COPY
             : ERROR_CATEGORIES[resolved];
+        return { resolved: resolved, copy: copy };
+    }
+
+    function renderErrorDom(resolved, copy, detailText) {
+        errorBoundaryActive = true;
         document.documentElement?.setAttribute('data-boot-initialized', 'true');
         document.documentElement?.setAttribute('data-boot-failed', 'true');
         const loading = document.getElementById('loading_indicator');
@@ -396,6 +400,12 @@
             loading.setAttribute('aria-busy', 'false');
             loading.hidden = true;
             loading.style.display = 'none';
+        }
+        const recoveryOverlay = document.getElementById('webgl_recovery_overlay');
+        if (recoveryOverlay) {
+            recoveryOverlay.setAttribute('aria-busy', 'false');
+            recoveryOverlay.hidden = true;
+            recoveryOverlay.style.display = 'none';
         }
         const banner = document.getElementById('safe_mode_banner');
         if (banner) {
@@ -412,21 +422,28 @@
             errorContainer.style.display = 'flex';
         }
         const titleEl = document.getElementById('error_title');
-        if (titleEl) {
+        if (titleEl && copy) {
             titleEl.textContent = copy.title;
         }
         const msgEl = document.getElementById('error_message');
-        if (msgEl) {
+        if (msgEl && copy) {
             msgEl.textContent = copy.message;
         }
-        populateRecoveryList(resolved, copy);
+        if (copy) {
+            populateRecoveryList(resolved, copy);
+        }
         const detailsEl = document.getElementById('error_details');
         if (detailsEl) {
             detailsEl.textContent = detailText || '';
             detailsEl.style.display = detailText ? 'block' : 'none';
         }
-        const reloadBtn = syncActionButtons();
-        announceLive(copy.alert, 'assertive');
+        return syncActionButtons();
+    }
+
+    function renderErrorBoundary(category, detailText, currentPhase) {
+        const resolvedInfo = resolveErrorCopy(category, detailText, currentPhase);
+        const reloadBtn = renderErrorDom(resolvedInfo.resolved, resolvedInfo.copy, detailText);
+        announceLive(resolvedInfo.copy.alert, 'assertive');
         reloadBtn?.focus?.();
     }
 
@@ -456,6 +473,8 @@
         announceLive: announceLive,
         syncActionButtons: syncActionButtons,
         syncSafeModeBanner: syncSafeModeBanner,
+        resolveErrorCopy: resolveErrorCopy,
+        renderErrorDom: renderErrorDom,
         renderErrorBoundary: renderErrorBoundary
     };
 })();

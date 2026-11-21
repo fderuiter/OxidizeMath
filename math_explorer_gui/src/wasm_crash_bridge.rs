@@ -101,6 +101,7 @@ pub(crate) use wasm_support::keep_web_runner_alive;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_support {
+    use crate::webgl_recovery::SessionRunnerHandle;
     use std::cell::RefCell;
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::{JsCast, JsValue};
@@ -108,14 +109,13 @@ mod wasm_support {
     const BOOT_SENTINEL_KEY: &str = "math_explorer_boot_sentinel";
 
     thread_local! {
-        static SESSION_WEB_RUNNER: RefCell<Option<eframe::WebRunner>> = const { RefCell::new(None) };
+        static SESSION_WEB_RUNNER: RefCell<Option<SessionRunnerHandle>> = const { RefCell::new(None) };
         static PANIC_READER_CLOSURE: RefCell<Option<Closure<dyn Fn() -> JsValue>>> = const { RefCell::new(None) };
         static RUNNER_DESTROY_CLOSURE: RefCell<Option<Closure<dyn Fn()>>> = const { RefCell::new(None) };
     }
 
-    // theory_verification!
     pub(crate) fn keep_web_runner_alive(
-        runner: eframe::WebRunner,
+        runner: SessionRunnerHandle,
         window: Option<&web_sys::Window>,
     ) {
         SESSION_WEB_RUNNER.with(|slot| {
@@ -127,18 +127,15 @@ mod wasm_support {
         }
     }
 
-    // theory_verification!
     fn install_runner_destroy_hook(win: &web_sys::Window) {
         RUNNER_DESTROY_CLOSURE.with(|slot| {
             if slot.borrow().is_none() {
                 let closer = Closure::wrap(Box::new(|| {
-                    SESSION_WEB_RUNNER.with(|runner_slot| {
-                        if let Ok(mut guard) = runner_slot.try_borrow_mut() {
-                            if let Some(runner) = guard.take() {
-                                runner.destroy();
-                            }
-                        }
-                    });
+                    let handle = SESSION_WEB_RUNNER
+                        .with(|s| s.try_borrow_mut().ok().and_then(|mut g| g.take()));
+                    if let Some(runner) = handle {
+                        runner.destroy();
+                    }
                 }) as Box<dyn Fn()>);
                 let _ = js_sys::Reflect::set(
                     win.as_ref(),
@@ -150,7 +147,6 @@ mod wasm_support {
         });
     }
 
-    // theory_verification!
     fn install_panic_summary_reader(win: &web_sys::Window) {
         PANIC_READER_CLOSURE.with(|slot| {
             if slot.borrow().is_none() {
@@ -168,23 +164,10 @@ mod wasm_support {
         });
     }
 
-    // theory_verification!
     fn read_runner_panic_summary() -> Option<String> {
-        SESSION_WEB_RUNNER.with(|slot| {
-            let guard = slot.try_borrow().ok()?;
-            let runner = guard.as_ref()?;
-            let summary = runner.panic_summary()?;
-            let message = summary.message();
-            let callstack = summary.callstack();
-            if callstack.trim().is_empty() {
-                Some(message)
-            } else {
-                Some(format!("{message}\n{callstack}"))
-            }
-        })
+        SESSION_WEB_RUNNER.with(|slot| slot.try_borrow().ok()?.as_ref()?.read_panic_summary())
     }
 
-    // theory_verification!
     pub(super) fn forward_fatal_panic_to_js(summary: &str) {
         let Some(win) = web_sys::window() else {
             return;
@@ -198,7 +181,6 @@ mod wasm_support {
         invoke_boot_method(&win, "reportFatalPanic", Some(&payload));
     }
 
-    // theory_verification!
     pub(super) fn mark_first_frame_in_js() {
         let Some(win) = web_sys::window() else {
             return;
@@ -209,7 +191,6 @@ mod wasm_support {
         }
     }
 
-    // theory_verification!
     fn invoke_boot_method(win: &web_sys::Window, method: &str, arg: Option<&JsValue>) {
         let Ok(boot) = js_sys::Reflect::get(win.as_ref(), &JsValue::from_str("__mathExplorerBoot"))
         else {
@@ -231,7 +212,6 @@ mod wasm_support {
         }
     }
 
-    // theory_verification!
     pub(super) fn read_document_data_theme() -> Option<crate::app::ThemeMode> {
         let win = web_sys::window()?;
         let doc = win.document()?;
@@ -240,7 +220,6 @@ mod wasm_support {
         crate::app::ThemeMode::from_token(&token)
     }
 
-    // theory_verification!
     pub(super) fn is_recovery_or_reset_active() -> bool {
         let Some(root) = web_sys::window()
             .and_then(|w| w.document())
@@ -256,6 +235,127 @@ mod wasm_support {
     #[wasm_bindgen::prelude::wasm_bindgen]
     pub fn trigger_wasm_panic_probe(reason: &str) {
         panic!("{reason}");
+    }
+}
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::rc::Rc;
+    use wasm_bindgen::closure::Closure;
+    use wasm_bindgen::{JsCast, JsValue};
+    use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn wasm_panic_bridge_forwards_fatal_summary_and_clears_sentinel() {
+        let win = web_sys::window().expect("window");
+        let reported = Rc::new(RefCell::new(String::new()));
+        let reported_cb = Rc::clone(&reported);
+        let on_panic = Closure::wrap(Box::new(move |msg: String| {
+            *reported_cb.borrow_mut() = msg;
+        }) as Box<dyn FnMut(String)>);
+        let first_frame = Rc::new(RefCell::new(false));
+        let first_frame_cb = Rc::clone(&first_frame);
+        let on_frame = Closure::wrap(Box::new(move || {
+            *first_frame_cb.borrow_mut() = true;
+        }) as Box<dyn FnMut()>);
+
+        let boot = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(
+            &boot,
+            &JsValue::from_str("reportFatalPanic"),
+            on_panic.as_ref(),
+        );
+        let _ = js_sys::Reflect::set(
+            &boot,
+            &JsValue::from_str("markFirstFrameRendered"),
+            on_frame.as_ref(),
+        );
+        let _ = js_sys::Reflect::set(
+            win.as_ref(),
+            &JsValue::from_str("__mathExplorerBoot"),
+            &boot,
+        );
+        if let Ok(Some(storage)) = win.local_storage() {
+            let _ = storage.set_item("math_explorer_boot_sentinel", "{\"status\":\"starting\"}");
+        }
+
+        init_fatal_panic_bridge();
+        let mut meta = HashMap::new();
+        meta.insert("location".to_string(), "src/app.rs:10:5".to_string());
+        diagnostics::global_bus().emit(diagnostics::DiagnosticEvent {
+            severity: diagnostics::Severity::Fatal,
+            message: "wasm_bridge_fatal_event".to_string(),
+            metadata: meta,
+            thread_name: Some("wasm-test".to_string()),
+        });
+        assert!(reported.borrow().contains("wasm_bridge_fatal_event"));
+
+        FIRST_FRAME_REPORTED.store(false, Ordering::Relaxed);
+        notify_first_interactive_frame_rendered();
+        assert!(*first_frame.borrow());
+        if let Ok(Some(storage)) = win.local_storage() {
+            assert_eq!(
+                storage.get_item("math_explorer_boot_sentinel").unwrap(),
+                None
+            );
+        }
+        let _ = js_sys::Reflect::delete_property(
+            win.as_ref(),
+            &JsValue::from_str("__mathExplorerBoot"),
+        );
+    }
+
+    #[wasm_bindgen_test]
+    fn wasm_shell_theme_save_suppression_and_runner_hooks_work() {
+        let win = web_sys::window().expect("window");
+        let doc = win.document().expect("document");
+        let root = doc.document_element().expect("documentElement");
+
+        let _ = root.set_attribute("data-theme", "high-contrast");
+        assert_eq!(
+            read_document_shell_theme(),
+            Some(crate::app::ThemeMode::HighContrast)
+        );
+        let _ = root.remove_attribute("data-theme");
+
+        let _ = root.set_attribute("data-workspace-resetting", "true");
+        assert!(should_suppress_app_save());
+        let _ = root.remove_attribute("data-workspace-resetting");
+        let _ = root.remove_attribute("data-boot-failed");
+        assert!(!should_suppress_app_save());
+
+        let canvas = doc
+            .create_element("canvas")
+            .unwrap()
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .unwrap();
+        let runner = eframe::WebRunner::new();
+        let handle =
+            crate::webgl_recovery::install_webgl_recovery(&canvas, &doc, Some(&win), runner);
+        keep_web_runner_alive(handle, Some(&win));
+
+        let reader = js_sys::Reflect::get(
+            win.as_ref(),
+            &JsValue::from_str("__mathExplorerReadPanicSummary"),
+        )
+        .unwrap()
+        .dyn_into::<js_sys::Function>()
+        .unwrap();
+        assert!(reader.call0(&JsValue::NULL).unwrap().is_null());
+
+        let destroyer = js_sys::Reflect::get(
+            win.as_ref(),
+            &JsValue::from_str("__mathExplorerDestroyRunner"),
+        )
+        .unwrap()
+        .dyn_into::<js_sys::Function>()
+        .unwrap();
+        assert!(destroyer.call0(&JsValue::NULL).is_ok());
     }
 }
 
