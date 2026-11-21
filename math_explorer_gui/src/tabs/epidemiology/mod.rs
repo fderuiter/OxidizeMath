@@ -43,12 +43,10 @@ impl ExplorerTab for EpidemiologyTab {
         self.framework.select_tool_by_name(name)
     }
 
-    #[cfg(test)]
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
         Some(&self.framework)
     }
 
-    #[cfg(test)]
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
     }

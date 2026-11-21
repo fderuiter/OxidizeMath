@@ -2,6 +2,9 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::collections::HashMap;
 
+#[path = "traceability/presets.rs"]
+mod presets_impl;
+pub use presets_impl::*;
 #[path = "traceability/scanner.rs"]
 mod scanner;
 #[path = "traceability/web_snapshot.rs"]
@@ -10,52 +13,6 @@ mod web_snapshot;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use scanner::execute_workspace_scan;
 use web_snapshot::PaperStatus;
-
-#[allow(missing_docs)]
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum TraceabilityScanState {
-    #[default]
-    Idle,
-    Scanning,
-    Ready,
-    Failed(String),
-}
-
-#[allow(missing_docs)]
-impl TraceabilityScanState {
-    pub fn is_scanning(&self) -> bool {
-        matches!(self, Self::Scanning)
-    }
-
-    #[cfg(test)]
-    pub fn is_ready(&self) -> bool {
-        matches!(self, Self::Ready)
-    }
-
-    #[cfg(test)]
-    pub fn is_failed(&self) -> bool {
-        matches!(self, Self::Failed(_))
-    }
-
-    #[cfg(test)]
-    pub fn error(&self) -> Option<&str> {
-        match self {
-            Self::Failed(err) => Some(err.as_str()),
-            _ => None,
-        }
-    }
-}
-
-impl std::fmt::Display for TraceabilityScanState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Idle => write!(f, "Idle"),
-            Self::Scanning => write!(f, "Scanning"),
-            Self::Ready => write!(f, "Ready"),
-            Self::Failed(err) => write!(f, "Failed: {}", err),
-        }
-    }
-}
 
 pub struct TraceabilityTab {
     papers: HashMap<String, PaperStatus>,
@@ -113,6 +70,14 @@ impl TraceabilityTab {
     #[cfg(all(test, not(target_arch = "wasm32")))]
     pub(crate) fn canonical_workspace_root() -> Option<std::path::PathBuf> {
         scanner::canonical_workspace_root()
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn join_relative_segments(
+        base: &std::path::Path,
+        rel: &str,
+    ) -> std::path::PathBuf {
+        scanner::join_relative_segments(base, rel)
     }
 
     pub fn paper_url(name: &str) -> Option<String> {
@@ -272,7 +237,7 @@ impl TraceabilityTab {
             if ui.button("Refresh").clicked() {
                 self.refresh();
             }
-
+            self.render_share_link_button(ui);
             #[cfg(not(target_arch = "wasm32"))]
             if ui.button("Select Codebase Directory...").clicked() {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
@@ -325,11 +290,6 @@ impl TraceabilityTab {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct TraceabilityState {
-    repo_path: Option<String>,
-}
-
 impl ExplorerTab for TraceabilityTab {
     fn name(&self) -> &'static str {
         "Traceability Portal"
@@ -340,6 +300,30 @@ impl ExplorerTab for TraceabilityTab {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.repo_path.hash(&mut h);
         h.finish().max(1)
+    }
+
+    fn export_url_preset_json(&self) -> Result<Option<String>, String> {
+        self.to_compact_url_json().map(Some)
+    }
+
+    fn import_url_preset_json(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        if let Some(req_tool) = tool_id {
+            if !crate::url_state::matches_tab_slug(req_tool, self.url_slug(), self.name()) {
+                return Err(format!(
+                    "Tab '{}' does not support sub-tool '{req_tool}'",
+                    self.name()
+                ));
+            }
+        }
+        if let Some(json_str) = preset_json {
+            crate::url_state::validate_url_preset_json(json_str)?;
+            self.from_json_str(json_str)?;
+        }
+        Ok(())
     }
 
     fn save_state(&self) -> Option<String> {
