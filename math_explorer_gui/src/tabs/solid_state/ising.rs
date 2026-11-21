@@ -38,6 +38,7 @@ pub struct IsingModelTool {
     texture: Option<egui::TextureHandle>,
     pixels: Vec<egui::Color32>,
     stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
+    last_theme: Option<crate::app::ThemeMode>,
     dirty: bool,
     params: Arc<std::sync::RwLock<IsingSharedParams>>,
     pub worker: BackgroundWorker<IsingRunner>,
@@ -153,7 +154,7 @@ impl IsingModelTool {
 
     fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "ising_controls");
-        egui::SidePanel::left(panel_id)
+        crate::framework::PaneSidePanel::left(panel_id)
             .resizable(false)
             .default_width(220.0)
             .show_inside(parent_ui, |ui| {
@@ -224,7 +225,17 @@ impl IsingModelTool {
         if self.pixels.len() != num_pixels {
             self.pixels.resize(num_pixels, egui::Color32::BLACK);
         }
-        if snap_pixels.len() == num_pixels {
+        let palette = crate::app::SemanticPalette::from_visuals(&ctx.style().visuals);
+        if let Some(spins) = snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<Vec<i8>>())
+            .filter(|s| s.len() == num_pixels)
+        {
+            for (dst, &s) in self.pixels.iter_mut().zip(spins.iter()) {
+                *dst = ising_spin_color(s, &palette);
+            }
+        } else if snap_pixels.len() == num_pixels {
             self.pixels.copy_from_slice(&snap_pixels);
         }
 
@@ -258,6 +269,12 @@ impl IsingModelTool {
                             .sense(egui::Sense::focusable_noninteractive()),
                     )
                     .accessible_theory_hover(self);
+                ui.painter().rect_stroke(
+                    response.rect,
+                    0.0,
+                    ui.visuals().widgets.noninteractive.bg_stroke,
+                    egui::StrokeKind::Inside,
+                );
                 crate::accessibility::paint_canvas_focus_ring(ui, &response);
             } else {
                 render_empty_plot_guidance(
@@ -280,6 +297,7 @@ impl Default for IsingModelTool {
             j_coupling,
             h_field,
             steps_per_frame,
+            theme: crate::app::ThemeMode::Dark,
         }));
         let runner = IsingRunner {
             lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
@@ -296,6 +314,7 @@ impl Default for IsingModelTool {
             texture: None,
             pixels: Vec::new(),
             stepped_pixels: None,
+            last_theme: None,
             dirty: true,
             params,
             worker,
@@ -348,16 +367,16 @@ impl InteractiveTool for IsingModelTool {
             self.j_coupling,
             self.h_field,
         );
+        let palette = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .theme
+            .palette();
         let pixels: Vec<egui::Color32> = lattice
             .spins()
             .iter()
-            .map(|&s| {
-                if s > 0 {
-                    egui::Color32::from_rgb(200, 50, 50)
-                } else {
-                    egui::Color32::from_rgb(50, 50, 200)
-                }
-            })
+            .map(|&s| ising_spin_color(s, &palette))
             .collect();
         self.stepped_pixels = Some((lattice.width(), lattice.height(), pixels));
         self.dirty = true;
@@ -420,6 +439,12 @@ impl InteractiveTool for IsingModelTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        let theme = crate::app::ThemeMode::from_visuals(ui.visuals());
+        if self.last_theme != Some(theme) {
+            self.last_theme = Some(theme);
+            self.params.write().unwrap_or_else(|e| e.into_inner()).theme = theme;
+            self.dirty = true;
+        }
         if let Some(snapshot) = self.worker.update() {
             if snapshot.custom_data.len() >= 2 {
                 self.magnetization = snapshot.custom_data[0];

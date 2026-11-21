@@ -242,6 +242,22 @@ fn test_join_relative_segments_normalizes_separators_on_canonical_root() {
             .as_deref()
             .is_some_and(|p| p.ends_with("crates/pure_math"))
     );
+
+    #[cfg(windows)]
+    {
+        let ws_norm = oxidize_core::path_utils::normalize_path(&ws_root);
+        let verbatim_root = PathBuf::from(format!(r"\\?\{}", ws_norm.replace('/', r"\")));
+        let verbatim_ci =
+            TraceabilityTab::join_relative_segments(&verbatim_root, ".github/workflows/ci.yml");
+        assert!(!verbatim_ci.to_string_lossy().contains('/'));
+        assert!(std::fs::metadata(&verbatim_ci).is_ok());
+        let verbatim_mixed = TraceabilityTab::join_relative_segments(
+            &verbatim_root,
+            "./crates/oxidize_core\\src/lib.rs",
+        );
+        assert!(!verbatim_mixed.to_string_lossy().contains('/'));
+        assert!(std::fs::read_to_string(&verbatim_mixed).is_ok());
+    }
 }
 
 #[test]

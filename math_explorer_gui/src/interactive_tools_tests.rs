@@ -336,9 +336,9 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "applied")]
     #[test]
-    fn test_hoisted_explorer_tabs_state_roundtrip() {
-        let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    fn test_favoritism_tab_state_roundtrip() {
         let mut favoritism_tab = crate::tabs::favoritism::FavoritismTab::default();
         crate::tabs::ExplorerTab::load_state(
             &mut favoritism_tab,

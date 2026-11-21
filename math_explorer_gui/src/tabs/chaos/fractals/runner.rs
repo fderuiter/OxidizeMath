@@ -90,6 +90,8 @@ pub struct FractalRenderRequest {
     pub mode: FractalMode,
     /// Complex constant $c$ for Julia mode.
     pub julia_c: Complex<f64>,
+    /// Whether `ThemeMode::HighContrast` dark-canvas contrast guards are active.
+    pub high_contrast: bool,
 }
 
 /// Snapshot metadata attached to each progressive pass emitted by [`FractalRunner`].
@@ -155,11 +157,17 @@ pub(super) fn snapshot_to_clamped_color_image(
     Some(egui::ColorImage::new([clamped_w, clamped_h], out))
 }
 
-/// Maps an escape-time iteration count to an opaque `Color32` palette entry.
+/// Maps an escape-time iteration count to an opaque `Color32`, lifting dark escape bands
+/// above `3.0:1` on `BLACK` when `high_contrast` is `true`.
 #[must_use]
-pub fn map_iter_to_color32(iter: u32, max_iter: u32) -> egui::Color32 {
+pub fn map_iter_to_color32(iter: u32, max_iter: u32, high_contrast: bool) -> egui::Color32 {
     if iter >= max_iter {
         egui::Color32::BLACK
+    } else if high_contrast {
+        let rgb = math_commons::math_kernel::colormap::cyclic_cosine_palette_high_contrast(
+            f64::from(iter),
+        );
+        egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
     } else {
         let rgb = math_commons::math_kernel::colormap::cyclic_cosine_palette(f64::from(iter));
         egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
@@ -172,7 +180,7 @@ fn eval_pixel_color(re: f64, im: f64, req: &FractalRenderRequest) -> egui::Color
         FractalMode::Mandelbrot => escape_time_mandelbrot(pt, req.max_iter),
         FractalMode::Julia => escape_time_julia(pt, req.julia_c, req.max_iter),
     };
-    map_iter_to_color32(iter, req.max_iter)
+    map_iter_to_color32(iter, req.max_iter, req.high_contrast)
 }
 
 /// Synchronously renders a full-resolution fractal image (used for small seed previews and exports).

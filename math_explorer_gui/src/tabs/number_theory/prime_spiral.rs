@@ -5,6 +5,7 @@ use math_explorer::pure_math::number_theory::primes::primes_up_to;
 
 pub struct PrimeSpiralWidget {
     grid_size: usize,
+    last_theme: Option<crate::app::ThemeMode>,
     texture: Option<TextureHandle>,
     pixels_buffer: Vec<Color32>,
     is_prime_lookup: Vec<bool>,
@@ -14,6 +15,7 @@ impl Default for PrimeSpiralWidget {
     fn default() -> Self {
         Self {
             grid_size: 200,
+            last_theme: None,
             texture: None,
             pixels_buffer: Vec::new(),
             is_prime_lookup: Vec::new(),
@@ -87,7 +89,8 @@ impl InteractiveTool for PrimeSpiralWidget {
                     )
                     .changed();
 
-                if changed || self.texture.is_none() {
+                let theme = crate::app::ThemeMode::from_visuals(ui.visuals());
+                if changed || self.texture.is_none() || self.last_theme != Some(theme) {
                     self.regenerate_texture(ui.ctx());
                 }
 
@@ -103,6 +106,12 @@ impl InteractiveTool for PrimeSpiralWidget {
                                 .sense(egui::Sense::focusable_noninteractive()),
                         )
                         .accessible_theory_hover(self);
+                    ui.painter().rect_stroke(
+                        response.rect,
+                        0.0,
+                        ui.visuals().widgets.noninteractive.bg_stroke,
+                        egui::StrokeKind::Inside,
+                    );
                     crate::accessibility::paint_canvas_focus_ring(ui, &response);
                 }
             });
@@ -111,10 +120,17 @@ impl InteractiveTool for PrimeSpiralWidget {
 }
 
 impl PrimeSpiralWidget {
-    fn populate_ulam_pixels(size: usize, lookup: &mut Vec<bool>, pixels: &mut Vec<Color32>) {
+    pub(crate) fn populate_ulam_pixels(
+        size: usize,
+        theme: crate::app::ThemeMode,
+        lookup: &mut Vec<bool>,
+        pixels: &mut Vec<Color32>,
+    ) {
         let num_pixels = size * size;
+        let bg = theme.visuals().extreme_bg_color;
+        let palette = theme.palette();
         pixels.clear();
-        pixels.resize(num_pixels, Color32::BLACK);
+        pixels.resize(num_pixels, bg);
 
         let limit = num_pixels as u64;
         lookup.clear();
@@ -132,10 +148,10 @@ impl PrimeSpiralWidget {
                 let (px, py) = ((half + x) as usize, (half + y) as usize);
                 if px < size && py < size {
                     if is_prime {
-                        pixels[flatten_2d_index(px, py, size)] = Color32::WHITE;
+                        pixels[flatten_2d_index(px, py, size)] = palette.node_stroke;
                     }
                     if i == 1 {
-                        pixels[flatten_2d_index(px, py, size)] = Color32::RED;
+                        pixels[flatten_2d_index(px, py, size)] = palette.axis_x;
                     }
                 }
             }
@@ -152,13 +168,20 @@ impl PrimeSpiralWidget {
     fn build_spiral_image(size: usize) -> ColorImage {
         let mut lookup = Vec::new();
         let mut pixels = Vec::new();
-        Self::populate_ulam_pixels(size, &mut lookup, &mut pixels);
+        Self::populate_ulam_pixels(size, crate::app::ThemeMode::Dark, &mut lookup, &mut pixels);
         ColorImage::new([size, size], pixels)
     }
 
     fn regenerate_texture(&mut self, ctx: &egui::Context) {
         let size = self.grid_size;
-        Self::populate_ulam_pixels(size, &mut self.is_prime_lookup, &mut self.pixels_buffer);
+        let theme = crate::app::ThemeMode::from_visuals(&ctx.style().visuals);
+        self.last_theme = Some(theme);
+        Self::populate_ulam_pixels(
+            size,
+            theme,
+            &mut self.is_prime_lookup,
+            &mut self.pixels_buffer,
+        );
 
         let image = ColorImage {
             size: [size, size],
@@ -216,10 +239,13 @@ mod tests {
         assert!(widget.pixels_buffer.capacity() >= larger_pixels_cap);
         assert!(widget.is_prime_lookup.capacity() >= larger_prime_cap);
 
-        // Verify center pixel color logic (1 is RED, primes are WHITE, non-primes are BLACK)
+        // Verify center pixel color logic (1 uses SemanticPalette axis_x)
         let center = 100;
         let center_idx = flatten_2d_index(center, center, 200);
-        assert_eq!(widget.pixels_buffer[center_idx], Color32::RED);
+        assert_eq!(
+            widget.pixels_buffer[center_idx],
+            crate::app::ThemeMode::Dark.palette().axis_x
+        );
     }
 }
 

@@ -146,4 +146,37 @@ impl SemanticPalette {
     pub const fn series_color(self, index: usize) -> Color32 {
         self.series[index % self.series.len()]
     }
+
+    /// Returns a severity fill for [`egui::ProgressBar`] that preserves `>= 4.5:1` contrast
+    /// against `visuals.selection.stroke.color` and `>= 3.0:1` against dark tracks.
+    #[inline]
+    #[must_use]
+    pub fn progress_bar_fill(visuals: &egui::Visuals, elasticity: f64) -> Color32 {
+        if visuals.dark_mode {
+            if elasticity > 2.0 {
+                Color32::from_rgb(172, 46, 46)
+            } else if elasticity > 1.0 {
+                Color32::from_rgb(130, 82, 0)
+            } else {
+                Color32::from_rgb(24, 108, 54)
+            }
+        } else if elasticity > 2.0 {
+            Color32::from_rgb(255, 192, 192)
+        } else if elasticity > 1.0 {
+            Color32::from_rgb(255, 222, 140)
+        } else {
+            Color32::from_rgb(172, 238, 190)
+        }
+    }
+
+    /// Returns the high-contrast focus outline color (`>= 4.5:1`) for the viewport split sash.
+    #[inline]
+    #[must_use]
+    pub const fn sash_focus_outline(visuals: &egui::Visuals) -> Color32 {
+        if visuals.dark_mode {
+            Color32::from_rgb(255, 214, 10)
+        } else {
+            Color32::from_rgb(0, 72, 186)
+        }
+    }
 }

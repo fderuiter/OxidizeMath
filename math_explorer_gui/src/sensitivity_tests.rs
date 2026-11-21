@@ -107,25 +107,25 @@ fn test_sensitivity_metric_card_uses_wcag_semantic_palette_across_themes() {
     let mut engine = SensitivityEngine::new();
     engine.metrics = vec![
         SensitivityMetric {
-            param_name: "high_p".to_string(),
-            baseline_value: 3.0,
-            partial_derivative: 27.0,
-            elasticity: 3.0,
-            is_high_sensitivity: true,
+            param_name: "zero_p".to_string(),
+            baseline_value: 1.0,
+            partial_derivative: 0.0,
+            elasticity: 0.0,
+            is_high_sensitivity: false,
         },
         SensitivityMetric {
-            param_name: "mid_p".to_string(),
+            param_name: "half_p".to_string(),
             baseline_value: 2.0,
             partial_derivative: 1.5,
             elasticity: 1.5,
             is_high_sensitivity: false,
         },
         SensitivityMetric {
-            param_name: "low_p".to_string(),
-            baseline_value: 1.0,
-            partial_derivative: 0.5,
-            elasticity: 0.5,
-            is_high_sensitivity: false,
+            param_name: "high_p".to_string(),
+            baseline_value: 3.0,
+            partial_derivative: 27.0,
+            elasticity: 3.0,
+            is_high_sensitivity: true,
         },
     ];
 
@@ -134,13 +134,21 @@ fn test_sensitivity_metric_card_uses_wcag_semantic_palette_across_themes() {
         crate::app::ThemeMode::Light,
         crate::app::ThemeMode::HighContrast,
     ] {
+        let visuals = mode.visuals();
         let ctx = egui::Context::default();
-        ctx.set_visuals(mode.visuals());
+        ctx.set_visuals(visuals.clone());
         let palette = mode.palette();
-        let panel_bg = mode.visuals().panel_fill;
+        let panel_bg = visuals.panel_fill;
+        let bar_text_fg = visuals.selection.stroke.color;
         assert!(crate::app::contrast_ratio(palette.error, panel_bg) >= 4.5);
         assert!(crate::app::contrast_ratio(palette.warning, panel_bg) >= 4.5);
         assert!(crate::app::contrast_ratio(palette.success, panel_bg) >= 4.5);
+        assert!(crate::app::contrast_ratio(visuals.extreme_bg_color, bar_text_fg) >= 4.5);
+        assert!(crate::app::contrast_ratio(visuals.selection.bg_fill, bar_text_fg) >= 4.5);
+        for m in &engine.metrics {
+            let fill = crate::app::SemanticPalette::progress_bar_fill(&visuals, m.elasticity);
+            assert!(crate::app::contrast_ratio(fill, bar_text_fg) >= 4.5);
+        }
 
         let out = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {

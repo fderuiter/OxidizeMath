@@ -67,6 +67,7 @@ fn test_quad_typing_focus_routes_command_palette() {
     for p in 0..4 {
         app.set_pane_tab(p, 0);
     }
+    // Hovering Pane 3 while typing must NOT steal focus away from Pane 0.
     run_screen_events(
         &ctx,
         &mut app,
@@ -74,6 +75,19 @@ fn test_quad_typing_focus_routes_command_palette() {
             egui::Event::PointerMoved(egui::pos2(950.0, 750.0)),
             egui::Event::Text("x".to_string()),
         ],
+    );
+    assert_eq!(app.focused_pane, 0);
+
+    // Clicking Pane 3 focuses Pane 3 and routes subsequent Command Palette selection there.
+    run_screen_events(
+        &ctx,
+        &mut app,
+        vec![egui::Event::PointerButton {
+            pos: egui::pos2(950.0, 750.0),
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }],
     );
     assert_eq!(app.focused_pane, 3);
     app.command_palette.open();

@@ -198,7 +198,7 @@ impl RewardPlotsTool {
 
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "reward_plots_controls");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Training Controls");
             ui.separator();
 

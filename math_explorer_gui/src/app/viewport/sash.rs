@@ -30,6 +30,21 @@ pub fn split_sash_id() -> egui::Id {
     egui::Id::new("viewport_split_sash")
 }
 
+/// Returns the deterministic widget [`egui::Id`] for the `QuadGrid` vertical split sash (`x` axis).
+pub fn quad_vertical_sash_id() -> egui::Id {
+    egui::Id::new("viewport_quad_vertical_sash")
+}
+
+/// Returns the deterministic widget [`egui::Id`] for the `QuadGrid` horizontal split sash (`y` axis).
+pub fn quad_horizontal_sash_id() -> egui::Id {
+    egui::Id::new("viewport_quad_horizontal_sash")
+}
+
+/// Returns `true` if `id` is any dual-pane or quad-grid viewport split sash widget [`egui::Id`].
+pub(crate) fn is_any_sash_id(id: egui::Id) -> bool {
+    id == split_sash_id() || id == quad_vertical_sash_id() || id == quad_horizontal_sash_id()
+}
+
 /// Per-frame interaction outcome for the dual-pane split sash widget.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct SashFrameState {
@@ -39,11 +54,7 @@ pub(super) struct SashFrameState {
 
 /// Returns the high-contrast focus outline color for the active [`egui::Visuals`].
 pub(super) fn focus_outline_color(visuals: &egui::Visuals) -> egui::Color32 {
-    if visuals.dark_mode {
-        egui::Color32::from_rgb(255, 214, 10)
-    } else {
-        egui::Color32::from_rgb(0, 72, 186)
-    }
+    crate::app::SemanticPalette::sash_focus_outline(visuals)
 }
 
 /// Returns `true` when `event` is a sash keyboard resize or reset key press.
@@ -93,7 +104,10 @@ fn announce_split_ratio(ctx: &egui::Context, split_ratio: f32) {
     crate::accessibility::announce_live_status(ctx, format!("Split ratio {pct}%"));
 }
 
-fn apply_keyboard_adjustments(ctx: &egui::Context, split_ratio: &mut f32) -> (bool, bool, bool) {
+pub(super) fn apply_keyboard_adjustments(
+    ctx: &egui::Context,
+    split_ratio: &mut f32,
+) -> (bool, bool, bool) {
     let start_ratio = (*split_ratio).clamp(MIN_SPLIT_RATIO, MAX_SPLIT_RATIO);
     let mut current = f64::from(start_ratio);
     let mut consumed_any = false;
@@ -143,7 +157,11 @@ fn apply_keyboard_adjustments(ctx: &egui::Context, split_ratio: &mut f32) -> (bo
     (changed, true, arrow_pressed)
 }
 
-fn apply_accesskit_actions(ctx: &egui::Context, sash_id: egui::Id, split_ratio: &mut f32) -> bool {
+pub(super) fn apply_accesskit_actions(
+    ctx: &egui::Context,
+    sash_id: egui::Id,
+    split_ratio: &mut f32,
+) -> bool {
     use egui::accesskit::{Action, ActionData};
 
     let start_ratio = (*split_ratio).clamp(MIN_SPLIT_RATIO, MAX_SPLIT_RATIO);
@@ -184,9 +202,13 @@ fn handle_pointer_drag(
     sash_resp: &egui::Response,
     total_rect: egui::Rect,
     divider_rect: egui::Rect,
+    modal_open: bool,
 ) -> (bool, bool) {
-    let hover_pos = ctx.input(|i| i.pointer.hover_pos());
-    let is_hovered = sash_resp.hovered() || hover_pos.is_some_and(|pos| divider_rect.contains(pos));
+    let hover_pos = (!modal_open)
+        .then(|| ctx.input(|i| i.pointer.hover_pos()))
+        .flatten();
+    let is_hovered = !modal_open
+        && (sash_resp.hovered() || hover_pos.is_some_and(|pos| divider_rect.contains(pos)));
     let is_down = ctx.input(|i| i.pointer.primary_down());
     let was_dragging = app.is_dragging_divider;
     let drag_start_key = sash_resp.id.with("drag_start_ratio");
@@ -239,16 +261,16 @@ fn handle_pointer_drag(
     (is_hovered, changed)
 }
 
-fn register_sash_accessibility(
+pub(super) fn register_axis_splitter_accessibility(
     ui: &egui::Ui,
     sash_resp: &egui::Response,
-    layout: ViewportLayout,
+    label: &'static str,
     split_ratio: f32,
+    orientation: egui::accesskit::Orientation,
 ) {
     let clamped = split_ratio.clamp(MIN_SPLIT_RATIO, MAX_SPLIT_RATIO);
     let pct_f64 = (f64::from(clamped) * 100.0).round();
     let value_text = format!("{}%", pct_f64 as i32);
-    let label = sash_accessible_label(layout);
 
     let mut info = egui::WidgetInfo::labeled(egui::WidgetType::Other, ui.is_enabled(), label);
     info.value = Some(pct_f64);
@@ -263,7 +285,7 @@ fn register_sash_accessibility(
     });
 
     ui.ctx().accesskit_node_builder(sash_resp.id, |builder| {
-        use egui::accesskit::{Action, Orientation, Role};
+        use egui::accesskit::{Action, Role};
 
         builder.set_role(Role::Splitter);
         builder.set_label(label);
@@ -272,11 +294,7 @@ fn register_sash_accessibility(
         builder.set_min_numeric_value(20.0);
         builder.set_max_numeric_value(80.0);
         builder.set_numeric_value_step(5.0);
-        builder.set_orientation(match layout {
-            ViewportLayout::SplitHorizontal => Orientation::Vertical,
-            ViewportLayout::SplitVertical => Orientation::Horizontal,
-            ViewportLayout::Single | ViewportLayout::QuadGrid => Orientation::Vertical,
-        });
+        builder.set_orientation(orientation);
         builder.add_action(Action::SetValue);
         if pct_f64 < 80.0 {
             builder.add_action(Action::Increment);
@@ -285,6 +303,26 @@ fn register_sash_accessibility(
             builder.add_action(Action::Decrement);
         }
     });
+}
+
+fn register_sash_accessibility(
+    ui: &egui::Ui,
+    sash_resp: &egui::Response,
+    layout: ViewportLayout,
+    split_ratio: f32,
+) {
+    let orientation = match layout {
+        ViewportLayout::SplitHorizontal => egui::accesskit::Orientation::Vertical,
+        ViewportLayout::SplitVertical => egui::accesskit::Orientation::Horizontal,
+        ViewportLayout::Single | ViewportLayout::QuadGrid => egui::accesskit::Orientation::Vertical,
+    };
+    register_axis_splitter_accessibility(
+        ui,
+        sash_resp,
+        sash_accessible_label(layout),
+        split_ratio,
+        orientation,
+    );
 }
 
 /// Allocates and processes pointer, keyboard, and AccessKit interactions for the split sash.
@@ -298,8 +336,13 @@ pub(super) fn interact_split_sash(
     let sash_id = split_sash_id();
     let mut sash_resp = ui.interact(divider_rect, sash_id, egui::Sense::click_and_drag());
 
+    let modal_open = app.command_palette.is_open
+        || app.show_help_menu
+        || egui::Popup::is_any_open(ctx)
+        || ctx.memory(|m| m.top_modal_layer().is_some());
+
     let (is_hovered, drag_changed) =
-        handle_pointer_drag(app, ctx, &sash_resp, total_rect, divider_rect);
+        handle_pointer_drag(app, ctx, &sash_resp, total_rect, divider_rect, modal_open);
 
     let mut ratio_changed = drag_changed;
 
@@ -316,8 +359,6 @@ pub(super) fn interact_split_sash(
             );
         });
 
-        let modal_open =
-            app.command_palette.is_open || app.show_help_menu || egui::Popup::is_any_open(ctx);
         if !modal_open {
             let (kb_changed, _kb_consumed, arrow_pressed) =
                 apply_keyboard_adjustments(ctx, &mut app.split_ratio);

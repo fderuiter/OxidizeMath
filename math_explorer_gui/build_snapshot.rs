@@ -1,4 +1,4 @@
-//! Deterministic build-time generator for `traceability_snapshot.json`.
+//! Deterministic build-time generator for `traceability_manifest.json`.
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 #[path = "build_snapshot_scan.rs"]
@@ -12,17 +12,21 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Aggregated build-time traceability snapshot written for WebAssembly static hosting.
+const MANIFEST_FILENAME: &str = "traceability_manifest.json";
+
+/// Aggregated build-time traceability manifest written for WebAssembly static hosting.
 #[derive(Default)]
-struct SnapshotBuilder {
+struct ManifestBuilder {
     scanned_files: usize,
     paper_coverage: BTreeMap<String, Vec<String>>,
     orphaned_papers: Vec<String>,
     unlinked_code: Vec<String>,
     invalid_links: Vec<(String, String)>,
+    semantic_integrity_status: BTreeMap<String, String>,
+    certificate_raw: Option<String>,
 }
 
-/// Generates `traceability_snapshot.json` into `out_dir` and Cargo's target directory.
+/// Generates `traceability_manifest.json` into `out_dir` and Cargo's target directory.
 pub fn generate_traceability_snapshot(out_dir: &Path) {
     emit_rerun(Path::new("build_snapshot.rs"));
     emit_rerun(Path::new("build_snapshot_scan.rs"));
@@ -39,7 +43,10 @@ pub fn generate_traceability_snapshot(out_dir: &Path) {
     let registry_links = parse_registry_links(&registry_path);
     let registered_modules: BTreeSet<String> = registry_links.keys().cloned().collect();
 
-    let mut builder = SnapshotBuilder::default();
+    let mut builder = ManifestBuilder {
+        certificate_raw: read_optional_certificate_object(&cert_path),
+        ..ManifestBuilder::default()
+    };
     for paper in &valid_papers {
         builder.paper_coverage.insert(paper.clone(), Vec::new());
     }
@@ -55,15 +62,22 @@ pub fn generate_traceability_snapshot(out_dir: &Path) {
         );
     }
 
-    finalize_snapshot(&mut builder);
-    let json = serialize_snapshot_json(&builder);
-    write_snapshot_outputs(out_dir, &json);
+    finalize_manifest(&valid_papers, &registry_links, &mut builder);
+    let json = serialize_manifest_json(&builder);
+    write_manifest_outputs(out_dir, &json);
 }
 
 fn emit_if_exists(path: &Path) {
     if path.exists() {
         emit_rerun(path);
     }
+}
+
+fn read_optional_certificate_object(cert_path: &Path) -> Option<String> {
+    let raw = fs::read_to_string(cert_path).ok()?;
+    let trimmed = raw.trim();
+    (trimmed.starts_with('{') && trimmed.ends_with('}') && trimmed.contains("\"passed\""))
+        .then(|| trimmed.to_string())
 }
 
 fn collect_valid_papers(papers_dir: &Path) -> BTreeSet<String> {
@@ -137,7 +151,7 @@ fn strip_toml_comment(line: &str) -> &str {
 fn link_registry_entries(
     valid_papers: &BTreeSet<String>,
     registry_links: &BTreeMap<String, String>,
-    builder: &mut SnapshotBuilder,
+    builder: &mut ManifestBuilder,
 ) {
     for (module_name, paper_name) in registry_links {
         if paper_name == "INVALID_FORMAT" {
@@ -165,7 +179,7 @@ fn process_source_file(
     disk_path: &Path,
     repo_rel_path: &str,
     registered_modules: &BTreeSet<String>,
-    builder: &mut SnapshotBuilder,
+    builder: &mut ManifestBuilder,
 ) {
     builder.scanned_files += 1;
     let Ok(content) = fs::read_to_string(disk_path) else {
@@ -188,16 +202,40 @@ fn process_source_file(
     }
     verified_modules.extend(extract_macro_modules(&content));
 
-    if is_module {
-        for module in &verified_modules {
-            if !registered_modules.contains(module) {
-                builder.unlinked_code.push(repo_rel_path.to_string());
-            }
+    for module in &verified_modules {
+        builder
+            .semantic_integrity_status
+            .insert(module.clone(), "Verified".to_string());
+        if is_module && !registered_modules.contains(module) {
+            builder.unlinked_code.push(repo_rel_path.to_string());
         }
     }
 }
 
-fn finalize_snapshot(builder: &mut SnapshotBuilder) {
+fn finalize_manifest(
+    valid_papers: &BTreeSet<String>,
+    registry_links: &BTreeMap<String, String>,
+    builder: &mut ManifestBuilder,
+) {
+    for paper in valid_papers {
+        let stem = paper.strip_suffix(".tex").unwrap_or(paper);
+        if builder.semantic_integrity_status.contains_key(stem) {
+            continue;
+        }
+        let verified = registry_links.iter().any(|(module, target)| {
+            let clean = target.strip_suffix(".tex").unwrap_or(target);
+            (target == paper || clean == stem)
+                && builder
+                    .semantic_integrity_status
+                    .get(module)
+                    .is_some_and(|s| s == "Verified")
+        });
+        builder.semantic_integrity_status.insert(
+            stem.to_string(),
+            if verified { "Verified" } else { "Unverified" }.to_string(),
+        );
+    }
+
     for (paper, linked) in &mut builder.paper_coverage {
         linked.sort();
         linked.dedup();
@@ -236,52 +274,62 @@ fn serialize_string_array(items: &[String]) -> String {
     format!("[{}]", inner.join(","))
 }
 
-fn serialize_snapshot_json(builder: &SnapshotBuilder) -> String {
-    let mut coverage_entries = Vec::with_capacity(builder.paper_coverage.len());
-    for (paper, modules) in &builder.paper_coverage {
-        coverage_entries.push(format!(
-            "{}:{}",
-            json_escape(paper),
-            serialize_string_array(modules)
-        ));
-    }
+fn serialize_manifest_json(builder: &ManifestBuilder) -> String {
+    let coverage_entries: Vec<String> = builder
+        .paper_coverage
+        .iter()
+        .map(|(paper, modules)| {
+            format!("{}:{}", json_escape(paper), serialize_string_array(modules))
+        })
+        .collect();
     let invalid_entries: Vec<String> = builder
         .invalid_links
         .iter()
         .map(|(f, p)| format!("[{},{}]", json_escape(f), json_escape(p)))
         .collect();
+    let semantic_entries: Vec<String> = builder
+        .semantic_integrity_status
+        .iter()
+        .map(|(k, v)| format!("{}:{}", json_escape(k), json_escape(v)))
+        .collect();
+    let cert_suffix = builder
+        .certificate_raw
+        .as_deref()
+        .map_or_else(String::new, |raw| format!(",\"certificate\":{raw}"));
 
     format!(
-        "{{\"scanned_files\":{},\"paper_coverage\":{{{}}},\"orphaned_papers\":{},\"unlinked_code\":{},\"invalid_links\":[{}]}}\n",
+        "{{\"scanned_files\":{},\"invalid_links\":[{}],\"orphaned_papers\":{},\"unlinked_code\":{},\"unverified_modules\":[],\"paper_coverage\":{{{}}},\"total_funcs\":0,\"total_asserts\":0,\"verified_funcs\":0,\"verified_asserts\":0,\"invalid_tiers\":[],\"vacuous_bypasses\":[],\"semantic_integrity_status\":{{{}}}{}}}\n",
         builder.scanned_files,
-        coverage_entries.join(","),
+        invalid_entries.join(","),
         serialize_string_array(&builder.orphaned_papers),
         serialize_string_array(&builder.unlinked_code),
-        invalid_entries.join(",")
+        coverage_entries.join(","),
+        semantic_entries.join(","),
+        cert_suffix
     )
 }
 
-fn write_snapshot_outputs(out_dir: &Path, json: &str) {
-    fs::write(out_dir.join("traceability_snapshot.json"), json)
-        .expect("Failed to write OUT_DIR/traceability_snapshot.json");
+fn write_manifest_outputs(out_dir: &Path, json: &str) {
+    fs::write(out_dir.join(MANIFEST_FILENAME), json)
+        .expect("Failed to write OUT_DIR/traceability_manifest.json");
 
     if let Some(profile_dir) = out_dir
         .ancestors()
         .find(|p| p.file_name().and_then(|n| n.to_str()) == Some("build"))
         .and_then(Path::parent)
     {
-        let _ = fs::write(profile_dir.join("traceability_snapshot.json"), json);
+        let _ = fs::write(profile_dir.join(MANIFEST_FILENAME), json);
         if let Some(parent_target) = profile_dir.parent() {
-            let _ = fs::write(parent_target.join("traceability_snapshot.json"), json);
+            let _ = fs::write(parent_target.join(MANIFEST_FILENAME), json);
         }
     }
 
     if let Some(custom_target) = env::var_os("CARGO_TARGET_DIR") {
         let target_path = PathBuf::from(custom_target);
         if target_path.is_dir() {
-            let _ = fs::write(target_path.join("traceability_snapshot.json"), json);
+            let _ = fs::write(target_path.join(MANIFEST_FILENAME), json);
         }
     } else if Path::new("../target").is_dir() {
-        let _ = fs::write(Path::new("../target/traceability_snapshot.json"), json);
+        let _ = fs::write(Path::new("../target").join(MANIFEST_FILENAME), json);
     }
 }

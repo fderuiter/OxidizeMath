@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{AccessibleHoverText, InputMode, InteractionContext, InteractiveTool};
+use super::{AccessibleHoverText, InputMode, InteractionContext, InteractiveTool, PaneSidePanel};
 use eframe::egui;
 
 /// Computes a pane-salted panel [`egui::Id`] from the enclosing `ui` hierarchy.
@@ -46,7 +46,7 @@ pub(super) fn render_default_tool_inside<T: InteractiveTool + ?Sized>(
     ui: &mut egui::Ui,
 ) {
     let panel_id = scoped_panel_id(ui, format!("{}_controls", tool.name()));
-    egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
+    PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
         ui.horizontal(|ui| {
             ui.heading(tool.name());
             let help_btn = ui

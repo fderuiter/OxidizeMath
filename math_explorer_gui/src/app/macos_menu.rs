@@ -48,51 +48,45 @@ fn build_edit_menu() -> Submenu {
     edit_menu.append(&redo_item).unwrap();
     edit_menu
 }
+fn build_swap_pair_submenu() -> Submenu {
+    let swap_pair_menu = Submenu::new("Swap Pane Pair", true);
+    let labels = ViewportLayout::QuadGrid.pane_labels();
+    for (a, b) in [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)] {
+        let item = MenuItem::with_id(
+            MenuId::new(format!("layout_swap_{a}_{b}")),
+            format!("{} <-> {}", labels[a], labels[b]),
+            true,
+            None,
+        );
+        swap_pair_menu.append(&item).unwrap();
+    }
+    swap_pair_menu
+}
+
 fn build_layout_submenu() -> Submenu {
     let layout_menu = Submenu::new("Viewport Layout", true);
-    layout_menu
-        .append(&MenuItem::with_id(
-            MenuId::new("layout_single"),
-            ViewportLayout::Single.name(),
-            true,
-            None,
-        ))
-        .unwrap();
-    layout_menu
-        .append(&MenuItem::with_id(
-            MenuId::new("layout_split_h"),
-            ViewportLayout::SplitHorizontal.name(),
-            true,
-            None,
-        ))
-        .unwrap();
-    layout_menu
-        .append(&MenuItem::with_id(
-            MenuId::new("layout_split_v"),
-            ViewportLayout::SplitVertical.name(),
-            true,
-            None,
-        ))
-        .unwrap();
-    layout_menu
-        .append(&MenuItem::with_id(
-            MenuId::new("layout_quad"),
-            ViewportLayout::QuadGrid.name(),
-            true,
-            None,
-        ))
-        .unwrap();
+    for (id, layout) in [
+        ("layout_single", ViewportLayout::Single),
+        ("layout_split_h", ViewportLayout::SplitHorizontal),
+        ("layout_split_v", ViewportLayout::SplitVertical),
+        ("layout_quad", ViewportLayout::QuadGrid),
+    ] {
+        let item = MenuItem::with_id(MenuId::new(id), layout.name(), true, None);
+        layout_menu.append(&item).unwrap();
+    }
     layout_menu
         .append(&PredefinedMenuItem::separator())
         .unwrap();
-    layout_menu
-        .append(&MenuItem::with_id(
-            MenuId::new("layout_swap"),
-            "Swap Panes",
-            true,
-            None,
-        ))
-        .unwrap();
+    let swap_item = MenuItem::with_id(MenuId::new("layout_swap"), "Swap Panes", true, None);
+    layout_menu.append(&swap_item).unwrap();
+    layout_menu.append(&build_swap_pair_submenu()).unwrap();
+    for (id, label) in [
+        ("layout_rotate_cw", "Rotate Panes Clockwise"),
+        ("layout_rotate_ccw", "Rotate Panes Counter-Clockwise"),
+    ] {
+        let item = MenuItem::with_id(MenuId::new(id), label, true, None);
+        layout_menu.append(&item).unwrap();
+    }
     layout_menu
 }
 
@@ -277,7 +271,14 @@ fn handle_view_layout_event(app: &mut MathExplorerApp, id: &str) -> bool {
         "layout_split_h" => app.set_layout(ViewportLayout::SplitHorizontal),
         "layout_split_v" => app.set_layout(ViewportLayout::SplitVertical),
         "layout_quad" => app.set_layout(ViewportLayout::QuadGrid),
-        "layout_swap" => app.swap_panes(),
+        "layout_swap" | "layout_swap_0_1" => app.swap_pane_pair(0, 1),
+        "layout_swap_0_2" => app.swap_pane_pair(0, 2),
+        "layout_swap_0_3" => app.swap_pane_pair(0, 3),
+        "layout_swap_1_2" => app.swap_pane_pair(1, 2),
+        "layout_swap_1_3" => app.swap_pane_pair(1, 3),
+        "layout_swap_2_3" => app.swap_pane_pair(2, 3),
+        "layout_rotate_cw" => app.rotate_panes_clockwise(),
+        "layout_rotate_ccw" => app.rotate_panes_counter_clockwise(),
         _ => return false,
     }
     true
@@ -341,12 +342,14 @@ pub(super) fn handle_macos_menu_events(app: &mut MathExplorerApp, ctx: &egui::Co
         match id {
             "edit_undo" => app.undo(),
             "edit_redo" => app.redo(),
-            other if other.starts_with("tab_") => {
-                if let Ok(idx) = other[4..].parse::<usize>() {
+            _ => {
+                if let Some(idx) = id
+                    .strip_prefix("tab_")
+                    .and_then(|s| s.parse::<usize>().ok())
+                {
                     super::domain_bar::select_primary_tab(app, ctx, idx);
                 }
             }
-            _ => {}
         }
     }
 }
@@ -424,6 +427,43 @@ mod tests {
             assert_eq!(app.selected_tab, initial_primary);
             assert_eq!(app.secondary_tab, initial_secondary);
         }
+    }
+
+    #[test]
+    fn test_handle_quad_pair_swap_rotation_and_focus_pane_events() {
+        let _guard = crate::reflective_ui::tests::lock_test_mutex();
+        let ctx = egui::Context::default();
+        let mut app = MathExplorerApp::default();
+        app.set_layout(ViewportLayout::QuadGrid);
+        if !app.tabs.is_empty() {
+            for p in 0..4 {
+                app.set_pane_tab(p, p % app.tabs.len());
+            }
+        }
+        let baseline = app.pane_tabs.clone();
+        assert!(handle_view_layout_event(&mut app, "layout_swap_0_2"));
+        assert_eq!(app.pane_tabs[0], baseline[2]);
+        assert_eq!(app.pane_tabs[2], baseline[0]);
+        assert!(handle_view_layout_event(&mut app, "layout_swap_0_2"));
+        assert_eq!(app.pane_tabs, baseline);
+
+        assert!(handle_view_layout_event(&mut app, "layout_rotate_cw"));
+        assert!(handle_view_layout_event(&mut app, "layout_rotate_ccw"));
+        assert_eq!(app.pane_tabs, baseline);
+
+        app.focus_pane(0);
+        assert!(handle_focus_pane_event(&mut app, &ctx, "focus_pane_next"));
+        assert_eq!(app.focused_pane, 1);
+        assert!(handle_focus_pane_event(&mut app, &ctx, "focus_pane_prev"));
+        assert_eq!(app.focused_pane, 0);
+        assert!(handle_focus_pane_event(&mut app, &ctx, "focus_pane_3"));
+        assert_eq!(app.focused_pane, 3);
+        assert!(!handle_focus_pane_event(
+            &mut app,
+            &ctx,
+            "focus_pane_unknown"
+        ));
+        setup_macos_menu(&app);
     }
 
     #[test]

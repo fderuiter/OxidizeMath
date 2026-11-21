@@ -228,6 +228,7 @@ fn test_morphogenesis_divergence_and_recovery() {
         d_u: 1.0,
         d_v: 100.0,
         dt: 0.05,
+        high_contrast: false,
     }));
 
     let mut runner = MorphogenesisRunner {

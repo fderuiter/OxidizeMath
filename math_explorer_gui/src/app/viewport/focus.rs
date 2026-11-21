@@ -15,6 +15,9 @@ pub(crate) const CURRENT_RENDERING_PANE_KEY: &str = "CURRENT_RENDERING_PANE";
 /// Temp context key indicating a shell menu, modal, popup, or split sash holds focus.
 pub(crate) const SHELL_MODAL_OR_SASH_FOCUSED_KEY: &str = "SHELL_MODAL_OR_SASH_FOCUSED";
 
+/// Temp context key storing the pane index last resolved at the end of the previous frame.
+const LAST_RESOLVED_FOCUSED_PANE_KEY: &str = "LAST_RESOLVED_FOCUSED_PANE";
+
 /// Returns the WCAG 2.2 SC 2.4.7 / Technique G195 high-contrast border color for the focused pane.
 #[inline]
 pub fn pane_focus_border_color(visuals: &egui::Visuals) -> egui::Color32 {
@@ -29,8 +32,9 @@ pub(super) fn paint_pane_border(
     visuals: &egui::Visuals,
 ) {
     if is_focused {
+        let focus_width = visuals.selection.stroke.width.max(2.0_f32);
         painter.rect_stroke(
-            pane_rect.shrink(2.0),
+            pane_rect.shrink(focus_width),
             0.0,
             egui::Stroke::new(1.0_f32, visuals.panel_fill),
             egui::StrokeKind::Inside,
@@ -38,14 +42,14 @@ pub(super) fn paint_pane_border(
         painter.rect_stroke(
             pane_rect,
             0.0,
-            egui::Stroke::new(2.0_f32, pane_focus_border_color(visuals)),
+            egui::Stroke::new(focus_width, pane_focus_border_color(visuals)),
             egui::StrokeKind::Inside,
         );
     } else {
         painter.rect_stroke(
             pane_rect,
             0.0,
-            egui::Stroke::new(1.0_f32, visuals.widgets.noninteractive.bg_stroke.color),
+            visuals.widgets.noninteractive.bg_stroke,
             egui::StrokeKind::Inside,
         );
     }
@@ -157,6 +161,7 @@ pub(super) fn sync_focused_pane_from_widget_focus(
     has_pending_pane_focus: bool,
 ) -> bool {
     let modal_or_popup = app.is_dragging_divider
+        || app.dragging_quad_axes != (false, false)
         || sash_focused
         || app.command_palette.is_open
         || app.show_help_menu
@@ -166,7 +171,7 @@ pub(super) fn sync_focused_pane_from_widget_focus(
     let Some(fid) = ctx.memory(|m| m.focused()) else {
         return modal_or_popup;
     };
-    if fid == super::sash::split_sash_id() {
+    if super::sash::is_any_sash_id(fid) {
         return true;
     }
     let Some(resp) = ctx.read_response(fid) else {
@@ -177,7 +182,7 @@ pub(super) fn sync_focused_pane_from_widget_focus(
     }
     if let Some(idx) = pane_rects
         .iter()
-        .position(|rect| rect.contains(resp.rect.center()))
+        .position(|&rect| response_belongs_to_pane(&resp, rect))
     {
         if !modal_or_popup && !has_pending_pane_focus {
             app.focus_pane(idx);
@@ -208,6 +213,29 @@ pub(super) fn finish_pending_pane_focus(ctx: &egui::Context, should_focus_this_p
     }
 }
 
+pub(crate) fn response_belongs_to_pane(resp: &egui::Response, pane_rect: egui::Rect) -> bool {
+    if resp.interact_rect.is_positive() {
+        pane_rect.expand(0.5).contains(resp.interact_rect.center())
+    } else {
+        pane_rect.contains(resp.rect.center())
+    }
+}
+
+fn surrender_widget_focus_outside_rect(ctx: &egui::Context, target_rect: egui::Rect) {
+    let Some(fid) = ctx.memory(|m| m.focused()) else {
+        return;
+    };
+    if super::sash::is_any_sash_id(fid) {
+        return;
+    }
+    let inside = ctx.read_response(fid).is_some_and(|r| {
+        r.layer_id.order != egui::Order::Background || response_belongs_to_pane(&r, target_rect)
+    });
+    if !inside {
+        ctx.memory_mut(|m| m.surrender_focus(fid));
+    }
+}
+
 /// Resolves pointer/widget pane focus for the current multi-pane frame and updates temp focus keys.
 pub(super) fn resolve_frame_pane_focus(
     app: &mut MathExplorerApp,
@@ -215,17 +243,22 @@ pub(super) fn resolve_frame_pane_focus(
     pane_rects: &[egui::Rect],
     sash_focused: bool,
 ) -> Option<usize> {
-    let pointer_pos = if app.is_dragging_divider {
-        None
-    } else {
-        ctx.input(|i| i.pointer.latest_pos())
-    };
     let raw_input = ctx.input(|i| i.raw.clone());
     let pending_focus =
         ctx.data_mut(|d| d.remove_temp::<usize>(egui::Id::new(PENDING_PANE_FOCUS_KEY)));
     if pending_focus.is_none() {
-        app.update_focused_pane_from_input(ctx, &raw_input, pane_rects, pointer_pos);
+        app.update_focused_pane_from_input(ctx, &raw_input, pane_rects);
     }
+    let current_target = app.active_focused_pane();
+    let last_resolved =
+        ctx.data(|d| d.get_temp::<usize>(egui::Id::new(LAST_RESOLVED_FOCUSED_PANE_KEY)));
+    if let Some(&target_rect) = last_resolved
+        .filter(|&prev| prev != current_target)
+        .and_then(|_| pane_rects.get(current_target))
+    {
+        surrender_widget_focus_outside_rect(ctx, target_rect);
+    }
+
     let shell_focused = sync_focused_pane_from_widget_focus(
         app,
         ctx,
@@ -242,4 +275,69 @@ pub(super) fn resolve_frame_pane_focus(
         );
     });
     pending_focus
+}
+
+/// Records the final resolved focused pane at the end of a multi-pane frame.
+pub(super) fn record_resolved_pane_focus(ctx: &egui::Context, focused_idx: usize) {
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new(LAST_RESOLVED_FOCUSED_PANE_KEY), focused_idx);
+        d.insert_temp(egui::Id::new(ACTIVE_FOCUSED_PANE_KEY), focused_idx);
+    });
+}
+
+fn is_pane_scoped_event(ev: &egui::Event) -> bool {
+    matches!(
+        ev,
+        egui::Event::Key { .. }
+            | egui::Event::Text(_)
+            | egui::Event::Ime(_)
+            | egui::Event::Copy
+            | egui::Event::Cut
+            | egui::Event::Paste(_)
+    )
+}
+
+/// Runs `f` while temporarily masking keyboard, text, IME, and clipboard events when `pane_idx` is inactive.
+pub(super) fn with_pane_scoped_input<R>(
+    ctx: &egui::Context,
+    pane_idx: usize,
+    f: impl FnOnce() -> R,
+) -> R {
+    let allow_input = ctx.data(|d| {
+        let shell_focused = d
+            .get_temp::<bool>(egui::Id::new(SHELL_MODAL_OR_SASH_FOCUSED_KEY))
+            .unwrap_or(false);
+        let active_pane = d
+            .get_temp::<usize>(egui::Id::new(ACTIVE_FOCUSED_PANE_KEY))
+            .unwrap_or(0);
+        !shell_focused && pane_idx == active_pane
+    });
+    if allow_input {
+        return f();
+    }
+
+    let (stashed_events, stashed_keys) = ctx.input_mut(|i| {
+        let mut kept = Vec::with_capacity(i.events.len());
+        let mut stashed = Vec::new();
+        for ev in i.events.drain(..) {
+            if is_pane_scoped_event(&ev) {
+                stashed.push(ev);
+            } else {
+                kept.push(ev);
+            }
+        }
+        i.events = kept;
+        let keys = std::mem::take(&mut i.keys_down);
+        (stashed, keys)
+    });
+
+    let out = f();
+
+    if !stashed_events.is_empty() || !stashed_keys.is_empty() {
+        ctx.input_mut(|i| {
+            i.events.extend(stashed_events);
+            i.keys_down.extend(stashed_keys);
+        });
+    }
+    out
 }

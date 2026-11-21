@@ -204,7 +204,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     fn draw_left_panel(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(ui, format!("{}_controls", M::name()));
-        egui::SidePanel::left(panel_id).show_inside(ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading(M::name());
             ui.separator();
             self.draw_status_and_transport(ui, &ctx);

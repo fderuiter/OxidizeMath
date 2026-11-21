@@ -98,7 +98,7 @@ impl InteractiveTool for SpikeAnalysisTool {
 impl SpikeAnalysisTool {
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "spike_analysis_controls");
-        egui::SidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Configuration");
             ui.separator();
 

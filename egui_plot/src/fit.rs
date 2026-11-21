@@ -76,7 +76,9 @@ impl FitResult {
             u_pow *= u;
         }
         if self.log_y {
-            10.0_f64.powf(poly.clamp(-300.0, 300.0))
+            10.0_f64
+                .powf(poly.clamp(-300.0, 300.0))
+                .clamp(1e-300, 1e300)
         } else {
             poly
         }
