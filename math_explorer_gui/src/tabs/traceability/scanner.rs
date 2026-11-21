@@ -163,13 +163,21 @@ pub(super) fn revalidate_repo_path(raw: &str, _user_picked: bool) -> Option<Stri
 #[cfg(not(target_arch = "wasm32"))]
 struct RootedVfs {
     root: PathBuf,
+    fallback_registry: Option<PathBuf>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl RootedVfs {
     fn new(root: &Path) -> Result<Self, std::io::Error> {
         let canonical = root.canonicalize()?;
-        Ok(Self { root: canonical })
+        let fallback_registry = canonical_workspace_root()
+            .filter(|ws| canonical.starts_with(ws) && canonical != *ws)
+            .map(|ws| ws.join("traceability.toml"))
+            .filter(|p| p.is_file());
+        Ok(Self {
+            root: canonical,
+            fallback_registry,
+        })
     }
 
     fn resolve_confined(&self, rel: &str) -> Result<PathBuf, std::io::Error> {
@@ -204,8 +212,20 @@ impl VirtualFileSystem for RootedVfs {
     ) -> Pin<Box<dyn Future<Output = Result<String, std::io::Error>> + '_>> {
         let path = path.to_string();
         Box::pin(async move {
-            let resolved = self.resolve_confined(&path)?;
-            std::fs::read_to_string(resolved)
+            match self.resolve_confined(&path) {
+                Ok(resolved) => std::fs::read_to_string(resolved),
+                Err(err) => {
+                    let clean = path.trim_start_matches("./").trim_start_matches(['/', '\\']);
+                    if clean == "traceability.toml"
+                        && matches!(err.kind(), std::io::ErrorKind::NotFound)
+                    {
+                        if let Some(fallback) = &self.fallback_registry {
+                            return std::fs::read_to_string(fallback);
+                        }
+                    }
+                    Err(err)
+                }
+            }
         })
     }
 

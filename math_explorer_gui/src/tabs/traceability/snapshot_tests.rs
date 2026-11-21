@@ -3,12 +3,10 @@
 use super::*;
 
 #[test]
-fn test_web_snapshot_relative_urls_and_tex_fallback_links() {
+fn test_web_manifest_relative_urls_and_tex_fallback_links() {
+    assert_eq!(web_snapshot::MANIFEST_REL_URL, "./traceability_manifest.json");
     assert!(web_snapshot::is_relative_same_origin_url(
-        web_snapshot::SNAPSHOT_REL_URL
-    ));
-    assert!(web_snapshot::is_relative_same_origin_url(
-        web_snapshot::CERTIFICATE_REL_URL
+        web_snapshot::MANIFEST_REL_URL
     ));
     assert!(!web_snapshot::is_relative_same_origin_url(
         "/traceability.toml"
@@ -17,10 +15,10 @@ fn test_web_snapshot_relative_urls_and_tex_fallback_links() {
         "./../traceability.toml"
     ));
     assert!(!web_snapshot::is_relative_same_origin_url(
-        "https://example.com/traceability_snapshot.json"
+        "https://example.com/traceability_manifest.json"
     ));
     assert!(!web_snapshot::is_relative_same_origin_url(
-        ".\\traceability_snapshot.json"
+        ".\\traceability_manifest.json"
     ));
 
     assert_eq!(
@@ -46,10 +44,28 @@ fn test_web_snapshot_relative_urls_and_tex_fallback_links() {
 
     const SW_JS: &str = include_str!("../../../sw.js");
     assert!(
-        !SW_JS.contains("traceability_snapshot.json")
+        !SW_JS.contains("traceability_manifest.json")
             && !SW_JS.contains("Verification_Certificate.json"),
         "sw.js must keep traceability JSON out of install precache so startup makes zero traceability requests"
     );
+}
+
+#[test]
+fn test_invalid_manifest_payload_errors_and_bare_report_deserializes() {
+    assert!(web_snapshot::parse_manifest_json("not valid json").is_err());
+
+    let mut report = oxidize_core::traceability::TraceabilityReport {
+        scanned_files: 42,
+        ..Default::default()
+    };
+    report.paper_coverage.insert(
+        "essay.tex".to_string(),
+        vec!["math_commons".to_string()],
+    );
+    let raw = serde_json::to_string(&report).expect("serialize TraceabilityReport");
+    let (parsed, cert) = web_snapshot::parse_manifest_json(&raw).expect("parse bare report");
+    assert_eq!(parsed, report);
+    assert!(cert.is_none());
 }
 
 #[test]
@@ -79,16 +95,19 @@ fn test_app_startup_does_not_scan_when_traceability_tab_unopened() {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
-fn test_generated_snapshot_matches_live_workspace_scan_and_certificate_parses() {
+fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let _cwd_guard = super::workspace_root_tests::CwdRestoreGuard::capture();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
     let ws_norm = oxidize_core::path_utils::normalize_path(&ws_root);
     std::env::set_current_dir(&ws_norm).expect("chdir workspace root");
 
-    let embedded_json = include_str!(concat!(env!("OUT_DIR"), "/traceability_snapshot.json"));
-    let snap_report =
-        web_snapshot::parse_snapshot_json(embedded_json).expect("valid snapshot JSON");
+    let embedded_json = include_str!(concat!(env!("OUT_DIR"), "/traceability_manifest.json"));
+    let direct_report: oxidize_core::traceability::TraceabilityReport =
+        serde_json::from_str(embedded_json).expect("deserialize TraceabilityReport directly");
+    let (manifest_report, embedded_cert) =
+        web_snapshot::parse_manifest_json(embedded_json).expect("valid manifest JSON");
+    assert_eq!(direct_report.paper_coverage, manifest_report.paper_coverage);
 
     let live_report = futures::executor::block_on(execute_workspace_scan(
         oxidize_core::vfs::DefaultVfs,
@@ -98,27 +117,19 @@ fn test_generated_snapshot_matches_live_workspace_scan_and_certificate_parses() 
 
     drop(_cwd_guard);
 
-    assert_eq!(snap_report.scanned_files, live_report.scanned_files);
-    assert_eq!(snap_report.orphaned_papers, live_report.orphaned_papers);
-    assert_eq!(snap_report.unlinked_code, live_report.unlinked_code);
-    assert_eq!(snap_report.invalid_links, live_report.invalid_links);
-    assert_eq!(
-        snap_report.paper_coverage.len(),
-        live_report.paper_coverage.len()
-    );
-    for (paper, mut live_mods) in live_report.paper_coverage {
-        live_mods.sort();
-        live_mods.dedup();
-        let snap_mods = snap_report
-            .paper_coverage
-            .get(&paper)
-            .unwrap_or_else(|| panic!("Missing paper {paper} in snapshot"));
-        assert_eq!(snap_mods, &live_mods, "Coverage mismatch for {paper}");
-    }
+    let tex_paper_count = manifest_report
+        .paper_coverage
+        .keys()
+        .filter(|k| k.ends_with(".tex"))
+        .count();
+    assert_eq!(tex_paper_count, 28, "Manifest must cover all 28 .tex papers");
+    assert!(manifest_report.orphaned_papers.is_empty());
+    assert!(manifest_report.unlinked_code.is_empty());
+    assert!(manifest_report.invalid_links.is_empty());
+    assert_eq!(manifest_report.scanned_files, live_report.scanned_files);
+    assert_eq!(manifest_report.paper_coverage, live_report.paper_coverage);
 
-    let cert_raw = std::fs::read_to_string(ws_root.join("Verification_Certificate.json"))
-        .expect("read Verification_Certificate.json");
-    let cert = web_snapshot::parse_certificate_json(&cert_raw).expect("valid certificate JSON");
+    let cert = embedded_cert.expect("embedded Verification_Certificate.json");
     assert!(cert.passed);
     assert!(cert.wasm_path_coverage_pct > 0.0);
 }
