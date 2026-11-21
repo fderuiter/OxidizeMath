@@ -32,6 +32,7 @@ enum RecoveryPhase {
 }
 
 struct RecoveryRuntime {
+    canvas: web_sys::HtmlCanvasElement,
     active_runner: Option<eframe::WebRunner>,
     saved_snapshot: Option<WorkspaceRecoverySnapshot>,
     storage_blocked: bool,
@@ -41,8 +42,9 @@ struct RecoveryRuntime {
 }
 
 impl RecoveryRuntime {
-    fn new(runner: eframe::WebRunner) -> Self {
+    fn new(canvas: web_sys::HtmlCanvasElement, runner: eframe::WebRunner) -> Self {
         Self {
+            canvas,
             active_runner: Some(runner),
             saved_snapshot: None,
             storage_blocked: false,
@@ -83,6 +85,10 @@ fn handle_restore_timeout(runtime_rc: &Rc<RefCell<RecoveryRuntime>>, detail: &st
     };
     let (stale_runner, envelope_json, filename, storage_blocked) = {
         let mut rt = runtime_rc.borrow_mut();
+        if !rt.canvas.is_connected() {
+            clear_fallback_timer(window.as_ref(), &mut rt);
+            return;
+        }
         if !matches!(
             rt.phase,
             RecoveryPhase::AwaitingRestore { .. } | RecoveryPhase::Restoring { .. }
@@ -296,7 +302,7 @@ pub(crate) fn install_webgl_recovery(
     window: Option<&web_sys::Window>,
     runner: eframe::WebRunner,
 ) {
-    let runtime_rc = Rc::new(RefCell::new(RecoveryRuntime::new(runner)));
+    let runtime_rc = Rc::new(RefCell::new(RecoveryRuntime::new(canvas.clone(), runner)));
     bind_download_button(doc, &runtime_rc);
     let timeout_rt = Rc::clone(&runtime_rc);
     register_js_timeout_bridge(window, move |msg| {

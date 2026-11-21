@@ -234,5 +234,6 @@ fn wasm_webgl_context_lost_prevents_default_and_reveals_recovery_overlay() {
         "#webgl_recovery_overlay must unhide while awaiting WebGL context restoration"
     );
     assert_eq!(overlay.get_attribute("aria-busy").as_deref(), Some("true"));
+    canvas.remove();
     overlay.remove();
 }

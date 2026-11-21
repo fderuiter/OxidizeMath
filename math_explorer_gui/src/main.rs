@@ -157,6 +157,11 @@ fn bind_fallback_reload_listener(doc: &web_sys::Document) {
 
 #[cfg(target_arch = "wasm32")]
 fn select_webgl_error_category(doc: &web_sys::Document) {
+    if let Some(overlay) = doc.get_element_by_id("webgl_recovery_overlay") {
+        let _ = overlay.set_attribute("aria-busy", "false");
+        let _ = overlay.set_attribute("hidden", "");
+        let _ = overlay.set_attribute("style", "display: none;");
+    }
     if let Some(error_container) = doc.get_element_by_id("error_container") {
         let _ = error_container.set_attribute("data-error-category", "webgl");
         let _ = error_container.set_attribute("data-error-active", "true");

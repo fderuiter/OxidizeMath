@@ -107,7 +107,13 @@
         return savedTheme;
     }
 
+    let swRegistered = false;
+
     function registerAppShellServiceWorker() {
+        if (swRegistered) {
+            return;
+        }
+        swRegistered = true;
         try {
             if (
                 !window.isSecureContext ||
@@ -126,7 +132,6 @@
 
     markBootManaged();
     syncShellThemeFromStorage();
-    registerAppShellServiceWorker();
 
     const ERROR_CATEGORIES = {
         network: {
@@ -298,14 +303,16 @@
     }
 
     function isBootFailed() {
+        const root = document.documentElement;
         return (
             bootFailed ||
+            Boolean(root && root.getAttribute('data-boot-failed') === 'true') ||
             Boolean(bootAbortController && bootAbortController.signal && bootAbortController.signal.aborted)
         );
     }
 
     function isBootPending() {
-        if (bootFailed || bootCompleted) {
+        if (isBootFailed() || bootCompleted) {
             return false;
         }
         if (document.readyState === 'loading') {
@@ -950,6 +957,7 @@
         if (root) {
             root.setAttribute('data-boot-initialized', 'true');
         }
+        registerAppShellServiceWorker();
     }
 
     function scanStartupResourceErrors() {
@@ -981,18 +989,18 @@
             if (event && typeof event.preventDefault === 'function') {
                 event.preventDefault();
             }
-            if (isUnloading || bootFailed) {
+            if (isUnloading || isBootFailed()) {
                 return;
             }
-            if (!webglRecoveryHandlers) {
+            if (!webglRecoveryHandlers && bootCompleted) {
                 beginWebglContextRecovery({});
             }
         });
         canvas.addEventListener('webglcontextrestored', function () {
-            if (isUnloading || bootFailed) {
+            if (isUnloading || isBootFailed()) {
                 return;
             }
-            if (!webglRecoveryHandlers) {
+            if (!webglRecoveryHandlers && bootCompleted) {
                 completeWebglContextRecovery();
             }
         });
@@ -1015,9 +1023,10 @@
         if (typeof MutationObserver !== 'undefined' && document.body) {
             const observer = new MutationObserver(function () {
                 if (!document.getElementById('loading_indicator')) {
-                    if (!bootFailed) {
+                    if (!isBootFailed()) {
                         markBootComplete();
                     } else {
+                        bootFailed = true;
                         clearWatchdog();
                     }
                     observer.disconnect();

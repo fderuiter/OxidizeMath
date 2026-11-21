@@ -591,7 +591,10 @@ async function bootstrap() {
     } catch (error) {
         clearLocalFallbackTimer();
 
-        if (error && error.name === 'AbortError' && isBootAborted(signal)) {
+        if (
+            isBootAborted(signal) &&
+            (error === (signal && signal.reason) || (error && error.name === 'AbortError'))
+        ) {
             return;
         }
         if (!window.__mathExplorerBoot && isBootAborted(signal)) {
