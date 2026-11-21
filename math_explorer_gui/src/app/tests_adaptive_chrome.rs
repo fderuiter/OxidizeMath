@@ -328,6 +328,13 @@ fn verify_pane_starter_gallery_roundtrip(
     let launch_rect = find_topmost_button(&out, "▶ Launch ").unwrap_or_else(|| {
         panic!("Visible Launch button inside root StarterGallery for pane {source_pane}")
     });
+    assert!(
+        launch_rect.min.x >= 0.0
+            && launch_rect.max.x <= 1024.0
+            && launch_rect.min.y >= 0.0
+            && launch_rect.max.y <= 768.0,
+        "Launch button escaped root window bounds from pane {source_pane}: {launch_rect:?}"
+    );
     click_at_1024(ctx, app, launch_rect.center());
 
     assert_eq!(app.pane_tab(other_pane).unwrap().save_state(), other_before);
