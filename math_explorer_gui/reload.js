@@ -3,6 +3,8 @@
 (function () {
     const DEFAULT_STALL_TIMEOUT_MS = 12000;
     const DEFAULT_COMPILE_TIMEOUT_MS = 45000;
+    const DEFAULT_WEBGL_RESTORE_TIMEOUT_MS = 8000;
+    const DEFAULT_RECOVERY_FILENAME = 'math-explorer-recovery.mws';
     const STARTUP_ASSET_PATTERN =
         /(?:^|\/)(reload\.js|bootstrap\.js|initializer\.js|math_explorer_gui\.js|math_explorer_gui_bg\.wasm|worker\.js)(?:[?#]|$)/i;
 
@@ -105,7 +107,13 @@
         return savedTheme;
     }
 
+    let swRegistered = false;
+
     function registerAppShellServiceWorker() {
+        if (swRegistered) {
+            return;
+        }
+        swRegistered = true;
         try {
             if (
                 !window.isSecureContext ||
@@ -124,7 +132,6 @@
 
     markBootManaged();
     syncShellThemeFromStorage();
-    registerAppShellServiceWorker();
 
     const ERROR_CATEGORIES = {
         network: {
@@ -204,6 +211,18 @@
             'Math Explorer timed out during WebAssembly compilation or graphics initialization. Select Reload Page to retry.'
     };
 
+    const WEBGL_CONTEXT_LOST_COPY = {
+        title: 'WebGL Graphics Context Lost',
+        message:
+            'Your browser lost its WebGL graphics context and could not restore hardware rendering automatically. Your workspace state is preserved—select Reload Page to resume or download a workspace backup (.mws) below.',
+        blockedStorageMessage:
+            'Your browser lost its WebGL graphics context and blocked local storage writes. Select Download Saved Workspace (.mws) below before reloading so you do not lose your session.',
+        alert:
+            'WebGL graphics context lost and could not be restored automatically. Select Reload Page to recover.',
+        blockedStorageAlert:
+            'WebGL graphics context lost and browser storage blocked saving. Download your saved workspace envelope before selecting Reload Page.'
+    };
+
     // Start pre-boot twin-slot toggles at slot 1 so slot 0 starts empty when Rust's AtomicBool(false) takes over.
     let politeSlotToggle = 1;
     let assertiveSlotToggle = 1;
@@ -211,15 +230,26 @@
     let bootCompleted = false;
     let isUnloading = false;
     let stallTimerId = null;
+    let webglRestoreTimerId = null;
+    let webglContextLostOccurred = false;
+    let savedWorkspaceEnvelope = '';
+    let savedWorkspaceFilename = DEFAULT_RECOVERY_FILENAME;
+    let storageWriteBlocked = false;
+    let webglRecoveryHandlers = null;
     let currentPhase = 'transfer';
     let lastStageLabel = 'Initializing startup scripts';
     let pendingActions = [];
     const bootAbortController =
         typeof AbortController !== 'undefined' ? new AbortController() : null;
 
-    function resolveTimeoutParam(globalOverrideName, queryParamName, defaultMs) {
+    function resolveTimeoutParam(globalOverrideName, queryParamName, defaultMs, minimumMs) {
+        const floorMs = typeof minimumMs === 'number' ? minimumMs : 100;
         const overrideVal = window[globalOverrideName];
-        if (typeof overrideVal === 'number' && Number.isFinite(overrideVal) && overrideVal >= 100) {
+        if (
+            typeof overrideVal === 'number' &&
+            Number.isFinite(overrideVal) &&
+            overrideVal >= floorMs
+        ) {
             return Math.floor(overrideVal);
         }
         try {
@@ -227,7 +257,7 @@
             const raw = params.get(queryParamName);
             if (raw !== null) {
                 const parsed = Number(raw);
-                if (Number.isFinite(parsed) && parsed >= 100) {
+                if (Number.isFinite(parsed) && parsed >= floorMs) {
                     return Math.floor(parsed);
                 }
             }
@@ -241,7 +271,8 @@
         return resolveTimeoutParam(
             '__MATH_EXPLORER_STALL_TIMEOUT_MS',
             'stall_timeout_ms',
-            DEFAULT_STALL_TIMEOUT_MS
+            DEFAULT_STALL_TIMEOUT_MS,
+            100
         );
     }
 
@@ -249,7 +280,17 @@
         return resolveTimeoutParam(
             '__MATH_EXPLORER_COMPILE_TIMEOUT_MS',
             'compile_timeout_ms',
-            DEFAULT_COMPILE_TIMEOUT_MS
+            DEFAULT_COMPILE_TIMEOUT_MS,
+            100
+        );
+    }
+
+    function resolveWebglRestoreTimeoutMs() {
+        return resolveTimeoutParam(
+            '__MATH_EXPLORER_WEBGL_RESTORE_TIMEOUT_MS',
+            'webgl_restore_timeout_ms',
+            DEFAULT_WEBGL_RESTORE_TIMEOUT_MS,
+            50
         );
     }
 
@@ -262,14 +303,16 @@
     }
 
     function isBootFailed() {
+        const root = document.documentElement;
         return (
             bootFailed ||
+            Boolean(root && root.getAttribute('data-boot-failed') === 'true') ||
             Boolean(bootAbortController && bootAbortController.signal && bootAbortController.signal.aborted)
         );
     }
 
     function isBootPending() {
-        if (bootFailed || bootCompleted) {
+        if (isBootFailed() || bootCompleted) {
             return false;
         }
         if (document.readyState === 'loading') {
@@ -292,6 +335,13 @@
         }
     }
 
+    function clearWebglRestoreTimer() {
+        if (webglRestoreTimerId !== null) {
+            window.clearTimeout(webglRestoreTimerId);
+            webglRestoreTimerId = null;
+        }
+    }
+
     function abortBoot(reason) {
         if (bootAbortController && !bootAbortController.signal.aborted) {
             try {
@@ -300,6 +350,105 @@
                 bootAbortController.abort();
             }
         }
+    }
+
+    function sanitizeRecoveryFilename(rawName) {
+        if (typeof rawName !== 'string') {
+            return DEFAULT_RECOVERY_FILENAME;
+        }
+        const leaf = rawName.trim().split(/[\\/]/).pop() || '';
+        if (!leaf || leaf === '.' || leaf === '..') {
+            return DEFAULT_RECOVERY_FILENAME;
+        }
+        if (/\.(mws|json)$/i.test(leaf)) {
+            return leaf;
+        }
+        return leaf + '.mws';
+    }
+
+    function readFallbackEnvelopeFromStorage() {
+        try {
+            if (!window.localStorage) {
+                return '';
+            }
+            const raw = window.localStorage.getItem('app');
+            return typeof raw === 'string' && raw.trim().length > 0 ? raw : '';
+        } catch (_err) {
+            return '';
+        }
+    }
+
+    function resolveSavedWorkspaceEnvelope() {
+        if (savedWorkspaceEnvelope && savedWorkspaceEnvelope.length > 0) {
+            return savedWorkspaceEnvelope;
+        }
+        return readFallbackEnvelopeFromStorage();
+    }
+
+    function syncDownloadWorkspaceButton() {
+        const btn = document.getElementById('download_workspace_button');
+        if (!btn) {
+            return null;
+        }
+        const payload = resolveSavedWorkspaceEnvelope();
+        const hasPayload = payload.length > 0;
+        btn.hidden = !hasPayload;
+        btn.setAttribute('data-storage-blocked', storageWriteBlocked ? 'true' : 'false');
+        return btn;
+    }
+
+    function setSavedWorkspaceEnvelope(envelopeJson, filename, storageBlocked) {
+        if (typeof envelopeJson === 'string' && envelopeJson.length > 0) {
+            savedWorkspaceEnvelope = envelopeJson;
+        }
+        if (filename) {
+            savedWorkspaceFilename = sanitizeRecoveryFilename(filename);
+        }
+        storageWriteBlocked = Boolean(storageBlocked);
+        runWhenDomReady(function () {
+            bindDownloadWorkspaceButton();
+            syncDownloadWorkspaceButton();
+        });
+    }
+
+    function downloadSavedWorkspace() {
+        const payload = resolveSavedWorkspaceEnvelope();
+        if (!payload || typeof Blob === 'undefined' || !window.URL || !URL.createObjectURL) {
+            return false;
+        }
+        const blob = new Blob([payload], { type: 'application/json' });
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = savedWorkspaceFilename || DEFAULT_RECOVERY_FILENAME;
+        link.rel = 'noopener';
+        link.style.display = 'none';
+        if (document.body) {
+            document.body.appendChild(link);
+        }
+        link.click();
+        if (link.parentNode) {
+            link.parentNode.removeChild(link);
+        }
+        window.setTimeout(function () {
+            URL.revokeObjectURL(objectUrl);
+        }, 0);
+        announce('Downloaded saved workspace envelope ' + link.download + '.', 'polite');
+        return true;
+    }
+
+    function bindDownloadWorkspaceButton() {
+        const downloadButton = document.getElementById('download_workspace_button');
+        if (downloadButton && !downloadButton.dataset.downloadBound) {
+            downloadButton.dataset.downloadBound = 'true';
+            downloadButton.addEventListener('click', function (event) {
+                if (event && typeof event.preventDefault === 'function') {
+                    event.preventDefault();
+                }
+                downloadSavedWorkspace();
+            });
+        }
+        return downloadButton;
     }
 
     function bindReloadButton() {
@@ -327,15 +476,26 @@
                 String(priority).toLowerCase() === 'assertive' ||
                 String(priority).toLowerCase() === 'alert';
             const containerId = isAssertive ? 'aria-live-assertive' : 'aria-live-polite';
-            const slotIdx = isAssertive ? assertiveSlotToggle : politeSlotToggle;
+            const slot0 = document.getElementById(containerId + '-slot-0');
+            const slot1 = document.getElementById(containerId + '-slot-1');
+            let slotIdx = isAssertive ? assertiveSlotToggle : politeSlotToggle;
+            if (slot0 && slot1) {
+                const slot0Busy = Boolean(slot0.textContent && slot0.textContent.length > 0);
+                const slot1Busy = Boolean(slot1.textContent && slot1.textContent.length > 0);
+                if (slot0Busy && !slot1Busy) {
+                    slotIdx = 1;
+                } else if (slot1Busy && !slot0Busy) {
+                    slotIdx = 0;
+                }
+            }
             if (isAssertive) {
-                assertiveSlotToggle = 1 - assertiveSlotToggle;
+                assertiveSlotToggle = 1 - slotIdx;
             } else {
-                politeSlotToggle = 1 - politeSlotToggle;
+                politeSlotToggle = 1 - slotIdx;
             }
             const siblingIdx = 1 - slotIdx;
-            const activeSlot = document.getElementById(containerId + '-slot-' + slotIdx);
-            const siblingSlot = document.getElementById(containerId + '-slot-' + siblingIdx);
+            const activeSlot = slotIdx === 0 ? slot0 : slot1;
+            const siblingSlot = siblingIdx === 0 ? slot0 : slot1;
             if (siblingSlot) {
                 siblingSlot.textContent = '';
             }
@@ -460,7 +620,115 @@
         ) {
             return COMPILE_TIMEOUT_COPY;
         }
+        if (resolvedCategory === 'webgl' && (bootCompleted || webglContextLostOccurred)) {
+            return {
+                title: WEBGL_CONTEXT_LOST_COPY.title,
+                message: storageWriteBlocked
+                    ? WEBGL_CONTEXT_LOST_COPY.blockedStorageMessage
+                    : WEBGL_CONTEXT_LOST_COPY.message,
+                heading: ERROR_CATEGORIES.webgl.heading,
+                steps: [],
+                alert: storageWriteBlocked
+                    ? WEBGL_CONTEXT_LOST_COPY.blockedStorageAlert
+                    : WEBGL_CONTEXT_LOST_COPY.alert
+            };
+        }
         return ERROR_CATEGORIES[resolvedCategory];
+    }
+
+    function showWebglRecoveryOverlay() {
+        runWhenDomReady(function () {
+            const overlay = document.getElementById('webgl_recovery_overlay');
+            if (overlay) {
+                overlay.hidden = false;
+                overlay.setAttribute('aria-busy', 'true');
+                overlay.style.display = 'flex';
+            }
+        });
+    }
+
+    function hideWebglRecoveryOverlay() {
+        runWhenDomReady(function () {
+            const overlay = document.getElementById('webgl_recovery_overlay');
+            if (overlay) {
+                overlay.setAttribute('aria-busy', 'false');
+                overlay.hidden = true;
+                overlay.style.display = 'none';
+            }
+        });
+    }
+
+    function beginWebglContextRecovery(options) {
+        if (isUnloading || bootFailed) {
+            return resolveWebglRestoreTimeoutMs();
+        }
+        webglContextLostOccurred = true;
+        const opts = options && typeof options === 'object' ? options : {};
+        if (
+            typeof opts.envelopeJson === 'string' ||
+            typeof opts.storageBlocked === 'boolean' ||
+            opts.filename
+        ) {
+            setSavedWorkspaceEnvelope(
+                opts.envelopeJson || '',
+                opts.filename || DEFAULT_RECOVERY_FILENAME,
+                Boolean(opts.storageBlocked)
+            );
+        }
+        clearWebglRestoreTimer();
+        showWebglRecoveryOverlay();
+        announce(
+            opts.statusMessage ||
+                'WebGL graphics context lost. Attempting automatic restoration; your workspace is preserved.',
+            'polite'
+        );
+        const timeoutMs = resolveWebglRestoreTimeoutMs();
+        webglRestoreTimerId = window.setTimeout(function () {
+            webglRestoreTimerId = null;
+            if (isUnloading) {
+                return;
+            }
+            const detail =
+                'WebGL context restoration timed out after ' + timeoutMs + ' ms.';
+            if (webglRecoveryHandlers && typeof webglRecoveryHandlers.onTimeout === 'function') {
+                webglRecoveryHandlers.onTimeout(detail);
+            } else {
+                failWebglContextRecovery(detail);
+            }
+        }, timeoutMs);
+        return timeoutMs;
+    }
+
+    function completeWebglContextRecovery(statusMessage) {
+        clearWebglRestoreTimer();
+        hideWebglRecoveryOverlay();
+        runWhenDomReady(function () {
+            const canvas = document.getElementById('the_canvas_id');
+            if (canvas) {
+                canvas.style.display = '';
+                if (typeof canvas.focus === 'function') {
+                    canvas.focus();
+                }
+            }
+        });
+        announce(
+            statusMessage || 'WebGL graphics context restored. Simulation workspace resumed.',
+            'polite'
+        );
+    }
+
+    function failWebglContextRecovery(details) {
+        webglContextLostOccurred = true;
+        clearWebglRestoreTimer();
+        hideWebglRecoveryOverlay();
+        showError(
+            'webgl',
+            details || 'WebGL context was lost and could not be restored automatically.'
+        );
+    }
+
+    function registerWebglRecoveryHandlers(handlers) {
+        webglRecoveryHandlers = handlers && typeof handlers === 'object' ? handlers : null;
     }
 
     function showError(category, details) {
@@ -491,6 +759,7 @@
         const detailText = formatReason(details);
         bootFailed = true;
         clearWatchdog();
+        clearWebglRestoreTimer();
         abortBoot(detailText || resolvedCategory);
 
         if (!bootCompleted) {
@@ -517,6 +786,13 @@
                 loading.style.display = 'none';
             }
 
+            const recoveryOverlay = document.getElementById('webgl_recovery_overlay');
+            if (recoveryOverlay) {
+                recoveryOverlay.setAttribute('aria-busy', 'false');
+                recoveryOverlay.hidden = true;
+                recoveryOverlay.style.display = 'none';
+            }
+
             const canvas = document.getElementById('the_canvas_id');
             if (canvas) {
                 canvas.style.display = 'none';
@@ -526,6 +802,10 @@
             if (errorContainer) {
                 errorContainer.setAttribute('data-error-category', resolvedCategory);
                 errorContainer.setAttribute('data-error-active', 'true');
+                errorContainer.setAttribute(
+                    'data-storage-blocked',
+                    storageWriteBlocked ? 'true' : 'false'
+                );
             }
 
             const titleEl = document.getElementById('error_title');
@@ -569,6 +849,11 @@
 
             if (errorContainer) {
                 errorContainer.style.display = 'flex';
+            }
+
+            bindDownloadWorkspaceButton();
+            if (resolvedCategory === 'webgl') {
+                syncDownloadWorkspaceButton();
             }
 
             announce(cfg.alert, 'assertive');
@@ -672,6 +957,7 @@
         if (root) {
             root.setAttribute('data-boot-initialized', 'true');
         }
+        registerAppShellServiceWorker();
     }
 
     function scanStartupResourceErrors() {
@@ -693,9 +979,38 @@
         return true;
     }
 
+    function bindCanvasContextGuard() {
+        const canvas = document.getElementById('the_canvas_id');
+        if (!canvas || canvas.dataset.webglGuardBound) {
+            return;
+        }
+        canvas.dataset.webglGuardBound = 'true';
+        canvas.addEventListener('webglcontextlost', function (event) {
+            if (event && typeof event.preventDefault === 'function') {
+                event.preventDefault();
+            }
+            if (isUnloading || isBootFailed()) {
+                return;
+            }
+            if (!webglRecoveryHandlers && bootCompleted) {
+                beginWebglContextRecovery({});
+            }
+        });
+        canvas.addEventListener('webglcontextrestored', function () {
+            if (isUnloading || isBootFailed()) {
+                return;
+            }
+            if (!webglRecoveryHandlers && bootCompleted) {
+                completeWebglContextRecovery();
+            }
+        });
+    }
+
     function attachDomBindings() {
         markBootManaged();
         bindReloadButton();
+        bindDownloadWorkspaceButton();
+        bindCanvasContextGuard();
 
         const queued = pendingActions.slice();
         pendingActions = [];
@@ -708,9 +1023,10 @@
         if (typeof MutationObserver !== 'undefined' && document.body) {
             const observer = new MutationObserver(function () {
                 if (!document.getElementById('loading_indicator')) {
-                    if (!bootFailed) {
+                    if (!isBootFailed()) {
                         markBootComplete();
                     } else {
+                        bootFailed = true;
                         clearWatchdog();
                     }
                     observer.disconnect();
@@ -723,6 +1039,7 @@
     window.addEventListener('beforeunload', function () {
         isUnloading = true;
         clearWatchdog();
+        clearWebglRestoreTimer();
     });
 
     // Capture-phase listener catches <script> and <link rel="modulepreload"|"preload"> network/integrity failures
@@ -801,7 +1118,14 @@
         showError: showError,
         handleFailure: handleFailure,
         clearWatchdog: clearWatchdog,
-        syncShellThemeFromStorage: syncShellThemeFromStorage
+        syncShellThemeFromStorage: syncShellThemeFromStorage,
+        getWebglRestoreTimeoutMs: resolveWebglRestoreTimeoutMs,
+        setSavedWorkspaceEnvelope: setSavedWorkspaceEnvelope,
+        downloadSavedWorkspace: downloadSavedWorkspace,
+        beginWebglContextRecovery: beginWebglContextRecovery,
+        completeWebglContextRecovery: completeWebglContextRecovery,
+        failWebglContextRecovery: failWebglContextRecovery,
+        registerWebglRecoveryHandlers: registerWebglRecoveryHandlers
     };
 
     if (!scanStartupResourceErrors()) {

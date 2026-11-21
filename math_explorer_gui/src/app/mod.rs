@@ -41,6 +41,8 @@ mod tests_shortcuts;
 mod tests_split_view;
 #[cfg(test)]
 mod tests_tab_cache_perf;
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests;
 
 #[allow(unused_imports)]
 pub use domain_bar::AcademicDomain;
@@ -87,7 +89,7 @@ pub struct MathExplorerApp {
     tab_state_cache: state::TabStateCache,
     last_frame_had_input: bool,
     pending_focus_prune: bool,
-    url_sync: crate::url_state::UrlSyncController,
+    pub(super) url_sync: crate::url_state::UrlSyncController,
 }
 
 impl Default for MathExplorerApp {
@@ -462,5 +464,10 @@ impl eframe::App for MathExplorerApp {
 
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(5)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }

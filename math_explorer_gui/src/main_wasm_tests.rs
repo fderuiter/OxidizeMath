@@ -155,8 +155,13 @@ fn wasm_handle_webgl_failure_renders_accessible_alert_and_focuses_reload() {
 #[wasm_bindgen_test]
 fn wasm_finish_startup_focuses_canvas_on_ok_and_respects_active_error_boundary() {
     let (window, doc) = reset_startup_dom();
+    let canvas = doc
+        .get_element_by_id("the_canvas_id")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlCanvasElement>()
+        .unwrap();
     let runner = eframe::WebRunner::new();
-    finish_wasm_startup(&doc, Some(&window), &runner, Ok(()));
+    finish_wasm_startup(&doc, Some(&window), &canvas, runner, Ok(()));
     assert!(doc.get_element_by_id("loading_indicator").is_none());
     assert_eq!(
         doc.active_element().map(|el| el.id()).as_deref(),
@@ -164,6 +169,12 @@ fn wasm_finish_startup_focuses_canvas_on_ok_and_respects_active_error_boundary()
     );
 
     let (window, doc) = reset_startup_dom();
+    let canvas = doc
+        .get_element_by_id("the_canvas_id")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlCanvasElement>()
+        .unwrap();
+    let runner = eframe::WebRunner::new();
     let err_box = doc.get_element_by_id("error_container").unwrap();
     let _ = err_box.set_attribute("style", "display: flex;");
     let _ = js_sys::Reflect::set(
@@ -171,7 +182,7 @@ fn wasm_finish_startup_focuses_canvas_on_ok_and_respects_active_error_boundary()
         &wasm_bindgen::JsValue::from_str("wasmBindings"),
         &wasm_bindgen::JsValue::TRUE,
     );
-    finish_wasm_startup(&doc, Some(&window), &runner, Ok(()));
+    finish_wasm_startup(&doc, Some(&window), &canvas, runner, Ok(()));
     assert!(
         doc.get_element_by_id("loading_indicator").is_some(),
         "active error boundary must abort finish_wasm_startup before mutating loading state"
@@ -186,4 +197,43 @@ fn wasm_finish_startup_focuses_canvas_on_ok_and_respects_active_error_boundary()
         .get_element_by_id("the_canvas_id")
         .and_then(|c| c.dyn_into::<web_sys::HtmlElement>().ok())
         .map(|c| c.blur());
+}
+
+#[wasm_bindgen_test]
+fn wasm_webgl_context_lost_prevents_default_and_reveals_recovery_overlay() {
+    let (window, doc) = reset_startup_dom();
+    let body = doc.body().unwrap();
+    if let Some(prev) = doc.get_element_by_id("webgl_recovery_overlay") {
+        prev.remove();
+    }
+    let overlay = doc.create_element("div").unwrap();
+    overlay.set_id("webgl_recovery_overlay");
+    let _ = overlay.set_attribute("hidden", "");
+    let _ = overlay.set_attribute("aria-busy", "false");
+    let _ = body.append_child(&overlay);
+
+    let canvas = doc
+        .get_element_by_id("the_canvas_id")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlCanvasElement>()
+        .unwrap();
+    let runner = eframe::WebRunner::new();
+    finish_wasm_startup(&doc, Some(&window), &canvas, runner, Ok(()));
+
+    let init = web_sys::EventInit::new();
+    init.set_cancelable(true);
+    let lost_event = web_sys::Event::new_with_event_init_dict("webglcontextlost", &init).unwrap();
+    let _ = canvas.dispatch_event(&lost_event).unwrap();
+
+    assert!(
+        lost_event.default_prevented(),
+        "webglcontextlost handler must call prevent_default()"
+    );
+    assert!(
+        !overlay.has_attribute("hidden"),
+        "#webgl_recovery_overlay must unhide while awaiting WebGL context restoration"
+    );
+    assert_eq!(overlay.get_attribute("aria-busy").as_deref(), Some("true"));
+    canvas.remove();
+    overlay.remove();
 }

@@ -9,6 +9,10 @@ import html.parser
 import http.server
 import mimetypes
 import os
+try:
+    import resource
+except ImportError:  # pragma: no cover - Windows
+    resource = None  # type: ignore[assignment]
 import socketserver
 import sys
 import threading
@@ -16,7 +20,15 @@ import time
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from playwright.sync_api import Browser, BrowserContext, Page, Playwright, Route, expect, sync_playwright
+from playwright.sync_api import (
+    Browser,
+    BrowserContext,
+    Error as PlaywrightError,
+    Page,
+    Playwright,
+    expect,
+    sync_playwright,
+)
 
 WEBGL_SWIFTSHADER_ARGS = [
     "--enable-webgl",
@@ -28,7 +40,21 @@ WEBGL_SWIFTSHADER_ARGS = [
 WEBGL_DISABLED_ARGS = [
     "--disable-webgl",
     "--disable-webgl2",
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader",
 ]
+
+
+def raise_nofile_limit() -> None:
+    if resource is None:
+        return
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if hard > soft:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+    except (OSError, ValueError):
+        pass
 
 
 @dataclass(frozen=True)
@@ -83,10 +109,30 @@ class MetaCspParser(html.parser.HTMLParser):
 class ReusableThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
     daemon_threads = True
+    request_queue_size = 128
 
 
 class CspDistRequestHandler(http.server.SimpleHTTPRequestHandler):
     csp_header: str = ""
+
+    def do_GET(self) -> None:
+        referer = self.headers.get("Referer", "")
+        if "stall_timeout_ms=" in referer and self.path.split("?")[0].endswith(".wasm"):
+            time.sleep(0.9)
+            try:
+                body = b"\x00asm\x01\x00\x00\x00"
+                self.send_response(200)
+                self.send_header("Content-Type", "application/wasm")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except OSError:
+                pass
+            return
+        try:
+            super().do_GET()
+        except OSError:
+            pass
 
     def end_headers(self) -> None:
         self.send_header("Content-Security-Policy", self.csp_header)
@@ -136,6 +182,61 @@ def attach_csp_observer(page: Page, csp_violations: list[str]) -> None:
     page.on("console", on_console)
 
 
+class BrowserPool:
+    def __init__(self, playwright: Playwright, args: list[str]) -> None:
+        self._playwright = playwright
+        self._args = args
+        self.browser: Browser = playwright.chromium.launch(headless=True, args=args)
+
+    def reset(self) -> None:
+        try:
+            self.browser.close()
+        except Exception:
+            pass
+        time.sleep(0.2)
+        self.browser = self._playwright.chromium.launch(headless=True, args=self._args)
+
+    def close(self) -> None:
+        try:
+            self.browser.close()
+        except Exception:
+            pass
+
+
+def run_with_crash_retry(pool: BrowserPool, label: str, fn: object) -> None:
+    if not callable(fn):
+        return
+    for attempt in range(4):
+        try:
+            fn(pool.browser)
+            return
+        except (TransientBrowserCrashError, PlaywrightError, AssertionError) as exc:
+            if attempt < 3 and (
+                isinstance(exc, TransientBrowserCrashError) or is_playwright_crash(exc)
+            ):
+                print(
+                    f"[RETRY {attempt + 1}/3] {label}: recovering from headless Chromium crash ({exc})",
+                    file=sys.stderr,
+                )
+                pool.reset()
+                continue
+            raise
+
+
+def is_playwright_crash(exc: BaseException) -> bool:
+    msg = str(exc)
+    return any(
+        token in msg
+        for token in (
+            "Page crashed",
+            "Target crashed",
+            "Target page, context or browser has been closed",
+        )
+    ) or (isinstance(exc, PlaywrightError) and "net::ERR_ABORTED" in msg)
+
+
+class TransientBrowserCrashError(RuntimeError):
+    """Raised when headless Chromium's Renderer or NetworkService crashes in a container."""
 def assert_zero_csp_violations(scenario: str, csp_violations: list[str]) -> None:
     if csp_violations:
         raise AssertionError(f"[{scenario}] CSP violations detected: {csp_violations}")
@@ -168,7 +269,7 @@ def run_happy_path_check(
         )
         page.on("response", lambda resp: status_by_url.__setitem__(resp.url, resp.status))
 
-        doc_resp = page.goto(f"{base_url}/", wait_until="networkidle")
+        doc_resp = page.goto(f"{base_url}/", wait_until="domcontentloaded")
         if doc_resp is None:
             raise AssertionError("[happy_path] Navigation returned no main document response")
         if doc_resp.status != 200:
@@ -179,7 +280,12 @@ def run_happy_path_check(
                 f"[happy_path] Response CSP header mismatch: {actual_csp!r} != {expected_csp!r}"
             )
 
-        expect(page.locator("#loading_indicator")).to_have_count(0, timeout=20_000)
+        expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+        if any("net::ERR_ABORTED" in req for req in failed_requests):
+            raise TransientBrowserCrashError(
+                f"[happy_path] Loopback request aborted by Chromium NetworkService: {failed_requests}"
+            )
+        expect(page.locator("#loading_indicator")).to_have_count(0, timeout=2_000)
         expect(page.locator("html")).to_have_attribute("data-boot-initialized", "true")
         if page.locator("html").get_attribute("data-boot-failed") is not None:
             raise AssertionError("[happy_path] html[data-boot-failed] must not be set on clean boot")
@@ -272,12 +378,37 @@ def run_fault_scenario(
     try:
         page = context.new_page()
         csp_violations: list[str] = []
+        aborted_unrouted: list[str] = []
         attach_csp_observer(page, csp_violations)
+        page.on(
+            "requestfailed",
+            lambda req: aborted_unrouted.append(f"{req.url}: {req.failure}")
+            if req.failure == "net::ERR_ABORTED"
+            and any(
+                req.url.split("?")[0].endswith(s)
+                for s in ("/reload.js", "/initializer.js")
+                + (("/bootstrap.js",) if scenario != "fault_broken_bootstrap_script" else ())
+                + (("/math_explorer_gui.js",) if scenario != "fault_broken_loader_script" else ())
+                + (
+                    ("/math_explorer_gui_bg.wasm",)
+                    if scenario not in ("fault_missing_wasm", "fault_corrupt_wasm", "fault_stall_timeout")
+                    else ()
+                )
+            )
+            else None,
+        )
         if callable(configure_routes):
             configure_routes(page)
 
         page.goto(f"{base_url}{url_suffix}", wait_until="domcontentloaded")
-        verify_error_recovery(page, scenario, EXPECTED_FAULTS[category])
+        try:
+            verify_error_recovery(page, scenario, EXPECTED_FAULTS[category])
+        except AssertionError as exc:
+            if aborted_unrouted:
+                raise TransientBrowserCrashError(
+                    f"[{scenario}] Unrouted script aborted by Chromium NetworkService: {aborted_unrouted}"
+                ) from exc
+            raise
         assert_zero_csp_violations(scenario, csp_violations)
 
         if screenshot_path is not None:
@@ -287,30 +418,30 @@ def run_fault_scenario(
         context.close()
 
 
-def verify_regression_detection(
-    playwright: Playwright,
+def break_recovery_scripts(page: Page) -> None:
+    page.route(
+        "**/reload.js*",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="text/javascript",
+            body=b"// simulated broken recovery handler\n",
+        ),
+    )
+    page.route(
+        "**/bootstrap.js*",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="text/javascript",
+            body=b"// simulated broken bootstrap without error boundary\n",
+        ),
+    )
+
+
+def verify_network_regression_detection(
     swiftshader_browser: Browser,
     base_url: str,
 ) -> None:
-    """Confirms that broken recovery logic causes the smoke gate assertions to fail."""
-
-    def break_recovery_scripts(page: Page) -> None:
-        page.route(
-            "**/reload.js*",
-            lambda route: route.fulfill(
-                status=200,
-                content_type="text/javascript",
-                body=b"// simulated broken recovery handler\n",
-            ),
-        )
-        page.route(
-            "**/bootstrap.js*",
-            lambda route: route.fulfill(
-                status=200,
-                content_type="text/javascript",
-                body=b"// simulated broken bootstrap without error boundary\n",
-            ),
-        )
+    """Confirms that broken recovery logic causes network smoke assertions to fail."""
 
     def missing_wasm_broken(page: Page) -> None:
         break_recovery_scripts(page)
@@ -339,34 +470,30 @@ def verify_regression_detection(
         finally:
             ctx.close()
 
-    no_webgl_browser = playwright.chromium.launch(headless=True, args=WEBGL_DISABLED_ARGS)
+
+def verify_disabled_webgl_regression_detection(
+    disabled_webgl_browser: Browser,
+    base_url: str,
+) -> None:
+    """Confirms that broken WebGL recovery causes disabled-WebGL smoke assertions to fail."""
+    ctx = disabled_webgl_browser.new_context(viewport={"width": 1280, "height": 800})
     try:
-        ctx = no_webgl_browser.new_context(viewport={"width": 1280, "height": 800})
+        pg = ctx.new_page()
+        break_recovery_scripts(pg)
+        pg.goto(f"{base_url}/", wait_until="domcontentloaded")
+        failed_as_expected = False
         try:
-            pg = ctx.new_page()
-            break_recovery_scripts(pg)
-            pg.goto(f"{base_url}/", wait_until="domcontentloaded")
-            failed_as_expected = False
-            try:
-                verify_error_recovery(pg, "regression_disabled_webgl", EXPECTED_FAULTS["webgl"], timeout_ms=800)
-            except AssertionError:
-                failed_as_expected = True
-            if not failed_as_expected:
-                raise RuntimeError("Smoke suite failed to catch broken WebGL recovery")
-        finally:
-            ctx.close()
+            verify_error_recovery(
+                pg, "regression_disabled_webgl", EXPECTED_FAULTS["webgl"], timeout_ms=800
+            )
+        except AssertionError:
+            failed_as_expected = True
+        if not failed_as_expected:
+            raise RuntimeError("Smoke suite failed to catch broken WebGL recovery")
     finally:
-        no_webgl_browser.close()
+        ctx.close()
 
     print("[PASS] regression_detection: missing .wasm, broken loader, and disabled WebGL fail when recovery breaks")
-
-
-def stall_wasm_route(route: Route) -> None:
-    time.sleep(0.9)
-    try:
-        route.fulfill(status=200, content_type="application/wasm", body=b"\x00asm\x01\x00\x00\x00")
-    except Exception:
-        pass
 
 
 def run_smoke_suite(
@@ -386,103 +513,157 @@ def run_smoke_suite(
     handler = functools.partial(BoundHandler, directory=str(dist_dir))
     server = ReusableThreadingTCPServer(("127.0.0.1", 0), handler)
     port = server.server_address[1]
-    base_url = f"http://localhost:{port}"
+    base_url = f"http://127.0.0.1:{port}"
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
     try:
         with sync_playwright() as playwright:
-            webgl_browser = playwright.chromium.launch(headless=True, args=WEBGL_SWIFTSHADER_ARGS)
+            webgl_pool = BrowserPool(playwright, WEBGL_SWIFTSHADER_ARGS)
             try:
-                run_happy_path_check(webgl_browser, base_url, csp, screenshot_dir)
+                run_with_crash_retry(
+                    webgl_pool,
+                    "happy_path",
+                    lambda b: run_happy_path_check(b, base_url, csp, screenshot_dir),
+                )
 
-                run_fault_scenario(
-                    webgl_browser,
-                    base_url,
+                run_with_crash_retry(
+                    webgl_pool,
                     "fault_missing_wasm",
-                    "network",
-                    "/",
-                    lambda page: page.route(
-                        "**/math_explorer_gui_bg.wasm*",
-                        lambda route: route.fulfill(status=404, content_type="text/plain", body=b"Not Found"),
+                    lambda b: run_fault_scenario(
+                        b,
+                        base_url,
+                        "fault_missing_wasm",
+                        "network",
+                        "/",
+                        lambda page: page.route(
+                            "**/math_explorer_gui_bg.wasm*",
+                            lambda route: route.fulfill(
+                                status=404, content_type="text/plain", body=b"Not Found"
+                            ),
+                        ),
+                        screenshot_dir / "smoke_fault_network_wasm_404.png"
+                        if screenshot_dir
+                        else None,
                     ),
-                    screenshot_dir / "smoke_fault_network_wasm_404.png" if screenshot_dir else None,
                 )
 
-                run_fault_scenario(
-                    webgl_browser,
-                    base_url,
+                run_with_crash_retry(
+                    webgl_pool,
                     "fault_broken_loader_script",
-                    "network",
-                    "/",
-                    lambda page: page.route(
-                        "**/math_explorer_gui.js*",
-                        lambda route: route.fulfill(status=404, content_type="text/plain", body=b"Not Found"),
-                    ),
-                )
-
-                run_fault_scenario(
-                    webgl_browser,
-                    base_url,
-                    "fault_broken_bootstrap_script",
-                    "network",
-                    "/",
-                    lambda page: page.route(
-                        "**/bootstrap.js*",
-                        lambda route: route.fulfill(status=500, content_type="text/plain", body=b"Server Error"),
-                    ),
-                )
-
-                run_fault_scenario(
-                    webgl_browser,
-                    base_url,
-                    "fault_corrupt_wasm",
-                    "compile",
-                    "/",
-                    lambda page: page.route(
-                        "**/math_explorer_gui_bg.wasm*",
-                        lambda route: route.fulfill(
-                            status=200,
-                            content_type="application/wasm",
-                            body=b"corrupted-wasm-payload-bytes",
+                    lambda b: run_fault_scenario(
+                        b,
+                        base_url,
+                        "fault_broken_loader_script",
+                        "network",
+                        "/",
+                        lambda page: page.route(
+                            "**/math_explorer_gui.js*",
+                            lambda route: route.fulfill(
+                                status=404, content_type="text/plain", body=b"Not Found"
+                            ),
                         ),
                     ),
-                    screenshot_dir / "smoke_fault_compile_corrupt_wasm.png" if screenshot_dir else None,
                 )
 
-                run_fault_scenario(
-                    webgl_browser,
-                    base_url,
+                run_with_crash_retry(
+                    webgl_pool,
+                    "fault_broken_bootstrap_script",
+                    lambda b: run_fault_scenario(
+                        b,
+                        base_url,
+                        "fault_broken_bootstrap_script",
+                        "network",
+                        "/",
+                        lambda page: page.route(
+                            "**/bootstrap.js*",
+                            lambda route: route.fulfill(
+                                status=500, content_type="text/plain", body=b"Server Error"
+                            ),
+                        ),
+                    ),
+                )
+
+                run_with_crash_retry(
+                    webgl_pool,
+                    "fault_corrupt_wasm",
+                    lambda b: run_fault_scenario(
+                        b,
+                        base_url,
+                        "fault_corrupt_wasm",
+                        "compile",
+                        "/",
+                        lambda page: page.route(
+                            "**/math_explorer_gui_bg.wasm*",
+                            lambda route: route.fulfill(
+                                status=200,
+                                content_type="application/wasm",
+                                body=b"corrupted-wasm-payload-bytes",
+                            ),
+                        ),
+                        screenshot_dir / "smoke_fault_compile_corrupt_wasm.png"
+                        if screenshot_dir
+                        else None,
+                    ),
+                )
+
+                run_with_crash_retry(
+                    webgl_pool,
                     "fault_stall_timeout",
-                    "timeout",
-                    "/?stall_timeout_ms=250",
-                    lambda page: page.route("**/math_explorer_gui_bg.wasm*", stall_wasm_route),
-                    screenshot_dir / "smoke_fault_timeout_stall.png" if screenshot_dir else None,
+                    lambda b: run_fault_scenario(
+                        b,
+                        base_url,
+                        "fault_stall_timeout",
+                        "timeout",
+                        "/?stall_timeout_ms=250",
+                        None,
+                        screenshot_dir / "smoke_fault_timeout_stall.png"
+                        if screenshot_dir
+                        else None,
+                    ),
                 )
 
                 if check_regressions:
-                    verify_regression_detection(playwright, webgl_browser, base_url)
+                    run_with_crash_retry(
+                        webgl_pool,
+                        "regression_network",
+                        lambda b: verify_network_regression_detection(b, base_url),
+                    )
             finally:
-                webgl_browser.close()
+                webgl_pool.close()
 
-            disabled_webgl_browser = playwright.chromium.launch(headless=True, args=WEBGL_DISABLED_ARGS)
+            disabled_pool = BrowserPool(playwright, WEBGL_DISABLED_ARGS)
             try:
-                run_fault_scenario(
-                    disabled_webgl_browser,
-                    base_url,
+                if check_regressions:
+                    run_with_crash_retry(
+                        disabled_pool,
+                        "regression_disabled_webgl",
+                        lambda b: verify_disabled_webgl_regression_detection(b, base_url),
+                    )
+
+                run_with_crash_retry(
+                    disabled_pool,
                     "fault_disabled_webgl",
-                    "webgl",
-                    "/",
-                    None,
-                    screenshot_dir / "smoke_fault_webgl_disabled.png" if screenshot_dir else None,
+                    lambda b: run_fault_scenario(
+                        b,
+                        base_url,
+                        "fault_disabled_webgl",
+                        "webgl",
+                        "/",
+                        None,
+                        screenshot_dir / "smoke_fault_webgl_disabled.png"
+                        if screenshot_dir
+                        else None,
+                    ),
                 )
             finally:
-                disabled_webgl_browser.close()
+                disabled_pool.close()
     finally:
         server.shutdown()
         server.server_close()
 
 
 def main() -> int:
+    raise_nofile_limit()
     repo_root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description="Run Playwright Chromium smoke checks on web dist.")
     parser.add_argument(

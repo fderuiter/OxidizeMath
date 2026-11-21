@@ -375,6 +375,7 @@ pub fn get_starter_cards_for_domain(
         }
     }
 
+    cards.sort_by_key(|c| (c.title, c.id));
     cards
 }
 
