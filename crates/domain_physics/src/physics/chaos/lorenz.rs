@@ -285,7 +285,7 @@ impl SimulationModel for LorenzSystem {
             .build(state))
     }
 
-    #[verified_engine::verified(opt_out = "inherent method call false positive")]
+    #[verified_engine::verified]
     fn step(&mut self) -> Result<(), Self::Error> {
         let dt = self.dt;
         match self.integration_method {

@@ -16,6 +16,8 @@ domain_climate = { path = "../crates/domain_climate", optional = true }
 domain_epidemiology = { path = "../crates/domain_epidemiology", optional = true }
 nalgebra = { workspace = true }
 oxidize_core = { path = "../crates/oxidize_core" }
+scientific_metadata = { path = "../crates/scientific_metadata" }
+verified_engine = { path = "../crates/verified_engine" }
 
 [features]
 default = []
@@ -32,7 +34,6 @@ approx = { workspace = true }
 num-complex = { workspace = true }
 rand = { workspace = true }
 serde_json = { workspace = true }
-verified_engine = { path = "../crates/verified_engine" }
 criterion = { workspace = true }
 
 [[bench]]

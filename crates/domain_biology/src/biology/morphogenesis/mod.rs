@@ -285,7 +285,9 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
         &mut self.state
     }
 
-    #[verified_engine::verified(opt_out = "inherent method call false positive")]
+    #[verified_engine::verified(
+        allow_recursion = "delegates trait step to inherent TuringSystem::step"
+    )]
     fn step(&mut self, dt: f64) {
         // Delegate to the optimized inherent method
         self.step(dt);
