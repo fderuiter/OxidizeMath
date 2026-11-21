@@ -245,8 +245,12 @@ impl PlotBounds {
                 let new_min = (c_log + (min_log - c_log) / zf).clamp(MIN_LOG_EXP, MAX_LOG_EXP);
                 let new_max = (c_log + (max_log - c_log) / zf).clamp(MIN_LOG_EXP, MAX_LOG_EXP);
                 if new_max > new_min {
-                    self.min[d] = 10.0_f64.powf(new_min);
-                    self.max[d] = 10.0_f64.powf(new_max);
+                    let lo = exp10_clamped(new_min);
+                    let hi = exp10_clamped(new_max);
+                    if hi > lo {
+                        self.min[d] = lo;
+                        self.max[d] = hi;
+                    }
                 }
             } else {
                 self.min[d] = centers[d] + (self.min[d] - centers[d]) / zf;
@@ -278,8 +282,12 @@ impl PlotBounds {
         let pad = frac * span;
         let new_min_log = (min_log - pad).clamp(MIN_LOG_EXP, MAX_LOG_EXP - 1e-6);
         let new_max_log = (max_log + pad).clamp(new_min_log + 1e-6, MAX_LOG_EXP);
-        self.min[axis] = 10.0_f64.powf(new_min_log);
-        self.max[axis] = 10.0_f64.powf(new_max_log);
+        let lo = exp10_clamped(new_min_log);
+        let hi = exp10_clamped(new_max_log);
+        if hi > lo {
+            self.min[axis] = lo;
+            self.max[axis] = hi;
+        }
     }
 
     #[inline]
@@ -310,18 +318,27 @@ impl PlotBounds {
 const DEFAULT_MIN_LOG_BOUND: f64 = 1e-6;
 const MIN_LOG_EXP: f64 = -300.0;
 const MAX_LOG_EXP: f64 = 300.0;
+const MIN_LOG_BOUND: f64 = 1e-300;
+const MAX_LOG_BOUND: f64 = 1e300;
+
+#[inline]
+fn exp10_clamped(exp: f64) -> f64 {
+    10.0_f64
+        .powf(exp.clamp(MIN_LOG_EXP, MAX_LOG_EXP))
+        .clamp(MIN_LOG_BOUND, MAX_LOG_BOUND)
+}
 
 #[inline]
 fn sanitize_log_axis_pair(min: &mut f64, max: &mut f64) {
     if !min.is_finite() || *min <= 0.0 {
         *min = DEFAULT_MIN_LOG_BOUND;
     } else {
-        *min = min.clamp(1e-300, 1e299);
+        *min = min.clamp(MIN_LOG_BOUND, 1e299);
     }
     if !max.is_finite() || *max <= *min {
-        *max = (*min * 10.0).min(1e300);
+        *max = (*min * 10.0).min(MAX_LOG_BOUND);
     } else {
-        *max = max.min(1e300);
+        *max = max.min(MAX_LOG_BOUND);
     }
 }
 
@@ -543,8 +560,12 @@ impl PlotTransform {
         } else {
             0.0
         };
-        self.bounds.min[axis] = 10.0_f64.powf(min_log + clamped_delta);
-        self.bounds.max[axis] = 10.0_f64.powf(max_log + clamped_delta);
+        let lo = exp10_clamped(min_log + clamped_delta);
+        let hi = exp10_clamped(max_log + clamped_delta);
+        if hi > lo {
+            self.bounds.min[axis] = lo;
+            self.bounds.max[axis] = hi;
+        }
     }
 
     /// Zoom by a relative factor with the given screen position as center.
@@ -625,7 +646,7 @@ impl PlotTransform {
             let min_log = log10_clamped_bound(self.bounds.min[0]);
             let max_log = log10_clamped_max(min_log, self.bounds.max[0]);
             let log_x = remap(pos.x as f64, x_screen, min_log..=max_log);
-            10.0_f64.powf(log_x.clamp(MIN_LOG_EXP, MAX_LOG_EXP))
+            exp10_clamped(log_x)
         } else {
             remap(pos.x as f64, x_screen, self.bounds.range_x())
         };
@@ -634,7 +655,7 @@ impl PlotTransform {
             let min_log = log10_clamped_bound(self.bounds.min[1]);
             let max_log = log10_clamped_max(min_log, self.bounds.max[1]);
             let log_y = remap(pos.y as f64, y_screen, min_log..=max_log);
-            10.0_f64.powf(log_y.clamp(MIN_LOG_EXP, MAX_LOG_EXP))
+            exp10_clamped(log_y)
         } else {
             remap(pos.y as f64, y_screen, self.bounds.range_y())
         };
@@ -774,5 +795,32 @@ impl PlotTransform {
                     .expand_y((current_aspect / aspect - 1.0) * self.bounds.height() * 0.5);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_exp10_clamped_and_extreme_log_bounds_stay_within_domain() {
+        assert_eq!(exp10_clamped(-300.0), 1e-300);
+        assert_eq!(exp10_clamped(-500.0), 1e-300);
+        assert_eq!(exp10_clamped(300.0), 1e300);
+        assert_eq!(exp10_clamped(500.0), 1e300);
+
+        let mut bounds = PlotBounds::from_min_max([1e-295, 1e-295], [1e295, 1e295]);
+        bounds.add_log_margin_axis(0, 0.5);
+        bounds.add_log_margin_axis(1, 0.5);
+        assert!(bounds.min()[0] >= 1e-300 && bounds.max()[0] <= 1e300);
+        assert!(bounds.min()[1] >= 1e-300 && bounds.max()[1] <= 1e300);
+
+        let frame = Rect::from_min_size(Pos2::ZERO, emath::vec2(200.0, 200.0));
+        let mut tf = PlotTransform::new(frame, bounds, Vec2b::FALSE);
+        tf.set_log_axis(Vec2b::TRUE);
+        let lo_pt = tf.value_from_position(Pos2::new(-1000.0, 2000.0));
+        let hi_pt = tf.value_from_position(Pos2::new(2000.0, -1000.0));
+        assert!(lo_pt.x >= 1e-300 && lo_pt.y >= 1e-300);
+        assert!(hi_pt.x <= 1e300 && hi_pt.y <= 1e300);
     }
 }

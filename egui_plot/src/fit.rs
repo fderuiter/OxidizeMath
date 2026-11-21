@@ -76,7 +76,9 @@ impl FitResult {
             u_pow *= u;
         }
         if self.log_y {
-            10.0_f64.powf(poly.clamp(-300.0, 300.0))
+            10.0_f64
+                .powf(poly.clamp(-300.0, 300.0))
+                .clamp(1e-300, 1e300)
         } else {
             poly
         }
@@ -511,5 +513,7 @@ mod tests {
         assert!(res.formula.contains("log10(y)"));
         assert!((res.eval(2.0) - 1.0).abs() < 1e-6);
         assert!((res.eval(6.0) - 0.01).abs() < 1e-8);
+        assert_eq!(res.eval(-1_000.0), 1e300);
+        assert_eq!(res.eval(1_000.0), 1e-300);
     }
 }
