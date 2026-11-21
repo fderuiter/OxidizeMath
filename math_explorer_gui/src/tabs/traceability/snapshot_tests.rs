@@ -97,9 +97,10 @@ fn test_app_startup_does_not_scan_when_traceability_tab_unopened() {
 #[test]
 fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let _cwd_guard = super::workspace_root_tests::CwdRestoreGuard::capture();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
-    let orig_cwd = std::env::current_dir().expect("cwd");
-    std::env::set_current_dir(&ws_root).expect("chdir workspace root");
+    let ws_norm = oxidize_core::path_utils::normalize_path(&ws_root);
+    std::env::set_current_dir(&ws_norm).expect("chdir workspace root");
 
     let embedded_json = include_str!(concat!(env!("OUT_DIR"), "/traceability_manifest.json"));
     let direct_report: oxidize_core::traceability::TraceabilityReport =
@@ -114,7 +115,7 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
     ))
     .expect("live workspace scan");
 
-    std::env::set_current_dir(orig_cwd).expect("restore cwd");
+    drop(_cwd_guard);
 
     let tex_paper_count = manifest_report
         .paper_coverage

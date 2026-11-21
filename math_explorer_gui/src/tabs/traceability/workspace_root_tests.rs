@@ -3,28 +3,32 @@
 use super::*;
 use std::path::{Path, PathBuf};
 
-pub(super) struct CwdRestoreGuard(PathBuf);
+pub(super) struct CwdRestoreGuard {
+    raw_cwd: PathBuf,
+    canonical_cwd: PathBuf,
+}
 
 impl CwdRestoreGuard {
     pub(super) fn capture() -> Self {
-        let original = std::env::current_dir()
-            .expect("current_dir")
-            .canonicalize()
-            .expect("canonicalize current_dir");
+        let raw_cwd = std::env::current_dir().expect("current_dir");
+        let canonical_cwd = raw_cwd.canonicalize().expect("canonicalize current_dir");
         // Ensure DEFAULT_SCAN_CACHE is initialized while still inside the workspace.
         let mut warm_tab = TraceabilityTab::default();
         warm_tab.refresh();
-        Self(original)
+        Self {
+            raw_cwd,
+            canonical_cwd,
+        }
     }
 
     pub(super) fn original(&self) -> &Path {
-        &self.0
+        &self.canonical_cwd
     }
 }
 
 impl Drop for CwdRestoreGuard {
     fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.0);
+        let _ = std::env::set_current_dir(&self.raw_cwd);
     }
 }
 
@@ -34,16 +38,20 @@ pub(super) fn create_non_workspace_canary_dirs() -> (PathBuf, PathBuf, PathBuf) 
         std::env::temp_dir().join(format!("oxidize_canary_root_escape_{pid}"));
     std::fs::create_dir_all(external_canary_dir.join("papers")).unwrap();
     std::fs::write(
-        external_canary_dir.join("papers/canary_root_escape.tex"),
+        external_canary_dir
+            .join("papers")
+            .join("canary_root_escape.tex"),
         "\\documentclass{article}\\begin{document}RootCanary\\end{document}",
     )
     .unwrap();
 
     let fake_home = std::env::temp_dir().join(format!("oxidize_fake_home_{pid}"));
-    let home_project_dir = fake_home.join("projects/untrusted_repo");
+    let home_project_dir = fake_home.join("projects").join("untrusted_repo");
     std::fs::create_dir_all(home_project_dir.join("papers")).unwrap();
     std::fs::write(
-        home_project_dir.join("papers/canary_home_escape.tex"),
+        home_project_dir
+            .join("papers")
+            .join("canary_home_escape.tex"),
         "\\documentclass{article}\\begin{document}HomeCanary\\end{document}",
     )
     .unwrap();
@@ -162,7 +170,7 @@ fn test_spoofed_cargo_toml_comments_outside_workspace_fail_closed() {
         "# [workspace]\n[package]\nname = \"spoof\" # [workspace.package]\ndescription = \"[workspace]\"\n",
     )
     .unwrap();
-    std::fs::write(sub_dir.join("papers/spoof_canary.tex"), "x").unwrap();
+    std::fs::write(sub_dir.join("papers").join("spoof_canary.tex"), "x").unwrap();
 
     std::env::set_current_dir(&spoof_root).expect("set_current_dir to spoof_root");
     assert_eq!(TraceabilityTab::canonical_workspace_root(), None);
@@ -174,4 +182,31 @@ fn test_spoofed_cargo_toml_comments_outside_workspace_fail_closed() {
 
     drop(_cwd_guard);
     let _ = std::fs::remove_dir_all(&spoof_root);
+}
+
+#[test]
+fn test_join_relative_segments_normalizes_separators_on_canonical_root() {
+    let _mutex = crate::reflective_ui::tests::lock_test_mutex();
+    let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
+    let ci_path = TraceabilityTab::join_relative_segments(&ws_root, ".github/workflows/ci.yml");
+    assert!(ci_path.canonicalize().is_ok());
+    let mixed_path =
+        TraceabilityTab::join_relative_segments(&ws_root, "./crates\\oxidize_core/src/lib.rs");
+    assert!(mixed_path.canonicalize().is_ok());
+
+    #[cfg(windows)]
+    {
+        let ws_norm = oxidize_core::path_utils::normalize_path(&ws_root);
+        let verbatim_root = PathBuf::from(format!(r"\\?\{}", ws_norm.replace('/', r"\")));
+        let verbatim_ci =
+            TraceabilityTab::join_relative_segments(&verbatim_root, ".github/workflows/ci.yml");
+        assert!(!verbatim_ci.to_string_lossy().contains('/'));
+        assert!(std::fs::metadata(&verbatim_ci).is_ok());
+        let verbatim_mixed = TraceabilityTab::join_relative_segments(
+            &verbatim_root,
+            "./crates/oxidize_core\\src/lib.rs",
+        );
+        assert!(!verbatim_mixed.to_string_lossy().contains('/'));
+        assert!(std::fs::read_to_string(&verbatim_mixed).is_ok());
+    }
 }

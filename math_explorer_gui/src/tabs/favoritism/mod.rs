@@ -83,6 +83,14 @@ impl ExplorerTab for FavoritismTab {
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
     }
+
+    fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
+        Some(&self.framework)
+    }
+
+    fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
+        Some(&mut self.framework)
+    }
 }
 
 #[cfg(test)]
