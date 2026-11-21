@@ -165,4 +165,6 @@ pub fn copy_share_url_to_clipboard(
     }
 }
 
-// theory_verification!
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "browser_wasm_tests.rs"]
+mod wasm_tests;

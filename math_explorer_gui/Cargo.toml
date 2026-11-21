@@ -114,6 +114,9 @@ wasm-bindgen-futures = { workspace = true }
 png = "0.18"
 verified_engine = { path = "../crates/verified_engine" }
 
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = { workspace = true }
+
 [package.metadata.cargo-machete]
 
 [lints]

@@ -16,6 +16,8 @@ pub mod framework;
 mod framework_tests;
 #[cfg(test)]
 mod interactive_tools_tests;
+#[cfg(all(test, target_arch = "wasm32"))]
+mod main_wasm_tests;
 #[cfg(test)]
 mod markup_tests;
 #[cfg(test)]
@@ -66,7 +68,6 @@ fn main() -> eframe::Result {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn mark_boot_initialized(doc: &web_sys::Document) {
     if let Some(root) = doc.document_element() {
         let _ = root.set_attribute("data-boot-initialized", "true");
@@ -74,7 +75,6 @@ fn mark_boot_initialized(doc: &web_sys::Document) {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn is_error_boundary_active(doc: &web_sys::Document) -> bool {
     if doc
         .document_element()
@@ -100,7 +100,6 @@ fn is_error_boundary_active(doc: &web_sys::Document) -> bool {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn clear_global_wasm_bindings(window: Option<&web_sys::Window>) {
     if let Some(win) = window {
         let _ = js_sys::Reflect::delete_property(
@@ -111,7 +110,6 @@ fn clear_global_wasm_bindings(window: Option<&web_sys::Window>) {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn notify_js_boot_complete(window: Option<&web_sys::Window>) {
     let Some(win) = window else {
         return;
@@ -136,7 +134,6 @@ fn notify_js_boot_complete(window: Option<&web_sys::Window>) {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn bind_fallback_reload_listener(doc: &web_sys::Document) {
     use wasm_bindgen::JsCast;
     let Some(reload_btn) = doc.get_element_by_id("webgl_reload_button") else {
@@ -157,7 +154,6 @@ fn bind_fallback_reload_listener(doc: &web_sys::Document) {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn select_webgl_error_category(doc: &web_sys::Document) {
     if let Some(error_container) = doc.get_element_by_id("error_container") {
         let _ = error_container.set_attribute("data-error-category", "webgl");
@@ -174,7 +170,6 @@ fn select_webgl_error_category(doc: &web_sys::Document) {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) {
     accessibility::announce_status_with_priority(
         "WebGL initialization failed. Please enable hardware acceleration in your browser settings.",
@@ -220,7 +215,6 @@ fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) 
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn finish_wasm_startup(
     doc: &web_sys::Document,
     window: Option<&web_sys::Window>,
@@ -261,7 +255,6 @@ fn finish_wasm_startup(
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn main() {
     let initial_window = web_sys::window();
     if let Some(doc) = initial_window.as_ref().and_then(web_sys::Window::document) {
@@ -324,4 +317,3 @@ fn main() {
         finish_wasm_startup(doc, window.as_ref(), &runner, start_res);
     });
 }
-// theory_verification!

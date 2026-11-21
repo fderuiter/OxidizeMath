@@ -153,3 +153,7 @@ fn test_accessible_hover_text_focus_escape_preserves_focus() {
         .unwrap_or(false));
     assert!(all_announcements().is_empty());
 }
+
+#[cfg(target_arch = "wasm32")]
+#[path = "accessibility_wasm_tests.rs"]
+mod wasm_tests;
