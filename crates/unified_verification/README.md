@@ -10,7 +10,7 @@ By consolidating compliance checks into a unified command-line tool, developer w
 
 ### Module Structure
 
-- **`batch-ast` / `batch-static` / `batch-staged`**: In-process batch verification modes sharing a single `oxidize_core::traceability::AstCache` so each unique `.rs` file is parsed at most once with `syn::parse_file` across clone detection, API drift, traceability, entropy scanning, and policy auditing.
+- **`batch-ast` / `batch-static` / `batch-staged`**: In-process batch verification modes sharing a single `oxidize_core::traceability::AstCache` so each unique `.rs` file is parsed at most once with `syn::parse_file` across clone detection, API drift (`batch-ast`/`batch-static`), traceability, entropy scanning, and policy auditing, alongside release profile and crate documentation checks in `batch-static` and `batch-staged`.
 - **`verify-records`**: Audits git commit diffs or the staged git index (`--staged`) to enforce that modifying core logic (`crates/` or `math_explorer/`) is accompanied by creating or updating an Architectural Decision Record in `docs/adr/`.
 - **`traceability`**: Invokes `oxidize_core::traceability::TraceabilityEngine` directly in-process as a library to verify literature citation bindings (`papers/`) and module verification attributes without spawning a Cargo subprocess.
 - **`check-file-lengths`**: Enforces the 500-line ceiling per source file across workspace members to maintain modularity.

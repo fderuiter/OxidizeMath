@@ -5997,6 +5997,12 @@
   ],
   "crates/oxidize_core/src/workspace.rs": [
     {
+      "signature": "pub fn find_workspace_root () -> Option < PathBuf >"
+    },
+    {
+      "signature": "pub fn find_workspace_root_from (start : & Path) -> Option < PathBuf >"
+    },
+    {
       "signature": "pub fn get_workspace_members () -> (bool , Vec < String >)"
     },
     {

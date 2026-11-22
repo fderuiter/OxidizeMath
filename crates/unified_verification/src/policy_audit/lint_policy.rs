@@ -16,9 +16,7 @@ pub(crate) fn cwd_is_workspace_root() -> bool {
 pub(crate) fn cwd_is_member_crate_dir() -> bool {
     !cwd_is_workspace_root()
         && Path::new("Cargo.toml").exists()
-        && fs::read_to_string("../../Cargo.toml")
-            .map(|c| c.contains("[workspace]"))
-            .unwrap_or(false)
+        && oxidize_core::workspace::find_workspace_root().is_some()
 }
 
 pub(crate) fn resolve_member_dir(member: &str) -> PathBuf {
@@ -26,12 +24,13 @@ pub(crate) fn resolve_member_dir(member: &str) -> PathBuf {
     if direct.join("Cargo.toml").exists() || direct.is_absolute() || !cwd_is_member_crate_dir() {
         return direct;
     }
-    let candidate = Path::new("../..").join(member);
-    if candidate.join("Cargo.toml").exists() {
-        candidate
-    } else {
-        direct
+    if let Some(root) = oxidize_core::workspace::find_workspace_root() {
+        let candidate = root.join(member);
+        if candidate.join("Cargo.toml").exists() {
+            return candidate;
+        }
     }
+    direct
 }
 
 pub(crate) fn is_vendored_egui_plot(member: &str) -> bool {

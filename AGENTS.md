@@ -32,9 +32,10 @@ Run workspace builds, fast diff-scoped pre-commit checks (`lint-staged`), and th
 cargo check --workspace
 cargo build --workspace --all-features
 
-# Run fast diff-scoped pre-commit checks on staged paths (executed automatically by .githooks/pre-commit;
-# checks staged formatting, file lengths, entropy, policy audit, staged duplicates, .github/-gated workflows,
-# .md-gated links, and targeted host/wasm32 Clippy without OSV network calls, API drift, or ADR checks)
+# Run fast offline snapshot-backed pre-commit checks on the staged Git index (executed automatically by
+# .githooks/pre-commit; syncs <target_dir>/lint-staged-snapshot, runs rustfmt, batch-staged profiles/lengths/docs/
+# duplicates/traceability/entropy/policy, single .github/ workflow lint, .md or deletion/rename link scans, and
+# reverse-dependent + 17-web-crate host/wasm32 Clippy without OSV network calls, API drift, or ADR checks)
 cargo run -p xtask -- lint-staged
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static

@@ -84,9 +84,13 @@ pub(crate) fn resolve_whitelist_path<P: AsRef<Path>>(candidates: &[P]) -> Option
         .map(Path::to_path_buf)
 }
 
-/// Locates `verification_whitelist.toml` relative to the current working directory.
+/// Locates `verification_whitelist.toml` relative to the current working directory or workspace root.
 pub fn find_whitelist_path() -> Option<PathBuf> {
-    resolve_whitelist_path(WORKSPACE_WHITELIST_CANDIDATES)
+    resolve_whitelist_path(WORKSPACE_WHITELIST_CANDIDATES).or_else(|| {
+        oxidize_core::workspace::find_workspace_root()
+            .map(|root| root.join(WHITELIST_FILE_NAME))
+            .filter(|candidate| candidate.exists())
+    })
 }
 
 fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String> {

@@ -59,12 +59,14 @@ Pre-commit hooks are tracked directly under version control in the `.githooks/` 
 git config core.hooksPath .githooks
 ```
 
-When configured, Git executes `.githooks/pre-commit` before completing any `git commit`. The pre-commit hook runs the fast diff-scoped suite (`cargo run -p xtask -- lint-staged`) against paths in `git diff --cached`:
-- Checks formatting (`rustfmt --check`) only on staged `.rs` files.
-- Runs `unified_verification batch-staged` (built with Cargo's default `dev` profile, skipping release fat LTO) for staged file-length limits, staged secret/entropy scanning, touched-crate policy auditing, staged duplicate warnings, and `.github/`-scoped workflow linting.
-- Validates internal relative Markdown links only when Markdown (`.md`) files are staged.
-- Runs targeted host Clippy (`-p <crate>`) only on member crates with staged `.rs` or `Cargo.toml` edits, and runs targeted `wasm32-unknown-unknown` Clippy only when web crates (`oxidize_core`, `egui_plot`, `math_explorer_gui`) change.
-- Skips network-bound OSV vulnerability queries (`check-vulnerabilities`), public API baseline drift (`check-api-drift`), and ADR enforcement (`verify-records`) so incremental offline checkpoint commits stay fast.
+When configured, Git executes `.githooks/pre-commit` before completing any `git commit`. The pre-commit hook runs the fast, offline, snapshot-backed suite (`cargo run -p xtask -- lint-staged`), anchored to the workspace root so nested crate invocations behave identically:
+- Synchronizes the exact staged Git index (`git ls-files --stage` + `git cat-file --batch` with `--no-optional-locks`) into a stable reusable snapshot directory (`<target_dir>/lint-staged-snapshot`) and prunes untracked/deleted paths without touching or stashing the developer working tree, sharing Cargo compilation caches via `CARGO_TARGET_DIR`.
+- Checks formatting (`rustfmt --check`) on staged `.rs` files in the snapshot, escalating to `cargo fmt --all -- --check` when `.rustfmt.toml` or `rustfmt.toml` is staged.
+- Runs `unified_verification batch-staged` (built with Cargo's default `dev` profile) against the snapshot for Cargo release profile & lint inheritance checks (`check-profiles`), file-length limits (`check-file-lengths`), crate documentation audits (`check-docs`), AST clone detection (`check-duplicates`), in-process citation & module traceability (`traceability`), staged secret/entropy scanning (`check-entropy`), touched-crate policy auditing (`test-policy-audit`), and staged duplicate warnings.
+- Runs `.github/` workflow and composite action linting (`lint-workflows`) once via `xtask` when `.github/` paths are staged.
+- Validates internal relative Markdown links against the snapshot when `.md` files are staged, escalating to a full-repository Markdown link scan whenever tracked files are deleted or renamed.
+- Dynamically expands modified member crates across workspace reverse dependents and all 17 web-compiled crates reachable from `math_explorer_gui/Cargo.toml` for targeted host and `wasm32-unknown-unknown` Clippy, and escalates root manifest (`Cargo.toml`), lockfile (`Cargo.lock`), toolchain (`rust-toolchain*`, `.cargo/*`), or lint configuration (`.clippy.toml`, `.rustfmt.toml`, `verification_whitelist.toml`) edits to full-workspace host and `wasm32` Clippy.
+- Keeps pre-commit 100% offline by deferring network-bound OSV vulnerability queries (`check-vulnerabilities`), public API baseline drift (`check-api-drift`), and ADR enforcement (`verify-records`) to `cargo run -p xtask -- lint-all`.
 
 If any scoped check fails, `.githooks/pre-commit` exits with a non-zero status and blocks the commit.
 
