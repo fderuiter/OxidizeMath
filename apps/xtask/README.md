@@ -10,7 +10,7 @@ These commands run automated checks in git hooks or CI.
 | Command | Operational Role | Status |
 |---|---|---|
 | `check-api-drift` | Validates public API surface against `api_baseline.json`. | Active |
-| `check-cargo-docs` | Verifies workspace documentation builds without warnings. | Active |
+| `check-cargo-docs` | Verifies workspace documentation builds with `--all-features` and zero warnings. | Active |
 | `check-docs` | Runs crate documentation audit. | Active |
 | `check-duplicates` | Runs AST-level code clone detector across first-party crates. | Active |
 | `check-entropy` | Scans codebase for high entropy strings and secrets. | Active |
@@ -47,6 +47,6 @@ These commands are used for manual repository maintenance or legacy workflows.
 
 | Command | Operational Role | Status |
 |---|---|---|
-| `compile-papers` | Compiles academic papers using Tectonic. | Legacy |
+| `compile-papers` | Compiles academic papers using TeXLive (`pdflatex` and `bibtex`). | Legacy |
 | `regenerate-baseline` | Regenerates the public API baseline. | Legacy |
 | `setup` | Installs `wasm32-unknown-unknown`, builds and tests the workspace, and configures version-controlled git hooks. | Legacy |

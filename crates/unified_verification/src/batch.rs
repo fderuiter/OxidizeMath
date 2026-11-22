@@ -148,6 +148,23 @@ pub(crate) fn select_touched_policy_members(
     touched
 }
 
+pub(crate) fn should_run_staged_doc_audit(all_staged: &[String]) -> bool {
+    all_staged.iter().any(|p| {
+        p.ends_with(".md")
+            || p.ends_with("Cargo.toml")
+            || p.starts_with("math_explorer/examples/")
+            || p.starts_with("math_explorer/benches/")
+            || p.starts_with("apps/xtask/src/")
+            || matches!(
+                p.as_str(),
+                "crates/scientific_metadata/src/theory.rs"
+                    | "math_explorer_gui/src/framework/mod.rs"
+                    | "math_explorer_gui/src/tabs/mod.rs"
+                    | ".github/workflows/ci.yml"
+            )
+    })
+}
+
 pub(crate) fn run_batch_staged_for_paths(
     all_staged: &[String],
     existing_staged: &[String],
@@ -187,6 +204,10 @@ pub(crate) fn run_batch_staged_for_paths(
     }
 
     crate::utils::check_staged_duplicates();
+
+    if should_run_staged_doc_audit(all_staged) && !crate::doc_audit::run_doc_audit(&[]) {
+        passed = false;
+    }
 
     if all_staged.iter().any(|p| p.starts_with(".github/"))
         && !crate::workflow_linter::lint_workflows()
@@ -247,6 +268,23 @@ mod tests {
             select_touched_policy_members(&["verification_whitelist.toml".to_string()], &members),
             members
         );
+    }
+
+    #[test]
+    fn test_should_run_staged_doc_audit_triggers() {
+        assert!(should_run_staged_doc_audit(&["README.md".to_string()]));
+        assert!(should_run_staged_doc_audit(&[
+            "math_explorer/Cargo.toml".to_string()
+        ]));
+        assert!(should_run_staged_doc_audit(&[
+            "math_explorer/examples/hello_world.rs".to_string()
+        ]));
+        assert!(should_run_staged_doc_audit(&[
+            "crates/scientific_metadata/src/theory.rs".to_string()
+        ]));
+        assert!(!should_run_staged_doc_audit(&[
+            "crates/domain_physics/src/quantum.rs".to_string()
+        ]));
     }
 
     #[test]

@@ -15,7 +15,7 @@ This module is part of the `math_explorer` core library. To use it, include the 
 
 ```toml
 [dependencies]
-math_explorer = { path = "path/to/math_explorer" }
+math_explorer = { path = "path/to/math_explorer", features = ["pure_math"] }
 ```
 
 ---
@@ -25,7 +25,7 @@ math_explorer = { path = "path/to/math_explorer" }
 You can see all these models in action by running the standalone, fully executable example:
 
 ```bash
-cargo run --release --package math_explorer --example markov_demo
+cargo run --release --package math_explorer --features pure_math --example markov_demo
 ```
 
 This executable demonstrates:
@@ -80,5 +80,5 @@ graph TD
 See the [Project Contributing Guide](../../../../../../CONTRIBUTING.md) for details on adding new architectures, models, or algorithms. Run the comprehensive test suite to ensure mathematical integrity:
 
 ```bash
-cargo test --lib pure_math::statistics::markov
+cargo test -p pure_math --lib pure_math::statistics::markov
 ```
