@@ -1,4 +1,4 @@
-//! Zero-allocation spatial Fourier harmonic projection for [`super::WaveUnified`].
+//! Zero-allocation spatial Fourier harmonic projection for [`crate::tabs::quantum::wave_sim::WaveUnified`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

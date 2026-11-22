@@ -29,9 +29,35 @@ pub use wav::{
     DEFAULT_WAV_FRAME_COUNT, DEFAULT_WAV_SAMPLE_RATE, WAV_HEADER_BYTES,
 };
 
-use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(not(test))]
+static GLOBAL_FORCE_MUTE_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-static GLOBAL_FORCE_MUTE_EPOCH: AtomicU64 = AtomicU64::new(0);
+#[cfg(test)]
+thread_local! {
+    static TEST_FORCE_MUTE_EPOCH: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+fn current_force_mute_epoch() -> u64 {
+    #[cfg(not(test))]
+    {
+        GLOBAL_FORCE_MUTE_EPOCH.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    #[cfg(test)]
+    {
+        TEST_FORCE_MUTE_EPOCH.with(std::cell::Cell::get)
+    }
+}
+
+fn bump_force_mute_epoch() {
+    #[cfg(not(test))]
+    {
+        GLOBAL_FORCE_MUTE_EPOCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+    #[cfg(test)]
+    {
+        TEST_FORCE_MUTE_EPOCH.with(|c| c.set(c.get().wrapping_add(1)));
+    }
+}
 
 /// Reason why the audio controller transitioned into a silenced/muted state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,7 +77,7 @@ pub enum AutoSilenceReason {
 /// Immediately silences all browser Web Audio nodes and increments the global mute epoch
 /// when `webglcontextlost` fires in `webgl_recovery.rs`.
 pub fn silence_all_audio_on_webgl_loss() {
-    GLOBAL_FORCE_MUTE_EPOCH.fetch_add(1, Ordering::SeqCst);
+    bump_force_mute_epoch();
     #[cfg(target_arch = "wasm32")]
     {
         let _ = web_engine::silence_all_web_audio_contexts();
@@ -93,7 +119,7 @@ impl AudioEngineController {
             envelope: GainRampEnvelope::new_muted(),
             last_frame: SonificationFrame::silent(),
             last_silence_reason: AutoSilenceReason::StartupMuted,
-            observed_mute_epoch: GLOBAL_FORCE_MUTE_EPOCH.load(Ordering::SeqCst),
+            observed_mute_epoch: current_force_mute_epoch(),
             #[cfg(target_arch = "wasm32")]
             web: web_engine::WebAudioEngine::default(),
         }
@@ -162,7 +188,7 @@ impl AudioEngineController {
     pub fn unmute_from_user_gesture(&mut self, tool_name: &str) {
         self.has_user_gesture = true;
         self.muted = false;
-        self.observed_mute_epoch = GLOBAL_FORCE_MUTE_EPOCH.load(Ordering::SeqCst);
+        self.observed_mute_epoch = current_force_mute_epoch();
         #[cfg(target_arch = "wasm32")]
         {
             let _ = self.web.ensure_started(true);
@@ -208,7 +234,7 @@ impl AudioEngineController {
     }
 
     fn sync_webgl_mute_epoch(&mut self) -> bool {
-        let global_epoch = GLOBAL_FORCE_MUTE_EPOCH.load(Ordering::SeqCst);
+        let global_epoch = current_force_mute_epoch();
         if global_epoch != self.observed_mute_epoch {
             self.observed_mute_epoch = global_epoch;
             self.muted = true;

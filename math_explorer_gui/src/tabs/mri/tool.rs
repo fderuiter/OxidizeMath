@@ -49,7 +49,10 @@ pub struct MriToolState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused: Option<bool>,
     /// Persisted non-mute acoustic synthesis settings.
-    #[serde(default, skip_serializing_if = "crate::audio::AcousticSettings::is_default")]
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
     pub audio: crate::audio::AcousticSettings,
 }
 
@@ -269,7 +272,10 @@ impl InteractiveTool for MriTool {
         self.audio_settings = settings.sanitized();
     }
 
-    fn sample_sonification_frames(&mut self, frame_count: usize) -> Vec<crate::audio::SonificationFrame> {
+    fn sample_sonification_frames(
+        &mut self,
+        frame_count: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
         self.render_wav_frames(frame_count)
     }
 
@@ -304,8 +310,14 @@ impl InteractiveTool for MriTool {
         }
         let m = self.simulator.magnetization;
         vec![
-            ("Mx (Transverse)".to_string(), vec![[self.current_time, m.x]]),
-            ("My (Transverse)".to_string(), vec![[self.current_time, m.y]]),
+            (
+                "Mx (Transverse)".to_string(),
+                vec![[self.current_time, m.x]],
+            ),
+            (
+                "My (Transverse)".to_string(),
+                vec![[self.current_time, m.y]],
+            ),
             (
                 "Mz (Longitudinal)".to_string(),
                 vec![[self.current_time, m.z]],

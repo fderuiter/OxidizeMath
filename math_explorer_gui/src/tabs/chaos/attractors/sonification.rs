@@ -1,5 +1,5 @@
 //! Zero-allocation Lorenz strange-attractor stereo pan and two-operator FM sonification
-//! for [`super::AttractorPlotter`].
+//! for [`crate::tabs::chaos::attractors::AttractorPlotter`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

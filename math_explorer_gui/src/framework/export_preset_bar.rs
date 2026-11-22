@@ -1,5 +1,5 @@
 //! Preset import/export buttons, reset parameter controls, and notification toasts
-//! for the [`super::SimulationFramework`] top action bar.
+//! for the [`crate::framework::SimulationFramework`] top action bar.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

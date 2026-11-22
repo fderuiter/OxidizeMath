@@ -1,4 +1,4 @@
-//! Zero-allocation NMR free-induction-decay (`T1`/`T2`) bell synthesis for [`super::tool::MriTool`].
+//! Zero-allocation NMR free-induction-decay (`T1`/`T2`) bell synthesis for [`crate::tabs::mri::tool::MriTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

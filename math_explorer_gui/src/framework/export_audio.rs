@@ -1,4 +1,4 @@
-//! Deterministic 16-bit PCM `.wav` audio export dispatch for [`super::SimulationFramework`].
+//! Deterministic 16-bit PCM `.wav` audio export dispatch for [`crate::framework::SimulationFramework`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

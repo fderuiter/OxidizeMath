@@ -1,4 +1,4 @@
-//! Zero-allocation Hodgkin-Huxley patch-clamp sonification helpers for [`super::SpikeAnalysisTool`].
+//! Zero-allocation Hodgkin-Huxley patch-clamp sonification helpers for [`crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

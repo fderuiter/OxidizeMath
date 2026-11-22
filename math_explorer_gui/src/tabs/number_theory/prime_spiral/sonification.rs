@@ -1,4 +1,4 @@
-//! Zero-allocation Ulam prime-gap polyrhythmic interval sonification for [`super::PrimeSpiralWidget`].
+//! Zero-allocation Ulam prime-gap polyrhythmic interval sonification for [`crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

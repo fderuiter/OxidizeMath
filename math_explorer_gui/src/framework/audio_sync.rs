@@ -1,5 +1,5 @@
 //! Scoped audio state synchronization, default-muted controls, and divergence silence guards
-//! for [`super::SimulationFramework`].
+//! for [`crate::framework::SimulationFramework`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

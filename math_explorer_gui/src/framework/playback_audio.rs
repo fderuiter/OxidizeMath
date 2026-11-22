@@ -1,4 +1,4 @@
-//! Accessible sonification mute/unmute and gain controls rendered inside [`super::PlaybackTransport`].
+//! Accessible sonification mute/unmute and gain controls rendered inside [`crate::framework::PlaybackTransport`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

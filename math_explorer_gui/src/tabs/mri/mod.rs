@@ -5,7 +5,6 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 
 pub mod runner;
-/// Zero-allocation NMR free-induction-decay (`T1`/`T2`) bell synthesis helpers.
 pub mod sonification;
 pub mod theory;
 pub mod tool;
@@ -13,9 +12,7 @@ pub mod ui;
 
 pub use runner::sanitize_mri_time_scale;
 #[cfg(test)]
-pub use runner::{
-    MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE,
-};
+pub use runner::{MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE};
 #[cfg(test)]
 pub use tool::MriTool;
 pub use tool::MriToolState;
