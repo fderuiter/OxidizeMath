@@ -145,6 +145,25 @@ classDiagram
     GatingKinetics <|.. StandardKinetics
 ```
 
+### Spatial Wave Propagation (`ExcitableSheet2D` & `HodgkinHuxleyCable`)
+
+Beyond single-cell point neurons, this module provides zero-allocation spatial propagation solvers:
+- **`ExcitableSheet2D`**: Couples `FitzHughNagumoKinetics` ($u, w$) with `FiniteDifference2D` and `FusedEulerSolver` on a $96 \times 96$ excitable sheet ($D_u > 0, D_w = 0$), supporting virtual stimulus electrodes, voltage-clamping probes, zero-flux ischemic scar masks, S1-S2 spiral wave induction, catheter isthmus ablation, and whole-sheet defibrillation.
+- **`HodgkinHuxleyCable`**: Couples 4-variable `HodgkinHuxleyModel` compartments with `FiniteDifference1D` axial diffusion for multi-scale comparison of ionic spikes against FitzHugh-Nagumo waves.
+
+```rust
+# use domain_biology::__doctest_facade as math_explorer;
+use math_explorer::biology::neuroscience::ExcitableSheet2D;
+
+let mut sheet = ExcitableSheet2D::new_default();
+sheet.trigger_dual_edge_collision();
+for _ in 0..10 {
+    sheet.step(0.08);
+}
+let peak = sheet.voltage().iter().copied().fold(f64::NEG_INFINITY, f64::max);
+assert!(peak > 0.5);
+```
+
 ---
 
 ## Contributing

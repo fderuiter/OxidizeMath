@@ -10,6 +10,8 @@
 //! 5.  **Motion Management**:
 //!     - Radar-based respiratory gating (`radar_gating`).
 //!     - Optical surface monitoring (`optical_motion`).
+//! 6.  **Bioelectric Lead Integration**:
+//!     - Movable 3-lead extracellular dipole projection (`bioelectric`).
 //!
 //! ## Context
 //!
@@ -26,6 +28,8 @@
 
 #[allow(missing_docs)]
 pub mod accelerator;
+pub mod bioelectric;
+mod bioelectric_presets;
 pub mod calibration;
 #[allow(missing_docs)]
 pub mod dose;

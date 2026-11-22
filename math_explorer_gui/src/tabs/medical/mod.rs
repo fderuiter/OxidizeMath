@@ -3,6 +3,8 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod beam_profiling;
+pub mod bioelectric_leads;
+pub mod bioelectric_presets;
 pub mod dose;
 
 

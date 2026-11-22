@@ -2705,6 +2705,9 @@
       "signature": "pub struct TuringSystem < const N : usize = 2 , K : ReactionKinetics < N > = SchnakenbergKinetics , D : SpatialDiffusion < N > = FiniteDifference1D , S : TuringSolverStrategy < N > = FusedEulerSolver , >"
     },
     {
+      "signature": "pub use reaction :: FitzHughNagumoKinetics"
+    },
+    {
       "signature": "pub use reaction :: ReactionKinetics"
     },
     {
@@ -2728,7 +2731,16 @@
   ],
   "crates/domain_biology/src/biology/morphogenesis/reaction.rs": [
     {
+      "signature": "impl FitzHughNagumoKinetics { pub fn new (a : f64 , b : f64 , epsilon : f64 , i_ext : f64) -> Self }"
+    },
+    {
+      "signature": "impl FitzHughNagumoKinetics { pub fn resting_state (& self) -> (f64 , f64) }"
+    },
+    {
       "signature": "impl SchnakenbergKinetics { pub fn new (a : f64 , b : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct FitzHughNagumoKinetics"
     },
     {
       "signature": "pub struct SchnakenbergKinetics"
@@ -2792,6 +2804,80 @@
       "signature": "pub struct TuringState < const N : usize = 2 >"
     }
   ],
+  "crates/domain_biology/src/biology/neuroscience/cable.rs": [
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn clear_probes (& mut self) }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn clear_scars (& mut self) }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn diffusion_v (& self) -> f64 }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn dx (& self) -> f64 }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn elapsed_time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn new (len : usize , dx : f64 , d_v : f64 , params : HodgkinHuxleyParameters) -> Self }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn new_default () -> Self }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn paint_brush (& mut self , center : f64 , radius : f64 , current : f64) }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn paint_clamp (& mut self , center : f64 , radius : f64 , voltage_mv : f64 , enabled : bool) }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn paint_scar (& mut self , center : f64 , radius : f64 , is_scar : bool) }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn potassium_n (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn pulse_compartment_range (& mut self , start : usize , end : usize , target_mv : f64) }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn reset_resting (& mut self) }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn scar_mask (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn set_diffusion_v (& mut self , d_v : f64) }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn sodium_h (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn sodium_m (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn step (& mut self , dt : f64) }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn trigger_dual_end_collision (& mut self) }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyCable { pub fn voltage (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub const DEFAULT_CABLE_LEN : usize = 96"
+    },
+    {
+      "signature": "pub struct HodgkinHuxleyCable"
+    }
+  ],
   "crates/domain_biology/src/biology/neuroscience/kinetics.rs": [
     {
       "signature": "pub struct StandardKinetics"
@@ -2820,6 +2906,12 @@
   ],
   "crates/domain_biology/src/biology/neuroscience/mod.rs": [
     {
+      "signature": "pub use cable :: DEFAULT_CABLE_LEN"
+    },
+    {
+      "signature": "pub use cable :: HodgkinHuxleyCable"
+    },
+    {
       "signature": "pub use kinetics :: GatingKinetics"
     },
     {
@@ -2830,6 +2922,18 @@
     },
     {
       "signature": "pub use neuron :: HodgkinHuxleyNeuron"
+    },
+    {
+      "signature": "pub use sheet :: DEFAULT_SHEET_DIM"
+    },
+    {
+      "signature": "pub use sheet :: ExcitableSheet2D"
+    },
+    {
+      "signature": "pub use sheet :: ScheduledS2Pulse"
+    },
+    {
+      "signature": "pub use sheet_presets :: SheetPresetKind"
     },
     {
       "signature": "pub use types :: HodgkinHuxleyParameters"
@@ -2912,6 +3016,124 @@
     },
     {
       "signature": "pub struct HodgkinHuxleyNeuronBuilder"
+    }
+  ],
+  "crates/domain_biology/src/biology/neuroscience/sheet.rs": [
+    {
+      "signature": "impl ExcitableSheet2D { pub fn clamp_mask (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn clear_probes (& mut self) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn clear_scars (& mut self) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn defibrillate (& mut self) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn diffusion_u (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn dx (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn dy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn elapsed_time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn new (width : usize , height : usize , dx : f64 , dy : f64 , d_u : f64 , kinetics : FitzHughNagumoKinetics ,) -> Self }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn new_default () -> Self }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn pending_s2 (& self) -> Option < ScheduledS2Pulse > }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn recovery (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn recovery_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn scar_mask (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn scar_mask_mut (& mut self) -> & mut [u8] }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn set_diffusion_u (& mut self , d_u : f64) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn set_pending_s2 (& mut self , pulse : Option < ScheduledS2Pulse >) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn step (& mut self , dt : f64) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn stimulus (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn voltage (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn voltage_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub const DEFAULT_SHEET_DIM : usize = 96"
+    },
+    {
+      "signature": "pub struct ExcitableSheet2D"
+    },
+    {
+      "signature": "pub struct ScheduledS2Pulse"
+    }
+  ],
+  "crates/domain_biology/src/biology/neuroscience/sheet_presets.rs": [
+    {
+      "signature": "impl ExcitableSheet2D { pub fn ablate_scar_to_boundary (& mut self) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn apply_preset (& mut self , preset : SheetPresetKind) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn max_tissue_voltage (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn paint_current_disc (& mut self , cx : f64 , cy : f64 , radius : f64 , current : f64) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn paint_scar_disc (& mut self , cx : f64 , cy : f64 , radius : f64 , is_scar : bool) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn paint_scar_segment (& mut self , start : (f64 , f64) , end : (f64 , f64) , radius : f64 , is_scar : bool ,) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn paint_voltage_clamp_disc (& mut self , cx : f64 , cy : f64 , radius : f64 , target_u : f64 , enabled : bool ,) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn pulse_voltage_disc (& mut self , cx : f64 , cy : f64 , radius : f64 , target_u : f64) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn setup_scar_pinned_rotor (& mut self) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn trigger_dual_edge_collision (& mut self) }"
+    },
+    {
+      "signature": "impl ExcitableSheet2D { pub fn trigger_s1_s2_spiral (& mut self) }"
+    },
+    {
+      "signature": "pub enum SheetPresetKind"
     }
   ],
   "crates/domain_biology/src/biology/neuroscience/types.rs": [
@@ -4341,6 +4563,65 @@
   "crates/domain_physics/src/physics/medical/accelerator.rs": [
     {
       "signature": "pub fn beam_loading_energy (beam_current : f64) -> f64"
+    }
+  ],
+  "crates/domain_physics/src/physics/medical/bioelectric.rs": [
+    {
+      "signature": "impl DipoleLeadArray { pub fn default_einthoven_leads (width : usize , height : usize) -> [LeadPosition ; 3] }"
+    },
+    {
+      "signature": "impl DipoleLeadArray { pub fn evaluate_cable_1d (& self , voltage_1d : & [f64] , scar_mask_1d : & [u8] , cable_y : f64 , dx_1d : f64 , mode : LeadReadoutMode ,) -> [f64 ; 3] }"
+    },
+    {
+      "signature": "impl DipoleLeadArray { pub fn evaluate_sheet (& self , voltage : & [f64] , scar_mask : & [u8] , mode : LeadReadoutMode ,) -> [f64 ; 3] }"
+    },
+    {
+      "signature": "impl DipoleLeadArray { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl DipoleLeadArray { pub fn integrate_unipolar_sheet (& self , voltage : & [f64] , scar_mask : & [u8]) -> [f64 ; 3] }"
+    },
+    {
+      "signature": "impl DipoleLeadArray { pub fn leads (& self) -> & [LeadPosition ; 3] }"
+    },
+    {
+      "signature": "impl DipoleLeadArray { pub fn new (width : usize , height : usize , dx : f64 , dy : f64 , gain : f64 , leads : [LeadPosition ; 3] ,) -> Self }"
+    },
+    {
+      "signature": "impl DipoleLeadArray { pub fn new_default (width : usize , height : usize) -> Self }"
+    },
+    {
+      "signature": "impl DipoleLeadArray { pub fn set_lead (& mut self , index : usize , position : LeadPosition) }"
+    },
+    {
+      "signature": "impl DipoleLeadArray { pub fn set_leads (& mut self , leads : [LeadPosition ; 3]) }"
+    },
+    {
+      "signature": "impl DipoleLeadArray { pub fn to_bipolar_ecg (unipolar : [f64 ; 3]) -> [f64 ; 3] }"
+    },
+    {
+      "signature": "impl DipoleLeadArray { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "impl LeadPosition { pub fn new (x : f64 , y : f64 , z : f64) -> Self }"
+    },
+    {
+      "signature": "pub enum LeadReadoutMode"
+    },
+    {
+      "signature": "pub struct DipoleLeadArray"
+    },
+    {
+      "signature": "pub struct LeadPosition"
+    },
+    {
+      "signature": "pub use super :: bioelectric_presets :: BioelectricPresetKind"
+    },
+    {
+      "signature": "pub use super :: bioelectric_presets :: BioelectricPresetSpec"
+    },
+    {
+      "signature": "pub use super :: bioelectric_presets :: synthesize_bioelectric_preset_sheet"
     }
   ],
   "crates/domain_physics/src/physics/medical/calibration.rs": [
