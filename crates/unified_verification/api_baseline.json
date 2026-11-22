@@ -2090,9 +2090,44 @@
       "signature": "pub use crate :: error"
     }
   ],
+  "crates/domain_applied/src/applied/pharmacokinetics/analytics.rs": [
+    {
+      "signature": "impl TherapeuticWindow { pub fn new (mec_mg_l : f64 , mtc_mg_l : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "pub fn accumulation_ratio (ke : f64 , tau_h : f64) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn auc_interval (times : & [f64] , concentrations : & [f64] , start_h : f64 , end_h : f64 ,) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn peak_concentration (times : & [f64] , concentrations : & [f64] ,) -> Result < (f64 , f64) , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn summarize_exposure (times : & [f64] , concentrations : & [f64] , window : TherapeuticWindow , tau_h : f64 , ke : f64 ,) -> Result < ExposureSummary , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn trapezoidal_auc (times : & [f64] , concentrations : & [f64] ,) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub fn trough_concentration (times : & [f64] , concentrations : & [f64] , start_h : f64 , end_h : f64 ,) -> Result < f64 , PharmacokineticsError >"
+    },
+    {
+      "signature": "pub struct ExposureSummary"
+    },
+    {
+      "signature": "pub struct TherapeuticWindow"
+    }
+  ],
   "crates/domain_applied/src/applied/pharmacokinetics/bateman.rs": [
     {
       "signature": "impl BatemanModel { pub fn new (params : PKParameters) -> Self }"
+    },
+    {
+      "signature": "impl BatemanModel { pub fn with_dose (& self , dose_mg : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "pub fn calibrate_ka_from_half_life (t_max_target : f64 , half_life_h : f64 , max_iter : usize , tolerance : f64 ,) -> Result < (f64 , f64) , PharmacokineticsError >"
     },
     {
       "signature": "pub fn half_life (ke : f64) -> f64"
@@ -2121,7 +2156,22 @@
       "signature": "impl EnantiomerModel { pub fn concentration_xr_single_dose (& self , lag_time : f64 , f1 : f64 , f2 : f64 , t : f64) -> f64 }"
     },
     {
+      "signature": "impl EnantiomerModel { pub fn d_concentration (& self , t : f64) -> f64 }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn f_d (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn f_l (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn l_concentration (& self , t : f64) -> f64 }"
+    },
+    {
       "signature": "impl EnantiomerModel { pub fn new (d_params : PKParameters , l_params : PKParameters , f_d : f64 , f_l : f64 ,) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl EnantiomerModel { pub fn with_dose (& self , total_dose_mg : f64) -> Result < Self , PharmacokineticsError > }"
     },
     {
       "signature": "pub struct EnantiomerModel"
@@ -2135,7 +2185,34 @@
       "signature": "pub fn concentration_superposition (params : & PKParameters , dose_times : & [f64] , t : f64) -> f64"
     },
     {
+      "signature": "pub use analytics :: ExposureSummary"
+    },
+    {
+      "signature": "pub use analytics :: TherapeuticWindow"
+    },
+    {
+      "signature": "pub use analytics :: accumulation_ratio"
+    },
+    {
+      "signature": "pub use analytics :: auc_interval"
+    },
+    {
+      "signature": "pub use analytics :: peak_concentration"
+    },
+    {
+      "signature": "pub use analytics :: summarize_exposure"
+    },
+    {
+      "signature": "pub use analytics :: trapezoidal_auc"
+    },
+    {
+      "signature": "pub use analytics :: trough_concentration"
+    },
+    {
       "signature": "pub use bateman :: BatemanModel"
+    },
+    {
+      "signature": "pub use bateman :: calibrate_ka_from_half_life"
     },
     {
       "signature": "pub use bateman :: half_life"
@@ -2154,6 +2231,21 @@
     },
     {
       "signature": "pub use parameters :: PKParametersBuilder"
+    },
+    {
+      "signature": "pub use regimen :: DoseEvent"
+    },
+    {
+      "signature": "pub use regimen :: MAX_REGIMEN_EVENTS"
+    },
+    {
+      "signature": "pub use regimen :: RegimenModel"
+    },
+    {
+      "signature": "pub use regimen :: RegimenSuperposition"
+    },
+    {
+      "signature": "pub use regimen :: ReleaseFormulation"
     },
     {
       "signature": "pub use superposition :: SuperpositionModel"
@@ -2215,6 +2307,68 @@
       "signature": "pub struct PKParametersBuilder"
     }
   ],
+  "crates/domain_applied/src/applied/pharmacokinetics/regimen.rs": [
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn base_model (& self) -> & M }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn events (& self) -> & [DoseEvent] }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn new (base_model : M , events : & [DoseEvent]) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl < M : RegimenModel > RegimenSuperposition < M > { pub fn sample_into (& self , times : & [f64] , out : & mut [f64]) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn ir (time_h : f64 , dose_mg : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn new (time_h : f64 , dose_mg : f64 , formulation : ReleaseFormulation ,) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn validate (& self) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl DoseEvent { pub fn xr (time_h : f64 , dose_mg : f64 , lag_time_h : f64 , f1 : f64 , f2 : f64 ,) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl RegimenSuperposition < EnantiomerModel > { pub fn d_concentration (& self , t : f64) -> f64 }"
+    },
+    {
+      "signature": "impl RegimenSuperposition < EnantiomerModel > { pub fn l_concentration (& self , t : f64) -> f64 }"
+    },
+    {
+      "signature": "impl RegimenSuperposition < EnantiomerModel > { pub fn sample_isomers_into (& self , times : & [f64] , d_out : & mut [f64] , l_out : & mut [f64] , total_out : & mut [f64] ,) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "impl ReleaseFormulation { pub fn validate (& self) -> Result < () , PharmacokineticsError > }"
+    },
+    {
+      "signature": "pub const MAX_REGIMEN_EVENTS : usize = 64"
+    },
+    {
+      "signature": "pub enum ReleaseFormulation"
+    },
+    {
+      "signature": "pub struct DoseEvent"
+    },
+    {
+      "signature": "pub struct RegimenSuperposition < M : Copy >"
+    },
+    {
+      "signature": "pub trait RegimenModel : PharmacokineticModel + Copy"
+    },
+    {
+      "signature": "pub trait RegimenModel { fn with_event_dose (& self , dose_mg : f64) -> Result < Self , PharmacokineticsError > }"
+    }
+  ],
   "crates/domain_applied/src/applied/pharmacokinetics/superposition.rs": [
     {
       "signature": "impl < M > SuperpositionModel < M > { pub fn new (base_model : M , dose_times : Vec < f64 >) -> Self }"
@@ -2233,7 +2387,16 @@
   ],
   "crates/domain_applied/src/applied/pharmacokinetics/two_pulse.rs": [
     {
+      "signature": "impl < M : RegimenModel > TwoPulseModel < M > { pub fn with_dose (& self , dose_mg : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
       "signature": "impl < M > TwoPulseModel < M > { pub fn new (base_model : M , lag_time : f64 , f1 : f64 , f2 : f64) -> Self }"
+    },
+    {
+      "signature": "impl TwoPulseModel < EnantiomerModel > { pub fn d_concentration (& self , t : f64) -> f64 }"
+    },
+    {
+      "signature": "impl TwoPulseModel < EnantiomerModel > { pub fn l_concentration (& self , t : f64) -> f64 }"
     },
     {
       "signature": "pub struct TwoPulseModel < M >"

@@ -14,7 +14,18 @@ impl BatemanModel {
     /// Creates a new Bateman model with the given parameters.
     #[verified_engine::verified]
     pub fn new(params: PKParameters) -> Self {
+        debug_assert!(params.d() >= 0.0);
+        debug_assert!(params.v() > 0.0);
         Self { params }
+    }
+
+    /// Returns a copy of this Bateman model with its dose updated via [`PKParameters::with_dose`].
+    #[verified_engine::verified]
+    pub fn with_dose(&self, dose_mg: f64) -> Result<Self, PharmacokineticsError> {
+        let updated = self.params.with_dose(dose_mg)?;
+        debug_assert!(updated.d() >= 0.0);
+        debug_assert_eq!(updated.v(), self.params.v());
+        Ok(Self { params: updated })
     }
 }
 
@@ -114,4 +125,39 @@ pub fn solve_ka(
     solver
         .find_root_with_derivative(f, f_prime, guess)
         .map_err(PharmacokineticsError::AnalysisError)
+}
+
+/// Calibrates `(ka, ke)` in $\text{h}^{-1}$ from target $T_{\max}$ (hours) and elimination half-life $t_{1/2}$ (hours).
+///
+/// Selects a convex monotone starting point so [`solve_ka`] converges strictly inside $k_a > 0$.
+#[verified_engine::verified]
+pub fn calibrate_ka_from_half_life(
+    t_max_target: f64,
+    half_life_h: f64,
+    max_iter: usize,
+    tolerance: f64,
+) -> Result<(f64, f64), PharmacokineticsError> {
+    if !t_max_target.is_finite()
+        || t_max_target <= 0.0
+        || !half_life_h.is_finite()
+        || half_life_h <= 0.0
+    {
+        return Err(PharmacokineticsError::InvalidParameter(
+            "t_max_target and half_life_h must be positive finite values".to_string(),
+        ));
+    }
+    let ke = std::f64::consts::LN_2 / half_life_h;
+    let inv_ke = 1.0 / ke;
+    let initial_guess =
+        if (t_max_target - inv_ke).abs() < math_commons::registry::TOLERANCE_STANDARD {
+            return Ok((ke, ke));
+        } else if t_max_target < inv_ke {
+            ke
+        } else {
+            (ke * (-ke * t_max_target).exp()).max(1e-9)
+        };
+    let ka = solve_ka(t_max_target, ke, initial_guess, max_iter, tolerance)?;
+    debug_assert!(ka > 0.0);
+    debug_assert!(ke > 0.0);
+    Ok((ka, ke))
 }

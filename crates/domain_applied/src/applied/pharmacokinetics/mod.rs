@@ -63,16 +63,43 @@
 //! ## Key Components
 //!
 //! - **`BatemanModel`**: The standard one-compartment model with first-order absorption and elimination.
-//! - **`SuperpositionModel`**: Calculates accumulation from multiple doses.
+//! - **`SuperpositionModel`**: Calculates accumulation from uniform multiple doses.
+//! - **`RegimenSuperposition` & `DoseEvent`**: Evaluates variable-dose schedules (loading doses, missed doses, catch-up doses, and mixed IR/XR formulations) with zero heap allocations.
+//! - **`ExposureSummary` & `TherapeuticWindow`**: Computes $C_{\max}$, $C_{\min}$, $\text{AUC}_{0-\tau}$, $R_{\text{ac}}$, Time-in-Therapeutic-Range, and toxic hours over caller slices.
 //! - **`EnantiomerModel`**: Models drugs with chiral centers (e.g., Adderall) where isomers have different kinetics.
 //! - **`TwoPulseModel`**: Simulates biphasic release profiles common in Extended Release (XR) formulations.
+//!
+//! ## Variable-Dose Regimen & Exposure Example
+//!
+//! ```rust
+//! # use domain_applied::__doctest_facade as math_explorer;
+//! use math_explorer::applied::pharmacokinetics::{
+//!     BatemanModel, DoseEvent, PKParameters, RegimenSuperposition, TherapeuticWindow,
+//!     summarize_exposure,
+//! };
+//!
+//! let params = PKParameters::new(1.0, 100.0, 1.2, 0.1, 20.0).unwrap();
+//! let events = [
+//!     DoseEvent::ir(0.0, 200.0).unwrap(),
+//!     DoseEvent::ir(12.0, 100.0).unwrap(),
+//! ];
+//! let regimen = RegimenSuperposition::new(BatemanModel::new(params), &events).unwrap();
+//! let times = [0.0, 6.0, 12.0, 18.0, 24.0];
+//! let mut conc = [0.0; 5];
+//! regimen.sample_into(&times, &mut conc).unwrap();
+//! let window = TherapeuticWindow::new(3.0, 8.5).unwrap();
+//! let summary = summarize_exposure(&times, &conc, window, 12.0, params.ke()).unwrap();
+//! assert!(summary.c_max > 0.0);
+//! ```
 
+pub mod analytics;
 #[allow(missing_docs)]
 pub mod bateman;
 #[allow(missing_docs)]
 pub mod enantiomer;
 #[allow(missing_docs)]
 pub mod parameters;
+pub mod regimen;
 #[allow(missing_docs)]
 pub mod superposition;
 #[allow(missing_docs)]
@@ -80,9 +107,16 @@ pub mod traits;
 #[allow(missing_docs)]
 pub mod two_pulse;
 
-pub use bateman::{BatemanModel, half_life, solve_ka, t_max};
+pub use analytics::{
+    ExposureSummary, TherapeuticWindow, accumulation_ratio, auc_interval, peak_concentration,
+    summarize_exposure, trapezoidal_auc, trough_concentration,
+};
+pub use bateman::{BatemanModel, calibrate_ka_from_half_life, half_life, solve_ka, t_max};
 pub use enantiomer::EnantiomerModel;
 pub use parameters::{PKParameters, PKParametersBuilder};
+pub use regimen::{
+    DoseEvent, MAX_REGIMEN_EVENTS, RegimenModel, RegimenSuperposition, ReleaseFormulation,
+};
 pub use superposition::SuperpositionModel;
 pub use traits::PharmacokineticModel;
 pub use two_pulse::TwoPulseModel;
@@ -115,7 +149,7 @@ pub fn concentration_superposition(params: &PKParameters, dose_times: &[f64], t:
     model.concentration(t)
 }
 
-// [cite:quantum_mechanics]
+// [cite:pharmacokinetics]
 
 use pure_math::theory_verification;
 

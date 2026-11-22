@@ -14,7 +14,7 @@ The crate spans life sciences, material engineering, distributed systems, and qu
   - `WinRatioAnalysis`: Configurable hierarchical comparison engine for patient pairs.
   - Comparison strategies (`HigherIsBetter`, `LowerIsBetter`, `UnmatchedPairing`).
 - **`clinical_trials`**: Biostatistical trial design, sample size determination, and survival curves.
-- **`pharmacokinetics`**: Bateman function models for drug absorption, distribution, metabolism, and elimination (ADME).
+- **`pharmacokinetics`**: One-compartment Bateman ADME kinetics, chiral (`EnantiomerModel`) and biphasic extended-release (`TwoPulseModel`) formulations, variable per-event multi-dose superposition (`DoseEvent`, `RegimenSuperposition`), `solve_ka` half-life calibration, and zero-allocation therapeutic-window exposure analytics (`TherapeuticWindow`, `ExposureSummary`).
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
 - **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
 - **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.

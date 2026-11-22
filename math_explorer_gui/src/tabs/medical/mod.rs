@@ -4,6 +4,7 @@ use eframe::egui;
 
 pub mod beam_profiling;
 pub mod dose;
+pub mod pharmacokinetic_regimen;
 
 
 pub struct MedicalTab {
@@ -53,3 +54,4 @@ impl ExplorerTab for MedicalTab {
 }
 
 // [cite:graph_parameters_rust]
+// [cite:pharmacokinetics]
