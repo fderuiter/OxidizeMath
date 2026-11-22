@@ -8,6 +8,9 @@ mod export_figure;
 mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
+mod export_shader;
+#[cfg(test)]
+mod export_shader_tests;
 pub mod export_types;
 mod export_ui;
 #[cfg(test)]
@@ -271,6 +274,14 @@ pub trait InteractiveTool {
     /// Optional hook to provide custom figure export options.
     fn export_figure_options(&self) -> Option<egui_plot::export::ExportOptions> {
         None
+    }
+
+    /// Optional hook to emit a standalone GLSL fragment shader for the requested [`ShaderDialect`].
+    fn export_glsl_shader(&self, _dialect: ShaderDialect) -> Result<String, String> {
+        Err(format!(
+            "GLSL shader export is not supported for {}",
+            self.name()
+        ))
     }
 
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.

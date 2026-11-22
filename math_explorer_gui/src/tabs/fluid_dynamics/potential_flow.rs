@@ -9,6 +9,11 @@ use math_explorer::physics::fluid_dynamics::potential_flow::{
 };
 use std::f64::consts::PI;
 
+#[path = "potential_flow/shader.rs"]
+mod shader;
+#[cfg(test)]
+pub(crate) use shader::MAX_SHADER_SINGULARITIES;
+
 pub(crate) const FLOW_STRENGTH_MIN: f64 = -1_000.0;
 pub(crate) const FLOW_STRENGTH_MAX: f64 = 1_000.0;
 pub(crate) const FLOW_POS_MIN: f64 = -50.0;
@@ -28,6 +33,7 @@ pub struct PotentialFlowTool {
     pub(crate) new_element_x: f64,
     pub(crate) new_element_y: f64,
     pub(crate) new_element_angle: f64,
+    pub(crate) high_contrast: bool,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -136,6 +142,7 @@ impl Default for PotentialFlowTool {
             new_element_x: 0.0,
             new_element_y: 0.0,
             new_element_angle: 0.0,
+            high_contrast: false,
         };
         tool.rebuild_field();
         tool
@@ -153,6 +160,14 @@ impl InteractiveTool for PotentialFlowTool {
 
     fn domain(&self) -> &'static str {
         "fluid_dynamics"
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot().with_shader()
+    }
+
+    fn export_glsl_shader(&self, dialect: crate::framework::ShaderDialect) -> Result<String, String> {
+        self.build_glsl_shader(dialect)
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -217,6 +232,8 @@ impl InteractiveTool for PotentialFlowTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
         self.draw_controls(ui);
         let (origins, tips) = self.compute_arrow_field();
         egui::CentralPanel::default().show_inside(ui, |ui| {

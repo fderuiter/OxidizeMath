@@ -4,6 +4,9 @@ use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use num_complex::Complex64;
 
+#[path = "complex_mapping/shader.rs"]
+mod shader;
+
 #[path = "complex_mapping/ui.rs"]
 mod ui;
 
@@ -98,6 +101,7 @@ pub struct ComplexMappingTool {
     pub(crate) grid_density: usize,
     pub(crate) inspection_point: [f64; 2],
     pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) high_contrast: bool,
 }
 
 impl Default for ComplexMappingTool {
@@ -120,6 +124,7 @@ impl Default for ComplexMappingTool {
                     ("w = z + 1/z (Joukowsky)", "z + 1/z"),
                 ],
             ),
+            high_contrast: false,
         }
     }
 }
@@ -179,6 +184,14 @@ impl InteractiveTool for ComplexMappingTool {
 
     fn domain(&self) -> &'static str {
         "analysis"
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot().with_shader()
+    }
+
+    fn export_glsl_shader(&self, dialect: crate::framework::ShaderDialect) -> Result<String, String> {
+        self.build_glsl_shader(dialect)
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -246,6 +259,8 @@ impl InteractiveTool for ComplexMappingTool {
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        self.high_contrast = crate::app::ThemeMode::from_visuals(parent_ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
         self.draw_controls(parent_ui);
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Conformal Mapping Visualization");
