@@ -1,13 +1,26 @@
+use crate::framework::math_input::{MathExpressionInputBar, ParameterSliderBank};
 use crate::framework::InteractiveTool;
 use crate::presets::ReplicatorPresetConfig;
 use eframe::egui;
+use math_commons::ast::{CompiledExpr, Expr};
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
 use nalgebra::{DMatrix, DVector};
+use std::collections::BTreeMap;
+use symbolic::{
+    build_dynamic_symbolic_grid, build_static_symbolic_grid, compile_symbolic_exprs,
+    default_hawk_dove_params, HAWK_DOVE_FORMULAS, RPS_FORMULAS,
+};
 
 #[path = "replicator/spatial.rs"]
 mod spatial;
+#[path = "replicator/symbolic.rs"]
+mod symbolic;
 #[path = "replicator/ui.rs"]
 mod ui;
+
+#[cfg(test)]
+#[path = "replicator/tests.rs"]
+mod tests;
 
 const fn default_true() -> bool {
     true
@@ -25,6 +38,10 @@ struct ReplicatorToolState {
     time_horizon: f64,
     dt: f64,
     strategy_names: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    symbolic_payoffs: Option<Vec<Vec<String>>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    symbolic_params: BTreeMap<String, f64>,
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     follow_workspace_graph: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -44,12 +61,22 @@ pub struct ReplicatorDynamicsTool {
     is_playing: bool,
     playback_speed: f64,
     spatial: spatial::SpatialReplicatorState,
+    symbolic_mode: bool,
+    symbolic_bars: Vec<Vec<MathExpressionInputBar>>,
+    last_valid_exprs: Vec<Vec<Expr>>,
+    symbolic_compiled: Vec<Vec<Option<CompiledExpr>>>,
+    symbolic_sliders: ParameterSliderBank,
+    symbolic_error: Option<String>,
 }
 
 impl Default for ReplicatorDynamicsTool {
     fn default() -> Self {
         let payoff = DMatrix::from_row_slice(2, 2, &[-1.0, 2.0, 0.0, 1.0]);
         let init = DVector::from_vec(vec![0.1, 0.9]);
+        let (bars, exprs) = build_static_symbolic_grid(HAWK_DOVE_FORMULAS);
+        let rows = bars.len();
+        let mut sliders = ParameterSliderBank::new().with_range(-5.0..=10.0, 2.0);
+        sliders.set_params_map(&default_hawk_dove_params());
         let mut tool = Self {
             payoff_matrix: payoff,
             initial_population: init,
@@ -61,6 +88,12 @@ impl Default for ReplicatorDynamicsTool {
             is_playing: false,
             playback_speed: 1.0,
             spatial: spatial::SpatialReplicatorState::default(),
+            symbolic_mode: false,
+            symbolic_bars: bars,
+            last_valid_exprs: exprs,
+            symbolic_compiled: vec![vec![None; rows]; rows],
+            symbolic_sliders: sliders,
+            symbolic_error: None,
         };
         tool.run_simulation();
         tool
@@ -68,7 +101,7 @@ impl Default for ReplicatorDynamicsTool {
 }
 
 impl ReplicatorDynamicsTool {
-    pub(crate) fn run_simulation(&mut self) {
+    pub(crate) fn recompute_trajectory_preserving_playback(&mut self) {
         let sum = self.initial_population.sum();
         if sum > 0.0 {
             self.initial_population /= sum;
@@ -80,10 +113,15 @@ impl ReplicatorDynamicsTool {
         if let Ok(system) = ReplicatorDynamics::new(self.payoff_matrix.clone()) {
             self.trajectory =
                 system.simulate(self.initial_population.clone(), self.time_horizon, self.dt);
-            self.playback_time = 0.0;
-            self.is_playing = false;
+            self.playback_time = self.playback_time.clamp(0.0, self.time_horizon);
         }
         self.recompute_spatial_trajectory();
+    }
+
+    pub(crate) fn run_simulation(&mut self) {
+        self.recompute_trajectory_preserving_playback();
+        self.playback_time = 0.0;
+        self.is_playing = false;
     }
 
     pub(crate) fn step_once(&mut self) {
@@ -108,6 +146,14 @@ impl ReplicatorDynamicsTool {
         self.initial_population = DVector::from_vec(vec![0.1, 0.9]);
         self.strategy_names = vec!["Hawk".to_string(), "Dove".to_string()];
         self.time_horizon = 20.0;
+        self.symbolic_mode = false;
+        let (bars, exprs) = build_static_symbolic_grid(HAWK_DOVE_FORMULAS);
+        self.symbolic_bars = bars;
+        self.last_valid_exprs = exprs;
+        self.symbolic_compiled = vec![vec![None; 2]; 2];
+        self.symbolic_sliders
+            .set_params_map(&default_hawk_dove_params());
+        self.symbolic_error = None;
         self.run_simulation();
     }
 
@@ -122,6 +168,15 @@ impl ReplicatorDynamicsTool {
             "Scissors".to_string(),
         ];
         self.time_horizon = 50.0;
+        self.symbolic_mode = false;
+        let (bars, exprs) = build_static_symbolic_grid(RPS_FORMULAS);
+        self.symbolic_bars = bars;
+        self.last_valid_exprs = exprs;
+        self.symbolic_compiled = vec![vec![None; 3]; 3];
+        let mut rps_params = BTreeMap::new();
+        rps_params.insert("s".to_string(), 1.0);
+        self.symbolic_sliders.set_params_map(&rps_params);
+        self.symbolic_error = None;
         self.run_simulation();
     }
 }
@@ -148,6 +203,8 @@ impl InteractiveTool for ReplicatorDynamicsTool {
             time_horizon: cfg.time_horizon,
             dt: cfg.dt,
             strategy_names: cfg.strategy_names,
+            symbolic_payoffs: cfg.symbolic_payoffs,
+            symbolic_params: cfg.symbolic_params,
             follow_workspace_graph: self.spatial.follow_workspace_graph,
             seeded_graph: self.spatial.seeded_graph.clone(),
             frozen_graph,
@@ -164,22 +221,26 @@ impl InteractiveTool for ReplicatorDynamicsTool {
                 crate::app::data_bus::SESSION_MAX_BUS_EDGES,
             )?;
         }
-        self.spatial.follow_workspace_graph = s.follow_workspace_graph;
-        self.spatial.seeded_graph = s.seeded_graph.clone();
-        self.spatial.pending_seed_publish = s.seeded_graph.is_some();
         self.apply_config(ReplicatorPresetConfig {
             payoff_matrix: s.payoff_matrix,
             initial_population: s.initial_population,
             time_horizon: s.time_horizon,
             dt: s.dt,
             strategy_names: s.strategy_names,
+            symbolic_payoffs: s.symbolic_payoffs,
+            symbolic_params: s.symbolic_params,
         })?;
+        self.spatial.follow_workspace_graph = s.follow_workspace_graph;
+        self.spatial.seeded_graph = s.seeded_graph.clone();
+        self.spatial.pending_seed_publish = s.seeded_graph.is_some();
         if let Some(g) = s.frozen_graph.or(s.seeded_graph) {
             self.apply_shared_game_graph(&std::sync::Arc::new(g));
         } else if self.spatial.follow_workspace_graph {
             self.spatial.active_graph = None;
             self.spatial.applied_bus_revision = 0;
             self.spatial.trajectory.clear();
+        } else {
+            self.recompute_spatial_trajectory();
         }
         Ok(())
     }
@@ -248,6 +309,16 @@ impl ReplicatorDynamicsTool {
             matrix.push(row);
         }
         let initial_pop: Vec<f64> = self.initial_population.iter().copied().collect();
+        let (symbolic_payoffs, symbolic_params) = if self.symbolic_mode {
+            let sym_rows = self
+                .symbolic_bars
+                .iter()
+                .map(|row| row.iter().map(|b| b.raw_text.trim().to_string()).collect())
+                .collect();
+            (Some(sym_rows), self.symbolic_sliders.export_active_map())
+        } else {
+            (None, BTreeMap::new())
+        };
 
         ReplicatorPresetConfig {
             payoff_matrix: matrix,
@@ -255,6 +326,8 @@ impl ReplicatorDynamicsTool {
             time_horizon: self.time_horizon,
             dt: self.dt,
             strategy_names: self.strategy_names.clone(),
+            symbolic_payoffs,
+            symbolic_params,
         }
     }
 
@@ -262,6 +335,23 @@ impl ReplicatorDynamicsTool {
         config.validate()?;
 
         let rows = config.payoff_matrix.len();
+        let mut sliders = ParameterSliderBank::new().with_range(-5.0..=10.0, 2.0);
+        let (sym_mode, bars, exprs, compiled) = if let Some(ref sym_rows) = config.symbolic_payoffs
+        {
+            let (bars, exprs) = build_dynamic_symbolic_grid(sym_rows)?;
+            sliders.set_params_map(&config.symbolic_params);
+            let compiled = compile_symbolic_exprs(&exprs, &mut sliders)?;
+            (true, bars, exprs, compiled)
+        } else {
+            let formatted: Vec<Vec<String>> = config
+                .payoff_matrix
+                .iter()
+                .map(|r| r.iter().map(|v| format!("{v}")).collect())
+                .collect();
+            let (bars, exprs) = build_dynamic_symbolic_grid(&formatted)?;
+            (false, bars, exprs, vec![vec![None; rows]; rows])
+        };
+
         let mut flat = Vec::with_capacity(rows * rows);
         for row in &config.payoff_matrix {
             flat.extend_from_slice(row);
@@ -272,28 +362,17 @@ impl ReplicatorDynamicsTool {
         self.time_horizon = config.time_horizon;
         self.dt = config.dt;
         self.strategy_names = config.strategy_names;
+        self.symbolic_mode = sym_mode;
+        self.symbolic_bars = bars;
+        self.last_valid_exprs = exprs;
+        self.symbolic_compiled = compiled;
+        self.symbolic_sliders = sliders;
+        self.symbolic_error = None;
+        if self.symbolic_mode {
+            self.evaluate_symbolic_matrix();
+        }
         self.run_simulation();
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_replicator_step_once_and_reset_playback() {
-        let mut tool = ReplicatorDynamicsTool::default();
-        assert!(!tool.is_playing);
-        assert_eq!(tool.playback_time, 0.0);
-
-        tool.step_once();
-        assert!(!tool.is_playing);
-        assert!((tool.playback_time - tool.dt).abs() < 1e-9);
-
-        tool.reset_playback();
-        assert!(!tool.is_playing);
-        assert_eq!(tool.playback_time, 0.0);
     }
 }
 
