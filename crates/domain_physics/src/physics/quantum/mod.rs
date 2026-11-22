@@ -29,23 +29,25 @@
 //! Calculate the probability amplitude of coupled angular momentum states.
 //!
 //! ```rust
-//! use domain_physics::physics::quantum::clebsch_gordan;
+//! # use domain_physics::__doctest_facade as math_explorer;
+//! use math_explorer::physics::quantum::clebsch_gordan;
 //!
 //! // Coupling spin j1=1.5, m1=-0.5 with j2=1.0, m2=1.0
 //! // We want to know the coefficient for total angular momentum J=2.5, M=0.5
 //! let cg = clebsch_gordan(1.5, -0.5, 1.0, 1.0, 2.5, 0.5);
 //!
 //! println!("CG Coefficient: {:.4}", cg);
-//! assert!((cg - (0.3f64).sqrt()).abs() < math_commons::registry::TOLERANCE_STANDARD); // Expected value sqrt(3/10)
+//! assert!((cg - (0.3f64).sqrt()).abs() < math_explorer::registry::TOLERANCE_STANDARD); // Expected value sqrt(3/10)
 //! ```
 //!
 //! ### 2. Time Evolution of a Qubit
 //! Simulating a spin-1/2 particle in a magnetic field (Pauli-X Hamiltonian).
 //!
 //! ```rust
-//! use domain_physics::physics::quantum::{QuantumState, QuantumOperator, evolve_state, sigma_x};
-//! use nalgebra::DVector;
-//! use num_complex::Complex;
+//! # use domain_physics::__doctest_facade as math_explorer;
+//! use math_explorer::physics::quantum::{QuantumState, QuantumOperator, evolve_state, sigma_x};
+//! use math_explorer::nalgebra::DVector;
+//! use math_explorer::num_complex::Complex;
 //!
 //! // 1. Define Initial State |0> = [1, 0]^T
 //! let psi_0 = QuantumState::new(DVector::from_vec(vec![

@@ -13,11 +13,11 @@ the electrical characteristics of excitable cells such as neurons and cardiac my
 
 ## Install
 
-This module is part of the `domain_biology` core library. To use it, include the library in your `Cargo.toml`.
+This module is part of the `math_explorer` core library. To use it, include the library in your `Cargo.toml`.
 
 ```toml
 [dependencies]
-domain_biology = { path = "path/to/domain_biology" }
+math_explorer = { path = "path/to/math_explorer", features = ["biology"] }
 ```
 
 ---
@@ -27,17 +27,18 @@ domain_biology = { path = "path/to/domain_biology" }
 You can see this model in action by running the standalone, fully executable example:
 
 ```bash
-cargo run --release --package domain_biology --example hodgkin_huxley_demo
+cargo run --release --package math_explorer --features biology --example hodgkin_huxley_demo
 ```
 
-*(See `domain_biology/examples/hodgkin_huxley_demo.rs` for implementation details)*
+*(See `math_explorer/examples/hodgkin_huxley_demo.rs` for implementation details)*
 
 ### Quick Start
 
 Simulate a single neuron firing an action potential.
 
 ```rust
-use domain_biology::biology::neuroscience::HodgkinHuxleyNeuron;
+# use domain_biology::__doctest_facade as math_explorer;
+use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 
 // 1. Initialize neuron at resting potential (-65.0 mV)
 let mut neuron = HodgkinHuxleyNeuron::new(-65.0);

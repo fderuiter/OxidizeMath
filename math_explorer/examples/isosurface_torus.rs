@@ -123,7 +123,7 @@ fn main() -> std::io::Result<()> {
 
     // Export to OBJ
     let filename = "torus.obj";
-    let obj_str = oxidize_core::mesh::export_mesh_to_obj_string(&mesh).unwrap();
+    let obj_str = math_explorer::mesh::export_mesh_to_obj_string(&mesh).unwrap();
     let mut file = File::create(filename)?;
     file.write_all(obj_str.as_bytes())?;
 

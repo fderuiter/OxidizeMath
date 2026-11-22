@@ -32,8 +32,9 @@ impl PersistenceInterval {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::tda::PersistenceInterval;
-    /// use pure_math::error::TdaError;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::tda::PersistenceInterval;
+    /// use math_explorer::error::TdaError;
     ///
     /// let interval = PersistenceInterval::new(0.5, 2.0, 1).unwrap();
     /// assert_eq!(interval.persistence(), 1.5);
@@ -111,9 +112,9 @@ impl PersistenceBarcode {
     /// Filters intervals by dimension.
     ///
     /// # Example
-    ///
     /// ```
-    /// use pure_math::pure_math::statistics::tda::{
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::tda::{
     ///     PersistenceBarcode, PersistenceInterval
     /// };
     ///
@@ -188,12 +189,12 @@ impl Default for PersistenceBarcode {
 /// Propagates errors from `vietoris_rips_complex`, Betti number computations, and `PersistenceInterval::new`.
 ///
 /// # Example
-///
 /// ```
-/// use pure_math::pure_math::statistics::tda::{
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::tda::{
 ///     PointCloud, Point2D, compute_persistence
 /// };
-/// use pure_math::error::TdaError;
+/// use math_explorer::error::TdaError;
 ///
 /// let points = vec![
 ///     Point2D::new(0.0, 0.0),

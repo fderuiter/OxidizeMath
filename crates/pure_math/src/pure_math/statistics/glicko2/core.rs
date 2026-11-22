@@ -24,7 +24,8 @@ impl Rating {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::glicko2::Rating;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::glicko2::Rating;
     ///
     /// let rating = Rating::new(1500.0).unwrap();
     /// assert_eq!(rating.value(), 1500.0);
@@ -93,7 +94,8 @@ impl RatingDeviation {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::glicko2::RatingDeviation;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::glicko2::RatingDeviation;
     ///
     /// let rd = RatingDeviation::new(350.0).unwrap();
     /// assert_eq!(rd.value(), 350.0);
@@ -161,7 +163,8 @@ impl Volatility {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::glicko2::Volatility;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::glicko2::Volatility;
     ///
     /// let vol = Volatility::new(0.06).unwrap();
     /// assert_eq!(vol.value(), 0.06);
@@ -213,7 +216,8 @@ impl SystemConstant {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::glicko2::SystemConstant;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::glicko2::SystemConstant;
     ///
     /// let tau = SystemConstant::new(0.5).unwrap();
     /// assert_eq!(tau.value(), 0.5);
@@ -264,7 +268,8 @@ impl GlickoPlayer {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::glicko2::{GlickoPlayer, Rating, RatingDeviation, Volatility};
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::glicko2::{GlickoPlayer, Rating, RatingDeviation, Volatility};
     ///
     /// let player = GlickoPlayer::new(
     ///     Rating::new(1500.0).unwrap(),
@@ -339,7 +344,8 @@ impl MatchResult {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::glicko2::{MatchResult, GlickoPlayer};
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::glicko2::{MatchResult, GlickoPlayer};
     ///
     /// let opponent = GlickoPlayer::default();
     /// let result = MatchResult::new(opponent, 1.0).unwrap(); // Win

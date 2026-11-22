@@ -35,7 +35,8 @@
 //! Calculate the optimal fraction of your bankroll to wager given an edge.
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::kelly::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::kelly::{
 //!     kelly_fraction, UnitInterval, Odds
 //! };
 //!
@@ -49,7 +50,7 @@
 //!
 //!     // Kelly says: bet 10% of your bankroll
 //!     // f = (bp - q) / b = (1.0*0.55 - 0.45) / 1.0 = 0.10
-//!     assert!((fraction.value() - 0.10).abs() < math_commons::registry::TOLERANCE_FAST);
+//!     assert!((fraction.value() - 0.10).abs() < math_explorer::registry::TOLERANCE_FAST);
 //!     println!("Optimal bet size: {:.1}%", fraction.value() * 100.0);
 //!
 //!     Ok(())
@@ -59,7 +60,8 @@
 //! ##  Deep Dive: Glicko-2 Rating Update
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::glicko2::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::glicko2::{
 //!     GlickoPlayer, Rating, RatingDeviation, Volatility, MatchResult, update_rating, SystemConstant
 //! };
 //!

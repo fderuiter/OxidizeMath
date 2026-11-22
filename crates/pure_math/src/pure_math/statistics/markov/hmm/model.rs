@@ -27,8 +27,9 @@ use verified_engine::Theory;
 /// # Example
 ///
 /// ```rust
-/// use pure_math::pure_math::statistics::markov::hmm::HiddenMarkovModel;
-/// use nalgebra::{DMatrix, DVector};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::markov::hmm::HiddenMarkovModel;
+/// use math_explorer::nalgebra::{DMatrix, DVector};
 ///
 /// // Two hidden states: "Cold" (0) and "Hot" (1)
 /// // Two observations: "Miss" (0) and "Make" (1)

@@ -85,9 +85,9 @@ The `CeraConfig` struct configures the model dimensions and training loss weight
 The following code example shows how to configure and initialize the CERA model in Rust:
 
 ```rust
-use domain_climate::climate::cera::Cera;
-use domain_climate::climate::config::CeraConfig;
-use nalgebra::DMatrix;
+use math_explorer::climate::cera::Cera;
+use math_explorer::climate::config::CeraConfig;
+use math_explorer::nalgebra::DMatrix;
 
 // 1. Define model configuration
 let config = CeraConfig {

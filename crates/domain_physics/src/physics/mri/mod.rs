@@ -41,9 +41,10 @@
 //! Simulating Transverse Relaxation (T2 Decay) using the `BlochSimulator`:
 //!
 //! ```rust
-//! use domain_physics::physics::mri::BlochSimulator;
-//! use pure_math::pure_math::analysis::ode::TimeStepper;
-//! use nalgebra::Vector3;
+//! # use domain_physics::__doctest_facade as math_explorer;
+//! use math_explorer::physics::mri::BlochSimulator;
+//! use math_explorer::pure_math::analysis::ode::TimeStepper;
+//! use math_explorer::nalgebra::Vector3;
 //!
 //! // 1. Initialize magnetization vector (M) flipped 90 degrees into the transverse plane
 //! let initial_m = Vector3::new(0.0, 1.0, 0.0);

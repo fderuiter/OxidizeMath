@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
+use math_explorer::nalgebra::{DMatrix, DVector};
 use math_explorer::pure_math::tensor::{RiemannianMetric, christoffel_symbols};
-use nalgebra::{DMatrix, DVector};
 
 fn main() {
     // Metric for a 2D sphere (Radius = 1.0)

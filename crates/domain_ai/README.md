@@ -28,8 +28,9 @@ The crate enables educational exploration, deterministic unit verification, and 
 Process tensor representations using vectorized activation and normalization functions:
 
 ```rust
-use domain_ai::ai::activations::{relu, softmax_row_wise};
-use nalgebra::DMatrix;
+# use domain_ai::__doctest_facade as math_explorer;
+use math_explorer::ai::activations::{relu, softmax_row_wise};
+use math_explorer::nalgebra::DMatrix;
 
 // Apply the Rectified Linear Unit (ReLU) element-wise in-place
 let mut activations = DMatrix::from_vec(2, 2, vec![-1.5, 2.0, 0.0, -0.5]);

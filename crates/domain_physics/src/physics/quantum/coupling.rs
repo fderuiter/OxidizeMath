@@ -35,10 +35,11 @@ use math_commons::wigner::ClebschGordan;
 /// # Examples
 ///
 /// ```
+/// # use domain_physics::__doctest_facade as math_explorer;
 /// // Example from Griffiths, Introduction to Quantum Mechanics, 2nd ed., Table 4.8.
 /// // Coupling j1=3/2 and j2=1 for the state |5/2 1/2>.
 /// // We calculate <3/2 -1/2; 1 1 | 5/2 1/2>.
-/// use domain_physics::physics::quantum::clebsch_gordan;
+/// use math_explorer::physics::quantum::clebsch_gordan;
 ///
 /// let j1 = 1.5;
 /// let m1 = -0.5;
@@ -50,7 +51,7 @@ use math_commons::wigner::ClebschGordan;
 /// let coeff = clebsch_gordan(j1, m1, j2, m2, j, m);
 ///
 /// // Standard tables give <3/2 -1/2; 1 1 | 5/2 1/2> = sqrt(3/10) approx 0.5477.
-/// assert!((coeff - (3.0f64 / 10.0f64).sqrt()).abs() < math_commons::registry::TOLERANCE_STANDARD);
+/// assert!((coeff - (3.0f64 / 10.0f64).sqrt()).abs() < math_explorer::registry::TOLERANCE_STANDARD);
 /// ```
 #[verified_engine::verified]
 pub fn clebsch_gordan(j1: f64, m1: f64, j2: f64, m2: f64, j: f64, m: f64) -> f64 {

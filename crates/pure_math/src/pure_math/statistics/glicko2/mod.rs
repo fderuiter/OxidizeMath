@@ -90,7 +90,8 @@
 //! ## Example: Basic Usage
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::glicko2::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::glicko2::{
 //!     GlickoPlayer, Rating, RatingDeviation, Volatility,
 //!     MatchResult, SystemConstant, update_rating
 //! };
@@ -122,7 +123,8 @@
 //! ## Example: Multiple Games
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::glicko2::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::glicko2::{
 //!     GlickoPlayer, Rating, RatingDeviation, Volatility,
 //!     MatchResult, SystemConstant, update_rating
 //! };
@@ -158,7 +160,8 @@
 //! ## Example: Handling Inactivity
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::glicko2::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::glicko2::{
 //!     GlickoPlayer, Rating, RatingDeviation, Volatility,
 //!     update_rating, SystemConstant
 //! };

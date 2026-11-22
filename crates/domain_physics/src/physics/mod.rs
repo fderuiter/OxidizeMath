@@ -15,4 +15,7 @@ pub mod solid_state;
 pub mod standard_model;
 pub mod stat_mech;
 
+/// Error types for physics simulation modules.
+pub use crate::error;
+
 // [cite:favorite_child]

@@ -47,8 +47,9 @@
 //! Implementing a simple decay system using the generic framework:
 //!
 //! ```rust
-//! use domain_biology::biology::reaction_diffusion::{ReactionDiffusionSystem, ReactionModel, ChemicalState};
-//! use domain_biology::biology::diffusion::FiniteDifference1D;
+//! # use domain_biology::__doctest_facade as math_explorer;
+//! use math_explorer::biology::reaction_diffusion::{ReactionDiffusionSystem, ReactionModel, ChemicalState};
+//! use math_explorer::biology::diffusion::FiniteDifference1D;
 //!
 //! // 1. Define custom kinetics (e.g., simple exponential decay)
 //! struct DecayKinetics { rate: f64 }
@@ -60,7 +61,7 @@
 //!
 //! // 2. Setup the generic system (1 species, 10 grid points)
 //! let kinetics = DecayKinetics { rate: 0.1 };
-//! let diffusion = FiniteDifference1D::new(math_commons::math_kernel::types::StepSize(1.0));
+//! let diffusion = FiniteDifference1D::new(math_explorer::math_kernel::types::StepSize(1.0));
 //! let mut system = ReactionDiffusionSystem::builder()
 //!     .num_species(1)
 //!     .grid_size(10)

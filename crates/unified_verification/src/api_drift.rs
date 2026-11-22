@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use traversal::traverse_crate_root_with_cache;
 
+mod facade;
 mod traversal;
 mod visitor;
 
@@ -197,10 +198,19 @@ pub fn check_api_drift() -> bool {
 pub fn check_api_drift_with_cache(cache: &mut AstCache) -> bool {
     let root = resolve_workspace_root();
     let current_apis = extract_apis_in_dir_with_cache(root, cache);
+    let facade_violations =
+        facade::check_facade_completeness_in_dir_with_cache(root, &current_apis, cache);
+    if !facade_violations.is_empty() {
+        println!("Facade export completeness check failed:");
+        for v in &facade_violations {
+            println!("  - {v}");
+        }
+    }
     let baseline_content =
         fs::read_to_string(root.join(BASELINE_REL_PATH)).unwrap_or_else(|_| "{}".to_string());
     let baseline_apis: BTreeMap<String, Vec<ApiItem>> =
         serde_json::from_str(&baseline_content).unwrap_or_default();
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    check_api_drift_against(&current_apis, &baseline_apis, &today)
+    let drift_ok = check_api_drift_against(&current_apis, &baseline_apis, &today);
+    drift_ok && facade_violations.is_empty()
 }

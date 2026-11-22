@@ -122,8 +122,9 @@ impl LorenzBuilder {
 /// # Example
 ///
 /// ```
-/// use domain_physics::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
-/// use pure_math::pure_math::analysis::ode::TimeStepper;
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
+/// use math_explorer::pure_math::analysis::ode::TimeStepper;
 ///
 /// // 1. Initialize the system state close to the attractor
 /// let state = LorenzState::new(10.0, 10.0, 10.0);

@@ -41,10 +41,10 @@ pub use types::StateType;
 /// of times the chain visits transient state j starting from transient state i.
 ///
 /// # Example
-///
 /// ```rust
-/// use pure_math::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
-/// use nalgebra::DMatrix;
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
+/// use math_explorer::nalgebra::DMatrix;
 ///
 /// // Simple 3-state chain: two transient states, one absorbing
 /// let transition_matrix = DMatrix::from_row_slice(3, 3, &[
@@ -389,10 +389,10 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// Panics if the generic real field `T` fails to instantiate from a `usize` (number of absorbing states or number of total states) or an `f64` (`1e-12`).
     ///
     /// # Examples
-    ///
     /// ```rust
-    /// use pure_math::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
-    /// use nalgebra::DMatrix;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
+    /// use math_explorer::nalgebra::DMatrix;
     ///
     /// // A simple 2-state ergodic chain
     /// let transition_matrix = DMatrix::from_row_slice(2, 2, &[
@@ -406,8 +406,8 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     /// // The stationary distribution solves πP = π.
     /// // Solving the system: 0.8*π0 + 0.4*π1 = π0 => 0.4*π1 = 0.2*π0 => π0 = 2*π1.
     /// // Since π0 + π1 = 1, we get π0 ≈ 0.666... and π1 ≈ 0.333...
-    /// assert!((pi[0] - 2.0 / 3.0).abs() < math_commons::registry::TOLERANCE_HIGH);
-    /// assert!((pi[1] - 1.0 / 3.0).abs() < math_commons::registry::TOLERANCE_HIGH);
+    /// assert!((pi[0] - 2.0 / 3.0).abs() < math_explorer::registry::TOLERANCE_HIGH);
+    /// assert!((pi[1] - 1.0 / 3.0).abs() < math_explorer::registry::TOLERANCE_HIGH);
     /// ```
     #[verified_engine::verified]
     pub fn stationary_distribution(&self) -> Option<DVector<T>> {

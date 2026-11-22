@@ -12,7 +12,8 @@
 //! Calculate the reaction rate of an enzyme at different substrate concentrations.
 //!
 //! ```rust
-//! use domain_biology::biology::kinetics::{MichaelisMenten, KineticsModel};
+//! # use domain_biology::__doctest_facade as math_explorer;
+//! use math_explorer::biology::kinetics::{MichaelisMenten, KineticsModel};
 //!
 //! // 1. Define Enzyme Properties
 //! // Vmax = 100.0 (Max rate), Km = 50.0 (Substrate conc at half max rate)
@@ -21,7 +22,7 @@
 //! // 2. Calculate Velocity at [S] = 50.0 (should be Vmax/2)
 //! let velocity = enzyme.reaction_velocity(50.0).expect("Substrate must be non-negative");
 //! println!("Reaction Velocity at Km: {:.2}", velocity);
-//! assert!((velocity - 50.0).abs() < math_commons::registry::TOLERANCE_FAST);
+//! assert!((velocity - 50.0).abs() < math_explorer::registry::TOLERANCE_FAST);
 //!
 //! // 3. Calculate Velocity at saturation ([S] = 1000.0)
 //! let v_sat = enzyme.reaction_velocity(1000.0).expect("Substrate must be non-negative");
@@ -100,7 +101,8 @@ impl KineticsModel for MichaelisMenten {
 /// # Examples
 ///
 /// ```rust
-/// use domain_biology::biology::kinetics::{HillKinetics, KineticsModel};
+/// # use domain_biology::__doctest_facade as math_explorer;
+/// use math_explorer::biology::kinetics::{HillKinetics, KineticsModel};
 ///
 /// // Create a cooperative enzyme with Hill coefficient n=2.0
 /// let cooperative_enzyme = HillKinetics::new(100.0, 50.0, 2.0).expect("Invalid parameters");
@@ -110,7 +112,7 @@ impl KineticsModel for MichaelisMenten {
 ///
 /// // With positive cooperativity, the velocity is higher than Michaelis-Menten
 /// // v = 100 * 100^2 / (50^2 + 100^2) = 100 * 10000 / 12500 = 80.0
-/// assert!((velocity - 80.0).abs() < math_commons::registry::TOLERANCE_FAST);
+/// assert!((velocity - 80.0).abs() < math_explorer::registry::TOLERANCE_FAST);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HillKinetics {

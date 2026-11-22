@@ -26,7 +26,8 @@ By formalizing biological dynamics into clean, verified Rust algorithms, the cra
 Simulate electrophysiological voltage spikes in excitable cell membranes:
 
 ```rust
-use domain_biology::biology::neuroscience::HodgkinHuxleyNeuron;
+# use domain_biology::__doctest_facade as math_explorer;
+use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 
 // Initialize neuron at resting membrane potential (-65.0 mV)
 let mut neuron = HodgkinHuxleyNeuron::new(-65.0);

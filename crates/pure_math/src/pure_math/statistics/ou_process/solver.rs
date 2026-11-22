@@ -72,7 +72,8 @@ impl EulerMaruyama {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::ou_process::{
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::ou_process::{
     ///     EulerMaruyama, OuParams, TimeStep
     /// };
     ///
@@ -106,17 +107,18 @@ impl EulerMaruyama {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::ou_process::{
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::ou_process::{
     ///     EulerMaruyama, OuParams, TimeStep
     /// };
-    /// use rand::SeedableRng;
-    /// use rand::rngs::StdRng;
+    /// use math_explorer::rand::SeedableRng;
+    /// use math_explorer::rand::rngs::StdRng;
     ///
     /// let params = OuParams::from_values(0.5, 1.0, 0.3).unwrap();
     /// let dt = TimeStep::new(0.01).unwrap();
     /// let solver = EulerMaruyama::new(params, dt);
     ///
-    /// let mut rng = oxidize_core::rng::OxidizeRng::default();
+    /// let mut rng = math_explorer::rng::OxidizeRng::default();
     /// let x0 = 0.6;
     /// let x1 = solver.step(x0, &mut rng);
     /// ```
@@ -151,17 +153,18 @@ impl EulerMaruyama {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::ou_process::{
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::ou_process::{
     ///     EulerMaruyama, OuParams, TimeStep
     /// };
-    /// use rand::SeedableRng;
-    /// use rand::rngs::StdRng;
+    /// use math_explorer::rand::SeedableRng;
+    /// use math_explorer::rand::rngs::StdRng;
     ///
     /// let params = OuParams::from_values(0.5, 1.0, 0.3).unwrap();
     /// let dt = TimeStep::new(0.01).unwrap();
     /// let solver = EulerMaruyama::new(params, dt);
     ///
-    /// let mut rng = oxidize_core::rng::OxidizeRng::default();
+    /// let mut rng = math_explorer::rng::OxidizeRng::default();
     /// let trajectory = solver.simulate(0.6, 100, &mut rng);
     /// assert_eq!(trajectory.len(), 101);  // Initial + 100 steps
     /// ```
@@ -195,17 +198,18 @@ impl EulerMaruyama {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::ou_process::{
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::ou_process::{
     ///     EulerMaruyama, OuParams, TimeStep
     /// };
-    /// use rand::SeedableRng;
-    /// use rand::rngs::StdRng;
+    /// use math_explorer::rand::SeedableRng;
+    /// use math_explorer::rand::rngs::StdRng;
     ///
     /// let params = OuParams::from_values(0.5, 1.0, 0.3).unwrap();
     /// let dt = TimeStep::new(0.01).unwrap();
     /// let solver = EulerMaruyama::new(params, dt);
     ///
-    /// let mut rng = oxidize_core::rng::OxidizeRng::default();
+    /// let mut rng = math_explorer::rng::OxidizeRng::default();
     /// let paths = solver.simulate_paths(0.6, 100, 1000, &mut rng);
     /// assert_eq!(paths.len(), 1000);  // 1000 paths
     /// assert_eq!(paths[0].len(), 101);  // Each path has 101 points

@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 use math_explorer::applied::lorahub::{LoraEnsemble, LoraStateDict};
-use nalgebra::DMatrix;
+use math_explorer::nalgebra::DMatrix;
 use std::time::Instant;
 
 fn main() {

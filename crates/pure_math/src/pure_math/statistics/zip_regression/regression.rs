@@ -25,8 +25,9 @@ use nalgebra::{DMatrix, DVector};
 /// # Example
 ///
 /// ```
-/// use pure_math::pure_math::statistics::zip_regression::{ZipRegression, Count};
-/// use nalgebra::{DMatrix, DVector};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::zip_regression::{ZipRegression, Count};
+/// use math_explorer::nalgebra::{DMatrix, DVector};
 ///
 /// // Simple example with intercept-only models
 /// let counts = vec![Count::new(0), Count::new(1), Count::new(0), Count::new(2)];
@@ -208,7 +209,8 @@ impl ZipRegression {
 /// # Example
 ///
 /// ```
-/// use pure_math::pure_math::statistics::zip_regression::{simple_zip_fit, Count};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::zip_regression::{simple_zip_fit, Count};
 ///
 /// let counts = vec![Count::new(0), Count::new(0), Count::new(1), Count::new(2), Count::new(0)];
 /// let params = simple_zip_fit(&counts).unwrap();

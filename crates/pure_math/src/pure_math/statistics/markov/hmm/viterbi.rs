@@ -40,8 +40,9 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
     /// # Examples
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::markov::hmm::HiddenMarkovModel;
-    /// use nalgebra::{DMatrix, DVector};
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::markov::hmm::HiddenMarkovModel;
+    /// use math_explorer::nalgebra::{DMatrix, DVector};
     ///
     /// let initial = DVector::from_vec(vec![0.5, 0.5]);
     /// let transitions = DMatrix::from_row_slice(2, 2, &[

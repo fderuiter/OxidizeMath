@@ -196,6 +196,9 @@
   ],
   "crates/domain_ai/src/ai/mod.rs": [
     {
+      "signature": "pub use crate :: error"
+    },
+    {
       "signature": "pub use transformer :: attention"
     },
     {
@@ -220,6 +223,9 @@
     },
     {
       "signature": "pub type Adam < T > = GenericAdam < T , (usize , ParamType) >"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: optimization :: Adam as GenericAdam"
     },
     {
       "signature": "pub use pure_math :: pure_math :: analysis :: optimization :: ModelOptimizer as Optimizer"
@@ -775,6 +781,75 @@
   ],
   "crates/domain_ai/src/lib.rs": [
     {
+      "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: AIError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: AIError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use pure_math :: __doctest_facade :: prelude :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: ai }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_kernel }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_types }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: mesh }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: nalgebra }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: num_complex }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: petgraph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: primitives }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rand }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: registry }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: wigner }"
+    },
+    {
       "signature": "pub mod prelude"
     },
     {
@@ -969,6 +1044,9 @@
       "signature": "pub use model :: PowerLawModel"
     },
     {
+      "signature": "pub use types :: BatteryError"
+    },
+    {
       "signature": "pub use types :: Capacity"
     },
     {
@@ -1046,6 +1124,9 @@
     },
     {
       "signature": "pub struct DepthOfDischarge"
+    },
+    {
+      "signature": "pub use crate :: error :: BatteryError"
     }
   ],
   "crates/domain_applied/src/applied/cannibalism/death_rate.rs": [
@@ -1732,6 +1813,21 @@
     },
     {
       "signature": "pub trait ValuationDistribution { fn virtual_valuation (& self , v : f64) -> f64 }"
+    },
+    {
+      "signature": "pub use rand :: distributions :: Distribution as RandDistribution"
+    },
+    {
+      "signature": "pub use statrs :: distribution :: Continuous"
+    },
+    {
+      "signature": "pub use statrs :: distribution :: ContinuousCDF"
+    },
+    {
+      "signature": "pub use statrs :: distribution :: self"
+    },
+    {
+      "signature": "pub use statrs :: statistics :: Distribution"
     }
   ],
   "crates/domain_applied/src/applied/grpo/formulas.rs": [
@@ -1987,6 +2083,11 @@
     },
     {
       "signature": "pub struct LoraStateDict"
+    }
+  ],
+  "crates/domain_applied/src/applied/mod.rs": [
+    {
+      "signature": "pub use crate :: error"
     }
   ],
   "crates/domain_applied/src/applied/pharmacokinetics/bateman.rs": [
@@ -2339,6 +2440,107 @@
       "signature": "pub enum PharmacokineticsError"
     }
   ],
+  "crates/domain_applied/src/lib.rs": [
+    {
+      "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: BatteryError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EngineeringError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: GameTheoryError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: IsosurfaceError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: LoraError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PharmacokineticsError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: BatteryError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: EngineeringError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: GameTheoryError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: IsosurfaceError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: LoraError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: PharmacokineticsError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use pure_math :: __doctest_facade :: prelude :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: applied }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_kernel }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_types }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: mesh }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: nalgebra }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: num_complex }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: petgraph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: primitives }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rand }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: registry }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: wigner }"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/fd1d.rs": [
     {
       "signature": "impl FiniteDifference1D { pub fn new (dx : StepSize) -> Self }"
@@ -2464,6 +2666,11 @@
     },
     {
       "signature": "pub trait KineticsModel { fn reaction_velocity (& self , substrate_conc : f64) -> Result < f64 , KineticsError > }"
+    }
+  ],
+  "crates/domain_biology/src/biology/mod.rs": [
+    {
+      "signature": "pub use crate :: error"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/mod.rs": [
@@ -2830,6 +3037,80 @@
       "signature": "pub enum HodgkinHuxleyError"
     }
   ],
+  "crates/domain_biology/src/lib.rs": [
+    {
+      "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: HodgkinHuxleyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use domain_applied :: __doctest_facade :: error :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: HodgkinHuxleyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use domain_applied :: __doctest_facade :: prelude :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: biology }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use domain_applied :: applied }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_kernel }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_types }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: mesh }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: nalgebra }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: num_complex }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: petgraph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: primitives }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rand }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: registry }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: wigner }"
+    }
+  ],
   "crates/domain_climate/src/climate/autoencoder.rs": [
     {
       "signature": "impl Autoencoder { pub fn forward < S : Storage < f32 , Dyn , Dyn > > (& self , input : & Matrix < f32 , Dyn , Dyn , S > ,) -> (DMatrix < f32 > , DMatrix < f32 >) }"
@@ -2942,6 +3223,11 @@
       "signature": "pub fn mse_loss < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (y_true : & Matrix < f32 , Dyn , Dyn , S1 > , y_pred : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> f32"
     }
   ],
+  "crates/domain_climate/src/climate/mod.rs": [
+    {
+      "signature": "pub use crate :: error"
+    }
+  ],
   "crates/domain_climate/src/climate/predictor.rs": [
     {
       "signature": "impl Predictor { pub fn new (input_size : usize , output_size : usize) -> Self }"
@@ -2979,6 +3265,65 @@
     },
     {
       "signature": "pub struct CeraTrainer < 'a , A : AutoencoderModel + Trainable < f32 > , P : PredictorModel + Trainable < f32 > , O : Optimizer < f32 > , >"
+    }
+  ],
+  "crates/domain_climate/src/lib.rs": [
+    {
+      "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: climate }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: error }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_kernel }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_types }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: mesh }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: nalgebra }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: num_complex }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: petgraph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: prelude }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: primitives }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rand }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: registry }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: wigner }"
     }
   ],
   "crates/domain_epidemiology/src/epidemiology/analytics.rs": [
@@ -3152,6 +3497,9 @@
     },
     {
       "signature": "pub use compartmental :: SIRState"
+    },
+    {
+      "signature": "pub use crate :: error"
     }
   ],
   "crates/domain_epidemiology/src/epidemiology/networks.rs": [
@@ -3262,6 +3610,77 @@
       "signature": "pub enum EpidemiologyError"
     }
   ],
+  "crates/domain_epidemiology/src/lib.rs": [
+    {
+      "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EpidemiologyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: EpidemiologyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use pure_math :: __doctest_facade :: prelude :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: epidemiology }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_kernel }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_types }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: mesh }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: nalgebra }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: num_complex }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: petgraph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: primitives }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rand }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: registry }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: wigner }"
+    }
+  ],
   "crates/domain_physics/src/error.rs": [
     {
       "signature": "pub enum ChaosError"
@@ -3289,6 +3708,120 @@
     }
   ],
   "crates/domain_physics/src/lib.rs": [
+    {
+      "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ChaosError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: DoseFluenceError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: FluidError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: HighEnergyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: RadarError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: SolidStateError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: StandardModelError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: StatMechError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use domain_applied :: __doctest_facade :: error :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: ChaosError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: DoseFluenceError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: FluidError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: HighEnergyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: RadarError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: SolidStateError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: StandardModelError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: StatMechError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use domain_applied :: __doctest_facade :: prelude :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: physics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use domain_applied :: applied }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_kernel }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_types }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: mesh }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: nalgebra }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: num_complex }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: petgraph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: primitives }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rand }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: registry }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: wigner }"
+    },
     {
       "signature": "pub mod prelude"
     },
@@ -4247,6 +4780,11 @@
       "signature": "pub fn debye_permittivity (epsilon_inf : f64 , epsilon_s : f64 , relaxation_time : f64 , sigma_i : f64 , frequency : f64 ,) -> (f64 , f64)"
     }
   ],
+  "crates/domain_physics/src/physics/mod.rs": [
+    {
+      "signature": "pub use crate :: error"
+    }
+  ],
   "crates/domain_physics/src/physics/mri/bloch.rs": [
     {
       "signature": "impl BlochSimulator { pub fn new (initial_magnetization : Vector3 < f64 > , m0 : f64) -> Self }"
@@ -5031,6 +5569,9 @@
       "signature": "pub use lexer :: tokenize"
     },
     {
+      "signature": "pub use num_complex :: Complex64"
+    },
+    {
       "signature": "pub use parser :: MAX_PARSE_DEPTH"
     },
     {
@@ -5496,6 +6037,135 @@
   ],
   "crates/pure_math/src/lib.rs": [
     {
+      "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: CopulaError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: Glicko2Error } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: KellyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: MarkovError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: NumberTheoryError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: OuError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: TdaError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ZipError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: MathError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: MathResult } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: math_types :: Float } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: math_types :: Integer } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: math_types :: Rational } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use diagnostics :: Diagnostic } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use diagnostics :: Severity } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: primitives :: NonNegativeFloat } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: primitives :: PositiveFloat } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: primitives :: UnitInterval } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use nalgebra :: DMatrix } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use nalgebra :: DVector } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use nalgebra :: self } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use oxidize_core :: mesh :: Mesh } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use oxidize_core :: mesh :: Point3D } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use oxidize_core :: rng :: OxidizeRng } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use super :: error :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: math_types }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_commons :: ast }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_commons :: constants }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_commons :: math_kernel }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_commons :: primitives }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_commons :: registry }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_commons :: wigner }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use nalgebra }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use num_complex }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use oxidize_core :: mesh }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use oxidize_core :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use petgraph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use rand }"
+    },
+    {
       "signature": "pub mod __macro_deps"
     },
     {
@@ -5601,6 +6271,9 @@
     },
     {
       "signature": "pub struct Rational"
+    },
+    {
+      "signature": "pub use dashu :: integer :: IBig"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/fields.rs": [
@@ -6562,6 +7235,11 @@
       "signature": "pub fn verify_induction < F > (limit : usize , p : F) -> bool where F : Fn (usize) -> bool ,"
     }
   ],
+  "crates/pure_math/src/pure_math/mod.rs": [
+    {
+      "signature": "pub use crate :: error"
+    }
+  ],
   "crates/pure_math/src/pure_math/number_theory/alcf.rs": [
     {
       "signature": "pub fn alcf_search (_target_bound_log : f64 , _core_size : usize , _tail_window : usize)"
@@ -7233,6 +7911,9 @@
     },
     {
       "signature": "pub use hmm :: HiddenMarkovModel"
+    },
+    {
+      "signature": "pub use num_traits :: ToPrimitive"
     },
     {
       "signature": "pub use tensor :: TransitionTensor"
@@ -7988,6 +8669,89 @@
       "signature": "pub fn verified (attr : TokenStream , item : TokenStream) -> TokenStream"
     }
   ],
+  "math_explorer/src/error.rs": [
+    {
+      "signature": "pub use domain_ai :: error :: AIError"
+    },
+    {
+      "signature": "pub use domain_applied :: error :: BatteryError"
+    },
+    {
+      "signature": "pub use domain_applied :: error :: EngineeringError"
+    },
+    {
+      "signature": "pub use domain_applied :: error :: GameTheoryError"
+    },
+    {
+      "signature": "pub use domain_applied :: error :: IsosurfaceError"
+    },
+    {
+      "signature": "pub use domain_applied :: error :: LoraError"
+    },
+    {
+      "signature": "pub use domain_applied :: error :: PharmacokineticsError"
+    },
+    {
+      "signature": "pub use domain_biology :: error :: HodgkinHuxleyError"
+    },
+    {
+      "signature": "pub use domain_epidemiology :: error :: EpidemiologyError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: ChaosError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: DoseFluenceError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: FluidError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: HighEnergyError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: RadarError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: SolidStateError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: StandardModelError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: StatMechError"
+    },
+    {
+      "signature": "pub use math_commons :: error :: MathError"
+    },
+    {
+      "signature": "pub use math_commons :: error :: MathResult"
+    },
+    {
+      "signature": "pub use pure_math :: error :: CopulaError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: Glicko2Error"
+    },
+    {
+      "signature": "pub use pure_math :: error :: KellyError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: MarkovError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: NumberTheoryError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: OuError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: TdaError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: ZipError"
+    }
+  ],
   "math_explorer/src/lib.rs": [
     {
       "signature": "pub use diagnostics"
@@ -8011,16 +8775,99 @@
       "signature": "pub use domain_physics :: physics"
     },
     {
+      "signature": "pub use math_commons :: ast"
+    },
+    {
+      "signature": "pub use math_commons :: constants"
+    },
+    {
       "signature": "pub use math_commons :: math_kernel"
     },
     {
+      "signature": "pub use math_commons :: primitives"
+    },
+    {
+      "signature": "pub use math_commons :: registry"
+    },
+    {
+      "signature": "pub use math_commons :: wigner"
+    },
+    {
+      "signature": "pub use nalgebra"
+    },
+    {
+      "signature": "pub use num_complex"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh"
+    },
+    {
+      "signature": "pub use oxidize_core :: rng"
+    },
+    {
+      "signature": "pub use petgraph"
+    },
+    {
+      "signature": "pub use pure_math :: math_types"
+    },
+    {
       "signature": "pub use pure_math :: pure_math"
+    },
+    {
+      "signature": "pub use rand"
     },
     {
       "signature": "pub use scientific_metadata"
     },
     {
       "signature": "pub use verified_engine"
+    }
+  ],
+  "math_explorer/src/prelude.rs": [
+    {
+      "signature": "pub use crate :: error :: *"
+    },
+    {
+      "signature": "pub use diagnostics :: Diagnostic"
+    },
+    {
+      "signature": "pub use diagnostics :: Severity"
+    },
+    {
+      "signature": "pub use math_commons :: primitives :: NonNegativeFloat"
+    },
+    {
+      "signature": "pub use math_commons :: primitives :: PositiveFloat"
+    },
+    {
+      "signature": "pub use math_commons :: primitives :: UnitInterval"
+    },
+    {
+      "signature": "pub use nalgebra :: DMatrix"
+    },
+    {
+      "signature": "pub use nalgebra :: DVector"
+    },
+    {
+      "signature": "pub use nalgebra :: self"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: Mesh"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: Point3D"
+    },
+    {
+      "signature": "pub use oxidize_core :: rng :: OxidizeRng"
+    },
+    {
+      "signature": "pub use pure_math :: math_types :: Float"
+    },
+    {
+      "signature": "pub use pure_math :: math_types :: Integer"
+    },
+    {
+      "signature": "pub use pure_math :: math_types :: Rational"
     }
   ]
 }

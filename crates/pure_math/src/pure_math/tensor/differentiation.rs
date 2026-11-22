@@ -29,9 +29,10 @@ use nalgebra::{DMatrix, DVector};
 /// # Examples
 ///
 /// ```rust
-/// use pure_math::pure_math::tensor::differentiation::covariant_derivative_contravariant;
-/// use pure_math::pure_math::tensor::{RiemannianMetric, ContravariantVector};
-/// use nalgebra::{DMatrix, DVector};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::tensor::differentiation::covariant_derivative_contravariant;
+/// use math_explorer::pure_math::tensor::{RiemannianMetric, ContravariantVector};
+/// use math_explorer::nalgebra::{DMatrix, DVector};
 ///
 /// // Define a flat Euclidean metric space
 /// let metric = RiemannianMetric::new(|_| DMatrix::identity(2, 2));
@@ -137,9 +138,10 @@ where
 /// # Examples
 ///
 /// ```rust
-/// use pure_math::pure_math::tensor::differentiation::covariant_derivative_covariant;
-/// use pure_math::pure_math::tensor::{RiemannianMetric, CovariantVector};
-/// use nalgebra::{DMatrix, DVector};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::tensor::differentiation::covariant_derivative_covariant;
+/// use math_explorer::pure_math::tensor::{RiemannianMetric, CovariantVector};
+/// use math_explorer::nalgebra::{DMatrix, DVector};
 ///
 /// // Define a flat Euclidean metric space
 /// let metric = RiemannianMetric::new(|_| DMatrix::identity(2, 2));

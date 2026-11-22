@@ -22,8 +22,9 @@ use rand::Rng;
 /// Simulating a ferromagnetic phase transition (Low Temperature):
 ///
 /// ```
-/// use domain_physics::physics::stat_mech::ising::SpinLattice;
-/// use domain_physics::physics::stat_mech::KB;
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::stat_mech::ising::SpinLattice;
+/// use math_explorer::physics::stat_mech::KB;
 ///
 /// // 1. Setup system parameters
 /// let width = 10;

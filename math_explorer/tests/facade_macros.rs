@@ -3,8 +3,6 @@ use approx::assert_relative_eq;
 use math_explorer::scientific_metadata::theory::TheoryDescribable;
 use math_explorer::verified_engine::engine::VerifiedEngine;
 use math_explorer::verified_engine::{Theory, embed_theory, verified};
-use nalgebra::DVector;
-use pure_math::pure_math::analysis::ode::traits::VectorOperations;
 
 #[derive(Theory)]
 #[theory(
@@ -45,8 +43,12 @@ fn test_math_explorer_reexports_verified_theory_and_top_level_embed_theory() {
     assert!(metrics.arithmetic_ops >= 3);
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_migrated_ode_allow_recursion_method_records_metrics() {
+    use math_explorer::nalgebra::DVector;
+    use math_explorer::pure_math::analysis::ode::traits::VectorOperations;
+
     let mut dst = DVector::from_vec(vec![0.0, 0.0, 0.0]);
     let src = DVector::from_vec(vec![1.5, -2.5, 4.0]);
     let ((), metrics) = VerifiedEngine::run_verified(|| {
@@ -66,8 +68,8 @@ fn test_migrated_physics_methods_record_verified_metrics() {
     use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
         BgkCollision, LatticeBoltzmannD2Q9,
     };
+    use math_explorer::rand::{SeedableRng, rngs::StdRng};
     use oxidize_core::SimulationModel;
-    use rand::SeedableRng;
 
     let mut lorenz = LorenzBuilder::new().build(LorenzState::new(1.0, 1.0, 1.0));
     let (res, lorenz_metrics) =
@@ -75,7 +77,7 @@ fn test_migrated_physics_methods_record_verified_metrics() {
     assert!(res.is_ok());
     assert!(lorenz_metrics.function_calls >= 1);
 
-    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+    let mut rng = StdRng::seed_from_u64(42);
     let lbm_cfg = LbmConfig {
         width: 4,
         height: 4,
@@ -96,7 +98,7 @@ fn test_migrated_physics_methods_record_verified_metrics() {
 fn test_migrated_biology_allow_recursion_method_records_metrics() {
     use math_explorer::biology::morphogenesis::{DiffusionCoeff, TuringSystem};
     use math_explorer::math_kernel::types::{Dimension, StepSize};
-    use pure_math::pure_math::analysis::ode::TimeStepper;
+    use math_explorer::pure_math::analysis::ode::TimeStepper;
 
     let mut sys = TuringSystem::new(
         Dimension(4),

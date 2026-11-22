@@ -100,8 +100,9 @@
 //!
 //! ### Expected Possession Value (EPV)
 //! ```rust
-//! use pure_math::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
-//! use nalgebra::{DMatrix, DVector};
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
+//! use math_explorer::nalgebra::{DMatrix, DVector};
 //!
 //! // States: offense, advantage, score, turnover
 //! let transitions = DMatrix::from_row_slice(4, 4, &[
@@ -130,8 +131,9 @@
 //!
 //! ### Shot Clock Urgency
 //! ```rust
-//! use pure_math::pure_math::statistics::markov::tensor::{TransitionTensor, TimeIndex};
-//! use nalgebra::DMatrix;
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::markov::tensor::{TransitionTensor, TimeIndex};
+//! use math_explorer::nalgebra::DMatrix;
 //!
 //! let mut tensor = TransitionTensor::new(
 //!     3,
@@ -161,8 +163,9 @@
 //!
 //! ### Hot Hand Detection
 //! ```rust
-//! use pure_math::pure_math::statistics::markov::hmm::HiddenMarkovModel;
-//! use nalgebra::{DMatrix, DVector};
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::markov::hmm::HiddenMarkovModel;
+//! use math_explorer::nalgebra::{DMatrix, DVector};
 //!
 //! // Hidden states: Cold (0), Hot (1)
 //! // Observations: Miss (0), Make (1)
@@ -197,8 +200,9 @@
 //!
 //! ### Market Regime Detection
 //! ```rust
-//! use pure_math::pure_math::statistics::markov::hmm::HiddenMarkovModel;
-//! use nalgebra::{DMatrix, DVector};
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::markov::hmm::HiddenMarkovModel;
+//! use math_explorer::nalgebra::{DMatrix, DVector};
 //!
 //! // Hidden states: Bull (0), Bear (1), Sideways (2)
 //! // Observations: Large Up (0), Small Up (1), Flat (2), Small Down (3), Large Down (4)
@@ -226,8 +230,9 @@
 //! ## Queueing Theory
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::markov::ctmc::ContinuousMarkovChain;
-//! use nalgebra::DMatrix;
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::markov::ctmc::ContinuousMarkovChain;
+//! use math_explorer::nalgebra::DMatrix;
 //!
 //! // M/M/1 queue: arrival rate λ = 2, service rate μ = 3
 //! // States: number of customers in system (0, 1, 2, 3, ...)
@@ -323,6 +328,7 @@ pub use dtmc::{MarkovChain, StateType};
 #[allow(missing_docs)]
 pub type Result<T> = std::result::Result<T, MarkovError>;
 pub use hmm::HiddenMarkovModel;
+pub use num_traits::ToPrimitive;
 pub use tensor::TransitionTensor;
 pub use time_index::TimeIndex;
 
