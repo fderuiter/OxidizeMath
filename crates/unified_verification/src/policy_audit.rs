@@ -1,3 +1,5 @@
+pub(crate) mod dependencies;
+pub(crate) mod doctests;
 pub(crate) mod lint_policy;
 
 pub use crate::whitelist::DeadCodeEntry;
@@ -5,71 +7,14 @@ use crate::whitelist::{
     PathMatchOptions, ROOT_ONLY_WHITELIST_CANDIDATES, VerificationWhitelist,
     WORKSPACE_WHITELIST_CANDIDATES,
 };
+use dependencies::{
+    DependencyVisitor, collect_expected_dependencies, is_whitelisted_unused_dep,
+    manifest_package_name,
+};
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use syn::visit::Visit;
-
-struct DependencyVisitor {
-    expected_deps: HashSet<String>,
-    used_deps: HashSet<String>,
-}
-
-impl DependencyVisitor {
-    fn check_ident(&mut self, ident: &syn::Ident) {
-        let name = ident.to_string();
-        if self.expected_deps.contains(&name) {
-            self.used_deps.insert(name);
-        }
-    }
-}
-
-impl<'ast> Visit<'ast> for DependencyVisitor {
-    fn visit_path(&mut self, i: &'ast syn::Path) {
-        if let Some(segment) = i.segments.first() {
-            self.check_ident(&segment.ident);
-        }
-        syn::visit::visit_path(self, i);
-    }
-    fn visit_use_path(&mut self, i: &'ast syn::UsePath) {
-        self.check_ident(&i.ident);
-        syn::visit::visit_use_path(self, i);
-    }
-    fn visit_use_name(&mut self, i: &'ast syn::UseName) {
-        self.check_ident(&i.ident);
-        syn::visit::visit_use_name(self, i);
-    }
-    fn visit_macro(&mut self, i: &'ast syn::Macro) {
-        if let Some(segment) = i.path.segments.first() {
-            self.check_ident(&segment.ident);
-        }
-
-        // Extract identifiers from inside the macro's token stream
-        let mut streams = vec![i.tokens.clone()];
-        while let Some(stream) = streams.pop() {
-            for token in stream {
-                match token {
-                    proc_macro2::TokenTree::Ident(ident) => {
-                        let name = ident.to_string();
-                        if self.expected_deps.contains(&name) {
-                            self.used_deps.insert(name);
-                        }
-                    }
-                    proc_macro2::TokenTree::Group(group) => {
-                        streams.push(group.stream());
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        syn::visit::visit_macro(self, i);
-    }
-    fn visit_item_extern_crate(&mut self, i: &'ast syn::ItemExternCrate) {
-        self.check_ident(&i.ident);
-        syn::visit::visit_item_extern_crate(self, i);
-    }
-}
 
 fn is_dead_code_lint_name(ident: &syn::Ident) -> bool {
     ident == "dead_code" || ident == "unused" || ident == "warnings"
@@ -290,65 +235,29 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor {
     }
 }
 
-fn collect_expected_dependencies(parsed: &toml::Value) -> HashSet<String> {
-    let mut deps = Vec::new();
-    for section in ["dependencies", "dev-dependencies"] {
-        if let Some(table) = parsed.get(section).and_then(toml::Value::as_table) {
-            deps.extend(table.keys().cloned());
-        }
-    }
-
-    let mut expected_deps: HashSet<String> =
-        deps.into_iter().map(|d| d.replace('-', "_")).collect();
-
-    // Commonly implicitly used macros or dependencies without direct path usage
-    for implicit in [
-        "thiserror",
-        "serde",
-        "approx",
-        "wasm_bindgen",
-        "console_error_panic_hook",
-        "proc_macro2",
-        "quote",
-        "syn",
-        "serde_json",
-    ] {
-        expected_deps.remove(implicit);
-    }
-    expected_deps
-}
-
-fn is_implicitly_used_dep(member: &str, expected: &str) -> bool {
-    let crate_name = member
-        .split('/')
-        .next_back()
-        .unwrap_or("")
-        .replace('-', "_");
-    if expected == crate_name {
-        return true;
-    }
-    matches!(
-        expected,
-        "document_features" | "eframe" | "math_explorer" | "math_commons" | "scientific_metadata"
-    )
+struct MemberAuditContext<'a> {
+    member_dir: &'a Path,
+    whitelist: &'a VerificationWhitelist,
+    check_clippy_bypasses: bool,
+    max_fn_lines: usize,
 }
 
 fn audit_member_sources(
-    member_dir: &Path,
-    whitelist: &VerificationWhitelist,
-    check_clippy_bypasses: bool,
+    ctx: &MemberAuditContext<'_>,
     dep_visitor: &mut DependencyVisitor,
+    visited_md: &mut HashSet<PathBuf>,
     cache: &mut oxidize_core::traceability::AstCache,
 ) -> bool {
     let mut success = true;
-    for path in crate::utils::collect_rs_files_filtered(&[member_dir], &["target"]) {
+    for path in crate::utils::collect_rs_files_filtered(&[ctx.member_dir], &["target"]) {
         let file_path = crate::whitelist::lossy_slash_path(&path);
         if let Some(ast) = cache.get_or_load_fs(&path).and_then(|e| e.ast.as_ref()) {
             dep_visitor.visit_file(ast);
+            doctests::audit_rs_doctests(ast, &path, ctx.member_dir, visited_md, dep_visitor);
 
             let mut dc_visitor = DeadCodeVisitor {
                 file_path: file_path.clone(),
-                allowed: whitelist.dead_code.clone(),
+                allowed: ctx.whitelist.dead_code.clone(),
                 has_unauthorized: false,
             };
             dc_visitor.visit_file(ast);
@@ -356,11 +265,9 @@ fn audit_member_sources(
                 success = false;
             }
 
-            if check_clippy_bypasses {
-                let mut clippy_visitor = lint_policy::ClippyBypassVisitor {
-                    file_path,
-                    has_unauthorized: false,
-                };
+            if ctx.check_clippy_bypasses {
+                let mut clippy_visitor =
+                    lint_policy::ClippyBypassVisitor::new(file_path, ctx.max_fn_lines);
                 clippy_visitor.visit_file(ast);
                 if clippy_visitor.has_unauthorized {
                     success = false;
@@ -374,6 +281,7 @@ fn audit_member_sources(
 fn audit_single_member(
     member: &str,
     whitelist: &VerificationWhitelist,
+    max_fn_lines: usize,
     cache: &mut oxidize_core::traceability::AstCache,
 ) -> bool {
     let member_dir = lint_policy::resolve_member_dir(member);
@@ -393,30 +301,37 @@ fn audit_single_member(
     let mut success = lint_policy::check_manifest_lints(member, &cargo_toml_path, &parsed);
     let check_clippy_bypasses = !lint_policy::is_vendored_egui_plot_exempt(member, &parsed);
     let expected_deps = collect_expected_dependencies(&parsed);
-    let mut dep_visitor = DependencyVisitor {
-        expected_deps: expected_deps.clone(),
-        used_deps: HashSet::new(),
-    };
+    let package_name = manifest_package_name(&parsed);
+    let mut dep_visitor = DependencyVisitor::new(expected_deps.clone());
+    let mut visited_md = HashSet::new();
 
-    if !audit_member_sources(
-        &member_dir,
+    let ctx = MemberAuditContext {
+        member_dir: &member_dir,
         whitelist,
         check_clippy_bypasses,
-        &mut dep_visitor,
-        cache,
-    ) {
+        max_fn_lines,
+    };
+    if !audit_member_sources(&ctx, &mut dep_visitor, &mut visited_md, cache) {
         success = false;
     }
 
-    // markdown_tests generates test files in OUT_DIR which are not scanned by WalkDir.
-    if member != "crates/markdown_tests" {
-        for expected in expected_deps {
-            if !dep_visitor.used_deps.contains(&expected)
-                && !is_implicitly_used_dep(member, &expected)
-            {
-                println!("[!] Unused dependency detected in {}: {}", member, expected);
-                success = false;
-            }
+    if doctests::is_markdown_tests_crate(member, package_name) {
+        doctests::audit_workspace_markdown_files(&member_dir, &mut visited_md, &mut dep_visitor);
+    }
+
+    let mut sorted_expected: Vec<String> = expected_deps.into_iter().collect();
+    sorted_expected.sort();
+    for expected in sorted_expected {
+        if !dep_visitor.used_deps.contains(&expected)
+            && !is_whitelisted_unused_dep(
+                member,
+                package_name,
+                &expected,
+                &whitelist.unused_dependencies,
+            )
+        {
+            println!("[!] Unused dependency detected in {}: {}", member, expected);
+            success = false;
         }
     }
 
@@ -460,6 +375,7 @@ pub(crate) fn run_policy_audit_with_whitelist_and_cache(
             return false;
         }
     };
+    let max_fn_lines = lint_policy::load_too_many_lines_threshold();
     let mut success = true;
 
     println!(
@@ -467,7 +383,7 @@ pub(crate) fn run_policy_audit_with_whitelist_and_cache(
     );
 
     for member in members {
-        if !audit_single_member(member, &whitelist, cache) {
+        if !audit_single_member(member, &whitelist, max_fn_lines, cache) {
             success = false;
         }
     }
