@@ -5878,6 +5878,9 @@
       "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub async fn scan_repository (& self , code_dirs : & [& str] , papers_dir : & str , auto_fix : bool ,) -> Result < TraceabilityReport , std :: io :: Error > }"
     },
     {
+      "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub async fn scan_repository_with_cache (& self , code_dirs : & [& str] , papers_dir : & str , auto_fix : bool , cache : & mut AstCache ,) -> Result < TraceabilityReport , std :: io :: Error > }"
+    },
+    {
       "signature": "impl < V : VirtualFileSystem > TraceabilityEngine < V > { pub fn extract_citations (content : & str) -> Vec < String > }"
     },
     {
@@ -5891,6 +5894,79 @@
     },
     {
       "signature": "pub struct TraceabilityReport"
+    },
+    {
+      "signature": "pub use cache :: AstCache"
+    },
+    {
+      "signature": "pub use cache :: CachedRustFile"
+    },
+    {
+      "signature": "pub use runner :: check_and_print_traceability_errors"
+    },
+    {
+      "signature": "pub use runner :: discover_workspace_code_dirs"
+    },
+    {
+      "signature": "pub use runner :: print_traceability_dashboard"
+    },
+    {
+      "signature": "pub use runner :: run_workspace_traceability"
+    },
+    {
+      "signature": "pub use runner :: run_workspace_traceability_with_cache"
+    }
+  ],
+  "crates/oxidize_core/src/traceability/cache.rs": [
+    {
+      "signature": "impl AstCache { pub fn get (& self , key : & str) -> Option < & CachedRustFile > }"
+    },
+    {
+      "signature": "impl AstCache { pub fn get_or_load_fs (& mut self , path : & Path) -> Option < & CachedRustFile > }"
+    },
+    {
+      "signature": "impl AstCache { pub fn insert_source (& mut self , key : String , content : String) -> & CachedRustFile }"
+    },
+    {
+      "signature": "impl AstCache { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl AstCache { pub fn keys (& self) -> impl Iterator < Item = & str > }"
+    },
+    {
+      "signature": "impl AstCache { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl AstCache { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl AstCache { pub fn normalize_key < P : AsRef < Path > > (path : P) -> String }"
+    },
+    {
+      "signature": "impl AstCache { pub fn parse_calls (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct AstCache"
+    },
+    {
+      "signature": "pub struct CachedRustFile"
+    }
+  ],
+  "crates/oxidize_core/src/traceability/runner.rs": [
+    {
+      "signature": "pub fn check_and_print_traceability_errors (report : & TraceabilityReport) -> bool"
+    },
+    {
+      "signature": "pub fn discover_workspace_code_dirs () -> Vec < String >"
+    },
+    {
+      "signature": "pub fn print_traceability_dashboard (report : & TraceabilityReport)"
+    },
+    {
+      "signature": "pub fn run_workspace_traceability (auto_fix : bool) -> Result < bool , std :: io :: Error >"
+    },
+    {
+      "signature": "pub fn run_workspace_traceability_with_cache (auto_fix : bool , cache : & mut AstCache ,) -> Result < bool , std :: io :: Error >"
     }
   ],
   "crates/oxidize_core/src/vfs.rs": [

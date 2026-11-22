@@ -1,7 +1,7 @@
 use super::ApiItem;
 use super::traversal::{UseTarget, flatten_use_tree};
+use oxidize_core::traceability::AstCache;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::Path;
 use syn::visit::Visit;
 
@@ -166,12 +166,9 @@ fn parse_signature_ast(raw_sig: &str) -> Option<syn::File> {
     None
 }
 
-fn parse_exported_idents_in_file(path: &Path) -> BTreeSet<String> {
+fn parse_exported_idents_in_file(path: &Path, cache: &mut AstCache) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    let Ok(src) = fs::read_to_string(path) else {
-        return out;
-    };
-    let Ok(ast) = syn::parse_file(&src) else {
+    let Some(ast) = cache.get_or_load_fs(path).and_then(|e| e.ast.as_ref()) else {
         return out;
     };
     for item in &ast.items {
@@ -204,14 +201,16 @@ fn parse_exported_idents_in_file(path: &Path) -> BTreeSet<String> {
     out
 }
 
-fn check_crate_error_reexports(workspace_root: &Path, violations: &mut Vec<String>) {
+fn check_crate_error_reexports(
+    workspace_root: &Path,
+    cache: &mut AstCache,
+    violations: &mut Vec<String>,
+) {
     let facade_errors =
-        parse_exported_idents_in_file(&workspace_root.join("math_explorer/src/error.rs"));
+        parse_exported_idents_in_file(&workspace_root.join("math_explorer/src/error.rs"), cache);
     for rel in ERROR_CRATE_FILES {
-        let Ok(src) = fs::read_to_string(workspace_root.join(rel)) else {
-            continue;
-        };
-        let Ok(ast) = syn::parse_file(&src) else {
+        let path = workspace_root.join(rel);
+        let Some(ast) = cache.get_or_load_fs(&path).and_then(|e| e.ast.as_ref()) else {
             continue;
         };
         for item in &ast.items {
@@ -227,7 +226,7 @@ fn check_crate_error_reexports(workspace_root: &Path, violations: &mut Vec<Strin
         }
     }
     for rel in DOMAIN_INNER_MODS {
-        if !parse_exported_idents_in_file(&workspace_root.join(rel)).contains("error") {
+        if !parse_exported_idents_in_file(&workspace_root.join(rel), cache).contains("error") {
             violations.push(format!(
                 "Facade domain error gap: `{rel}` must publicly expose `error` (`pub use crate::error;`)"
             ));
@@ -235,9 +234,13 @@ fn check_crate_error_reexports(workspace_root: &Path, violations: &mut Vec<Strin
     }
 }
 
-fn check_root_facade_modules(workspace_root: &Path, violations: &mut Vec<String>) {
+fn check_root_facade_modules(
+    workspace_root: &Path,
+    cache: &mut AstCache,
+    violations: &mut Vec<String>,
+) {
     let root_exports =
-        parse_exported_idents_in_file(&workspace_root.join("math_explorer/src/lib.rs"));
+        parse_exported_idents_in_file(&workspace_root.join("math_explorer/src/lib.rs"), cache);
     for required in ["error", "prelude"] {
         if !root_exports.contains(required) {
             violations.push(format!(
@@ -441,17 +444,27 @@ fn collect_unexported_signature_types(sig: &str, exported: &BTreeSet<String>) ->
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn check_facade_completeness_in_dir(
     workspace_root: &Path,
     apis: &BTreeMap<String, Vec<ApiItem>>,
+) -> Vec<String> {
+    let mut cache = AstCache::new();
+    check_facade_completeness_in_dir_with_cache(workspace_root, apis, &mut cache)
+}
+
+pub(crate) fn check_facade_completeness_in_dir_with_cache(
+    workspace_root: &Path,
+    apis: &BTreeMap<String, Vec<ApiItem>>,
+    cache: &mut AstCache,
 ) -> Vec<String> {
     if !workspace_root.join("math_explorer/src/lib.rs").is_file() {
         return Vec::new();
     }
 
     let mut violations = Vec::new();
-    check_root_facade_modules(workspace_root, &mut violations);
-    check_crate_error_reexports(workspace_root, &mut violations);
+    check_root_facade_modules(workspace_root, cache, &mut violations);
+    check_crate_error_reexports(workspace_root, cache, &mut violations);
 
     let exported = collect_exported_type_names(apis);
     for (path, items) in apis {
