@@ -75,7 +75,6 @@
 pub mod coupling;
 #[allow(missing_docs)]
 pub mod fourier;
-#[allow(missing_docs)]
 pub mod hamiltonian;
 pub mod schrodinger;
 #[allow(missing_docs)]
@@ -86,7 +85,11 @@ pub mod types;
 // Re-export key types for convenience
 pub use coupling::clebsch_gordan;
 pub use fourier::{dft_operator, idft_operator};
-pub use hamiltonian::{construct_1d_hamiltonian, gaussian_wavepacket};
+pub use hamiltonian::{
+    MAX_SCULPT_POTENTIAL, MIN_SCULPT_POTENTIAL, PotentialPreset1D,
+    apply_bresenham_potential_stroke, build_1d_potential_preset, construct_1d_hamiltonian,
+    gaussian_wavepacket, partition_region_probabilities,
+};
 pub use schrodinger::{evolve_state, evolve_state_in_place, time_evolution_operator};
 pub use spin::{sigma_x, sigma_y, sigma_z};
 pub use types::{QuantumOperator, QuantumState};

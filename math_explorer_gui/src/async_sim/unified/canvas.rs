@@ -124,7 +124,13 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(super) fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            if M::custom_central_panel(ui, self.controller.latest_snapshot()) {
+            let mut canvas_ctx = super::UnifiedCanvasContext {
+                controller: self.controller.controller_mut(),
+                stepped_snapshot: self.stepped_snapshot.as_ref(),
+                params: &self.params,
+                custom_series: &self.custom_series,
+            };
+            if M::custom_central_panel_interactive(ui, &mut canvas_ctx) {
                 return;
             }
 

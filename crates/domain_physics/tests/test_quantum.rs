@@ -1,8 +1,10 @@
 #![allow(missing_docs)]
 use approx::assert_relative_eq;
 use domain_physics::physics::quantum::{
-    QuantumOperator, QuantumState, construct_1d_hamiltonian, dft_operator, evolve_state,
-    evolve_state_in_place, gaussian_wavepacket, sigma_x, sigma_y, sigma_z, time_evolution_operator,
+    PotentialPreset1D, QuantumOperator, QuantumState, apply_bresenham_potential_stroke,
+    build_1d_potential_preset, construct_1d_hamiltonian, dft_operator, evolve_state,
+    evolve_state_in_place, gaussian_wavepacket, partition_region_probabilities, sigma_x, sigma_y,
+    sigma_z, time_evolution_operator,
 };
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
@@ -196,4 +198,20 @@ fn test_evolve_state_in_place_rejects_mismatched_scratch() {
     let propagator = time_evolution_operator(&sigma_x(), 0.1, 1.0);
     let mut bad_scratch = DVector::from_element(3, Complex::new(0.0, 0.0));
     evolve_state_in_place(&mut state, &propagator, &mut bad_scratch);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_sculpt_stroke_and_region_probabilities_zero_allocations() {
+    let x_grid: Vec<f64> = (0..200).map(|i| -5.0 + i as f64 * (10.0 / 199.0)).collect();
+    let mut potential = build_1d_potential_preset(PotentialPreset1D::TunnelingBarrier, &x_grid);
+    let psi = gaussian_wavepacket(&x_grid, -2.0, 5.0, 0.5);
+
+    let ((p_t, p_r), metrics) = VerifiedEngine::run_verified(|| {
+        apply_bresenham_potential_stroke(&mut potential, 80, 5.0, 120, 18.0);
+        partition_region_probabilities(&psi, 100)
+    });
+    assert!(metrics.function_calls >= 2);
+    assert!((potential[100] - 11.5).abs() < 1e-12);
+    assert!((p_t + p_r - 1.0).abs() < 1e-15);
 }

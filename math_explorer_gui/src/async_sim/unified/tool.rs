@@ -13,11 +13,12 @@ use std::sync::{Arc, RwLock};
 pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) controller: BackgroundWorker<UnifiedSimRunner<M>>,
     pub(crate) params: Arc<RwLock<HashMap<String, f64>>>,
+    pub(crate) custom_series: Arc<RwLock<HashMap<String, Vec<f64>>>>,
     pub(super) param_metadata: Vec<(String, ParameterConstraint)>,
     steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(super) dirty: bool,
-    stepped_snapshot: Option<StateSnapshot>,
+    pub(super) stepped_snapshot: Option<StateSnapshot>,
     cached_theory_desc: String,
     cached_phonetic: String,
     cached_citation: String,
@@ -43,14 +44,14 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         let mut initial_params = HashMap::new();
         for (name, constraint) in &param_metadata {
-            let default_val = M::parameter_choices(name)
-                .first()
-                .map_or((constraint.min + constraint.max) / 2.0, |&(_, v)| v);
+            let default_val = M::default_parameter(name, constraint);
             initial_params.insert(name.clone(), default_val);
         }
 
         let params = Arc::new(RwLock::new(initial_params.clone()));
-        let runner = UnifiedSimRunner::<M>::new(Arc::clone(&params));
+        let custom_series = Arc::new(RwLock::new(HashMap::new()));
+        let runner =
+            UnifiedSimRunner::<M>::new_with_series(Arc::clone(&params), Arc::clone(&custom_series));
         let controller = BackgroundWorker::new(runner);
         let temp_model = M::new(&initial_params);
 
@@ -62,6 +63,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Self {
             controller,
             params,
+            custom_series,
             param_metadata,
             steps_per_frame: 5,
             texture: None,
@@ -86,12 +88,39 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(super) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
         self.stepped_snapshot = None;
         let params = Arc::clone(&self.params);
+        let custom_series = Arc::clone(&self.custom_series);
         self.controller
-            .reset_or_respawn(|| UnifiedSimRunner::<M>::new(params));
+            .reset_or_respawn(|| UnifiedSimRunner::<M>::new_with_series(params, custom_series));
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
         }
+    }
+
+    fn clamp_custom_series(&self) {
+        let mut series = self
+            .custom_series
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        series.retain(|key, values| {
+            let Some(&(_, expected_len, min_val, max_val)) = M::custom_series_schema()
+                .iter()
+                .find(|(schema_key, _, _, _)| schema_key == key)
+            else {
+                return false;
+            };
+            if values.len() != expected_len {
+                return false;
+            }
+            for v in values.iter_mut() {
+                *v = if v.is_finite() {
+                    crate::url_state::quantize_url_centi(*v, min_val, max_val)
+                } else {
+                    0.0
+                };
+            }
+            true
+        });
     }
 
     fn handle_recovery_action(
@@ -116,15 +145,14 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 for (name, c) in &self.param_metadata {
                     if let Some(v) = p.get_mut(name) {
                         *v = if !v.is_finite() {
-                            M::parameter_choices(name)
-                                .first()
-                                .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice)
+                            M::default_parameter(name, c)
                         } else {
                             v.clamp(c.min, c.max)
                         };
                     }
                 }
                 drop(p);
+                self.clamp_custom_series();
                 self.reset_simulation(ctx);
             }
             RecoveryAction::ResetParameters => {
@@ -134,13 +162,15 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                         "viscosity" => 0.02,
                         "dt" => 0.05,
                         "potential_type" => 0.0,
-                        _ => M::parameter_choices(name)
-                            .first()
-                            .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice),
+                        _ => M::default_parameter(name, c),
                     };
                     p.insert(name.clone(), d);
                 }
                 drop(p);
+                self.custom_series
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clear();
                 self.reset_simulation(ctx);
                 let _ = self.controller.send_command(SimCommand::Start);
             }
@@ -263,6 +293,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     fn step_simulation(&mut self) {
         if let Ok(params) = self.params.read() {
             let mut model = M::new(&params);
+            if let Ok(series) = self.custom_series.read() {
+                if !series.is_empty() {
+                    model.apply_custom_series(&series, &params);
+                }
+            }
             for _ in 0..self.steps_per_frame.max(1) {
                 model.step(&params);
             }
@@ -271,68 +306,19 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        for (key, _) in &self.param_metadata {
-            key.hash(&mut h);
-            if let Some(val) = params.get(key) {
-                val.to_bits().hash(&mut h);
-            }
-        }
-        h.finish().max(1)
+        self.compute_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        params.values().all(|v| v.is_finite())
-            && !matches!(
-                self.controller.state(),
-                crate::async_sim::SimWorkerState::Faulted
-            )
+        self.check_finite_parameters()
     }
 
     fn save_state(&self) -> Option<String> {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let sorted: std::collections::BTreeMap<&String, &f64> = params.iter().collect();
-        serde_json::to_string(&sorted).ok()
+        self.serialize_tool_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let params: HashMap<String, f64> = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
-        if !self.param_metadata.is_empty() && params.is_empty() {
-            return Err(format!(
-                "Empty parameter configuration for {}; expected parameters: {}",
-                M::name(),
-                self.param_metadata
-                    .iter()
-                    .map(|m| m.0.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-        for (key, value) in &params {
-            if !self.param_metadata.iter().any(|meta| &meta.0 == key) {
-                return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
-            }
-            if !value.is_finite() {
-                return Err(format!(
-                    "Non-finite value for parameter '{}' in {}",
-                    key,
-                    M::name()
-                ));
-            }
-        }
-        {
-            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (key, value) in params {
-                guard.insert(key, value);
-            }
-        }
-        self.texture = None;
-        self.reset_simulation(None);
-        Ok(())
+        self.deserialize_tool_state(state)
     }
 
     fn clamp_parameters(&mut self) -> bool {

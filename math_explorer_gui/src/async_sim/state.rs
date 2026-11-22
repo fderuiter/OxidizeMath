@@ -26,6 +26,26 @@ pub enum SimCommand {
         is_obstacle: bool,
     },
     #[allow(missing_docs)]
+    SculptStroke1D {
+        #[allow(missing_docs)]
+        i0: usize,
+        #[allow(missing_docs)]
+        v0: f64,
+        #[allow(missing_docs)]
+        i1: usize,
+        #[allow(missing_docs)]
+        v1: f64,
+    },
+    #[allow(missing_docs)]
+    SetWavepacket {
+        #[allow(missing_docs)]
+        x0: f64,
+        #[allow(missing_docs)]
+        k0: f64,
+        #[allow(missing_docs)]
+        sigma: f64,
+    },
+    #[allow(missing_docs)]
     ClearObstacles,
     #[allow(missing_docs)]
     Custom(String),
@@ -42,6 +62,8 @@ impl SimCommand {
             Self::SetSpeed(_) => "SetSpeed",
             Self::TrainEpisodes(_) => "TrainEpisodes",
             Self::ApplyBrush { .. } => "ApplyBrush",
+            Self::SculptStroke1D { .. } => "SculptStroke1D",
+            Self::SetWavepacket { .. } => "SetWavepacket",
             Self::ClearObstacles => "ClearObstacles",
             Self::Custom(_) => "Custom",
         }

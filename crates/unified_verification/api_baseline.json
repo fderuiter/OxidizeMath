@@ -4974,10 +4974,34 @@
   ],
   "crates/domain_physics/src/physics/quantum/hamiltonian.rs": [
     {
+      "signature": "impl PotentialPreset1D { pub fn code (self) -> f64 }"
+    },
+    {
+      "signature": "impl PotentialPreset1D { pub fn from_code (code : f64) -> Self }"
+    },
+    {
+      "signature": "pub const MAX_SCULPT_POTENTIAL : f64 = 40.0"
+    },
+    {
+      "signature": "pub const MIN_SCULPT_POTENTIAL : f64 = - 20.0"
+    },
+    {
+      "signature": "pub enum PotentialPreset1D"
+    },
+    {
+      "signature": "pub fn apply_bresenham_potential_stroke (potential : & mut DVector < f64 > , i0 : usize , v0 : f64 , i1 : usize , v1 : f64 ,)"
+    },
+    {
+      "signature": "pub fn build_1d_potential_preset (preset : PotentialPreset1D , x_grid : & [f64]) -> DVector < f64 >"
+    },
+    {
       "signature": "pub fn construct_1d_hamiltonian (potential : & DVector < f64 > , dx : f64 , mass : f64 , h_bar : f64 ,) -> QuantumOperator"
     },
     {
       "signature": "pub fn gaussian_wavepacket (x_grid : & [f64] , x0 : f64 , k0 : f64 , sigma : f64) -> QuantumState"
+    },
+    {
+      "signature": "pub fn partition_region_probabilities (state : & QuantumState , barrier_idx : usize) -> (f64 , f64)"
     }
   ],
   "crates/domain_physics/src/physics/quantum/mod.rs": [
@@ -4991,10 +5015,28 @@
       "signature": "pub use fourier :: idft_operator"
     },
     {
+      "signature": "pub use hamiltonian :: MAX_SCULPT_POTENTIAL"
+    },
+    {
+      "signature": "pub use hamiltonian :: MIN_SCULPT_POTENTIAL"
+    },
+    {
+      "signature": "pub use hamiltonian :: PotentialPreset1D"
+    },
+    {
+      "signature": "pub use hamiltonian :: apply_bresenham_potential_stroke"
+    },
+    {
+      "signature": "pub use hamiltonian :: build_1d_potential_preset"
+    },
+    {
       "signature": "pub use hamiltonian :: construct_1d_hamiltonian"
     },
     {
       "signature": "pub use hamiltonian :: gaussian_wavepacket"
+    },
+    {
+      "signature": "pub use hamiltonian :: partition_region_probabilities"
     },
     {
       "signature": "pub use schrodinger :: evolve_state"

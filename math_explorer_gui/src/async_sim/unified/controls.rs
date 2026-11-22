@@ -7,12 +7,19 @@ use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
+    fn clear_custom_series(&self) {
+        self.custom_series
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+    }
+
     fn draw_presets_and_actions(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
         let mut reset_needed = false;
         let presets = M::presets();
         if !presets.is_empty() {
             let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Presets:");
                 for (name, preset_params) in presets {
                     if ui.button(name).clicked() {
@@ -24,21 +31,28 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 }
             });
             drop(params_lock);
+            if reset_needed {
+                self.clear_custom_series();
+            }
             ui.separator();
         }
 
         let custom_actions = M::custom_actions();
         if !custom_actions.is_empty() {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Actions:");
                 for action in custom_actions {
-                    if ui.button(action).clicked()
-                        && self
+                    if ui.button(action).clicked() {
+                        if M::clears_custom_series_on_action(action) {
+                            self.clear_custom_series();
+                        }
+                        if self
                             .controller
                             .send_command(SimCommand::Custom(action.to_string()))
                             .is_ok()
-                    {
-                        ctx.request_repaint();
+                        {
+                            ctx.request_repaint();
+                        }
                     }
                 }
             });
@@ -52,24 +66,51 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ui.label("Model Parameters");
 
         let mut reset_needed = self.draw_presets_and_actions(ui, ctx);
+        let mut clear_series_needed = false;
+        let mut wavepacket_changed = false;
         let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
 
         for (name, constraint) in &self.param_metadata {
             if let Some(val) = params_lock.get_mut(name) {
-                reset_needed |= Self::draw_single_parameter(
+                let (choice_changed, slider_changed) = Self::draw_single_parameter(
                     ui,
                     name,
                     constraint,
                     val,
                     self.cached_descs.get(name),
                 );
+                if choice_changed {
+                    reset_needed = true;
+                    clear_series_needed = true;
+                } else if slider_changed && M::is_wavepacket_parameter(name) {
+                    wavepacket_changed = true;
+                }
             }
         }
 
+        let wavepacket_tuple = wavepacket_changed.then(|| {
+            (
+                params_lock.get("x0").copied().unwrap_or(-2.0),
+                params_lock.get("k0").copied().unwrap_or(5.0),
+                params_lock.get("sigma").copied().unwrap_or(0.5),
+            )
+        });
         drop(params_lock);
+
+        if clear_series_needed {
+            self.clear_custom_series();
+        }
         self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation(Some(ctx));
+        } else if let Some((x0, k0, sigma)) = wavepacket_tuple {
+            if self
+                .controller
+                .send_command(SimCommand::SetWavepacket { x0, k0, sigma })
+                .is_ok()
+            {
+                ctx.request_repaint();
+            }
         }
     }
 
@@ -79,7 +120,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         constraint: &ParameterConstraint,
         val: &mut f64,
         hover_desc: Option<&String>,
-    ) -> bool {
+    ) -> (bool, bool) {
         let label = M::parameter_label(name);
         let choices = M::parameter_choices(name);
         if !choices.is_empty() {
@@ -107,16 +148,17 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             if let Some(desc) = hover_desc {
                 let _ = combo_resp.response.accessible_hover_text(desc);
             }
-            changed
+            (changed, false)
         } else {
             let slider = egui::Slider::new(val, constraint.min..=constraint.max)
                 .step_by(constraint.step)
                 .text(label);
             let resp = ui.add(slider);
+            let slider_changed = resp.changed();
             if let Some(desc) = hover_desc {
                 let _ = resp.accessible_hover_text(desc);
             }
-            false
+            (false, slider_changed)
         }
     }
 

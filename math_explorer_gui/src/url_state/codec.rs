@@ -21,6 +21,42 @@ pub const URL_JSON_BOUNDS: ToolStateBounds = ToolStateBounds::new(
     MAX_JSON_ARRAY_LEN,
 );
 
+/// Canonical sample count for 1D `custom_potential` URL state arrays.
+pub const CUSTOM_POTENTIAL_POINTS: usize = 200;
+
+/// Quantizes a finite scalar into `[min_val, max_val]` at `0.01` resolution so IEEE-754
+/// shortest-decimal JSON representations remain `<= 6` ASCII bytes per sample.
+#[must_use]
+pub fn quantize_url_centi(val: f64, min_val: f64, max_val: f64) -> f64 {
+    let clamped = val.clamp(min_val, max_val);
+    let ticks = (clamped * 100.0).round() as i64;
+    (ticks as f64) / 100.0
+}
+
+/// Validates and quantizes a fixed-length custom series array (such as a 200-point
+/// `custom_potential`) so serialized `PresetWrapper` payloads fit well within `4,096` bytes.
+pub fn quantize_bounded_url_series(
+    series: &[f64],
+    expected_len: usize,
+    min_val: f64,
+    max_val: f64,
+) -> Result<Vec<f64>, String> {
+    if series.len() != expected_len {
+        return Err(format!(
+            "Custom series length ({}) must equal expected grid length ({expected_len})",
+            series.len()
+        ));
+    }
+    let mut quantized = Vec::with_capacity(expected_len);
+    for &sample in series {
+        if !sample.is_finite() {
+            return Err("Custom series contains non-finite numeric sample".to_string());
+        }
+        quantized.push(quantize_url_centi(sample, min_val, max_val));
+    }
+    Ok(quantized)
+}
+
 /// Parsed simulation share-link parameters extracted from `location.hash` or `location.search`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShareUrlParams {

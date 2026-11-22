@@ -263,9 +263,12 @@ fn test_unified_models_expose_readable_parameter_labels_and_discrete_choices() {
     }
 
     let choices = WaveUnified::parameter_choices("potential_type");
-    assert_eq!(choices.len(), 2);
+    assert_eq!(choices.len(), 5);
     assert_eq!(choices[0], ("Infinite Potential Well", 0.0));
     assert_eq!(choices[1], ("Harmonic Oscillator", 1.0));
+    assert_eq!(choices[2], ("Quantum Tunneling Barrier", 2.0));
+    assert_eq!(choices[3], ("Resonant Double Well", 3.0));
+    assert_eq!(choices[4], ("Stark Linear Ramp", 4.0));
 
     let wave_ctx = egui::Context::default();
     wave_ctx.enable_accesskit();
