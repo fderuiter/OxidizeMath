@@ -5,6 +5,10 @@ use crate::error::ChaosError;
 use nalgebra::Vector3;
 use pure_math::pure_math::analysis::ode::{OdeSystem, Solver, SolverExt};
 
+const MIN_LYAPUNOV_DERIVATIVE: f64 = 1e-15;
+const INITIAL_SHADOW_SEPARATION: f64 = 1e-8;
+const MIN_TRAJECTORY_SEPARATION: f64 = 1e-30;
+
 /// Calculates the Lyapunov Exponent for the Logistic Map.
 ///
 /// The Lyapunov exponent $\lambda$ measures the average rate of divergence of nearby trajectories.
@@ -15,18 +19,75 @@ use pure_math::pure_math::analysis::ode::{OdeSystem, Solver, SolverExt};
 /// where $f'(x) = r(1 - 2x)$.
 #[verified_engine::verified]
 pub fn logistic_lyapunov(r: f64, x0: f64, n: usize) -> f64 {
+    if n == 0 || !r.is_finite() || !x0.is_finite() {
+        return 0.0;
+    }
+
     let mut map = LogisticMap::new(r, x0);
     let mut sum_logs = 0.0;
+    let mut valid_steps = 0_usize;
 
     for _ in 0..n {
         let x = map.state;
-        let derivative = r * (1.0 - 2.0 * x);
-        // Handle singularity at x = 0.5 (f'(x) = 0).
-        sum_logs += derivative.abs().ln();
+        if !x.is_finite() {
+            break;
+        }
+        // Clamp zero-derivative singularities (e.g. x = 0.5 or r = 0.0) so outputs stay finite.
+        let derivative = (r * (1.0 - 2.0 * x)).abs().max(MIN_LYAPUNOV_DERIVATIVE);
+        if !derivative.is_finite() {
+            break;
+        }
+        sum_logs += derivative.ln();
+        valid_steps += 1;
         map.next();
     }
 
-    sum_logs / n as f64
+    if valid_steps == 0 {
+        0.0
+    } else {
+        sum_logs / valid_steps as f64
+    }
+}
+
+#[verified_engine::verified]
+fn is_finite_vec3(v: &Vector3<f64>) -> bool {
+    v.x.is_finite() && v.y.is_finite() && v.z.is_finite()
+}
+
+#[verified_engine::verified]
+fn evolve_and_renormalize_pair<S, Sol>(
+    system: &S,
+    solver: &mut Sol,
+    current_state: &mut Vector3<f64>,
+    shadow_state: &mut Vector3<f64>,
+    steps_per_iter: usize,
+    time_step: f64,
+) -> Option<f64>
+where
+    S: OdeSystem<Vector3<f64>> + ?Sized,
+    Sol: Solver<Vector3<f64>>,
+{
+    for _ in 0..steps_per_iter {
+        *current_state = solver.solve(system, 0.0, current_state, time_step);
+        *shadow_state = solver.solve(system, 0.0, shadow_state, time_step);
+        if !is_finite_vec3(current_state) || !is_finite_vec3(shadow_state) {
+            return None;
+        }
+    }
+
+    let dist_vec = *shadow_state - *current_state;
+    let d_t = dist_vec.norm();
+    if !d_t.is_finite() {
+        return None;
+    }
+
+    let unit_dir = if d_t > MIN_TRAJECTORY_SEPARATION {
+        dist_vec / d_t
+    } else {
+        Vector3::new(1.0, 0.0, 0.0)
+    };
+    *shadow_state = *current_state + unit_dir * INITIAL_SHADOW_SEPARATION;
+    Some(d_t.max(MIN_TRAJECTORY_SEPARATION))
 }
 
 /// Calculates the largest Lyapunov Exponent for a 3D continuous dynamical system.
@@ -56,52 +117,67 @@ where
     S: OdeSystem<Vector3<f64>> + ?Sized,
     Sol: Solver<Vector3<f64>>,
 {
-    let d0 = 1e-8;
-    let steps_per_iter = (evolution_time / time_step).round() as usize;
-
-    if steps_per_iter == 0 {
+    if !time_step.is_finite()
+        || time_step <= 0.0
+        || !evolution_time.is_finite()
+        || evolution_time <= 0.0
+    {
         return Err(ChaosError::InvalidParameter(
-            "evolution_time must be greater than time_step".to_string(),
+            "time_step and evolution_time must be finite and positive".to_string(),
         ));
     }
+    if iterations == 0 || !is_finite_vec3(&initial_state) {
+        return Ok(0.0);
+    }
+
+    let effective_evolution = evolution_time.max(time_step);
+    let steps_per_iter = (effective_evolution / time_step).round().max(1.0) as usize;
+    let step_duration = (steps_per_iter as f64) * time_step;
 
     let mut current_state = initial_state;
-    let mut shadow_state = current_state + Vector3::new(d0, 0.0, 0.0);
+    let mut shadow_state = current_state + Vector3::new(INITIAL_SHADOW_SEPARATION, 0.0, 0.0);
 
-    // Normalize initial separation
-    let initial_diff = shadow_state - current_state;
-    shadow_state = current_state + initial_diff.normalize() * d0;
+    let warmup_iters = if iterations >= 4 {
+        ((6.0 / step_duration).ceil() as usize).clamp(1, iterations)
+    } else {
+        0
+    };
+    for _ in 0..warmup_iters {
+        if evolve_and_renormalize_pair(
+            system,
+            solver,
+            &mut current_state,
+            &mut shadow_state,
+            steps_per_iter,
+            time_step,
+        )
+        .is_none()
+        {
+            return Ok(0.0);
+        }
+    }
 
     let mut sum_log_divergence = 0.0;
     let mut total_time = 0.0;
 
     for _ in 0..iterations {
-        // Evolve both systems
-        for _ in 0..steps_per_iter {
-            current_state = solver.solve(system, 0.0, &current_state, time_step);
-            shadow_state = solver.solve(system, 0.0, &shadow_state, time_step);
-        }
-
-        // Measure distance
-        let dist_vec = shadow_state - current_state;
-        let d_t = dist_vec.norm();
-
-        if d_t == 0.0 {
-            return Err(ChaosError::Math(
-                math_commons::error::MathError::NumericalError {
-                    reason: "Trajectories converged completely (distance 0), cannot compute log."
-                        .to_string(),
-                },
-            ));
-        }
-
-        sum_log_divergence += (d_t / d0).ln();
-        total_time += evolution_time;
-
-        // Rescale: Reset shadow system to be distance d0 away from system
-        // along the direction of the current separation.
-        shadow_state = current_state + dist_vec.normalize() * d0;
+        let Some(clamped_d) = evolve_and_renormalize_pair(
+            system,
+            solver,
+            &mut current_state,
+            &mut shadow_state,
+            steps_per_iter,
+            time_step,
+        ) else {
+            break;
+        };
+        sum_log_divergence += (clamped_d / INITIAL_SHADOW_SEPARATION).ln();
+        total_time += step_duration;
     }
 
-    Ok(sum_log_divergence / total_time)
+    Ok(if total_time > 0.0 {
+        sum_log_divergence / total_time
+    } else {
+        0.0
+    })
 }

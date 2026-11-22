@@ -194,6 +194,19 @@ impl LorenzSystem {
     pub fn step_with<S: Solver<Vector3<f64>>>(&mut self, solver: &mut S, dt: f64) {
         <Self as TimeStepper<Vector3<f64>>>::step_with(self, solver, dt);
     }
+
+    #[verified_engine::verified]
+    fn is_chaotic_regime(&self) -> bool {
+        if !self.sigma.is_finite() || !self.rho.is_finite() || !self.beta.is_finite() {
+            return false;
+        }
+        let mut solver = pure_math::pure_math::analysis::ode::RungeKutta4::new(&Vector3::zeros());
+        let seed = Vector3::new(10.0, 10.0, 10.0);
+        matches!(
+            super::metrics::lorenz_lyapunov(self, &mut solver, seed, 0.01, 25, 0.4),
+            Ok(lambda) if lambda.is_finite() && lambda > 0.02
+        )
+    }
 }
 
 impl OdeSystem<Vector3<f64>> for LorenzSystem {
@@ -217,7 +230,7 @@ impl TheoryDescribable for LorenzSystem {
         let x = self.state.vec.x;
         let y = self.state.vec.y;
         let z = self.state.vec.z;
-        let regime = if self.rho > 24.74 {
+        let regime = if self.is_chaotic_regime() {
             "Chaotic regime"
         } else {
             "Stable regime"

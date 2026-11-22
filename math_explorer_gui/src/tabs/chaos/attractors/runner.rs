@@ -180,6 +180,8 @@ pub struct AttractorSnapshot {
     pub current_vec: Vector3<f64>,
     pub step_count: usize,
     pub execution_state: SolverExecutionState,
+    pub lyapunov_exponent: Option<f64>,
+    pub correlation_sum: Option<f64>,
 }
 
 #[allow(missing_docs)]
@@ -194,6 +196,7 @@ pub struct AttractorRunner {
 impl AttractorRunner {
     /// Builds a fresh Lorenz runner initialized from shared parameters.
     pub fn from_params(params: Arc<std::sync::RwLock<AttractorSharedParams>>) -> Self {
+        super::warmup_attractor_metrics_scratch();
         let (sigma, rho, beta, max_points) = {
             let p = params.read().unwrap_or_else(|e| e.into_inner());
             (p.sigma, p.rho, p.beta, p.max_points)
@@ -323,11 +326,19 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
+        let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+        let (lyapunov_exponent, correlation_sum) = if self.is_finite_state() {
+            super::compute_cached_attractor_metrics(&self.system, dt, &self.history)
+        } else {
+            (None, None)
+        };
         let snapshot = AttractorSnapshot {
             history: self.history.clone(),
             current_vec: self.system.state.vec,
             step_count: self.step_count,
             execution_state: self.execution_state,
+            lyapunov_exponent,
+            correlation_sum,
         };
         StateSnapshot {
             width: 0,

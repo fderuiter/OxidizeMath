@@ -79,6 +79,11 @@ mod tests {
     use super::*;
     use approx::assert_relative_eq;
     use nalgebra as na;
+    use scientific_metadata::theory::TheoryDescribable;
+
+    #[global_allocator]
+    static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+        verified_engine::allocator::VerifiedAllocator;
 
     #[test]
     #[verified_engine::verified]
@@ -229,6 +234,120 @@ mod tests {
         let mut running_system = system;
         running_system.step(0.01);
         assert!(running_system.state.vec.x.is_finite());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_chaos_kernels_zero_allocations_under_verified_allocator() {
+        use pure_math::pure_math::analysis::ode::RungeKutta4;
+        use verified_engine::engine::VerifiedEngine;
+
+        let chaotic =
+            lorenz::LorenzSystem::default_chaotic(lorenz::LorenzState::new(1.0, 1.0, 1.0));
+        let stable = lorenz::LorenzBuilder::new()
+            .sigma(10.0)
+            .rho(0.5)
+            .beta(8.0 / 3.0)
+            .build(lorenz::LorenzState::new(1.0, 1.0, 1.0));
+        let decoupled = lorenz::LorenzBuilder::new()
+            .sigma(0.0)
+            .rho(28.0)
+            .beta(8.0 / 3.0)
+            .build(lorenz::LorenzState::new(1.0, 1.0, 1.0));
+        let mut solver = RungeKutta4::new(&na::Vector3::zeros());
+        let mut scratch = [
+            na::Vector3::new(9.0, 0.0, 0.0),
+            na::Vector3::new(3.0, 0.0, 0.0),
+            na::Vector3::new(0.0, 0.0, 0.0),
+            na::Vector3::new(1.0, 0.0, 0.0),
+            na::Vector3::new(2.0, 0.0, 0.0),
+            na::Vector3::new(4.0, 0.0, 0.0),
+            na::Vector3::new(8.0, 0.0, 0.0),
+            na::Vector3::new(7.0, 0.0, 0.0),
+            na::Vector3::new(6.0, 0.0, 0.0),
+            na::Vector3::new(5.0, 0.0, 0.0),
+        ];
+
+        let ((lam_zero, lam_sing, lam_chaos, lam_substep, lam_conv, lam_sig0, corr), m) =
+            VerifiedEngine::run_verified(|| {
+                let lz = metrics::logistic_lyapunov(3.9, 0.1, 0);
+                let ls = metrics::logistic_lyapunov(2.0, 0.5, 250);
+                let lc = metrics::lorenz_lyapunov(
+                    &chaotic,
+                    &mut solver,
+                    na::Vector3::new(10.0, 10.0, 10.0),
+                    0.01,
+                    24,
+                    0.25,
+                )
+                .unwrap();
+                let lsub = metrics::lorenz_lyapunov(
+                    &chaotic,
+                    &mut solver,
+                    na::Vector3::new(10.0, 10.0, 10.0),
+                    0.02,
+                    12,
+                    0.005,
+                )
+                .unwrap();
+                let lconv = metrics::lorenz_lyapunov(
+                    &stable,
+                    &mut solver,
+                    na::Vector3::new(0.0, 0.0, 0.0),
+                    0.02,
+                    30,
+                    1.0,
+                )
+                .unwrap();
+                let lsig0 = metrics::lorenz_lyapunov(
+                    &decoupled,
+                    &mut solver,
+                    na::Vector3::new(0.0, 1.0, 1.0),
+                    0.02,
+                    24,
+                    0.5,
+                )
+                .unwrap();
+                let c_in_place = fractals::correlation_dimension_in_place(&mut scratch, 1.1);
+                (lz, ls, lc, lsub, lconv, lsig0, c_in_place)
+            });
+
+        assert_eq!(lam_zero, 0.0);
+        assert!(lam_sing.is_finite() && lam_sing < 0.0);
+        assert!(lam_chaos.is_finite() && lam_chaos > 0.0);
+        assert!(lam_substep.is_finite());
+        assert!(lam_conv.is_finite() && lam_conv < 0.0);
+        assert!(lam_sig0.is_finite() && lam_sig0 <= 0.02);
+        assert_relative_eq!(corr, 0.2);
+        assert!(m.function_calls > 0);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_lorenz_sigma_zero_and_dynamic_regime_classification() {
+        let state = lorenz::LorenzState::new(1.0, 1.0, 1.0);
+        let sigma_zero_high_rho = lorenz::LorenzBuilder::new()
+            .sigma(0.0)
+            .rho(28.0)
+            .beta(8.0 / 3.0)
+            .build(state);
+        assert!(
+            sigma_zero_high_rho
+                .theory_description()
+                .contains("Stable regime"),
+            "sigma = 0.0 with rho = 28.0 must classify as Stable regime, got: {}",
+            sigma_zero_high_rho.theory_description()
+        );
+
+        let subcritical = lorenz::LorenzBuilder::new()
+            .sigma(10.0)
+            .rho(12.0)
+            .beta(8.0 / 3.0)
+            .build(state);
+        assert!(subcritical.theory_description().contains("Stable regime"));
+
+        let chaotic = lorenz::LorenzSystem::default_chaotic(state);
+        assert!(chaotic.theory_description().contains("Chaotic regime"));
     }
 }
 

@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
+use math_explorer::physics::chaos::metrics::lorenz_lyapunov;
+use math_explorer::pure_math::analysis::ode::RungeKutta4;
 use std::fmt;
 
 // Simple ANSI color wrapper for better UX
@@ -66,6 +68,24 @@ fn run_simulation() {
         y0,
         z0,
         epsilon
+    );
+    let mut rk4 = RungeKutta4::new(&state1.vec);
+    let lambda_max = lorenz_lyapunov(&sys1, &mut rk4, state1.vec, 0.01, 200, 0.5)
+        .expect("lorenz_lyapunov should succeed for standard chaotic Lorenz parameters");
+    println!(
+        "Maximal Lyapunov Exponent (λ_max): {}{:+.4}{} ({})",
+        if lambda_max > 0.0 {
+            Color::Red
+        } else {
+            Color::Green
+        },
+        lambda_max,
+        Color::Reset,
+        if lambda_max > 0.0 {
+            "Chaotic: exponential divergence"
+        } else {
+            "Stable: bounded convergence"
+        }
     );
     println!();
 

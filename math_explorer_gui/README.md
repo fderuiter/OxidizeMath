@@ -76,6 +76,10 @@ classDiagram
 *   **`MathExplorerApp`**: The root component implementing `eframe::App`. It renders the top navigation bar and delegates the main content area to the active tab.
 *   **`ExplorerTab`**: The trait that all visualization modules must implement. It provides a standard interface for the app to interact with different simulations.
 *   **`math_explorer` Dependency**: All heavy mathematical logic (physics, biology, etc.) resides in the core `math_explorer` crate. The GUI crate should focus **only** on visualization and input handling.
+*   **Coupled Chaos Parameter Atlases (`src/tabs/chaos/`)**:
+    *   **Fractal Viewer**: Preserves independent Mandelbrot and Julia `(center, zoom)` viewports, renders a live `96x72` Julia preview inset when hovering the Mandelbrot parameter plane, and teleports `julia_c` into progressive `BackgroundWorker` rendering on click or `Enter`.
+    *   **Bifurcation Diagram**: Offloads logistic map parameter sweeps into cooperative `8ms` `BackgroundWorker` slices, overlays the verified `logistic_lyapunov` curve against the $\lambda = 0$ stability threshold, and couples click-selected $r$ values to live cobweb and $x_n$ orbit inspectors.
+    *   **Attractor Plotter**: Couples 3D Lorenz trajectories to a progressive 2D $(\rho, \sigma)$ `lorenz_lyapunov` regime heatmap with click-to-teleport parameter selection alongside live $\lambda_{\max}$ and zero-allocation `correlation_dimension_in_place` $C(\epsilon)$ badges.
 
 ##  Contributing
 

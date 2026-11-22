@@ -20,9 +20,15 @@ mod ui;
 pub struct FractalViewer {
     pub(crate) center: Complex<f64>,
     pub(crate) zoom: f64,
+    pub(crate) mandelbrot_viewport: (Complex<f64>, f64),
+    pub(crate) julia_viewport: (Complex<f64>, f64),
     pub(crate) max_iter: u32,
     pub(crate) mode: FractalMode,
     pub(crate) julia_c: Complex<f64>,
+    pub(crate) linked_explorer: bool,
+    pub(crate) hovered_c: Option<Complex<f64>>,
+    pub(crate) julia_inset_texture: Option<egui::TextureHandle>,
+    pub(crate) julia_inset_key: Option<(u64, u64, u32, bool)>,
     pub(crate) high_contrast: bool,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) dirty: bool,
@@ -62,9 +68,15 @@ impl Default for FractalViewer {
         Self {
             center,
             zoom,
+            mandelbrot_viewport: (center, zoom),
+            julia_viewport: (Complex::new(0.0, 0.0), 1.0),
             max_iter,
             mode,
             julia_c,
+            linked_explorer: true,
+            hovered_c: None,
+            julia_inset_texture: None,
+            julia_inset_key: None,
             high_contrast: false,
             texture: None,
             dirty: true,
@@ -156,6 +168,7 @@ impl InteractiveTool for FractalViewer {
 
     fn step_simulation(&mut self) {
         self.zoom = (self.zoom * 1.06).clamp(ZOOM_MIN, ZOOM_MAX);
+        self.sync_active_viewport_cache();
         self.dirty = true;
     }
 
@@ -168,6 +181,7 @@ impl InteractiveTool for FractalViewer {
             mode: self.mode,
             julia_re: self.julia_c.re,
             julia_im: self.julia_c.im,
+            linked_explorer: self.linked_explorer,
         }
         .validate()
         .is_ok()
@@ -182,6 +196,7 @@ impl InteractiveTool for FractalViewer {
             mode: self.mode,
             julia_re: self.julia_c.re,
             julia_im: self.julia_c.im,
+            linked_explorer: self.linked_explorer,
         })
         .ok()
     }
@@ -195,6 +210,8 @@ impl InteractiveTool for FractalViewer {
         self.max_iter = s.max_iter;
         self.mode = s.mode;
         self.julia_c = Complex::new(s.julia_re, s.julia_im);
+        self.linked_explorer = s.linked_explorer;
+        self.sync_active_viewport_cache();
         self.dirty = true;
         Ok(())
     }

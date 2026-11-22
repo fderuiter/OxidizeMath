@@ -28,7 +28,18 @@ pub const FRACTAL_STRIDES: [usize; 4] = [8, 4, 2, 1];
 /// Initial lightweight preview dimensions rendered on tool construction.
 pub const INITIAL_PREVIEW_SIZE: (usize, usize) = (80, 60);
 
+/// Dimensions of the live Julia hover preview inset rendered over the Mandelbrot plane.
+pub const JULIA_INSET_SIZE: (usize, usize) = (96, 72);
+
 const WORKER_STEP_BUDGET: Duration = Duration::from_millis(8);
+
+const fn default_linked_explorer() -> bool {
+    true
+}
+
+const fn is_default_linked_explorer(v: &bool) -> bool {
+    *v
+}
 
 /// Fractal family selector.
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -49,6 +60,11 @@ pub(super) struct FractalState {
     pub(super) mode: FractalMode,
     pub(super) julia_re: f64,
     pub(super) julia_im: f64,
+    #[serde(
+        default = "default_linked_explorer",
+        skip_serializing_if = "is_default_linked_explorer"
+    )]
+    pub(super) linked_explorer: bool,
 }
 
 impl FractalState {
@@ -103,6 +119,31 @@ pub struct FractalPassMeta {
     pub stride: usize,
     /// `true` once the full-resolution `1x` pass has finished for `generation`.
     pub is_final: bool,
+}
+
+/// Maps a canvas screen position inside `rect` to a clamped complex coordinate `(re, im)`.
+#[must_use]
+pub fn map_canvas_pos_to_complex(
+    pos: egui::Pos2,
+    rect: egui::Rect,
+    center: Complex<f64>,
+    zoom: f64,
+) -> Complex<f64> {
+    let w = f64::from(rect.width()).max(1.0);
+    let h = f64::from(rect.height()).max(1.0);
+    let nx = (f64::from(pos.x - rect.min.x) / w).clamp(0.0, 1.0);
+    let ny = (f64::from(pos.y - rect.min.y) / h).clamp(0.0, 1.0);
+    let safe_zoom = if zoom.is_finite() {
+        zoom.clamp(ZOOM_MIN, ZOOM_MAX)
+    } else {
+        1.0
+    };
+    let scale_y = 3.0 / safe_zoom;
+    let scale_x = scale_y * (w / h);
+    Complex::new(
+        (center.re + (nx - 0.5) * scale_x).clamp(COORD_MIN, COORD_MAX),
+        (center.im + (0.5 - ny) * scale_y).clamp(COORD_MIN, COORD_MAX),
+    )
 }
 
 /// Clamps `(width, height)` proportionally so neither side exceeds `min(max_texture_side, 2048)`.

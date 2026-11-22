@@ -1,7 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{AttractorPlotter, SolverExecutionState};
-use crate::accessibility::AccessibleTheoryHover;
+use super::{
+    AttractorPlotter, CORRELATION_EPSILON, REGIME_GRID_SIZE, REGIME_RHO_RANGE, REGIME_SIGMA_RANGE,
+    SolverExecutionState,
+};
+use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
 use crate::async_sim::ui::{
     render_custom_fault_banner, render_empty_plot_guidance, render_worker_fault_banner,
     WorkerFaultAction,
@@ -10,6 +13,7 @@ use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
 use egui_plot::{Callout, Line, PlotPoint, PlotPoints, Points};
+use math_commons::math_kernel::types::flatten_2d_index;
 use nalgebra::Vector3;
 
 impl AttractorPlotter {
@@ -33,6 +37,7 @@ impl AttractorPlotter {
             }
 
             self.draw_parameter_sliders(ui);
+            self.draw_lyapunov_badges_and_regime_atlas(ui, ctx);
             self.draw_simulation_controls(ui, ctx, worker_faulted);
 
             egui::CollapsingHeader::new("View")
@@ -80,6 +85,96 @@ impl AttractorPlotter {
                 self.on_slider_changed();
             }
         });
+    }
+
+    fn draw_lyapunov_badges(&self, ui: &mut egui::Ui) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let (lyap_text, lyap_color) = if self.diverged() {
+            ("λ_max: Halted (diverged)".to_string(), palette.error)
+        } else if let Some(lam) = self.latest_lyapunov {
+            let tag = if lam > 0.01 { "Chaotic" } else { "Stable" };
+            let col = if lam > 0.01 {
+                palette.series_color(1)
+            } else {
+                palette.series_color(2)
+            };
+            (format!("λ_max: {lam:+.3} ({tag})"), col)
+        } else {
+            ("λ_max: Pending…".to_string(), ui.visuals().text_color())
+        };
+        ui.colored_label(lyap_color, lyap_text);
+        let corr_text = match self.latest_correlation_sum {
+            Some(c) if !self.diverged() => format!("C(ε={CORRELATION_EPSILON:.1}): {c:.4}"),
+            _ => format!("C(ε={CORRELATION_EPSILON:.1}): —"),
+        };
+        ui.small(corr_text);
+        if self.regime_atlas.completed_generation != self.regime_atlas.request_generation {
+            ui.small(format!("Regime sweep: {}x pass", self.regime_atlas.current_stride));
+        }
+    }
+
+    pub(super) fn draw_lyapunov_badges_and_regime_atlas(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+    ) {
+        self.draw_lyapunov_badges(ui);
+        egui::CollapsingHeader::new("2D Regime Map (ρ × σ)")
+            .default_open(true)
+            .show(ui, |ui| {
+                let desired = Vec2::new(ui.available_width().clamp(140.0, 210.0), 104.0);
+                let (rect, resp) = ui.allocate_exact_size(desired, egui::Sense::click());
+                if let Some(tex) = &self.regime_atlas.texture {
+                    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                    ui.painter().image(tex.id(), rect, uv, Color32::WHITE);
+                } else {
+                    ui.painter().rect_filled(rect, 2.0, Color32::from_gray(24));
+                }
+                let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
+                ui.painter().rect_stroke(rect, 2.0, stroke, egui::StrokeKind::Inside);
+
+                let tx = ((self.system.rho - REGIME_RHO_RANGE.0)
+                    / (REGIME_RHO_RANGE.1 - REGIME_RHO_RANGE.0))
+                    .clamp(0.0, 1.0) as f32;
+                let ty = (1.0
+                    - (self.system.sigma - REGIME_SIGMA_RANGE.0)
+                        / (REGIME_SIGMA_RANGE.1 - REGIME_SIGMA_RANGE.0))
+                    .clamp(0.0, 1.0) as f32;
+                let marker = egui::pos2(
+                    rect.left() + tx * rect.width(),
+                    rect.top() + ty * rect.height(),
+                );
+                ui.painter()
+                    .circle_stroke(marker, 4.5_f32, Stroke::new(1.8_f32, Color32::WHITE));
+
+                if let Some(pos) = resp.interact_pointer_pos().or_else(|| resp.hover_pos()) {
+                    let rx = ((pos.x - rect.left()) / rect.width().max(1.0)).clamp(0.0, 1.0) as f64;
+                    let ry =
+                        (1.0 - (pos.y - rect.top()) / rect.height().max(1.0)).clamp(0.0, 1.0) as f64;
+                    let hover_rho =
+                        REGIME_RHO_RANGE.0 + rx * (REGIME_RHO_RANGE.1 - REGIME_RHO_RANGE.0);
+                    let hover_sigma =
+                        REGIME_SIGMA_RANGE.0 + ry * (REGIME_SIGMA_RANGE.1 - REGIME_SIGMA_RANGE.0);
+                    let gx = ((rx * (REGIME_GRID_SIZE.0 - 1) as f64).round() as usize)
+                        .min(REGIME_GRID_SIZE.0 - 1);
+                    let gy = (((1.0 - ry) * (REGIME_GRID_SIZE.1 - 1) as f64).round() as usize)
+                        .min(REGIME_GRID_SIZE.1 - 1);
+                    let cell_lam = self
+                        .regime_atlas
+                        .lambdas
+                        .get(flatten_2d_index(gx, gy, REGIME_GRID_SIZE.0))
+                        .copied()
+                        .unwrap_or(0.0);
+                    if resp.clicked() {
+                        self.teleport_regime(hover_rho, hover_sigma);
+                        ctx.request_repaint();
+                    }
+                    let tip = format!(
+                        "ρ={hover_rho:.1}, σ={hover_sigma:.1}, λ≈{cell_lam:+.2} (click to teleport)"
+                    );
+                    let _ = resp.accessible_hover_text(tip);
+                }
+            });
     }
 
     fn draw_simulation_controls(

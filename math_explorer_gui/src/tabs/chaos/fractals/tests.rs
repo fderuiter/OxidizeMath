@@ -360,3 +360,86 @@ fn test_generate_progressive_fractal_verification_png() {
         &pass_frames,
     );
 }
+
+#[test]
+fn test_mode_switch_preserves_independent_mandelbrot_and_julia_viewports() {
+    let mut viewer = FractalViewer {
+        center: Complex::new(-0.62, 0.35),
+        zoom: 4.25,
+        ..Default::default()
+    };
+    viewer.sync_active_viewport_cache();
+
+    viewer.switch_mode(FractalMode::Julia);
+    assert_eq!(viewer.mode, FractalMode::Julia);
+    assert_eq!(viewer.center, Complex::new(0.0, 0.0));
+    assert!((viewer.zoom - 1.0).abs() < 1e-12);
+
+    viewer.center = Complex::new(0.18, -0.22);
+    viewer.zoom = 2.75;
+    viewer.sync_active_viewport_cache();
+
+    viewer.switch_mode(FractalMode::Mandelbrot);
+    assert_eq!(viewer.mode, FractalMode::Mandelbrot);
+    assert_eq!(viewer.center, Complex::new(-0.62, 0.35));
+    assert!((viewer.zoom - 4.25).abs() < 1e-12);
+
+    viewer.switch_mode(FractalMode::Julia);
+    assert_eq!(viewer.center, Complex::new(0.18, -0.22));
+    assert!((viewer.zoom - 2.75).abs() < 1e-12);
+}
+
+#[test]
+fn test_mandelbrot_hover_inset_and_click_or_enter_teleports_julia_c() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let mut viewer = FractalViewer::default();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(960.0, 720.0));
+
+    let out0 = ctx.run(raw_input_for_size(960.0, 720.0, Some(2048)), |c| {
+        viewer.show(c);
+    });
+    let img_rect = find_image_rect(&out0, screen);
+    let target_pos = egui::pos2(
+        img_rect.min.x + img_rect.width() * 0.35,
+        img_rect.min.y + img_rect.height() * 0.40,
+    );
+    let expected_c = map_canvas_pos_to_complex(target_pos, img_rect, viewer.center, viewer.zoom);
+
+    let mut hover_in = raw_input_for_size(960.0, 720.0, Some(2048));
+    hover_in.events = vec![egui::Event::PointerMoved(target_pos)];
+    let _ = ctx.run(hover_in, |c| viewer.show(c));
+    assert!(viewer.hovered_c.is_some());
+    let inset_tex = viewer
+        .julia_inset_texture
+        .as_ref()
+        .expect("hovering Mandelbrot must materialize 96x72 Julia inset texture");
+    assert_eq!(inset_tex.size(), [JULIA_INSET_SIZE.0, JULIA_INSET_SIZE.1]);
+
+    let mut click_in = raw_input_for_size(960.0, 720.0, Some(2048));
+    click_in.events = vec![
+        egui::Event::PointerMoved(target_pos),
+        egui::Event::PointerButton {
+            pos: target_pos,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        },
+        egui::Event::PointerButton {
+            pos: target_pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        },
+    ];
+    let _ = ctx.run(click_in, |c| viewer.show(c));
+    assert_eq!(viewer.mode, FractalMode::Julia);
+    assert!((viewer.julia_c.re - expected_c.re).abs() < 1e-6);
+    assert!((viewer.julia_c.im - expected_c.im).abs() < 1e-6);
+
+    viewer.linked_explorer = false;
+    let saved = viewer.save_state().expect("save_state");
+    let mut restored = FractalViewer::default();
+    restored.try_load_state(&saved).expect("roundtrip load");
+    assert!(!restored.linked_explorer);
+}
