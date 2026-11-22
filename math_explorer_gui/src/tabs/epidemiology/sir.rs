@@ -1,7 +1,8 @@
+mod metrics;
+
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
-use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoint};
+use egui_plot::PlotPoint;
 use math_explorer::epidemiology::compartmental::SIRModel;
 
 const MIN_SIR_DURATION: f64 = 10.0;
@@ -48,9 +49,9 @@ pub struct SirTool {
     pub(crate) duration: f64,
 
     // Cached plot data
-    s_points: Vec<PlotPoint>,
-    i_points: Vec<PlotPoint>,
-    r_points: Vec<PlotPoint>,
+    pub(crate) s_points: Vec<PlotPoint>,
+    pub(crate) i_points: Vec<PlotPoint>,
+    pub(crate) r_points: Vec<PlotPoint>,
 
     pub(crate) snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
@@ -301,7 +302,6 @@ impl InteractiveTool for SirTool {
         });
     }
 
-    #[allow(clippy::too_many_lines)]
     fn show_ui(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
             ui.heading("Parameters");
@@ -312,16 +312,12 @@ impl InteractiveTool for SirTool {
                     TraceSeries::new("Infected", to_pairs(&self.i_points)),
                     TraceSeries::new("Recovered", to_pairs(&self.r_points)),
                 ];
-                self.snapshot_manager.push_history_run(&self.last_param_summary, series);
+                self.snapshot_manager
+                    .push_history_run(&self.last_param_summary, series);
                 self.recalculate();
             }
 
-            let r0 = if self.gamma > 0.0 {
-                self.beta / self.gamma
-            } else {
-                f64::INFINITY
-            };
-            render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{:.2}", r0));
+            metrics::render_epidemic_metrics(ui, self);
 
             ui.add_space(8.0);
             let param_summary = self.param_summary();
@@ -346,32 +342,7 @@ impl InteractiveTool for SirTool {
             self.evaluate_sensitivity(ui);
 
             ui.separator();
-            let plot_id = ui.make_persistent_id("sir_plot");
-            ui.horizontal(|ui| {
-                ui.heading("Simulation");
-                if ui.button("Import Dataset (CSV)").clicked() {
-                    egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
-                }
-            });
-
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            let plot = Plot::new("sir_plot")
-                .id(plot_id)
-                .view_aspect(2.0)
-                .legend(egui_plot::Legend::default());
-
-            plot.show(ui, |plot_ui| {
-                plot_ui.line(
-                    Line::new("Susceptible", &self.s_points[..]).color(palette.axis_z),
-                );
-                plot_ui.line(
-                    Line::new("Infected", &self.i_points[..]).color(palette.axis_x),
-                );
-                plot_ui.line(
-                    Line::new("Recovered", &self.r_points[..]).color(palette.axis_y),
-                );
-                self.snapshot_manager.render_on_plot(plot_ui);
-            });
+            metrics::render_simulation_plot(ui, self);
         });
     }
 }
