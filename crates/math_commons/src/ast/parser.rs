@@ -258,8 +258,8 @@ impl Parser {
             if self.peek().kind == TokenKind::LParen {
                 return self.parse_parenthesized_func(func, depth);
             }
-            // Support function without parens e.g. "sin x" if followed by atom
-            if self.can_start_atom() {
+            // Support unary function without parens e.g. "sin x" if followed by atom
+            if func.arity() == 1 && self.can_start_atom() {
                 let (arg, arg_height) = self.parse_expr(7, depth + 1)?;
                 let next_height = arg_height + 1;
                 if next_height > MAX_PARSE_DEPTH {

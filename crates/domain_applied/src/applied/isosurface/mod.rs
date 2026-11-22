@@ -45,6 +45,7 @@
 mod edge_cache;
 #[allow(missing_docs)]
 pub mod gradients;
+pub mod manifold;
 #[allow(missing_docs)]
 pub mod marching_cubes;
 #[allow(missing_docs)]
@@ -53,6 +54,10 @@ pub mod tables;
 pub mod types;
 
 pub use gradients::{CentralDifferenceEstimator, GradientEstimator};
+pub use manifold::{
+    IsosurfaceMode, MAX_SYNC_INTERIOR_DIM, MIN_INTERIOR_DIM, ManifoldStats, WatertightGridConfig,
+    WatertightGridError, analyze_mesh_manifold, sample_watertight_grid,
+};
 pub use marching_cubes::extract_isosurface;
 pub use types::{Mesh, Point3D, VoxelGrid};
 

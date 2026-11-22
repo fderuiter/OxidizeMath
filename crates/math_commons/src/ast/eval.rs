@@ -58,6 +58,25 @@ impl Expr {
         })
     }
 
+    /// Evaluates a 3D spatial expression given `x`, `y`, `z` coordinates and parameter map.
+    ///
+    /// Uses zero-allocation ASCII matching for `x`, `y`, and `z` so volumetric samplers
+    /// can evaluate millions of voxels without heap churn. Returns `f64::NAN` on error.
+    #[must_use]
+    pub fn eval_3d(&self, x: f64, y: f64, z: f64, params: &HashMap<String, f64>) -> f64 {
+        self.eval_fast(0, &|name| {
+            if name.eq_ignore_ascii_case("x") {
+                Some(x)
+            } else if name.eq_ignore_ascii_case("y") {
+                Some(y)
+            } else if name.eq_ignore_ascii_case("z") {
+                Some(z)
+            } else {
+                lookup_var(params, name)
+            }
+        })
+    }
+
     /// Evaluates the expression over complex numbers `Complex64`.
     pub fn eval_complex(&self, vars: &HashMap<String, Complex64>) -> Result<Complex64, EvalError> {
         self.eval_checked(vars, 0)
@@ -90,15 +109,22 @@ impl Expr {
             }
             Self::Unary { op, expr } => Ok(eval_unary(*op, expr.eval_checked(vars, depth + 1)?)),
             Self::Function { func, args } => {
-                if args.len() != 1 {
+                let expected = func.arity();
+                if args.len() != expected {
                     return Err(EvalError::WrongArgumentCount {
                         func: *func,
-                        expected: 1,
+                        expected,
                         found: args.len(),
                     });
                 }
-                let arg = args[0].eval_checked(vars, depth + 1)?;
-                Ok(eval_func(*func, arg))
+                if expected == 2 {
+                    let lhs = args[0].eval_checked(vars, depth + 1)?;
+                    let rhs = args[1].eval_checked(vars, depth + 1)?;
+                    Ok(eval_func_binary(*func, lhs, rhs))
+                } else {
+                    let arg = args[0].eval_checked(vars, depth + 1)?;
+                    Ok(eval_func_unary(*func, arg))
+                }
             }
         }
     }
@@ -124,11 +150,18 @@ impl Expr {
             }
             Self::Unary { op, expr } => eval_unary(*op, expr.eval_fast(depth + 1, resolve_var)),
             Self::Function { func, args } => {
-                if args.is_empty() {
+                let expected = func.arity();
+                if args.len() != expected {
                     return T::NAN;
                 }
-                let arg = args[0].eval_fast(depth + 1, resolve_var);
-                eval_func(*func, arg)
+                if expected == 2 {
+                    let lhs = args[0].eval_fast(depth + 1, resolve_var);
+                    let rhs = args[1].eval_fast(depth + 1, resolve_var);
+                    eval_func_binary(*func, lhs, rhs)
+                } else {
+                    let arg = args[0].eval_fast(depth + 1, resolve_var);
+                    eval_func_unary(*func, arg)
+                }
             }
         }
     }
@@ -140,6 +173,9 @@ trait EvalScalar: ComplexFloat<Real = f64> {
     fn from_real(val: f64) -> Self;
     fn div_checked(self, rhs: Self) -> Self;
     fn pow_scalar(self, rhs: Self) -> Self;
+    fn min_scalar(self, rhs: Self) -> Self;
+    fn max_scalar(self, rhs: Self) -> Self;
+    fn atan2_scalar(self, rhs: Self) -> Self;
     fn extra_const(name: &str) -> Option<Self> {
         let _ = name;
         None
@@ -159,6 +195,26 @@ impl EvalScalar for f64 {
 
     fn pow_scalar(self, rhs: Self) -> Self {
         self.powf(rhs)
+    }
+
+    fn min_scalar(self, rhs: Self) -> Self {
+        if self.is_nan() || rhs.is_nan() {
+            f64::NAN
+        } else {
+            self.min(rhs)
+        }
+    }
+
+    fn max_scalar(self, rhs: Self) -> Self {
+        if self.is_nan() || rhs.is_nan() {
+            f64::NAN
+        } else {
+            self.max(rhs)
+        }
+    }
+
+    fn atan2_scalar(self, rhs: Self) -> Self {
+        self.atan2(rhs)
     }
 }
 
@@ -185,6 +241,30 @@ impl EvalScalar for Complex64 {
         }
     }
 
+    fn min_scalar(self, rhs: Self) -> Self {
+        if self.im == 0.0 && rhs.im == 0.0 {
+            Self::from_real(self.re.min_scalar(rhs.re))
+        } else {
+            Self::NAN
+        }
+    }
+
+    fn max_scalar(self, rhs: Self) -> Self {
+        if self.im == 0.0 && rhs.im == 0.0 {
+            Self::from_real(self.re.max_scalar(rhs.re))
+        } else {
+            Self::NAN
+        }
+    }
+
+    fn atan2_scalar(self, rhs: Self) -> Self {
+        if self.im == 0.0 && rhs.im == 0.0 {
+            Self::from_real(self.re.atan2(rhs.re))
+        } else {
+            Self::NAN
+        }
+    }
+
     fn extra_const(name: &str) -> Option<Self> {
         name.eq_ignore_ascii_case("i").then(Self::i)
     }
@@ -207,7 +287,7 @@ fn eval_binop<T: EvalScalar>(op: BinaryOp, l: T, r: T) -> T {
     }
 }
 
-fn eval_func<T: EvalScalar>(func: Func, arg: T) -> T {
+fn eval_func_unary<T: EvalScalar>(func: Func, arg: T) -> T {
     match func {
         Func::Sin => arg.sin(),
         Func::Cos => arg.cos(),
@@ -223,6 +303,16 @@ fn eval_func<T: EvalScalar>(func: Func, arg: T) -> T {
         Func::Asin => arg.asin(),
         Func::Acos => arg.acos(),
         Func::Atan => arg.atan(),
+        Func::Min | Func::Max | Func::Atan2 => T::NAN,
+    }
+}
+
+fn eval_func_binary<T: EvalScalar>(func: Func, lhs: T, rhs: T) -> T {
+    match func {
+        Func::Min => lhs.min_scalar(rhs),
+        Func::Max => lhs.max_scalar(rhs),
+        Func::Atan2 => lhs.atan2_scalar(rhs),
+        _ => T::NAN,
     }
 }
 

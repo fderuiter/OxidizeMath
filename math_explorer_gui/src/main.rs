@@ -31,6 +31,7 @@ mod tabs;
 mod telemetry;
 pub mod url_state;
 pub mod web_io;
+pub mod web_io_bytes;
 #[cfg(target_arch = "wasm32")]
 mod webgl_recovery;
 

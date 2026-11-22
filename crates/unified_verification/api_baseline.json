@@ -1901,6 +1901,38 @@
       "signature": "pub trait GradientEstimator { fn gradient_fast (& self , data : & [f32] , idx : usize , stride_y : usize , stride_z : usize) -> Point3D }"
     }
   ],
+  "crates/domain_applied/src/applied/isosurface/manifold.rs": [
+    {
+      "signature": "impl ManifoldStats { pub fn is_watertight_two_manifold (& self) -> bool }"
+    },
+    {
+      "signature": "impl WatertightGridConfig { pub fn cubic (half_extent : f64 , resolution : usize , iso_level : f64 , mode : IsosurfaceMode ,) -> Self }"
+    },
+    {
+      "signature": "pub const MAX_SYNC_INTERIOR_DIM : usize = 64"
+    },
+    {
+      "signature": "pub const MIN_INTERIOR_DIM : usize = 2"
+    },
+    {
+      "signature": "pub enum IsosurfaceMode"
+    },
+    {
+      "signature": "pub enum WatertightGridError"
+    },
+    {
+      "signature": "pub fn analyze_mesh_manifold (mesh : & Mesh) -> ManifoldStats"
+    },
+    {
+      "signature": "pub fn sample_watertight_grid < F > (config : & WatertightGridConfig , mut field : F ,) -> Result < VoxelGrid , WatertightGridError > where F : FnMut (f64 , f64 , f64) -> f64 ,"
+    },
+    {
+      "signature": "pub struct ManifoldStats"
+    },
+    {
+      "signature": "pub struct WatertightGridConfig"
+    }
+  ],
   "crates/domain_applied/src/applied/isosurface/marching_cubes.rs": [
     {
       "signature": "impl < 'a , G : GradientEstimator > MarchingCubes < 'a , G > { pub fn extract (& self , threshold : f32) -> Result < Mesh , IsosurfaceError > }"
@@ -1921,6 +1953,30 @@
     },
     {
       "signature": "pub use gradients :: GradientEstimator"
+    },
+    {
+      "signature": "pub use manifold :: IsosurfaceMode"
+    },
+    {
+      "signature": "pub use manifold :: MAX_SYNC_INTERIOR_DIM"
+    },
+    {
+      "signature": "pub use manifold :: MIN_INTERIOR_DIM"
+    },
+    {
+      "signature": "pub use manifold :: ManifoldStats"
+    },
+    {
+      "signature": "pub use manifold :: WatertightGridConfig"
+    },
+    {
+      "signature": "pub use manifold :: WatertightGridError"
+    },
+    {
+      "signature": "pub use manifold :: analyze_mesh_manifold"
+    },
+    {
+      "signature": "pub use manifold :: sample_watertight_grid"
     },
     {
       "signature": "pub use marching_cubes :: extract_isosurface"
@@ -5459,6 +5515,9 @@
       "signature": "impl Expr { pub fn eval_2d (& self , t : f64 , y : f64 , params : & HashMap < String , f64 >) -> f64 }"
     },
     {
+      "signature": "impl Expr { pub fn eval_3d (& self , x : f64 , y : f64 , z : f64 , params : & HashMap < String , f64 >) -> f64 }"
+    },
+    {
       "signature": "impl Expr { pub fn eval_complex (& self , vars : & HashMap < String , Complex64 >) -> Result < Complex64 , EvalError > }"
     },
     {
@@ -5483,6 +5542,9 @@
     },
     {
       "signature": "impl Expr { pub fn unary (op : UnaryOp , expr : Expr) -> Self }"
+    },
+    {
+      "signature": "impl Func { pub const fn arity (& self) -> usize }"
     },
     {
       "signature": "impl Func { pub fn as_str (& self) -> & 'static str }"
@@ -5816,6 +5878,9 @@
     }
   ],
   "crates/oxidize_core/src/mesh/export.rs": [
+    {
+      "signature": "pub fn export_mesh_to_binary_stl (mesh : & Mesh) -> Result < Vec < u8 > , std :: io :: Error >"
+    },
     {
       "signature": "pub fn export_mesh_to_obj_string (mesh : & Mesh) -> Result < String , std :: io :: Error >"
     }

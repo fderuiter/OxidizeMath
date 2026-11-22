@@ -16,7 +16,7 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 - **`clinical_trials`**: Biostatistical trial design, sample size determination, and survival curves.
 - **`pharmacokinetics`**: Bateman function models for drug absorption, distribution, metabolism, and elimination (ADME).
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
-- **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
+- **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes with rolling slice edge caching, dual contouring, and box-SDF padded watertight slab/solid sampling (`sample_watertight_grid`, `IsosurfaceMode`, `analyze_mesh_manifold`).
 - **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.
 - **`game_theory`**: Mean Field Games, evolutionary matrix dynamics, and mechanism design.
 - **`lorahub` & `grpo`**: Machine learning parameter merging and group relative policy optimization.
@@ -61,8 +61,40 @@ assert_eq!(losses, 0);
 assert!(statistics.win_ratio.is_infinite() || statistics.win_ratio > 1.0);
 ```
 
+### Sampling a Watertight Volumetric Isosurface
+
+Thicken a periodic Gyroid field into a closed 2-manifold and export binary STL bytes:
+
+```rust
+# use domain_applied::__doctest_facade as math_explorer;
+use math_explorer::applied::isosurface::{
+    analyze_mesh_manifold, extract_isosurface, sample_watertight_grid, IsosurfaceMode,
+    WatertightGridConfig,
+};
+use math_explorer::mesh::export_mesh_to_binary_stl;
+
+let config = WatertightGridConfig::cubic(
+    std::f64::consts::PI,
+    16,
+    0.0,
+    IsosurfaceMode::Sheet { thickness: 0.5 },
+);
+
+let grid = sample_watertight_grid(&config, |x, y, z| {
+    x.sin() * y.cos() + y.sin() * z.cos() + z.sin() * x.cos()
+})
+.expect("Valid watertight voxel grid");
+
+let mesh = extract_isosurface(&grid, 0.0).expect("Valid isosurface mesh");
+let stats = analyze_mesh_manifold(&mesh);
+assert!(stats.is_watertight_two_manifold());
+
+let stl_bytes = export_mesh_to_binary_stl(&mesh).expect("Valid binary STL");
+assert_eq!(stl_bytes.len(), 84 + 50 * stats.triangle_count);
+```
+
 ---
 
 ## 3. Ecosystem Integration
 
-Algorithms from `domain_applied` feed interactive simulation calculators in `math_explorer_gui`, enabling visual scenario exploration for clinical biostatisticians, battery engineers, and data scientists.
+Algorithms from `domain_applied` feed interactive simulation calculators in `math_explorer_gui`—including the `Volumetric Isosurfaces` (`IsosurfaceTab` / `IsosurfaceTool`) workbench for implicit TPMS lattices and watertight `.stl`/`.obj` export—enabling visual scenario exploration for clinical biostatisticians, battery engineers, CAD fabrication workflows, and data scientists.

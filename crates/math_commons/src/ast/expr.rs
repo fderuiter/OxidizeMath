@@ -80,6 +80,12 @@ pub enum Func {
     Acos,
     /// Inverse tangent ($\arctan(x)$).
     Atan,
+    /// Two-argument minimum ($\min(a, b)$).
+    Min,
+    /// Two-argument maximum ($\max(a, b)$).
+    Max,
+    /// Four-quadrant inverse tangent ($\mathrm{atan2}(y, x)$).
+    Atan2,
 }
 
 impl Func {
@@ -101,6 +107,31 @@ impl Func {
             Self::Asin => "asin",
             Self::Acos => "acos",
             Self::Atan => "atan",
+            Self::Min => "min",
+            Self::Max => "max",
+            Self::Atan2 => "atan2",
+        }
+    }
+
+    /// Returns the expected argument count for this built-in function.
+    #[must_use]
+    pub const fn arity(&self) -> usize {
+        match self {
+            Self::Min | Self::Max | Self::Atan2 => 2,
+            Self::Sin
+            | Self::Cos
+            | Self::Tan
+            | Self::Exp
+            | Self::Ln
+            | Self::Log10
+            | Self::Sqrt
+            | Self::Abs
+            | Self::Sinh
+            | Self::Cosh
+            | Self::Tanh
+            | Self::Asin
+            | Self::Acos
+            | Self::Atan => 1,
         }
     }
 
@@ -122,6 +153,9 @@ impl Func {
             "asin" | "arcsin" => Some(Self::Asin),
             "acos" | "arccos" => Some(Self::Acos),
             "atan" | "arctan" => Some(Self::Atan),
+            "min" => Some(Self::Min),
+            "max" => Some(Self::Max),
+            "atan2" | "arctan2" => Some(Self::Atan2),
             _ => None,
         }
     }

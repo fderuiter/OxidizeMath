@@ -114,7 +114,8 @@ pub trait ExplorerTab {
             | "Clinical Trials"
             | "Favoritism"
             | "Game Theory"
-            | "Traceability Portal" => "Applied Math",
+            | "Traceability Portal"
+            | "Volumetric Isosurfaces" => "Applied Math",
 
             "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
 
@@ -179,6 +180,7 @@ pub trait ExplorerTab {
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",
+            "Volumetric Isosurfaces" => "isosurface",
             _ => "simulation",
         }
     }

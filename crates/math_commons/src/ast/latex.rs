@@ -180,6 +180,9 @@ fn latex_func_name(func: Func) -> &'static str {
         Func::Asin => r"\arcsin",
         Func::Acos => r"\arccos",
         Func::Atan => r"\arctan",
+        Func::Min => r"\min",
+        Func::Max => r"\max",
+        Func::Atan2 => r"\mathrm{atan2}",
         _ => func.as_str(),
     }
 }
