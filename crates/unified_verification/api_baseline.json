@@ -3882,6 +3882,71 @@
       "signature": "pub trait GalaxyModel { fn redshift_from_log_mass (& self , m : SolarMassLog) -> Redshift }"
     }
   ],
+  "crates/domain_physics/src/physics/chaos/double_pendulum.rs": [
+    {
+      "signature": "impl DoublePendulum { pub fn bob_positions (& self) -> ([f64 ; 2] , [f64 ; 2]) }"
+    },
+    {
+      "signature": "impl DoublePendulum { pub fn default_chaotic (initial_state : DoublePendulumState) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulum { pub fn step (& mut self , dt : f64) }"
+    },
+    {
+      "signature": "impl DoublePendulum { pub fn step_with < S : Solver < ArrayState < 4 > > > (& mut self , solver : & mut S , dt : f64) }"
+    },
+    {
+      "signature": "impl DoublePendulum { pub fn total_energy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn build (self , state : DoublePendulumState) -> DoublePendulum }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn dt (mut self , val : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn g (mut self , val : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn integration_method (mut self , val : IntegrationMethod) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn l1 (mut self , val : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn l2 (mut self , val : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn m1 (mut self , val : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn m2 (mut self , val : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumState { pub fn components (& self) -> (f64 , f64 , f64 , f64) }"
+    },
+    {
+      "signature": "impl DoublePendulumState { pub fn new (theta1 : f64 , theta2 : f64 , omega1 : f64 , omega2 : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumState { pub fn phase_point_3d (& self) -> Vector3 < f64 > }"
+    },
+    {
+      "signature": "pub struct DoublePendulum"
+    },
+    {
+      "signature": "pub struct DoublePendulumBuilder"
+    },
+    {
+      "signature": "pub struct DoublePendulumConfig"
+    },
+    {
+      "signature": "pub struct DoublePendulumState"
+    }
+  ],
   "crates/domain_physics/src/physics/chaos/fractals.rs": [
     {
       "signature": "pub fn correlation_dimension (trajectory : & [Vector3 < f64 >] , epsilon : f64) -> f64"
@@ -3959,10 +4024,101 @@
   ],
   "crates/domain_physics/src/physics/chaos/metrics.rs": [
     {
+      "signature": "pub fn double_pendulum_lyapunov < S , Sol > (system : & S , solver : & mut Sol , initial_state : ArrayState < 4 > , time_step : f64 , iterations : usize , evolution_time : f64 ,) -> Result < f64 , ChaosError > where S : OdeSystem < ArrayState < 4 > > + ? Sized , Sol : Solver < ArrayState < 4 > > ,"
+    },
+    {
+      "signature": "pub fn finite_time_lyapunov (initial_separation : f64 , final_separation : f64 , delta_t : f64) -> f64"
+    },
+    {
       "signature": "pub fn logistic_lyapunov (r : f64 , x0 : f64 , n : usize) -> f64"
     },
     {
       "signature": "pub fn lorenz_lyapunov < S , Sol > (system : & S , solver : & mut Sol , initial_state : Vector3 < f64 > , time_step : f64 , iterations : usize , evolution_time : f64 ,) -> Result < f64 , ChaosError > where S : OdeSystem < Vector3 < f64 > > + ? Sized , Sol : Solver < Vector3 < f64 > > ,"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/mod.rs": [
+    {
+      "signature": "pub use double_pendulum :: DoublePendulum"
+    },
+    {
+      "signature": "pub use double_pendulum :: DoublePendulumBuilder"
+    },
+    {
+      "signature": "pub use double_pendulum :: DoublePendulumConfig"
+    },
+    {
+      "signature": "pub use double_pendulum :: DoublePendulumState"
+    },
+    {
+      "signature": "pub use lorenz :: LorenzBuilder"
+    },
+    {
+      "signature": "pub use lorenz :: LorenzConfig"
+    },
+    {
+      "signature": "pub use lorenz :: LorenzState"
+    },
+    {
+      "signature": "pub use lorenz :: LorenzSystem"
+    },
+    {
+      "signature": "pub use rossler :: RosslerBuilder"
+    },
+    {
+      "signature": "pub use rossler :: RosslerConfig"
+    },
+    {
+      "signature": "pub use rossler :: RosslerState"
+    },
+    {
+      "signature": "pub use rossler :: RosslerSystem"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/rossler.rs": [
+    {
+      "signature": "impl RosslerBuilder { pub fn a (mut self , val : f64) -> Self }"
+    },
+    {
+      "signature": "impl RosslerBuilder { pub fn b (mut self , val : f64) -> Self }"
+    },
+    {
+      "signature": "impl RosslerBuilder { pub fn build (self , state : RosslerState) -> RosslerSystem }"
+    },
+    {
+      "signature": "impl RosslerBuilder { pub fn c (mut self , val : f64) -> Self }"
+    },
+    {
+      "signature": "impl RosslerBuilder { pub fn dt (mut self , val : f64) -> Self }"
+    },
+    {
+      "signature": "impl RosslerBuilder { pub fn integration_method (mut self , val : IntegrationMethod) -> Self }"
+    },
+    {
+      "signature": "impl RosslerBuilder { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl RosslerState { pub fn new (x : f64 , y : f64 , z : f64) -> Self }"
+    },
+    {
+      "signature": "impl RosslerSystem { pub fn default_chaotic (initial_state : RosslerState) -> Self }"
+    },
+    {
+      "signature": "impl RosslerSystem { pub fn step (& mut self , dt : f64) }"
+    },
+    {
+      "signature": "impl RosslerSystem { pub fn step_with < S : Solver < Vector3 < f64 > > > (& mut self , solver : & mut S , dt : f64) }"
+    },
+    {
+      "signature": "pub struct RosslerBuilder"
+    },
+    {
+      "signature": "pub struct RosslerConfig"
+    },
+    {
+      "signature": "pub struct RosslerState"
+    },
+    {
+      "signature": "pub struct RosslerSystem"
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/analysis.rs": [

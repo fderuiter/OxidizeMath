@@ -80,6 +80,15 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
             *emit_paused_snapshot = false;
             run_worker_step_batch(runner, count, state, state_tx)
         }
+        SimCommand::StepBack(_) | SimCommand::SeekFrame(_) => {
+            *state = SimWorkerState::Ready;
+            *emit_paused_snapshot = false;
+            runner.process_command(cmd);
+            let snapshot = runner.get_snapshot();
+            state_tx
+                .send_snapshot_and_status(snapshot, WorkerStatusEvent::Ready)
+                .is_ok()
+        }
         SimCommand::Reset => {
             *state = SimWorkerState::Ready;
             *emit_paused_snapshot = false;

@@ -28,10 +28,12 @@
 //!
 //! ## Modules
 //!
+//! *   **[Double Pendulum](double_pendulum)**: Planar two-link Lagrangian system exhibiting Hamiltonian angle-flip chaos.
 //! *   **[Fractals](fractals)**: Geometric structures with fractional dimension (e.g., Cantor Set).
 //! *   **[Logistic Map](logistic)**: Discrete-time demographic model $x_{n+1} = r x_n (1 - x_n)$.
 //! *   **[Lorenz System](lorenz)**: Continuous-time atmospheric convection model (The "Butterfly" attractor).
-//! *   **[Metrics](metrics)**: Tools to quantify chaos (Lyapunov Exponents, Correlation Dimension).
+//! *   **[Metrics](metrics)**: Tools to quantify chaos (Lyapunov Exponents, FTLE, Correlation Dimension).
+//! *   **[Rössler System](rossler)**: Continuous-time spiral-stretch-and-fold strange attractor.
 //!
 //! ##  Deep Dive: The Lorenz Attractor
 //!
@@ -69,10 +71,18 @@
 //! assert!(system.state.vec.norm() < 100.0); // Simple boundedness check
 //! ```
 
+pub mod double_pendulum;
 pub mod fractals;
 pub mod logistic;
 pub mod lorenz;
 pub mod metrics;
+pub mod rossler;
+
+pub use double_pendulum::{
+    DoublePendulum, DoublePendulumBuilder, DoublePendulumConfig, DoublePendulumState,
+};
+pub use lorenz::{LorenzBuilder, LorenzConfig, LorenzState, LorenzSystem};
+pub use rossler::{RosslerBuilder, RosslerConfig, RosslerState, RosslerSystem};
 
 #[cfg(test)]
 mod tests {

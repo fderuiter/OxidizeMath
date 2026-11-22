@@ -109,6 +109,7 @@ impl MriTool {
                     self.reset();
                     ctx.request_repaint();
                 }
+                PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
             }
         }
 

@@ -70,7 +70,10 @@ impl ReplicatorDynamicsTool {
                         .get(i)
                         .map_or("?", std::string::String::as_str),
                 );
-                ui.add(egui::Slider::new(&mut self.initial_population[i], 0.0..=1.0));
+                ui.add(egui::Slider::new(
+                    &mut self.initial_population[i],
+                    0.0..=1.0,
+                ));
             });
         }
 
@@ -138,6 +141,7 @@ impl ReplicatorDynamicsTool {
                             PlaybackAction::Pause => self.is_playing = false,
                             PlaybackAction::Step => self.step_once(),
                             PlaybackAction::Reset => self.reset_playback(),
+                            PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
                         }
                     }
 

@@ -99,6 +99,7 @@ impl NeuralNetworkVizTool {
                     PlaybackAction::Pause => self.is_running = false,
                     PlaybackAction::Step => self.step_once(),
                     PlaybackAction::Reset => self.reset(),
+                    PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
                 }
             }
 
@@ -138,8 +139,7 @@ impl NeuralNetworkVizTool {
                     } else {
                         palette.error
                     };
-                    let color =
-                        Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
+                    let color = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
                     painter.line_segment([p2, p1], (1.0 + weight.abs() as f32, color));
                 }
             }
@@ -150,10 +150,8 @@ impl NeuralNetworkVizTool {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Network Visualization");
 
-            let (response, painter) = ui.allocate_painter(
-                ui.available_size(),
-                egui::Sense::focusable_noninteractive(),
-            );
+            let (response, painter) =
+                ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
             let label = "Neural Network Visualization: Showing interconnected neurons";
             let _ = response.clone().accessible_hover_text(label);
             let summary = format!("{} interconnected neurons", self.neurons.len());

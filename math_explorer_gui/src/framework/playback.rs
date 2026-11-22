@@ -12,25 +12,32 @@ pub enum PlaybackAction {
     Play,
     /// Pause continuous simulation playback.
     Pause,
-    /// Advance the paused simulation by a single deterministic step.
+    /// Rewind the simulation by one recorded timeline frame (`Comma`).
+    StepBack,
+    /// Advance the paused simulation by a single deterministic step (`Period`).
     Step,
+    /// Scrub directly to a zero-based timeline frame index.
+    Scrub(usize),
     /// Reset simulation state to initial baseline conditions.
     Reset,
 }
 
-/// Reusable horizontal transport bar providing Play/Pause, Step, and Reset controls
-/// with `WidgetInfo` roles, `AccessibleHoverText` tooltips, polite ARIA announcements,
-/// keyboard shortcuts (`Space` and `Period`), and 44x44 touch targets.
+/// Reusable horizontal transport bar providing Play/Pause, opt-in StepBack (`Comma`),
+/// Step (`Period`), Reset, and opt-in timeline scrubber controls with `WidgetInfo` roles,
+/// `AccessibleHoverText` tooltips, polite ARIA announcements, and 44x44 touch targets.
 pub struct PlaybackTransport<'a> {
     id_salt: &'a str,
     tool_name: &'a str,
     is_playing: bool,
     is_in_thread: bool,
     can_toggle: bool,
+    step_back_enabled: Option<bool>,
     can_step: bool,
     can_reset: bool,
+    scrubber_range: Option<(usize, usize)>,
     play_label: &'a str,
     pause_label: &'a str,
+    step_back_label: &'a str,
     step_label: &'a str,
     reset_label: &'a str,
 }
@@ -52,10 +59,13 @@ impl<'a> PlaybackTransport<'a> {
             is_playing,
             is_in_thread: false,
             can_toggle,
+            step_back_enabled: None,
             can_step,
             can_reset,
+            scrubber_range: None,
             play_label: "▶ Play",
             pause_label: "⏸ Pause",
+            step_back_label: "⏮ Back",
             step_label: "⏭ Step",
             reset_label: "↺ Reset",
         }
@@ -70,10 +80,13 @@ impl<'a> PlaybackTransport<'a> {
             is_playing,
             is_in_thread: true,
             can_toggle: true,
+            step_back_enabled: None,
             can_step: !is_playing,
             can_reset: true,
+            scrubber_range: None,
             play_label: "▶ Play",
             pause_label: "⏸ Pause",
+            step_back_label: "⏮ Back",
             step_label: "⏭ Step",
             reset_label: "↺ Reset",
         }
@@ -83,6 +96,13 @@ impl<'a> PlaybackTransport<'a> {
     #[must_use]
     pub fn play_label(mut self, label: &'a str) -> Self {
         self.play_label = label;
+        self
+    }
+
+    /// Customizes the visible StepBack button label.
+    #[must_use]
+    pub fn step_back_label(mut self, label: &'a str) -> Self {
+        self.step_back_label = label;
         self
     }
 
@@ -97,6 +117,20 @@ impl<'a> PlaybackTransport<'a> {
     #[must_use]
     pub fn reset_label(mut self, label: &'a str) -> Self {
         self.reset_label = label;
+        self
+    }
+
+    /// Opts into displaying the StepBack button (`Comma` shortcut) with the given enabled state.
+    #[must_use]
+    pub fn can_step_back(mut self, enabled: bool) -> Self {
+        self.step_back_enabled = Some(enabled);
+        self
+    }
+
+    /// Opts into displaying a synchronized timeline frame scrubber over `0..len`.
+    #[must_use]
+    pub fn timeline_scrubber(mut self, current: usize, len: usize) -> Self {
+        self.scrubber_range = Some((current, len));
         self
     }
 
@@ -115,43 +149,18 @@ impl<'a> PlaybackTransport<'a> {
         let mut action = None;
 
         ui.horizontal_wrapped(|ui| {
-            if self.render_toggle_button(ui, base_id, min_size) {
-                action = Some(if self.is_playing {
-                    PlaybackAction::Pause
-                } else {
-                    PlaybackAction::Play
-                });
-            }
-
-            let step_a11y = format!(
-                "Step {} simulation forward one step (Period)",
-                self.tool_name
-            );
-            if render_action_button(
-                ui,
-                base_id.with("step_button_info"),
-                self.step_label,
-                &step_a11y,
-                ui_enabled && self.can_step,
-                min_size,
-            ) && action.is_none()
-            {
-                action = Some(PlaybackAction::Step);
-            }
-
-            let reset_a11y = format!("Reset {} simulation", self.tool_name);
-            if render_action_button(
-                ui,
-                base_id.with("reset_button_info"),
-                self.reset_label,
-                &reset_a11y,
-                ui_enabled && self.can_reset,
-                min_size,
-            ) && action.is_none()
-            {
-                action = Some(PlaybackAction::Reset);
-            }
+            action = self.render_button_row(ui, base_id, ui_enabled, min_size);
         });
+
+        if let Some((current, len)) = self.scrubber_range {
+            if let Some(scrubbed) =
+                self.render_scrubber(ui, base_id, ui_enabled, min_size.y, current, len)
+            {
+                if action.is_none() {
+                    action = Some(scrubbed);
+                }
+            }
+        }
 
         if ui_enabled {
             self.register_shortcut_metadata(ui.ctx());
@@ -168,6 +177,111 @@ impl<'a> PlaybackTransport<'a> {
         action
     }
 
+    fn render_button_row(
+        &self,
+        ui: &mut egui::Ui,
+        base_id: egui::Id,
+        ui_enabled: bool,
+        min_size: egui::Vec2,
+    ) -> Option<PlaybackAction> {
+        let mut action = None;
+        if self.render_toggle_button(ui, base_id, min_size) {
+            action = Some(if self.is_playing {
+                PlaybackAction::Pause
+            } else {
+                PlaybackAction::Play
+            });
+        }
+
+        if let Some(can_back) = self.step_back_enabled {
+            let back_a11y = format!(
+                "Step {} simulation backward one frame (Comma)",
+                self.tool_name
+            );
+            if render_action_button(
+                ui,
+                base_id.with("step_back_button_info"),
+                self.step_back_label,
+                &back_a11y,
+                ui_enabled && can_back,
+                min_size,
+            ) && action.is_none()
+            {
+                action = Some(PlaybackAction::StepBack);
+            }
+        }
+
+        let step_a11y = format!(
+            "Step {} simulation forward one step (Period)",
+            self.tool_name
+        );
+        if render_action_button(
+            ui,
+            base_id.with("step_button_info"),
+            self.step_label,
+            &step_a11y,
+            ui_enabled && self.can_step,
+            min_size,
+        ) && action.is_none()
+        {
+            action = Some(PlaybackAction::Step);
+        }
+
+        let reset_a11y = format!("Reset {} simulation", self.tool_name);
+        if render_action_button(
+            ui,
+            base_id.with("reset_button_info"),
+            self.reset_label,
+            &reset_a11y,
+            ui_enabled && self.can_reset,
+            min_size,
+        ) && action.is_none()
+        {
+            action = Some(PlaybackAction::Reset);
+        }
+        action
+    }
+
+    fn render_scrubber(
+        &self,
+        ui: &mut egui::Ui,
+        base_id: egui::Id,
+        ui_enabled: bool,
+        min_height: f32,
+        current: usize,
+        len: usize,
+    ) -> Option<PlaybackAction> {
+        let max_idx = len.saturating_sub(1);
+        let mut frame_idx = current.min(max_idx);
+        let enabled = ui_enabled && len > 1;
+        let a11y_label = format!(
+            "Scrub {} timeline frame ({} of {})",
+            self.tool_name, frame_idx, max_idx
+        );
+        let info = egui::WidgetInfo::slider(enabled, frame_idx as f64, &a11y_label);
+        let resp = ui.scope(|ui| {
+            if min_height > 0.0 {
+                ui.spacing_mut().interact_size.y = ui.spacing().interact_size.y.max(min_height);
+            }
+            let slider = egui::Slider::new(&mut frame_idx, 0..=max_idx).text("Frame");
+            ui.add_enabled(enabled, slider)
+        });
+        let slider_resp = resp.inner;
+        slider_resp.widget_info({
+            let info = info.clone();
+            move || info.clone()
+        });
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(base_id.with("timeline_scrubber_info"), info);
+        });
+        let changed = slider_resp.accessible_hover_text(&a11y_label).changed();
+        if changed && frame_idx != current {
+            Some(PlaybackAction::Scrub(frame_idx))
+        } else {
+            None
+        }
+    }
+
     fn register_shortcut_metadata(&self, ctx: &egui::Context) {
         use egui_plot::commands::{CommandRegistryData, CommandTrigger};
         if self.can_toggle {
@@ -176,6 +290,16 @@ impl<'a> PlaybackTransport<'a> {
                 "Play / Pause",
                 "Toggle simulation playback or pause",
                 CommandTrigger::Key(egui::Key::Space),
+                true,
+                "Simulation Playback",
+            );
+        }
+        if self.step_back_enabled == Some(true) {
+            CommandRegistryData::register(
+                ctx,
+                "Step Backward",
+                "Rewind simulation by one recorded timeline frame",
+                CommandTrigger::Key(egui::Key::Comma),
                 true,
                 "Simulation Playback",
             );
@@ -240,6 +364,11 @@ impl<'a> PlaybackTransport<'a> {
                 PlaybackAction::Play
             });
         }
+        if self.step_back_enabled == Some(true)
+            && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Comma))
+        {
+            return Some(PlaybackAction::StepBack);
+        }
         if self.can_step
             && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Period))
         {
@@ -258,17 +387,33 @@ impl<'a> PlaybackTransport<'a> {
         let announcement = match action {
             PlaybackAction::Play => format!("Playing {} simulation", self.tool_name),
             PlaybackAction::Pause => format!("Paused {} simulation", self.tool_name),
+            PlaybackAction::StepBack if self.is_in_thread => {
+                format!(
+                    "Stepped backward {} simulation — frame restored",
+                    self.tool_name
+                )
+            }
+            PlaybackAction::StepBack => format!("Stepping backward {} simulation", self.tool_name),
             PlaybackAction::Step if self.is_in_thread => {
                 format!("Stepped {} simulation — step completed", self.tool_name)
             }
             PlaybackAction::Step => format!("Stepping {} simulation", self.tool_name),
+            PlaybackAction::Scrub(frame) => {
+                format!("Scrubbed {} timeline to frame {}", self.tool_name, frame)
+            }
             PlaybackAction::Reset => format!("Reset {} simulation", self.tool_name),
         };
         announce_status(&announcement);
         ctx.data_mut(|d| {
             d.insert_temp(egui::Id::new("aria_live_message"), announcement);
             d.insert_temp(egui::Id::new("aria_live_dispatched"), true);
-            if matches!(action, PlaybackAction::Play | PlaybackAction::Pause) {
+            if matches!(
+                action,
+                PlaybackAction::Play
+                    | PlaybackAction::Pause
+                    | PlaybackAction::StepBack
+                    | PlaybackAction::Scrub(_)
+            ) {
                 let next_playing = matches!(action, PlaybackAction::Play);
                 let next_label = if next_playing {
                     format!("Pause {} simulation (Space)", self.tool_name)

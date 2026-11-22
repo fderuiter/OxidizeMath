@@ -36,6 +36,7 @@ pub mod state_guard;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod state_guard_tests;
+pub mod timeline_buffer;
 pub mod trace_overlay;
 mod ui;
 mod url_share;
@@ -57,6 +58,7 @@ pub use side_panel::{
 };
 pub use state_bounds::*;
 pub use state_guard::*;
+pub use timeline_buffer::*;
 pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;

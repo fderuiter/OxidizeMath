@@ -15,6 +15,13 @@ fn test_starter_cards_presence_and_metadata() {
 
     let chaos_cards = get_starter_cards_for_domain("chaos", &[]);
     assert!(chaos_cards.iter().any(|c| c.title == "3D Attractor"));
+    assert!(chaos_cards
+        .iter()
+        .any(|c| c.title == "Butterfly Effect Twins"));
+    assert!(chaos_cards.iter().any(|c| c.title == "Rössler Spiral Fold"));
+    assert!(chaos_cards
+        .iter()
+        .any(|c| c.title == "Chaotic Double Pendulum"));
 
     let bio_cards = get_starter_cards_for_domain("biology", &[]);
     assert!(bio_cards.iter().any(|c| c.title == "Turing Spots"));
@@ -58,7 +65,7 @@ fn test_all_registered_tools_have_starter_presets() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 59, "Expected 59 registered starter presets");
+    assert_eq!(presets.len(), 62, "Expected 62 registered starter presets");
 
     for tool in &tools {
         let matching: Vec<_> = presets
@@ -218,8 +225,8 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
         .collect();
     assert_eq!(
         presets.len(),
-        59,
-        "Expected 59 StarterPresetMetadata entries"
+        62,
+        "Expected 62 StarterPresetMetadata entries"
     );
 
     for preset in presets {

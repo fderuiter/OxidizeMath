@@ -9,6 +9,10 @@ pub enum SimCommand {
     #[allow(missing_docs)]
     Step(usize),
     #[allow(missing_docs)]
+    StepBack(usize),
+    #[allow(missing_docs)]
+    SeekFrame(usize),
+    #[allow(missing_docs)]
     Reset,
     #[allow(missing_docs)]
     SetSpeed(usize),
@@ -38,6 +42,8 @@ impl SimCommand {
             Self::Start => "Start",
             Self::Pause => "Pause",
             Self::Step(_) => "Step",
+            Self::StepBack(_) => "StepBack",
+            Self::SeekFrame(_) => "SeekFrame",
             Self::Reset => "Reset",
             Self::SetSpeed(_) => "SetSpeed",
             Self::TrainEpisodes(_) => "TrainEpisodes",
@@ -115,6 +121,8 @@ impl SimWorkerState {
                 SimCommand::Start
                     | SimCommand::Pause
                     | SimCommand::Step(_)
+                    | SimCommand::StepBack(_)
+                    | SimCommand::SeekFrame(_)
                     | SimCommand::TrainEpisodes(_)
             ),
             Self::Faulted => matches!(cmd, SimCommand::Reset),

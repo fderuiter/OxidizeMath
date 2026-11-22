@@ -3,7 +3,7 @@
 use super::logistic::LogisticMap;
 use crate::error::ChaosError;
 use nalgebra::Vector3;
-use pure_math::pure_math::analysis::ode::{OdeSystem, Solver, SolverExt};
+use pure_math::pure_math::analysis::ode::{ArrayState, OdeSystem, Solver, SolverExt};
 
 /// Calculates the Lyapunov Exponent for the Logistic Map.
 ///
@@ -104,4 +104,100 @@ where
     }
 
     Ok(sum_log_divergence / total_time)
+}
+
+#[verified_engine::verified]
+fn array4_distance_and_rescale(
+    primary: &ArrayState<4>,
+    shadow: &ArrayState<4>,
+    d0: f64,
+) -> Option<(f64, ArrayState<4>)> {
+    let mut norm_sq = 0.0;
+    let mut diff = [0.0; 4];
+    for ((dst, &s), &p) in diff.iter_mut().zip(&shadow.0).zip(&primary.0) {
+        let d = s - p;
+        *dst = d;
+        norm_sq += d * d;
+    }
+    let norm = norm_sq.sqrt();
+    if norm == 0.0 || !norm.is_finite() {
+        return None;
+    }
+    let scale = d0 / norm;
+    let mut rescaled = [0.0; 4];
+    for ((dst, &p), &d) in rescaled.iter_mut().zip(&primary.0).zip(&diff) {
+        *dst = p + d * scale;
+    }
+    Some((norm, ArrayState(rescaled)))
+}
+
+/// Estimates the largest Lyapunov exponent $\lambda_1$ for a 4D `ArrayState<4>` system
+/// (such as [`super::double_pendulum::DoublePendulum`]) via Wolf's renormalization method.
+#[verified_engine::verified]
+pub fn double_pendulum_lyapunov<S, Sol>(
+    system: &S,
+    solver: &mut Sol,
+    initial_state: ArrayState<4>,
+    time_step: f64,
+    iterations: usize,
+    evolution_time: f64,
+) -> Result<f64, ChaosError>
+where
+    S: OdeSystem<ArrayState<4>> + ?Sized,
+    Sol: Solver<ArrayState<4>>,
+{
+    let d0 = 1e-8;
+    let steps_per_iter = (evolution_time / time_step).round() as usize;
+    if steps_per_iter == 0 || iterations == 0 {
+        return Err(ChaosError::InvalidParameter(
+            "evolution_time and iterations must be positive".to_string(),
+        ));
+    }
+
+    let mut current_state = initial_state;
+    let mut shadow_state = ArrayState([
+        initial_state.0[0] + d0,
+        initial_state.0[1],
+        initial_state.0[2],
+        initial_state.0[3],
+    ]);
+    let mut sum_log_divergence = 0.0;
+    let mut total_time = 0.0;
+
+    for _ in 0..iterations {
+        for _ in 0..steps_per_iter {
+            solver.step(system, 0.0, &mut current_state, time_step);
+            solver.step(system, 0.0, &mut shadow_state, time_step);
+        }
+        let Some((d_t, rescaled)) = array4_distance_and_rescale(&current_state, &shadow_state, d0)
+        else {
+            return Err(ChaosError::Math(
+                math_commons::error::MathError::NumericalError {
+                    reason: "4D trajectories converged or diverged to non-finite separation."
+                        .to_string(),
+                },
+            ));
+        };
+        sum_log_divergence += (d_t / d0).ln();
+        total_time += evolution_time;
+        shadow_state = rescaled;
+    }
+
+    Ok(sum_log_divergence / total_time)
+}
+
+/// Computes the windowed finite-time Lyapunov exponent
+/// $\lambda_{\text{FTLE}} = \frac{1}{\Delta t} \ln\left(\frac{\|\delta \mathbf{x}(t_1)\|}{\|\delta \mathbf{x}(t_0)\|}\right)$.
+#[verified_engine::verified]
+pub fn finite_time_lyapunov(initial_separation: f64, final_separation: f64, delta_t: f64) -> f64 {
+    if initial_separation <= 0.0
+        || final_separation <= 0.0
+        || delta_t <= 0.0
+        || !initial_separation.is_finite()
+        || !final_separation.is_finite()
+        || !delta_t.is_finite()
+    {
+        return 0.0;
+    }
+    (final_separation / initial_separation).ln() / delta_t
 }

@@ -10,7 +10,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 
 ### Module Structure
 
-- **`chaos`**: Deterministic chaotic systems, including the Lorenz attractor, double pendulum, and Lyapunov exponent analyzers.
+- **`chaos`**: Deterministic chaotic systems, including the Lorenz attractor, Rössler attractor, double pendulum, and Lyapunov exponent analyzers.
 - **`quantum`**: Quantum state evolution, Clebsch-Gordan coupling coefficients, and Schrödinger wave equation solvers.
 - **`astrophysics`**: N-body gravitational simulations, Keplerian orbital mechanics, and stellar structure models.
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.

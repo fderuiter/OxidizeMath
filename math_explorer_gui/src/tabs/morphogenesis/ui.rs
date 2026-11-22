@@ -145,6 +145,7 @@ impl MorphogenesisTool {
                         self.reset();
                         ctx.request_repaint();
                     }
+                    PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
                 }
             }
 
@@ -217,15 +218,15 @@ impl MorphogenesisTool {
         let num_pixels = width * height;
         let mut pixels = Vec::with_capacity(num_pixels);
 
-        let (min, max) = data
-            .iter()
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), &val| {
-                if val.is_finite() {
-                    (min.min(val), max.max(val))
-                } else {
-                    (min, max)
-                }
-            });
+        let (min, max) =
+            data.iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), &val| {
+                    if val.is_finite() {
+                        (min.min(val), max.max(val))
+                    } else {
+                        (min, max)
+                    }
+                });
 
         let (min, max) = if min.is_finite() && max.is_finite() && max >= min {
             (min, max)

@@ -138,6 +138,7 @@ impl SpikeAnalysisTool {
                     PlaybackAction::Pause => self.is_running = false,
                     PlaybackAction::Step => self.step_once(),
                     PlaybackAction::Reset => self.reset(),
+                    PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
                 }
             }
 
@@ -207,8 +208,9 @@ impl SpikeAnalysisTool {
                     .show(ui, |plot_ui| {
                         if !self.isis.is_empty() {
                             let bars = self.compute_histogram(20);
-                            plot_ui
-                                .bar_chart(BarChart::new("ISI Distribution", bars).color(bar_color));
+                            plot_ui.bar_chart(
+                                BarChart::new("ISI Distribution", bars).color(bar_color),
+                            );
                         }
                     });
             });

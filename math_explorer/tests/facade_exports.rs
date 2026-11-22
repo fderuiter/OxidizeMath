@@ -256,7 +256,20 @@ fn physics_facade_exports_all_eight_physics_errors() {
         ChaosError, DoseFluenceError, FluidError, HighEnergyError, RadarError, SolidStateError,
         StandardModelError, StatMechError,
     };
+    use math_explorer::physics::chaos::{
+        DoublePendulumBuilder, DoublePendulumState, RosslerBuilder, RosslerState,
+        double_pendulum::DoublePendulum, rossler::RosslerSystem,
+    };
     use math_explorer::physics::error as inner_error;
+
+    let mut rossler: RosslerSystem = RosslerBuilder::new().build(RosslerState::new(0.1, 0.0, 0.0));
+    rossler.step(0.01);
+    assert!(rossler.state.vec.x.is_finite());
+
+    let mut pendulum: DoublePendulum =
+        DoublePendulumBuilder::new().build(DoublePendulumState::new(2.2, 2.2, 0.0, 0.0));
+    pendulum.step(0.005);
+    assert!(pendulum.total_energy().is_finite());
 
     let severities = [
         ChaosError::InvalidParameter("dt".to_string()).severity(),

@@ -197,6 +197,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 PlaybackAction::Reset => {
                     self.reset_simulation(Some(ctx));
                 }
+                PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
             }
         }
     }

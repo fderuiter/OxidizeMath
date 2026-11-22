@@ -216,12 +216,18 @@ impl SimulationController {
         }
 
         let was_running = self.state.is_running();
-        let is_pause = matches!(cmd, SimCommand::Pause);
+        let is_pause = matches!(
+            cmd,
+            SimCommand::Pause | SimCommand::StepBack(_) | SimCommand::SeekFrame(_)
+        );
         let is_reset = matches!(cmd, SimCommand::Reset);
         let cmd_target_state = match cmd {
             SimCommand::Start | SimCommand::TrainEpisodes(_) => Some(SimWorkerState::Running),
             SimCommand::Step(_) => Some(SimWorkerState::Stepping),
-            SimCommand::Pause | SimCommand::Reset => Some(SimWorkerState::Ready),
+            SimCommand::Pause
+            | SimCommand::Reset
+            | SimCommand::StepBack(_)
+            | SimCommand::SeekFrame(_) => Some(SimWorkerState::Ready),
             _ => None,
         };
 

@@ -2,11 +2,8 @@
 
 use super::*;
 use crate::async_sim::{SimCommand, SimulationRunner};
-use crate::tabs::chaos::attractors::{
-    AttractorPlotter, AttractorRunner, SolverExecutionState, MAX_SIMULATION_SPEED,
-};
+use crate::tabs::chaos::attractors::{AttractorPlotter, AttractorRunner, MAX_SIMULATION_SPEED};
 use crate::tabs::number_theory::factorization::{FactorizationTool, MAX_SYNC_FACTORIZATION_INPUT};
-use std::collections::VecDeque;
 use std::sync::Arc;
 
 fn make_preset(domain: &str, title: &str, config: serde_json::Value) -> String {
@@ -250,15 +247,7 @@ fn test_acceptance_proof_cases_across_all_four_tools() {
 #[test]
 fn test_attractor_runner_set_speed_and_factorization_boundary_caps() {
     let plotter = AttractorPlotter::default();
-    let mut runner = AttractorRunner {
-        system: math_explorer::physics::chaos::lorenz::LorenzBuilder::new().build(
-            math_explorer::physics::chaos::lorenz::LorenzState::new(1.0, 1.0, 1.0),
-        ),
-        params: Arc::clone(&plotter.params),
-        history: VecDeque::with_capacity(100),
-        step_count: 0,
-        execution_state: SolverExecutionState::Ready,
-    };
+    let mut runner = AttractorRunner::from_params(Arc::clone(&plotter.params));
     runner.process_command(SimCommand::SetSpeed(0));
     assert_eq!(runner.params.read().unwrap().simulation_speed, 1);
     runner.process_command(SimCommand::SetSpeed(999_999));

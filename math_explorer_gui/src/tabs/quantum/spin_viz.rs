@@ -1,5 +1,7 @@
 use crate::accessibility::AccessibleTheoryHover;
-use crate::framework::{Camera3D, InteractiveTool, PlaybackAction, PlaybackTransport, Plot3DViewport};
+use crate::framework::{
+    Camera3D, InteractiveTool, PlaybackAction, PlaybackTransport, Plot3DViewport,
+};
 use eframe::egui;
 use egui_plot::{Line, PlotPoint, Points};
 use math_explorer::physics::quantum::{
@@ -119,6 +121,7 @@ impl SpinVisualizer {
                     PlaybackAction::Pause => self.paused = true,
                     PlaybackAction::Step => self.step_once(),
                     PlaybackAction::Reset => self.reset(),
+                    PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
                 }
             }
 
@@ -223,8 +226,8 @@ impl InteractiveTool for SpinVisualizer {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded: SpinVisualizerState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid SpinVisualizer state: {e}"))?;
+        let loaded: SpinVisualizerState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SpinVisualizer state: {e}"))?;
         if !loaded
             .b_field
             .iter()

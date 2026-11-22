@@ -113,7 +113,8 @@ impl IsingModelTool {
 
         if ui
             .add(
-                egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"),
+                egui::Slider::new(&mut self.j_coupling, -2.0..=2.0)
+                    .text("Coupling Constant (J) - J"),
             )
             .changed()
         {
@@ -199,6 +200,7 @@ impl IsingModelTool {
                             self.reset();
                             ctx.request_repaint();
                         }
+                        PlaybackAction::StepBack | PlaybackAction::Scrub(_) => {}
                     }
                 }
 

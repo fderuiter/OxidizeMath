@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::async_sim::SimulationRunner;
-use crate::framework::Camera3D;
+use crate::framework::{Camera3D, InteractiveTool};
 use eframe::egui;
 
 #[test]
@@ -20,14 +20,20 @@ fn test_attractor_divergence_detection() {
 
     assert!(plotter.diverged() && plotter.is_paused());
     match plotter.execution_state {
-        SolverExecutionState::Diverged { invalid_vec, diverged_at_step } => {
+        SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step,
+        } => {
             assert!(invalid_vec.x.is_nan() && diverged_at_step == 0);
         }
         _ => panic!("Expected Diverged execution state"),
     }
 
     // Verify history contains no non-finite values
-    assert!(plotter.history.iter().all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+    assert!(plotter
+        .history
+        .iter()
+        .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
 
     // Reset clears diverged flag cleanly and restores Ready
     plotter.reset();
@@ -121,7 +127,10 @@ fn test_attractor_step_counting_and_divergence_metadata() {
 
     assert!(plotter.diverged());
     match plotter.execution_state {
-        SolverExecutionState::Diverged { invalid_vec, diverged_at_step } => {
+        SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step,
+        } => {
             assert!(invalid_vec.y.is_infinite());
             assert_eq!(diverged_at_step, plotter.simulation_speed);
         }
@@ -310,13 +319,7 @@ fn test_attractor_poisoned_lock_recovery() {
     assert!(plotter.params.is_poisoned());
 
     // Runner reset, speed update, and step survive poisoned lock
-    let mut runner = AttractorRunner {
-        system: LorenzBuilder::new().build(LorenzState::new(1.0, 1.0, 1.0)),
-        params: Arc::clone(&plotter.params),
-        history: VecDeque::with_capacity(100),
-        step_count: 0,
-        execution_state: SolverExecutionState::Ready,
-    };
+    let mut runner = AttractorRunner::from_params(Arc::clone(&plotter.params));
     runner.process_command(SimCommand::Reset);
     assert_eq!(runner.system.sigma, 14.0);
 
@@ -418,8 +421,20 @@ fn test_attractor_fixed_callout_drag_leaves_camera_unchanged() {
         egui::Pos2::ZERO,
         egui::vec2(1000.0, 700.0),
     ));
-    let _ = ctx.run(egui::RawInput { screen_rect: screen, ..Default::default() }, |ctx| plotter.show(ctx));
-    let out = ctx.run(egui::RawInput { screen_rect: screen, ..Default::default() }, |ctx| plotter.show(ctx));
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: screen,
+            ..Default::default()
+        },
+        |ctx| plotter.show(ctx),
+    );
+    let out = ctx.run(
+        egui::RawInput {
+            screen_rect: screen,
+            ..Default::default()
+        },
+        |ctx| plotter.show(ctx),
+    );
 
     let start = find_callout_center(&out.shapes, "Fixed Point C+");
     let end = start + egui::vec2(30.0, -20.0);
@@ -430,7 +445,12 @@ fn test_attractor_fixed_callout_drag_leaves_camera_unchanged() {
         screen_rect: screen,
         events: vec![
             egui::Event::PointerMoved(start),
-            egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE },
+            egui::Event::PointerButton {
+                pos: start,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
         ],
         ..Default::default()
     };
@@ -443,7 +463,12 @@ fn test_attractor_fixed_callout_drag_leaves_camera_unchanged() {
     let _ = ctx.run(drag, |ctx| plotter.show(ctx));
     let release = egui::RawInput {
         screen_rect: screen,
-        events: vec![egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE }],
+        events: vec![egui::Event::PointerButton {
+            pos: end,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
         ..Default::default()
     };
     let _ = ctx.run(release, |ctx| plotter.show(ctx));

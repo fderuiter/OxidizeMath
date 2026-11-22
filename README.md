@@ -56,7 +56,7 @@ cargo run --release --package math_explorer_gui
 *   **Physics / MRI:** Bloch Simulator with real-time control over $T_1$, $T_2$, $\vec{B}$-field, and magnetization vectors.
 *   **Physics / Fluid Dynamics:** Potential Flow visualization, Turbulence/Reynolds Number analysis, and interactive Lattice Boltzmann (LBM) flow simulation.
 *   **Physics / Medical:** Dose Calculation (2D Heatmap of radiation dose distribution).
-*   **Physics / Chaos:** Attractor Plotter (Lorenz, Rossler), Bifurcation Diagrams, and Fractal Generator.
+*   **Physics / Chaos:** Attractor Plotter (Lorenz, Rossler, Double Pendulum), Bifurcation Diagrams, and Fractal Generator.
 *   **Physics / Quantum:** Schrödinger Solver, Wavefunction Evolution, and Clebsch-Gordan Calculator.
 *   **Physics / Solid State:** Crystal Lattice Viewer (FCC, BCC, SC).
 
