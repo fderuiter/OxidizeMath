@@ -25,6 +25,7 @@ dashu = { workspace = true, features = ["num-traits_v02"] }
 
 [dev-dependencies]
 approx = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

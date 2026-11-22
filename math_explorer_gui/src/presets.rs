@@ -145,6 +145,79 @@ impl ReplicatorPresetConfig {
     }
 }
 
+/// Pairing system used to schedule tournament rounds in `Glicko2TournamentTool`.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Glicko2PairingMode {
+    /// Standings-ordered Swiss pairings with deterministic odd-roster byes.
+    Swiss,
+    /// Circle-method single round-robin schedule.
+    RoundRobin,
+}
+
+/// Competitor entry in a serialized Glicko-2 tournament preset.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Glicko2PlayerPreset {
+    /// Competitor display name.
+    pub name: String,
+    /// Initial rating on the Glicko scale.
+    pub rating: f64,
+    /// Initial rating deviation (`> 0`).
+    pub rd: f64,
+    /// Initial rating volatility (`> 0`).
+    pub volatility: f64,
+    /// Whether this competitor sits out newly simulated periods.
+    #[serde(default)]
+    pub inactive: bool,
+}
+
+/// Match record within a serialized Glicko-2 rating period.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Glicko2MatchPreset {
+    /// First competitor index in `players`.
+    pub player_a: usize,
+    /// Second competitor index in `players`.
+    pub player_b: usize,
+    /// Outcome score for `player_a` in `[0.0, 1.0]`.
+    pub score_a: f64,
+}
+
+/// Completed rating period in a serialized Glicko-2 tournament preset.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Glicko2PeriodPreset {
+    /// Matches evaluated simultaneously against the pre-period roster.
+    pub matches: Vec<Glicko2MatchPreset>,
+    /// Optional competitor index awarded a bye during this period.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bye_player: Option<usize>,
+}
+
+/// Configuration struct for the Glicko-2 Tournament Simulator tool.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Glicko2TournamentPresetConfig {
+    /// System constant tau constraining volatility updates (`[0.3, 1.2]`).
+    pub tau: f64,
+    /// Draw rate between evenly matched competitors (`[0.0, 1.0]`).
+    pub draw_probability: f64,
+    /// Active tournament pairing mode (`Swiss` or `RoundRobin`).
+    pub pairing_mode: Glicko2PairingMode,
+    /// Target number of rounds when simulating a full tournament (`1..=32`).
+    pub target_rounds: usize,
+    /// Deterministic seed for `OxidizeRng`.
+    pub rng_seed: u64,
+    /// Initial competitor roster.
+    pub players: Vec<Glicko2PlayerPreset>,
+    /// Chronological sequence of completed rating periods.
+    pub periods: Vec<Glicko2PeriodPreset>,
+}
+
+#[path = "presets/glicko2.rs"]
+mod glicko2_preset_validation;
+pub use glicko2_preset_validation::{MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS};
+
 /// Packs `config` into a `"1.0"` [`PresetWrapper`] metadata envelope and serializes it as pretty JSON.
 pub fn serialize_preset_envelope<T: Serialize>(
     title: &str,
