@@ -1,0 +1,33 @@
+# ADR 0035: Inbound Empirical CSV Ingestion and Zero-Allocation Levenberg-Marquardt Model Calibration
+
+## Status
+Accepted (extends [ADR 0008](0008-finite-state-solver-guard.md), [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0033](0033-wasm32-browser-tests-and-playwright-ci-smoke-gate.md))
+
+## Context
+OxidizeMath previously supported outbound plot/residual data export via `egui_plot::export` ([ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md)) and bookmarkable parameter sharing via JSON presets and `#tab=...&tool=...&state=...` URL fragments ([ADR 0022](0022-unify-preset-state-serialization.md)), alongside unbounded first-order optimizers (`GradientDescent` and `CoordinateDescent`) in `pure_math::analysis::optimization`. However, researchers working with empirical laboratory and field measurements faced three gaps:
+1. **No Inbound Empirical Tabular Ingestion**: `SimulationFramework` and `InteractiveTool` had no cross-platform path to ingest comma-, tab-, or semicolon-delimited `.csv`/`.tsv` measurements via drag-and-drop (`egui::RawInput::dropped_files`) or `web_io::spawn_open_file_dialog`, map arbitrary columns to $(X, Y)$, and overlay empirical scatter observations on interactive trajectories.
+2. **No Pre-Allocated Nonlinear Least-Squares or ODE Single-Shooting Kernel**: Fitting closed-form models (`MichaelisMenten`, `HillKinetics`, `PowerLawModel`) or stiff/coupled initial-value problems (`OdeSystem`, `DynamicAstOde`, `SIRState`) requires damped Gauss-Newton steps, box constraints, Student-$t$ / normal 95% confidence intervals from $(J^T J)^{-1}$, and goodness-of-fit diagnostics (RMSE, $R^2$, AIC) executing with **zero hot-path heap allocations** under `VerifiedAllocator`.
+3. **Strict Browser Security, Bundle Size, and State-Safety Budgets**: All parsing and optimization must run 100% locally in Rust/WASM under strict `'self'` Content Security Policy (`< 3,145,728` byte `.wasm` ceiling, zero external dependencies), reject malformed or oversized CSV inputs (`> 2 MiB` or `> 10,000` rows) without clobbering active parameters, guard solver updates with `FiniteStateGuard`, and surface accessible `TwinSlotLiveRegion` feedback.
+
+## Decision
+1. **Zero-Allocation Levenberg-Marquardt & RK4 Single-Shooting Engine in `pure_math`**:
+   - Promote [`crates/pure_math/src/pure_math/analysis/optimization/mod.rs`](../../crates/pure_math/src/pure_math/analysis/optimization/mod.rs) into a multi-file module housing [`least_squares.rs`](../../crates/pure_math/src/pure_math/analysis/optimization/least_squares.rs), [`least_squares_kernel.rs`](../../crates/pure_math/src/pure_math/analysis/optimization/least_squares_kernel.rs), and [`ode_shooting.rs`](../../crates/pure_math/src/pure_math/analysis/optimization/ode_shooting.rs), re-exported through `math_explorer::pure_math::analysis::optimization`.
+   - Implement `LeastSquaresProblem`, `ParameterBounds`, `LevenbergMarquardtWorkspace` (pre-allocated residual, Jacobian, normal-matrix, step, and covariance buffers bounded to `<= 10,000` observations and `<= 16` parameters), and `LevenbergMarquardtSolver` (`<= 100` outer iterations) using stack-backed Cholesky and Jacobi SVD Moore-Penrose pseudoinverse fallbacks in [`crates/pure_math/src/pure_math/algebra/linear_algebra/numerical.rs`](../../crates/pure_math/src/pure_math/algebra/linear_algebra/numerical.rs).
+   - Implement `Rk4ShootingObjective` integrating `OdeSystem<S>` across sorted empirical timestamps with pre-allocated `RungeKutta4<S>` scratch states and zero inner-loop heap allocations verified via `VerifiedEngine::run_verified`.
+   - Compute residual variance $s^2 = \text{RSS} / \max(N - P, 1)$, parameter covariance $\Sigma = s^2 (J^T J)^+$, two-sided 95% confidence intervals, RMSE, $R^2$, and Gaussian $\text{AIC} = N \ln(\text{RSS}/N) + 2P$.
+2. **Bounded Empirical CSV Ingestion & Residual Export in `math_explorer_gui`**:
+   - Add [`math_explorer_gui/src/framework/empirical_csv.rs`](../../math_explorer_gui/src/framework/empirical_csv.rs) and [`math_explorer_gui/src/framework/empirical_csv_parser.rs`](../../math_explorer_gui/src/framework/empirical_csv_parser.rs) reusing `egui_plot::export::split_line` to parse UTF-8 (with optional BOM) comma-, tab-, and semicolon-delimited tables up to `2 MiB` and `10,000` rows, rejecting empty, single-row, ragged, or `NaN`/`Inf` inputs with assertive `TwinSlotLiveRegion` alerts while preserving existing simulation state.
+   - Extend `InteractiveTool` with opt-in `supports_empirical_csv`, `ingest_empirical_dataset`, and `notify_empirical_csv_error` hooks wired to `SimulationFramework` drag-and-drop and `web_io` open/save dialogs.
+   - Export fitted residual diagnostics via `Download Residuals CSV` using the canonical schema:
+     ```text
+     x,y_observed,y_fitted,residual
+     0.0000,1.0000,0.9984,0.0016
+     ```
+3. **End-to-End Calibration Across Four Domain Tools & Bookmarkable State**:
+   - Wire empirical CSV overlay, parameter fitting, `PlatformInstant` timing, `FiniteStateGuard` rollback, 95% confidence intervals, RMSE/$R^2$/AIC copyable metrics, and residual CSV downloads into [`OdeSolverTool`](../../math_explorer_gui/src/tabs/analysis/ode/calibration.rs) (built-in presets and custom `DynamicAstOde` expressions), [`SirTool`](../../math_explorer_gui/src/tabs/epidemiology/sir_calibration.rs) ($\beta$, $\gamma$, $I_0$, and delta-method $R_0 = \beta/\gamma$ 95% CI), [`CapacityFadeTool`](../../math_explorer_gui/src/tabs/battery_degradation/capacity_fade.rs) ($\alpha$, $\beta$, and $N_{70}$ cycle-life projection with backward-compatible preset defaults), and a new [`EnzymeKineticsTool`](../../math_explorer_gui/src/tabs/morphogenesis/kinetics.rs) (`MichaelisMenten` vs. cooperative `HillKinetics` AIC comparison).
+   - Persist only compact calibrated model parameters in JSON presets and URL `#state=` fragments (staying well inside the 4 KiB / 8 KiB caps), keeping raw CSV tables transient in memory.
+
+## Consequences
+- **Positive**: Empirical parameter estimation, uncertainty quantification, and AIC model selection run natively and in WebAssembly without external servers, new crate dependencies, or hot-path heap allocations.
+- **Positive**: Calibrated models round-trip deterministically through [ADR 0022](0022-unify-preset-state-serialization.md) JSON presets and shareable URLs, bringing registered GUI tools to `56` (`33` plot-export tools and `60` starter presets).
+- **Neutral**: Raw uploaded CSV observations remain session-local rather than embedded in URL fragments to preserve strict URL length and privacy guarantees.

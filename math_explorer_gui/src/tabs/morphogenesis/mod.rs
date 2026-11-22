@@ -15,6 +15,7 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod kinetics;
 pub mod presets;
 pub mod runner;
 pub mod tool;
@@ -60,6 +61,13 @@ impl Default for MorphogenesisTab {
         let params = Arc::clone(&tool.params);
         let name = crate::framework::InteractiveTool::name(&tool).to_string();
         let baseline = crate::framework::InteractiveTool::save_state(&tool);
+        if let Some(idx) = framework
+            .available_tools
+            .iter()
+            .position(|m| m.id == "MorphogenesisTool")
+        {
+            framework.selected_tool_index = Some(idx);
+        }
         framework.active_tool = Some(Box::new(tool));
         if let Some(b) = baseline {
             framework.saved_tool_states.insert(name, b.clone());
@@ -318,13 +326,20 @@ impl ExplorerTab for MorphogenesisTab {
         preset_json: Option<&str>,
     ) -> Result<(), String> {
         self.framework.import_url_preset_json(tool_id, preset_json)?;
-        let cfg = self.export_config();
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = cfg.a;
-        p.b = cfg.b;
-        p.d_u = cfg.d_u;
-        p.d_v = cfg.d_v;
-        p.dt = cfg.dt;
+        if self
+            .framework
+            .active_tool
+            .as_ref()
+            .is_some_and(|t| t.name() == "MorphogenesisTool")
+        {
+            let cfg = self.export_config();
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.a = cfg.a;
+            p.b = cfg.b;
+            p.d_u = cfg.d_u;
+            p.d_v = cfg.d_v;
+            p.dt = cfg.dt;
+        }
         Ok(())
     }
 }

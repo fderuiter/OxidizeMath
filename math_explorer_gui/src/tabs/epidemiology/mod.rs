@@ -4,6 +4,7 @@ use eframe::egui;
 
 pub mod network_propagation;
 pub mod sir;
+pub mod sir_calibration;
 
 
 pub struct EpidemiologyTab {

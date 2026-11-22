@@ -403,6 +403,9 @@ impl SimulationFramework {
         self.show_theory_portal(ui, id_source);
 
         if !self.is_diverged {
+            if let Some(tool) = &mut self.active_tool {
+                empirical_csv::handle_dropped_empirical_files(&ctx, tool.as_mut());
+            }
             self.cache_valid_snapshot();
             if let Some(tool) = &mut self.active_tool {
                 tool.show_inside(ui);

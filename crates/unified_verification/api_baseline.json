@@ -6357,16 +6357,25 @@
   ],
   "crates/pure_math/src/pure_math/algebra/linear_algebra/numerical.rs": [
     {
+      "signature": "pub const MAX_IN_PLACE_DIM : usize = 16"
+    },
+    {
       "signature": "pub enum LinearAlgebraError"
     },
     {
       "signature": "pub fn moore_penrose_pseudoinverse (matrix : & DMatrix < f64 > , epsilon : f64) -> DMatrix < f64 >"
     },
     {
+      "signature": "pub fn moore_penrose_pseudoinverse_symmetric_in_place (sym : & [f64] , n : usize , epsilon : f64 , out_pinv : & mut [f64] ,) -> bool"
+    },
+    {
       "signature": "pub fn solve_linear_system (a : & DMatrix < f64 > , b : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
     },
     {
       "signature": "pub fn solve_normal_equation (a : & DMatrix < f64 > , b : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn solve_symmetric_cholesky_in_place (sym : & [f64] , rhs : & [f64] , n : usize , out_x : & mut [f64] ,) -> bool"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/mod.rs": [
@@ -6743,7 +6752,93 @@
       "signature": "pub trait VectorOperations { fn scale_add (& mut self , other : & Self , scale : f64) }"
     }
   ],
-  "crates/pure_math/src/pure_math/analysis/optimization.rs": [
+  "crates/pure_math/src/pure_math/analysis/optimization/least_squares.rs": [
+    {
+      "signature": "impl < 'a , F > ClosureLeastSquaresObjective < 'a , F > where F : FnMut (f64 , & [f64]) -> f64 , { pub fn new (x_obs : & 'a [f64] , y_obs : & 'a [f64] , model : F) -> Result < Self , OptimizationError > }"
+    },
+    {
+      "signature": "impl LevenbergMarquardtSolver { pub fn fit < O : LeastSquaresObjective > (& self , objective : & mut O , initial_params : & [f64] , bounds : & [ParameterBounds] , workspace : & mut LevenbergMarquardtWorkspace ,) -> Result < CalibrationSummary , OptimizationError > }"
+    },
+    {
+      "signature": "impl LevenbergMarquardtSolver { pub fn new (mut config : LeastSquaresConfig) -> Self }"
+    },
+    {
+      "signature": "impl LevenbergMarquardtSolver { pub fn solve_damped_step_matrix (jacobian : & DMatrix < f64 > , residuals : & DVector < f64 > , lambda : f64 , svd_epsilon : f64 ,) -> DVector < f64 > }"
+    },
+    {
+      "signature": "impl LevenbergMarquardtSolver { pub fn solve_in_place < O : LeastSquaresObjective > (& self , objective : & mut O , initial_params : & [f64] , bounds : & [ParameterBounds] , workspace : & mut LevenbergMarquardtWorkspace ,) -> Result < InPlaceCalibrationMetrics , OptimizationError > }"
+    },
+    {
+      "signature": "impl LevenbergMarquardtWorkspace { pub fn ci_95_half_widths (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LevenbergMarquardtWorkspace { pub fn covariance (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LevenbergMarquardtWorkspace { pub fn new (max_obs : usize , max_params : usize) -> Result < Self , OptimizationError > }"
+    },
+    {
+      "signature": "impl LevenbergMarquardtWorkspace { pub fn parameters (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LevenbergMarquardtWorkspace { pub fn residuals (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LevenbergMarquardtWorkspace { pub fn standard_errors (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LevenbergMarquardtWorkspace { pub fn to_summary (& self , metrics : & InPlaceCalibrationMetrics) -> CalibrationSummary }"
+    },
+    {
+      "signature": "impl ParameterBounds { pub fn clamp (& self , value : f64) -> f64 }"
+    },
+    {
+      "signature": "impl ParameterBounds { pub fn new (lower : f64 , upper : f64) -> Result < Self , OptimizationError > }"
+    },
+    {
+      "signature": "pub const MAX_CALIBRATION_ITERATIONS : usize = 100"
+    },
+    {
+      "signature": "pub const MAX_CALIBRATION_OBSERVATIONS : usize = 10_000"
+    },
+    {
+      "signature": "pub const MAX_CALIBRATION_PARAMS : usize = 16"
+    },
+    {
+      "signature": "pub struct CalibrationSummary"
+    },
+    {
+      "signature": "pub struct ClosureLeastSquaresObjective < 'a , F >"
+    },
+    {
+      "signature": "pub struct InPlaceCalibrationMetrics"
+    },
+    {
+      "signature": "pub struct LeastSquaresConfig"
+    },
+    {
+      "signature": "pub struct LevenbergMarquardtSolver"
+    },
+    {
+      "signature": "pub struct LevenbergMarquardtWorkspace"
+    },
+    {
+      "signature": "pub struct ParameterBounds"
+    },
+    {
+      "signature": "pub trait LeastSquaresObjective"
+    },
+    {
+      "signature": "pub trait LeastSquaresObjective { fn copy_observed (& self , observed_out : & mut [f64]) }"
+    },
+    {
+      "signature": "pub trait LeastSquaresObjective { fn eval_residuals (& mut self , params : & [f64] , residuals_out : & mut [f64]) -> bool }"
+    },
+    {
+      "signature": "pub trait LeastSquaresObjective { fn observation_count (& self) -> usize }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/mod.rs": [
     {
       "signature": "impl < T : RealField + Copy , Key > Adam < T , Key > where Key : Eq + std :: hash :: Hash + Clone , { pub fn get_state (& mut self , key : Key , shape : (usize , usize)) -> & mut AdamState < T > }"
     },
@@ -6797,6 +6892,32 @@
     },
     {
       "signature": "pub trait Trainable < T : nalgebra :: RealField + Copy = f64 > { fn forward (& self , x : & nalgebra :: DVector < T >) -> nalgebra :: DVector < T > }"
+    },
+    {
+      "signature": "pub use least_squares :: *"
+    },
+    {
+      "signature": "pub use ode_shooting :: *"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/ode_shooting.rs": [
+    {
+      "signature": "impl < 'a , Sys , State , ConfigureFn , ObserveFn , FiniteFn > Rk4ShootingObjective < 'a , Sys , State , ConfigureFn , ObserveFn , FiniteFn > where Sys : OdeSystem < State > , State : VectorOperations , ConfigureFn : FnMut (& mut Sys , & [f64] , f64 , & mut State) -> bool , ObserveFn : Fn (& State) -> f64 , FiniteFn : Fn (& State) -> bool , { pub fn eval_predictions (& mut self , params : & [f64] , predictions_out : & mut [f64]) -> bool }"
+    },
+    {
+      "signature": "impl < 'a , Sys , State , ConfigureFn , ObserveFn , FiniteFn > Rk4ShootingObjective < 'a , Sys , State , ConfigureFn , ObserveFn , FiniteFn > where Sys : OdeSystem < State > , State : VectorOperations , ConfigureFn : FnMut (& mut Sys , & [f64] , f64 , & mut State) -> bool , ObserveFn : Fn (& State) -> f64 , FiniteFn : Fn (& State) -> bool , { pub fn new (system : Sys , example_state : & State , times : & 'a [f64] , observed : & 'a [f64] , max_dt : f64 , configure : ConfigureFn , observe : ObserveFn , is_finite_state : FiniteFn ,) -> Result < Self , OptimizationError > }"
+    },
+    {
+      "signature": "impl < 'a , Sys , State , ConfigureFn , ObserveFn , FiniteFn > Rk4ShootingObjective < 'a , Sys , State , ConfigureFn , ObserveFn , FiniteFn > where Sys : OdeSystem < State > , State : VectorOperations , ConfigureFn : FnMut (& mut Sys , & [f64] , f64 , & mut State) -> bool , ObserveFn : Fn (& State) -> f64 , FiniteFn : Fn (& State) -> bool , { pub fn system (& self) -> & Sys }"
+    },
+    {
+      "signature": "pub const DEFAULT_SHOOTING_MAX_DT : f64 = 0.02"
+    },
+    {
+      "signature": "pub const MAX_SUBSTEPS_PER_INTERVAL : usize = 4_096"
+    },
+    {
+      "signature": "pub struct Rk4ShootingObjective < 'a , Sys , State , ConfigureFn , ObserveFn , FiniteFn > where State : VectorOperations ,"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs": [

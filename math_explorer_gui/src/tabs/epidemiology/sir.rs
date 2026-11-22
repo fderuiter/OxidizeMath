@@ -53,6 +53,8 @@ pub struct SirTool {
     r_points: Vec<PlotPoint>,
 
     pub(crate) snapshot_manager: TraceSnapshotManager,
+    pub(crate) empirical_csv: crate::framework::empirical_csv::EmpiricalCsvState,
+    pub(crate) observed_compartment: super::sir_calibration::SirObservedCompartment,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     last_param_summary: String,
     revision: u64,
@@ -70,6 +72,8 @@ impl Default for SirTool {
             i_points: vec![],
             r_points: vec![],
             snapshot_manager: TraceSnapshotManager::new(),
+            empirical_csv: crate::framework::empirical_csv::EmpiricalCsvState::default(),
+            observed_compartment: super::sir_calibration::SirObservedCompartment::default(),
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
             revision: 1,
@@ -138,6 +142,10 @@ impl SirTool {
             });
 
         crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "sir_tool");
+    }
+
+    pub(super) fn recalculate_from_calibration(&mut self) {
+        self.recalculate();
     }
 
     fn recalculate(&mut self) {
@@ -290,6 +298,22 @@ impl InteractiveTool for SirTool {
         self.load_sir_state(state, false)
     }
 
+    fn supports_empirical_csv(&self) -> bool {
+        true
+    }
+
+    fn ingest_empirical_dataset(
+        &mut self,
+        dataset: crate::framework::empirical_csv::EmpiricalCsvTable,
+    ) -> Result<String, String> {
+        self.revision = self.revision.wrapping_add(1).max(1);
+        Ok(self.empirical_csv.set_table(dataset))
+    }
+
+    fn notify_empirical_csv_error(&mut self, error: String) {
+        self.empirical_csv.record_error(None, error);
+    }
+
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
@@ -344,13 +368,14 @@ impl InteractiveTool for SirTool {
             }
 
             self.evaluate_sensitivity(ui);
+            let _ = self.render_sir_calibration_panel(ui);
 
             ui.separator();
             let plot_id = ui.make_persistent_id("sir_plot");
             ui.horizontal(|ui| {
                 ui.heading("Simulation");
-                if ui.button("Import Dataset (CSV)").clicked() {
-                    egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
+                if ui.button("Import Outbreak CSV...").clicked() {
+                    self.empirical_csv.trigger_open_dialog();
                 }
             });
 
@@ -370,6 +395,7 @@ impl InteractiveTool for SirTool {
                 plot_ui.line(
                     Line::new("Recovered", &self.r_points[..]).color(palette.axis_y),
                 );
+                self.render_empirical_overlay(plot_ui, palette.warning);
                 self.snapshot_manager.render_on_plot(plot_ui);
             });
         });

@@ -1,6 +1,17 @@
 //! Optimization Algorithms.
 //!
-//! Provides structures and traits for mathematical optimization problems.
+//! Provides structures and traits for mathematical optimization problems, including
+//! first-order stochastic optimizers (`SGD`, `Adam`), damped Levenberg-Marquardt
+//! nonlinear least squares ([`least_squares`]), and RK4 ODE trajectory shooting
+//! calibration ([`ode_shooting`]).
+
+/// Damped Levenberg-Marquardt nonlinear least-squares solver and pre-allocated workspace.
+pub mod least_squares;
+/// Pre-allocated Runge-Kutta 4 ODE trajectory shooting objective for parameter calibration.
+pub mod ode_shooting;
+
+pub use least_squares::*;
+pub use ode_shooting::*;
 
 use super::evolution::{EvolutionEngine, EvolutionError};
 use nalgebra::{DMatrix, DVector, RealField};
@@ -8,12 +19,51 @@ use rand::RngCore;
 use std::collections::HashMap;
 use thiserror::Error;
 
-/// Errors that can occur during optimization.
+/// Errors that can occur during mathematical optimization and nonlinear calibration.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum OptimizationError {
+    /// Failed to convert a generic scalar or numerical value.
     #[error("Failed to convert numerical value")]
-    #[allow(missing_docs)]
     ConversionError,
+    /// Parameter count is zero or exceeds [`MAX_CALIBRATION_PARAMS`].
+    #[error("Invalid parameter count {count} (expected 1..={max})")]
+    InvalidParameterCount {
+        /// Supplied parameter count.
+        count: usize,
+        /// Maximum supported parameter count.
+        max: usize,
+    },
+    /// Observation count is smaller than parameter count / 2-row minimum or exceeds [`MAX_CALIBRATION_OBSERVATIONS`].
+    #[error("Invalid observation count {count} (expected {min}..={max})")]
+    InvalidObservationCount {
+        /// Supplied observation count.
+        count: usize,
+        /// Minimum required observations.
+        min: usize,
+        /// Maximum supported observations.
+        max: usize,
+    },
+    /// Box bounds slice has mismatched length or non-finite / inverted `[lower, upper]` limits.
+    #[error("Invalid parameter box bounds at index {index}")]
+    InvalidBounds {
+        /// Index of the invalid bound entry.
+        index: usize,
+    },
+    /// Pre-allocated [`LevenbergMarquardtWorkspace`] lacks capacity for `(observations, parameters)`.
+    #[error("Workspace capacity ({max_obs}, {max_params}) is smaller than ({obs}, {params})")]
+    WorkspaceCapacityExceeded {
+        /// Requested observation count.
+        obs: usize,
+        /// Requested parameter count.
+        params: usize,
+        /// Pre-allocated observation capacity.
+        max_obs: usize,
+        /// Pre-allocated parameter capacity.
+        max_params: usize,
+    },
+    /// Objective evaluation, Jacobian finite differencing, or linear step encountered non-finite values.
+    #[error("Numerical instability or non-finite model state during optimization")]
+    NumericalInstability,
 }
 
 impl From<EvolutionError> for OptimizationError {
@@ -283,13 +333,9 @@ where
         param: &mut DMatrix<T>,
         grad: &DMatrix<T>,
     ) -> Result<(), OptimizationError> {
-        // extract state first to avoid borrow conflicts
         let shape = (param.nrows(), param.ncols());
         let mut rng = rand::rngs::mock::StepRng::new(0, 1);
 
-        // This is safe because we use the internal state, keeping the interface unchanged
-        // while fulfilling the EvolutionEngine pattern.
-        // Get the state first:
         let mut state_val = self.states.remove(&key).unwrap_or_else(|| AdamState {
             m: DMatrix::zeros(shape.0, shape.1),
             v: DMatrix::zeros(shape.0, shape.1),
@@ -349,14 +395,6 @@ pub trait Trainable<T: nalgebra::RealField + Copy = f64> {
     fn forward(&self, x: &nalgebra::DVector<T>) -> nalgebra::DVector<T>;
 
     /// Performs the backward pass and updates parameters.
-    ///
-    /// # Arguments
-    /// * `x` - Input vector.
-    /// * `loss_grad` - Gradient of the loss with respect to the output logits (dJ/dz).
-    /// * `optimizer` - The optimizer strategy to update parameters.
-    ///
-    /// # Errors
-    /// Returns an `OptimizationError` if the parameter updates fail during optimization.
     #[verified_engine::verified]
     fn backward_update(
         &mut self,

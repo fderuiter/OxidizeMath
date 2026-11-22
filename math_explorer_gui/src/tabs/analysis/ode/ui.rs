@@ -23,6 +23,7 @@ impl OdeSolverTool {
         changed |= self.render_parameter_inputs(ui);
         changed |= self.render_initial_condition_inputs(ui);
         changed |= self.render_solver_settings_controls(ui);
+        changed |= self.render_empirical_calibration_panel(ui);
         self.render_snapshots_and_sensitivity(ui, plot_points_y, plot_points_v);
         if self.callout_manager.render_ui(ui) {
             changed = true;
@@ -395,6 +396,7 @@ impl OdeSolverTool {
                 if self.show_annotations && !FiniteStateGuard::diverged(self) {
                     super::annotations::render_ode_callouts(plot_ui, self);
                 }
+                self.render_empirical_overlay(plot_ui, palette.series_color(2));
                 self.snapshot_manager.render_on_plot(plot_ui);
                 self.callout_manager.render_on_plot(plot_ui);
             });

@@ -4,6 +4,7 @@ pub mod clamp;
 mod clamp_tests;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
+pub mod empirical_csv;
 mod export_figure;
 mod export_queue;
 #[cfg(test)]
@@ -301,6 +302,22 @@ pub trait InteractiveTool {
 
         frames
     }
+
+    /// Declares whether this tool accepts inbound empirical CSV datasets for parameter calibration.
+    fn supports_empirical_csv(&self) -> bool {
+        false
+    }
+
+    /// Ingests a validated [`empirical_csv::EmpiricalCsvTable`] for column mapping and parameter fitting.
+    fn ingest_empirical_dataset(
+        &mut self,
+        _dataset: empirical_csv::EmpiricalCsvTable,
+    ) -> Result<String, String> {
+        Err("Active tool does not support empirical CSV calibration".to_string())
+    }
+
+    /// Notifies the tool when a dropped or selected empirical CSV file failed validation.
+    fn notify_empirical_csv_error(&mut self, _error: String) {}
 
     /// Returns a type-erased reference for test inspection of concrete tool state.
     #[cfg(test)]

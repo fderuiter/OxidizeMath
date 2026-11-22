@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 mod annotations;
+pub mod calibration;
 pub mod comparison;
 mod persistence;
 pub mod recovery;
@@ -46,6 +47,7 @@ pub struct OdeSolverTool {
     pub(crate) last_param_summary: String,
     pub(crate) pending_sweep_run: Option<(String, Vec<TraceSeries>)>,
     pub show_annotations: bool,
+    pub(crate) empirical_csv: crate::framework::empirical_csv::EmpiricalCsvState,
     pub(crate) revision: u64,
 }
 
@@ -91,6 +93,7 @@ impl Default for OdeSolverTool {
             last_param_summary: String::new(),
             pending_sweep_run: None,
             show_annotations: true,
+            empirical_csv: crate::framework::empirical_csv::EmpiricalCsvState::default(),
             revision: 1,
         };
         tool.recalculate();
@@ -101,18 +104,6 @@ impl Default for OdeSolverTool {
 impl OdeSolverTool {
     pub(crate) fn bump_revision(&mut self) {
         self.revision = self.revision.wrapping_add(1).max(1);
-    }
-
-    pub fn param_summary(&self) -> String {
-        match self.preset {
-            OdePreset::Exponential | OdePreset::HarmonicOscillator | OdePreset::Custom => {
-                format!(r"k={:.2}, \Delta t={:.2}", self.param_k, self.dt)
-            }
-            OdePreset::LogisticGrowth => format!(
-                r"r={:.2}, K={:.2}, \Delta t={:.2}",
-                self.param_r, self.param_cap_k, self.dt
-            ),
-        }
     }
 
     #[must_use]
@@ -211,34 +202,6 @@ impl OdeSolverTool {
     #[must_use]
     pub fn comparison_manager(&self) -> &TraceSnapshotManager {
         &self.comparison_manager
-    }
-
-    pub fn reset_parameters(&mut self) {
-        match self.preset {
-            OdePreset::Exponential => {
-                self.param_k = 1.0;
-                self.ic_y0 = 1.0;
-            }
-            OdePreset::HarmonicOscillator => {
-                self.param_k = 1.0;
-                self.ic_y0 = 1.0;
-                self.ic_v0 = 0.0;
-            }
-            OdePreset::LogisticGrowth => {
-                self.param_r = 1.0;
-                self.param_cap_k = 10.0;
-                self.ic_y0 = 1.0;
-            }
-            OdePreset::Custom => {
-                self.param_k = 1.0;
-                self.ic_y0 = 1.0;
-                self.math_input.set_expression("-k * y * sin(t)");
-            }
-        }
-        self.dt = 0.05;
-        self.total_time = 10.0;
-        self.pending_sweep_run = None;
-        self.recalculate();
     }
 
     fn build_current_trace_series(
@@ -417,6 +380,22 @@ impl InteractiveTool for OdeSolverTool {
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true
+    }
+
+    fn supports_empirical_csv(&self) -> bool {
+        true
+    }
+
+    fn ingest_empirical_dataset(
+        &mut self,
+        dataset: crate::framework::empirical_csv::EmpiricalCsvTable,
+    ) -> Result<String, String> {
+        self.bump_revision();
+        Ok(self.empirical_csv.set_table(dataset))
+    }
+
+    fn notify_empirical_csv_error(&mut self, error: String) {
+        self.empirical_csv.record_error(None, error);
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {

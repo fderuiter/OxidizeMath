@@ -4,6 +4,25 @@ pub mod accessibility;
 mod app;
 #[allow(missing_docs)]
 pub mod async_sim;
+#[cfg(all(
+    test,
+    any(
+        feature = "applied",
+        feature = "biology",
+        feature = "epidemiology",
+        feature = "pure_math"
+    )
+))]
+mod calibration_tools_tests;
+#[cfg(all(
+    test,
+    target_arch = "wasm32",
+    feature = "applied",
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "pure_math"
+))]
+mod calibration_wasm_tests;
 #[allow(missing_docs)]
 pub mod camera;
 #[cfg(test)]

@@ -15,7 +15,7 @@ Two defects in `crates/domain_climate` undermined numerical fidelity in interact
    - Update `get_co2_projections(reduction_scenario)` to return Law Dome / Mauna Loa historical $CO_2$ observations (`1850..=2023`) coupled to an IPCC AR6 airborne-fraction / relaxation carbon-cycle mass-balance projection (`2023..=2100`, $C(t) = C_0 + \int_{t_0}^t (E(t') - S(t'))\,dt'$).
    - Retain `get_temperature_anomalies_with_rng` and `get_co2_projections_with_rng` for optional synthetic random-walk comparison in GUI tools, preserving existing public function signatures in `crates/unified_verification/api_baseline.json`.
 3. **Honor Configured `learning_rate` in `Adam` Optimizer Updates**:
-   - Update `Adam::update_matrix` and `Adam::update_vector` in [`crates/pure_math/src/pure_math/analysis/optimization.rs`](../../crates/pure_math/src/pure_math/analysis/optimization.rs) to pass `dt = 0.0` so `EvolutionEngine::step` uses `self.learning_rate` instead of overriding it with a hardcoded `0.01` step size.
+   - Update `Adam::update_matrix` and `Adam::update_vector` in [`crates/pure_math/src/pure_math/analysis/optimization/mod.rs`](../../crates/pure_math/src/pure_math/analysis/optimization/mod.rs) to pass `dt = 0.0` so `EvolutionEngine::step` uses `self.learning_rate` instead of overriding it with a hardcoded `0.01` step size.
 
 ## Consequences
 - **Positive**: Multi-channel CERA autoencoders and predictors break symmetry at initialization, enabling distinct channel representations and reliable `cera_loss` reduction under `CeraTrainer::train`.

@@ -73,6 +73,46 @@ struct OdeState {
 }
 
 impl OdeSolverTool {
+    pub fn param_summary(&self) -> String {
+        match self.preset {
+            OdePreset::Exponential | OdePreset::HarmonicOscillator | OdePreset::Custom => {
+                format!(r"k={:.2}, \Delta t={:.2}", self.param_k, self.dt)
+            }
+            OdePreset::LogisticGrowth => format!(
+                r"r={:.2}, K={:.2}, \Delta t={:.2}",
+                self.param_r, self.param_cap_k, self.dt
+            ),
+        }
+    }
+
+    pub fn reset_parameters(&mut self) {
+        match self.preset {
+            OdePreset::Exponential => {
+                self.param_k = 1.0;
+                self.ic_y0 = 1.0;
+            }
+            OdePreset::HarmonicOscillator => {
+                self.param_k = 1.0;
+                self.ic_y0 = 1.0;
+                self.ic_v0 = 0.0;
+            }
+            OdePreset::LogisticGrowth => {
+                self.param_r = 1.0;
+                self.param_cap_k = 10.0;
+                self.ic_y0 = 1.0;
+            }
+            OdePreset::Custom => {
+                self.param_k = 1.0;
+                self.ic_y0 = 1.0;
+                self.math_input.set_expression("-k * y * sin(t)");
+            }
+        }
+        self.dt = 0.05;
+        self.total_time = 10.0;
+        self.pending_sweep_run = None;
+        self.recalculate();
+    }
+
     pub(crate) fn compute_state_revision(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.revision.hash(&mut hasher);
