@@ -1,7 +1,10 @@
 pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
+#[cfg(target_os = "macos")]
+mod macos_menu_view;
 pub mod palette;
+mod pane_clone;
 mod pane_ops;
 mod pane_slots;
 pub(crate) mod session;
@@ -30,6 +33,8 @@ mod tests_multi_pane_a11y;
 #[cfg(test)]
 mod tests_multi_pane_plot_live;
 #[cfg(test)]
+mod tests_pane_clone_sync;
+#[cfg(test)]
 mod tests_pane_isolation;
 #[cfg(test)]
 mod tests_secondary_menus;
@@ -53,6 +58,7 @@ pub use state::{AppState, SplitLayoutMode};
 pub use theme::{
     contrast_ratio, contrasting_text_color, relative_luminance, SemanticPalette, ThemeMode,
 };
+pub use viewport::compare_sync::ComparisonSyncConfig;
 pub use viewport::ViewportLayout;
 
 use crate::command_palette::CommandPalette;
@@ -89,6 +95,7 @@ pub struct MathExplorerApp {
     tab_state_cache: state::TabStateCache,
     last_frame_had_input: bool,
     pending_focus_prune: bool,
+    pub compare_sync: ComparisonSyncConfig,
     pub(super) url_sync: crate::url_state::UrlSyncController,
 }
 
@@ -124,6 +131,7 @@ impl Default for MathExplorerApp {
             tab_state_cache: state::TabStateCache::default(),
             last_frame_had_input: false,
             pending_focus_prune: false,
+            compare_sync: ComparisonSyncConfig::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
         }
     }
@@ -161,6 +169,7 @@ impl MathExplorerApp {
 
     /// Sets the authoritative viewport layout preset and synchronizes legacy layout mode.
     pub fn set_layout(&mut self, layout: ViewportLayout) {
+        self.seed_uninitialized_panes_on_initial_split(layout);
         self.viewport_layout = layout;
         self.sync_layout();
         if !self.pane_tabs.is_empty() {
@@ -356,6 +365,7 @@ impl eframe::App for MathExplorerApp {
         }
 
         self.poll_share_shortcut_and_clipboard(ctx);
+        self.poll_duplicate_pane_shortcut(ctx);
 
         // Fetch new events
         let new_events = crate::telemetry::poll_app_telemetry();

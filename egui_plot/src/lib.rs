@@ -167,10 +167,64 @@ struct PlotFrameCursors {
 #[derive(Default, Clone)]
 struct CursorLinkGroups(HashMap<Id, Vec<PlotFrameCursors>>);
 
+/// Workspace-wide ambient synchronization flags for multi-pane 2D comparison plots.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AmbientPlotLinkConfig {
+    /// Synchronizes X and Y coordinate bounds across matching interactive 2D plots.
+    pub link_axes: bool,
+    /// Synchronizes hover crosshair cursors across matching interactive 2D plots.
+    pub link_cursors: bool,
+}
+
+#[derive(Default, Clone, Copy)]
+struct AmbientPlotLinkState {
+    config: AmbientPlotLinkConfig,
+    axis_epoch: u64,
+}
+
+/// Publishes or clears the ambient multi-pane plot synchronization configuration on `ctx`.
+pub fn set_ambient_plot_link_config(ctx: &egui::Context, config: AmbientPlotLinkConfig) {
+    ctx.data_mut(|d| {
+        let state: &mut AmbientPlotLinkState =
+            d.get_temp_mut_or_default(Id::new("AMBIENT_PLOT_LINK_STATE"));
+        if config.link_axes && !state.config.link_axes {
+            state.axis_epoch = state.axis_epoch.wrapping_add(1);
+        }
+        state.config = config;
+    });
+}
+
+/// Reads the current ambient multi-pane plot synchronization configuration from `ctx`.
+#[must_use]
+pub fn ambient_plot_link_config(ctx: &egui::Context) -> AmbientPlotLinkConfig {
+    ctx.data(|d| {
+        d.get_temp::<AmbientPlotLinkState>(Id::new("AMBIENT_PLOT_LINK_STATE"))
+            .unwrap_or_default()
+            .config
+    })
+}
+
+#[derive(PartialEq, Clone)]
+struct PlotFrameAutoBounds {
+    id: Id,
+    bounds: PlotBounds,
+}
+
 #[derive(Clone)]
 struct LinkedBounds {
     bounds: PlotBounds,
     auto_bounds: Vec2b,
+    auto_frames: Vec<PlotFrameAutoBounds>,
+}
+
+impl Default for LinkedBounds {
+    fn default() -> Self {
+        Self {
+            bounds: PlotBounds::NOTHING,
+            auto_bounds: Vec2b::new(true, true),
+            auto_frames: Vec::new(),
+        }
+    }
 }
 
 #[derive(Default, Clone)]
@@ -1040,8 +1094,8 @@ impl<'a> Plot<'a> {
             show_axes,
             show_grid,
             grid_spacing,
-            linked_axes,
-            linked_cursors,
+            mut linked_axes,
+            mut linked_cursors,
 
             clamp_grid,
             grid_spacers,
@@ -1049,6 +1103,18 @@ impl<'a> Plot<'a> {
             show_navigation_controls,
             show_zoom_buttons: _,
         } = self;
+
+        resolve_ambient_plot_links(
+            ui.ctx(),
+            id_source,
+            show_axes,
+            allow_drag,
+            allow_zoom,
+            allow_scroll,
+            allow_boxed_zoom,
+            &mut linked_axes,
+            &mut linked_cursors,
+        );
 
         // Disable interaction if ui is disabled.
         let allow_zoom = allow_zoom.and(ui.is_enabled());
@@ -1310,7 +1376,8 @@ impl<'a> Plot<'a> {
         if let Some((id, axes)) = linked_axes.as_ref() {
             ui.data_mut(|data| {
                 let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
-                if let Some(linked_bounds) = link_groups.0.get(id) {
+                if let Some(linked_bounds) = link_groups.0.get(id).filter(|lb| lb.bounds.is_valid())
+                {
                     if axes.x {
                         bounds.set_x(&linked_bounds.bounds);
                         mem.auto_bounds.x = linked_bounds.auto_bounds.x;
@@ -1384,6 +1451,25 @@ impl<'a> Plot<'a> {
             margin_fraction,
             log_axes,
         );
+        let linked_union_auto = linked_axes.as_ref().map(|(link_id, link_axes)| {
+            let local_auto = compute_auto_content_bounds(
+                bounds,
+                &min_auto_bounds,
+                default_auto_bounds,
+                &items,
+                margin_fraction,
+                log_axes,
+            );
+            sync_linked_auto_bounds_envelope(
+                ui,
+                *link_id,
+                *link_axes,
+                plot_id,
+                local_auto,
+                mem.auto_bounds,
+                &mut bounds,
+            )
+        });
 
         let effective_center_axis =
             Vec2b::new(center_axis.x && !mem.log_x, center_axis.y && !mem.log_y);
@@ -1664,7 +1750,7 @@ impl<'a> Plot<'a> {
         append_last_plot_primitives(&extracted_primitives);
         // --- END EXTRACT DATASETS ---
 
-        let auto_content_bounds = compute_auto_content_bounds(
+        let mut auto_content_bounds = compute_auto_content_bounds(
             *bounds,
             &min_auto_bounds,
             default_auto_bounds,
@@ -1672,6 +1758,14 @@ impl<'a> Plot<'a> {
             margin_fraction,
             log_axes,
         );
+        if let (Some((_, link_axes)), Some(union_auto)) = (&linked_axes, linked_union_auto) {
+            if link_axes.x && union_auto.is_valid_x() {
+                auto_content_bounds.set_x(&union_auto);
+            }
+            if link_axes.y && union_auto.is_valid_y() {
+                auto_content_bounds.set_y(&union_auto);
+            }
+        }
 
         let mut access_state = Self::load_frame_access_state(ui, plot_id, &mem);
         if response.has_focus() {
@@ -1776,28 +1870,36 @@ impl<'a> Plot<'a> {
 
         if let Some((id, _)) = linked_cursors.as_ref() {
             // Push the frame we just drew to the list of frames
-            ui.data_mut(|data| {
+            let had_peers_with_new_cursor = ui.data_mut(|data| {
                 let frames: &mut CursorLinkGroups = data.get_temp_mut_or_default(Id::NULL);
                 let cursors = frames.0.entry(*id).or_default();
+                let had_peers = !cursors.is_empty() && !plot_cursors.is_empty();
                 cursors.push(PlotFrameCursors {
                     id: plot_id,
                     cursors: plot_cursors,
                 });
+                had_peers
             });
+            if had_peers_with_new_cursor {
+                ui.ctx().request_repaint();
+            }
         }
 
         if let Some((id, _)) = linked_axes.as_ref() {
-            // Save the linked bounds.
-            ui.data_mut(|data| {
+            // Save the linked bounds while preserving per-plot auto-bounds envelopes.
+            let changed = ui.data_mut(|data| {
                 let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
-                link_groups.0.insert(
-                    *id,
-                    LinkedBounds {
-                        bounds: *mem.transform.bounds(),
-                        auto_bounds: mem.auto_bounds,
-                    },
-                );
+                let entry = link_groups.0.entry(*id).or_default();
+                let new_bounds = *mem.transform.bounds();
+                let needs_sync = entry.auto_frames.len() > 1
+                    && (entry.bounds != new_bounds || entry.auto_bounds != mem.auto_bounds);
+                entry.bounds = new_bounds;
+                entry.auto_bounds = mem.auto_bounds;
+                needs_sync
             });
+            if changed {
+                ui.ctx().request_repaint();
+            }
         }
 
         let transform = mem.transform;
@@ -2860,13 +2962,9 @@ fn apply_aspect_and_sync_linked(
     if let Some((id, _)) = linked_axes {
         ui.data_mut(|data| {
             let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
-            link_groups.0.insert(
-                *id,
-                LinkedBounds {
-                    bounds: *mem.transform.bounds(),
-                    auto_bounds: mem.auto_bounds,
-                },
-            );
+            let entry = link_groups.0.entry(*id).or_default();
+            entry.bounds = *mem.transform.bounds();
+            entry.auto_bounds = mem.auto_bounds;
         });
     }
     ui.ctx().request_repaint();
@@ -3623,6 +3721,73 @@ fn apply_plot_bounds_with_scale(
         let is_auto = auto_bounds.y || (!default_auto_bounds.y && !any_dynamic_modifications);
         apply_single_log_axis_bounds(bounds, 1, is_auto, pos, margin_fraction.y as f64);
     }
+}
+
+fn resolve_ambient_plot_links(
+    ctx: &egui::Context,
+    id_source: Id,
+    show_axes: Vec2b,
+    allow_drag: Vec2b,
+    allow_zoom: Vec2b,
+    allow_scroll: Vec2b,
+    allow_boxed_zoom: bool,
+    linked_axes: &mut Option<(Id, Vec2b)>,
+    linked_cursors: &mut Option<(Id, Vec2b)>,
+) {
+    let is_interactive_2d = (show_axes.x || show_axes.y)
+        && (allow_drag.any() || allow_zoom.any() || allow_scroll.any() || allow_boxed_zoom);
+    if !is_interactive_2d {
+        return;
+    }
+    let state = ctx.data(|d| {
+        d.get_temp::<AmbientPlotLinkState>(Id::new("AMBIENT_PLOT_LINK_STATE"))
+            .unwrap_or_default()
+    });
+    let axes_mask = Vec2b::new(show_axes.x, show_axes.y);
+    if state.config.link_axes && linked_axes.is_none() {
+        *linked_axes = Some((
+            id_source.with(("ambient_axis_link", state.axis_epoch)),
+            axes_mask,
+        ));
+    }
+    if state.config.link_cursors && linked_cursors.is_none() {
+        *linked_cursors = Some((id_source.with("ambient_cursor_link"), axes_mask));
+    }
+}
+
+fn sync_linked_auto_bounds_envelope(
+    ui: &mut Ui,
+    link_id: Id,
+    link_axes: Vec2b,
+    plot_id: Id,
+    local_auto: PlotBounds,
+    auto_bounds: Vec2b,
+    bounds: &mut PlotBounds,
+) -> PlotBounds {
+    let union_auto = ui.data_mut(|data| {
+        let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
+        let entry = link_groups.0.entry(link_id).or_default();
+        if let Some(idx) = entry.auto_frames.iter().position(|f| f.id == plot_id) {
+            entry.auto_frames.drain(0..=idx);
+        }
+        entry.auto_frames.push(PlotFrameAutoBounds {
+            id: plot_id,
+            bounds: local_auto,
+        });
+        let mut merged = PlotBounds::NOTHING;
+        for frame in &entry.auto_frames {
+            merged.merge_x(&frame.bounds);
+            merged.merge_y(&frame.bounds);
+        }
+        merged
+    });
+    if auto_bounds.x && link_axes.x && union_auto.is_valid_x() {
+        bounds.set_x(&union_auto);
+    }
+    if auto_bounds.y && link_axes.y && union_auto.is_valid_y() {
+        bounds.set_y(&union_auto);
+    }
+    union_auto
 }
 
 fn compute_auto_content_bounds(
@@ -5856,5 +6021,7 @@ impl Default for AccessState {
     }
 }
 
+#[cfg(test)]
+mod ambient_link_tests;
 #[cfg(test)]
 mod modal_lifecycle_tests;
