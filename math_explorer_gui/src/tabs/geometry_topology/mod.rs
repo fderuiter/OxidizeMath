@@ -3,6 +3,7 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod curvature_heatmap;
+pub mod custom_surface;
 pub mod export_utils;
 #[cfg(feature = "applied")]
 pub mod implicit_cad;

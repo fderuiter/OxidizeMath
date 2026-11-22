@@ -1,6 +1,6 @@
 //! Zero-allocation runtime verification tests for AST expression evaluators.
 
-use math_commons::ast::{Expr, parse};
+use math_commons::ast::{CompiledExpr, Expr, parse};
 use num_complex::Complex64;
 use std::collections::HashMap;
 use std::f64::consts::{E, PI, TAU};
@@ -9,6 +9,37 @@ use verified_engine::engine::VerifiedEngine;
 
 #[global_allocator]
 static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
+
+fn check_compiled_hot_loops(
+    c1d: &CompiledExpr,
+    c2d: &CompiledExpr,
+    c3d: &CompiledExpr,
+    cz: &CompiledExpr,
+) {
+    let params_1d = [1.5, 0.8];
+    let mut acc = 0.0;
+    for i in -50..=50 {
+        let x = f64::from(i) * 0.04;
+        acc += c1d.eval_1d(x, &params_1d);
+    }
+    assert!(acc.is_finite());
+
+    for ix in -8..=8 {
+        for iy in -8..=8 {
+            let z_surf = c2d.eval_2d(f64::from(ix) * 0.2, f64::from(iy) * 0.2, &[0.6]);
+            assert!(z_surf.is_finite());
+        }
+    }
+
+    let mse_term = c3d.eval_3d(0.5, 1.2, -0.4, &[0.25]);
+    assert!(mse_term.is_finite());
+
+    for step in 1..=100 {
+        let re = f64::from(step) * 0.03;
+        let w = cz.eval_complex_z_params(Complex64::new(re, 0.2), &[0.85]);
+        assert!(w.re.is_finite() && w.im.is_finite());
+    }
+}
 
 fn check_real_eval(expr: &Expr, vars: &HashMap<String, f64>) {
     let val = expr.eval(vars).expect("eval should succeed");
@@ -94,6 +125,22 @@ fn test_ast_evaluators_zero_allocations_with_global_allocator() {
         "max(sin(x) * cos(y) + sin(y) * cos(z) + sin(z) * cos(x), min(abs(X) - 3, abs(Y) - 3, abs(Z) - 3))",
     )
     .expect("parse implicit 3d csg");
+    let compiled_1d = CompiledExpr::compile_with_vars(
+        &parse(
+            "clamp(a * sin(x), -b, b) + step(x) - rect(x) + min(x, 1) + max(x, -1) + atan2(x, 1)",
+        )
+        .unwrap(),
+        &["x"],
+    )
+    .expect("compile 1d");
+    let compiled_2d =
+        CompiledExpr::compile_with_vars(&parse("a * (x^2 - y^2)").unwrap(), &["x", "y"])
+            .expect("compile 2d");
+    let compiled_3d =
+        CompiledExpr::compile_with_vars(&parse("w * sin(b * x + phi)").unwrap(), &["x", "w", "b"])
+            .expect("compile 3d");
+    let compiled_cz = CompiledExpr::compile_complex(&parse("z + a^2 / z + i").unwrap(), &["z"])
+        .expect("compile complex z");
 
     // Keep all VerifiedEngine::run_verified assertions in one test to prevent MEMORY_LOCK races.
     let ((), metrics) = VerifiedEngine::run_verified(|| {
@@ -102,6 +149,7 @@ fn test_ast_evaluators_zero_allocations_with_global_allocator() {
         check_complex_eval(&complex_expr, &complex_vars);
         check_conformal_eval_complex_z(&conformal_expr, &unknown_expr);
         check_implicit_eval_3d(&implicit_csg_expr, &unknown_expr);
+        check_compiled_hot_loops(&compiled_1d, &compiled_2d, &compiled_3d, &compiled_cz);
     });
 
     assert_eq!(metrics.memory_loads, 0);

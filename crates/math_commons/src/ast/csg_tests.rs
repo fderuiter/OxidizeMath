@@ -72,18 +72,32 @@ fn test_min_and_max_arity_errors_complex_domain_and_latex() {
         assert!(expr.eval_3d(1.0, 2.0, 3.0).is_nan());
     }
 
-    let c_min = parse("min(z, 1)").unwrap();
-    let c_max = parse("max(z, 1)").unwrap();
-    assert!(matches!(
-        c_min.eval_complex(&cvars),
-        Err(EvalError::DomainError(_))
-    ));
-    assert!(matches!(
-        c_max.eval_complex(&cvars),
-        Err(EvalError::DomainError(_))
-    ));
-    assert!(c_min.eval_complex_z(Complex64::new(1.0, 0.0)).re.is_nan());
-    assert!(c_max.eval_complex_z(Complex64::new(1.0, 0.0)).re.is_nan());
+    let csg = parse("max(abs(x) - 10, abs(y) - 10, abs(z) - 10)").expect("parse box csg");
+    let csg_compiled =
+        CompiledExpr::compile_with_vars(&csg, &["x", "y", "z"]).expect("compile variadic csg");
+    assert_eq!(csg_compiled.eval_3d(0.0, 0.0, 0.0, &[]), -10.0);
+    assert_eq!(csg_compiled.eval_3d(12.0, 3.0, -4.0, &[]), 2.0);
+
+    let c_min = parse("min(z, 0.5)").unwrap();
+    let c_max = parse("max(z, 2.5)").unwrap();
+    assert_eq!(
+        c_min.eval_complex(&cvars).unwrap(),
+        Complex64::new(0.5, 0.0)
+    );
+    assert_eq!(
+        c_max.eval_complex(&cvars).unwrap(),
+        Complex64::new(2.5, 0.0)
+    );
+    assert_eq!(
+        c_min.eval_complex_z(Complex64::new(1.0, 2.0)),
+        Complex64::new(0.5, 0.0)
+    );
+    assert!(
+        c_min
+            .eval_complex_z(Complex64::new(f64::NAN, 0.0))
+            .re
+            .is_nan()
+    );
 
     let latex = parse("max(x, min(y, z))").unwrap().to_latex();
     assert_eq!(latex, r"\max\left(x, \min\left(y, z\right)\right)");

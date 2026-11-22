@@ -154,8 +154,9 @@ mod tests {
     #![cfg_attr(any(), verified(opt_out = "tests"))]
 
     use super::*;
+    use math_commons::ast::{CompiledExpr, parse};
     use math_explorer::pure_math::differential_geometry::surface::{
-        KleinBottle, Sphere, SurfaceAnalysis, Torus,
+        CompiledHeightfieldSurface, KleinBottle, Sphere, SurfaceAnalysis, Torus,
     };
     use oxidize_core::mesh::analyze_mesh;
     use std::f64::consts::PI;
@@ -187,7 +188,7 @@ mod tests {
     }
 
     #[test]
-    fn test_torus_and_klein_bottle_welded_exports() {
+    fn test_torus_klein_bottle_and_custom_heightfield_exports() {
         let torus = Torus {
             major_radius: 2.0,
             minor_radius: 0.5,
@@ -203,5 +204,15 @@ mod tests {
         let klein_mesh = surface_to_mesh_scaled(&klein, 30, 30, 10.0);
         let klein_diag = analyze_mesh(&klein_mesh);
         assert_eq!(klein_diag.nan_normals, 0);
+
+        let saddle_compiled =
+            CompiledExpr::compile_with_vars(&parse("0.25 * (x^2 - y^2)").unwrap(), &["x", "y"])
+                .unwrap();
+        let saddle = CompiledHeightfieldSurface::new(saddle_compiled, &[]);
+        let saddle_mesh = surface_to_mesh_scaled(&saddle, 16, 16, 10.0);
+        let saddle_diag = analyze_mesh(&saddle_mesh);
+        assert_eq!(saddle_diag.nan_normals, 0);
+        assert!((saddle_diag.dimensions_mm.x - 40.0).abs() < 1e-3);
+        assert!((saddle_diag.dimensions_mm.y - 40.0).abs() < 1e-3);
     }
 }
