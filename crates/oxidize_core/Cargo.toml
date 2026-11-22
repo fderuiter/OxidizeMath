@@ -7,7 +7,6 @@ edition = "2024"
 futures = { workspace = true }
 async-recursion = { workspace = true }
 proc-macro2 = { workspace = true }
-quote = { workspace = true }
 rand = { workspace = true, features = ["std", "alloc"] }
 rand_chacha = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive"] }
