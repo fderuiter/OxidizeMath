@@ -58,6 +58,25 @@ impl Expr {
         })
     }
 
+    /// Evaluates a 2D planar ODE expression given `t` (time), `x`, `y`, and parameter map.
+    ///
+    /// Optimized for high-throughput vector-field and phase-portrait loops without per-step heap allocations.
+    /// Returns `f64::NAN` on divergence or error.
+    #[must_use]
+    pub fn eval_planar(&self, t: f64, x: f64, y: f64, params: &HashMap<String, f64>) -> f64 {
+        self.eval_fast(0, &|name| {
+            if name.eq_ignore_ascii_case("t") {
+                Some(t)
+            } else if name.eq_ignore_ascii_case("x") {
+                Some(x)
+            } else if name.eq_ignore_ascii_case("y") {
+                Some(y)
+            } else {
+                lookup_var(params, name)
+            }
+        })
+    }
+
     /// Evaluates the expression over complex numbers `Complex64`.
     pub fn eval_complex(&self, vars: &HashMap<String, Complex64>) -> Result<Complex64, EvalError> {
         self.eval_checked(vars, 0)

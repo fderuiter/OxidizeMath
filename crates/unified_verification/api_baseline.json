@@ -5465,6 +5465,9 @@
       "signature": "impl Expr { pub fn eval_complex_z (& self , z : Complex64) -> Complex64 }"
     },
     {
+      "signature": "impl Expr { pub fn eval_planar (& self , t : f64 , x : f64 , y : f64 , params : & HashMap < String , f64 >) -> f64 }"
+    },
+    {
       "signature": "pub const MAX_EVAL_DEPTH : usize = 64"
     },
     {

@@ -20,6 +20,8 @@ pub struct MathExpressionInputBar {
     pub lhs_name: Option<String>,
     /// Compiled AST expression or syntax error.
     pub parsed_expr: Result<Expr, ParseError>,
+    /// Last successfully compiled AST expression retained across mid-keystroke syntax errors.
+    pub last_valid_expr: Option<Expr>,
     /// Formatted LaTeX string for preview rendering.
     pub latex_cache: String,
     /// Available presets as (Name, Equation String) pairs.
@@ -43,6 +45,7 @@ impl MathExpressionInputBar {
             default_lhs: default_lhs.to_string(),
             lhs_name: None,
             parsed_expr: Err(ParseError::EmptyExpression),
+            last_valid_expr: None,
             latex_cache: String::new(),
             presets,
             had_error: false,
@@ -69,6 +72,16 @@ impl MathExpressionInputBar {
     #[must_use]
     pub fn expr(&self) -> Option<&Expr> {
         self.parsed_expr.as_ref().ok()
+    }
+
+    /// Returns the active parsed AST if valid, or falls back to the last valid cached AST
+    /// during mid-keystroke syntax errors.
+    #[must_use]
+    pub fn cached_expr(&self) -> Option<&Expr> {
+        self.parsed_expr
+            .as_ref()
+            .ok()
+            .or(self.last_valid_expr.as_ref())
     }
 
     /// Returns `true` if current input represents a valid mathematical expression.
@@ -112,6 +125,7 @@ impl MathExpressionInputBar {
                     None => expr_latex,
                 };
                 self.lhs_name = lhs;
+                self.last_valid_expr = Some(expr.clone());
                 self.parsed_expr = Ok(expr);
             }
             Err(err) => {
@@ -377,5 +391,23 @@ mod tests {
             assert_eq!(err_entry.1, mode.palette().error);
             assert!(crate::app::contrast_ratio(err_entry.1, mode.visuals().panel_fill) >= 4.5);
         }
+    }
+
+    #[test]
+    fn test_cached_expr_persists_across_incomplete_keystrokes() {
+        let mut bar = MathExpressionInputBar::new("y'", "-k * y * sin(t)", vec![]);
+        assert!(bar.is_valid());
+        let valid_ast = bar.expr().cloned().expect("initial expr valid");
+
+        bar.set_expression("cos(");
+        assert!(!bar.is_valid());
+        assert!(bar.expr().is_none());
+        assert!(bar.error_message().is_some());
+        assert_eq!(bar.cached_expr(), Some(&valid_ast));
+
+        bar.set_expression("cos(t) - y");
+        assert!(bar.is_valid());
+        assert_eq!(bar.cached_expr(), bar.expr());
+        assert_ne!(bar.cached_expr(), Some(&valid_ast));
     }
 }

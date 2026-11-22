@@ -79,7 +79,7 @@ impl SimulationFramework {
         let Some(tool) = &self.active_tool else {
             return Ok(None);
         };
-        let Some(state_str) = tool.save_state() else {
+        let Some(state_str) = tool.save_recovery_state() else {
             return Ok(None);
         };
         let config: serde_json::Value = serde_json::from_str(&state_str)

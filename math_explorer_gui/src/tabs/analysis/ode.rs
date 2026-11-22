@@ -3,11 +3,17 @@
 mod annotations;
 pub mod comparison;
 mod persistence;
+pub mod phase_plane;
+pub mod poincare_map;
 pub mod recovery;
 pub mod systems;
 pub mod ui;
 
-use comparison::{simulate_preset, SolverDiscrepancy};
+#[cfg(test)]
+use comparison::simulate_preset;
+use comparison::{SolverDiscrepancy, SolverTrajectory, simulate_ode};
+use phase_plane::{DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID};
+use poincare_map::{DEFAULT_MATRIX_A, trace_det_from_matrix};
 
 use crate::framework::recovery::emit_divergence_telemetry;
 pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -17,7 +23,6 @@ use crate::framework::{
 use crate::presets::OdePreset;
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
-use recovery::{clamp_ode_parameters, clamp_ode_step_settings};
 
 pub struct OdeSolverTool {
     pub(crate) preset: OdePreset,
@@ -34,6 +39,15 @@ pub struct OdeSolverTool {
     pub v_series: Vec<f64>,
     pub(crate) diverged: bool,
     pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) planar_x_input: MathExpressionInputBar,
+    pub(crate) planar_y_input: MathExpressionInputBar,
+    pub(crate) matrix_a: [[f64; 2]; 2],
+    pub(crate) phase_plane_mode: bool,
+    pub(crate) show_quiver: bool,
+    pub(crate) quiver_density: usize,
+    pub(crate) show_nullclines: bool,
+    pub(crate) seeded_ic: Vec<[f64; 2]>,
+    pub(crate) seeded_trajectories: Vec<SolverTrajectory>,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) comparison_mode: bool,
     pub(crate) discrepancy_euler_rk4: SolverDiscrepancy,
@@ -49,8 +63,53 @@ pub struct OdeSolverTool {
     pub(crate) revision: u64,
 }
 
+fn default_ode_math_inputs() -> (
+    MathExpressionInputBar,
+    MathExpressionInputBar,
+    MathExpressionInputBar,
+) {
+    let scalar = MathExpressionInputBar::new(
+        "y'",
+        "-k * y * sin(t)",
+        vec![
+            ("y' = -k*y*sin(t) (Non-linear Sine)", "-k * y * sin(t)"),
+            ("y' = k*y (Exponential)", "k * y"),
+            (
+                "y' = r*y*(1 - y/cap_k) (Logistic)",
+                "r * y * (1 - y / cap_k)",
+            ),
+            ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
+            ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
+        ],
+    );
+    let planar_x = MathExpressionInputBar::new(
+        "x'",
+        DEFAULT_PLANAR_X_EXPR,
+        vec![
+            ("x' = y (Second-Order Velocity)", "y"),
+            ("x' = r*x - k*x*y (Lotka-Volterra)", "r * x - k * x * y"),
+            ("x' = y - 0.2*x (Damped Rotation)", "y - 0.2 * x"),
+        ],
+    );
+    let planar_y = MathExpressionInputBar::new(
+        "y'",
+        DEFAULT_PLANAR_Y_EXPR,
+        vec![
+            (
+                "y' = k*(1 - x^2)*y - x (Van der Pol)",
+                "k * (1 - x^2) * y - x",
+            ),
+            ("y' = k*x*y - y (Lotka-Volterra)", "k * x * y - y"),
+            ("y' = -k*sin(x) - 0.25*y (Pendulum)", "-k * sin(x) - 0.25 * y"),
+            ("y' = x - x^3 - 0.3*k*y (Duffing)", "x - x^3 - 0.3 * k * y"),
+        ],
+    );
+    (scalar, planar_x, planar_y)
+}
+
 impl Default for OdeSolverTool {
     fn default() -> Self {
+        let (math_input, planar_x_input, planar_y_input) = default_ode_math_inputs();
         let mut tool = Self {
             preset: OdePreset::Exponential,
             method: IntegrationMethod::RungeKutta4,
@@ -65,20 +124,16 @@ impl Default for OdeSolverTool {
             y_series: Vec::new(),
             v_series: Vec::new(),
             diverged: false,
-            math_input: MathExpressionInputBar::new(
-                "y'",
-                "-k * y * sin(t)",
-                vec![
-                    ("y' = -k*y*sin(t) (Non-linear Sine)", "-k * y * sin(t)"),
-                    ("y' = k*y (Exponential)", "k * y"),
-                    (
-                        "y' = r*y*(1 - y/cap_k) (Logistic)",
-                        "r * y * (1 - y / cap_k)",
-                    ),
-                    ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
-                    ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
-                ],
-            ),
+            math_input,
+            planar_x_input,
+            planar_y_input,
+            matrix_a: DEFAULT_MATRIX_A,
+            phase_plane_mode: false,
+            show_quiver: true,
+            quiver_density: DEFAULT_QUIVER_GRID,
+            show_nullclines: false,
+            seeded_ic: Vec::new(),
+            seeded_trajectories: Vec::new(),
             diagnostic_report: None,
             comparison_mode: false,
             discrepancy_euler_rk4: SolverDiscrepancy::default(),
@@ -112,6 +167,14 @@ impl OdeSolverTool {
                 r"r={:.2}, K={:.2}, \Delta t={:.2}",
                 self.param_r, self.param_cap_k, self.dt
             ),
+            OdePreset::LinearSystem2D => {
+                let (tau, delta) = trace_det_from_matrix(self.matrix_a);
+                format!(r"\tau={tau:.2}, \Delta={delta:.2}, \Delta t={:.2}", self.dt)
+            }
+            OdePreset::PlanarCustom => format!(
+                r"k={:.2}, r={:.2}, \Delta t={:.2}",
+                self.param_k, self.param_r, self.dt
+            ),
         }
     }
 
@@ -123,46 +186,6 @@ impl OdeSolverTool {
     #[must_use]
     pub fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
         self.diagnostic_report.as_ref()
-    }
-
-    pub fn auto_scale_step_size(&mut self) {
-        let min_dt = 1e-6;
-        if !self.total_time.is_finite() || self.total_time <= 0.0 {
-            self.total_time = 10.0;
-        } else {
-            self.total_time = self.total_time.min(100.0);
-        }
-        self.dt = if !self.dt.is_finite() || self.dt <= 0.0 {
-            0.05
-        } else {
-            (self.dt * 0.5).max(min_dt)
-        };
-        let max_horizon = self.dt * crate::presets::MAX_ODE_STEPS as f64;
-        if self.total_time > max_horizon {
-            self.total_time = max_horizon;
-            for _ in 0..4 {
-                if crate::presets::checked_ode_step_count(self.dt, self.total_time).is_some()
-                    || self.total_time <= 0.0
-                {
-                    break;
-                }
-                self.total_time = self.total_time.next_down();
-            }
-        }
-        self.recalculate();
-    }
-
-    pub fn clamp_instability_parameters(&mut self) {
-        clamp_ode_parameters(
-            self.preset,
-            &mut self.param_k,
-            &mut self.param_r,
-            &mut self.param_cap_k,
-            &mut self.ic_y0,
-            &mut self.ic_v0,
-        );
-        clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
-        self.recalculate();
     }
 
     #[cfg(test)]
@@ -213,42 +236,15 @@ impl OdeSolverTool {
         &self.comparison_manager
     }
 
-    pub fn reset_parameters(&mut self) {
-        match self.preset {
-            OdePreset::Exponential => {
-                self.param_k = 1.0;
-                self.ic_y0 = 1.0;
-            }
-            OdePreset::HarmonicOscillator => {
-                self.param_k = 1.0;
-                self.ic_y0 = 1.0;
-                self.ic_v0 = 0.0;
-            }
-            OdePreset::LogisticGrowth => {
-                self.param_r = 1.0;
-                self.param_cap_k = 10.0;
-                self.ic_y0 = 1.0;
-            }
-            OdePreset::Custom => {
-                self.param_k = 1.0;
-                self.ic_y0 = 1.0;
-                self.math_input.set_expression("-k * y * sin(t)");
-            }
-        }
-        self.dt = 0.05;
-        self.total_time = 10.0;
-        self.pending_sweep_run = None;
-        self.recalculate();
-    }
-
     fn build_current_trace_series(
         &self,
         plot_points_y: &[[f64; 2]],
         plot_points_v: &[[f64; 2]],
     ) -> Vec<TraceSeries> {
-        let mut series = vec![TraceSeries::new("y(t)", plot_points_y.to_vec())];
-        if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-            series.push(TraceSeries::new("y'(t)", plot_points_v.to_vec()));
+        let (t1_lbl, t2_lbl, _, _) = self.preset.state_labels();
+        let mut series = vec![TraceSeries::new(t1_lbl, plot_points_y.to_vec())];
+        if self.preset.is_2d() && !plot_points_v.is_empty() {
+            series.push(TraceSeries::new(t2_lbl, plot_points_v.to_vec()));
         }
         series
     }
@@ -295,6 +291,7 @@ impl OdeSolverTool {
         self.diagnostic_report = None;
 
         self.recalculate_active();
+        self.recalculate_seeded_orbits();
         self.recalculate_comparison();
         self.last_param_summary = self.param_summary();
         self.update_callouts();
@@ -313,7 +310,7 @@ impl OdeSolverTool {
                 self.callout_manager.set_auto_callout(
                     "final_state",
                     [last_t, last_y],
-                    format!("Final ({:.2}, {:.2})", last_t, last_y),
+                    format!("Final ({last_t:.2}, {last_y:.2})"),
                     [25.0, -25.0],
                 );
             }
@@ -323,18 +320,7 @@ impl OdeSolverTool {
     }
 
     fn recalculate_active(&mut self) {
-        let active_traj = simulate_preset(
-            self.preset,
-            self.method,
-            self.dt,
-            self.total_time,
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-            self.ic_y0,
-            self.ic_v0,
-            self.math_input.expr(),
-        );
+        let active_traj = simulate_ode(&self.sim_spec(self.method));
         self.time_series = active_traj.time_series;
         self.y_series = active_traj.y_series;
         self.v_series = active_traj.v_series;
@@ -343,8 +329,7 @@ impl OdeSolverTool {
         if let Some((t_div, step_idx, var_name)) = active_traj.divergence_info {
             self.diverged = true;
             let message = format!(
-                "Simulation diverged at t={:.4}s (step {}) in variable {}",
-                t_div, step_idx, var_name
+                "Simulation diverged at t={t_div:.4}s (step {step_idx}) in variable {var_name}"
             );
             emit_divergence_telemetry("OdeSolverTool", t_div, step_idx, &var_name, &message);
             self.diagnostic_report =
@@ -363,57 +348,28 @@ impl InteractiveTool for OdeSolverTool {
     fn domain(&self) -> &'static str {
         "analysis"
     }
-
     fn state_revision(&self) -> u64 {
         self.compute_state_revision()
     }
-
     fn has_finite_parameters(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
     }
-
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut datasets = egui_plot::get_last_plot_datasets();
-        if datasets.is_empty() {
-            let mut plot_points_y = Vec::new();
-            let mut plot_points_v = Vec::new();
-            for (i, &t) in self.time_series.iter().enumerate() {
-                if let Some(&y) = self.y_series.get(i) {
-                    plot_points_y.push([t, y]);
-                }
-                if let Some(&v) = self.v_series.get(i) {
-                    plot_points_v.push([t, v]);
-                }
-            }
-            datasets.push(("y(t)".to_string(), plot_points_y));
-            if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-                datasets.push(("y'(t)".to_string(), plot_points_v));
-            }
-            datasets.extend(self.snapshot_manager.export_datasets());
-            if self.comparison_mode {
-                datasets.extend(self.comparison_manager.export_datasets());
-            }
-        }
-        datasets
+        self.collect_export_datasets()
     }
-
     fn save_state(&self) -> Option<String> {
         self.serialize_full_state()
     }
-
     fn save_recovery_state(&self) -> Option<String> {
         self.serialize_recovery_state()
     }
-
     fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
         self.deserialize_state(state, true)
     }
-
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.deserialize_state(state, false)
     }
-
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true
@@ -421,7 +377,6 @@ impl InteractiveTool for OdeSolverTool {
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let mut changed = false;
-
         let mut plot_points_y = Vec::new();
         let mut plot_points_v = Vec::new();
         for (i, &t) in self.time_series.iter().enumerate() {
@@ -453,6 +408,11 @@ impl InteractiveTool for OdeSolverTool {
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
 }
 
 inventory::submit! {
@@ -467,12 +427,11 @@ inventory::submit! {
 
 #[cfg(test)]
 mod comparison_tests;
-
 #[cfg(test)]
 mod ode_tests;
-
+#[cfg(test)]
+mod planar_poincare_tests;
 #[cfg(test)]
 mod recovery_tests;
-
 #[cfg(test)]
 mod sensitivity_tests;

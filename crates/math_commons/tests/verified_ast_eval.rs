@@ -32,6 +32,29 @@ fn check_ode_rk4_eval_2d(expr: &Expr, unknown: &Expr, params: &HashMap<String, f
     assert!(unknown.eval_2d(t, y, params).is_nan());
 }
 
+fn check_ode_rk4_eval_planar(
+    dx_expr: &Expr,
+    dy_expr: &Expr,
+    unknown: &Expr,
+    params: &HashMap<String, f64>,
+) {
+    let dt = 0.01;
+    let mut t = 0.0;
+    let mut x = 1.0;
+    let mut y = 0.5;
+    for _ in 0..150 {
+        let kx1 = dx_expr.eval_planar(t, x, y, params);
+        let ky1 = dy_expr.eval_planar(t, x, y, params);
+        let kx2 = dx_expr.eval_planar(t + 0.5 * dt, x + 0.5 * dt * kx1, y + 0.5 * dt * ky1, params);
+        let ky2 = dy_expr.eval_planar(t + 0.5 * dt, x + 0.5 * dt * kx1, y + 0.5 * dt * ky1, params);
+        x += dt * kx2;
+        y += dt * ky2;
+        t += dt;
+    }
+    assert!(x.is_finite() && y.is_finite());
+    assert!(unknown.eval_planar(t, x, y, params).is_nan());
+}
+
 fn check_complex_eval(expr: &Expr, vars: &HashMap<String, Complex64>) {
     let val = expr
         .eval_complex(vars)
@@ -72,11 +95,14 @@ fn test_ast_evaluators_zero_allocations_with_global_allocator() {
     complex_vars.insert("Gain".to_string(), Complex64::new(3.0, -0.5));
 
     let conformal_expr = parse("Z^3 - 1 / z + PI * I + Tau - E").expect("parse conformal");
+    let planar_dx = parse("Y - 0.1 * X").expect("parse planar dx");
+    let planar_dy = parse("-k * X + 0.2 * sin(Omega * T) + 0 * PI").expect("parse planar dy");
 
     // Keep all VerifiedEngine::run_verified assertions in one test to prevent MEMORY_LOCK races.
     let ((), metrics) = VerifiedEngine::run_verified(|| {
         check_real_eval(&real_expr, &real_vars);
         check_ode_rk4_eval_2d(&ode_expr, &unknown_expr, &ode_params);
+        check_ode_rk4_eval_planar(&planar_dx, &planar_dy, &unknown_expr, &ode_params);
         check_complex_eval(&complex_expr, &complex_vars);
         check_conformal_eval_complex_z(&conformal_expr, &unknown_expr);
     });

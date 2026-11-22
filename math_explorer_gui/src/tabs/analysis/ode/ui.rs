@@ -1,7 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::phase_plane::PLANAR_COUPLED_PRESETS;
 use super::recovery;
-use super::systems::eval_ode_final_state;
+use super::systems::eval_ode_final_state_planar;
 use super::OdeSolverTool;
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::TraceSeries;
@@ -20,7 +21,13 @@ impl OdeSolverTool {
     ) -> bool {
         let mut changed = false;
         changed |= self.render_preset_selector(ui);
+        if self.preset.is_2d() {
+            changed |= self.render_phase_plane_controls(ui);
+        }
         changed |= self.render_parameter_inputs(ui);
+        if self.preset == OdePreset::LinearSystem2D || self.is_phase_plane_active() {
+            changed |= self.render_poincare_minimap(ui);
+        }
         changed |= self.render_initial_condition_inputs(ui);
         changed |= self.render_solver_settings_controls(ui);
         self.render_snapshots_and_sensitivity(ui, plot_points_y, plot_points_v);
@@ -35,60 +42,84 @@ impl OdeSolverTool {
         ui.heading("ODE System");
         ui.separator();
 
+        let prev_preset = self.preset;
         egui::ComboBox::from_id_salt("ode_preset")
             .selected_text(self.preset.name())
             .show_ui(ui, |ui| {
-                if ui
-                    .selectable_value(
-                        &mut self.preset,
-                        OdePreset::Exponential,
-                        OdePreset::Exponential.name(),
-                    )
-                    .changed()
-                    || ui
-                        .selectable_value(
-                            &mut self.preset,
-                            OdePreset::HarmonicOscillator,
-                            OdePreset::HarmonicOscillator.name(),
-                        )
-                        .changed()
-                    || ui
-                        .selectable_value(
-                            &mut self.preset,
-                            OdePreset::LogisticGrowth,
-                            OdePreset::LogisticGrowth.name(),
-                        )
-                        .changed()
-                    || ui
-                        .selectable_value(
-                            &mut self.preset,
-                            OdePreset::Custom,
-                            OdePreset::Custom.name(),
-                        )
-                        .changed()
-                {
-                    changed = true;
+                for p in OdePreset::ALL {
+                    if ui.selectable_value(&mut self.preset, p, p.name()).changed() {
+                        changed = true;
+                    }
                 }
             });
-
-        if self.preset == OdePreset::Custom {
-            ui.add_space(6.0);
-            if self.math_input.ui(ui) {
-                changed = true;
-            }
-        } else {
-            let (latex_eq, plain_eq) = match self.preset {
-                OdePreset::Exponential => (r"\frac{dy}{dt} = k y", "dy/dt = k*y"),
-                OdePreset::HarmonicOscillator => (r"\frac{d^2 y}{dt^2} = -k y", "d^2y/dt^2 = -k*y"),
-                OdePreset::LogisticGrowth => (
-                    r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
-                    "dy/dt = r*y*(1 - y/K)",
-                ),
-                OdePreset::Custom => unreachable!(),
-            };
-            crate::reflective_ui::render_formula_with_export(ui, latex_eq, Some(plain_eq));
+        if self.preset != prev_preset
+            && matches!(
+                self.preset,
+                OdePreset::LinearSystem2D | OdePreset::PlanarCustom
+            )
+        {
+            self.phase_plane_mode = true;
         }
 
+        changed |= self.render_preset_equations_ui(ui);
+        changed
+    }
+
+    fn render_preset_equations_ui(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        match self.preset {
+            OdePreset::Custom => {
+                ui.add_space(6.0);
+                changed |= self.math_input.ui(ui);
+            }
+            OdePreset::PlanarCustom => {
+                ui.add_space(6.0);
+                egui::ComboBox::from_id_salt("ode_planar_coupled_preset")
+                    .selected_text("Coupled System Templates...")
+                    .show_ui(ui, |ui| {
+                        for (title, fx, fy) in PLANAR_COUPLED_PRESETS {
+                            if ui.button(*title).clicked() {
+                                self.planar_x_input.set_expression(fx);
+                                self.planar_y_input.set_expression(fy);
+                                changed = true;
+                                ui.close();
+                            }
+                        }
+                    });
+                ui.add_space(4.0);
+                changed |= self.planar_x_input.ui(ui);
+                ui.add_space(4.0);
+                changed |= self.planar_y_input.ui(ui);
+            }
+            OdePreset::Exponential => {
+                crate::reflective_ui::render_formula_with_export(
+                    ui,
+                    r"\frac{dy}{dt} = k y",
+                    Some("dy/dt = k*y"),
+                );
+            }
+            OdePreset::HarmonicOscillator => {
+                crate::reflective_ui::render_formula_with_export(
+                    ui,
+                    r"\frac{d^2 y}{dt^2} = -k y",
+                    Some("d^2y/dt^2 = -k*y"),
+                );
+            }
+            OdePreset::LogisticGrowth => {
+                crate::reflective_ui::render_formula_with_export(
+                    ui,
+                    r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
+                    Some("dy/dt = r*y*(1 - y/K)"),
+                );
+            }
+            OdePreset::LinearSystem2D => {
+                crate::reflective_ui::render_formula_with_export(
+                    ui,
+                    r"\dot{\mathbf{x}} = A \mathbf{x}",
+                    Some("x' = a11*x + a12*y, y' = a21*x + a22*y"),
+                );
+            }
+        }
         changed
     }
 
@@ -98,50 +129,39 @@ impl OdeSolverTool {
         ui.heading("Parameters");
         match self.preset {
             OdePreset::Exponential | OdePreset::Custom => {
-                if ui
-                    .add(
-                        AnimatedSlider::new(&mut self.param_k, -5.0..=5.0)
-                            .text("k (Rate / Parameter)")
-                            .id_salt("ode_param_k_exp"),
-                    )
-                    .changed()
-                {
-                    changed = true;
-                }
+                let s = AnimatedSlider::new(&mut self.param_k, -5.0..=5.0)
+                    .text("k (Rate / Parameter)")
+                    .id_salt("ode_param_k_exp");
+                changed |= ui.add(s).changed();
             }
             OdePreset::HarmonicOscillator => {
-                if ui
-                    .add(
-                        AnimatedSlider::new(&mut self.param_k, 0.1..=10.0)
-                            .text("k (Spring Constant)")
-                            .id_salt("ode_param_k_osc"),
-                    )
-                    .changed()
-                {
-                    changed = true;
-                }
+                let s = AnimatedSlider::new(&mut self.param_k, 0.1..=10.0)
+                    .text("k (Spring Constant)")
+                    .id_salt("ode_param_k_osc");
+                changed |= ui.add(s).changed();
             }
             OdePreset::LogisticGrowth => {
-                if ui
-                    .add(
-                        AnimatedSlider::new(&mut self.param_r, 0.0..=5.0)
-                            .text("r (Growth Rate)")
-                            .id_salt("ode_param_r"),
-                    )
-                    .changed()
-                {
-                    changed = true;
-                }
-                if ui
-                    .add(
-                        AnimatedSlider::new(&mut self.param_cap_k, 1.0..=100.0)
-                            .text("K (Carrying Capacity)")
-                            .id_salt("ode_param_cap_k"),
-                    )
-                    .changed()
-                {
-                    changed = true;
-                }
+                let sr = AnimatedSlider::new(&mut self.param_r, 0.0..=5.0)
+                    .text("r (Growth Rate)")
+                    .id_salt("ode_param_r");
+                let sk = AnimatedSlider::new(&mut self.param_cap_k, 1.0..=100.0)
+                    .text("K (Carrying Capacity)")
+                    .id_salt("ode_param_cap_k");
+                changed |= ui.add(sr).changed();
+                changed |= ui.add(sk).changed();
+            }
+            OdePreset::LinearSystem2D => {
+                changed |= self.render_matrix_inputs(ui);
+            }
+            OdePreset::PlanarCustom => {
+                let sk = AnimatedSlider::new(&mut self.param_k, -5.0..=5.0)
+                    .text("k (Coupling / Damping)")
+                    .id_salt("ode_param_k_planar");
+                let sr = AnimatedSlider::new(&mut self.param_r, -5.0..=5.0)
+                    .text("r (Growth / Forcing)")
+                    .id_salt("ode_param_r_planar");
+                changed |= ui.add(sk).changed();
+                changed |= ui.add(sr).changed();
             }
         }
         changed
@@ -149,26 +169,26 @@ impl OdeSolverTool {
 
     fn render_initial_condition_inputs(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
+        let (_, _, px_lbl, py_lbl) = self.preset.state_labels();
         ui.add_space(10.0);
         ui.heading("Initial Conditions");
+        let first_lbl = if self.preset.is_2d() {
+            format!("{px_lbl}(0):")
+        } else {
+            "y(0):".to_string()
+        };
         ui.horizontal(|ui| {
-            ui.label("y(0):");
-            if ui
+            ui.label(first_lbl);
+            changed |= ui
                 .add(egui::DragValue::new(&mut self.ic_y0).speed(0.1))
-                .changed()
-            {
-                changed = true;
-            }
+                .changed();
         });
-        if self.preset == OdePreset::HarmonicOscillator {
+        if self.preset.is_2d() {
             ui.horizontal(|ui| {
-                ui.label("y'(0):");
-                if ui
+                ui.label(format!("{py_lbl}(0):"));
+                changed |= ui
                     .add(egui::DragValue::new(&mut self.ic_v0).speed(0.1))
-                    .changed()
-                {
-                    changed = true;
-                }
+                    .changed();
             });
         }
         changed
@@ -190,44 +210,35 @@ impl OdeSolverTool {
                     }
                 });
         });
-        if ui
+        changed |= ui
             .checkbox(&mut self.comparison_mode, "Multi-Solver Comparison")
-            .changed()
-        {
-            changed = true;
-        }
+            .changed();
 
         ui.horizontal(|ui| {
             ui.label("dt (Step Size):");
-            if ui
+            changed |= ui
                 .add(
                     egui::DragValue::new(&mut self.dt)
                         .speed(0.01)
                         .range(0.001..=1.0),
                 )
-                .changed()
-            {
-                changed = true;
-            }
+                .changed();
         });
         ui.horizontal(|ui| {
             ui.label("Total Time:");
-            if ui
+            changed |= ui
                 .add(
                     egui::DragValue::new(&mut self.total_time)
                         .speed(1.0)
                         .range(1.0..=100.0),
                 )
-                .changed()
-            {
-                changed = true;
-            }
+                .changed();
         });
 
         ui.add_space(5.0);
-        if ui.checkbox(&mut self.show_annotations, "Show Annotations").changed() {
-            changed = true;
-        }
+        changed |= ui
+            .checkbox(&mut self.show_annotations, "Show Annotations")
+            .changed();
 
         if self.comparison_mode {
             self.render_discrepancy_panel(ui);
@@ -243,16 +254,17 @@ impl OdeSolverTool {
     ) {
         ui.add_space(10.0);
         let param_summary = self.param_summary();
-        let is_harmonic = self.preset == OdePreset::HarmonicOscillator;
+        let (t1_lbl, t2_lbl, _, _) = self.preset.state_labels();
+        let is_2d = self.preset.is_2d();
         let py = plot_points_y.to_vec();
         let pv = plot_points_v.to_vec();
         let current_len = self.snapshot_manager.len();
 
         if self.snapshot_manager.render_ui(ui, || {
             let label = format!("Baseline {}", current_len + 1);
-            let mut series = vec![TraceSeries::new("y(t)", py)];
-            if is_harmonic && !pv.is_empty() {
-                series.push(TraceSeries::new("y'(t)", pv));
+            let mut series = vec![TraceSeries::new(t1_lbl, py)];
+            if is_2d && !pv.is_empty() {
+                series.push(TraceSeries::new(t2_lbl, pv));
             }
             Some((label, param_summary, series))
         }) {
@@ -260,59 +272,72 @@ impl OdeSolverTool {
         }
 
         self.run_sensitivity_analysis();
+        crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "ode_tool");
+    }
 
-        crate::sensitivity::render_sensitivity_panel_ui(
-            ui,
-            &self.sensitivity_engine,
-            "ode_tool",
-        );
+    fn sensitivity_params(&self) -> Vec<(&'static str, f64)> {
+        match self.preset {
+            OdePreset::Exponential | OdePreset::Custom => vec![("k", self.param_k), ("y0", self.ic_y0)],
+            OdePreset::HarmonicOscillator => {
+                vec![("k", self.param_k), ("y0", self.ic_y0), ("v0", self.ic_v0)]
+            }
+            OdePreset::LogisticGrowth => {
+                vec![("r", self.param_r), ("cap_k", self.param_cap_k), ("y0", self.ic_y0)]
+            }
+            OdePreset::LinearSystem2D => vec![
+                ("a11", self.matrix_a[0][0]),
+                ("a12", self.matrix_a[0][1]),
+                ("a21", self.matrix_a[1][0]),
+                ("a22", self.matrix_a[1][1]),
+                ("y0", self.ic_y0),
+                ("v0", self.ic_v0),
+            ],
+            OdePreset::PlanarCustom => vec![
+                ("k", self.param_k),
+                ("r", self.param_r),
+                ("y0", self.ic_y0),
+                ("v0", self.ic_v0),
+            ],
+        }
     }
 
     fn run_sensitivity_analysis(&mut self) {
         use crate::sensitivity::canonical_f64_bits;
 
-        let exp_params = [("k", self.param_k), ("y0", self.ic_y0)];
-        let osc_params = [
-            ("k", self.param_k),
-            ("y0", self.ic_y0),
-            ("v0", self.ic_v0),
-        ];
-        let log_params = [
-            ("r", self.param_r),
-            ("cap_k", self.param_cap_k),
-            ("y0", self.ic_y0),
-        ];
-        let params: &[(&str, f64)] = match self.preset {
-            OdePreset::Exponential | OdePreset::Custom => &exp_params,
-            OdePreset::HarmonicOscillator => &osc_params,
-            OdePreset::LogisticGrowth => &log_params,
+        let params = self.sensitivity_params();
+        let custom_expr = self.math_input.cached_expr();
+        let px_expr = self.planar_x_input.cached_expr();
+        let py_expr = self.planar_y_input.cached_expr();
+        let base_spec = super::comparison::OdeSimSpec {
+            preset: self.preset,
+            method: self.method,
+            dt: self.dt,
+            total_time: self.total_time,
+            param_k: self.param_k,
+            param_r: self.param_r,
+            param_cap_k: self.param_cap_k,
+            ic_y0: self.ic_y0,
+            ic_v0: self.ic_v0,
+            matrix_a: self.matrix_a,
+            custom_expr,
+            planar_x_expr: px_expr,
+            planar_y_expr: py_expr,
         };
-
-        let current_preset = self.preset;
-        let current_method = self.method;
-        let current_dt = self.dt;
-        let current_total_time = self.total_time;
-        let custom_expr = self.math_input.expr();
-        let custom_ctx =
-            (current_preset == OdePreset::Custom).then_some(super::systems::AstContext(custom_expr));
         let context = (
-            current_preset as u8,
-            current_method as u8,
-            canonical_f64_bits(current_dt),
-            canonical_f64_bits(current_total_time),
-            custom_ctx,
+            base_spec.preset as u8,
+            base_spec.method as u8,
+            canonical_f64_bits(base_spec.dt),
+            canonical_f64_bits(base_spec.total_time),
+            (base_spec.preset == OdePreset::Custom).then_some(super::systems::AstContext(custom_expr)),
+            (base_spec.preset == OdePreset::PlanarCustom).then_some((
+                super::systems::AstContext(px_expr),
+                super::systems::AstContext(py_expr),
+            )),
         );
 
         self.sensitivity_engine
-            .compute_with_context(params, &context, |p_map| {
-                eval_ode_final_state(
-                    current_preset,
-                    current_method,
-                    current_dt,
-                    current_total_time,
-                    p_map,
-                    custom_expr,
-                )
+            .compute_with_context(&params, &context, |p_map| {
+                eval_ode_final_state_planar(&base_spec, p_map)
             });
     }
 
@@ -320,36 +345,14 @@ impl OdeSolverTool {
         ui.add_space(10.0);
         ui.heading("Discrepancy Metrics");
         ui.group(|ui| {
-            render_copyable_metric(
-                ui,
-                "Euler vs RK4 (Max)",
-                &format!("{:.4e}", self.discrepancy_euler_rk4.max_error),
-            );
-            render_copyable_metric(
-                ui,
-                "Euler vs RK4 (RMS)",
-                &format!("{:.4e}", self.discrepancy_euler_rk4.rms_error),
-            );
-            render_copyable_metric(
-                ui,
-                "Heun vs RK4 (Max)",
-                &format!("{:.4e}", self.discrepancy_heun_rk4.max_error),
-            );
-            render_copyable_metric(
-                ui,
-                "Heun vs RK4 (RMS)",
-                &format!("{:.4e}", self.discrepancy_heun_rk4.rms_error),
-            );
-            render_copyable_metric(
-                ui,
-                "Euler vs Heun (Max)",
-                &format!("{:.4e}", self.discrepancy_euler_heun.max_error),
-            );
-            render_copyable_metric(
-                ui,
-                "Euler vs Heun (RMS)",
-                &format!("{:.4e}", self.discrepancy_euler_heun.rms_error),
-            );
+            for (label, disc) in [
+                ("Euler vs RK4", self.discrepancy_euler_rk4),
+                ("Heun vs RK4", self.discrepancy_heun_rk4),
+                ("Euler vs Heun", self.discrepancy_euler_heun),
+            ] {
+                render_copyable_metric(ui, &format!("{label} (Max)"), &format!("{:.4e}", disc.max_error));
+                render_copyable_metric(ui, &format!("{label} (RMS)"), &format!("{:.4e}", disc.rms_error));
+            }
         });
     }
 
@@ -360,32 +363,31 @@ impl OdeSolverTool {
         mut plot_points_v: Vec<[f64; 2]>,
         changed: &mut bool,
     ) {
+        if self.is_phase_plane_active() {
+            self.render_phase_plane_canvas(ui, plot_points_y, plot_points_v, changed);
+            return;
+        }
+
+        let (t1_lbl, t2_lbl, _, _) = self.preset.state_labels();
         ui.heading("Solution Trajectory");
 
         if FiniteStateGuard::diverged(self) {
-            recovery::render_recovery_ui(
-                ui,
-                self,
-                changed,
-                &mut plot_points_y,
-                &mut plot_points_v,
-            );
+            recovery::render_recovery_ui(ui, self, changed, &mut plot_points_y, &mut plot_points_v);
         }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let line_y =
-            Line::new("y(t)", PlotPoints::new(plot_points_y)).color(palette.series_color(0));
+        let line_y = Line::new(t1_lbl, PlotPoints::new(plot_points_y)).color(palette.series_color(0));
 
         Plot::new("ode_plot")
             .view_aspect(2.0)
             .x_axis_label("t \\text{ (Time)}")
-            .y_axis_label("y(t)")
+            .y_axis_label(t1_lbl)
             .legend(egui_plot::Legend::default())
             .show(ui, |plot_ui| {
                 if !self.comparison_mode {
                     plot_ui.line(line_y);
-                    if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-                        let line_v = Line::new("y'(t)", PlotPoints::new(plot_points_v))
+                    if self.preset.is_2d() && !plot_points_v.is_empty() {
+                        let line_v = Line::new(t2_lbl, PlotPoints::new(plot_points_v))
                             .color(palette.series_color(1));
                         plot_ui.line(line_v);
                     }

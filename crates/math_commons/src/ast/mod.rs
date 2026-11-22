@@ -7,6 +7,8 @@ pub mod lexer;
 pub mod parser;
 
 #[cfg(test)]
+mod planar_tests;
+#[cfg(test)]
 mod tests;
 
 pub use eval::{EvalError, MAX_EVAL_DEPTH};
