@@ -7675,6 +7675,9 @@
       "signature": "impl Odds { pub fn from_fractional (numerator : f64 , denominator : f64) -> Result < Self , KellyError > }"
     },
     {
+      "signature": "impl Odds { pub fn from_net_odds (net_odds : f64) -> Result < Self , KellyError > }"
+    },
+    {
       "signature": "impl Odds { pub fn implied_probability (& self) -> f64 }"
     },
     {

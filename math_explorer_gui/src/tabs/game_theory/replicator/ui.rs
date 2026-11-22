@@ -70,7 +70,10 @@ impl ReplicatorDynamicsTool {
                         .get(i)
                         .map_or("?", std::string::String::as_str),
                 );
-                ui.add(egui::Slider::new(&mut self.initial_population[i], 0.0..=1.0));
+                ui.add(egui::Slider::new(
+                    &mut self.initial_population[i],
+                    0.0..=1.0,
+                ));
             });
         }
 

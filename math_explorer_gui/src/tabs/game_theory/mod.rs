@@ -2,6 +2,7 @@
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
+pub mod glicko2_tournament;
 pub mod replicator;
 
 pub struct GameTheoryTab {
