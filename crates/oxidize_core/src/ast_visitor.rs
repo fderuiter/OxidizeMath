@@ -61,7 +61,10 @@ impl AstVisitor {
                 continue;
             }
 
-            if attr_str.contains("verified_engine::verified") || attr_str.contains("#[verified]") {
+            if attr_str.contains("verified_engine::verified")
+                || attr_str.contains("#[verified]")
+                || attr_str.starts_with("#[verified(")
+            {
                 is_verified = true;
                 has_semantic = true;
             }
@@ -263,5 +266,29 @@ mod tests {
         assert_eq!(visitor.verified_funcs, 1);
         assert_eq!(visitor.total_asserts, 2);
         assert!(visitor.opted_out);
+    }
+
+    #[test]
+    fn test_ast_visitor_allow_recursion_preserves_verification_counts() {
+        let code = r#"
+            #[verified(allow_recursion = "delegates to inherent method")]
+            fn local_delegate() {
+                assert!(true);
+            }
+
+            #[verified_engine::verified(allow_recursion = "delegates to inherent method")]
+            fn qualified_delegate() {
+                assert_eq!(2, 2);
+            }
+        "#;
+        let file = syn::parse_file(code).unwrap();
+        let mut visitor = AstVisitor::default();
+        visitor.visit_file(&file);
+
+        assert_eq!(visitor.total_funcs, 2);
+        assert_eq!(visitor.verified_funcs, 2);
+        assert_eq!(visitor.semantic_integrity_funcs, 2);
+        assert_eq!(visitor.verified_asserts, 2);
+        assert!(!visitor.opted_out);
     }
 }

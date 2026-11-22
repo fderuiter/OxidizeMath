@@ -79,8 +79,8 @@ fn render_preset_asymptote_callout(
             }
         }
         OdePreset::HarmonicOscillator => {
-            if tool.total_time.is_finite() {
-                let callout_eq = Callout::new([tool.total_time * 0.5, 0.0], "Equilibrium: y = 0.00")
+            if let Some(root_t) = harmonic_equilibrium_root(tool) {
+                let callout_eq = Callout::new([root_t, 0.0], "Equilibrium: y = 0.00")
                     .offset(Vec2::new(30.0, 25.0))
                     .leader_stroke(Stroke::new(1.5_f32, palette.series_color(1)))
                     .frame(bg_fill, frame_stroke)
@@ -92,6 +92,30 @@ fn render_preset_asymptote_callout(
         }
         OdePreset::Custom => {}
     }
+}
+
+/// Locates an interpolated zero crossing $y(t) = 0$ of the simulated trajectory near the horizon midpoint.
+pub(crate) fn harmonic_equilibrium_root(tool: &OdeSolverTool) -> Option<f64> {
+    if !tool.total_time.is_finite() {
+        return None;
+    }
+    let pts: Vec<egui_plot::PlotPoint> = tool
+        .time_series
+        .iter()
+        .copied()
+        .zip(tool.y_series.iter().copied())
+        .filter(|(t, y)| t.is_finite() && y.is_finite())
+        .map(|(t, y)| egui_plot::PlotPoint::new(t, y))
+        .collect();
+    let crossings = egui_plot::poi::interpolate_threshold_crossings(&pts, 0.0);
+    let mid = 0.5 * tool.total_time;
+    crossings
+        .into_iter()
+        .filter(|t| t.is_finite() && *t >= 0.0 && *t <= tool.total_time)
+        .min_by(|a, b| (a - mid).abs().total_cmp(&(b - mid).abs()))
+        .or_else(|| {
+            (tool.ic_y0.abs() <= 1e-12 && tool.ic_v0.abs() <= 1e-12).then_some(0.0)
+        })
 }
 
 /// Renders simulation callout annotations onto the ODE plot canvas.
