@@ -1,0 +1,33 @@
+# ADR 0035: Coupled D2Q9 Lattice Boltzmann Vortex Engine for 2D Advection-Reaction-Diffusion Morphogenesis
+
+## Status
+Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0008](0008-finite-state-guard-solver-divergence.md), [ADR 0021](0021-precompute-stencil-reciprocals.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
+
+## Context
+Simulating biological pattern formation in moving fluids (such as vascular morphogenesis, marine plankton blooms, and microfluidic embryonic gradients) requires coupling mesoscopic Navier-Stokes wakes with nonlinear reaction-diffusion PDEs:
+
+$$\frac{\partial c_i}{\partial t} + \mathbf{u}(\mathbf{x}, t) \cdot \nabla c_i = D_i \nabla^2 c_i + R_i(u, v)$$
+
+Four architectural and numerical constraints shaped the design across `pure_math`, `domain_physics`, `domain_biology`, `math_explorer`, and `math_explorer_gui`:
+1. **Double-Buffer Swap Ownership in `LatticeBoltzmann`**: [`LatticeBoltzmann::step`](../../crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/algorithms.rs) wrote streamed populations into `next_f` without swapping buffers, while `<LatticeBoltzmannD2Q9<BgkCollision> as SimulationModel>::step` performed the swap externally. Direct callers of `solver.step()` (including [`LbmUnified`](../../math_explorer_gui/src/tabs/fluid_dynamics/lattice_boltzmann.rs)) stalled at `x <= 2`, whereas calling `SimulationModel::step` after fixing `LatticeBoltzmann::step` would have double-swapped back to stale distributions.
+2. **Positivity-Preserving 2D Advection Stencils**: [`StencilOperators`](../../crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs) precomputed `inv_dx`, `inv_dx2`, and `inv_dy2` ([ADR 0021](0021-precompute-stencil-reciprocals.md)), but lacked `inv_dy` and a 2D donor-cell upwind operator capable of advecting sharp autocatalytic fronts without dispersive undershoot ($c_i < 0$).
+3. **Strict Domain Crate Independence & Memory Layout Mismatch**: [`domain_biology/Cargo.toml`](../../crates/domain_biology/Cargo.toml) must remain strictly decoupled from `domain_physics`. Moreover, `LatticeState` stores velocities and obstacles in column-major `nalgebra::DMatrix` buffers (`y + x * height`), whereas [`FiniteDifference2D`](../../crates/domain_biology/src/biology/diffusion/fd2d/mod.rs) indexes morphogen grids in row-major order (`y * width + x`).
+4. **Canonical `GrayScottKinetics` Availability**: `GrayScottKinetics` previously existed only inside [`crates/domain_biology/tests/test_turing_regression.rs`](../../crates/domain_biology/tests/test_turing_regression.rs) rather than as a public `#[derive(Theory)]` model alongside [`SchnakenbergKinetics`](../../crates/domain_biology/src/biology/morphogenesis/reaction.rs).
+
+## Decision
+1. **Unify `LatticeBoltzmann::step` Buffer Swapping and Open-Outlet Wakes (`domain_physics`)**:
+   - Call `DoubleBufferedState::swap_buffers(&mut self.state)` at the end of [`LatticeBoltzmann::step`](../../crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/algorithms.rs), remove the duplicate swap from `<LatticeBoltzmannD2Q9<BgkCollision> as SimulationModel>::step`, and add `apply_open_outlet` zero-gradient outflow extrapolation so bluff-body cylinder wakes shed alternating Karman vortex streets cleanly.
+2. **Extend `StencilOperators` with `inv_dy` and `upwind_2d` (`pure_math`)**:
+   - Add `pub inv_dy: f64` and `StencilOperators::upwind_2d` to [`crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs`](../../crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs), preserving concentration non-negativity under explicit CFL sub-stepping ($|u_x|\Delta t/\Delta x + |u_y|\Delta t/\Delta y \le 0.5$).
+3. **Promote `GrayScottKinetics` and Masked Advection-Diffusion (`domain_biology`)**:
+   - Promote [`GrayScottKinetics`](../../crates/domain_biology/src/biology/morphogenesis/reaction.rs) (`#[derive(Debug, Clone, Copy, PartialEq, Theory)]` citing Pearson 1993) into [`domain_biology::biology::morphogenesis`](../../crates/domain_biology/src/biology/morphogenesis/mod.rs).
+   - Introduce [`AdvectionField2D`](../../crates/domain_biology/src/biology/diffusion/fd2d/advection.rs) and `FiniteDifference2D::step_advection_diffusion_masked` accepting borrowed row-major `(u_x, u_y)` slices and `&[bool]` obstacle masks with zero-flux Neumann reflection across internal solid cells (`obstacles[idx] == true`), keeping `domain_biology` completely independent of `domain_physics`.
+4. **Feature-Gated Zero-Allocation Coupled Engine & Interactive GUI Laboratory (`math_explorer` & `math_explorer_gui`)**:
+   - Gate [`math_explorer::vortex_morphogenesis`](../../math_explorer/src/vortex_morphogenesis/mod.rs) and [`VortexMorphogenesisTool`](../../math_explorer_gui/src/tabs/morphogenesis/vortex/mod.rs) behind `#[cfg(all(feature = "physics", feature = "biology"))]`.
+   - Transpose column-major `DMatrix` fluid velocities and obstacles into preallocated row-major buffers (`flatten_2d_index(x, y, width)`) with $|\mathbf{u}| \le 0.15$ low-Mach clamping, adaptive CFL sub-stepping, and zero heap allocations in `CoupledVortexMorphogenesis::step` (verified under `VerifiedAllocator`).
+   - Expose interactive obstacle/emitter/erase brushes, live Peclet ($\mathrm{Pe}$) and Damkohler ($\mathrm{Da}$) regime badges, `GrayScottKinetics` / `SchnakenbergKinetics` switching, `FiniteStateGuard` snapshot rollback, bidirectional cross-tab navigation between `FluidDynamicsTab` and `MorphogenesisTab`, and four calibrated presets (*Karman Vortex Spots*, *Shear-Aligned Stripes*, *Stagnation Plumes*, and *Damkohler Washout*).
+
+## Consequences
+- **Positive**: Both `LatticeBoltzmannTool` and `VortexMorphogenesisTool` propagate unsteady wakes past obstacles without double-buffer stalls or reflections, while `domain_biology` remains reusable with any external velocity field without depending on `domain_physics`.
+- **Positive**: Zero heap allocations occur on the coupled stepping hot path (`100x50` and `100x100` grids verified via `VerifiedAllocator`), keeping interactive WASM frame times well within the `< 8 ms` cooperative frame budget.
+- **Neutral**: Explicit first-order donor-cell upwinding introduces controlled numerical diffusion $O(|u|\Delta x / 2)$ at high Courant numbers, bounded by spatial resolution $\Delta x$ and low-Mach velocity clamping ($|\mathbf{u}| \le 0.15$).

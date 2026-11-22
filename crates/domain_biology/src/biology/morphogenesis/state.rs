@@ -66,6 +66,19 @@ impl TuringState<2> {
     pub fn v_mut(&mut self) -> &mut [f64] {
         &mut self.concentrations[1]
     }
+
+    /// Returns simultaneous read-only slices `(u, v)` for both species.
+    #[verified_engine::verified]
+    pub fn u_and_v(&self) -> (&[f64], &[f64]) {
+        (&self.concentrations[0], &self.concentrations[1])
+    }
+
+    /// Returns simultaneous disjoint mutable slices `(u, v)` without allocation.
+    #[verified_engine::verified]
+    pub fn u_and_v_mut(&mut self) -> (&mut [f64], &mut [f64]) {
+        let [u, v] = &mut self.concentrations;
+        (u.as_mut_slice(), v.as_mut_slice())
+    }
 }
 
 impl<const N: usize> Add for TuringState<N> {

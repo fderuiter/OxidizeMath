@@ -1,11 +1,15 @@
 use super::SpatialDiffusion;
 
 #[allow(missing_docs)]
+pub mod advection;
+#[allow(missing_docs)]
 pub mod boundary;
 #[allow(missing_docs)]
 pub mod geometry;
 #[allow(missing_docs)]
 pub mod iteration;
+
+pub use advection::AdvectionField2D;
 
 use boundary::NeumannBoundary;
 use geometry::{Cartesian2D, GeometryStrategy};

@@ -26,6 +26,9 @@ pub use domain_epidemiology::epidemiology;
 #[cfg(feature = "physics")]
 pub use domain_physics::physics;
 
+#[cfg(all(feature = "physics", feature = "biology"))]
+pub mod vortex_morphogenesis;
+
 #[cfg(feature = "pure_math")]
 pub use ::pure_math::{math_types, pure_math};
 #[cfg(feature = "pure_math")]

@@ -46,6 +46,7 @@ mod wasm_tests;
 
 #[allow(unused_imports)]
 pub use domain_bar::AcademicDomain;
+pub use pane_slots::request_cross_tab_navigation;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 pub use state::{AppState, SplitLayoutMode};
@@ -445,6 +446,7 @@ impl eframe::App for MathExplorerApp {
 
         // Render Command Palette Overlay
         self.apply_command_palette_selection(ctx);
+        self.apply_cross_tab_navigation(ctx);
         crate::accessibility::sync_context_live_messages(ctx, false);
 
         self.last_frame_had_input =

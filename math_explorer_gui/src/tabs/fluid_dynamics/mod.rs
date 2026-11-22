@@ -25,6 +25,34 @@ impl ExplorerTab for FluidDynamicsTab {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        #[cfg(all(feature = "physics", feature = "biology"))]
+        if self
+            .framework
+            .active_tool
+            .as_ref()
+            .is_some_and(|t| t.name() == "Lattice Boltzmann (Demo)")
+        {
+            use crate::accessibility::AccessibleHoverText;
+            let bar_id = crate::framework::scoped_panel_id(ui, "lbm_morphogenesis_crosslink");
+            egui::TopBottomPanel::bottom(bar_id).show_inside(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("🧬 Coupled Advection-Reaction-Diffusion:");
+                    if ui
+                        .button("Open Vortex Morphogenesis in Biology →")
+                        .accessible_hover_text(
+                            "Jump to the coupled D2Q9 Lattice Boltzmann and Turing morphogenesis laboratory",
+                        )
+                        .clicked()
+                    {
+                        crate::app::request_cross_tab_navigation(
+                            ui.ctx(),
+                            "Morphogenesis",
+                            Some("VortexMorphogenesisTool"),
+                        );
+                    }
+                });
+            });
+        }
         self.framework.show_inside(ui, "fluid_dynamics");
     }
 

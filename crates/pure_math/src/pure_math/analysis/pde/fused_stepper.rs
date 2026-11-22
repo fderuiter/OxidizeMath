@@ -10,6 +10,8 @@ pub struct StencilOperators {
     #[allow(missing_docs)]
     pub inv_dx: f64,
     #[allow(missing_docs)]
+    pub inv_dy: f64,
+    #[allow(missing_docs)]
     pub inv_two_dx: f64,
     #[allow(missing_docs)]
     pub inv_dx_sq: f64,
@@ -30,6 +32,7 @@ impl StencilOperators {
         assert!(*dx > 0.0, "Step size dx must be positive and non-zero");
         assert!(*dy > 0.0, "Step size dy must be positive and non-zero");
         let inv_dx = 1.0 / *dx;
+        let inv_dy = 1.0 / *dy;
         let inv_two_dx = 1.0 / (2.0 * *dx);
         let inv_dx_sq = 1.0 / (*dx * *dx);
         let inv_dy_sq = 1.0 / (*dy * *dy);
@@ -37,6 +40,7 @@ impl StencilOperators {
             dx,
             dy,
             inv_dx,
+            inv_dy,
             inv_two_dx,
             inv_dx_sq,
             inv_dy_sq,
@@ -76,6 +80,35 @@ impl StencilOperators {
         } else {
             (next * v - curr * v) * self.inv_dx
         }
+    }
+
+    /// Positivity-preserving 2D first-order upwind advective operator (`u_x * dc/dx + u_y * dc/dy`).
+    ///
+    /// Subtracting `dt * ops.upwind_2d((ux, uy), curr, left, right, up, down)` in forward-Euler
+    /// transport preserves non-negativity whenever `|ux| * dt * inv_dx + |uy| * dt * inv_dy <= 1.0`.
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn upwind_2d(
+        &self,
+        velocity: (f64, f64),
+        curr: f64,
+        left: f64,
+        right: f64,
+        up: f64,
+        down: f64,
+    ) -> f64 {
+        let (ux, uy) = velocity;
+        let adv_x = if ux >= 0.0 {
+            ux * (curr - left) * self.inv_dx
+        } else {
+            ux * (right - curr) * self.inv_dx
+        };
+        let adv_y = if uy >= 0.0 {
+            uy * (curr - up) * self.inv_dy
+        } else {
+            uy * (down - curr) * self.inv_dy
+        };
+        adv_x + adv_y
     }
 }
 
@@ -267,12 +300,14 @@ mod tests {
     fn test_stencil_operators_precomputation() {
         let ops = StencilOperators::new_2d(StepSize(0.5), StepSize(0.25));
         assert!((ops.inv_dx - 2.0).abs() < 1e-12);
+        assert!((ops.inv_dy - 4.0).abs() < 1e-12);
         assert!((ops.inv_two_dx - 1.0).abs() < 1e-12);
         assert!((ops.inv_dx_sq - 4.0).abs() < 1e-12);
         assert!((ops.inv_dy_sq - 16.0).abs() < 1e-12);
 
         let ops_1d = StencilOperators::new(StepSize(2.0));
         assert!((ops_1d.inv_dx - 0.5).abs() < 1e-12);
+        assert!((ops_1d.inv_dy - 1.0).abs() < 1e-12);
         assert!((ops_1d.inv_two_dx - 0.25).abs() < 1e-12);
         assert!((ops_1d.inv_dx_sq - 0.25).abs() < 1e-12);
         assert!((ops_1d.inv_dy_sq - 1.0).abs() < 1e-12);
@@ -316,5 +351,18 @@ mod tests {
         let flux_neg = ops.upwind_flux(-2.0, 1.0, 3.0, 5.0);
         let flux_neg_expected = (5.0 * (-2.0) - 3.0 * (-2.0)) / dx;
         assert!((flux_neg - flux_neg_expected).abs() < 1e-12);
+
+        let up2d_pos = ops.upwind_2d((0.5, 0.25), 4.0, 1.0, 9.0, 2.0, 8.0);
+        let expected_pos = 0.5 * (4.0 - 1.0) / dx + 0.25 * (4.0 - 2.0) / dy;
+        assert!((up2d_pos - expected_pos).abs() < 1e-12);
+
+        let up2d_neg = ops.upwind_2d((-0.5, -0.25), 4.0, 1.0, 9.0, 2.0, 8.0);
+        let expected_neg = -0.5 * (9.0 - 4.0) / dx + (-0.25) * (8.0 - 4.0) / dy;
+        assert!((up2d_neg - expected_neg).abs() < 1e-12);
+
+        // Positivity under CFL <= 1: spike c=1 surrounded by zeros stays >= 0
+        let dt = 0.08; // |0.5|*0.08/0.2 + |0.25|*0.08/0.4 = 0.20 + 0.05 = 0.25 <= 1.0
+        let next_spike = 1.0 - dt * ops.upwind_2d((0.5, -0.25), 1.0, 0.0, 0.0, 0.0, 0.0);
+        assert!(next_spike >= 0.0 && (next_spike - 0.75).abs() < 1e-12);
     }
 }

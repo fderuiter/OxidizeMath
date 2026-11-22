@@ -2549,6 +2549,23 @@
       "signature": "pub struct FiniteDifference1D"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/fd2d/advection.rs": [
+    {
+      "signature": "impl < 'a > AdvectionField2D < 'a > { pub fn new (ux : & 'a [f64] , uy : & 'a [f64]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > AdvectionField2D < 'a > { pub fn with_obstacles (ux : & 'a [f64] , uy : & 'a [f64] , obstacles : & 'a [bool]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > AdvectionField2D < 'a > { pub fn with_periodic_x (mut self , periodic_x : bool) -> Self }"
+    },
+    {
+      "signature": "impl FiniteDifference2D { pub fn step_advection_diffusion_masked < const N : usize , K : ReactionKinetics < N > > (& self , state : [& [f64] ; N] , mut next_state : [& mut [f64] ; N] , field : AdvectionField2D < '_ > , dt : f64 , coeffs : [f64 ; N] , kinetics : & K ,) }"
+    },
+    {
+      "signature": "pub struct AdvectionField2D < 'a >"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/fd2d/boundary.rs": [
     {
       "signature": "pub struct NeumannBoundary"
@@ -2600,6 +2617,9 @@
     },
     {
       "signature": "pub struct FiniteDifference2D"
+    },
+    {
+      "signature": "pub use advection :: AdvectionField2D"
     }
   ],
   "crates/domain_biology/src/biology/diffusion/mod.rs": [
@@ -2620,6 +2640,9 @@
     },
     {
       "signature": "pub use fd1d :: FiniteDifference1D"
+    },
+    {
+      "signature": "pub use fd2d :: AdvectionField2D"
     },
     {
       "signature": "pub use fd2d :: FiniteDifference2D"
@@ -2705,6 +2728,9 @@
       "signature": "pub struct TuringSystem < const N : usize = 2 , K : ReactionKinetics < N > = SchnakenbergKinetics , D : SpatialDiffusion < N > = FiniteDifference1D , S : TuringSolverStrategy < N > = FusedEulerSolver , >"
     },
     {
+      "signature": "pub use reaction :: GrayScottKinetics"
+    },
+    {
       "signature": "pub use reaction :: ReactionKinetics"
     },
     {
@@ -2728,7 +2754,13 @@
   ],
   "crates/domain_biology/src/biology/morphogenesis/reaction.rs": [
     {
+      "signature": "impl GrayScottKinetics { pub fn new (f : f64 , k : f64) -> Self }"
+    },
+    {
       "signature": "impl SchnakenbergKinetics { pub fn new (a : f64 , b : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct GrayScottKinetics"
     },
     {
       "signature": "pub struct SchnakenbergKinetics"
@@ -2778,6 +2810,12 @@
     },
     {
       "signature": "impl TuringState < 2 > { pub fn u (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl TuringState < 2 > { pub fn u_and_v (& self) -> (& [f64] , & [f64]) }"
+    },
+    {
+      "signature": "impl TuringState < 2 > { pub fn u_and_v_mut (& mut self) -> (& mut [f64] , & mut [f64]) }"
     },
     {
       "signature": "impl TuringState < 2 > { pub fn u_mut (& mut self) -> & mut [f64] }"
@@ -4006,6 +4044,9 @@
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/algorithms.rs": [
+    {
+      "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn apply_open_outlet (& mut self) }"
+    },
     {
       "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn clear_obstacles (& mut self) }"
     },
@@ -6831,6 +6872,9 @@
       "signature": "impl StencilOperators { pub fn new_2d (dx : StepSize , dy : StepSize) -> Self }"
     },
     {
+      "signature": "impl StencilOperators { pub fn upwind_2d (& self , velocity : (f64 , f64) , curr : f64 , left : f64 , right : f64 , up : f64 , down : f64 ,) -> f64 }"
+    },
+    {
       "signature": "impl StencilOperators { pub fn upwind_flux (& self , v : f64 , prev : f64 , curr : f64 , next : f64) -> f64 }"
     },
     {
@@ -8868,6 +8912,133 @@
     },
     {
       "signature": "pub use pure_math :: math_types :: Rational"
+    }
+  ],
+  "math_explorer/src/vortex_morphogenesis/mod.rs": [
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn apply_preset (& mut self , preset : VortexRegimePreset) }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn clear_geometry (& mut self) }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn emitters_row (& self) -> & [bool] }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn from_preset (preset : VortexRegimePreset) -> Self }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn is_finite (& self) -> bool }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn metrics (& self) -> DimensionlessRegimeMetrics }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn new (config : VortexMorphogenesisConfig) -> Self }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn obstacles_row (& self) -> & [bool] }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn paint_emitter_disc (& mut self , cx : usize , cy : usize , radius : usize , is_emitter : bool) }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn paint_obstacle_disc (& mut self , cx : usize , cy : usize , radius : usize , is_obstacle : bool) }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn reset_homogeneous_morphogens (& mut self) }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn step (& mut self) }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn transpose_lbm_to_row_major (& mut self) }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn ux_row (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn uy_row (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CoupledVortexMorphogenesis { pub fn vorticity_row (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub struct CoupledVortexMorphogenesis"
+    },
+    {
+      "signature": "pub use presets :: DimensionlessRegimeMetrics"
+    },
+    {
+      "signature": "pub use presets :: MAX_ADVECTIVE_CFL"
+    },
+    {
+      "signature": "pub use presets :: MAX_DIFFUSIVE_CFL"
+    },
+    {
+      "signature": "pub use presets :: MAX_TRANSPORT_SUBSTEPS"
+    },
+    {
+      "signature": "pub use presets :: MorphogenKinetics"
+    },
+    {
+      "signature": "pub use presets :: VELOCITY_SAFETY_CAP"
+    },
+    {
+      "signature": "pub use presets :: VortexMorphogenesisConfig"
+    },
+    {
+      "signature": "pub use presets :: VortexRegimePreset"
+    }
+  ],
+  "math_explorer/src/vortex_morphogenesis/presets.rs": [
+    {
+      "signature": "impl DimensionlessRegimeMetrics { pub const fn damkohler_label (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl DimensionlessRegimeMetrics { pub const fn peclet_label (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl MorphogenKinetics { pub fn characteristic_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MorphogenKinetics { pub fn homogeneous_feed (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl VortexMorphogenesisConfig { pub fn for_preset (preset : VortexRegimePreset) -> Self }"
+    },
+    {
+      "signature": "impl VortexRegimePreset { pub const ALL : [Self ; 4] = [Self :: KarmanVortexSpots , Self :: ShearAlignedStripes , Self :: StagnationPlumes , Self :: DamkohlerWashout ,] }"
+    },
+    {
+      "signature": "impl VortexRegimePreset { pub const fn summary (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl VortexRegimePreset { pub const fn title (self) -> & 'static str }"
+    },
+    {
+      "signature": "pub const MAX_ADVECTIVE_CFL : f64 = 0.5"
+    },
+    {
+      "signature": "pub const MAX_DIFFUSIVE_CFL : f64 = 0.45"
+    },
+    {
+      "signature": "pub const MAX_TRANSPORT_SUBSTEPS : usize = 64"
+    },
+    {
+      "signature": "pub const VELOCITY_SAFETY_CAP : f64 = 0.15"
+    },
+    {
+      "signature": "pub enum MorphogenKinetics"
+    },
+    {
+      "signature": "pub enum VortexRegimePreset"
+    },
+    {
+      "signature": "pub struct DimensionlessRegimeMetrics"
+    },
+    {
+      "signature": "pub struct VortexMorphogenesisConfig"
     }
   ]
 }

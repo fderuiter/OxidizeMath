@@ -72,12 +72,36 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
         }
     }
 
-    /// Performs one simulation step (Stream -> Collision).
+    /// Performs one simulation step (`Stream -> Collision -> SwapBuffers`).
     #[verified_engine::verified]
     pub fn step(&mut self) {
         self.stream();
         self.boundary_conditions(); // Apply macroscopic BCs if any
         self.macroscopic_and_collision();
+        pure_math::pure_math::analysis::evolution::DoubleBufferedState::swap_buffers(
+            &mut self.state,
+        );
+    }
+
+    /// Applies a zero-gradient convective outlet on the right boundary (`x = width - 1`)
+    /// so channel wakes exit smoothly without periodic wrap-around reflections.
+    #[verified_engine::verified]
+    pub fn apply_open_outlet(&mut self) {
+        let w = self.state.width;
+        let h = self.state.height;
+        if w < 2 {
+            return;
+        }
+        let last = w - 1;
+        let prev = w - 2;
+        for y in 0..h {
+            if !self.state.obstacles[(y, last)] && !self.state.obstacles[(y, prev)] {
+                self.state.f[(y, last)] = self.state.f[(y, prev)];
+                self.state.rho[(y, last)] = self.state.rho[(y, prev)];
+                self.state.ux[(y, last)] = self.state.ux[(y, prev)];
+                self.state.uy[(y, last)] = self.state.uy[(y, prev)];
+            }
+        }
     }
 
     /// Fused Macroscopic + Collision step.
@@ -431,9 +455,6 @@ impl SimulationModel for LatticeBoltzmannD2Q9<BgkCollision> {
     )]
     fn step(&mut self) -> Result<(), Self::Error> {
         self.step();
-        pure_math::pure_math::analysis::evolution::DoubleBufferedState::swap_buffers(
-            &mut self.state,
-        );
         Ok(())
     }
 

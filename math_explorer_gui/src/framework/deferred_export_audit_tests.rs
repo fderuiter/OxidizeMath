@@ -95,7 +95,11 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
+    let expected_raster = 7 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(plot_tool_count, 32, "Expected 32 Plot dataset+figure tools");
-    assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
+    assert_eq!(
+        raster_tool_count, expected_raster,
+        "Unexpected raster figure tool count"
+    );
     assert_eq!(unsupported_tool_count, 16, "Expected 16 non-export tools");
 }

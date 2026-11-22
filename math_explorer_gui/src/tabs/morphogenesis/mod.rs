@@ -19,6 +19,8 @@ pub mod presets;
 pub mod runner;
 pub mod tool;
 pub mod ui;
+#[cfg(all(feature = "physics", feature = "biology"))]
+pub mod vortex;
 
 pub use presets::SimpleRng;
 #[cfg(test)]
@@ -60,6 +62,10 @@ impl Default for MorphogenesisTab {
         let params = Arc::clone(&tool.params);
         let name = crate::framework::InteractiveTool::name(&tool).to_string();
         let baseline = crate::framework::InteractiveTool::save_state(&tool);
+        framework.selected_tool_index = framework
+            .available_tools
+            .iter()
+            .position(|t| t.id == "MorphogenesisTool");
         framework.active_tool = Some(Box::new(tool));
         if let Some(b) = baseline {
             framework.saved_tool_states.insert(name, b.clone());

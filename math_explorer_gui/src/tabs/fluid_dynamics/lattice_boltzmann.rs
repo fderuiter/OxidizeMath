@@ -53,13 +53,8 @@ impl FiniteStateGuard for LbmUnified {
     }
 }
 
-impl UnifiedModel for LbmUnified {
-    fn domain() -> &'static str {
-        "fluid_dynamics"
-    }
-
-    fn new(params: &HashMap<String, f64>) -> Self {
-        let viscosity = *params.get("viscosity").unwrap_or(&0.02);
+impl LbmUnified {
+    fn build_default_solver(viscosity: f64) -> LatticeBoltzmannD2Q9<BgkCollision> {
         let width = 100;
         let height = 50;
         let tau = 3.0 * viscosity + 0.5;
@@ -81,6 +76,19 @@ impl UnifiedModel for LbmUnified {
         }
 
         solver.set_inlet(0, 0, 2, height, 0.1, 0.0);
+        solver.set_inlet(36, 23, 5, 4, 0.1, 0.02);
+        solver
+    }
+}
+
+impl UnifiedModel for LbmUnified {
+    fn domain() -> &'static str {
+        "fluid_dynamics"
+    }
+
+    fn new(params: &HashMap<String, f64>) -> Self {
+        let viscosity = *params.get("viscosity").unwrap_or(&0.02);
+        let solver = Self::build_default_solver(viscosity);
 
         Self {
             solver,
@@ -110,6 +118,7 @@ impl UnifiedModel for LbmUnified {
         self.solver
             .set_inlet(0, 0, 2, self.solver.height(), 0.1, 0.0);
         self.solver.step();
+        self.solver.apply_open_outlet();
 
         if !FiniteStateGuard::is_finite_state(self) {
             self.diverged = true;
@@ -156,9 +165,11 @@ impl UnifiedModel for LbmUnified {
         }
     }
 
-    fn process_command(&mut self, cmd: SimCommand, _params: &HashMap<String, f64>) {
+    fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
         match cmd {
             SimCommand::Reset => {
+                let viscosity = *params.get("viscosity").unwrap_or(&0.02);
+                self.solver = Self::build_default_solver(viscosity.clamp(0.00333, 0.5));
                 self.diverged = false;
                 self.diagnostic_report = None;
                 self.step_count = 0;
