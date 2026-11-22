@@ -226,7 +226,7 @@ pub(super) fn spawn_native_worker<T: SimulationRunner>(
                 match advance_running_frame(
                     &mut runner,
                     steps_per_frame,
-                    None,
+                    Some(Duration::from_millis(16)),
                     &mut state,
                     &state_tx,
                 ) {

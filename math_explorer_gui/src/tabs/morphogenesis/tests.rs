@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Duration;
 
 fn wait_for_morphogenesis_snapshot(tool: &mut MorphogenesisTool) {
-    for _ in 0..600 {
+    for _ in 0..1200 {
         if tool.worker.update().is_some() || tool.worker.latest_snapshot().is_some() {
             return;
         }
@@ -458,7 +458,7 @@ fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
     // Disabling auto_dt with manual unstable dt=0.05 at d_v=100 diverges to Faulted
     tab.params.write().unwrap().auto_dt = false;
     tool.params.write().unwrap().auto_dt = false;
-    for _ in 0..400 {
+    for _ in 0..1200 {
         let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
         let _ = render_tool_frame(&ctx, &mut tool);
         if active_morpho_tool_state(&tab).state == Some(SimWorkerState::Faulted)

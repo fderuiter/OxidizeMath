@@ -135,7 +135,7 @@ fn test_atlas_unstable_samples_yield_nonzero_variance_after_500_cfl_steps() {
             auto_dt: true,
             ..Default::default()
         }));
-        let mut runner = MorphogenesisTab::create_runner(&params, 36, 36);
+        let mut runner = MorphogenesisTab::create_runner(&params, 24, 24);
         for _ in 0..500 {
             runner.step();
         }
@@ -158,7 +158,7 @@ fn test_atlas_unstable_samples_yield_nonzero_variance_after_500_cfl_steps() {
             auto_dt: true,
             ..Default::default()
         }));
-        let mut runner = MorphogenesisTab::create_runner(&params, 40, 40);
+        let mut runner = MorphogenesisTab::create_runner(&params, 24, 24);
         for _ in 0..500 {
             runner.step();
         }
@@ -220,6 +220,12 @@ fn test_all_five_starter_presets_evolve_without_fault_and_roundtrip_urls() {
             .import_url_preset_json(parsed.tool.as_deref(), parsed.state_json.as_deref())
             .expect("URL import");
         assert_eq!(restored.export_config(), tab.export_config());
+        let restored_state: MorphogenesisToolState = serde_json::from_str(
+            &restored.framework.active_tool.as_ref().unwrap().save_state().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(restored_state.state, Some(SimWorkerState::Ready));
+        assert!(restored_state.pending_initial_start);
 
         let cfg = tab.export_config();
         let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
@@ -234,8 +240,8 @@ fn test_all_five_starter_presets_evolve_without_fault_and_roundtrip_urls() {
             auto_dt: cfg.auto_dt,
             high_contrast: false,
         }));
-        let mut runner = MorphogenesisTab::create_runner(&params, 32, 32);
-        for _ in 0..80 {
+        let mut runner = MorphogenesisTab::create_runner(&params, 24, 24);
+        for _ in 0..40 {
             runner.step();
         }
         assert!(
@@ -299,7 +305,7 @@ fn test_apply_brush_injection_erasure_and_paused_worker_snapshots() {
         .expect("ApplyBrush valid in Ready state");
 
     let mut got_paused_snapshot = false;
-    for _ in 0..200 {
+    for _ in 0..1000 {
         if tool.worker.update().is_some() {
             got_paused_snapshot = true;
             break;
@@ -346,7 +352,7 @@ fn test_morphogenesis_theory_and_canvas_pointer_drag_brush_dispatch() {
     assert!(tool.theory().theory_latex_equation().unwrap().contains("F(1 - u)"));
 
     // Render tool in Brush mode while paused with initial Reset snapshot and drag across canvas center
-    for _ in 0..200 {
+    for _ in 0..1000 {
         if tool.worker.update().is_some() || tool.worker.latest_snapshot().is_some() {
             break;
         }

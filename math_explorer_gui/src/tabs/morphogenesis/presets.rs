@@ -318,6 +318,8 @@ impl MorphogenesisTool {
         } else {
             SimWorkerState::Ready
         };
+        let pending_initial_start =
+            target_state != SimWorkerState::Running && self.pending_initial_start;
         let preset_state = MorphogenesisToolState {
             kinetics,
             a,
@@ -332,7 +334,7 @@ impl MorphogenesisTool {
             height: self.height,
             state: Some(target_state),
             paused: None,
-            pending_initial_start: false,
+            pending_initial_start,
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);

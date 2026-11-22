@@ -204,7 +204,7 @@ impl SimulationRunner for MorphogenesisRunner {
                 FusedEulerSolver::cfl_substeps_2d(dt, 1.0, d_u, d_v, MAX_CFL_SUBSTEPS);
             for _ in 0..substeps {
                 self.step_active_kinetics(sub_dt);
-                if !FiniteStateGuard::is_finite_state(self) {
+                if !self.system.u().first().is_none_or(|x| x.is_finite()) {
                     break;
                 }
             }

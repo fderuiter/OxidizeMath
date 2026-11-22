@@ -152,9 +152,11 @@ impl MorphogenesisTab {
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
-        let current_state = tool
+        let saved = tool
             .save_state()
-            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok())
+            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok());
+        let current_state = saved
+            .as_ref()
             .and_then(|s| s.state)
             .unwrap_or(SimWorkerState::Ready);
         let target_state = if current_state == SimWorkerState::Running {
@@ -162,6 +164,8 @@ impl MorphogenesisTab {
         } else {
             SimWorkerState::Ready
         };
+        let pending_initial_start = target_state != SimWorkerState::Running
+            && saved.is_some_and(|s| s.pending_initial_start);
         let state = MorphogenesisToolState {
             kinetics: config.kinetics,
             a: config.a,
@@ -176,7 +180,7 @@ impl MorphogenesisTab {
             height: config.height,
             state: Some(target_state),
             paused: None,
-            pending_initial_start: false,
+            pending_initial_start,
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;

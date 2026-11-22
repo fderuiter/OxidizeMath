@@ -111,14 +111,26 @@ impl MorphogenesisToolState {
         Ok(())
     }
 
-    pub(crate) fn resolve_target_state(&self) -> SimWorkerState {
-        self.state.unwrap_or_else(|| {
-            if self.paused.unwrap_or(false) {
-                SimWorkerState::Ready
+    pub(crate) fn resolve_target_state(
+        &self,
+        was_pending_initial_start: bool,
+    ) -> (SimWorkerState, bool) {
+        if let Some(explicit) = self.state {
+            let pending = explicit != SimWorkerState::Running && self.pending_initial_start;
+            return (explicit, pending);
+        }
+        if let Some(paused) = self.paused {
+            return if paused {
+                (SimWorkerState::Ready, self.pending_initial_start)
             } else {
-                SimWorkerState::Running
-            }
-        })
+                (SimWorkerState::Running, false)
+            };
+        }
+        if was_pending_initial_start {
+            (SimWorkerState::Ready, true)
+        } else {
+            (SimWorkerState::Running, false)
+        }
     }
 }
 

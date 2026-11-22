@@ -138,8 +138,13 @@ impl MorphogenesisTool {
     }
 
     pub(crate) fn reset_system(&mut self) {
+        let was_pending = self.pending_initial_start;
         self.reset();
-        let _ = self.worker.send_command(SimCommand::Start);
+        if was_pending {
+            self.pending_initial_start = true;
+        } else {
+            let _ = self.worker.send_command(SimCommand::Start);
+        }
     }
 
     pub(crate) fn switch_kinetics(&mut self, next: MorphogenesisKinetics) {
@@ -382,7 +387,7 @@ impl InteractiveTool for MorphogenesisTool {
         let parsed: MorphogenesisToolState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
-        let target_state = parsed.resolve_target_state();
+        let (target_state, next_pending) = parsed.resolve_target_state(self.pending_initial_start);
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.kinetics = parsed.kinetics;
@@ -416,7 +421,7 @@ impl InteractiveTool for MorphogenesisTool {
                 let _ = self.worker.send_command(SimCommand::Start);
             }
         } else {
-            self.pending_initial_start = parsed.pending_initial_start;
+            self.pending_initial_start = next_pending;
             if self.worker.is_running() {
                 let _ = self.worker.send_command(SimCommand::Pause);
             }
