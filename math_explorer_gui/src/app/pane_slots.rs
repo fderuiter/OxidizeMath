@@ -260,6 +260,15 @@ impl MathExplorerApp {
 
     /// Extracts serialized per-pane state maps for `AppState`.
     pub(super) fn extract_pane_tab_states(&self) -> Vec<HashMap<String, String>> {
+        if self.viewport_layout == ViewportLayout::Single
+            && self
+                .pane_slots
+                .slots
+                .iter()
+                .all(|s| s.saved_states.is_empty() && s.active.is_none())
+        {
+            return Vec::new();
+        }
         let mut all = Vec::with_capacity(4);
         all.push(HashMap::new());
         let mut any_non_empty = false;

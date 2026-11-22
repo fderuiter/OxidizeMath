@@ -6,6 +6,7 @@ use eframe::egui;
 pub mod presets;
 pub mod render;
 pub mod tool;
+mod ui;
 
 /// Applied mathematics tab hosting the Implicit Isosurface Workbench (`isosurface` domain).
 pub struct IsosurfaceTab {

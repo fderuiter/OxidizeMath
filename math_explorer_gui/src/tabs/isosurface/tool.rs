@@ -6,26 +6,56 @@
 
 use super::presets::{
     expression_bar_presets, find_preset_by_expression, parse_validated_state, IsosurfacePresetSpec,
-    IsosurfaceState, BUILTIN_ISOSURFACE_PRESETS, MAX_GUI_RESOLUTION, MIN_GUI_RESOLUTION,
+    IsosurfaceState, BUILTIN_ISOSURFACE_PRESETS,
 };
-use super::render::{draw_isosurface_scene, project_mesh_facets};
 use crate::accessibility::announce_live_status;
-use crate::app::SemanticPalette;
-use crate::camera::{Camera3D, Plot3DViewport};
-use crate::framework::{
-    scoped_panel_id, InteractiveTool, MathExpressionInputBar, PaneSidePanel, ToolMetadata,
-};
-use crate::reflective_ui::render_copyable_metric;
+use crate::camera::Camera3D;
+use crate::framework::{InteractiveTool, MathExpressionInputBar, ToolMetadata};
 use crate::web_io::{spawn_save_as_file_dialog, PlatformInstant, SaveAsDialogConfig};
 use crate::web_io_bytes::{spawn_save_as_bytes_dialog, SaveAsBytesDialogConfig};
 use eframe::egui;
+use math_commons::ast::CompiledExpr;
 use math_explorer::applied::isosurface::{
     analyze_mesh_manifold, extract_isosurface, sample_watertight_grid, IsosurfaceMode,
     ManifoldStats, Mesh, WatertightGridConfig,
 };
 use oxidize_core::mesh::{export_mesh_to_binary_stl, export_mesh_to_obj_string};
-use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::mpsc::{channel, Receiver};
+use std::sync::OnceLock;
+
+static DEFAULT_GYROID_MESH: OnceLock<(Mesh, ManifoldStats)> = OnceLock::new();
+
+fn grid_config(
+    half_extent: f64,
+    resolution: usize,
+    iso_level: f64,
+    sheet_mode: bool,
+    thickness: f64,
+) -> WatertightGridConfig {
+    let mode = if sheet_mode {
+        IsosurfaceMode::Sheet { thickness }
+    } else {
+        IsosurfaceMode::Solid
+    };
+    WatertightGridConfig::cubic(half_extent, resolution, iso_level, mode)
+}
+
+fn build_preset_mesh(spec: &IsosurfacePresetSpec) -> (Mesh, ManifoldStats) {
+    let expr = math_commons::ast::parse(spec.expression).expect("valid builtin preset expression");
+    let compiled = CompiledExpr::compile_with_vars(&expr, &["x", "y", "z"]).expect("compile 3d");
+    let cfg = grid_config(
+        spec.half_extent,
+        spec.resolution,
+        spec.iso_level,
+        spec.sheet_mode,
+        spec.thickness,
+    );
+    let grid = sample_watertight_grid(&cfg, |x, y, z| compiled.eval_3d(x, y, z, &[])).unwrap();
+    let mesh = extract_isosurface(&grid, 0.0).expect("extract builtin preset mesh");
+    let stats = analyze_mesh_manifold(&mesh);
+    (mesh, stats)
+}
 
 /// Interactive implicit surface and TPMS lattice generator with watertight `.stl` / `.obj` export.
 pub struct IsosurfaceTool {
@@ -42,14 +72,17 @@ pub struct IsosurfaceTool {
     pub(crate) extraction_ms: f64,
     pub(crate) field_error: Option<String>,
     pub(crate) export_status: Option<(bool, String)>,
-    pending_announce: Option<String>,
+    pub(super) pending_announce: Option<String>,
     save_rx: Option<Receiver<Result<String, String>>>,
 }
 
 impl Default for IsosurfaceTool {
     fn default() -> Self {
         let spec = &BUILTIN_ISOSURFACE_PRESETS[0];
-        let mut tool = Self {
+        let (mesh, stats) = DEFAULT_GYROID_MESH
+            .get_or_init(|| build_preset_mesh(spec))
+            .clone();
+        Self {
             input_bar: MathExpressionInputBar::new(
                 "f(x, y, z)",
                 spec.expression,
@@ -62,16 +95,14 @@ impl Default for IsosurfaceTool {
             sheet_mode: spec.sheet_mode,
             show_wireframe: false,
             camera: Camera3D::new(0.55, 0.65, 1.0),
-            mesh: Mesh::default(),
-            stats: ManifoldStats::default(),
+            mesh,
+            stats,
             extraction_ms: 0.0,
             field_error: None,
             export_status: None,
             pending_announce: None,
             save_rx: None,
-        };
-        tool.rebuild_mesh(false);
-        tool
+        }
     }
 }
 
@@ -105,18 +136,22 @@ impl IsosurfaceTool {
             return;
         };
 
-        let mode = if self.sheet_mode {
-            IsosurfaceMode::Sheet {
-                thickness: self.thickness,
+        let compiled = match CompiledExpr::compile_with_vars(&expr, &["x", "y", "z"]) {
+            Ok(c) => c,
+            Err(err) => {
+                self.record_extraction_failure(start, err.to_string());
+                return;
             }
-        } else {
-            IsosurfaceMode::Solid
         };
-        let cfg =
-            WatertightGridConfig::cubic(self.half_extent, self.resolution, self.iso_level, mode);
-        let params = HashMap::new();
 
-        match sample_watertight_grid(&cfg, |x, y, z| expr.eval_3d(x, y, z, &params)) {
+        let cfg = grid_config(
+            self.half_extent,
+            self.resolution,
+            self.iso_level,
+            self.sheet_mode,
+            self.thickness,
+        );
+        match sample_watertight_grid(&cfg, |x, y, z| compiled.eval_3d(x, y, z, &[])) {
             Ok(grid) => match extract_isosurface(&grid, 0.0) {
                 Ok(mesh) => self.finish_mesh_update(start, mesh, announce),
                 Err(err) => self.record_extraction_failure(start, err.to_string()),
@@ -217,7 +252,7 @@ impl IsosurfaceTool {
         announce_live_status(ctx, msg);
     }
 
-    fn poll_export_channel(&mut self, ctx: &egui::Context) {
+    pub(super) fn poll_export_channel(&mut self, ctx: &egui::Context) {
         let Some(rx) = self.save_rx.as_ref() else {
             return;
         };
@@ -230,142 +265,6 @@ impl IsosurfaceTool {
             announce_live_status(ctx, msg);
             self.save_rx = None;
         }
-    }
-
-    fn render_preset_and_equation_controls(&mut self, ui: &mut egui::Ui) -> bool {
-        let current_title = find_preset_by_expression(&self.input_bar.raw_text)
-            .map_or("Custom Equation", |s| s.title);
-        ui.label("Surface Preset:");
-        egui::ComboBox::from_id_salt(ui.id().with("isosurface_preset_combo"))
-            .selected_text(current_title)
-            .width(ui.available_width() - 8.0)
-            .show_ui(ui, |ui| {
-                for spec in BUILTIN_ISOSURFACE_PRESETS {
-                    if ui
-                        .selectable_label(current_title == spec.title, spec.title)
-                        .clicked()
-                    {
-                        self.apply_preset_spec(spec, true);
-                    }
-                }
-            });
-        let hint = find_preset_by_expression(&self.input_bar.raw_text).map_or(
-            "Variables: x, y, z, pi, e, tau | SDF functions: min(a,b), max(a,b), atan2(y,x)",
-            |spec| spec.summary,
-        );
-        ui.small(hint);
-        ui.add_space(4.0);
-        self.input_bar.ui(ui)
-    }
-
-    fn render_sampling_controls(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut dirty = false;
-        ui.label("Offsetting Mode:");
-        ui.horizontal(|ui| {
-            dirty |= ui
-                .radio_value(&mut self.sheet_mode, true, "Thickened Sheet (TPMS)")
-                .changed();
-            dirty |= ui
-                .radio_value(&mut self.sheet_mode, false, "Solid Sublevel (f <= c)")
-                .changed();
-        });
-        dirty |= ui
-            .add(egui::Slider::new(&mut self.iso_level, -4.0..=4.0).text("Iso-Level (c)"))
-            .changed();
-        if self.sheet_mode {
-            dirty |= ui
-                .add(egui::Slider::new(&mut self.thickness, 0.08..=2.0).text("Slab Thickness (t)"))
-                .changed();
-        }
-        dirty |= ui
-            .add(egui::Slider::new(&mut self.half_extent, 0.5..=8.0).text("Domain Extent (±L)"))
-            .changed();
-        dirty |= ui
-            .add(
-                egui::Slider::new(
-                    &mut self.resolution,
-                    MIN_GUI_RESOLUTION..=MAX_GUI_RESOLUTION,
-                )
-                .text("Interior Grid (N³)"),
-            )
-            .changed();
-        ui.checkbox(&mut self.show_wireframe, "Show Triangle Wireframe");
-        dirty
-    }
-
-    fn render_telemetry_and_export_controls(&mut self, ui: &mut egui::Ui) {
-        let palette = SemanticPalette::from_visuals(ui.visuals());
-        ui.heading("Manifold & Takeaway Export");
-        render_copyable_metric(ui, "Triangles", &self.stats.triangle_count.to_string());
-        render_copyable_metric(ui, "Vertices", &self.stats.vertex_count.to_string());
-        render_copyable_metric(
-            ui,
-            "Open Half-Edges",
-            &self.stats.open_boundary_edges.to_string(),
-        );
-        render_copyable_metric(
-            ui,
-            "Extraction Latency",
-            &format!("{:.2} ms", self.extraction_ms),
-        );
-
-        let (badge_color, badge_text) = if self.stats.is_watertight_two_manifold() {
-            (palette.success, "✓ Watertight 2-Manifold (0 open edges)")
-        } else if self.stats.triangle_count == 0 {
-            (palette.warning, "⚠ Empty volume (0 triangles)")
-        } else {
-            (palette.error, "⚠ Non-manifold mesh detected")
-        };
-        ui.colored_label(badge_color, badge_text);
-
-        ui.add_space(6.0);
-        ui.add_enabled_ui(self.stats.triangle_count > 0, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("⬇ Download .STL").clicked() {
-                    self.trigger_stl_export(ui.ctx());
-                }
-                if ui.button("⬇ Download .OBJ").clicked() {
-                    self.trigger_obj_export(ui.ctx());
-                }
-            });
-        });
-
-        if let Some((ok, ref msg)) = self.export_status {
-            ui.colored_label(if ok { palette.success } else { palette.error }, msg);
-        }
-    }
-
-    fn render_viewport(&mut self, ui: &mut egui::Ui) {
-        let palette = SemanticPalette::from_visuals(ui.visuals());
-        let dark_mode = ui.visuals().dark_mode;
-        if let Some(ref err) = self.field_error {
-            egui::Frame::group(ui.style())
-                .fill(palette.error_banner_bg)
-                .stroke(egui::Stroke::new(1.0_f32, palette.error_banner_stroke))
-                .show(ui, |ui| {
-                    ui.colored_label(palette.warning, format!("ℹ {err}"));
-                });
-            ui.add_space(4.0);
-        }
-
-        let facets = project_mesh_facets(
-            &self.mesh,
-            &self.camera,
-            &palette,
-            dark_mode,
-            self.show_wireframe,
-        );
-        let viewport_extent = (self.half_extent * 1.45).max(1.0);
-        let half_extent = self.half_extent;
-        let cam_snapshot = self.camera;
-
-        Plot3DViewport::new("isosurface_3d_viewport", viewport_extent).show(
-            ui,
-            &mut self.camera,
-            |plot_ui| {
-                draw_isosurface_scene(plot_ui, &facets, half_extent, &cam_snapshot, &palette);
-            },
-        );
     }
 }
 
@@ -380,6 +279,21 @@ impl InteractiveTool for IsosurfaceTool {
 
     fn domain(&self) -> &'static str {
         "isosurface"
+    }
+
+    fn state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.half_extent.to_bits().hash(&mut h);
+        self.iso_level.to_bits().hash(&mut h);
+        self.thickness.to_bits().hash(&mut h);
+        self.resolution.hash(&mut h);
+        self.sheet_mode.hash(&mut h);
+        self.show_wireframe.hash(&mut h);
+        self.input_bar.raw_text.hash(&mut h);
+        self.camera.pitch.to_bits().hash(&mut h);
+        self.camera.yaw.to_bits().hash(&mut h);
+        self.camera.zoom.to_bits().hash(&mut h);
+        h.finish().max(1)
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -418,39 +332,7 @@ impl InteractiveTool for IsosurfaceTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        self.poll_export_channel(ui.ctx());
-        if let Some(msg) = self.pending_announce.take() {
-            announce_live_status(ui.ctx(), msg);
-        }
-
-        let panel_id = scoped_panel_id(ui, "isosurface_controls");
-        let mut needs_rebuild = false;
-        PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.heading("Implicit Isosurface Workbench");
-                ui.separator();
-                needs_rebuild |= self.render_preset_and_equation_controls(ui);
-                ui.separator();
-                needs_rebuild |= self.render_sampling_controls(ui);
-                ui.separator();
-                egui::CollapsingHeader::new("Camera 3D")
-                    .default_open(false)
-                    .show(ui, |ui| self.camera.ui(ui));
-                ui.separator();
-                self.render_telemetry_and_export_controls(ui);
-            });
-        });
-
-        if needs_rebuild {
-            self.rebuild_mesh(true);
-            if let Some(msg) = self.pending_announce.take() {
-                announce_live_status(ui.ctx(), msg);
-            }
-        }
-
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.render_viewport(ui);
-        });
+        self.show_tool_ui(ui);
     }
 }
 

@@ -159,10 +159,40 @@ impl SimulationFramework {
             self.rev_cache.untracked_tool_revision.wrapping_add(1);
         *self.rev_cache.active_tool_json.borrow_mut() = None;
         self.rev_cache.last_snapshot_rev = None;
+        self.rev_cache.memoized_state_rev.set(None);
     }
 
     /// Computes a deterministic O(1) revision token for this framework's persisted state.
     pub fn state_revision(&self) -> u64 {
+        let (tool_ptr, tracked_flag, eff_tool_rev) = match &self.active_tool {
+            Some(tool) => {
+                let rev = tool.state_revision();
+                let flag = u8::from(rev > 0);
+                let eff = if rev > 0 {
+                    rev
+                } else {
+                    self.rev_cache.untracked_tool_revision
+                };
+                (tool.name().as_ptr() as usize, flag, eff)
+            }
+            None => (0, 2_u8, 0),
+        };
+        let ui_flags = (u8::from(self.show_theory_portal) << 2)
+            | (u8::from(self.show_starter_gallery) << 3)
+            | tracked_flag;
+        let key = (
+            self.rev_cache.framework_revision,
+            self.selected_tool_index,
+            ui_flags,
+            self.saved_tool_states.len(),
+            tool_ptr,
+            eff_tool_rev,
+        );
+        if let Some((cached_key, cached_hash)) = self.rev_cache.memoized_state_rev.get() {
+            if cached_key == key {
+                return cached_hash;
+            }
+        }
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.rev_cache.framework_revision.hash(&mut hasher);
         self.selected_tool_index.hash(&mut hasher);
@@ -171,16 +201,16 @@ impl SimulationFramework {
         self.saved_tool_states.len().hash(&mut hasher);
         if let Some(tool) = &self.active_tool {
             tool.name().hash(&mut hasher);
-            let tool_rev = tool.state_revision();
-            if tool_rev > 0 {
+            if tracked_flag == 1 {
                 1_u8.hash(&mut hasher);
-                tool_rev.hash(&mut hasher);
             } else {
                 0_u8.hash(&mut hasher);
-                self.rev_cache.untracked_tool_revision.hash(&mut hasher);
             }
+            eff_tool_rev.hash(&mut hasher);
         }
-        hasher.finish().max(1)
+        let out = hasher.finish().max(1);
+        self.rev_cache.memoized_state_rev.set(Some((key, out)));
+        out
     }
 
     pub(super) fn serialized_active_tool(&self) -> Option<(&'static str, Arc<str>)> {

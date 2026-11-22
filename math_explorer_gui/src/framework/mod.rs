@@ -315,6 +315,8 @@ pub trait InteractiveTool {
     }
 }
 
+type MemoizedRevKey = (u64, Option<usize>, u8, usize, usize, u64);
+
 #[derive(Default)]
 pub(super) struct FrameworkRevisionCache {
     pub(super) framework_revision: u64,
@@ -322,6 +324,7 @@ pub(super) struct FrameworkRevisionCache {
     pub(super) active_tool_json:
         std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
     pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
+    pub(super) memoized_state_rev: std::cell::Cell<Option<(MemoizedRevKey, u64)>>,
 }
 
 #[allow(missing_docs)]

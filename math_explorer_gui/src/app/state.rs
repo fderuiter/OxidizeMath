@@ -64,47 +64,78 @@ pub(super) fn has_frame_input(ctx: &egui::Context) -> bool {
     })
 }
 
-/// Interior-mutable per-tab JSON cache avoiding redundant `ExplorerTab::save_state` calls.
+#[derive(Default)]
+struct TabCacheInner {
+    slots: Vec<(&'static str, u64, Option<String>)>,
+    snapshot: Option<HashMap<String, String>>,
+}
+
+/// Interior-mutable per-tab JSON cache avoiding redundant `ExplorerTab::save_state` calls
+/// and avoiding repeated `SipHash` table construction on idle `AppState::extract` calls.
 #[derive(Default)]
 pub(super) struct TabStateCache {
-    entries: RefCell<HashMap<String, (u64, Option<String>)>>,
+    inner: RefCell<TabCacheInner>,
 }
 
 impl TabStateCache {
     pub(super) fn clear(&self) {
-        self.entries.borrow_mut().clear();
+        let mut guard = self.inner.borrow_mut();
+        guard.slots.clear();
+        guard.snapshot = None;
     }
 
     pub(super) fn invalidate_tab(&self, name: &str) {
-        self.entries.borrow_mut().remove(name);
+        let mut guard = self.inner.borrow_mut();
+        guard.snapshot = None;
+        for slot in &mut guard.slots {
+            if slot.0 == name {
+                slot.0 = "";
+            }
+        }
     }
 
-    pub(super) fn extract_tab_json(
+    pub(super) fn extract_all_tabs(
         &self,
-        tab: &dyn ExplorerTab,
-        is_active_pane: bool,
+        tabs: &[Box<dyn ExplorerTab>],
+        active_primary: usize,
         had_input: bool,
-    ) -> Option<String> {
-        let rev = tab.state_revision();
-        let name = tab.name();
-        {
-            let guard = self.entries.borrow();
-            if let Some((cached_rev, cached_json)) = guard.get(name) {
-                let can_reuse = if !is_active_pane || rev > 0 {
+    ) -> HashMap<String, String> {
+        let mut guard = self.inner.borrow_mut();
+        if guard.slots.len() != tabs.len() {
+            guard.slots.resize(tabs.len(), ("", 0, None));
+            guard.snapshot = None;
+        }
+        let mut all_matched = guard.snapshot.is_some();
+        for (idx, tab) in tabs.iter().enumerate() {
+            let rev = tab.state_revision();
+            let name = tab.name();
+            let is_active = idx == active_primary;
+            let (cached_name, cached_rev, _) = &guard.slots[idx];
+            let hit = *cached_name == name
+                && if !is_active || rev > 0 {
                     *cached_rev == rev
                 } else {
                     !had_input
                 };
-                if can_reuse {
-                    return cached_json.clone();
-                }
+            if !hit {
+                all_matched = false;
+                let fresh = tab.save_state();
+                guard.slots[idx] = (name, rev, fresh);
             }
         }
-        let fresh = tab.save_state();
-        self.entries
-            .borrow_mut()
-            .insert(name.to_string(), (rev, fresh.clone()));
-        fresh
+        if all_matched {
+            if let Some(ref map) = guard.snapshot {
+                return map.clone();
+            }
+        }
+        let mut map = HashMap::with_capacity(tabs.len());
+        for (name, _, maybe_json) in &guard.slots {
+            if let Some(json) = maybe_json {
+                map.insert((*name).to_string(), json.clone());
+            }
+        }
+        guard.snapshot = Some(map.clone());
+        map
     }
 }
 
@@ -252,17 +283,11 @@ impl AppState {
     /// reusing cached JSON for tabs outside active panes and clean visible tabs.
     pub fn extract(app: &super::MathExplorerApp) -> Self {
         let active_primary = app.active_primary_tab_index();
-        let mut tab_states = HashMap::with_capacity(app.tabs.len());
-        for (idx, tab) in app.tabs.iter().enumerate() {
-            let is_active = idx == active_primary;
-            if let Some(tab_str) = app.tab_state_cache.extract_tab_json(
-                tab.as_ref(),
-                is_active,
-                app.last_frame_had_input,
-            ) {
-                tab_states.insert(tab.name().to_string(), tab_str);
-            }
-        }
+        let tab_states = app.tab_state_cache.extract_all_tabs(
+            &app.tabs,
+            active_primary,
+            app.last_frame_had_input,
+        );
         let selected_tab_name = app.tabs.get(app.selected_tab).map(|t| t.name().to_string());
         let secondary_tab_name = app
             .tabs
