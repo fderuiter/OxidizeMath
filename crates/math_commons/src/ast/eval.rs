@@ -6,10 +6,10 @@ use num_complex::{Complex64, ComplexFloat};
 use std::collections::HashMap;
 use std::f64::consts::{E, PI, TAU};
 
-/// Maximum allowed recursion depth during expression evaluation.
+/// Maximum allowed recursion and operand stack depth during expression evaluation.
 pub const MAX_EVAL_DEPTH: usize = 64;
 
-/// Errors that can occur during AST evaluation.
+/// Errors that can occur during AST compilation or evaluation.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum EvalError {
     /// Variable was not defined in the scope.
@@ -17,7 +17,7 @@ pub enum EvalError {
     UnknownVariable(String),
 
     /// Function was called with incorrect number of arguments.
-    #[error("Function '{func:?}' expected {expected} arguments, found {found}")]
+    #[error("Function '{}' expected {expected} argument(s), found {found}", func.as_str())]
     WrongArgumentCount {
         /// Function.
         func: Func,
@@ -27,7 +27,7 @@ pub enum EvalError {
         found: usize,
     },
 
-    /// Evaluation recursion limit exceeded.
+    /// Evaluation recursion or stack limit exceeded.
     #[error("Evaluation recursion limit exceeded (max depth {0})")]
     RecursionLimitExceeded(usize),
 
@@ -91,15 +91,19 @@ impl Expr {
             }
             Self::Unary { op, expr } => Ok(eval_unary(*op, expr.eval_checked(vars, depth + 1)?)),
             Self::Function { func, args } => {
-                if args.len() != 1 {
+                let expected = func.arity();
+                if args.len() != expected {
                     return Err(EvalError::WrongArgumentCount {
                         func: *func,
-                        expected: 1,
+                        expected,
                         found: args.len(),
                     });
                 }
-                let arg = args[0].eval_checked(vars, depth + 1)?;
-                Ok(eval_func(*func, arg))
+                let mut buf = [T::NAN; 3];
+                for (slot, arg) in buf[..expected].iter_mut().zip(args.iter()) {
+                    *slot = arg.eval_checked(vars, depth + 1)?;
+                }
+                Ok(eval_func(*func, &buf[..expected]))
             }
         }
     }
@@ -119,26 +123,44 @@ impl Expr {
                 .or_else(|| resolve_var(name))
                 .unwrap_or(T::NAN),
             Self::Binary { op, left, right } => {
-                let l = left.eval_fast(depth + 1, resolve_var);
-                let r = right.eval_fast(depth + 1, resolve_var);
+                let l = self_eval_fast(left, depth + 1, resolve_var);
+                let r = self_eval_fast(right, depth + 1, resolve_var);
                 eval_binop(*op, l, r)
             }
-            Self::Unary { op, expr } => eval_unary(*op, expr.eval_fast(depth + 1, resolve_var)),
+            Self::Unary { op, expr } => {
+                eval_unary(*op, self_eval_fast(expr, depth + 1, resolve_var))
+            }
             Self::Function { func, args } => {
-                if args.is_empty() {
+                let expected = func.arity();
+                if args.len() != expected {
                     return T::NAN;
                 }
-                let arg = args[0].eval_fast(depth + 1, resolve_var);
-                eval_func(*func, arg)
+                let mut buf = [T::NAN; 3];
+                for (slot, arg) in buf[..expected].iter_mut().zip(args.iter()) {
+                    *slot = self_eval_fast(arg, depth + 1, resolve_var);
+                }
+                eval_func(*func, &buf[..expected])
             }
         }
     }
 }
 
-trait EvalScalar: ComplexFloat<Real = f64> {
+#[inline]
+fn self_eval_fast<T: EvalScalar, F: Fn(&str) -> Option<T>>(
+    expr: &Expr,
+    depth: usize,
+    resolve_var: &F,
+) -> T {
+    expr.eval_fast(depth, resolve_var)
+}
+
+pub(super) trait EvalScalar: ComplexFloat<Real = f64> {
     const NAN: Self;
 
     fn from_real(val: f64) -> Self;
+    fn imag_unit() -> Self;
+    fn real_part(self) -> f64;
+    fn is_invalid_scalar(self) -> bool;
     fn div_checked(self, rhs: Self) -> Self;
     fn pow_scalar(self, rhs: Self) -> Self;
     fn extra_const(name: &str) -> Option<Self> {
@@ -152,6 +174,18 @@ impl EvalScalar for f64 {
 
     fn from_real(val: f64) -> Self {
         val
+    }
+
+    fn imag_unit() -> Self {
+        f64::NAN
+    }
+
+    fn real_part(self) -> f64 {
+        self
+    }
+
+    fn is_invalid_scalar(self) -> bool {
+        self.is_nan()
     }
 
     fn div_checked(self, rhs: Self) -> Self {
@@ -168,6 +202,18 @@ impl EvalScalar for Complex64 {
 
     fn from_real(val: f64) -> Self {
         Self::new(val, 0.0)
+    }
+
+    fn imag_unit() -> Self {
+        Self::i()
+    }
+
+    fn real_part(self) -> f64 {
+        self.re
+    }
+
+    fn is_invalid_scalar(self) -> bool {
+        self.re.is_nan() || self.im.is_nan()
     }
 
     fn div_checked(self, rhs: Self) -> Self {
@@ -191,14 +237,16 @@ impl EvalScalar for Complex64 {
     }
 }
 
-fn eval_unary<T: EvalScalar>(op: UnaryOp, val: T) -> T {
+#[inline]
+pub(super) fn eval_unary<T: EvalScalar>(op: UnaryOp, val: T) -> T {
     match op {
         UnaryOp::Pos => val,
         UnaryOp::Neg => -val,
     }
 }
 
-fn eval_binop<T: EvalScalar>(op: BinaryOp, l: T, r: T) -> T {
+#[inline]
+pub(super) fn eval_binop<T: EvalScalar>(op: BinaryOp, l: T, r: T) -> T {
     match op {
         BinaryOp::Add => l + r,
         BinaryOp::Sub => l - r,
@@ -208,22 +256,65 @@ fn eval_binop<T: EvalScalar>(op: BinaryOp, l: T, r: T) -> T {
     }
 }
 
-fn eval_func<T: EvalScalar>(func: Func, arg: T) -> T {
+pub(super) fn eval_func<T: EvalScalar>(func: Func, args: &[T]) -> T {
+    if args.len() != func.arity() {
+        return T::NAN;
+    }
     match func {
-        Func::Sin => arg.sin(),
-        Func::Cos => arg.cos(),
-        Func::Tan => arg.tan(),
-        Func::Exp => arg.exp(),
-        Func::Ln => arg.ln(),
-        Func::Log10 => arg.log10(),
-        Func::Sqrt => arg.sqrt(),
-        Func::Abs => T::from_real(arg.abs()),
-        Func::Sinh => arg.sinh(),
-        Func::Cosh => arg.cosh(),
-        Func::Tanh => arg.tanh(),
-        Func::Asin => arg.asin(),
-        Func::Acos => arg.acos(),
-        Func::Atan => arg.atan(),
+        Func::Sin => args[0].sin(),
+        Func::Cos => args[0].cos(),
+        Func::Tan => args[0].tan(),
+        Func::Exp => args[0].exp(),
+        Func::Ln => args[0].ln(),
+        Func::Log10 => args[0].log10(),
+        Func::Sqrt => args[0].sqrt(),
+        Func::Abs => T::from_real(args[0].abs()),
+        Func::Sinh => args[0].sinh(),
+        Func::Cosh => args[0].cosh(),
+        Func::Tanh => args[0].tanh(),
+        Func::Asin => args[0].asin(),
+        Func::Acos => args[0].acos(),
+        Func::Atan => args[0].atan(),
+        Func::Step | Func::Rect | Func::Min | Func::Max | Func::Clamp | Func::Atan2 => {
+            eval_real_projected_func(func, args)
+        }
+    }
+}
+
+fn eval_real_projected_func<T: EvalScalar>(func: Func, args: &[T]) -> T {
+    if args.iter().any(|v| v.is_invalid_scalar()) {
+        return T::NAN;
+    }
+    let val = match func {
+        Func::Step => {
+            if args[0].real_part() < 0.0 {
+                0.0
+            } else {
+                1.0
+            }
+        }
+        Func::Rect => {
+            if args[0].real_part().abs() <= 0.5 {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        Func::Min => args[0].real_part().min(args[1].real_part()),
+        Func::Max => args[0].real_part().max(args[1].real_part()),
+        Func::Atan2 => args[0].real_part().atan2(args[1].real_part()),
+        Func::Clamp => {
+            let x = args[0].real_part();
+            let lo = args[1].real_part();
+            let hi = args[2].real_part();
+            if lo > hi { f64::NAN } else { x.max(lo).min(hi) }
+        }
+        _ => f64::NAN,
+    };
+    if val.is_nan() {
+        T::NAN
+    } else {
+        T::from_real(val)
     }
 }
 
@@ -236,14 +327,20 @@ fn lookup_var<V: Copy>(map: &HashMap<String, V>, name: &str) -> Option<V> {
         .map(|(_, &v)| v)
 }
 
-fn lookup_const<T: EvalScalar>(name: &str) -> Option<T> {
+pub(super) fn lookup_universal_real_const(name: &str) -> Option<f64> {
     if name.eq_ignore_ascii_case("pi") {
-        Some(T::from_real(PI))
+        Some(PI)
     } else if name.eq_ignore_ascii_case("e") {
-        Some(T::from_real(E))
+        Some(E)
     } else if name.eq_ignore_ascii_case("tau") {
-        Some(T::from_real(TAU))
+        Some(TAU)
     } else {
-        T::extra_const(name)
+        None
     }
+}
+
+fn lookup_const<T: EvalScalar>(name: &str) -> Option<T> {
+    lookup_universal_real_const(name)
+        .map(T::from_real)
+        .or_else(|| T::extra_const(name))
 }
