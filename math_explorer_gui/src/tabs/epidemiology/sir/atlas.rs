@@ -345,8 +345,7 @@ impl SirTool {
     }
 
     pub(super) fn render_sir_readouts_and_atlas(&mut self, ui: &mut egui::Ui) {
-        let (r0, final_frac) = self.final_outbreak_metrics();
-        render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{r0:.2}"));
+        let (_r0, final_frac) = self.final_outbreak_metrics();
         render_copyable_metric(
             ui,
             "Final Outbreak Size (S_∞ Solver)",

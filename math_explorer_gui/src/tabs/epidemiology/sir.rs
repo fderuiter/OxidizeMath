@@ -2,6 +2,7 @@
 
 #[path = "sir/atlas.rs"]
 pub mod atlas;
+mod metrics;
 
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
@@ -9,7 +10,7 @@ use atlas::{default_sir_atlas_axes, is_default_sir_atlas_axes, SIR_ATLAS_AXIS_PA
 #[cfg(test)]
 pub use atlas::{SirCartographer, SirRegime};
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoint};
+use egui_plot::PlotPoint;
 use math_explorer::epidemiology::compartmental::SIRModel;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
@@ -67,9 +68,11 @@ pub struct SirTool {
     pub(crate) gamma: f64,
     pub(crate) duration: f64,
     pub(crate) atlas: ParameterAtlasController,
-    pub(super) s_points: Vec<PlotPoint>,
-    pub(super) i_points: Vec<PlotPoint>,
-    pub(super) r_points: Vec<PlotPoint>,
+
+    // Cached plot data
+    pub(crate) s_points: Vec<PlotPoint>,
+    pub(crate) i_points: Vec<PlotPoint>,
+    pub(crate) r_points: Vec<PlotPoint>,
     pub(crate) snapshot_manager: TraceSnapshotManager,
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     pub(super) last_param_summary: String,
@@ -256,27 +259,6 @@ impl SirTool {
         self.recalculate();
         Ok(())
     }
-
-    fn render_sir_curves_plot(&mut self, ui: &mut egui::Ui) {
-        let plot_id = ui.make_persistent_id("sir_plot");
-        ui.horizontal(|ui| {
-            ui.heading("Simulation");
-            if ui.button("Import Dataset (CSV)").clicked() {
-                egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
-            }
-        });
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        Plot::new("sir_plot")
-            .id(plot_id)
-            .view_aspect(2.0)
-            .legend(egui_plot::Legend::default())
-            .show(ui, |plot_ui| {
-                plot_ui.line(Line::new("Susceptible", &self.s_points[..]).color(palette.axis_z));
-                plot_ui.line(Line::new("Infected", &self.i_points[..]).color(palette.axis_x));
-                plot_ui.line(Line::new("Recovered", &self.r_points[..]).color(palette.axis_y));
-                self.snapshot_manager.render_on_plot(plot_ui);
-            });
-    }
 }
 
 impl InteractiveTool for SirTool {
@@ -384,6 +366,7 @@ impl InteractiveTool for SirTool {
             if self.render_parameter_controls(ui) {
                 self.record_history_and_recalculate();
             }
+            metrics::render_epidemic_metrics(ui, self);
             self.render_sir_readouts_and_atlas(ui);
             ui.add_space(8.0);
             let param_summary = self.param_summary();
@@ -403,7 +386,7 @@ impl InteractiveTool for SirTool {
             }
             self.evaluate_sensitivity(ui);
             ui.separator();
-            self.render_sir_curves_plot(ui);
+            metrics::render_simulation_plot(ui, self);
         });
     }
 }
