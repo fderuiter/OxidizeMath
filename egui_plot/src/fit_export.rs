@@ -643,40 +643,50 @@ mod tests {
         let src_path = dir.join("fit_model.rs");
         let lib_rlib = dir.join("libfit_model.rlib");
         let harness_path = dir.join("harness.rs");
-        let bin_path = dir.join("harness_bin");
+        let exe_ext = std::env::consts::EXE_SUFFIX;
+        let standalone_bin = dir.join(format!("standalone_bin{exe_ext}"));
+        let bin_path = dir.join(format!("harness_bin{exe_ext}"));
+        let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
 
         let rs_src = fit.to_rust_fn().expect("rust fit source");
         std::fs::write(&src_path, &rs_src).expect("write fit_model.rs");
 
         // Verify standalone binary compilation on Rust 2024
-        let bin_check = Command::new("rustc")
+        let bin_check = Command::new(&rustc)
             .args(["--edition", "2024", "-D", "warnings"])
             .arg(&src_path)
             .arg("-o")
-            .arg(dir.join("standalone_bin"))
-            .status()
+            .arg(&standalone_bin)
+            .output()
             .expect("rustc standalone");
         assert!(
-            bin_check.success(),
-            "standalone fit .rs must compile on Rust 2024"
+            bin_check.status.success(),
+            "standalone fit .rs must compile on Rust 2024:\n{}",
+            String::from_utf8_lossy(&bin_check.stderr)
         );
 
         // Also compile as library and verify numerical parity against FitResult::eval
-        let lib_check = Command::new("rustc")
+        let lib_check = Command::new(&rustc)
             .args([
                 "--edition",
                 "2024",
                 "--crate-type",
-                "lib",
+                "rlib",
+                "--crate-name",
+                "fit_model",
                 "-A",
                 "dead_code",
             ])
             .arg(&src_path)
             .arg("-o")
             .arg(&lib_rlib)
-            .status()
+            .output()
             .expect("rustc rlib");
-        assert!(lib_check.success());
+        assert!(
+            lib_check.status.success(),
+            "fit rlib failed:\n{}",
+            String::from_utf8_lossy(&lib_check.stderr)
+        );
 
         let mut checks = String::from("extern crate fit_model;\nfn main() {\n");
         for &x in sample_xs {
@@ -688,30 +698,33 @@ mod tests {
         }
         checks.push_str("}\n");
         std::fs::write(&harness_path, checks).expect("write harness");
-        let h_status = Command::new("rustc")
+        let h_out = Command::new(&rustc)
             .args(["--edition", "2024", "--extern"])
             .arg(format!("fit_model={}", lib_rlib.display()))
             .arg(&harness_path)
             .arg("-o")
             .arg(&bin_path)
-            .status()
+            .output()
             .expect("compile harness");
-        assert!(h_status.success());
+        assert!(
+            h_out.status.success(),
+            "fit harness failed:\n{}",
+            String::from_utf8_lossy(&h_out.stderr)
+        );
         assert!(Command::new(&bin_path).status().unwrap().success());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn verify_fit_python_parity(fit: &FitResult, sample_xs: &[f64]) {
-        let Ok(check) = Command::new("python3")
-            .args(["-c", "import numpy"])
-            .status()
-        else {
+        let Some(py_cmd) = ["python3", "python"].into_iter().find(|cmd| {
+            Command::new(cmd)
+                .args(["-c", "import numpy"])
+                .output()
+                .is_ok_and(|o| o.status.success())
+        }) else {
             return;
         };
-        if !check.success() {
-            return;
-        }
         let mut script = fit.to_python_fn().expect("python fit source");
         script.push('\n');
         for &x in sample_xs {
@@ -720,10 +733,10 @@ mod tests {
                 "assert abs(fit_eval({x:?}) - {expected:?}) / max(abs({expected:?}), 1.0) < 1e-9\n"
             ));
         }
-        let status = Command::new("python3")
+        let status = Command::new(py_cmd)
             .args(["-c", &script])
             .status()
-            .expect("python3 fit parity");
+            .expect("python fit parity");
         assert!(status.success(), "Python fit_eval failed 1e-9 parity");
     }
 

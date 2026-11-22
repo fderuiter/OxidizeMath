@@ -204,16 +204,21 @@ fn build_flagship_artifacts() -> (
 #[cfg(not(target_arch = "wasm32"))]
 fn compile_and_run_rust_2024(dir: &Path, slug: &str, rust_source: &str) {
     let rs_path = dir.join(format!("{slug}.rs"));
-    let bin_path = dir.join(format!("{slug}_bin"));
+    let bin_path = dir.join(format!("{slug}_bin{}", std::env::consts::EXE_SUFFIX));
     std::fs::write(&rs_path, rust_source).unwrap();
-    let status = Command::new("rustc")
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    let compile_out = Command::new(rustc)
         .args(["--edition", "2024", "-D", "warnings"])
         .arg(&rs_path)
         .arg("-o")
         .arg(&bin_path)
-        .status()
+        .output()
         .expect("invoke rustc");
-    assert!(status.success(), "rustc --edition 2024 failed for {slug}");
+    assert!(
+        compile_out.status.success(),
+        "rustc --edition 2024 failed for {slug}:\n{}",
+        String::from_utf8_lossy(&compile_out.stderr)
+    );
     let out = Command::new(&bin_path)
         .output()
         .expect("run compiled binary");
@@ -222,48 +227,67 @@ fn compile_and_run_rust_2024(dir: &Path, slug: &str, rust_source: &str) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn find_python_runner(probe_code: &str) -> Option<&'static str> {
+    ["python3", "python"].into_iter().find(|cmd| {
+        Command::new(cmd)
+            .args(["-c", probe_code])
+            .output()
+            .is_ok_and(|o| o.status.success())
+    })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn run_python_script(dir: &Path, slug: &str, python_source: &str) {
     let py_path = dir.join(format!("{slug}.py"));
     std::fs::write(&py_path, python_source).unwrap();
-    let out = Command::new("python3")
-        .arg(&py_path)
-        .output()
-        .expect("invoke python3");
-    assert!(
-        out.status.success(),
-        "python3 failed for {slug}: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert!(!out.stdout.is_empty());
+    if let Some(py_cmd) = find_python_runner("import numpy, scipy") {
+        let out = Command::new(py_cmd)
+            .arg(&py_path)
+            .output()
+            .expect("invoke scientific python");
+        assert!(
+            out.status.success(),
+            "{py_cmd} failed for {slug}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(!out.stdout.is_empty());
+    } else if let Some(py_cmd) = find_python_runner("import ast") {
+        let out = Command::new(py_cmd)
+            .args([
+                "-c",
+                "import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text('utf-8'))",
+            ])
+            .arg(&py_path)
+            .output()
+            .expect("validate python ast syntax");
+        assert!(
+            out.status.success(),
+            "Python syntax check failed for {slug}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn read_last_csv_y(dir: &Path, stem: &str) -> f64 {
+    let bin = dir.join(format!("{stem}{}", std::env::consts::EXE_SUFFIX));
+    let stdout = String::from_utf8(Command::new(bin).output().unwrap().stdout).unwrap();
+    stdout
+        .lines()
+        .last()
+        .and_then(|l| l.split(',').nth(1))
+        .unwrap()
+        .parse()
+        .unwrap()
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn verify_ode_rk4_parity(dir: &Path, ode_log: &OdeSolverTool) {
-    let log_out = Command::new(dir.join("ode_log_bin")).output().unwrap();
-    let log_stdout = String::from_utf8(log_out.stdout).unwrap();
-    let log_y: f64 = log_stdout
-        .lines()
-        .last()
-        .unwrap()
-        .split(',')
-        .nth(1)
-        .unwrap()
-        .parse()
-        .unwrap();
+    let log_y = read_last_csv_y(dir, "ode_log_bin");
     let expected_log = *ode_log.y_series.last().unwrap();
     assert!((log_y - expected_log).abs() < 1e-8);
 
-    let cust_out = Command::new(dir.join("ode_custom_bin")).output().unwrap();
-    let cust_stdout = String::from_utf8(cust_out.stdout).unwrap();
-    let cust_y: f64 = cust_stdout
-        .lines()
-        .last()
-        .unwrap()
-        .split(',')
-        .nth(1)
-        .unwrap()
-        .parse()
-        .unwrap();
+    let cust_y = read_last_csv_y(dir, "ode_custom_bin");
     let exact_y = (-1.85_f64 * (1.0 - 10.0_f64.cos())).exp();
     assert!(
         (cust_y - exact_y).abs() < 1e-6,

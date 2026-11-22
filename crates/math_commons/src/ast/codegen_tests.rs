@@ -202,7 +202,7 @@ fn verify_rustc_2024_parity(
     let dir = std::env::temp_dir().join(format!("ast_codegen_rs_{}_{run_id}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
     let src_path = dir.join("parity_check.rs");
-    let bin_path = dir.join("parity_check_bin");
+    let bin_path = dir.join(format!("parity_check_bin{}", std::env::consts::EXE_SUFFIX));
 
     let fn_1d = expr_1d.to_rust_fn("eval_1d", &["x"], params).unwrap();
     let fn_2d = expr_2d.to_rust_fn("eval_2d", &["t", "y"], params).unwrap();
@@ -220,16 +220,18 @@ fn verify_rustc_2024_parity(
     let program = format!("{fn_1d}\n\n{fn_2d}\n\nfn main() {{\n{assertions}}}\n");
     std::fs::write(&src_path, program).expect("write rust snippet");
 
-    let status = Command::new("rustc")
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    let out = Command::new(rustc)
         .args(["--edition", "2024", "-D", "warnings"])
         .arg(&src_path)
         .arg("-o")
         .arg(&bin_path)
-        .status()
+        .output()
         .expect("invoke rustc");
     assert!(
-        status.success(),
-        "generated Rust snippet failed to compile on Rust 2024"
+        out.status.success(),
+        "generated Rust snippet failed to compile on Rust 2024:\n{}",
+        String::from_utf8_lossy(&out.stderr)
     );
     let run_status = Command::new(&bin_path)
         .status()
@@ -251,15 +253,14 @@ fn verify_python_numpy_parity(
     expected_1d: &[f64],
     expected_2d: &[f64],
 ) {
-    let Ok(check) = Command::new("python3")
-        .args(["-c", "import numpy"])
-        .status()
-    else {
+    let Some(py_cmd) = ["python3", "python"].into_iter().find(|cmd| {
+        Command::new(cmd)
+            .args(["-c", "import numpy"])
+            .output()
+            .is_ok_and(|o| o.status.success())
+    }) else {
         return;
     };
-    if !check.success() {
-        return;
-    }
     let py_1d = expr_1d.to_python_expr(params).unwrap();
     let py_2d = expr_2d.to_python_expr(params).unwrap();
     let mut script = format!(
@@ -275,10 +276,10 @@ fn verify_python_numpy_parity(
             "assert abs(f2({t:?}, {y:?}) - {exp:?}) / max(abs({exp:?}), 1.0) < 1e-9\n"
         ));
     }
-    let status = Command::new("python3")
+    let status = Command::new(py_cmd)
         .args(["-c", &script])
         .status()
-        .expect("run python3 parity check");
+        .expect("run python parity check");
     assert!(status.success(), "Python numpy parity assertions failed");
 }
 
