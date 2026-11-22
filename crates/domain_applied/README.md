@@ -20,7 +20,8 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 - **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.
 - **`game_theory`**: Mean Field Games, evolutionary matrix dynamics, and mechanism design.
 - **`lorahub` & `grpo`**: Machine learning parameter merging and group relative policy optimization.
-- **`cannibalism` & `favoritism`**: Specialized population dynamics models and socio-mathematical scoring functions.
+- **`cannibalism`**: Zero-allocation upwind solvers for McKendrick-von Foerster age-structured PDEs (`McKendrickSolver`), Diekmann mortality and Ricker saturation kernels (`CannibalismKernel`), van den Bosch juvenile-adult delay dynamics (`JuvenileAdultSolver`), and lumped 2D ODE models (`CannibalismModel`).
+- **`favoritism`**: Socio-mathematical quadrature scoring functions (`UnifiedFavoritismModel`).
 
 ---
 
@@ -59,6 +60,24 @@ let statistics = calculate_statistics(wins, losses).expect("Valid statistics");
 assert_eq!(wins, 4);
 assert_eq!(losses, 0);
 assert!(statistics.win_ratio.is_infinite() || statistics.win_ratio > 1.0);
+```
+
+### Age-Structured Cannibalism PDE (`McKendrickSolver`)
+
+Advance the McKendrick-von Foerster equation with Diekmann mortality and Ricker prey saturation using pre-allocated upwind buffers:
+
+```rust
+# use domain_applied::__doctest_facade as math_explorer;
+use math_explorer::applied::cannibalism::{CannibalismKernel, McKendrickSolver};
+
+let kernel = CannibalismKernel::new(0.12, 0.02, 0.35, 3.5, 0.02, 4.0, 3.5, 80.0);
+let mut solver = McKendrickSolver::new(64, 10.0, kernel);
+solver.set_initial_density(|age| 15.0 * (-0.25 * age).exp());
+
+solver.step_upwind(0.2);
+
+assert!(solver.total_population() > 0.0);
+assert!(solver.cannibal_load() >= 0.0);
 ```
 
 ---

@@ -1131,23 +1131,158 @@
   ],
   "crates/domain_applied/src/applied/cannibalism/death_rate.rs": [
     {
+      "signature": "impl CannibalismKernel { pub fn fertility_at (& self , age : f64 , total_population : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CannibalismKernel { pub fn mortality_at (& self , age : f64 , cannibal_load : f64 , prey_load : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CannibalismKernel { pub fn natural_mortality_at (& self , age : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CannibalismKernel { pub fn new (natural_mortality : f64 , senescence_rate : f64 , attack_rate : f64 , vulnerability_max_age : f64 , saturation : f64 , maturation_age : f64 , fecundity : f64 , carrying_scale : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl CannibalismKernel { pub fn ricker_saturation (& self , prey_load : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CannibalismKernel { pub fn vulnerability_at (& self , age : f64) -> f64 }"
+    },
+    {
+      "signature": "pub fn advect_characteristic_step (density : & [f64] , mortality : & [f64] , boundary_birth : f64 , dt : f64 , da : f64 , next_density : & mut [f64] ,)"
+    },
+    {
       "signature": "pub fn death_rate (nu_a : f64 , c_a : f64 , k_t : f64 , phi_c_t : f64) -> f64"
+    },
+    {
+      "signature": "pub fn sanitize_density (value : f64) -> f64"
+    },
+    {
+      "signature": "pub fn trapezoidal_quadrature (values : & [f64] , da : f64) -> f64"
+    },
+    {
+      "signature": "pub struct CannibalismKernel"
     }
   ],
   "crates/domain_applied/src/applied/cannibalism/juvenile_adult_dynamics.rs": [
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn adults (& self) -> f64 }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn ages (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn da (& self) -> f64 }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn juvenile_density (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn last_energy_intake (& self) -> f64 }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn last_maturation_flux (& self) -> f64 }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn new (num_ages : usize , initial_adults : f64 , params : JuvenileAdultParams) -> Self }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn params (& self) -> & JuvenileAdultParams }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn set_initial_state < F : FnMut (f64) -> f64 > (& mut self , initial_adults : f64 , mut profile : F) }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn set_params (& mut self , params : JuvenileAdultParams) }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn step_upwind (& mut self , dt : f64) }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn total_juveniles (& self) -> f64 }"
+    },
     {
       "signature": "pub fn adult_dynamics (n_t_alpha : f64 , f_i_t : f64 , a_t : f64) -> f64"
     },
     {
       "signature": "pub fn juvenile_dynamics (i_t : f64 , c_a : f64 , a_t : f64 , n_t_a : f64) -> f64"
+    },
+    {
+      "signature": "pub struct JuvenileAdultParams"
+    },
+    {
+      "signature": "pub struct JuvenileAdultSolver"
     }
   ],
   "crates/domain_applied/src/applied/cannibalism/mckendrick_von_foerster.rs": [
+    {
+      "signature": "impl McKendrickSolver { pub fn ages (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn cannibal_load (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn compute_birth_boundary (& self , total_pop : f64) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn da (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn density (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn juvenile_population (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn kernel (& self) -> & CannibalismKernel }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn last_birth_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn last_cannibal_load (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn mortality (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn new (num_ages : usize , max_age : f64 , kernel : CannibalismKernel) -> Self }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn prey_load (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn set_density_slice (& mut self , values : & [f64]) }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn set_initial_density < F : FnMut (f64) -> f64 > (& mut self , mut profile : F) }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn set_kernel (& mut self , kernel : CannibalismKernel) }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn step_upwind (& mut self , dt : f64) }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn step_upwind_with_boundary (& mut self , dt : f64 , boundary_birth : f64) }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn total_population (& self) -> f64 }"
+    },
     {
       "signature": "pub fn birth_rate (_t : f64) -> f64"
     },
     {
       "signature": "pub fn mckendrick_von_foerster (_t : f64 , _a : f64 , mu : f64 , n : f64) -> f64"
+    },
+    {
+      "signature": "pub struct McKendrickSolver"
     }
   ],
   "crates/domain_applied/src/applied/cannibalism/mod.rs": [
@@ -1167,6 +1302,9 @@
   "crates/domain_applied/src/applied/cannibalism/two_dimensional_ode.rs": [
     {
       "signature": "impl CannibalismModel { pub fn new (beta_n : f64 , beta_c : f64 , k_n : f64 , phi_n_c : f64 , mu_n : f64 , mu_c : f64) -> Self }"
+    },
+    {
+      "signature": "impl CannibalismModel { pub fn step_rk4 (& self , t : f64 , state : & Vector2 < f64 > , dt : f64) -> Vector2 < f64 > }"
     },
     {
       "signature": "pub struct CannibalismModel"

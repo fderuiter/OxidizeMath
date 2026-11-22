@@ -1,10 +1,11 @@
-// Two-Dimensional ODE Model for Cannibalism
+//! Lumped two-dimensional ordinary differential equation model for normal and cannibalistic cohorts.
 
 // dN/dt = beta_N(N, C) * N + beta_C(N, C) * C - K(N) * N - phi(N, C) - mu_N(N, C) * N
 // dC/dt = K(N) * N - mu_C(N, C) * C
 
+use super::death_rate::sanitize_density;
 use nalgebra::Vector2;
-use pure_math::pure_math::analysis::ode::OdeSystem;
+use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver};
 
 /// Parameters for the Cannibalism ODE system.
 ///
@@ -37,6 +38,18 @@ impl CannibalismModel {
             mu_n,
             mu_c,
         }
+    }
+
+    /// Advances `(N(t), C(t))` by one 4th-order [`RungeKutta4`] step with non-negative population clamping.
+    #[verified_engine::verified]
+    pub fn step_rk4(&self, t: f64, state: &Vector2<f64>, dt: f64) -> Vector2<f64> {
+        let mut clamped = Vector2::new(sanitize_density(state[0]), sanitize_density(state[1]));
+        if !dt.is_finite() || dt <= 0.0 || (clamped[0] == 0.0 && clamped[1] == 0.0) {
+            return clamped;
+        }
+        let mut rk4 = RungeKutta4::new(&clamped);
+        rk4.step(self, t, &mut clamped, dt);
+        Vector2::new(sanitize_density(clamped[0]), sanitize_density(clamped[1]))
     }
 }
 
