@@ -345,8 +345,15 @@ fn test_harmonic_equilibrium_root_dt_025_and_nonlinear_preset_fits() {
     );
 
     let osc_pts = &osc.export_datasets()[0].1;
-    let sin_fit = egui_plot::fit_model(osc_pts, egui_plot::FitType::Sinusoidal, "y(t)", false)
-        .expect("sinusoidal fit");
+    let sin_fit = egui_plot::fit_model_with_axes(
+        osc_pts,
+        egui_plot::FitType::Sinusoidal,
+        "y(t)",
+        false,
+        false,
+        false,
+    )
+    .expect("sinusoidal fit");
     assert!(sin_fit.r_squared >= 0.99);
 
     let mut log_tool = OdeSolverTool {
@@ -360,9 +367,15 @@ fn test_harmonic_equilibrium_root_dt_025_and_nonlinear_preset_fits() {
     };
     log_tool.recalculate();
     let log_pts = &log_tool.export_datasets()[0].1;
-    let logistic_fit =
-        egui_plot::fit_model(log_pts, egui_plot::FitType::Logistic, "y(t)", false)
-            .expect("logistic fit");
+    let logistic_fit = egui_plot::fit_model_with_axes(
+        log_pts,
+        egui_plot::FitType::Logistic,
+        "y(t)",
+        false,
+        false,
+        false,
+    )
+    .expect("logistic fit");
     assert!(logistic_fit.r_squared >= 0.99);
 }
 
