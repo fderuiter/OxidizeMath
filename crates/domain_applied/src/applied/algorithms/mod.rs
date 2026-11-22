@@ -100,6 +100,8 @@
 pub mod kalman;
 pub mod sorting;
 
+pub use kalman::KalmanError;
+
 // [cite:algorithmic_information_rust]
 
 use pure_math::theory_verification;

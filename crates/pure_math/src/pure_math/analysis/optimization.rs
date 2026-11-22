@@ -14,12 +14,9 @@ pub enum OptimizationError {
     #[error("Failed to convert numerical value")]
     #[allow(missing_docs)]
     ConversionError,
-}
-
-impl From<EvolutionError> for OptimizationError {
-    fn from(_: EvolutionError) -> Self {
-        OptimizationError::ConversionError
-    }
+    /// Wrapped evolution engine error preserving causal source.
+    #[error("Evolution solver error: {0}")]
+    Evolution(#[from] EvolutionError),
 }
 
 #[allow(missing_docs)]

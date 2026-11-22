@@ -345,7 +345,15 @@ impl std::fmt::Display for MarkovError {
     }
 }
 
-impl std::error::Error for MarkovError {}
+impl std::error::Error for MarkovError {
+    #[verified_engine::verified]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Math(err) => Some(err),
+            _ => None,
+        }
+    }
+}
 
 impl std::fmt::Display for ZipError {
     #[verified_engine::verified]
@@ -391,7 +399,15 @@ impl std::fmt::Display for CopulaError {
     }
 }
 
-impl std::error::Error for CopulaError {}
+impl std::error::Error for CopulaError {
+    #[verified_engine::verified]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Math(err) => Some(err),
+            _ => None,
+        }
+    }
+}
 
 impl std::fmt::Display for Glicko2Error {
     #[verified_engine::verified]
@@ -413,3 +429,21 @@ impl From<math_commons::error::MathError> for CopulaError {
         CopulaError::Math(err)
     }
 }
+
+mod submodule_diagnostics;
+mod umbrella;
+
+pub use crate::pure_math::{
+    algebra::linear_algebra::numerical::LinearAlgebraError,
+    analysis::{
+        evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
+        stochastic::StochasticError, transforms::TransformError,
+    },
+    elliptic_curves::EllipticCurveError,
+    number_theory::ambs::AmbsError,
+    tensor::types::TensorError,
+};
+pub use umbrella::PureMathError;
+
+#[cfg(test)]
+mod tests;

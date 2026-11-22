@@ -98,6 +98,43 @@ impl DiagnosticBus {
             }
         }
     }
+
+    /// Converts a [`Diagnostic`] error into a [`DiagnosticEvent`] and dispatches it to all listeners.
+    ///
+    /// If `diagnostic.metadata()` omits `"source"` and provides `"error_type"`, `"source"` is
+    /// populated automatically so downstream telemetry listeners retain structured attribution.
+    pub fn emit_diagnostic<D: Diagnostic + ?Sized>(&self, diagnostic: &D) {
+        let mut metadata = diagnostic.metadata();
+        if !metadata.contains_key("source")
+            && let Some(err_type) = metadata.get("error_type").cloned()
+        {
+            metadata.insert("source".to_string(), err_type);
+        }
+        self.emit(DiagnosticEvent {
+            severity: diagnostic.severity(),
+            message: diagnostic.to_string(),
+            metadata,
+            thread_name: std::thread::current().name().map(str::to_string),
+        });
+    }
+
+    /// Converts a [`Diagnostic`] error into a [`DiagnosticEvent`] tagged with an explicit `source`
+    /// and dispatches it to all registered listeners.
+    pub fn emit_diagnostic_with_source<D: Diagnostic + ?Sized>(
+        &self,
+        source: &str,
+        diagnostic: &D,
+    ) {
+        assert!(!source.is_empty(), "diagnostic source must not be empty");
+        let mut metadata = diagnostic.metadata();
+        metadata.insert("source".to_string(), source.to_string());
+        self.emit(DiagnosticEvent {
+            severity: diagnostic.severity(),
+            message: diagnostic.to_string(),
+            metadata,
+            thread_name: std::thread::current().name().map(str::to_string),
+        });
+    }
 }
 
 impl Default for DiagnosticBus {
@@ -237,5 +274,55 @@ mod tests {
         });
 
         assert_eq!(*received.lock().unwrap(), vec!["FATAL".to_string()]);
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("step divergence at k={step}")]
+    struct SolverTestError {
+        step: usize,
+    }
+
+    impl Diagnostic for SolverTestError {
+        fn severity(&self) -> Severity {
+            Severity::Warning
+        }
+
+        fn metadata(&self) -> HashMap<String, String> {
+            let mut map = HashMap::new();
+            map.insert("error_type".to_string(), "SolverTestError".to_string());
+            map.insert("step".to_string(), self.step.to_string());
+            map
+        }
+    }
+
+    #[test]
+    fn test_emit_diagnostic_helpers_populate_source_and_metadata() {
+        let bus = DiagnosticBus::new();
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let captured_clone = Arc::clone(&captured);
+        bus.register_listener(move |ev| {
+            captured_clone.lock().unwrap().push(ev.clone());
+        });
+
+        let err = SolverTestError { step: 7 };
+        bus.emit_diagnostic(&err);
+        bus.emit_diagnostic_with_source("rk4_integrator", &err);
+
+        let events = captured.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].severity, Severity::Warning);
+        assert_eq!(events[0].message, "step divergence at k=7");
+        assert_eq!(
+            events[0].metadata.get("source").map(String::as_str),
+            Some("SolverTestError")
+        );
+        assert_eq!(
+            events[1].metadata.get("source").map(String::as_str),
+            Some("rk4_integrator")
+        );
+        assert_eq!(
+            events[1].metadata.get("step").map(String::as_str),
+            Some("7")
+        );
     }
 }

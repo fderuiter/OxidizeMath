@@ -18,10 +18,15 @@ pub mod __macro_deps {
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{
-            CopulaError, Glicko2Error, KellyError, MarkovError, NumberTheoryError, OuError,
-            TdaError, ZipError,
+            AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError,
+            Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
+            OptimizationError, OuError, PureMathError, PureMathError as Error, StochasticError,
+            TdaError, TensorError, TransformError, ZipError,
         };
-        pub use math_commons::error::{MathError, MathResult};
+        pub use math_commons::error::{
+            EvalError, LexError, MathCommonsError, MathError, MathResult, ParseError,
+        };
+        pub type Result<T, E = Error> = std::result::Result<T, E>;
     }
     pub mod prelude {
         pub use super::error::*;
