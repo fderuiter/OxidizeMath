@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use std::fs;
 
-const MAX_EXPANDED_ARGS: usize = 4096;
+const MAX_EXPANDED_ARGS: usize = 16_384;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct CrateEnv {
@@ -43,15 +43,16 @@ where
 }
 
 fn parse_extern_crate_name(spec: &str) -> Option<&str> {
-    let rest = if let Some((opts, after_colon)) = spec.split_once(':') {
+    let before_eq = spec.split('=').next().unwrap_or("");
+    let rest = if let Some((opts, after_colon)) = before_eq.split_once(':') {
         if opts.split(',').any(|opt| opt.trim() == "noprelude") {
             return None;
         }
         after_colon
     } else {
-        spec
+        before_eq
     };
-    let name = rest.split('=').next().unwrap_or("").trim();
+    let name = rest.trim();
     (!name.is_empty()).then_some(name)
 }
 
@@ -211,6 +212,49 @@ mod tests {
         );
         assert_eq!(
             scientific_metadata_path_for(&sm_and_ve).to_string(),
+            ":: scientific_metadata"
+        );
+    }
+
+    #[test]
+    fn test_resolves_windows_drive_and_verbatim_extern_paths() {
+        let win_facade = detect_crate_env_from_slice(
+            &to_strings(&[
+                "rustc.exe",
+                r"--extern=noprelude:verified_engine=D:\a\OxidizeMath\target\debug\deps\libve.rlib",
+                r"--extern=math_explorer=C:\Users\runneradmin\Temp\libme.rlib",
+            ]),
+            None,
+        );
+        assert!(!win_facade.has_verified_engine);
+        assert!(win_facade.has_math_explorer);
+        assert_eq!(
+            verified_engine_path_for(&win_facade).to_string(),
+            ":: math_explorer :: verified_engine"
+        );
+        assert_eq!(
+            scientific_metadata_path_for(&win_facade).to_string(),
+            ":: math_explorer :: scientific_metadata"
+        );
+
+        let win_sm = detect_crate_env_from_slice(
+            &to_strings(&[
+                "rustc.exe",
+                "--extern",
+                r"scientific_metadata=\\?\D:\a\OxidizeMath\target\debug\libsm.rlib",
+                "--extern",
+                r"priv:verified_engine=Z:\tmp\libve.rlib",
+            ]),
+            Some("verified_engine"),
+        );
+        assert!(win_sm.has_scientific_metadata);
+        assert!(win_sm.has_verified_engine);
+        assert_eq!(
+            verified_engine_path_for(&win_sm).to_string(),
+            ":: verified_engine"
+        );
+        assert_eq!(
+            scientific_metadata_path_for(&win_sm).to_string(),
             ":: scientific_metadata"
         );
     }

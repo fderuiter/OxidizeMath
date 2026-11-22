@@ -209,8 +209,11 @@ fn artifacts() -> &'static CompilerArtifacts {
         let proc_macro_dylib = find_newest_artifact(
             &macro_dirs,
             |path, name| {
+                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
                 (name.starts_with("libverified_engine_macros-")
-                    || name.starts_with("verified_engine_macros-"))
+                    || name.starts_with("verified_engine_macros-")
+                    || stem == "libverified_engine_macros"
+                    || stem == "verified_engine_macros")
                     && is_proc_macro_ext(path)
             },
             "verified_engine_macros dylib",
