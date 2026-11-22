@@ -201,6 +201,7 @@ fn applied_facade_exports_six_errors_and_submodule_reexports() {
 #[test]
 fn biology_facade_exports_hodgkin_huxley_error() {
     use math_explorer::biology::error::HodgkinHuxleyError as InnerHhError;
+    use math_explorer::biology::morphogenesis::{GrayScottKinetics, ReactionKinetics};
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::HodgkinHuxleyError;
 
@@ -208,6 +209,10 @@ fn biology_facade_exports_hodgkin_huxley_error() {
     let e2 = InnerHhError::InvalidConductance(-0.2);
     assert_eq!(e1.severity(), Severity::Error);
     assert_eq!(e2.severity(), Severity::Error);
+
+    let gs = GrayScottKinetics::new(0.0367, 0.0649);
+    let eq = gs.reaction([1.0, 0.0]);
+    assert_eq!(eq, [0.0, 0.0]);
 }
 
 #[cfg(feature = "climate")]

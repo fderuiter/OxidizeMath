@@ -444,8 +444,20 @@ fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
     assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Ready));
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 
-    // First render starts stepping; default d_v=100, dt=0.05 diverges to Faulted
+    // First render starts CFL-safe stepping; default auto_dt=true evolves without faulting
     let mut frame = eframe::Frame::_new_kittest();
+    for _ in 0..8 {
+        let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+        let _ = render_tool_frame(&ctx, &mut tool);
+        thread::sleep(Duration::from_millis(8));
+    }
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Running));
+    assert_eq!(tool.worker.state(), SimWorkerState::Running);
+    assert!(tool.worker.diagnostic_report().is_none());
+
+    // Disabling auto_dt with manual unstable dt=0.05 at d_v=100 diverges to Faulted
+    tab.params.write().unwrap().auto_dt = false;
+    tool.params.write().unwrap().auto_dt = false;
     for _ in 0..400 {
         let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
         let _ = render_tool_frame(&ctx, &mut tool);

@@ -229,10 +229,13 @@ fn test_morphogenesis_divergence_and_recovery() {
         d_v: 100.0,
         dt: 0.05,
         high_contrast: false,
+        ..Default::default()
     }));
 
     let mut runner = MorphogenesisRunner {
         system,
+        kinetics: crate::tabs::morphogenesis::MorphogenesisKinetics::Schnakenberg,
+        gray_scott: math_explorer::biology::morphogenesis::GrayScottKinetics::default(),
         params,
         width,
         height,

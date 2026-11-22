@@ -2673,6 +2673,14 @@
       "signature": "pub use crate :: error"
     }
   ],
+  "crates/domain_biology/src/biology/morphogenesis/gray_scott.rs": [
+    {
+      "signature": "impl GrayScottKinetics { pub fn new (f : f64 , k : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct GrayScottKinetics"
+    }
+  ],
   "crates/domain_biology/src/biology/morphogenesis/mod.rs": [
     {
       "signature": "impl < K : ReactionKinetics < 2 > , D : SpatialDiffusion < 2 > , S : TuringSolverStrategy < 2 > > TuringSystem < 2 , K , D , S > { pub fn u (& self) -> & [f64] }"
@@ -2696,6 +2704,9 @@
       "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : SpatialDiffusion < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , D , S > { pub fn step (& mut self , dt : f64) }"
     },
     {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : SpatialDiffusion < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , D , S > { pub fn step_with_kinetics < K2 : ReactionKinetics < N > > (& mut self , kinetics : & K2 , dt : f64) }"
+    },
+    {
       "signature": "impl TuringSystem < 2 , SchnakenbergKinetics , FiniteDifference1D , FusedEulerSolver > { pub fn new (size : Dimension , d_u : DiffusionCoeff , d_v : DiffusionCoeff , dx : StepSize) -> Self }"
     },
     {
@@ -2703,6 +2714,9 @@
     },
     {
       "signature": "pub struct TuringSystem < const N : usize = 2 , K : ReactionKinetics < N > = SchnakenbergKinetics , D : SpatialDiffusion < N > = FiniteDifference1D , S : TuringSolverStrategy < N > = FusedEulerSolver , >"
+    },
+    {
+      "signature": "pub use gray_scott :: GrayScottKinetics"
     },
     {
       "signature": "pub use reaction :: ReactionKinetics"
@@ -2743,6 +2757,12 @@
   "crates/domain_biology/src/biology/morphogenesis/solvers.rs": [
     {
       "signature": "impl < S > StandardSolverAdapter < S > { pub fn new (solver : S) -> Self }"
+    },
+    {
+      "signature": "impl FusedEulerSolver { pub fn cfl_dt_2d (dx : f64 , d_u : f64 , d_v : f64) -> f64 }"
+    },
+    {
+      "signature": "impl FusedEulerSolver { pub fn cfl_substeps_2d (target_dt : f64 , dx : f64 , d_u : f64 , d_v : f64 , max_substeps : usize ,) -> (usize , f64) }"
     },
     {
       "signature": "impl FusedEulerSolver { pub fn new () -> Self }"

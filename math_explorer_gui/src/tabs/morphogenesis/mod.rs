@@ -15,8 +15,10 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod atlas;
 pub mod presets;
 pub mod runner;
+pub mod state;
 pub mod tool;
 pub mod ui;
 
@@ -24,7 +26,10 @@ pub use presets::SimpleRng;
 #[cfg(test)]
 pub use runner::MorphogenesisRunner;
 pub use runner::MorphogenesisSharedParams;
-pub use tool::{MorphogenesisTool, MorphogenesisToolState};
+#[cfg(test)]
+pub use state::MorphogenesisKinetics;
+pub use state::MorphogenesisToolState;
+pub use tool::MorphogenesisTool;
 
 /// Legacy flat `MorphoState` schema saved by pre-framework `.mws` workspaces.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -112,11 +117,15 @@ impl MorphogenesisTab {
         {
             if let Ok(s) = serde_json::from_str::<MorphogenesisToolState>(&json) {
                 return MorphogenesisPresetConfig {
+                    kinetics: s.kinetics,
                     a: s.a,
                     b: s.b,
+                    f: s.f,
+                    k: s.k,
                     d_u: s.d_u,
                     d_v: s.d_v,
                     dt: s.dt,
+                    auto_dt: s.auto_dt,
                     width: s.width,
                     height: s.height,
                 };
@@ -124,11 +133,15 @@ impl MorphogenesisTab {
         }
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         MorphogenesisPresetConfig {
+            kinetics: p.kinetics,
             a: p.a,
             b: p.b,
+            f: p.f,
+            k: p.k,
             d_u: p.d_u,
             d_v: p.d_v,
             dt: p.dt,
+            auto_dt: p.auto_dt,
             width: 100,
             height: 100,
         }
@@ -150,11 +163,15 @@ impl MorphogenesisTab {
             SimWorkerState::Ready
         };
         let state = MorphogenesisToolState {
+            kinetics: config.kinetics,
             a: config.a,
             b: config.b,
+            f: config.f,
+            k: config.k,
             d_u: config.d_u,
             d_v: config.d_v,
             dt: config.dt,
+            auto_dt: config.auto_dt,
             width: config.width,
             height: config.height,
             state: Some(target_state),
@@ -163,6 +180,18 @@ impl MorphogenesisTab {
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;
+        {
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.kinetics = config.kinetics;
+            p.a = config.a;
+            p.b = config.b;
+            p.f = config.f;
+            p.k = config.k;
+            p.d_u = config.d_u;
+            p.d_v = config.d_v;
+            p.dt = config.dt;
+            p.auto_dt = config.auto_dt;
+        }
         self.sync_framework_after_direct_tool_mutation();
         Ok(())
     }
@@ -217,6 +246,7 @@ impl MorphogenesisTab {
         current_state.pending_initial_start = legacy.pending_initial_start;
         if let Ok(updated_json) = serde_json::to_string(&current_state) {
             if tool.try_load_state(&updated_json).is_ok() {
+                self.params.write().unwrap_or_else(|e| e.into_inner()).dt = current_state.dt;
                 self.framework.show_starter_gallery = false;
                 self.sync_framework_after_direct_tool_mutation();
             }
@@ -228,7 +258,13 @@ impl MorphogenesisTab {
 impl FiniteStateGuard for MorphogenesisTab {
     fn is_finite_state(&self) -> bool {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        p.a.is_finite() && p.b.is_finite() && p.d_u.is_finite() && p.d_v.is_finite() && p.dt.is_finite()
+        p.a.is_finite()
+            && p.b.is_finite()
+            && p.f.is_finite()
+            && p.k.is_finite()
+            && p.d_u.is_finite()
+            && p.d_v.is_finite()
+            && p.dt.is_finite()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -242,38 +278,37 @@ impl FiniteStateGuard for MorphogenesisTab {
     fn auto_scale_step_size(&mut self) {
         let mut cfg = self.export_config();
         let current_dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
-        cfg.dt = (current_dt * 0.5).clamp(1e-4, 0.1);
+        cfg.dt = (current_dt * 0.5).clamp(1e-5, 2.0);
         let _ = self.apply_config(cfg);
     }
 
     fn clamp_parameters(&mut self) {
-        let (a, b, d_u, d_v, dt) = {
+        let (a, b, f, k, d_u, d_v, dt) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (
                 p.a.clamp(0.0, 1.0),
                 p.b.clamp(0.0, 2.0),
-                p.d_u.clamp(0.1, 5.0),
-                p.d_v.clamp(10.0, 200.0),
-                p.dt.clamp(0.001, 0.1),
+                p.f.clamp(0.0, 0.2),
+                p.k.clamp(0.0, 0.2),
+                p.d_u.clamp(0.01, 5.0),
+                p.d_v.clamp(0.01, 200.0),
+                p.dt.clamp(1e-4, 2.0),
             )
         };
         let mut cfg = self.export_config();
         cfg.a = a;
         cfg.b = b;
+        cfg.f = f;
+        cfg.k = k;
         cfg.d_u = d_u;
         cfg.d_v = d_v;
         cfg.dt = dt;
+        cfg.auto_dt = true;
         let _ = self.apply_config(cfg);
     }
 
     fn reset_parameters(&mut self) {
-        let mut cfg = self.export_config();
-        cfg.a = 0.1;
-        cfg.b = 0.9;
-        cfg.d_u = 1.0;
-        cfg.d_v = 100.0;
-        cfg.dt = 0.05;
-        let _ = self.apply_config(cfg);
+        let _ = self.apply_config(MorphogenesisPresetConfig::default());
     }
 }
 
@@ -320,15 +355,21 @@ impl ExplorerTab for MorphogenesisTab {
         self.framework.import_url_preset_json(tool_id, preset_json)?;
         let cfg = self.export_config();
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.kinetics = cfg.kinetics;
         p.a = cfg.a;
         p.b = cfg.b;
+        p.f = cfg.f;
+        p.k = cfg.k;
         p.d_u = cfg.d_u;
         p.d_v = cfg.d_v;
         p.dt = cfg.dt;
+        p.auto_dt = cfg.auto_dt;
         Ok(())
     }
 }
 
+#[cfg(test)]
+mod atlas_tests;
 #[cfg(test)]
 mod tests;
 

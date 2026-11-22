@@ -27,17 +27,11 @@ fn test_morphogenesis_runner_offload() {
     );
     MorphogenesisTab::initialize_system(&mut system, width, height);
 
-    let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
-        a: 0.1,
-        b: 0.9,
-        d_u: 1.0,
-        d_v: 100.0,
-        dt: 0.05,
-        high_contrast: false,
-    }));
-
+    let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams::default()));
     let mut runner = MorphogenesisRunner {
         system,
+        kinetics: crate::tabs::morphogenesis::MorphogenesisKinetics::Schnakenberg,
+        gray_scott: math_explorer::biology::morphogenesis::GrayScottKinetics::default(),
         params: Arc::clone(&params),
         width,
         height,

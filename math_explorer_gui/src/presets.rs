@@ -73,24 +73,98 @@ pub fn checked_ode_step_count(dt: f64, total_time: f64) -> Option<usize> {
     Some(steps as usize)
 }
 
-/// Configuration struct for Turing Morphogenesis simulation parameters.
+/// Reaction kinetics family selectable in [`MorphogenesisPresetConfig`].
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy, Debug, Default)]
+pub enum MorphogenesisKinetics {
+    /// Schnakenberg activator-inhibitor Turing kinetics (`a`, `b`).
+    #[default]
+    Schnakenberg,
+    /// Gray-Scott cubic autocatalysis kinetics (`f`, `k`).
+    GrayScott,
+}
+
+impl MorphogenesisKinetics {
+    /// User-facing display label for the kinetics family.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Schnakenberg => "Schnakenberg",
+            Self::GrayScott => "Gray-Scott",
+        }
+    }
+}
+
+/// Default Gray-Scott feed rate `F` (Pearson mitosis regime).
+pub const DEFAULT_GRAY_SCOTT_F: f64 = 0.0367;
+/// Default Gray-Scott kill rate `k` (Pearson mitosis regime).
+pub const DEFAULT_GRAY_SCOTT_K: f64 = 0.0649;
+
+/// Serde default helper returning [`DEFAULT_GRAY_SCOTT_F`].
+#[must_use]
+pub const fn default_gray_scott_f() -> f64 {
+    DEFAULT_GRAY_SCOTT_F
+}
+
+/// Serde default helper returning [`DEFAULT_GRAY_SCOTT_K`].
+#[must_use]
+pub const fn default_gray_scott_k() -> f64 {
+    DEFAULT_GRAY_SCOTT_K
+}
+
+/// Serde default helper enabling automatic 2D CFL time-step clamping.
+#[must_use]
+pub const fn default_auto_dt() -> bool {
+    true
+}
+
+/// Configuration struct for Turing and Gray-Scott Morphogenesis simulation parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct MorphogenesisPresetConfig {
-    /// Reaction kinetic parameter a.
+    /// Active reaction kinetics family (`Schnakenberg` when omitted).
+    #[serde(default)]
+    pub kinetics: MorphogenesisKinetics,
+    /// Reaction kinetic parameter `a` (Schnakenberg).
     pub a: f64,
-    /// Reaction kinetic parameter b.
+    /// Reaction kinetic parameter `b` (Schnakenberg).
     pub b: f64,
-    /// Diffusion coefficient for activator (u).
+    /// Dimensionless substrate feed rate `F` (Gray-Scott).
+    #[serde(default = "default_gray_scott_f")]
+    pub f: f64,
+    /// Dimensionless autocatalyst kill rate `k` (Gray-Scott).
+    #[serde(default = "default_gray_scott_k")]
+    pub k: f64,
+    /// Diffusion coefficient for species `u`.
     pub d_u: f64,
-    /// Diffusion coefficient for inhibitor (v).
+    /// Diffusion coefficient for species `v`.
     pub d_v: f64,
     /// Simulation time step size.
     pub dt: f64,
+    /// Whether time stepping automatically substeps within the 2D CFL bound.
+    #[serde(default = "default_auto_dt")]
+    pub auto_dt: bool,
     /// Grid width.
     pub width: usize,
     /// Grid height.
     pub height: usize,
+}
+
+impl Default for MorphogenesisPresetConfig {
+    fn default() -> Self {
+        Self {
+            kinetics: MorphogenesisKinetics::Schnakenberg,
+            a: 0.1,
+            b: 0.9,
+            f: DEFAULT_GRAY_SCOTT_F,
+            k: DEFAULT_GRAY_SCOTT_K,
+            d_u: 1.0,
+            d_v: 100.0,
+            dt: 0.05,
+            auto_dt: true,
+            width: 100,
+            height: 100,
+        }
+    }
 }
 
 /// Configuration struct for Replicator Dynamics evolutionary game parameters.

@@ -1,6 +1,14 @@
+//! Side-panel controls, 2D stability atlas integration, and brushable plot canvas
+//! for [`super::MorphogenesisTool`].
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{MorphogenesisTool, SimpleRng};
+use super::atlas::draw_regime_atlas;
+use super::runner::MAX_CFL_SUBSTEPS;
+#[cfg(test)]
+use super::state::initialize_schnakenberg_system;
+use super::state::{plot_concentration_with_contrast, CanvasInteractionMode, MorphogenesisKinetics};
+use super::MorphogenesisTool;
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
@@ -10,8 +18,10 @@ use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use egui_plot::{Plot, PlotImage, PlotPoint};
-use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
+#[cfg(test)]
 use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::morphogenesis::FusedEulerSolver;
+#[cfg(test)]
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 
 impl MorphogenesisTool {
@@ -43,12 +53,8 @@ impl MorphogenesisTool {
             .and_then(|d| d.downcast_ref::<Vec<f64>>())
             .filter(|u| u.len() == num_pixels)
         {
-            let recolored = Self::plot_concentration_with_contrast(
-                u_data,
-                snapshot.width,
-                snapshot.height,
-                high_contrast,
-            );
+            let recolored =
+                plot_concentration_with_contrast(u_data, snapshot.width, snapshot.height, high_contrast);
             self.pixels.copy_from_slice(&recolored.pixels);
         } else if snapshot_pixels.len() == num_pixels {
             self.pixels.copy_from_slice(&snapshot_pixels);
@@ -68,23 +74,121 @@ impl MorphogenesisTool {
         self.dirty = false;
     }
 
+    fn draw_kinetics_and_atlas(&mut self, ui: &mut egui::Ui) {
+        let (kinetics, x_val, y_val, d_u, d_v, high_contrast) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            let (xv, yv) = match p.kinetics {
+                MorphogenesisKinetics::Schnakenberg => (p.a, p.b),
+                MorphogenesisKinetics::GrayScott => (p.f, p.k),
+            };
+            (p.kinetics, xv, yv, p.d_u, p.d_v, p.high_contrast)
+        };
+
+        ui.horizontal(|ui| {
+            ui.label("Kinetics:");
+            if ui
+                .selectable_label(kinetics == MorphogenesisKinetics::Schnakenberg, "Schnakenberg")
+                .clicked()
+                && kinetics != MorphogenesisKinetics::Schnakenberg
+            {
+                self.switch_kinetics(MorphogenesisKinetics::Schnakenberg);
+            }
+            if ui
+                .selectable_label(kinetics == MorphogenesisKinetics::GrayScott, "Gray-Scott")
+                .clicked()
+                && kinetics != MorphogenesisKinetics::GrayScott
+            {
+                self.switch_kinetics(MorphogenesisKinetics::GrayScott);
+            }
+        });
+
+        let active_kinetics = self.params.read().unwrap_or_else(|e| e.into_inner()).kinetics;
+        if active_kinetics == kinetics {
+            if let Some((nx, ny)) = draw_regime_atlas(
+                ui,
+                &mut self.atlas_cache,
+                kinetics,
+                x_val,
+                y_val,
+                d_u,
+                d_v,
+                high_contrast,
+            ) {
+                self.apply_atlas_coordinates(kinetics, nx, ny);
+                ui.ctx().request_repaint();
+            }
+        }
+    }
+
     fn draw_parameter_sliders(&self, ui: &mut egui::Ui) {
         let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
-        ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
-        ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
-        ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
-        ui.add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"));
+        match params.kinetics {
+            MorphogenesisKinetics::Schnakenberg => {
+                ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
+                ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
+                ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
+                ui.add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"));
+            }
+            MorphogenesisKinetics::GrayScott => {
+                ui.add(egui::Slider::new(&mut params.f, 0.005..=0.085).text("F"));
+                ui.add(egui::Slider::new(&mut params.k, 0.030..=0.070).text("k"));
+                ui.add(egui::Slider::new(&mut params.d_u, 0.05..=1.0).text("D_u"));
+                ui.add(egui::Slider::new(&mut params.d_v, 0.02..=0.5).text("D_v"));
+            }
+        }
+        ui.checkbox(&mut params.auto_dt, "Auto CFL Time Step");
+        let (substeps, sub_dt) = FusedEulerSolver::cfl_substeps_2d(
+            params.dt,
+            1.0,
+            params.d_u,
+            params.d_v,
+            MAX_CFL_SUBSTEPS,
+        );
+        if params.auto_dt {
+            ui.small(format!("CFL sub_dt = {sub_dt:.4} ({substeps}x/step)"));
+        } else {
+            let max_dt = FusedEulerSolver::cfl_dt_2d(1.0, params.d_u, params.d_v);
+            ui.add(egui::Slider::new(&mut params.dt, 1e-4..=1.5).text("Manual dt"));
+            ui.small(format!("2D CFL bound: {max_dt:.4}"));
+        }
+    }
+
+    fn draw_brush_controls(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Canvas:");
+            ui.selectable_value(&mut self.canvas_mode, CanvasInteractionMode::Brush, "Brush");
+            ui.selectable_value(
+                &mut self.canvas_mode,
+                CanvasInteractionMode::Navigate,
+                "Navigate",
+            );
+        });
+        if self.canvas_mode == CanvasInteractionMode::Brush {
+            ui.add(egui::Slider::new(&mut self.brush_radius, 1..=12).text("Brush r"));
+            ui.small("Primary drag: inject | Secondary: erase");
+        }
     }
 
     fn draw_presets(&mut self, ui: &mut egui::Ui) {
         ui.separator();
         ui.label("Presets:");
-        if ui.button("Spots").clicked() {
-            self.apply_named_preset(0.1, 0.9, 1.0, 100.0, 0.05);
-        }
-        if ui.button("Stripes").clicked() {
-            self.apply_named_preset(0.14, 0.86, 1.0, 50.0, 0.02);
-        }
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Spots").clicked() {
+                self.apply_named_preset(0.1, 0.9, 1.0, 100.0, 0.05);
+            }
+            if ui.button("Stripes").clicked() {
+                self.apply_named_preset(0.14, 0.86, 1.0, 50.0, 0.02);
+            }
+            if ui.button("Mitosis").clicked() {
+                self.apply_gray_scott_preset(0.0367, 0.0649, 0.2, 0.1, 1.0);
+            }
+            if ui.button("Coral").clicked() {
+                self.apply_gray_scott_preset(0.0545, 0.062, 0.2, 0.1, 1.0);
+            }
+            if ui.button("Solitons").clicked() {
+                self.apply_gray_scott_preset(0.030, 0.060, 0.2, 0.1, 1.0);
+            }
+        });
     }
 
     fn draw_fault_and_recovery(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -116,39 +220,45 @@ impl MorphogenesisTool {
         let ctx = ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(ui, "morphogenesis_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
-            ui.heading("Morphogenesis Controls");
-            ui.separator();
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.heading("Morphogenesis Controls");
+                ui.separator();
 
-            self.draw_fault_and_recovery(ui, &ctx);
-            self.draw_parameter_sliders(ui);
-            ui.separator();
+                self.draw_fault_and_recovery(ui, &ctx);
+                self.draw_kinetics_and_atlas(ui);
+                ui.separator();
+                self.draw_parameter_sliders(ui);
+                ui.separator();
+                self.draw_brush_controls(ui);
+                ui.separator();
 
-            if let Some(action) = PlaybackTransport::from_worker_state(
-                "morphogenesis_transport",
-                "Morphogenesis",
-                self.worker.state(),
-            )
-            .can_reset(true)
-            .show(ui)
-            {
-                match action {
-                    PlaybackAction::Play => {
-                        let _ = self.worker.send_command(SimCommand::Start);
-                    }
-                    PlaybackAction::Pause => {
-                        let _ = self.worker.send_command(SimCommand::Pause);
-                    }
-                    PlaybackAction::Step => {
-                        let _ = self.worker.send_command(SimCommand::Step(1));
-                    }
-                    PlaybackAction::Reset => {
-                        self.reset();
-                        ctx.request_repaint();
+                if let Some(action) = PlaybackTransport::from_worker_state(
+                    "morphogenesis_transport",
+                    "Morphogenesis",
+                    self.worker.state(),
+                )
+                .can_reset(true)
+                .show(ui)
+                {
+                    match action {
+                        PlaybackAction::Play => {
+                            let _ = self.worker.send_command(SimCommand::Start);
+                        }
+                        PlaybackAction::Pause => {
+                            let _ = self.worker.send_command(SimCommand::Pause);
+                        }
+                        PlaybackAction::Step => {
+                            let _ = self.worker.send_command(SimCommand::Step(1));
+                        }
+                        PlaybackAction::Reset => {
+                            self.reset();
+                            ctx.request_repaint();
+                        }
                     }
                 }
-            }
 
-            self.draw_presets(ui);
+                self.draw_presets(ui);
+            });
         });
     }
 
@@ -157,16 +267,21 @@ impl MorphogenesisTool {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             self.sync_texture_from_snapshot(&ctx);
 
-            if let Some(texture) = &self.texture {
+            if let Some(texture) = self.texture.clone() {
                 let w = self.width as f32;
                 let h = self.height as f32;
+                let navigate = self.canvas_mode == CanvasInteractionMode::Navigate;
+                let brush_r = self.brush_radius;
+                let mut brush_cmd: Option<SimCommand> = None;
+
                 Plot::new("morphogenesis_plot")
                     .data_aspect(1.0)
                     .view_aspect(1.0)
                     .show_grid(false)
                     .show_axes([false, false])
-                    .allow_drag(true)
-                    .allow_zoom(true)
+                    .allow_drag(navigate)
+                    .allow_zoom(navigate)
+                    .allow_scroll(navigate)
                     .show(ui, |plot_ui| {
                         plot_ui.image(PlotImage::new(
                             "morphogenesis_image",
@@ -174,88 +289,68 @@ impl MorphogenesisTool {
                             PlotPoint::new(f64::from(w) / 2.0, f64::from(h) / 2.0),
                             [w, h],
                         ));
+
+                        if !navigate
+                            && plot_ui.response().hovered()
+                            && ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
+                        {
+                            if let Some(pos) = plot_ui.pointer_coordinate() {
+                                let cx = pos.x.floor() as i32;
+                                let cy = (f64::from(h) - pos.y).floor() as i32;
+                                if cx >= 0
+                                    && cx < self.width as i32
+                                    && cy >= 0
+                                    && cy < self.height as i32
+                                {
+                                    brush_cmd = Some(SimCommand::ApplyBrush {
+                                        cx,
+                                        cy,
+                                        r: brush_r,
+                                        is_obstacle: ctx.input(|i| i.pointer.primary_down()),
+                                    });
+                                }
+                            }
+                        }
                     });
+
+                if let Some(cmd) = brush_cmd {
+                    if self.worker.send_command(cmd).is_ok() {
+                        self.pending_brush_frames = 4;
+                        ctx.request_repaint();
+                    }
+                }
             } else {
                 render_empty_plot_guidance(
                     ui,
-                    "Reaction-diffusion grid ready — click ▶ Play or ⏭ Step to evolve Turing patterns.",
+                    "Reaction-diffusion grid ready — click ▶ Play or ⏭ Step to evolve patterns.",
                 );
             }
         });
     }
 
+    #[cfg(test)]
     pub(crate) fn initialize_system(
         system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
         width: usize,
         height: usize,
     ) {
-        let n = width * height;
-        let mut rng = SimpleRng::new(12345);
-
-        let a = system.kinetics.a;
-        let b = system.kinetics.b;
-        let u_eq = a + b;
-        let v_eq = b / (u_eq * u_eq);
-
-        for i in 0..n {
-            system.u_mut()[i] = u_eq + rng.range(-0.1, 0.1);
-            system.v_mut()[i] = v_eq + rng.range(-0.1, 0.1);
-        }
+        initialize_schnakenberg_system(system, width, height);
     }
 
     #[cfg(test)]
     pub(crate) fn plot_concentration(data: &[f64], width: usize, height: usize) -> ColorImage {
-        Self::plot_concentration_with_contrast(data, width, height, false)
+        plot_concentration_with_contrast(data, width, height, false)
     }
 
-    pub(crate) fn plot_concentration_with_contrast(
+    /// Maps a 2D concentration slice onto a normalized heatmap [`ColorImage`] with optional high-contrast tokens.
+    #[cfg(test)]
+    #[must_use]
+    pub fn plot_concentration_with_contrast(
         data: &[f64],
         width: usize,
         height: usize,
         high_contrast: bool,
     ) -> ColorImage {
-        let num_pixels = width * height;
-        let mut pixels = Vec::with_capacity(num_pixels);
-
-        let (min, max) = data
-            .iter()
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), &val| {
-                if val.is_finite() {
-                    (min.min(val), max.max(val))
-                } else {
-                    (min, max)
-                }
-            });
-
-        let (min, max) = if min.is_finite() && max.is_finite() && max >= min {
-            (min, max)
-        } else {
-            (0.0, 1.0)
-        };
-
-        let range = max - min;
-        let inv_range = if range > 1e-6 { 1.0 / range } else { 1.0 };
-
-        for &val in data {
-            let safe_val = if val.is_finite() { val } else { min };
-            let norm = (safe_val - min) * inv_range;
-            let safe_norm = if norm.is_finite() {
-                norm.clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            let rgb = if high_contrast {
-                heatmap_color_high_contrast(safe_norm)
-            } else {
-                heatmap_color(safe_norm)
-            };
-            pixels.push(egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]));
-        }
-
-        ColorImage {
-            size: [width, height],
-            pixels,
-            ..Default::default()
-        }
+        plot_concentration_with_contrast(data, width, height, high_contrast)
     }
 }

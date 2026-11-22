@@ -68,43 +68,50 @@ impl ReactionKinetics<2> for SchnakenbergKinetics {
     }
 }
 
+pub(crate) use crate::biology::reaction_diffusion::ChemicalState;
+
+#[verified_engine::verified]
+pub(crate) fn reaction_2d_slice<K: ReactionKinetics<2>>(
+    kinetics: &K,
+    concentrations: &[f64],
+    rates: &mut [f64],
+) {
+    if concentrations.len() < 2 || rates.len() < 2 {
+        return;
+    }
+    let out = kinetics.reaction([concentrations[0], concentrations[1]]);
+    rates[0] = out[0];
+    rates[1] = out[1];
+}
+
+#[verified_engine::verified]
+pub(crate) fn add_reaction_batch_2d<K: ReactionKinetics<2>>(
+    kinetics: &K,
+    state: &ChemicalState,
+    rates: &mut ChemicalState,
+) {
+    if state.num_species() < 2 {
+        return;
+    }
+    let u_vec = state.species(0);
+    let v_vec = state.species(1);
+    let n = state.grid_size();
+    let (rates_u, rates_v) = rates.grid.as_mut_slice().split_at_mut(n);
+    for i in 0..n {
+        let out = kinetics.reaction([u_vec[i], v_vec[i]]);
+        rates_u[i] += out[0];
+        rates_v[i] += out[1];
+    }
+}
+
 impl ReactionModel for SchnakenbergKinetics {
     #[verified_engine::verified]
     fn reaction(&self, concentrations: &[f64], rates: &mut [f64]) {
-        if concentrations.len() < 2 || rates.len() < 2 {
-            return;
-        }
-        // We can safely assume Schnakenberg is 2D
-        let inp = [concentrations[0], concentrations[1]];
-        let out = <Self as ReactionKinetics<2>>::reaction(self, inp);
-        rates[0] = out[0];
-        rates[1] = out[1];
+        reaction_2d_slice(self, concentrations, rates);
     }
 
     #[verified_engine::verified]
-    fn add_reaction_batch(
-        &self,
-        state: &crate::biology::reaction_diffusion::ChemicalState,
-        rates: &mut crate::biology::reaction_diffusion::ChemicalState,
-    ) {
-        if state.num_species() < 2 {
-            return;
-        }
-
-        let u_vec = state.species(0);
-        let v_vec = state.species(1);
-
-        let n = state.grid_size();
-
-        // Split mutable borrow to access both rate vectors simultaneously
-        let (rates_u, rates_v) = rates.grid.as_mut_slice().split_at_mut(n);
-
-        // Vectorized loop: Access memory linearly, enabling prefetch and SIMD
-        for i in 0..n {
-            let inp = [u_vec[i], v_vec[i]];
-            let out = <Self as ReactionKinetics<2>>::reaction(self, inp);
-            rates_u[i] += out[0];
-            rates_v[i] += out[1];
-        }
+    fn add_reaction_batch(&self, state: &ChemicalState, rates: &mut ChemicalState) {
+        add_reaction_batch_2d(self, state, rates);
     }
 }

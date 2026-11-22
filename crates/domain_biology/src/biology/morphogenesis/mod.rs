@@ -65,6 +65,7 @@
 //! println!("Concentration of Activator at center: {:.4}", u_center);
 //! ```
 
+pub mod gray_scott;
 #[allow(missing_docs)]
 pub mod reaction;
 #[allow(missing_docs)]
@@ -75,6 +76,7 @@ pub mod state;
 use crate::biology::diffusion::{FiniteDifference1D, SpatialDiffusion};
 use pure_math::pure_math::analysis::ode::{OdeSystem, TimeStepper};
 
+pub use gray_scott::GrayScottKinetics;
 pub use reaction::{ReactionKinetics, SchnakenbergKinetics};
 pub use solvers::{FusedEulerSolver, StandardSolverAdapter, TuringDynamics, TuringSolverStrategy};
 pub use state::TuringState;
@@ -198,29 +200,61 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
     /// Updates the grid using the solver strategy.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
-        let n = self.state.len();
-        if n == 0 {
-            return;
-        }
-
-        // Ensure buffers are the right size
-        if self.next_state.len() != n {
-            self.next_state = TuringState::new(n);
-        }
-
-        let dynamics = TuringDynamics {
-            kinetics: &self.kinetics,
-            diffusion: &self.diffusion,
-            diffusion_coeffs: self.diffusion_coeffs,
-        };
-
-        // Delegate time-stepping to the strategy
-        self.solver
-            .step(&self.state, &mut self.next_state, &dynamics, dt);
-
-        // Swap buffers (states)
-        std::mem::swap(&mut self.state, &mut self.next_state);
+        step_turing_buffers(
+            &mut self.state,
+            &mut self.next_state,
+            &mut self.solver,
+            &self.kinetics,
+            &self.diffusion,
+            self.diffusion_coeffs,
+            dt,
+        );
     }
+
+    /// Updates the grid using an alternate stack-inlined kinetics strategy without reallocating buffers.
+    #[verified_engine::verified]
+    pub fn step_with_kinetics<K2: ReactionKinetics<N>>(&mut self, kinetics: &K2, dt: f64) {
+        step_turing_buffers(
+            &mut self.state,
+            &mut self.next_state,
+            &mut self.solver,
+            kinetics,
+            &self.diffusion,
+            self.diffusion_coeffs,
+            dt,
+        );
+    }
+}
+
+#[verified_engine::verified]
+fn step_turing_buffers<
+    const N: usize,
+    K: ReactionKinetics<N>,
+    D: SpatialDiffusion<N>,
+    S: TuringSolverStrategy<N>,
+>(
+    state: &mut TuringState<N>,
+    next_state: &mut TuringState<N>,
+    solver: &mut S,
+    kinetics: &K,
+    diffusion: &D,
+    diffusion_coeffs: [f64; N],
+    dt: f64,
+) {
+    let n = state.len();
+    if n == 0 {
+        return;
+    }
+    if next_state.len() != n {
+        *next_state = TuringState::new(n);
+    }
+    let dynamics = TuringDynamics {
+        kinetics,
+        diffusion,
+        diffusion_coeffs,
+    };
+    solver.step(state, next_state, &dynamics, dt);
+    std::mem::swap(state, next_state);
 }
 
 // Convenience accessors for N=2

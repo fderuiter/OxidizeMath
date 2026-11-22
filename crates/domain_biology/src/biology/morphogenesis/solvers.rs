@@ -127,6 +127,10 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
 /// The stability condition for 1D diffusion is approximately:
 /// $$ \Delta t \le \frac{\Delta x^2}{2 D} $$
 ///
+/// For isotropic 2D 5-point Laplacian diffusion, Von Neumann stability requires
+/// $\Delta t \le \frac{\Delta x^2}{4 \max(D_u, D_v)}$, enforced with a $0.8$ safety margin via
+/// [`FusedEulerSolver::cfl_dt_2d`] and [`FusedEulerSolver::cfl_substeps_2d`].
+///
 /// # Examples
 ///
 /// Manually stepping a system:
@@ -164,6 +168,41 @@ impl FusedEulerSolver {
     #[verified_engine::verified]
     pub fn new() -> Self {
         Self
+    }
+
+    /// Computes the safe 2D explicit Euler CFL time-step bound `0.8 * dx^2 / (4.0 * max(d_u, d_v))`.
+    #[verified_engine::verified]
+    pub fn cfl_dt_2d(dx: f64, d_u: f64, d_v: f64) -> f64 {
+        let max_d = d_u.abs().max(d_v.abs());
+        if !dx.is_finite() || dx <= 0.0 || !max_d.is_finite() || max_d <= 0.0 {
+            return 0.0;
+        }
+        0.8 * (dx * dx) / (4.0 * max_d)
+    }
+
+    /// Splits `target_dt` into `(substeps, sub_dt)` satisfying `sub_dt <= cfl_dt_2d(dx, d_u, d_v)`,
+    /// capping `substeps` at `max_substeps` (`>= 1`).
+    #[verified_engine::verified]
+    pub fn cfl_substeps_2d(
+        target_dt: f64,
+        dx: f64,
+        d_u: f64,
+        d_v: f64,
+        max_substeps: usize,
+    ) -> (usize, f64) {
+        let cfl_dt = Self::cfl_dt_2d(dx, d_u, d_v);
+        if !target_dt.is_finite() || target_dt <= 0.0 || cfl_dt <= 0.0 {
+            return (0, 0.0);
+        }
+        let cap = max_substeps.max(1);
+        let raw_steps = (target_dt / cfl_dt).ceil();
+        let substeps = if raw_steps.is_finite() && raw_steps >= 1.0 {
+            (raw_steps as usize).min(cap)
+        } else {
+            1
+        };
+        let sub_dt = (target_dt / (substeps as f64)).min(cfl_dt);
+        (substeps, sub_dt)
     }
 }
 

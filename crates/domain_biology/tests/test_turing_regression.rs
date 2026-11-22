@@ -1,26 +1,8 @@
 #![allow(missing_docs)]
 use domain_biology::biology::diffusion::FiniteDifference1D;
-use domain_biology::biology::morphogenesis::{ReactionKinetics, TuringSystem};
-
-struct GrayScottKinetics {
-    f: f64,
-    k: f64,
-}
-
-impl ReactionKinetics<2> for GrayScottKinetics {
-    #[verified_engine::verified]
-    fn reaction(&self, concentrations: [f64; 2]) -> [f64; 2] {
-        let u = concentrations[0];
-        let v = concentrations[1];
-        // Gray-Scott model:
-        // u_t = -uv^2 + f(1-u)
-        // v_t = uv^2 - (f+k)v
-        let uv_sq = u * v.powi(2);
-        let reaction_u = -uv_sq + self.f * (1.0 - u);
-        let reaction_v = uv_sq - (self.f + self.k) * v;
-        [reaction_u, reaction_v]
-    }
-}
+use domain_biology::biology::morphogenesis::{
+    FusedEulerSolver, GrayScottKinetics, ReactionKinetics, TuringSystem,
+};
 
 #[test]
 #[verified_engine::verified]
@@ -82,4 +64,10 @@ fn test_custom_kinetics_strategy() {
     assert!(system.u()[25] != 0.5);
     assert!(system.u()[25].is_finite());
     assert!(system.v()[25].is_finite());
+
+    let rates = ReactionKinetics::reaction(&GrayScottKinetics::new(0.055, 0.062), [0.5, 0.25]);
+    assert!(rates[0].is_finite() && rates[1].is_finite());
+    let (substeps, sub_dt) = FusedEulerSolver::cfl_substeps_2d(0.05, 1.0, 1.0, 100.0, 32);
+    assert_eq!(substeps, 25);
+    assert!((sub_dt - 0.002).abs() < 1e-12);
 }

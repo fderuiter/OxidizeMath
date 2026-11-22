@@ -129,12 +129,22 @@ fn test_morphogenesis_preset_config_roundtrip() {
         dt: 0.02,
         width: 80,
         height: 80,
+        ..Default::default()
     };
 
     let json = serialize_preset_envelope("Stripes Test", "biology", &config).unwrap();
     let deserialized: MorphogenesisPresetConfig =
         deserialize_preset_envelope(&json, "biology", "Morphogenesis").unwrap();
     assert_eq!(deserialized, config);
+
+    let legacy_cfg: MorphogenesisPresetConfig = deserialize_preset_envelope(
+        crate::starter_gallery::PRESET_TURING_STRIPES,
+        "biology",
+        "Morphogenesis",
+    )
+    .unwrap();
+    assert_eq!(legacy_cfg.kinetics, MorphogenesisKinetics::Schnakenberg);
+    assert!(legacy_cfg.auto_dt);
 }
 
 #[test]
