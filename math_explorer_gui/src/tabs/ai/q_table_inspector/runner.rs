@@ -20,6 +20,7 @@ pub(crate) fn default_grid_env() -> GridWorldEnv {
         start: GridState { x: 0, y: 0 },
         goal: GridState { x: 4, y: 4 },
         traps: vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }],
+        walls: Vec::new(),
         gamma: 0.9,
     }
 }

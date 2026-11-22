@@ -12,6 +12,13 @@ pub trait ReactionKinetics<const N: usize = 2> {
     /// An array `[dC_1/dt, ..., dC_N/dt]` representing the reaction terms.
     #[verified_engine::verified]
     fn reaction(&self, concentrations: [f64; N]) -> [f64; N];
+
+    /// Evaluates reaction rates at linear grid cell `index`, defaulting to [`Self::reaction`].
+    #[inline]
+    #[verified_engine::verified]
+    fn reaction_at(&self, _index: usize, concentrations: [f64; N]) -> [f64; N] {
+        self.reaction(concentrations)
+    }
 }
 
 /// Schnakenberg kinetics (often used for Turing patterns).

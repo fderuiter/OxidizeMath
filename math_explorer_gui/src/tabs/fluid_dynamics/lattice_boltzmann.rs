@@ -185,6 +185,16 @@ impl UnifiedModel for LbmUnified {
                     }
                 }
             }
+            SimCommand::ApplyBrushCells { cells, mode } => {
+                let is_obs = mode != 0;
+                let w = self.solver.width();
+                let h = self.solver.height();
+                for (x, y) in cells {
+                    if x < w && y < h {
+                        self.solver.set_obstacle(x, y, is_obs);
+                    }
+                }
+            }
             SimCommand::ClearObstacles => {
                 self.solver.clear_obstacles();
             }
@@ -196,11 +206,53 @@ impl UnifiedModel for LbmUnified {
     }
 
     fn custom_actions() -> Vec<&'static str> {
-        vec!["Clear Obstacles"]
+        vec!["Clear Obstacles", "Default Obstacles"]
     }
 
     fn is_raster_model() -> bool {
         true
+    }
+
+    fn raster_brush_grid() -> Option<(usize, usize, bool)> {
+        Some((100, 50, true))
+    }
+
+    fn default_obstacle_mask(_params: &HashMap<String, f64>) -> Option<Vec<bool>> {
+        let (width, height) = (100usize, 50usize);
+        let mut mask = vec![false; width * height];
+        for y in 0..height {
+            for x in 0..width {
+                let dx = x as i32 - 30;
+                let dy = y as i32 - 25;
+                if dx * dx + dy * dy <= 25 {
+                    mask[flatten_2d_index(x, y, width)] = true;
+                }
+            }
+        }
+        Some(mask)
+    }
+
+    fn validate_obstacle_rle(encoded: &str) -> Result<Vec<bool>, String> {
+        crate::framework::decode_bool_grid(encoded, 100, 50)
+    }
+
+    fn apply_obstacle_rle(&mut self, encoded: &str) {
+        let Ok(mask) = Self::validate_obstacle_rle(encoded) else {
+            return;
+        };
+        let w = self.solver.width();
+        let h = self.solver.height();
+        if mask.len() != w * h {
+            return;
+        }
+        self.solver.clear_obstacles();
+        for y in 0..h {
+            for x in 0..w {
+                if mask[flatten_2d_index(x, y, w)] {
+                    self.solver.set_obstacle(x, y, true);
+                }
+            }
+        }
     }
 
     fn parameters() -> HashMap<String, ParameterConstraint> {
@@ -283,3 +335,55 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+fn generate_airfoil_starter_json() -> &'static str {
+    static AIRFOIL_PRESET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    AIRFOIL_PRESET
+        .get_or_init(|| {
+            let mut mask = vec![false; 100 * 50];
+            for (x, y) in crate::framework::generate_brush_cells(
+                crate::framework::BrushStencil::Airfoil,
+                crate::framework::SymmetryMode::None,
+                (32, 25),
+                (32, 25),
+                4,
+                100,
+                50,
+            ) {
+                mask[flatten_2d_index(x, y, 100)] = true;
+            }
+            let rle = crate::framework::encode_bool_grid(100, 50, &mask)
+                .expect("valid 100x50 airfoil RLE");
+            serde_json::json!({
+                "metadata": {
+                    "schema_version": "1.0",
+                    "title": "LBM Airfoil Wake",
+                    "domain": "fluid_dynamics",
+                    "timestamp": "2026-11-21T00:00:00Z"
+                },
+                "config": {
+                    "viscosity": 0.015,
+                    "obstacles_rle": rle
+                }
+            })
+            .to_string()
+        })
+        .as_str()
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "lbm_airfoil_wake",
+        title: "LBM Airfoil Wake",
+        description: "Sculpted symmetric NACA airfoil immersed in low-viscosity D2Q9 flow with RLE obstacle persistence.",
+        category: "Computational Fluids",
+        icon: "✈️",
+        domain: "fluid_dynamics",
+        tool_name: Some("LatticeBoltzmannTool"),
+        preset_generator: generate_airfoil_starter_json,
+    }
+}
+
+#[cfg(test)]
+#[path = "lbm_tests.rs"]
+mod tests;

@@ -1,19 +1,21 @@
-use crate::accessibility::AccessibleTheoryHover;
-use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
-};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    decode_u8_grid, encode_u8_grid, InteractiveTool, RasterBrushState, RasterBrushStroke,
+};
 use eframe::egui;
+use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 #[path = "ising/runner.rs"]
 mod runner;
+#[path = "ising/ui.rs"]
+mod ui;
 pub use runner::*;
 
-const DEFAULT_ISING_SIZE: usize = 100;
+pub(crate) const DEFAULT_ISING_SIZE: usize = 100;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -26,32 +28,48 @@ struct IsingState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     running: Option<bool>,
     steps_per_frame: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pinned_rle: Option<String>,
 }
 
 pub struct IsingModelTool {
-    temperature: f64,
-    j_coupling: f64,
-    h_field: f64,
-    steps_per_frame: usize,
-    magnetization: f64,
-    energy: f64,
-    texture: Option<egui::TextureHandle>,
-    pixels: Vec<egui::Color32>,
-    stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
-    last_theme: Option<crate::app::ThemeMode>,
-    dirty: bool,
-    params: Arc<std::sync::RwLock<IsingSharedParams>>,
+    pub(crate) temperature: f64,
+    pub(crate) j_coupling: f64,
+    pub(crate) h_field: f64,
+    pub(crate) steps_per_frame: usize,
+    pub(crate) magnetization: f64,
+    pub(crate) energy: f64,
+    pub(crate) texture: Option<egui::TextureHandle>,
+    pub(crate) pixels: Vec<egui::Color32>,
+    pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
+    pub(crate) last_theme: Option<crate::app::ThemeMode>,
+    pub(crate) dirty: bool,
+    pub(crate) brush_state: RasterBrushState,
+    pub(crate) brush_mode: IsingBrushMode,
+    pub(crate) pin_cells: Vec<u8>,
+    pub(crate) params: Arc<std::sync::RwLock<IsingSharedParams>>,
     pub worker: BackgroundWorker<IsingRunner>,
 }
 
 impl IsingModelTool {
+    fn build_runner(params: &Arc<std::sync::RwLock<IsingSharedParams>>) -> IsingRunner {
+        let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None);
+        let pinned_rle = params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle
+            .clone();
+        apply_pinned_rle_to_lattice(&mut lattice, pinned_rle.as_deref());
+        IsingRunner {
+            lattice,
+            params: Arc::clone(params),
+        }
+    }
+
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
-        let runner = IsingRunner {
-            lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
-            params: Arc::clone(&self.params),
-        };
+        let runner = Self::build_runner(&self.params);
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
         self.sync_metrics_from_latest();
@@ -67,13 +85,76 @@ impl IsingModelTool {
     /// Resets the worker lattice in place or respawns a disconnected worker.
     pub fn reset(&mut self) {
         let params = Arc::clone(&self.params);
-        self.worker.reset_or_respawn(|| IsingRunner {
-            lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
-            params,
-        });
+        self.worker
+            .reset_or_respawn(|| Self::build_runner(&params));
         self.stepped_pixels = None;
         self.sync_metrics_from_latest();
         self.dirty = true;
+    }
+
+    /// Applies a [`RasterBrushStroke`] to spin domains and/or the boundary pin mask.
+    pub fn apply_brush_stroke(&mut self, stroke: RasterBrushStroke, ctx: Option<&egui::Context>) {
+        let effective_mode = if stroke.secondary {
+            IsingBrushMode::Unpin
+        } else {
+            self.brush_mode
+        };
+        if self.pin_cells.len() != DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE {
+            self.pin_cells
+                .resize(DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE, 0);
+        }
+        let pin_sym = match effective_mode {
+            IsingBrushMode::PinUp => Some(1u8),
+            IsingBrushMode::PinDown => Some(2u8),
+            IsingBrushMode::Unpin => Some(0u8),
+            IsingBrushMode::SpinUp | IsingBrushMode::SpinDown => None,
+        };
+        if let Some(sym) = pin_sym {
+            for &(x, y) in &stroke.cells {
+                if x < DEFAULT_ISING_SIZE && y < DEFAULT_ISING_SIZE {
+                    self.pin_cells[flatten_2d_index(x, y, DEFAULT_ISING_SIZE)] = sym;
+                }
+            }
+            self.sync_pinned_rle();
+        }
+        let _ = self.worker.send_command(SimCommand::ApplyBrushCells {
+            cells: stroke.cells,
+            mode: effective_mode.to_code(),
+        });
+        self.stepped_pixels = None;
+        self.dirty = true;
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
+    }
+
+    fn sync_pinned_rle(&mut self) {
+        let next_rle = if self.pin_cells.iter().any(|&c| c != 0) {
+            encode_u8_grid(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, &self.pin_cells, 2).ok()
+        } else {
+            None
+        };
+        self.params
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle = next_rle;
+    }
+
+    /// Clears all pinned boundary sites across UI and worker threads.
+    pub fn clear_pins(&mut self, ctx: Option<&egui::Context>) {
+        self.pin_cells.fill(0);
+        self.params
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle = None;
+        let _ = self
+            .worker
+            .send_command(SimCommand::Custom("clear_pins".to_string()));
+        self.stepped_pixels = None;
+        self.dirty = true;
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
     }
 
     fn sync_metrics_from_latest(&mut self) {
@@ -83,206 +164,6 @@ impl IsingModelTool {
                 self.energy = snapshot.custom_data[1];
             }
         }
-    }
-
-    fn request_metric_refresh(&mut self, ctx: &egui::Context) {
-        if self.worker.state().is_ready()
-            && self
-                .worker
-                .send_command(SimCommand::Custom("recompute_metrics".to_string()))
-                .is_ok()
-        {
-            ctx.request_repaint();
-        }
-    }
-
-    fn draw_parameter_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if ui
-            .add(
-                egui::Slider::new(&mut self.temperature, 0.1..=10.0)
-                    .text("Temperature (T) - K (relative)"),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .temperature = self.temperature;
-        }
-        ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
-
-        if ui
-            .add(
-                egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .j_coupling = self.j_coupling;
-            self.request_metric_refresh(ctx);
-        }
-        ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
-
-        if ui
-            .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .h_field = self.h_field;
-            self.request_metric_refresh(ctx);
-        }
-
-        ui.separator();
-        if ui
-            .add(
-                egui::Slider::new(&mut self.steps_per_frame, 100..=50000)
-                    .text("Simulation Speed (Steps/Frame)")
-                    .logarithmic(true),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .steps_per_frame = self.steps_per_frame;
-        }
-    }
-
-    fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "ising_controls");
-        crate::framework::PaneSidePanel::left(panel_id)
-            .resizable(false)
-            .default_width(220.0)
-            .show_inside(parent_ui, |ui| {
-                ui.heading("Ising Model Controls");
-                ui.separator();
-
-                if let Some(WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters) =
-                    render_worker_fault_banner(
-                        ui,
-                        self.worker.state(),
-                        self.worker.diagnostic_report(),
-                        false,
-                    )
-                {
-                    self.reset();
-                    ctx.request_repaint();
-                    ui.separator();
-                }
-
-                self.draw_parameter_controls(ui, ctx);
-                ui.separator();
-
-                if let Some(action) = PlaybackTransport::from_worker_state(
-                    "ising_transport",
-                    "Ising Model",
-                    self.worker.state(),
-                )
-                .can_reset(true)
-                .show(ui)
-                {
-                    match action {
-                        PlaybackAction::Play => {
-                            let _ = self.worker.send_command(SimCommand::Start);
-                        }
-                        PlaybackAction::Pause => {
-                            let _ = self.worker.send_command(SimCommand::Pause);
-                        }
-                        PlaybackAction::Step => {
-                            let _ = self.worker.send_command(SimCommand::Step(1));
-                        }
-                        PlaybackAction::Reset => {
-                            self.reset();
-                            ctx.request_repaint();
-                        }
-                    }
-                }
-
-                ui.separator();
-                ui.label(format!("Magnetization: {:.3}", self.magnetization));
-                ui.label(format!("Energy: {:.3}", self.energy));
-            });
-    }
-
-    fn sync_lattice_texture(&mut self, ctx: &egui::Context) {
-        if !self.dirty && self.texture.is_some() {
-            return;
-        }
-        let Some(snapshot) = self.worker.latest_snapshot() else {
-            return;
-        };
-        let Ok(snap_pixels) = snapshot.pixels.try_read() else {
-            return;
-        };
-        if snap_pixels.is_empty() {
-            return;
-        }
-        let num_pixels = snapshot.width * snapshot.height;
-        if self.pixels.len() != num_pixels {
-            self.pixels.resize(num_pixels, egui::Color32::BLACK);
-        }
-        let palette = crate::app::SemanticPalette::from_visuals(&ctx.style().visuals);
-        if let Some(spins) = snapshot
-            .structured_data
-            .as_ref()
-            .and_then(|d| d.downcast_ref::<Vec<i8>>())
-            .filter(|s| s.len() == num_pixels)
-        {
-            for (dst, &s) in self.pixels.iter_mut().zip(spins.iter()) {
-                *dst = ising_spin_color(s, &palette);
-            }
-        } else if snap_pixels.len() == num_pixels {
-            self.pixels.copy_from_slice(&snap_pixels);
-        }
-
-        let image = egui::ColorImage {
-            size: [snapshot.width, snapshot.height],
-            pixels: self.pixels.clone(),
-            ..Default::default()
-        };
-        let texture_opts = egui::TextureOptions::NEAREST;
-        if let Some(texture) = &mut self.texture {
-            texture.set(image, texture_opts);
-        } else {
-            self.texture = Some(ctx.load_texture("ising_lattice", image, texture_opts));
-        }
-        self.dirty = false;
-    }
-
-    fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            self.sync_lattice_texture(ctx);
-
-            if let Some(texture) = &self.texture {
-                let alt_label = format!(
-                    "2D Ising Model spin lattice visualization (T = {:.2}, M = {:.3}, E = {:.3})",
-                    self.temperature, self.magnetization, self.energy
-                );
-                let response = ui
-                    .add(
-                        egui::Image::new(texture)
-                            .alt_text(alt_label)
-                            .sense(egui::Sense::focusable_noninteractive()),
-                    )
-                    .accessible_theory_hover(self);
-                ui.painter().rect_stroke(
-                    response.rect,
-                    0.0,
-                    ui.visuals().widgets.noninteractive.bg_stroke,
-                    egui::StrokeKind::Inside,
-                );
-                crate::accessibility::paint_canvas_focus_ring(ui, &response);
-            } else {
-                render_empty_plot_guidance(
-                    ui,
-                    "Spin lattice ready — click ▶ Play or ⏭ Step to run Metropolis spin flips.",
-                );
-            }
-        });
     }
 }
 
@@ -298,11 +179,9 @@ impl Default for IsingModelTool {
             h_field,
             steps_per_frame,
             theme: crate::app::ThemeMode::Dark,
+            pinned_rle: None,
         }));
-        let runner = IsingRunner {
-            lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
-            params: Arc::clone(&params),
-        };
+        let runner = Self::build_runner(&params);
         let worker = BackgroundWorker::new(runner);
         let mut tool = Self {
             temperature,
@@ -316,6 +195,9 @@ impl Default for IsingModelTool {
             stepped_pixels: None,
             last_theme: None,
             dirty: true,
+            brush_state: RasterBrushState::default(),
+            brush_mode: IsingBrushMode::default(),
+            pin_cells: vec![0; DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE],
             params,
             worker,
         };
@@ -333,6 +215,25 @@ impl InteractiveTool for IsingModelTool {
     }
     fn domain(&self) -> &'static str {
         "solid_state"
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_state.focused_id
+    }
+
+    fn state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.temperature.to_bits().hash(&mut h);
+        self.j_coupling.to_bits().hash(&mut h);
+        self.h_field.to_bits().hash(&mut h);
+        self.steps_per_frame.hash(&mut h);
+        self.params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle
+            .hash(&mut h);
+        std::mem::discriminant(&self.worker.state()).hash(&mut h);
+        h.finish().max(1)
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
@@ -354,7 +255,12 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn step_simulation(&mut self) {
-        let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None);
+        let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, Some(42));
+        let (theme, pinned_rle) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.theme, p.pinned_rle.clone())
+        };
+        apply_pinned_rle_to_lattice(&mut lattice, pinned_rle.as_deref());
         let j_scale = if self.j_coupling.abs() < 1e-6 {
             1.0
         } else {
@@ -367,22 +273,24 @@ impl InteractiveTool for IsingModelTool {
             self.j_coupling,
             self.h_field,
         );
-        let palette = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .theme
-            .palette();
+        let palette = theme.palette();
         let pixels: Vec<egui::Color32> = lattice
             .spins()
             .iter()
-            .map(|&s| ising_spin_color(s, &palette))
+            .zip(lattice.pinned().iter())
+            .map(|(&s, &pin)| ising_spin_color(if pin { s.saturating_mul(2) } else { s }, &palette))
             .collect();
         self.stepped_pixels = Some((lattice.width(), lattice.height(), pixels));
         self.dirty = true;
     }
 
     fn save_state(&self) -> Option<String> {
+        let pinned_rle = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle
+            .clone();
         serde_json::to_string(&IsingState {
             temperature: self.temperature,
             j_coupling: self.j_coupling,
@@ -390,6 +298,7 @@ impl InteractiveTool for IsingModelTool {
             state: Some(self.worker.state()),
             running: None,
             steps_per_frame: self.steps_per_frame,
+            pinned_rle,
         })
         .ok()
     }
@@ -407,16 +316,31 @@ impl InteractiveTool for IsingModelTool {
         {
             return Err("Ising parameters out of valid bounds".to_string());
         }
+        let decoded_pins = match s.pinned_rle.as_deref() {
+            Some(rle) => decode_u8_grid(rle, DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, 2)?,
+            None => vec![0; DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE],
+        };
+        let pins_changed = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle
+            != s.pinned_rle;
         self.temperature = s.temperature;
         self.j_coupling = s.j_coupling;
         self.h_field = s.h_field;
         self.steps_per_frame = s.steps_per_frame;
+        self.pin_cells = decoded_pins;
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.temperature = self.temperature;
             p.j_coupling = self.j_coupling;
             p.h_field = self.h_field;
             p.steps_per_frame = self.steps_per_frame;
+            p.pinned_rle = s.pinned_rle;
+        }
+        if pins_changed {
+            self.reset();
         }
         let target_state = s.state.unwrap_or_else(|| {
             if s.running.unwrap_or(false) {

@@ -57,6 +57,7 @@ pub struct SpinLattice {
     width: usize,
     height: usize,
     spins: Vec<i8>,             // Flattened 2D grid
+    pinned: Vec<bool>,          // Preallocated pin mask (true = held fixed during sweeps)
     neighbors: Vec<[usize; 4]>, // Precomputed neighbor indices [left, right, up, down]
     rng: oxidize_core::rng::OxidizeRng,
 }
@@ -98,6 +99,7 @@ impl SpinLattice {
         let spins = (0..count)
             .map(|_| if rng.gen_bool(0.5) { 1 } else { -1 })
             .collect();
+        let pinned = vec![false; count];
 
         // Precompute neighbor indices
         let mut neighbors = vec![[0; 4]; count];
@@ -130,6 +132,7 @@ impl SpinLattice {
             width,
             height,
             spins,
+            pinned,
             neighbors,
             rng,
         }
@@ -150,6 +153,33 @@ impl SpinLattice {
     #[verified_engine::verified]
     pub fn set(&mut self, x: usize, y: usize, val: i8) {
         self.spins[y * self.width + x] = val;
+    }
+
+    /// Returns whether the spin site `(x, y)` is pinned against Metropolis flips.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn is_pinned(&self, x: usize, y: usize) -> bool {
+        self.pinned[y * self.width + x]
+    }
+
+    /// Pins or unpins the spin site `(x, y)` in the preallocated mask.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn set_pinned(&mut self, x: usize, y: usize, is_pinned: bool) {
+        self.pinned[y * self.width + x] = is_pinned;
+    }
+
+    /// Returns a slice of the flattened spin-pinning mask (`true` = pinned).
+    #[inline]
+    #[verified_engine::verified]
+    pub fn pinned(&self) -> &[bool] {
+        &self.pinned
+    }
+
+    /// Unpins all sites in place without reallocating.
+    #[verified_engine::verified]
+    pub fn clear_pinned(&mut self) {
+        self.pinned.fill(false);
     }
 
     /// Returns a reference to the flattened spins array.
@@ -205,6 +235,9 @@ impl SpinLattice {
     pub fn metropolis_step(&mut self, temperature: f64, j_coupling: f64, h_field: f64) {
         let x = self.rng.gen_range(0..self.width);
         let y = self.rng.gen_range(0..self.height);
+        if self.is_pinned(x, y) {
+            return;
+        }
 
         let s = self.get(x, y);
 
@@ -276,6 +309,9 @@ impl SpinLattice {
         for _ in 0..steps {
             // Pick a random site. Using a single range is faster than two.
             let idx = self.rng.gen_range(0..count);
+            if self.pinned[idx] {
+                continue;
+            }
 
             let s = self.spins[idx];
             let neighbors = &self.neighbors[idx];
@@ -340,5 +376,36 @@ mod tests {
             "High T Ising should be disordered (M ~ 0). Got {}",
             avg_m_per_spin
         );
+    }
+
+    #[test]
+    fn test_ising_pinned_spins_stay_fixed_with_zero_allocations() {
+        let j_val = 1.0;
+        let h_val = -2.0;
+        let t_high = 50.0 * j_val / KB;
+        let mut lattice = SpinLattice::new(10, 10, Some(7));
+        for x in 0..10 {
+            lattice.set(x, 0, 1);
+            lattice.set_pinned(x, 0, true);
+            lattice.set(x, 9, -1);
+            lattice.set_pinned(x, 9, true);
+        }
+
+        let (_, metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            lattice.evolve(20_000, t_high, j_val, h_val);
+            for _ in 0..500 {
+                lattice.metropolis_step(t_high, j_val, h_val);
+            }
+        });
+        assert!(metrics.function_calls > 0);
+        for x in 0..10 {
+            assert_eq!(lattice.get(x, 0), 1);
+            assert!(lattice.is_pinned(x, 0));
+            assert_eq!(lattice.get(x, 9), -1);
+            assert!(lattice.is_pinned(x, 9));
+        }
+
+        lattice.clear_pinned();
+        assert!(lattice.pinned().iter().all(|&p| !p));
     }
 }

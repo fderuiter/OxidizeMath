@@ -25,6 +25,9 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) cached_param_labels: Vec<String>,
     pub(super) cached_observable_label: Option<&'static str>,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(super) brush_state: crate::framework::RasterBrushState,
+    pub(super) obstacle_rle: Arc<RwLock<Option<String>>>,
+    pub(super) local_obstacles: Option<Vec<bool>>,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -49,8 +52,13 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             initial_params.insert(name.clone(), default_val);
         }
 
+        let local_obstacles = M::default_obstacle_mask(&initial_params);
+        let obstacle_rle = Arc::new(RwLock::new(None));
         let params = Arc::new(RwLock::new(initial_params.clone()));
-        let runner = UnifiedSimRunner::<M>::new(Arc::clone(&params));
+        let runner = UnifiedSimRunner::<M>::with_obstacle_mask(
+            Arc::clone(&params),
+            Arc::clone(&obstacle_rle),
+        );
         let controller = BackgroundWorker::new(runner);
         let temp_model = M::new(&initial_params);
 
@@ -74,6 +82,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             cached_param_labels,
             cached_observable_label: None,
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
+            brush_state: crate::framework::RasterBrushState::default(),
+            obstacle_rle,
+            local_obstacles,
             _marker: std::marker::PhantomData,
         }
     }
@@ -83,11 +94,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.controller.state()
     }
 
-    pub(super) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
+    pub(crate) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
         self.stepped_snapshot = None;
         let params = Arc::clone(&self.params);
+        let obstacle_rle = Arc::clone(&self.obstacle_rle);
         self.controller
-            .reset_or_respawn(|| UnifiedSimRunner::<M>::new(params));
+            .reset_or_respawn(|| UnifiedSimRunner::<M>::with_obstacle_mask(params, obstacle_rle));
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
@@ -263,6 +275,9 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     fn step_simulation(&mut self) {
         if let Ok(params) = self.params.read() {
             let mut model = M::new(&params);
+            if let Some(ref rle) = *self.obstacle_rle.read().unwrap_or_else(|e| e.into_inner()) {
+                model.apply_obstacle_rle(rle);
+            }
             for _ in 0..self.steps_per_frame.max(1) {
                 model.step(&params);
             }
@@ -270,17 +285,12 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         }
     }
 
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_state.focused_id
+    }
+
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        for (key, _) in &self.param_metadata {
-            key.hash(&mut h);
-            if let Some(val) = params.get(key) {
-                val.to_bits().hash(&mut h);
-            }
-        }
-        h.finish().max(1)
+        self.compute_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -293,46 +303,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn save_state(&self) -> Option<String> {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let sorted: std::collections::BTreeMap<&String, &f64> = params.iter().collect();
-        serde_json::to_string(&sorted).ok()
+        self.serialize_tool_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let params: HashMap<String, f64> = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
-        if !self.param_metadata.is_empty() && params.is_empty() {
-            return Err(format!(
-                "Empty parameter configuration for {}; expected parameters: {}",
-                M::name(),
-                self.param_metadata
-                    .iter()
-                    .map(|m| m.0.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-        for (key, value) in &params {
-            if !self.param_metadata.iter().any(|meta| &meta.0 == key) {
-                return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
-            }
-            if !value.is_finite() {
-                return Err(format!(
-                    "Non-finite value for parameter '{}' in {}",
-                    key,
-                    M::name()
-                ));
-            }
-        }
-        {
-            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (key, value) in params {
-                guard.insert(key, value);
-            }
-        }
-        self.texture = None;
-        self.reset_simulation(None);
-        Ok(())
+        self.deserialize_tool_state(state)
     }
 
     fn clamp_parameters(&mut self) -> bool {

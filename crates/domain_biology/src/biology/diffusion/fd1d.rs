@@ -80,9 +80,9 @@ impl<const N: usize> SpatialDiffusion<N> for FiniteDifference1D {
             next_state,
             dt,
             1.0, // Forward time
-            |_i, _prev, curr, _next, ops| {
+            |i, _prev, curr, _next, ops| {
                 let mut rhs = [0.0; N];
-                let rates = kinetics.reaction(curr);
+                let rates = kinetics.reaction_at(i, curr);
                 for s in 0..N {
                     let d2u = ops.central_diff_2nd(_prev[s], curr[s], _next[s]);
                     rhs[s] = coeffs[s] * d2u + rates[s];

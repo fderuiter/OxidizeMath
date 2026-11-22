@@ -29,19 +29,27 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         let custom_actions = M::custom_actions();
         if !custom_actions.is_empty() {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Actions:");
                 for action in custom_actions {
-                    if ui.button(action).clicked()
-                        && self
+                    if ui.button(action).clicked() {
+                        self.handle_custom_obstacle_action(action, ctx);
+                        if self
                             .controller
                             .send_command(SimCommand::Custom(action.to_string()))
                             .is_ok()
-                    {
-                        ctx.request_repaint();
+                        {
+                            ctx.request_repaint();
+                        }
                     }
                 }
             });
+            ui.separator();
+        }
+        if M::raster_brush_grid().is_some() {
+            ui.label("Obstacle Brush & Stencils");
+            crate::framework::draw_brush_palette_controls(ui, M::name(), &mut self.brush_state, 10);
+            ui.small("Drag / Space: Paint • Right-drag / Backspace: Erase");
             ui.separator();
         }
         reset_needed

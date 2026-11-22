@@ -93,7 +93,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
             let inputs: [f64; N] = std::array::from_fn(|s| state.concentrations[s][i]);
 
             // Compute Reaction
-            let rates = self.kinetics.reaction(inputs);
+            let rates = self.kinetics.reaction_at(i, inputs);
 
             // Accumulate results
             for (s, rate) in rates.iter().enumerate().take(N) {

@@ -243,3 +243,74 @@ fn test_ising_poisoned_lock_recovery() {
     assert_eq!(p.h_field, -0.3);
     assert_eq!(p.steps_per_frame, 750);
 }
+
+#[test]
+fn test_ising_spin_painting_boundary_pinning_rle_and_url_roundtrip() {
+    let mut tool = IsingModelTool::default();
+    let initial_rev = tool.state_revision();
+
+    tool.brush_mode = IsingBrushMode::PinUp;
+    tool.apply_brush_stroke(
+        crate::framework::RasterBrushStroke {
+            cells: vec![(10, 10), (11, 10)],
+            secondary: false,
+            via_keyboard: false,
+            focus_cell: (11, 10),
+        },
+        None,
+    );
+    tool.brush_mode = IsingBrushMode::PinDown;
+    tool.apply_brush_stroke(
+        crate::framework::RasterBrushStroke {
+            cells: vec![(80, 80)],
+            secondary: false,
+            via_keyboard: true,
+            focus_cell: (80, 80),
+        },
+        None,
+    );
+    assert_ne!(tool.state_revision(), initial_rev);
+
+    let saved = tool.save_state().expect("Ising save_state");
+    assert!(saved.contains("pinned_rle"));
+    crate::url_state::URL_JSON_BOUNDS
+        .validate_json(&saved)
+        .expect("Ising pinned state fits URL_JSON_BOUNDS");
+
+    let fragment = crate::url_state::encode_share_fragment(
+        "solid_state",
+        Some("IsingModelTool"),
+        Some(&saved),
+    )
+    .expect("encode Ising URL fragment");
+    let decoded_url = crate::url_state::parse_share_location(&fragment, "")
+        .expect("decode Ising URL fragment")
+        .expect("present share params");
+
+    let mut restored = IsingModelTool::default();
+    restored
+        .try_load_state(decoded_url.state_json.as_deref().unwrap())
+        .expect("restore Ising pinned state");
+    assert_eq!(restored.pin_cells[10 * DEFAULT_ISING_SIZE + 10], 1);
+    assert_eq!(restored.pin_cells[80 * DEFAULT_ISING_SIZE + 80], 2);
+
+    // Verify runner preserves pinned sites across thermal sweeps with zero heap allocation:
+    let mut runner = IsingModelTool::build_runner(&restored.params);
+    runner.step();
+    {
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            runner.step();
+        });
+    }
+    assert_eq!(runner.lattice.get(10, 10), 1);
+    assert!(runner.lattice.is_pinned(10, 10));
+    assert_eq!(runner.lattice.get(80, 80), -1);
+    assert!(runner.lattice.is_pinned(80, 80));
+
+    restored.clear_pins(None);
+    assert!(restored.params.read().unwrap().pinned_rle.is_none());
+}
+

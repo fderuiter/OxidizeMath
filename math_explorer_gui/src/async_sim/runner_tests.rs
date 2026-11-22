@@ -6,11 +6,11 @@ fn test_morphogenesis_runner_offload() {
         MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
     };
     use math_explorer::biology::diffusion::FiniteDifference2D;
-    use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+    use math_explorer::biology::morphogenesis::{SpatialSchnakenbergKinetics, TuringSystem};
 
     let width = 20;
     let height = 20;
-    let kinetics = SchnakenbergKinetics { a: 0.1, b: 0.9 };
+    let kinetics = SpatialSchnakenbergKinetics::new(0.1, 0.9, width * height);
     let diffusion = FiniteDifference2D::new(
         math_explorer::math_kernel::types::Dimension(width),
         math_explorer::math_kernel::types::Dimension(height),
@@ -34,6 +34,7 @@ fn test_morphogenesis_runner_offload() {
         d_v: 100.0,
         dt: 0.05,
         high_contrast: false,
+        mask_rle: None,
     }));
 
     let mut runner = MorphogenesisRunner {
@@ -159,6 +160,7 @@ fn test_ising_runner_offload() {
         h_field: 0.0,
         steps_per_frame: 500,
         theme: crate::app::ThemeMode::Dark,
+        pinned_rle: None,
     }));
     let mut runner = IsingRunner {
         lattice: SpinLattice::new(20, 20, Some(42)),
@@ -259,6 +261,7 @@ fn test_physics_and_chaos_runners_step_once() {
             h_field: 0.0,
             steps_per_frame: 5000,
             theme: crate::app::ThemeMode::Dark,
+            pinned_rle: None,
         })),
     };
     ising.step_once();
@@ -315,6 +318,7 @@ fn test_rl_runners_step_once() {
         start: GridState { x: 0, y: 0 },
         goal: GridState { x: 3, y: 3 },
         traps: vec![],
+        walls: Vec::new(),
         gamma: 0.9,
     };
     let agent = TabularQAgent::new(

@@ -99,7 +99,10 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
             runner.process_command(cmd);
             state_tx.send_status(WorkerStatusEvent::Running).is_ok()
         }
-        SimCommand::ApplyBrush { .. } | SimCommand::ClearObstacles | SimCommand::Custom(_) => {
+        SimCommand::ApplyBrush { .. }
+        | SimCommand::ApplyBrushCells { .. }
+        | SimCommand::ClearObstacles
+        | SimCommand::Custom(_) => {
             runner.process_command(cmd);
             *emit_paused_snapshot = true;
             true

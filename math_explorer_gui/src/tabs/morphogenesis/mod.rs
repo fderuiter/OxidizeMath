@@ -11,10 +11,11 @@ use eframe::egui::ColorImage;
 #[cfg(test)]
 use math_explorer::biology::diffusion::FiniteDifference2D;
 #[cfg(test)]
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use math_explorer::biology::morphogenesis::{ReactionKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod brush;
 pub mod presets;
 pub mod runner;
 pub mod tool;
@@ -79,8 +80,8 @@ impl MorphogenesisTab {
 
     /// Initializes `system` around its `(a + b, b / (a + b)^2)` steady state with deterministic noise.
     #[cfg(test)]
-    pub fn initialize_system(
-        system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+    pub fn initialize_system<K: ReactionKinetics<2>>(
+        system: &mut TuringSystem<2, K, FiniteDifference2D>,
         width: usize,
         height: usize,
     ) {
@@ -160,6 +161,7 @@ impl MorphogenesisTab {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            mask_rle: None,
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;
@@ -329,6 +331,8 @@ impl ExplorerTab for MorphogenesisTab {
     }
 }
 
+#[cfg(test)]
+mod brush_tests;
 #[cfg(test)]
 mod tests;
 

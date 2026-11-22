@@ -1,10 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::brush::{apply_mask_rle_to_kinetics, apply_morpho_cells_to_system, MorphoBrushMode};
 use super::MorphogenesisTool;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use math_explorer::biology::morphogenesis::{SpatialSchnakenbergKinetics, TuringSystem};
 use std::sync::Arc;
 
 #[allow(missing_docs)]
@@ -15,11 +16,12 @@ pub struct MorphogenesisSharedParams {
     pub d_v: f64,
     pub dt: f64,
     pub high_contrast: bool,
+    pub mask_rle: Option<String>,
 }
 
 #[allow(missing_docs)]
 pub struct MorphogenesisRunner {
-    pub(crate) system: TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+    pub(crate) system: TuringSystem<2, SpatialSchnakenbergKinetics, FiniteDifference2D>,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) width: usize,
     pub(crate) height: usize,
@@ -62,11 +64,57 @@ impl SimulationRunner for MorphogenesisRunner {
         match cmd {
             SimCommand::Reset => {
                 let _ = self.sync_system_params();
+                let mask_rle = self
+                    .params
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .mask_rle
+                    .clone();
+                apply_mask_rle_to_kinetics(
+                    &mut self.system.kinetics,
+                    self.width,
+                    self.height,
+                    mask_rle.as_deref(),
+                );
                 MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
             }
             SimCommand::Custom(ref s) if s == "reinit" => {
                 let _ = self.sync_system_params();
                 MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
+            }
+            SimCommand::Custom(ref s) if s == "clear_mask" => {
+                self.system.kinetics.clear_mask();
+            }
+            SimCommand::ApplyBrushCells { cells, mode } => {
+                apply_morpho_cells_to_system(
+                    &mut self.system,
+                    self.width,
+                    self.height,
+                    &cells,
+                    MorphoBrushMode::from_code(mode),
+                );
+            }
+            SimCommand::ApplyBrush {
+                cx,
+                cy,
+                r,
+                is_obstacle,
+            } => {
+                let cells = crate::framework::generate_brush_cells(
+                    crate::framework::BrushStencil::Circle,
+                    crate::framework::SymmetryMode::None,
+                    (cx.max(0) as usize, cy.max(0) as usize),
+                    (cx.max(0) as usize, cy.max(0) as usize),
+                    r.max(0) as usize,
+                    self.width,
+                    self.height,
+                );
+                let mode = if is_obstacle {
+                    MorphoBrushMode::ActivatorSeed
+                } else {
+                    MorphoBrushMode::EraseMask
+                };
+                apply_morpho_cells_to_system(&mut self.system, self.width, self.height, &cells, mode);
             }
             _ => {}
         }

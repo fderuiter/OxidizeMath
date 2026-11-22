@@ -1,10 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{UnifiedModel, UnifiedSimTool};
+use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::render_empty_plot_guidance;
-use crate::async_sim::{SimCommand, StateSnapshot};
+use crate::async_sim::StateSnapshot;
+use crate::framework::RasterBrushCanvas;
 use eframe::egui::{self, ColorImage, TextureOptions};
-use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points};
+use egui_plot::{HLine, Line, LineStyle, Plot, PlotPoints, Points};
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
     fn draw_image_plot(
@@ -13,46 +15,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ctx: &egui::Context,
         texture: &egui::TextureHandle,
     ) {
-        let width = texture.size()[0] as f32;
-        let height = texture.size()[1] as f32;
-
-        Plot::new(format!("{}_plot_img", M::name()))
-            .data_aspect(1.0)
-            .view_aspect(1.0)
-            .show_grid(false)
-            .show_axes([false, false])
-            .allow_drag(false)
-            .allow_zoom(false)
-            .allow_scroll(false)
-            .show(ui, |plot_ui| {
-                plot_ui.image(PlotImage::new(
-                    format!("{}_image", M::name()),
-                    texture.id(),
-                    PlotPoint::new(width as f64 / 2.0, height as f64 / 2.0),
-                    [width, height],
-                ));
-
-                if plot_ui.response().hovered()
-                    && ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
-                {
-                    if let Some(pos) = plot_ui.pointer_coordinate() {
-                        let grid_x = pos.x.round() as i32;
-                        let grid_y = pos.y.round() as i32;
-                        if self
-                            .controller
-                            .send_command(SimCommand::ApplyBrush {
-                                cx: grid_x,
-                                cy: grid_y,
-                                r: 2,
-                                is_obstacle: ctx.input(|i| i.pointer.primary_down()),
-                            })
-                            .is_ok()
-                        {
-                            ctx.request_repaint();
-                        }
-                    }
-                }
-            });
+        let (grid_w, grid_h, flip_y) = M::raster_brush_grid().unwrap_or_else(|| {
+            let sz = texture.size();
+            (sz[0].max(1), sz[1].max(1), false)
+        });
+        let id_salt = format!("{}_raster_canvas", M::name());
+        let label = format!("{} raster simulation canvas", M::name());
+        let (response, stroke) = RasterBrushCanvas::new(&id_salt, grid_w, grid_h, &label)
+            .flip_y(flip_y)
+            .show_texture(ui, texture, &mut self.brush_state);
+        let _ = response.accessible_theory_hover(self);
+        if let Some(stroke) = stroke {
+            self.apply_brush_stroke(stroke, ctx);
+        }
     }
 
     fn draw_line_plot(&self, ui: &mut egui::Ui, snapshot: &StateSnapshot) {

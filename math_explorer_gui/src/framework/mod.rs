@@ -24,6 +24,7 @@ mod persistence;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;
+pub mod raster_brush;
 pub mod recovery;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
@@ -50,6 +51,7 @@ pub use pane_scope::{
     is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id,
 };
 pub use playback::*;
+pub use raster_brush::*;
 pub use recovery::*;
 pub use side_panel::{
     clear_pane_side_panel_records, pane_side_panel_records, PaneSidePanel, PaneSidePanelRecord,

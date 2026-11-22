@@ -1,18 +1,18 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{MorphogenesisTool, SimpleRng};
+use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::SimCommand;
 use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::framework::{PlaybackAction, PlaybackTransport, RasterBrushCanvas};
 use eframe::egui;
 use eframe::egui::ColorImage;
-use egui_plot::{Plot, PlotImage, PlotPoint};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use math_explorer::biology::morphogenesis::{ReactionKinetics, TuringSystem};
 
 impl MorphogenesisTool {
     fn sync_texture_from_snapshot(&mut self, ctx: &egui::Context) {
@@ -149,6 +149,7 @@ impl MorphogenesisTool {
             }
 
             self.draw_presets(ui);
+            self.draw_brush_section(ui, &ctx);
         });
     }
 
@@ -158,23 +159,21 @@ impl MorphogenesisTool {
             self.sync_texture_from_snapshot(&ctx);
 
             if let Some(texture) = &self.texture {
-                let w = self.width as f32;
-                let h = self.height as f32;
-                Plot::new("morphogenesis_plot")
-                    .data_aspect(1.0)
-                    .view_aspect(1.0)
-                    .show_grid(false)
-                    .show_axes([false, false])
-                    .allow_drag(true)
-                    .allow_zoom(true)
-                    .show(ui, |plot_ui| {
-                        plot_ui.image(PlotImage::new(
-                            "morphogenesis_image",
-                            texture.id(),
-                            PlotPoint::new(f64::from(w) / 2.0, f64::from(h) / 2.0),
-                            [w, h],
-                        ));
-                    });
+                let tex = texture.clone();
+                let masked = self.mask_cells.iter().filter(|&&c| c != 0).count();
+                let summary = format!("{}x{} grid, {masked} masked cells", self.width, self.height);
+                let (resp, stroke) = RasterBrushCanvas::new(
+                    "morphogenesis_canvas",
+                    self.width,
+                    self.height,
+                    "Turing Morphogenesis reaction-diffusion canvas",
+                )
+                .value_summary(&summary)
+                .show_texture(ui, &tex, &mut self.brush_state);
+                let _ = resp.accessible_theory_hover(&self.theory);
+                if let Some(stroke) = stroke {
+                    self.apply_brush_stroke(stroke, Some(&ctx));
+                }
             } else {
                 render_empty_plot_guidance(
                     ui,
@@ -184,20 +183,18 @@ impl MorphogenesisTool {
         });
     }
 
-    pub(crate) fn initialize_system(
-        system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+    pub(crate) fn initialize_system<K: ReactionKinetics<2>>(
+        system: &mut TuringSystem<2, K, FiniteDifference2D>,
         width: usize,
         height: usize,
     ) {
         let n = width * height;
         let mut rng = SimpleRng::new(12345);
 
-        let a = system.kinetics.a;
-        let b = system.kinetics.b;
-        let u_eq = a + b;
-        let v_eq = b / (u_eq * u_eq);
-
         for i in 0..n {
+            let [a, b] = system.kinetics.reaction_at(i, [0.0, 0.0]);
+            let u_eq = (a + b).max(1e-3);
+            let v_eq = b / (u_eq * u_eq);
             system.u_mut()[i] = u_eq + rng.range(-0.1, 0.1);
             system.v_mut()[i] = v_eq + rng.range(-0.1, 0.1);
         }

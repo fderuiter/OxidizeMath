@@ -2,6 +2,7 @@
 
 mod canvas;
 mod controls;
+mod persistence;
 pub mod tool;
 pub use tool::*;
 
@@ -99,6 +100,33 @@ pub trait UnifiedModel:
         false
     }
 
+    /// Returns `(grid_w, grid_h, flip_y)` when interactive `RasterBrushCanvas` sculpting is supported.
+    fn raster_brush_grid() -> Option<(usize, usize, bool)>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
+    /// Returns the default boolean obstacle mask for `raster_brush_grid` when initialized.
+    fn default_obstacle_mask(_params: &HashMap<String, f64>) -> Option<Vec<bool>>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
+    /// Validates an encoded RLE obstacle mask prior to applying state changes.
+    fn validate_obstacle_rle(_encoded: &str) -> Result<Vec<bool>, String>
+    where
+        Self: Sized,
+    {
+        Err("Obstacle RLE masks are not supported for this model".to_string())
+    }
+
+    /// Applies a validated RLE obstacle mask onto this model instance.
+    fn apply_obstacle_rle(&mut self, _encoded: &str) {}
+
     /// Allow the model to draw custom visualization in the central panel.
     /// Return true if custom rendering was performed.
     fn custom_central_panel(_ui: &mut eframe::egui::Ui, _snapshot: Option<&StateSnapshot>) -> bool
@@ -123,16 +151,30 @@ pub trait UnifiedModel:
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,
+    obstacle_rle: Arc<RwLock<Option<String>>>,
     steps_per_frame: usize,
 }
 
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
     #[allow(missing_docs)]
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
+        Self::with_obstacle_mask(params, Arc::new(RwLock::new(None)))
+    }
+
+    #[allow(missing_docs)]
+    pub fn with_obstacle_mask(
+        params: Arc<RwLock<HashMap<String, f64>>>,
+        obstacle_rle: Arc<RwLock<Option<String>>>,
+    ) -> Self {
         let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut model = M::new(&initial_params);
+        if let Some(ref rle) = *obstacle_rle.read().unwrap_or_else(|e| e.into_inner()) {
+            model.apply_obstacle_rle(rle);
+        }
         Self {
-            model: M::new(&initial_params),
+            model,
             params,
+            obstacle_rle,
             steps_per_frame: 5,
         }
     }
@@ -148,7 +190,12 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
         match cmd {
             SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
             SimCommand::Reset => {
-                self.model = M::new(&current_params);
+                let mut rebuilt = M::new(&current_params);
+                if let Some(ref rle) = *self.obstacle_rle.read().unwrap_or_else(|e| e.into_inner())
+                {
+                    rebuilt.apply_obstacle_rle(rle);
+                }
+                self.model = rebuilt;
             }
             _ => self.model.process_command(cmd, &current_params),
         }

@@ -26,6 +26,13 @@ pub enum SimCommand {
         is_obstacle: bool,
     },
     #[allow(missing_docs)]
+    ApplyBrushCells {
+        #[allow(missing_docs)]
+        cells: Vec<(usize, usize)>,
+        #[allow(missing_docs)]
+        mode: u8,
+    },
+    #[allow(missing_docs)]
     ClearObstacles,
     #[allow(missing_docs)]
     Custom(String),
@@ -42,6 +49,7 @@ impl SimCommand {
             Self::SetSpeed(_) => "SetSpeed",
             Self::TrainEpisodes(_) => "TrainEpisodes",
             Self::ApplyBrush { .. } => "ApplyBrush",
+            Self::ApplyBrushCells { .. } => "ApplyBrushCells",
             Self::ClearObstacles => "ClearObstacles",
             Self::Custom(_) => "Custom",
         }

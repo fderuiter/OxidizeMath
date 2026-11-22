@@ -126,9 +126,9 @@ impl<const N: usize> SpatialDiffusion<N> for FiniteDifference2D {
             next_state,
             dt,
             1.0, // Forward time
-            |_i, curr, left, right, up, down, ops| {
+            |i, curr, left, right, up, down, ops| {
                 let mut rhs = [0.0; N];
-                let rates = kinetics.reaction(curr);
+                let rates = kinetics.reaction_at(i, curr);
                 for s in 0..N {
                     let d2u = ops.central_diff_2nd_2d(curr[s], left[s], right[s], up[s], down[s]);
                     rhs[s] = coeffs[s] * d2u + rates[s];

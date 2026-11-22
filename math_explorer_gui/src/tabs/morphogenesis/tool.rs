@@ -3,12 +3,12 @@
 use super::presets::MorphogenesisTheory;
 use super::runner::{MorphogenesisRunner, MorphogenesisSharedParams};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::SchnakenbergKinetics;
+use math_explorer::biology::morphogenesis::SpatialSchnakenbergKinetics;
 use math_explorer::biology::morphogenesis::TuringSystem;
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
@@ -48,6 +48,9 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Optional RLE-encoded spatial `(a, b)` reaction mask (`0`=base, `1`=stripe, `2`=spot).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask_rle: Option<String>,
 }
 
 impl MorphogenesisToolState {
@@ -72,6 +75,9 @@ impl MorphogenesisToolState {
                 "Morphogenesis dimensions {}x{} must be within 1..=512",
                 self.width, self.height
             ));
+        }
+        if let Some(ref rle) = self.mask_rle {
+            let _ = crate::framework::decode_u8_grid(rle, self.width, self.height, 2)?;
         }
         Ok(())
     }
@@ -102,7 +108,10 @@ pub struct MorphogenesisTool {
     pub(crate) step_runner: Option<MorphogenesisRunner>,
     pub(crate) pending_initial_start: bool,
     pub(crate) last_high_contrast: Option<bool>,
-    theory: MorphogenesisTheory,
+    pub(crate) brush_state: crate::framework::RasterBrushState,
+    pub(crate) brush_mode: super::brush::MorphoBrushMode,
+    pub(crate) mask_cells: Vec<u8>,
+    pub(crate) theory: MorphogenesisTheory,
 }
 
 impl Default for MorphogenesisTool {
@@ -116,6 +125,7 @@ impl Default for MorphogenesisTool {
             d_v: 100.0,
             dt: 0.05,
             high_contrast: false,
+            mask_rle: None,
         }));
 
         let runner = Self::create_runner(&params, width, height);
@@ -133,6 +143,9 @@ impl Default for MorphogenesisTool {
             step_runner: None,
             pending_initial_start: true,
             last_high_contrast: None,
+            brush_state: crate::framework::RasterBrushState::default(),
+            brush_mode: super::brush::MorphoBrushMode::default(),
+            mask_cells: vec![0; width * height],
             theory: MorphogenesisTheory::default(),
         }
     }
@@ -146,11 +159,17 @@ impl MorphogenesisTool {
     ) -> MorphogenesisRunner {
         use math_explorer::biology::morphogenesis::DiffusionCoeff;
         use math_explorer::math_kernel::types::{Dimension, StepSize};
-        let (a, b, d_u, d_v) = {
+        let (a, b, d_u, d_v, mask_rle) = {
             let p = params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v)
+            (p.a, p.b, p.d_u, p.d_v, p.mask_rle.clone())
         };
-        let kinetics = SchnakenbergKinetics { a, b };
+        let mut kinetics = SpatialSchnakenbergKinetics::new(a, b, width * height);
+        super::brush::apply_mask_rle_to_kinetics(
+            &mut kinetics,
+            width,
+            height,
+            mask_rle.as_deref(),
+        );
         let diffusion = FiniteDifference2D::new(
             Dimension(width),
             Dimension(height),
@@ -225,53 +244,11 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            mask_rle: None,
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);
         }
-    }
-}
-
-impl FiniteStateGuard for MorphogenesisTool {
-    fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.worker.diagnostic_report()
-    }
-
-    fn diverged(&self) -> bool {
-        !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn auto_scale_step_size(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.dt = (p.dt * 0.5).max(1e-4);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn clamp_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = p.a.clamp(0.0, 1.0);
-        p.b = p.b.clamp(0.0, 2.0);
-        p.d_u = p.d_u.clamp(0.1, 5.0);
-        p.d_v = p.d_v.clamp(10.0, 200.0);
-        p.dt = p.dt.clamp(0.001, 0.1);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn reset_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = 0.1;
-        p.b = 0.9;
-        p.d_u = 1.0;
-        p.d_v = 100.0;
-        p.dt = 0.05;
-        drop(p);
-        self.reset_system();
     }
 }
 
@@ -362,6 +339,10 @@ impl InteractiveTool for MorphogenesisTool {
         &self.theory
     }
 
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_state.focused_id
+    }
+
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         {
@@ -371,6 +352,7 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u.to_bits().hash(&mut h);
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
+            p.mask_rle.hash(&mut h);
         }
         self.width.hash(&mut h);
         self.height.hash(&mut h);
@@ -380,9 +362,9 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let (a, b, d_u, d_v, dt) = {
+        let (a, b, d_u, d_v, dt, mask_rle) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
+            (p.a, p.b, p.d_u, p.d_v, p.dt, p.mask_rle.clone())
         };
         serde_json::to_string(&MorphogenesisToolState {
             a,
@@ -395,6 +377,7 @@ impl InteractiveTool for MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            mask_rle,
         })
         .ok()
     }
@@ -403,6 +386,10 @@ impl InteractiveTool for MorphogenesisTool {
         let parsed: MorphogenesisToolState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
+        let decoded_mask = match parsed.mask_rle.as_deref() {
+            Some(rle) => crate::framework::decode_u8_grid(rle, parsed.width, parsed.height, 2)?,
+            None => vec![0; parsed.width * parsed.height],
+        };
         let target_state = parsed.resolve_target_state();
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
@@ -411,7 +398,9 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u = parsed.d_u;
             p.d_v = parsed.d_v;
             p.dt = parsed.dt;
+            p.mask_rle = parsed.mask_rle;
         }
+        self.mask_cells = decoded_mask;
         if parsed.width != self.width || parsed.height != self.height {
             self.width = parsed.width;
             self.height = parsed.height;

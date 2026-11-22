@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::IsingModelTool;
+use super::{IsingModelTool, DEFAULT_ISING_SIZE};
+use math_commons::math_kernel::types::flatten_2d_index;
 
 impl scientific_metadata::theory::TheoryDescribable for IsingModelTool {
     fn theory_description(&self) -> String {
@@ -32,6 +33,55 @@ const STARTER_PRESET_JSON: &str = r#"{
   }
 }"#;
 
+fn generate_ising_pinned_domain_wall_preset() -> &'static str {
+    static DOMAIN_WALL_PRESET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DOMAIN_WALL_PRESET
+        .get_or_init(|| {
+            let mut pins = vec![0u8; DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE];
+            for y in 0..DEFAULT_ISING_SIZE {
+                for x in 0..6 {
+                    pins[flatten_2d_index(x, y, DEFAULT_ISING_SIZE)] = 1;
+                }
+                for x in (DEFAULT_ISING_SIZE - 6)..DEFAULT_ISING_SIZE {
+                    pins[flatten_2d_index(x, y, DEFAULT_ISING_SIZE)] = 2;
+                }
+            }
+            for x in 35..65 {
+                for y in 35..65 {
+                    let dx = (x as isize) - 50;
+                    let dy = (y as isize) - 50;
+                    if dx * dx + dy * dy <= 64 {
+                        pins[flatten_2d_index(x, y, DEFAULT_ISING_SIZE)] = 1;
+                    }
+                }
+            }
+            let rle = crate::framework::encode_u8_grid(
+                DEFAULT_ISING_SIZE,
+                DEFAULT_ISING_SIZE,
+                &pins,
+                2,
+            )
+            .expect("valid Ising pinned RLE");
+            serde_json::json!({
+                "metadata": {
+                    "schema_version": "1.0",
+                    "title": "Ising Pinned Domain Wall",
+                    "domain": "solid_state",
+                    "timestamp": "2026-11-21T00:00:00Z"
+                },
+                "config": {
+                    "temperature": 1.85,
+                    "j_coupling": 1.0,
+                    "h_field": 0.0,
+                    "steps_per_frame": 12000,
+                    "pinned_rle": rle
+                }
+            })
+            .to_string()
+        })
+        .as_str()
+}
+
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "ising_model_starter",
@@ -42,5 +92,18 @@ inventory::submit! {
         domain: "solid_state",
         tool_name: Some("IsingModelTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "ising_pinned_domain_wall",
+        title: "Ising Pinned Domain Wall",
+        description: "Opposing +1/-1 pinned spin boundaries and central nucleus forcing interfacial domain-wall fluctuations.",
+        category: "Statistical Mechanics",
+        icon: "🧱",
+        domain: "solid_state",
+        tool_name: Some("IsingModelTool"),
+        preset_generator: generate_ising_pinned_domain_wall_preset,
     }
 }

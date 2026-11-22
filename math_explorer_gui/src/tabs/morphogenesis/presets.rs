@@ -110,3 +110,51 @@ inventory::submit! {
         preset_generator: || crate::starter_gallery::PRESET_TURING_STRIPES,
     }
 }
+
+fn generate_hybrid_turing_mask_preset() -> &'static str {
+    static HYBRID_PRESET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    HYBRID_PRESET
+        .get_or_init(|| {
+            let mut mask = vec![0u8; 100 * 100];
+            for y in 15..85 {
+                for x in 50..90 {
+                    mask[y * 100 + x] = 1;
+                }
+            }
+            let rle = crate::framework::encode_u8_grid(100, 100, &mask, 2)
+                .expect("valid morphogenesis hybrid RLE");
+            serde_json::json!({
+                "metadata": {
+                    "schema_version": "1.0",
+                    "title": "Turing Spot-Stripe Mask",
+                    "domain": "biology",
+                    "timestamp": "2026-11-21T00:00:00Z"
+                },
+                "config": {
+                    "a": 0.08,
+                    "b": 1.12,
+                    "d_u": 1.0,
+                    "d_v": 40.0,
+                    "dt": 0.005,
+                    "width": 100,
+                    "height": 100,
+                    "mask_rle": rle
+                }
+            })
+            .to_string()
+        })
+        .as_str()
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "turing_spot_stripe_mask",
+        title: "Turing Spot-Stripe Mask",
+        description: "Spatially heterogeneous Schnakenberg (a, b) RLE reaction mask transitioning spots into labyrinthine stripes.",
+        category: "Morphogenesis",
+        icon: "🎭",
+        domain: "biology",
+        tool_name: Some("MorphogenesisTool"),
+        preset_generator: generate_hybrid_turing_mask_preset,
+    }
+}

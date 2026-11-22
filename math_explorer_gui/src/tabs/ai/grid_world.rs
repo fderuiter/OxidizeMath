@@ -1,6 +1,6 @@
-use crate::accessibility::AccessibleHoverText;
-use crate::framework::{InputMode, InteractiveTool};
+use crate::framework::{encode_u8_grid, InputMode, InteractiveTool, RasterBrushState, RasterBrushStroke};
 use eframe::egui;
+use math_commons::math_kernel::types::flatten_2d_index;
 use math_commons::primitives::UnitInterval;
 use math_explorer::ai::reinforcement_learning::{
     algorithms::TabularQAgent,
@@ -9,20 +9,67 @@ use math_explorer::ai::reinforcement_learning::{
     strategies::EpsilonGreedy,
     MarkovDecisionProcess,
 };
+use std::hash::{Hash, Hasher};
+
+#[path = "grid_world/preset.rs"]
+mod preset;
+#[path = "grid_world/ui.rs"]
+mod ui;
+
+/// Interactive brush modes for sculpting [`GridWorldTool`] environments.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GridBrushMode {
+    /// Paints impassable wall cells blocking agent transitions.
+    #[default]
+    Wall,
+    /// Paints terminal `-10.0` penalty trap cells.
+    Trap,
+    /// Relocates the episode `start` state.
+    Start,
+    /// Relocates the terminal `+10.0` reward `goal` state.
+    Goal,
+    /// Clears walls or traps back to open navigable floor.
+    Empty,
+}
+
+impl GridBrushMode {
+    /// All selectable GridWorld sculpting modes in UI display order.
+    pub const ALL: [Self; 5] = [
+        Self::Wall,
+        Self::Trap,
+        Self::Start,
+        Self::Goal,
+        Self::Empty,
+    ];
+
+    /// User-facing label for side-panel sculpting controls.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Wall => "Paint Wall (Impassable)",
+            Self::Trap => "Paint Trap (-10 Penalty)",
+            Self::Start => "Place Start (S)",
+            Self::Goal => "Place Goal (+10 Reward)",
+            Self::Empty => "Erase Cell",
+        }
+    }
+}
 
 pub struct GridWorldTool {
-    env: GridWorldEnv,
-    agent: TabularQAgent<GridState, Move>,
-    learning_rate: f64,
-    discount_factor: f64,
-    exploration_rate: f64,
-    current_state: GridState,
-    episodes: u32,
-    total_reward: f64,
-    steps: u32,
-    is_playing: bool,
-    playback_speed: f32,
-    last_tick: crate::web_io::PlatformInstant,
+    pub(crate) env: GridWorldEnv,
+    pub(crate) agent: TabularQAgent<GridState, Move>,
+    pub(crate) learning_rate: f64,
+    pub(crate) discount_factor: f64,
+    pub(crate) exploration_rate: f64,
+    pub(crate) current_state: GridState,
+    pub(crate) episodes: u32,
+    pub(crate) total_reward: f64,
+    pub(crate) steps: u32,
+    pub(crate) is_playing: bool,
+    pub(crate) playback_speed: f32,
+    pub(crate) last_tick: crate::web_io::PlatformInstant,
+    pub(crate) brush_state: RasterBrushState,
+    pub(crate) brush_mode: GridBrushMode,
 }
 
 impl Default for GridWorldTool {
@@ -36,6 +83,7 @@ impl Default for GridWorldTool {
             start: GridState { x: 0, y: 0 },
             goal: GridState { x: 4, y: 4 },
             traps: vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }],
+            walls: Vec::new(),
             gamma: discount_factor,
         };
         let agent = Self::build_agent(learning_rate, discount_factor, exploration_rate);
@@ -52,6 +100,8 @@ impl Default for GridWorldTool {
             is_playing: false,
             playback_speed: 5.0,
             last_tick: crate::web_io::PlatformInstant::now(),
+            brush_state: RasterBrushState::with_radius(0),
+            brush_mode: GridBrushMode::default(),
         }
     }
 }
@@ -68,7 +118,7 @@ impl GridWorldTool {
         TabularQAgent::new(lr, gamma, eps, None)
     }
 
-    fn sync_agent_hyperparameters(&mut self) {
+    pub(crate) fn sync_agent_hyperparameters(&mut self) {
         let Ok(lr) = UnitInterval::new(self.learning_rate.clamp(0.0, 1.0)) else {
             return;
         };
@@ -87,7 +137,7 @@ impl GridWorldTool {
         self.agent = updated;
     }
 
-    fn reset_agent(&mut self) {
+    pub(crate) fn reset_agent(&mut self) {
         self.is_playing = false;
         self.env.gamma = self.discount_factor.clamp(0.0, 1.0);
         self.agent = Self::build_agent(
@@ -99,7 +149,7 @@ impl GridWorldTool {
         self.episodes = 0;
     }
 
-    fn step_agent(&mut self) {
+    pub(crate) fn step_agent(&mut self) {
         if self.env.is_terminal(&self.current_state) {
             self.reset_episode();
             return;
@@ -125,14 +175,14 @@ impl GridWorldTool {
         }
     }
 
-    fn reset_episode(&mut self) {
+    pub(crate) fn reset_episode(&mut self) {
         self.current_state = self.env.start;
         self.episodes += 1;
         self.total_reward = 0.0;
         self.steps = 0;
     }
 
-    fn train_batch(&mut self) {
+    pub(crate) fn train_batch(&mut self) {
         self.is_playing = false;
         for _ in 0..100 {
             for _ in 0..100 {
@@ -145,115 +195,90 @@ impl GridWorldTool {
         }
     }
 
-    fn cell_fill(&self, state: GridState, palette: &crate::app::SemanticPalette) -> egui::Color32 {
-        if state == self.env.goal {
-            palette.success
-        } else if self.env.traps.contains(&state) {
-            palette.error
-        } else if state == self.current_state {
-            palette.accent
-        } else if state == self.env.start {
-            palette.info
+    /// Applies a [`RasterBrushStroke`] to sculpt walls, traps, start, or goal cells live.
+    pub fn apply_brush_stroke(&mut self, stroke: RasterBrushStroke) {
+        let mode = if stroke.secondary {
+            GridBrushMode::Empty
         } else {
-            palette.surface_fill
+            self.brush_mode
+        };
+        if matches!(mode, GridBrushMode::Start | GridBrushMode::Goal) {
+            let (fx, fy) = stroke.focus_cell;
+            let target = GridState {
+                x: fx as i32,
+                y: fy as i32,
+            };
+            if target.x >= 0
+                && target.x < self.env.width
+                && target.y >= 0
+                && target.y < self.env.height
+            {
+                self.env.walls.retain(|&c| c != target);
+                self.env.traps.retain(|&c| c != target);
+                if mode == GridBrushMode::Start && target != self.env.goal {
+                    self.env.start = target;
+                    if self.steps == 0 {
+                        self.current_state = target;
+                    }
+                } else if mode == GridBrushMode::Goal && target != self.env.start {
+                    self.env.goal = target;
+                }
+            }
+            return;
+        }
+
+        for &(cx, cy) in &stroke.cells {
+            let cell = GridState {
+                x: cx as i32,
+                y: cy as i32,
+            };
+            if cell.x < 0
+                || cell.x >= self.env.width
+                || cell.y < 0
+                || cell.y >= self.env.height
+                || cell == self.env.start
+                || cell == self.env.goal
+            {
+                continue;
+            }
+            self.env.walls.retain(|&c| c != cell);
+            self.env.traps.retain(|&c| c != cell);
+            match mode {
+                GridBrushMode::Wall => self.env.walls.push(cell),
+                GridBrushMode::Trap => self.env.traps.push(cell),
+                GridBrushMode::Empty | GridBrushMode::Start | GridBrushMode::Goal => {}
+            }
+        }
+        if self.env.walls.contains(&self.current_state) {
+            self.current_state = self.env.start;
         }
     }
 
-    fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "grid_world_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Controls");
-            ui.separator();
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("▶ Step").accessible_hover_text("Advance the agent by one step").clicked() {
-                    self.step_agent();
-                }
-                let (label, hover) = if self.is_playing {
-                    ("⏸ Pause", "Pause continuous Q-learning playback")
-                } else {
-                    ("▶ Play", "Start continuous Q-learning playback")
-                };
-                if ui.button(label).accessible_hover_text(hover).clicked() {
-                    self.is_playing = !self.is_playing;
-                    if self.is_playing {
-                        self.last_tick = crate::web_io::PlatformInstant::now();
-                    }
-                }
-            });
-            if ui.button("▶ Train (100 Episodes)").accessible_hover_text("Train the agent for 100 episodes instantly").clicked() {
-                self.train_batch();
-            }
-            if ui.button("↻ Reset Agent").accessible_hover_text("Clear the Q-table and reset the agent's knowledge").clicked() {
-                self.reset_agent();
-            }
-            ui.separator();
-            ui.heading("RL Hyperparameters");
-            let mut hp_changed = ui.add(egui::Slider::new(&mut self.learning_rate, 0.01..=1.0).text("Learning Rate (α)")).changed();
-            hp_changed |= ui.add(egui::Slider::new(&mut self.discount_factor, 0.0..=1.0).text("Discount Factor (γ)")).changed();
-            hp_changed |= ui.add(egui::Slider::new(&mut self.exploration_rate, 0.0..=1.0).text("Exploration Rate (ε)")).changed();
-            if hp_changed {
-                self.sync_agent_hyperparameters();
-            }
-            ui.add(egui::Slider::new(&mut self.playback_speed, 1.0..=20.0).text("Speed (Hz)"));
-        });
+    /// Clears all sculpted walls and traps while preserving `start` and `goal`.
+    pub fn clear_sculpted_obstacles(&mut self) {
+        self.env.walls.clear();
+        self.env.traps.clear();
     }
 
-    fn draw_central_canvas(&self, parent_ui: &mut egui::Ui, input_mode: InputMode) {
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            ui.heading("Grid World Navigation (Q-Learning)");
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.label(format!("Episode: {}", self.episodes));
-                ui.label(format!("Steps: {}", self.steps));
-                ui.label(format!("Reward: {:.2}", self.total_reward));
-            });
-            let cell_size = if input_mode == InputMode::Touch { 44.0 } else { 40.0 };
-            let grid_size = egui::vec2(self.env.width as f32 * cell_size, self.env.height as f32 * cell_size);
-            let (response, painter) = ui.allocate_painter(grid_size, egui::Sense::focusable_noninteractive());
-            let _ = response.clone().accessible_hover_text("Grid World Visualization");
-            let summary = format!(
-                "Agent at ({}, {}), Episode {}, Reward {:.2}",
-                self.current_state.x, self.current_state.y, self.episodes, self.total_reward
-            );
-            crate::accessibility::register_canvas_accessibility(
-                ui,
-                &response,
-                egui::accesskit::Role::GraphicsDocument,
-                "Grid World Visualization",
-                Some(&summary),
-            );
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            for x in 0..self.env.width {
-                for y in 0..self.env.height {
-                    let top_left = response.rect.min + egui::vec2(x as f32 * cell_size, y as f32 * cell_size);
-                    let cell_rect = egui::Rect::from_min_size(top_left, egui::vec2(cell_size, cell_size));
-                    painter.rect_filled(cell_rect, 0.0, self.cell_fill(GridState { x, y }, &palette));
-                    painter.rect_stroke(cell_rect, 0.0, egui::Stroke::new(1.0_f32, palette.graph_edge), egui::StrokeKind::Middle);
-                }
+    fn encode_layout_rle(&self) -> Option<String> {
+        let w = self.env.width.max(1) as usize;
+        let h = self.env.height.max(1) as usize;
+        let mut grid = vec![0u8; w * h];
+        for wall in &self.env.walls {
+            if wall.x >= 0 && (wall.x as usize) < w && wall.y >= 0 && (wall.y as usize) < h {
+                grid[flatten_2d_index(wall.x as usize, wall.y as usize, w)] = 1;
             }
-            crate::accessibility::paint_canvas_focus_ring(ui, &response);
-        });
+        }
+        for trap in &self.env.traps {
+            if trap.x >= 0 && (trap.x as usize) < w && trap.y >= 0 && (trap.y as usize) < h {
+                grid[flatten_2d_index(trap.x as usize, trap.y as usize, w)] = 2;
+            }
+        }
+        encode_u8_grid(w, h, &grid, 2).ok()
     }
 }
 
-fn default_rl_rate() -> f64 {
-    0.1
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct GridWorldToolState {
-    width: i32,
-    height: i32,
-    #[serde(alias = "discount_factor")]
-    gamma: f64,
-    #[serde(default = "default_rl_rate")]
-    learning_rate: f64,
-    #[serde(default = "default_rl_rate")]
-    exploration_rate: f64,
-    playback_speed: f32,
-    is_playing: bool,
-}
+use preset::{decode_walls_and_traps, resolve_endpoints, GridWorldToolState};
 
 impl InteractiveTool for GridWorldTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
@@ -269,6 +294,30 @@ impl InteractiveTool for GridWorldTool {
         "ai"
     }
 
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_state.focused_id
+    }
+
+    fn state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.env.width.hash(&mut h);
+        self.env.height.hash(&mut h);
+        self.discount_factor.to_bits().hash(&mut h);
+        self.learning_rate.to_bits().hash(&mut h);
+        self.exploration_rate.to_bits().hash(&mut h);
+        self.playback_speed.to_bits().hash(&mut h);
+        self.is_playing.hash(&mut h);
+        (self.env.start.x, self.env.start.y).hash(&mut h);
+        (self.env.goal.x, self.env.goal.y).hash(&mut h);
+        for w in &self.env.walls {
+            (w.x, w.y).hash(&mut h);
+        }
+        for t in &self.env.traps {
+            (t.x, t.y).hash(&mut h);
+        }
+        h.finish().max(1)
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&GridWorldToolState {
             width: self.env.width,
@@ -278,6 +327,9 @@ impl InteractiveTool for GridWorldTool {
             exploration_rate: self.exploration_rate,
             playback_speed: self.playback_speed,
             is_playing: self.is_playing,
+            start: Some([self.env.start.x, self.env.start.y]),
+            goal: Some([self.env.goal.x, self.env.goal.y]),
+            layout_rle: self.encode_layout_rle(),
         })
         .ok()
     }
@@ -306,15 +358,8 @@ impl InteractiveTool for GridWorldTool {
             UnitInterval::new(parsed.gamma).map_err(|e| format!("Invalid discount factor: {e}"))?;
         let eps_unit = UnitInterval::new(parsed.exploration_rate)
             .map_err(|e| format!("Invalid exploration rate: {e}"))?;
-        let start = GridState { x: 0, y: 0 };
-        let goal = GridState {
-            x: parsed.width - 1,
-            y: parsed.height - 1,
-        };
-        let traps = vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }]
-            .into_iter()
-            .filter(|t| t.x < parsed.width && t.y < parsed.height && *t != start && *t != goal)
-            .collect();
+        let (start, goal) = resolve_endpoints(&parsed)?;
+        let (walls, traps) = decode_walls_and_traps(&parsed, start, goal)?;
         self.learning_rate = lr_unit.value();
         self.discount_factor = gamma_unit.value();
         self.exploration_rate = eps_unit.value();
@@ -324,6 +369,7 @@ impl InteractiveTool for GridWorldTool {
             start,
             goal,
             traps,
+            walls,
             gamma: parsed.gamma,
         };
         self.agent = TabularQAgent::new(lr_unit, gamma_unit, eps_unit, None);
@@ -370,100 +416,6 @@ inventory::submit! {
     }
 }
 
-impl scientific_metadata::theory::TheoryDescribable for GridWorldTool {
-    fn theory_description(&self) -> String {
-        format!(
-            "Tabular Q-Learning updates state-action values via Bellman temporal difference $Q(s,a) \\leftarrow Q(s,a) + \\alpha [R + \\gamma \\max_{{a'}} Q(s',a') - Q(s,a)]$ with $\\alpha = {:.2}$, $\\gamma = {:.2}$, and $\\epsilon = {:.2}$.",
-            self.learning_rate, self.discount_factor, self.exploration_rate
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Reinforcement Learning involves an agent that interacts with its environment to learn optimal actions, aiming to maximize a cumulative reward based on the Bellman equation.".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Sutton, R. S., & Barto, A. G. (2018). Reinforcement Learning: An Introduction. MIT press."
-            .into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert("learning_rate".into(), "The step size used to update the Q-values, controlling how much new information overrides old information.".into());
-        map.insert("discount_factor".into(), "Determines the importance of future rewards. A factor of 0 makes the agent opportunistic, while 1 makes it strive for long-term high reward.".into());
-        map.insert("exploration_rate".into(), "The probability that the agent will choose a random action instead of the best known action, facilitating exploration of the state space.".into());
-        map
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_grid_world_default_playback_and_rl_hyperparameters() {
-        let mut tool = GridWorldTool::default();
-        assert!(!tool.is_playing && (1.0..=20.0).contains(&tool.playback_speed));
-        assert_eq!(
-            (
-                tool.learning_rate,
-                tool.discount_factor,
-                tool.exploration_rate
-            ),
-            (0.1, 0.9, 0.1)
-        );
-
-        tool.learning_rate = 0.35;
-        tool.discount_factor = 0.8;
-        tool.exploration_rate = 0.25;
-        tool.sync_agent_hyperparameters();
-        assert_eq!(tool.env.gamma, 0.8);
-
-        let saved = tool.save_state().expect("save_state");
-        let mut restored = GridWorldTool::default();
-        restored.try_load_state(&saved).expect("try_load_state");
-        assert_eq!(
-            (
-                restored.learning_rate,
-                restored.discount_factor,
-                restored.exploration_rate
-            ),
-            (0.35, 0.8, 0.25)
-        );
-        restored.reset_agent();
-        assert_eq!(
-            (
-                restored.learning_rate,
-                restored.discount_factor,
-                restored.exploration_rate
-            ),
-            (0.35, 0.8, 0.25)
-        );
-    }
-
-    #[test]
-    fn test_grid_world_step_and_terminal_reset() {
-        let mut tool = GridWorldTool::default();
-        let initial_state = tool.current_state;
-        tool.step_agent();
-        assert_ne!(
-            (tool.current_state, tool.steps, tool.episodes),
-            (initial_state, 0, 0)
-        );
-        tool.current_state = tool.env.goal;
-        tool.step_agent();
-        assert_eq!((tool.current_state, tool.steps, tool.episodes), (tool.env.start, 0, 1));
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Grid World RL","domain":"ai","timestamp":"2026-11-16T00:00:00Z"},"config":{"width":5,"height":5,"gamma":0.95,"playback_speed":8.0,"is_playing":false}}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "grid_world_starter",
-        title: "Grid World RL",
-        description: "Markov Decision Process navigation with obstacle avoidance and discount reward propagation.",
-        category: "Reinforcement Learning",
-        icon: "🗺️",
-        domain: "ai",
-        tool_name: Some("GridWorldTool"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}
+#[path = "grid_world/tests.rs"]
+mod tests;
