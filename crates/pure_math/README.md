@@ -16,6 +16,7 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 - **`number_theory`**: Prime number generation (`primes_up_to`), primality testing, integer partition theory, and Q-series.
 - **`analysis`**: Differential equation solvers (`OdeSystem`, Runge-Kutta steppers), numerical integration, and calculus algorithms.
 - **`differential_geometry`**: Manifolds, metric tensors, and Riemannian curvature.
+- **`hyperbolic`**: Poincaré disk and upper half-plane models, `PSU(1,1)` / `PSL(2,R)` Möbius isometries, `{p,q}` / `{infinity,q}` tilings, and chaotic geodesic billiards.
 - **`elliptic_curves`**: Curve group arithmetic and cryptographic operations over finite fields.
 - **`graph_theory`**: Network graph structures, centrality metrics, and traversal algorithms.
 - **`statistics`**: Stochastic processes (Markov chains, Ornstein-Uhlenbeck), ranking systems (Glicko-2), and Kelly criterion decision models.

@@ -32,6 +32,7 @@
 //! *   **[Differential Geometry](differential_geometry)**: Manifolds and curvature.
 //! *   **[Elliptic Curves](elliptic_curves)**: Cryptography primitives and geometric arithmetic.
 //! *   **[Graph Theory](graph_theory)**: Network analysis and traversal algorithms.
+//! *   **[Hyperbolic Geometry](hyperbolic)**: Poincaré disk/half-plane models, Möbius isometries, `{p,q}` tilings, and geodesic billiards.
 //! *   **[Number Theory](number_theory)**: Primes, Partitions, and Modular Arithmetic.
 //! *   **[Statistics](statistics)**: Competitive modeling (Glicko-2), Stochastic processes (Markov), and Data Analysis.
 //!
@@ -49,6 +50,7 @@ pub mod differential_geometry;
 pub mod elliptic_curves;
 #[allow(missing_docs)]
 pub mod graph_theory;
+pub mod hyperbolic;
 pub mod logic;
 pub mod number_theory;
 pub mod special_functions;

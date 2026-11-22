@@ -7218,6 +7218,477 @@
       "signature": "pub fn treewidth < N , E > (_g : & Graph < N , E >) -> usize"
     }
   ],
+  "crates/pure_math/src/pure_math/hyperbolic/billiards.rs": [
+    {
+      "signature": "impl BilliardTable { pub fn kind (& self) -> BilliardDomainKind }"
+    },
+    {
+      "signature": "impl BilliardTable { pub fn new (kind : BilliardDomainKind) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl BilliardTable { pub fn vertices (& self) -> & [Complex64] }"
+    },
+    {
+      "signature": "impl GeodesicRay { pub fn new (position : DiskPoint , direction : Complex64) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn advance_reflections (& mut self , reflections : usize) }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn copy_edge_hits_into (& self , out : & mut [u8]) -> usize }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn copy_primary_segments_into (& self , out : & mut [GeodesicSegment]) -> usize }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn copy_separation_series_into (& self , out : & mut [[f64 ; 2]]) -> usize }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn copy_twin_segments_into (& self , out : & mut [GeodesicSegment]) -> usize }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn current_log_separation (& self) -> f64 }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn elapsed_length (& self) -> f64 }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn new (kind : BilliardDomainKind , seed : u64 , angular_perturbation : f64 ,) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn primary_ray (& self) -> GeodesicRay }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn reconfigure (& mut self , kind : BilliardDomainKind , seed : u64 , angular_perturbation : f64 ,) -> Result < () , HyperbolicError > }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn reseed (& mut self , seed : u64 , angular_perturbation : f64) -> Result < () , HyperbolicError > }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn set_launch_state (& mut self , position : DiskPoint , angle_rad : f64 , angular_perturbation : f64 ,) -> Result < () , HyperbolicError > }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn step (& mut self , ds : f64) }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn table (& self) -> & BilliardTable }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn total_bounces (& self) -> u64 }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn twin_ray (& self) -> GeodesicRay }"
+    },
+    {
+      "signature": "pub const MAX_BILLIARD_SEGMENTS : usize = 2048"
+    },
+    {
+      "signature": "pub enum BilliardDomainKind"
+    },
+    {
+      "signature": "pub struct BilliardTable"
+    },
+    {
+      "signature": "pub struct GeodesicRay"
+    },
+    {
+      "signature": "pub struct GeodesicSegment"
+    },
+    {
+      "signature": "pub struct TwinBilliardSystem"
+    }
+  ],
+  "crates/pure_math/src/pure_math/hyperbolic/geodesic.rs": [
+    {
+      "signature": "impl GeodesicDisk { pub fn inversion (self) -> CircleInversion }"
+    },
+    {
+      "signature": "impl GeodesicDisk { pub fn through_points (z1 : Complex64 , z2 : Complex64) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl GeodesicHalfPlane { pub fn through_points (q1 : HalfPlanePoint , q2 : HalfPlanePoint) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl HorocycleDisk { pub fn from_radius (ideal_base : Complex64 , euclidean_radius : f64 ,) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl HorocycleDisk { pub fn sample_into (self , out : & mut [[f64 ; 2]]) -> usize }"
+    },
+    {
+      "signature": "impl HorocycleDisk { pub fn through_point (ideal_base : Complex64 , through : DiskPoint ,) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl HorocycleDisk { pub fn to_half_plane (self) -> HorocycleHalfPlane }"
+    },
+    {
+      "signature": "pub enum GeodesicDisk"
+    },
+    {
+      "signature": "pub enum GeodesicHalfPlane"
+    },
+    {
+      "signature": "pub enum HorocycleHalfPlane"
+    },
+    {
+      "signature": "pub fn gauss_bonnet_polygon_area (vertices : & [Complex64]) -> Result < f64 , HyperbolicError >"
+    },
+    {
+      "signature": "pub fn hyperbolic_polygon_angles (vertices : & [Complex64] , out_angles : & mut [f64] ,) -> Result < usize , HyperbolicError >"
+    },
+    {
+      "signature": "pub fn sample_disk_geodesic_into (z1 : Complex64 , z2 : Complex64 , out : & mut [[f64 ; 2]]) -> usize"
+    },
+    {
+      "signature": "pub fn sample_half_plane_geodesic_into (q1 : HalfPlanePoint , q2 : HalfPlanePoint , out : & mut [[f64 ; 2]] ,) -> usize"
+    },
+    {
+      "signature": "pub struct HorocycleDisk"
+    }
+  ],
+  "crates/pure_math/src/pure_math/hyperbolic/isometry.rs": [
+    {
+      "signature": "impl CircleInversion { pub fn reflect_complex (self , z : Complex64) -> Complex64 }"
+    },
+    {
+      "signature": "impl CircleInversion { pub fn reflect_disk_point (self , p : DiskPoint) -> DiskPoint }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn apply (self , q : HalfPlanePoint) -> HalfPlanePoint }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn compose (self , rhs : Self) -> Self }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn determinant (self) -> f64 }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn dilation (lambda : f64) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn drag_between (from : HalfPlanePoint , to : HalfPlanePoint) -> Self }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn entries (self) -> [f64 ; 4] }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn identity () -> Self }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn inverse (self) -> Self }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn new (alpha : f64 , beta : f64 , gamma : f64 , delta : f64) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn renormalize (& mut self) }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn to_psu11 (self) -> Psu11 }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn translation (du : f64) -> Self }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn a (self) -> Complex64 }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn apply (self , p : DiskPoint) -> DiskPoint }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn apply_complex (self , z : Complex64) -> Complex64 }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn b (self) -> Complex64 }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn compose (self , rhs : Self) -> Self }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn determinant (self) -> f64 }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn drag_between (from : DiskPoint , to : DiskPoint) -> Self }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn identity () -> Self }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn inverse (self) -> Self }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn new (a : Complex64 , b : Complex64) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn renormalize (& mut self) }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn rotation (theta : f64) -> Self }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn to_psl2r (self) -> Psl2R }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn translation_from_origin (p : DiskPoint) -> Self }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn translation_to_origin (p : DiskPoint) -> Self }"
+    },
+    {
+      "signature": "pub enum CircleInversion"
+    },
+    {
+      "signature": "pub struct Psl2R"
+    },
+    {
+      "signature": "pub struct Psu11"
+    }
+  ],
+  "crates/pure_math/src/pure_math/hyperbolic/mod.rs": [
+    {
+      "signature": "pub enum HyperbolicError"
+    },
+    {
+      "signature": "pub use billiards :: BilliardDomainKind"
+    },
+    {
+      "signature": "pub use billiards :: BilliardTable"
+    },
+    {
+      "signature": "pub use billiards :: GeodesicRay"
+    },
+    {
+      "signature": "pub use billiards :: GeodesicSegment"
+    },
+    {
+      "signature": "pub use billiards :: MAX_BILLIARD_SEGMENTS"
+    },
+    {
+      "signature": "pub use billiards :: TwinBilliardSystem"
+    },
+    {
+      "signature": "pub use geodesic :: GeodesicDisk"
+    },
+    {
+      "signature": "pub use geodesic :: GeodesicHalfPlane"
+    },
+    {
+      "signature": "pub use geodesic :: HorocycleDisk"
+    },
+    {
+      "signature": "pub use geodesic :: HorocycleHalfPlane"
+    },
+    {
+      "signature": "pub use geodesic :: gauss_bonnet_polygon_area"
+    },
+    {
+      "signature": "pub use geodesic :: hyperbolic_polygon_angles"
+    },
+    {
+      "signature": "pub use geodesic :: sample_disk_geodesic_into"
+    },
+    {
+      "signature": "pub use geodesic :: sample_half_plane_geodesic_into"
+    },
+    {
+      "signature": "pub use isometry :: CircleInversion"
+    },
+    {
+      "signature": "pub use isometry :: Psl2R"
+    },
+    {
+      "signature": "pub use isometry :: Psu11"
+    },
+    {
+      "signature": "pub use models :: DiskPoint"
+    },
+    {
+      "signature": "pub use models :: HalfPlanePoint"
+    },
+    {
+      "signature": "pub use models :: MAX_DISK_MODULUS"
+    },
+    {
+      "signature": "pub use models :: cayley_boundary_to_real"
+    },
+    {
+      "signature": "pub use models :: cayley_complex_to_half_plane_clamped"
+    },
+    {
+      "signature": "pub use models :: cayley_disk_to_half_plane"
+    },
+    {
+      "signature": "pub use models :: cayley_half_plane_to_disk"
+    },
+    {
+      "signature": "pub use models :: hyperbolic_distance_disk"
+    },
+    {
+      "signature": "pub use models :: hyperbolic_distance_half_plane"
+    },
+    {
+      "signature": "pub use tiling :: HyperbolicTilingBuffer"
+    },
+    {
+      "signature": "pub use tiling :: MAX_POLYGON_VERTICES"
+    },
+    {
+      "signature": "pub use tiling :: MAX_TILING_DEPTH"
+    },
+    {
+      "signature": "pub use tiling :: MAX_TILING_POLYGONS"
+    },
+    {
+      "signature": "pub use tiling :: TiledPolygon"
+    },
+    {
+      "signature": "pub use tiling :: TilingKind"
+    },
+    {
+      "signature": "pub use tiling :: central_polygon_radius"
+    },
+    {
+      "signature": "pub use tiling :: ideal_polygon_vertices"
+    },
+    {
+      "signature": "pub use tiling :: regular_polygon_vertices"
+    },
+    {
+      "signature": "pub use tiling :: validate_hyperbolic_schlafli"
+    }
+  ],
+  "crates/pure_math/src/pure_math/hyperbolic/models.rs": [
+    {
+      "signature": "impl DiskPoint { pub fn as_complex (self) -> Complex64 }"
+    },
+    {
+      "signature": "impl DiskPoint { pub fn from_complex (z : Complex64) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl DiskPoint { pub fn from_complex_clamped (z : Complex64) -> Self }"
+    },
+    {
+      "signature": "impl DiskPoint { pub fn im (self) -> f64 }"
+    },
+    {
+      "signature": "impl DiskPoint { pub fn modulus (self) -> f64 }"
+    },
+    {
+      "signature": "impl DiskPoint { pub fn new (re : f64 , im : f64) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl DiskPoint { pub fn new_clamped (re : f64 , im : f64) -> Self }"
+    },
+    {
+      "signature": "impl DiskPoint { pub fn norm_sq (self) -> f64 }"
+    },
+    {
+      "signature": "impl DiskPoint { pub fn origin () -> Self }"
+    },
+    {
+      "signature": "impl DiskPoint { pub fn re (self) -> f64 }"
+    },
+    {
+      "signature": "impl HalfPlanePoint { pub fn as_complex (self) -> Complex64 }"
+    },
+    {
+      "signature": "impl HalfPlanePoint { pub fn base_i () -> Self }"
+    },
+    {
+      "signature": "impl HalfPlanePoint { pub fn from_complex (w : Complex64) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl HalfPlanePoint { pub fn im (self) -> f64 }"
+    },
+    {
+      "signature": "impl HalfPlanePoint { pub fn new (re : f64 , im : f64) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl HalfPlanePoint { pub fn new_clamped (re : f64 , im : f64) -> Self }"
+    },
+    {
+      "signature": "impl HalfPlanePoint { pub fn re (self) -> f64 }"
+    },
+    {
+      "signature": "pub const MAX_DISK_MODULUS : f64 = 1.0 - 1.0e-6"
+    },
+    {
+      "signature": "pub fn cayley_boundary_to_real (z_unit : Complex64) -> Option < f64 >"
+    },
+    {
+      "signature": "pub fn cayley_complex_to_half_plane_clamped (z : Complex64) -> Complex64"
+    },
+    {
+      "signature": "pub fn cayley_disk_to_half_plane (p : DiskPoint) -> HalfPlanePoint"
+    },
+    {
+      "signature": "pub fn cayley_half_plane_to_disk (q : HalfPlanePoint) -> DiskPoint"
+    },
+    {
+      "signature": "pub fn hyperbolic_distance_disk (p1 : DiskPoint , p2 : DiskPoint) -> f64"
+    },
+    {
+      "signature": "pub fn hyperbolic_distance_half_plane (q1 : HalfPlanePoint , q2 : HalfPlanePoint) -> f64"
+    },
+    {
+      "signature": "pub struct DiskPoint"
+    },
+    {
+      "signature": "pub struct HalfPlanePoint"
+    }
+  ],
+  "crates/pure_math/src/pure_math/hyperbolic/tiling.rs": [
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn depth (& self) -> usize }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn kind (& self) -> TilingKind }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn new (kind : TilingKind , depth : usize) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn polygons (& self) -> & [TiledPolygon] }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn rebuild (& mut self , kind : TilingKind , depth : usize) -> Result < usize , HyperbolicError > }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn transform_into (& self , isometry : Psu11 , out : & mut [TiledPolygon]) -> usize }"
+    },
+    {
+      "signature": "impl TiledPolygon { pub fn active_vertices (& self) -> & [Complex64] }"
+    },
+    {
+      "signature": "pub const MAX_POLYGON_VERTICES : usize = 16"
+    },
+    {
+      "signature": "pub const MAX_TILING_DEPTH : usize = 5"
+    },
+    {
+      "signature": "pub const MAX_TILING_POLYGONS : usize = 512"
+    },
+    {
+      "signature": "pub enum TilingKind"
+    },
+    {
+      "signature": "pub fn central_polygon_radius (p : u32 , q : u32) -> Result < f64 , HyperbolicError >"
+    },
+    {
+      "signature": "pub fn ideal_polygon_vertices (sides : u32) -> Result < Vec < Complex64 > , HyperbolicError >"
+    },
+    {
+      "signature": "pub fn regular_polygon_vertices (p : u32 , q : u32) -> Result < Vec < Complex64 > , HyperbolicError >"
+    },
+    {
+      "signature": "pub fn validate_hyperbolic_schlafli (p : u32 , q : u32) -> Result < () , HyperbolicError >"
+    },
+    {
+      "signature": "pub struct HyperbolicTilingBuffer"
+    },
+    {
+      "signature": "pub struct TiledPolygon"
+    }
+  ],
   "crates/pure_math/src/pure_math/logic.rs": [
     {
       "signature": "pub fn exists < I , F > (domain : I , p : F) -> bool where I : Iterator , F : Fn (I :: Item) -> bool ,"
