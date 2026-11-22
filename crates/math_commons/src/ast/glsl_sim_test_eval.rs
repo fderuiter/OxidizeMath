@@ -109,10 +109,12 @@ fn parse_scalar_unary(cur: &mut StrCursor<'_>, vars: &HashMap<&str, f32>) -> f32
     }
     let ident = cur.read_ident();
     if cur.eat(b'(') {
-        let a = parse_scalar_add(cur, vars);
-        let b = cur.eat(b',').then(|| parse_scalar_add(cur, vars));
+        let mut args = vec![parse_scalar_add(cur, vars)];
+        while cur.eat(b',') {
+            args.push(parse_scalar_add(cur, vars));
+        }
         assert!(cur.eat(b')'));
-        apply_scalar_fn(ident, a, b)
+        apply_scalar_fn(ident, &args)
     } else {
         *vars
             .get(ident)
@@ -120,43 +122,76 @@ fn parse_scalar_unary(cur: &mut StrCursor<'_>, vars: &HashMap<&str, f32>) -> f32
     }
 }
 
-fn apply_scalar_fn(name: &str, a: f32, b: Option<f32>) -> f32 {
-    match (name, b) {
-        ("glsl_div", Some(rhs)) => {
+fn apply_scalar_fn(name: &str, args: &[f32]) -> f32 {
+    if let &[a] = args {
+        return apply_scalar_unary_fn(name, a);
+    }
+    match (name, args) {
+        ("glsl_div", &[a, rhs]) => {
             if rhs.abs() < 1.0e-12 {
                 0.0
             } else {
                 a / rhs
             }
         }
-        ("glsl_pow", Some(rhs)) => sim_glsl_pow(a, rhs),
-        ("sin", None) => a.sin(),
-        ("cos", None) => a.cos(),
-        ("tan", None) => a.tan(),
-        ("glsl_exp", None) => a.clamp(-80.0, 80.0).exp(),
-        ("glsl_ln", None) => {
+        ("glsl_pow", &[a, rhs]) => sim_glsl_pow(a, rhs),
+        ("min", &[a, b]) => a.min(b),
+        ("max", &[a, b]) => a.max(b),
+        ("glsl_atan2", &[y, x]) => sim_carg([x, y]),
+        ("glsl_clamp", &[x, lo, hi]) => {
+            if lo > hi {
+                0.0
+            } else {
+                x.clamp(lo, hi)
+            }
+        }
+        _ => panic!("Unsupported scalar call {name} with {} args", args.len()),
+    }
+}
+
+fn apply_scalar_unary_fn(name: &str, a: f32) -> f32 {
+    match name {
+        "sin" => a.sin(),
+        "cos" => a.cos(),
+        "tan" => a.tan(),
+        "glsl_exp" => a.clamp(-80.0, 80.0).exp(),
+        "glsl_ln" => {
             if a <= 1.0e-12 {
                 -27.631_021
             } else {
                 a.ln()
             }
         }
-        ("glsl_log10", None) => {
+        "glsl_log10" => {
             if a <= 1.0e-12 {
                 -12.0
             } else {
                 a.ln() * std::f32::consts::LOG10_E
             }
         }
-        ("glsl_sqrt", None) => a.max(0.0).sqrt(),
-        ("abs", None) => a.abs(),
-        ("glsl_sinh", None) => a.clamp(-80.0, 80.0).sinh(),
-        ("glsl_cosh", None) => a.clamp(-80.0, 80.0).cosh(),
-        ("tanh", None) => a.tanh(),
-        ("glsl_asin", None) => a.clamp(-1.0, 1.0).asin(),
-        ("glsl_acos", None) => a.clamp(-1.0, 1.0).acos(),
-        ("atan", None) => a.atan(),
-        _ => panic!("Unsupported scalar call {name}"),
+        "glsl_sqrt" => a.max(0.0).sqrt(),
+        "abs" => a.abs(),
+        "glsl_sinh" => a.clamp(-80.0, 80.0).sinh(),
+        "glsl_cosh" => a.clamp(-80.0, 80.0).cosh(),
+        "tanh" => a.tanh(),
+        "glsl_asin" => a.clamp(-1.0, 1.0).asin(),
+        "glsl_acos" => a.clamp(-1.0, 1.0).acos(),
+        "atan" => a.atan(),
+        "glsl_step" => {
+            if a < 0.0 {
+                0.0
+            } else {
+                1.0
+            }
+        }
+        "glsl_rect" => {
+            if a.abs() <= 0.5 {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        _ => panic!("Unsupported unary scalar call {name}"),
     }
 }
 
@@ -227,10 +262,12 @@ fn parse_complex_unary(cur: &mut StrCursor<'_>, z: [f32; 2]) -> [f32; 2] {
         assert!(cur.eat(b')'));
         return [re, im];
     }
-    let a = parse_complex_add(cur, z);
-    let b = cur.eat(b',').then(|| parse_complex_add(cur, z));
+    let mut args = vec![parse_complex_add(cur, z)];
+    while cur.eat(b',') {
+        args.push(parse_complex_add(cur, z));
+    }
     assert!(cur.eat(b')'));
-    apply_complex_fn(ident, a, b)
+    apply_complex_fn(ident, &args)
 }
 
 fn sim_carg(z: [f32; 2]) -> f32 {
@@ -285,11 +322,14 @@ fn sim_csqrt(z: [f32; 2]) -> [f32; 2] {
     [re, if z[1] < 0.0 { -im } else { im }]
 }
 
-fn apply_complex_fn(name: &str, a: [f32; 2], b: Option<[f32; 2]>) -> [f32; 2] {
-    match (name, b) {
-        ("cmul", Some(rhs)) => sim_cmul(a, rhs),
-        ("cdiv", Some(rhs)) => sim_cdiv(a, rhs),
-        ("cpow", Some(rhs)) => {
+fn apply_complex_fn(name: &str, args: &[[f32; 2]]) -> [f32; 2] {
+    if let &[a] = args {
+        return apply_complex_unary_fn(name, a);
+    }
+    match (name, args) {
+        ("cmul", &[a, rhs]) => sim_cmul(a, rhs),
+        ("cdiv", &[a, rhs]) => sim_cdiv(a, rhs),
+        ("cpow", &[a, rhs]) => {
             let r = a[0].hypot(a[1]);
             if r < 1.0e-12 {
                 if rhs[0].abs() < 1.0e-12 && rhs[1].abs() < 1.0e-12 {
@@ -301,40 +341,59 @@ fn apply_complex_fn(name: &str, a: [f32; 2], b: Option<[f32; 2]>) -> [f32; 2] {
                 sim_cexp(sim_cmul(rhs, [r.ln(), sim_carg(a)]))
             }
         }
-        ("cln", None) => sim_cln(a),
-        ("clog10", None) => {
+        ("cmin", &[a, b]) => [a[0].min(b[0]), 0.0],
+        ("cmax", &[a, b]) => [a[0].max(b[0]), 0.0],
+        ("catan2", &[y, x]) => [sim_carg([x[0], y[0]]), 0.0],
+        ("cclamp", &[x, lo, hi]) => [
+            if lo[0] > hi[0] {
+                0.0
+            } else {
+                x[0].clamp(lo[0], hi[0])
+            },
+            0.0,
+        ],
+        _ => panic!("Unsupported complex call {name} with {} args", args.len()),
+    }
+}
+
+fn apply_complex_unary_fn(name: &str, a: [f32; 2]) -> [f32; 2] {
+    match name {
+        "cln" => sim_cln(a),
+        "clog10" => {
             let l = sim_cln(a);
             [
                 l[0] * std::f32::consts::LOG10_E,
                 l[1] * std::f32::consts::LOG10_E,
             ]
         }
-        ("cexp", None) => sim_cexp(a),
-        ("csqrt", None) => sim_csqrt(a),
-        ("cabs", None) => [a[0].hypot(a[1]), 0.0],
-        ("csin", None) => [a[0].sin() * a[1].cosh(), a[0].cos() * a[1].sinh()],
-        ("ccos", None) => [a[0].cos() * a[1].cosh(), -a[0].sin() * a[1].sinh()],
-        ("ctan", None) => sim_cdiv(
+        "cexp" => sim_cexp(a),
+        "csqrt" => sim_csqrt(a),
+        "cabs" => [a[0].hypot(a[1]), 0.0],
+        "csin" => [a[0].sin() * a[1].cosh(), a[0].cos() * a[1].sinh()],
+        "ccos" => [a[0].cos() * a[1].cosh(), -a[0].sin() * a[1].sinh()],
+        "ctan" => sim_cdiv(
             [a[0].sin() * a[1].cosh(), a[0].cos() * a[1].sinh()],
             [a[0].cos() * a[1].cosh(), -a[0].sin() * a[1].sinh()],
         ),
-        ("csinh", None) => [a[0].sinh() * a[1].cos(), a[0].cosh() * a[1].sin()],
-        ("ccosh", None) => [a[0].cosh() * a[1].cos(), a[0].sinh() * a[1].sin()],
-        ("ctanh", None) => sim_cdiv(
+        "csinh" => [a[0].sinh() * a[1].cos(), a[0].cosh() * a[1].sin()],
+        "ccosh" => [a[0].cosh() * a[1].cos(), a[0].sinh() * a[1].sin()],
+        "ctanh" => sim_cdiv(
             [a[0].sinh() * a[1].cos(), a[0].cosh() * a[1].sin()],
             [a[0].cosh() * a[1].cos(), a[0].sinh() * a[1].sin()],
         ),
-        ("casin", None) => sim_casin(a),
-        ("cacos", None) => {
+        "casin" => sim_casin(a),
+        "cacos" => {
             let s = sim_casin(a);
             [std::f32::consts::FRAC_PI_2 - s[0], -s[1]]
         }
-        ("catan", None) => {
+        "catan" => {
             let d1 = sim_cln([1.0 + a[1], -a[0]]);
             let d2 = sim_cln([1.0 - a[1], a[0]]);
             [-0.5 * (d1[1] - d2[1]), 0.5 * (d1[0] - d2[0])]
         }
-        _ => panic!("Unsupported complex call {name}"),
+        "cstep" => [if a[0] < 0.0 { 0.0 } else { 1.0 }, 0.0],
+        "crect" => [if a[0].abs() <= 0.5 { 1.0 } else { 0.0 }, 0.0],
+        _ => panic!("Unsupported unary complex call {name}"),
     }
 }
 

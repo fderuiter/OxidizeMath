@@ -156,7 +156,15 @@ fn test_complex_mapping_custom_ast_high_contrast_and_error_handling() {
     assert!(webgl2.contains("const bool HIGH_CONTRAST = true;"));
     assert!(webgl2.contains("ensure_dark_canvas_contrast"));
 
-    tool.math_input.set_expression("z + unknown_var");
+    tool.math_input.set_expression("z + a^2 / z");
+    let mut params = std::collections::BTreeMap::new();
+    params.insert("a".to_string(), 0.85);
+    tool.math_input.set_params_map(&params);
+    let joukowsky = tool.export_glsl_shader(ShaderDialect::WebGl2Es300).unwrap();
+    assert!(joukowsky.contains("const vec2 a = vec2(0.85, 0.0);"));
+    assert!(joukowsky.contains("z + cdiv(cpow(a, vec2(2.0, 0.0)), z)"));
+
+    tool.math_input.set_expression("z + gl_FragCoord");
     let mut framework = SimulationFramework::new("__shader_err__");
     framework.active_tool = Some(Box::new(tool));
     let ctx = egui::Context::default();
@@ -169,8 +177,8 @@ fn test_complex_mapping_custom_ast_high_contrast_and_error_handling() {
     );
     let err_msg = framework.export_status_message.as_deref().unwrap_or("");
     assert!(
-        err_msg.contains("unknown_var"),
-        "Expected unbound var diagnostic, got `{err_msg}`"
+        err_msg.contains("gl_FragCoord"),
+        "Expected invalid GLSL identifier diagnostic, got `{err_msg}`"
     );
 }
 

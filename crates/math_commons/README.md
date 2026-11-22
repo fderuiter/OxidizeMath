@@ -10,7 +10,7 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 
 ### Module Structure
 
-- **`ast`**: Native expression lexer, parser, dynamic evaluator, LaTeX formatter, and iterative GLSL ES 3.00 transpiler (`ast::glsl`):
+- **`ast`**: Native mathematical expression lexer, parser, LaTeX formatter, zero-allocation postfix stack bytecode evaluator (`CompiledExpr`), and iterative GLSL ES 3.00 transpiler (`ast::glsl`) for real and complex formulas:
   - `Expr::to_glsl_scalar` / `Expr::to_glsl_scalar_with_vars`: Iterative `float` emitter with IEEE-safe helpers (`GLSL_SCALAR_HELPERS`).
   - `Expr::to_glsl_complex` / `Expr::to_glsl_complex_with_vars`: Iterative `vec2` complex emitter with branch-cut `cln`/`cpow`/`csqrt` and `cdiv` guards (`GLSL_COMPLEX_HELPERS`).
 - **`constants`**: Centralized registry of physical, astronomical, and mathematical constants:

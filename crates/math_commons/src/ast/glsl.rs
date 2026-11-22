@@ -2,6 +2,7 @@
 
 use super::eval::MAX_EVAL_DEPTH;
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
+use super::glsl_helpers::is_valid_glsl_ident;
 pub use super::glsl_helpers::{GLSL_COMPLEX_HELPERS, GLSL_SCALAR_HELPERS};
 use std::f64::consts::{E, PI, TAU};
 use std::fmt::Write;
@@ -47,61 +48,6 @@ enum GlslFrame<'a> {
     },
     Literal(&'static str),
 }
-
-const GLSL_KEYWORDS: &[&str] = &[
-    "attribute",
-    "bool",
-    "break",
-    "bvec2",
-    "bvec3",
-    "bvec4",
-    "case",
-    "centroid",
-    "const",
-    "continue",
-    "default",
-    "discard",
-    "do",
-    "else",
-    "false",
-    "flat",
-    "float",
-    "for",
-    "highp",
-    "if",
-    "in",
-    "inout",
-    "int",
-    "invariant",
-    "ivec2",
-    "ivec3",
-    "ivec4",
-    "layout",
-    "lowp",
-    "main",
-    "mat2",
-    "mat3",
-    "mat4",
-    "mediump",
-    "out",
-    "precision",
-    "return",
-    "smooth",
-    "struct",
-    "switch",
-    "true",
-    "uint",
-    "uniform",
-    "uvec2",
-    "uvec3",
-    "uvec4",
-    "varying",
-    "vec2",
-    "vec3",
-    "vec4",
-    "void",
-    "while",
-];
 
 impl Expr {
     /// Transpiles the expression to a scalar (`float`) GLSL ES 3.00 expression iteratively.
@@ -322,20 +268,26 @@ impl<'a> GlslEmitter<'a> {
         args: &'a [Expr],
         child_depth: usize,
     ) -> Result<(), GlslError> {
-        if args.len() != 1 {
+        let expected = func.arity();
+        if args.len() != expected {
             return Err(GlslError::WrongArgumentCount {
                 func,
-                expected: 1,
+                expected,
                 found: args.len(),
             });
         }
         self.out.push_str(glsl_func_prefix(func, self.mode));
         self.stack.push(GlslFrame::Literal(")"));
-        self.stack.push(GlslFrame::Eval {
-            expr: &args[0],
-            parent_prec: 0,
-            depth: child_depth,
-        });
+        for (idx, arg) in args.iter().enumerate().rev() {
+            self.stack.push(GlslFrame::Eval {
+                expr: arg,
+                parent_prec: 0,
+                depth: child_depth,
+            });
+            if idx > 0 {
+                self.stack.push(GlslFrame::Literal(", "));
+            }
+        }
         Ok(())
     }
 }
@@ -430,23 +382,6 @@ fn resolve_glsl_ident<'a>(
     }
 }
 
-fn is_valid_glsl_ident(name: &str) -> bool {
-    let mut chars = name.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    if !(first.is_ascii_alphabetic() || first == '_') {
-        return false;
-    }
-    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return false;
-    }
-    if name.starts_with("gl_") || name.contains("__") {
-        return false;
-    }
-    GLSL_KEYWORDS.binary_search(&name).is_err()
-}
-
 struct InfixSpec {
     sep: &'static str,
     prec: u8,
@@ -470,6 +405,12 @@ const fn glsl_func_prefix(func: Func, mode: GlslMode) -> &'static str {
         (GlslMode::Scalar, Func::Asin) => "glsl_asin(",
         (GlslMode::Scalar, Func::Acos) => "glsl_acos(",
         (GlslMode::Scalar, Func::Atan) => "atan(",
+        (GlslMode::Scalar, Func::Min) => "min(",
+        (GlslMode::Scalar, Func::Max) => "max(",
+        (GlslMode::Scalar, Func::Clamp) => "glsl_clamp(",
+        (GlslMode::Scalar, Func::Step) => "glsl_step(",
+        (GlslMode::Scalar, Func::Rect) => "glsl_rect(",
+        (GlslMode::Scalar, Func::Atan2) => "glsl_atan2(",
         (GlslMode::Complex, Func::Sin) => "csin(",
         (GlslMode::Complex, Func::Cos) => "ccos(",
         (GlslMode::Complex, Func::Tan) => "ctan(",
@@ -484,5 +425,11 @@ const fn glsl_func_prefix(func: Func, mode: GlslMode) -> &'static str {
         (GlslMode::Complex, Func::Asin) => "casin(",
         (GlslMode::Complex, Func::Acos) => "cacos(",
         (GlslMode::Complex, Func::Atan) => "catan(",
+        (GlslMode::Complex, Func::Min) => "cmin(",
+        (GlslMode::Complex, Func::Max) => "cmax(",
+        (GlslMode::Complex, Func::Clamp) => "cclamp(",
+        (GlslMode::Complex, Func::Step) => "cstep(",
+        (GlslMode::Complex, Func::Rect) => "crect(",
+        (GlslMode::Complex, Func::Atan2) => "catan2(",
     }
 }

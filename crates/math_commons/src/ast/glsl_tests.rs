@@ -76,6 +76,18 @@ fn test_glsl_precedence_associativity_and_no_decrement_token() {
             found: 2,
         })
     );
+    let bad_clamp = Expr::Function {
+        func: Func::Clamp,
+        args: vec![Expr::Number(1.0), Expr::Number(2.0)],
+    };
+    assert_eq!(
+        bad_clamp.to_glsl_scalar(),
+        Err(GlslError::WrongArgumentCount {
+            func: Func::Clamp,
+            expected: 3,
+            found: 2,
+        })
+    );
 }
 
 #[test]
@@ -115,25 +127,46 @@ fn test_glsl_iterative_depth_64_and_100k_node_chain_without_stack_overflow() {
     );
 }
 
+const SCALAR_PARITY_FORMULAS: &[&str] = &[
+    "sin(x)",
+    "cos(x)",
+    "tan(x)",
+    "exp(x)",
+    "ln(x)",
+    "log10(x)",
+    "sqrt(x)",
+    "abs(-x)",
+    "sinh(x)",
+    "cosh(x)",
+    "tanh(x)",
+    "asin(x)",
+    "acos(x)",
+    "atan(x)",
+    "min(x, k)",
+    "max(x, y)",
+    "clamp(t, -0.5, 0.8)",
+    "step(x) + step(y)",
+    "rect(x) + rect(t)",
+    "atan2(y, x)",
+    "-k * y * sin(t) + pi / tau + e",
+];
+
+const SCALAR_GUARDED_FORMULAS: &[&str] = &[
+    "1 / 0",
+    "ln(-2)",
+    "log10(0)",
+    "sqrt(-4)",
+    "asin(2)",
+    "acos(-2)",
+    "0^0",
+    "0^3",
+    "clamp(0.5, 2, -2)",
+    "atan2(0, 0)",
+    "atan2(0, -1)",
+];
+
 #[test]
-fn test_scalar_numerical_parity_across_all_14_funcs_and_guards() {
-    let formulas = [
-        "sin(x)",
-        "cos(x)",
-        "tan(x)",
-        "exp(x)",
-        "ln(x)",
-        "log10(x)",
-        "sqrt(x)",
-        "abs(-x)",
-        "sinh(x)",
-        "cosh(x)",
-        "tanh(x)",
-        "asin(x)",
-        "acos(x)",
-        "atan(x)",
-        "-k * y * sin(t) + pi / tau + e",
-    ];
+fn test_scalar_numerical_parity_across_all_20_funcs_and_guards() {
     let mut cpu_vars = HashMap::new();
     cpu_vars.insert("x".to_string(), 0.42_f64);
     cpu_vars.insert("k".to_string(), 1.7_f64);
@@ -146,7 +179,7 @@ fn test_scalar_numerical_parity_across_all_14_funcs_and_guards() {
         ("t", 1.25_f32),
     ]);
 
-    for src in formulas {
+    for &src in SCALAR_PARITY_FORMULAS {
         let ast = parse(src).unwrap();
         let cpu = ast.eval(&cpu_vars).unwrap() as f32;
         let glsl = ast.to_glsl_scalar_with_vars(&["x", "k", "y", "t"]).unwrap();
@@ -157,9 +190,7 @@ fn test_scalar_numerical_parity_across_all_14_funcs_and_guards() {
         );
     }
 
-    for guarded in [
-        "1 / 0", "ln(-2)", "log10(0)", "sqrt(-4)", "asin(2)", "acos(-2)", "0^0", "0^3",
-    ] {
+    for &guarded in SCALAR_GUARDED_FORMULAS {
         let glsl = parse(guarded).unwrap().to_glsl_scalar().unwrap();
         let gpu = eval_glsl_scalar(&glsl, &HashMap::new());
         assert!(
@@ -169,35 +200,42 @@ fn test_scalar_numerical_parity_across_all_14_funcs_and_guards() {
     }
 }
 
+const COMPLEX_PARITY_FORMULAS: &[&str] = &[
+    "sin(z)",
+    "cos(z)",
+    "tan(z)",
+    "exp(z)",
+    "ln(z)",
+    "log10(z)",
+    "sqrt(z)",
+    "abs(z)",
+    "sinh(z)",
+    "cosh(z)",
+    "tanh(z)",
+    "asin(z)",
+    "acos(z)",
+    "atan(z)",
+    "min(z, 0.5)",
+    "max(z, -0.5)",
+    "clamp(z, -1, 0.5)",
+    "step(z)",
+    "rect(z)",
+    "atan2(z, -0.5)",
+    "z^3 - 1/z",
+    "z + 1/z",
+    "sin(z) + z^2",
+    "z^i + pi * e / tau",
+];
+
 #[test]
-fn test_complex_numerical_parity_across_all_14_funcs_and_branch_cuts() {
-    let formulas = [
-        "sin(z)",
-        "cos(z)",
-        "tan(z)",
-        "exp(z)",
-        "ln(z)",
-        "log10(z)",
-        "sqrt(z)",
-        "abs(z)",
-        "sinh(z)",
-        "cosh(z)",
-        "tanh(z)",
-        "asin(z)",
-        "acos(z)",
-        "atan(z)",
-        "z^3 - 1/z",
-        "z + 1/z",
-        "sin(z) + z^2",
-        "z^i + pi * e / tau",
-    ];
+fn test_complex_numerical_parity_across_all_20_funcs_and_branch_cuts() {
     let samples = [
         Complex64::new(0.65, -0.35),
         Complex64::new(-1.15, 0.75),
         Complex64::new(-2.0, 0.0),
     ];
 
-    for src in formulas {
+    for &src in COMPLEX_PARITY_FORMULAS {
         let ast = parse(src).unwrap();
         let glsl = ast.to_glsl_complex_with_vars(&["z"]).unwrap();
         for z in samples {

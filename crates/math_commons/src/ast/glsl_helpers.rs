@@ -52,11 +52,30 @@ float glsl_asin(float x) {
 float glsl_acos(float x) {
     return acos(clamp(x, -1.0, 1.0));
 }
+
+float glsl_step(float x) {
+    return (x < 0.0) ? 0.0 : 1.0;
+}
+
+float glsl_rect(float x) {
+    return (abs(x) <= 0.5) ? 1.0 : 0.0;
+}
+
+float glsl_clamp(float x, float lo, float hi) {
+    return (lo > hi) ? 0.0 : clamp(x, lo, hi);
+}
+
+float glsl_atan2(float y, float x) {
+    if (abs(y) == 0.0) {
+        return (x < 0.0) ? 3.141592653589793 : 0.0;
+    }
+    return atan(y, x);
+}
 "#;
 
 /// Standalone GLSL ES 3.00 helper functions implementing `vec2` complex arithmetic,
 /// division-by-zero guards (`dot(b, b) < 1e-12`), principal branch-cut `cln`/`cpow`/`csqrt`,
-/// `clog10`, and all 14 built-in [`super::Func`] variants.
+/// `clog10`, and all 20 built-in [`super::Func`] variants.
 pub const GLSL_COMPLEX_HELPERS: &str = r#"vec2 cmul(vec2 a, vec2 b) {
     return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
 }
@@ -163,4 +182,100 @@ vec2 catan(vec2 z) {
     vec2 d = cln(one_minus_iz) - cln(one_plus_iz);
     return vec2(-0.5 * d.y, 0.5 * d.x);
 }
+
+vec2 cstep(vec2 z) {
+    return vec2((z.x < 0.0) ? 0.0 : 1.0, 0.0);
+}
+
+vec2 crect(vec2 z) {
+    return vec2((abs(z.x) <= 0.5) ? 1.0 : 0.0, 0.0);
+}
+
+vec2 cmin(vec2 a, vec2 b) {
+    return vec2(min(a.x, b.x), 0.0);
+}
+
+vec2 cmax(vec2 a, vec2 b) {
+    return vec2(max(a.x, b.x), 0.0);
+}
+
+vec2 cclamp(vec2 x, vec2 lo, vec2 hi) {
+    return vec2((lo.x > hi.x) ? 0.0 : clamp(x.x, lo.x, hi.x), 0.0);
+}
+
+vec2 catan2(vec2 y, vec2 x) {
+    return vec2(carg(vec2(x.x, y.x)), 0.0);
+}
 "#;
+
+const GLSL_KEYWORDS: &[&str] = &[
+    "attribute",
+    "bool",
+    "break",
+    "bvec2",
+    "bvec3",
+    "bvec4",
+    "case",
+    "centroid",
+    "const",
+    "continue",
+    "default",
+    "discard",
+    "do",
+    "else",
+    "false",
+    "flat",
+    "float",
+    "for",
+    "highp",
+    "if",
+    "in",
+    "inout",
+    "int",
+    "invariant",
+    "ivec2",
+    "ivec3",
+    "ivec4",
+    "layout",
+    "lowp",
+    "main",
+    "mat2",
+    "mat3",
+    "mat4",
+    "mediump",
+    "out",
+    "precision",
+    "return",
+    "smooth",
+    "struct",
+    "switch",
+    "true",
+    "uint",
+    "uniform",
+    "uvec2",
+    "uvec3",
+    "uvec4",
+    "varying",
+    "vec2",
+    "vec3",
+    "vec4",
+    "void",
+    "while",
+];
+
+pub(super) fn is_valid_glsl_ident(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return false;
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return false;
+    }
+    if name.starts_with("gl_") || name.contains("__") {
+        return false;
+    }
+    GLSL_KEYWORDS.binary_search(&name).is_err()
+}
