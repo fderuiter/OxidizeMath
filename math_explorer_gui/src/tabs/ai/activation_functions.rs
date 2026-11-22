@@ -1,18 +1,23 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::{bounded_drag_value, enforce_ordered_drag_range, InteractiveTool};
-use crate::reflective_ui::render_formula_with_export;
+use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, PlotPoints};
 use math_explorer::ai::deep_learning_theory::calculus::{
     gelu, gelu_prime, relu, relu_prime, sigmoid, sigmoid_prime, tanh, tanh_prime,
 };
 use math_explorer::ai::deep_learning_theory::linear_algebra::Vector;
+use std::collections::BTreeMap;
+
+#[path = "activation_functions/ui.rs"]
+mod ui;
 
 pub(crate) const ACTIVATION_X_MIN_BOUND: f64 = -100.0;
 pub(crate) const ACTIVATION_X_MAX_BOUND: f64 = 100.0;
-const ACTIVATION_MIN_SPAN: f64 = 0.1;
+pub(super) const ACTIVATION_MIN_SPAN: f64 = 0.1;
 const GELU_ASYMPTOTIC_CUTOFF: f64 = 20.0;
+const CUSTOM_FD_STEP: f64 = 1e-5;
+const DEFAULT_ACTIVATION_EXPR: &str = "clamp(a * x, -1, 1)";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ActivationFunction {
@@ -20,6 +25,7 @@ pub(crate) enum ActivationFunction {
     Sigmoid,
     Tanh,
     Gelu,
+    Custom,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -29,6 +35,10 @@ struct ActivationFunctionsState {
     x_min: f64,
     x_max: f64,
     points: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    custom_expr: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    custom_params: BTreeMap<String, f64>,
 }
 
 pub struct ActivationFunctionsTool {
@@ -36,6 +46,7 @@ pub struct ActivationFunctionsTool {
     pub(crate) x_min: f64,
     pub(crate) x_max: f64,
     pub(crate) points: usize,
+    pub(crate) math_input: MathExpressionInputBar,
 }
 
 impl Default for ActivationFunctionsTool {
@@ -45,6 +56,17 @@ impl Default for ActivationFunctionsTool {
             x_min: -5.0,
             x_max: 5.0,
             points: 200,
+            math_input: MathExpressionInputBar::new(
+                "f(x)",
+                DEFAULT_ACTIVATION_EXPR,
+                vec![
+                    ("Parameterized HardTanh", "clamp(a * x, -1, 1)"),
+                    ("Leaky ReLU", "max(a * x, x)"),
+                    ("Swish / SiLU", "x / (1 + exp(-b * x))"),
+                    ("Step Threshold", "step(x - a)"),
+                ],
+            )
+            .with_axes(&["x"]),
         }
     }
 }
@@ -71,105 +93,33 @@ fn evaluate_guarded_gelu(x_vals: &[f64]) -> (Vec<f64>, Vec<f64>) {
 }
 
 impl ActivationFunctionsTool {
-    fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id =
-            crate::framework::scoped_panel_id(parent_ui, "activation_functions_controls");
-        crate::framework::PaneSidePanel::right(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Controls");
-            ui.separator();
-            ui.label("Select Activation Function:");
-            for (fn_kind, label) in [
-                (ActivationFunction::ReLU, "ReLU"),
-                (ActivationFunction::Sigmoid, "Sigmoid"),
-                (ActivationFunction::Tanh, "Tanh"),
-                (ActivationFunction::Gelu, "GELU"),
-            ] {
-                ui.radio_value(&mut self.selected_function, fn_kind, label);
-            }
-            self.draw_range_controls(ui);
-            self.draw_math_info(ui);
-        });
-    }
-
-    fn draw_range_controls(&mut self, ui: &mut egui::Ui) {
-        ui.separator();
-        ui.label("Plot Range");
-        let mut min_changed = false;
-        let mut max_changed = false;
-        ui.horizontal(|ui| {
-            ui.label("X Min:");
-            min_changed = ui
-                .add(bounded_drag_value(
-                    &mut self.x_min,
-                    ACTIVATION_X_MIN_BOUND..=ACTIVATION_X_MAX_BOUND,
-                    0.1,
-                ))
-                .changed();
-        });
-        ui.horizontal(|ui| {
-            ui.label("X Max:");
-            max_changed = ui
-                .add(bounded_drag_value(
-                    &mut self.x_max,
-                    ACTIVATION_X_MIN_BOUND..=ACTIVATION_X_MAX_BOUND,
-                    0.1,
-                ))
-                .changed();
-        });
-        enforce_ordered_drag_range(
-            &mut self.x_min,
-            &mut self.x_max,
-            ACTIVATION_X_MIN_BOUND,
-            ACTIVATION_X_MAX_BOUND,
-            ACTIVATION_MIN_SPAN,
-            min_changed,
-            max_changed,
-        );
-    }
-
-    fn draw_math_info(&self, ui: &mut egui::Ui) {
-        ui.separator();
-        ui.label("Math Info");
-        match self.selected_function {
-            ActivationFunction::ReLU => {
-                render_formula_with_export(ui, r"f(x) = \max(0, x)", Some("f(x) = max(0, x)"));
-                render_formula_with_export(
-                    ui,
-                    r"f'(x) = 1 \text{ if } x > 0 \text{ else } 0",
-                    Some("f'(x) = 1 if x > 0 else 0"),
-                );
-            }
-            ActivationFunction::Sigmoid => {
-                render_formula_with_export(
-                    ui,
-                    r"f(x) = \frac{1}{1 + e^{-x}}",
-                    Some("f(x) = 1 / (1 + e^(-x))"),
-                );
-                render_formula_with_export(
-                    ui,
-                    r"f'(x) = f(x)(1 - f(x))",
-                    Some("f'(x) = f(x) * (1 - f(x))"),
-                );
-            }
-            ActivationFunction::Tanh => {
-                render_formula_with_export(ui, r"f(x) = \tanh(x)", Some("f(x) = tanh(x)"));
-                render_formula_with_export(
-                    ui,
-                    r"f'(x) = 1 - \tanh^2(x)",
-                    Some("f'(x) = 1 - tanh^2(x)"),
-                );
-            }
-            ActivationFunction::Gelu => {
-                render_formula_with_export(
-                    ui,
-                    r"f(x) \approx 0.5x(1 + \tanh(\sqrt{2/\pi}(x + 0.044715x^3)))",
-                    Some("f(x) ≈ 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))"),
-                );
-            }
+    fn evaluate_custom_curves(&self, x_vals: &[f64]) -> (Vec<f64>, Vec<f64>) {
+        let Some(compiled) = self.math_input.active_compiled() else {
+            return (vec![0.0; x_vals.len()], vec![0.0; x_vals.len()]);
+        };
+        let params = self.math_input.param_slice();
+        let mut y_out = Vec::with_capacity(x_vals.len());
+        let mut dy_out = Vec::with_capacity(x_vals.len());
+        for &x in x_vals {
+            let y = compiled.eval_1d(x, params);
+            let y_plus = compiled.eval_1d(x + CUSTOM_FD_STEP, params);
+            let y_minus = compiled.eval_1d(x - CUSTOM_FD_STEP, params);
+            let dy = (y_plus - y_minus) / (2.0 * CUSTOM_FD_STEP);
+            y_out.push(if y.is_finite() {
+                y.clamp(-1e6, 1e6)
+            } else {
+                f64::NAN
+            });
+            dy_out.push(if dy.is_finite() {
+                dy.clamp(-1e6, 1e6)
+            } else {
+                f64::NAN
+            });
         }
+        (y_out, dy_out)
     }
 
-    fn evaluate_curves(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
+    pub(crate) fn evaluate_curves(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
         if !self.has_finite_parameters() {
             return (Vec::new(), Vec::new());
         }
@@ -180,16 +130,20 @@ impl ActivationFunctionsTool {
 
         let (y_vals, dy_vals) = match self.selected_function {
             ActivationFunction::Gelu => evaluate_guarded_gelu(&x_vals),
+            ActivationFunction::Custom => self.evaluate_custom_curves(&x_vals),
             other => {
                 let x_vec = Vector::from_vec(x_vals.clone());
                 let (y_vec, dy_vec) = match other {
                     ActivationFunction::ReLU => (relu(&x_vec), relu_prime(&x_vec)),
                     ActivationFunction::Sigmoid => (sigmoid(&x_vec), sigmoid_prime(&x_vec)),
-                    ActivationFunction::Tanh | ActivationFunction::Gelu => {
-                        (tanh(&x_vec), tanh_prime(&x_vec))
-                    }
+                    ActivationFunction::Tanh
+                    | ActivationFunction::Gelu
+                    | ActivationFunction::Custom => (tanh(&x_vec), tanh_prime(&x_vec)),
                 };
-                (y_vec.iter().copied().collect(), dy_vec.iter().copied().collect())
+                (
+                    y_vec.iter().copied().collect(),
+                    dy_vec.iter().copied().collect(),
+                )
             }
         };
 
@@ -232,11 +186,21 @@ impl InteractiveTool for ActivationFunctionsTool {
     }
 
     fn save_state(&self) -> Option<String> {
+        let is_custom = self.selected_function == ActivationFunction::Custom;
+        let custom_expr = (is_custom || self.math_input.raw_text != DEFAULT_ACTIVATION_EXPR)
+            .then(|| self.math_input.raw_text.clone());
+        let custom_params = if is_custom {
+            self.math_input.params_map()
+        } else {
+            BTreeMap::new()
+        };
         serde_json::to_string(&ActivationFunctionsState {
             selected_function: self.selected_function,
             x_min: self.x_min,
             x_max: self.x_max,
             points: self.points,
+            custom_expr,
+            custom_params,
         })
         .ok()
     }
@@ -257,6 +221,13 @@ impl InteractiveTool for ActivationFunctionsTool {
         self.x_min = parsed.x_min;
         self.x_max = parsed.x_max;
         self.points = parsed.points;
+        self.math_input.set_expression(
+            parsed
+                .custom_expr
+                .as_deref()
+                .unwrap_or(DEFAULT_ACTIVATION_EXPR),
+        );
+        self.math_input.set_params_map(&parsed.custom_params);
         Ok(())
     }
 
@@ -309,6 +280,9 @@ impl scientific_metadata::theory::TheoryDescribable for ActivationFunctionsTool 
             ActivationFunction::Gelu => {
                 "Gaussian Error Linear Unit: $f(x) \\approx 0.5x(1 + \\tanh(\\sqrt{2/\\pi}(x + 0.044715x^3)))$".into()
             }
+            ActivationFunction::Custom => {
+                "Custom compiled neural activation $f(x)$ with central finite-difference gradient $f'(x)$".into()
+            }
         }
     }
 
@@ -340,6 +314,25 @@ const STARTER_PRESET_JSON: &str = r#"{
   }
 }"#;
 
+const CUSTOM_HARDTANH_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Parameterized HardTanh",
+    "domain": "ai",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "selected_function": "Custom",
+    "x_min": -4.0,
+    "x_max": 4.0,
+    "points": 200,
+    "custom_expr": "clamp(a * x, -1, 1)",
+    "custom_params": {
+      "a": 1.5
+    }
+  }
+}"#;
+
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "activation_functions_starter",
@@ -352,3 +345,20 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "activation_custom_hardtanh",
+        title: "Parameterized HardTanh",
+        description: "Piecewise saturated activation clamp(a*x, -1, 1) and finite-difference gradient f'(x).",
+        category: "Neural Architectures",
+        icon: "🧮",
+        domain: "ai",
+        tool_name: Some("ActivationFunctionsTool"),
+        preset_generator: || CUSTOM_HARDTANH_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+#[path = "activation_functions/tests.rs"]
+mod tests;

@@ -1,11 +1,22 @@
+use crate::framework::math_input::{
+    MathExpressionInputBar, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS,
+};
 use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use crate::presets::ReplicatorPresetConfig;
 use eframe::egui;
+use math_commons::ast::{CompiledExpr, Expr};
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
 use nalgebra::{DMatrix, DVector};
+use std::collections::{BTreeMap, BTreeSet};
 
+#[path = "replicator/presets.rs"]
+mod presets;
 #[path = "replicator/ui.rs"]
 mod ui;
+
+#[cfg(test)]
+#[path = "replicator/tests.rs"]
+mod tests;
 
 pub struct ReplicatorDynamicsTool {
     payoff_matrix: DMatrix<f64>,
@@ -19,12 +30,22 @@ pub struct ReplicatorDynamicsTool {
     is_playing: bool,
     playback_speed: f64,
     callout_manager: CalloutManager,
+    symbolic_mode: bool,
+    symbolic_bars: Vec<Vec<MathExpressionInputBar>>,
+    last_valid_exprs: Vec<Vec<Expr>>,
+    symbolic_compiled: Vec<Vec<Option<CompiledExpr>>>,
+    symbolic_sliders: ParameterSliderBank,
+    symbolic_error: Option<String>,
 }
 
 impl Default for ReplicatorDynamicsTool {
     fn default() -> Self {
         let payoff = DMatrix::from_row_slice(2, 2, &[-1.0, 2.0, 0.0, 1.0]);
         let init = DVector::from_vec(vec![0.1, 0.9]);
+        let (bars, exprs) = build_static_symbolic_grid(presets::HAWK_DOVE_FORMULAS);
+        let rows = bars.len();
+        let mut sliders = ParameterSliderBank::new().with_range(-5.0..=10.0, 2.0);
+        sliders.set_params_map(&presets::default_hawk_dove_params());
         let mut tool = Self {
             payoff_matrix: payoff,
             initial_population: init,
@@ -37,14 +58,101 @@ impl Default for ReplicatorDynamicsTool {
             is_playing: false,
             playback_speed: 1.0,
             callout_manager: CalloutManager::new(),
+            symbolic_mode: false,
+            symbolic_bars: bars,
+            last_valid_exprs: exprs,
+            symbolic_compiled: vec![vec![None; rows]; rows],
+            symbolic_sliders: sliders,
+            symbolic_error: None,
         };
         tool.run_simulation();
         tool
     }
 }
 
+type SymbolicGrid = (Vec<Vec<MathExpressionInputBar>>, Vec<Vec<Expr>>);
+
+fn build_static_symbolic_grid(formulas: &[&[&str]]) -> SymbolicGrid {
+    let mut bars = Vec::with_capacity(formulas.len());
+    let mut exprs = Vec::with_capacity(formulas.len());
+    for row in formulas {
+        let mut bar_row = Vec::with_capacity(row.len());
+        let mut expr_row = Vec::with_capacity(row.len());
+        for &cell in *row {
+            let bar = MathExpressionInputBar::new("", cell, Vec::new())
+                .with_axes(&[])
+                .with_inline_sliders(false);
+            let expr = bar.expr().cloned().unwrap_or(Expr::Number(0.0));
+            bar_row.push(bar);
+            expr_row.push(expr);
+        }
+        bars.push(bar_row);
+        exprs.push(expr_row);
+    }
+    (bars, exprs)
+}
+
+fn build_dynamic_symbolic_grid(formulas: &[Vec<String>]) -> Result<SymbolicGrid, String> {
+    let mut bars = Vec::with_capacity(formulas.len());
+    let mut exprs = Vec::with_capacity(formulas.len());
+    for (i, row) in formulas.iter().enumerate() {
+        let mut bar_row = Vec::with_capacity(row.len());
+        let mut expr_row = Vec::with_capacity(row.len());
+        for (j, cell) in row.iter().enumerate() {
+            let bar = MathExpressionInputBar::new("", cell, Vec::new())
+                .with_axes(&[])
+                .with_inline_sliders(false);
+            let Some(expr) = bar.expr().cloned() else {
+                let reason = bar
+                    .error_message()
+                    .unwrap_or_else(|| "invalid expression".to_string());
+                return Err(format!("Invalid symbolic payoff at ({i}, {j}): {reason}"));
+            };
+            bar_row.push(bar);
+            expr_row.push(expr);
+        }
+        bars.push(bar_row);
+        exprs.push(expr_row);
+    }
+    Ok((bars, exprs))
+}
+
+fn compile_symbolic_exprs(
+    exprs: &[Vec<Expr>],
+    sliders: &mut ParameterSliderBank,
+) -> Result<Vec<Vec<Option<CompiledExpr>>>, String> {
+    let mut union_vars = BTreeSet::new();
+    for row in exprs {
+        for expr in row {
+            for v in expr.free_variables() {
+                union_vars.insert(v);
+            }
+        }
+    }
+    let discovered: Vec<String> = union_vars.into_iter().collect();
+    if discovered.len() > MAX_SYNTHESIZED_PARAMS {
+        return Err(format!(
+            "Payoff matrix defines {} free parameters (maximum {MAX_SYNTHESIZED_PARAMS})",
+            discovered.len()
+        ));
+    }
+    sliders.sync_names(&discovered);
+    let shared_refs: Vec<&str> = sliders.active_names().iter().map(String::as_str).collect();
+    let mut compiled_grid = Vec::with_capacity(exprs.len());
+    for row in exprs {
+        let mut compiled_row = Vec::with_capacity(row.len());
+        for expr in row {
+            let compiled = CompiledExpr::compile_with_vars_and_params(expr, &[], &shared_refs)
+                .map_err(|e| e.to_string())?;
+            compiled_row.push(Some(compiled));
+        }
+        compiled_grid.push(compiled_row);
+    }
+    Ok(compiled_grid)
+}
+
 impl ReplicatorDynamicsTool {
-    pub(crate) fn run_simulation(&mut self) {
+    pub(crate) fn recompute_trajectory_preserving_playback(&mut self) {
         let sum = self.initial_population.sum();
         if sum > 0.0 {
             self.initial_population /= sum;
@@ -64,8 +172,49 @@ impl ReplicatorDynamicsTool {
                     (t.is_finite() && avg.is_finite()).then_some([*t, avg])
                 })
                 .collect();
-            self.playback_time = 0.0;
-            self.is_playing = false;
+            self.playback_time = self.playback_time.clamp(0.0, self.time_horizon);
+        }
+    }
+
+    pub(crate) fn run_simulation(&mut self) {
+        self.recompute_trajectory_preserving_playback();
+        self.playback_time = 0.0;
+        self.is_playing = false;
+    }
+
+    pub(crate) fn sync_and_eval_symbolic_payoffs(&mut self) {
+        let rows = self.symbolic_bars.len();
+        for i in 0..rows {
+            for j in 0..self.symbolic_bars[i].len() {
+                if let Some(expr) = self.symbolic_bars[i][j].expr() {
+                    self.last_valid_exprs[i][j] = expr.clone();
+                }
+            }
+        }
+
+        match compile_symbolic_exprs(&self.last_valid_exprs, &mut self.symbolic_sliders) {
+            Ok(grid) => {
+                self.symbolic_compiled = grid;
+                self.symbolic_error = None;
+                self.evaluate_symbolic_matrix();
+            }
+            Err(err) => {
+                self.symbolic_error = Some(err);
+            }
+        }
+    }
+
+    pub(crate) fn evaluate_symbolic_matrix(&mut self) {
+        let params = self.symbolic_sliders.param_slice();
+        for (i, row) in self.symbolic_compiled.iter().enumerate() {
+            for (j, cell) in row.iter().enumerate() {
+                if let Some(compiled) = cell {
+                    let val = compiled.eval_slice(params);
+                    if val.is_finite() {
+                        self.payoff_matrix[(i, j)] = val.clamp(-1e4, 1e4);
+                    }
+                }
+            }
         }
     }
 
@@ -83,56 +232,6 @@ impl ReplicatorDynamicsTool {
     pub(crate) fn reset_playback(&mut self) {
         self.is_playing = false;
         self.playback_time = 0.0;
-    }
-
-    pub(crate) fn load_preset_hawk_dove(&mut self) {
-        self.payoff_matrix = DMatrix::from_row_slice(2, 2, &[-1.0, 2.0, 0.0, 1.0]);
-        self.initial_population = DVector::from_vec(vec![0.1, 0.9]);
-        self.strategy_names = vec!["Hawk".to_string(), "Dove".to_string()];
-        self.time_horizon = 20.0;
-        self.run_simulation();
-    }
-
-    pub(crate) fn load_preset_prisoners_dilemma(&mut self) {
-        self.payoff_matrix = DMatrix::from_row_slice(2, 2, &[3.0, 0.0, 5.0, 1.0]);
-        self.initial_population = DVector::from_vec(vec![0.9, 0.1]);
-        self.strategy_names = vec!["Cooperate".to_string(), "Defect".to_string()];
-        self.time_horizon = 10.0;
-        self.run_simulation();
-    }
-
-    pub(crate) fn load_preset_stag_hunt(&mut self) {
-        self.payoff_matrix = DMatrix::from_row_slice(2, 2, &[4.0, 0.0, 3.0, 2.0]);
-        self.initial_population = DVector::from_vec(vec![0.55, 0.45]);
-        self.strategy_names = vec!["Stag".to_string(), "Hare".to_string()];
-        self.time_horizon = 12.0;
-        self.run_simulation();
-    }
-
-    pub(crate) fn load_preset_rps(&mut self) {
-        self.payoff_matrix =
-            DMatrix::from_row_slice(3, 3, &[0.0, -1.0, 1.0, 1.0, 0.0, -1.0, -1.0, 1.0, 0.0]);
-        self.initial_population = DVector::from_vec(vec![0.50, 0.30, 0.20]);
-        self.strategy_names = vec![
-            "Rock".to_string(),
-            "Paper".to_string(),
-            "Scissors".to_string(),
-        ];
-        self.time_horizon = 40.0;
-        self.run_simulation();
-    }
-
-    pub(crate) fn load_preset_spiral_rps(&mut self) {
-        self.payoff_matrix =
-            DMatrix::from_row_slice(3, 3, &[0.0, -0.7, 1.0, 1.0, 0.0, -0.7, -0.7, 1.0, 0.0]);
-        self.initial_population = DVector::from_vec(vec![0.55, 0.25, 0.20]);
-        self.strategy_names = vec![
-            "Rock".to_string(),
-            "Paper".to_string(),
-            "Scissors".to_string(),
-        ];
-        self.time_horizon = 40.0;
-        self.run_simulation();
     }
 
     fn compute_oscillation_span(&self) -> f64 {
@@ -272,6 +371,16 @@ impl ReplicatorDynamicsTool {
             matrix.push(row);
         }
         let initial_pop: Vec<f64> = self.initial_population.iter().copied().collect();
+        let (symbolic_payoffs, symbolic_params) = if self.symbolic_mode {
+            let sym_rows = self
+                .symbolic_bars
+                .iter()
+                .map(|row| row.iter().map(|b| b.raw_text.trim().to_string()).collect())
+                .collect();
+            (Some(sym_rows), self.symbolic_sliders.export_active_map())
+        } else {
+            (None, BTreeMap::new())
+        };
 
         ReplicatorPresetConfig {
             payoff_matrix: matrix,
@@ -279,6 +388,8 @@ impl ReplicatorDynamicsTool {
             time_horizon: self.time_horizon,
             dt: self.dt,
             strategy_names: self.strategy_names.clone(),
+            symbolic_payoffs,
+            symbolic_params,
         }
     }
 
@@ -286,6 +397,23 @@ impl ReplicatorDynamicsTool {
         config.validate()?;
 
         let rows = config.payoff_matrix.len();
+        let mut sliders = ParameterSliderBank::new().with_range(-5.0..=10.0, 2.0);
+        let (sym_mode, bars, exprs, compiled) = if let Some(ref sym_rows) = config.symbolic_payoffs
+        {
+            let (bars, exprs) = build_dynamic_symbolic_grid(sym_rows)?;
+            sliders.set_params_map(&config.symbolic_params);
+            let compiled = compile_symbolic_exprs(&exprs, &mut sliders)?;
+            (true, bars, exprs, compiled)
+        } else {
+            let formatted: Vec<Vec<String>> = config
+                .payoff_matrix
+                .iter()
+                .map(|r| r.iter().map(|v| format!("{v}")).collect())
+                .collect();
+            let (bars, exprs) = build_dynamic_symbolic_grid(&formatted)?;
+            (false, bars, exprs, vec![vec![None; rows]; rows])
+        };
+
         let mut flat = Vec::with_capacity(rows * rows);
         for row in &config.payoff_matrix {
             flat.extend_from_slice(row);
@@ -296,60 +424,16 @@ impl ReplicatorDynamicsTool {
         self.time_horizon = config.time_horizon;
         self.dt = config.dt;
         self.strategy_names = config.strategy_names;
+        self.symbolic_mode = sym_mode;
+        self.symbolic_bars = bars;
+        self.last_valid_exprs = exprs;
+        self.symbolic_compiled = compiled;
+        self.symbolic_sliders = sliders;
+        self.symbolic_error = None;
+        if self.symbolic_mode {
+            self.evaluate_symbolic_matrix();
+        }
         self.run_simulation();
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_replicator_step_once_and_reset_playback() {
-        let mut tool = ReplicatorDynamicsTool::default();
-        assert!(!tool.is_playing);
-        assert_eq!(tool.playback_time, 0.0);
-
-        tool.step_once();
-        assert!(!tool.is_playing);
-        assert!((tool.playback_time - tool.dt).abs() < 1e-9);
-
-        tool.reset_playback();
-        assert!(!tool.is_playing);
-        assert_eq!(tool.playback_time, 0.0);
-    }
-
-    #[test]
-    fn test_prisoners_dilemma_mean_fitness_decline_and_stag_hunt() {
-        let mut tool = ReplicatorDynamicsTool::default();
-        tool.load_preset_prisoners_dilemma();
-        let obs = tool.observables();
-        let init_fit = obs.iter().find(|(k, _)| *k == "initial_mean_fitness").unwrap().1;
-        let final_fit = obs.iter().find(|(k, _)| *k == "final_mean_fitness").unwrap().1;
-        let x1_final = obs.iter().find(|(k, _)| *k == "x1_final").unwrap().1;
-        assert!(init_fit > 2.8 && final_fit < 1.05 && x1_final > 0.99);
-
-        tool.load_preset_stag_hunt();
-        let low_final = tool
-            .observables()
-            .into_iter()
-            .find(|(k, _)| *k == "x0_final")
-            .unwrap()
-            .1;
-        assert!(low_final < 0.05);
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "hawk_dove",
-        title: "Hawk-Dove Dynamics",
-        description: "ẋ_i = x_i((Ax)_i - xᵀAx): Evolutionary game model of conflict and resource competition.",
-        category: "Game Theory",
-        icon: "🦅",
-        domain: "game_theory",
-        tool_name: Some("ReplicatorDynamicsTool"),
-        preset_generator: || crate::starter_gallery::PRESET_HAWK_DOVE,
     }
 }
