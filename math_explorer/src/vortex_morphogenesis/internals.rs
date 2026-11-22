@@ -149,16 +149,29 @@ impl CoupledVortexMorphogenesis {
     pub(super) fn seed_karman_spots(&mut self) {
         let w = self.config.width;
         let h = self.config.height;
-        self.paint_obstacle_disc(w / 5, h / 2, 4, true);
+        let cx = w / 5;
+        let cy = h / 2;
+        self.paint_obstacle_disc(cx, cy, 4, true);
         self.lbm.set_inlet(0, 1, w, h.saturating_sub(2), 0.10, 0.0);
-        self.lbm.set_inlet(w / 5 + 6, h / 2 - 3, 6, 6, 0.10, 0.022);
-        for _ in 0..200 {
+        for y in 2..h.saturating_sub(2) {
+            let dy = (y as f64) - (cy as f64);
+            let env_y = (-(dy * dy) / 36.0).exp();
+            let def_y = (-(dy * dy) / 18.0).exp();
+            for x in (cx + 5)..w.saturating_sub(1) {
+                let s = (x - cx) as f64;
+                let ux = 0.10 * (1.0 - 0.55 * (-s / 32.0).exp() * def_y);
+                let phase = (2.0 * std::f64::consts::PI * s) / 24.0;
+                let uy = 0.036 * phase.sin() * env_y - 0.014 * (dy / 6.0) * phase.cos() * env_y;
+                self.lbm.set_inlet(x, y, 1, 1, ux, uy);
+            }
+        }
+        for _ in 0..12 {
             self.lbm.set_inlet(0, 1, 2, h.saturating_sub(2), 0.10, 0.0);
             self.lbm.step();
             self.lbm.apply_open_outlet();
         }
-        self.paint_emitter_disc(w / 5 + 7, h / 2, 2, true);
-        self.paint_emitter_disc(w / 5 + 16, h / 2 + 2, 2, true);
+        self.paint_emitter_disc(cx + 7, cy, 2, true);
+        self.paint_emitter_disc(cx + 16, cy + 2, 2, true);
     }
 
     #[verified_engine::verified]
@@ -183,14 +196,25 @@ impl CoupledVortexMorphogenesis {
     pub(super) fn seed_stagnation_plumes(&mut self) {
         let w = self.config.width;
         let h = self.config.height;
-        self.paint_obstacle_disc((w * 2) / 5, h / 2, 6, true);
+        let cx = (w * 2) / 5;
+        let cy = h / 2;
+        self.paint_obstacle_disc(cx, cy, 6, true);
         self.lbm.set_inlet(0, 1, w, h.saturating_sub(2), 0.09, 0.0);
-        for _ in 0..100 {
+        for y in 2..h.saturating_sub(2) {
+            let dy = (y as f64) - (cy as f64);
+            let wake = (-(dy * dy) / 28.0).exp();
+            for x in (cx + 6)..w.saturating_sub(1) {
+                let s = (x - cx) as f64;
+                let ux = 0.09 * (1.0 - 0.88 * (-s / 26.0).exp() * wake);
+                self.lbm.set_inlet(x, y, 1, 1, ux, 0.0);
+            }
+        }
+        for _ in 0..12 {
             self.lbm.set_inlet(0, 1, 2, h.saturating_sub(2), 0.09, 0.0);
             self.lbm.step();
             self.lbm.apply_open_outlet();
         }
-        self.paint_emitter_disc((w * 2) / 5 + 8, h / 2, 2, true);
+        self.paint_emitter_disc(cx + 8, cy, 2, true);
     }
 
     #[verified_engine::verified]

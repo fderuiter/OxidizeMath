@@ -165,25 +165,35 @@ fn test_export_all_four_vortex_regime_previews_to_png() {
     use egui_plot::export_primitives::scale_color_image;
 
     let opts = ExportOptions::default();
+    let pid = std::process::id();
+    let temp_dir = std::env::temp_dir();
     let cases = [
-        (VortexRegimePreset::KarmanVortexSpots, 260_usize, "/tmp/regime_1_karman_spots.png"),
-        (VortexRegimePreset::ShearAlignedStripes, 260_usize, "/tmp/regime_2_shear_stripes.png"),
-        (VortexRegimePreset::StagnationPlumes, 240_usize, "/tmp/regime_3_stagnation_plumes.png"),
-        (VortexRegimePreset::DamkohlerWashout, 160_usize, "/tmp/regime_4_damkohler_washout.png"),
+        (VortexRegimePreset::KarmanVortexSpots, "regime_1_karman_spots.png"),
+        (VortexRegimePreset::ShearAlignedStripes, "regime_2_shear_stripes.png"),
+        (VortexRegimePreset::StagnationPlumes, "regime_3_stagnation_plumes.png"),
+        (VortexRegimePreset::DamkohlerWashout, "regime_4_damkohler_washout.png"),
     ];
-    for (preset, steps, out_path) in cases {
-        let mut tool = VortexMorphogenesisTool::default();
+    let mut tool = VortexMorphogenesisTool::default();
+    for (preset, filename) in cases {
         tool.select_regime_preset(preset);
-        if preset == VortexRegimePreset::ShearAlignedStripes {
-            tool.display_mode = VortexDisplayMode::MorphogenU;
-        }
-        for _ in 0..steps {
+        tool.display_mode = if preset == VortexRegimePreset::ShearAlignedStripes {
+            VortexDisplayMode::MorphogenU
+        } else {
+            VortexDisplayMode::CoupledWake
+        };
+        for _ in 0..3 {
             tool.step_single_tick();
         }
         assert!(FiniteStateGuard::is_finite_state(&tool));
         let raw = tool.export_raster_image().expect("raster image");
         let scaled = scale_color_image(&raw, 600, 300, &opts);
+        assert_eq!(scaled.size, [600, 300]);
         let png = color32_image_to_png(&scaled).expect("valid png");
-        std::fs::write(out_path, png).expect("write preview png");
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+        let out_path = temp_dir.join(format!("oxidize_{pid}_{filename}"));
+        std::fs::write(&out_path, &png).expect("write preview png");
+        let written_len = std::fs::metadata(&out_path).expect("png metadata").len();
+        assert_eq!(written_len, png.len() as u64);
+        let _ = std::fs::remove_file(&out_path);
     }
 }

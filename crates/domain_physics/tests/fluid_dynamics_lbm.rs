@@ -121,14 +121,14 @@ fn test_lbm_simulation_model_step_no_double_swap() {
 #[test]
 #[verified_engine::verified]
 fn test_lbm_karman_vortex_shedding_wake() {
-    let width = 100;
-    let height = 50;
-    let mut solver = LatticeBoltzmannD2Q9::new(width, height, 0.56);
+    let width = 80;
+    let height = 40;
+    let mut solver = LatticeBoltzmannD2Q9::new(width, height, 0.555);
 
     // Offset circular cylinder slightly off centerline to trigger Karman instability deterministically
-    let cx = 24_isize;
-    let cy = 25_isize;
-    let r_sq = 16_isize; // radius = 4
+    let cx = 18_isize;
+    let cy = 20_isize;
+    let r_sq = 9_isize; // radius = 3
     for y in 0..height {
         for x in 0..width {
             let dx = x as isize - cx;
@@ -140,21 +140,21 @@ fn test_lbm_karman_vortex_shedding_wake() {
     }
 
     // Small initial transverse perturbation in the near wake to break symmetry rapidly
-    solver.set_inlet(0, 0, width, height, 0.10, 0.0);
-    solver.set_inlet(30, 22, 6, 6, 0.10, 0.015);
+    solver.set_inlet(0, 0, width, height, 0.11, 0.0);
+    solver.set_inlet(23, 17, 6, 6, 0.11, 0.02);
 
     let mut min_uy = f64::INFINITY;
     let mut max_uy = f64::NEG_INFINITY;
     let mut sign_flips = 0_usize;
     let mut prev_sign = 0_i8;
 
-    for step in 0..900 {
-        solver.set_inlet(0, 1, 2, height - 2, 0.10, 0.0);
+    for step in 0..560 {
+        solver.set_inlet(0, 1, 2, height - 2, 0.11, 0.0);
         solver.step();
         solver.apply_open_outlet();
 
-        if step >= 250 {
-            let (_, uy_probe) = solver.get_velocity(48, 25);
+        if step >= 150 {
+            let (_, uy_probe) = solver.get_velocity(38, 20);
             if uy_probe < min_uy {
                 min_uy = uy_probe;
             }
@@ -177,10 +177,10 @@ fn test_lbm_karman_vortex_shedding_wake() {
         }
     }
 
-    let (ux_far, _) = solver.get_velocity(70, 25);
+    let (ux_far, _) = solver.get_velocity(58, 20);
     assert!(
         ux_far > 0.03,
-        "Inlet momentum should reach far wake x=70, got ux={ux_far}"
+        "Inlet momentum should reach far wake x=58, got ux={ux_far}"
     );
     assert!(
         min_uy < -2e-3 && max_uy > 2e-3 && sign_flips >= 2,

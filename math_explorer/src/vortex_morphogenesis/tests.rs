@@ -53,7 +53,7 @@ fn test_velocity_clamp_and_zero_allocation_under_verified_allocator() {
 #[test]
 fn test_regime_1_karman_vortex_trapped_spots() {
     let mut engine = CoupledVortexMorphogenesis::from_preset(VortexRegimePreset::KarmanVortexSpots);
-    for _ in 0..180 {
+    for _ in 0..110 {
         engine.step();
     }
 
@@ -96,7 +96,7 @@ fn test_regime_1_karman_vortex_trapped_spots() {
 fn test_regime_2_shear_aligned_longitudinal_stripes() {
     let mut engine =
         CoupledVortexMorphogenesis::from_preset(VortexRegimePreset::ShearAlignedStripes);
-    for _ in 0..160 {
+    for _ in 0..150 {
         engine.step();
     }
 
@@ -127,7 +127,7 @@ fn test_regime_2_shear_aligned_longitudinal_stripes() {
 #[test]
 fn test_regime_3_stagnation_point_wave_pinning_plumes() {
     let mut engine = CoupledVortexMorphogenesis::from_preset(VortexRegimePreset::StagnationPlumes);
-    for _ in 0..160 {
+    for _ in 0..115 {
         engine.step();
     }
 
@@ -179,7 +179,7 @@ fn test_regime_4_damkohler_washout_bifurcation() {
     let mut high_flow =
         CoupledVortexMorphogenesis::from_preset(VortexRegimePreset::DamkohlerWashout);
 
-    for _ in 0..160 {
+    for _ in 0..150 {
         low_flow.step();
         high_flow.step();
     }

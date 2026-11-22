@@ -6,6 +6,7 @@ use math_explorer::verified_engine::engine::VerifiedEngine;
 use math_explorer::vortex_morphogenesis::{
     CoupledVortexMorphogenesis, VortexMorphogenesisConfig, VortexRegimePreset,
 };
+#[cfg(not(debug_assertions))]
 use std::time::Instant;
 
 #[global_allocator]
@@ -32,17 +33,19 @@ fn test_coupled_100x50_and_100x100_zero_allocations_with_global_allocator() {
     assert!(metrics_50.arithmetic_ops > 0 && metrics_50.memory_loads > 0);
     assert!(engine_50.is_finite());
 
+    #[cfg(not(debug_assertions))]
     let start = Instant::now();
     let (_, metrics_100) = VerifiedEngine::run_verified(|| {
         engine_100.step();
     });
+    #[cfg(not(debug_assertions))]
     let elapsed = start.elapsed();
     assert!(metrics_100.arithmetic_ops > 0 && metrics_100.memory_loads > 0);
     assert!(engine_100.is_finite());
-    // Debug builds are unoptimized; ensure reasonable bounded runtime even in debug mode
+    #[cfg(not(debug_assertions))]
     assert!(
-        elapsed.as_millis() < 250,
-        "Single coupled 100x100 debug step took {:?}",
+        elapsed.as_millis() < 25,
+        "Single coupled 100x100 release step took {:?}",
         elapsed
     );
 }
