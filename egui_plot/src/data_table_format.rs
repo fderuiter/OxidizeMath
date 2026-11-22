@@ -126,3 +126,46 @@ pub fn format_tsv(series: &[TableSeriesRef<'_>]) -> String {
         out
     }
 }
+
+/// Borrowed view of a non-empty plottable 3D world-coordinate series.
+#[derive(Clone, Copy)]
+pub struct TableSeriesRef3D<'a> {
+    pub name: &'a str,
+    pub points: &'a [[f64; 3]],
+    pub color: Color32,
+}
+
+impl TableSeriesRef3D<'_> {
+    pub(crate) fn display_name(&self, idx: usize) -> String {
+        let trimmed = self.name.trim();
+        if trimmed.is_empty() {
+            format!("Series {}", idx + 1)
+        } else {
+            trimmed.to_owned()
+        }
+    }
+}
+
+/// Serialize non-empty 3D world-coordinate series to full-precision tab-separated values (TSV).
+#[must_use]
+pub fn format_tsv_3d(series: &[TableSeriesRef3D<'_>]) -> String {
+    if series.is_empty() {
+        return String::from("X\tY\tZ\n");
+    }
+    if series.len() == 1 {
+        let mut out = String::from("X\tY\tZ\n");
+        for pt in series[0].points {
+            let _ = writeln!(out, "{}\t{}\t{}", pt[0], pt[1], pt[2]);
+        }
+        out
+    } else {
+        let mut out = String::from("Dataset\tX\tY\tZ\n");
+        for (idx, s) in series.iter().enumerate() {
+            let name = sanitize_tsv_label(&s.display_name(idx));
+            for pt in s.points {
+                let _ = writeln!(out, "{name}\t{}\t{}\t{}", pt[0], pt[1], pt[2]);
+            }
+        }
+        out
+    }
+}

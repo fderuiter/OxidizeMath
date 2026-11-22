@@ -1,6 +1,11 @@
-use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+#[path = "curvature_heatmap_ui.rs"]
+mod ui;
+
+use crate::framework::{Camera3D, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
-use egui_plot::{Line, PlotPoints};
+use egui_plot::LineStyle;
 use math_commons::math_kernel::colormap::mapped_gradient;
 use math_explorer::pure_math::differential_geometry::surface::{
     KleinBottle, ParametricSurface, Sphere, SurfaceAnalysis, Torus,
@@ -8,14 +13,14 @@ use math_explorer::pure_math::differential_geometry::surface::{
 use nalgebra::Point3;
 use std::f64::consts::PI;
 
-#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum SurfaceType {
     Sphere,
     Torus,
     KleinBottle,
 }
 
-#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum CurvatureType {
     Gaussian,
     Mean,
@@ -55,26 +60,25 @@ struct CurvatureHeatmapState {
     zoom: Option<f32>,
 }
 
+/// Interactive 3D parametric manifold Gaussian and mean curvature heatmap viewer.
 pub struct CurvatureHeatmap {
     surface_type: SurfaceType,
     curvature_type: CurvatureType,
-
-    // Parameters
     sphere_radius: f64,
     torus_major_radius: f64,
     torus_minor_radius: f64,
     klein_radius: f64,
-
-    // Resolution
     u_resolution: usize,
     v_resolution: usize,
-
-    // View
-    camera: Camera3D,
+    pub(crate) camera: Camera3D,
+    pub(crate) scene_builder: Scene3DBuilder,
+    curvature_grid: Vec<f64>,
+    surface_vertices: Vec<Point3<f64>>,
 }
 
 impl Default for CurvatureHeatmap {
     fn default() -> Self {
+        let camera = Camera3D::new(0.5, 0.5, 1.0);
         Self {
             surface_type: SurfaceType::Torus,
             curvature_type: CurvatureType::Gaussian,
@@ -84,112 +88,140 @@ impl Default for CurvatureHeatmap {
             klein_radius: 2.0,
             u_resolution: 30,
             v_resolution: 30,
-            camera: Camera3D::new(0.5, 0.5, 1.0),
+            camera,
+            scene_builder: Scene3DBuilder::new(camera),
+            curvature_grid: Vec::new(),
+            surface_vertices: Vec::new(),
         }
     }
 }
 
 impl CurvatureHeatmap {
-    /// Projects a 3D point to 2D based on rotation and zoom
-    fn project(&self, p: Point3<f64>) -> [f64; 2] {
-        self.camera.project(&[p.x, p.y, p.z])
-    }
-
-    /// Maps a curvature value to a color.
-    fn map_color(&self, value: f64, min_val: f64, max_val: f64) -> egui::Color32 {
+    fn map_color(value: f64, min_val: f64, max_val: f64) -> egui::Color32 {
         let rgb = mapped_gradient(value, min_val, max_val);
         egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
     }
 
-    fn generate_colored_lines<T: ParametricSurface>(
-        &self,
-        surface: &T,
-    ) -> Vec<(Vec<[f64; 2]>, egui::Color32)> {
-        let mut lines = Vec::new();
+    /// Populates `self.scene_builder` with world `Point3<f64>` curvature-colored grid segments.
+    pub fn populate_scene(&mut self, series_color: egui::Color32) {
+        self.scene_builder.begin(self.camera);
+        match self.surface_type {
+            SurfaceType::Sphere => {
+                let s = Sphere {
+                    radius: self.sphere_radius,
+                };
+                self.build_surface_segments(&s, series_color);
+            }
+            SurfaceType::Torus => {
+                let s = Torus {
+                    major_radius: self.torus_major_radius,
+                    minor_radius: self.torus_minor_radius,
+                };
+                self.build_surface_segments(&s, series_color);
+            }
+            SurfaceType::KleinBottle => {
+                let s = KleinBottle {
+                    radius: self.klein_radius,
+                };
+                self.build_surface_segments(&s, series_color);
+            }
+        }
+    }
 
-        let u_min = 0.0;
-        let u_max = 2.0 * PI;
-        let v_min = 0.0;
-        let v_max = 2.0 * PI;
+    fn sample_surface_grid<T: ParametricSurface>(&mut self, surface: &T) -> (f64, f64) {
+        let cols = self.v_resolution + 1;
+        let total = (self.u_resolution + 1) * cols;
+        self.curvature_grid.clear();
+        self.curvature_grid.reserve(total);
+        self.surface_vertices.clear();
+        self.surface_vertices.reserve(total);
 
-        // Collect all curvature values to find min/max for color mapping
-        let mut min_curvature = f64::INFINITY;
-        let mut max_curvature = f64::NEG_INFINITY;
+        let mut min_c = f64::INFINITY;
+        let mut max_c = f64::NEG_INFINITY;
+        let u_scale = 2.0 * PI / (self.u_resolution as f64);
+        let v_scale = 2.0 * PI / (self.v_resolution as f64);
 
-        let mut curvature_map = vec![vec![0.0; self.v_resolution + 1]; self.u_resolution + 1];
-
-        for (i, row) in curvature_map
-            .iter_mut()
-            .enumerate()
-            .take(self.u_resolution + 1)
-        {
-            let u = u_min + (u_max - u_min) * (i as f64 / self.u_resolution as f64);
-            for (j, item) in row.iter_mut().enumerate().take(self.v_resolution + 1) {
-                let v = v_min + (v_max - v_min) * (j as f64 / self.v_resolution as f64);
-
+        for i in 0..=self.u_resolution {
+            let u = (i as f64) * u_scale;
+            for j in 0..=self.v_resolution {
+                let v = (j as f64) * v_scale;
                 let c = match self.curvature_type {
                     CurvatureType::Gaussian => surface.gaussian_curvature(u, v),
                     CurvatureType::Mean => surface.mean_curvature(u, v),
                 };
-
-                *item = c;
-
-                if c < min_curvature {
-                    min_curvature = c;
-                }
-                if c > max_curvature {
-                    max_curvature = c;
-                }
+                min_c = min_c.min(c);
+                max_c = max_c.max(c);
+                self.curvature_grid.push(c);
+                self.surface_vertices.push(surface.position(u, v));
             }
         }
+        (min_c, max_c)
+    }
 
-        // Generate lines of constant u
+    fn build_surface_segments<T: ParametricSurface>(
+        &mut self,
+        surface: &T,
+        series_color: egui::Color32,
+    ) {
+        let (min_c, max_c) = self.sample_surface_grid(surface);
+        let cols = self.v_resolution + 1;
         for i in 0..self.u_resolution {
-            let u_start = u_min + (u_max - u_min) * (i as f64 / self.u_resolution as f64);
-            let u_end = u_min + (u_max - u_min) * ((i + 1) as f64 / self.u_resolution as f64);
-
             for j in 0..self.v_resolution {
-                let v_start = v_min + (v_max - v_min) * (j as f64 / self.v_resolution as f64);
-                let v_end = v_min + (v_max - v_min) * ((j + 1) as f64 / self.v_resolution as f64);
-
-                // Segment 1: u_start, v_start to u_start, v_end
-                let p1 = surface.position(u_start, v_start);
-                let p2 = surface.position(u_start, v_end);
-
-                let c1 = curvature_map[i][j];
-                let c2 = curvature_map[i][j + 1];
-                let avg_curvature = (c1 + c2) / 2.0;
-
-                lines.push((
-                    vec![self.project(p1), self.project(p2)],
-                    self.map_color(avg_curvature, min_curvature, max_curvature),
-                ));
-
-                // Segment 2: u_start, v_start to u_end, v_start
-                let p3 = surface.position(u_end, v_start);
-
-                let c3 = curvature_map[i + 1][j];
-                let avg_curvature2 = (c1 + c3) / 2.0;
-
-                lines.push((
-                    vec![self.project(p1), self.project(p3)],
-                    self.map_color(avg_curvature2, min_curvature, max_curvature),
-                ));
+                let idx = i * cols + j;
+                let p1 = self.surface_vertices[idx];
+                let p2 = self.surface_vertices[idx + 1];
+                let p3 = self.surface_vertices[idx + cols];
+                let c1 = self.curvature_grid[idx];
+                let col_v = Self::map_color(0.5 * (c1 + self.curvature_grid[idx + 1]), min_c, max_c);
+                let col_u =
+                    Self::map_color(0.5 * (c1 + self.curvature_grid[idx + cols]), min_c, max_c);
+                self.scene_builder.add_styled_segment(
+                    "Curvature Surface",
+                    [p1, p2],
+                    egui::Stroke::new(1.25_f32, col_v),
+                    LineStyle::Solid,
+                    true,
+                    false,
+                );
+                self.scene_builder.add_styled_segment(
+                    "Curvature Surface",
+                    [p1, p3],
+                    egui::Stroke::new(1.25_f32, col_u),
+                    LineStyle::Solid,
+                    true,
+                    false,
+                );
             }
         }
-
-        lines
+        self.scene_builder
+            .record_series("Curvature Surface", &self.surface_vertices, series_color);
     }
 }
 
 impl InteractiveTool for CurvatureHeatmap {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Curvature Heatmap"
     }
-
     fn domain(&self) -> &'static str {
         "geometry_topology"
+    }
+
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.surface_type.hash(&mut h);
+        self.curvature_type.hash(&mut h);
+        self.sphere_radius.to_bits().hash(&mut h);
+        self.torus_major_radius.to_bits().hash(&mut h);
+        self.torus_minor_radius.to_bits().hash(&mut h);
+        self.klein_radius.to_bits().hash(&mut h);
+        self.u_resolution.hash(&mut h);
+        self.v_resolution.hash(&mut h);
+        self.camera.hash_state(&mut h);
+        h.finish().max(1)
     }
 
     fn save_state(&self) -> Option<String> {
@@ -208,30 +240,10 @@ impl InteractiveTool for CurvatureHeatmap {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let loaded: CurvatureHeatmapState =
             serde_json::from_str(state).map_err(|e| format!("Invalid curvature state: {e}"))?;
-        if !loaded.sphere_radius.is_finite() || !(0.1..=5.0).contains(&loaded.sphere_radius) {
-            return Err(format!("sphere_radius out of range: {}", loaded.sphere_radius));
-        }
-        if !loaded.torus_major_radius.is_finite()
-            || !(1.0..=5.0).contains(&loaded.torus_major_radius)
-        {
-            return Err(format!(
-                "torus_major_radius out of range: {}",
-                loaded.torus_major_radius
-            ));
-        }
-        if !loaded.torus_minor_radius.is_finite()
-            || !(0.1..=2.0).contains(&loaded.torus_minor_radius)
-        {
-            return Err(format!(
-                "torus_minor_radius out of range: {}",
-                loaded.torus_minor_radius
-            ));
-        }
-        if !loaded.klein_radius.is_finite() || !(0.5..=5.0).contains(&loaded.klein_radius) {
-            return Err(format!("klein_radius out of range: {}", loaded.klein_radius));
-        }
+        validate_curvature_radii(&loaded)?;
         let max_res = math_commons::registry::MAX_GRID_SIZE;
         if !(10..=max_res).contains(&loaded.u_resolution)
             || !(10..=max_res).contains(&loaded.v_resolution)
@@ -257,102 +269,45 @@ impl InteractiveTool for CurvatureHeatmap {
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(ui, "curvature_heatmap_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
-            ui.heading("Curvature Heatmap");
-            ui.separator();
+        self.draw_side_panel(ui);
+        self.draw_viewport(ui);
+    }
 
-            ui.label("Select Surface:");
-            ui.horizontal(|ui| {
-                ui.radio_value(&mut self.surface_type, SurfaceType::Sphere, "Sphere");
-                ui.radio_value(&mut self.surface_type, SurfaceType::Torus, "Torus");
-                ui.radio_value(
-                    &mut self.surface_type,
-                    SurfaceType::KleinBottle,
-                    "Klein Bottle",
-                );
-            });
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
 
-            ui.separator();
-
-            ui.label("Select Curvature Type:");
-            ui.horizontal(|ui| {
-                ui.radio_value(
-                    &mut self.curvature_type,
-                    CurvatureType::Gaussian,
-                    "Gaussian",
-                );
-                ui.radio_value(&mut self.curvature_type, CurvatureType::Mean, "Mean");
-            });
-
-            ui.separator();
-
-            ui.collapsing("Parameters", |ui| match self.surface_type {
-                SurfaceType::Sphere => {
-                    ui.add(egui::Slider::new(&mut self.sphere_radius, 0.1..=5.0).text("Radius"));
-                }
-                SurfaceType::Torus => {
-                    ui.add(egui::Slider::new(&mut self.torus_major_radius, 1.0..=5.0).text("Major Radius (R)"));
-                    ui.add(egui::Slider::new(&mut self.torus_minor_radius, 0.1..=2.0).text("Minor Radius (r)"));
-                }
-                SurfaceType::KleinBottle => {
-                    ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
-                }
-            });
-
-            egui::CollapsingHeader::new("View")
-                .default_open(true)
-                .show(ui, |ui| self.camera.ui(ui));
-
-            ui.collapsing("Resolution", |ui| {
-                ui.add(egui::Slider::new(&mut self.u_resolution, 10..=math_commons::registry::MAX_GRID_SIZE).text("Grid Size U"));
-
-                ui.add(egui::Slider::new(&mut self.v_resolution, 10..=math_commons::registry::MAX_GRID_SIZE).text("Grid Size V"));
-            });
-        });
-
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            let lines = match self.surface_type {
-                SurfaceType::Sphere => {
-                    let surface = Sphere {
-                        radius: self.sphere_radius,
-                    };
-                    self.generate_colored_lines(&surface)
-                }
-                SurfaceType::Torus => {
-                    let surface = Torus {
-                        major_radius: self.torus_major_radius,
-                        minor_radius: self.torus_minor_radius,
-                    };
-                    self.generate_colored_lines(&surface)
-                }
-                SurfaceType::KleinBottle => {
-                    let surface = KleinBottle {
-                        radius: self.klein_radius,
-                    };
-                    self.generate_colored_lines(&surface)
-                }
-            };
-
-            Plot3DViewport::new("curvature_plot", 4.0)
-                .helper_text("Drag canvas or use WASD to orbit, scroll or Q/E to zoom, double-click or press R to reset view. Blue = Low Curvature, Red = High Curvature.")
-                .show(ui, &mut self.camera, |plot_ui| {
-                    for (i, (line_points, color)) in lines.into_iter().enumerate() {
-                        plot_ui.line(
-                            Line::new("", PlotPoints::new(line_points))
-                                .name(format!("line_{}", i))
-                                .color(color),
-                        );
-                    }
-                });
-        });
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
-// [cite:graph_parameters_rust]
+fn validate_curvature_radii(loaded: &CurvatureHeatmapState) -> Result<(), String> {
+    if !loaded.sphere_radius.is_finite() || !(0.1..=5.0).contains(&loaded.sphere_radius) {
+        return Err(format!("sphere_radius out of range: {}", loaded.sphere_radius));
+    }
+    if !loaded.torus_major_radius.is_finite() || !(1.0..=5.0).contains(&loaded.torus_major_radius) {
+        return Err(format!(
+            "torus_major_radius out of range: {}",
+            loaded.torus_major_radius
+        ));
+    }
+    if !loaded.torus_minor_radius.is_finite() || !(0.1..=2.0).contains(&loaded.torus_minor_radius) {
+        return Err(format!(
+            "torus_minor_radius out of range: {}",
+            loaded.torus_minor_radius
+        ));
+    }
+    if !loaded.klein_radius.is_finite() || !(0.5..=5.0).contains(&loaded.klein_radius) {
+        return Err(format!("klein_radius out of range: {}", loaded.klein_radius));
+    }
+    Ok(())
+}
 
+// [cite:graph_parameters_rust]
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -376,16 +331,25 @@ impl scientific_metadata::theory::TheoryDescribable for CurvatureHeatmap {
             CurvatureType::Mean => "mean curvature $H = \\frac{\\kappa_1 + \\kappa_2}{2} = \\frac{EN - 2FM + GL}{2(EG - F^2)}$",
         };
         format!(
-            "Differential geometry surface analysis evaluating {} on a parametric {}.",
-            curv_formula, surf_name
+            "Differential geometry surface analysis evaluating {curv_formula} on a parametric {surf_name}."
         )
     }
-    fn phonetic_description(&self) -> String { "Differential geometry surface curvature and Gauss-Bonnet theory".into() }
-    fn theory_citation(&self) -> String { "Differential Geometry of Curves and Surfaces (do Carmo, 2016)".into() }
+    fn phonetic_description(&self) -> String {
+        "Differential geometry surface curvature and Gauss-Bonnet theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Differential Geometry of Curves and Surfaces (do Carmo, 2016)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Gaussian".into(), "K = kappa_1 * kappa_2 intrinsic curvature invariant under isometries".into());
-        map.insert("Mean".into(), "H = (kappa_1 + kappa_2) / 2 extrinsic curvature related to minimal surfaces".into());
+        map.insert(
+            "Gaussian".into(),
+            "K = kappa_1 * kappa_2 intrinsic curvature invariant under isometries".into(),
+        );
+        map.insert(
+            "Mean".into(),
+            "H = (kappa_1 + kappa_2) / 2 extrinsic curvature related to minimal surfaces".into(),
+        );
         map
     }
 }
@@ -458,5 +422,6 @@ mod tests {
         let ctx = egui::Context::default();
         let _ = ctx.run(egui::RawInput::default(), |ctx| restored.show(ctx));
         assert!(!egui_plot::get_last_plot_datasets().is_empty());
+        assert!(!egui_plot::get_last_plot_datasets_3d().is_empty());
     }
 }

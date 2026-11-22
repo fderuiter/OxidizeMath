@@ -24,6 +24,7 @@ mod legend;
 mod memory;
 pub mod modal_lifecycle;
 mod plot_ui;
+pub mod sidecar_3d;
 mod transform;
 
 use std::{cmp::Ordering, ops::RangeInclusive, sync::Arc};
@@ -40,16 +41,17 @@ use emath::Float as _;
 pub use crate::{
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
     data_table::{
-        DataTableState, TableSeriesRef, data_table_clipboard_status_id, format_table_value,
-        format_tsv, poll_data_table_clipboard_status, series_share_x, show_data_table_modal,
+        DataTableState, TableSeriesRef, TableSeriesRef3D, data_table_clipboard_status_id,
+        format_table_value, format_tsv, format_tsv_3d, poll_data_table_clipboard_status,
+        series_share_x, show_data_table_modal, show_data_table_modal_3d,
     },
     export::{
         AspectRatioOption, ExportFrame, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
         color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard,
         copy_image_to_clipboard_with_callback, copy_text_to_clipboard,
-        copy_text_to_clipboard_with_callback, export_csv, export_custom_gif, export_custom_image,
-        export_custom_png, export_custom_svg, export_json, parse_csv, save_file_dialog,
-        trigger_import_csv_for_plot,
+        copy_text_to_clipboard_with_callback, export_csv, export_csv_3d, export_custom_gif,
+        export_custom_image, export_custom_png, export_custom_svg, export_json, export_json_3d,
+        parse_csv, save_file_dialog, trigger_import_csv_for_plot,
     },
     export_modal::{
         CallbackExportSource, ExportDataSource, ExportModalAction, ExportModalBindings,
@@ -72,6 +74,10 @@ pub use crate::{
     memory::{CanvasCallout, PlotMemory},
     modal_lifecycle::{ModalFrameContext, ModalLifecycle},
     plot_ui::PlotUi,
+    sidecar_3d::{
+        Plot3DSeries, Plot3DSeriesSidecar, append_last_plot_datasets_3d,
+        clear_last_plot_datasets_3d, format_world_coord, get_last_plot_datasets_3d,
+    },
     transform::{PlotBounds, PlotTransform},
 };
 
@@ -1197,6 +1203,7 @@ impl<'a> Plot<'a> {
             response,
             bounds_modifications: Vec::new(),
             plot_id,
+            sidecar_3d: None,
         };
 
         // Render persisted imported datasets as overlay items
@@ -1228,6 +1235,7 @@ impl<'a> Plot<'a> {
             mut response,
             last_plot_transform,
             bounds_modifications,
+            sidecar_3d,
             ..
         } = plot_ui;
 
@@ -1652,15 +1660,38 @@ impl<'a> Plot<'a> {
         let mut accessible_datasets: Vec<(String, Vec<[f64; 2]>, Color32)> = Vec::new();
         let mut extracted_primitives: Vec<ExportPrimitive> = Vec::new();
         for item in &items {
-            accessible_datasets.push((item.name().to_owned(), item.extract_points(), item.color()));
+            if sidecar_3d.is_none() {
+                accessible_datasets.push((
+                    item.name().to_owned(),
+                    item.extract_points(),
+                    item.color(),
+                ));
+            }
             extracted_primitives.extend(item.extract_export_primitives());
         }
+        let export_datasets_3d: Vec<(String, Vec<[f64; 3]>)> = if let Some(ref sidecar) = sidecar_3d
+        {
+            accessible_datasets = sidecar.accessible_datasets_2d();
+            if accessible_datasets.is_empty() {
+                for item in &items {
+                    accessible_datasets.push((
+                        item.name().to_owned(),
+                        item.extract_points(),
+                        item.color(),
+                    ));
+                }
+            }
+            sidecar.export_datasets_3d()
+        } else {
+            Vec::new()
+        };
         let export_datasets: Vec<(String, Vec<[f64; 2]>)> = accessible_datasets
             .iter()
             .filter(|(_, p, _)| !p.is_empty())
             .map(|(n, p, _)| (n.clone(), p.clone()))
             .collect();
         append_last_plot_datasets(&export_datasets);
+        append_last_plot_datasets_3d(&export_datasets_3d);
         append_last_plot_primitives(&extracted_primitives);
         // --- END EXTRACT DATASETS ---
 
@@ -1713,11 +1744,23 @@ impl<'a> Plot<'a> {
         Self::register_and_handle_viewport_keys(ui, &response, &mut mem, &viewport_key_cfg);
         register_plot_dataset_commands(ui.ctx(), &accessible_datasets, access_state.focused_item);
         if response.has_focus() {
-            handle_focused_plot_dataset_keys(ui, &accessible_datasets, &mut access_state);
+            handle_focused_plot_dataset_keys(
+                ui,
+                &accessible_datasets,
+                sidecar_3d.as_ref(),
+                &mut access_state,
+            );
         }
         let focused_point = response
             .has_focus()
-            .then(|| resolve_focused_plot_point(&items, &accessible_datasets, &mut access_state))
+            .then(|| {
+                resolve_focused_plot_point(
+                    &items,
+                    &accessible_datasets,
+                    sidecar_3d.as_ref(),
+                    &mut access_state,
+                )
+            })
             .flatten();
 
         let prepared = PreparedPlot {
@@ -1740,6 +1783,7 @@ impl<'a> Plot<'a> {
             plot_id,
             focused_point,
             persisted_tooltip: persisted_point_tooltip,
+            sidecar_3d: sidecar_3d.as_ref(),
         };
 
         let (plot_cursors, mut hovered_plot_item) = prepared.ui(ui, &response);
@@ -1917,13 +1961,22 @@ impl<'a> Plot<'a> {
                     access_state.export_modal.open = true;
                 }
                 if ui.button("Export CSV").clicked() {
-                    export::export_csv(&export_datasets);
+                    if !export_datasets_3d.is_empty() {
+                        export::export_csv_3d(&export_datasets_3d);
+                    } else {
+                        export::export_csv(&export_datasets);
+                    }
                 }
                 if ui.button("Export JSON").clicked() {
-                    export::export_json(&export_datasets);
+                    if !export_datasets_3d.is_empty() {
+                        export::export_json_3d(&export_datasets_3d);
+                    } else {
+                        export::export_json(&export_datasets);
+                    }
                 }
+                let has_tabular = !export_datasets_3d.is_empty() || !export_datasets.is_empty();
                 if ui
-                    .add_enabled(!export_datasets.is_empty(), egui::Button::new("Table View"))
+                    .add_enabled(has_tabular, egui::Button::new("Table View"))
                     .on_disabled_hover_text("No tabular data points available for this plot")
                     .clicked()
                 {
@@ -2068,14 +2121,25 @@ impl<'a> Plot<'a> {
 
         {
             let table_window_title = format_modal_title("Data Table", title.as_deref());
-            data_table::show_data_table_modal(
-                ui.ctx(),
-                plot_id,
-                &table_window_title,
-                &mut access_state.show_table,
-                &mut access_state.data_table,
-                &accessible_datasets,
-            );
+            if let Some(ref sidecar) = sidecar_3d {
+                data_table::show_data_table_modal_3d(
+                    ui.ctx(),
+                    plot_id,
+                    &table_window_title,
+                    &mut access_state.show_table,
+                    &mut access_state.data_table,
+                    sidecar.series(),
+                );
+            } else {
+                data_table::show_data_table_modal(
+                    ui.ctx(),
+                    plot_id,
+                    &table_window_title,
+                    &mut access_state.show_table,
+                    &mut access_state.data_table,
+                    &accessible_datasets,
+                );
+            }
         }
 
         {
@@ -2511,15 +2575,24 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {
-                export::export_csv(&export_datasets);
+                if !export_datasets_3d.is_empty() {
+                    export::export_csv_3d(&export_datasets_3d);
+                } else {
+                    export::export_csv(&export_datasets);
+                }
                 ui.close();
             }
             if ui.button("Export JSON").clicked() {
-                export::export_json(&export_datasets);
+                if !export_datasets_3d.is_empty() {
+                    export::export_json_3d(&export_datasets_3d);
+                } else {
+                    export::export_json(&export_datasets);
+                }
                 ui.close();
             }
+            let has_tabular = !export_datasets_3d.is_empty() || !export_datasets.is_empty();
             if ui
-                .add_enabled(!export_datasets.is_empty(), egui::Button::new("Table View"))
+                .add_enabled(has_tabular, egui::Button::new("Table View"))
                 .on_disabled_hover_text("No tabular data points available for this plot")
                 .clicked()
             {
@@ -2761,6 +2834,7 @@ struct FocusedPlotPoint {
     item_id: Id,
     series_name: String,
     point: PlotPoint,
+    world_point: Option<[f64; 3]>,
     color: Color32,
 }
 
@@ -3134,6 +3208,7 @@ fn register_plot_dataset_commands(
 fn handle_focused_plot_dataset_keys(
     ui: &Ui,
     accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    sidecar_3d: Option<&Plot3DSeriesSidecar>,
     access_state: &mut AccessState,
 ) {
     use crate::commands::{CommandRegistryData, CommandTrigger};
@@ -3182,15 +3257,32 @@ fn handle_focused_plot_dataset_keys(
     {
         changed |= step_focused_point_index(ui, pts.len(), &mut access_state.focused_point);
     }
-    if changed
-        && let Some((name, pts, _)) = accessible_datasets.get(access_state.focused_item)
-        && let Some(p) = pts.get(access_state.focused_point)
-    {
-        emit_plot_live_message(
-            ui.ctx(),
-            format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]),
-            false,
-        );
+    if changed {
+        if let Some(world) = sidecar_3d
+            .and_then(|s| s.series().get(access_state.focused_item))
+            .and_then(|s| {
+                s.world
+                    .get(access_state.focused_point)
+                    .map(|w| (&s.name, *w))
+            })
+        {
+            emit_plot_live_message(
+                ui.ctx(),
+                format!(
+                    "Dataset {}, Point X: {:.4}, Y: {:.4}, Z: {:.4}",
+                    world.0, world.1[0], world.1[1], world.1[2]
+                ),
+                false,
+            );
+        } else if let Some((name, pts, _)) = accessible_datasets.get(access_state.focused_item)
+            && let Some(p) = pts.get(access_state.focused_point)
+        {
+            emit_plot_live_message(
+                ui.ctx(),
+                format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]),
+                false,
+            );
+        }
     }
 }
 
@@ -3231,6 +3323,7 @@ fn step_focused_point_index(ui: &Ui, num_pts: usize, focused_point: &mut usize) 
 fn resolve_focused_plot_point<'a>(
     items: &[Box<dyn PlotItem + 'a>],
     accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    sidecar_3d: Option<&Plot3DSeriesSidecar>,
     access_state: &mut AccessState,
 ) -> Option<FocusedPlotPoint> {
     if accessible_datasets.is_empty() {
@@ -3252,6 +3345,9 @@ fn resolve_focused_plot_point<'a>(
         access_state.focused_point = pts.len().saturating_sub(1);
     }
     let pt = *pts.get(access_state.focused_point)?;
+    let world_point = sidecar_3d
+        .and_then(|s| s.series().get(access_state.focused_item))
+        .and_then(|s| s.world.get(access_state.focused_point).copied());
     let item_id = items
         .get(access_state.focused_item)
         .map_or_else(|| Id::new(name.as_str()), |it| it.id());
@@ -3259,6 +3355,7 @@ fn resolve_focused_plot_point<'a>(
         item_id,
         series_name: name.clone(),
         point: PlotPoint::new(pt[0], pt[1]),
+        world_point,
         color: *color,
     })
 }
@@ -3748,6 +3845,7 @@ struct PreparedPlot<'a> {
     plot_id: Id,
     focused_point: Option<FocusedPlotPoint>,
     persisted_tooltip: Option<a11y::PointTooltipState>,
+    sidecar_3d: Option<&'a Plot3DSeriesSidecar>,
 }
 
 impl PreparedPlot<'_> {
@@ -3804,19 +3902,25 @@ impl PreparedPlot<'_> {
         state: &a11y::PointTooltipState,
     ) -> (Vec<Cursor>, Option<Id>, Option<PlotPoint>) {
         let mut cursors = Vec::new();
-        if self.show_x {
-            cursors.push(Cursor::Vertical { x: state.point[0] });
-        }
-        if self.show_y {
-            cursors.push(Cursor::Horizontal { y: state.point[1] });
+        if !state.suppress_rulers && self.sidecar_3d.is_none() {
+            if self.show_x {
+                cursors.push(Cursor::Vertical { x: state.point[0] });
+            }
+            if self.show_y {
+                cursors.push(Cursor::Horizontal { y: state.point[1] });
+            }
         }
         a11y::show_snapped_point_tooltip(
             self.plot_area_response,
-            state.anchor_pos,
-            state.point,
-            &state.title,
-            &state.body_lines,
-            false,
+            a11y::SnappedTooltipArgs {
+                anchor_pos: state.anchor_pos,
+                point: state.point,
+                world_point: state.world_point,
+                suppress_rulers: state.suppress_rulers || self.sidecar_3d.is_some(),
+                title: &state.title,
+                body_lines: &state.body_lines,
+                announce_on_open: false,
+            },
         );
         (
             cursors,
@@ -3849,6 +3953,8 @@ impl PreparedPlot<'_> {
             transform: &self.transform,
             show_x: self.show_x,
             show_y: self.show_y,
+            sidecar_3d: self.sidecar_3d,
+            world_point: target.world_point,
         };
         let mut cursors = Vec::new();
         items::rulers_and_tooltip_at_value(
@@ -4087,6 +4193,8 @@ impl PreparedPlot<'_> {
             transform,
             show_x: *show_x,
             show_y: *show_y,
+            sidecar_3d: self.sidecar_3d,
+            world_point: None,
         };
 
         let mut cursors = Vec::new();
@@ -4101,7 +4209,7 @@ impl PreparedPlot<'_> {
                 label_formatter,
             );
             (Some(item.id()), point)
-        } else {
+        } else if self.sidecar_3d.is_none() {
             let value = transform.value_from_position(pointer);
             items::rulers_and_tooltip_at_value(
                 plot_area_response,
@@ -4111,6 +4219,8 @@ impl PreparedPlot<'_> {
                 &mut cursors,
                 label_formatter,
             );
+            (None, None)
+        } else {
             (None, None)
         };
 
@@ -4268,6 +4378,7 @@ thread_local! {
 /// Clears thread-local record of plot datasets from the current frame.
 pub fn clear_last_plot_datasets() {
     LAST_PLOT_DATASETS.with(|d| d.borrow_mut().clear());
+    clear_last_plot_datasets_3d();
     clear_last_plot_primitives();
 }
 

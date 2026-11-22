@@ -146,6 +146,10 @@ impl SimulationFramework {
             Ok(()) => {
                 if !self.is_diverged {
                     let active_name = self.active_tool.as_ref().map(|t| t.name());
+                    let plot_datasets_3d = egui_plot::get_last_plot_datasets_3d();
+                    if !plot_datasets_3d.is_empty() {
+                        self.current_valid_plot_datasets_3d = plot_datasets_3d;
+                    }
                     if !plot_datasets.is_empty() {
                         self.current_valid_plot_datasets = plot_datasets;
                         self.sync_state.datasets_owner_tool = active_name;

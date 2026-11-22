@@ -2,8 +2,13 @@
 
 #[path = "data_table_format.rs"]
 mod format;
+#[path = "data_table_3d.rs"]
+mod table_3d;
 
-pub use format::{TableSeriesRef, format_table_value, format_tsv, series_share_x};
+pub use format::{
+    TableSeriesRef, TableSeriesRef3D, format_table_value, format_tsv, format_tsv_3d, series_share_x,
+};
+pub use table_3d::show_data_table_modal_3d;
 
 use egui::{
     Align, Align2, Color32, Context, FontId, Id, Key, Modifiers, Rect, RichText, ScrollArea, Sense,

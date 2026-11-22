@@ -419,6 +419,61 @@ pub fn format_json(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
     json
 }
 
+/// Format 3D dataset world points `(X, Y, Z)` to CSV string.
+pub fn format_csv_3d(datasets: &[(String, Vec<[f64; 3]>)]) -> String {
+    let mut csv = String::from("Dataset,X,Y,Z\n");
+    for (name, pts) in datasets {
+        let escaped_name = escape_csv_field(name);
+        for p in pts {
+            csv.push_str(&format!("{escaped_name},{},{},{}\n", p[0], p[1], p[2]));
+        }
+    }
+    csv
+}
+
+/// Format 3D dataset world points `(x, y, z)` to JSON string.
+pub fn format_json_3d(datasets: &[(String, Vec<[f64; 3]>)]) -> String {
+    let mut json = String::from("[\n");
+    let mut first = true;
+    for (name, pts) in datasets {
+        let escaped_name = escape_json_string(name);
+        for p in pts {
+            if !first {
+                json.push_str(",\n");
+            }
+            first = false;
+            json.push_str(&format!(
+                "  {{\"dataset\": \"{}\", \"x\": {}, \"y\": {}, \"z\": {}}}",
+                escaped_name, p[0], p[1], p[2]
+            ));
+        }
+    }
+    json.push_str("\n]");
+    json
+}
+
+/// Export 3D dataset points to CSV with a custom filename and initiate download or file save dialog.
+pub fn export_csv_3d_filename(datasets: &[(String, Vec<[f64; 3]>)], filename: &str) {
+    let csv = format_csv_3d(datasets);
+    save_file_dialog(filename, csv.as_bytes(), "CSV File", &["csv"]);
+}
+
+/// Export 3D dataset points to CSV and initiate download or file save dialog.
+pub fn export_csv_3d(datasets: &[(String, Vec<[f64; 3]>)]) {
+    export_csv_3d_filename(datasets, "export.csv");
+}
+
+/// Export 3D dataset points to JSON with a custom filename and initiate download or file save dialog.
+pub fn export_json_3d_filename(datasets: &[(String, Vec<[f64; 3]>)], filename: &str) {
+    let json = format_json_3d(datasets);
+    save_file_dialog(filename, json.as_bytes(), "JSON File", &["json"]);
+}
+
+/// Export 3D dataset points to JSON and initiate download or file save dialog.
+pub fn export_json_3d(datasets: &[(String, Vec<[f64; 3]>)]) {
+    export_json_3d_filename(datasets, "export.json");
+}
+
 /// Export dataset points to CSV string with a custom filename and initiate download or file save dialog.
 pub fn export_csv_filename(datasets: &[(String, Vec<[f64; 2]>)], filename: &str) {
     let csv = format_csv(datasets);
