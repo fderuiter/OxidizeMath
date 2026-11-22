@@ -121,3 +121,27 @@ fn test_sir_load_state_clamps_duration_and_bounds_steps() {
     sir.recalculate();
     assert!(sir.s_points.is_empty());
 }
+
+#[test]
+fn test_sir_epidemic_peak_and_logistic_fit_r2() {
+    let tool = SirTool::default();
+    let (peak_day, peak_infected) =
+        metrics::compute_epidemic_peak(&tool.i_points).expect("epidemic peak");
+    let max_sample = tool
+        .i_points
+        .iter()
+        .map(|p| p.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!(peak_day > 10.0 && peak_day < 40.0);
+    assert!(peak_infected >= max_sample - 1e-6);
+
+    let r_pts: Vec<[f64; 2]> = tool.r_points.iter().map(|p| [p.x, p.y]).collect();
+    let fit = egui_plot::fit_model(&r_pts, egui_plot::FitType::Logistic, "Recovered", false)
+        .expect("SIR Recovered logistic fit");
+    assert!(
+        fit.r_squared >= 0.99,
+        "SIR Recovered Logistic R^2 = {}",
+        fit.r_squared
+    );
+}
+
