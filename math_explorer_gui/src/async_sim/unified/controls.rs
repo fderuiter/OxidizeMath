@@ -67,6 +67,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
 
         drop(params_lock);
+        self.draw_atlas_toggle_if_supported(ui);
         self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation(Some(ctx));

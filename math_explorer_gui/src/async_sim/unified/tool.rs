@@ -25,6 +25,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) cached_param_labels: Vec<String>,
     pub(super) cached_observable_label: Option<&'static str>,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(crate) atlas: Option<crate::async_sim::atlas::ParameterAtlasController>,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -74,6 +75,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             cached_param_labels,
             cached_observable_label: None,
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
+            atlas: Self::create_optional_atlas(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -280,6 +282,10 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                 val.to_bits().hash(&mut h);
             }
         }
+        if let Some(atlas) = &self.atlas {
+            atlas.is_visible().hash(&mut h);
+            atlas.axis_keys().hash(&mut h);
+        }
         h.finish().max(1)
     }
 
@@ -293,14 +299,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn save_state(&self) -> Option<String> {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let sorted: std::collections::BTreeMap<&String, &f64> = params.iter().collect();
-        serde_json::to_string(&sorted).ok()
+        self.serialize_unified_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let params: HashMap<String, f64> = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
+        let (params, atlas_cfg) = self.parse_unified_state(state)?;
         if !self.param_metadata.is_empty() && params.is_empty() {
             return Err(format!(
                 "Empty parameter configuration for {}; expected parameters: {}",
@@ -324,6 +327,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                 ));
             }
         }
+        self.apply_parsed_atlas_state(atlas_cfg)?;
         {
             let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
             for (key, value) in params {
@@ -333,6 +337,16 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         self.texture = None;
         self.reset_simulation(None);
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn clamp_parameters(&mut self) -> bool {
