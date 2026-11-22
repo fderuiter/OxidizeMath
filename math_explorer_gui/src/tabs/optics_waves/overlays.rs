@@ -2,6 +2,7 @@
 
 use super::runner::OpticsFrameData;
 use super::tool::OpticsWaveTool;
+use crate::app::palette::SemanticPalette;
 use crate::app::ThemeMode;
 use eframe::egui::{self, pos2, Color32, Pos2, Rect, Stroke};
 use math_explorer::physics::optics::refraction::{OpticalMediumConfig, OpticsPreset};
@@ -24,7 +25,7 @@ pub struct OpticsOverlayPalette {
 /// Returns WCAG 2.2 AA (`>= 3.0:1`) contrast-verified overlay colors for `theme` via [`SemanticPalette`].
 #[must_use]
 pub fn optics_overlay_palette(theme: ThemeMode) -> OpticsOverlayPalette {
-    let sem = crate::app::palette::SemanticPalette::for_theme(theme);
+    let sem = SemanticPalette::for_theme(theme);
     let halo = match theme {
         ThemeMode::Light => Color32::WHITE,
         ThemeMode::Dark | ThemeMode::HighContrast => Color32::BLACK,
