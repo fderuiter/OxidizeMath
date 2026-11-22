@@ -3,18 +3,16 @@
 use math_explorer::pure_math::differential_geometry::surface::ParametricSurface;
 use nalgebra::Vector3;
 use oxidize_core::mesh::{Mesh, Point3D};
-#[cfg(test)]
-use std::collections::HashMap;
 use std::f64::consts::{PI, TAU};
 
-/// Minimum normal-offset shell wall thickness for non-orientable surface printing.
+/// Minimum normal-offset shell wall thickness for non-orientable or open-patch surface printing.
 pub const MIN_WALL_THICKNESS: f64 = 0.05;
-/// Maximum normal-offset shell wall thickness for non-orientable surface printing.
+/// Maximum normal-offset shell wall thickness for non-orientable or open-patch surface printing.
 pub const MAX_WALL_THICKNESS: f64 = 0.50;
 /// Default normal-offset shell wall thickness.
 pub const DEFAULT_WALL_THICKNESS: f64 = 0.15;
 
-fn clamp_grid_res(res: usize) -> usize {
+pub(super) fn clamp_grid_res(res: usize) -> usize {
     res.clamp(4, math_commons::registry::MAX_GRID_SIZE)
 }
 
@@ -31,7 +29,14 @@ fn to_p3(x: f64, y: f64, z: f64) -> Point3D {
     Point3D::new(x as f32, y as f32, z as f32)
 }
 
-fn has_polar_singularities(surface: &dyn ParametricSurface) -> bool {
+pub(super) fn is_standard_tau_domain(u_range: (f64, f64), v_range: (f64, f64)) -> bool {
+    u_range.0.abs() < 1e-9
+        && (u_range.1 - TAU).abs() < 1e-7
+        && v_range.0.abs() < 1e-9
+        && (v_range.1 - TAU).abs() < 1e-7
+}
+
+pub(super) fn has_polar_singularities(surface: &dyn ParametricSurface) -> bool {
     let n0 = surface.position(0.0, 0.0);
     let n1 = surface.position(1.1, 0.0);
     let s0 = surface.position(0.0, PI);
@@ -39,12 +44,22 @@ fn has_polar_singularities(surface: &dyn ParametricSurface) -> bool {
     (n0 - n1).norm() < 1e-8 && (s0 - s1).norm() < 1e-8 && (n0 - s0).norm() > 1e-6
 }
 
-fn has_direct_periodic_seams(surface: &dyn ParametricSurface) -> bool {
+pub(super) fn has_direct_periodic_seams(surface: &dyn ParametricSurface) -> bool {
     let p_u0 = surface.position(0.0, 0.7);
     let p_u1 = surface.position(TAU, 0.7);
     let p_v0 = surface.position(0.7, 0.0);
     let p_v1 = surface.position(0.7, TAU);
     (p_u0 - p_u1).norm() < 1e-7 && (p_v0 - p_v1).norm() < 1e-7
+}
+
+pub(super) fn has_klein_seam_topology(surface: &dyn ParametricSurface) -> bool {
+    let v_closed_a = (surface.position(0.7, 0.0) - surface.position(0.7, TAU)).norm() < 1e-7;
+    let v_closed_b = (surface.position(2.1, 0.0) - surface.position(2.1, TAU)).norm() < 1e-7;
+    if !v_closed_a || !v_closed_b {
+        return false;
+    }
+    let (_, min_seam_sq_err) = detect_u_seam_bijection_with_error(surface, 16);
+    min_seam_sq_err < 1e-6
 }
 
 /// Builds a closed genus-0 manifold mesh for polar surfaces (`v` in `[0, PI]`, welded poles at `(0, 0, ±1)`).
@@ -161,7 +176,10 @@ pub fn periodic_surface_to_manifold_mesh(
     })
 }
 
-fn detect_u_seam_bijection(surface: &dyn ParametricSurface, nv: usize) -> Vec<(usize, bool)> {
+fn detect_u_seam_bijection_with_error(
+    surface: &dyn ParametricSurface,
+    nv: usize,
+) -> (Vec<(usize, bool)>, f64) {
     let p0: Vec<_> = (0..nv)
         .map(|j| surface.position(0.0, TAU * (j as f64 / nv as f64)).coords)
         .collect();
@@ -188,9 +206,9 @@ fn detect_u_seam_bijection(surface: &dyn ParametricSurface, nv: usize) -> Vec<(u
         }
     }
 
-    let (reverse_v, shift, _) = best;
+    let (reverse_v, shift, min_err) = best;
     let same_orient = !reverse_v;
-    (0..nv)
+    let map = (0..nv)
         .map(|j| {
             let m = if reverse_v {
                 (shift + nv - j) % nv
@@ -199,7 +217,8 @@ fn detect_u_seam_bijection(surface: &dyn ParametricSurface, nv: usize) -> Vec<(u
             };
             (m, same_orient)
         })
-        .collect()
+        .collect();
+    (map, min_err)
 }
 
 /// Extrudes a normal-offset solid shell (`wall_thickness` in `[0.05, 0.50]`) stitching Klein seams into a watertight solid.
@@ -246,7 +265,7 @@ pub fn extrude_surface_wall_shell(
         }
     }
 
-    let seam_map = detect_u_seam_bijection(surface, nv);
+    let (seam_map, _) = detect_u_seam_bijection_with_error(surface, nv);
     let indices = build_wall_shell_indices(nu, nv, &seam_map);
     Ok(Mesh {
         vertices,
@@ -299,168 +318,118 @@ fn build_wall_shell_indices(nu: usize, nv: usize, seam_map: &[(usize, bool)]) ->
     indices
 }
 
-/// Dispatches `surface` to polar welding, periodic seam welding, or normal-offset shell extrusion.
-pub fn surface_to_mesh_with_thickness(
+/// Extrudes an open rectangular `(u, v)` surface patch into a closed genus-0 solid slab with stitched rim walls.
+pub fn extrude_open_patch_wall_shell(
     surface: &dyn ParametricSurface,
+    u_range: (f64, f64),
+    v_range: (f64, f64),
     u_res: usize,
     v_res: usize,
     wall_thickness: f64,
 ) -> Result<Mesh, String> {
-    if has_polar_singularities(surface) {
-        polar_surface_to_manifold_mesh(surface, u_res, v_res)
-    } else if has_direct_periodic_seams(surface) {
-        periodic_surface_to_manifold_mesh(surface, u_res, v_res)
-    } else {
-        extrude_surface_wall_shell(surface, u_res, v_res, wall_thickness)
+    if !wall_thickness.is_finite() {
+        return Err("Wall thickness must be finite".to_string());
     }
-}
+    let half_t = 0.5 * wall_thickness.clamp(MIN_WALL_THICKNESS, MAX_WALL_THICKNESS);
+    let nu = clamp_grid_res(u_res);
+    let nv = clamp_grid_res(v_res);
+    let (u_min, u_max) = u_range;
+    let (v_min, v_max) = v_range;
+    let stride = nv + 1;
+    let sheet_len = (nu + 1) * stride;
+    let mut vertices = vec![Point3D::new(0.0, 0.0, 0.0); 2 * sheet_len];
+    let mut normals = vec![Point3D::new(0.0, 0.0, 1.0); 2 * sheet_len];
 
-/// Converts any [`ParametricSurface`] into a watertight 2-manifold [`Mesh`] using default shell thickness when needed.
-#[cfg(test)]
-pub fn surface_to_mesh(surface: &dyn ParametricSurface, u_res: usize, v_res: usize) -> Mesh {
-    surface_to_mesh_with_thickness(surface, u_res, v_res, DEFAULT_WALL_THICKNESS).unwrap_or_else(
-        |_| Mesh {
-            vertices: Vec::new(),
-            normals: Vec::new(),
-            indices: Vec::new(),
-        },
-    )
-}
-
-/// Counts `(open_boundary_edges, non_manifold_edges)` across all directed triangle half-edges of `mesh`.
-#[cfg(test)]
-pub fn count_open_and_nonmanifold_edges(mesh: &Mesh) -> (usize, usize) {
-    let mut directed: HashMap<(usize, usize), usize> = HashMap::new();
-    let mut undirected: HashMap<(usize, usize), usize> = HashMap::new();
-    for &[i0, i1, i2] in mesh.indices.as_chunks::<3>().0 {
-        for &(a, b) in &[(i0, i1), (i1, i2), (i2, i0)] {
-            *directed.entry((a, b)).or_insert(0) += 1;
-            let key = if a <= b { (a, b) } else { (b, a) };
-            *undirected.entry(key).or_insert(0) += 1;
-        }
-    }
-    let mut open_edges = 0_usize;
-    let mut non_manifold = 0_usize;
-    for (&(u, v), &total) in &undirected {
-        let fwd = directed.get(&(u, v)).copied().unwrap_or(0);
-        let rev = directed.get(&(v, u)).copied().unwrap_or(0);
-        if total == 1 {
-            open_edges += 1;
-        } else if total != 2 || fwd != 1 || rev != 1 {
-            non_manifold += 1;
-        }
-    }
-    (open_edges, non_manifold)
-}
-
-/// Computes the combinatorial Euler characteristic `V - E + F` of `mesh`.
-#[cfg(test)]
-pub fn euler_characteristic(mesh: &Mesh) -> isize {
-    let mut edges = std::collections::HashSet::new();
-    for &[i0, i1, i2] in mesh.indices.as_chunks::<3>().0 {
-        for &(a, b) in &[(i0, i1), (i1, i2), (i2, i0)] {
-            edges.insert(if a <= b { (a, b) } else { (b, a) });
-        }
-    }
-    let v = mesh.vertices.len() as isize;
-    let e = edges.len() as isize;
-    let f = (mesh.indices.len() / 3) as isize;
-    v - e + f
-}
-
-/// Computes six times the signed volume (`> 0` for outward-wound closed manifolds).
-#[cfg(test)]
-pub fn signed_volume(mesh: &Mesh) -> f64 {
-    let mut sum = 0.0_f64;
-    for &[i0, i1, i2] in mesh.indices.as_chunks::<3>().0 {
-        let a = mesh.vertices[i0];
-        let b = mesh.vertices[i1];
-        let c = mesh.vertices[i2];
-        let ax = a.x as f64;
-        let ay = a.y as f64;
-        let az = a.z as f64;
-        let bx = b.x as f64;
-        let by = b.y as f64;
-        let bz = b.z as f64;
-        let cx = c.x as f64;
-        let cy = c.y as f64;
-        let cz = c.z as f64;
-        sum += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
-    }
-    sum / 6.0
-}
-
-#[cfg(test)]
-mod tests {
-    #![cfg_attr(any(), verified(opt_out = "tests"))]
-
-    use super::*;
-    use math_explorer::pure_math::differential_geometry::surface::{KleinBottle, Sphere, Torus};
-
-    struct OrientationReversingKlein {
-        radius: f64,
-    }
-
-    impl ParametricSurface for OrientationReversingKlein {
-        fn position(&self, u: f64, v: f64) -> nalgebra::Point3<f64> {
-            let r = self.radius;
-            let half_u = 0.5 * u;
-            let a = r + half_u.cos() * v.sin() - half_u.sin() * (2.0 * v).sin();
-            nalgebra::Point3::new(
-                a * u.cos(),
-                a * u.sin(),
-                half_u.sin() * v.sin() + half_u.cos() * (2.0 * v).sin(),
-            )
+    for i in 0..=nu {
+        let u = u_min + (u_max - u_min) * (i as f64 / nu as f64);
+        for j in 0..=nv {
+            let v = v_min + (v_max - v_min) * (j as f64 / nv as f64);
+            let p = surface.position(u, v);
+            if !p.coords.iter().all(|c| c.is_finite()) {
+                return Err("Surface position contains non-finite coordinate".to_string());
+            }
+            let n = safe_unit_vector(
+                surface.partial_u(u, v).cross(&surface.partial_v(u, v)),
+                Vector3::new(0.0, 0.0, 1.0),
+            );
+            let p_out = p.coords + n * half_t;
+            let p_in = p.coords - n * half_t;
+            let k = i * stride + j;
+            vertices[k] = to_p3(p_out.x, p_out.y, p_out.z);
+            normals[k] = to_p3(n.x, n.y, n.z);
+            vertices[sheet_len + k] = to_p3(p_in.x, p_in.y, p_in.z);
+            normals[sheet_len + k] = to_p3(-n.x, -n.y, -n.z);
         }
     }
 
-    #[test]
-    fn sphere_torus_and_klein_bottle_are_watertight_with_zero_nan_normals() {
-        let sphere_mesh = surface_to_mesh(&Sphere { radius: 1.5 }, 24, 18);
-        assert_eq!(sphere_mesh.normals[0], Point3D::new(0.0, 0.0, 1.0));
-        assert_eq!(sphere_mesh.normals[1], Point3D::new(0.0, 0.0, -1.0));
-        assert!(sphere_mesh.normals.iter().all(|n| n.is_finite()));
-        assert_eq!(count_open_and_nonmanifold_edges(&sphere_mesh), (0, 0));
-        assert_eq!(euler_characteristic(&sphere_mesh), 2);
-        assert!(signed_volume(&sphere_mesh) > 0.0);
+    let indices = build_open_patch_shell_indices(nu, nv);
+    Ok(Mesh {
+        vertices,
+        normals,
+        indices,
+    })
+}
 
-        let torus_mesh = surface_to_mesh(
-            &Torus {
-                major_radius: 2.0,
-                minor_radius: 0.6,
-            },
-            24,
-            18,
-        );
-        assert!(torus_mesh.normals.iter().all(|n| n.is_finite()));
-        assert_eq!(count_open_and_nonmanifold_edges(&torus_mesh), (0, 0));
-        assert_eq!(euler_characteristic(&torus_mesh), 0);
-        assert!(signed_volume(&torus_mesh) > 0.0);
+fn build_open_patch_shell_indices(nu: usize, nv: usize) -> Vec<usize> {
+    let stride = nv + 1;
+    let sheet_len = (nu + 1) * stride;
+    let at = |i: usize, j: usize| -> usize { i * stride + j };
+    let mut indices = Vec::with_capacity(12 * nu * nv + 12 * (nu + nv));
 
-        for thickness in [MIN_WALL_THICKNESS, 0.20, MAX_WALL_THICKNESS] {
-            let klein_mesh = extrude_surface_wall_shell(
-                &KleinBottle { radius: 2.0 },
-                24,
-                20,
-                thickness,
-            )
-            .expect("KleinBottle wall shell should succeed");
-            assert!(klein_mesh.normals.iter().all(|n| n.is_finite()));
-            assert_eq!(count_open_and_nonmanifold_edges(&klein_mesh), (0, 0));
-            assert_eq!(euler_characteristic(&klein_mesh), 0);
-            assert!(signed_volume(&klein_mesh) > 0.0);
-
-            let mobius_klein = extrude_surface_wall_shell(
-                &OrientationReversingKlein { radius: 3.0 },
-                24,
-                20,
-                thickness,
-            )
-            .expect("orientation-reversing figure-8 Klein wall shell should succeed");
-            assert!(mobius_klein.normals.iter().all(|n| n.is_finite()));
-            assert_eq!(count_open_and_nonmanifold_edges(&mobius_klein), (0, 0));
-            assert_eq!(euler_characteristic(&mobius_klein), 0);
-            assert!(signed_volume(&mobius_klein) > 0.0);
+    for i in 0..nu {
+        for j in 0..nv {
+            let (o00, o10, o11, o01) = (at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1));
+            indices.extend_from_slice(&[o00, o10, o11, o00, o11, o01]);
+            let (w00, w10, w11, w01) = (
+                sheet_len + o00,
+                sheet_len + o10,
+                sheet_len + o11,
+                sheet_len + o01,
+            );
+            indices.extend_from_slice(&[w00, w11, w10, w00, w01, w11]);
         }
     }
+
+    let mut perim = Vec::with_capacity(2 * (nu + nv));
+    perim.extend((0..nu).map(|i| at(i, 0)));
+    perim.extend((0..nv).map(|j| at(nu, j)));
+    perim.extend((1..=nu).rev().map(|i| at(i, nv)));
+    perim.extend((1..=nv).rev().map(|j| at(0, j)));
+
+    for k in 0..perim.len() {
+        let a = perim[k];
+        let b = perim[(k + 1) % perim.len()];
+        indices.extend_from_slice(&[b, a, sheet_len + a, b, sheet_len + a, sheet_len + b]);
+    }
+    indices
 }
+
+/// Dispatches `surface` over `(u_range, v_range)` to polar welding, periodic welding, Klein shell extrusion, or rim-stitched slab extrusion.
+pub fn surface_to_mesh_with_domain_and_thickness(
+    surface: &dyn ParametricSurface,
+    u_range: (f64, f64),
+    v_range: (f64, f64),
+    u_res: usize,
+    v_res: usize,
+    wall_thickness: f64,
+) -> Result<Mesh, String> {
+    if is_standard_tau_domain(u_range, v_range) {
+        if has_polar_singularities(surface) {
+            return polar_surface_to_manifold_mesh(surface, u_res, v_res);
+        }
+        if has_direct_periodic_seams(surface) {
+            return periodic_surface_to_manifold_mesh(surface, u_res, v_res);
+        }
+        if has_klein_seam_topology(surface) {
+            return extrude_surface_wall_shell(surface, u_res, v_res, wall_thickness);
+        }
+    }
+    extrude_open_patch_wall_shell(surface, u_range, v_range, u_res, v_res, wall_thickness)
+}
+
+#[cfg(test)]
+#[path = "export_utils_tests.rs"]
+mod tests;
+
+#[cfg(test)]
+pub use tests::{count_open_and_nonmanifold_edges, euler_characteristic, signed_volume};
