@@ -258,6 +258,7 @@ fn test_attractor_runner_set_speed_and_factorization_boundary_caps() {
         history: VecDeque::with_capacity(100),
         step_count: 0,
         execution_state: SolverExecutionState::Ready,
+        twin: None,
     };
     runner.process_command(SimCommand::SetSpeed(0));
     assert_eq!(runner.params.read().unwrap().simulation_speed, 1);

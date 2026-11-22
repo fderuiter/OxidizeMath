@@ -5,13 +5,14 @@ use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 /// Deterministic PCG-style PRNG used to seed reproducible initial perturbations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SimpleRng {
     state: u64,
 }
 
 impl SimpleRng {
     /// Creates a new deterministic PRNG seeded with `seed`.
-    pub fn new(seed: u64) -> Self {
+    pub const fn new(seed: u64) -> Self {
         Self { state: seed }
     }
 
@@ -108,5 +109,18 @@ inventory::submit! {
         domain: "biology",
         tool_name: Some("MorphogenesisTool"),
         preset_generator: || crate::starter_gallery::PRESET_TURING_STRIPES,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "morphogenesis_inhibitor_fork",
+        title: "Morphogenesis Inhibitor Fork",
+        description: "Counterfactual Schnakenberg twin forked at step 60 lowering D_v from 40 to 18 with |u_B - u_A| difference heatmap.",
+        category: "Counterfactual Biology",
+        icon: "⑂",
+        domain: "biology",
+        tool_name: Some("MorphogenesisTool"),
+        preset_generator: || crate::starter_gallery::PRESET_MORPHOGENESIS_INHIBITOR_FORK,
     }
 }

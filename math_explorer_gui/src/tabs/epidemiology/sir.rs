@@ -1,8 +1,14 @@
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoint};
+use egui_plot::{Plot, PlotPoint};
 use math_explorer::epidemiology::compartmental::SIRModel;
+
+#[path = "sir/counterfactual.rs"]
+pub mod counterfactual;
+#[path = "sir/presets.rs"]
+mod presets;
+pub use counterfactual::*;
 
 const MIN_SIR_DURATION: f64 = 10.0;
 const MAX_SIR_DURATION: f64 = 365.0;
@@ -15,6 +21,8 @@ struct SirStateRef<'a> {
     beta: f64,
     gamma: f64,
     duration: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fork: Option<SirForkDescriptor>,
     #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
     snapshot_manager: &'a TraceSnapshotManager,
 }
@@ -26,6 +34,8 @@ struct SirRecoveryState {
     beta: f64,
     gamma: f64,
     duration: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fork: Option<SirForkDescriptor>,
 }
 
 #[derive(serde::Deserialize)]
@@ -36,6 +46,8 @@ struct SirState {
     beta: f64,
     gamma: f64,
     duration: f64,
+    #[serde(default)]
+    fork: Option<SirForkDescriptor>,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
 }
@@ -56,6 +68,7 @@ pub struct SirTool {
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     last_param_summary: String,
     revision: u64,
+    pub cf: SirCounterfactualState,
 }
 
 impl Default for SirTool {
@@ -73,6 +86,7 @@ impl Default for SirTool {
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
             revision: 1,
+            cf: SirCounterfactualState::default(),
         };
         tool.recalculate();
         tool
@@ -140,7 +154,7 @@ impl SirTool {
         crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "sir_tool");
     }
 
-    fn recalculate(&mut self) {
+    pub(crate) fn recalculate(&mut self) {
         self.revision = self.revision.wrapping_add(1).max(1);
         self.s_points.clear();
         self.i_points.clear();
@@ -148,8 +162,19 @@ impl SirTool {
         self.last_param_summary = self.param_summary();
 
         if !self.duration.is_finite() || self.duration <= 0.0 {
+            self.cf.branch_engine.clear();
             return;
         }
+
+        let end_step = self.effective_end_step();
+        if let Some(desc) = self.cf.fork {
+            self.recalculate_forked(desc, end_step);
+            return;
+        }
+        self.cf.s_points_a.clear();
+        self.cf.i_points_a.clear();
+        self.cf.r_points_a.clear();
+        self.cf.branch_engine.clear();
 
         // Ensure parameters are valid before passing to model
         let n = self.n.max(1.0);
@@ -159,12 +184,7 @@ impl SirTool {
 
         if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
             let dt = 0.1;
-            let raw_steps = self.duration / dt;
-            if !raw_steps.is_finite() || raw_steps < 0.0 {
-                return;
-            }
-            let steps = raw_steps.min(MAX_SIR_STEPS as f64) as usize;
-            let Some(point_cap) = steps.checked_add(1) else {
+            let Some(point_cap) = end_step.checked_add(1) else {
                 return;
             };
             if self.s_points.try_reserve(point_cap).is_err()
@@ -174,7 +194,7 @@ impl SirTool {
                 return;
             }
 
-            for i in 0..=steps {
+            for i in 0..=end_step {
                 let t = i as f64 * dt;
                 let state = model.state();
                 self.s_points.push(PlotPoint::new(t, state.s));
@@ -200,11 +220,34 @@ impl SirTool {
         {
             return Err("SIR parameters out of bounds".into());
         }
+        if let Some(ref f) = s.fork {
+            if f.fork_step == 0
+                || f.fork_step > MAX_SIR_STEPS
+                || ![f.baseline_n, f.baseline_i0, f.baseline_beta, f.baseline_gamma, f.delta_x]
+                    .iter()
+                    .all(|v| v.is_finite())
+                || !(100.0..=100_000.0).contains(&f.baseline_n)
+                || !(1.0..=f.baseline_n).contains(&f.baseline_i0)
+                || !(0.0..=5.0).contains(&f.baseline_beta)
+                || !(0.0..=1.0).contains(&f.baseline_gamma)
+            {
+                return Err("SIR fork descriptor out of bounds".into());
+            }
+        }
         self.n = s.n;
         self.i0 = s.i0;
         self.beta = s.beta;
         self.gamma = s.gamma;
         self.duration = s.duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION);
+        self.cf.is_playing = false;
+        self.cf.playhead_step = None;
+        self.cf.fork = s.fork;
+        if let Some(f) = s.fork {
+            self.cf.target_fork_day = f.fork_step as f64 * SIR_STEP_DT;
+            self.cf.branch_engine.set_effective_delta(f.delta_x);
+        } else {
+            self.cf.branch_engine.clear();
+        }
         if !preserve_snapshots {
             self.snapshot_manager = s.snapshot_manager;
         }
@@ -233,6 +276,15 @@ impl InteractiveTool for SirTool {
         self.duration.to_bits().hash(&mut h);
         self.snapshot_manager.len().hash(&mut h);
         self.snapshot_manager.history_len().hash(&mut h);
+        if let Some(ref f) = self.cf.fork {
+            true.hash(&mut h);
+            f.fork_step.hash(&mut h);
+            f.baseline_beta.to_bits().hash(&mut h);
+            f.baseline_gamma.to_bits().hash(&mut h);
+            f.delta_x.to_bits().hash(&mut h);
+        } else {
+            false.hash(&mut h);
+        }
         h.finish().max(1)
     }
 
@@ -247,12 +299,33 @@ impl InteractiveTool for SirTool {
             && self.r_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
     }
 
+    fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
+        self.cf.branch_engine.active_snapshot.clone()
+    }
+
+    fn apply_counterfactual_action(&mut self, action: crate::framework::BranchControlAction) -> bool {
+        self.apply_sir_branch_action(action)
+    }
+
+    fn step_simulation(&mut self) {
+        self.step_lockstep(5);
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut datasets = egui_plot::get_last_plot_datasets();
         if datasets.is_empty() {
-            datasets.push(("Susceptible".to_string(), self.s_points.iter().map(|p| [p.x, p.y]).collect()));
-            datasets.push(("Infected".to_string(), self.i_points.iter().map(|p| [p.x, p.y]).collect()));
-            datasets.push(("Recovered".to_string(), self.r_points.iter().map(|p| [p.x, p.y]).collect()));
+            if self.cf.fork.is_some() {
+                datasets.push(("Susceptible (Branch B)".to_string(), self.s_points.iter().map(|p| [p.x, p.y]).collect()));
+                datasets.push(("Infected (Branch B)".to_string(), self.i_points.iter().map(|p| [p.x, p.y]).collect()));
+                datasets.push(("Recovered (Branch B)".to_string(), self.r_points.iter().map(|p| [p.x, p.y]).collect()));
+                datasets.push(("Susceptible (Branch A)".to_string(), self.cf.s_points_a.iter().map(|p| [p.x, p.y]).collect()));
+                datasets.push(("Infected (Branch A)".to_string(), self.cf.i_points_a.iter().map(|p| [p.x, p.y]).collect()));
+                datasets.push(("Recovered (Branch A)".to_string(), self.cf.r_points_a.iter().map(|p| [p.x, p.y]).collect()));
+            } else {
+                datasets.push(("Susceptible".to_string(), self.s_points.iter().map(|p| [p.x, p.y]).collect()));
+                datasets.push(("Infected".to_string(), self.i_points.iter().map(|p| [p.x, p.y]).collect()));
+                datasets.push(("Recovered".to_string(), self.r_points.iter().map(|p| [p.x, p.y]).collect()));
+            }
             datasets.extend(self.snapshot_manager.export_datasets());
         }
         datasets
@@ -265,6 +338,7 @@ impl InteractiveTool for SirTool {
             beta: self.beta,
             gamma: self.gamma,
             duration: self.duration,
+            fork: self.cf.fork,
             snapshot_manager: &self.snapshot_manager,
         })
         .ok()
@@ -277,6 +351,7 @@ impl InteractiveTool for SirTool {
             beta: self.beta,
             gamma: self.gamma,
             duration: self.duration,
+            fork: self.cf.fork,
         })
         .ok()
     }
@@ -301,7 +376,6 @@ impl InteractiveTool for SirTool {
         });
     }
 
-    #[allow(clippy::too_many_lines)]
     fn show_ui(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
             ui.heading("Parameters");
@@ -322,27 +396,10 @@ impl InteractiveTool for SirTool {
                 f64::INFINITY
             };
             render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{:.2}", r0));
+            self.render_counterfactual_bar(ui);
 
-            ui.add_space(8.0);
-            let param_summary = self.param_summary();
-            let current_len = self.snapshot_manager.len();
-            let s_points = &self.s_points;
-            let i_points = &self.i_points;
-            let r_points = &self.r_points;
-
-            if self.snapshot_manager.render_ui(ui, move || {
-                let label = format!("Baseline {}", current_len + 1);
-                let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-                let series = vec![
-                    TraceSeries::new("Susceptible", to_pairs(s_points)),
-                    TraceSeries::new("Infected", to_pairs(i_points)),
-                    TraceSeries::new("Recovered", to_pairs(r_points)),
-                ];
-                Some((label, param_summary, series))
-            }) {
-                self.revision = self.revision.wrapping_add(1).max(1);
-            }
-
+            ui.add_space(6.0);
+            self.render_snapshot_bar(ui);
             self.evaluate_sensitivity(ui);
 
             ui.separator();
@@ -353,72 +410,44 @@ impl InteractiveTool for SirTool {
                     egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
                 }
             });
+            self.render_sir_divergence_if_active(ui);
 
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            let plot = Plot::new("sir_plot")
+            Plot::new("sir_plot")
                 .id(plot_id)
                 .view_aspect(2.0)
-                .legend(egui_plot::Legend::default());
-
-            plot.show(ui, |plot_ui| {
-                plot_ui.line(
-                    Line::new("Susceptible", &self.s_points[..]).color(palette.axis_z),
-                );
-                plot_ui.line(
-                    Line::new("Infected", &self.i_points[..]).color(palette.axis_x),
-                );
-                plot_ui.line(
-                    Line::new("Recovered", &self.r_points[..]).color(palette.axis_y),
-                );
-                self.snapshot_manager.render_on_plot(plot_ui);
-            });
+                .legend(egui_plot::Legend::default())
+                .show(ui, |plot_ui| {
+                    self.render_sir_plot_curves(plot_ui, &palette);
+                });
         });
+    }
+}
+
+impl SirTool {
+    fn render_snapshot_bar(&mut self, ui: &mut egui::Ui) {
+        let param_summary = self.param_summary();
+        let current_len = self.snapshot_manager.len();
+        let s_points = &self.s_points;
+        let i_points = &self.i_points;
+        let r_points = &self.r_points;
+        if self.snapshot_manager.render_ui(ui, move || {
+            let label = format!("Baseline {}", current_len + 1);
+            let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+            let series = vec![
+                TraceSeries::new("Susceptible", to_pairs(s_points)),
+                TraceSeries::new("Infected", to_pairs(i_points)),
+                TraceSeries::new("Recovered", to_pairs(r_points)),
+            ];
+            Some((label, param_summary, series))
+        }) {
+            self.revision = self.revision.wrapping_add(1).max(1);
+        }
     }
 }
 
 // [cite:graph_parameters_rust]
 
-
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "SirTool",
-        display_name: "SIR Model",
-        domain: "epidemiology",
-        tags: &[],
-        build: || Box::new(SirTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for SirTool {
-    fn theory_description(&self) -> String {
-        let r0 = self.beta / self.gamma;
-        format!(
-            "Kermack-McKendrick SIR compartmental epidemic model: $\\frac{{dS}}{{dt}} = -\\frac{{\\beta S I}}{{N}}$, $\\frac{{dI}}{{dt}} = \\frac{{\\beta S I}}{{N}} - \\gamma I$, $\\frac{{dR}}{{dt}} = \\gamma I$. Transmission rate $\\beta = {:.3}$, recovery rate $\\gamma = {:.3}$, basic reproduction number $R_0 = {:.2}$.",
-            self.beta, self.gamma, r0
-        )
-    }
-    fn phonetic_description(&self) -> String { "Kermack-McKendrick SIR compartmental epidemic model theory".into() }
-    fn theory_citation(&self) -> String { "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
-}
-
 #[cfg(test)]
 mod tests;
 
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": { "schema_version": "1.0", "title": "Kermack-McKendrick SIR Model", "domain": "epidemiology", "timestamp": "2026-11-16T00:00:00Z" },
-  "config": { "n": 10000.0, "i0": 25.0, "beta": 0.3, "gamma": 0.1, "duration": 120.0 }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "sir_starter",
-        title: "Kermack-McKendrick SIR Model",
-        description: "dS/dt = -βSI/N, dI/dt = βSI/N - γI: Compartmental epidemic outbreak dynamics and herd immunity.",
-        category: "Compartmental Models",
-        icon: "🦠",
-        domain: "epidemiology",
-        tool_name: Some("SirTool"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}

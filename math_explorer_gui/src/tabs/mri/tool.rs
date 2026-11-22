@@ -48,6 +48,9 @@ pub struct MriToolState {
     /// Legacy boolean pause flag accepted on deserialization.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused: Option<bool>,
+    /// Optional compact counterfactual fork descriptor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork: Option<super::MriForkDescriptor>,
 }
 
 impl MriToolState {
@@ -107,6 +110,10 @@ pub struct MriTool {
     pub params: Arc<std::sync::RwLock<MriSharedParams>>,
     /// Background Bloch worker controller.
     pub worker: BackgroundWorker<MriRunner>,
+    /// Optional counterfactual shadow twin state (`Branch A` + spin-echo ensemble).
+    pub twin: Option<super::MriTwinState>,
+    /// Shared framework `CounterfactualBranchEngine` state.
+    pub branch_engine: crate::framework::CounterfactualBranchEngine,
     theory: MriBlochTheory,
 }
 
@@ -141,6 +148,8 @@ impl Default for MriTool {
             mz_points: Vec::new(),
             params,
             worker,
+            twin: None,
+            branch_engine: crate::framework::CounterfactualBranchEngine::with_delta(0.0),
             theory: MriBlochTheory,
         }
     }
@@ -172,6 +181,7 @@ impl MriTool {
             current_time: self.current_time,
             history,
             max_history: self.max_history,
+            twin: self.twin.clone(),
         };
         self.worker = BackgroundWorker::new(runner);
     }
@@ -218,6 +228,8 @@ impl MriTool {
         self.mx_points.clear();
         self.my_points.clear();
         self.mz_points.clear();
+        self.twin = None;
+        self.branch_engine.clear();
         let params = Arc::clone(&self.params);
         let m0 = self.simulator.m0;
         self.worker
@@ -248,7 +260,27 @@ impl InteractiveTool for MriTool {
         ExportCapabilities::plot()
     }
 
+    fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
+        self.branch_engine.active_snapshot.clone()
+    }
+
+    fn apply_counterfactual_action(&mut self, action: crate::framework::BranchControlAction) -> bool {
+        self.apply_mri_branch_action(action)
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        if let Some(ref twin) = self.twin {
+            if !self.history.is_empty() {
+                return vec![
+                    ("Mx (Branch B)".to_string(), self.history.iter().map(|(t, m)| [*t, m.x]).collect()),
+                    ("My (Branch B)".to_string(), self.history.iter().map(|(t, m)| [*t, m.y]).collect()),
+                    ("Mz (Branch B)".to_string(), self.history.iter().map(|(t, m)| [*t, m.z]).collect()),
+                    ("Mx (Branch A)".to_string(), twin.history_a.iter().map(|(t, m)| [*t, m.x]).collect()),
+                    ("My (Branch A)".to_string(), twin.history_a.iter().map(|(t, m)| [*t, m.y]).collect()),
+                    ("Mz (Branch A)".to_string(), twin.history_a.iter().map(|(t, m)| [*t, m.z]).collect()),
+                ];
+            }
+        }
         if !self.history.is_empty() {
             let mx: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.x]).collect();
             let my: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.y]).collect();
@@ -294,14 +326,27 @@ impl InteractiveTool for MriTool {
                 .push_back((self.current_time, self.simulator.magnetization));
         }
         let dt = 0.01;
-        TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
-        self.current_time += dt;
+        let next_t = self.current_time + dt;
+        if let Some(ref mut twin) = self.twin {
+            twin.step_branch_a(next_t, dt, self.max_history);
+        }
+        let used_echo = self.twin.as_mut().is_some_and(|twin| {
+            twin.step_branch_b_spin_echo(&mut self.simulator, &mut self.solver, dt)
+        });
+        if !used_echo {
+            TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
+        }
+        self.current_time = next_t;
         if self.history.len() >= self.max_history {
             self.history.pop_front();
         }
         self.history
             .push_back((self.current_time, self.simulator.magnetization));
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.current_time, self.simulator.magnetization);
+        }
         self.update_plot_buffers();
+        self.sync_mri_branch_engine();
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -321,10 +366,22 @@ impl InteractiveTool for MriTool {
         self.simulator.b_field.z.to_bits().hash(&mut h);
         self.time_scale.to_bits().hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
+        if let Some(ref twin) = self.twin {
+            true.hash(&mut h);
+            twin.fork_step.hash(&mut h);
+            twin.delta_x.to_bits().hash(&mut h);
+            twin.spin_echo.is_some().hash(&mut h);
+        } else {
+            false.hash(&mut h);
+        }
         h.finish().max(1)
     }
 
     fn save_state(&self) -> Option<String> {
+        let fork = self
+            .twin
+            .as_ref()
+            .map(|t| t.to_descriptor(self.current_step_index()));
         serde_json::to_string(&MriToolState {
             t1: self.simulator.t1,
             t2: self.simulator.t2,
@@ -334,6 +391,7 @@ impl InteractiveTool for MriTool {
             time_scale: self.time_scale,
             state: Some(self.worker.state()),
             paused: None,
+            fork,
         })
         .ok()
     }
@@ -354,6 +412,11 @@ impl InteractiveTool for MriTool {
             p.t2 = parsed.t2;
             p.b_field = b_field;
             p.time_scale = parsed.time_scale;
+        }
+        if let Some(desc) = parsed.fork {
+            self.apply_mri_fork_descriptor(desc)?;
+        } else {
+            let _ = self.clear_fork();
         }
         self.apply_worker_state(target_state);
         Ok(())

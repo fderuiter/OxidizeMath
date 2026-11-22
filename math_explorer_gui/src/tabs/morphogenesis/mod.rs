@@ -15,11 +15,15 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod counterfactual;
+mod counterfactual_tool;
 pub mod presets;
 pub mod runner;
 pub mod tool;
 pub mod ui;
 
+#[cfg(test)]
+pub use counterfactual::MorphogenesisHeatmapMode;
 pub use presets::SimpleRng;
 #[cfg(test)]
 pub use runner::MorphogenesisRunner;
@@ -160,6 +164,7 @@ impl MorphogenesisTab {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            fork: None,
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;
@@ -329,6 +334,8 @@ impl ExplorerTab for MorphogenesisTab {
     }
 }
 
+#[cfg(test)]
+mod counterfactual_tests;
 #[cfg(test)]
 mod tests;
 

@@ -7,9 +7,12 @@ use crate::async_sim::ui::{
     WorkerFaultAction,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
-use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
+use crate::framework::{
+    render_divergence_strip, CounterfactualTransport, InteractiveTool, PlaybackAction,
+    PlaybackTransport, Plot3DViewport,
+};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
-use egui_plot::{Callout, Line, PlotPoint, PlotPoints, Points};
+use egui_plot::{Callout, PlotPoint, Points};
 use nalgebra::Vector3;
 
 impl AttractorPlotter {
@@ -82,6 +85,59 @@ impl AttractorPlotter {
         });
     }
 
+    fn draw_transport_and_fork_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        worker_faulted: bool,
+    ) {
+        let transport_state = if self.diverged() || worker_faulted {
+            SimWorkerState::Faulted
+        } else if self.worker.state().is_stepping() {
+            SimWorkerState::Stepping
+        } else if self.is_paused() {
+            SimWorkerState::Ready
+        } else {
+            self.worker.state()
+        };
+
+        if let Some(action) = PlaybackTransport::from_worker_state(
+            "attractor_transport",
+            "Attractor Plotter",
+            transport_state,
+        )
+        .can_reset(true)
+        .show(ui)
+        {
+            match action {
+                PlaybackAction::Play => {
+                    let _ = self.try_resume();
+                }
+                PlaybackAction::Pause => {
+                    self.execution_state = SolverExecutionState::Paused;
+                    let _ = self.worker.send_command(SimCommand::Pause);
+                }
+                PlaybackAction::Step => {
+                    self.execution_state = SolverExecutionState::Paused;
+                    let _ = self.worker.send_command(SimCommand::Step(1));
+                }
+                PlaybackAction::Reset => {
+                    self.reset();
+                    ctx.request_repaint();
+                }
+            }
+        }
+
+        let can_fork = self.step_count > 0 && !self.diverged() && !worker_faulted;
+        let is_forked = self.twin.is_some();
+        if let Some(cf_action) =
+            CounterfactualTransport::new(&mut self.branch_engine, can_fork, is_forked).show(ui)
+        {
+            let _ = self.apply_counterfactual_action(cf_action);
+            ctx.request_repaint();
+        }
+    }
+
     fn draw_simulation_controls(
         &mut self,
         ui: &mut egui::Ui,
@@ -91,43 +147,7 @@ impl AttractorPlotter {
         egui::CollapsingHeader::new("Simulation")
             .default_open(true)
             .show(ui, |ui| {
-                let transport_state = if self.diverged() || worker_faulted {
-                    SimWorkerState::Faulted
-                } else if self.worker.state().is_stepping() {
-                    SimWorkerState::Stepping
-                } else if self.is_paused() {
-                    SimWorkerState::Ready
-                } else {
-                    self.worker.state()
-                };
-
-                if let Some(action) = PlaybackTransport::from_worker_state(
-                    "attractor_transport",
-                    "Attractor Plotter",
-                    transport_state,
-                )
-                .can_reset(true)
-                .show(ui)
-                {
-                    match action {
-                        PlaybackAction::Play => {
-                            let _ = self.try_resume();
-                        }
-                        PlaybackAction::Pause => {
-                            self.execution_state = SolverExecutionState::Paused;
-                            let _ = self.worker.send_command(SimCommand::Pause);
-                        }
-                        PlaybackAction::Step => {
-                            self.execution_state = SolverExecutionState::Paused;
-                            let _ = self.worker.send_command(SimCommand::Step(1));
-                        }
-                        PlaybackAction::Reset => {
-                            self.reset();
-                            ctx.request_repaint();
-                        }
-                    }
-                }
-
+                self.draw_transport_and_fork_controls(ui, ctx, worker_faulted);
                 if ui
                     .add(
                         egui::Slider::new(&mut self.simulation_speed, 1..=super::MAX_SIMULATION_SPEED)
@@ -355,6 +375,9 @@ impl AttractorPlotter {
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.draw_central_fault_banner(ui, ctx);
+            if let Some(ref snap) = self.branch_engine.active_snapshot {
+                render_divergence_strip(ui, "Attractor Plotter", snap);
+            }
 
             if self.history.is_empty() && !self.diverged() {
                 render_empty_plot_guidance(
@@ -367,11 +390,12 @@ impl AttractorPlotter {
             let initial_pt = (points.is_empty() && self.is_finite_state())
                 .then(|| self.project(self.system.state.vec));
 
-            let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            let series0 = palette.series_color(0);
             let mut camera = self.camera;
             let response = Plot3DViewport::new("attractor_plot", 32.0)
                 .show(ui, &mut camera, |plot_ui| {
-                    plot_ui.line(Line::new("Trajectory", PlotPoints::new(points)).color(series0));
+                    self.draw_twin_curves_and_callout(plot_ui, points, &palette);
                     if let Some(pt) = initial_pt {
                         plot_ui.points(
                             Points::new("Initial State", vec![pt])

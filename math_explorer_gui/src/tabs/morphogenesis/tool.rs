@@ -1,15 +1,17 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::counterfactual::{MorphogenesisForkDescriptor, MorphogenesisHeatmapMode};
 use super::presets::MorphogenesisTheory;
 use super::runner::{MorphogenesisRunner, MorphogenesisSharedParams};
+use crate::app::ThemeMode;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::framework::{ExportCapabilities, InteractiveTool};
+use crate::framework::recovery::FiniteStateGuard;
+use crate::framework::{
+    BranchControlAction, CounterfactualBranchEngine, DivergenceSnapshot, ExportCapabilities,
+    InteractiveTool,
+};
 use eframe::egui;
 use eframe::egui::ColorImage;
-use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::SchnakenbergKinetics;
-use math_explorer::biology::morphogenesis::TuringSystem;
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
@@ -48,6 +50,9 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Optional counterfactual shadow twin fork descriptor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork: Option<MorphogenesisForkDescriptor>,
 }
 
 impl MorphogenesisToolState {
@@ -72,6 +77,9 @@ impl MorphogenesisToolState {
                 "Morphogenesis dimensions {}x{} must be within 1..=512",
                 self.width, self.height
             ));
+        }
+        if let Some(ref fork) = self.fork {
+            fork.validate()?;
         }
         Ok(())
     }
@@ -100,8 +108,11 @@ pub struct MorphogenesisTool {
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
     pub(crate) step_runner: Option<MorphogenesisRunner>,
+    pub(crate) local_runner: MorphogenesisRunner,
     pub(crate) pending_initial_start: bool,
-    pub(crate) last_high_contrast: Option<bool>,
+    pub(crate) last_theme_mode: Option<ThemeMode>,
+    /// Counterfactual shadow twin branch state & perturbation settings.
+    pub branch_engine: CounterfactualBranchEngine,
     theory: MorphogenesisTheory,
 }
 
@@ -116,9 +127,12 @@ impl Default for MorphogenesisTool {
             d_v: 100.0,
             dt: 0.05,
             high_contrast: false,
+            theme_mode: ThemeMode::Dark,
+            heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
         }));
 
         let runner = Self::create_runner(&params, width, height);
+        let local_runner = Self::create_runner(&params, width, height);
         let worker = BackgroundWorker::new(runner);
 
         Self {
@@ -131,8 +145,10 @@ impl Default for MorphogenesisTool {
             dirty: true,
             stepped_pixels: None,
             step_runner: None,
+            local_runner,
             pending_initial_start: true,
-            last_high_contrast: None,
+            last_theme_mode: None,
+            branch_engine: CounterfactualBranchEngine::default(),
             theory: MorphogenesisTheory::default(),
         }
     }
@@ -144,40 +160,16 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
     ) -> MorphogenesisRunner {
-        use math_explorer::biology::morphogenesis::DiffusionCoeff;
-        use math_explorer::math_kernel::types::{Dimension, StepSize};
-        let (a, b, d_u, d_v) = {
-            let p = params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v)
-        };
-        let kinetics = SchnakenbergKinetics { a, b };
-        let diffusion = FiniteDifference2D::new(
-            Dimension(width),
-            Dimension(height),
-            StepSize(1.0),
-            StepSize(1.0),
-        );
-        let mut system = TuringSystem::new_with_kinetics(
-            Dimension(width * height),
-            DiffusionCoeff(d_u),
-            DiffusionCoeff(d_v),
-            kinetics,
-            diffusion,
-        );
-        Self::initialize_system(&mut system, width, height);
-        MorphogenesisRunner {
-            system,
-            params: Arc::clone(params),
-            width,
-            height,
-        }
+        MorphogenesisRunner::new_seeded(params, width, height)
     }
 
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
+        self.local_runner = Self::create_runner(&self.params, self.width, self.height);
         let runner = Self::create_runner(&self.params, self.width, self.height);
         self.worker = BackgroundWorker::new(runner);
+        self.branch_engine.clear();
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_initial_start = false;
@@ -190,11 +182,13 @@ impl MorphogenesisTool {
         self.restart_worker();
     }
 
-    /// Resets the worker in place or respawns a disconnected worker in `Ready` state.
+    /// Resets the worker and clears any active counterfactual fork cleanly.
     pub fn reset(&mut self) {
         let params = Arc::clone(&self.params);
         let width = self.width;
         let height = self.height;
+        self.local_runner = Self::create_runner(&params, width, height);
+        self.branch_engine.clear();
         self.worker
             .reset_or_respawn(|| Self::create_runner(&params, width, height));
         self.stepped_pixels = None;
@@ -225,53 +219,11 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            fork: None,
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);
         }
-    }
-}
-
-impl FiniteStateGuard for MorphogenesisTool {
-    fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.worker.diagnostic_report()
-    }
-
-    fn diverged(&self) -> bool {
-        !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn auto_scale_step_size(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.dt = (p.dt * 0.5).max(1e-4);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn clamp_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = p.a.clamp(0.0, 1.0);
-        p.b = p.b.clamp(0.0, 2.0);
-        p.d_u = p.d_u.clamp(0.1, 5.0);
-        p.d_v = p.d_v.clamp(10.0, 200.0);
-        p.dt = p.dt.clamp(0.001, 0.1);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn reset_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = 0.1;
-        p.b = 0.9;
-        p.d_u = 1.0;
-        p.d_v = 100.0;
-        p.dt = 0.05;
-        drop(p);
-        self.reset_system();
     }
 }
 
@@ -285,10 +237,21 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only()
+        if self.is_forked() {
+            ExportCapabilities::plot()
+        } else {
+            ExportCapabilities::raster_only()
+        }
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.export_morpho_twin_datasets()
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
+        if self.is_forked() {
+            return Some(self.render_current_heatmap_image());
+        }
         if let Some((w, h, ref px)) = self.stepped_pixels {
             if w > 0 && h > 0 && px.len() == w * h {
                 return Some(ColorImage {
@@ -307,7 +270,9 @@ impl InteractiveTool for MorphogenesisTool {
         }
         let snapshot = self.worker.latest_snapshot()?;
         let px = snapshot.pixels.read().unwrap_or_else(|e| e.into_inner());
-        if snapshot.width == 0 || snapshot.height == 0 || px.len() != snapshot.width * snapshot.height
+        if snapshot.width == 0
+            || snapshot.height == 0
+            || px.len() != snapshot.width * snapshot.height
         {
             return None;
         }
@@ -319,6 +284,10 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn step_simulation(&mut self) {
+        if self.is_forked() {
+            self.step_lockstep(5);
+            return;
+        }
         let runner = self
             .step_runner
             .get_or_insert_with(|| Self::create_runner(&self.params, self.width, self.height));
@@ -332,20 +301,20 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        let high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
-            == crate::app::ThemeMode::HighContrast;
-        if self.last_high_contrast != Some(high_contrast) {
-            self.last_high_contrast = Some(high_contrast);
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .high_contrast = high_contrast;
+        let theme_mode = ThemeMode::from_visuals(ui.visuals());
+        if self.last_theme_mode != Some(theme_mode) {
+            self.last_theme_mode = Some(theme_mode);
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.theme_mode = theme_mode;
+            p.high_contrast = theme_mode == ThemeMode::HighContrast;
+            drop(p);
             self.dirty = true;
         }
         if std::mem::take(&mut self.pending_initial_start) && self.worker.state().is_ready() {
             let _ = self.worker.send_command(SimCommand::Start);
         }
         if self.worker.update().is_some() {
+            self.pull_latest_worker_snapshot();
             self.dirty = true;
         }
         self.draw_controls(ui);
@@ -356,6 +325,18 @@ impl InteractiveTool for MorphogenesisTool {
         ) {
             ctx.request_repaint();
         }
+    }
+
+    fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
+        let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+        self.local_runner
+            .twin
+            .as_ref()
+            .map(|t| t.snapshot(self.local_runner.step_count, dt))
+    }
+
+    fn apply_counterfactual_action(&mut self, action: BranchControlAction) -> bool {
+        self.apply_morpho_branch_action(action)
     }
 
     fn theory(&self) -> &dyn TheoryDescribable {
@@ -371,19 +352,27 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u.to_bits().hash(&mut h);
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
+            p.heatmap_mode.hash(&mut h);
         }
         self.width.hash(&mut h);
         self.height.hash(&mut h);
+        self.is_forked().hash(&mut h);
+        self.local_runner.step_count.hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         self.pending_initial_start.hash(&mut h);
         h.finish().max(1)
     }
 
     fn save_state(&self) -> Option<String> {
-        let (a, b, d_u, d_v, dt) = {
+        let (a, b, d_u, d_v, dt, heatmap_mode) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
+            (p.a, p.b, p.d_u, p.d_v, p.dt, p.heatmap_mode)
         };
+        let fork = self
+            .local_runner
+            .twin
+            .as_ref()
+            .map(|t| t.to_descriptor(heatmap_mode));
         serde_json::to_string(&MorphogenesisToolState {
             a,
             b,
@@ -395,6 +384,7 @@ impl InteractiveTool for MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            fork,
         })
         .ok()
     }
@@ -411,12 +401,19 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u = parsed.d_u;
             p.d_v = parsed.d_v;
             p.dt = parsed.dt;
+            p.heatmap_mode = parsed
+                .fork
+                .map_or(MorphogenesisHeatmapMode::ActiveUb, |f| f.heatmap_mode);
         }
-        if parsed.width != self.width || parsed.height != self.height {
-            self.width = parsed.width;
-            self.height = parsed.height;
-            let runner = Self::create_runner(&self.params, self.width, self.height);
-            self.worker = BackgroundWorker::new(runner);
+        let resized = parsed.width != self.width || parsed.height != self.height;
+        self.width = parsed.width;
+        self.height = parsed.height;
+        if let Some(fork_desc) = parsed.fork {
+            self.apply_morpho_fork_descriptor(fork_desc)?;
+        } else if resized {
+            self.local_runner = Self::create_runner(&self.params, self.width, self.height);
+            self.worker = BackgroundWorker::new(Self::create_runner(&self.params, self.width, self.height));
+            self.branch_engine.clear();
             self.stepped_pixels = None;
             self.step_runner = None;
             self.dirty = true;

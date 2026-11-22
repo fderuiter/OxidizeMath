@@ -180,6 +180,7 @@ pub struct AttractorSnapshot {
     pub current_vec: Vector3<f64>,
     pub step_count: usize,
     pub execution_state: SolverExecutionState,
+    pub twin: Option<super::AttractorTwinState>,
 }
 
 #[allow(missing_docs)]
@@ -189,6 +190,7 @@ pub struct AttractorRunner {
     pub history: VecDeque<Vector3<f64>>,
     pub step_count: usize,
     pub execution_state: SolverExecutionState,
+    pub twin: Option<super::AttractorTwinState>,
 }
 
 impl AttractorRunner {
@@ -205,9 +207,10 @@ impl AttractorRunner {
                 .beta(beta)
                 .build(LorenzState::new(1.0, 1.0, 1.0)),
             params,
-            history: VecDeque::with_capacity(max_points),
+            history: VecDeque::with_capacity(max_points.max(super::ATTRACTOR_RING_CAPACITY)),
             step_count: 0,
             execution_state: SolverExecutionState::Ready,
+            twin: None,
         }
     }
 
@@ -223,7 +226,7 @@ impl AttractorRunner {
         )
     }
 
-    fn advance_lorenz_tick(&mut self, dt: f64, max_points: usize) -> bool {
+    fn advance_lorenz_tick(&mut self, dt: f64, max_points: usize, step_twin_too: bool) -> bool {
         let current_vec = self.system.state.vec;
         if !current_vec.x.is_finite()
             || !current_vec.y.is_finite()
@@ -240,6 +243,18 @@ impl AttractorRunner {
             return false;
         }
 
+        if step_twin_too {
+            if let Some(ref mut twin) = self.twin {
+                if !twin.step_branch_a(dt, max_points) {
+                    self.execution_state = SolverExecutionState::Diverged {
+                        invalid_vec: twin.system_a.state.vec,
+                        diverged_at_step: self.step_count,
+                    };
+                    return false;
+                }
+            }
+        }
+
         self.system.step(dt);
         self.step_count += 1;
 
@@ -252,10 +267,16 @@ impl AttractorRunner {
             return false;
         }
 
-        if self.history.len() >= max_points {
+        let cap = max_points.clamp(1, super::ATTRACTOR_RING_CAPACITY);
+        if self.history.len() >= cap {
             self.history.pop_front();
         }
         self.history.push_back(vec);
+        if step_twin_too {
+            if let Some(ref mut twin) = self.twin {
+                twin.observe_lockstep(self.step_count, dt, vec);
+            }
+        }
         true
     }
 }
@@ -285,6 +306,7 @@ impl SimulationRunner for AttractorRunner {
                     .build(LorenzState::new(1.0, 1.0, 1.0));
                 self.history.clear();
                 self.step_count = 0;
+                self.twin = None;
                 self.execution_state = SolverExecutionState::Ready;
             }
             SimCommand::SetSpeed(speed) => {
@@ -293,7 +315,48 @@ impl SimulationRunner for AttractorRunner {
                     .unwrap_or_else(|e| e.into_inner())
                     .simulation_speed = speed.clamp(1, MAX_SIMULATION_SPEED);
             }
+            SimCommand::Custom(ref cmd) => self.handle_custom_command(cmd),
             _ => {}
+        }
+    }
+
+    fn has_counterfactual_twin(&self) -> bool {
+        self.twin.is_some()
+    }
+
+    fn step_branch_a(&mut self) {
+        if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            return;
+        }
+        let (dt, simulation_speed, max_points) = self.sync_params();
+        if let Some(ref mut twin) = self.twin {
+            for _ in 0..simulation_speed {
+                if !twin.step_branch_a(dt, max_points) {
+                    self.execution_state = SolverExecutionState::Diverged {
+                        invalid_vec: twin.system_a.state.vec,
+                        diverged_at_step: self.step_count,
+                    };
+                    break;
+                }
+            }
+        }
+    }
+
+    fn step_branch_b(&mut self) {
+        if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            return;
+        }
+        let (dt, simulation_speed, max_points) = self.sync_params();
+        if self.execution_state == SolverExecutionState::Ready {
+            self.execution_state = SolverExecutionState::Running;
+        }
+        for _ in 0..simulation_speed {
+            if !self.advance_lorenz_tick(dt, max_points, false) {
+                break;
+            }
+        }
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.step_count, dt, self.system.state.vec);
         }
     }
 
@@ -306,7 +369,7 @@ impl SimulationRunner for AttractorRunner {
             self.execution_state = SolverExecutionState::Running;
         }
         for _ in 0..simulation_speed {
-            if !self.advance_lorenz_tick(dt, max_points) {
+            if !self.advance_lorenz_tick(dt, max_points, true) {
                 break;
             }
         }
@@ -317,7 +380,7 @@ impl SimulationRunner for AttractorRunner {
             return;
         }
         let (dt, _, max_points) = self.sync_params();
-        if self.advance_lorenz_tick(dt, max_points) {
+        if self.advance_lorenz_tick(dt, max_points, true) {
             self.execution_state = SolverExecutionState::Paused;
         }
     }
@@ -328,6 +391,7 @@ impl SimulationRunner for AttractorRunner {
             current_vec: self.system.state.vec,
             step_count: self.step_count,
             execution_state: self.execution_state,
+            twin: self.twin.clone(),
         };
         StateSnapshot {
             width: 0,
@@ -384,72 +448,3 @@ impl SimulationRunner for AttractorRunner {
     }
 }
 
-impl scientific_metadata::theory::TheoryDescribable for super::AttractorPlotter {
-    fn theory_description(&self) -> String {
-        format!(
-            "Lorenz attractor dynamical system: $\\dot{{x}} = \\sigma(y - x)$, $\\dot{{y}} = x(\\rho - z) - y$, $\\dot{{z}} = xy - \\beta z$ with parameters $\\sigma = {:.2}$, $\\rho = {:.2}$, $\\beta = {:.2}$.",
-            self.system.sigma, self.system.rho, self.system.beta
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Lorenz strange attractor dynamical system theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Deterministic Nonperiodic Flow (Lorenz, 1963); Nonlinear Dynamics and Chaos (Strogatz, 2014)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        self.system.available_descriptions()
-    }
-    fn theory_parameters(
-        &self,
-    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
-        use scientific_metadata::theory::ParameterConstraint;
-        std::collections::HashMap::from([
-            (
-                "sigma".to_string(),
-                ParameterConstraint {
-                    min: 0.0,
-                    max: 50.0,
-                    step: 0.1,
-                },
-            ),
-            (
-                "rho".to_string(),
-                ParameterConstraint {
-                    min: 0.0,
-                    max: 100.0,
-                    step: 0.5,
-                },
-            ),
-            (
-                "beta".to_string(),
-                ParameterConstraint {
-                    min: 0.0,
-                    max: 10.0,
-                    step: 0.1,
-                },
-            ),
-            (
-                "dt".to_string(),
-                ParameterConstraint {
-                    min: 0.001,
-                    max: 0.05,
-                    step: 0.001,
-                },
-            ),
-        ])
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "3d_attractor",
-        title: "3D Attractor",
-        description: "ẋ=σ(y-x), ẏ=x(ρ-z)-y, ż=xy-βz: Canonical 3D chaotic strange attractor trajectory.",
-        category: "Chaos Theory",
-        icon: "🦋",
-        domain: "chaos",
-        tool_name: Some("AttractorPlotter"),
-        preset_generator: || crate::starter_gallery::PRESET_3D_ATTRACTOR,
-    }
-}

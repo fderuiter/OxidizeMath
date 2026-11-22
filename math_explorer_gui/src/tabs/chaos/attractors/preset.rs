@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{AttractorPlotter, SolverExecutionState};
+use super::{AttractorForkDescriptor, AttractorPlotter, SolverExecutionState};
 use crate::framework::Camera3D;
 
 const fn default_annotations_enabled() -> bool {
@@ -17,6 +17,8 @@ struct AttractorSaveState {
     execution_state: SolverExecutionState,
     show_annotations: bool,
     camera: Camera3D,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fork: Option<AttractorForkDescriptor>,
 }
 
 #[derive(serde::Deserialize)]
@@ -41,10 +43,16 @@ struct AttractorState {
     yaw: Option<f32>,
     #[serde(default)]
     zoom: Option<f32>,
+    #[serde(default)]
+    fork: Option<AttractorForkDescriptor>,
 }
 
 impl AttractorPlotter {
     pub(super) fn serialize_state(&self) -> Option<String> {
+        let fork = self
+            .twin
+            .as_ref()
+            .map(|t| t.to_descriptor(self.step_count));
         serde_json::to_string(&AttractorSaveState {
             sigma: self.system.sigma,
             rho: self.system.rho,
@@ -54,6 +62,7 @@ impl AttractorPlotter {
             execution_state: self.execution_state,
             show_annotations: self.show_annotations,
             camera: self.camera,
+            fork,
         })
         .ok()
     }
@@ -98,6 +107,9 @@ impl AttractorPlotter {
             SolverExecutionState::Ready
         });
         self.execution_state = execution_state;
+        if let Some(fork_desc) = s.fork {
+            self.apply_fork_descriptor(fork_desc)?;
+        }
         if let SolverExecutionState::Diverged {
             invalid_vec,
             diverged_at_step,
@@ -107,5 +119,64 @@ impl AttractorPlotter {
             self.step_count = diverged_at_step;
         }
         Ok(())
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "3d_attractor",
+        title: "3D Attractor",
+        description: "ẋ=σ(y-x), ẏ=x(ρ-z)-y, ż=xy-βz: Canonical 3D chaotic strange attractor trajectory.",
+        category: "Chaos Theory",
+        icon: "🦋",
+        domain: "chaos",
+        tool_name: Some("AttractorPlotter"),
+        preset_generator: || crate::starter_gallery::PRESET_3D_ATTRACTOR,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "lorenz_butterfly_perturbation",
+        title: "Lorenz Butterfly Perturbation",
+        description: "Counterfactual shadow twin forked at t_k = 1.50 with δx = 1e-5 diverging onto opposite butterfly lobes.",
+        category: "Counterfactual Chaos",
+        icon: "⑂",
+        domain: "chaos",
+        tool_name: Some("AttractorPlotter"),
+        preset_generator: || crate::starter_gallery::PRESET_LORENZ_BUTTERFLY_PERTURBATION,
+    }
+}
+
+impl scientific_metadata::theory::TheoryDescribable for AttractorPlotter {
+    fn theory_description(&self) -> String {
+        format!(
+            "Lorenz attractor dynamical system: $\\dot{{x}} = \\sigma(y - x)$, $\\dot{{y}} = x(\\rho - z) - y$, $\\dot{{z}} = xy - \\beta z$ with parameters $\\sigma = {:.2}$, $\\rho = {:.2}$, $\\beta = {:.2}$.",
+            self.system.sigma, self.system.rho, self.system.beta
+        )
+    }
+
+    fn phonetic_description(&self) -> String {
+        "Lorenz strange attractor dynamical system theory".into()
+    }
+
+    fn theory_citation(&self) -> String {
+        "Deterministic Nonperiodic Flow (Lorenz, 1963); Nonlinear Dynamics and Chaos (Strogatz, 2014)".into()
+    }
+
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        self.system.available_descriptions()
+    }
+
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use scientific_metadata::theory::ParameterConstraint;
+        std::collections::HashMap::from([
+            ("sigma".to_string(), ParameterConstraint { min: 0.0, max: 50.0, step: 0.1 }),
+            ("rho".to_string(), ParameterConstraint { min: 0.0, max: 100.0, step: 0.5 }),
+            ("beta".to_string(), ParameterConstraint { min: 0.0, max: 10.0, step: 0.1 }),
+            ("dt".to_string(), ParameterConstraint { min: 0.001, max: 0.05, step: 0.001 }),
+        ])
     }
 }

@@ -39,6 +39,7 @@ pub struct MriSnapshot {
     pub current_time: f64,
     pub magnetization: Vector3<f64>,
     pub history: VecDeque<(f64, Vector3<f64>)>,
+    pub twin: Option<super::MriTwinState>,
 }
 
 #[allow(missing_docs)]
@@ -49,6 +50,7 @@ pub struct MriRunner {
     pub current_time: f64,
     pub history: VecDeque<(f64, Vector3<f64>)>,
     pub max_history: usize,
+    pub twin: Option<super::MriTwinState>,
 }
 
 impl MriRunner {
@@ -75,10 +77,11 @@ impl MriRunner {
             current_time: 0.0,
             history,
             max_history,
+            twin: None,
         }
     }
 
-    fn sync_params_and_get_scale(&mut self) -> f64 {
+    pub(super) fn sync_params_and_get_scale(&mut self) -> f64 {
         let (t1, t2, b_field, time_scale) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.t1, p.t2, p.b_field, p.time_scale)
@@ -89,11 +92,22 @@ impl MriRunner {
         time_scale
     }
 
-    fn advance_bloch_ticks(&mut self, ticks: usize) {
+    fn advance_bloch_ticks(&mut self, ticks: usize, step_twin_too: bool) {
         let dt = 0.001;
         for _ in 0..ticks {
-            TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
-            self.current_time += dt;
+            let next_time = self.current_time + dt;
+            if step_twin_too {
+                if let Some(ref mut twin) = self.twin {
+                    twin.step_branch_a(next_time, dt, self.max_history);
+                }
+            }
+            let used_spin_echo = self.twin.as_mut().is_some_and(|twin| {
+                twin.step_branch_b_spin_echo(&mut self.simulator, &mut self.solver, dt)
+            });
+            if !used_spin_echo {
+                TimeStepper::step_with(&mut self.simulator, &mut self.solver, dt);
+            }
+            self.current_time = next_time;
             let m = self.simulator.magnetization;
             if !m.x.is_finite() || !m.y.is_finite() || !m.z.is_finite() {
                 break;
@@ -102,19 +116,61 @@ impl MriRunner {
                 self.history.pop_front();
             }
             self.history.push_back((self.current_time, m));
+            if step_twin_too {
+                if let Some(ref mut twin) = self.twin {
+                    twin.observe_lockstep(self.current_time, m);
+                }
+            }
         }
     }
 }
 
 impl SimulationRunner for MriRunner {
     fn process_command(&mut self, cmd: SimCommand) {
-        if let SimCommand::Reset = cmd {
-            let _ = self.sync_params_and_get_scale();
-            let initial_m = Vector3::new(self.simulator.m0, 0.0, 0.0);
-            self.simulator.magnetization = initial_m;
-            self.current_time = 0.0;
-            self.history.clear();
-            self.history.push_back((0.0, initial_m));
+        match cmd {
+            SimCommand::Reset => {
+                let _ = self.sync_params_and_get_scale();
+                let initial_m = Vector3::new(self.simulator.m0, 0.0, 0.0);
+                self.simulator.magnetization = initial_m;
+                self.current_time = 0.0;
+                self.history.clear();
+                self.history.push_back((0.0, initial_m));
+                self.twin = None;
+            }
+            SimCommand::Custom(ref custom) => self.handle_custom_command(custom),
+            _ => {}
+        }
+    }
+
+    fn has_counterfactual_twin(&self) -> bool {
+        self.twin.is_some()
+    }
+
+    fn step_branch_a(&mut self) {
+        let time_scale = self.sync_params_and_get_scale();
+        let steps = if time_scale.is_finite() && time_scale > 0.0 {
+            (time_scale.ceil().min(MAX_MRI_STEPS_PER_FRAME as f64) as usize).max(1)
+        } else {
+            1
+        };
+        if let Some(ref mut twin) = self.twin {
+            for idx in 1..=steps {
+                let next_time = self.current_time + idx as f64 * 0.001;
+                twin.step_branch_a(next_time, 0.001, self.max_history);
+            }
+        }
+    }
+
+    fn step_branch_b(&mut self) {
+        let time_scale = self.sync_params_and_get_scale();
+        let steps = if time_scale.is_finite() && time_scale > 0.0 {
+            (time_scale.ceil().min(MAX_MRI_STEPS_PER_FRAME as f64) as usize).max(1)
+        } else {
+            1
+        };
+        self.advance_bloch_ticks(steps, false);
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.current_time, self.simulator.magnetization);
         }
     }
 
@@ -125,12 +181,12 @@ impl SimulationRunner for MriRunner {
         } else {
             1
         };
-        self.advance_bloch_ticks(steps);
+        self.advance_bloch_ticks(steps, true);
     }
 
     fn step_once(&mut self) {
         let _ = self.sync_params_and_get_scale();
-        self.advance_bloch_ticks(1);
+        self.advance_bloch_ticks(1, true);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -139,6 +195,7 @@ impl SimulationRunner for MriRunner {
             current_time: self.current_time,
             magnetization: m,
             history: self.history.clone(),
+            twin: self.twin.clone(),
         };
         StateSnapshot {
             width: 0,

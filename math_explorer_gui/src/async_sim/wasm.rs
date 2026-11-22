@@ -3,14 +3,13 @@
 // theory_verification!
 
 use super::worker::{advance_running_frame, drain_worker_commands, FrameTickOutcome};
-use super::{take_worker_context, SimCommand, SimWorkerState, WorkerStatusEvent};
+use super::{
+    take_worker_context, SimCommand, SimWorkerState, WorkerStatusEvent, WASM_FRAME_SLICE_BUDGET,
+};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, TryRecvError};
-use std::time::Duration;
 use wasm_bindgen::JsCast;
-
-const WASM_FRAME_SLICE_BUDGET: Duration = Duration::from_millis(8);
 
 #[derive(Default)]
 struct WakeRegistry {

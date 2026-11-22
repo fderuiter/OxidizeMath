@@ -100,6 +100,13 @@ impl<'a> PlaybackTransport<'a> {
         self
     }
 
+    /// Overrides whether the Step control is enabled.
+    #[must_use]
+    pub fn can_step(mut self, enabled: bool) -> Self {
+        self.can_step = enabled;
+        self
+    }
+
     /// Overrides whether the Reset control is enabled (e.g. to respawn a faulted worker).
     #[must_use]
     pub fn can_reset(mut self, enabled: bool) -> Self {

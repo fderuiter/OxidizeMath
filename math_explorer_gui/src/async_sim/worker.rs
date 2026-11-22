@@ -145,13 +145,33 @@ pub(super) fn drain_worker_commands<R: SimulationRunner + ?Sized>(
     true
 }
 
-pub(super) fn advance_running_frame<R: SimulationRunner + ?Sized>(
+fn step_frame_loop<R: SimulationRunner + ?Sized>(
     runner: &mut R,
     steps_per_frame: usize,
     max_slice: Option<Duration>,
-    state: &mut SimWorkerState,
-    state_tx: &SimStateSender,
-) -> FrameTickOutcome {
+) -> bool {
+    if let Some(budget) = max_slice.filter(|_| runner.has_counterfactual_twin()) {
+        let slice_start = crate::web_io::PlatformInstant::now();
+        let mut twin_budget = super::TwinSliceBudget::from_total(budget);
+        for _ in 0..steps_per_frame {
+            if !twin_budget.can_advance_pair(slice_start.elapsed()) {
+                break;
+            }
+            let t_a = crate::web_io::PlatformInstant::now();
+            runner.step_branch_a();
+            let dur_a = t_a.elapsed();
+            let t_b = crate::web_io::PlatformInstant::now();
+            runner.step_branch_b();
+            twin_budget.record_pair(dur_a, t_b.elapsed());
+            if !runner.is_finite_state() {
+                return false;
+            }
+            if runner.is_complete() {
+                break;
+            }
+        }
+        return true;
+    }
     let slice_start = max_slice.map(|_| crate::web_io::PlatformInstant::now());
     for idx in 0..steps_per_frame {
         if idx > 0 {
@@ -163,13 +183,26 @@ pub(super) fn advance_running_frame<R: SimulationRunner + ?Sized>(
         }
         runner.step();
         if !runner.is_finite_state() {
-            *state = SimWorkerState::Faulted;
-            emit_worker_divergence(runner, state_tx);
-            return FrameTickOutcome::CompletedOrFaulted;
+            return false;
         }
         if runner.is_complete() {
             break;
         }
+    }
+    true
+}
+
+pub(super) fn advance_running_frame<R: SimulationRunner + ?Sized>(
+    runner: &mut R,
+    steps_per_frame: usize,
+    max_slice: Option<Duration>,
+    state: &mut SimWorkerState,
+    state_tx: &SimStateSender,
+) -> FrameTickOutcome {
+    if !step_frame_loop(runner, steps_per_frame, max_slice) {
+        *state = SimWorkerState::Faulted;
+        emit_worker_divergence(runner, state_tx);
+        return FrameTickOutcome::CompletedOrFaulted;
     }
     let is_done = runner.is_complete();
     let snapshot = runner.get_snapshot();

@@ -63,3 +63,16 @@ inventory::submit! {
         preset_generator: || crate::starter_gallery::PRESET_MRI_BLOCH_RELAXATION,
     }
 }
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "mri_spin_echo_refocusing",
+        title: "MRI Spin-Echo Refocusing",
+        description: "Counterfactual shadow twin forked mid-decay with a 180° Hahn refocusing pulse recovering ΔM_xy transverse echo.",
+        category: "Counterfactual MRI",
+        icon: "⑂",
+        domain: "mri",
+        tool_name: Some("MriTool"),
+        preset_generator: || crate::starter_gallery::PRESET_MRI_SPIN_ECHO_REFOCUSING,
+    }
+}

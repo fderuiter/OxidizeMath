@@ -155,6 +155,7 @@ impl SimulationFramework {
         self.current_valid_plot_datasets = plot_datasets;
         self.is_diverged = false;
         self.diagnostic_report = None;
+        self.sync_counterfactual_snapshot();
     }
 
     /// Coordinates parameter clamping on the active tool via domain hooks or JSON bounds fallback.
@@ -251,6 +252,7 @@ impl SimulationFramework {
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.step_counter = 0;
+        self.sync_counterfactual_snapshot();
         self.refresh_saved_and_snapshot_after_reset();
         emit_recovery_telemetry(
             "SimulationFramework",
@@ -297,6 +299,7 @@ impl SimulationFramework {
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.step_counter = 0;
+        self.sync_counterfactual_snapshot();
         let Some(tool) = &self.active_tool else {
             return;
         };

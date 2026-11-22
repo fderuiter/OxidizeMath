@@ -2,13 +2,18 @@
 
 use super::runner::MriSnapshot;
 use super::tool::MriTool;
+use crate::accessibility::{announce_status, AccessibleHoverText};
+use crate::app::SemanticPalette;
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    branch_a_ghost_line, branch_b_solid_line, fork_marker_callout, fork_marker_vline,
+    render_divergence_strip, CounterfactualTransport, PlaybackAction, PlaybackTransport,
+};
 use eframe::egui;
-use egui_plot::{Legend, Line, Plot, Points};
+use egui_plot::{Legend, Line, Plot, PlotPoint, Points};
 
 impl MriTool {
     fn draw_relaxation_controls(&mut self, ui: &mut egui::Ui) {
@@ -125,6 +130,32 @@ impl MriTool {
                 .unwrap_or_else(|e| e.into_inner())
                 .time_scale = self.time_scale;
         }
+
+        let can_fork = self.current_step_index() > 0 && self.worker.state() != SimWorkerState::Faulted;
+        let is_forked = self.twin.is_some();
+        if let Some(cf_action) =
+            CounterfactualTransport::new(&mut self.branch_engine, can_fork, is_forked).show(ui)
+        {
+            let _ = self.apply_mri_branch_action(cf_action);
+            ctx.request_repaint();
+        }
+        self.render_refocus_pulse_button(ui, ctx);
+    }
+
+    fn render_refocus_pulse_button(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let can_pulse = self.current_step_index() > 0 || self.twin.is_some();
+        let resp = ui
+            .add_enabled(can_pulse, egui::Button::new("🧲 180° Refocusing Pulse"))
+            .accessible_hover_text(
+                "Apply a 180° RF spin-echo refocusing pulse to Branch B at the current decay step",
+            )
+            .on_disabled_hover_text(
+                "Step or Play past t = 0 to apply a mid-decay 180° refocusing pulse",
+            );
+        if resp.clicked() && self.apply_refocus_pulse_180() {
+            announce_status("Applied 180 degree spin-echo refocusing pulse on Branch B");
+            ctx.request_repaint();
+        }
     }
 
     fn draw_side_panel(&mut self, ui: &mut egui::Ui) {
@@ -164,6 +195,9 @@ impl MriTool {
     fn draw_central_panel(&self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Magnetization Vector Evolution");
+            if let Some(ref snap) = self.branch_engine.active_snapshot {
+                render_divergence_strip(ui, "MRI Bloch Relaxation", snap);
+            }
 
             if self.mx_points.len() <= 1 {
                 render_empty_plot_guidance(
@@ -172,41 +206,21 @@ impl MriTool {
                 );
             }
 
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            let palette = SemanticPalette::from_visuals(ui.visuals());
             Plot::new("bloch_plot")
                 .legend(Legend::default())
                 .x_axis_label("Time (s)")
                 .y_axis_label("Magnetization (M/M0)")
                 .view_aspect(2.0)
                 .show(ui, |plot_ui| {
-                    plot_ui.line(
-                        Line::new("Mx (Transverse)", &self.mx_points[..]).color(palette.axis_x),
-                    );
-                    plot_ui.line(
-                        Line::new("My (Transverse)", &self.my_points[..]).color(palette.axis_y),
-                    );
-                    plot_ui.line(
-                        Line::new("Mz (Longitudinal)", &self.mz_points[..]).color(palette.axis_z),
-                    );
+                    self.render_mri_plot_curves(plot_ui, &palette);
                     if self.mx_points.len() == 1 {
                         let mx0 = [self.mx_points[0].x, self.mx_points[0].y];
                         let my0 = [self.my_points[0].x, self.my_points[0].y];
                         let mz0 = [self.mz_points[0].x, self.mz_points[0].y];
-                        plot_ui.points(
-                            Points::new("Mx (t=0)", vec![mx0])
-                                .radius(4.5_f32)
-                                .color(palette.axis_x),
-                        );
-                        plot_ui.points(
-                            Points::new("My (t=0)", vec![my0])
-                                .radius(4.5_f32)
-                                .color(palette.axis_y),
-                        );
-                        plot_ui.points(
-                            Points::new("Mz (t=0)", vec![mz0])
-                                .radius(4.5_f32)
-                                .color(palette.axis_z),
-                        );
+                        plot_ui.points(Points::new("Mx (t=0)", vec![mx0]).radius(4.5_f32).color(palette.axis_x));
+                        plot_ui.points(Points::new("My (t=0)", vec![my0]).radius(4.5_f32).color(palette.axis_y));
+                        plot_ui.points(Points::new("Mz (t=0)", vec![mz0]).radius(4.5_f32).color(palette.axis_z));
                     }
                 });
 
@@ -215,6 +229,32 @@ impl MriTool {
             );
             ui.label("Adjust B-fields to see precession.");
         });
+    }
+
+    fn render_mri_plot_curves<'a>(
+        &'a self,
+        plot_ui: &mut egui_plot::PlotUi<'a>,
+        palette: &SemanticPalette,
+    ) {
+        let to_vec = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+        if let Some(ref twin) = self.twin {
+            let mxa: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.x]).collect();
+            let mya: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.y]).collect();
+            let mza: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.z]).collect();
+            plot_ui.line(branch_a_ghost_line("Mx (Branch A)", mxa, palette.axis_x));
+            plot_ui.line(branch_a_ghost_line("My (Branch A)", mya, palette.axis_y));
+            plot_ui.line(branch_a_ghost_line("Mz (Branch A)", mza, palette.axis_z));
+            plot_ui.line(branch_b_solid_line("Mx (Branch B)", to_vec(&self.mx_points), palette.axis_x));
+            plot_ui.line(branch_b_solid_line("My (Branch B)", to_vec(&self.my_points), palette.axis_y));
+            plot_ui.line(branch_b_solid_line("Mz (Branch B)", to_vec(&self.mz_points), palette.axis_z));
+            let fork_t = twin.tracker.fork_time();
+            plot_ui.vline(fork_marker_vline(palette, fork_t));
+            plot_ui.callout(fork_marker_callout([fork_t, twin.fork_m.x], fork_t, palette));
+        } else {
+            plot_ui.line(Line::new("Mx (Transverse)", &self.mx_points[..]).color(palette.axis_x));
+            plot_ui.line(Line::new("My (Transverse)", &self.my_points[..]).color(palette.axis_y));
+            plot_ui.line(Line::new("Mz (Longitudinal)", &self.mz_points[..]).color(palette.axis_z));
+        }
     }
 
     #[cfg(test)]
@@ -234,7 +274,9 @@ impl MriTool {
                 self.current_time = data.current_time;
                 self.simulator.magnetization = data.magnetization;
                 self.history = data.history.clone();
+                self.twin = data.twin.clone();
                 self.update_plot_buffers();
+                self.sync_mri_branch_engine();
             }
         }
 

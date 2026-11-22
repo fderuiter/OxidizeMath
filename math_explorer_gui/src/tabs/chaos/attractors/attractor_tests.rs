@@ -316,6 +316,7 @@ fn test_attractor_poisoned_lock_recovery() {
         history: VecDeque::with_capacity(100),
         step_count: 0,
         execution_state: SolverExecutionState::Ready,
+        twin: None,
     };
     runner.process_command(SimCommand::Reset);
     assert_eq!(runner.system.sigma, 14.0);

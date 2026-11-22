@@ -8,6 +8,10 @@ use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+#[path = "attractors/counterfactual.rs"]
+mod counterfactual;
+pub use counterfactual::*;
+
 #[path = "attractors/runner.rs"]
 mod runner;
 pub use runner::*;
@@ -29,6 +33,8 @@ pub struct AttractorPlotter {
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
+    pub(crate) twin: Option<AttractorTwinState>,
+    pub branch_engine: crate::framework::CounterfactualBranchEngine,
 }
 
 impl Default for AttractorPlotter {
@@ -55,7 +61,7 @@ impl Default for AttractorPlotter {
             step_count: 0,
             simulation_speed: 5,
             dt: 0.01,
-            history: VecDeque::with_capacity(2000),
+            history: VecDeque::with_capacity(ATTRACTOR_RING_CAPACITY),
             max_points: 2000,
             camera: crate::framework::Camera3D::new(0.0, 0.0, 1.0),
             params,
@@ -63,6 +69,8 @@ impl Default for AttractorPlotter {
             show_annotations: true,
             fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
             dragged_callout: None,
+            twin: None,
+            branch_engine: crate::framework::CounterfactualBranchEngine::default(),
         }
     }
 }
@@ -153,6 +161,8 @@ impl AttractorPlotter {
             .build(initial_state);
         self.history.clear();
         self.step_count = 0;
+        self.twin = None;
+        self.branch_engine.clear();
         self.execution_state = SolverExecutionState::Ready;
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
@@ -211,6 +221,16 @@ impl InteractiveTool for AttractorPlotter {
         self.camera.pitch.to_bits().hash(&mut h);
         self.camera.yaw.to_bits().hash(&mut h);
         self.camera.zoom.to_bits().hash(&mut h);
+        if let Some(ref twin) = self.twin {
+            true.hash(&mut h);
+            twin.fork_step.hash(&mut h);
+            twin.delta_x.to_bits().hash(&mut h);
+            twin.system_a.sigma.to_bits().hash(&mut h);
+            twin.system_a.rho.to_bits().hash(&mut h);
+            twin.system_a.beta.to_bits().hash(&mut h);
+        } else {
+            false.hash(&mut h);
+        }
         h.finish().max(1)
     }
 
@@ -233,6 +253,7 @@ impl InteractiveTool for AttractorPlotter {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
+        let cap = self.max_points.clamp(1, ATTRACTOR_RING_CAPACITY);
         for _ in 0..self.simulation_speed.clamp(1, MAX_SIMULATION_SPEED) {
             let current_vec = self.system.state.vec;
             if !current_vec.x.is_finite()
@@ -244,6 +265,15 @@ impl InteractiveTool for AttractorPlotter {
                     diverged_at_step: self.step_count,
                 };
                 break;
+            }
+            if let Some(ref mut twin) = self.twin {
+                if !twin.step_branch_a(self.dt, cap) {
+                    self.execution_state = SolverExecutionState::Diverged {
+                        invalid_vec: twin.system_a.state.vec,
+                        diverged_at_step: self.step_count,
+                    };
+                    break;
+                }
             }
 
             self.system.step(self.dt);
@@ -258,19 +288,53 @@ impl InteractiveTool for AttractorPlotter {
                 break;
             }
 
-            if self.history.len() >= self.max_points {
+            if self.history.len() >= cap {
                 self.history.pop_front();
             }
             self.history.push_back(vec);
+            if let Some(ref mut twin) = self.twin {
+                twin.observe_lockstep(self.step_count, self.dt, vec);
+            }
+        }
+        self.sync_local_branch_engine();
+    }
+
+    fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
+        self.twin
+            .as_ref()
+            .map(|t| t.snapshot(self.step_count, self.dt))
+    }
+
+    fn apply_counterfactual_action(&mut self, action: crate::framework::BranchControlAction) -> bool {
+        match action {
+            crate::framework::BranchControlAction::ForkHere => self.fork_here(),
+            crate::framework::BranchControlAction::SwapBranches => self.swap_branches(),
+            crate::framework::BranchControlAction::ClearFork => self.clear_fork(),
+            crate::framework::BranchControlAction::SetPerturbation(delta) => {
+                self.branch_engine.set_effective_delta(delta);
+                true
+            }
         }
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
-        if points.is_empty() && self.is_finite_state() {
-            points.push(self.project(self.system.state.vec));
+        let mut points_b: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+        if points_b.is_empty() && self.is_finite_state() {
+            points_b.push(self.project(self.system.state.vec));
         }
-        vec![("Trajectory".to_string(), points)]
+        if let Some(ref twin) = self.twin {
+            let mut points_a: Vec<[f64; 2]> =
+                twin.history_a.iter().map(|p| self.project(*p)).collect();
+            if points_a.is_empty() {
+                points_a.push(self.project(twin.system_a.state.vec));
+            }
+            vec![
+                ("Branch B (Active)".to_string(), points_b),
+                ("Branch A (Baseline)".to_string(), points_a),
+            ]
+        } else {
+            vec![("Trajectory".to_string(), points_b)]
+        }
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -297,12 +361,14 @@ impl InteractiveTool for AttractorPlotter {
                     self.history = data.history.clone();
                     self.system.state.vec = data.current_vec;
                     self.step_count = data.step_count;
+                    self.twin = data.twin.clone();
                     if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
                         || !was_paused
                     {
                         self.execution_state = data.execution_state;
                     }
                 }
+                self.sync_local_branch_engine();
             }
         }
 
@@ -341,3 +407,7 @@ mod preset;
 #[cfg(test)]
 #[path = "attractors/attractor_tests.rs"]
 mod attractor_tests;
+
+#[cfg(test)]
+#[path = "attractors/counterfactual_tests.rs"]
+mod counterfactual_tests;

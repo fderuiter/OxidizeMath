@@ -109,6 +109,29 @@ impl SimulationFramework {
         self.write_overlay_keys(ctx, id_source);
         self.sync_state.theory_portal = Some(self.show_theory_portal);
         self.sync_state.starter_gallery = Some(self.show_starter_gallery);
+        self.sync_counterfactual_snapshot();
+    }
+
+    /// Synchronizes `branch_engine` with the active tool's latest counterfactual divergence snapshot.
+    pub fn sync_counterfactual_snapshot(&mut self) {
+        let snap = self
+            .active_tool
+            .as_ref()
+            .and_then(|tool| tool.counterfactual_snapshot());
+        self.branch_engine.sync_snapshot(snap);
+    }
+
+    /// Dispatches a `CounterfactualBranchEngine` control action to the active tool and refreshes `branch_engine`.
+    pub fn dispatch_branch_action(&mut self, action: super::BranchControlAction) -> bool {
+        if let super::BranchControlAction::SetPerturbation(delta) = action {
+            self.branch_engine.set_effective_delta(delta);
+        }
+        let applied = self
+            .active_tool
+            .as_mut()
+            .is_some_and(|tool| tool.apply_counterfactual_action(action));
+        self.sync_counterfactual_snapshot();
+        applied
     }
 
     pub(crate) fn sync_starter_gallery_state(&mut self, ctx: &egui::Context, id_source: &str) {

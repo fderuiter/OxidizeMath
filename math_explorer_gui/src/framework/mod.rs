@@ -2,6 +2,7 @@ pub mod callout_overlay;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod counterfactual;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_figure;
@@ -42,6 +43,7 @@ mod url_share;
 
 pub use callout_overlay::*;
 pub use clamp::*;
+pub use counterfactual::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
@@ -276,6 +278,16 @@ pub trait InteractiveTool {
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
 
+    /// Optional hook returning the active counterfactual divergence snapshot for `SimulationFramework`.
+    fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
+        None
+    }
+
+    /// Optional hook applying a `CounterfactualBranchEngine` action (`Fork`, `Swap`, `Clear`, `SetPerturbation`).
+    fn apply_counterfactual_action(&mut self, _action: BranchControlAction) -> bool {
+        false
+    }
+
     /// Optional hook to sample multi-frame animation datasets for GIF export.
     fn sample_animation_frames(
         &mut self,
@@ -359,6 +371,8 @@ pub struct SimulationFramework {
     pub diagnostic_report: Option<DiagnosticReport>,
     /// Simulation frame / step counter.
     pub step_counter: usize,
+    /// Counterfactual shadow twin engine state synchronized with the active tool.
+    pub branch_engine: CounterfactualBranchEngine,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
     pub(super) instance_id: u64,
@@ -403,6 +417,7 @@ impl SimulationFramework {
             is_diverged: false,
             diagnostic_report: None,
             step_counter: 0,
+            branch_engine: CounterfactualBranchEngine::default(),
             start_time: crate::web_io::PlatformInstant::now(),
             instance_id: overlay_sync::next_framework_id(),
             sync_state: FrameworkSyncState::default(),

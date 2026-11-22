@@ -4,11 +4,14 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+pub mod counterfactual;
+mod counterfactual_tool;
 pub mod runner;
 pub mod theory;
 pub mod tool;
 pub mod ui;
 
+pub use counterfactual::*;
 pub use runner::sanitize_mri_time_scale;
 #[cfg(test)]
 pub use runner::{
