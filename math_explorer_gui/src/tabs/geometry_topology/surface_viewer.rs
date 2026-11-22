@@ -1,26 +1,20 @@
 use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
 use eframe::egui;
 use egui_plot::{Line, PlotPoints};
+use math_commons::primitives::PositiveFloat;
 use math_explorer::pure_math::differential_geometry::surface::{
-    KleinBottle, ParametricSurface, Sphere, Torus,
+    KleinBottle, ParametricSurface, ParametricSurfaceKind, Sphere, Torus,
 };
 use nalgebra::Point3;
 use std::f64::consts::PI;
 
-#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum SurfaceType {
-    Sphere,
-    Torus,
-    KleinBottle,
-}
-
 #[derive(serde::Serialize)]
 struct SurfaceViewerSaveState {
-    surface_type: SurfaceType,
-    sphere_radius: f64,
-    torus_major_radius: f64,
-    torus_minor_radius: f64,
-    klein_radius: f64,
+    surface_type: ParametricSurfaceKind,
+    sphere_radius: PositiveFloat,
+    torus_major_radius: PositiveFloat,
+    torus_minor_radius: PositiveFloat,
+    klein_radius: PositiveFloat,
     u_resolution: usize,
     v_resolution: usize,
     camera: Camera3D,
@@ -29,11 +23,11 @@ struct SurfaceViewerSaveState {
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SurfaceViewerState {
-    surface_type: SurfaceType,
-    sphere_radius: f64,
-    torus_major_radius: f64,
-    torus_minor_radius: f64,
-    klein_radius: f64,
+    surface_type: ParametricSurfaceKind,
+    sphere_radius: PositiveFloat,
+    torus_major_radius: PositiveFloat,
+    torus_minor_radius: PositiveFloat,
+    klein_radius: PositiveFloat,
     u_resolution: usize,
     v_resolution: usize,
     #[serde(default)]
@@ -47,7 +41,7 @@ struct SurfaceViewerState {
 }
 
 pub struct SurfaceViewer {
-    surface_type: SurfaceType,
+    surface_type: ParametricSurfaceKind,
 
     // Parameters
     sphere_radius: f64,
@@ -66,7 +60,7 @@ pub struct SurfaceViewer {
 impl Default for SurfaceViewer {
     fn default() -> Self {
         Self {
-            surface_type: SurfaceType::Torus,
+            surface_type: ParametricSurfaceKind::Torus,
             sphere_radius: 1.0,
             torus_major_radius: 2.0,
             torus_minor_radius: 0.5,
@@ -120,14 +114,14 @@ impl SurfaceViewer {
     }
     fn create_surface(&self) -> Box<dyn ParametricSurface> {
         match self.surface_type {
-            SurfaceType::Sphere => Box::new(Sphere {
+            ParametricSurfaceKind::Sphere => Box::new(Sphere {
                 radius: self.sphere_radius,
             }),
-            SurfaceType::Torus => Box::new(Torus {
+            ParametricSurfaceKind::Torus => Box::new(Torus {
                 major_radius: self.torus_major_radius,
                 minor_radius: self.torus_minor_radius,
             }),
-            SurfaceType::KleinBottle => Box::new(KleinBottle {
+            ParametricSurfaceKind::KleinBottle => Box::new(KleinBottle {
                 radius: self.klein_radius,
             }),
         }
@@ -147,10 +141,10 @@ impl InteractiveTool for SurfaceViewer {
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&SurfaceViewerSaveState {
             surface_type: self.surface_type,
-            sphere_radius: self.sphere_radius,
-            torus_major_radius: self.torus_major_radius,
-            torus_minor_radius: self.torus_minor_radius,
-            klein_radius: self.klein_radius,
+            sphere_radius: PositiveFloat::new(self.sphere_radius).ok()?,
+            torus_major_radius: PositiveFloat::new(self.torus_major_radius).ok()?,
+            torus_minor_radius: PositiveFloat::new(self.torus_minor_radius).ok()?,
+            klein_radius: PositiveFloat::new(self.klein_radius).ok()?,
             u_resolution: self.u_resolution,
             v_resolution: self.v_resolution,
             camera: self.camera,
@@ -161,14 +155,14 @@ impl InteractiveTool for SurfaceViewer {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let loaded: SurfaceViewerState =
             serde_json::from_str(state).map_err(|e| format!("Invalid SurfaceViewer state: {e}"))?;
-        if !loaded.sphere_radius.is_finite()
-            || !(0.1..=5.0).contains(&loaded.sphere_radius)
-            || !loaded.torus_major_radius.is_finite()
-            || !(1.0..=5.0).contains(&loaded.torus_major_radius)
-            || !loaded.torus_minor_radius.is_finite()
-            || !(0.1..=2.0).contains(&loaded.torus_minor_radius)
-            || !loaded.klein_radius.is_finite()
-            || !(0.5..=5.0).contains(&loaded.klein_radius)
+        let sphere_radius = loaded.sphere_radius.value();
+        let torus_major_radius = loaded.torus_major_radius.value();
+        let torus_minor_radius = loaded.torus_minor_radius.value();
+        let klein_radius = loaded.klein_radius.value();
+        if !(0.1..=5.0).contains(&sphere_radius)
+            || !(1.0..=5.0).contains(&torus_major_radius)
+            || !(0.1..=2.0).contains(&torus_minor_radius)
+            || !(0.5..=5.0).contains(&klein_radius)
         {
             return Err("Surface radii out of valid bounds".to_string());
         }
@@ -186,10 +180,10 @@ impl InteractiveTool for SurfaceViewer {
             Some(Camera3D::default()),
         )?;
         self.surface_type = loaded.surface_type;
-        self.sphere_radius = loaded.sphere_radius;
-        self.torus_major_radius = loaded.torus_major_radius;
-        self.torus_minor_radius = loaded.torus_minor_radius;
-        self.klein_radius = loaded.klein_radius;
+        self.sphere_radius = sphere_radius;
+        self.torus_major_radius = torus_major_radius;
+        self.torus_minor_radius = torus_minor_radius;
+        self.klein_radius = klein_radius;
         self.u_resolution = loaded.u_resolution;
         self.v_resolution = loaded.v_resolution;
         self.camera.apply_pose(camera);
@@ -205,11 +199,19 @@ impl InteractiveTool for SurfaceViewer {
 
             ui.label("Select Surface:");
             ui.horizontal(|ui| {
-                ui.radio_value(&mut self.surface_type, SurfaceType::Sphere, "Sphere");
-                ui.radio_value(&mut self.surface_type, SurfaceType::Torus, "Torus");
                 ui.radio_value(
                     &mut self.surface_type,
-                    SurfaceType::KleinBottle,
+                    ParametricSurfaceKind::Sphere,
+                    "Sphere",
+                );
+                ui.radio_value(
+                    &mut self.surface_type,
+                    ParametricSurfaceKind::Torus,
+                    "Torus",
+                );
+                ui.radio_value(
+                    &mut self.surface_type,
+                    ParametricSurfaceKind::KleinBottle,
                     "Klein Bottle",
                 );
             });
@@ -217,14 +219,14 @@ impl InteractiveTool for SurfaceViewer {
             ui.separator();
 
             ui.collapsing("Parameters", |ui| match self.surface_type {
-                SurfaceType::Sphere => {
+                ParametricSurfaceKind::Sphere => {
                     ui.add(egui::Slider::new(&mut self.sphere_radius, 0.1..=5.0).text("Radius"));
                 }
-                SurfaceType::Torus => {
+                ParametricSurfaceKind::Torus => {
                     ui.add(egui::Slider::new(&mut self.torus_major_radius, 1.0..=5.0).text("Major Radius (R)"));
                     ui.add(egui::Slider::new(&mut self.torus_minor_radius, 0.1..=2.0).text("Minor Radius (r)"));
                 }
-                SurfaceType::KleinBottle => {
+                ParametricSurfaceKind::KleinBottle => {
                     ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
                 }
             });
@@ -307,9 +309,9 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for SurfaceViewer {
     fn theory_description(&self) -> String {
         let surf_desc = match self.surface_type {
-            SurfaceType::Sphere => "sphere $S^2$: $\\vec{r}(u, v) = (R \\sin u \\cos v, R \\sin u \\sin v, R \\cos u)$",
-            SurfaceType::Torus => "torus $T^2$: $\\vec{r}(u, v) = ((R + r \\cos v)\\cos u, (R + r \\cos v)\\sin u, r \\sin v)$",
-            SurfaceType::KleinBottle => "non-orientable Klein bottle embedded in 3D: $\\chi(M) = 0$",
+            ParametricSurfaceKind::Sphere => "sphere $S^2$: $\\vec{r}(u, v) = (R \\sin u \\cos v, R \\sin u \\sin v, R \\cos u)$",
+            ParametricSurfaceKind::Torus => "torus $T^2$: $\\vec{r}(u, v) = ((R + r \\cos v)\\cos u, (R + r \\cos v)\\sin u, r \\sin v)$",
+            ParametricSurfaceKind::KleinBottle => "non-orientable Klein bottle embedded in 3D: $\\chi(M) = 0$",
         };
         format!(
             "Parametric 2-manifold surface representation: {}.",

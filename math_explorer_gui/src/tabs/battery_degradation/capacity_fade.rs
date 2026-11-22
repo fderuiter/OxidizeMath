@@ -25,9 +25,9 @@ impl Default for CapacityFadeTool {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CapacityFadeState {
-    dod: f64,
+    dod: DepthOfDischarge,
     temperature: f64,
-    cycles_to_simulate: f64,
+    cycles_to_simulate: Cycles,
 }
 
 impl InteractiveTool for CapacityFadeTool {
@@ -41,9 +41,9 @@ impl InteractiveTool for CapacityFadeTool {
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&CapacityFadeState {
-            dod: self.dod,
+            dod: DepthOfDischarge::new(self.dod).ok()?,
             temperature: self.temperature,
-            cycles_to_simulate: self.cycles_to_simulate,
+            cycles_to_simulate: Cycles::new(self.cycles_to_simulate).ok()?,
         })
         .ok()
     }
@@ -51,18 +51,16 @@ impl InteractiveTool for CapacityFadeTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: CapacityFadeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid capacity fade state: {e}"))?;
-        if !s.dod.is_finite()
-            || !(0.0..=100.0).contains(&s.dod)
-            || !s.temperature.is_finite()
+        let cycles = s.cycles_to_simulate.as_f64();
+        if !s.temperature.is_finite()
             || !(-20.0..=60.0).contains(&s.temperature)
-            || !s.cycles_to_simulate.is_finite()
-            || !(100.0..=10_000.0).contains(&s.cycles_to_simulate)
+            || !(100.0..=10_000.0).contains(&cycles)
         {
             return Err("Capacity fade parameters out of bounds".into());
         }
-        self.dod = s.dod;
+        self.dod = s.dod.as_f64();
         self.temperature = s.temperature;
-        self.cycles_to_simulate = s.cycles_to_simulate;
+        self.cycles_to_simulate = cycles;
         Ok(())
     }
 

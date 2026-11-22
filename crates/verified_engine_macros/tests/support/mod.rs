@@ -237,6 +237,13 @@ fn artifacts() -> &'static CompilerArtifacts {
         {
             deps_dirs.push(p.to_path_buf());
         }
+        for extra_pkg in ["serde", "serde_core", "serde_derive"] {
+            for dir in crate_search_dirs(&profiles, build_layout, extra_pkg) {
+                if !deps_dirs.iter().any(|d| d == &dir) {
+                    deps_dirs.push(dir);
+                }
+            }
+        }
         CompilerArtifacts {
             rustc,
             proc_macro_dylib,

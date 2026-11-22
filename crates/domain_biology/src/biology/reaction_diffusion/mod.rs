@@ -90,7 +90,8 @@ pub use state::ChemicalState;
 pub use traits::{DiffusionModel, ReactionModel};
 
 /// Errors related to Reaction-Diffusion systems.
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ReactionDiffusionError {
     #[allow(missing_docs)]
     #[error("Mathematical error: {0}")]
@@ -104,6 +105,39 @@ pub enum ReactionDiffusionError {
     #[error("Missing parameter: {0}")]
     #[allow(missing_docs)]
     MissingParameter(&'static str),
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for ReactionDiffusionError {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        enum RawReactionDiffusionError {
+            Math(math_commons::error::MathError),
+            ZeroSpecies,
+            ZeroGridSize,
+            MissingParameter(String),
+        }
+        match RawReactionDiffusionError::deserialize(deserializer)? {
+            RawReactionDiffusionError::Math(e) => Ok(Self::Math(e)),
+            RawReactionDiffusionError::ZeroSpecies => Ok(Self::ZeroSpecies),
+            RawReactionDiffusionError::ZeroGridSize => Ok(Self::ZeroGridSize),
+            RawReactionDiffusionError::MissingParameter(name) => {
+                let static_name = match name.as_str() {
+                    "num_species" => "num_species",
+                    "grid_size" => "grid_size",
+                    "reaction" => "reaction",
+                    "diffusion" => "diffusion",
+                    "diffusion_coeffs" => "diffusion_coeffs",
+                    "solver" => "solver",
+                    _ => return Err(serde::de::Error::custom("unknown parameter name")),
+                };
+                Ok(Self::MissingParameter(static_name))
+            }
+        }
+    }
 }
 
 #[cfg(test)]

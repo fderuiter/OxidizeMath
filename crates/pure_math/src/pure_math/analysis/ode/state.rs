@@ -5,6 +5,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign};
 /// A wrapper around `Vec<f64>` that implements `VectorOperations`.
 /// Use this when you need a heap-allocated state vector.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VecState(pub Vec<f64>);
 
 impl Add for VecState {
@@ -87,6 +88,30 @@ impl VectorOperations for VecState {
 /// Use this for small systems where stack allocation is preferred.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ArrayState<const N: usize>(pub [f64; N]);
+
+#[cfg(feature = "serde")]
+impl<const N: usize> serde::Serialize for ArrayState<N> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.as_slice().serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, const N: usize> serde::Deserialize<'de> for ArrayState<N> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let vals = Vec::<f64>::deserialize(deserializer)?;
+        let arr: [f64; N] = vals.try_into().map_err(|v: Vec<f64>| {
+            serde::de::Error::invalid_length(v.len(), &format!("array of length {N}").as_str())
+        })?;
+        Ok(Self(arr))
+    }
+}
 
 impl<const N: usize> Add for ArrayState<N> {
     type Output = Self;

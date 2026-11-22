@@ -7,7 +7,8 @@ use super::gauge::GaugeCouplings;
 /// The potential is given by: $V(\phi) = \mu^2 \phi^\dagger \phi + \lambda (\phi^\dagger \phi)^2$
 ///
 /// For symmetry breaking to occur, `mu2` must be negative.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HiggsPotential {
     /// The mass parameter squared ($\mu^2$). Must be negative for SSB.
     pub mu2: f64,

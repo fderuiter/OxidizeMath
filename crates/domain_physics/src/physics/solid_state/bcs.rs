@@ -21,7 +21,8 @@ pub trait GapEquation {
 
 // --- Solver ---
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct BcsGapSolver {
     #[allow(missing_docs)]
@@ -100,6 +101,8 @@ impl BcsGapSolver {
 
 // --- Models ---
 
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct IsotropicBCSModel {
     #[allow(missing_docs)]

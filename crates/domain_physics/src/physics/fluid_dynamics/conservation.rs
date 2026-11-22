@@ -72,6 +72,8 @@ pub trait MomentumEquation {
 /// Navier-Stokes momentum equation (Viscous Flow).
 ///
 /// $$\frac{\partial \mathbf{u}}{\partial t} = -(\mathbf{u} \cdot \nabla)\mathbf{u} - \frac{1}{\rho}\nabla p + \nu \nabla^2 \mathbf{u} + \mathbf{g}$$
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NavierStokes;
 
 impl MomentumEquation for NavierStokes {
@@ -103,6 +105,8 @@ impl MomentumEquation for NavierStokes {
 /// Euler momentum equation (Inviscid Flow).
 ///
 /// $$\frac{\partial \mathbf{u}}{\partial t} = -(\mathbf{u} \cdot \nabla)\mathbf{u} - \frac{1}{\rho}\nabla p + \mathbf{g}$$
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Euler;
 
 impl MomentumEquation for Euler {

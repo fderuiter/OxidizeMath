@@ -5,6 +5,8 @@ pub trait BoundaryCondition {
     fn resolve(&self, x: isize, y: isize, width: usize, height: usize) -> Option<usize>;
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct NeumannBoundary;
 impl BoundaryCondition for NeumannBoundary {

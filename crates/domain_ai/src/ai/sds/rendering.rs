@@ -3,7 +3,8 @@ use rand::Rng;
 use std::f64::consts::PI;
 
 /// Represents a single ray: r(t) = o + t * d
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Ray {
     #[allow(missing_docs)]
     pub origin: Vector3<f64>,
@@ -12,6 +13,8 @@ pub struct Ray {
 }
 
 /// A bundle of rays corresponding to an image grid.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RayBundle {
     #[allow(missing_docs)]
     pub rays: Vec<Ray>,
@@ -22,6 +25,8 @@ pub struct RayBundle {
 }
 
 /// A persistent rendering context for zero-allocation rendering.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderContext {
     #[allow(missing_docs)]
     pub image_data: Vec<Vector3<f64>>,

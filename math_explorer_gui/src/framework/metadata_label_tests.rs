@@ -5,8 +5,8 @@ use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 use crate::tabs::quantum::wave_sim::WaveUnified;
-use crate::tabs::solid_state::crystal_viewer::CrystalSystemEnum;
 use eframe::egui;
+use math_explorer::physics::solid_state::lattice::BravaisLattice;
 use scientific_metadata::theory::TheoryDescribable;
 
 fn has_raw_struct_suffix(label: &str) -> bool {
@@ -330,13 +330,13 @@ fn test_hodgkin_huxley_sensitivity_cards_separate_ids_from_display_labels() {
 
 #[test]
 fn test_readable_enum_and_error_formatting() {
-    assert_eq!(CrystalSystemEnum::SimpleCubic.label(), "Simple Cubic");
+    assert_eq!(BravaisLattice::SimpleCubic.label(), "Simple Cubic");
     assert_eq!(
-        CrystalSystemEnum::BodyCenteredCubic.label(),
+        BravaisLattice::BodyCenteredCubic.label(),
         "Body-Centered Cubic (BCC)"
     );
     assert_eq!(
-        CrystalSystemEnum::FaceCenteredCubic.label(),
+        BravaisLattice::FaceCenteredCubic.label(),
         "Face-Centered Cubic (FCC)"
     );
 

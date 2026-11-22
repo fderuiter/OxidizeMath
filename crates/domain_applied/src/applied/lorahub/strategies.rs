@@ -20,6 +20,8 @@ pub trait ObjectiveStrategy {
 }
 
 /// The standard linear combination strategy.
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LinearCombinationStrategy;
 
 impl CombinationStrategy for LinearCombinationStrategy {
@@ -71,6 +73,8 @@ impl CombinationStrategy for LinearCombinationStrategy {
 }
 
 /// L1 Regularization strategy.
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct L1RegularizationStrategy {
     #[allow(missing_docs)]
     pub alpha: f64,

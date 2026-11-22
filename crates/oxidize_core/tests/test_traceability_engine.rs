@@ -2,7 +2,9 @@
 
 #![cfg(not(target_arch = "wasm32"))]
 
-use oxidize_core::traceability::{AstCache, TraceabilityEngine, TraceabilityReport};
+#[cfg(feature = "serde")]
+use oxidize_core::traceability::TraceabilityReport;
+use oxidize_core::traceability::{AstCache, TraceabilityEngine};
 use oxidize_core::vfs::{DefaultVfs, VirtualFileSystem};
 use std::collections::HashMap;
 use std::future::Future;
@@ -66,10 +68,13 @@ fn test_traceability_engine_scan() {
     assert!(report.scanned_files > 0);
     assert!(report.orphaned_papers.is_empty());
 
-    let serialized = toml::to_string(&report).expect("serialize TraceabilityReport");
-    let roundtrip: TraceabilityReport =
-        toml::from_str(&serialized).expect("deserialize TraceabilityReport");
-    assert_eq!(roundtrip, report);
+    #[cfg(feature = "serde")]
+    {
+        let serialized = toml::to_string(&report).expect("serialize TraceabilityReport");
+        let roundtrip: TraceabilityReport =
+            toml::from_str(&serialized).expect("deserialize TraceabilityReport");
+        assert_eq!(roundtrip, report);
+    }
 }
 
 #[test]

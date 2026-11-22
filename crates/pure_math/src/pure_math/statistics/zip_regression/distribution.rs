@@ -33,6 +33,7 @@ use statrs::function::gamma::ln_gamma;
 /// Lambert, D. (1992). "Zero-Inflated Poisson Regression, with an Application to Defects in Manufacturing."
 /// *Technometrics*, 34(1), 1-14.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ZipDistribution {
     params: ZipParams,
 }

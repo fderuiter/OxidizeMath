@@ -14,6 +14,7 @@ pub const MAX_LM_ITERATIONS: usize = 50;
 
 /// Supported preset curve fitting models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum FitType {
     /// Linear regression ($y = a x + b$)
     Linear,
@@ -117,6 +118,7 @@ impl fmt::Display for FitType {
 
 /// Result of a fitted curve regression model.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct FitResult {
     /// Selected regression model family.
     pub fit_type: FitType,
@@ -227,5 +229,25 @@ pub fn fit_model_with_axes(
             poly::fit_polynomial_scaled(points, deg.clamp(1, 4), dataset_name, log_x, log_y)
         }
         _ => nonlinear::fit_nonlinear(points, fit_type, dataset_name, log_mode),
+    }
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod serde_tests {
+    use super::{FitResult, FitType, fit_model};
+
+    #[test]
+    fn fit_type_and_result_roundtrip_json() {
+        for preset in FitType::MENU_PRESETS {
+            let encoded = serde_json::to_string(&preset).expect("serialize FitType");
+            let decoded: FitType = serde_json::from_str(&encoded).expect("deserialize FitType");
+            assert_eq!(decoded, preset);
+        }
+
+        let pts = [[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]];
+        let result = fit_model(&pts, FitType::Linear, "linear_demo", false).expect("fit linear");
+        let encoded = serde_json::to_string(&result).expect("serialize FitResult");
+        let decoded: FitResult = serde_json::from_str(&encoded).expect("deserialize FitResult");
+        assert_eq!(decoded, result);
     }
 }

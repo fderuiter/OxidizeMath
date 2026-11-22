@@ -71,6 +71,8 @@ pub trait GradientEstimator {
 /// Estimates gradients using the Central Difference method.
 ///
 /// $ \nabla f \approx \left( \frac{f(x+1) - f(x-1)}{2}, \frac{f(y+1) - f(y-1)}{2}, \frac{f(z+1) - f(z-1)}{2} \right) $
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CentralDifferenceEstimator;
 
 impl GradientEstimator for CentralDifferenceEstimator {

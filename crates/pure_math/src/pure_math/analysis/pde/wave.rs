@@ -2,6 +2,8 @@ use std::f64::consts::PI;
 
 /// Represents the 1D Wave Equation parameters.
 /// $\frac{\partial^2 y}{\partial x^2} = \frac{1}{v^2} \frac{\partial^2 y}{\partial t^2}$
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WaveEquation1D {
     #[allow(missing_docs)]
     pub wave_speed: f64, // v or c
@@ -54,6 +56,8 @@ impl WaveEquation1D {
 
 /// Represents a standing wave solution on a string of length L with fixed ends.
 /// $u(x, t) = \sum_{n=1}^\infty (A_n \cos \omega_n t + B_n \sin \omega_n t) \sin(n \pi x / L)$
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StringWaveSolution {
     #[allow(missing_docs)]
     pub length: f64,

@@ -2,6 +2,7 @@ use crate::error::EngineeringError;
 
 /// A baud rate in symbols per second.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BaudRate(u32);
 
 impl BaudRate {
@@ -20,6 +21,7 @@ impl BaudRate {
 
 /// The number of payload data bits in a frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DataBits(u32);
 
 impl DataBits {
@@ -38,6 +40,7 @@ impl DataBits {
 
 /// The total number of bits in a frame (start, data, parity, stop).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct TotalBits(u32);
 
 impl TotalBits {
@@ -101,6 +104,17 @@ pub fn calculate_uart_throughput(
     total_bits: TotalBits,
 ) -> f64 {
     (baud_rate.value() as f64 * data_bits.value() as f64) / total_bits.value() as f64
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for TotalBits {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = u32::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
+    }
 }
 
 #[cfg(test)]

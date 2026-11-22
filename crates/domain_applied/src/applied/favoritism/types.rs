@@ -4,6 +4,7 @@ use nalgebra::DVector;
 ///
 /// These parameters define the temporal scope and spatial decay of the relationship.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TimeParams {
     /// Time period over which proximity is integrated (in days).
     ///
@@ -30,6 +31,7 @@ impl Default for TimeParams {
 /// Defines the monetary and sentimental value of gifts, which are
 /// key drivers in the corruption of parental affection.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GiftParams {
     /// Emotional value of gifts (Arbitrary 0-10 scale).
     ///
@@ -55,6 +57,7 @@ impl Default for GiftParams {
 ///
 /// Models how quickly parental love fades when you don't call your mother.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContactParams {
     /// Initial contact frequency factor (calls/visits per month).
     pub f_initial: f64,
@@ -81,6 +84,7 @@ impl Default for ContactParams {
 ///
 /// Parents often favor the child who reflects best on them socially.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PersonalityParams {
     /// Intelligence score (0-10 scale).
     pub intelligence: f64,
@@ -118,6 +122,7 @@ impl Default for PersonalityParams {
 
 /// Parameters related to social behavior and life events.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SocialParams {
     /// Weight assigned based on birth order (e.g., oldest=1.2, middle=0.9).
     pub birth_order_weight: f64,
@@ -145,6 +150,7 @@ impl Default for SocialParams {
 ///
 /// Flattery is effective.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ComplimentParams {
     /// Vector of compliment intensity scores.
     pub compliments: DVector<f64>,
@@ -164,6 +170,7 @@ impl Default for ComplimentParams {
 
 /// Parameters related to family context.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FamilyParams {
     /// Distances of siblings (used for the denominator in the formula).
     ///
@@ -195,6 +202,7 @@ impl Default for FamilyParams {
 /// inputs.personality.wealth = 10.0; // The "Golden Child" strategy
 /// ```
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FavoritismInputs {
     /// Time and proximity settings.
     pub time: TimeParams,

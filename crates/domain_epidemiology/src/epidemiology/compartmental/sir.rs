@@ -6,6 +6,7 @@ use verified_engine::Theory;
 
 /// State for the SIR Model.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SIRState {
     #[allow(missing_docs)]
     pub s: f64,
@@ -23,6 +24,7 @@ impl_compartmental_ops!(SIRState, s, i, r);
 /// but does not hold the simulation state. This allows it to be used
 /// as a stateless Strategy or Flyweight.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SIRDynamics {
     #[allow(missing_docs)]
     pub n: f64,
@@ -58,7 +60,8 @@ impl OdeSystem<SIRState> for SIRDynamics {
 /// $$dR/dt = \gamma I$$
 ///
 /// Use `SIRModel::builder()` or `SIRModel::new()` to construct.
-#[derive(Debug, Clone, Theory)]
+#[derive(Debug, Clone, PartialEq, Theory)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[theory(
     description = "The SIR model is an epidemiological model that computes the theoretical number of people infected with a contagious illness in a closed population over time.",
     citation = "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)"
@@ -91,7 +94,8 @@ impl<S: Solver<SIRState>> TimeStepper<SIRState> for SIRModel<S> {
 }
 
 /// Builder for SIRModel to ensure valid parameter configuration.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SIRModelBuilder {
     n: Option<f64>,
     i0: Option<f64>,
@@ -233,6 +237,47 @@ impl<S: Solver<SIRState>> OdeSystem<SIRState> for SIRModel<S> {
     fn derivative(&self, t: f64, state: &SIRState) -> SIRState {
         // Delegate to the pure dynamics component
         self.dynamics.derivative(t, state)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, S> serde::Deserialize<'de> for SIRModel<S>
+where
+    S: Solver<SIRState> + serde::Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawSIRModel<S> {
+            state: SIRState,
+            dynamics: SIRDynamics,
+            solver: S,
+        }
+
+        let raw = RawSIRModel::<S>::deserialize(deserializer)?;
+        validate_population(raw.dynamics.n).map_err(serde::de::Error::custom)?;
+        validate_rate("beta (transmission rate)", raw.dynamics.beta)
+            .map_err(serde::de::Error::custom)?;
+        validate_rate("gamma (recovery rate)", raw.dynamics.gamma)
+            .map_err(serde::de::Error::custom)?;
+        if !raw.state.s.is_finite()
+            || !raw.state.i.is_finite()
+            || !raw.state.r.is_finite()
+            || raw.state.s < 0.0
+            || raw.state.i < 0.0
+            || raw.state.r < 0.0
+        {
+            return Err(serde::de::Error::custom(
+                "SIRState compartments must be finite and non-negative",
+            ));
+        }
+        Ok(Self {
+            state: raw.state,
+            dynamics: raw.dynamics,
+            solver: raw.solver,
+        })
     }
 }
 

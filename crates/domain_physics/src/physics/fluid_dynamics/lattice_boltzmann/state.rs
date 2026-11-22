@@ -5,7 +5,7 @@ use pure_math::pure_math::analysis::evolution::DoubleBufferedState;
 ///
 /// Holds the distribution functions and macroscopic variables.
 /// This struct is purely a data holder and does not implement the solver logic.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LatticeState<const Q: usize> {
     pub(crate) width: usize,
     pub(crate) height: usize,
@@ -95,5 +95,91 @@ impl<const Q: usize> LatticeState<Q> {
     #[verified_engine::verified]
     pub fn obstacles(&self) -> &[bool] {
         self.obstacles.as_slice()
+    }
+}
+
+#[cfg(feature = "serde")]
+#[derive(serde::Serialize, serde::Deserialize)]
+struct LatticeStateWire {
+    width: usize,
+    height: usize,
+    f: Vec<Vec<f64>>,
+    f_new: Vec<Vec<f64>>,
+    rho: DMatrix<f64>,
+    ux: DMatrix<f64>,
+    uy: DMatrix<f64>,
+    obstacles: DMatrix<bool>,
+}
+
+#[cfg(feature = "serde")]
+fn decode_dist_matrix<const Q: usize>(
+    height: usize,
+    width: usize,
+    raw: Vec<Vec<f64>>,
+) -> Result<DMatrix<[f64; Q]>, String> {
+    let expected = width
+        .checked_mul(height)
+        .ok_or_else(|| "Grid dimensions overflow".to_string())?;
+    if raw.len() != expected {
+        return Err(format!(
+            "Expected {expected} lattice cells, got {}",
+            raw.len()
+        ));
+    }
+    let mut cells = Vec::with_capacity(expected);
+    for cell in raw {
+        let arr: [f64; Q] = cell
+            .try_into()
+            .map_err(|v: Vec<f64>| format!("Expected {Q} velocity components, got {}", v.len()))?;
+        cells.push(arr);
+    }
+    Ok(DMatrix::from_vec(height, width, cells))
+}
+
+#[cfg(feature = "serde")]
+impl<const Q: usize> serde::Serialize for LatticeState<Q> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let wire = LatticeStateWire {
+            width: self.width,
+            height: self.height,
+            f: self.f.iter().map(|arr| arr.to_vec()).collect(),
+            f_new: self.f_new.iter().map(|arr| arr.to_vec()).collect(),
+            rho: self.rho.clone(),
+            ux: self.ux.clone(),
+            uy: self.uy.clone(),
+            obstacles: self.obstacles.clone(),
+        };
+        wire.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, const Q: usize> serde::Deserialize<'de> for LatticeState<Q> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = LatticeStateWire::deserialize(deserializer)?;
+        let shape = (wire.height, wire.width);
+        if wire.rho.shape() != shape
+            || wire.ux.shape() != shape
+            || wire.uy.shape() != shape
+            || wire.obstacles.shape() != shape
+        {
+            return Err(serde::de::Error::custom(
+                "Macroscopic field dimensions do not match (height, width)",
+            ));
+        }
+        let f = decode_dist_matrix(wire.height, wire.width, wire.f)
+            .map_err(serde::de::Error::custom)?;
+        let f_new = decode_dist_matrix(wire.height, wire.width, wire.f_new)
+            .map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            width: wire.width,
+            height: wire.height,
+            f,
+            f_new,
+            rho: wire.rho,
+            ux: wire.ux,
+            uy: wire.uy,
+            obstacles: wire.obstacles,
+        })
     }
 }

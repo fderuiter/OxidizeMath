@@ -5,6 +5,7 @@ use thiserror::Error;
 
 /// Centralized mathematical error type.
 #[derive(Debug, Clone, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MathError {
     /// Dimension mismatch between tensors/matrices or expected sizes.
     #[error("Dimension mismatch: expected {expected:?}, actual {actual:?}")]

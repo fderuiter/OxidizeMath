@@ -65,7 +65,12 @@ pub fn scaled_dot_product_attention(
 /// This struct holds the learnable weight matrices for the projections.
 /// Projection weights `w_q`, `w_k`, and `w_v` are fused into unified
 /// matrices of dimension `(d_model, d_model)` to maximize GEMM throughput.
-#[derive(Clone, Debug)]
+#[cfg(feature = "serde")]
+#[path = "attention_serde.rs"]
+mod attention_serde;
+
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MultiHeadAttention {
     d_model: usize,
     h: usize,

@@ -38,6 +38,7 @@ use nalgebra::{DMatrix, DVector};
 ///
 /// let model = ZipRegression::new(counts, x, z).unwrap();
 /// ```
+#[derive(Debug, Clone, PartialEq)]
 pub struct ZipRegression {
     /// The observed counts.
     counts: Vec<Count>,
@@ -45,6 +46,44 @@ pub struct ZipRegression {
     x_matrix: DMatrix<f64>,
     /// Design matrix for the zero-inflation model (Z).
     z_matrix: DMatrix<f64>,
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for ZipRegression {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(serde::Serialize)]
+        struct ZipRegressionRef<'a> {
+            counts: &'a [Count],
+            x_matrix: &'a DMatrix<f64>,
+            z_matrix: &'a DMatrix<f64>,
+        }
+        ZipRegressionRef {
+            counts: &self.counts,
+            x_matrix: &self.x_matrix,
+            z_matrix: &self.z_matrix,
+        }
+        .serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for ZipRegression {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct ZipRegressionRaw {
+            counts: Vec<Count>,
+            x_matrix: DMatrix<f64>,
+            z_matrix: DMatrix<f64>,
+        }
+        let raw = ZipRegressionRaw::deserialize(deserializer)?;
+        Self::new(raw.counts, raw.x_matrix, raw.z_matrix).map_err(serde::de::Error::custom)
+    }
 }
 
 impl ZipRegression {

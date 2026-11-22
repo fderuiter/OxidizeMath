@@ -2,6 +2,7 @@
 
 use super::{HeatmapView, QTableInspectorTool, QTableRunner};
 use crate::async_sim::{BackgroundWorker, SimulationRunner};
+use math_commons::primitives::UnitInterval;
 use math_explorer::ai::reinforcement_learning::algorithms::TabularQAgent;
 use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorldEnv, Move};
 
@@ -9,7 +10,7 @@ use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorld
 #[serde(deny_unknown_fields)]
 struct QTableInspectorState {
     view: HeatmapView,
-    gamma: f64,
+    gamma: UnitInterval,
     pretrain_episodes: u32,
 }
 
@@ -28,7 +29,7 @@ impl QTableInspectorTool {
     pub(super) fn save_preset_state(&self) -> Option<String> {
         serde_json::to_string(&QTableInspectorState {
             view: self.view,
-            gamma: self.env.gamma,
+            gamma: UnitInterval::new(self.env.gamma).ok()?,
             pretrain_episodes: self.episodes_trained,
         })
         .ok()
@@ -37,20 +38,16 @@ impl QTableInspectorTool {
     pub(super) fn try_load_preset_state(&mut self, state: &str) -> Result<(), String> {
         let parsed: QTableInspectorState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Q-table state: {e}"))?;
-        if !parsed.gamma.is_finite()
-            || !(0.0..=1.0).contains(&parsed.gamma)
-            || parsed.pretrain_episodes > 5_000
-        {
+        if parsed.pretrain_episodes > 5_000 {
             return Err("Q-table gamma or pretrain_episodes out of bounds".into());
         }
-        let gamma_unit = math_commons::primitives::UnitInterval::new(parsed.gamma)
-            .map_err(|e| format!("Invalid discount factor: {e}"))?;
-        let alpha = math_commons::primitives::UnitInterval::new(0.1).unwrap();
-        let eps = math_commons::primitives::UnitInterval::new(0.1).unwrap();
+        let gamma_val = parsed.gamma.value();
+        let alpha = UnitInterval::new(0.1).unwrap();
+        let eps = UnitInterval::new(0.1).unwrap();
 
         let mut runner = QTableRunner {
-            env: build_env(parsed.gamma),
-            agent: TabularQAgent::new(alpha, gamma_unit, eps, None),
+            env: build_env(gamma_val),
+            agent: TabularQAgent::new(alpha, parsed.gamma, eps, None),
             episodes_trained: 0,
             target_episodes: parsed.pretrain_episodes,
             is_training: parsed.pretrain_episodes > 0,
@@ -58,7 +55,7 @@ impl QTableInspectorTool {
         while !runner.is_complete() {
             runner.step();
         }
-        self.env = build_env(parsed.gamma);
+        self.env = build_env(gamma_val);
         self.cached_q_values.clear();
         for x in 0..self.env.width {
             for y in 0..self.env.height {

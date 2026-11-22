@@ -10,6 +10,7 @@ use crate::error::PharmacokineticsError;
 ///
 /// Constructed via [`EnantiomerModel::new`] to ensure valid parameter states.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EnantiomerModel {
     d_model: BatemanModel,
     l_model: BatemanModel,

@@ -1,5 +1,7 @@
 use crate::math_types::Rational;
 
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct FractranProgram {
     #[allow(missing_docs)]
@@ -14,6 +16,8 @@ impl FractranProgram {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct FractranState {
     #[allow(missing_docs)]

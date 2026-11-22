@@ -2,6 +2,7 @@ use super::{FavoritismInputs, calculate_favoritism_score};
 
 /// Represents a child with a name and a set of attributes for favoritism calculation.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Child {
     #[allow(missing_docs)]
     pub name: String,

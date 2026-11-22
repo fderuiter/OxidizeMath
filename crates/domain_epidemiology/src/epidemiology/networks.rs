@@ -19,7 +19,8 @@ pub fn heterogeneous_r0(beta: f64, gamma: f64, mean_degree: f64, degree_variance
     (beta / gamma) * factor
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum NodeState {
     #[allow(missing_docs)]
@@ -30,6 +31,8 @@ pub enum NodeState {
     Recovered,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[allow(missing_docs)]
 pub struct NetworkEpidemicModel {
     num_nodes: usize,
@@ -40,7 +43,8 @@ pub struct NetworkEpidemicModel {
     gamma: f64,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum NetworkModelError {
     #[allow(missing_docs)]
@@ -70,6 +74,8 @@ impl std::fmt::Display for NetworkModelError {
 
 impl std::error::Error for NetworkModelError {}
 
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct NetworkEpidemicModelBuilder {
     num_nodes: Option<usize>,
@@ -148,7 +154,7 @@ impl NetworkEpidemicModelBuilder {
             return Err(NetworkModelError::InvalidNodeCount);
         }
 
-        if beta < 0.0 || gamma < 0.0 {
+        if !beta.is_finite() || !gamma.is_finite() || beta < 0.0 || gamma < 0.0 {
             return Err(NetworkModelError::InvalidParameters);
         }
 
@@ -359,6 +365,52 @@ impl NetworkEpidemicModel {
             }
         }
         self.states = next_states;
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for NetworkEpidemicModel {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawNetworkEpidemicModel {
+            num_nodes: usize,
+            states: Vec<NodeState>,
+            positions: Vec<[f32; 2]>,
+            adjacency: Vec<Vec<usize>>,
+            beta: f64,
+            gamma: f64,
+        }
+
+        let raw = RawNetworkEpidemicModel::deserialize(deserializer)?;
+        if raw
+            .positions
+            .iter()
+            .any(|p| !p[0].is_finite() || !p[1].is_finite())
+        {
+            return Err(serde::de::Error::custom(
+                "Node positions must be finite floats",
+            ));
+        }
+        if raw
+            .adjacency
+            .iter()
+            .any(|neighbors| neighbors.iter().any(|&idx| idx >= raw.num_nodes))
+        {
+            return Err(serde::de::Error::custom(
+                "Adjacency indices must be < num_nodes",
+            ));
+        }
+        NetworkEpidemicModelBuilder::new()
+            .num_nodes(raw.num_nodes)
+            .parameters(raw.beta, raw.gamma)
+            .states(raw.states)
+            .positions(raw.positions)
+            .adjacency(raw.adjacency)
+            .build()
+            .map_err(serde::de::Error::custom)
     }
 }
 

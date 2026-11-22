@@ -47,6 +47,8 @@ pub trait Optimizer {
 
 /// Simplified Adam implementation for a single parameter tensor (e.g., NeRF weights).
 /// theta_{t+1} = theta_t - eta * m_t / (sqrt(v_t) + epsilon)
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AdamOptimizer {
     #[allow(missing_docs)]
     pub learning_rate: PositiveFloat,
@@ -136,6 +138,8 @@ impl Optimizer for AdamOptimizer {
 /// Stochastic Gradient Descent with Momentum.
 /// v_{t+1} = momentum * v_t + g_t
 /// theta_{t+1} = theta_t - lr * v_{t+1}
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SgdOptimizer {
     #[allow(missing_docs)]
     pub learning_rate: PositiveFloat,

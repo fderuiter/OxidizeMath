@@ -1,6 +1,7 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::InteractiveTool;
 use eframe::egui;
+use math_commons::primitives::PositiveFloat;
 use math_explorer::applied::battery_degradation::{Capacity, DepthOfDischarge, PowerLawModel};
 
 pub struct LifetimeEstimatorTool {
@@ -22,9 +23,9 @@ impl Default for LifetimeEstimatorTool {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LifetimeEstimatorState {
-    target_capacity: f64,
-    dod: f64,
-    cycles_per_day: f64,
+    target_capacity: PositiveFloat,
+    dod: DepthOfDischarge,
+    cycles_per_day: PositiveFloat,
 }
 
 impl InteractiveTool for LifetimeEstimatorTool {
@@ -43,9 +44,9 @@ impl InteractiveTool for LifetimeEstimatorTool {
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&LifetimeEstimatorState {
-            target_capacity: self.target_capacity,
-            dod: self.dod,
-            cycles_per_day: self.cycles_per_day,
+            target_capacity: PositiveFloat::new(self.target_capacity).ok()?,
+            dod: DepthOfDischarge::new(self.dod).ok()?,
+            cycles_per_day: PositiveFloat::new(self.cycles_per_day).ok()?,
         })
         .ok()
     }
@@ -53,18 +54,18 @@ impl InteractiveTool for LifetimeEstimatorTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: LifetimeEstimatorState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid lifetime estimator state: {e}"))?;
-        if !s.target_capacity.is_finite()
-            || !(10.0..=99.0).contains(&s.target_capacity)
-            || !s.dod.is_finite()
-            || !(0.1..=100.0).contains(&s.dod)
-            || !s.cycles_per_day.is_finite()
-            || !(0.1..=10.0).contains(&s.cycles_per_day)
+        let target_capacity = s.target_capacity.value();
+        let dod = s.dod.as_f64();
+        let cycles_per_day = s.cycles_per_day.value();
+        if !(10.0..=99.0).contains(&target_capacity)
+            || !(0.1..=100.0).contains(&dod)
+            || !(0.1..=10.0).contains(&cycles_per_day)
         {
             return Err("Lifetime estimator parameters out of bounds".into());
         }
-        self.target_capacity = s.target_capacity;
-        self.dod = s.dod;
-        self.cycles_per_day = s.cycles_per_day;
+        self.target_capacity = target_capacity;
+        self.dod = dod;
+        self.cycles_per_day = cycles_per_day;
         Ok(())
     }
 

@@ -25,6 +25,8 @@ pub fn sample_timestep_with_rng<R: Rng + ?Sized>(max_timesteps: usize, rng: &mut
 /// Input: Timestep t.
 /// Operation: Retrieve pre-defined noise variance coefficients beta_t and calculate cumulative product alpha_bar_t.
 /// Output: Signal scale sqrt(alpha_bar_t) and Noise scale sqrt(1 - alpha_bar_t).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct NoiseSchedule {
     #[allow(missing_docs)]
     pub betas: Vec<f64>,
@@ -77,6 +79,46 @@ impl NoiseSchedule {
         let noise_scale = (1.0 - alpha_bar).sqrt();
 
         (signal_scale, noise_scale)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for NoiseSchedule {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawNoiseSchedule {
+            betas: Vec<f64>,
+            alphas: Vec<f64>,
+            alpha_bars: Vec<f64>,
+        }
+        let raw = RawNoiseSchedule::deserialize(deserializer)?;
+        if raw.betas.is_empty()
+            || raw.betas.len() != raw.alphas.len()
+            || raw.betas.len() != raw.alpha_bars.len()
+        {
+            return Err(serde::de::Error::custom(
+                "NoiseSchedule vectors must be non-empty and equal length",
+            ));
+        }
+        if raw.betas.iter().any(|x| !x.is_finite())
+            || raw.alphas.iter().any(|x| !x.is_finite())
+            || raw
+                .alpha_bars
+                .iter()
+                .any(|x| !x.is_finite() || !(0.0..=1.0).contains(x))
+        {
+            return Err(serde::de::Error::custom(
+                "NoiseSchedule entries must be finite with alpha_bars in [0, 1]",
+            ));
+        }
+        Ok(Self {
+            betas: raw.betas,
+            alphas: raw.alphas,
+            alpha_bars: raw.alpha_bars,
+        })
     }
 }
 

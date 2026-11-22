@@ -1,6 +1,7 @@
 use super::{Action, MarkovDecisionProcess, State};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct GridState {
     #[allow(missing_docs)]
@@ -12,6 +13,7 @@ pub struct GridState {
 impl State for GridState {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum Move {
     #[allow(missing_docs)]
@@ -26,6 +28,8 @@ pub enum Move {
 
 impl Action for Move {}
 
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct GridWorldEnv {
     #[allow(missing_docs)]

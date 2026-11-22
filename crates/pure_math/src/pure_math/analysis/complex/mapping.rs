@@ -27,6 +27,8 @@ where
 /// Maps the upper half plane to a polygon.
 ///
 /// $$ \frac{dw}{dz} = A \prod (z - x_j)^{-k_j} $$
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SchwarzChristoffel {
     /// Points on the real axis corresponding to polygon vertices.
     pub prevertices: Vec<f64>,
@@ -36,6 +38,34 @@ pub struct SchwarzChristoffel {
     pub a: Complex64,
     /// Translation constant.
     pub b: Complex64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for SchwarzChristoffel {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct SchwarzChristoffelRaw {
+            prevertices: Vec<f64>,
+            exponents: Vec<f64>,
+            a: Complex64,
+            b: Complex64,
+        }
+        let raw = SchwarzChristoffelRaw::deserialize(deserializer)?;
+        if raw.prevertices.len() != raw.exponents.len() {
+            return Err(serde::de::Error::custom(
+                "SchwarzChristoffel requires equal numbers of prevertices and exponents",
+            ));
+        }
+        Ok(Self {
+            prevertices: raw.prevertices,
+            exponents: raw.exponents,
+            a: raw.a,
+            b: raw.b,
+        })
+    }
 }
 
 impl SchwarzChristoffel {

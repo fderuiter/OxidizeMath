@@ -4,6 +4,7 @@ use crate::error::PharmacokineticsError;
 ///
 /// Ensures all physical constants are valid (e.g., positive rates, non-negative dose).
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct PKParameters {
     /// Bioavailability (fraction, 0.0 - 1.0).
     f: f64,
@@ -17,6 +18,25 @@ pub struct PKParameters {
     v: f64,
 }
 
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for PKParameters {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct PKParametersRaw {
+            f: f64,
+            d: f64,
+            ka: f64,
+            ke: f64,
+            v: f64,
+        }
+        let raw = PKParametersRaw::deserialize(deserializer)?;
+        Self::new(raw.f, raw.d, raw.ka, raw.ke, raw.v).map_err(serde::de::Error::custom)
+    }
+}
+
 impl PKParameters {
     /// Creates a new `PKParameters` struct with validation.
     ///
@@ -28,31 +48,31 @@ impl PKParameters {
     /// * `v` - Volume of distribution (> 0).
     #[verified_engine::verified]
     pub fn new(f: f64, d: f64, ka: f64, ke: f64, v: f64) -> Result<Self, PharmacokineticsError> {
-        if !(0.0..=1.0).contains(&f) {
+        if !f.is_finite() || !(0.0..=1.0).contains(&f) {
             return Err(PharmacokineticsError::InvalidParameter(format!(
                 "Bioavailability f={} must be between 0.0 and 1.0",
                 f
             )));
         }
-        if d < 0.0 {
+        if !d.is_finite() || d < 0.0 {
             return Err(PharmacokineticsError::InvalidParameter(format!(
                 "Dose d={} must be non-negative",
                 d
             )));
         }
-        if ka <= 0.0 {
+        if !ka.is_finite() || ka <= 0.0 {
             return Err(PharmacokineticsError::InvalidParameter(format!(
                 "Absorption rate ka={} must be positive",
                 ka
             )));
         }
-        if ke <= 0.0 {
+        if !ke.is_finite() || ke <= 0.0 {
             return Err(PharmacokineticsError::InvalidParameter(format!(
                 "Elimination rate ke={} must be positive",
                 ke
             )));
         }
-        if v <= 0.0 {
+        if !v.is_finite() || v <= 0.0 {
             return Err(PharmacokineticsError::InvalidParameter(format!(
                 "Volume of distribution v={} must be positive",
                 v
@@ -100,7 +120,8 @@ impl PKParameters {
 }
 
 /// Builder for `PKParameters`.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PKParametersBuilder {
     f: Option<f64>,
     d: Option<f64>,

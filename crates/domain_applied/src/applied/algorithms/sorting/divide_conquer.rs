@@ -2,7 +2,8 @@ use super::stats::{SortingResult, SortingStats};
 use super::strategy::Sorter;
 
 /// Strategy implementation for Merge Sort.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MergeSorter;
 
 impl<T: Ord + Clone> Sorter<T> for MergeSorter {
@@ -108,7 +109,8 @@ fn merge<T: Ord + Clone>(
 }
 
 /// Strategy implementation for Quick Sort.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct QuickSorter;
 
 impl<T: Ord + Clone> Sorter<T> for QuickSorter {

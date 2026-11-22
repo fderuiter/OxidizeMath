@@ -3,7 +3,8 @@ use std::fmt::Debug;
 /// Tracks the operational cost of a sorting algorithm.
 ///
 /// This structure allows for empirical verification of theoretical bounds.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SortingStats {
     /// Number of comparisons performed (e.g., `A[i] > A[j]`).
     pub comparisons: u64,
@@ -14,6 +15,8 @@ pub struct SortingStats {
 }
 
 /// Result of a sorting operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SortingResult<T> {
     /// The sorted data.
     pub sorted_data: Vec<T>,

@@ -8,7 +8,8 @@ use rand::Rng;
 /// Performance statistics from Monte Carlo simulation.
 ///
 /// Contains summary statistics from multiple simulated trajectories.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PerformanceStats {
     /// Mean of final values across all paths.
     pub mean_final: f64,
@@ -28,6 +29,7 @@ pub struct PerformanceStats {
 ///
 /// Categorizes players by their "streakiness" behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MomentumType {
     /// Fast mean reversion (θ > 2.0): "Flash in the pan"
     FlashInPan,
@@ -84,6 +86,8 @@ impl MomentumType {
 /// OU process analyzer for sports analytics.
 ///
 /// Provides high-level analysis functions for betting and performance prediction.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OuAnalyzer {
     params: OuParams,
     dt: TimeStep,

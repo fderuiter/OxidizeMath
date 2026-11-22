@@ -1,6 +1,7 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::InteractiveTool;
 use eframe::egui;
+use math_commons::primitives::{PositiveFloat, UnitInterval};
 use math_explorer::applied::clinical_trials::sample_size::{
     calculate_sample_size_means, calculate_sample_size_proportions,
 };
@@ -62,12 +63,12 @@ impl SampleSizeCalculatorTool {
 #[serde(deny_unknown_fields)]
 struct SampleSizeState {
     mode: CalculationMode,
-    alpha: f64,
-    power: f64,
-    delta: f64,
-    sigma: f64,
-    p1: f64,
-    p2: f64,
+    alpha: UnitInterval,
+    power: UnitInterval,
+    delta: PositiveFloat,
+    sigma: PositiveFloat,
+    p1: UnitInterval,
+    p2: UnitInterval,
 }
 
 impl InteractiveTool for SampleSizeCalculatorTool {
@@ -87,12 +88,12 @@ impl InteractiveTool for SampleSizeCalculatorTool {
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&SampleSizeState {
             mode: self.mode,
-            alpha: self.alpha,
-            power: self.power,
-            delta: self.delta,
-            sigma: self.sigma,
-            p1: self.p1,
-            p2: self.p2,
+            alpha: UnitInterval::new(self.alpha).ok()?,
+            power: UnitInterval::new(self.power).ok()?,
+            delta: PositiveFloat::new(self.delta).ok()?,
+            sigma: PositiveFloat::new(self.sigma).ok()?,
+            p1: UnitInterval::new(self.p1).ok()?,
+            p2: UnitInterval::new(self.p2).ok()?,
         })
         .ok()
     }
@@ -100,33 +101,36 @@ impl InteractiveTool for SampleSizeCalculatorTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: SampleSizeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid sample size state: {e}"))?;
-        if ![s.alpha, s.power, s.delta, s.sigma, s.p1, s.p2]
-            .iter()
-            .all(|v| v.is_finite())
-            || !(0.001..=0.20).contains(&s.alpha)
-            || !(0.5..=0.999).contains(&s.power)
-            || !(0.01..=5.0).contains(&s.delta)
-            || !(0.1..=10.0).contains(&s.sigma)
-            || !(0.01..=0.99).contains(&s.p1)
-            || !(0.01..=0.99).contains(&s.p2)
+        let alpha = s.alpha.value();
+        let power = s.power.value();
+        let delta = s.delta.value();
+        let sigma = s.sigma.value();
+        let p1 = s.p1.value();
+        let p2 = s.p2.value();
+        if !(0.001..=0.20).contains(&alpha)
+            || !(0.5..=0.999).contains(&power)
+            || !(0.01..=5.0).contains(&delta)
+            || !(0.1..=10.0).contains(&sigma)
+            || !(0.01..=0.99).contains(&p1)
+            || !(0.01..=0.99).contains(&p2)
         {
             return Err("Sample size parameters out of bounds".into());
         }
         let result = match s.mode {
-            CalculationMode::Means => calculate_sample_size_means(s.alpha, s.power, s.delta, s.sigma)
+            CalculationMode::Means => calculate_sample_size_means(alpha, power, delta, sigma)
                 .map_err(|e| e.to_string())?,
             CalculationMode::Proportions => {
-                calculate_sample_size_proportions(s.alpha, s.power, s.p1, s.p2)
+                calculate_sample_size_proportions(alpha, power, p1, p2)
                     .map_err(|e| e.to_string())?
             }
         };
         self.mode = s.mode;
-        self.alpha = s.alpha;
-        self.power = s.power;
-        self.delta = s.delta;
-        self.sigma = s.sigma;
-        self.p1 = s.p1;
-        self.p2 = s.p2;
+        self.alpha = alpha;
+        self.power = power;
+        self.delta = delta;
+        self.sigma = sigma;
+        self.p1 = p1;
+        self.p2 = p2;
         self.result = Ok(result);
         Ok(())
     }

@@ -4,6 +4,7 @@ use std::fmt;
 
 /// Spanned byte position range in the source string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Span {
     /// Start byte index (inclusive).
     pub start: usize,
@@ -21,6 +22,7 @@ impl Span {
 
 /// Token kinds produced during lexical analysis.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TokenKind {
     /// Numeric literal value.
     Number(f64),
@@ -69,6 +71,7 @@ impl fmt::Display for TokenKind {
 
 /// Token with position span in the source input.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Token {
     /// Kind of token.
     pub kind: TokenKind,
@@ -78,6 +81,7 @@ pub struct Token {
 
 /// Error encountered during lexical analysis.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[error("{}", self.user_message())]
 pub struct LexError {
     /// Start byte index.

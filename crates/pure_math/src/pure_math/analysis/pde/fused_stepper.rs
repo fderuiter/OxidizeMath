@@ -2,6 +2,7 @@ use math_commons::math_kernel::types::{StepSize, flatten_2d_index};
 
 /// Standard spatial numerical operators for fused stencil evaluations.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct StencilOperators {
     #[allow(missing_docs)]
     pub dx: StepSize,
@@ -15,6 +16,27 @@ pub struct StencilOperators {
     pub inv_dx_sq: f64,
     #[allow(missing_docs)]
     pub inv_dy_sq: f64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for StencilOperators {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct StencilOperatorsRaw {
+            dx: StepSize,
+            dy: StepSize,
+        }
+        let raw = StencilOperatorsRaw::deserialize(deserializer)?;
+        if !raw.dx.is_finite() || *raw.dx <= 0.0 || !raw.dy.is_finite() || *raw.dy <= 0.0 {
+            return Err(serde::de::Error::custom(
+                "StencilOperators step sizes dx and dy must be finite and positive",
+            ));
+        }
+        Ok(Self::new_2d(raw.dx, raw.dy))
+    }
 }
 
 impl StencilOperators {
@@ -82,6 +104,8 @@ impl StencilOperators {
 /// A generic Fused Stencil Stepper for performance-optimized grid updates.
 /// By evaluating operators inside the grid loop, this avoids memory bandwidth bottlenecks
 /// caused by temporary derivative buffers.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FusedStencilStepper {
     #[allow(missing_docs)]
     pub ops: StencilOperators,

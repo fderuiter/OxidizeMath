@@ -2,6 +2,8 @@ use crate::pure_math::analysis::integration::{ClenshawCurtis, Integrator};
 
 /// Represents a 1D Green's Function Solver for inhomogeneous problems.
 /// $Ly = f(x)$ => $y(x) = \int G(x, \xi) f(\xi) d\xi$
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GreenFunctionSolver1D<I: Integrator> {
     integrator: I,
 }
@@ -61,6 +63,8 @@ impl<I: Integrator> GreenFunctionSolver1D<I> {
 ///
 /// Example: Infinite half-space z > 0.
 /// $G(r, r') = \frac{1}{4\pi |r - r'|} - \frac{1}{4\pi |r - r'_{image}|}$
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MethodOfImages;
 
 impl MethodOfImages {

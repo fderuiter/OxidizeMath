@@ -2,8 +2,9 @@ use crate::accessibility::AccessibleHoverText;
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint};
+use math_commons::primitives::PositiveFloat;
 use math_explorer::pure_math::statistics::kelly::{
-    kelly_fraction, variants, BankrollFraction, UnitInterval, Odds,
+    kelly_fraction, variants, BankrollFraction, Odds, UnitInterval,
 };
 use rand::Rng;
 
@@ -115,9 +116,9 @@ impl BankrollGrowthTool {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BankrollState {
-    initial_bankroll: f64,
-    probability: f64,
-    odds: f64,
+    initial_bankroll: PositiveFloat,
+    probability: UnitInterval,
+    odds: Odds,
     num_bets: usize,
 }
 
@@ -132,9 +133,9 @@ impl InteractiveTool for BankrollGrowthTool {
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&BankrollState {
-            initial_bankroll: self.initial_bankroll,
-            probability: self.probability,
-            odds: self.odds,
+            initial_bankroll: PositiveFloat::new(self.initial_bankroll).ok()?,
+            probability: UnitInterval::new(self.probability).ok()?,
+            odds: Odds::new(self.odds).ok()?,
             num_bets: self.num_bets,
         })
         .ok()
@@ -143,24 +144,22 @@ impl InteractiveTool for BankrollGrowthTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: BankrollState =
             serde_json::from_str(state).map_err(|e| format!("Invalid bankroll state: {e}"))?;
-        if ![s.initial_bankroll, s.probability, s.odds]
-            .iter()
-            .all(|v| v.is_finite())
-            || !(100.0..=10_000.0).contains(&s.initial_bankroll)
-            || !(0.01..=0.99).contains(&s.probability)
-            || !(0.1..=10.0).contains(&s.odds)
+        let initial_bankroll = s.initial_bankroll.value();
+        let probability = s.probability.value();
+        let odds = s.odds.value();
+        if !(100.0..=10_000.0).contains(&initial_bankroll)
+            || !(0.01..=0.99).contains(&probability)
+            || !(0.1..=10.0).contains(&odds)
             || !(10..=1000).contains(&s.num_bets)
         {
             return Err("Bankroll simulation parameters out of bounds".into());
         }
-        let p = UnitInterval::new(s.probability).map_err(|e| format!("Error: {e}"))?;
-        let o = Odds::new(s.odds).map_err(|e| format!("Error: {e}"))?;
-        kelly_fraction(&p, &o).map_err(|e| format!("Error: {e}"))?;
-        variants::half_kelly(&p, &o).map_err(|e| format!("Error: {e}"))?;
-        variants::quarter_kelly(&p, &o).map_err(|e| format!("Error: {e}"))?;
-        self.initial_bankroll = s.initial_bankroll;
-        self.probability = s.probability;
-        self.odds = s.odds;
+        kelly_fraction(&s.probability, &s.odds).map_err(|e| format!("Error: {e}"))?;
+        variants::half_kelly(&s.probability, &s.odds).map_err(|e| format!("Error: {e}"))?;
+        variants::quarter_kelly(&s.probability, &s.odds).map_err(|e| format!("Error: {e}"))?;
+        self.initial_bankroll = initial_bankroll;
+        self.probability = probability;
+        self.odds = odds;
         self.num_bets = s.num_bets;
         self.recalculate();
         Ok(())

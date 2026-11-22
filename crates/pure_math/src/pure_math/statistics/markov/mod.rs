@@ -315,6 +315,8 @@ pub mod ctmc;
 pub mod dtmc;
 #[allow(missing_docs)]
 pub mod hmm;
+#[cfg(feature = "serde")]
+mod serde_support;
 pub mod tensor;
 #[allow(missing_docs)]
 pub mod time_index;

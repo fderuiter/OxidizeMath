@@ -5143,6 +5143,12 @@
   ],
   "crates/domain_physics/src/physics/solid_state/lattice.rs": [
     {
+      "signature": "impl BravaisLattice { pub const fn label (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum BravaisLattice"
+    },
+    {
       "signature": "pub struct BodyCenteredCubic"
     },
     {
@@ -5708,6 +5714,9 @@
   "crates/math_commons/src/primitives.rs": [
     {
       "signature": "impl UnitInterval { pub fn complement (& self) -> f64 }"
+    },
+    {
+      "signature": "pub use serde as __serde"
     }
   ],
   "crates/math_commons/src/registry.rs": [
@@ -5788,7 +5797,10 @@
       "signature": "pub mod prelude { pub use crate :: SimulationModel }"
     },
     {
-      "signature": "pub trait ModelConfig : Clone + Serialize + Deserialize < 'static >"
+      "signature": "pub trait ModelConfig : Clone"
+    },
+    {
+      "signature": "pub trait ModelConfig : Clone + serde :: Serialize + serde :: Deserialize < 'static >"
     },
     {
       "signature": "pub trait ModelState : Clone"
@@ -7081,6 +7093,12 @@
     }
   ],
   "crates/pure_math/src/pure_math/differential_geometry/surface.rs": [
+    {
+      "signature": "pub enum CurvatureKind"
+    },
+    {
+      "signature": "pub enum ParametricSurfaceKind"
+    },
     {
       "signature": "pub struct KleinBottle"
     },

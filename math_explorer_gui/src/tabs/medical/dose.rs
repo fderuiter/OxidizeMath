@@ -4,11 +4,11 @@ use egui::{Color32, ColorImage, TextureOptions};
 use egui_plot::{Plot, PlotImage, PlotPoint};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
+use math_commons::primitives::PositiveFloat;
 use math_explorer::physics::medical::dose::kernel::{DoseKernel, ExponentialKernel};
 
 pub struct DoseCalculationTool {
-    amplitude: f64,
-    beta: f64,
+    kernel: ExponentialKernel,
     width: usize,
     height: usize,
     high_contrast: bool,
@@ -18,8 +18,7 @@ pub struct DoseCalculationTool {
 impl Default for DoseCalculationTool {
     fn default() -> Self {
         Self {
-            amplitude: 1.0,
-            beta: 1.0,
+            kernel: ExponentialKernel::new(1.0, 1.0),
             width: 200,
             height: 200,
             high_contrast: false,
@@ -31,8 +30,8 @@ impl Default for DoseCalculationTool {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DoseState {
-    amplitude: f64,
-    beta: f64,
+    amplitude: PositiveFloat,
+    beta: PositiveFloat,
     width: usize,
     height: usize,
 }
@@ -59,8 +58,8 @@ impl InteractiveTool for DoseCalculationTool {
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&DoseState {
-            amplitude: self.amplitude,
-            beta: self.beta,
+            amplitude: PositiveFloat::new(self.kernel.amplitude).ok()?,
+            beta: PositiveFloat::new(self.kernel.beta).ok()?,
             width: self.width,
             height: self.height,
         })
@@ -68,19 +67,20 @@ impl InteractiveTool for DoseCalculationTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded: DoseState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid DoseCalculation state: {e}"))?;
-        if !loaded.amplitude.is_finite() || !(0.1..=10.0).contains(&loaded.amplitude) {
-            return Err(format!("amplitude out of [0.1, 10.0]: {}", loaded.amplitude));
+        let loaded: DoseState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid DoseCalculation state: {e}"))?;
+        let amplitude = loaded.amplitude.value();
+        let beta = loaded.beta.value();
+        if !(0.1..=10.0).contains(&amplitude) {
+            return Err(format!("amplitude out of [0.1, 10.0]: {amplitude}"));
         }
-        if !loaded.beta.is_finite() || !(0.1..=5.0).contains(&loaded.beta) {
-            return Err(format!("beta out of [0.1, 5.0]: {}", loaded.beta));
+        if !(0.1..=5.0).contains(&beta) {
+            return Err(format!("beta out of [0.1, 5.0]: {beta}"));
         }
         if !(10..=1024).contains(&loaded.width) || !(10..=1024).contains(&loaded.height) {
             return Err("width and height must be in [10, 1024]".to_string());
         }
-        self.amplitude = loaded.amplitude;
-        self.beta = loaded.beta;
+        self.kernel = ExponentialKernel::new(amplitude, beta);
         self.width = loaded.width;
         self.height = loaded.height;
         self.texture = None;
@@ -103,14 +103,17 @@ impl InteractiveTool for DoseCalculationTool {
             ui.separator();
 
             if ui
-                .add(egui::Slider::new(&mut self.amplitude, 0.1..=10.0).text("Source Amplitude"))
+                .add(
+                    egui::Slider::new(&mut self.kernel.amplitude, 0.1..=10.0)
+                        .text("Source Amplitude"),
+                )
                 .changed()
             {
                 changed = true;
             }
 
             if ui
-                .add(egui::Slider::new(&mut self.beta, 0.1..=5.0).text("Attenuation (Beta)"))
+                .add(egui::Slider::new(&mut self.kernel.beta, 0.1..=5.0).text("Attenuation (Beta)"))
                 .changed()
             {
                 changed = true;
@@ -153,7 +156,7 @@ impl DoseCalculationTool {
         let height = self.height.max(1);
         let mut pixels = vec![Color32::BLACK; width * height];
 
-        let kernel = ExponentialKernel::new(self.amplitude, self.beta);
+        let kernel = self.kernel;
         let range = 20.0;
         let dx = range / width as f64;
         let dy = range / height as f64;
@@ -208,7 +211,7 @@ impl scientific_metadata::theory::TheoryDescribable for DoseCalculationTool {
     fn theory_description(&self) -> String {
         format!(
             "Radiation therapy dose distribution computed via point spread function (PSF) kernel convolution: $D(\\vec{{r}}) = \\int \\Phi(\\vec{{r}}') K(\\vec{{r}} - \\vec{{r}}') d^3\\vec{{r}}'$, using an exponential kernel $K(r) = \\frac{{A}}{{r^2}} e^{{-\\beta r}}$ with amplitude $A = {:.2}$ and attenuation coefficient $\\beta = {:.2}$.",
-            self.amplitude, self.beta
+            self.kernel.amplitude, self.kernel.beta
         )
     }
     fn phonetic_description(&self) -> String {

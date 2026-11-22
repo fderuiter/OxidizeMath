@@ -32,3 +32,30 @@ impl<T: RealField + Copy + ToPrimitive> TimeIndex<T> {
         self.time
     }
 }
+
+#[cfg(feature = "serde")]
+impl<T> serde::Serialize for TimeIndex<T>
+where
+    T: RealField + Copy + ToPrimitive + serde::Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.time.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T> serde::Deserialize<'de> for TimeIndex<T>
+where
+    T: RealField + Copy + ToPrimitive + serde::Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = T::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
+    }
+}

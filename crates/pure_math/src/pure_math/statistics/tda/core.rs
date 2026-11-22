@@ -4,6 +4,7 @@ use crate::error::TdaError;
 
 /// A point in 2D space.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Point2D {
     #[allow(missing_docs)]
     pub x: f64,

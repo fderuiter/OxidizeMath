@@ -21,9 +21,29 @@ pub trait RiemannSurface {
 
 /// Riemann surface for the n-th root function $f(z) = z^{1/n}$.
 /// Has $n$ sheets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct NthRootSurface {
     #[allow(missing_docs)]
     pub n: usize,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for NthRootSurface {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct NthRootSurfaceRaw {
+            n: usize,
+        }
+        let raw = NthRootSurfaceRaw::deserialize(deserializer)?;
+        if raw.n == 0 {
+            return Err(serde::de::Error::custom("NthRootSurface n must be > 0"));
+        }
+        Ok(Self { n: raw.n })
+    }
 }
 
 impl NthRootSurface {
@@ -60,6 +80,8 @@ impl RiemannSurface for NthRootSurface {
 
 /// Riemann surface for the complex logarithm $f(z) = \log(z)$.
 /// Has infinitely many sheets.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LogSurface;
 
 impl RiemannSurface for LogSurface {

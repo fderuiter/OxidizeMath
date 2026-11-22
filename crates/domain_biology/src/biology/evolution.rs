@@ -56,6 +56,8 @@ use nalgebra::{DMatrix, DVector};
 use pure_math::pure_math::analysis::ode::{ArrayState, Euler, OdeSystem, Solver, SolverExt};
 
 /// Represents a population playing the Hawk-Dove game.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HawkDovePopulation {
     /// Value of the resource
     pub v: f64,

@@ -13,6 +13,8 @@ pub use math_commons::primitives::UnitInterval;
 /// - American odds: Use `Odds::from_american()`
 /// - Fractional odds: Use `Odds::from_fractional()`
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Odds(f64);
 
 impl Odds {
@@ -143,6 +145,8 @@ impl Odds {
 ///
 /// Represents what fraction of the total bankroll to wager.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct BankrollFraction(f64);
 
 impl BankrollFraction {
@@ -197,6 +201,28 @@ impl BankrollFraction {
             return Err(KellyError::InvalidBankroll { value: bankroll });
         }
         Ok(self.0 * bankroll)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Odds {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = f64::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for BankrollFraction {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = f64::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
     }
 }
 

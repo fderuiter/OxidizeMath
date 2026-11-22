@@ -3,7 +3,8 @@ use pure_math::pure_math::analysis::roots::AnalysisError;
 use std::collections::HashMap;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum PharmacokineticsError {
     /// An invalid parameter was provided (e.g., negative volume or rate constant).
@@ -16,6 +17,7 @@ pub enum PharmacokineticsError {
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum BatteryError {
     /// Depth of Discharge must be between 0.0 and 100.0.
@@ -30,6 +32,7 @@ pub enum BatteryError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum GameTheoryError {
     /// Payoff matrix is not square.
@@ -41,6 +44,7 @@ pub enum GameTheoryError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum EngineeringError {
     /// Invalid parameter value (e.g. TotalBits = 0).
@@ -49,6 +53,7 @@ pub enum EngineeringError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum LoraError {
     #[error("Ensemble is empty; cannot combine.")]
@@ -69,6 +74,7 @@ pub enum LoraError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum IsosurfaceError {
     /// The grid dimensions are too small (must be at least 2x2x2).

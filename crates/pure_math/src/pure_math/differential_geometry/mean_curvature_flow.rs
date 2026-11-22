@@ -2,7 +2,8 @@ use nalgebra::{Point3, Vector3};
 
 /// A discrete surface represented by a grid of points.
 /// Used for evolutions where the surface geometry itself changes.
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DiscreteSurface {
     #[allow(missing_docs)]
     pub points: Vec<Vec<Point3<f64>>>,
@@ -103,6 +104,8 @@ impl DiscreteSurface {
     }
 }
 
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct MeanCurvatureFlow {
     #[allow(missing_docs)]

@@ -1,6 +1,7 @@
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
+use math_commons::primitives::NonNegativeFloat;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 
 pub struct NetworkPropagationTool {
@@ -162,8 +163,8 @@ const fn is_false(value: &bool) -> bool {
 #[serde(deny_unknown_fields)]
 struct NetPropState {
     num_nodes: usize,
-    beta: f64,
-    gamma: f64,
+    beta: NonNegativeFloat,
+    gamma: NonNegativeFloat,
     #[serde(default, skip_serializing_if = "is_false")]
     is_running: bool,
 }
@@ -185,8 +186,8 @@ impl InteractiveTool for NetworkPropagationTool {
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&NetPropState {
             num_nodes: self.model.num_nodes(),
-            beta: self.model.beta(),
-            gamma: self.model.gamma(),
+            beta: NonNegativeFloat::new(self.model.beta()).ok()?,
+            gamma: NonNegativeFloat::new(self.model.gamma()).ok()?,
             is_running: self.is_running,
         })
         .ok()
@@ -200,20 +201,17 @@ impl InteractiveTool for NetworkPropagationTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: NetPropState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid network propagation state: {e}"))?;
-        if !(10..=200).contains(&s.num_nodes)
-            || !s.beta.is_finite()
-            || !(0.0..=1.0).contains(&s.beta)
-            || !s.gamma.is_finite()
-            || !(0.0..=1.0).contains(&s.gamma)
-        {
+        let beta = s.beta.value();
+        let gamma = s.gamma.value();
+        if !(10..=200).contains(&s.num_nodes) || beta > 1.0 || gamma > 1.0 {
             return Err("Network propagation parameters out of bounds".into());
         }
         let mut candidate = NetworkEpidemicModel::new(50, 0.05, 0.02);
         candidate
             .set_num_nodes(s.num_nodes)
             .map_err(|e| e.to_string())?;
-        candidate.set_beta(s.beta).map_err(|e| e.to_string())?;
-        candidate.set_gamma(s.gamma).map_err(|e| e.to_string())?;
+        candidate.set_beta(beta).map_err(|e| e.to_string())?;
+        candidate.set_gamma(gamma).map_err(|e| e.to_string())?;
         self.model = candidate;
         self.reset_network();
         self.is_running = s.is_running;

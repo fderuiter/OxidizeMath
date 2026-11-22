@@ -13,9 +13,28 @@ use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 /// A generic finite field $\mathbb{F}_p$.
 /// P must be prime. This is not checked at compile time but expected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Fp<const P: i64> {
     #[allow(missing_docs)]
     pub value: i64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de, const P: i64> serde::Deserialize<'de> for Fp<P> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct FpRaw {
+            value: i64,
+        }
+        if P <= 1 {
+            return Err(serde::de::Error::custom("Fp modulus P must be > 1"));
+        }
+        let raw = FpRaw::deserialize(deserializer)?;
+        Ok(Self::new(raw.value))
+    }
 }
 
 impl<const P: i64> Fp<P> {

@@ -1,6 +1,7 @@
 //! This module defines the configuration for the CERA model.
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct CeraConfig {
     /// Learning rate for the optimizer.

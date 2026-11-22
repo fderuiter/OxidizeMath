@@ -9,7 +9,8 @@ pub use crate::climate::config::CeraConfig;
 use verified_engine::Theory;
 
 /// The main CERA model.
-#[derive(Theory)]
+#[derive(Clone, Debug, PartialEq, Theory)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[theory(
     description = "CERA is a Climate-Emulation and Response Architecture that combines autoencoders with a predictive downstream model to map local atmospheric states to global cloud properties under varying climate forcing.",
     citation = "Climate-Emulation and Response Architecture (CERA) paper"
@@ -154,6 +155,29 @@ impl<A: AutoencoderModel, P: PredictorModel> Cera<A, P> {
         let aligned_latent = latent.columns(0, aligned_channels).clone_owned();
         let predictor_input = self.reshape_for_predictor(&aligned_latent, batch_size);
         self.predictor.forward(&predictor_input)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, A, P> serde::Deserialize<'de> for Cera<A, P>
+where
+    A: AutoencoderModel + serde::Deserialize<'de>,
+    P: PredictorModel + serde::Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawCera<A, P> {
+            autoencoder: A,
+            predictor: P,
+            config: CeraConfig,
+        }
+
+        let raw = RawCera::<A, P>::deserialize(deserializer)?;
+        Self::new_with_models(raw.config, raw.autoencoder, raw.predictor)
+            .map_err(serde::de::Error::custom)
     }
 }
 

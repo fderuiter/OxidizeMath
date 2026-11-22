@@ -11,6 +11,7 @@ use std::ops::{Add, Div, Mul};
 /// The vector `coeffs` stores the coefficients, where the index represents the power of q.
 /// The coefficient type T must be a Euclidean Domain to support division.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct QSeries<T: EuclideanDomain> {
     #[allow(missing_docs)]
     pub coeffs: Vec<T>,

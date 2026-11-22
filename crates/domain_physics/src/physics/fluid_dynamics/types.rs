@@ -4,7 +4,7 @@ use crate::error::FluidError;
 use nalgebra::{Matrix3, Vector3};
 
 /// Physical properties of the fluid.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FluidProperties {
     /// Density ($\rho$) in kg/m^3.
     density: f64,
@@ -77,8 +77,49 @@ impl FluidProperties {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for FluidProperties {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(serde::Serialize)]
+        struct FluidPropertiesRaw {
+            density: f64,
+            dynamic_viscosity: f64,
+        }
+        FluidPropertiesRaw {
+            density: self.density,
+            dynamic_viscosity: self.dynamic_viscosity,
+        }
+        .serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for FluidProperties {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct FluidPropertiesRaw {
+            density: f64,
+            dynamic_viscosity: f64,
+        }
+        let raw = FluidPropertiesRaw::deserialize(deserializer)?;
+        if !raw.density.is_finite() || !raw.dynamic_viscosity.is_finite() {
+            return Err(serde::de::Error::custom(
+                "FluidProperties values must be finite",
+            ));
+        }
+        Self::new(raw.density, raw.dynamic_viscosity).map_err(serde::de::Error::custom)
+    }
+}
+
 /// Builder for `FluidProperties`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FluidPropertiesBuilder {
     density: Option<f64>,
     dynamic_viscosity: Option<f64>,
@@ -114,6 +155,7 @@ impl FluidPropertiesBuilder {
 
 /// Represents the state of a fluid element at a specific point in space and time.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FlowState {
     /// Velocity vector ($\mathbf{u}$) in m/s.
     pub velocity: Vector3<f64>,
@@ -135,6 +177,7 @@ pure_math::impl_vector_operations!(FlowState, velocity, pressure);
 /// This prevents "Primitive Obsession" by grouping the gradients of velocity and pressure,
 /// ensuring they are passed together consistently.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SpatialGradients {
     /// Jacobian matrix of velocity ($\nabla \mathbf{u}$).
     pub velocity_gradient: Matrix3<f64>,

@@ -12,8 +12,12 @@ pub use runner::{
 use crate::vfs::VirtualFileSystem;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default)
+)]
 #[allow(missing_docs)]
 pub struct TraceabilityReport {
     #[allow(missing_docs)]

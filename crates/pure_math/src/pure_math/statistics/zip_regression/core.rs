@@ -48,6 +48,27 @@ impl PoissonRate {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for PoissonRate {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_f64(self.0)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for PoissonRate {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = f64::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
+    }
+}
+
 /// The zero-inflation parameter ρ (rho).
 ///
 /// Represents the probability of a structural zero (i.e., the subject is in the "Always Zero" state).
@@ -97,8 +118,30 @@ impl ZeroInflation {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for ZeroInflation {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_f64(self.0)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for ZeroInflation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = f64::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
+    }
+}
+
 /// A count observation (non-negative integer represented as f64).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Count(u32);
 
 impl Count {
@@ -147,6 +190,7 @@ impl Count {
 /// This struct encapsulates both the zero-inflation probability (ρ)
 /// and the Poisson rate (λ).
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ZipParams {
     /// The zero-inflation probability ρ.
     pub rho: ZeroInflation,

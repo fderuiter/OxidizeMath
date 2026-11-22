@@ -236,8 +236,8 @@ impl GridWorldTool {
     }
 }
 
-fn default_rl_rate() -> f64 {
-    0.1
+fn default_rl_rate() -> UnitInterval {
+    UnitInterval::new(0.1).expect("0.1 is in [0, 1]")
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -246,11 +246,11 @@ struct GridWorldToolState {
     width: i32,
     height: i32,
     #[serde(alias = "discount_factor")]
-    gamma: f64,
+    gamma: UnitInterval,
     #[serde(default = "default_rl_rate")]
-    learning_rate: f64,
+    learning_rate: UnitInterval,
     #[serde(default = "default_rl_rate")]
-    exploration_rate: f64,
+    exploration_rate: UnitInterval,
     playback_speed: f32,
     is_playing: bool,
 }
@@ -273,9 +273,9 @@ impl InteractiveTool for GridWorldTool {
         serde_json::to_string(&GridWorldToolState {
             width: self.env.width,
             height: self.env.height,
-            gamma: self.discount_factor,
-            learning_rate: self.learning_rate,
-            exploration_rate: self.exploration_rate,
+            gamma: UnitInterval::new(self.discount_factor).ok()?,
+            learning_rate: UnitInterval::new(self.learning_rate).ok()?,
+            exploration_rate: UnitInterval::new(self.exploration_rate).ok()?,
             playback_speed: self.playback_speed,
             is_playing: self.is_playing,
         })
@@ -287,12 +287,7 @@ impl InteractiveTool for GridWorldTool {
             serde_json::from_str(state).map_err(|e| format!("Invalid GridWorld state: {e}"))?;
         if !(2..=20).contains(&parsed.width)
             || !(2..=20).contains(&parsed.height)
-            || !parsed.gamma.is_finite()
-            || !(0.0..=1.0).contains(&parsed.gamma)
-            || !parsed.learning_rate.is_finite()
-            || !(0.01..=1.0).contains(&parsed.learning_rate)
-            || !parsed.exploration_rate.is_finite()
-            || !(0.0..=1.0).contains(&parsed.exploration_rate)
+            || parsed.learning_rate.value() < 0.01
             || !parsed.playback_speed.is_finite()
             || !(1.0..=20.0).contains(&parsed.playback_speed)
         {
@@ -300,12 +295,6 @@ impl InteractiveTool for GridWorldTool {
                 "GridWorld dimensions, RL hyperparameters, or playback_speed out of bounds".into(),
             );
         }
-        let lr_unit = UnitInterval::new(parsed.learning_rate)
-            .map_err(|e| format!("Invalid learning rate: {e}"))?;
-        let gamma_unit =
-            UnitInterval::new(parsed.gamma).map_err(|e| format!("Invalid discount factor: {e}"))?;
-        let eps_unit = UnitInterval::new(parsed.exploration_rate)
-            .map_err(|e| format!("Invalid exploration rate: {e}"))?;
         let start = GridState { x: 0, y: 0 };
         let goal = GridState {
             x: parsed.width - 1,
@@ -315,18 +304,23 @@ impl InteractiveTool for GridWorldTool {
             .into_iter()
             .filter(|t| t.x < parsed.width && t.y < parsed.height && *t != start && *t != goal)
             .collect();
-        self.learning_rate = lr_unit.value();
-        self.discount_factor = gamma_unit.value();
-        self.exploration_rate = eps_unit.value();
+        self.learning_rate = parsed.learning_rate.value();
+        self.discount_factor = parsed.gamma.value();
+        self.exploration_rate = parsed.exploration_rate.value();
         self.env = GridWorldEnv {
             width: parsed.width,
             height: parsed.height,
             start,
             goal,
             traps,
-            gamma: parsed.gamma,
+            gamma: parsed.gamma.value(),
         };
-        self.agent = TabularQAgent::new(lr_unit, gamma_unit, eps_unit, None);
+        self.agent = TabularQAgent::new(
+            parsed.learning_rate,
+            parsed.gamma,
+            parsed.exploration_rate,
+            None,
+        );
         self.current_state = self.env.start;
         self.episodes = 0;
         self.total_reward = 0.0;

@@ -3,7 +3,8 @@
 //! Provides models for converting raw sensor output to real-world physical units.
 
 /// A linear calibration model: y = mx + c.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LinearCalibrator {
     slope: f64,
     intercept: f64,

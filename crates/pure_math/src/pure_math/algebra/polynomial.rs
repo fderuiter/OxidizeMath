@@ -7,9 +7,25 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// A polynomial with coefficients in a Ring T.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Polynomial<T: Ring> {
     #[allow(missing_docs)]
     pub coeffs: Vec<T>, // coeffs[i] is coefficient of x^i
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T: Ring + serde::Deserialize<'de>> serde::Deserialize<'de> for Polynomial<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct PolynomialRaw<T> {
+            coeffs: Vec<T>,
+        }
+        let raw = PolynomialRaw::<T>::deserialize(deserializer)?;
+        Ok(Self::new(raw.coeffs))
+    }
 }
 
 impl<T: Ring> Default for Polynomial<T> {

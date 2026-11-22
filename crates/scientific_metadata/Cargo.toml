@@ -4,6 +4,11 @@ version = "0.4.0"
 edition = "2024"
 
 [dependencies]
+serde = { workspace = true, features = ["derive"], optional = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
 
 [lints]
 workspace = true

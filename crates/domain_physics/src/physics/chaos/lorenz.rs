@@ -7,7 +7,8 @@ use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 /// Represents the state of the Lorenz system $(x, y, z)$.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LorenzState {
     /// The 3D state vector.
     pub vec: Vector3<f64>,
@@ -24,7 +25,8 @@ impl LorenzState {
 }
 
 /// A builder for the `LorenzSystem`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LorenzBuilder {
     sigma: f64,
     rho: f64,
@@ -142,7 +144,8 @@ impl LorenzBuilder {
 /// let new_state = lorenz.state.vec;
 /// println!("New State: ({:.2}, {:.2}, {:.2})", new_state.x, new_state.y, new_state.z);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LorenzSystem {
     /// The Prandtl number $\sigma$, representing the ratio of momentum diffusivity to thermal diffusivity.
     pub sigma: f64,
@@ -244,9 +247,9 @@ impl TheoryDescribable for LorenzSystem {
 }
 
 use oxidize_core::{ModelConfig, ModelState, SimulationModel};
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct LorenzConfig {
     #[allow(missing_docs)]
@@ -257,7 +260,7 @@ pub struct LorenzConfig {
     pub beta: f64,
     #[allow(missing_docs)]
     pub dt: f64,
-    #[serde(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
     #[allow(missing_docs)]
     pub integration_method: pure_math::pure_math::analysis::ode::IntegrationMethod,
 }

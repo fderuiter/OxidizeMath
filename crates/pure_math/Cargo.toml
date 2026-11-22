@@ -14,7 +14,7 @@ rand_distr = { workspace = true }
 num-complex = { workspace = true }
 thiserror = { workspace = true }
 num-traits = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"], optional = true }
 oxidize_core = { path = "../oxidize_core" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
 
@@ -22,8 +22,23 @@ math_commons = { path = "../math_commons" }
 diagnostics = { path = "../diagnostics" }
 dashu = { workspace = true, features = ["num-traits_v02"] }
 
+[features]
+default = []
+serde = [
+    "dep:serde",
+    "oxidize_core/serde",
+    "verified_engine/serde",
+    "math_commons/serde",
+    "diagnostics/serde",
+    "nalgebra/serde-serialize",
+    "dashu/serde",
+    "num-complex/serde",
+    "petgraph/serde-1",
+]
+
 [dev-dependencies]
 approx = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

@@ -39,7 +39,10 @@ pub trait ProbabilityTransform {
 /// Standard normal (Gaussian) transformation.
 ///
 /// Uses Φ(x) where Φ is the CDF of N(0,1).
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NormalTransform {
+    mean: f64,
+    std_dev: f64,
     normal: Normal,
 }
 
@@ -61,12 +64,23 @@ impl NormalTransform {
     /// ```
     #[verified_engine::verified]
     pub fn new(mean: f64, std_dev: f64) -> Result<Self, CopulaError> {
+        if !mean.is_finite() || !std_dev.is_finite() || std_dev <= 0.0 {
+            return Err(crate::error::CopulaError::Math(
+                math_commons::error::MathError::NumericalError {
+                    reason: "NormalTransform requires finite mean and positive std_dev".to_string(),
+                },
+            ));
+        }
         let normal = Normal::new(mean, std_dev).map_err(|e| {
             crate::error::CopulaError::Math(math_commons::error::MathError::NumericalError {
                 reason: format!("Failed to create normal distribution: {}", e),
             })
         })?;
-        Ok(Self { normal })
+        Ok(Self {
+            mean,
+            std_dev,
+            normal,
+        })
     }
 
     /// Creates a standard normal transform N(0,1).
@@ -87,6 +101,41 @@ impl ProbabilityTransform for NormalTransform {
     fn inverse_transform(&self, u: Probability) -> f64 {
         // Inverse CDF (quantile function)
         self.normal.inverse_cdf(u.value())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for NormalTransform {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(serde::Serialize)]
+        struct RawNormalTransform {
+            mean: f64,
+            std_dev: f64,
+        }
+        RawNormalTransform {
+            mean: self.mean,
+            std_dev: self.std_dev,
+        }
+        .serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for NormalTransform {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawNormalTransform {
+            mean: f64,
+            std_dev: f64,
+        }
+        let raw = RawNormalTransform::deserialize(deserializer)?;
+        Self::new(raw.mean, raw.std_dev).map_err(serde::de::Error::custom)
     }
 }
 

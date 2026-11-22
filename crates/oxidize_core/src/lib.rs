@@ -1,16 +1,15 @@
 #![doc = include_str!("../README.md")]
-use serde::{Deserialize, Serialize};
 
 /// Configuration contract for simulation models.
 ///
-/// Implementors must support serialization, deserialization, and cloning.
+/// Implementors must support cloning, and serialization/deserialization when `serde` is enabled.
 ///
 /// # Example
 /// ```
 /// use oxidize_core::ModelConfig;
-/// use serde::{Deserialize, Serialize};
 ///
-/// #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+/// #[derive(Clone, PartialEq, Debug)]
+/// #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// struct GridConfig {
 ///     width: usize,
 ///     height: usize,
@@ -20,7 +19,12 @@ use serde::{Deserialize, Serialize};
 /// let config = GridConfig { width: 32, height: 32 };
 /// assert_eq!(config.width, 32);
 /// ```
-pub trait ModelConfig: Clone + Serialize + Deserialize<'static> {}
+#[cfg(feature = "serde")]
+pub trait ModelConfig: Clone + serde::Serialize + serde::Deserialize<'static> {}
+
+/// Configuration contract for simulation models (minimal no-`serde` build).
+#[cfg(not(feature = "serde"))]
+pub trait ModelConfig: Clone {}
 
 /// State representation contract for simulation models.
 ///
@@ -47,9 +51,9 @@ pub trait ModelState: Clone {}
 /// # Example
 /// ```
 /// use oxidize_core::{ModelConfig, ModelState, SimulationModel};
-/// use serde::{Deserialize, Serialize};
 ///
-/// #[derive(Clone, Serialize, Deserialize)]
+/// #[derive(Clone)]
+/// #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// struct CounterConfig {
 ///     start: i64,
 /// }
@@ -115,9 +119,9 @@ pub trait SimulationModel: Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::{Deserialize, Serialize};
 
-    #[derive(Clone, Serialize, Deserialize)]
+    #[derive(Clone)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
     pub struct BooleanMaskConfig {
         pub width: usize,
         pub height: usize,

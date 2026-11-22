@@ -7,6 +7,7 @@ use quadrature::clenshaw_curtis;
 
 /// Result of an integration operation.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IntegrationResult {
     /// The estimated value of the integral.
     pub value: f64,
@@ -27,6 +28,7 @@ pub trait Integrator: Send + Sync {
 ///
 /// Uses the `quadrature` crate.
 #[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClenshawCurtis;
 
 impl Integrator for ClenshawCurtis {
@@ -48,6 +50,7 @@ impl Integrator for ClenshawCurtis {
 /// A simple numerical integration method that divides the area into trapezoids.
 /// Useful for testing or when `clenshaw_curtis` overhead is undesirable and high precision isn't needed.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Trapezoidal {
     /// Number of steps (segments) to use.
     pub steps: usize,

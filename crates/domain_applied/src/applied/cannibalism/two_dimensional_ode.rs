@@ -10,6 +10,7 @@ use pure_math::pure_math::analysis::ode::OdeSystem;
 ///
 /// Encapsulates the coefficients for the 2D population model.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CannibalismModel {
     /// Birth rate of normal individuals ($\beta_N$)
     pub beta_n: f64,

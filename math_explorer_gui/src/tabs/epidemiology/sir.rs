@@ -3,6 +3,7 @@ mod metrics;
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
 use eframe::egui;
 use egui_plot::PlotPoint;
+use math_commons::primitives::{NonNegativeFloat, PositiveFloat};
 use math_explorer::epidemiology::compartmental::SIRModel;
 
 const MIN_SIR_DURATION: f64 = 10.0;
@@ -11,32 +12,32 @@ const MAX_SIR_STEPS: usize = 100_000;
 
 #[derive(serde::Serialize)]
 struct SirStateRef<'a> {
-    n: f64,
-    i0: f64,
-    beta: f64,
-    gamma: f64,
-    duration: f64,
+    n: PositiveFloat,
+    i0: PositiveFloat,
+    beta: NonNegativeFloat,
+    gamma: NonNegativeFloat,
+    duration: NonNegativeFloat,
     #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
     snapshot_manager: &'a TraceSnapshotManager,
 }
 
 #[derive(serde::Serialize)]
 struct SirRecoveryState {
-    n: f64,
-    i0: f64,
-    beta: f64,
-    gamma: f64,
-    duration: f64,
+    n: PositiveFloat,
+    i0: PositiveFloat,
+    beta: NonNegativeFloat,
+    gamma: NonNegativeFloat,
+    duration: NonNegativeFloat,
 }
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SirState {
-    n: f64,
-    i0: f64,
-    beta: f64,
-    gamma: f64,
-    duration: f64,
+    n: PositiveFloat,
+    i0: PositiveFloat,
+    beta: NonNegativeFloat,
+    gamma: NonNegativeFloat,
+    duration: NonNegativeFloat,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
 }
@@ -190,22 +191,23 @@ impl SirTool {
     fn load_sir_state(&mut self, state: &str, preserve_snapshots: bool) -> Result<(), String> {
         let s: SirState =
             serde_json::from_str(state).map_err(|e| format!("Invalid SIR state: {e}"))?;
-        if ![s.n, s.i0, s.beta, s.gamma, s.duration]
-            .iter()
-            .all(|v| v.is_finite())
-            || !(100.0..=100_000.0).contains(&s.n)
-            || !(1.0..=s.n).contains(&s.i0)
-            || !(0.0..=5.0).contains(&s.beta)
-            || !(0.0..=1.0).contains(&s.gamma)
-            || s.duration < 0.0
+        let n = s.n.value();
+        let i0 = s.i0.value();
+        let beta = s.beta.value();
+        let gamma = s.gamma.value();
+        let duration = s.duration.value();
+        if !(100.0..=100_000.0).contains(&n)
+            || !(1.0..=n).contains(&i0)
+            || beta > 5.0
+            || gamma > 1.0
         {
             return Err("SIR parameters out of bounds".into());
         }
-        self.n = s.n;
-        self.i0 = s.i0;
-        self.beta = s.beta;
-        self.gamma = s.gamma;
-        self.duration = s.duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION);
+        self.n = n;
+        self.i0 = i0;
+        self.beta = beta;
+        self.gamma = gamma;
+        self.duration = duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION);
         if !preserve_snapshots {
             self.snapshot_manager = s.snapshot_manager;
         }
@@ -261,11 +263,11 @@ impl InteractiveTool for SirTool {
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&SirStateRef {
-            n: self.n,
-            i0: self.i0,
-            beta: self.beta,
-            gamma: self.gamma,
-            duration: self.duration,
+            n: PositiveFloat::new(self.n).ok()?,
+            i0: PositiveFloat::new(self.i0).ok()?,
+            beta: NonNegativeFloat::new(self.beta).ok()?,
+            gamma: NonNegativeFloat::new(self.gamma).ok()?,
+            duration: NonNegativeFloat::new(self.duration).ok()?,
             snapshot_manager: &self.snapshot_manager,
         })
         .ok()
@@ -273,11 +275,11 @@ impl InteractiveTool for SirTool {
 
     fn save_recovery_state(&self) -> Option<String> {
         serde_json::to_string(&SirRecoveryState {
-            n: self.n,
-            i0: self.i0,
-            beta: self.beta,
-            gamma: self.gamma,
-            duration: self.duration,
+            n: PositiveFloat::new(self.n).ok()?,
+            i0: PositiveFloat::new(self.i0).ok()?,
+            beta: NonNegativeFloat::new(self.beta).ok()?,
+            gamma: NonNegativeFloat::new(self.gamma).ok()?,
+            duration: NonNegativeFloat::new(self.duration).ok()?,
         })
         .ok()
     }

@@ -2,9 +2,23 @@ use crate::error::HighEnergyError;
 use math_commons::constants::{C, G};
 
 /// Struct representing a Schwarzschild Black Hole.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SchwarzschildBlackHole {
     #[allow(missing_docs)]
     pub mass: f64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for SchwarzschildBlackHole {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            mass: f64,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.mass).map_err(serde::de::Error::custom)
+    }
 }
 
 impl SchwarzschildBlackHole {
@@ -14,7 +28,7 @@ impl SchwarzschildBlackHole {
     /// Returns `HighEnergyError::InvalidMass` if `mass <= 0`.
     #[verified_engine::verified]
     pub fn new(mass: f64) -> Result<Self, HighEnergyError> {
-        if mass <= 0.0 {
+        if !mass.is_finite() || mass <= 0.0 {
             return Err(HighEnergyError::InvalidMass { mass });
         }
         Ok(Self { mass })

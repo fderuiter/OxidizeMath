@@ -32,6 +32,7 @@ pub trait Hamiltonian {
 /// Note: The struct field is named `mass` to represent the mass parameter $m$,
 /// not to be confused with the population density $m(x)$.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct QuadraticHamiltonian {
     #[allow(missing_docs)]
     pub mass: f64,

@@ -76,7 +76,8 @@ impl PersistenceInterval {
 ///
 /// The barcode visualizes the lifetime of topological features across
 /// different scales (filtration parameter values).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PersistenceBarcode {
     /// All persistence intervals in the barcode.
     pub intervals: Vec<PersistenceInterval>,

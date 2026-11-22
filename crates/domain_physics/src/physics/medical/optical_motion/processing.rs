@@ -48,6 +48,8 @@ pub fn snr_improvement_factor(n_mesh: usize) -> f64 {
 }
 
 /// A structure representing the Lock-In Amplifier process.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LockInAmplifier {
     sensitivity: f64,
     full_scale_voltage: f64,

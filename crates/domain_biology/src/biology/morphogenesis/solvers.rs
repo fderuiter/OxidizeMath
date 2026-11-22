@@ -153,7 +153,8 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
 /// // dt = 0.01
 /// solver.step(&state, &mut next_state, &dynamics, 0.01);
 /// ```
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FusedEulerSolver;
 
 impl FusedEulerSolver {
@@ -209,6 +210,8 @@ impl<const N: usize> TuringSolverStrategy<N> for FusedEulerSolver {
 /// Adapts a standard ODE Solver to the TuringSolverStrategy trait.
 ///
 /// This adapter allows using any generic `Solver` (like RungeKutta4) within the TuringSystem.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StandardSolverAdapter<S> {
     #[allow(missing_docs)]
     pub solver: S,

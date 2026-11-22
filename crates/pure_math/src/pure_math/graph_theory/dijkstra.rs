@@ -6,13 +6,52 @@ use std::collections::{BinaryHeap, HashMap};
 use std::hash::Hash;
 use std::ops::Add;
 
+#[cfg(feature = "serde")]
+mod serde_node_map {
+    use petgraph::graph::NodeIndex;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
+
+    pub(super) fn serialize<S, V>(
+        map: &HashMap<NodeIndex, V>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        V: Serialize,
+    {
+        let entries: Vec<(&NodeIndex, &V)> = map.iter().collect();
+        entries.serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D, V>(deserializer: D) -> Result<HashMap<NodeIndex, V>, D::Error>
+    where
+        D: Deserializer<'de>,
+        V: Deserialize<'de>,
+    {
+        let entries = Vec::<(NodeIndex, V)>::deserialize(deserializer)?;
+        Ok(entries.into_iter().collect())
+    }
+}
+
 /// Result of Dijkstra's algorithm.
 /// Contains the shortest distance to each reachable node and the predecessor map.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound(
+        serialize = "W: serde::Serialize",
+        deserialize = "W: serde::Deserialize<'de>"
+    ))
+)]
 pub struct DijkstraResult<W> {
     /// An upper bound on the weight of the shortest path from source s to vertex v.
     /// In the end, this is the true shortest distance.
+    #[cfg_attr(feature = "serde", serde(with = "serde_node_map"))]
     pub distances: HashMap<NodeIndex, W>,
     /// The vertex that immediately precedes v on the shortest path currently known.
+    #[cfg_attr(feature = "serde", serde(with = "serde_node_map"))]
     pub predecessors: HashMap<NodeIndex, NodeIndex>,
 }
 

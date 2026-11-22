@@ -19,6 +19,7 @@ pub const MAX_CRITICAL_POINTS: usize = 256;
 
 /// Classification of a detected 2D plot critical point.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum CriticalPointKind {
     /// Zero crossing where $y = 0$.
     Root,
@@ -48,6 +49,7 @@ impl CriticalPointKind {
 
 /// A detected sub-segment critical point in plot data coordinates.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct CriticalPoint {
     pub kind: CriticalPointKind,
     pub point: [f64; 2],

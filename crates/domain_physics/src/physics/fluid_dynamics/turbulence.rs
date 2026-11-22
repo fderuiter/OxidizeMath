@@ -8,7 +8,8 @@ use nalgebra::Matrix3;
 /// Reynolds Decomposition of a variable.
 ///
 /// $$u = \bar{u} + u'$$
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ReynoldsDecomposition {
     #[allow(missing_docs)]
     pub mean: f64,
@@ -33,7 +34,8 @@ impl ReynoldsDecomposition {
 /// Represents the Reynolds Stress Tensor ($-\rho \overline{u'_i u'_j}$).
 ///
 /// In RANS equations, this tensor represents the transfer of momentum due to turbulent fluctuations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ReynoldsStressTensor {
     /// The stress tensor matrix (symmetric).
     pub tensor: Matrix3<f64>,

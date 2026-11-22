@@ -164,3 +164,68 @@ impl PlotMemory {
         ctx.data_mut(|d| d.insert_temp(id, self));
     }
 }
+
+#[cfg(all(test, feature = "serde"))]
+mod serde_tests {
+    use egui::{Id, Rect, Vec2b, pos2};
+
+    use super::{CanvasCallout, PlotMemory};
+    use crate::{CriticalPoint, CriticalPointKind, PlotBounds, PlotTransform, SavedCallout};
+
+    #[test]
+    fn critical_point_and_plot_memory_roundtrip_json() {
+        let cp = CriticalPoint {
+            kind: CriticalPointKind::Intersection,
+            point: [1.25, -0.5],
+            primary_series: "f(x)".to_owned(),
+            secondary_series: Some("g(x)".to_owned()),
+            item_id: Id::new("series_fx"),
+        };
+        let cp_json = serde_json::to_string(&cp).expect("serialize CriticalPoint");
+        let cp_decoded: CriticalPoint =
+            serde_json::from_str(&cp_json).expect("deserialize CriticalPoint");
+        assert_eq!(cp_decoded, cp);
+
+        let callout = CanvasCallout {
+            target_point: [2.0, 3.0],
+            label_offset: [12.0, -8.0],
+            text: "Peak".to_owned(),
+        };
+        let memory = PlotMemory {
+            auto_bounds: Vec2b::new(true, false),
+            hovered_legend_item: Some(Id::new("legend_item")),
+            hidden_items: std::iter::once(Id::new("hidden_series")).collect(),
+            transform: PlotTransform::new(
+                Rect::from_min_max(pos2(0.0, 0.0), pos2(200.0, 100.0)),
+                PlotBounds::from_min_max([-5.0, -2.0], [5.0, 10.0]),
+                true,
+            ),
+            last_click_pos_for_zoom: None,
+            x_axis_thickness: [(0, 18.0)].into_iter().collect(),
+            y_axis_thickness: [(0, 24.0)].into_iter().collect(),
+            imported_datasets: Vec::new(),
+            callouts: vec![SavedCallout::from(callout)],
+            log_x: false,
+            log_y: true,
+            grid_density: 10.0,
+            show_x_labels: true,
+            show_y_labels: false,
+            clamp_grid: true,
+            show_grid: Vec2b::new(true, false),
+            show_settings_modal: false,
+            last_right_click_coord: Some([1.5, 2.5]),
+        };
+        let mem_json = serde_json::to_string(&memory).expect("serialize PlotMemory");
+        let mem_decoded: PlotMemory =
+            serde_json::from_str(&mem_json).expect("deserialize PlotMemory");
+        assert_eq!(mem_decoded.auto_bounds, memory.auto_bounds);
+        assert_eq!(mem_decoded.bounds(), memory.bounds());
+        assert_eq!(mem_decoded.callouts, memory.callouts);
+        assert_eq!(mem_decoded.log_y, memory.log_y);
+        assert_eq!(mem_decoded.show_y_labels, memory.show_y_labels);
+        assert_eq!(
+            mem_decoded.last_right_click_coord,
+            memory.last_right_click_coord
+        );
+    }
+}

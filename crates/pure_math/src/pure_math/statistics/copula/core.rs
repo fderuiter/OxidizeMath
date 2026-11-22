@@ -5,6 +5,8 @@ use nalgebra::DMatrix;
 
 /// A probability value in [0, 1].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Probability(f64);
 
 impl Probability {
@@ -44,6 +46,8 @@ impl Probability {
 
 /// A correlation coefficient in [-1, 1].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Correlation(f64);
 
 impl Correlation {
@@ -85,6 +89,7 @@ impl Correlation {
 ///
 /// Must be symmetric and positive definite with 1s on the diagonal.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct CorrelationMatrix {
     matrix: DMatrix<f64>,
 }
@@ -132,13 +137,12 @@ impl CorrelationMatrix {
             }
         }
 
-        // Check all elements in [-1, 1]
+        // Check all elements finite and in [-1, 1]
         for i in 0..matrix.nrows() {
             for j in 0..matrix.ncols() {
-                if matrix[(i, j)].abs() > 1.0 + math_commons::registry::TOLERANCE_HIGH {
-                    return Err(CopulaError::InvalidCorrelation {
-                        value: matrix[(i, j)],
-                    });
+                let val = matrix[(i, j)];
+                if !val.is_finite() || val.abs() > 1.0 + math_commons::registry::TOLERANCE_HIGH {
+                    return Err(CopulaError::InvalidCorrelation { value: val });
                 }
             }
         }
@@ -192,6 +196,43 @@ impl CorrelationMatrix {
         } else {
             None
         }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Probability {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = f64::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Correlation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = f64::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for CorrelationMatrix {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawCorrelationMatrix {
+            matrix: DMatrix<f64>,
+        }
+        let raw = RawCorrelationMatrix::deserialize(deserializer)?;
+        Self::new(raw.matrix).map_err(serde::de::Error::custom)
     }
 }
 

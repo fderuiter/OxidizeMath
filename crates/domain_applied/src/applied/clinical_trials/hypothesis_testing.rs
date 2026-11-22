@@ -9,6 +9,7 @@ pub trait HypothesisTest<Input> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct TestResult {
     #[allow(missing_docs)]
@@ -22,6 +23,8 @@ pub struct TestResult {
 }
 
 /// Strategy for an independent two-sample t-test (assuming equal variances).
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TTestIndependent {
     #[allow(missing_docs)]
     pub alpha: f64,
@@ -89,6 +92,8 @@ impl<'a> HypothesisTest<(&'a GroupData, &'a GroupData)> for TTestIndependent {
 }
 
 /// Strategy for a Chi-Square test for a 2x2 contingency table.
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ChiSquare2x2 {
     #[allow(missing_docs)]
     pub alpha: f64,

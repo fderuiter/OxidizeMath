@@ -5,6 +5,7 @@ use thiserror::Error;
 use crate::physics::solid_state::types::ElectronVolts;
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum ChaosError {
     /// The simulation parameters are invalid (e.g., negative time step).
@@ -31,6 +32,7 @@ impl Diagnostic for ChaosError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum StandardModelError {
     /// Energy scale must be positive.
@@ -47,7 +49,8 @@ pub enum StandardModelError {
     InvalidFlavors { nf: f64 },
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum SolidStateError {
     /// The iterative solver failed to converge within the maximum number of iterations.
@@ -63,7 +66,8 @@ pub enum SolidStateError {
     ComputationError(String),
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum DoseFluenceError {
     #[error("Radius cannot be zero (singularity at r=0)")]
@@ -78,6 +82,7 @@ pub enum DoseFluenceError {
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum RadarError {
     /// Insufficient snapshots for MUSIC algorithm.
@@ -100,6 +105,7 @@ pub enum RadarError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum HighEnergyError {
     /// Mass must be positive.
@@ -139,6 +145,7 @@ pub enum HighEnergyError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum FluidError {
     /// Density must be strictly positive.
@@ -150,6 +157,7 @@ pub enum FluidError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum StatMechError {
     /// Temperature must be non-negative (absolute zero is allowed as a limit).

@@ -6,6 +6,7 @@ use verified_engine::Theory;
 
 /// State for the SEIR Model.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SEIRState {
     #[allow(missing_docs)]
     pub s: f64,
@@ -24,6 +25,7 @@ impl_compartmental_ops!(SEIRState, s, e, i, r);
 /// This struct holds the parameters and defines the differential equations,
 /// but does not hold the simulation state.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SEIRDynamics {
     #[allow(missing_docs)]
     pub n: f64,
@@ -64,7 +66,8 @@ impl OdeSystem<SEIRState> for SEIRDynamics {
 /// $$dI/dt = \sigma E - \gamma I$$
 ///
 /// Use `SEIRModel::builder()` or `SEIRModel::new()` to construct.
-#[derive(Debug, Clone, Theory)]
+#[derive(Debug, Clone, PartialEq, Theory)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[theory(
     description = "The SEIR model is a compartmental epidemic model that incorporates an exposed (latent) period before individuals become infectious.",
     citation = "Mathematical epidemiology of infectious diseases (Diekmann & Heesterbeek, 2000)"
@@ -97,7 +100,8 @@ impl<S: Solver<SEIRState>> TimeStepper<SEIRState> for SEIRModel<S> {
 }
 
 /// Builder for SEIRModel to ensure valid parameter configuration.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SEIRModelBuilder {
     n: Option<f64>,
     i0: Option<f64>,
@@ -270,6 +274,51 @@ impl<S: Solver<SEIRState>> OdeSystem<SEIRState> for SEIRModel<S> {
     fn derivative(&self, t: f64, state: &SEIRState) -> SEIRState {
         // Delegate to the pure dynamics component
         self.dynamics.derivative(t, state)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, S> serde::Deserialize<'de> for SEIRModel<S>
+where
+    S: Solver<SEIRState> + serde::Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawSEIRModel<S> {
+            state: SEIRState,
+            dynamics: SEIRDynamics,
+            solver: S,
+        }
+
+        let raw = RawSEIRModel::<S>::deserialize(deserializer)?;
+        validate_population(raw.dynamics.n).map_err(serde::de::Error::custom)?;
+        validate_rate("beta (transmission rate)", raw.dynamics.beta)
+            .map_err(serde::de::Error::custom)?;
+        validate_rate("sigma (incubation rate)", raw.dynamics.sigma)
+            .map_err(serde::de::Error::custom)?;
+        validate_rate("gamma (recovery rate)", raw.dynamics.gamma)
+            .map_err(serde::de::Error::custom)?;
+        if !raw.state.s.is_finite()
+            || !raw.state.e.is_finite()
+            || !raw.state.i.is_finite()
+            || !raw.state.r.is_finite()
+            || raw.state.s < 0.0
+            || raw.state.e < 0.0
+            || raw.state.i < 0.0
+            || raw.state.r < 0.0
+        {
+            return Err(serde::de::Error::custom(
+                "SEIRState compartments must be finite and non-negative",
+            ));
+        }
+        Ok(Self {
+            state: raw.state,
+            dynamics: raw.dynamics,
+            solver: raw.solver,
+        })
     }
 }
 

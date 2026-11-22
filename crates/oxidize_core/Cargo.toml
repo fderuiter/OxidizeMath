@@ -9,10 +9,14 @@ async-recursion = { workspace = true }
 quote = { workspace = true }
 rand = { workspace = true, features = ["std", "alloc"] }
 rand_chacha = { workspace = true, features = ["std"] }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"], optional = true }
 syn = { workspace = true, features = ["full", "visit"] }
 thiserror = { workspace = true }
 toml = { workspace = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { workspace = true }

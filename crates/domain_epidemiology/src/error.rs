@@ -2,6 +2,7 @@ use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum EpidemiologyError {
     /// Matrix V (Transition Matrix) is singular and cannot be inverted.

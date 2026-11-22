@@ -2,6 +2,7 @@ use super::traits::PharmacokineticModel;
 
 /// A model that calculates the concentration resulting from multiple doses using the principle of superposition.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SuperpositionModel<M> {
     /// The underlying model for a single dose.
     pub base_model: M,

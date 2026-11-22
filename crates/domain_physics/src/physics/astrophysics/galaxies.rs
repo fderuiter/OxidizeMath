@@ -14,6 +14,7 @@
 
 /// Distance in Megaparsecs (Mpc).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Mpc(pub f64);
 
 impl Mpc {
@@ -26,6 +27,7 @@ impl Mpc {
 
 /// Logarithm of the mass in solar masses (log(M/M_Sun)).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SolarMassLog(pub f64);
 
 impl SolarMassLog {
@@ -38,6 +40,7 @@ impl SolarMassLog {
 
 /// Astronomical Magnitude (Apparent or Absolute).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Magnitude(pub f64);
 
 impl Magnitude {
@@ -50,6 +53,7 @@ impl Magnitude {
 
 /// Redshift (z).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Redshift(pub f64);
 
 impl Redshift {
@@ -84,7 +88,8 @@ pub trait GalaxyModel {
 // --- Strategies ---
 
 /// Strategy for "All" irregular dwarf galaxies (General Group).
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GeneralIrregular;
 
 impl GalaxyModel for GeneralIrregular {
@@ -110,7 +115,8 @@ impl GalaxyModel for GeneralIrregular {
 }
 
 /// Strategy for Type Code 10 irregular dwarf galaxies.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TypeCode10;
 
 impl GalaxyModel for TypeCode10 {
@@ -137,7 +143,8 @@ impl GalaxyModel for TypeCode10 {
 }
 
 /// Strategy for Type Code 9.5 - 9.9 irregular dwarf galaxies.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TypeCode95To99;
 
 impl GalaxyModel for TypeCode95To99 {

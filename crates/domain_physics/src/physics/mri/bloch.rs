@@ -5,6 +5,8 @@ use nalgebra::Vector3;
 use pure_math::pure_math::analysis::ode::{OdeSystem, TimeStepper};
 
 /// Classical Dynamics Simulator using Bloch Equations.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BlochSimulator {
     /// Current magnetization vector $\vec{M} = (M_x, M_y, M_z)$.
     pub magnetization: Vector3<f64>,
@@ -91,9 +93,9 @@ impl BlochSimulator {
 }
 
 use oxidize_core::{ModelConfig, ModelState, SimulationModel};
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct BlochConfig {
     #[allow(missing_docs)]
@@ -106,14 +108,15 @@ pub struct BlochConfig {
     pub dt: f64,
     #[allow(missing_docs)]
     pub m0: f64,
-    #[serde(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
     #[allow(missing_docs)]
     pub integration_method: pure_math::pure_math::analysis::ode::IntegrationMethod,
 }
 
 impl ModelConfig for BlochConfig {}
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct BlochState {
     #[allow(missing_docs)]

@@ -11,10 +11,22 @@ verified_engine = { version = "0.1.0", path = "../verified_engine" }
 
 math_commons = { path = "../math_commons" }
 pure_math = { path = "../pure_math" }
+serde = { workspace = true, features = ["derive"], optional = true }
 
+[features]
+default = []
+serde = [
+    "dep:serde",
+    "oxidize_core/serde",
+    "verified_engine/serde",
+    "math_commons/serde",
+    "pure_math/serde",
+    "nalgebra/serde-serialize",
+]
 
 [dev-dependencies]
 approx = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

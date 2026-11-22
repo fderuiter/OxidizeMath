@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 /// Represents the group assignment for a patient in a clinical trial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Group {
     #[allow(missing_docs)]
     Treatment,
@@ -14,6 +15,7 @@ pub enum Group {
 
 /// Represents a patient with an ID and a stratum identifier (e.g., "Male-Young").
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Patient {
     #[allow(missing_docs)]
     pub id: String,
@@ -38,6 +40,8 @@ pub trait AllocationStrategy {
 /// Simple Randomization Strategy.
 ///
 /// Each patient is assigned to Treatment or Control with equal probability (0.5).
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SimpleRandomizer;
 
 impl AllocationStrategy for SimpleRandomizer {
@@ -62,8 +66,25 @@ impl AllocationStrategy for SimpleRandomizer {
 /// Block Randomization Strategy.
 ///
 /// Ensures balanced allocation within blocks of a fixed size.
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct BlockRandomizer {
     block_size: usize,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for BlockRandomizer {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct BlockRandomizerRaw {
+            block_size: usize,
+        }
+        let raw = BlockRandomizerRaw::deserialize(deserializer)?;
+        Self::new(raw.block_size).map_err(serde::de::Error::custom)
+    }
 }
 
 impl BlockRandomizer {
@@ -144,6 +165,8 @@ impl AllocationStrategy for BlockRandomizer {
 /// Stratified Randomization Strategy.
 ///
 /// Uses an underlying strategy (usually Block Randomization) within each stratum.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StratifiedRandomizer<S: AllocationStrategy> {
     strategy: S,
 }

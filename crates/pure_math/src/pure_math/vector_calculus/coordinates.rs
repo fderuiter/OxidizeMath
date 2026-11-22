@@ -19,6 +19,8 @@ pub trait OrthogonalCoordinateSystem {
 
 /// Cartesian Coordinates (x, y, z).
 /// Scale factors are all 1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Cartesian;
 
 impl OrthogonalCoordinateSystem for Cartesian {
@@ -43,6 +45,8 @@ impl OrthogonalCoordinateSystem for Cartesian {
 
 /// Cylindrical Coordinates $(\rho, \phi, z)$.
 /// $x = \rho \cos\phi, y = \rho \sin\phi, z = z$.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Cylindrical;
 
 impl OrthogonalCoordinateSystem for Cylindrical {
@@ -77,6 +81,8 @@ impl OrthogonalCoordinateSystem for Cylindrical {
 /// Spherical Coordinates $(r, \theta, \phi)$.
 /// $x = r \sin\theta \cos\phi, y = r \sin\theta \sin\phi, z = r \cos\theta$.
 /// $\theta$ is polar angle (from z-axis), $\phi$ is azimuthal angle (in xy-plane).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Spherical;
 
 impl OrthogonalCoordinateSystem for Spherical {

@@ -33,7 +33,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-cargo-docs" | "check-workspace-docs" => gates::check_cargo_docs(),
         "check-docs" => gates::check_docs(),
         "check-entropy" => gates::check_entropy(),
-        "test-features" => test_features(rest),
+        "test-features" => gates::test_features(rest),
         "verify-suite" => gates::verify_suite(rest),
         "verify-records" => gates::verify_records(rest),
         "compile-papers" => papers::compile_papers(),
@@ -153,68 +153,12 @@ fn setup() {
     println!("=== Setup Complete ===");
 }
 
-fn test_features(args: &[String]) {
-    if args.is_empty() {
-        let features = [
-            "pure_math",
-            "applied",
-            "ai",
-            "biology",
-            "climate",
-            "epidemiology",
-            "physics",
-        ];
-        println!("=== Running core-only (no features) ===");
-        run_cmd(
-            "cargo",
-            &["test", "-p", "math_explorer", "--no-default-features"],
-        );
-        for f in &features {
-            println!("=== Running tests for feature: {} ===", f);
-            run_cmd(
-                "cargo",
-                &[
-                    "test",
-                    "-p",
-                    "math_explorer",
-                    "--no-default-features",
-                    "--features",
-                    f,
-                ],
-            );
-        }
-        println!("=== Running all features ===");
-        run_cmd("cargo", &["test", "-p", "math_explorer", "--all-features"]);
-        println!("All feature combinations passed successfully!");
-    } else {
-        let feature = &args[0];
-        if feature == "core-only" || feature.is_empty() {
-            run_cmd(
-                "cargo",
-                &["test", "-p", "math_explorer", "--no-default-features"],
-            );
-        } else {
-            run_cmd(
-                "cargo",
-                &[
-                    "test",
-                    "-p",
-                    "math_explorer",
-                    "--no-default-features",
-                    "--features",
-                    feature,
-                ],
-            );
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::gates::{
         HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, WASM_GUI_TEST_ARGS, WASM_OXIDIZE_CORE_TEST_ARGS,
-        unified_verification_bin,
+        assert_no_serde_in_normal_deps, unified_verification_bin,
     };
     use crate::markdown_links::{collect_md_files, extract_md_links};
 
@@ -444,5 +388,13 @@ mod tests {
             .find("name: Upload Web Dist Artifact")
             .expect("ci.yml must upload wasm_web_dist artifact");
         assert!(smoke_pos > build_pos && smoke_pos < upload_pos);
+    }
+
+    #[test]
+    fn test_math_explorer_zero_serde_without_feature() {
+        assert_no_serde_in_normal_deps(None);
+        assert_no_serde_in_normal_deps(Some(
+            "pure_math,applied,ai,biology,climate,epidemiology,physics",
+        ));
     }
 }

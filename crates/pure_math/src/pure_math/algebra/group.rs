@@ -24,11 +24,31 @@ use std::hash::Hash;
 /// `Monoid::identity()` cannot be correctly implemented (it panics).
 /// Use `Zn<N>` for a type-safe implementation where N is known at compile time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct CyclicElement {
     #[allow(missing_docs)]
     pub value: usize,
     #[allow(missing_docs)]
     pub modulo: usize,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for CyclicElement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct CyclicElementRaw {
+            value: usize,
+            modulo: usize,
+        }
+        let raw = CyclicElementRaw::deserialize(deserializer)?;
+        if raw.modulo == 0 {
+            return Err(serde::de::Error::custom("CyclicElement modulo must be > 0"));
+        }
+        Ok(Self::new(raw.value, raw.modulo))
+    }
 }
 
 impl CyclicElement {
@@ -90,9 +110,28 @@ impl Monoid for CyclicElement {
 /// assert_eq!(inv.value, 2);
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Zn<const N: usize> {
     #[allow(missing_docs)]
     pub value: usize,
+}
+
+#[cfg(feature = "serde")]
+impl<'de, const N: usize> serde::Deserialize<'de> for Zn<N> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct ZnRaw {
+            value: usize,
+        }
+        if N == 0 {
+            return Err(serde::de::Error::custom("Zn modulus N must be > 0"));
+        }
+        let raw = ZnRaw::deserialize(deserializer)?;
+        Ok(Self::new(raw.value))
+    }
 }
 
 impl<const N: usize> Zn<N> {
@@ -138,9 +177,35 @@ impl<const N: usize> Group for Zn<N> {
 
 /// An element of the Symmetric Group $S_n$ (Permutations).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Permutation {
     #[allow(missing_docs)]
     pub map: Vec<usize>, // map[i] is the image of i
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Permutation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct PermutationRaw {
+            map: Vec<usize>,
+        }
+        let raw = PermutationRaw::deserialize(deserializer)?;
+        let n = raw.map.len();
+        let mut seen = vec![false; n];
+        for &x in &raw.map {
+            if x >= n || seen[x] {
+                return Err(serde::de::Error::custom(
+                    "Invalid permutation: map must be a bijection on 0..n",
+                ));
+            }
+            seen[x] = true;
+        }
+        Ok(Self { map: raw.map })
+    }
 }
 
 impl Permutation {

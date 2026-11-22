@@ -9,7 +9,7 @@ nalgebra = { workspace = true }
 rand = { workspace = true }
 num-complex = { workspace = true }
 thiserror = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"], optional = true }
 oxidize_core = { path = "../oxidize_core" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
 
@@ -19,12 +19,28 @@ diagnostics = { path = "../diagnostics" }
 pure_math = { path = "../pure_math" }
 domain_applied = { path = "../domain_applied" }
 
+[features]
+default = []
+serde = [
+    "dep:serde",
+    "oxidize_core/serde",
+    "verified_engine/serde",
+    "math_commons/serde",
+    "scientific_metadata/serde",
+    "diagnostics/serde",
+    "pure_math/serde",
+    "domain_applied/serde",
+    "nalgebra/serde-serialize",
+    "num-complex/serde",
+]
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 
 [dev-dependencies]
 approx = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

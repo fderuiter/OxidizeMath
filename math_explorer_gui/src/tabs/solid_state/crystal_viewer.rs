@@ -1,40 +1,12 @@
 use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
 use eframe::egui;
 use egui_plot::{Line, PlotPoints, Points};
-use math_explorer::physics::solid_state::lattice::{
-    BodyCenteredCubic, CrystalSystem, FaceCenteredCubic, SimpleCubic, UnitCell,
-};
+use math_commons::primitives::PositiveFloat;
+use math_explorer::physics::solid_state::lattice::{BravaisLattice, CrystalSystem};
 use nalgebra::Vector3;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-#[allow(clippy::enum_variant_names)]
-pub enum CrystalSystemEnum {
-    SimpleCubic,
-    BodyCenteredCubic,
-    FaceCenteredCubic,
-}
-
-impl CrystalSystemEnum {
-    /// Returns a readable crystallographic system title for UI selectors.
-    pub fn label(&self) -> &'static str {
-        match self {
-            CrystalSystemEnum::SimpleCubic => "Simple Cubic",
-            CrystalSystemEnum::BodyCenteredCubic => "Body-Centered Cubic (BCC)",
-            CrystalSystemEnum::FaceCenteredCubic => "Face-Centered Cubic (FCC)",
-        }
-    }
-
-    fn generate(&self, a: f64) -> UnitCell {
-        match self {
-            CrystalSystemEnum::SimpleCubic => SimpleCubic.generate(a),
-            CrystalSystemEnum::BodyCenteredCubic => BodyCenteredCubic.generate(a),
-            CrystalSystemEnum::FaceCenteredCubic => FaceCenteredCubic.generate(a),
-        }
-    }
-}
-
 pub struct CrystalViewer {
-    system: CrystalSystemEnum,
+    system: BravaisLattice,
     lattice_constant: f64,
     camera: Camera3D,
 }
@@ -42,7 +14,7 @@ pub struct CrystalViewer {
 impl Default for CrystalViewer {
     fn default() -> Self {
         Self {
-            system: CrystalSystemEnum::FaceCenteredCubic,
+            system: BravaisLattice::FaceCenteredCubic,
             lattice_constant: 2.0,
             camera: Camera3D::new(0.5, 0.5, 1.0),
         }
@@ -100,16 +72,16 @@ impl CrystalViewer {
 
 #[derive(serde::Serialize)]
 struct CrystalSaveState {
-    system: CrystalSystemEnum,
-    lattice_constant: f64,
+    system: BravaisLattice,
+    lattice_constant: PositiveFloat,
     camera: Camera3D,
 }
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CrystalState {
-    system: CrystalSystemEnum,
-    lattice_constant: f64,
+    system: BravaisLattice,
+    lattice_constant: PositiveFloat,
     #[serde(default)]
     camera: Option<Camera3D>,
     #[serde(default)]
@@ -132,7 +104,7 @@ impl InteractiveTool for CrystalViewer {
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&CrystalSaveState {
             system: self.system,
-            lattice_constant: self.lattice_constant,
+            lattice_constant: PositiveFloat::new(self.lattice_constant).ok()?,
             camera: self.camera,
         })
         .ok()
@@ -141,10 +113,10 @@ impl InteractiveTool for CrystalViewer {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: CrystalState =
             serde_json::from_str(state).map_err(|e| format!("Invalid CrystalViewer state: {e}"))?;
-        if !s.lattice_constant.is_finite() || !(0.5..=5.0).contains(&s.lattice_constant) {
+        let lattice_constant = s.lattice_constant.value();
+        if !(0.5..=5.0).contains(&lattice_constant) {
             return Err(format!(
-                "lattice_constant out of [0.5, 5.0]: {}",
-                s.lattice_constant
+                "lattice_constant out of [0.5, 5.0]: {lattice_constant}"
             ));
         }
         let normalized_zoom = s.zoom.map(|z| {
@@ -164,7 +136,7 @@ impl InteractiveTool for CrystalViewer {
             Some(Camera3D::default()),
         )?;
         self.system = s.system;
-        self.lattice_constant = s.lattice_constant;
+        self.lattice_constant = lattice_constant;
         self.camera.apply_pose(camera);
         Ok(())
     }
@@ -181,18 +153,18 @@ impl InteractiveTool for CrystalViewer {
                 .show_ui(ui, |ui| {
                     ui.selectable_value(
                         &mut self.system,
-                        CrystalSystemEnum::SimpleCubic,
-                        CrystalSystemEnum::SimpleCubic.label(),
+                        BravaisLattice::SimpleCubic,
+                        BravaisLattice::SimpleCubic.label(),
                     );
                     ui.selectable_value(
                         &mut self.system,
-                        CrystalSystemEnum::BodyCenteredCubic,
-                        CrystalSystemEnum::BodyCenteredCubic.label(),
+                        BravaisLattice::BodyCenteredCubic,
+                        BravaisLattice::BodyCenteredCubic.label(),
                     );
                     ui.selectable_value(
                         &mut self.system,
-                        CrystalSystemEnum::FaceCenteredCubic,
-                        CrystalSystemEnum::FaceCenteredCubic.label(),
+                        BravaisLattice::FaceCenteredCubic,
+                        BravaisLattice::FaceCenteredCubic.label(),
                     );
                 });
 
@@ -244,9 +216,9 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for CrystalViewer {
     fn theory_description(&self) -> String {
         let (sys_name, formula) = match self.system {
-            CrystalSystemEnum::SimpleCubic => ("Simple Cubic (SC)", "1 atom per unit cell, coordination number 6, packing fraction $\\pi/6 \\approx 0.52$"),
-            CrystalSystemEnum::BodyCenteredCubic => ("Body-Centered Cubic (BCC)", "2 atoms per unit cell, coordination number 8, packing fraction $\\sqrt{3}\\pi/8 \\approx 0.68$"),
-            CrystalSystemEnum::FaceCenteredCubic => ("Face-Centered Cubic (FCC)", "4 atoms per unit cell, coordination number 12, close-packed fraction $\\pi/(3\\sqrt{2}) \\approx 0.74$"),
+            BravaisLattice::SimpleCubic => ("Simple Cubic (SC)", "1 atom per unit cell, coordination number 6, packing fraction $\\pi/6 \\approx 0.52$"),
+            BravaisLattice::BodyCenteredCubic => ("Body-Centered Cubic (BCC)", "2 atoms per unit cell, coordination number 8, packing fraction $\\sqrt{3}\\pi/8 \\approx 0.68$"),
+            BravaisLattice::FaceCenteredCubic => ("Face-Centered Cubic (FCC)", "4 atoms per unit cell, coordination number 12, close-packed fraction $\\pi/(3\\sqrt{2}) \\approx 0.74$"),
         };
         format!(
             "Crystallographic Bravais lattice geometry for {} with lattice constant $a = {:.2}\\,\\text{{\\AA}}$: {}.",

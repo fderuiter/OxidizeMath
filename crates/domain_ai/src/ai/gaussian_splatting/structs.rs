@@ -4,7 +4,8 @@ use nalgebra::{Matrix2, Matrix3, Point2, Point3, UnitQuaternion, Vector3};
 ///
 /// Defined by its mean position, covariance (parameterized by scale and rotation),
 /// opacity, and color (Spherical Harmonics).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Gaussian3D {
     #[allow(missing_docs)]
     pub mean: Point3<f64>,
@@ -32,7 +33,8 @@ impl Gaussian3D {
 }
 
 /// Represents the 2D projection of a Gaussian on the image plane.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Gaussian2D {
     #[allow(missing_docs)]
     pub mean: Point2<f64>,
@@ -47,6 +49,8 @@ pub struct Gaussian2D {
 }
 
 /// A collection of 3D Gaussians.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Scene {
     #[allow(missing_docs)]
     pub gaussians: Vec<Gaussian3D>,

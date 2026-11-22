@@ -2,7 +2,8 @@ use num_complex::Complex64;
 use thiserror::Error;
 
 /// Errors that can occur during spectral transforms.
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TransformError {
     #[error("Input dimensions must be a power of 2")]
     #[allow(missing_docs)]

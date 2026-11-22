@@ -259,6 +259,8 @@ pub mod complex;
 pub mod core;
 pub mod homology;
 pub mod persistence;
+#[cfg(feature = "serde")]
+mod serde_support;
 
 // Re-export main types and functions
 pub use complex::{SimplicialComplex, vietoris_rips_complex};

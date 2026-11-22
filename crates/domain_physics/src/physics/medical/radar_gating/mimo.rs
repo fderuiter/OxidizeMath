@@ -8,6 +8,8 @@ use num_complex::Complex;
 use std::f64::consts::PI;
 
 /// Handles MIMO beamforming operations.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Beamformer {
     /// Wavelength of the signal ($\lambda$).
     wavelength: f64,

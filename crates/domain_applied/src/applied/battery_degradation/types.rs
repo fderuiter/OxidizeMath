@@ -108,6 +108,27 @@ macro_rules! impl_math_ops {
                 val.0
             }
         }
+
+        #[cfg(feature = "serde")]
+        impl serde::Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_f64(self.0)
+            }
+        }
+
+        #[cfg(feature = "serde")]
+        impl<'de> serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let raw = f64::deserialize(deserializer)?;
+                Self::new(raw).map_err(serde::de::Error::custom)
+            }
+        }
     };
 }
 
@@ -119,7 +140,7 @@ impl DepthOfDischarge {
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, BatteryError> {
-        if !(0.0..=100.0).contains(&value) {
+        if !value.is_finite() || !(0.0..=100.0).contains(&value) {
             return Err(BatteryError::InvalidDepthOfDischarge(value));
         }
         Ok(Self(value))
@@ -153,7 +174,7 @@ impl Capacity {
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, BatteryError> {
-        if !(0.0..=1.0).contains(&value) {
+        if !value.is_finite() || !(0.0..=1.0).contains(&value) {
             return Err(BatteryError::InvalidCapacity(value));
         }
         Ok(Self(value))
@@ -187,7 +208,7 @@ impl Cycles {
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, BatteryError> {
-        if value < 0.0 {
+        if !value.is_finite() || value < 0.0 {
             return Err(BatteryError::NegativeCycles(value));
         }
         Ok(Self(value))
@@ -212,3 +233,49 @@ impl fmt::Display for Cycles {
 }
 
 impl_math_ops!(Cycles);
+
+#[cfg(all(test, feature = "serde"))]
+mod serde_tests {
+    #![cfg_attr(any(), verified(opt_out = "tests"))]
+
+    use super::*;
+    use serde::Deserialize;
+    use serde::de::value::{Error as ValueError, F64Deserializer};
+
+    #[test]
+    fn test_battery_newtypes_round_trip() {
+        let dod = DepthOfDischarge::new(80.0).unwrap();
+        let cap = Capacity::new(0.85).unwrap();
+        let cyc = Cycles::new(500.0).unwrap();
+        assert_eq!(
+            serde_json::from_str::<DepthOfDischarge>(&serde_json::to_string(&dod).unwrap())
+                .unwrap(),
+            dod
+        );
+        assert_eq!(
+            serde_json::from_str::<Capacity>(&serde_json::to_string(&cap).unwrap()).unwrap(),
+            cap
+        );
+        assert_eq!(
+            serde_json::from_str::<Cycles>(&serde_json::to_string(&cyc).unwrap()).unwrap(),
+            cyc
+        );
+    }
+
+    #[test]
+    fn test_battery_newtypes_reject_invalid_and_non_finite() {
+        assert!(serde_json::from_str::<DepthOfDischarge>("-0.1").is_err());
+        assert!(serde_json::from_str::<DepthOfDischarge>("100.1").is_err());
+        assert!(serde_json::from_str::<Capacity>("-0.01").is_err());
+        assert!(serde_json::from_str::<Capacity>("1.01").is_err());
+        assert!(serde_json::from_str::<Cycles>("-1.0").is_err());
+
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(
+                DepthOfDischarge::deserialize(F64Deserializer::<ValueError>::new(bad)).is_err()
+            );
+            assert!(Capacity::deserialize(F64Deserializer::<ValueError>::new(bad)).is_err());
+            assert!(Cycles::deserialize(F64Deserializer::<ValueError>::new(bad)).is_err());
+        }
+    }
+}

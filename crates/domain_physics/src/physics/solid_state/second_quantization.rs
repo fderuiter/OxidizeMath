@@ -18,16 +18,19 @@ pub trait ParticleStatistics {
 
 /// Fermions follow Fermi-Dirac statistics and Pauli Exclusion Principle.
 /// {c_i, c_j^\dagger} = \delta_{ij}
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Fermion;
 
 /// Bosons follow Bose-Einstein statistics.
 /// [a_i, a_j^\dagger] = \delta_{ij}
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Boson;
 
 /// Type of Quantum Operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum QuantumOperatorType {
     /// Creates a particle in a state (raising operator).
     Creation,
@@ -37,6 +40,7 @@ pub enum QuantumOperatorType {
 
 /// A quantum operator acting on a specific state index (k-vector or site).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Operator {
     #[allow(missing_docs)]
     pub op_type: QuantumOperatorType,
@@ -55,6 +59,7 @@ impl Operator {
 /// Fock State representation using occupation numbers.
 /// |n_1, n_2, ..., n_M>
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FockState {
     /// Occupation numbers for each mode/site.
     /// For Fermions, valid values are 0 or 1.

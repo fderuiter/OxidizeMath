@@ -7,7 +7,8 @@ use nalgebra::{DMatrix, DVector};
 use thiserror::Error;
 
 /// Errors related to Linear Algebra operations.
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LinearAlgebraError {
     /// The matrix is singular and cannot be inverted or decomposed.
     #[error("Matrix is singular")]

@@ -23,7 +23,8 @@ use std::collections::HashMap;
 /// assert!(constraint.min <= constraint.max);
 /// assert!(constraint.step > 0.0);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ParameterConstraint {
     /// Minimum allowable numerical value for the parameter.
     pub min: f64,

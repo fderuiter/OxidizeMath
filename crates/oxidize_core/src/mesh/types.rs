@@ -2,6 +2,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 
 /// A 3D point or vector with single-precision floating point coordinates.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Point3D {
     #[allow(missing_docs)]
     pub x: f32,
@@ -93,7 +94,8 @@ impl Div<f32> for Point3D {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct Mesh {
     #[allow(missing_docs)]

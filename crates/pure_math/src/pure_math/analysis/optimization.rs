@@ -9,7 +9,8 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 /// Errors that can occur during optimization.
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OptimizationError {
     #[error("Failed to convert numerical value")]
     #[allow(missing_docs)]
@@ -22,6 +23,8 @@ impl From<EvolutionError> for OptimizationError {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct L1RegularizedLeastSquares {
     lambda: f64,
@@ -64,6 +67,8 @@ pub trait Optimizer<T: RealField + Copy, Key = u64> {
     ) -> Result<(), OptimizationError>;
 }
 
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct SGD<T> {
     #[allow(missing_docs)]
@@ -134,6 +139,15 @@ impl<T: RealField + Copy, Key> Optimizer<T, Key> for SGD<T> {
     }
 }
 
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound(
+        serialize = "T: nalgebra::Scalar + serde::Serialize",
+        deserialize = "T: nalgebra::Scalar + serde::Deserialize<'de>"
+    ))
+)]
 #[allow(missing_docs)]
 pub struct AdamState<T> {
     #[allow(missing_docs)]
@@ -144,6 +158,49 @@ pub struct AdamState<T> {
     pub t: i32,
 }
 
+#[cfg(feature = "serde")]
+mod serde_adam_states {
+    use super::AdamState;
+    use nalgebra::Scalar;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
+    use std::hash::Hash;
+
+    pub(super) fn serialize<S, K, T>(
+        map: &HashMap<K, AdamState<T>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        K: Serialize,
+        T: Scalar + Serialize,
+    {
+        let entries: Vec<(&K, &AdamState<T>)> = map.iter().collect();
+        entries.serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D, K, T>(
+        deserializer: D,
+    ) -> Result<HashMap<K, AdamState<T>>, D::Error>
+    where
+        D: Deserializer<'de>,
+        K: Deserialize<'de> + Eq + Hash,
+        T: Scalar + Deserialize<'de>,
+    {
+        let entries = Vec::<(K, AdamState<T>)>::deserialize(deserializer)?;
+        Ok(entries.into_iter().collect())
+    }
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound(
+        serialize = "T: nalgebra::Scalar + serde::Serialize, Key: Eq + std::hash::Hash + serde::Serialize",
+        deserialize = "T: nalgebra::Scalar + serde::Deserialize<'de>, Key: Eq + std::hash::Hash + serde::Deserialize<'de>"
+    ))
+)]
 #[allow(missing_docs)]
 pub struct Adam<T, Key>
 where
@@ -158,6 +215,7 @@ where
     #[allow(missing_docs)]
     pub epsilon: T,
     #[allow(missing_docs)]
+    #[cfg_attr(feature = "serde", serde(with = "serde_adam_states"))]
     pub states: HashMap<Key, AdamState<T>>,
 }
 
@@ -329,6 +387,7 @@ where
 
 /// Identifies the type of parameter being updated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParamType {
     #[allow(missing_docs)]
     Weight,

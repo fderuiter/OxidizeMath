@@ -1,5 +1,38 @@
 use std::ops::Deref;
 
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+pub use serde as __serde;
+
+#[macro_export]
+#[allow(missing_docs)]
+macro_rules! impl_bounded_float_serde {
+    ($name:ident) => {
+        #[cfg(feature = "serde")]
+        impl $crate::primitives::__serde::Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: $crate::primitives::__serde::Serializer,
+            {
+                serializer.serialize_f64(self.0)
+            }
+        }
+
+        #[cfg(feature = "serde")]
+        impl<'de> $crate::primitives::__serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: $crate::primitives::__serde::Deserializer<'de>,
+            {
+                let raw = <f64 as $crate::primitives::__serde::Deserialize<'de>>::deserialize(
+                    deserializer,
+                )?;
+                Self::new(raw).map_err($crate::primitives::__serde::de::Error::custom)
+            }
+        }
+    };
+}
+
 #[macro_export]
 #[allow(missing_docs)]
 macro_rules! impl_binop {
@@ -122,6 +155,7 @@ macro_rules! define_bounded_float {
         }
 
         $crate::impl_binop!($name);
+        $crate::impl_bounded_float_serde!($name);
     };
 }
 
@@ -196,6 +230,7 @@ macro_rules! define_strictly_bounded_float {
         }
 
         $crate::impl_binop!($name);
+        $crate::impl_bounded_float_serde!($name);
     };
 }
 
@@ -226,3 +261,66 @@ define_bounded_float!(
     f64::INFINITY,
     "A floating point value bounded between 0.0 and infinity (inclusive of 0.0)."
 );
+
+#[cfg(all(test, feature = "serde"))]
+mod serde_tests {
+    #![cfg_attr(any(), verified(opt_out = "tests"))]
+
+    use super::*;
+    use serde::Deserialize;
+    use serde::de::IntoDeserializer;
+    use serde::de::value::{Error as ValError, F64Deserializer};
+
+    fn deser_raw<T: for<'de> Deserialize<'de>>(val: f64) -> Result<T, ValError> {
+        let de: F64Deserializer<ValError> = val.into_deserializer();
+        T::deserialize(de)
+    }
+
+    #[test]
+    fn unit_interval_serde_roundtrip_and_rejects_invalid_inputs() {
+        for valid in [0.0, 0.25, 0.5, 1.0] {
+            let p = UnitInterval::new(valid).unwrap();
+            let json = serde_json::to_string(&p).unwrap();
+            let restored: UnitInterval = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored, p);
+        }
+        for out_of_range in ["-0.001", "1.001", "-100.0", "42.0"] {
+            assert!(serde_json::from_str::<UnitInterval>(out_of_range).is_err());
+        }
+        for non_finite in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -0.5, 1.5] {
+            assert!(deser_raw::<UnitInterval>(non_finite).is_err());
+        }
+    }
+
+    #[test]
+    fn positive_float_serde_roundtrip_and_rejects_invalid_inputs() {
+        for valid in [1e-12, 0.5, 42.25] {
+            let p = PositiveFloat::new(valid).unwrap();
+            let json = serde_json::to_string(&p).unwrap();
+            let restored: PositiveFloat = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored, p);
+        }
+        for out_of_range in ["0.0", "-0.0", "-1e-9", "-100.0"] {
+            assert!(serde_json::from_str::<PositiveFloat>(out_of_range).is_err());
+        }
+        for non_finite in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 0.0, -1.0] {
+            assert!(deser_raw::<PositiveFloat>(non_finite).is_err());
+        }
+    }
+
+    #[test]
+    fn non_negative_float_serde_roundtrip_and_rejects_invalid_inputs() {
+        for valid in [0.0, 1e-12, 100.5] {
+            let p = NonNegativeFloat::new(valid).unwrap();
+            let json = serde_json::to_string(&p).unwrap();
+            let restored: NonNegativeFloat = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored, p);
+        }
+        for out_of_range in ["-1e-9", "-0.5", "-999.0"] {
+            assert!(serde_json::from_str::<NonNegativeFloat>(out_of_range).is_err());
+        }
+        for non_finite in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -0.001] {
+            assert!(deser_raw::<NonNegativeFloat>(non_finite).is_err());
+        }
+    }
+}

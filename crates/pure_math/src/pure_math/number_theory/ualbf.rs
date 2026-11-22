@@ -1,7 +1,8 @@
 // [cite:ualbf_quasiperfect]
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum NumberTheoryError {
     #[error("Parse error: {0}")]
@@ -9,6 +10,8 @@ pub enum NumberTheoryError {
     ParseError(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct UalbfSearchResult {
     #[allow(missing_docs)]

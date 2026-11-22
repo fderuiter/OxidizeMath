@@ -1,5 +1,6 @@
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
+use math_commons::primitives::{NonNegativeFloat, PositiveFloat};
 use math_explorer::physics::fluid_dynamics::regimes::{
     FlatPlateClassifier, FlowClassifier, FlowRegime, PipeFlowClassifier,
 };
@@ -13,10 +14,10 @@ enum Geometry {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TurbulenceState {
-    density: f64,
-    dynamic_viscosity: f64,
-    velocity: f64,
-    length: f64,
+    density: PositiveFloat,
+    dynamic_viscosity: PositiveFloat,
+    velocity: NonNegativeFloat,
+    length: PositiveFloat,
     geometry: Geometry,
 }
 
@@ -59,10 +60,10 @@ impl InteractiveTool for TurbulenceTool {
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&TurbulenceState {
-            density: self.density,
-            dynamic_viscosity: self.dynamic_viscosity,
-            velocity: self.velocity,
-            length: self.length,
+            density: PositiveFloat::new(self.density).ok()?,
+            dynamic_viscosity: PositiveFloat::new(self.dynamic_viscosity).ok()?,
+            velocity: NonNegativeFloat::new(self.velocity).ok()?,
+            length: PositiveFloat::new(self.length).ok()?,
             geometry: self.geometry,
         })
         .ok()
@@ -71,27 +72,21 @@ impl InteractiveTool for TurbulenceTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let loaded: TurbulenceState =
             serde_json::from_str(state).map_err(|e| format!("Invalid turbulence state: {e}"))?;
-        if ![
-            loaded.density,
-            loaded.dynamic_viscosity,
-            loaded.velocity,
-            loaded.length,
-        ]
-        .iter()
-        .all(|v| v.is_finite())
-            || !(0.0..=20_000.0).contains(&loaded.density)
-            || loaded.density <= 0.0
-            || !(1e-6..=10.0).contains(&loaded.dynamic_viscosity)
-            || !(0.0..=1000.0).contains(&loaded.velocity)
-            || !(0.0..=100.0).contains(&loaded.length)
-            || loaded.length <= 0.0
+        let density = loaded.density.value();
+        let dynamic_viscosity = loaded.dynamic_viscosity.value();
+        let velocity = loaded.velocity.value();
+        let length = loaded.length.value();
+        if density > 20_000.0
+            || !(1e-6..=10.0).contains(&dynamic_viscosity)
+            || velocity > 1000.0
+            || length > 100.0
         {
             return Err("Turbulence fluid or geometry parameters out of bounds".into());
         }
-        self.density = loaded.density;
-        self.dynamic_viscosity = loaded.dynamic_viscosity;
-        self.velocity = loaded.velocity;
-        self.length = loaded.length;
+        self.density = density;
+        self.dynamic_viscosity = dynamic_viscosity;
+        self.velocity = velocity;
+        self.length = length;
         self.geometry = loaded.geometry;
         Ok(())
     }

@@ -8,7 +8,8 @@
 use rand::RngCore;
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum EvolutionError {
     #[error("Failed to convert numerical value")]
@@ -88,6 +89,8 @@ where
 use super::ode::traits::{OdeSystem, Solver, VectorOperations};
 
 /// A unified wrapper that turns any OdeSystem and Solver pair into an EvolutionEngine.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SystemEvolver<Sys, Sol> {
     #[allow(missing_docs)]
     pub system: Sys,

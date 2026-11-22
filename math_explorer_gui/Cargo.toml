@@ -59,16 +59,16 @@ physics = ["math_explorer/physics", "applied", "pure_math"]
 futures = { workspace = true }
 federated_registry = { path = "../crates/federated_registry" }
 eframe = { workspace = true }
-egui_plot = "0.34.1"
-nalgebra = { workspace = true }
-oxidize_core = { path = "../crates/oxidize_core" }
-math_explorer = { path = "../math_explorer", optional = true }
-math_commons = { path = "../crates/math_commons" }
-scientific_metadata = { path = "../crates/scientific_metadata" }
-diagnostics = { path = "../crates/diagnostics" }
-num-complex = { workspace = true }
+egui_plot = { version = "0.34.1", features = ["serde"] }
+nalgebra = { workspace = true, features = ["serde-serialize"] }
+oxidize_core = { path = "../crates/oxidize_core", features = ["serde"] }
+math_explorer = { path = "../math_explorer", optional = true, features = ["serde"] }
+math_commons = { path = "../crates/math_commons", features = ["serde"] }
+scientific_metadata = { path = "../crates/scientific_metadata", features = ["serde"] }
+diagnostics = { path = "../crates/diagnostics", features = ["serde"] }
+num-complex = { workspace = true, features = ["serde"] }
 rand = { workspace = true }
-petgraph = { workspace = true }
+petgraph = { workspace = true, features = ["serde-1"] }
 inventory = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

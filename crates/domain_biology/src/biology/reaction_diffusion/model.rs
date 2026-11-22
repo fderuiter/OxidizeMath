@@ -10,7 +10,8 @@ use super::{ChemicalState, DiffusionModel, ReactionDiffusionError, ReactionModel
 /// and coefficients), separating them from the mutable simulation state.
 ///
 /// It implements `OdeSystem` to calculate the time derivative ($dC/dt$) given a state.
-#[derive(Theory)]
+#[derive(Debug, Clone, PartialEq, Theory)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[theory(
     description = "Turing patterns arise from reaction-diffusion systems where local auto-activation is coupled with long-range inhibition, leading to spontaneous symmetry breaking and the formation of stable spatial patterns.",
     citation = "The Chemical Basis of Morphogenesis (Turing, 1952)"
@@ -49,6 +50,8 @@ impl<R: ReactionModel, D: DiffusionModel> OdeSystem<ChemicalState>
 ///
 /// This struct manages the simulation state and the integration strategy.
 /// By default, it uses the Forward Euler method, but can be configured with other solvers.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ReactionDiffusionSystem<
     R: ReactionModel,
     D: DiffusionModel,
@@ -65,7 +68,8 @@ pub struct ReactionDiffusionSystem<
 /// Builder for `ReactionDiffusionSystem`.
 ///
 /// Ensures that parameters are physically valid before creating the system.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ReactionDiffusionSystemBuilder<R, D, S> {
     num_species: Option<usize>,
     grid_size: Option<usize>,
@@ -294,5 +298,53 @@ impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
     #[verified_engine::verified]
     pub fn diffusion(&self) -> &D {
         &self.model.diffusion
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, R, D, S> serde::Deserialize<'de> for ReactionDiffusionSystem<R, D, S>
+where
+    R: ReactionModel + serde::Deserialize<'de>,
+    D: DiffusionModel + serde::Deserialize<'de>,
+    S: Solver<ChemicalState> + serde::Deserialize<'de>,
+{
+    fn deserialize<De>(deserializer: De) -> Result<Self, De::Error>
+    where
+        De: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawRDSystem<R, D, S> {
+            model: ReactionDiffusionModel<R, D>,
+            state: ChemicalState,
+            solver: S,
+        }
+        let raw = RawRDSystem::<R, D, S>::deserialize(deserializer)?;
+        if raw.state.num_species() == 0 {
+            return Err(serde::de::Error::custom(
+                ReactionDiffusionError::ZeroSpecies,
+            ));
+        }
+        if raw.state.grid_size() == 0 {
+            return Err(serde::de::Error::custom(
+                ReactionDiffusionError::ZeroGridSize,
+            ));
+        }
+        if raw.model.diffusion_coeffs.len() != raw.state.num_species() {
+            return Err(serde::de::Error::custom(
+                "diffusion_coeffs length must match state.num_species()",
+            ));
+        }
+        if raw.model.diffusion_coeffs.iter().any(|c| !c.is_finite())
+            || raw.state.grid.iter().any(|v| !v.is_finite())
+        {
+            return Err(serde::de::Error::custom(
+                "ReactionDiffusionSystem values must be finite",
+            ));
+        }
+        Ok(Self {
+            model: raw.model,
+            state: raw.state,
+            solver: raw.solver,
+        })
     }
 }

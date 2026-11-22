@@ -24,7 +24,8 @@ pub trait BindingEnergyModel {
 }
 
 /// The Liquid Drop Model (Semi-Empirical Mass Formula).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LiquidDropModel {
     #[allow(missing_docs)]
     pub a_v: f64,

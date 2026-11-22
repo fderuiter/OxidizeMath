@@ -8,20 +8,20 @@ publish = false
 
 [dev-dependencies]
 federated_registry = { path = "../federated_registry" }
-scientific_metadata = { path = "../scientific_metadata" }
-oxidize_core = { path = "../oxidize_core" }
-verified_engine = { path = "../verified_engine" }
+scientific_metadata = { path = "../scientific_metadata", features = ["serde"] }
+oxidize_core = { path = "../oxidize_core", features = ["serde"] }
+verified_engine = { path = "../verified_engine", features = ["serde"] }
 verified_engine_macros = { path = "../verified_engine_macros" }
-diagnostics = { path = "../diagnostics" }
-math_commons = { path = "../math_commons" }
-pure_math = { path = "../pure_math" }
-domain_ai = { path = "../domain_ai" }
-domain_physics = { path = "../domain_physics" }
-domain_biology = { path = "../domain_biology" }
-domain_applied = { path = "../domain_applied" }
-domain_climate = { path = "../domain_climate" }
-domain_epidemiology = { path = "../domain_epidemiology" }
-math_explorer = { path = "../../math_explorer", features = ["pure_math", "applied", "ai", "biology", "climate", "epidemiology", "physics"] }
+diagnostics = { path = "../diagnostics", features = ["serde"] }
+math_commons = { path = "../math_commons", features = ["serde"] }
+pure_math = { path = "../pure_math", features = ["serde"] }
+domain_ai = { path = "../domain_ai", features = ["serde"] }
+domain_physics = { path = "../domain_physics", features = ["serde"] }
+domain_biology = { path = "../domain_biology", features = ["serde"] }
+domain_applied = { path = "../domain_applied", features = ["serde"] }
+domain_climate = { path = "../domain_climate", features = ["serde"] }
+domain_epidemiology = { path = "../domain_epidemiology", features = ["serde"] }
+math_explorer = { path = "../../math_explorer", features = ["pure_math", "applied", "ai", "biology", "climate", "epidemiology", "physics", "serde"] }
 
 nalgebra = { workspace = true }
 rand = { workspace = true }

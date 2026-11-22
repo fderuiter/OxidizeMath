@@ -17,7 +17,8 @@ pub fn sigma(n: u64) -> u64 {
     sum
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum AmbsError {
     #[error("Failed to parse integer from string: {0}")]
@@ -105,6 +106,8 @@ pub fn precompute_valid_prime_powers(limit_p: u64, max_e: u32) -> Vec<(u64, u32,
     valid
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct AmbsDsp {
     #[allow(missing_docs)]

@@ -5,6 +5,8 @@ use crate::ai::transformer::traits::{AttentionMechanism, FeedForwardNetwork, Nor
 use nalgebra::DMatrix;
 
 /// A single Decoder layer.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DecoderLayer<
     A: AttentionMechanism = MultiHeadAttention,
     F: FeedForwardNetwork = FeedForward,
@@ -110,6 +112,8 @@ impl<A: AttentionMechanism, F: FeedForwardNetwork, N: NormalizationLayer> Decode
 }
 
 /// The full Decoder, composed of a stack of identical DecoderLayers.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Decoder<
     A: AttentionMechanism = MultiHeadAttention,
     F: FeedForwardNetwork = FeedForward,

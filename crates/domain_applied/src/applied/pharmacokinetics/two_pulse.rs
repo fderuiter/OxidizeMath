@@ -3,6 +3,7 @@ use super::traits::PharmacokineticModel;
 /// A model representing an Extended Release (XR) formulation using a two-pulse approach.
 /// C_XR(t) = f1 * C_IR(t) + f2 * C_IR(t - lag_time)
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TwoPulseModel<M> {
     /// The base (Immediate Release) model.
     pub base_model: M,

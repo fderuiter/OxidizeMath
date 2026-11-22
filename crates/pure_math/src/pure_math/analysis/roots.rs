@@ -7,6 +7,7 @@ use thiserror::Error;
 
 /// Errors that can occur during numerical analysis.
 #[derive(Debug, Clone, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AnalysisError {
     /// The algorithm failed to converge within the maximum number of iterations.
     /// Contains the best guess so far.
@@ -92,6 +93,7 @@ pub trait RootFinder {
 /// }
 /// ```
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bisection {
     /// Maximum number of iterations before giving up.
     pub max_iterations: usize,
@@ -213,6 +215,7 @@ impl RootFinder for Bisection {
 /// }
 /// ```
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NewtonRaphson {
     /// Maximum number of iterations.
     pub max_iterations: usize,

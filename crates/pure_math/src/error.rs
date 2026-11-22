@@ -5,7 +5,8 @@ use thiserror::Error;
 #[allow(missing_docs)]
 pub type Result<T> = math_commons::error::MathResult<T>;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum NumberTheoryError {
     #[error("Failed to parse integer from string: {0}")]
@@ -30,6 +31,7 @@ pub enum NumberTheoryError {
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum KellyError {
     /// Invalid probability (must be between 0 and 1).
@@ -55,6 +57,7 @@ pub enum KellyError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum MarkovError {
     /// Invalid probability value (must be in [0, 1] and finite).
@@ -106,6 +109,7 @@ pub enum MarkovError {
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum OuError {
     /// Invalid mean reversion rate (must be positive).
@@ -131,6 +135,7 @@ pub enum OuError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum ZipError {
     /// Invalid probability parameter (must be in [0, 1]).
@@ -154,6 +159,7 @@ pub enum ZipError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum TdaError {
     /// Empty point cloud provided.
@@ -176,6 +182,7 @@ pub enum TdaError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum CopulaError {
     /// Invalid probability (must be in [0, 1]).
@@ -199,6 +206,7 @@ pub enum CopulaError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum Glicko2Error {
     /// Invalid rating value.

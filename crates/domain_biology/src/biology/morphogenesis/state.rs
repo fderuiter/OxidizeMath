@@ -154,3 +154,57 @@ impl<const N: usize> VectorOperations for TuringState<N> {
         }
     }
 }
+
+#[cfg(feature = "serde")]
+impl<const N: usize> serde::Serialize for TuringState<N> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("TuringState", 1)?;
+        s.serialize_field("concentrations", &self.concentrations.as_slice())?;
+        s.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, const N: usize> serde::Deserialize<'de> for TuringState<N> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawTuringState {
+            concentrations: Vec<Vec<f64>>,
+        }
+        let raw = RawTuringState::deserialize(deserializer)?;
+        if raw.concentrations.len() != N {
+            return Err(serde::de::Error::custom(format!(
+                "expected {N} species vectors, got {}",
+                raw.concentrations.len()
+            )));
+        }
+        if let Some(first_len) = raw.concentrations.first().map(Vec::len)
+            && raw.concentrations.iter().any(|v| v.len() != first_len)
+        {
+            return Err(serde::de::Error::custom(
+                "all species concentration vectors in TuringState must share the same grid length",
+            ));
+        }
+        if raw
+            .concentrations
+            .iter()
+            .any(|v| v.iter().any(|x| !x.is_finite()))
+        {
+            return Err(serde::de::Error::custom(
+                "TuringState concentrations must be finite",
+            ));
+        }
+        let concentrations: [Vec<f64>; N] = raw
+            .concentrations
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("species count mismatch"))?;
+        Ok(Self { concentrations })
+    }
+}

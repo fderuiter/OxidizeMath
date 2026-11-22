@@ -22,11 +22,44 @@ pub trait ConvexSet {
 ///
 /// A hyper-rectangle is always convex and compact (closed and bounded), making it
 /// a valid domain for standard fixed-point theorems.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct BoxSet {
     #[allow(missing_docs)]
     pub min_bounds: DVector<f64>,
     #[allow(missing_docs)]
     pub max_bounds: DVector<f64>,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for BoxSet {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct BoxSetRaw {
+            min_bounds: DVector<f64>,
+            max_bounds: DVector<f64>,
+        }
+        let raw = BoxSetRaw::deserialize(deserializer)?;
+        if raw.min_bounds.len() != raw.max_bounds.len() {
+            return Err(serde::de::Error::custom(
+                "BoxSet min_bounds and max_bounds must have equal length",
+            ));
+        }
+        for (&lo, &hi) in raw.min_bounds.iter().zip(raw.max_bounds.iter()) {
+            if !lo.is_finite() || !hi.is_finite() || lo > hi {
+                return Err(serde::de::Error::custom(
+                    "BoxSet bounds must be finite with min_bounds <= max_bounds",
+                ));
+            }
+        }
+        Ok(Self {
+            min_bounds: raw.min_bounds,
+            max_bounds: raw.max_bounds,
+        })
+    }
 }
 
 impl BoxSet {
