@@ -59,45 +59,49 @@ Pre-commit hooks are tracked directly under version control in the `.githooks/` 
 git config core.hooksPath .githooks
 ```
 
-When configured, Git executes `.githooks/pre-commit` before completing any `git commit`. The pre-commit hook runs the workspace verification suite (`cargo run -p xtask -- lint-all`). If any check fails (e.g. code formatting, clippy lints, or file length violations), the hook exits with a non-zero exit code and blocks the commit.
+When configured, Git executes `.githooks/pre-commit` before completing any `git commit`. The pre-commit hook runs the fast diff-scoped suite (`cargo run -p xtask -- lint-staged`) against paths in `git diff --cached`:
+- Checks formatting (`rustfmt --check`) only on staged `.rs` files.
+- Runs `unified_verification batch-staged` (built with Cargo's default `dev` profile, skipping release fat LTO) for staged file-length limits, staged secret/entropy scanning, touched-crate policy auditing, staged duplicate warnings, and `.github/`-scoped workflow linting.
+- Validates internal relative Markdown links only when Markdown (`.md`) files are staged.
+- Runs targeted host Clippy (`-p <crate>`) only on member crates with staged `.rs` or `Cargo.toml` edits, and runs targeted `wasm32-unknown-unknown` Clippy only when web crates (`oxidize_core`, `egui_plot`, `math_explorer_gui`) change.
+- Skips network-bound OSV vulnerability queries (`check-vulnerabilities`), public API baseline drift (`check-api-drift`), and ADR enforcement (`verify-records`) so incremental offline checkpoint commits stay fast.
+
+If any scoped check fails, `.githooks/pre-commit` exits with a non-zero status and blocks the commit.
 
 ### Automated Activation
 
-Running the workspace setup command automatically compiles the codebase, executes tests, configures `core.hooksPath` to `.githooks`, and validates executable permissions on Unix platforms:
+Running the workspace setup command installs the `wasm32-unknown-unknown` target, compiles the codebase, executes tests, configures `core.hooksPath` to `.githooks`, and validates executable permissions on Unix platforms:
 
 ```bash
 cargo run -p xtask -- setup
 ```
 
-### Manual Verification Checks
+### Pre-PR Full Verification (`xtask lint-all`)
 
-You can run the full lint suite manually at any time before committing or pushing changes (aligned with [crates/unified_verification/README.md](crates/unified_verification/README.md)):
+Before opening or updating a pull request, run the full workspace verification suite (aligned with [crates/unified_verification/README.md](crates/unified_verification/README.md) and `.github/workflows/ci.yml`):
 
 ```bash
 cargo run -p xtask -- lint-all
 ```
 
-This command executes all workspace quality gates:
+This command builds `unified_verification` once with Cargo's development profile and executes all workspace quality gates (combining all `syn` AST passes into a single parse per Rust file via `batch-static`):
 1. **Formatting**: `cargo fmt --all -- --check`
-2. **Cargo Profile & Lint Inheritance Verification**: `cargo run -p unified_verification --release -- check-profiles` (enforces workspace `[profile.release]` `overflow-checks = true`, rejects member `[profile.release]` overrides, and requires `[lints] workspace = true` in first-party member manifests)
-3. **AST Code Clone Detection**: `cargo run -p unified_verification --release -- check-duplicates` (blocks duplicated indexing and color-conversion AST patterns across first-party crates)
-4. **Public API Drift**: `cargo run -p unified_verification --release -- check-api-drift` (validates reachable public methods, traits, constants, statics, types, and `pub use` re-exports against `crates/unified_verification/api_baseline.json`)
-5. **Staged Architectural Decision Records**: `cargo run -p unified_verification --release -- verify-records --staged` (ensures staged edits to `crates/` or `math_explorer/` include an ADR under `docs/adr/`)
-6. **File Length Constraints**: `cargo run -p unified_verification --release -- check-file-lengths` (enforces the 500-line ceiling per source file)
-7. **Clippy Lints (Host & WebAssembly)**:
+2. **Batched Static & Single-Pass AST Verification** (`unified_verification batch-static`):
+   - **Cargo Profile & Lint Inheritance Verification** (`check-profiles`): enforces workspace `[profile.release]` `overflow-checks = true`, rejects member `[profile.release]` overrides, and requires `[lints] workspace = true` in first-party member manifests.
+   - **Architectural Decision Records** (`verify-records`): ensures staged or branch edits to `crates/` or `math_explorer/` include an ADR under `docs/adr/`.
+   - **File Length Constraints** (`check-file-lengths`): enforces the 500-line ceiling per source file.
+   - **CI Workflows** (`lint-workflows`): validates GitHub Actions workflows, local reusable workflows, and `.github/actions` composite actions for read-only permissions, concurrency controls, job timeouts, commit-pinned actions, and safe `run` expressions.
+   - **Crate Documentation Audit** (`check-docs`): verifies README files and entrypoint docs.
+   - **Single-Pass AST Verification** (`batch-ast`): parses each unique workspace `.rs` file at most once with `syn::parse_file` and runs AST clone detection (`check-duplicates`), public API drift against `crates/unified_verification/api_baseline.json` (`check-api-drift`), in-process literature/test traceability (`traceability`), entropy/secret scanning (`check-entropy`), and lint-bypass/unused-dependency policy auditing (`test-policy-audit`).
+3. **Clippy Lints (Host & WebAssembly)**:
    ```bash
    cargo clippy --workspace --all-targets --all-features -- -D warnings
    cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
    ```
-8. **Documentation**: `cargo doc --workspace --no-deps` (with warnings treated as errors)
-9. **Documentation Tests**: `cargo test --doc --workspace --all-features`
-10. **Markdown Links**: `cargo run -p xtask -- check-markdown-links` (validates all internal relative markdown links)
-11. **CI Workflows**: `cargo run -p unified_verification --release -- lint-workflows` (validates GitHub Actions workflows, local reusable workflows, and `.github/actions` composite actions for read-only permissions, concurrency controls, job timeouts with `jobs.<id>.uses` callers omitting `timeout-minutes`, commit-pinned actions, and rejects direct `${{ github.* }}`, `${{ inputs.* }}`, and non-static `${{ env.* }}` interpolations across workflow and composite `run` scripts)
-12. **Crate Documentation Audit**: `cargo run -p unified_verification --release -- check-docs` (verifies README files and entrypoint docs)
-13. **Traceability**: `cargo run -p unified_verification --release -- traceability` (validates architectural citations and test mappings)
-14. **Entropy & Secret Scanning**: `cargo run -p unified_verification --release -- check-entropy` (audits source files for secrets and unseeded entropy)
-15. **Dependency Vulnerabilities**: `cargo run -p unified_verification --release -- check-vulnerabilities` (scans dependencies against OSV advisories)
-16. **Policy Audit**: `cargo run -p unified_verification --release -- test-policy-audit` (enforces `[lints] workspace = true` in first-party `Cargo.toml` manifests, rejects unauthorized `dead_code`/`unused`/`warnings` bypasses, blocks inner `#![allow]`/`#![expect]` and `mod` bypasses for `clippy::all`, `clippy::too_many_lines`, and `clippy::cognitive_complexity` plus item-level `clippy::all`, and detects unused dependencies)
+4. **Documentation**: `cargo doc --workspace --no-deps` (with warnings treated as errors)
+5. **Documentation Tests**: `cargo test --doc --workspace --all-features`
+6. **Markdown Links**: `cargo run -p xtask -- check-markdown-links` (validates all internal relative markdown links)
+7. **Dependency Vulnerabilities**: `cargo run -p xtask -- check-vulnerabilities` (scans dependencies against OSV advisories)
 
 Individual gates, baseline regeneration, and the full coverage-backed verification suite can also be invoked directly:
 

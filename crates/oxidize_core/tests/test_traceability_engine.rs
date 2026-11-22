@@ -2,7 +2,7 @@
 
 #![cfg(not(target_arch = "wasm32"))]
 
-use oxidize_core::traceability::{TraceabilityEngine, TraceabilityReport};
+use oxidize_core::traceability::{AstCache, TraceabilityEngine, TraceabilityReport};
 use oxidize_core::vfs::{DefaultVfs, VirtualFileSystem};
 use std::collections::HashMap;
 use std::future::Future;
@@ -126,4 +126,46 @@ fn test_scan_repository_reports_error_when_papers_dir_missing() {
     let res =
         futures::executor::block_on(engine.scan_repository(&["src"], "missing_papers", false));
     assert!(res.is_err(), "Missing papers_dir must return Err");
+}
+
+#[test]
+fn test_scan_repository_with_cache_parses_each_file_at_most_once() {
+    let (is_root, _) = oxidize_core::workspace::get_workspace_members();
+    let prefix = if is_root { "" } else { "../../" };
+    let engine = TraceabilityEngine::new(DefaultVfs);
+    let d = format!("{prefix}crates/pure_math/src");
+    let dirs_ref = [d.as_str()];
+    let papers_dir = format!("{prefix}papers");
+
+    let mut cache = AstCache::new();
+    let first = futures::executor::block_on(engine.scan_repository_with_cache(
+        &dirs_ref,
+        &papers_dir,
+        false,
+        &mut cache,
+    ))
+    .expect("first scan with cache should succeed");
+
+    assert!(first.scanned_files > 0);
+    assert_eq!(
+        cache.parse_calls(),
+        first.scanned_files,
+        "Each active Rust file in pure_math must be parsed exactly once instead of twice"
+    );
+
+    let parse_calls_after_first = cache.parse_calls();
+    let second = futures::executor::block_on(engine.scan_repository_with_cache(
+        &dirs_ref,
+        &papers_dir,
+        false,
+        &mut cache,
+    ))
+    .expect("second scan reusing warm cache should succeed");
+
+    assert_eq!(second, first);
+    assert_eq!(
+        cache.parse_calls(),
+        parse_calls_after_first,
+        "Warm AstCache must reuse parsed ASTs with zero additional syn::parse_file calls"
+    );
 }

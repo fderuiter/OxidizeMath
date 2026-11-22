@@ -2,6 +2,7 @@
 mod gates;
 mod markdown_links;
 mod papers;
+mod staged;
 
 use gates::run_cmd;
 use markdown_links::check_markdown_links;
@@ -9,7 +10,7 @@ use std::env;
 #[cfg(any(unix, test))]
 use std::fs;
 use std::path::Path;
-use std::process::exit;
+use std::process::{Command, exit};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -28,6 +29,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
     match cmd {
         "setup" => setup(),
         "lint-all" | "lint" => gates::lint_all(),
+        "lint-staged" => staged::lint_staged(),
         "check-cargo-docs" | "check-workspace-docs" => gates::check_cargo_docs(),
         "check-docs" => gates::check_docs(),
         "check-entropy" => gates::check_entropy(),
@@ -72,8 +74,9 @@ fn print_help() {
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
     println!(
-        "  lint-all                 - Run format, profile, AST duplicate, API drift, staged ADR, file-length, clippy, doc, doctest, markdown-link, workflow, traceability, entropy, vulnerability, and policy audit checks"
+        "  lint-all                 - Run format, profile, AST duplicate, API drift, ADR, file-length, clippy, doc, doctest, markdown-link, workflow, traceability, entropy, vulnerability, and policy audit checks"
     );
+    println!("  lint-staged              - Run fast scoped pre-commit checks on staged files only");
     println!("  lint-workflows           - Lint CI workflow definitions");
     println!("  test-features            - Run tests across feature combinations");
     println!(
@@ -94,19 +97,30 @@ fn print_help() {
 }
 
 fn configure_git_hooks() {
-    println!("\n--- Configuring Git Hooks ---");
-    run_cmd("git", &["config", "core.hooksPath", ".githooks"]);
+    configure_git_hooks_in_dir(Path::new("."));
+}
 
-    let hook_path = Path::new(".githooks/pre-commit");
+pub(crate) fn configure_git_hooks_in_dir(repo_dir: &Path) {
+    println!("\n--- Configuring Git Hooks ---");
+    let status = Command::new("git")
+        .current_dir(repo_dir)
+        .args(["config", "core.hooksPath", ".githooks"])
+        .status();
+    if !matches!(status, Ok(s) if s.success()) {
+        eprintln!("Command failed!");
+        exit(1);
+    }
+
+    let hook_path = repo_dir.join(".githooks/pre-commit");
     if hook_path.exists() {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            if let Ok(metadata) = fs::metadata(hook_path) {
+            if let Ok(metadata) = fs::metadata(&hook_path) {
                 let mut perms = metadata.permissions();
                 if perms.mode() & 0o111 == 0 {
                     perms.set_mode(0o755);
-                    if let Err(e) = fs::set_permissions(hook_path, perms) {
+                    if let Err(e) = fs::set_permissions(&hook_path, perms) {
                         eprintln!(
                             "Warning: Failed to set executable permissions on {}: {}",
                             hook_path.display(),
@@ -131,6 +145,7 @@ fn configure_git_hooks() {
 
 fn setup() {
     println!("=== Math Explorer Setup Script ===");
+    run_cmd("rustup", &["target", "add", "wasm32-unknown-unknown"]);
     run_cmd("cargo", &["build"]);
     run_cmd("cargo", &["test"]);
 
@@ -199,20 +214,81 @@ mod tests {
     use super::*;
     use crate::gates::{
         HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, WASM_GUI_TEST_ARGS, WASM_OXIDIZE_CORE_TEST_ARGS,
+        unified_verification_bin,
     };
     use crate::markdown_links::{collect_md_files, extract_md_links};
-    use std::process::Command;
+
+    fn local_hooks_path(dir: &Path) -> Option<String> {
+        let out = Command::new("git")
+            .current_dir(dir)
+            .args(["config", "--local", "--get", "core.hooksPath"])
+            .output()
+            .expect("failed to execute git config");
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
 
     #[test]
     fn test_git_hooks_path_configuration() {
-        configure_git_hooks();
-        let output = Command::new("git")
-            .args(["config", "core.hooksPath"])
-            .output()
-            .expect("failed to execute git");
-        assert!(output.status.success());
-        let hooks_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        assert_eq!(hooks_path, ".githooks");
+        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let before = local_hooks_path(&ws_root);
+
+        let temp_dir = env::temp_dir().join(format!("xtask_hook_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(temp_dir.join(".githooks")).expect("failed to create temp .githooks");
+        let hook_file = temp_dir.join(".githooks/pre-commit");
+        fs::write(&hook_file, "#!/bin/sh\nexit 0\n").expect("failed to write temp hook");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&hook_file).unwrap().permissions();
+            perms.set_mode(0o644);
+            fs::set_permissions(&hook_file, perms).unwrap();
+        }
+
+        let init_status = Command::new("git")
+            .current_dir(&temp_dir)
+            .arg("init")
+            .status()
+            .expect("failed to execute git init");
+        assert!(init_status.success());
+
+        configure_git_hooks_in_dir(&temp_dir);
+
+        assert_eq!(local_hooks_path(&temp_dir).as_deref(), Some(".githooks"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&hook_file).unwrap().permissions().mode();
+            assert_ne!(mode & 0o111, 0, "Temp hook should be made executable");
+        }
+
+        let _ = fs::remove_dir_all(&temp_dir);
+        assert_eq!(
+            local_hooks_path(&ws_root),
+            before,
+            "Workspace core.hooksPath must not be mutated by tests"
+        );
+    }
+
+    #[test]
+    fn test_unified_verification_uses_dev_profile() {
+        let bin = unified_verification_bin();
+        let components: Vec<String> = bin
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            components.iter().any(|c| c == "debug"),
+            "Expected debug profile path, got {}",
+            bin.display()
+        );
+        assert!(
+            !components.iter().any(|c| c == "release"),
+            "Did not expect release profile path, got {}",
+            bin.display()
+        );
     }
 
     #[test]
@@ -257,6 +333,7 @@ mod tests {
             "check-cargo-docs",
             "traceability",
             "lint-all",
+            "lint-staged",
             "check-entropy",
             "check-vulnerabilities",
             "test-policy-audit",

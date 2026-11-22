@@ -1,8 +1,9 @@
+use oxidize_core::traceability::AstCache;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use traversal::traverse_crate_root;
+use traversal::traverse_crate_root_with_cache;
 
 mod traversal;
 mod visitor;
@@ -50,9 +51,17 @@ fn collect_crate_roots(workspace_root: &Path) -> Vec<PathBuf> {
 }
 
 pub fn extract_apis_in_dir(workspace_root: &Path) -> BTreeMap<String, Vec<ApiItem>> {
+    let mut cache = AstCache::new();
+    extract_apis_in_dir_with_cache(workspace_root, &mut cache)
+}
+
+pub fn extract_apis_in_dir_with_cache(
+    workspace_root: &Path,
+    cache: &mut AstCache,
+) -> BTreeMap<String, Vec<ApiItem>> {
     let mut apis = BTreeMap::new();
     for crate_lib in collect_crate_roots(workspace_root) {
-        traverse_crate_root(&crate_lib, workspace_root, &mut apis);
+        traverse_crate_root_with_cache(&crate_lib, workspace_root, &mut apis, cache);
     }
     apis
 }
@@ -181,8 +190,13 @@ pub fn check_api_drift_against(
 }
 
 pub fn check_api_drift() -> bool {
+    let mut cache = AstCache::new();
+    check_api_drift_with_cache(&mut cache)
+}
+
+pub fn check_api_drift_with_cache(cache: &mut AstCache) -> bool {
     let root = resolve_workspace_root();
-    let current_apis = extract_apis();
+    let current_apis = extract_apis_in_dir_with_cache(root, cache);
     let baseline_content =
         fs::read_to_string(root.join(BASELINE_REL_PATH)).unwrap_or_else(|_| "{}".to_string());
     let baseline_apis: BTreeMap<String, Vec<ApiItem>> =

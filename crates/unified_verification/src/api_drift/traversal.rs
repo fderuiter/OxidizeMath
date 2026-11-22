@@ -1,7 +1,7 @@
 use super::ApiItem;
 use super::visitor::ApiVisitor;
+use oxidize_core::traceability::AstCache;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 const MAX_MODULES_PER_CRATE: usize = 10_000;
@@ -331,10 +331,11 @@ pub(crate) fn resolve_child_mod_file(
     nested.is_file().then_some(nested)
 }
 
-pub(crate) fn traverse_crate_root(
+pub(crate) fn traverse_crate_root_with_cache(
     crate_lib: &Path,
     workspace_root: &Path,
     apis: &mut BTreeMap<String, Vec<ApiItem>>,
+    cache: &mut AstCache,
 ) {
     if !crate_lib.is_file() {
         return;
@@ -354,16 +355,17 @@ pub(crate) fn traverse_crate_root(
         let Some(active_filter) = visited.get(&file_path).cloned() else {
             continue;
         };
-        let Ok(content) = fs::read_to_string(&file_path) else {
-            continue;
-        };
-        let Ok(ast) = syn::parse_file(&content) else {
-            continue;
-        };
-
         let mod_dir = child_module_dir_for_file(&file_path);
         let mut visitor = ApiVisitor::default();
-        let child_files = visitor.visit_module_ast(&ast, &active_filter, &mod_dir);
+        let child_files = {
+            let Some(ast) = cache
+                .get_or_load_fs(&file_path)
+                .and_then(|e| e.ast.as_ref())
+            else {
+                continue;
+            };
+            visitor.visit_module_ast(ast, &active_filter, &mod_dir)
+        };
 
         if !visitor.items.is_empty() {
             let mut items = visitor.items;
