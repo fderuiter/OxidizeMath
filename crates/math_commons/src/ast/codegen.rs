@@ -1,17 +1,21 @@
 //! Iterative LaTeX, Rust, and Python code generators for [`Expr`] bounded by [`MAX_EVAL_DEPTH`].
 
+#[path = "codegen_funcs.rs"]
+mod codegen_funcs;
+
 use super::eval::{EvalError, MAX_EVAL_DEPTH};
-use super::expr::{BinaryOp, Expr, Func, UnaryOp};
+use super::expr::{BinaryOp, Expr, UnaryOp};
 use super::latex::{format_latex_iterative, write_number};
+use codegen_funcs::push_code_func;
 use std::collections::HashMap;
 
-enum CodeFrame<'a> {
+pub(super) enum CodeFrame<'a> {
     Eval(&'a Expr, u8, usize),
     Literal(&'static str),
 }
 
 #[derive(Clone, Copy)]
-enum CodeTarget<'a> {
+pub(super) enum CodeTarget<'a> {
     Rust { allowed_args: Option<&'a [&'a str]> },
     Python { ode_state_index: bool },
 }
@@ -395,72 +399,4 @@ fn push_code_unary<'a>(
         UnaryOp::Neg => '-',
     });
     stack.push(CodeFrame::Eval(inner, 2, next_depth));
-}
-
-fn push_code_func<'a>(
-    func: Func,
-    args: &'a [Expr],
-    next_depth: usize,
-    target: CodeTarget<'a>,
-    stack: &mut Vec<CodeFrame<'a>>,
-    out: &mut String,
-) -> Result<(), EvalError> {
-    if args.len() != 1 {
-        return Err(EvalError::WrongArgumentCount {
-            func,
-            expected: 1,
-            found: args.len(),
-        });
-    }
-    let arg = &args[0];
-    match target {
-        CodeTarget::Rust { .. } => {
-            stack.push(CodeFrame::Literal(rust_method_suffix(func)));
-            stack.push(CodeFrame::Eval(arg, 2, next_depth));
-        }
-        CodeTarget::Python { .. } => {
-            out.push_str(python_func_prefix(func));
-            stack.push(CodeFrame::Literal(")"));
-            stack.push(CodeFrame::Eval(arg, 0, next_depth));
-        }
-    }
-    Ok(())
-}
-
-const fn rust_method_suffix(func: Func) -> &'static str {
-    match func {
-        Func::Sin => ".sin()",
-        Func::Cos => ".cos()",
-        Func::Tan => ".tan()",
-        Func::Exp => ".exp()",
-        Func::Ln => ".ln()",
-        Func::Log10 => ".log10()",
-        Func::Sqrt => ".sqrt()",
-        Func::Abs => ".abs()",
-        Func::Sinh => ".sinh()",
-        Func::Cosh => ".cosh()",
-        Func::Tanh => ".tanh()",
-        Func::Asin => ".asin()",
-        Func::Acos => ".acos()",
-        Func::Atan => ".atan()",
-    }
-}
-
-const fn python_func_prefix(func: Func) -> &'static str {
-    match func {
-        Func::Sin => "np.sin(",
-        Func::Cos => "np.cos(",
-        Func::Tan => "np.tan(",
-        Func::Exp => "np.exp(",
-        Func::Ln => "np.log(",
-        Func::Log10 => "np.log10(",
-        Func::Sqrt => "np.sqrt(",
-        Func::Abs => "np.abs(",
-        Func::Sinh => "np.sinh(",
-        Func::Cosh => "np.cosh(",
-        Func::Tanh => "np.tanh(",
-        Func::Asin => "np.arcsin(",
-        Func::Acos => "np.arccos(",
-        Func::Atan => "np.arctan(",
-    }
 }

@@ -197,7 +197,9 @@ fn verify_rustc_2024_parity(
     expected_1d: &[f64],
     expected_2d: &[f64],
 ) {
-    let dir = std::env::temp_dir().join(format!("ast_codegen_rs_{}", std::process::id()));
+    static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let run_id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("ast_codegen_rs_{}_{run_id}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
     let src_path = dir.join("parity_check.rs");
     let bin_path = dir.join("parity_check_bin");
@@ -278,4 +280,39 @@ fn verify_python_numpy_parity(
         .status()
         .expect("run python3 parity check");
     assert!(status.success(), "Python numpy parity assertions failed");
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn test_piecewise_and_multiarg_funcs_rust_and_python_parity() {
+    let expr = parse("clamp(min(x, a) + max(-0.4, atan2(x, w)), -0.7, 0.9) + step(x) - rect(x)")
+        .expect("parse multiarg expr");
+    let expr_2d = parse("clamp(sin(k * t) + y, -0.5, 0.8)").expect("parse 2d clamp");
+    let params = HashMap::from([
+        ("a".to_string(), 0.75),
+        ("w".to_string(), 1.25),
+        ("k".to_string(), 2.0),
+    ]);
+    assert!(
+        expr.to_latex_with_params(&params)
+            .unwrap()
+            .contains(r"\mathrm{clamp}")
+    );
+
+    let xs = [-1.2_f64, -0.5, -0.2, 0.0, 0.35, 0.5, 1.4];
+    let tys = [(0.0_f64, -1.0_f64), (0.6, 0.1), (1.7, 0.9)];
+    let exp_1d: Vec<f64> = xs
+        .iter()
+        .map(|&x| {
+            let mut m = params.clone();
+            m.insert("x".into(), x);
+            expr.eval(&m).unwrap()
+        })
+        .collect();
+    let exp_2d: Vec<f64> = tys
+        .iter()
+        .map(|&(t, y)| expr_2d.eval_2d(t, y, &params))
+        .collect();
+    verify_rustc_2024_parity(&expr, &expr_2d, &params, &xs, &tys, &exp_1d, &exp_2d);
+    verify_python_numpy_parity(&expr, &expr_2d, &params, &xs, &tys, &exp_1d, &exp_2d);
 }

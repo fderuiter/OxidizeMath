@@ -427,3 +427,39 @@ fn test_math_input_with_params_inline_copy_buttons() {
     }
     assert_eq!(copied_py, "(-1.85 * y) * np.sin(t)");
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn test_custom_riemann_and_joukowsky_complex_mapping_compile_and_run() {
+    let dir = std::env::temp_dir().join(format!("oxidize_custom_sandbox_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let riemann_custom = configured::<RiemannIntegrationTool>(|t| {
+        t.preset = FunctionPreset::Custom;
+        t.math_input.set_expression("clamp(sin(k * x), -0.5, 0.8)");
+        t.math_input
+            .set_params_map(&std::collections::BTreeMap::from([("k".into(), 3.0)]));
+        t.recalculate();
+    });
+    let r_art = riemann_custom
+        .export_code_artifact()
+        .expect("custom riemann artifact");
+    assert!(r_art.calibrated_latex.contains("3"));
+    compile_and_run_rust_2024(&dir, "riemann_custom", &r_art.rust_source);
+    run_python_script(&dir, "riemann_custom", &r_art.python_source);
+
+    let joukowsky = configured::<ComplexMappingTool>(|t| {
+        t.function = MappingFunction::Custom;
+        t.math_input.set_expression("z + a^2 / z");
+        t.math_input
+            .set_params_map(&std::collections::BTreeMap::from([("a".into(), 0.85)]));
+    });
+    let j_art = joukowsky
+        .export_code_artifact()
+        .expect("joukowsky artifact");
+    assert!(j_art.calibrated_latex.contains("0.85"));
+    compile_and_run_rust_2024(&dir, "cmap_joukowsky", &j_art.rust_source);
+    run_python_script(&dir, "cmap_joukowsky", &j_art.python_source);
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -91,10 +91,11 @@ fn eval_latex_frame<'a>(
             });
         }
         Expr::Function { func, args } => {
-            if calibrated.is_some() && args.len() != 1 {
+            let expected = func.arity();
+            if calibrated.is_some() && args.len() != expected {
                 return Err(EvalError::WrongArgumentCount {
                     func: *func,
-                    expected: 1,
+                    expected,
                     found: args.len(),
                 });
             }
@@ -254,6 +255,12 @@ fn latex_func_name(func: Func) -> &'static str {
         Func::Asin => r"\arcsin",
         Func::Acos => r"\arccos",
         Func::Atan => r"\arctan",
-        _ => func.as_str(),
+        Func::Min => r"\min",
+        Func::Max => r"\max",
+        Func::Clamp => r"\mathrm{clamp}",
+        Func::Step => r"\mathrm{step}",
+        Func::Rect => r"\mathrm{rect}",
+        Func::Atan2 => r"\mathrm{atan2}",
+        Func::Sqrt | Func::Abs => func.as_str(),
     }
 }

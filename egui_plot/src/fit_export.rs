@@ -3,7 +3,7 @@
 use crate::a11y::{AccessibleTooltipExt as _, focusable_action_button};
 #[cfg(not(test))]
 use crate::export::save_file_dialog;
-use crate::fit::FitResult;
+use crate::fit::{FitResult, FitType};
 use egui::{Button, Ui};
 
 fn format_py_f64(val: f64) -> String {
@@ -34,18 +34,32 @@ fn dataset_slug(name: &str) -> String {
     }
 }
 
+fn required_coeff_count(fit_type: FitType) -> usize {
+    match fit_type {
+        FitType::Linear | FitType::Polynomial(_) => 1,
+        FitType::Exponential | FitType::PowerLaw | FitType::Logarithmic => 2,
+        FitType::Logistic => 3,
+        FitType::Sinusoidal => 4,
+    }
+}
+
+fn format_tex_num(val: f64) -> String {
+    let raw = format_py_f64(val);
+    raw.strip_suffix(".0").unwrap_or(&raw).to_string()
+}
+
 impl FitResult {
     /// Returns `true` when the regression contains non-empty finite coefficients and finite $R^2$.
     #[must_use]
     pub fn has_finite_coefficients(&self) -> bool {
-        !self.coefficients.is_empty()
+        self.coefficients.len() >= required_coeff_count(self.fit_type)
             && self.coefficients.iter().all(|c| c.is_finite())
             && self.r_squared.is_finite()
     }
 
     fn validate_exportable(&self) -> Result<(), String> {
-        if self.coefficients.is_empty() {
-            return Err("FitResult contains no polynomial coefficients.".to_string());
+        if self.coefficients.len() < required_coeff_count(self.fit_type) {
+            return Err("FitResult contains insufficient model coefficients.".to_string());
         }
         if !self.coefficients.iter().all(|c| c.is_finite()) || !self.r_squared.is_finite() {
             return Err("FitResult contains non-finite coefficients or R².".to_string());
@@ -56,16 +70,24 @@ impl FitResult {
     /// Formats the fitted model as a calibrated `\begin{aligned}` LaTeX block.
     pub fn to_latex(&self) -> Result<String, String> {
         self.validate_exportable()?;
-        let u_sym = if self.log_x {
-            r"\log_{10}\left(x\right)"
-        } else {
-            "x"
-        };
-        let poly_latex = format_latex_polynomial(&self.coefficients, u_sym, self.log_x);
-        let eq_line = if self.log_y {
-            format!(r"y(x) &= 10^{{{poly_latex}}}")
-        } else {
-            format!("y(x) &= {poly_latex}")
+        let eq_line = match self.fit_type {
+            FitType::Linear | FitType::Polynomial(_) => {
+                let u_sym = if self.log_x {
+                    r"\log_{10}\left(x\right)"
+                } else {
+                    "x"
+                };
+                let poly_latex = format_latex_polynomial(&self.coefficients, u_sym, self.log_x);
+                if self.log_y {
+                    format!(r"y(x) &= 10^{{{poly_latex}}}")
+                } else {
+                    format!("y(x) &= {poly_latex}")
+                }
+            }
+            _ => format!(
+                "y(x) &= {}",
+                format_nonlinear_latex(self.fit_type, &self.coefficients)
+            ),
         };
         Ok(format!(
             "\\begin{{aligned}}\n{eq_line} \\\\\nR^2 &= {:.6}\n\\end{{aligned}}",
@@ -76,77 +98,215 @@ impl FitResult {
     /// Formats the fitted model as a standalone zero-dependency Rust 2024 source file.
     pub fn to_rust_fn(&self) -> Result<String, String> {
         self.validate_exportable()?;
-        let coeffs_literal = self
-            .coefficients
-            .iter()
-            .map(|&c| format_rs_f64(c))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let u_binding = if self.log_x {
-            "    if !x.is_finite() || x <= 0.0 {\n        return f64::NAN;\n    }\n    let u = x.log10();"
-        } else {
-            "    let u = x;"
+        let sample_x =
+            if self.log_x || matches!(self.fit_type, FitType::PowerLaw | FitType::Logarithmic) {
+                "2.0_f64"
+            } else {
+                "1.0_f64"
+            };
+        let body = match self.fit_type {
+            FitType::Linear | FitType::Polynomial(_) => format_poly_rust_body(self),
+            _ => format_nonlinear_rust_body(self.fit_type, &self.coefficients),
         };
-        let ret_expr = if self.log_y {
-            "    10.0_f64.powf(poly.clamp(-300.0, 300.0)).clamp(1e-300, 1e300)"
-        } else {
-            "    poly"
-        };
-        let sample_x = if self.log_x { "10.0_f64" } else { "1.0_f64" };
         Ok(format!(
             "pub fn fit_eval(x: f64) -> f64 {{\n\
-             {u_binding}\n\
-             \x20   let coeffs: [f64; {}] = [{coeffs_literal}];\n\
-             \x20   let mut poly = 0.0_f64;\n\
-             \x20   let mut u_pow = 1.0_f64;\n\
-             \x20   for coeff in coeffs {{\n\
-             \x20       poly += coeff * u_pow;\n\
-             \x20       u_pow *= u;\n\
-             \x20   }}\n\
-             {ret_expr}\n\
+             {body}\n\
              }}\n\n\
              fn main() {{\n\
              \x20   let y = fit_eval({sample_x});\n\
              \x20   println!(\"y({sample_x}) = {{y:.9}}\");\n\
-             }}\n",
-            self.coefficients.len()
+             }}\n"
         ))
     }
 
     /// Formats the fitted model as a runnable `numpy` Python evaluator script.
     pub fn to_python_fn(&self) -> Result<String, String> {
         self.validate_exportable()?;
-        let coeffs_literal = self
-            .coefficients
-            .iter()
-            .map(|&c| format_py_f64(c))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let u_lines = if self.log_x {
-            "    if not np.isfinite(x) or x <= 0.0:\n        return float(\"nan\")\n    u = float(np.log10(x))"
-        } else {
-            "    u = float(x)"
+        let sample_x =
+            if self.log_x || matches!(self.fit_type, FitType::PowerLaw | FitType::Logarithmic) {
+                "2.0"
+            } else {
+                "1.0"
+            };
+        let body = match self.fit_type {
+            FitType::Linear | FitType::Polynomial(_) => format_poly_python_body(self),
+            _ => format_nonlinear_python_body(self.fit_type, &self.coefficients),
         };
-        let ret_line = if self.log_y {
-            "    return float(np.clip(10.0 ** np.clip(poly, -300.0, 300.0), 1e-300, 1e300))"
-        } else {
-            "    return float(poly)"
-        };
-        let sample_x = if self.log_x { "10.0" } else { "1.0" };
         Ok(format!(
             "import numpy as np\n\n\n\
              def fit_eval(x: float) -> float:\n\
-             {u_lines}\n\
-             \x20   coeffs = [{coeffs_literal}]\n\
-             \x20   poly = 0.0\n\
-             \x20   u_pow = 1.0\n\
-             \x20   for coeff in coeffs:\n\
-             \x20       poly += coeff * u_pow\n\
-             \x20       u_pow *= u\n\
-             {ret_line}\n\n\n\
+             {body}\n\n\n\
              if __name__ == \"__main__\":\n\
              \x20   print(f\"y({sample_x}) = {{fit_eval({sample_x}):.9f}}\")\n"
         ))
+    }
+}
+
+fn format_poly_rust_body(fit: &FitResult) -> String {
+    let coeffs_literal = fit
+        .coefficients
+        .iter()
+        .map(|&c| format_rs_f64(c))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let u_binding = if fit.log_x {
+        "    if !x.is_finite() || x <= 0.0 {\n        return f64::NAN;\n    }\n    let u = x.log10();"
+    } else {
+        "    let u = x;"
+    };
+    let ret_expr = if fit.log_y {
+        "    10.0_f64.powf(poly.clamp(-300.0, 300.0)).clamp(1e-300, 1e300)"
+    } else {
+        "    poly"
+    };
+    format!(
+        "{u_binding}\n\
+         \x20   let coeffs: [f64; {}] = [{coeffs_literal}];\n\
+         \x20   let mut poly = 0.0_f64;\n\
+         \x20   let mut u_pow = 1.0_f64;\n\
+         \x20   for coeff in coeffs {{\n\
+         \x20       poly += coeff * u_pow;\n\
+         \x20       u_pow *= u;\n\
+         \x20   }}\n\
+         {ret_expr}",
+        fit.coefficients.len()
+    )
+}
+
+fn format_poly_python_body(fit: &FitResult) -> String {
+    let coeffs_literal = fit
+        .coefficients
+        .iter()
+        .map(|&c| format_py_f64(c))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let u_lines = if fit.log_x {
+        "    if not np.isfinite(x) or x <= 0.0:\n        return float(\"nan\")\n    u = float(np.log10(x))"
+    } else {
+        "    u = float(x)"
+    };
+    let ret_line = if fit.log_y {
+        "    return float(np.clip(10.0 ** np.clip(poly, -300.0, 300.0), 1e-300, 1e300))"
+    } else {
+        "    return float(poly)"
+    };
+    format!(
+        "{u_lines}\n\
+         \x20   coeffs = [{coeffs_literal}]\n\
+         \x20   poly = 0.0\n\
+         \x20   u_pow = 1.0\n\
+         \x20   for coeff in coeffs:\n\
+         \x20       poly += coeff * u_pow\n\
+         \x20       u_pow *= u\n\
+         {ret_line}"
+    )
+}
+
+fn format_nonlinear_latex(fit_type: FitType, c: &[f64]) -> String {
+    match fit_type {
+        FitType::Exponential => {
+            format!(
+                r"{} \cdot \exp\left({} \cdot x\right)",
+                format_tex_num(c[0]),
+                format_tex_num(c[1])
+            )
+        }
+        FitType::PowerLaw => {
+            format!(
+                r"{} \cdot x^{{{}}}",
+                format_tex_num(c[0]),
+                format_tex_num(c[1])
+            )
+        }
+        FitType::Logarithmic => {
+            format!(
+                r"{} \cdot \ln\left(x\right) + {}",
+                format_tex_num(c[0]),
+                format_tex_num(c[1])
+            )
+        }
+        FitType::Logistic => format!(
+            r"\frac{{{}}}{{1 + {} \cdot \exp\left(-{} \cdot x\right)}}",
+            format_tex_num(c[0]),
+            format_tex_num(c[1]),
+            format_tex_num(c[2])
+        ),
+        FitType::Sinusoidal => format!(
+            r"{} \cdot \sin\left({} \cdot x + {}\right) + {}",
+            format_tex_num(c[0]),
+            format_tex_num(c[1]),
+            format_tex_num(c[2]),
+            format_tex_num(c[3])
+        ),
+        FitType::Linear | FitType::Polynomial(_) => String::new(),
+    }
+}
+
+fn format_nonlinear_rust_body(fit_type: FitType, c: &[f64]) -> String {
+    match fit_type {
+        FitType::Exponential => format!(
+            "    let arg = ({}) * x;\n    if !x.is_finite() || !arg.is_finite() || arg > 700.0_f64 {{\n        return f64::NAN;\n    }}\n    ({}) * arg.exp()",
+            format_rs_f64(c[1]),
+            format_rs_f64(c[0])
+        ),
+        FitType::PowerLaw => format!(
+            "    if !x.is_finite() || x <= 0.0_f64 {{\n        return f64::NAN;\n    }}\n    ({}) * x.powf({})",
+            format_rs_f64(c[0]),
+            format_rs_f64(c[1])
+        ),
+        FitType::Logarithmic => format!(
+            "    if !x.is_finite() || x <= 0.0_f64 {{\n        return f64::NAN;\n    }}\n    ({}) * x.ln() + ({})",
+            format_rs_f64(c[0]),
+            format_rs_f64(c[1])
+        ),
+        FitType::Logistic => format!(
+            "    if !x.is_finite() {{\n        return f64::NAN;\n    }}\n    let denom = 1.0_f64 + ({}) * (-({}) * x).clamp(-700.0_f64, 700.0_f64).exp();\n    if !denom.is_finite() || denom.abs() <= 1e-15_f64 {{\n        return f64::NAN;\n    }}\n    ({}) / denom",
+            format_rs_f64(c[1]),
+            format_rs_f64(c[2]),
+            format_rs_f64(c[0])
+        ),
+        FitType::Sinusoidal => format!(
+            "    let phase = ({}) * x + ({});\n    if !x.is_finite() || !phase.is_finite() {{\n        return f64::NAN;\n    }}\n    ({}) * phase.sin() + ({})",
+            format_rs_f64(c[1]),
+            format_rs_f64(c[2]),
+            format_rs_f64(c[0]),
+            format_rs_f64(c[3])
+        ),
+        FitType::Linear | FitType::Polynomial(_) => "    f64::NAN".to_string(),
+    }
+}
+
+fn format_nonlinear_python_body(fit_type: FitType, c: &[f64]) -> String {
+    match fit_type {
+        FitType::Exponential => format!(
+            "    arg = ({}) * float(x)\n    if not np.isfinite(x) or not np.isfinite(arg) or arg > 700.0:\n        return float(\"nan\")\n    return float(({}) * np.exp(arg))",
+            format_py_f64(c[1]),
+            format_py_f64(c[0])
+        ),
+        FitType::PowerLaw => format!(
+            "    if not np.isfinite(x) or x <= 0.0:\n        return float(\"nan\")\n    return float(({}) * (float(x) ** ({})))",
+            format_py_f64(c[0]),
+            format_py_f64(c[1])
+        ),
+        FitType::Logarithmic => format!(
+            "    if not np.isfinite(x) or x <= 0.0:\n        return float(\"nan\")\n    return float(({}) * np.log(float(x)) + ({}))",
+            format_py_f64(c[0]),
+            format_py_f64(c[1])
+        ),
+        FitType::Logistic => format!(
+            "    if not np.isfinite(x):\n        return float(\"nan\")\n    denom = 1.0 + ({}) * float(np.exp(np.clip(-({}) * float(x), -700.0, 700.0)))\n    if not np.isfinite(denom) or abs(denom) <= 1e-15:\n        return float(\"nan\")\n    return float(({}) / denom)",
+            format_py_f64(c[1]),
+            format_py_f64(c[2]),
+            format_py_f64(c[0])
+        ),
+        FitType::Sinusoidal => format!(
+            "    phase = ({}) * float(x) + ({})\n    if not np.isfinite(x) or not np.isfinite(phase):\n        return float(\"nan\")\n    return float(({}) * np.sin(phase) + ({}))",
+            format_py_f64(c[1]),
+            format_py_f64(c[2]),
+            format_py_f64(c[0]),
+            format_py_f64(c[3])
+        ),
+        FitType::Linear | FitType::Polynomial(_) => "    return float(\"nan\")".to_string(),
     }
 }
 
@@ -414,13 +574,17 @@ mod tests {
     #[test]
     fn test_fit_export_rejects_empty_or_nonfinite_coefficients() {
         let mut bad = FitResult {
+            fit_type: FitType::Linear,
             coefficients: vec![1.0, f64::NAN],
             r_squared: 0.99,
+            rmse: 0.0,
+            residuals: Vec::new(),
             degree: 1,
             formula: "y = x".to_string(),
             dataset_name: "Bad".to_string(),
             log_x: false,
             log_y: false,
+            log_mode: false,
         };
         assert!(!bad.has_finite_coefficients());
         assert!(bad.to_latex().is_err());
@@ -467,8 +631,10 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn verify_fit_rust_parity(fit: &FitResult, sample_xs: &[f64]) {
+        static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let run_id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!(
-            "fit_export_rs_{}_{}_{}",
+            "fit_export_rs_{}_{}_{}_{run_id}",
             std::process::id(),
             fit.log_x as u8,
             fit.log_y as u8
@@ -559,5 +725,32 @@ mod tests {
             .status()
             .expect("python3 fit parity");
         assert!(status.success(), "Python fit_eval failed 1e-9 parity");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_nonlinear_fit_types_export_parity_and_rustc_2024() {
+        let pos_pts = vec![
+            [1.0, 2.2],
+            [2.0, 4.9],
+            [3.0, 9.8],
+            [4.0, 17.5],
+            [5.0, 28.0],
+            [6.0, 39.2],
+        ];
+        let xs = [1.0_f64, 2.5, 4.5];
+        for ft in [
+            FitType::Exponential,
+            FitType::PowerLaw,
+            FitType::Logarithmic,
+            FitType::Logistic,
+            FitType::Sinusoidal,
+        ] {
+            let fit =
+                crate::fit::fit_model(&pos_pts, ft, "Nonlinear", false).expect("nonlinear fit");
+            assert!(fit.to_latex().unwrap().contains("R^2 &="));
+            verify_fit_rust_parity(&fit, &xs);
+            verify_fit_python_parity(&fit, &xs);
+        }
     }
 }
