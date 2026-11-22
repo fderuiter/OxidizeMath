@@ -29,6 +29,18 @@ impl From<[f64; 2]> for PlotPoint {
     }
 }
 
+impl math_commons::series::Sample2D for PlotPoint {
+    #[inline]
+    fn sample_x(&self) -> f64 {
+        self.x
+    }
+
+    #[inline]
+    fn sample_y(&self) -> f64 {
+        self.y
+    }
+}
+
 impl PlotPoint {
     #[inline(always)]
     pub fn new(x: impl Into<f64>, y: impl Into<f64>) -> Self {

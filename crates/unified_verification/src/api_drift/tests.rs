@@ -229,7 +229,7 @@ fn test_check_api_drift_runs_and_verifies_workspace_invariants() {
     let math_explorer_items = apis
         .get("math_explorer/src/lib.rs")
         .expect("math_explorer/src/lib.rs must be tracked in baseline");
-    assert_eq!(math_explorer_items.len(), 23);
+    assert_eq!(math_explorer_items.len(), 26);
     assert!(apis.contains_key("math_explorer/src/error.rs"));
     assert!(apis.contains_key("math_explorer/src/prelude.rs"));
 

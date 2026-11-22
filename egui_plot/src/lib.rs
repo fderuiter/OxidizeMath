@@ -66,7 +66,10 @@ pub use crate::{
         export_primitives_png, export_primitives_svg, export_raster_gif, export_raster_png,
         export_raster_svg, get_last_plot_primitives, render_primitives_image,
     },
-    fit::{FitResult, FitType, fit_dataset, fit_dataset_scaled, fit_model, fit_model_with_axes},
+    fit::{
+        FitError, FitModel, FitResult, FitType, fit_dataset, fit_dataset_scaled, fit_model,
+        fit_model_with_axes,
+    },
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
         LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,

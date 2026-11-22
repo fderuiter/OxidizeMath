@@ -1,6 +1,5 @@
 //! Critical points (Points of Interest) detection for 2D plot polylines and reference lines.
 
-mod interp;
 mod intersect;
 #[cfg(test)]
 mod tests;
@@ -12,7 +11,12 @@ use crate::{
     transform::{PlotBounds, PlotTransform},
 };
 
-pub use self::interp::{interpolate_threshold_crossings, interpolate_y_at_x};
+pub use math_commons::poi::{
+    LocalExtremum, closest_threshold_crossing, detect_local_extrema, detect_local_extrema_into,
+    eval_segment_at_x, interpolate_threshold_crossings, interpolate_y_at_x, intersect_polylines,
+    intersect_polylines_into, parabolic_vertex, peak_extremum, segment_intersection_2d,
+    threshold_crossings_into, y_at_x_into,
+};
 
 /// Maximum number of visible critical points returned per plot frame.
 pub const MAX_CRITICAL_POINTS: usize = 256;
@@ -170,7 +174,7 @@ fn collect_single_line_pois(
     out: &mut Vec<CriticalPoint>,
 ) {
     if point_y_in_bounds(0.0, bounds) && (!transform.log_axis().y) {
-        for x_root in interp::interpolate_threshold_crossings(line.points, 0.0) {
+        for x_root in interpolate_threshold_crossings(line.points, 0.0) {
             push_if_visible(
                 out,
                 CriticalPoint {
@@ -186,7 +190,7 @@ fn collect_single_line_pois(
         }
     }
     if point_x_in_bounds(0.0, bounds) && (!transform.log_axis().x) {
-        for y_int in interp::interpolate_y_at_x(line.points, 0.0) {
+        for y_int in interpolate_y_at_x(line.points, 0.0) {
             push_if_visible(
                 out,
                 CriticalPoint {
@@ -201,16 +205,16 @@ fn collect_single_line_pois(
             );
         }
     }
-    for (pt, is_max) in interp::detect_local_extrema(line.points) {
+    for ext in detect_local_extrema(line.points) {
         push_if_visible(
             out,
             CriticalPoint {
-                kind: if is_max {
+                kind: if ext.is_max {
                     CriticalPointKind::LocalMax
                 } else {
                     CriticalPointKind::LocalMin
                 },
-                point: pt,
+                point: ext.point,
                 primary_series: line.name.clone(),
                 secondary_series: None,
                 item_id: line.id,

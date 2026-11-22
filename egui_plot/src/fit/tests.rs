@@ -27,21 +27,35 @@ fn test_linear_and_polynomial_fits_exact() {
         })
         .collect();
     let res_4 = fit_dataset(&quartic, 4, "Quartic").expect("Quartic fit failed");
+    assert_eq!(res_4.fit_type, FitType::Quartic);
     assert!((res_4.r_squared - 1.0).abs() < 1e-9);
+    assert_eq!(
+        fit_dataset(&quartic, 5, "Deg5"),
+        Err(FitError::UnsupportedDegree { degree: 5 })
+    );
 }
 
 #[test]
 fn test_edge_cases_and_nan_rejection() {
-    assert!(fit_dataset(&[[1.0, 2.0]], 1, "Single").is_none());
+    assert!(matches!(
+        fit_dataset(&[[1.0, 2.0]], 1, "Single"),
+        Err(FitError::InsufficientPoints {
+            required: 2,
+            actual: 1
+        })
+    ));
     let singular = vec![
         [1.0, 2.0],
         [1.0, 5.0],
         [f64::NAN, 3.0],
         [2.0, f64::INFINITY],
     ];
-    assert!(fit_dataset(&singular, 1, "Singular").is_none());
-    assert!(fit_model(&singular, FitType::Exponential, "BadExp", false).is_none());
-    assert!(fit_model(&singular, FitType::Sinusoidal, "BadSin", false).is_none());
+    assert_eq!(
+        fit_dataset(&singular, 1, "Singular"),
+        Err(FitError::SingularMatrix)
+    );
+    assert!(fit_model(&singular, FitType::Exponential, "BadExp", false).is_err());
+    assert!(fit_model(&singular, FitType::Sinusoidal, "BadSin", false).is_err());
 }
 
 #[test]

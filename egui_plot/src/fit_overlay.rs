@@ -45,7 +45,8 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
         log_x,
         log_y,
         access_state.fit_log_mode,
-    )?;
+    )
+    .ok()?;
     let accent = if *ds_color == Color32::TRANSPARENT {
         ui.visuals().widgets.active.bg_fill
     } else {

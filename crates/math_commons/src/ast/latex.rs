@@ -1,4 +1,5 @@
 //! LaTeX representation generator for Abstract Syntax Tree expressions.
+// [cite:math_commons]
 
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use std::fmt::Write;

@@ -99,23 +99,11 @@ pub(crate) fn harmonic_equilibrium_root(tool: &OdeSolverTool) -> Option<f64> {
     if !tool.total_time.is_finite() {
         return None;
     }
-    let pts: Vec<egui_plot::PlotPoint> = tool
-        .time_series
-        .iter()
-        .copied()
-        .zip(tool.y_series.iter().copied())
-        .filter(|(t, y)| t.is_finite() && y.is_finite())
-        .map(|(t, y)| egui_plot::PlotPoint::new(t, y))
-        .collect();
-    let crossings = egui_plot::poi::interpolate_threshold_crossings(&pts, 0.0);
+    let series = (&tool.time_series[..], &tool.y_series[..]);
     let mid = 0.5 * tool.total_time;
-    crossings
-        .into_iter()
+    math_explorer::poi::closest_threshold_crossing(&series, 0.0, mid)
         .filter(|t| t.is_finite() && *t >= 0.0 && *t <= tool.total_time)
-        .min_by(|a, b| (a - mid).abs().total_cmp(&(b - mid).abs()))
-        .or_else(|| {
-            (tool.ic_y0.abs() <= 1e-12 && tool.ic_v0.abs() <= 1e-12).then_some(0.0)
-        })
+        .or_else(|| (tool.ic_y0.abs() <= 1e-12 && tool.ic_v0.abs() <= 1e-12).then_some(0.0))
 }
 
 /// Renders simulation callout annotations onto the ODE plot canvas.
