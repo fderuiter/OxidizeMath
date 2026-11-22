@@ -107,10 +107,16 @@ pub struct ReplicatorPresetConfig {
     pub dt: f64,
     /// Descriptive strategy names.
     pub strategy_names: Vec<String>,
+    /// Optional symbolic payoff cell formulas `(rows x cols)` evaluated via `CompiledExpr`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbolic_payoffs: Option<Vec<Vec<String>>>,
+    /// Shared parameter values for symbolic payoff cells (e.g. `v`, `c` in Hawk-Dove).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub symbolic_params: std::collections::BTreeMap<String, f64>,
 }
 
 impl ReplicatorPresetConfig {
-    /// Validates matrix dimensions and strategy counts.
+    /// Validates matrix dimensions, strategy counts, and optional symbolic payoff formulas.
     pub fn validate(&self) -> Result<(), String> {
         let rows = self.payoff_matrix.len();
         if rows == 0 {
@@ -141,82 +147,69 @@ impl ReplicatorPresetConfig {
                 rows
             ));
         }
-        Ok(())
+        self.validate_symbolic(rows)
     }
-}
 
-/// Pairing system used to schedule tournament rounds in `Glicko2TournamentTool`.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Glicko2PairingMode {
-    /// Standings-ordered Swiss pairings with deterministic odd-roster byes.
-    Swiss,
-    /// Circle-method single round-robin schedule.
-    RoundRobin,
-}
-
-/// Competitor entry in a serialized Glicko-2 tournament preset.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct Glicko2PlayerPreset {
-    /// Competitor display name.
-    pub name: String,
-    /// Initial rating on the Glicko scale.
-    pub rating: f64,
-    /// Initial rating deviation (`> 0`).
-    pub rd: f64,
-    /// Initial rating volatility (`> 0`).
-    pub volatility: f64,
-    /// Whether this competitor sits out newly simulated periods.
-    #[serde(default)]
-    pub inactive: bool,
-}
-
-/// Match record within a serialized Glicko-2 rating period.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct Glicko2MatchPreset {
-    /// First competitor index in `players`.
-    pub player_a: usize,
-    /// Second competitor index in `players`.
-    pub player_b: usize,
-    /// Outcome score for `player_a` in `[0.0, 1.0]`.
-    pub score_a: f64,
-}
-
-/// Completed rating period in a serialized Glicko-2 tournament preset.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct Glicko2PeriodPreset {
-    /// Matches evaluated simultaneously against the pre-period roster.
-    pub matches: Vec<Glicko2MatchPreset>,
-    /// Optional competitor index awarded a bye during this period.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bye_player: Option<usize>,
-}
-
-/// Configuration struct for the Glicko-2 Tournament Simulator tool.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct Glicko2TournamentPresetConfig {
-    /// System constant tau constraining volatility updates (`[0.3, 1.2]`).
-    pub tau: f64,
-    /// Draw rate between evenly matched competitors (`[0.0, 1.0]`).
-    pub draw_probability: f64,
-    /// Active tournament pairing mode (`Swiss` or `RoundRobin`).
-    pub pairing_mode: Glicko2PairingMode,
-    /// Target number of rounds when simulating a full tournament (`1..=32`).
-    pub target_rounds: usize,
-    /// Deterministic seed for `OxidizeRng`.
-    pub rng_seed: u64,
-    /// Initial competitor roster.
-    pub players: Vec<Glicko2PlayerPreset>,
-    /// Chronological sequence of completed rating periods.
-    pub periods: Vec<Glicko2PeriodPreset>,
+    fn validate_symbolic(&self, rows: usize) -> Result<(), String> {
+        match &self.symbolic_payoffs {
+            Some(sym_rows) => {
+                if sym_rows.len() != rows {
+                    return Err(format!(
+                        "Symbolic payoff matrix row count ({}) does not match dimensions ({rows}x{rows})",
+                        sym_rows.len()
+                    ));
+                }
+                for (i, row) in sym_rows.iter().enumerate() {
+                    if row.len() != rows {
+                        return Err(format!(
+                            "Symbolic payoff row {i} has length {}, expected {rows}",
+                            row.len()
+                        ));
+                    }
+                    for (j, expr_str) in row.iter().enumerate() {
+                        let trimmed = expr_str.trim();
+                        if trimmed.is_empty() || trimmed.len() > 256 {
+                            return Err(format!(
+                                "Symbolic payoff cell ({i}, {j}) must be non-empty and <= 256 chars"
+                            ));
+                        }
+                    }
+                }
+                if self.symbolic_params.len() > crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
+                {
+                    return Err(format!(
+                        "Symbolic parameter count ({}) exceeds maximum ({})",
+                        self.symbolic_params.len(),
+                        crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
+                    ));
+                }
+                for (name, &val) in &self.symbolic_params {
+                    if !val.is_finite() || !(-1e4..=1e4).contains(&val) {
+                        return Err(format!(
+                            "Symbolic parameter '{name}' must be finite and within [-10000, 10000]"
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            None => {
+                if !self.symbolic_params.is_empty() {
+                    return Err(
+                        "symbolic_params cannot be specified without symbolic_payoffs".to_string(),
+                    );
+                }
+                Ok(())
+            }
+        }
+    }
 }
 
 #[path = "presets/glicko2.rs"]
 mod glicko2_preset_validation;
-pub use glicko2_preset_validation::{MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS};
+pub use glicko2_preset_validation::{
+    Glicko2MatchPreset, Glicko2PairingMode, Glicko2PeriodPreset, Glicko2PlayerPreset,
+    Glicko2TournamentPresetConfig, MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS,
+};
 
 /// Packs `config` into a `"1.0"` [`PresetWrapper`] metadata envelope and serializes it as pretty JSON.
 pub fn serialize_preset_envelope<T: Serialize>(

@@ -120,3 +120,27 @@ fn test_riemann_exp_guard_and_state_bounds() {
         .try_load_state(r#"{"preset":"EToX","min_x":-55.0,"max_x":50.0,"steps":50}"#)
         .is_err());
 }
+
+#[test]
+fn test_riemann_custom_compiled_expr_and_transient_edit_guard() {
+    let mut tool = RiemannIntegrationTool {
+        preset: FunctionPreset::Custom,
+        min_x: -1.0,
+        max_x: 1.0,
+        steps: 100,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("a * rect(x)");
+    let mut params = BTreeMap::new();
+    params.insert("a".to_string(), 2.0);
+    tool.math_input.set_params_map(&params);
+    tool.recalculate();
+    assert!((tool.result - 2.0).abs() < 0.05, "got {}", tool.result);
+
+    // Transient invalid syntax keeps last valid compiled quadrature finite
+    tool.math_input.set_expression("a * rect(x) +");
+    tool.recalculate();
+    assert!(tool.has_finite_parameters());
+    assert!((tool.result - 2.0).abs() < 0.05);
+    assert!(tool.import_preset_json(STARTER_PRESET_JSON).is_ok());
+}
