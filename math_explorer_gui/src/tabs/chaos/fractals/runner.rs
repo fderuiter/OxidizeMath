@@ -39,6 +39,10 @@ pub enum FractalMode {
     Julia,
 }
 
+fn is_false(flag: &bool) -> bool {
+    !*flag
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct FractalState {
@@ -49,19 +53,41 @@ pub(super) struct FractalState {
     pub(super) mode: FractalMode,
     pub(super) julia_re: f64,
     pub(super) julia_im: f64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(super) c_pinned: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) mandelbrot_center_re: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) mandelbrot_center_im: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) mandelbrot_zoom: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) julia_center_re: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) julia_center_im: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) julia_zoom: Option<f64>,
 }
 
 impl FractalState {
     pub(super) fn validate(&self) -> Result<(), String> {
         let coords_valid = [
-            self.center_re,
-            self.center_im,
-            self.julia_re,
-            self.julia_im,
+            Some(self.center_re),
+            Some(self.center_im),
+            Some(self.julia_re),
+            Some(self.julia_im),
+            self.mandelbrot_center_re,
+            self.mandelbrot_center_im,
+            self.julia_center_re,
+            self.julia_center_im,
         ]
-        .iter()
-        .all(|v| v.is_finite() && (COORD_MIN..=COORD_MAX).contains(v));
-        let zoom_valid = self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom);
+        .into_iter()
+        .flatten()
+        .all(|v| v.is_finite() && (COORD_MIN..=COORD_MAX).contains(&v));
+        let zoom_valid = [Some(self.zoom), self.mandelbrot_zoom, self.julia_zoom]
+            .into_iter()
+            .flatten()
+            .all(|z| z.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&z));
         let iter_valid =
             (10..=math_commons::registry::MAX_ITERATIONS as u32).contains(&self.max_iter);
         if !coords_valid || !zoom_valid || !iter_valid {

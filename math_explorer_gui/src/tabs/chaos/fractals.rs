@@ -13,18 +13,41 @@ use std::sync::{Arc, RwLock};
 mod runner;
 pub use runner::*;
 
+#[path = "fractals/overlay.rs"]
+mod overlay;
+pub use overlay::*;
+
 #[path = "fractals/ui.rs"]
 mod ui;
+
+#[path = "fractals/presets.rs"]
+mod presets;
+#[cfg(test)]
+use presets::{STARTER_CUSP_CONNECTED_JSON, STARTER_CUSP_DUST_JSON, STARTER_PRESET_JSON};
+
+/// Default complex-plane center for `FractalMode::Mandelbrot`.
+pub const DEFAULT_MANDELBROT_CENTER: Complex<f64> = Complex::new(-0.75, 0.0);
+/// Default complex-plane center for `FractalMode::Julia`.
+pub const DEFAULT_JULIA_CENTER: Complex<f64> = Complex::new(0.0, 0.0);
 
 /// Interactive Mandelbrot and Julia fractal viewer backed by progressive background passes.
 pub struct FractalViewer {
     pub(crate) center: Complex<f64>,
     pub(crate) zoom: f64,
+    pub(crate) mandelbrot_center: Complex<f64>,
+    pub(crate) mandelbrot_zoom: f64,
+    pub(crate) julia_center: Complex<f64>,
+    pub(crate) julia_zoom: f64,
     pub(crate) max_iter: u32,
     pub(crate) mode: FractalMode,
     pub(crate) julia_c: Complex<f64>,
+    /// Whether `julia_c` is pinned against Mandelbrot pointer hover updates.
+    pub c_pinned: bool,
     pub(crate) high_contrast: bool,
     pub(crate) texture: Option<egui::TextureHandle>,
+    pub(crate) julia_inset_texture: Option<egui::TextureHandle>,
+    pub(crate) julia_inset_image: Option<egui::ColorImage>,
+    pub(crate) julia_inset_key: Option<(u64, u64, u32, bool)>,
     pub(crate) dirty: bool,
     pub(crate) requested_size: (usize, usize),
     pub(crate) request_generation: u64,
@@ -37,7 +60,7 @@ pub struct FractalViewer {
 
 impl Default for FractalViewer {
     fn default() -> Self {
-        let center = Complex::new(-0.75, 0.0);
+        let center = DEFAULT_MANDELBROT_CENTER;
         let zoom = 1.0;
         let max_iter = 100;
         let mode = FractalMode::Mandelbrot;
@@ -59,14 +82,25 @@ impl Default for FractalViewer {
             Arc::clone(&shared_request),
             Arc::clone(&latest_generation),
         ));
+        let inset_iter = max_iter.clamp(10, JULIA_INSET_MAX_ITER);
+        let inset_img = render_julia_inset_image(julia_c, inset_iter, false);
+        let inset_key = (julia_c.re.to_bits(), julia_c.im.to_bits(), inset_iter, false);
         Self {
             center,
             zoom,
+            mandelbrot_center: DEFAULT_MANDELBROT_CENTER,
+            mandelbrot_zoom: 1.0,
+            julia_center: DEFAULT_JULIA_CENTER,
+            julia_zoom: 1.0,
             max_iter,
             mode,
             julia_c,
+            c_pinned: false,
             high_contrast: false,
             texture: None,
+            julia_inset_texture: None,
+            julia_inset_image: Some(inset_img),
+            julia_inset_key: Some(inset_key),
             dirty: true,
             requested_size: INITIAL_PREVIEW_SIZE,
             request_generation: 0,
@@ -75,6 +109,87 @@ impl Default for FractalViewer {
             shared_request,
             latest_generation,
             worker,
+        }
+    }
+}
+
+impl FractalViewer {
+    /// Saves the active viewport and switches `FractalMode` while preserving per-mode viewports.
+    pub fn switch_mode(&mut self, next_mode: FractalMode) {
+        if self.mode == next_mode {
+            return;
+        }
+        self.sync_active_viewport();
+        self.mode = next_mode;
+        match next_mode {
+            FractalMode::Mandelbrot => {
+                self.center = self.mandelbrot_center;
+                self.zoom = self.mandelbrot_zoom;
+            }
+            FractalMode::Julia => {
+                self.center = self.julia_center;
+                self.zoom = self.julia_zoom;
+            }
+        }
+        self.dirty = true;
+    }
+
+    pub(crate) fn sync_active_viewport(&mut self) {
+        match self.mode {
+            FractalMode::Mandelbrot => {
+                self.mandelbrot_center = self.center;
+                self.mandelbrot_zoom = self.zoom;
+            }
+            FractalMode::Julia => {
+                self.julia_center = self.center;
+                self.julia_zoom = self.zoom;
+            }
+        }
+    }
+
+    fn build_state(&self) -> FractalState {
+        let m_non_default = (self.mandelbrot_center.re - DEFAULT_MANDELBROT_CENTER.re).abs()
+            > 1e-12
+            || (self.mandelbrot_center.im - DEFAULT_MANDELBROT_CENTER.im).abs() > 1e-12
+            || (self.mandelbrot_zoom - 1.0).abs() > 1e-12;
+        let j_non_default = (self.julia_center.re - DEFAULT_JULIA_CENTER.re).abs() > 1e-12
+            || (self.julia_center.im - DEFAULT_JULIA_CENTER.im).abs() > 1e-12
+            || (self.julia_zoom - 1.0).abs() > 1e-12;
+
+        let (m_re, m_im, m_z) = if self.mode == FractalMode::Julia && m_non_default {
+            (
+                Some(self.mandelbrot_center.re),
+                Some(self.mandelbrot_center.im),
+                Some(self.mandelbrot_zoom),
+            )
+        } else {
+            (None, None, None)
+        };
+        let (j_re, j_im, j_z) = if self.mode == FractalMode::Mandelbrot && j_non_default {
+            (
+                Some(self.julia_center.re),
+                Some(self.julia_center.im),
+                Some(self.julia_zoom),
+            )
+        } else {
+            (None, None, None)
+        };
+
+        FractalState {
+            center_re: self.center.re,
+            center_im: self.center.im,
+            zoom: self.zoom,
+            max_iter: self.max_iter,
+            mode: self.mode,
+            julia_re: self.julia_c.re,
+            julia_im: self.julia_c.im,
+            c_pinned: self.c_pinned,
+            mandelbrot_center_re: m_re,
+            mandelbrot_center_im: m_im,
+            mandelbrot_zoom: m_z,
+            julia_center_re: j_re,
+            julia_center_im: j_im,
+            julia_zoom: j_z,
         }
     }
 }
@@ -156,34 +271,16 @@ impl InteractiveTool for FractalViewer {
 
     fn step_simulation(&mut self) {
         self.zoom = (self.zoom * 1.06).clamp(ZOOM_MIN, ZOOM_MAX);
+        self.sync_active_viewport();
         self.dirty = true;
     }
 
     fn has_finite_parameters(&self) -> bool {
-        FractalState {
-            center_re: self.center.re,
-            center_im: self.center.im,
-            zoom: self.zoom,
-            max_iter: self.max_iter,
-            mode: self.mode,
-            julia_re: self.julia_c.re,
-            julia_im: self.julia_c.im,
-        }
-        .validate()
-        .is_ok()
+        self.build_state().validate().is_ok()
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&FractalState {
-            center_re: self.center.re,
-            center_im: self.center.im,
-            zoom: self.zoom,
-            max_iter: self.max_iter,
-            mode: self.mode,
-            julia_re: self.julia_c.re,
-            julia_im: self.julia_c.im,
-        })
-        .ok()
+        serde_json::to_string(&self.build_state()).ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
@@ -195,6 +292,27 @@ impl InteractiveTool for FractalViewer {
         self.max_iter = s.max_iter;
         self.mode = s.mode;
         self.julia_c = Complex::new(s.julia_re, s.julia_im);
+        self.c_pinned = s.c_pinned;
+        match s.mode {
+            FractalMode::Mandelbrot => {
+                self.mandelbrot_center = self.center;
+                self.mandelbrot_zoom = self.zoom;
+                self.julia_center = Complex::new(
+                    s.julia_center_re.unwrap_or(DEFAULT_JULIA_CENTER.re),
+                    s.julia_center_im.unwrap_or(DEFAULT_JULIA_CENTER.im),
+                );
+                self.julia_zoom = s.julia_zoom.unwrap_or(1.0);
+            }
+            FractalMode::Julia => {
+                self.julia_center = self.center;
+                self.julia_zoom = self.zoom;
+                self.mandelbrot_center = Complex::new(
+                    s.mandelbrot_center_re.unwrap_or(DEFAULT_MANDELBROT_CENTER.re),
+                    s.mandelbrot_center_im.unwrap_or(DEFAULT_MANDELBROT_CENTER.im),
+                );
+                self.mandelbrot_zoom = s.mandelbrot_zoom.unwrap_or(1.0);
+            }
+        }
         self.dirty = true;
         Ok(())
     }
@@ -322,48 +440,22 @@ impl FractalViewer {
 }
 
 // [cite:graph_parameters_rust]
+// [cite:chaos_theory]
 
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "FractalViewer",
         display_name: "Fractal Viewer",
         domain: "chaos",
-        tags: &[],
+        tags: &["mandelbrot", "julia", "fractal", "orbit"],
         build: || Box::new(FractalViewer::default()),
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Mandelbrot Explorer",
-    "domain": "chaos",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "center_re": -0.75,
-    "center_im": 0.0,
-    "zoom": 1.0,
-    "max_iter": 150,
-    "mode": "Mandelbrot",
-    "julia_re": -0.7,
-    "julia_im": 0.27015
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "fractal_viewer_starter",
-        title: "Mandelbrot Explorer",
-        description: "z_{n+1} = z_n^2 + c: Complex quadratic polynomial iteration and boundary fractal escape times.",
-        category: "Fractals",
-        icon: "❄️",
-        domain: "chaos",
-        tool_name: Some("FractalViewer"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }
 
 #[cfg(test)]
 #[path = "fractals/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "fractals/coupling_tests.rs"]
+mod coupling_tests;
