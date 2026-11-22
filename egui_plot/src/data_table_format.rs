@@ -126,3 +126,40 @@ pub fn format_tsv(series: &[TableSeriesRef<'_>]) -> String {
         out
     }
 }
+
+/// Serialize critical points to full-precision tab-separated values (TSV).
+#[must_use]
+pub fn format_pois_tsv(pois: &[crate::poi::CriticalPoint]) -> String {
+    let mut out = String::from("Category\tSeries\tX\tY\n");
+    for poi in pois {
+        let cat = sanitize_tsv_label(poi.kind.label());
+        let ser = sanitize_tsv_label(&poi.series_summary());
+        let _ = writeln!(out, "{cat}\t{ser}\t{}\t{}", poi.point[0], poi.point[1]);
+    }
+    out
+}
+
+fn quote_csv_cell(raw: &str) -> String {
+    let guarded = if raw.trim_start().starts_with(['=', '+', '-', '@']) {
+        format!("'{raw}")
+    } else {
+        raw.to_owned()
+    };
+    if guarded.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", guarded.replace('"', "\"\""))
+    } else {
+        guarded
+    }
+}
+
+/// Serialize critical points to RFC-4180 comma-separated values (CSV).
+#[must_use]
+pub fn format_pois_csv(pois: &[crate::poi::CriticalPoint]) -> String {
+    let mut out = String::from("Category,Series,X,Y\n");
+    for poi in pois {
+        let cat = quote_csv_cell(poi.kind.label());
+        let ser = quote_csv_cell(&poi.series_summary());
+        let _ = writeln!(out, "{cat},{ser},{},{}", poi.point[0], poi.point[1]);
+    }
+    out
+}

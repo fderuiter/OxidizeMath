@@ -6,19 +6,19 @@ Static analysis procedural macros enforcing NASA Power of 10 rules and scientifi
 
 The `verified_engine_macros` crate provides compile-time procedural macros that enforce architectural invariants and automate metadata generation across the OxidizeMath workspace.
 
-By analyzing abstract syntax trees (AST) during compilation, these macros enforce safety constraints (such as prohibiting direct recursion and restricting function statement lengths) before code is compiled into binaries. Furthermore, the derive macros automatically generate reflection interfaces required for scientific model inspection and dynamic parameter tuning.
+By analyzing abstract syntax trees (AST) during compilation, these macros emit spanned plain-text `rustc` diagnostics for safety violations (such as direct recursion and excessive statement counts) before code is compiled into binaries. Furthermore, the derive and attribute macros generate reflection interfaces and link verified LaTeX equations without leaking internal crate dependencies to downstream callers.
 
 ### Module Structure
 
-- **`#[verified]`**: Attribute macro that inspects function implementations to verify:
-  - NASA Power of 10 Rule 1: Prohibits direct recursive calls (bypassable via explicit `opt_out`).
+- **`#[verified]`**: Attribute macro for free functions, inherent methods, and trait methods (including bodyless trait signatures and `const fn`):
+  - NASA Power of 10 Rule 1: Prohibits direct recursive calls (`opt_out = "reason"` skips verification; `allow_recursion = "reason"` permits same-name inherent delegation while keeping statement limits and runtime metrics active).
   - NASA Power of 10 Rule 4: Restricts function statement length to a maximum of 60 statements.
-  - Injects runtime instrumentation for counting function calls and arithmetic operations.
-- **`#[derive(Theory)]`**: Derive macro that automatically implements `TheoryDescribable` on simulation structures:
-  - Extracts theory descriptions, phonetic screen-reader text, and academic literature citations from struct attributes.
-  - Generates parameter constraints (`min`, `max`, `step`) and dynamic getters/setters from field annotations.
-- **`#[embed_theory]`**: Attribute macro for embedding verified LaTeX mathematical formulations and checking semantic integrity.
-- **`runtime_violation!`**: Procedural macro generating structured fatal violation payloads and terminating execution.
+  - Injects runtime `ComplexityMetrics` instrumentation on non-`const` function bodies.
+- **`#[derive(Theory)]`**: Derive macro implementing `TheoryDescribable` on structs with named fields:
+  - Validates struct-level `#[theory(description = "...", phonetic = "...", citation = "...")]` and field-level `#[theory(min = ..., max = ..., step = ...)]` attributes with full `syn::Error` accumulation.
+  - Accepts finite integer and floating-point bounds (including negative literals), enforces `min <= max` and `step > 0.0` at macro-expansion time, and spans numeric casts to each field's type token.
+- **`#[embed_theory]`**: Attribute macro dynamically resolving workspace `.tex` formulations from `CARGO_MANIFEST_DIR`, checking AST semantic integrity, and emitting unnamed `const _` file-change trackers.
+- **`runtime_violation!`**: Procedural macro generating structured JSON fatal violation payloads for runtime allocator aborts.
 
 ---
 
@@ -26,7 +26,7 @@ By analyzing abstract syntax trees (AST) during compilation, these macros enforc
 
 ### Deriving Scientific Theory Metadata
 
-Apply `#[derive(Theory)]` to expose structured model parameters and academic citations to the workspace:
+Apply `#[derive(Theory)]` through `verified_engine` or `math_explorer::verified_engine` to expose structured model parameters and academic citations:
 
 ```rust
 use scientific_metadata::theory::TheoryDescribable;
@@ -42,9 +42,11 @@ use verified_engine_macros::Theory;
 pub struct GravityModel {
     #[theory(min = 0.0, max = 100.0, step = 0.1)]
     pub g: f64,
+    #[theory(min = 1, max = 64, step = 1)]
+    pub substeps: usize,
 }
 
-let mut model = GravityModel { g: 9.81 };
+let mut model = GravityModel { g: 9.81, substeps: 4 };
 assert_eq!(model.theory_description(), "Gravitational acceleration model");
 assert_eq!(
     model.theory_citation(),
@@ -52,12 +54,12 @@ assert_eq!(
 );
 assert_eq!(model.get_parameter("g"), Some(9.81));
 
-model.set_parameter("g", 1.62);
-assert_eq!(model.get_parameter("g"), Some(1.62));
+model.set_parameter("substeps", 8.0);
+assert_eq!(model.substeps, 8);
 ```
 
 ---
 
 ## 3. Ecosystem Integration
 
-Procedural macros defined in this crate are re-exported through `verified_engine` and utilized across all scientific domain crates to generate parameter reflection models for `math_explorer_gui`.
+Procedural macros defined in this crate are re-exported through `verified_engine` and `math_explorer::verified_engine`, resolving `verified_engine` and `scientific_metadata` paths hygienically so domain and external crates do not need unused direct `scientific_metadata` dependencies.
