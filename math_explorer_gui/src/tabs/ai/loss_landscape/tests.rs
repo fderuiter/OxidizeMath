@@ -46,12 +46,12 @@ fn test_analytical_gradients_match_central_finite_differences() {
     for surface in LandscapeSurface::ALL {
         for (w, b) in [(-0.85, 0.65), (0.35, -0.45), (1.15, 0.9)] {
             let grad = surface.gradient(&bumps, w, b);
-            let fd_w =
-                (surface.evaluate(&bumps, w + eps, b) - surface.evaluate(&bumps, w - eps, b))
-                    / (2.0 * eps);
-            let fd_b =
-                (surface.evaluate(&bumps, w, b + eps) - surface.evaluate(&bumps, w, b - eps))
-                    / (2.0 * eps);
+            let fd_w = (surface.evaluate(&bumps, w + eps, b)
+                - surface.evaluate(&bumps, w - eps, b))
+                / (2.0 * eps);
+            let fd_b = (surface.evaluate(&bumps, w, b + eps)
+                - surface.evaluate(&bumps, w, b - eps))
+                / (2.0 * eps);
             assert!(
                 (grad.x - fd_w).abs() < 1e-4 && (grad.y - fd_b).abs() < 1e-4,
                 "Gradient mismatch on {:?} at ({w}, {b}): analytic={grad:?}, fd=({fd_w}, {fd_b})",
@@ -141,14 +141,12 @@ fn simulate_canvas_drag(
         |c| tool.show(c),
     );
     let mid = egui::pos2((start.x + end.x) * 0.5, (start.y + end.y) * 0.5);
-    let _ = ctx.run(
-        arena_raw_input(vec![egui::Event::PointerMoved(mid)]),
-        |c| tool.show(c),
-    );
-    let _ = ctx.run(
-        arena_raw_input(vec![egui::Event::PointerMoved(end)]),
-        |c| tool.show(c),
-    );
+    let _ = ctx.run(arena_raw_input(vec![egui::Event::PointerMoved(mid)]), |c| {
+        tool.show(c)
+    });
+    let _ = ctx.run(arena_raw_input(vec![egui::Event::PointerMoved(end)]), |c| {
+        tool.show(c)
+    });
     let _ = ctx.run(
         arena_raw_input(vec![egui::Event::PointerButton {
             pos: end,
@@ -284,10 +282,7 @@ fn test_zero_allocation_arena_stepping_under_verified_allocator() {
         .unwrap_or_else(|e| e.into_inner());
     let mut tool = LossLandscapeTool::default();
     tool.apply_surface_preset(LandscapeSurface::Rastrigin);
-    super::surfaces::push_sculpt_bump(
-        &mut tool.sculpt_bumps,
-        SculptBump::new(-1.0, 1.0, 2.5, 0.5),
-    );
+    super::surfaces::push_sculpt_bump(&mut tool.sculpt_bumps, SculptBump::new(-1.0, 1.0, 2.5, 0.5));
     tool.reset_arena();
 
     let (_res, metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
@@ -322,5 +317,39 @@ fn test_lorenz_chaotic_preset_graceful_feature_gating() {
         assert!(tool.arena.racers[4].trail.len() > 2);
     } else {
         assert_eq!(tool.arena.racers[4].trail.len(), 1);
+    }
+}
+
+#[test]
+fn test_racer_semantic_palette_colors_distinct_and_wcag_aa_across_themes() {
+    use crate::app::{contrast_ratio, ThemeMode};
+
+    for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::HighContrast] {
+        let visuals = mode.visuals();
+        let palette = mode.palette();
+        let colors: Vec<egui::Color32> = RacerKind::ALL.iter().map(|k| k.color(&palette)).collect();
+        for i in 0..colors.len() {
+            for j in (i + 1)..colors.len() {
+                assert_ne!(
+                    colors[i],
+                    colors[j],
+                    "{mode:?} assigned duplicate colors to {:?} and {:?}",
+                    RacerKind::ALL[i],
+                    RacerKind::ALL[j]
+                );
+            }
+            for bg in [
+                visuals.panel_fill,
+                visuals.window_fill,
+                visuals.extreme_bg_color,
+            ] {
+                let ratio = contrast_ratio(colors[i], bg);
+                assert!(
+                    ratio >= 4.5,
+                    "{mode:?} {:?} color achieved {ratio:.2}:1 (< 4.5:1)",
+                    RacerKind::ALL[i]
+                );
+            }
+        }
     }
 }

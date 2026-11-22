@@ -60,13 +60,13 @@ impl RacerKind {
     }
 
     #[must_use]
-    pub fn color(self, palette: &SemanticPalette) -> Color32 {
+    pub const fn color(self, palette: &SemanticPalette) -> Color32 {
         match self {
             Self::Sgd => palette.warning,
-            Self::Adam => Color32::from_rgb(56, 189, 248),
+            Self::Adam => (*palette).series_color(0),
             Self::HamiltonianLeapfrog => palette.success,
-            Self::LangevinThermal => Color32::from_rgb(244, 114, 182),
-            Self::LorenzChaotic => Color32::from_rgb(192, 132, 252),
+            Self::LangevinThermal => (*palette).series_color(3),
+            Self::LorenzChaotic => (*palette).series_color(4),
         }
     }
 }
@@ -404,7 +404,9 @@ fn step_racer(racer: &mut RacerTrack, s: &mut StepSolvers<'_>, sc: &StepScalars<
             let mut g = grad_fn(prev);
             let _ = s.sgd.step(&mut racer.phase.q, &mut g, s.rng, sc.lr);
             racer.phase.p = (racer.phase.q - prev) * (sc.mass / sc.dt);
-            racer.phase.reflect_bounds(sc.q_min, sc.q_max, sc.restitution);
+            racer
+                .phase
+                .reflect_bounds(sc.q_min, sc.q_max, sc.restitution);
             racer.kinetic_energy = 0.0;
         }
         RacerKind::Adam => {
@@ -412,7 +414,9 @@ fn step_racer(racer: &mut RacerTrack, s: &mut StepSolvers<'_>, sc: &StepScalars<
             let mut aux = (g, &mut racer.adam_state);
             let _ = s.adam.step(&mut racer.phase.q, &mut aux, s.rng, sc.lr);
             let raw_q = racer.phase.q;
-            racer.phase.reflect_bounds(sc.q_min, sc.q_max, sc.restitution);
+            racer
+                .phase
+                .reflect_bounds(sc.q_min, sc.q_max, sc.restitution);
             if (racer.phase.q.x - raw_q.x).abs() > 1e-12 {
                 racer.adam_state.m.x *= -sc.restitution;
             }
@@ -421,9 +425,9 @@ fn step_racer(racer: &mut RacerTrack, s: &mut StepSolvers<'_>, sc: &StepScalars<
             }
             racer.kinetic_energy = 0.0;
         }
-        RacerKind::HamiltonianLeapfrog
-        | RacerKind::LangevinThermal
-        | RacerKind::LorenzChaotic => step_momentum_racer(racer, s, sc, &mut grad_fn),
+        RacerKind::HamiltonianLeapfrog | RacerKind::LangevinThermal | RacerKind::LorenzChaotic => {
+            step_momentum_racer(racer, s, sc, &mut grad_fn)
+        }
     }
 }
 
@@ -465,7 +469,8 @@ fn step_momentum_racer(
         }
         RacerKind::Sgd | RacerKind::Adam => return,
     }
-    racer.phase.reflect_bounds(sc.q_min, sc.q_max, sc.restitution);
-    racer.kinetic_energy =
-        s.quad_h.evaluate(racer.phase.p.x) + s.quad_h.evaluate(racer.phase.p.y);
+    racer
+        .phase
+        .reflect_bounds(sc.q_min, sc.q_max, sc.restitution);
+    racer.kinetic_energy = s.quad_h.evaluate(racer.phase.p.x) + s.quad_h.evaluate(racer.phase.p.y);
 }
