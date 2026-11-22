@@ -5,9 +5,11 @@ mod clamp_tests;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_figure;
+mod export_preset_ui;
 mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
+mod export_shader;
 pub mod export_types;
 mod export_ui;
 #[cfg(test)]
@@ -28,6 +30,7 @@ pub mod recovery;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod recovery_tests;
+pub mod shader_foundry;
 pub mod side_panel;
 pub mod state_bounds;
 #[cfg(test)]
@@ -251,6 +254,14 @@ pub trait InteractiveTool {
     /// Declares which dataset and figure export formats this tool supports.
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
+    }
+
+    /// Optional hook to generate standalone `.wgsl` or `.glsl` fragment shader source code.
+    fn export_shader_source(&self, _format: ShaderExportFormat) -> Result<String, String> {
+        Err(format!(
+            "Standalone shader export is not supported for {}",
+            self.name()
+        ))
     }
 
     /// Optional hook to export tool datasets.

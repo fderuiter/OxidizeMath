@@ -11,7 +11,9 @@ use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
-pub use egui_plot::export::{infer_mime_type, sanitize_download_filename, strip_utf8_bom};
+pub use egui_plot::export::{
+    infer_mime_type, sanitize_download_filename, save_file_dialog, strip_utf8_bom,
+};
 
 #[cfg(target_arch = "wasm32")]
 pub use egui_plot::export::{
@@ -301,6 +303,8 @@ mod tests {
         assert_eq!(infer_mime_type("plot.svg"), "image/svg+xml");
         assert_eq!(infer_mime_type("figure.png"), "image/png");
         assert_eq!(infer_mime_type("anim.gif"), "image/gif");
+        assert_eq!(infer_mime_type("fractal_shader.wgsl"), "text/wgsl");
+        assert_eq!(infer_mime_type("domain_shader.glsl"), "text/plain");
         assert_eq!(infer_mime_type("surface.obj"), "application/octet-stream");
     }
 

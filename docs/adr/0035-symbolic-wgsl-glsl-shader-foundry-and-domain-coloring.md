@@ -1,0 +1,26 @@
+# ADR 0035: Client-Side Symbolic WGSL/GLSL Shader Foundry, Analytical Palettes, and Smooth Escape / Domain Coloring
+
+## Status
+Accepted (extends [ADR 0017](0017-native-ast-expression-parser-and-live-input.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0026](0026-bounded-ast-height-and-iterative-traversal.md), and [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md))
+
+## Context
+[`math_commons::ast`](../../crates/math_commons/src/ast/mod.rs) parses user-supplied real and complex expressions into bounded `Expr` syntax trees, while [`FractalViewer`](../../math_explorer_gui/src/tabs/chaos/fractals.rs) and [`ComplexMappingTool`](../../math_explorer_gui/src/tabs/analysis/complex_mapping.rs) previously evaluated only built-in formulas or discrete integer escape bands without GPU shader export:
+1. **No Symbolic Shader Lowering**: Users exploring holomorphic maps or complex dynamical recurrences could not export standalone WebGPU/Bevy `.wgsl` or GLSL ES 3.00 / Shadertoy `.glsl` fragment shaders directly from parsed `Expr` trees without external shader compiler dependencies.
+2. **Discrete Escape Banding and Fixed `480x320` Fractal Raster Exports**: [`crates/domain_physics/src/physics/chaos/fractals.rs`](../../crates/domain_physics/src/physics/chaos/fractals.rs) exposed only integer escape counts (`|z|^2 > 4`), producing visible contour banding, while `FractalViewer::export_raster_image` rendered at a hardcoded `480x320` resolution rather than clamping the live viewport up to `MAX_FRACTAL_TEXTURE_SIDE` (`2048` px).
+3. **Missing Continuous Phase-Modulus Domain Coloring**: `ComplexMappingTool` plotted discrete orthogonal conformal grid lines without continuous phase-wheel / log-modulus domain coloring or WCAG 2.2 `3.0:1` high-contrast shader parity.
+
+## Decision
+1. **Iterative Worklist WGSL & GLSL Transpilers in `math_commons::ast`**:
+   - Add [`crates/math_commons/src/ast/shader.rs`](../../crates/math_commons/src/ast/shader.rs) and [`crates/math_commons/src/ast/shader_preludes.rs`](../../crates/math_commons/src/ast/shader_preludes.rs) exposing `Expr::{to_wgsl, to_glsl, to_wgsl_complex, to_glsl_complex}` using an explicit `EmitFrame` worklist capped at `MAX_EVAL_DEPTH` (`64`) with zero call-stack recursion and zero external shader dependencies (`naga`, `wgpu`, or `glslang`).
+   - Emit division-by-zero guards, safe non-integer power lowering, constants (`pi`, `e`, `tau`, complex `i`), and all 14 `Func` variants across scalar (`f32` / `float`) and complex (`vec2<f32>` / `vec2`) domains, alongside zero-allocation `Expr::eval_complex_zc` in [`crates/math_commons/src/ast/eval.rs`](../../crates/math_commons/src/ast/eval.rs).
+2. **Analytical CPU & Shader Colormaps with WCAG `3.0:1` Contrast Lifting**:
+   - Add [`crates/math_commons/src/math_kernel/colormap_shader.rs`](../../crates/math_commons/src/math_kernel/colormap_shader.rs) re-exported from [`crates/math_commons/src/math_kernel/colormap.rs`](../../crates/math_commons/src/math_kernel/colormap.rs), providing `ShaderPalette`, `phase_wheel_color`, `evaluate_fractal_palette`, `domain_color_with_palette`, `wgsl_colormap_prelude`, and `glsl_colormap_prelude` with linear-light sRGB contrast lifting matching `ensure_dark_canvas_contrast` on `#000000`.
+3. **Smooth Douady-Hubbard Escape Renormalization & Upgraded GUI Tools / Export Pipeline**:
+   - Add `#[verified_engine::verified]` `SMOOTH_ESCAPE_RADIUS_SQR`, `renormalize_escape_step`, `smooth_escape_mandelbrot`, and `smooth_escape_julia` in [`crates/domain_physics/src/physics/chaos/fractals.rs`](../../crates/domain_physics/src/physics/chaos/fractals.rs).
+   - Extend [`egui_plot/src/file_io.rs`](../../egui_plot/src/file_io.rs) and [`math_explorer_gui/src/framework`](../../math_explorer_gui/src/framework/mod.rs) (`ExportFormat::{Wgsl, Glsl}`, `ExportCapabilities::{plot_with_shader, raster_with_shader}`, `export_shader.rs`, `shader_foundry.rs`) to support standalone `.wgsl` and `.glsl` file downloads and clipboard exports with embedded uniform blocks and fallback defaults.
+   - Upgrade `FractalViewer` (smooth escape toggle, custom $z_{n+1} = f(z_n, c)$ recurrence, palette selector, live WGSL/GLSL preview, and clamped full-viewport raster export up to `2048` px) and `ComplexMappingTool` (continuous phase-modulus domain coloring, palette selector, live WGSL/GLSL preview, and compact URL bookmark persistence within `4,096` bytes).
+
+## Consequences
+- **Positive**: Symbolic mathematical expressions compile deterministically on the client into standalone WebGPU/Bevy `.wgsl` and GLSL ES 3.00 / Shadertoy `.glsl` fragment shaders with zero server round-trips and zero new crate dependencies, preserving the `< 3 MiB` compressed WASM budget.
+- **Positive**: Both CPU rasters and exported GPU shaders enforce WCAG 2.2 `3.0:1` linear-light contrast lifting under `HighContrast` mode while eliminating discrete escape banding via continuous log-log renormalization.
+- **Neutral**: Live viewport rendering remains progressive CPU-backed in `egui` without introducing custom `egui::PaintCallback` GPU pipelines or multi-pass compute shaders.

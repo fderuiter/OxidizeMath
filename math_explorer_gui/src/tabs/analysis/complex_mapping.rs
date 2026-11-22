@@ -1,8 +1,22 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::{InteractiveTool, MathExpressionInputBar};
+use crate::framework::shader_foundry::{
+    emit_domain_coloring_shader, ShaderPreviewState, ShaderUniformDefaults,
+};
+use crate::framework::{
+    ExportCapabilities, InteractiveTool, MathExpressionInputBar, ShaderExportFormat,
+};
 use eframe::egui;
+use math_commons::ast::{parse, Expr};
+use math_commons::math_kernel::colormap::{domain_color_with_palette, ShaderPalette};
+use math_commons::math_kernel::types::flatten_2d_index;
 use num_complex::Complex64;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+#[path = "complex_mapping/state.rs"]
+mod state;
+use state::ComplexMappingState;
 
 #[path = "complex_mapping/ui.rs"]
 mod ui;
@@ -10,9 +24,12 @@ mod ui;
 pub(crate) const COMPLEX_COORD_MIN: f64 = -50.0;
 pub(crate) const COMPLEX_COORD_MAX: f64 = 50.0;
 pub(super) const COMPLEX_MIN_SPAN: f64 = 0.1;
+pub(super) const DOMAIN_COLOR_PREVIEW_SIDE: usize = 160;
 const EXP_SIN_GUARD_LIMIT: f64 = 50.0;
+pub(super) const MAX_CUSTOM_EXPR_BYTES: usize = 512;
+pub(super) const DEFAULT_CUSTOM_MAPPING_EXPR: &str = "z^3 - 1/z";
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) enum MappingFunction {
     ZSquared,
     Exponential,
@@ -98,6 +115,12 @@ pub struct ComplexMappingTool {
     pub(crate) grid_density: usize,
     pub(crate) inspection_point: [f64; 2],
     pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) domain_coloring: bool,
+    pub(crate) palette: ShaderPalette,
+    pub(crate) high_contrast: bool,
+    pub(crate) shader_preview: ShaderPreviewState,
+    pub(crate) domain_texture: Option<egui::TextureHandle>,
+    pub(crate) domain_texture_key: Option<u64>,
 }
 
 impl Default for ComplexMappingTool {
@@ -110,7 +133,7 @@ impl Default for ComplexMappingTool {
             inspection_point: [1.0, 1.0],
             math_input: MathExpressionInputBar::new(
                 "w",
-                "z^3 - 1/z",
+                DEFAULT_CUSTOM_MAPPING_EXPR,
                 vec![
                     ("w = z^3 - 1/z", "z^3 - 1/z"),
                     ("w = z^2", "z^2"),
@@ -120,6 +143,12 @@ impl Default for ComplexMappingTool {
                     ("w = z + 1/z (Joukowsky)", "z + 1/z"),
                 ],
             ),
+            domain_coloring: true,
+            palette: ShaderPalette::PhaseWheel,
+            high_contrast: false,
+            shader_preview: ShaderPreviewState::default(),
+            domain_texture: None,
+            domain_texture_key: None,
         }
     }
 }
@@ -131,11 +160,36 @@ impl ComplexMappingTool {
             return fallback;
         }
         match self.function {
+            MappingFunction::Custom => self.math_input.expr().map_or(fallback, |expr| {
+                sanitize_complex(expr.eval_complex_z(z), fallback)
+            }),
+            _ => self.function.evaluate(z),
+        }
+    }
+
+    fn eval_domain_z(&self, z: Complex64) -> Complex64 {
+        if !z.re.is_finite() || !z.im.is_finite() {
+            return Complex64::new(f64::NAN, f64::NAN);
+        }
+        match self.function {
+            MappingFunction::ZSquared => z * z,
+            MappingFunction::Exponential => {
+                Complex64::new(z.re.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT), z.im).exp()
+            }
+            MappingFunction::Sine => {
+                Complex64::new(z.re, z.im.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT)).sin()
+            }
+            MappingFunction::Inverse => {
+                if z.norm_sqr() < 1.0e-24 {
+                    Complex64::new(f64::NAN, f64::NAN)
+                } else {
+                    1.0 / z
+                }
+            }
             MappingFunction::Custom => self
                 .math_input
                 .expr()
-                .map_or(fallback, |expr| sanitize_complex(expr.eval_complex_z(z), fallback)),
-            _ => self.function.evaluate(z),
+                .map_or(Complex64::new(f64::NAN, f64::NAN), |e| e.eval_complex_z(z)),
         }
     }
 
@@ -154,18 +208,87 @@ impl ComplexMappingTool {
             _ => self.function.derivative(z),
         }
     }
-}
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ComplexMappingState {
-    function: MappingFunction,
-    grid_min: f64,
-    grid_max: f64,
-    grid_density: usize,
-    inspection_point: [f64; 2],
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    custom_expr: Option<String>,
+    pub(super) fn shader_revision(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.function.hash(&mut hasher);
+        self.grid_min.to_bits().hash(&mut hasher);
+        self.grid_max.to_bits().hash(&mut hasher);
+        self.domain_coloring.hash(&mut hasher);
+        self.palette.hash(&mut hasher);
+        self.high_contrast.hash(&mut hasher);
+        self.math_input.raw_text.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    pub(super) fn resolve_active_shader_expr(&self) -> Result<Expr, String> {
+        let builtin = match self.function {
+            MappingFunction::ZSquared => Some("z^2"),
+            MappingFunction::Exponential => Some("exp(z)"),
+            MappingFunction::Sine => Some("sin(z)"),
+            MappingFunction::Inverse => Some("1 / z"),
+            MappingFunction::Custom => None,
+        };
+        match builtin {
+            Some(src) => parse(src).map_err(|e| e.to_string()),
+            None => self.math_input.expr().cloned().ok_or_else(|| {
+                self.math_input
+                    .error_message()
+                    .unwrap_or_else(|| "Invalid custom complex mapping expression".to_string())
+            }),
+        }
+    }
+
+    pub(super) fn shader_uniform_defaults(&self) -> ShaderUniformDefaults {
+        let lo = self.grid_min.clamp(COMPLEX_COORD_MIN, COMPLEX_COORD_MAX);
+        let hi = self
+            .grid_max
+            .clamp(COMPLEX_COORD_MIN, COMPLEX_COORD_MAX)
+            .max(lo + COMPLEX_MIN_SPAN);
+        ShaderUniformDefaults {
+            resolution: [512, 512],
+            viewport: [lo, lo, hi, hi],
+            max_iter: 1,
+            julia_c: [
+                self.inspection_point[0].clamp(COMPLEX_COORD_MIN, COMPLEX_COORD_MAX),
+                self.inspection_point[1].clamp(COMPLEX_COORD_MIN, COMPLEX_COORD_MAX),
+            ],
+            palette: self.palette,
+            high_contrast: self.high_contrast,
+            smooth_coloring: true,
+        }
+    }
+
+    /// Renders a continuous phase-modulus domain coloring raster over `[grid_min, grid_max]^2`.
+    #[must_use]
+    pub fn render_domain_coloring_image(&self, side: usize) -> egui::ColorImage {
+        let dim = side.clamp(8, 512);
+        let lo = if self.grid_min.is_finite() {
+            self.grid_min.clamp(COMPLEX_COORD_MIN, COMPLEX_COORD_MAX)
+        } else {
+            -2.0
+        };
+        let hi = if self.grid_max.is_finite() && self.grid_max > lo {
+            self.grid_max.clamp(COMPLEX_COORD_MIN, COMPLEX_COORD_MAX)
+        } else {
+            lo + 4.0
+        };
+        let span = hi - lo;
+        let denom = (dim.saturating_sub(1)).max(1) as f64;
+        let mut pixels = vec![egui::Color32::BLACK; dim * dim];
+
+        for y in 0..dim {
+            let im = hi - (y as f64 / denom) * span;
+            for x in 0..dim {
+                let re = lo + (x as f64 / denom) * span;
+                let w = self.eval_domain_z(Complex64::new(re, im));
+                let rgb = domain_color_with_palette(w.re, w.im, self.palette, self.high_contrast);
+                pixels[flatten_2d_index(x, y, dim)] =
+                    egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+            }
+        }
+        egui::ColorImage::new([dim, dim], pixels)
+    }
 }
 
 impl InteractiveTool for ComplexMappingTool {
@@ -181,57 +304,41 @@ impl InteractiveTool for ComplexMappingTool {
         "analysis"
     }
 
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot_with_shader()
+    }
+
+    fn export_shader_source(&self, format: ShaderExportFormat) -> Result<String, String> {
+        let expr = self.resolve_active_shader_expr()?;
+        emit_domain_coloring_shader(format, &expr, &self.shader_uniform_defaults())
+    }
+
     fn has_finite_parameters(&self) -> bool {
-        self.grid_min.is_finite()
-            && self.grid_max.is_finite()
-            && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&self.grid_min)
-            && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&self.grid_max)
-            && self.grid_min < self.grid_max
-            && (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_density)
-            && self
-                .inspection_point
-                .iter()
-                .all(|v| v.is_finite() && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(v))
+        self.to_serializable_state().validate().is_ok()
     }
 
     fn save_state(&self) -> Option<String> {
-        let custom_expr =
-            (self.function == MappingFunction::Custom || self.math_input.raw_text != "z^3 - 1/z")
-                .then(|| self.math_input.raw_text.clone());
-        serde_json::to_string(&ComplexMappingState {
-            function: self.function,
-            grid_min: self.grid_min,
-            grid_max: self.grid_max,
-            grid_density: self.grid_density,
-            inspection_point: self.inspection_point,
-            custom_expr,
-        })
-        .ok()
+        serde_json::to_string(&self.to_serializable_state()).ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: ComplexMappingState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid complex mapping state: {e}"))?;
-        if !s.grid_min.is_finite()
-            || !s.grid_max.is_finite()
-            || !(COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&s.grid_min)
-            || !(COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&s.grid_max)
-            || s.grid_min >= s.grid_max
-            || !(2..=math_commons::registry::MAX_GRID_SIZE).contains(&s.grid_density)
-            || !s
-                .inspection_point
-                .iter()
-                .all(|v| v.is_finite() && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(v))
-        {
-            return Err("Complex mapping bounds or density out of valid range".into());
-        }
+        let palette = s.validate()?;
         self.function = s.function;
         self.grid_min = s.grid_min;
         self.grid_max = s.grid_max;
         self.grid_density = s.grid_density;
         self.inspection_point = s.inspection_point;
-        self.math_input
-            .set_expression(s.custom_expr.as_deref().unwrap_or("z^3 - 1/z"));
+        self.domain_coloring = s.domain_coloring;
+        self.palette = palette;
+        self.math_input.set_expression(
+            s.custom_expr
+                .as_deref()
+                .unwrap_or(DEFAULT_CUSTOM_MAPPING_EXPR),
+        );
+        self.domain_texture_key = None;
+        self.shader_preview.invalidate();
         Ok(())
     }
 
@@ -246,15 +353,10 @@ impl InteractiveTool for ComplexMappingTool {
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        self.high_contrast = crate::app::ThemeMode::from_visuals(parent_ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
         self.draw_controls(parent_ui);
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            ui.heading("Conformal Mapping Visualization");
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            ui.columns(2, |columns| {
-                self.draw_z_plane(&mut columns[0], &palette);
-                self.draw_w_plane(&mut columns[1], &palette);
-            });
-        });
+        self.draw_central_canvas(parent_ui);
     }
 }
 
@@ -267,48 +369,6 @@ inventory::submit! {
         domain: "analysis",
         tags: &[],
         build: || Box::new(ComplexMappingTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for ComplexMappingTool {
-    fn theory_description(&self) -> String {
-        let fn_desc = match self.function {
-            MappingFunction::ZSquared => "quadratic power map $w = z^2$",
-            MappingFunction::Exponential => "entire exponential map $w = e^z$",
-            MappingFunction::Sine => "complex trigonometric map $w = \\sin(z)$",
-            MappingFunction::Inverse => "inversion map $w = 1/z$",
-            MappingFunction::Custom => "custom holomorphic map $w = f(z)$",
-        };
-        format!(
-            "Conformal complex mapping {} preserving angles and orientation under Cauchy-Riemann equations with local scaling factor $|f'(z)|$.",
-            fn_desc
-        )
-    }
-
-    fn phonetic_description(&self) -> String {
-        "Conformal complex mapping and Cauchy-Riemann equations theory".into()
-    }
-
-    fn theory_citation(&self) -> String {
-        "Visual Complex Analysis (Needham, 1997); Complex Analysis (Ahlfors, 1979)".into()
-    }
-
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert("ZSquared".into(), "w = z^2 doubling angles at the origin".into());
-        map.insert(
-            "Exponential".into(),
-            "w = e^z mapping vertical lines to circles".into(),
-        );
-        map.insert(
-            "Sine".into(),
-            "w = sin(z) mapping strips to upper half-plane".into(),
-        );
-        map.insert(
-            "Inverse".into(),
-            "w = 1/z conformal inversion through unit circle".into(),
-        );
-        map
     }
 }
 

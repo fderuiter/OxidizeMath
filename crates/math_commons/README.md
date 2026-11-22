@@ -10,13 +10,14 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 
 ### Module Structure
 
+- **`ast`**: Bounded Pratt expression parser, iterative LaTeX formatter, real/complex dynamic evaluators, and iterative WGSL/GLSL shader transpilers (`to_wgsl`, `to_glsl`, `to_wgsl_complex`, `to_glsl_complex`).
 - **`constants`**: Centralized registry of physical, astronomical, and mathematical constants:
   - Speed of light (`C`), Gravitational constant (`G`), Solar mass (`SOLAR_MASS`).
   - Reduced Planck constant (`HBAR_C`), Proton mass (`PROTON_MASS`), Neutron mass (`NEUTRON_MASS`).
   - Liquid drop nuclear model constants and floating-point tolerances (`EPSILON`).
 - **`math_kernel`**: Standardized numerical routines:
   - `types`: 2D/3D index flattening (`flatten_2d_index`) and spatial offsets.
-  - `colormap`: Heatmap color generation (`heatmap_color`) and gradient interpolation for scientific visualization.
+  - `colormap`: Heatmap color generation (`heatmap_color`), continuous complex domain coloring (`domain_color`), WCAG `3.0:1` dark-canvas contrast lifting, and WGSL/GLSL shader palette emitters.
 - **`primitives`**: Basic geometric constructs and coordinate structures.
 - **`registry`**: Constant lookup and numeric tolerance validation.
 - **`wigner`**: Clebsch-Gordan coefficients and quantum angular momentum arithmetic.

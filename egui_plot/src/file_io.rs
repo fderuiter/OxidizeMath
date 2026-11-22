@@ -37,6 +37,10 @@ pub fn infer_mime_type(filename: &str) -> &'static str {
         "image/png"
     } else if lower.ends_with(".gif") {
         "image/gif"
+    } else if lower.ends_with(".wgsl") {
+        "text/wgsl"
+    } else if lower.ends_with(".glsl") {
+        "text/plain"
     } else {
         "application/octet-stream"
     }

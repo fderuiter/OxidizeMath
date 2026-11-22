@@ -15,6 +15,10 @@ pub(crate) enum ExportFormat {
     Svg,
     /// Animated Graphics Interchange Format (`.gif`).
     Gif,
+    /// Standalone WebGPU Shading Language fragment shader (`.wgsl`).
+    Wgsl,
+    /// Standalone GLSL ES 3.00 / Shadertoy fragment shader (`.glsl`).
+    Glsl,
 }
 
 impl ExportFormat {
@@ -25,6 +29,8 @@ impl ExportFormat {
             Self::Png => ("png", "PNG", "PNG Image", "figure"),
             Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
             Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
+            Self::Wgsl => ("wgsl", "WGSL", "WGSL Shader", "shader"),
+            Self::Glsl => ("glsl", "GLSL", "GLSL Shader", "shader"),
         }
     }
 
@@ -250,6 +256,9 @@ impl SimulationFramework {
             (ExportFormat::Png, ExportTarget::Clipboard) => self.dispatch_png_clipboard_export(ctx),
             (ExportFormat::Svg, _) => self.dispatch_svg_export(),
             (ExportFormat::Gif, _) => self.dispatch_gif_export(),
+            (ExportFormat::Wgsl | ExportFormat::Glsl, target) => {
+                self.dispatch_shader_export(req.format, target, ctx);
+            }
         }
     }
 
@@ -298,13 +307,16 @@ impl SimulationFramework {
                     "Export failed",
                 );
             }
-            ExportTarget::Clipboard => self.dispatch_clipboard_text_request(format, content, ctx),
+            ExportTarget::Clipboard => {
+                self.dispatch_clipboard_text_with_noun(format, "dataset", content, ctx);
+            }
         }
     }
 
-    fn dispatch_clipboard_text_request(
+    pub(super) fn dispatch_clipboard_text_with_noun(
         &mut self,
         format: ExportFormat,
+        item_noun: &'static str,
         content: String,
         ctx: Option<&egui::Context>,
     ) {
@@ -312,7 +324,7 @@ impl SimulationFramework {
         let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
             writer(&content)
         } else {
-            self.write_system_text_clipboard(label, &content, ctx)
+            self.write_system_text_clipboard(label, item_noun, &content, ctx)
         };
         match res {
             Ok(()) => {
@@ -321,9 +333,9 @@ impl SimulationFramework {
                 let msg = if cfg!(target_arch = "wasm32")
                     && self.export_queue.custom_clipboard_writer.is_none()
                 {
-                    format!("Copying {label} dataset to clipboard...")
+                    format!("Copying {label} {item_noun} to clipboard...")
                 } else {
-                    format!("Copied {label} dataset to clipboard!")
+                    format!("Copied {label} {item_noun} to clipboard!")
                 };
                 self.set_export_status(ExportStatusSeverity::Success, msg);
             }
@@ -336,12 +348,13 @@ impl SimulationFramework {
     fn write_system_text_clipboard(
         &self,
         label: &'static str,
+        item_noun: &'static str,
         content: &str,
         ctx: Option<&egui::Context>,
     ) -> Result<(), String> {
         #[cfg(test)]
         {
-            let _ = (label, content, ctx);
+            let _ = (label, item_noun, content, ctx);
             Ok(())
         }
         #[cfg(not(test))]
@@ -353,7 +366,7 @@ impl SimulationFramework {
                     egui_ctx.data_mut(|d| {
                         let status = match cb {
                             Ok(()) => ActionBarExportStatus {
-                                message: format!("Copied {label} dataset to clipboard!"),
+                                message: format!("Copied {label} {item_noun} to clipboard!"),
                                 is_error: false,
                                 expires_at_time: None,
                             },
@@ -430,7 +443,7 @@ impl SimulationFramework {
             writer(filename, bytes);
         } else {
             #[cfg(not(test))]
-            egui_plot::export::save_file_dialog(
+            crate::web_io::save_file_dialog(
                 filename,
                 bytes,
                 format.filter_name(),

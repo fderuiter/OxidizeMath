@@ -85,18 +85,22 @@ fn test_progressive_strides_and_exact_final_parity_mandelbrot_and_julia() {
             mode,
             julia_c: Complex::new(-0.7, 0.27015),
             high_contrast: false,
+            smooth_coloring: true,
+            palette: ShaderPalette::CyclicCosine,
+            custom_expr: None,
+            custom_julia_seed: false,
         };
         let init_req = FractalRenderRequest {
             generation: 0,
             width: 16,
             height: 12,
-            ..req
+            ..req.clone()
         };
         let shared = Arc::new(RwLock::new(init_req));
         let latest_gen = Arc::new(AtomicU64::new(0));
         let mut runner = FractalRunner::new(Arc::clone(&shared), Arc::clone(&latest_gen));
 
-        *shared.write().unwrap() = req;
+        *shared.write().unwrap() = req.clone();
         latest_gen.store(1, Ordering::Release);
 
         let mut observed_strides = Vec::new();
@@ -148,8 +152,12 @@ fn test_drag_140_pixels_updates_center_and_cancels_active_worker_pass() {
     let initial_im = viewer.center.im;
 
     let start_pos = img_rect.center();
-    let drag_elapsed =
-        run_drag_sequence(&ctx, &mut viewer, start_pos, start_pos + egui::vec2(140.0, 0.0));
+    let drag_elapsed = run_drag_sequence(
+        &ctx,
+        &mut viewer,
+        start_pos,
+        start_pos + egui::vec2(140.0, 0.0),
+    );
 
     let scale_y = 3.0 / viewer.zoom;
     let scale_x = scale_y * (view_w / view_h);
@@ -319,12 +327,16 @@ fn test_generate_progressive_fractal_verification_png() {
         mode: FractalMode::Mandelbrot,
         julia_c: Complex::new(-0.7, 0.27015),
         high_contrast: false,
+        smooth_coloring: true,
+        palette: ShaderPalette::CyclicCosine,
+        custom_expr: None,
+        custom_julia_seed: false,
     };
     let seed = FractalRenderRequest {
         generation: 0,
         width: 16,
         height: 12,
-        ..req
+        ..req.clone()
     };
     let shared = Arc::new(RwLock::new(seed));
     let latest = Arc::new(AtomicU64::new(0));

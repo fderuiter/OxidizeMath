@@ -166,6 +166,10 @@ pub fn cyclic_cosine_palette_high_contrast(n: f64) -> [u8; 3] {
     ensure_dark_canvas_contrast(cyclic_cosine_palette(n))
 }
 
+#[path = "colormap_shader.rs"]
+pub mod colormap_shader;
+pub use colormap_shader::*;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,6 +179,41 @@ mod tests {
             + 0.7152 * srgb_channel_to_linear(rgb[1])
             + 0.0722 * srgb_channel_to_linear(rgb[2]);
         (lum + 0.05) / 0.05
+    }
+
+    fn sim_shader_ensure_contrast(rgb: [f32; 3]) -> [u8; 3] {
+        let to_lin = |s: f32| {
+            let c = s.clamp(0.0, 1.0);
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let to_srgb_ceil = |lin: f32| {
+            let c = lin.clamp(0.0, 1.0);
+            let enc = if c <= 0.003_130_8 {
+                c * 12.92
+            } else {
+                1.055 * c.powf(1.0 / 2.4) - 0.055
+            };
+            (enc.clamp(0.0, 1.0) * 255.0).ceil() as u8
+        };
+        let (lr, lg, lb) = (to_lin(rgb[0]), to_lin(rgb[1]), to_lin(rgb[2]));
+        let lum = 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
+        if lum >= 0.11 {
+            return [
+                (rgb[0].clamp(0.0, 1.0) * 255.0) as u8,
+                (rgb[1].clamp(0.0, 1.0) * 255.0) as u8,
+                (rgb[2].clamp(0.0, 1.0) * 255.0) as u8,
+            ];
+        }
+        let alpha = ((0.11 - lum) / (1.0 - lum)).clamp(0.0, 1.0);
+        [
+            to_srgb_ceil(lr + alpha * (1.0 - lr)),
+            to_srgb_ceil(lg + alpha * (1.0 - lg)),
+            to_srgb_ceil(lb + alpha * (1.0 - lb)),
+        ]
     }
 
     #[test]
@@ -200,5 +239,52 @@ mod tests {
                 "cyclic_cosine_palette_high_contrast({iter}) -> {hc:?} yielded {ratio:.2}:1 (< 3.0:1)"
             );
         }
+    }
+
+    #[test]
+    fn test_shader_palettes_match_cpu_and_preserve_high_contrast() {
+        let wgsl = wgsl_colormap_prelude();
+        let glsl = glsl_colormap_prelude();
+        for symbol in [
+            "om_heatmap",
+            "om_cosine_palette",
+            "om_mapped_gradient",
+            "om_phase_wheel",
+            "om_ensure_contrast",
+            "om_eval_palette",
+            "om_domain_color",
+        ] {
+            assert!(wgsl.contains(symbol) && glsl.contains(symbol));
+        }
+
+        for step in 0..=200 {
+            let t = f64::from(step) / 200.0;
+            let tf = t as f32;
+            let cpu_hm = heatmap_color(t);
+            let gpu_hm = [
+                ((tf * 2.0 - 1.0).max(0.0) * 255.0) as u8,
+                ((1.0 - (tf * 2.0 - 1.0).abs()).max(0.0) * 255.0) as u8,
+                ((1.0 - tf * 2.0).max(0.0) * 255.0) as u8,
+            ];
+            for ch in 0..3 {
+                assert!(cpu_hm[ch].abs_diff(gpu_hm[ch]) <= 1);
+            }
+            let lifted = sim_shader_ensure_contrast([
+                (tf * 2.0 - 1.0).max(0.0),
+                (1.0 - (tf * 2.0 - 1.0).abs()).max(0.0),
+                (1.0 - tf * 2.0).max(0.0),
+            ]);
+            assert!(contrast_on_black(lifted) >= 3.0);
+        }
+
+        for palette in ShaderPalette::ALL {
+            assert_eq!(ShaderPalette::from_slug(palette.as_slug()), Some(palette));
+            let dom_hc = domain_color_with_palette(0.0, 0.0, palette, true);
+            assert!(contrast_on_black(dom_hc) >= 3.0);
+            let frac_hc = evaluate_fractal_palette(3.7, 100, palette, true);
+            assert!(contrast_on_black(frac_hc) >= 3.0);
+        }
+        assert_eq!(phase_wheel_color(0.0), [255, 0, 0]);
+        assert!(contrast_on_black(phase_wheel_color_high_contrast(-2.1)) >= 3.0);
     }
 }

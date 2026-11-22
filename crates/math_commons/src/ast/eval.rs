@@ -69,6 +69,20 @@ impl Expr {
         self.eval_fast(0, &|name| name.eq_ignore_ascii_case("z").then_some(z))
     }
 
+    /// Evaluates the expression for complex recurrences given state `z` and parameter `c`.
+    #[must_use]
+    pub fn eval_complex_zc(&self, z: Complex64, c: Complex64) -> Complex64 {
+        self.eval_fast(0, &|name| {
+            if name.eq_ignore_ascii_case("z") {
+                Some(z)
+            } else if name.eq_ignore_ascii_case("c") {
+                Some(c)
+            } else {
+                None
+            }
+        })
+    }
+
     fn eval_checked<T: EvalScalar>(
         &self,
         vars: &HashMap<String, T>,
