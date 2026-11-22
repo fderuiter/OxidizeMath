@@ -1,5 +1,6 @@
 use super::custom_surface::{CustomSurfaceSandbox, SurfaceType};
 use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use egui_plot::{Line, PlotPoints};
 use math_commons::math_kernel::colormap::mapped_gradient;
@@ -71,7 +72,7 @@ pub struct CurvatureHeatmap {
     u_resolution: usize,
     v_resolution: usize,
     camera: Camera3D,
-    custom_sandbox: CustomSurfaceSandbox,
+    pub(crate) custom_sandbox: CustomSurfaceSandbox,
 }
 
 impl Default for CurvatureHeatmap {
@@ -257,20 +258,34 @@ impl CurvatureHeatmap {
             ))
             .show(ui, |ui| match self.surface_type {
                 SurfaceType::Sphere => {
-                    ui.add(egui::Slider::new(&mut self.sphere_radius, 0.1..=5.0).text("Radius"));
+                    ui.add(
+                        AnimatedSlider::new(&mut self.sphere_radius, 0.1..=5.0)
+                            .hard_bounds(0.1..=5.0)
+                            .text("Radius")
+                            .id_salt("curvature_heatmap_sphere_radius"),
+                    );
                 }
                 SurfaceType::Torus => {
                     ui.add(
-                        egui::Slider::new(&mut self.torus_major_radius, 1.0..=5.0)
-                            .text("Major Radius (R)"),
+                        AnimatedSlider::new(&mut self.torus_major_radius, 1.0..=5.0)
+                            .hard_bounds(1.0..=5.0)
+                            .text("Major Radius (R)")
+                            .id_salt("curvature_heatmap_torus_major"),
                     );
                     ui.add(
-                        egui::Slider::new(&mut self.torus_minor_radius, 0.1..=2.0)
-                            .text("Minor Radius (r)"),
+                        AnimatedSlider::new(&mut self.torus_minor_radius, 0.1..=2.0)
+                            .hard_bounds(0.1..=2.0)
+                            .text("Minor Radius (r)")
+                            .id_salt("curvature_heatmap_torus_minor"),
                     );
                 }
                 SurfaceType::KleinBottle => {
-                    ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
+                    ui.add(
+                        AnimatedSlider::new(&mut self.klein_radius, 0.5..=5.0)
+                            .hard_bounds(0.5..=5.0)
+                            .text("Radius")
+                            .id_salt("curvature_heatmap_klein_radius"),
+                    );
                 }
                 SurfaceType::CustomHeightfield | SurfaceType::CustomParametric => {
                     self.custom_sandbox.ui_for_type(ui, self.surface_type);

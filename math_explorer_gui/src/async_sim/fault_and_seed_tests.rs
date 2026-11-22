@@ -352,3 +352,94 @@ fn test_unpolled_running_worker_diverges_without_blocking_sender() {
     assert_eq!(controller.state(), SimWorkerState::Faulted);
     assert!(controller.diagnostic_report().is_some());
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+fn wait_for_fresh_snapshot<M: crate::async_sim::unified::UnifiedModel>(
+    tool: &mut UnifiedSimTool<M>,
+) -> bool {
+    for _ in 0..200 {
+        std::thread::sleep(Duration::from_millis(5));
+        if tool.controller.update().is_some() {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn assert_paused_sweep_refreshes<M: crate::async_sim::unified::UnifiedModel>(param: &'static str) {
+    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+    let ctx = egui::Context::default();
+    let mut tool = UnifiedSimTool::<M>::new();
+    let _ = tool.controller.update();
+    save_slider_state(
+        &ctx,
+        egui::Id::new(("unified_sim_param", M::name(), param)),
+        AnimatedSliderState {
+            playing: true,
+            direction: 1.0,
+            sweep_mode: SweepMode::Oscillate,
+        },
+    );
+    let raw = egui::RawInput {
+        predicted_dt: 0.1,
+        ..Default::default()
+    };
+    let _ = ctx.run(raw, |ctx| tool.show(ctx));
+    assert!(wait_for_fresh_snapshot(&mut tool));
+    assert_eq!(tool.state(), SimWorkerState::Ready);
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn test_unified_sim_paused_parameter_edits_refresh_snapshot_and_preserve_ready_state() {
+    use crate::async_sim::unified::UnifiedModel;
+    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+
+    let ctx = egui::Context::default();
+    let mut lbm = UnifiedSimTool::<LbmUnified>::new();
+    let _ = lbm.controller.update();
+    assert_eq!(lbm.state(), SimWorkerState::Ready);
+    assert!(lbm
+        .controller
+        .send_command(SimCommand::ApplyBrush {
+            cx: 75,
+            cy: 12,
+            r: 2,
+            is_obstacle: true,
+        })
+        .is_ok());
+    let _ = wait_for_fresh_snapshot(&mut lbm);
+
+    let visc_before = *lbm.params.read().unwrap().get("viscosity").unwrap();
+    save_slider_state(
+        &ctx,
+        egui::Id::new(("unified_sim_param", LbmUnified::name(), "viscosity")),
+        AnimatedSliderState {
+            playing: true,
+            direction: 1.0,
+            sweep_mode: SweepMode::Oscillate,
+        },
+    );
+    let raw = egui::RawInput {
+        predicted_dt: 0.1,
+        ..Default::default()
+    };
+    let _ = ctx.run(raw, |ctx| lbm.show(ctx));
+    assert_ne!(
+        *lbm.params.read().unwrap().get("viscosity").unwrap(),
+        visc_before
+    );
+    assert!(wait_for_fresh_snapshot(&mut lbm));
+    assert_eq!(lbm.state(), SimWorkerState::Ready);
+
+    let snap = lbm.controller.latest_snapshot().unwrap();
+    let pixels = snap.pixels.read().unwrap();
+    assert_eq!(
+        pixels[(snap.height - 1 - 12) * snap.width + 75],
+        egui::Color32::from_gray(50)
+    );
+
+    assert_paused_sweep_refreshes::<HodgkinHuxleyUnified>("i_ext");
+    assert_paused_sweep_refreshes::<WaveUnified>("dt");
+}

@@ -207,3 +207,38 @@ fn test_gaussian_splatting_state_persistence_and_legacy_presets() {
         .try_load_state(r#"{"scale":1.0,"camera":{"pitch":0.0,"yaw":0.0,"zoom":150.0}}"#)
         .is_err());
 }
+
+#[test]
+fn test_gaussian_splatting_animated_scale_sweep_updates_density_counts() {
+    use crate::reflective_ui::slider::{
+        has_active_sweeps, reset_frame_sweep_flags, save_slider_state, AnimatedSliderState,
+        SweepMode,
+    };
+
+    let mut tool = GaussianSplattingTool::default();
+    let initial_scale = tool.scale;
+    let ctx = egui::Context::default();
+    save_slider_state(
+        &ctx,
+        egui::Id::new("gaussian_splatting_scale"),
+        AnimatedSliderState {
+            playing: true,
+            direction: 1.0,
+            sweep_mode: SweepMode::Oscillate,
+        },
+    );
+    reset_frame_sweep_flags(&ctx);
+    let _ = ctx.run(
+        egui::RawInput {
+            predicted_dt: 0.1,
+            ..Default::default()
+        },
+        |ctx| tool.show(ctx),
+    );
+    assert!(tool.scale > initial_scale);
+    assert!(has_active_sweeps(&ctx));
+    assert_eq!(
+        tool.cached_counts,
+        GaussianSplattingTool::compute_density_counts_for_scale(tool.scale)
+    );
+}

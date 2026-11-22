@@ -1,6 +1,7 @@
 mod metrics;
 
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::epidemiology::compartmental::SIRModel;
@@ -88,22 +89,47 @@ impl SirTool {
     fn render_parameter_controls(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         changed |= ui
-            .add(egui::Slider::new(&mut self.n, 100.0..=100_000.0).text("Population (N)"))
+            .add(
+                AnimatedSlider::new(&mut self.n, 100.0..=100_000.0)
+                    .hard_bounds(100.0..=100_000.0)
+                    .text("Population (N)")
+                    .id_salt("sir_population_n"),
+            )
             .changed();
+        let max_i0_soft = (self.n / 2.0).max(1.0);
+        let max_i0_hard = self.n.max(1.0);
+        self.i0 = self.i0.clamp(1.0, max_i0_hard);
         changed |= ui
             .add(
-                egui::Slider::new(&mut self.i0, 1.0..=self.n / 2.0)
-                    .text("Initial Infected (I0)"),
+                AnimatedSlider::new(&mut self.i0, 1.0..=max_i0_soft)
+                    .hard_bounds(1.0..=max_i0_hard)
+                    .text("Initial Infected (I0)")
+                    .id_salt("sir_initial_i0"),
             )
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.beta, 0.0..=5.0).text("Transmission Rate (beta)"))
+            .add(
+                AnimatedSlider::new(&mut self.beta, 0.0..=5.0)
+                    .hard_bounds(0.0..=5.0)
+                    .text("Transmission Rate (beta)")
+                    .id_salt("sir_beta"),
+            )
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.gamma, 0.0..=1.0).text("Recovery Rate (gamma)"))
+            .add(
+                AnimatedSlider::new(&mut self.gamma, 0.0..=1.0)
+                    .hard_bounds(0.0..=1.0)
+                    .text("Recovery Rate (gamma)")
+                    .id_salt("sir_gamma"),
+            )
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.duration, 10.0..=365.0).text("Duration (days)"))
+            .add(
+                AnimatedSlider::new(&mut self.duration, MIN_SIR_DURATION..=MAX_SIR_DURATION)
+                    .hard_bounds(MIN_SIR_DURATION..=MAX_SIR_DURATION)
+                    .text("Duration (days)")
+                    .id_salt("sir_duration"),
+            )
             .changed();
         changed
     }
@@ -305,15 +331,22 @@ impl InteractiveTool for SirTool {
     fn show_ui(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
             ui.heading("Parameters");
-            if self.render_parameter_controls(ui) {
-                let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-                let series = vec![
-                    TraceSeries::new("Susceptible", to_pairs(&self.s_points)),
-                    TraceSeries::new("Infected", to_pairs(&self.i_points)),
-                    TraceSeries::new("Recovered", to_pairs(&self.r_points)),
-                ];
-                self.snapshot_manager
-                    .push_history_run(&self.last_param_summary, series);
+            let sweeps_before = crate::reflective_ui::slider::live_active_sweep_count(ui.ctx());
+            let changed = self.render_parameter_controls(ui);
+            let sweep_active =
+                crate::reflective_ui::slider::live_active_sweep_count(ui.ctx()) > sweeps_before;
+            if changed {
+                if !sweep_active {
+                    let to_pairs =
+                        |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+                    let series = vec![
+                        TraceSeries::new("Susceptible", to_pairs(&self.s_points)),
+                        TraceSeries::new("Infected", to_pairs(&self.i_points)),
+                        TraceSeries::new("Recovered", to_pairs(&self.r_points)),
+                    ];
+                    self.snapshot_manager
+                        .push_history_run(&self.last_param_summary, series);
+                }
                 self.recalculate();
             }
 

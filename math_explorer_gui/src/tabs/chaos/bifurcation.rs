@@ -216,6 +216,7 @@ mod tests {
                 AnimatedSliderState {
                     playing: true,
                     direction: 1.0,
+                    ..Default::default()
                 },
             );
         });

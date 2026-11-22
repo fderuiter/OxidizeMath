@@ -94,6 +94,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
+    pub(super) fn refresh_paused_simulation(&mut self, ctx: Option<&egui::Context>) {
+        if self.controller.state().is_ready() {
+            self.stepped_snapshot = None;
+            let _ = self.controller.send_command(SimCommand::Custom(
+                super::SYNC_PARAMETERS_COMMAND.to_string(),
+            ));
+            self.dirty = true;
+            if let Some(c) = ctx {
+                c.request_repaint();
+            }
+        }
+    }
+
     fn handle_recovery_action(
         &mut self,
         action: crate::framework::recovery::RecoveryAction,

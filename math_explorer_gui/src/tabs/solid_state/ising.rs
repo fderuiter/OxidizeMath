@@ -4,6 +4,7 @@ use crate::async_sim::ui::{
 };
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
@@ -97,58 +98,41 @@ impl IsingModelTool {
     }
 
     fn draw_parameter_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if ui
-            .add(
-                egui::Slider::new(&mut self.temperature, 0.1..=10.0)
-                    .text("Temperature (T) - K (relative)"),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .temperature = self.temperature;
+        let t_slider = AnimatedSlider::new(&mut self.temperature, 0.1..=10.0)
+            .hard_bounds(0.1..=10.0)
+            .text("Temperature (T) - K (relative)")
+            .id_salt("ising_temperature");
+        if ui.add(t_slider).changed() {
+            self.params.write().unwrap_or_else(|e| e.into_inner()).temperature = self.temperature;
         }
         ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
 
-        if ui
-            .add(
-                egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .j_coupling = self.j_coupling;
+        let j_slider = AnimatedSlider::new(&mut self.j_coupling, -2.0..=2.0)
+            .hard_bounds(-2.0..=2.0)
+            .text("Coupling Constant (J) - J")
+            .id_salt("ising_j_coupling");
+        if ui.add(j_slider).changed() {
+            self.params.write().unwrap_or_else(|e| e.into_inner()).j_coupling = self.j_coupling;
             self.request_metric_refresh(ctx);
         }
         ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
 
-        if ui
-            .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .h_field = self.h_field;
+        let h_slider = AnimatedSlider::new(&mut self.h_field, -2.0..=2.0)
+            .hard_bounds(-2.0..=2.0)
+            .text("External Field (H) - H")
+            .id_salt("ising_h_field");
+        if ui.add(h_slider).changed() {
+            self.params.write().unwrap_or_else(|e| e.into_inner()).h_field = self.h_field;
             self.request_metric_refresh(ctx);
         }
 
         ui.separator();
-        if ui
-            .add(
-                egui::Slider::new(&mut self.steps_per_frame, 100..=50000)
-                    .text("Simulation Speed (Steps/Frame)")
-                    .logarithmic(true),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .steps_per_frame = self.steps_per_frame;
+        let speed_slider = egui::Slider::new(&mut self.steps_per_frame, 100..=50000)
+            .text("Simulation Speed (Steps/Frame)")
+            .logarithmic(true);
+        if ui.add(speed_slider).changed() {
+            self.params.write().unwrap_or_else(|e| e.into_inner()).steps_per_frame =
+                self.steps_per_frame;
         }
     }
 

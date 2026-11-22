@@ -10,6 +10,8 @@ use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+pub(crate) const SYNC_PARAMETERS_COMMAND: &str = "__sync_parameters__";
+
 #[allow(missing_docs)]
 pub trait UnifiedModel:
     Send
@@ -30,6 +32,14 @@ pub trait UnifiedModel:
 
     /// Process any custom commands (e.g. ApplyBrush). Default is no-op.
     fn process_command(&mut self, _cmd: SimCommand, _params: &HashMap<String, f64>) {}
+
+    /// Synchronizes updated parameters while paused in `SimWorkerState::Ready` without losing state.
+    fn sync_parameters(&mut self, params: &HashMap<String, f64>)
+    where
+        Self: Sized,
+    {
+        *self = Self::new(params);
+    }
 
     /// Return parameter definitions for automatic UI generation.
     fn parameters() -> HashMap<String, ParameterConstraint>
@@ -149,6 +159,9 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
             SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
             SimCommand::Reset => {
                 self.model = M::new(&current_params);
+            }
+            SimCommand::Custom(ref action) if action == SYNC_PARAMETERS_COMMAND => {
+                self.model.sync_parameters(&current_params);
             }
             _ => self.model.process_command(cmd, &current_params),
         }

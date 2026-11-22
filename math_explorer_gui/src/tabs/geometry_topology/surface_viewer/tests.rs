@@ -48,3 +48,82 @@ fn surface_viewer_custom_parametric_union_parameter_cap_preserves_valid_mesh() {
     let preserved_pos = tool.custom_sandbox.build_parametric().position(0.5, 0.5);
     assert!((preserved_pos - baseline_pos).norm() < 1e-12);
 }
+
+fn open_parameters_header(ctx: &egui::Context, tool: &mut SurfaceViewer, screen: Option<egui::Rect>) {
+    let out = ctx.run(
+        egui::RawInput {
+            screen_rect: screen,
+            ..Default::default()
+        },
+        |ctx| tool.show(ctx),
+    );
+    let ak = out.platform_output.accesskit_update.unwrap();
+    let b = ak
+        .nodes
+        .iter()
+        .find(|(_, n)| n.label().unwrap_or("").contains("Parameters"))
+        .and_then(|(_, n)| n.bounds())
+        .expect("Parameters collapsing header must exist");
+    let pos = egui::pos2(((b.x0 + b.x1) * 0.5) as f32, ((b.y0 + b.y1) * 0.5) as f32);
+    let events = vec![
+        egui::Event::PointerMoved(pos),
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        },
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        },
+    ];
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: screen,
+            events,
+            ..Default::default()
+        },
+        |ctx| tool.show(ctx),
+    );
+}
+
+#[test]
+fn surface_viewer_animated_slider_sweeps_continuous_radii() {
+    use crate::reflective_ui::slider::{
+        has_active_sweeps, reset_frame_sweep_flags, save_slider_state, AnimatedSliderState,
+        SweepMode,
+    };
+
+    let mut tool = SurfaceViewer::default();
+    let initial_major = tool.torus_major_radius;
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    save_slider_state(
+        &ctx,
+        egui::Id::new("surface_viewer_torus_major"),
+        AnimatedSliderState {
+            playing: true,
+            direction: 1.0,
+            sweep_mode: SweepMode::Oscillate,
+        },
+    );
+    let screen = Some(egui::Rect::from_min_size(
+        egui::Pos2::ZERO,
+        egui::vec2(1280.0, 800.0),
+    ));
+    open_parameters_header(&ctx, &mut tool, screen);
+    reset_frame_sweep_flags(&ctx);
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: screen,
+            predicted_dt: 0.1,
+            ..Default::default()
+        },
+        |ctx| tool.show(ctx),
+    );
+    assert!(tool.torus_major_radius > initial_major);
+    assert!(has_active_sweeps(&ctx));
+}

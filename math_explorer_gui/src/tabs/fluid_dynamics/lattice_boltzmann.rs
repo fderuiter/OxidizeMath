@@ -122,6 +122,13 @@ impl UnifiedModel for LbmUnified {
         }
     }
 
+    fn sync_parameters(&mut self, params: &HashMap<String, f64>) {
+        let viscosity = *params.get("viscosity").unwrap_or(&0.02);
+        if viscosity.is_finite() && viscosity > 0.0 {
+            self.solver.collision_model.tau = 3.0 * viscosity + 0.5;
+        }
+    }
+
     fn get_snapshot(&self) -> StateSnapshot {
         let width = self.solver.width();
         let height = self.solver.height();

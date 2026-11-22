@@ -145,3 +145,34 @@ fn test_sir_epidemic_peak_and_logistic_fit_r2() {
     );
 }
 
+#[test]
+fn test_sir_animated_slider_sweep_recalculates_without_history_flood() {
+    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+
+    let mut tool = SirTool::default();
+    let initial_beta = tool.beta;
+    let initial_i_peak = tool.i_points.iter().map(|p| p.y).fold(0.0_f64, f64::max);
+
+    let ctx = egui::Context::default();
+    save_slider_state(
+        &ctx,
+        egui::Id::new("sir_beta"),
+        AnimatedSliderState {
+            playing: true,
+            direction: 1.0,
+            sweep_mode: SweepMode::Oscillate,
+        },
+    );
+    let _ = ctx.run(
+        egui::RawInput {
+            predicted_dt: 0.1,
+            ..Default::default()
+        },
+        |ctx| tool.show(ctx),
+    );
+    let updated_i_peak = tool.i_points.iter().map(|p| p.y).fold(0.0_f64, f64::max);
+    assert!(tool.beta > initial_beta);
+    assert_ne!(updated_i_peak, initial_i_peak);
+    assert_eq!(tool.snapshot_manager.history_len(), 0);
+}
+

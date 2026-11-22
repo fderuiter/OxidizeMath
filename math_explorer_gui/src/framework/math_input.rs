@@ -6,7 +6,7 @@ pub mod params;
 #[cfg(test)]
 mod tests;
 
-pub use params::{ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
+pub use params::{ParameterRangeConfig, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
 
 use eframe::egui;
 use math_commons::ast::{parse_equation, CompiledExpr, Expr, ParseError};
@@ -165,6 +165,17 @@ impl MathExpressionInputBar {
     /// Restores parameter values from a deserialized map.
     pub fn set_params_map(&mut self, map: &BTreeMap<String, f64>) {
         self.slider_bank.set_params_map(map);
+    }
+
+    /// Returns an immutable reference to the synthesized [`ParameterSliderBank`].
+    #[must_use]
+    pub const fn slider_bank(&self) -> &ParameterSliderBank {
+        &self.slider_bank
+    }
+
+    /// Returns a mutable reference to the synthesized [`ParameterSliderBank`].
+    pub fn slider_bank_mut(&mut self) -> &mut ParameterSliderBank {
+        &mut self.slider_bank
     }
 
     /// Returns `true` if current input represents a valid, compilable mathematical expression.

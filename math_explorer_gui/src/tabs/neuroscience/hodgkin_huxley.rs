@@ -84,6 +84,23 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         }
     }
 
+    fn sync_parameters(&mut self, params: &HashMap<String, f64>) {
+        self.params.g_na = *params.get("g_na").unwrap_or(&120.0);
+        self.params.g_k = *params.get("g_k").unwrap_or(&36.0);
+        self.params.g_l = *params.get("g_l").unwrap_or(&0.3);
+        self.i_ext = *params.get("i_ext").unwrap_or(&10.0);
+        if let Ok(new_neuron) = HodgkinHuxleyNeuron::builder()
+            .with_initial_v(self.neuron.v())
+            .with_n(self.neuron.n())
+            .with_m(self.neuron.m())
+            .with_h(self.neuron.h())
+            .with_params(self.params.clone())
+            .build()
+        {
+            self.neuron = new_neuron;
+        }
+    }
+
     fn get_snapshot(&self) -> StateSnapshot {
         let mut custom_data = Vec::with_capacity(self.history.len() * 2 + 2);
         for &[t, v] in &self.history {

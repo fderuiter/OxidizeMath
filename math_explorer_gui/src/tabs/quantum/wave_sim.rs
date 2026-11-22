@@ -27,6 +27,7 @@ pub struct WaveUnified {
     hamiltonian: QuantumOperator,
     propagator: QuantumOperator,
     cached_dt: Option<f64>,
+    current_potential_type: f64,
     scratch: DVector<Complex<f64>>,
     potential: DVector<f64>,
     x_axis: Vec<f64>,
@@ -78,6 +79,7 @@ impl UnifiedModel for WaveUnified {
             hamiltonian: QuantumOperator::new(DMatrix::zeros(n_points, n_points)),
             propagator: QuantumOperator::new(DMatrix::zeros(n_points, n_points)),
             cached_dt: None,
+            current_potential_type: potential_type,
             scratch: DVector::from_element(n_points, Complex::new(0.0, 0.0)),
             potential: DVector::zeros(n_points),
             x_axis: Vec::new(),
@@ -134,6 +136,18 @@ impl UnifiedModel for WaveUnified {
                 "psi_norm",
                 "Wave function normalization diverged: non-finite norm encountered.",
             ));
+        }
+    }
+
+    fn sync_parameters(&mut self, params: &HashMap<String, f64>) {
+        let potential_type = *params.get("potential_type").unwrap_or(&0.0);
+        if (potential_type - self.current_potential_type).abs() > 1e-6 {
+            self.current_potential_type = potential_type;
+            self.init_system(potential_type);
+        }
+        let dt = *params.get("dt").unwrap_or(&0.05);
+        if dt.is_finite() && dt > 0.0 && self.cached_dt != Some(dt) {
+            self.cached_dt = None;
         }
     }
 

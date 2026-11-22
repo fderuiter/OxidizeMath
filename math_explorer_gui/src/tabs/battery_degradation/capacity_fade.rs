@@ -1,5 +1,5 @@
 use crate::framework::InteractiveTool;
-use crate::reflective_ui::render_copyable_metric;
+use crate::reflective_ui::{render_copyable_metric, AnimatedSlider};
 use eframe::egui;
 use egui_plot::{HLine, Line, Plot, PlotPoints};
 use math_explorer::applied::battery_degradation::{
@@ -113,15 +113,19 @@ impl CapacityFadeTool {
             ui.heading("Parameters");
             ui.add_space(5.0);
             ui.add(
-                egui::Slider::new(&mut self.dod, 0.0..=100.0)
-                    .text("Depth of Discharge (DoD) - %"),
+                AnimatedSlider::new(&mut self.dod, 0.0..=100.0)
+                    .hard_bounds(0.0..=100.0)
+                    .text("Depth of Discharge (DoD) - %")
+                    .id_salt("capacity_fade_dod"),
             );
             ui.small("Percentage of battery capacity used per cycle.");
             ui.add_space(10.0);
             ui.add_enabled_ui(false, |ui| {
                 ui.add(
-                    egui::Slider::new(&mut self.temperature, -20.0..=60.0)
-                        .text("Temperature (°C)"),
+                    AnimatedSlider::new(&mut self.temperature, -20.0..=60.0)
+                        .hard_bounds(-20.0..=60.0)
+                        .text("Temperature (°C)")
+                        .id_salt("capacity_fade_temperature"),
                 );
             })
             .response
@@ -130,8 +134,10 @@ impl CapacityFadeTool {
             );
             ui.add_space(10.0);
             ui.add(
-                egui::Slider::new(&mut self.cycles_to_simulate, 100.0..=10000.0)
-                    .text("Simulation Range - Cycles"),
+                AnimatedSlider::new(&mut self.cycles_to_simulate, 100.0..=10000.0)
+                    .hard_bounds(100.0..=10000.0)
+                    .text("Simulation Range - Cycles")
+                    .id_salt("capacity_fade_cycles"),
             );
         });
     }
@@ -269,6 +275,34 @@ mod tests {
         )
         .expect("power law fit");
         assert!(fit.r_squared >= 0.99);
+    }
+
+    #[test]
+    fn test_capacity_fade_animated_dod_sweep() {
+        use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+
+        let mut tool = CapacityFadeTool::default();
+        let initial_dod = tool.dod;
+        let ctx = egui::Context::default();
+        save_slider_state(
+            &ctx,
+            egui::Id::new("capacity_fade_dod"),
+            AnimatedSliderState {
+                playing: true,
+                direction: 1.0,
+                sweep_mode: SweepMode::Oscillate,
+            },
+        );
+        let _ = ctx.run(
+            egui::RawInput {
+                predicted_dt: 0.1,
+                ..Default::default()
+            },
+            |ctx| tool.show(ctx),
+        );
+        assert!(tool.dod > initial_dod);
+        let saved = tool.save_state().expect("save_state");
+        assert!(tool.try_load_state(&saved).is_ok());
     }
 }
 

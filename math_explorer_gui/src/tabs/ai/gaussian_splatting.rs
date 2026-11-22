@@ -5,6 +5,7 @@ mod scene;
 
 use crate::accessibility::AccessibleTheoryHover;
 use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Plot3DViewport};
+use crate::reflective_ui::{AnimatedSlider, SweepMode};
 use eframe::egui;
 use egui_plot::{Line, PlotImage, PlotPoint, PlotPoints, Points};
 use math_explorer::ai::gaussian_splatting::{projection, Gaussian2D, Gaussian3D, Scene};
@@ -185,7 +186,14 @@ impl GaussianSplattingTool {
             ui.separator();
             let prev_scale = self.scale;
             if ui
-                .add(egui::Slider::new(&mut self.scale, 0.1..=10.0).text("Scale"))
+                .add(
+                    AnimatedSlider::new(&mut self.scale, 0.1..=10.0)
+                        .hard_bounds(0.1..=10.0)
+                        .speed(1.8)
+                        .sweep_mode(SweepMode::Oscillate)
+                        .text("Scale")
+                        .id_salt("gaussian_splatting_scale"),
+                )
                 .changed()
             {
                 self.scale = if self.scale.is_finite() {

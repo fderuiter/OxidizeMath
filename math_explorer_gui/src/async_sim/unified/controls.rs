@@ -3,6 +3,7 @@
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::SimCommand;
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 
@@ -52,17 +53,24 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ui.label("Model Parameters");
 
         let mut reset_needed = self.draw_presets_and_actions(ui, ctx);
+        let mut slider_changed = false;
         let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
 
         for (name, constraint) in &self.param_metadata {
             if let Some(val) = params_lock.get_mut(name) {
-                reset_needed |= Self::draw_single_parameter(
+                let is_choice = !M::parameter_choices(name).is_empty();
+                let changed = Self::draw_single_parameter(
                     ui,
                     name,
                     constraint,
                     val,
                     self.cached_descs.get(name),
                 );
+                if is_choice {
+                    reset_needed |= changed;
+                } else {
+                    slider_changed |= changed;
+                }
             }
         }
 
@@ -70,6 +78,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation(Some(ctx));
+        } else if slider_changed {
+            self.refresh_paused_simulation(Some(ctx));
         }
     }
 
@@ -109,14 +119,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
             changed
         } else {
-            let slider = egui::Slider::new(val, constraint.min..=constraint.max)
+            let slider = AnimatedSlider::new(val, constraint.min..=constraint.max)
+                .hard_bounds(constraint.min..=constraint.max)
                 .step_by(constraint.step)
-                .text(label);
+                .text(&label)
+                .id_salt(("unified_sim_param", M::name(), name));
             let resp = ui.add(slider);
-            if let Some(desc) = hover_desc {
-                let _ = resp.accessible_hover_text(desc);
-            }
-            false
+            let changed = resp.changed();
+            let resp = if let Some(desc) = hover_desc {
+                resp.accessible_hover_text(desc)
+            } else {
+                resp
+            };
+            changed || resp.changed()
         }
     }
 

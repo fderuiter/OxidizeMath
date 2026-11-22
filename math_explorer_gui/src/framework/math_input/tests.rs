@@ -184,3 +184,175 @@ fn test_parameter_slider_synthesis_persistence_and_last_valid_fallback() {
     assert!(bar.error_message().unwrap().contains("maximum 6"));
     assert!(bar.active_compiled().is_some());
 }
+
+#[test]
+fn test_parameter_slider_bank_custom_bounds_popover_sync_and_unchanged_schema() {
+    use crate::reflective_ui::slider::state::AnimatedSliderSettings;
+    use crate::reflective_ui::slider::{
+        load_slider_settings, resolve_scoped_slider_id, save_slider_settings,
+    };
+
+    let mut bank = ParameterSliderBank::new().with_range(-5.0..=5.0, 1.0);
+    bank.sync_names(&["a".to_string(), "k".to_string()]);
+    bank.set_param_bounds("a", -12.0, 24.0, 0.5);
+
+    assert!(bank.has_custom_bounds("a"));
+    assert!(!bank.has_custom_bounds("k"));
+    assert_eq!(bank.param_bounds("a").min, -12.0);
+    assert_eq!(bank.param_bounds("a").max, 24.0);
+    assert_eq!(bank.param_bounds("a").step, 0.5);
+
+    // Render bank and verify custom bounds seed egui slider settings and export_active_map stays pure f64 map
+    let ctx = egui::Context::default();
+    let mut slider_id_k = egui::Id::NULL;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            bank.ui(ui);
+            let salt_k = egui::Id::new((ui.id(), "math_param_slider", "k"));
+            slider_id_k = resolve_scoped_slider_id(ui, Some(salt_k), "k");
+        });
+    });
+
+    // Simulate user customizing 'k' bounds via the gear popover in egui memory
+    save_slider_settings(
+        &ctx,
+        slider_id_k,
+        AnimatedSliderSettings {
+            min: Some(0.25),
+            max: Some(15.0),
+            step: Some(0.1),
+            speed: Some(2.0),
+        },
+    );
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            bank.ui(ui);
+        });
+    });
+    assert_eq!(bank.param_bounds("k").min, 0.25);
+    assert_eq!(bank.param_bounds("k").max, 15.0);
+    assert_eq!(bank.param_bounds("k").step, 0.1);
+    assert_eq!(load_slider_settings(&ctx, slider_id_k).max, Some(15.0));
+
+    // Formula edit temporarily drops 'a' then re-introduces 'a': custom bounds for both 'a' and 'k' persist
+    bank.sync_names(&["k".to_string(), "m".to_string()]);
+    bank.sync_names(&["a".to_string(), "k".to_string()]);
+    assert_eq!(bank.param_bounds("a").max, 24.0);
+    assert_eq!(bank.param_bounds("k").max, 15.0);
+
+    // Preset / URL map serialization schema remains strictly BTreeMap<String, f64>
+    let exported_json = serde_json::to_string(&bank.export_active_map()).unwrap();
+    assert_eq!(exported_json, r#"{"a":1.0,"k":1.0}"#);
+}
+
+#[cfg(feature = "pure_math")]
+#[test]
+fn test_pure_math_and_geometry_sandboxes_retain_custom_bounds_across_formula_edits() {
+    use crate::tabs::analysis::complex_mapping::ComplexMappingTool;
+    use crate::tabs::analysis::riemann::RiemannIntegrationTool;
+    use crate::tabs::geometry_topology::curvature_heatmap::CurvatureHeatmap;
+    use crate::tabs::geometry_topology::surface_viewer::SurfaceViewer;
+
+    let mut complex = ComplexMappingTool::default();
+    complex.math_input.set_expression("a * z^2 + c");
+    complex
+        .math_input
+        .slider_bank_mut()
+        .set_param_bounds("a", -8.0, 8.0, 0.2);
+    complex.math_input.set_expression("a * exp(z) + b");
+    assert_eq!(complex.math_input.slider_bank().param_bounds("a").max, 8.0);
+
+    let mut riemann = RiemannIntegrationTool::default();
+    riemann.math_input.set_expression("a * x^2 + k");
+    riemann
+        .math_input
+        .slider_bank_mut()
+        .set_param_bounds("a", 0.0, 20.0, 0.5);
+    riemann.math_input.set_expression("a * cos(x)");
+    assert_eq!(riemann.math_input.slider_bank().param_bounds("a").max, 20.0);
+
+    let mut surf = SurfaceViewer::default();
+    surf.custom_sandbox
+        .heightfield_bar
+        .slider_bank_mut()
+        .set_param_bounds("a", -10.0, 10.0, 0.25);
+    surf.custom_sandbox
+        .heightfield_bar
+        .set_expression("a * sin(x) * cos(y) + b");
+    assert_eq!(
+        surf.custom_sandbox
+            .heightfield_bar
+            .slider_bank()
+            .param_bounds("a")
+            .max,
+        10.0
+    );
+    surf.custom_sandbox
+        .param_sliders
+        .set_param_bounds("a", 0.2, 6.0, 0.1);
+    surf.custom_sandbox
+        .param_z_bar
+        .set_expression("a * sin(v) + c * cos(u)");
+    surf.custom_sandbox.recompile_parametric_triple();
+    assert_eq!(surf.custom_sandbox.param_sliders.param_bounds("a").max, 6.0);
+
+    let mut curv = CurvatureHeatmap::default();
+    curv.custom_sandbox
+        .heightfield_bar
+        .slider_bank_mut()
+        .set_param_bounds("a", -6.0, 6.0, 0.1);
+    curv.custom_sandbox
+        .heightfield_bar
+        .set_expression("a * (x^3 - 3 * x * y^2)");
+    assert_eq!(
+        curv.custom_sandbox
+            .heightfield_bar
+            .slider_bank()
+            .param_bounds("a")
+            .max,
+        6.0
+    );
+}
+
+#[cfg(all(feature = "ai", feature = "applied"))]
+#[test]
+fn test_ai_and_game_theory_sandboxes_retain_custom_bounds_across_formula_edits() {
+    use crate::tabs::ai::activation_functions::ActivationFunctionsTool;
+    use crate::tabs::ai::loss_landscape::LossLandscapeTool;
+    use crate::tabs::game_theory::replicator::ReplicatorDynamicsTool;
+
+    let mut activation = ActivationFunctionsTool::default();
+    activation
+        .math_input
+        .set_expression("alpha * tanh(beta * x)");
+    activation
+        .math_input
+        .slider_bank_mut()
+        .set_param_bounds("alpha", 0.1, 12.0, 0.1);
+    activation
+        .math_input
+        .set_expression("alpha / (1 + exp(-x))");
+    assert_eq!(
+        activation
+            .math_input
+            .slider_bank()
+            .param_bounds("alpha")
+            .max,
+        12.0
+    );
+
+    let mut loss = LossLandscapeTool::default();
+    loss.math_input.set_expression("a * x^2 + b * y^2");
+    loss.math_input
+        .slider_bank_mut()
+        .set_param_bounds("a", 0.5, 50.0, 1.0);
+    loss.math_input.set_expression("a * (x - 1)^2 + c * y^2");
+    assert_eq!(loss.math_input.slider_bank().param_bounds("a").max, 50.0);
+
+    let mut rep = ReplicatorDynamicsTool::default();
+    rep.symbolic_sliders.set_param_bounds("V", 0.0, 25.0, 0.5);
+    rep.symbolic_bars[0][0].set_expression("(V - C) / 2 + bonus");
+    let saved = crate::framework::InteractiveTool::save_state(&rep).unwrap();
+    crate::framework::InteractiveTool::try_load_state(&mut rep, &saved).unwrap();
+    assert_eq!(rep.symbolic_sliders.param_bounds("V").max, 25.0);
+}
