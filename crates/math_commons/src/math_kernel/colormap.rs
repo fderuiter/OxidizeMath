@@ -166,6 +166,137 @@ pub fn cyclic_cosine_palette_high_contrast(n: f64) -> [u8; 3] {
     ensure_dark_canvas_contrast(cyclic_cosine_palette(n))
 }
 
+/// Maps normalized signed vorticity `omega_norm` in `[-1.0, 1.0]` to a diverging dark-canvas palette
+/// (cyan-blue clockwise `[-1]` -> slate `[0]` -> coral-amber counter-clockwise `[+1]`).
+///
+/// # Example
+/// ```
+/// use math_commons::math_kernel::colormap::vorticity_color;
+///
+/// let neg = vorticity_color(-1.0);
+/// let pos = vorticity_color(1.0);
+/// assert!(neg[2] > neg[0]);
+/// assert!(pos[0] > pos[2]);
+/// ```
+#[inline]
+#[must_use]
+pub fn vorticity_color(omega_norm: f64) -> [u8; 3] {
+    let w = if omega_norm.is_finite() {
+        omega_norm.clamp(-1.0, 1.0)
+    } else {
+        0.0
+    };
+    if w < 0.0 {
+        let t = -w;
+        let r = (24.0 * (1.0 - t)) as u8;
+        let g = (30.0 + 158.0 * t) as u8;
+        let b = (44.0 + 211.0 * t) as u8;
+        [r, g, b]
+    } else {
+        let t = w;
+        let r = (24.0 + 231.0 * t) as u8;
+        let g = (30.0 + 78.0 * t) as u8;
+        let b = (44.0 * (1.0 - 0.5 * t)) as u8;
+        [r, g, b]
+    }
+}
+
+/// Maps normalized signed vorticity `omega_norm` in `[-1.0, 1.0]` to a crisp light-theme diverging palette
+/// (cobalt `[-1]` -> alabaster `[0]` -> vermilion `[+1]`).
+///
+/// # Example
+/// ```
+/// use math_commons::math_kernel::colormap::vorticity_color_light;
+///
+/// let mid = vorticity_color_light(0.0);
+/// assert!(mid[0] > 230 && mid[1] > 230 && mid[2] > 230);
+/// ```
+#[inline]
+#[must_use]
+pub fn vorticity_color_light(omega_norm: f64) -> [u8; 3] {
+    let w = if omega_norm.is_finite() {
+        omega_norm.clamp(-1.0, 1.0)
+    } else {
+        0.0
+    };
+    if w < 0.0 {
+        let t = -w;
+        let r = (242.0 * (1.0 - t) + 18.0 * t) as u8;
+        let g = (245.0 * (1.0 - t) + 98.0 * t) as u8;
+        let b = (249.0 * (1.0 - t) + 212.0 * t) as u8;
+        [r, g, b]
+    } else {
+        let t = w;
+        let r = (242.0 * (1.0 - t) + 216.0 * t) as u8;
+        let g = (245.0 * (1.0 - t) + 56.0 * t) as u8;
+        let b = (249.0 * (1.0 - t) + 20.0 * t) as u8;
+        [r, g, b]
+    }
+}
+
+/// High-contrast variant of [`vorticity_color`] guaranteed to exceed `3.0:1` contrast on `#000000`.
+///
+/// # Example
+/// ```
+/// use math_commons::math_kernel::colormap::vorticity_color_high_contrast;
+///
+/// let zero = vorticity_color_high_contrast(0.0);
+/// assert!(zero.iter().all(|&c| c > 70));
+/// ```
+#[inline]
+#[must_use]
+pub fn vorticity_color_high_contrast(omega_norm: f64) -> [u8; 3] {
+    ensure_dark_canvas_contrast(vorticity_color(omega_norm))
+}
+
+/// Composites normalized reagent concentration (`[0.0, 1.0]`) with signed vorticity (`[-1.0, 1.0]`)
+/// for dual morphogenesis + fluid shear visualization across Dark, Light, and HighContrast themes.
+///
+/// # Example
+/// ```
+/// use math_commons::math_kernel::colormap::dual_concentration_vorticity_color;
+///
+/// let sample = dual_concentration_vorticity_color(0.5, -0.8, false, true);
+/// assert!(sample.iter().any(|&c| c > 100));
+/// ```
+#[inline]
+#[must_use]
+pub fn dual_concentration_vorticity_color(
+    conc_norm: f64,
+    omega_norm: f64,
+    light_theme: bool,
+    high_contrast: bool,
+) -> [u8; 3] {
+    let c = if conc_norm.is_finite() {
+        conc_norm.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let w = if omega_norm.is_finite() {
+        omega_norm.clamp(-1.0, 1.0)
+    } else {
+        0.0
+    };
+    let base = heatmap_color(c);
+    let vort = if light_theme && !high_contrast {
+        vorticity_color_light(w)
+    } else {
+        vorticity_color(w)
+    };
+    let blend = (w.abs() * 0.65).clamp(0.0, 0.65);
+    let keep = 1.0 - blend;
+    let rgb = [
+        (f64::from(base[0]) * keep + f64::from(vort[0]) * blend) as u8,
+        (f64::from(base[1]) * keep + f64::from(vort[1]) * blend) as u8,
+        (f64::from(base[2]) * keep + f64::from(vort[2]) * blend) as u8,
+    ];
+    if high_contrast {
+        ensure_dark_canvas_contrast(rgb)
+    } else {
+        rgb
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +320,22 @@ mod tests {
             assert!(
                 ratio >= 3.0,
                 "heatmap_color_high_contrast({t:.3}) -> {hc:?} yielded {ratio:.2}:1 (< 3.0:1)"
+            );
+
+            let omega = t * 2.0 - 1.0;
+            let vort_hc = vorticity_color_high_contrast(omega);
+            let vort_ratio = contrast_on_black(vort_hc);
+            assert!(
+                vort_ratio >= 3.0,
+                "vorticity_color_high_contrast({omega:.3}) -> {vort_hc:?} yielded {vort_ratio:.2}:1"
+            );
+
+            let dual_hc = dual_concentration_vorticity_color(t, -omega, false, true);
+            let dual_ratio = contrast_on_black(dual_hc);
+            assert!(
+                dual_ratio >= 3.0,
+                "dual_concentration_vorticity_color({t:.3}, {}) -> {dual_hc:?} yielded {dual_ratio:.2}:1",
+                -omega
             );
         }
 

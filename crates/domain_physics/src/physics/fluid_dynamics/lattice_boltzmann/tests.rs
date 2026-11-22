@@ -76,4 +76,42 @@ mod tests {
             (solver.collision_model.tau - 0.6).abs() < math_commons::registry::TOLERANCE_STANDARD
         );
     }
+
+    #[test]
+    fn test_inlet_propagates_downstream_and_zero_allocation_step() {
+        let width = 40;
+        let height = 20;
+        let mut solver = LatticeBoltzmannD2Q9::new(width, height, 0.56);
+        solver.set_obstacle(8, 10, true);
+
+        let mut ux_row = vec![0.0; width * height];
+        let mut uy_row = vec![0.0; width * height];
+        let mut obs_row = vec![false; width * height];
+
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            for _ in 0..30 {
+                solver.set_inlet(0, 1, 1, height - 2, 0.08, 0.0);
+                solver.step();
+            }
+            solver
+                .state
+                .copy_macroscopic_row_major(&mut ux_row, &mut uy_row, &mut obs_row);
+        });
+
+        let downstream_speed = solver.get_velocity_magnitude(15, 10);
+        assert!(
+            downstream_speed > 1e-4,
+            "Expected non-zero downstream velocity at x=15 within 30 steps, got {downstream_speed}"
+        );
+
+        let obs_idx = math_commons::math_kernel::types::flatten_2d_index(8, 10, width);
+        assert!(obs_row[obs_idx]);
+        assert_eq!(ux_row[obs_idx], 0.0);
+        assert_eq!(uy_row[obs_idx], 0.0);
+
+        let sample_idx = math_commons::math_kernel::types::flatten_2d_index(15, 10, width);
+        let (ux_expected, uy_expected) = solver.get_velocity(15, 10);
+        assert!((ux_row[sample_idx] - ux_expected).abs() < 1e-12);
+        assert!((uy_row[sample_idx] - uy_expected).abs() < 1e-12);
+    }
 }

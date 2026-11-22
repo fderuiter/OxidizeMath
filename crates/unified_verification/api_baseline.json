@@ -2541,6 +2541,77 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: wigner }"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/advection_2d.rs": [
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn buffers_mut (& mut self) -> (& mut [f64] , & mut [f64] , & mut [bool]) }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn cfl_substeps (& self , dt : f64 , d_max : f64 , max_cfl : f64 , max_substeps : usize) -> usize }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn characteristic_length (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn characteristic_speed (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn clear_obstacles (& mut self) }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn clear_velocity (& mut self) }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn compute_vorticity (& self , out : & mut [f64]) }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn dx (& self) -> StepSize }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn dy (& self) -> StepSize }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn grid_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn height (& self) -> Dimension }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn new (width : Dimension , height : Dimension , dx : StepSize , dy : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn obstacles (& self) -> & [bool] }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn obstacles_mut (& mut self) -> & mut [bool] }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn paint_obstacle_disk (& mut self , cx : usize , cy : usize , radius : usize , is_obstacle : bool) }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn set_obstacle (& mut self , x : usize , y : usize , is_obstacle : bool) }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn set_uniform_velocity (& mut self , vx : f64 , vy : f64) }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn velocity_x (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn velocity_x_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn velocity_y (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn velocity_y_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl AdvectionDiffusion2D { pub fn width (& self) -> Dimension }"
+    },
+    {
+      "signature": "pub struct AdvectionDiffusion2D"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/fd1d.rs": [
     {
       "signature": "impl FiniteDifference1D { pub fn new (dx : StepSize) -> Self }"
@@ -2617,6 +2688,9 @@
     },
     {
       "signature": "pub trait SpatialDiffusion < const N : usize > { fn stepper (& self) -> FusedStencilStepper }"
+    },
+    {
+      "signature": "pub use advection_2d :: AdvectionDiffusion2D"
     },
     {
       "signature": "pub use fd1d :: FiniteDifference1D"
@@ -2705,6 +2779,9 @@
       "signature": "pub struct TuringSystem < const N : usize = 2 , K : ReactionKinetics < N > = SchnakenbergKinetics , D : SpatialDiffusion < N > = FiniteDifference1D , S : TuringSolverStrategy < N > = FusedEulerSolver , >"
     },
     {
+      "signature": "pub use reaction :: GrayScottKinetics"
+    },
+    {
       "signature": "pub use reaction :: ReactionKinetics"
     },
     {
@@ -2728,7 +2805,13 @@
   ],
   "crates/domain_biology/src/biology/morphogenesis/reaction.rs": [
     {
+      "signature": "impl GrayScottKinetics { pub fn new (f : f64 , k : f64) -> Self }"
+    },
+    {
       "signature": "impl SchnakenbergKinetics { pub fn new (a : f64 , b : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct GrayScottKinetics"
     },
     {
       "signature": "pub struct SchnakenbergKinetics"
@@ -4096,6 +4179,9 @@
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/state.rs": [
+    {
+      "signature": "impl < const Q : usize > LatticeState < Q > { pub fn copy_macroscopic_row_major (& self , ux_out : & mut [f64] , uy_out : & mut [f64] , obstacles_out : & mut [bool] ,) }"
+    },
     {
       "signature": "impl < const Q : usize > LatticeState < Q > { pub fn density (& self) -> & [f64] }"
     },
@@ -5679,6 +5765,9 @@
       "signature": "pub fn cyclic_cosine_palette_high_contrast (n : f64) -> [u8 ; 3]"
     },
     {
+      "signature": "pub fn dual_concentration_vorticity_color (conc_norm : f64 , omega_norm : f64 , light_theme : bool , high_contrast : bool ,) -> [u8 ; 3]"
+    },
+    {
       "signature": "pub fn ensure_dark_canvas_contrast (rgb : [u8 ; 3]) -> [u8 ; 3]"
     },
     {
@@ -5689,6 +5778,15 @@
     },
     {
       "signature": "pub fn mapped_gradient (value : f64 , min_val : f64 , max_val : f64) -> [u8 ; 3]"
+    },
+    {
+      "signature": "pub fn vorticity_color (omega_norm : f64) -> [u8 ; 3]"
+    },
+    {
+      "signature": "pub fn vorticity_color_high_contrast (omega_norm : f64) -> [u8 ; 3]"
+    },
+    {
+      "signature": "pub fn vorticity_color_light (omega_norm : f64) -> [u8 ; 3]"
     }
   ],
   "crates/math_commons/src/math_kernel/types.rs": [
@@ -6813,10 +6911,16 @@
       "signature": "impl FusedStencilStepper { pub fn step_1d_slice < F > (& self , src : & [f64] , dst : & mut [f64] , dt : f64 , dir : f64 , mut op : F) where F : FnMut (usize , f64 , f64 , f64 , & StencilOperators) -> f64 , }"
     },
     {
+      "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_advection_neumann < const N : usize , F > (& self , dim : (usize , usize) , src : [& [f64] ; N] , dst : [& mut [f64] ; N] , vx : & [f64] , vy : & [f64] , obstacles : & [bool] , dt : f64 , dir : f64 , mut op : F ,) where F : FnMut (usize , [f64 ; 4] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
+    },
+    {
       "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_neumann < const N : usize , F > (& self , dim : (usize , usize) , src : [& [f64] ; N] , dst : [& mut [f64] ; N] , dt : f64 , dir : f64 , mut op : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
     },
     {
       "signature": "impl StencilOperators { pub fn central_diff_1st (& self , prev : f64 , next : f64) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn central_diff_1st_y (& self , up : f64 , down : f64) -> f64 }"
     },
     {
       "signature": "impl StencilOperators { pub fn central_diff_2nd (& self , prev : f64 , curr : f64 , next : f64) -> f64 }"
@@ -6831,7 +6935,22 @@
       "signature": "impl StencilOperators { pub fn new_2d (dx : StepSize , dy : StepSize) -> Self }"
     },
     {
+      "signature": "impl StencilOperators { pub fn upwind_divergence_2d (& self , face_vel : [f64 ; 4] , curr : f64 , left : f64 , right : f64 , up : f64 , down : f64 ,) -> f64 }"
+    },
+    {
       "signature": "impl StencilOperators { pub fn upwind_flux (& self , v : f64 , prev : f64 , curr : f64 , next : f64) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn upwind_flux_2d (& self , vx : f64 , vy : f64 , curr : f64 , left : f64 , right : f64 , up : f64 , down : f64 ,) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn upwind_flux_y (& self , vy : f64 , up : f64 , curr : f64 , down : f64) -> f64 }"
+    },
+    {
+      "signature": "pub fn advection_face_velocities (idx : usize , idx_l : usize , idx_r : usize , idx_u : usize , idx_d : usize , vx : & [f64] , vy : & [f64] ,) -> [f64 ; 4]"
+    },
+    {
+      "signature": "pub fn reflect_2d_neighbors (x : usize , y : usize , width : usize , height : usize , obstacles : & [bool] ,) -> (usize , usize , usize , usize , usize)"
     },
     {
       "signature": "pub struct FusedStencilStepper"

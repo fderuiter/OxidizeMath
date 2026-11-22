@@ -96,4 +96,28 @@ impl<const Q: usize> LatticeState<Q> {
     pub fn obstacles(&self) -> &[bool] {
         self.obstacles.as_slice()
     }
+
+    /// Copies macroscopic velocity components `(ux, uy)` and `obstacles` from column-major
+    /// `DMatrix(height, width)` storage into row-major `(y * width + x)` slices with zero heap allocation.
+    #[verified_engine::verified]
+    pub fn copy_macroscopic_row_major(
+        &self,
+        ux_out: &mut [f64],
+        uy_out: &mut [f64],
+        obstacles_out: &mut [bool],
+    ) {
+        let total = self.width * self.height;
+        assert!(
+            ux_out.len() >= total && uy_out.len() >= total && obstacles_out.len() >= total,
+            "Output buffers must hold at least width * height elements"
+        );
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let dst = math_commons::math_kernel::types::flatten_2d_index(x, y, self.width);
+                ux_out[dst] = self.ux[(y, x)];
+                uy_out[dst] = self.uy[(y, x)];
+                obstacles_out[dst] = self.obstacles[(y, x)];
+            }
+        }
+    }
 }

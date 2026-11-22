@@ -8,23 +8,35 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 #[cfg(test)]
 use eframe::egui::ColorImage;
-#[cfg(test)]
-use math_explorer::biology::diffusion::FiniteDifference2D;
-#[cfg(test)]
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// Theme-aware concentration, vorticity, and dual composite pixel overlays.
+pub mod overlay;
+/// Starter gallery registrations, PRNG helper, and dynamic theory adapter.
 pub mod presets;
+/// Background simulation runner coupling LBM / PotentialFlow to AdvectionDiffusion2D.
 pub mod runner;
+/// Validated serializable state schema for MorphogenesisTool.
+pub mod state;
+/// Interactive tool lifecycle and framework integration.
 pub mod tool;
+/// Coupled reaction, flow, brush, and overlay mode enums and dimensionless metrics.
+pub mod types;
+/// Control panel widgets, dimensionless badges, and interactive canvas brush handling.
 pub mod ui;
 
+#[cfg(test)]
+pub use overlay::render_morphogenesis_overlay;
 pub use presets::SimpleRng;
 #[cfg(test)]
 pub use runner::MorphogenesisRunner;
-pub use runner::MorphogenesisSharedParams;
-pub use tool::{MorphogenesisTool, MorphogenesisToolState};
+pub use state::MorphogenesisToolState;
+pub use tool::MorphogenesisTool;
+pub use types::{
+    MorphogenesisBrushMode, MorphogenesisFlowMode, MorphogenesisKineticsMode,
+    MorphogenesisOverlayMode, MorphogenesisSharedParams,
+};
 
 /// Legacy flat `MorphoState` schema saved by pre-framework `.mws` workspaces.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -77,16 +89,6 @@ impl MorphogenesisTab {
         "biology"
     }
 
-    /// Initializes `system` around its `(a + b, b / (a + b)^2)` steady state with deterministic noise.
-    #[cfg(test)]
-    pub fn initialize_system(
-        system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
-        width: usize,
-        height: usize,
-    ) {
-        MorphogenesisTool::initialize_system(system, width, height);
-    }
-
     /// Maps a 2D concentration slice onto a normalized heatmap [`ColorImage`].
     #[cfg(test)]
     pub fn plot_concentration(data: &[f64], width: usize, height: usize) -> ColorImage {
@@ -119,10 +121,22 @@ impl MorphogenesisTab {
                     dt: s.dt,
                     width: s.width,
                     height: s.height,
+                    kinetics: s.kinetics,
+                    flow_mode: s.flow_mode,
+                    inlet_velocity: s.inlet_velocity,
+                    viscosity: s.viscosity,
+                    circulation: s.circulation,
+                    overlay_mode: s.overlay_mode,
+                    brush_mode: s.brush_mode,
+                    brush_radius: s.brush_radius,
                 };
             }
         }
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let p = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         MorphogenesisPresetConfig {
             a: p.a,
             b: p.b,
@@ -131,6 +145,14 @@ impl MorphogenesisTab {
             dt: p.dt,
             width: 100,
             height: 100,
+            kinetics: p.kinetics,
+            flow_mode: p.flow_mode,
+            inlet_velocity: p.inlet_velocity,
+            viscosity: p.viscosity,
+            circulation: p.circulation,
+            overlay_mode: p.overlay_mode,
+            brush_mode: p.brush_mode,
+            brush_radius: p.brush_radius,
         }
     }
 
@@ -157,6 +179,14 @@ impl MorphogenesisTab {
             dt: config.dt,
             width: config.width,
             height: config.height,
+            kinetics: config.kinetics,
+            flow_mode: config.flow_mode,
+            inlet_velocity: config.inlet_velocity,
+            viscosity: config.viscosity,
+            circulation: config.circulation,
+            overlay_mode: config.overlay_mode,
+            brush_mode: config.brush_mode,
+            brush_radius: config.brush_radius,
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
@@ -211,7 +241,7 @@ impl MorphogenesisTab {
         else {
             return true;
         };
-        current_state.dt = legacy.dt.clamp(1e-4, 0.1);
+        current_state.dt = legacy.dt.clamp(1e-4, 1.0);
         current_state.state = legacy.state;
         current_state.paused = legacy.paused;
         current_state.pending_initial_start = legacy.pending_initial_start;
@@ -228,7 +258,14 @@ impl MorphogenesisTab {
 impl FiniteStateGuard for MorphogenesisTab {
     fn is_finite_state(&self) -> bool {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        p.a.is_finite() && p.b.is_finite() && p.d_u.is_finite() && p.d_v.is_finite() && p.dt.is_finite()
+        p.a.is_finite()
+            && p.b.is_finite()
+            && p.d_u.is_finite()
+            && p.d_v.is_finite()
+            && p.dt.is_finite()
+            && p.inlet_velocity.is_finite()
+            && p.viscosity.is_finite()
+            && p.circulation.is_finite()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -242,27 +279,26 @@ impl FiniteStateGuard for MorphogenesisTab {
     fn auto_scale_step_size(&mut self) {
         let mut cfg = self.export_config();
         let current_dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
-        cfg.dt = (current_dt * 0.5).clamp(1e-4, 0.1);
+        cfg.dt = (current_dt * 0.5).clamp(1e-4, 1.0);
         let _ = self.apply_config(cfg);
     }
 
     fn clamp_parameters(&mut self) {
-        let (a, b, d_u, d_v, dt) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (
-                p.a.clamp(0.0, 1.0),
-                p.b.clamp(0.0, 2.0),
-                p.d_u.clamp(0.1, 5.0),
-                p.d_v.clamp(10.0, 200.0),
-                p.dt.clamp(0.001, 0.1),
-            )
-        };
+        let p = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let mut cfg = self.export_config();
-        cfg.a = a;
-        cfg.b = b;
-        cfg.d_u = d_u;
-        cfg.d_v = d_v;
-        cfg.dt = dt;
+        cfg.a = p.a.clamp(0.0, 1.0);
+        cfg.b = p.b.clamp(0.0, 2.0);
+        cfg.d_u = p.d_u.clamp(0.01, 5.0);
+        cfg.d_v = p.d_v.clamp(0.01, 200.0);
+        cfg.dt = p.dt.clamp(0.001, 1.0);
+        cfg.inlet_velocity = p.inlet_velocity.clamp(0.0, 2.0);
+        cfg.viscosity = p.viscosity.clamp(0.003, 0.5);
+        cfg.circulation = p.circulation.clamp(-25.0, 25.0);
+        cfg.brush_radius = p.brush_radius.clamp(1, 25);
         let _ = self.apply_config(cfg);
     }
 
@@ -273,6 +309,11 @@ impl FiniteStateGuard for MorphogenesisTab {
         cfg.d_u = 1.0;
         cfg.d_v = 100.0;
         cfg.dt = 0.05;
+        cfg.kinetics = MorphogenesisKineticsMode::Schnakenberg;
+        cfg.flow_mode = MorphogenesisFlowMode::None;
+        cfg.inlet_velocity = 0.0;
+        cfg.viscosity = 0.02;
+        cfg.circulation = 0.0;
         let _ = self.apply_config(cfg);
     }
 }
@@ -317,7 +358,8 @@ impl ExplorerTab for MorphogenesisTab {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.framework.import_url_preset_json(tool_id, preset_json)?;
+        self.framework
+            .import_url_preset_json(tool_id, preset_json)?;
         let cfg = self.export_config();
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.a = cfg.a;
@@ -325,11 +367,23 @@ impl ExplorerTab for MorphogenesisTab {
         p.d_u = cfg.d_u;
         p.d_v = cfg.d_v;
         p.dt = cfg.dt;
+        p.kinetics = cfg.kinetics;
+        p.flow_mode = cfg.flow_mode;
+        p.inlet_velocity = cfg.inlet_velocity;
+        p.viscosity = cfg.viscosity;
+        p.circulation = cfg.circulation;
+        p.overlay_mode = cfg.overlay_mode;
+        p.brush_mode = cfg.brush_mode;
+        p.brush_radius = cfg.brush_radius;
         Ok(())
     }
 }
 
 #[cfg(test)]
+mod coupled_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests;
 
 // [cite:favorite_child]

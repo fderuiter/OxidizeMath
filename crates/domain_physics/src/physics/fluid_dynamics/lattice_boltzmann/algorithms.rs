@@ -72,12 +72,15 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
         }
     }
 
-    /// Performs one simulation step (Stream -> Collision).
+    /// Performs one simulation step (Stream -> Collision -> Swap).
     #[verified_engine::verified]
     pub fn step(&mut self) {
         self.stream();
         self.boundary_conditions(); // Apply macroscopic BCs if any
         self.macroscopic_and_collision();
+        pure_math::pure_math::analysis::evolution::DoubleBufferedState::swap_buffers(
+            &mut self.state,
+        );
     }
 
     /// Fused Macroscopic + Collision step.
@@ -429,9 +432,6 @@ impl SimulationModel for LatticeBoltzmannD2Q9<BgkCollision> {
     #[verified_engine::verified(opt_out = "inherent method call false positive")]
     fn step(&mut self) -> Result<(), Self::Error> {
         self.step();
-        pure_math::pure_math::analysis::evolution::DoubleBufferedState::swap_buffers(
-            &mut self.state,
-        );
         Ok(())
     }
 

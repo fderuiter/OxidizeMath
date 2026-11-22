@@ -129,6 +129,7 @@ fn test_morphogenesis_preset_config_roundtrip() {
         dt: 0.02,
         width: 80,
         height: 80,
+        ..MorphogenesisPresetConfig::default()
     };
 
     let json = serialize_preset_envelope("Stripes Test", "biology", &config).unwrap();

@@ -10,7 +10,11 @@ pub struct StencilOperators {
     #[allow(missing_docs)]
     pub inv_dx: f64,
     #[allow(missing_docs)]
+    pub inv_dy: f64,
+    #[allow(missing_docs)]
     pub inv_two_dx: f64,
+    #[allow(missing_docs)]
+    pub inv_two_dy: f64,
     #[allow(missing_docs)]
     pub inv_dx_sq: f64,
     #[allow(missing_docs)]
@@ -30,24 +34,35 @@ impl StencilOperators {
         assert!(*dx > 0.0, "Step size dx must be positive and non-zero");
         assert!(*dy > 0.0, "Step size dy must be positive and non-zero");
         let inv_dx = 1.0 / *dx;
+        let inv_dy = 1.0 / *dy;
         let inv_two_dx = 1.0 / (2.0 * *dx);
+        let inv_two_dy = 1.0 / (2.0 * *dy);
         let inv_dx_sq = 1.0 / (*dx * *dx);
         let inv_dy_sq = 1.0 / (*dy * *dy);
         Self {
             dx,
             dy,
             inv_dx,
+            inv_dy,
             inv_two_dx,
+            inv_two_dy,
             inv_dx_sq,
             inv_dy_sq,
         }
     }
 
-    /// Central difference for 1st derivative (gradient): (u_{i+1} - u_{i-1}) / 2dx
+    /// Central difference for 1st derivative in X: `(next - prev) / (2 * dx)`.
     #[inline(always)]
     #[verified_engine::verified]
     pub fn central_diff_1st(&self, prev: f64, next: f64) -> f64 {
         (next - prev) * self.inv_two_dx
+    }
+
+    /// Central difference for 1st derivative in Y: `(down - up) / (2 * dy)`.
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn central_diff_1st_y(&self, up: f64, down: f64) -> f64 {
+        (down - up) * self.inv_two_dy
     }
 
     /// Central difference for 2nd derivative (Laplacian) in 1D.
@@ -66,8 +81,7 @@ impl StencilOperators {
         d2x + d2y
     }
 
-    /// Upwind scheme for advection flux: evaluates d/dx (v * m) or similar upwind terms.
-    /// `v` is the drift velocity. Returns the first derivative approximation based on upwind direction.
+    /// Upwind scheme for 1D X-advection flux: evaluates `d/dx (v * c)` with donor-cell selection.
     #[inline(always)]
     #[verified_engine::verified]
     pub fn upwind_flux(&self, v: f64, prev: f64, curr: f64, next: f64) -> f64 {
@@ -77,6 +91,131 @@ impl StencilOperators {
             (next * v - curr * v) * self.inv_dx
         }
     }
+
+    /// Upwind scheme for 1D Y-advection flux: evaluates `d/dy (vy * c)` with donor-cell selection.
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn upwind_flux_y(&self, vy: f64, up: f64, curr: f64, down: f64) -> f64 {
+        if vy > 0.0 {
+            (curr * vy - up * vy) * self.inv_dy
+        } else {
+            (down * vy - curr * vy) * self.inv_dy
+        }
+    }
+
+    /// First-order 2D upwind directional advection operator `vx * dc/dx + vy * dc/dy`.
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    #[verified_engine::verified]
+    pub fn upwind_flux_2d(
+        &self,
+        vx: f64,
+        vy: f64,
+        curr: f64,
+        left: f64,
+        right: f64,
+        up: f64,
+        down: f64,
+    ) -> f64 {
+        self.upwind_flux(vx, left, curr, right) + self.upwind_flux_y(vy, up, curr, down)
+    }
+
+    /// Conservative 2D donor-cell flux divergence across `[west, east, up, down]` cell faces.
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn upwind_divergence_2d(
+        &self,
+        face_vel: [f64; 4],
+        curr: f64,
+        left: f64,
+        right: f64,
+        up: f64,
+        down: f64,
+    ) -> f64 {
+        let flux_w = if face_vel[0] >= 0.0 {
+            face_vel[0] * left
+        } else {
+            face_vel[0] * curr
+        };
+        let flux_e = if face_vel[1] >= 0.0 {
+            face_vel[1] * curr
+        } else {
+            face_vel[1] * right
+        };
+        let flux_n = if face_vel[2] >= 0.0 {
+            face_vel[2] * up
+        } else {
+            face_vel[2] * curr
+        };
+        let flux_s = if face_vel[3] >= 0.0 {
+            face_vel[3] * curr
+        } else {
+            face_vel[3] * down
+        };
+        (flux_e - flux_w) * self.inv_dx + (flux_s - flux_n) * self.inv_dy
+    }
+}
+
+/// Computes `(idx, left, right, up, down)` row-major indices with zero-flux reflection at domain
+/// edges and solid `obstacles` cells.
+#[inline(always)]
+#[verified_engine::verified]
+pub fn reflect_2d_neighbors(
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    obstacles: &[bool],
+) -> (usize, usize, usize, usize, usize) {
+    let idx = flatten_2d_index(x, y, width);
+    let cand_l = if x > 0 { idx - 1 } else { idx };
+    let cand_r = if x + 1 < width { idx + 1 } else { idx };
+    let cand_u = if y > 0 { idx - width } else { idx };
+    let cand_d = if y + 1 < height { idx + width } else { idx };
+    let is_obs = |i: usize| i < obstacles.len() && obstacles[i];
+    let idx_l = if is_obs(cand_l) { idx } else { cand_l };
+    let idx_r = if is_obs(cand_r) { idx } else { cand_r };
+    let idx_u = if is_obs(cand_u) { idx } else { cand_u };
+    let idx_d = if is_obs(cand_d) { idx } else { cand_d };
+    (idx, idx_l, idx_r, idx_u, idx_d)
+}
+
+/// Computes `[west, east, up, down]` normal face velocities, enforcing zero normal velocity at
+/// reflected domain boundaries and solid obstacle interfaces.
+#[inline(always)]
+#[verified_engine::verified]
+pub fn advection_face_velocities(
+    idx: usize,
+    idx_l: usize,
+    idx_r: usize,
+    idx_u: usize,
+    idx_d: usize,
+    vx: &[f64],
+    vy: &[f64],
+) -> [f64; 4] {
+    let ux_c = if idx < vx.len() { vx[idx] } else { 0.0 };
+    let uy_c = if idx < vy.len() { vy[idx] } else { 0.0 };
+    let vw = if idx_l == idx || idx_l >= vx.len() {
+        0.0
+    } else {
+        0.5 * (vx[idx_l] + ux_c)
+    };
+    let ve = if idx_r == idx || idx_r >= vx.len() {
+        0.0
+    } else {
+        0.5 * (ux_c + vx[idx_r])
+    };
+    let vn = if idx_u == idx || idx_u >= vy.len() {
+        0.0
+    } else {
+        0.5 * (vy[idx_u] + uy_c)
+    };
+    let vs = if idx_d == idx || idx_d >= vy.len() {
+        0.0
+    } else {
+        0.5 * (uy_c + vy[idx_d])
+    };
+    [vw, ve, vn, vs]
 }
 
 /// A generic Fused Stencil Stepper for performance-optimized grid updates.
@@ -257,64 +396,80 @@ impl FusedStencilStepper {
             }
         }
     }
+
+    /// Applies a 2D fused advection-diffusion-reaction stencil pass with zero-flux reflection at
+    /// domain boundaries and solid `obstacles` cells.
+    #[allow(clippy::too_many_arguments)]
+    #[verified_engine::verified]
+    pub fn step_2d_coupled_advection_neumann<const N: usize, F>(
+        &self,
+        dim: (usize, usize),
+        src: [&[f64]; N],
+        dst: [&mut [f64]; N],
+        vx: &[f64],
+        vy: &[f64],
+        obstacles: &[bool],
+        dt: f64,
+        dir: f64,
+        mut op: F,
+    ) where
+        F: FnMut(
+            usize,
+            [f64; 4],
+            [f64; N],
+            [f64; N],
+            [f64; N],
+            [f64; N],
+            [f64; N],
+            &StencilOperators,
+        ) -> [f64; N],
+    {
+        let (width, height) = dim;
+        if width == 0 || height == 0 {
+            return;
+        }
+        let get_state = |idx| {
+            let mut val = [0.0; N];
+            for s in 0..N {
+                if idx < src[s].len() {
+                    val[s] = src[s][idx];
+                }
+            }
+            val
+        };
+        for y in 0..height {
+            for x in 0..width {
+                let (idx, idx_l, idx_r, idx_u, idx_d) =
+                    reflect_2d_neighbors(x, y, width, height, obstacles);
+                let curr = get_state(idx);
+                if idx < obstacles.len() && obstacles[idx] {
+                    for s in 0..N {
+                        if idx < dst[s].len() {
+                            dst[s][idx] = curr[s];
+                        }
+                    }
+                    continue;
+                }
+                let face_vel = advection_face_velocities(idx, idx_l, idx_r, idx_u, idx_d, vx, vy);
+                let rhs = op(
+                    idx,
+                    face_vel,
+                    curr,
+                    get_state(idx_l),
+                    get_state(idx_r),
+                    get_state(idx_u),
+                    get_state(idx_d),
+                    &self.ops,
+                );
+                for s in 0..N {
+                    if idx < dst[s].len() {
+                        dst[s][idx] = curr[s] + dir * dt * rhs[s];
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_stencil_operators_precomputation() {
-        let ops = StencilOperators::new_2d(StepSize(0.5), StepSize(0.25));
-        assert!((ops.inv_dx - 2.0).abs() < 1e-12);
-        assert!((ops.inv_two_dx - 1.0).abs() < 1e-12);
-        assert!((ops.inv_dx_sq - 4.0).abs() < 1e-12);
-        assert!((ops.inv_dy_sq - 16.0).abs() < 1e-12);
-
-        let ops_1d = StencilOperators::new(StepSize(2.0));
-        assert!((ops_1d.inv_dx - 0.5).abs() < 1e-12);
-        assert!((ops_1d.inv_two_dx - 0.25).abs() < 1e-12);
-        assert!((ops_1d.inv_dx_sq - 0.25).abs() < 1e-12);
-        assert!((ops_1d.inv_dy_sq - 1.0).abs() < 1e-12);
-    }
-
-    #[test]
-    #[should_panic(expected = "Step size dx must be positive and non-zero")]
-    fn test_stencil_operators_invalid_dx() {
-        StencilOperators::new(StepSize(0.0));
-    }
-
-    #[test]
-    #[should_panic(expected = "Step size dy must be positive and non-zero")]
-    fn test_stencil_operators_invalid_dy() {
-        StencilOperators::new_2d(StepSize(1.0), StepSize(-0.5));
-    }
-
-    #[test]
-    fn test_stencil_operator_evaluations() {
-        let dx = 0.2;
-        let dy = 0.4;
-        let ops = StencilOperators::new_2d(StepSize(dx), StepSize(dy));
-
-        let cd1 = ops.central_diff_1st(1.0, 3.0);
-        let cd1_expected = (3.0 - 1.0) / (2.0 * dx);
-        assert!((cd1 - cd1_expected).abs() < 1e-12);
-
-        let cd2 = ops.central_diff_2nd(1.0, 4.0, 9.0);
-        let cd2_expected = (9.0 - 2.0 * 4.0 + 1.0) / (dx * dx);
-        assert!((cd2 - cd2_expected).abs() < 1e-12);
-
-        let cd2_2d = ops.central_diff_2nd_2d(5.0, 2.0, 8.0, 3.0, 7.0);
-        let d2x_expected = (8.0 - 2.0 * 5.0 + 2.0) / (dx * dx);
-        let d2y_expected = (7.0 - 2.0 * 5.0 + 3.0) / (dy * dy);
-        assert!((cd2_2d - (d2x_expected + d2y_expected)).abs() < 1e-12);
-
-        let flux_pos = ops.upwind_flux(2.0, 1.0, 3.0, 5.0);
-        let flux_pos_expected = (3.0 * 2.0 - 1.0 * 2.0) / dx;
-        assert!((flux_pos - flux_pos_expected).abs() < 1e-12);
-
-        let flux_neg = ops.upwind_flux(-2.0, 1.0, 3.0, 5.0);
-        let flux_neg_expected = (5.0 * (-2.0) - 3.0 * (-2.0)) / dx;
-        assert!((flux_neg - flux_neg_expected).abs() < 1e-12);
-    }
-}
+mod tests;

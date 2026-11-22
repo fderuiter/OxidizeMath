@@ -77,13 +77,13 @@ pub fn checked_ode_step_count(dt: f64, total_time: f64) -> Option<usize> {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct MorphogenesisPresetConfig {
-    /// Reaction kinetic parameter a.
+    /// Reaction kinetic parameter a (or Gray-Scott feed rate f).
     pub a: f64,
-    /// Reaction kinetic parameter b.
+    /// Reaction kinetic parameter b (or Gray-Scott kill rate k).
     pub b: f64,
-    /// Diffusion coefficient for activator (u).
+    /// Diffusion coefficient for activator/substrate (u).
     pub d_u: f64,
-    /// Diffusion coefficient for inhibitor (v).
+    /// Diffusion coefficient for inhibitor/autocatalyst (v).
     pub d_v: f64,
     /// Simulation time step size.
     pub dt: f64,
@@ -91,6 +91,68 @@ pub struct MorphogenesisPresetConfig {
     pub width: usize,
     /// Grid height.
     pub height: usize,
+    /// Reaction kinetics model (`"Schnakenberg"` or `"GrayScott"`).
+    #[cfg(feature = "biology")]
+    #[serde(default)]
+    pub kinetics: crate::tabs::morphogenesis::MorphogenesisKineticsMode,
+    /// Coupled hydrodynamic flow mode (`"None"`, `"LbmVortexWake"`, `"PotentialFlow"`).
+    #[cfg(feature = "biology")]
+    #[serde(default)]
+    pub flow_mode: crate::tabs::morphogenesis::MorphogenesisFlowMode,
+    /// Horizontal inlet/freestream velocity magnitude.
+    #[serde(default)]
+    pub inlet_velocity: f64,
+    /// Kinematic fluid viscosity `\nu` for LBM BGK relaxation (`\tau = 3\nu + 0.5`).
+    #[serde(default = "default_preset_viscosity")]
+    pub viscosity: f64,
+    /// Circulation strength `\Gamma` for analytical potential flow vortex.
+    #[serde(default)]
+    pub circulation: f64,
+    /// Visualization overlay mode (`"Concentration"`, `"Vorticity"`, `"DualOverlay"`).
+    #[cfg(feature = "biology")]
+    #[serde(default)]
+    pub overlay_mode: crate::tabs::morphogenesis::MorphogenesisOverlayMode,
+    /// Active sculpting brush mode.
+    #[cfg(feature = "biology")]
+    #[serde(default)]
+    pub brush_mode: crate::tabs::morphogenesis::MorphogenesisBrushMode,
+    /// Sculpting brush radius in grid cells.
+    #[serde(default = "default_preset_brush_radius")]
+    pub brush_radius: i32,
+}
+
+fn default_preset_viscosity() -> f64 {
+    0.02
+}
+
+fn default_preset_brush_radius() -> i32 {
+    3
+}
+
+impl Default for MorphogenesisPresetConfig {
+    fn default() -> Self {
+        Self {
+            a: 0.1,
+            b: 0.9,
+            d_u: 1.0,
+            d_v: 100.0,
+            dt: 0.05,
+            width: 100,
+            height: 100,
+            #[cfg(feature = "biology")]
+            kinetics: crate::tabs::morphogenesis::MorphogenesisKineticsMode::default(),
+            #[cfg(feature = "biology")]
+            flow_mode: crate::tabs::morphogenesis::MorphogenesisFlowMode::default(),
+            inlet_velocity: 0.0,
+            viscosity: default_preset_viscosity(),
+            circulation: 0.0,
+            #[cfg(feature = "biology")]
+            overlay_mode: crate::tabs::morphogenesis::MorphogenesisOverlayMode::default(),
+            #[cfg(feature = "biology")]
+            brush_mode: crate::tabs::morphogenesis::MorphogenesisBrushMode::default(),
+            brush_radius: default_preset_brush_radius(),
+        }
+    }
 }
 
 /// Configuration struct for Replicator Dynamics evolutionary game parameters.

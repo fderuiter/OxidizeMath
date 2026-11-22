@@ -2,31 +2,10 @@ use super::*;
 
 #[test]
 fn test_morphogenesis_runner_offload() {
-    use crate::tabs::morphogenesis::{
-        MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
-    };
-    use math_explorer::biology::diffusion::FiniteDifference2D;
-    use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+    use crate::tabs::morphogenesis::{MorphogenesisSharedParams, MorphogenesisTab};
 
     let width = 20;
     let height = 20;
-    let kinetics = SchnakenbergKinetics { a: 0.1, b: 0.9 };
-    let diffusion = FiniteDifference2D::new(
-        math_explorer::math_kernel::types::Dimension(width),
-        math_explorer::math_kernel::types::Dimension(height),
-        math_explorer::math_kernel::types::StepSize(1.0),
-        math_explorer::math_kernel::types::StepSize(1.0),
-    );
-
-    let mut system = TuringSystem::new_with_kinetics(
-        math_explorer::math_kernel::types::Dimension(width * height),
-        math_explorer::biology::morphogenesis::DiffusionCoeff(1.0),
-        math_explorer::biology::morphogenesis::DiffusionCoeff(100.0),
-        kinetics,
-        diffusion,
-    );
-    MorphogenesisTab::initialize_system(&mut system, width, height);
-
     let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
         a: 0.1,
         b: 0.9,
@@ -34,14 +13,10 @@ fn test_morphogenesis_runner_offload() {
         d_v: 100.0,
         dt: 0.05,
         high_contrast: false,
+        ..MorphogenesisSharedParams::default()
     }));
 
-    let mut runner = MorphogenesisRunner {
-        system,
-        params: Arc::clone(&params),
-        width,
-        height,
-    };
+    let mut runner = MorphogenesisTab::create_runner(&params, width, height);
 
     let snap_before = runner.get_snapshot();
     assert_eq!(snap_before.width, 20);
