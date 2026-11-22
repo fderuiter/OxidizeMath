@@ -65,7 +65,7 @@ fn test_all_registered_tools_have_starter_presets() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 62, "Expected 62 registered starter presets");
+    assert_eq!(presets.len(), 69, "Expected 69 registered starter presets");
 
     for tool in &tools {
         let matching: Vec<_> = presets
@@ -225,8 +225,8 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
         .collect();
     assert_eq!(
         presets.len(),
-        62,
-        "Expected 62 StarterPresetMetadata entries"
+        69,
+        "Expected 69 StarterPresetMetadata entries"
     );
 
     for preset in presets {
