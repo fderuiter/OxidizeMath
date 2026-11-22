@@ -4,6 +4,7 @@ use eframe::egui;
 
 pub mod bankroll_growth;
 pub mod bet_size;
+pub mod parrondo;
 
 pub struct FinancialMathTab {
     framework: crate::framework::SimulationFramework,

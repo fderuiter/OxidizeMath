@@ -7916,10 +7916,191 @@
       "signature": "pub use num_traits :: ToPrimitive"
     },
     {
+      "signature": "pub use parrondo :: ParrondoEnsemble"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoGame"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoParams"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoPhaseGridConfig"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoPhasePoint"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoReport"
+    },
+    {
+      "signature": "pub use parrondo :: ParrondoSchedule"
+    },
+    {
+      "signature": "pub use parrondo :: solve_parrondo_ratchet"
+    },
+    {
       "signature": "pub use tensor :: TransitionTensor"
     },
     {
       "signature": "pub use time_index :: TimeIndex"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/parrondo.rs": [
+    {
+      "signature": "impl ParrondoParams { pub fn canonical () -> Self }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn epsilon (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn modulus (& self) -> usize }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn new (modulus : usize , p_a_base : f64 , p_b0_base : f64 , p_b1_base : f64 , epsilon : f64 ,) -> Result < Self > }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_a (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_a_base (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_b0 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_b0_base (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_b1 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn p_b1_base (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoParams { pub fn win_probability (& self , game : ParrondoGame , residue : usize) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoReport { pub fn is_paradox (& self) -> bool }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn abb () -> Self }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn as_string (& self) -> String }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn parse (spec : & str) -> Result < Self > }"
+    },
+    {
+      "signature": "impl ParrondoSchedule { pub fn steps (& self) -> & [ParrondoGame] }"
+    },
+    {
+      "signature": "pub const ALLOWED_MODULI : [usize ; 4] = [3 , 5 , 7 , 9]"
+    },
+    {
+      "signature": "pub const MAX_MODULUS : usize = 9"
+    },
+    {
+      "signature": "pub const MAX_SCHEDULE_LEN : usize = 16"
+    },
+    {
+      "signature": "pub enum ParrondoGame"
+    },
+    {
+      "signature": "pub fn build_game_a_matrix (params : & ParrondoParams) -> DMatrix < f64 >"
+    },
+    {
+      "signature": "pub fn build_game_b_matrix (params : & ParrondoParams) -> DMatrix < f64 >"
+    },
+    {
+      "signature": "pub fn build_mixture_matrix (p_a : & DMatrix < f64 > , p_b : & DMatrix < f64 >) -> Result < DMatrix < f64 > >"
+    },
+    {
+      "signature": "pub fn build_schedule_matrix (p_a : & DMatrix < f64 > , p_b : & DMatrix < f64 > , schedule : & ParrondoSchedule ,) -> Result < DMatrix < f64 > >"
+    },
+    {
+      "signature": "pub fn detailed_balance_violation (transition : & DMatrix < f64 > , pi : & DVector < f64 >) -> f64"
+    },
+    {
+      "signature": "pub fn lazy_stationary_distribution (transition : & DMatrix < f64 >) -> Result < DVector < f64 > >"
+    },
+    {
+      "signature": "pub fn solve_parrondo_ratchet (params : & ParrondoParams , schedule : & ParrondoSchedule ,) -> Result < ParrondoReport >"
+    },
+    {
+      "signature": "pub struct ParrondoParams"
+    },
+    {
+      "signature": "pub struct ParrondoReport"
+    },
+    {
+      "signature": "pub struct ParrondoSchedule"
+    },
+    {
+      "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
+    },
+    {
+      "signature": "pub use ensemble :: ParrondoEnsemble"
+    },
+    {
+      "signature": "pub use ensemble :: ParrondoPhaseGridConfig"
+    },
+    {
+      "signature": "pub use ensemble :: ParrondoPhasePoint"
+    },
+    {
+      "signature": "pub use ensemble :: scan_parrondo_phase_region"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/parrondo/ensemble.rs": [
+    {
+      "signature": "impl ParrondoEnsemble { pub fn mean_trajectory (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn occupancy_counts (& self , modulus : usize) -> & [u64] }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn simulate_mixture (& mut self , params : & ParrondoParams , num_steps : usize , rng : & mut OxidizeRng ,) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn simulate_pure_game (& mut self , params : & ParrondoParams , game : ParrondoGame , num_steps : usize , rng : & mut OxidizeRng ,) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn simulate_schedule (& mut self , params : & ParrondoParams , schedule : & ParrondoSchedule , num_steps : usize , rng : & mut OxidizeRng ,) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn step_game (& mut self , params : & ParrondoParams , game : ParrondoGame , rng : & mut OxidizeRng ,) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn step_mixture (& mut self , params : & ParrondoParams , rng : & mut OxidizeRng) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn wealth (& self) -> & [i64] }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn with_capacity (num_walkers : usize , max_steps : usize) -> Result < Self > }"
+    },
+    {
+      "signature": "pub fn scan_parrondo_phase_region (config : & ParrondoPhaseGridConfig , schedule : & ParrondoSchedule ,) -> Result < Vec < ParrondoPhasePoint > >"
+    },
+    {
+      "signature": "pub struct ParrondoEnsemble"
+    },
+    {
+      "signature": "pub struct ParrondoPhaseGridConfig"
+    },
+    {
+      "signature": "pub struct ParrondoPhasePoint"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/tensor.rs": [
