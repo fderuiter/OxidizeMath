@@ -4787,6 +4787,9 @@
   ],
   "crates/domain_physics/src/physics/mri/bloch.rs": [
     {
+      "signature": "impl BlochSimulator { pub fn advance_isochromat_grid < const K : usize > (& mut self , spins : & mut [[Vector3 < f64 > ; K]] , rho : & [f64] , exp_t1 : & [f64] , exp_t2 : & [f64] , delta_b0 : & [f64] , spread_frac : f64 , dt : f64 ,) }"
+    },
+    {
       "signature": "impl BlochSimulator { pub fn new (initial_magnetization : Vector3 < f64 > , m0 : f64) -> Self }"
     },
     {
@@ -4808,6 +4811,26 @@
   "crates/domain_physics/src/physics/mri/mod.rs": [
     {
       "signature": "pub use bloch :: BlochSimulator"
+    },
+    {
+      "signature": "pub use reconstruction :: Fft2dWorkspace"
+    }
+  ],
+  "crates/domain_physics/src/physics/mri/phantom.rs": [
+    {
+      "signature": "pub const MODIFIED_SHEPP_LOGAN_ELLIPSES : [SheppLoganEllipse ; 10] = [SheppLoganEllipse { additive_intensity : 1.0 , semi_axis_x : 0.6900 , semi_axis_y : 0.9200 , center_x : 0.0 , center_y : 0.0 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : - 0.8 , semi_axis_x : 0.6624 , semi_axis_y : 0.8740 , center_x : 0.0 , center_y : - 0.0184 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : - 0.2 , semi_axis_x : 0.1100 , semi_axis_y : 0.3100 , center_x : 0.22 , center_y : 0.0 , rotation_deg : - 18.0 , } , SheppLoganEllipse { additive_intensity : - 0.2 , semi_axis_x : 0.1600 , semi_axis_y : 0.4100 , center_x : - 0.22 , center_y : 0.0 , rotation_deg : 18.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.2100 , semi_axis_y : 0.2500 , center_x : 0.0 , center_y : 0.35 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.0460 , semi_axis_y : 0.0460 , center_x : 0.0 , center_y : 0.10 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.0460 , semi_axis_y : 0.0460 , center_x : 0.0 , center_y : - 0.10 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.0460 , semi_axis_y : 0.0230 , center_x : - 0.08 , center_y : - 0.605 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.0230 , semi_axis_y : 0.0230 , center_x : 0.0 , center_y : - 0.606 , rotation_deg : 0.0 , } , SheppLoganEllipse { additive_intensity : 0.1 , semi_axis_x : 0.0230 , semi_axis_y : 0.0460 , center_x : 0.06 , center_y : - 0.605 , rotation_deg : 0.0 , } ,]"
+    },
+    {
+      "signature": "pub fn fill_shepp_logan_grid (rows : usize , cols : usize , out_rho : & mut [f64] , out_t1 : & mut [f64] , out_t2 : & mut [f64] ,)"
+    },
+    {
+      "signature": "pub fn sample_shepp_logan_tissue (x_norm : f64 , y_norm : f64) -> TissueParameters"
+    },
+    {
+      "signature": "pub struct SheppLoganEllipse"
+    },
+    {
+      "signature": "pub struct TissueParameters"
     }
   ],
   "crates/domain_physics/src/physics/mri/proton.rs": [
@@ -4829,10 +4852,46 @@
   ],
   "crates/domain_physics/src/physics/mri/reconstruction.rs": [
     {
+      "signature": "impl Fft2dWorkspace { pub fn cols (& self) -> usize }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn filter_kspace_2d_into (& mut self , density : & DMatrix < Complex < f64 > > , dft_mask : & [f64] , dft_spikes : & [Complex < f64 >] , identity_pass : bool , out_kspace : & mut [Complex < f64 >] , out_image : & mut DMatrix < Complex < f64 > > ,) }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn forward_transposed_in_place (& mut self , density : & mut DMatrix < Complex < f64 > > , out_kspace : & mut [Complex < f64 >] ,) }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn inverse_dft_2d_into (& mut self , k_space : & DMatrix < Complex < f64 > > , out_image : & mut DMatrix < Complex < f64 > > ,) }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn new (rows : usize , cols : usize) -> Self }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn reconstruct_normalized_2d_into (& mut self , k_space : & DMatrix < Complex < f64 > > , out_image : & mut DMatrix < Complex < f64 > > ,) }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn resize (& mut self , rows : usize , cols : usize) }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn rows (& self) -> usize }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn simulate_signal_2d_into (& mut self , density : & DMatrix < Complex < f64 > > , out_k_space : & mut DMatrix < Complex < f64 > > ,) }"
+    },
+    {
+      "signature": "pub fn fftshift_2d_into (src : & DMatrix < Complex < f64 > > , dst : & mut DMatrix < Complex < f64 > >)"
+    },
+    {
+      "signature": "pub fn ifftshift_2d_into (src : & DMatrix < Complex < f64 > > , dst : & mut DMatrix < Complex < f64 > >)"
+    },
+    {
       "signature": "pub fn inverse_dft_2d (k_space : & DMatrix < Complex < f64 > >) -> DMatrix < Complex < f64 > >"
     },
     {
       "signature": "pub fn simulate_signal_2d (density : & DMatrix < Complex < f64 > >) -> DMatrix < Complex < f64 > >"
+    },
+    {
+      "signature": "pub struct Fft2dWorkspace"
     }
   ],
   "crates/domain_physics/src/physics/mri/scanner.rs": [
