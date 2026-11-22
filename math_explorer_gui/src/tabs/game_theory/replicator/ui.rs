@@ -28,25 +28,77 @@ impl ReplicatorDynamicsTool {
                         .map_or("?", std::string::String::as_str),
                 );
                 for j in 0..cols {
-                    ui.add(egui::DragValue::new(&mut self.payoff_matrix[(i, j)]).speed(0.1));
+                    if self.symbolic_mode {
+                        ui.label(format!("{:.2}", self.payoff_matrix[(i, j)]));
+                    } else if ui
+                        .add(egui::DragValue::new(&mut self.payoff_matrix[(i, j)]).speed(0.1))
+                        .changed()
+                    {
+                        self.recompute_trajectory_preserving_playback();
+                    }
                 }
                 ui.end_row();
             }
         });
     }
 
-    pub(super) fn show_settings_panel(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Settings");
-        ui.separator();
+    fn show_symbolic_payoff_controls(&mut self, ui: &mut egui::Ui) {
+        let mut formula_changed = false;
+        let rows = self.symbolic_bars.len();
+        for i in 0..rows {
+            let row_name = self
+                .strategy_names
+                .get(i)
+                .cloned()
+                .unwrap_or_else(|| format!("S{i}"));
+            for j in 0..self.symbolic_bars[i].len() {
+                let col_name = self
+                    .strategy_names
+                    .get(j)
+                    .cloned()
+                    .unwrap_or_else(|| format!("S{j}"));
+                ui.label(
+                    egui::RichText::new(format!("A[{row_name}, {col_name}]:"))
+                        .small()
+                        .strong(),
+                );
+                ui.push_id(("symbolic_payoff_cell", i, j), |ui| {
+                    if self.symbolic_bars[i][j].ui(ui) {
+                        formula_changed = true;
+                    }
+                });
+            }
+        }
+        if formula_changed {
+            self.sync_and_eval_symbolic_payoffs();
+            self.recompute_trajectory_preserving_playback();
+        }
+        if let Some(ref err) = self.symbolic_error {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            ui.colored_label(palette.error, format!("⚠️ {err}"));
+        }
+        if self.symbolic_sliders.ui(ui) {
+            self.evaluate_symbolic_matrix();
+            self.recompute_trajectory_preserving_playback();
+        }
+    }
 
+    fn show_preset_buttons(&mut self, ui: &mut egui::Ui) {
         ui.label("Presets:");
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("🦅 Hawk-Dove")
                 .accessible_hover_text("Load Hawk-Dove preset payoff matrix")
                 .clicked()
             {
                 self.load_preset_hawk_dove();
+            }
+            if ui
+                .button("🧬 Symbolic Hawk-Dove")
+                .accessible_hover_text("Load symbolic Hawk-Dove payoff formulas with v, c sliders")
+                .clicked()
+            {
+                self.load_preset_symbolic_hawk_dove();
             }
             if ui
                 .button("✂️ RPS")
@@ -56,10 +108,31 @@ impl ReplicatorDynamicsTool {
                 self.load_preset_rps();
             }
         });
+    }
+
+    pub(super) fn show_settings_panel(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Settings");
+        ui.separator();
+        self.show_preset_buttons(ui);
 
         ui.separator();
         ui.heading("Payoff Matrix");
+        if ui
+            .checkbox(&mut self.symbolic_mode, "Symbolic Formula Payoffs")
+            .accessible_hover_text(
+                "Evaluate payoff matrix cells from custom mathematical formulas and parameter sliders",
+            )
+            .changed()
+            && self.symbolic_mode
+        {
+            self.sync_and_eval_symbolic_payoffs();
+            self.recompute_trajectory_preserving_playback();
+        }
         self.show_payoff_grid(ui);
+        if self.symbolic_mode {
+            ui.add_space(4.0);
+            self.show_symbolic_payoff_controls(ui);
+        }
 
         ui.separator();
         ui.heading("Initial Population");
@@ -70,7 +143,10 @@ impl ReplicatorDynamicsTool {
                         .get(i)
                         .map_or("?", std::string::String::as_str),
                 );
-                ui.add(egui::Slider::new(&mut self.initial_population[i], 0.0..=1.0));
+                ui.add(egui::Slider::new(
+                    &mut self.initial_population[i],
+                    0.0..=1.0,
+                ));
             });
         }
 
