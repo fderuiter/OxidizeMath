@@ -1,17 +1,18 @@
 //! Interactive FRACTRAN prime-exponent virtual machine and Minsky counter-machine explorer.
 
 pub mod diagram;
+mod panels;
 
-use crate::accessibility::AccessibleHoverText;
-use crate::framework::{ExportCapabilities, InteractiveTool, PlaybackAction, PlaybackTransport};
-use diagram::{
-    build_export_datasets, build_trace_row, draw_fraction_rules_strip, draw_minsky_diagram,
-    draw_register_bar_plot, draw_status_banner, draw_trace_inspector, MinskyDiagramModel, TraceRow,
-};
+use crate::framework::{ExportCapabilities, InteractiveTool};
+use diagram::{draw_minsky_diagram, MinskyDiagramModel};
 use eframe::egui;
 use math_explorer::pure_math::algorithmic_information::fractran::{
     FractranCompiledVm, FractranError, FractranPreset, FractranProgram, FractranState,
     MinskyTransition,
+};
+use panels::{
+    build_export_datasets, build_trace_row, draw_fraction_rules_strip, draw_register_bar_plot,
+    draw_status_banner, draw_trace_inspector, TraceRow,
 };
 use std::collections::VecDeque;
 
@@ -22,7 +23,7 @@ const MAX_TRACE_ENTRIES: usize = 64;
 const MAX_FRACTIONS_INPUT_BYTES: usize = 4096;
 
 /// Selectable FRACTRAN preset or user-edited fraction list.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PresetChoice {
     /// Conway's 14-fraction `PRIMEGAME`.
     PrimeGame,
@@ -37,8 +38,13 @@ pub enum PresetChoice {
 }
 
 impl PresetChoice {
-    const ALL: [Self; 5] =
-        [Self::PrimeGame, Self::Mult, Self::Add, Self::Fibonacci, Self::Custom];
+    const ALL: [Self; 5] = [
+        Self::PrimeGame,
+        Self::Mult,
+        Self::Add,
+        Self::Fibonacci,
+        Self::Custom,
+    ];
 
     const fn label(self) -> &'static str {
         match self {
@@ -126,8 +132,9 @@ impl FractranMachineTool {
     fn from_core_preset(core: FractranPreset, choice: PresetChoice) -> Self {
         let (program, minsky, initial_value) = core.build();
         let fractions_input = program.format_fractions();
-        let (vm, registers) =
-            program.compile_for_initial(initial_value).expect("built-in FRACTRAN preset compiles");
+        let (vm, registers) = program
+            .compile_for_initial(initial_value)
+            .expect("built-in FRACTRAN preset compiles");
         let transitions = minsky.transitions(&vm);
         let mut tool = Self {
             preset: choice,
@@ -181,10 +188,11 @@ impl FractranMachineTool {
             return Err(err);
         };
         let text = self.fractions_input.clone();
-        self.compile_and_install(self.preset, &text, initial_value).inspect_err(|e| {
-            self.validation_error = Some(e.clone());
-            self.is_playing = false;
-        })
+        self.compile_and_install(self.preset, &text, initial_value)
+            .inspect_err(|e| {
+                self.validation_error = Some(e.clone());
+                self.is_playing = false;
+            })
     }
 
     fn compile_and_install(
@@ -193,9 +201,11 @@ impl FractranMachineTool {
         fractions_text: &str,
         initial_value: u64,
     ) -> Result<(), String> {
-        let program = FractranProgram::parse_fractions(fractions_text).map_err(|e| e.to_string())?;
-        let (vm, registers) =
-            program.compile_for_initial(initial_value).map_err(|e| e.to_string())?;
+        let program =
+            FractranProgram::parse_fractions(fractions_text).map_err(|e| e.to_string())?;
+        let (vm, registers) = program
+            .compile_for_initial(initial_value)
+            .map_err(|e| e.to_string())?;
         let minsky = match choice.to_core() {
             Some(core) if program.format_fractions() == core.program().format_fractions() => {
                 core.minsky_state()
@@ -311,87 +321,6 @@ impl FractranMachineTool {
             self.last_fired_rule,
         ));
     }
-
-    fn render_controls_header(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Preset:");
-            for choice in PresetChoice::ALL {
-                let selected = self.preset == choice;
-                if ui
-                    .selectable_label(selected, choice.label())
-                    .accessible_hover_text("Select FRACTRAN counter-machine preset")
-                    .clicked()
-                    && !selected
-                {
-                    self.select_preset(choice);
-                }
-            }
-            ui.separator();
-            ui.label("N0:");
-            if ui
-                .add(egui::TextEdit::singleline(&mut self.initial_value_input).desired_width(72.0))
-                .changed()
-            {
-                self.preset = PresetChoice::Custom;
-            }
-            if ui
-                .button("✓ Compile")
-                .accessible_hover_text("Compile FRACTRAN fractions and reset initial value N0")
-                .clicked()
-            {
-                let _ = self.apply_custom_inputs();
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.label("Fractions:");
-            let width = ui.available_width().max(180.0);
-            if ui
-                .add(egui::TextEdit::singleline(&mut self.fractions_input).desired_width(width))
-                .changed()
-            {
-                self.preset = PresetChoice::Custom;
-            }
-        });
-    }
-
-    fn render_transport_bar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            let transport =
-                PlaybackTransport::in_thread("fractran_transport", "FRACTRAN Machine", self.is_playing);
-            if let Some(action) = transport.show(ui) {
-                match action {
-                    PlaybackAction::Play => {
-                        self.is_playing = true;
-                        self.stop_reason = MachineStopReason::Running;
-                    }
-                    PlaybackAction::Pause => {
-                        let _ = self.pause_with(MachineStopReason::Paused);
-                    }
-                    PlaybackAction::Step => {
-                        if self.step_once() == MachineStopReason::Running {
-                            self.stop_reason = MachineStopReason::Paused;
-                        }
-                    }
-                    PlaybackAction::Reset => self.reset_machine(),
-                }
-            }
-            if ui
-                .button("⏩ Run Until Power of 2")
-                .accessible_hover_text(
-                    "Advance up to 4096 steps in this frame until reaching a pure power of two 2^k",
-                )
-                .clicked()
-            {
-                let _ = self.run_until_power_of_two();
-            }
-            ui.checkbox(&mut self.stop_on_power_of_two, "Break on 2^k")
-                .accessible_hover_text("Pause playback automatically whenever N = 2^k");
-            ui.add(
-                egui::Slider::new(&mut self.steps_per_frame, 1..=MAX_STEPS_PER_FRAME)
-                    .text("Steps/frame"),
-            );
-        });
-    }
 }
 
 impl InteractiveTool for FractranMachineTool {
@@ -414,6 +343,14 @@ impl InteractiveTool for FractranMachineTool {
 
     fn step_simulation(&mut self) {
         let _ = self.step_once();
+    }
+
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (self.preset, &self.fractions_input, self.initial_value).hash(&mut h);
+        (self.steps_per_frame, self.stop_on_power_of_two).hash(&mut h);
+        h.finish().max(1)
     }
 
     fn save_state(&self) -> Option<String> {

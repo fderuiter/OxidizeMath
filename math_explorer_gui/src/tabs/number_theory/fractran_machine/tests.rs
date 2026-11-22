@@ -6,23 +6,47 @@ use crate::framework::{ExportFormat, ExportStatusSeverity, SimulationFramework};
 #[test]
 fn test_primegame_breakpoints_and_frame_cap() {
     let mut tool = FractranMachineTool::default();
-    assert_eq!(tool.run_until_power_of_two(), MachineStopReason::HitPowerOfTwo(2));
+    assert_eq!(
+        tool.run_until_power_of_two(),
+        MachineStopReason::HitPowerOfTwo(2)
+    );
     assert_eq!(tool.step_count, 19);
-    assert_eq!(tool.run_until_power_of_two(), MachineStopReason::HitPowerOfTwo(3));
+    assert_eq!(
+        tool.run_until_power_of_two(),
+        MachineStopReason::HitPowerOfTwo(3)
+    );
     assert_eq!(tool.step_count, 69);
-    assert_eq!(tool.run_until_power_of_two(), MachineStopReason::HitPowerOfTwo(5));
+    assert_eq!(
+        tool.run_until_power_of_two(),
+        MachineStopReason::HitPowerOfTwo(5)
+    );
     assert_eq!(tool.step_count, 281);
-    assert_eq!(tool.run_until_power_of_two(), MachineStopReason::HitPowerOfTwo(7));
+    assert_eq!(
+        tool.run_until_power_of_two(),
+        MachineStopReason::HitPowerOfTwo(7)
+    );
     assert_eq!(tool.step_count, 710);
-    assert_eq!(tool.run_until_power_of_two(), MachineStopReason::HitPowerOfTwo(11));
+    assert_eq!(
+        tool.run_until_power_of_two(),
+        MachineStopReason::HitPowerOfTwo(11)
+    );
     assert_eq!(tool.step_count, 2375);
-    assert_eq!(tool.run_until_power_of_two(), MachineStopReason::HitPowerOfTwo(13));
+    assert_eq!(
+        tool.run_until_power_of_two(),
+        MachineStopReason::HitPowerOfTwo(13)
+    );
     let step_at_13 = tool.step_count;
     assert!(step_at_13 > 2375);
 
     // Reaching 2^17 from 2^13 requires > 4096 steps, so one frame hits the 4096-step cap and pauses.
-    assert_eq!(tool.run_until_power_of_two(), MachineStopReason::FrameCapReached);
-    assert_eq!(tool.step_count, step_at_13 + MAX_BREAKPOINT_STEPS_PER_FRAME as u64);
+    assert_eq!(
+        tool.run_until_power_of_two(),
+        MachineStopReason::FrameCapReached
+    );
+    assert_eq!(
+        tool.step_count,
+        step_at_13 + MAX_BREAKPOINT_STEPS_PER_FRAME as u64
+    );
     assert!(!tool.is_playing);
 }
 
@@ -111,4 +135,26 @@ fn test_fractran_csv_json_png_svg_and_gif_exports() {
             framework.export_status_message
         );
     }
+}
+
+#[test]
+fn test_state_revision_tracks_persisted_fields_and_ignores_runtime_steps() {
+    let mut tool = FractranMachineTool::default();
+    let rev0 = tool.state_revision();
+    assert!(rev0 > 0);
+
+    let _ = tool.step_once();
+    assert_eq!(tool.state_revision(), rev0);
+
+    tool.steps_per_frame = 8;
+    let rev1 = tool.state_revision();
+    assert!(rev1 > 0 && rev1 != rev0);
+
+    tool.stop_on_power_of_two = !tool.stop_on_power_of_two;
+    let rev2 = tool.state_revision();
+    assert!(rev2 > 0 && rev2 != rev1);
+
+    tool.select_preset(PresetChoice::Add);
+    let rev3 = tool.state_revision();
+    assert!(rev3 > 0 && rev3 != rev2);
 }
