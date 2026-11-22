@@ -78,6 +78,17 @@ mod tests {
         let parse = ParseError::from(lex.clone());
         assert!(parse.source().is_some());
 
+        let unknown_fn = ParseError::UnknownFunction {
+            name: "foo".to_string(),
+            span: crate::ast::Span { start: 3, end: 6 },
+        };
+        let unknown_meta = unknown_fn.metadata();
+        assert_eq!(
+            unknown_meta.get("function").map(String::as_str),
+            Some("foo")
+        );
+        assert_eq!(unknown_meta.get("start").map(String::as_str), Some("3"));
+
         let variants = [
             MathCommonsError::from(MathError::DimensionMismatch {
                 expected: Dimension(2),
@@ -85,6 +96,7 @@ mod tests {
             }),
             MathCommonsError::from(lex),
             MathCommonsError::from(parse),
+            MathCommonsError::from(unknown_fn),
             MathCommonsError::from(EvalError::UnknownVariable("x".to_string())),
         ];
 
