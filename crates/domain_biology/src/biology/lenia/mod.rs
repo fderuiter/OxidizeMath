@@ -43,11 +43,11 @@ pub use telemetry::{LeniaTelemetry, shortest_toroidal_delta};
 use kernel::{forward_fft_2d_transposed, transpose_complex};
 use num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
-use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 use std::sync::Arc;
 use telemetry::ToroidalBasis;
 use thiserror::Error;
+use verified_engine::scientific_metadata::theory::TheoryDescribable;
 
 /// Errors raised when configuring or resizing a [`LeniaSystem`].
 #[derive(Debug, Error, Clone, PartialEq)]

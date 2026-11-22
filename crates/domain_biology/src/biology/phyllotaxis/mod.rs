@@ -38,8 +38,8 @@ pub use vogel::{
     is_consecutive_fibonacci_pair,
 };
 
-use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
+use verified_engine::scientific_metadata::theory::TheoryDescribable;
 
 impl TheoryDescribable for PhyllotaxisConfig {
     fn theory_description(&self) -> String {
