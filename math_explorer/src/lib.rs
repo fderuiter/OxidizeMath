@@ -5,6 +5,8 @@ pub mod prelude;
 
 pub use diagnostics;
 pub use math_commons::{ast, constants, math_kernel, primitives, registry, wigner};
+pub use scientific_metadata;
+pub use verified_engine;
 
 #[cfg(feature = "ai")]
 pub use domain_ai::ai;
