@@ -1,5 +1,7 @@
 use std::f64::consts::PI;
 
+pub use super::wave_2d::{WaveField2D, WaveFieldConfig2D, WaveSource2D, WaveSourceKind};
+
 /// Represents the 1D Wave Equation parameters.
 /// $\frac{\partial^2 y}{\partial x^2} = \frac{1}{v^2} \frac{\partial^2 y}{\partial t^2}$
 pub struct WaveEquation1D {

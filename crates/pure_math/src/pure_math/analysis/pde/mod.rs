@@ -86,5 +86,6 @@ pub mod heat;
 pub mod laplace;
 #[allow(missing_docs)]
 pub mod wave;
+pub mod wave_2d;
 
 // [cite:graph_parameters_rust]

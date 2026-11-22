@@ -4951,12 +4951,97 @@
       "signature": "pub struct MassNumber"
     }
   ],
+  "crates/domain_physics/src/physics/optics/caustics.rs": [
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn caustic_points (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn new (max_rays : usize , max_steps_per_ray : usize , max_caustic_points : usize) -> Self }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn ray_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn ray_points (& self , ray_idx : usize) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn trace_in_place (& mut self , medium : & OpticalMediumConfig , requested_rays : usize , d_tau : f64 ,) }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn trace_single_ray_in_place (& mut self , medium : & OpticalMediumConfig , ray_idx : usize , origin : [f64 ; 2] , dir0 : [f64 ; 2] , d_tau : f64 ,) }"
+    },
+    {
+      "signature": "pub struct HamiltonianRayTracer"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/refraction.rs": [
+    {
+      "signature": "impl OpticalMediumConfig { pub fn apply_to_wave_field (& self , field : & mut WaveField2D) }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn default_wave_source (& self , cfg : & WaveFieldConfig2D) -> WaveSource2D }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn discrete_region_id (& self , x : f64 , y : f64) -> u8 }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn grad_n_squared (& self , x : f64 , y : f64) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn interface_normal (& self , x : f64 , y : f64 , incoming_dir : [f64 ; 2]) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn is_obstacle_at (& self , x : f64 , y : f64 , grid_dx : f64) -> bool }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn lens_center (& self) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn refractive_index_at (& self , x : f64 , y : f64) -> f64 }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn slit_wall_x (& self) -> f64 }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn source_position (& self) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn veselago_slab_bounds (& self) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticsPreset { pub const ALL : [Self ; 5] = [Self :: DoubleSlit , Self :: LuneburgLens , Self :: MaxwellFishEye , Self :: BiconvexDroplet , Self :: VeselagoLens ,] }"
+    },
+    {
+      "signature": "impl OpticsPreset { pub const fn label (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum OpticsPreset"
+    },
+    {
+      "signature": "pub fn snell_refract_vector (incident_unit : [f64 ; 2] , normal_into_medium : [f64 ; 2] , n1 : f64 , n2 : f64 ,) -> [f64 ; 2]"
+    },
+    {
+      "signature": "pub fn snell_refracted_angle (n1 : f64 , n2 : f64 , incident_angle_rad : f64) -> Option < f64 >"
+    },
+    {
+      "signature": "pub struct OpticalMediumConfig"
+    }
+  ],
   "crates/domain_physics/src/physics/optics/sensing.rs": [
     {
       "signature": "pub fn lambertian_intensity (power_tx : f64 , distance : f64 , angle : f64 , mode_n : f64) -> f64"
     },
     {
       "signature": "pub fn lws_range_resolution (r0 : f64 , delta_r_max : f64 , bits : u32) -> f64"
+    },
+    {
+      "signature": "pub fn sample_detector_line_in_place (field : & WaveField2D , cfg : & DetectorConfig , profile_out : & mut [f64] ,) -> DetectorReadout"
+    },
+    {
+      "signature": "pub struct DetectorConfig"
+    },
+    {
+      "signature": "pub struct DetectorReadout"
     }
   ],
   "crates/domain_physics/src/physics/quantum/coupling.rs": [
@@ -6935,6 +7020,83 @@
     },
     {
       "signature": "pub struct WaveEquation1D"
+    },
+    {
+      "signature": "pub use super :: wave_2d :: WaveField2D"
+    },
+    {
+      "signature": "pub use super :: wave_2d :: WaveFieldConfig2D"
+    },
+    {
+      "signature": "pub use super :: wave_2d :: WaveSource2D"
+    },
+    {
+      "signature": "pub use super :: wave_2d :: WaveSourceKind"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d.rs": [
+    {
+      "signature": "impl WaveField2D { pub fn cfl_dt (& self) -> f64 }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn clamp_dt (& self , dt : f64) -> f64 }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn clear_state (& mut self) }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn config (& self) -> & WaveFieldConfig2D }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn configure_medium_in_place < F > (& mut self , mut builder : F) where F : FnMut (usize , usize , & WaveFieldConfig2D , & mut f64 , & mut u8) , }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn has_negative_index (& self) -> bool }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn irradiance (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn is_finite (& self) -> bool }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn new (config : WaveFieldConfig2D) -> Self }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn obstacle_mask (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn refractive_index (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn set_reference_frequency (& mut self , frequency : f64) }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn step (& mut self , requested_dt : f64 , source : Option < & WaveSource2D >) -> f64 }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn step_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl WaveSource2D { pub fn evaluate_at_time (& self , t : f64) -> f64 }"
+    },
+    {
+      "signature": "pub enum WaveSourceKind"
+    },
+    {
+      "signature": "pub struct WaveField2D"
+    },
+    {
+      "signature": "pub struct WaveFieldConfig2D"
+    },
+    {
+      "signature": "pub struct WaveSource2D"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/roots.rs": [

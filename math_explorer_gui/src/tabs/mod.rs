@@ -107,6 +107,7 @@ pub trait ExplorerTab {
             | "Fluid Dynamics"
             | "Medical Physics"
             | "MRI Physics"
+            | "Optics & Waves"
             | "Quantum Mechanics"
             | "Solid State Physics" => "Physics",
 
@@ -176,6 +177,7 @@ pub trait ExplorerTab {
             "MRI Physics" => "mri",
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
+            "Optics & Waves" => "optics_waves",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",
