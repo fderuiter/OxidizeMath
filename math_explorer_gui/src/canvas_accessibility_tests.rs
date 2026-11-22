@@ -106,6 +106,19 @@ fn test_pure_math_custom_canvases_and_rasters_receive_tab_focus_and_labels() {
 
     let mut spiral = crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut spiral, "Ulam Prime Spiral");
+
+    let mut hyp_disk = crate::tabs::hyperbolic_geometry::disk_tool::HyperbolicDiskTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut hyp_disk,
+        "Hyperbolic Disk Tessellation Canvas",
+    );
+
+    let mut hyp_billiards =
+        crate::tabs::hyperbolic_geometry::billiards_tool::HyperbolicBilliardsTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut hyp_billiards,
+        "Hyperbolic Geodesic Billiards Canvas",
+    );
 }
 
 #[cfg(feature = "biology")]
