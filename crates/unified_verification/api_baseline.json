@@ -8611,6 +8611,9 @@
   ],
   "crates/verified_engine/src/lib.rs": [
     {
+      "signature": "pub use scientific_metadata"
+    },
+    {
       "signature": "pub use verified_engine_macros :: Theory"
     },
     {
@@ -8812,6 +8815,12 @@
     },
     {
       "signature": "pub use rand"
+    },
+    {
+      "signature": "pub use scientific_metadata"
+    },
+    {
+      "signature": "pub use verified_engine"
     }
   ],
   "math_explorer/src/prelude.rs": [

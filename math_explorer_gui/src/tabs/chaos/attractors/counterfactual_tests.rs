@@ -229,3 +229,43 @@ fn test_sir_swap_clear_reset_and_exports() {
         .and_then(|t| t.counterfactual_snapshot())
         .is_none());
 }
+
+#[test]
+fn test_sir_day20_vs_day35_lockdown_exact_delta_ipeak() {
+    let run_lockdown = |fork_day: f64| -> (f64, f64, f64) {
+        let mut tool = SirTool::default();
+        tool.n = 100_000.0;
+        tool.i0 = 1.0;
+        tool.beta = 0.5;
+        tool.gamma = 0.1;
+        tool.duration = 120.0;
+        tool.recalculate();
+        assert!(tool.fork_at_day(fork_day));
+        tool.beta = 0.2;
+        tool.recalculate();
+        let peak_a = tool
+            .cf
+            .i_points_a
+            .iter()
+            .map(|p| p.y)
+            .fold(0.0_f64, f64::max);
+        let peak_b = tool.i_points.iter().map(|p| p.y).fold(0.0_f64, f64::max);
+        let delta = tool
+            .counterfactual_snapshot()
+            .expect("SIR lockdown snapshot")
+            .primary_delta
+            .expect("ΔI_peak metric")
+            .raw_value;
+        (peak_a, peak_b, delta)
+    };
+
+    let (peak_a_20, peak_b_20, delta_20) = run_lockdown(20.0);
+    let (peak_a_35, peak_b_35, delta_35) = run_lockdown(35.0);
+    assert!((delta_20 - (peak_a_20 - peak_b_20)).abs() < 1e-9);
+    assert!((delta_35 - (peak_a_35 - peak_b_35)).abs() < 1e-9);
+    assert!(delta_20 > 20_000.0, "Expected large day-20 ΔI_peak, got {delta_20}");
+    assert!(
+        delta_20 > delta_35,
+        "Day-20 lockdown ({delta_20}) must avert more peak infections than day-35 ({delta_35})"
+    );
+}

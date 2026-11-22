@@ -203,7 +203,7 @@ impl MorphogenesisTool {
         let ctx = ui.ctx().clone();
         egui::CentralPanel::default().show_inside(ui, |ui| {
             if let Some(snap) = self.counterfactual_snapshot() {
-                render_divergence_strip(ui, "morphogenesis_divergence", &snap);
+                render_divergence_strip(ui, self.name(), &snap);
                 ui.add_space(4.0);
             }
             self.sync_texture_from_snapshot(&ctx);

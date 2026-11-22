@@ -32,7 +32,7 @@ fn test_mri_1000_step_parity_and_spin_echo_180_refocusing_gain() {
     mri_parity.step_simulation();
     assert!(mri_parity.apply_counterfactual_action(BranchControlAction::SetPerturbation(0.0)));
     assert!(mri_parity.apply_counterfactual_action(BranchControlAction::ForkHere));
-    for _ in 0..200 {
+    for _ in 0..1_000 {
         mri_parity.step_simulation();
     }
     let p_snap = mri_parity.counterfactual_snapshot().expect("MRI parity");
