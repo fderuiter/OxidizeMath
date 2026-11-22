@@ -1,0 +1,24 @@
+# ADR 0035: Zero-Allocation Symplectic Hamiltonian Integrators, Conservative Chaos Models, and Poincaré Section Lab
+
+## Status
+Accepted (extends [ADR 0016](0016-ode-multi-solver-comparative-overlays.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
+
+## Context
+[`crates/domain_physics/README.md`](../../crates/domain_physics/README.md) advertises canonical energy conservation checks, double-pendulum chaos, and gravitational N-body orbital dynamics, yet [`crates/domain_physics/src/physics/chaos/mod.rs`](../../crates/domain_physics/src/physics/chaos/mod.rs) and [`math_explorer_gui/src/tabs/chaos/mod.rs`](../../math_explorer_gui/src/tabs/chaos/mod.rs) previously exposed only dissipative attractors (`LorenzSystem`), 1D logistic maps, and static fractals, while [`crates/domain_physics/src/physics/astrophysics/mod.rs`](../../crates/domain_physics/src/physics/astrophysics/mod.rs) contained only static galaxy scaling formulas. Furthermore, [`crates/pure_math/src/pure_math/analysis/ode/solvers.rs`](../../crates/pure_math/src/pure_math/analysis/ode/solvers.rs) offered only explicit non-symplectic integrators (`Euler`, `Heun`, `RungeKutta4`) whose phase-volume contraction causes monotonic energy loss (`>3%` over `10,000` chaotic double-pendulum steps at `dt = 0.02`), washing out Kolmogorov-Arnold-Moser (KAM) invariant tori and periodic celestial choreographies.
+
+## Decision
+1. **Canonical Hamiltonian Traits and Stack-Backed Symplectic Integrators (`pure_math`)**:
+   - Extend [`crates/pure_math/src/pure_math/analysis/ode/traits.rs`](../../crates/pure_math/src/pure_math/analysis/ode/traits.rs) with `HamiltonianSystem<State>` (`hamiltonian`, `relative_energy_error`) and `SeparableHamiltonian<State>` (`Coord`, `split_canonical`, `join_canonical`, `grad_kinetic_in_place`, `neg_grad_potential_in_place`).
+   - Add [`crates/pure_math/src/pure_math/analysis/ode/symplectic.rs`](../../crates/pure_math/src/pure_math/analysis/ode/symplectic.rs) providing zero-allocation `StormerVerlet<Coord>` (2nd-order velocity splitting), `Yoshida4<Coord>` (4th-order symmetric triple-jump composition), and `GaussLegendre4<State>` (4th-order 2-stage implicit Gauss-Legendre Runge-Kutta with bounded fixed-point stage iteration and symmetric substepping for non-separable Hamiltonians), backed exclusively by pre-allocated `ArrayState<N>` scratch buffers.
+2. **Conservative Chaos, 3-Body Choreography, and Cubic-Hermite Poincaré Detector (`domain_physics`)**:
+   - Add non-separable canonical [`DoublePendulum`](../../crates/domain_physics/src/physics/chaos/double_pendulum.rs), separable [`HenonHeiles`](../../crates/domain_physics/src/physics/chaos/henon_heiles.rs), and planar gravitational [`FigureEightThreeBody`](../../crates/domain_physics/src/physics/astrophysics/nbody.rs) (`ArrayState<12>` Chenciner-Montgomery periodic choreography).
+   - Add [`PoincareSection<N>`](../../crates/domain_physics/src/physics/chaos/poincare.rs) using safeguarded Newton-bisection on the $O(\Delta t^4)$ cubic Hermite interpolant between consecutive solver states $(y_0, \dot{y}_0)$ and $(y_1, \dot{y}_1)$ with zero dynamic heap allocations under `VerifiedAllocator`.
+3. **Interactive `HamiltonianChaosLab` with `RungeKutta4` Comparator (`math_explorer_gui`)**:
+   - Register [`HamiltonianChaosLab`](../../math_explorer_gui/src/tabs/chaos/hamiltonian.rs) in `ChaosTab` alongside three `StarterPresetMetadata` cards (`henon_heiles_kam_islands`, `double_pendulum_symplectic_drift`, `figure_eight_three_body`).
+   - Expose pointer click-to-seed and keyboard (`Arrow` + `Enter`) phase-space seeding with `AccessKit` `Role::GraphicsDocument` metadata, `lock_canvas_arrow_keys`, and `paint_canvas_focus_ring`, capping ensembles at `16` orbits and `4,096` section points per orbit within a `PlatformInstant` 60 FPS frame budget and `URL_JSON_BOUNDS` (`4 KiB`) stateless share links.
+   - Synchronize an explicit `RungeKutta4` ghost twin to plot live relative energy drift and export `(q, p)` `.csv` series and `.svg` figures.
+
+## Consequences
+- **Positive**: `GaussLegendre4` bounds peak chaotic `DoublePendulum` relative energy error below `0.001%` (`~0.0006%`) across `10,000` steps at `dt = 0.02` (versus `>3.0%` secular energy loss under `RungeKutta4`), while `Yoshida4` preserves `HenonHeiles` KAM tori and 3-body Figure-8 periodicity with zero heap allocations inside hot loops.
+- **Positive**: Desktop and `wasm32-unknown-unknown` users can interactively map KAM stability islands, audit explicit vs. symplectic energy conservation, and round-trip presets, stateless URLs, CSV datasets, and SVG figures.
+- **Neutral**: Barnes-Hut tree gravity, relativistic geodesics, and user-typed symbolic Hamiltonians remain out of scope so all state buffers stay compile-time stack-sized (`ArrayState<4>` and `ArrayState<12>`).

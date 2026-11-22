@@ -1,5 +1,6 @@
-/// The astrophysics module contains implementations of astrophysical formulas.
+/// The astrophysics module contains empirical galaxy models and gravitational N-body choreographies.
 pub mod galaxies;
+pub mod nbody;
 
 // [cite:graph_parameters_rust]
 

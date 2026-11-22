@@ -14,7 +14,7 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
   - Groups, rings, and finite fields (`Fp`).
   - Polynomial rings and polynomial arithmetic over arbitrary fields.
 - **`number_theory`**: Prime number generation (`primes_up_to`), primality testing, integer partition theory, and Q-series.
-- **`analysis`**: Differential equation solvers (`OdeSystem`, Runge-Kutta steppers), numerical integration, and calculus algorithms.
+- **`analysis`**: Differential equation solvers (`OdeSystem`, explicit Runge-Kutta and zero-allocation symplectic `StormerVerlet`, `Yoshida4`, and `GaussLegendre4` steppers), numerical integration, and calculus algorithms.
 - **`differential_geometry`**: Manifolds, metric tensors, and Riemannian curvature.
 - **`elliptic_curves`**: Curve group arithmetic and cryptographic operations over finite fields.
 - **`graph_theory`**: Network graph structures, centrality metrics, and traversal algorithms.

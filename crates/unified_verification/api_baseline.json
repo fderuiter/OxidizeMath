@@ -3882,6 +3882,52 @@
       "signature": "pub trait GalaxyModel { fn redshift_from_log_mass (& self , m : SolarMassLog) -> Redshift }"
     }
   ],
+  "crates/domain_physics/src/physics/astrophysics/nbody.rs": [
+    {
+      "signature": "impl FigureEightThreeBody { pub fn angular_momentum_z (& self , state : & ArrayState < 12 >) -> f64 }"
+    },
+    {
+      "signature": "impl FigureEightThreeBody { pub fn body_positions (state : & ArrayState < 12 >) -> [[f64 ; 2] ; 3] }"
+    },
+    {
+      "signature": "impl FigureEightThreeBody { pub fn figure_eight_initial_state () -> ArrayState < 12 > }"
+    },
+    {
+      "signature": "impl FigureEightThreeBody { pub fn seed_on_poincare_section (& self , x1 : f64 , px1 : f64) -> Option < ArrayState < 12 > > }"
+    },
+    {
+      "signature": "impl FigureEightThreeBody { pub fn total_linear_momentum (& self , state : & ArrayState < 12 >) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "pub const FIGURE_EIGHT_PERIOD : f64 = 6.325_913_98"
+    },
+    {
+      "signature": "pub struct FigureEightThreeBody"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/double_pendulum.rs": [
+    {
+      "signature": "impl DoublePendulum { pub fn angular_velocities (& self , state : & ArrayState < 4 >) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl DoublePendulum { pub fn cartesian_positions (& self , state : & ArrayState < 4 >) -> ([f64 ; 2] , [f64 ; 2]) }"
+    },
+    {
+      "signature": "impl DoublePendulum { pub fn default_chaotic_state () -> ArrayState < 4 > }"
+    },
+    {
+      "signature": "impl DoublePendulum { pub fn new (m1 : f64 , m2 : f64 , l1 : f64 , l2 : f64 , g : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulum { pub fn potential_energy (& self , theta1 : f64 , theta2 : f64) -> f64 }"
+    },
+    {
+      "signature": "impl DoublePendulum { pub fn seed_on_poincare_section (& self , energy : f64 , theta2 : f64 , p2 : f64 ,) -> Option < ArrayState < 4 > > }"
+    },
+    {
+      "signature": "pub struct DoublePendulum"
+    }
+  ],
   "crates/domain_physics/src/physics/chaos/fractals.rs": [
     {
       "signature": "pub fn correlation_dimension (trajectory : & [Vector3 < f64 >] , epsilon : f64) -> f64"
@@ -3891,6 +3937,26 @@
     },
     {
       "signature": "pub fn escape_time_mandelbrot (c : Complex < f64 > , max_iter : u32) -> u32"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/henon_heiles.rs": [
+    {
+      "signature": "impl HenonHeiles { pub fn escape_energy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl HenonHeiles { pub fn max_py_at_section (& self , energy : f64 , y : f64) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl HenonHeiles { pub fn new (lambda : f64) -> Self }"
+    },
+    {
+      "signature": "impl HenonHeiles { pub fn potential_xy (& self , x : f64 , y : f64) -> f64 }"
+    },
+    {
+      "signature": "impl HenonHeiles { pub fn seed_on_poincare_section (& self , energy : f64 , y : f64 , py : f64) -> Option < ArrayState < 4 > > }"
+    },
+    {
+      "signature": "pub struct HenonHeiles"
     }
   ],
   "crates/domain_physics/src/physics/chaos/logistic.rs": [
@@ -3963,6 +4029,29 @@
     },
     {
       "signature": "pub fn lorenz_lyapunov < S , Sol > (system : & S , solver : & mut Sol , initial_state : Vector3 < f64 > , time_step : f64 , iterations : usize , evolution_time : f64 ,) -> Result < f64 , ChaosError > where S : OdeSystem < Vector3 < f64 > > + ? Sized , Sol : Solver < Vector3 < f64 > > ,"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/poincare.rs": [
+    {
+      "signature": "impl < const N : usize > PoincareSection < N > { pub fn detect_crossing (& self , t0 : f64 , dt : f64 , y0 : & ArrayState < N > , y1 : & ArrayState < N > , dy0 : & ArrayState < N > , dy1 : & ArrayState < N > ,) -> Option < PoincareCrossing < N > > }"
+    },
+    {
+      "signature": "impl PoincareSection < 12 > { pub fn figure_eight () -> Self }"
+    },
+    {
+      "signature": "impl PoincareSection < 4 > { pub fn double_pendulum () -> Self }"
+    },
+    {
+      "signature": "impl PoincareSection < 4 > { pub fn henon_heiles () -> Self }"
+    },
+    {
+      "signature": "pub enum CrossingDirection"
+    },
+    {
+      "signature": "pub struct PoincareCrossing < const N : usize >"
+    },
+    {
+      "signature": "pub struct PoincareSection < const N : usize >"
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/analysis.rs": [
@@ -6643,7 +6732,25 @@
       "signature": "pub use stepper :: TimeStepper"
     },
     {
+      "signature": "pub use symplectic :: GaussLegendre4"
+    },
+    {
+      "signature": "pub use symplectic :: StormerVerlet"
+    },
+    {
+      "signature": "pub use symplectic :: SymplecticMethod"
+    },
+    {
+      "signature": "pub use symplectic :: Yoshida4"
+    },
+    {
+      "signature": "pub use traits :: HamiltonianSystem"
+    },
+    {
       "signature": "pub use traits :: OdeSystem"
+    },
+    {
+      "signature": "pub use traits :: SeparableHamiltonian"
     },
     {
       "signature": "pub use traits :: Solver"
@@ -6685,6 +6792,15 @@
   ],
   "crates/pure_math/src/pure_math/analysis/ode/state.rs": [
     {
+      "signature": "impl < const N : usize > ArrayState < N > { pub fn is_finite (& self) -> bool }"
+    },
+    {
+      "signature": "impl < const N : usize > ArrayState < N > { pub fn max_abs_diff (& self , other : & Self) -> f64 }"
+    },
+    {
+      "signature": "impl < const N : usize > ArrayState < N > { pub fn zeros () -> Self }"
+    },
+    {
       "signature": "pub struct ArrayState < const N : usize >"
     },
     {
@@ -6708,7 +6824,75 @@
       "signature": "pub trait TimeStepper < State : VectorOperations > { fn step_with < S : Solver < State > > (& mut self , solver : & mut S , dt : f64) }"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/ode/symplectic.rs": [
+    {
+      "signature": "impl < Coord : Clone > StormerVerlet < Coord > { pub fn new (example_coord : & Coord) -> Self }"
+    },
+    {
+      "signature": "impl < Coord : Clone > Yoshida4 < Coord > { pub fn new (example_coord : & Coord) -> Self }"
+    },
+    {
+      "signature": "impl < Coord : VectorOperations > StormerVerlet < Coord > { pub fn step_qp < State , S > (& mut self , system : & S , q : & mut Coord , p : & mut Coord , dt : f64) where State : VectorOperations , S : SeparableHamiltonian < State , Coord = Coord > + ? Sized , }"
+    },
+    {
+      "signature": "impl < Coord : VectorOperations > StormerVerlet < Coord > { pub fn step_separable < State , S > (& mut self , system : & S , state : & mut State , dt : f64) where State : VectorOperations , S : SeparableHamiltonian < State , Coord = Coord > + ? Sized , }"
+    },
+    {
+      "signature": "impl < Coord : VectorOperations > Yoshida4 < Coord > { pub fn step_qp < State , S > (& mut self , system : & S , q : & mut Coord , p : & mut Coord , dt : f64) where State : VectorOperations , S : SeparableHamiltonian < State , Coord = Coord > + ? Sized , }"
+    },
+    {
+      "signature": "impl < Coord : VectorOperations > Yoshida4 < Coord > { pub fn step_separable < State , S > (& mut self , system : & S , state : & mut State , dt : f64) where State : VectorOperations , S : SeparableHamiltonian < State , Coord = Coord > + ? Sized , }"
+    },
+    {
+      "signature": "impl < State : Clone > GaussLegendre4 < State > { pub const DEFAULT_MAX_ITERS : usize = 10 }"
+    },
+    {
+      "signature": "impl < State : Clone > GaussLegendre4 < State > { pub const DEFAULT_SUBSTEPS : usize = 2 }"
+    },
+    {
+      "signature": "impl < State : Clone > GaussLegendre4 < State > { pub const MAX_ALLOWED_ITERS : usize = 64 }"
+    },
+    {
+      "signature": "impl < State : Clone > GaussLegendre4 < State > { pub const MAX_ALLOWED_SUBSTEPS : usize = 8 }"
+    },
+    {
+      "signature": "impl < State : Clone > GaussLegendre4 < State > { pub fn new (example_state : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : Clone > GaussLegendre4 < State > { pub fn with_config (example_state : & State , max_iters : usize , substeps : usize) -> Self }"
+    },
+    {
+      "signature": "impl < State : Clone > GaussLegendre4 < State > { pub fn with_max_iters (example_state : & State , max_iters : usize) -> Self }"
+    },
+    {
+      "signature": "impl SymplecticMethod { pub const ALL : [Self ; 3] = [Self :: StormerVerlet , Self :: Yoshida4 , Self :: GaussLegendre4] }"
+    },
+    {
+      "signature": "impl SymplecticMethod { pub fn name (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum SymplecticMethod"
+    },
+    {
+      "signature": "pub struct GaussLegendre4 < State >"
+    },
+    {
+      "signature": "pub struct StormerVerlet < Coord >"
+    },
+    {
+      "signature": "pub struct Yoshida4 < Coord >"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/ode/traits.rs": [
+    {
+      "signature": "pub trait HamiltonianSystem < State : VectorOperations > : OdeSystem < State >"
+    },
+    {
+      "signature": "pub trait HamiltonianSystem < State : VectorOperations > { fn hamiltonian (& self , state : & State) -> f64 }"
+    },
+    {
+      "signature": "pub trait HamiltonianSystem < State : VectorOperations > { fn relative_energy_error (& self , state : & State , initial_energy : f64) -> f64 }"
+    },
     {
       "signature": "pub trait OdeSystem < State : VectorOperations >"
     },
@@ -6717,6 +6901,30 @@
     },
     {
       "signature": "pub trait OdeSystem < State : VectorOperations > { fn derivative_in_place (& self , t : f64 , state : & State , out : & mut State) }"
+    },
+    {
+      "signature": "pub trait SeparableHamiltonian < State : VectorOperations > : HamiltonianSystem < State >"
+    },
+    {
+      "signature": "pub trait SeparableHamiltonian < State : VectorOperations > { fn grad_kinetic_in_place (& self , p : & Self :: Coord , dq_dt : & mut Self :: Coord) }"
+    },
+    {
+      "signature": "pub trait SeparableHamiltonian < State : VectorOperations > { fn join_canonical (& self , q : & Self :: Coord , p : & Self :: Coord , state : & mut State) }"
+    },
+    {
+      "signature": "pub trait SeparableHamiltonian < State : VectorOperations > { fn kinetic_energy (& self , p : & Self :: Coord) -> f64 }"
+    },
+    {
+      "signature": "pub trait SeparableHamiltonian < State : VectorOperations > { fn neg_grad_potential_in_place (& self , q : & Self :: Coord , dp_dt : & mut Self :: Coord) }"
+    },
+    {
+      "signature": "pub trait SeparableHamiltonian < State : VectorOperations > { fn potential_energy (& self , q : & Self :: Coord) -> f64 }"
+    },
+    {
+      "signature": "pub trait SeparableHamiltonian < State : VectorOperations > { fn split_canonical (& self , state : & State , q : & mut Self :: Coord , p : & mut Self :: Coord) }"
+    },
+    {
+      "signature": "pub trait SeparableHamiltonian < State : VectorOperations > { type Coord : VectorOperations }"
     },
     {
       "signature": "pub trait Solver < State : VectorOperations >"
