@@ -8655,13 +8655,7 @@
       "signature": "pub trait TheoryDescribable { fn available_descriptions (& self) -> HashMap < String , String > }"
     },
     {
-      "signature": "pub trait TheoryDescribable { fn get_parameter (& self , _name : & str) -> Option < f64 > }"
-    },
-    {
       "signature": "pub trait TheoryDescribable { fn phonetic_description (& self) -> String }"
-    },
-    {
-      "signature": "pub trait TheoryDescribable { fn set_parameter (& mut self , _name : & str , _value : f64) }"
     },
     {
       "signature": "pub trait TheoryDescribable { fn theory_citation (& self) -> String }"
@@ -8674,9 +8668,6 @@
     },
     {
       "signature": "pub trait TheoryDescribable { fn theory_parameters (& self) -> HashMap < String , ParameterConstraint > }"
-    },
-    {
-      "signature": "pub use crate :: theory_description"
     }
   ],
   "crates/verified_engine/src/allocator.rs": [
