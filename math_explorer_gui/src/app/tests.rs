@@ -346,26 +346,25 @@ fn test_undo_redo_tab_and_theme_navigation() {
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         app.update(ctx, &mut frame);
     });
-    assert!(app.session_manager.can_undo());
+    assert!(!app.session_manager.can_undo());
 
     if app.tabs.len() > 1 {
         app.selected_tab = 1;
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             app.update(ctx, &mut frame);
         });
-    }
+        assert!(app.session_manager.can_undo());
 
-    if app.tabs.len() > 1 {
         app.undo();
         assert_eq!(app.selected_tab, 0);
+        assert_eq!(app.theme, ThemeMode::Light);
+        assert!(!app.session_manager.can_undo());
         assert!(app.session_manager.can_redo());
+
+        app.redo();
+        assert_eq!(app.selected_tab, 1);
+        assert_eq!(app.theme, ThemeMode::Light);
     }
-
-    app.undo();
-    assert_eq!(app.theme, ThemeMode::Dark);
-
-    app.redo();
-    assert_eq!(app.theme, ThemeMode::Light);
 }
 
 #[test]

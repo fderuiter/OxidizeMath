@@ -79,10 +79,6 @@ impl InteractiveTool for GraphEditorTool {
         self.serialize_borrowed_state()
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.canvas_id
-    }
-
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
@@ -345,50 +341,29 @@ impl GraphEditorTool {
 
     fn show_undo_redo_toolbar(&mut self, ui: &mut egui::Ui) {
         let m = self.register_keyboard_commands(ui.ctx());
-        let bridge = crate::app::session::shortcuts::read_workspace_history_bridge(ui.ctx());
-        let can_undo = if bridge.active {
-            bridge.can_undo
-        } else {
-            self.can_undo()
-        };
-        let can_redo = if bridge.active {
-            bridge.can_redo
-        } else {
-            self.can_redo()
-        };
+        if crate::app::session::shortcuts::is_workspace_history_active(ui.ctx()) {
+            return;
+        }
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(can_undo, egui::Button::new("↩ Undo"))
+                .add_enabled(self.can_undo(), egui::Button::new("↩ Undo"))
                 .accessible_hover_text("Undo the last graph modification (Ctrl+Z / Cmd+Z)")
                 .clicked()
             {
-                if bridge.active {
-                    crate::app::session::shortcuts::request_workspace_undo(ui.ctx());
-                    crate::accessibility::announce_status("Undid graph modification");
-                } else {
-                    self.undo();
-                }
+                self.undo();
             }
 
             if ui
-                .add_enabled(can_redo, egui::Button::new("↪ Redo"))
+                .add_enabled(self.can_redo(), egui::Button::new("↪ Redo"))
                 .accessible_hover_text(
                     "Redo the last undone graph modification (Ctrl+Y / Cmd+Shift+Z)",
                 )
                 .clicked()
             {
-                if bridge.active {
-                    crate::app::session::shortcuts::request_workspace_redo(ui.ctx());
-                    crate::accessibility::announce_status("Redid graph modification");
-                } else {
-                    self.redo();
-                }
+                self.redo();
             }
         });
-
-        if !bridge.active {
-            self.consume_toolbar_undo_redo(ui, m);
-        }
+        self.consume_toolbar_undo_redo(ui, m);
     }
 
     fn show_clear_button(&mut self, ui: &mut egui::Ui) {

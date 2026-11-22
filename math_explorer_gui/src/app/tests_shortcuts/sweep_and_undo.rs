@@ -326,15 +326,15 @@ fn test_single_layout_ctrl_z_and_ctrl_y_across_all_explorer_tabs_and_strip_short
 
     for tab_idx in 0..app.tabs.len() {
         app.select_tab(&ctx, tab_idx);
-        app.theme = ThemeMode::Dark;
+        app.split_ratio = 0.50;
         let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
 
-        app.theme = ThemeMode::HighContrast;
+        app.split_ratio = 0.65;
         let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
         assert_eq!(app.selected_tab, tab_idx);
 
         let _ = step_events(&ctx, &mut app, &mut frame, key_event(egui::Key::Z, mods));
-        assert_eq!(app.theme, ThemeMode::Dark);
+        assert!((app.split_ratio - 0.50).abs() < 1e-5);
         ctx.input(|i| {
             let z_ev = |e: &egui::Event| {
                 matches!(
@@ -351,7 +351,7 @@ fn test_single_layout_ctrl_z_and_ctrl_y_across_all_explorer_tabs_and_strip_short
         });
 
         let _ = step_events(&ctx, &mut app, &mut frame, redo_shortcut_events());
-        assert_eq!(app.theme, ThemeMode::HighContrast);
+        assert!((app.split_ratio - 0.65).abs() < 1e-5);
         ctx.input(|i| {
             assert!(!i.keys_down.contains(&egui::Key::Y) && !i.keys_down.contains(&egui::Key::Z));
         });

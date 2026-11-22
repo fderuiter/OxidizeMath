@@ -238,24 +238,49 @@ impl MathExplorerApp {
         }
     }
 
-    /// Computes a deterministic hash and tracking flag across secondary pane slots.
-    pub(super) fn secondary_slots_revision_hash(&self) -> (u64, bool) {
+    /// Computes deterministic full-state and chrome-free history hashes across secondary pane slots.
+    pub(super) fn secondary_slots_revision_hashes(&self) -> (u64, u64, bool) {
         use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let mut full_h = std::collections::hash_map::DefaultHasher::new();
+        let mut hist_h = std::collections::hash_map::DefaultHasher::new();
         let mut all_tracked = true;
         for (slot_idx, slot) in self.pane_slots.slots.iter().enumerate() {
-            slot_idx.hash(&mut h);
-            slot.saved_states.len().hash(&mut h);
+            slot_idx.hash(&mut full_h);
+            slot_idx.hash(&mut hist_h);
+            slot.saved_states.len().hash(&mut full_h);
+            slot.saved_states.len().hash(&mut hist_h);
             if let Some((tab_idx, ref tab)) = slot.active {
-                tab_idx.hash(&mut h);
-                let rev = tab.state_revision();
-                if rev == 0 {
+                tab_idx.hash(&mut full_h);
+                tab_idx.hash(&mut hist_h);
+                let full_rev = tab.state_revision();
+                let hist_rev = tab.history_revision();
+                if full_rev == 0 {
                     all_tracked = false;
                 }
-                rev.hash(&mut h);
+                full_rev.hash(&mut full_h);
+                hist_rev.hash(&mut hist_h);
             }
         }
-        (h.finish(), all_tracked)
+        (full_h.finish(), hist_h.finish(), all_tracked)
+    }
+
+    pub(super) fn restore_secondary_slot_overlay_chrome(
+        &mut self,
+        pane_idx: usize,
+        tab_name: &str,
+        portal: bool,
+        gallery: bool,
+    ) {
+        if let Some(slot) = self.pane_slots.slot_mut(pane_idx) {
+            if let Some((_, ref mut tab)) = slot.active {
+                if tab.name() == tab_name {
+                    if let Some(fw) = tab.framework_mut() {
+                        fw.restore_overlay_chrome(portal, gallery);
+                    }
+                }
+            }
+            *slot.active_cache.borrow_mut() = None;
+        }
     }
 
     /// Extracts serialized per-pane state maps for `AppState`.

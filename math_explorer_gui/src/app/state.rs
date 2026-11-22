@@ -6,7 +6,6 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
 /// Layout mode for the main simulation viewport container.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -105,88 +104,6 @@ impl TabStateCache {
             .borrow_mut()
             .insert(name.to_string(), (rev, fresh.clone()));
         fresh
-    }
-}
-
-/// Zero-allocation O(1) state fingerprint used to skip idle and `DragEditing` workspace extractions.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct AppStateFingerprint {
-    selected_tab: usize,
-    secondary_tab: usize,
-    flags: u8,
-    theme_discriminant: u8,
-    split_mode_discriminant: u8,
-    viewport_discriminant: u8,
-    split_ratio_bits: u32,
-    quad_split_ratio_bits: (u32, u32),
-    focused_pane: usize,
-    pane_tabs: [usize; 4],
-    primary_revisions_hash: u64,
-    secondary_revisions_hash: u64,
-    pub(crate) all_revisions_tracked: bool,
-}
-
-impl AppStateFingerprint {
-    pub(crate) fn capture(app: &super::MathExplorerApp) -> Self {
-        let mut primary_hasher = std::collections::hash_map::DefaultHasher::new();
-        let mut all_tracked = true;
-        let active_primary = app.active_primary_tab_index();
-        for (idx, tab) in app.tabs.iter().enumerate() {
-            let rev = tab.state_revision();
-            if idx == active_primary && rev == 0 {
-                all_tracked = false;
-            }
-            idx.hash(&mut primary_hasher);
-            rev.hash(&mut primary_hasher);
-        }
-        let (secondary_hash, secondary_tracked) = app.secondary_slots_revision_hash();
-        all_tracked &= secondary_tracked;
-
-        let mut pane_tabs = [0_usize; 4];
-        for (i, slot) in pane_tabs.iter_mut().enumerate() {
-            *slot = app.pane_tabs.get(i).copied().unwrap_or(i);
-        }
-        pane_tabs[0] = app.selected_tab;
-        if app.viewport_layout != ViewportLayout::QuadGrid {
-            pane_tabs[1] = app.secondary_tab;
-        }
-
-        let flags = u8::from(app.show_info)
-            | (u8::from(app.show_warnings) << 1)
-            | (u8::from(app.show_errors) << 2)
-            | (u8::from(app.show_diagnostics_panel) << 3);
-
-        Self {
-            selected_tab: app.selected_tab,
-            secondary_tab: app.secondary_tab,
-            flags,
-            theme_discriminant: match app.theme {
-                ThemeMode::Dark => 0,
-                ThemeMode::Light => 1,
-                ThemeMode::HighContrast => 2,
-            },
-            split_mode_discriminant: match app.split_layout_mode {
-                SplitLayoutMode::Single => 0,
-                SplitLayoutMode::Horizontal => 1,
-                SplitLayoutMode::Vertical => 2,
-            },
-            viewport_discriminant: match app.viewport_layout {
-                ViewportLayout::Single => 0,
-                ViewportLayout::SplitHorizontal => 1,
-                ViewportLayout::SplitVertical => 2,
-                ViewportLayout::QuadGrid => 3,
-            },
-            split_ratio_bits: app.split_ratio.clamp(0.20, 0.80).to_bits(),
-            quad_split_ratio_bits: (
-                app.quad_split_ratios.0.clamp(0.20, 0.80).to_bits(),
-                app.quad_split_ratios.1.clamp(0.20, 0.80).to_bits(),
-            ),
-            focused_pane: app.active_focused_pane(),
-            pane_tabs,
-            primary_revisions_hash: primary_hasher.finish(),
-            secondary_revisions_hash: secondary_hash,
-            all_revisions_tracked: all_tracked,
-        }
     }
 }
 

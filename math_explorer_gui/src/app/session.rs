@@ -10,7 +10,7 @@ mod types;
 pub(crate) use recovery::WorkspaceRecoverySnapshot;
 pub use types::{SessionLifecycleState, WorkspaceEnvelope};
 
-use crate::app::state::AppStateFingerprint;
+use crate::app::state_history::AppStateFingerprint;
 use crate::app::{AppState, MathExplorerApp};
 use eframe::egui;
 use std::path::PathBuf;
@@ -205,7 +205,7 @@ impl WorkspaceSessionManager {
                 app.clear_active_pane_caches();
                 let current_state = app.get_app_state();
                 if let Some(ref last_state) = self.last_committed_state {
-                    if &current_state != last_state {
+                    if !current_state.semantically_eq(last_state) {
                         self.push_undo(last_state.clone());
                     }
                 }
@@ -216,12 +216,17 @@ impl WorkspaceSessionManager {
             return;
         }
 
-        if fingerprint.all_revisions_tracked && self.last_committed_fingerprint == Some(fingerprint)
-        {
-            if sweep_active && self.last_committed_state.is_some() {
-                self.lifecycle_state = SessionLifecycleState::DragEditing;
+        if let Some(last_fp) = self.last_committed_fingerprint {
+            if fingerprint.all_revisions_tracked && fingerprint.same_history_as(&last_fp) {
+                if fingerprint != last_fp {
+                    self.last_committed_state = Some(app.get_app_state());
+                    self.last_committed_fingerprint = Some(fingerprint);
+                }
+                if sweep_active && self.last_committed_state.is_some() {
+                    self.lifecycle_state = SessionLifecycleState::DragEditing;
+                }
+                return;
             }
-            return;
         }
 
         if continuous_edit && self.last_committed_state.is_some() {
@@ -240,9 +245,9 @@ impl WorkspaceSessionManager {
             app.clear_active_pane_caches();
             let current = app.get_app_state();
             if let Some(prev) = self.last_committed_state.clone() {
-                if prev != current {
+                if !prev.semantically_eq(&current) {
                     self.push_redo(current);
-                    app.apply_app_state(prev);
+                    prev.apply_preserving_chrome(app);
                     self.set_is_restoring(true);
                     return;
                 }
@@ -253,7 +258,7 @@ impl WorkspaceSessionManager {
         };
         let current = app.get_app_state();
         self.push_redo(current);
-        app.apply_app_state(prev);
+        prev.apply_preserving_chrome(app);
         self.set_is_restoring(true);
     }
 
@@ -267,7 +272,7 @@ impl WorkspaceSessionManager {
         }
         let current = app.get_app_state();
         self.push_undo_preserving_redo(current);
-        app.apply_app_state(next);
+        next.apply_preserving_chrome(app);
         self.set_is_restoring(true);
     }
 
@@ -275,7 +280,12 @@ impl WorkspaceSessionManager {
     pub fn track_state_changes(&mut self, ctx: &egui::Context, current_state: AppState) {
         self.last_committed_fingerprint = None;
         if self.lifecycle_state == SessionLifecycleState::RestoringHistory {
-            if self.last_committed_state.as_ref() == Some(&current_state) {
+            if self
+                .last_committed_state
+                .as_ref()
+                .is_some_and(|last| last.semantically_eq(&current_state))
+            {
+                self.last_committed_state = Some(current_state);
                 self.quiescent_frames += 1;
                 if self.quiescent_frames >= 2 {
                     self.lifecycle_state = SessionLifecycleState::Idle;
@@ -291,7 +301,7 @@ impl WorkspaceSessionManager {
         let continuous_edit = ctx.input(|i| i.pointer.any_down())
             || crate::reflective_ui::slider::has_active_sweeps(ctx);
         if let Some(ref last_state) = self.last_committed_state {
-            if &current_state != last_state {
+            if !current_state.semantically_eq(last_state) {
                 if continuous_edit {
                     if self.lifecycle_state != SessionLifecycleState::DragEditing {
                         self.push_undo(last_state.clone());
@@ -303,9 +313,11 @@ impl WorkspaceSessionManager {
                     self.lifecycle_state = SessionLifecycleState::Idle;
                 }
                 self.last_committed_state = Some(current_state);
-            } else if !continuous_edit && self.lifecycle_state == SessionLifecycleState::DragEditing
-            {
-                self.lifecycle_state = SessionLifecycleState::Idle;
+            } else {
+                if !continuous_edit && self.lifecycle_state == SessionLifecycleState::DragEditing {
+                    self.lifecycle_state = SessionLifecycleState::Idle;
+                }
+                self.last_committed_state = Some(current_state);
             }
         } else {
             self.last_committed_state = Some(current_state);

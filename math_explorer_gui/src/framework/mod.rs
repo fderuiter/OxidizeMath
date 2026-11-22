@@ -12,6 +12,7 @@ pub mod export_types;
 mod export_ui;
 #[cfg(test)]
 mod export_ui_tests;
+mod history_ui;
 pub mod math_input;
 #[cfg(test)]
 mod metadata_label_tests;
@@ -45,10 +46,13 @@ pub use clamp::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
+pub use history_ui::render_workspace_history_buttons;
 pub use math_input::*;
 pub use pane_scope::{
-    is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id,
+    is_button_activation_focused, is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed,
+    is_text_edit_focused, record_focused_widget_type_from_output, scoped_panel_id,
 };
+pub(crate) use persistence::framework_json_semantically_eq;
 pub use playback::*;
 pub use recovery::*;
 pub use side_panel::{
@@ -158,11 +162,6 @@ pub trait InteractiveTool {
     /// Revision counter for persisted tool state (`0` falls back to framework UI revision tracking).
     fn state_revision(&self) -> u64 {
         0
-    }
-
-    /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        None
     }
 
     /// Direct numeric parameter finiteness hook without JSON serialization.

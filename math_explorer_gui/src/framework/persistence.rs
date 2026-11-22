@@ -133,6 +133,42 @@ struct FrameworkStateDeserialize {
     tool_states: HashMap<String, String>,
 }
 
+fn tool_json_eq(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    match (
+        serde_json::from_str::<serde_json::Value>(a),
+        serde_json::from_str::<serde_json::Value>(b),
+    ) {
+        (Ok(va), Ok(vb)) => va == vb,
+        _ => false,
+    }
+}
+
+/// Compares two serialized framework JSON payloads while ignoring transient overlay chrome
+/// (`show_theory_portal` and `show_starter_gallery`).
+pub(crate) fn framework_json_semantically_eq(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    let ca = egui_plot::export::strip_utf8_bom(a);
+    let cb = egui_plot::export::strip_utf8_bom(b);
+    let (Ok(da), Ok(db)) = (
+        serde_json::from_str::<FrameworkStateDeserialize>(ca),
+        serde_json::from_str::<FrameworkStateDeserialize>(cb),
+    ) else {
+        return ca == cb;
+    };
+    da.selected_tool_index == db.selected_tool_index
+        && da.selected_tool_name == db.selected_tool_name
+        && da.tool_states.len() == db.tool_states.len()
+        && da
+            .tool_states
+            .iter()
+            .all(|(k, va)| db.tool_states.get(k).is_some_and(|vb| tool_json_eq(va, vb)))
+}
+
 pub(super) fn capture_isolated_tool_datasets(
     tool: &dyn InteractiveTool,
 ) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -164,23 +200,42 @@ impl SimulationFramework {
     /// Computes a deterministic O(1) revision token for this framework's persisted state.
     pub fn state_revision(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        self.rev_cache.framework_revision.hash(&mut hasher);
-        self.selected_tool_index.hash(&mut hasher);
+        self.hash_history_fields(&mut hasher);
         self.show_theory_portal.hash(&mut hasher);
         self.show_starter_gallery.hash(&mut hasher);
-        self.saved_tool_states.len().hash(&mut hasher);
+        hasher.finish().max(1)
+    }
+
+    /// Computes a deterministic O(1) revision token excluding transient overlay chrome.
+    pub fn history_revision(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.hash_history_fields(&mut hasher);
+        hasher.finish().max(1)
+    }
+
+    fn hash_history_fields(&self, hasher: &mut impl Hasher) {
+        self.rev_cache.framework_revision.hash(hasher);
+        self.selected_tool_index.hash(hasher);
+        self.saved_tool_states.len().hash(hasher);
         if let Some(tool) = &self.active_tool {
-            tool.name().hash(&mut hasher);
+            tool.name().hash(hasher);
             let tool_rev = tool.state_revision();
             if tool_rev > 0 {
-                1_u8.hash(&mut hasher);
-                tool_rev.hash(&mut hasher);
+                1_u8.hash(hasher);
+                tool_rev.hash(hasher);
             } else {
-                0_u8.hash(&mut hasher);
-                self.rev_cache.untracked_tool_revision.hash(&mut hasher);
+                0_u8.hash(hasher);
+                self.rev_cache.untracked_tool_revision.hash(hasher);
             }
         }
-        hasher.finish().max(1)
+    }
+
+    /// Restores live `show_theory_portal` and `show_starter_gallery` flags without disturbing tool state.
+    pub(crate) fn restore_overlay_chrome(&mut self, portal: bool, gallery: bool) {
+        self.show_theory_portal = portal;
+        self.show_starter_gallery = gallery;
+        self.sync_state.theory_portal = Some(portal);
+        self.sync_state.starter_gallery = Some(gallery);
     }
 
     pub(super) fn serialized_active_tool(&self) -> Option<(&'static str, Arc<str>)> {
@@ -369,12 +424,5 @@ impl SimulationFramework {
         } else {
             false
         }
-    }
-
-    /// Returns the active tool's interactive canvas `Id` if applicable.
-    pub fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.active_tool
-            .as_ref()
-            .and_then(|t| t.focused_canvas_id())
     }
 }

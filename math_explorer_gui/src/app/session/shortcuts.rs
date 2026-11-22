@@ -1,19 +1,16 @@
 use super::{SessionLifecycleState, WorkspaceSessionManager};
-use crate::app::{MathExplorerApp, SplitLayoutMode, ViewportLayout};
+use crate::app::MathExplorerApp;
 use eframe::egui;
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 
-#[cfg(any(feature = "pure_math", test))]
 const WORKSPACE_HISTORY_BRIDGE_ID: &str = "WORKSPACE_HISTORY_BRIDGE";
 
-#[cfg(any(feature = "pure_math", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PendingHistoryAction {
     Undo,
     Redo,
 }
 
-#[cfg(any(feature = "pure_math", test))]
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WorkspaceHistoryBridge {
     pub(crate) active: bool,
@@ -22,7 +19,6 @@ pub(crate) struct WorkspaceHistoryBridge {
     pub(crate) pending: Option<PendingHistoryAction>,
 }
 
-#[cfg(any(feature = "pure_math", test))]
 pub(crate) fn read_workspace_history_bridge(ctx: &egui::Context) -> WorkspaceHistoryBridge {
     ctx.data(|d| {
         d.get_temp::<WorkspaceHistoryBridge>(egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID))
@@ -30,12 +26,10 @@ pub(crate) fn read_workspace_history_bridge(ctx: &egui::Context) -> WorkspaceHis
     })
 }
 
-#[cfg(any(feature = "pure_math", test))]
 pub(crate) fn is_workspace_history_active(ctx: &egui::Context) -> bool {
     read_workspace_history_bridge(ctx).active
 }
 
-#[cfg(any(feature = "pure_math", test))]
 pub(crate) fn request_workspace_undo(ctx: &egui::Context) {
     ctx.data_mut(|d| {
         let id = egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID);
@@ -45,7 +39,6 @@ pub(crate) fn request_workspace_undo(ctx: &egui::Context) {
     });
 }
 
-#[cfg(any(feature = "pure_math", test))]
 pub(crate) fn request_workspace_redo(ctx: &egui::Context) {
     ctx.data_mut(|d| {
         let id = egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID);
@@ -87,18 +80,15 @@ fn consume_and_strip_shortcut(
 
 impl MathExplorerApp {
     /// Returns true if an undo action is available on the workspace session.
-    #[cfg(any(not(target_os = "macos"), test))]
     pub fn can_undo(&self) -> bool {
         self.session_manager.can_undo()
     }
 
     /// Returns true if a redo action is available on the workspace session.
-    #[cfg(any(not(target_os = "macos"), test))]
     pub fn can_redo(&self) -> bool {
         self.session_manager.can_redo()
     }
 
-    #[cfg(any(feature = "pure_math", test))]
     pub(crate) fn sync_workspace_history_bridge(&self, ctx: &egui::Context) {
         let bridge = WorkspaceHistoryBridge {
             active: true,
@@ -109,10 +99,6 @@ impl MathExplorerApp {
         ctx.data_mut(|d| d.insert_temp(egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID), bridge));
     }
 
-    #[cfg(not(any(feature = "pure_math", test)))]
-    pub(crate) fn sync_workspace_history_bridge(&self, _ctx: &egui::Context) {}
-
-    #[cfg(any(feature = "pure_math", test))]
     pub(crate) fn drain_workspace_history_bridge(&mut self, ctx: &egui::Context) {
         let pending = ctx.data_mut(|d| {
             let id = egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID);
@@ -122,16 +108,20 @@ impl MathExplorerApp {
             action
         });
         match pending {
-            Some(PendingHistoryAction::Undo) => self.undo(),
-            Some(PendingHistoryAction::Redo) => self.redo(),
+            Some(PendingHistoryAction::Undo) => {
+                self.undo();
+                crate::accessibility::announce_live_status(ctx, "Action executed: Undo");
+            }
+            Some(PendingHistoryAction::Redo) => {
+                self.redo();
+                crate::accessibility::announce_live_status(ctx, "Action executed: Redo");
+            }
             None => {}
         }
+        self.sync_workspace_history_bridge(ctx);
     }
 
-    #[cfg(not(any(feature = "pure_math", test)))]
-    pub(crate) fn drain_workspace_history_bridge(&mut self, _ctx: &egui::Context) {}
-
-    pub(super) fn wants_non_canvas_keyboard_input(&self, ctx: &egui::Context) -> bool {
+    pub(crate) fn wants_non_canvas_keyboard_input(&self, ctx: &egui::Context) -> bool {
         if self.command_palette.is_open
             || self.show_help_menu
             || egui::Popup::is_any_open(ctx)
@@ -139,21 +129,7 @@ impl MathExplorerApp {
         {
             return true;
         }
-        if !ctx.wants_keyboard_input() {
-            return false;
-        }
-        let Some(fid) = ctx.memory(|m| m.focused()) else {
-            return true;
-        };
-        let pane_count = if self.viewport_layout != ViewportLayout::Single {
-            self.viewport_layout.pane_count()
-        } else if self.split_layout_mode != SplitLayoutMode::Single {
-            2
-        } else {
-            1
-        };
-        !(0..pane_count)
-            .any(|idx| self.pane_tab(idx).and_then(|t| t.focused_canvas_id()) == Some(fid))
+        crate::framework::is_text_edit_focused(ctx)
     }
 }
 
@@ -167,11 +143,7 @@ impl WorkspaceSessionManager {
         m: egui::Modifiers,
     ) -> bool {
         CommandRegistryData::register(ctx, name, desc, CommandTrigger::Shortcut(m, k), true, cat);
-        let touch_mode = ctx.data(|d| {
-            d.get_temp::<bool>(egui::Id::new("INPUT_MODE_TOUCH"))
-                .unwrap_or(false)
-        });
-        !touch_mode && consume_and_strip_shortcut(ctx, m, k, name)
+        consume_and_strip_shortcut(ctx, m, k, name)
     }
 
     /// Registers global workspace session keyboard shortcuts and checks for user triggers.
@@ -249,11 +221,7 @@ impl WorkspaceSessionManager {
         sm: egui::Modifiers,
     ) -> (bool, bool) {
         Self::register_history_metadata(ctx, m, sm);
-        let touch_mode = ctx.data(|d| {
-            d.get_temp::<bool>(egui::Id::new("INPUT_MODE_TOUCH"))
-                .unwrap_or(false)
-        });
-        if touch_mode || app.wants_non_canvas_keyboard_input(ctx) {
+        if app.wants_non_canvas_keyboard_input(ctx) {
             return (false, false);
         }
         let redo_shift = consume_and_strip_shortcut(ctx, sm, egui::Key::Z, "Redo");

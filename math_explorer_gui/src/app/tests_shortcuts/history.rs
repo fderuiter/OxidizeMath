@@ -31,7 +31,7 @@ fn test_single_pane_input_guard_preserves_workspace_undo() {
     let mods = shortcut_mods();
 
     let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, Vec::new());
-    app.theme = ThemeMode::Light;
+    app.split_ratio = 0.65;
     let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, Vec::new());
     assert!(app.session_manager.can_undo());
 
@@ -50,7 +50,7 @@ fn test_single_pane_input_guard_preserves_workspace_undo() {
             app.update(c, &mut frame);
         },
     );
-    assert_eq!(app.theme, ThemeMode::Light);
+    assert!((app.split_ratio - 0.65).abs() < 1e-5);
     assert!(has_cmd(&get_registered_commands(&ctx), "Edit", "Undo"));
 }
 
@@ -111,12 +111,12 @@ fn test_split_pane_input_guard_and_focus_surrender_on_single_layout() {
     let mods = shortcut_mods();
 
     let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, Vec::new());
-    app.theme = ThemeMode::Light;
+    app.split_ratio = 0.40;
     let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, Vec::new());
 
     focus_secondary_pane_custom_input(&ctx, &mut app, &mut frame);
     assert!(ctx.wants_keyboard_input());
-    app.theme = ThemeMode::HighContrast;
+    app.split_ratio = 0.65;
     let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, Vec::new());
     let _ = run_frame_with_rect(
         &ctx,
@@ -124,16 +124,18 @@ fn test_split_pane_input_guard_and_focus_surrender_on_single_layout() {
         &mut frame,
         key_shortcut_event(egui::Key::Z, mods),
     );
-    assert_eq!(app.theme, ThemeMode::HighContrast);
+    assert!((app.split_ratio - 0.65).abs() < 1e-5);
 
     app.set_layout(ViewportLayout::Single);
+    let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, Vec::new());
     let _ = run_frame_with_rect(
         &ctx,
         &mut app,
         &mut frame,
         key_shortcut_event(egui::Key::Z, mods),
     );
-    assert_eq!(app.theme, ThemeMode::Light);
+    assert_eq!(app.viewport_layout, ViewportLayout::SplitHorizontal);
+    assert!((app.split_ratio - 0.65).abs() < 1e-5);
     if !cfg!(target_os = "macos") {
         let _ = run_frame_with_rect(
             &ctx,
@@ -141,7 +143,6 @@ fn test_split_pane_input_guard_and_focus_surrender_on_single_layout() {
             &mut frame,
             key_shortcut_event(egui::Key::Y, mods),
         );
-        assert_eq!(app.theme, ThemeMode::HighContrast);
         assert_eq!(app.viewport_layout, ViewportLayout::Single);
     }
 }
@@ -201,7 +202,7 @@ fn test_graph_editor_shortcuts_split_no_replay_and_session_fallback() {
     assert!(app.tabs[graph_idx].select_tool_by_name("GraphEditorTool"));
     let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, Vec::new());
 
-    app.theme = ThemeMode::HighContrast;
+    app.split_ratio = 0.65;
     let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, Vec::new());
 
     app.set_layout(ViewportLayout::SplitHorizontal);
@@ -225,35 +226,19 @@ fn test_graph_editor_shortcuts_split_no_replay_and_session_fallback() {
     app.session_manager.push_redo(app.get_app_state());
     assert!(app.can_undo());
 
-    let _ = run_frame_with_rect(
-        &ctx,
-        &mut app,
-        &mut frame,
-        key_shortcut_event(egui::Key::Z, mods),
-    );
-    assert!(app
-        .pane_tab(0)
-        .unwrap()
-        .save_state()
-        .unwrap()
-        .contains(r#""next_node_id":1"#));
+    let ctrl_z = || key_shortcut_event(egui::Key::Z, mods);
+    let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, ctrl_z());
+    let s0 = app.pane_tab(0).unwrap().save_state().unwrap();
+    assert!(s0.contains(r#""next_node_id":1"#));
     assert!(app.session_manager.can_redo() && app.can_redo());
 
     let shift_z = key_shortcut_event(egui::Key::Z, mods | egui::Modifiers::SHIFT);
     let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, shift_z);
-    assert!(app
-        .pane_tab(0)
-        .unwrap()
-        .save_state()
-        .unwrap()
-        .contains(r#""next_node_id":2"#));
+    let s1 = app.pane_tab(0).unwrap().save_state().unwrap();
+    assert!(s1.contains(r#""next_node_id":2"#));
     for _ in 0..4 {
-        let _ = run_frame_with_rect(
-            &ctx,
-            &mut app,
-            &mut frame,
-            key_shortcut_event(egui::Key::Z, mods),
-        );
+        let _ = run_frame_with_rect(&ctx, &mut app, &mut frame, ctrl_z());
     }
-    assert_eq!(app.theme, ThemeMode::Dark);
+    assert_eq!(app.viewport_layout, ViewportLayout::Single);
+    assert!((app.split_ratio - 0.5).abs() < 1e-5);
 }

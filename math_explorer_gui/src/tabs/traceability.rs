@@ -243,8 +243,9 @@ impl TraceabilityTab {
     }
 
     fn render_portal_toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.heading("Theory-to-Code Traceability Portal");
+            crate::framework::render_workspace_history_buttons(ui);
             if ui.button("Refresh").clicked() {
                 self.refresh();
             }

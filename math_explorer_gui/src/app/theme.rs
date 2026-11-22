@@ -458,9 +458,15 @@ mod tests {
             (Some(ThemeMode::Light), 1)
         );
 
+        app.split_ratio = 0.62;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            let mut mgr = std::mem::take(&mut app.session_manager);
+            mgr.track_frame_changes(ctx, &app);
+            app.session_manager = mgr;
+        });
         app.undo();
         sync_theme_with_storage(&mut app, &ctx, Some(&mut storage));
-        assert_eq!(saved_theme(&storage), Some(ThemeMode::Dark));
+        assert_eq!(saved_theme(&storage), Some(ThemeMode::Light));
 
         app.redo();
         sync_theme_with_storage(&mut app, &ctx, Some(&mut storage));

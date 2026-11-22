@@ -1,12 +1,16 @@
 pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
+#[cfg(all(test, not(target_os = "macos")))]
+#[path = "macos_menu/edit.rs"]
+pub(crate) mod macos_menu_edit;
 pub mod palette;
 mod pane_ops;
 mod pane_slots;
 pub(crate) mod session;
 mod share_link;
 mod state;
+pub(crate) mod state_history;
 pub mod theme;
 pub(crate) mod ui_panels;
 pub(crate) mod viewport;
@@ -23,6 +27,8 @@ mod tests_diagnostics;
 mod tests_domain_bar;
 #[cfg(test)]
 mod tests_focus_routing;
+#[cfg(test)]
+mod tests_history_toolbar;
 #[cfg(test)]
 mod tests_multi_pane;
 #[cfg(test)]
@@ -316,7 +322,9 @@ impl eframe::App for MathExplorerApp {
             "Global",
         );
 
-        let question_triggered = !ctx.wants_keyboard_input()
+        let question_triggered = !crate::framework::is_text_edit_focused(ctx)
+            && !self.command_palette.is_open
+            && !egui::Popup::is_any_open(ctx)
             && ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::NONE, egui::Key::Questionmark)
                     || i.consume_key(egui::Modifiers::SHIFT, egui::Key::Questionmark)
@@ -387,7 +395,10 @@ impl eframe::App for MathExplorerApp {
         }
 
         #[cfg(target_os = "macos")]
-        macos_menu::handle_macos_menu_events(self, ctx);
+        {
+            macos_menu::sync_macos_edit_menu(self);
+            macos_menu::handle_macos_menu_events(self, ctx);
+        }
 
         #[cfg(target_os = "macos")]
         if self.session_manager.toast().is_some() {
@@ -452,6 +463,9 @@ impl eframe::App for MathExplorerApp {
         let mut session_manager = std::mem::take(&mut self.session_manager);
         session_manager.track_frame_changes(ctx, self);
         self.session_manager = session_manager;
+        #[cfg(target_os = "macos")]
+        macos_menu::sync_macos_edit_menu(self);
+        crate::framework::record_focused_widget_type_from_output(ctx);
         theme::sync_frame_theme(self, ctx, frame);
         self.tick_url_sync(ctx);
     }

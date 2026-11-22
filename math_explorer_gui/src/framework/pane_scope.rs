@@ -9,10 +9,88 @@ pub fn scoped_panel_id(ui: &egui::Ui, suffix: impl std::hash::Hash) -> egui::Id 
     ui.id().with(suffix)
 }
 
+const FOCUSED_WIDGET_TYPE_KEY: &str = "FOCUSED_WIDGET_TYPE";
+
+fn output_focused_widget_type(ctx: &egui::Context) -> Option<egui::WidgetType> {
+    ctx.output(|o| {
+        o.events.iter().rev().find_map(|ev| match ev {
+            egui::output::OutputEvent::FocusGained(info)
+            | egui::output::OutputEvent::Clicked(info) => Some(info.typ),
+            _ => None,
+        })
+    })
+}
+
+/// Records the `egui::WidgetType` of the currently focused widget at the end of a frame pass.
+pub fn record_focused_widget_type_from_output(ctx: &egui::Context) {
+    let key = egui::Id::new(FOCUSED_WIDGET_TYPE_KEY);
+    let Some(fid) = ctx.memory(|m| m.focused()) else {
+        ctx.data_mut(|d| d.remove::<(egui::Id, egui::WidgetType)>(key));
+        return;
+    };
+    if let Some(typ) = output_focused_widget_type(ctx) {
+        ctx.data_mut(|d| d.insert_temp(key, (fid, typ)));
+    } else {
+        ctx.data_mut(|d| {
+            if d.get_temp::<(egui::Id, egui::WidgetType)>(key)
+                .is_some_and(|(cached_id, _)| cached_id != fid)
+            {
+                d.remove::<(egui::Id, egui::WidgetType)>(key);
+            }
+        });
+    }
+}
+
+fn focused_widget_type(ctx: &egui::Context, fid: egui::Id) -> Option<egui::WidgetType> {
+    if ctx.read_response(fid).is_some_and(|r| r.gained_focus()) {
+        if let Some(typ) = output_focused_widget_type(ctx) {
+            return Some(typ);
+        }
+    }
+    ctx.data(|d| {
+        d.get_temp::<(egui::Id, egui::WidgetType)>(egui::Id::new(FOCUSED_WIDGET_TYPE_KEY))
+            .and_then(|(cached_id, typ)| (cached_id == fid).then_some(typ))
+    })
+}
+
+/// Returns `true` when keyboard focus is currently held by a `WidgetType::TextEdit` input.
+pub fn is_text_edit_focused(ctx: &egui::Context) -> bool {
+    let Some(fid) = ctx.memory(|m| m.focused()) else {
+        return false;
+    };
+    egui::text_edit::TextEditState::load(ctx, fid).is_some()
+        || focused_widget_type(ctx, fid) == Some(egui::WidgetType::TextEdit)
+}
+
+/// Returns `true` when keyboard focus is held by a button or click-activated widget reserving `Space`.
+pub fn is_button_activation_focused(ctx: &egui::Context) -> bool {
+    let Some(fid) = ctx.memory(|m| m.focused()) else {
+        return false;
+    };
+    if crate::app::viewport::sash::is_any_sash_id(fid) {
+        return false;
+    }
+    if let Some(typ) = focused_widget_type(ctx, fid) {
+        return matches!(
+            typ,
+            egui::WidgetType::Button
+                | egui::WidgetType::Checkbox
+                | egui::WidgetType::RadioButton
+                | egui::WidgetType::SelectableLabel
+                | egui::WidgetType::ComboBox
+                | egui::WidgetType::CollapsingHeader
+                | egui::WidgetType::Link
+                | egui::WidgetType::ColorButton
+        );
+    }
+    ctx.read_response(fid)
+        .is_some_and(|resp| resp.sense.senses_click() && !resp.sense.senses_drag())
+}
+
 /// Returns `true` when unfocused pane-level keyboard shortcuts (e.g. `.`, `Ctrl+Z`) may execute in `ui`.
 pub fn is_pane_shortcut_allowed(ui: &egui::Ui) -> bool {
     let ctx = ui.ctx();
-    if ctx.wants_keyboard_input()
+    if is_text_edit_focused(ctx)
         || egui::Popup::is_any_open(ctx)
         || ctx.memory(|m| m.top_modal_layer().is_some())
     {
@@ -36,9 +114,9 @@ pub fn is_pane_shortcut_allowed(ui: &egui::Ui) -> bool {
     })
 }
 
-/// Returns `true` when unfocused activation-key shortcuts (`Space` / `Enter`) may execute without colliding with focused widgets.
+/// Returns `true` when activation-key shortcuts (`Space`) may execute without colliding with focused buttons.
 pub fn is_pane_activation_shortcut_allowed(ui: &egui::Ui) -> bool {
-    is_pane_shortcut_allowed(ui) && ui.ctx().memory(|m| m.focused().is_none())
+    is_pane_shortcut_allowed(ui) && !is_button_activation_focused(ui.ctx())
 }
 
 pub(super) fn render_default_tool_inside<T: InteractiveTool + ?Sized>(
