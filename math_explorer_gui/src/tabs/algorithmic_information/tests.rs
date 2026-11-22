@@ -39,11 +39,13 @@ fn test_fractran_tool_headless_egui_render_and_prime_tape() {
     assert!(tool.trajectory.len() >= 70);
 
     let datasets = tool.export_datasets();
-    let mut opts = egui_plot::export::ExportOptions::default();
-    opts.width = 1200;
-    opts.height = 720;
+    let opts = egui_plot::export::ExportOptions {
+        width: 1200,
+        height: 720,
+        ..Default::default()
+    };
     let png = egui_plot::export::export_custom_png(&datasets, &opts).unwrap();
-    let _ = std::fs::write("/tmp/fractran_primegame_complexity.png", png);
+    assert!(!png.is_empty());
 }
 
 #[test]
