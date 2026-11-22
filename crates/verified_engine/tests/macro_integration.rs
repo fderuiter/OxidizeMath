@@ -120,37 +120,177 @@ mod facade_isolation {
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
-    fn find_newest_rlib(deps_dir: &Path, prefix: &str) -> PathBuf {
-        let mut candidates: Vec<_> = fs::read_dir(deps_dir)
-            .expect("read deps dir")
-            .flatten()
-            .filter_map(|e| {
-                let p = e.path();
-                let name = p.file_name()?.to_str()?;
-                if name.starts_with(prefix) && p.extension()?.to_str()? == "rlib" {
-                    Some((e.metadata().ok()?.modified().ok(), p))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        candidates.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
-        candidates.pop().expect("compiled verified_engine rlib").1
+    fn rustc_bin() -> PathBuf {
+        if let Some(rustc) = std::env::var_os("RUSTC") {
+            return PathBuf::from(rustc);
+        }
+        if let Some(cargo) = std::env::var_os("CARGO") {
+            let candidate = PathBuf::from(cargo).with_file_name(if cfg!(windows) {
+                "rustc.exe"
+            } else {
+                "rustc"
+            });
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+        PathBuf::from("rustc")
     }
 
-    #[test]
-    fn test_downstream_caller_with_only_verified_engine_extern() {
+    fn detect_profiles() -> (Vec<PathBuf>, bool) {
         let exe = std::env::current_exe().expect("test exe");
-        let deps_dir = exe.parent().expect("deps dir");
-        let ve_rlib = find_newest_rlib(deps_dir, "libverified_engine-");
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let parent = exe.parent().expect("exe parent");
+        let (primary, build_layout) = if parent.file_name().and_then(|s| s.to_str()) == Some("deps")
+        {
+            (parent.parent().expect("profile dir").to_path_buf(), false)
+        } else if let Some(build_dir) = exe.ancestors().nth(4)
+            && build_dir.file_name().and_then(|s| s.to_str()) == Some("build")
+        {
+            (build_dir.parent().expect("profile dir").to_path_buf(), true)
+        } else {
+            panic!("unexpected test executable location: {}", exe.display());
+        };
+        let mut profiles = vec![primary.clone()];
+        if let Some(name) = primary.file_name()
+            && let Some(root) = primary.parent().and_then(Path::parent)
+        {
+            let host = root.join(name);
+            let sub = if build_layout { "build" } else { "deps" };
+            if host != primary && host.join(sub).is_dir() {
+                profiles.push(host);
+            }
+        }
+        (profiles, build_layout)
+    }
 
-        let tmp = std::env::temp_dir().join(format!("ve_facade_only_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("create tmp dir");
-        let src = tmp.join("downstream.rs");
-        let out_rlib = tmp.join("libdownstream.rlib");
-        let code = r#"
+    fn find_crate_rlibs(
+        profiles: &[PathBuf],
+        build_layout: bool,
+        pkg_name: &str,
+        prefix: &str,
+    ) -> Vec<PathBuf> {
+        let dirs: Vec<PathBuf> = if build_layout {
+            profiles
+                .iter()
+                .filter_map(|p| fs::read_dir(p.join("build").join(pkg_name)).ok())
+                .flatten()
+                .flatten()
+                .map(|e| e.path().join("out"))
+                .filter(|d| d.is_dir())
+                .collect()
+        } else {
+            profiles.iter().map(|p| p.join("deps")).collect()
+        };
+        let mut candidates = Vec::new();
+        for dir in &dirs {
+            let Ok(entries) = fs::read_dir(dir) else {
+                continue;
+            };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.file_name()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|n| n.starts_with(prefix))
+                    && p.extension().and_then(|s| s.to_str()) == Some("rlib")
+                {
+                    let mtime = e.metadata().ok().and_then(|m| m.modified().ok());
+                    candidates.push((mtime, p));
+                }
+            }
+        }
+        candidates.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+        assert!(!candidates.is_empty(), "compiled verified_engine rlib");
+        candidates.into_iter().map(|(_, p)| p).collect()
+    }
+
+    fn link_artifact(src: &Path, dst: &Path) {
+        if dst.exists() {
+            return;
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(src, dst).expect("symlink dep artifact");
+        #[cfg(not(unix))]
+        fs::hard_link(src, dst)
+            .or_else(|_| fs::copy(src, dst).map(|_| ()))
+            .expect("stage dep artifact");
+    }
+
+    fn collect_profile_artifacts(profile: &Path) -> Vec<PathBuf> {
+        let Ok(pkgs) = fs::read_dir(profile.join("build")) else {
+            return Vec::new();
+        };
+        let mut found = Vec::new();
+        for unit in pkgs
+            .flatten()
+            .filter_map(|pkg| fs::read_dir(pkg.path()).ok())
+            .flatten()
+            .flatten()
+        {
+            let Ok(files) = fs::read_dir(unit.path().join("out")) else {
+                continue;
+            };
+            for file in files.flatten() {
+                let path = file.path();
+                if matches!(
+                    path.extension().and_then(|s| s.to_str()),
+                    Some("rlib" | "so" | "dylib" | "dll")
+                ) {
+                    let mtime = file.metadata().ok().and_then(|m| m.modified().ok());
+                    found.push((mtime, path));
+                }
+            }
+        }
+        found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+        found.into_iter().map(|(_, p)| p).collect()
+    }
+
+    fn stage_build_deps(profiles: &[PathBuf], tmp: &Path) -> PathBuf {
+        let staged = if cfg!(unix) {
+            tmp.join("deps")
+        } else {
+            profiles[0].join(format!("ve_facade_deps_{}", std::process::id()))
+        };
+        let _ = fs::remove_dir_all(&staged);
+        fs::create_dir_all(&staged).expect("create staged deps dir");
+        for profile in profiles {
+            for path in collect_profile_artifacts(profile) {
+                if let Some(name) = path.file_name() {
+                    link_artifact(&path, &staged.join(name));
+                }
+            }
+        }
+        staged
+    }
+
+    fn run_downstream_rustc(
+        manifest_dir: &Path,
+        ve_rlib: &Path,
+        dep_dirs: &[PathBuf],
+        src: &Path,
+        out_rlib: &Path,
+    ) -> std::process::Output {
+        let mut cmd = Command::new(rustc_bin());
+        cmd.current_dir(manifest_dir)
+            .env("CARGO_MANIFEST_DIR", manifest_dir)
+            .args([
+                "--edition=2024",
+                "--crate-type=lib",
+                "--crate-name=downstream_ve_only",
+                "-D",
+                "warnings",
+            ])
+            .arg(format!("--extern=verified_engine={}", ve_rlib.display()));
+        for dir in dep_dirs {
+            cmd.arg(format!("-Ldependency={}", dir.display()));
+        }
+        cmd.arg(src)
+            .arg("-o")
+            .arg(out_rlib)
+            .output()
+            .expect("run rustc")
+    }
+
+    const DOWNSTREAM_VE_SNIPPET: &str = r#"
 use verified_engine::{Theory, embed_theory, verified};
 
 #[derive(Theory)]
@@ -166,43 +306,50 @@ pub fn external_range(b: f64, r: f64, c: f64, t: f64) -> f64 {
     (2.0 * b * r) / (c * t)
 }
 "#;
-        fs::write(&src, code).expect("write downstream.rs");
 
-        let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
-        let mut cmd = Command::new(rustc);
-        cmd.current_dir(&manifest_dir)
-            .env("CARGO_MANIFEST_DIR", &manifest_dir)
-            .arg("--edition=2024")
-            .arg("--crate-type=lib")
-            .arg("--crate-name=downstream_ve_only")
-            .arg("-D")
-            .arg("warnings")
-            .arg("--extern")
-            .arg(format!("verified_engine={}", ve_rlib.display()))
-            .arg("-L")
-            .arg(format!("dependency={}", deps_dir.display()));
-        if let Some(host_deps) = deps_dir.parent().and_then(|p| p.parent()).and_then(|t| {
-            deps_dir
-                .parent()?
-                .file_name()
-                .map(|prof| t.join(prof).join("deps"))
-        }) && host_deps.is_dir()
-            && host_deps != deps_dir
-        {
-            cmd.arg("-L")
-                .arg(format!("dependency={}", host_deps.display()));
+    #[test]
+    fn test_downstream_caller_with_only_verified_engine_extern() {
+        let (profiles, build_layout) = detect_profiles();
+        let ve_rlibs = find_crate_rlibs(
+            &profiles,
+            build_layout,
+            "verified_engine",
+            "libverified_engine-",
+        );
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+        let tmp = std::env::temp_dir().join(format!("ve_facade_only_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("create tmp dir");
+        let src = tmp.join("downstream.rs");
+        let out_rlib = tmp.join("libdownstream.rlib");
+        fs::write(&src, DOWNSTREAM_VE_SNIPPET).expect("write downstream.rs");
+
+        let staged_deps = build_layout.then(|| stage_build_deps(&profiles, &tmp));
+        let dep_dirs: Vec<PathBuf> = match staged_deps.as_ref() {
+            Some(staged) => vec![staged.clone()],
+            None => profiles.iter().map(|p| p.join("deps")).collect(),
+        };
+
+        let mut first_err = String::new();
+        let mut succeeded = false;
+        for ve_rlib in &ve_rlibs {
+            let out = run_downstream_rustc(&manifest_dir, ve_rlib, &dep_dirs, &src, &out_rlib);
+            if out.status.success() {
+                succeeded = true;
+                break;
+            }
+            if first_err.is_empty() {
+                first_err = String::from_utf8_lossy(&out.stderr).into_owned();
+            }
         }
-        let output = cmd
-            .arg(&src)
-            .arg("-o")
-            .arg(&out_rlib)
-            .output()
-            .expect("run rustc");
+        if let Some(staged) = staged_deps {
+            let _ = fs::remove_dir_all(&staged);
+        }
         let _ = fs::remove_dir_all(&tmp);
         assert!(
-            output.status.success(),
-            "verified_engine-only downstream crate failed to compile:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+            succeeded,
+            "verified_engine-only downstream crate failed to compile:\n{first_err}"
         );
     }
 }

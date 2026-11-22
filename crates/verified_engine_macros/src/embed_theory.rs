@@ -436,6 +436,7 @@ mod tests {
         .to_string();
         assert!(!nested_out.contains("compile_error"));
         assert!(nested_out.contains("../../papers/sample.tex"));
+        let _ = fs::remove_dir_all(&ws);
     }
 
     #[test]

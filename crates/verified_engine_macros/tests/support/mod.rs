@@ -62,22 +62,64 @@ impl RustcOutcome {
 }
 
 fn rustc_bin() -> PathBuf {
-    std::env::var_os("RUSTC")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("rustc"))
+    if let Some(rustc) = std::env::var_os("RUSTC") {
+        return PathBuf::from(rustc);
+    }
+    if let Some(cargo) = std::env::var_os("CARGO") {
+        let candidate =
+            PathBuf::from(cargo).with_file_name(if cfg!(windows) { "rustc.exe" } else { "rustc" });
+        if candidate.is_file() {
+            return candidate;
+        }
+    }
+    PathBuf::from("rustc")
 }
 
-fn candidate_deps_dirs() -> Vec<PathBuf> {
+fn detect_profile_layout() -> (Vec<PathBuf>, bool) {
     let exe = std::env::current_exe().expect("current test executable path");
-    let primary = exe.parent().expect("deps dir").to_path_buf();
-    let mut dirs = vec![primary.clone()];
-    if let Some(profile_dir) = primary.parent()
-        && let Some(profile_name) = profile_dir.file_name()
-        && let Some(maybe_target_parent) = profile_dir.parent()
+    let parent = exe.parent().expect("executable parent dir");
+    let (primary_profile, build_layout) =
+        if parent.file_name().and_then(|s| s.to_str()) == Some("deps") {
+            (parent.parent().expect("profile dir").to_path_buf(), false)
+        } else if let Some(build_dir) = exe.ancestors().nth(4)
+            && build_dir.file_name().and_then(|s| s.to_str()) == Some("build")
+        {
+            (build_dir.parent().expect("profile dir").to_path_buf(), true)
+        } else {
+            panic!("unexpected Cargo test executable path: {}", exe.display());
+        };
+
+    let mut profiles = vec![primary_profile.clone()];
+    if let Some(profile_name) = primary_profile.file_name()
+        && let Some(target_root) = primary_profile.parent().and_then(Path::parent)
     {
-        let host_deps = maybe_target_parent.join(profile_name).join("deps");
-        if host_deps.is_dir() && host_deps != primary {
-            dirs.push(host_deps);
+        let host_profile = target_root.join(profile_name);
+        let marker = if build_layout { "build" } else { "deps" };
+        if host_profile != primary_profile && host_profile.join(marker).is_dir() {
+            profiles.push(host_profile);
+        }
+    }
+    (profiles, build_layout)
+}
+
+fn crate_search_dirs(profiles: &[PathBuf], build_layout: bool, pkg_name: &str) -> Vec<PathBuf> {
+    if !build_layout {
+        return profiles
+            .iter()
+            .map(|p| p.join("deps"))
+            .filter(|d| d.is_dir())
+            .collect();
+    }
+    let mut dirs = Vec::new();
+    for profile in profiles {
+        let Ok(units) = fs::read_dir(profile.join("build").join(pkg_name)) else {
+            continue;
+        };
+        for unit in units.flatten() {
+            let out_dir = unit.path().join("out");
+            if out_dir.is_dir() {
+                dirs.push(out_dir);
+            }
         }
     }
     dirs
@@ -162,9 +204,10 @@ pub mod metrics {
 fn artifacts() -> &'static CompilerArtifacts {
     ARTIFACTS.get_or_init(|| {
         let rustc = rustc_bin();
-        let deps_dirs = candidate_deps_dirs();
+        let (profiles, build_layout) = detect_profile_layout();
+        let macro_dirs = crate_search_dirs(&profiles, build_layout, "verified_engine_macros");
         let proc_macro_dylib = find_newest_artifact(
-            &deps_dirs,
+            &macro_dirs,
             |path, name| {
                 (name.starts_with("libverified_engine_macros-")
                     || name.starts_with("verified_engine_macros-"))
@@ -172,8 +215,9 @@ fn artifacts() -> &'static CompilerArtifacts {
             },
             "verified_engine_macros dylib",
         );
+        let sm_dirs = crate_search_dirs(&profiles, build_layout, "scientific_metadata");
         let scientific_metadata_rlib = find_newest_artifact(
-            &deps_dirs,
+            &sm_dirs,
             |path, name| {
                 name.starts_with("libscientific_metadata-")
                     && path.extension().and_then(|s| s.to_str()) == Some("rlib")
@@ -181,6 +225,15 @@ fn artifacts() -> &'static CompilerArtifacts {
             "libscientific_metadata.rlib",
         );
         let verified_engine_stub_rlib = build_verified_engine_stub(&rustc);
+        let mut deps_dirs = Vec::new();
+        if let Some(p) = proc_macro_dylib.parent() {
+            deps_dirs.push(p.to_path_buf());
+        }
+        if let Some(p) = scientific_metadata_rlib.parent()
+            && !deps_dirs.iter().any(|d| d == p)
+        {
+            deps_dirs.push(p.to_path_buf());
+        }
         CompilerArtifacts {
             rustc,
             proc_macro_dylib,
