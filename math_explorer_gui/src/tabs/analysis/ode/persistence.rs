@@ -4,10 +4,15 @@ use super::OdeSolverTool;
 use crate::framework::{CalloutManager, TraceSnapshotManager};
 use crate::presets::OdePreset;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
+use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 
 fn default_annotations_enabled() -> bool {
     true
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 #[derive(serde::Serialize)]
@@ -21,6 +26,14 @@ struct OdeStateRef<'a> {
     ic_y0: f64,
     ic_v0: f64,
     custom_expr: &'a str,
+    #[serde(skip_serializing_if = "is_false")]
+    custom_coupled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    coupled_exprs: Option<[&'a str; 2]>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    coupled_params: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
     snapshot_manager: &'a TraceSnapshotManager,
     callout_manager: &'a CalloutManager,
@@ -40,6 +53,14 @@ struct OdeRecoveryStateRef<'a> {
     ic_y0: f64,
     ic_v0: f64,
     custom_expr: &'a str,
+    #[serde(skip_serializing_if = "is_false")]
+    custom_coupled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    coupled_exprs: Option<[&'a str; 2]>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    coupled_params: BTreeMap<String, f64>,
     callout_manager: &'a CalloutManager,
     method: IntegrationMethod,
     comparison_mode: bool,
@@ -60,6 +81,14 @@ struct OdeState {
     ic_v0: f64,
     #[serde(default)]
     custom_expr: String,
+    #[serde(default)]
+    custom_coupled: bool,
+    #[serde(default)]
+    coupled_exprs: Option<[String; 2]>,
+    #[serde(default)]
+    custom_params: BTreeMap<String, f64>,
+    #[serde(default)]
+    coupled_params: BTreeMap<String, f64>,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
     #[serde(default)]
@@ -86,6 +115,12 @@ impl OdeSolverTool {
         self.ic_y0.to_bits().hash(&mut hasher);
         self.ic_v0.to_bits().hash(&mut hasher);
         self.math_input.raw_text.hash(&mut hasher);
+        self.custom_coupled.hash(&mut hasher);
+        self.coupled_bank.raw_text(0).hash(&mut hasher);
+        self.coupled_bank.raw_text(1).hash(&mut hasher);
+        for &v in self.coupled_bank.param_slice() {
+            v.to_bits().hash(&mut hasher);
+        }
         self.comparison_mode.hash(&mut hasher);
         self.show_annotations.hash(&mut hasher);
         self.snapshot_manager.len().hash(&mut hasher);
@@ -93,8 +128,50 @@ impl OdeSolverTool {
         self.callout_manager.len().hash(&mut hasher);
         hasher.finish().max(1)
     }
+}
+
+struct CustomSerializationMaps<'a> {
+    coupled_exprs: Option<[&'a str; 2]>,
+    custom_params: BTreeMap<String, f64>,
+    coupled_params: BTreeMap<String, f64>,
+}
+
+impl OdeSolverTool {
+    fn custom_serialization_maps(&self) -> CustomSerializationMaps<'_> {
+        if self.preset != OdePreset::Custom {
+            return CustomSerializationMaps {
+                coupled_exprs: None,
+                custom_params: BTreeMap::new(),
+                coupled_params: BTreeMap::new(),
+            };
+        }
+        if self.custom_coupled {
+            let exprs = Some([self.coupled_bank.raw_text(0), self.coupled_bank.raw_text(1)]);
+            CustomSerializationMaps {
+                coupled_exprs: exprs,
+                custom_params: BTreeMap::new(),
+                coupled_params: self.coupled_bank.params_map(),
+            }
+        } else {
+            let mut extra = self.math_input.params_map();
+            extra.remove("k");
+            extra.remove("r");
+            extra.remove("cap_k");
+            extra.remove("K");
+            CustomSerializationMaps {
+                coupled_exprs: None,
+                custom_params: extra,
+                coupled_params: BTreeMap::new(),
+            }
+        }
+    }
 
     pub(crate) fn serialize_full_state(&self) -> Option<String> {
+        let CustomSerializationMaps {
+            coupled_exprs,
+            custom_params,
+            coupled_params,
+        } = self.custom_serialization_maps();
         serde_json::to_string(&OdeStateRef {
             preset: Some(self.preset),
             dt: self.dt,
@@ -105,6 +182,10 @@ impl OdeSolverTool {
             ic_y0: self.ic_y0,
             ic_v0: self.ic_v0,
             custom_expr: &self.math_input.raw_text,
+            custom_coupled: self.custom_coupled,
+            coupled_exprs,
+            custom_params,
+            coupled_params,
             snapshot_manager: &self.snapshot_manager,
             callout_manager: &self.callout_manager,
             method: self.method,
@@ -115,6 +196,11 @@ impl OdeSolverTool {
     }
 
     pub(crate) fn serialize_recovery_state(&self) -> Option<String> {
+        let CustomSerializationMaps {
+            coupled_exprs,
+            custom_params,
+            coupled_params,
+        } = self.custom_serialization_maps();
         serde_json::to_string(&OdeRecoveryStateRef {
             preset: Some(self.preset),
             dt: self.dt,
@@ -125,6 +211,10 @@ impl OdeSolverTool {
             ic_y0: self.ic_y0,
             ic_v0: self.ic_v0,
             custom_expr: &self.math_input.raw_text,
+            custom_coupled: self.custom_coupled,
+            coupled_exprs,
+            custom_params,
+            coupled_params,
             callout_manager: &self.callout_manager,
             method: self.method,
             comparison_mode: self.comparison_mode,
@@ -140,24 +230,7 @@ impl OdeSolverTool {
     ) -> Result<(), String> {
         let s: OdeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {e}"))?;
-        if !s.dt.is_finite()
-            || s.dt <= 0.0
-            || !s.total_time.is_finite()
-            || s.total_time <= 0.0
-            || !s.param_k.is_finite()
-            || !s.param_r.is_finite()
-            || !s.param_cap_k.is_finite()
-            || !s.ic_y0.is_finite()
-            || !s.ic_v0.is_finite()
-        {
-            return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
-        }
-        if crate::presets::checked_ode_step_count(s.dt, s.total_time).is_none() {
-            return Err(format!(
-                "ODE step count (total_time / dt) exceeds maximum allowed limit ({})",
-                crate::presets::MAX_ODE_STEPS
-            ));
-        }
+        validate_deserialized_ode_state(&s)?;
         if let Some(p) = s.preset {
             self.preset = p;
         }
@@ -168,8 +241,18 @@ impl OdeSolverTool {
         self.param_cap_k = s.param_cap_k;
         self.ic_y0 = s.ic_y0;
         self.ic_v0 = s.ic_v0;
+        self.custom_coupled = s.custom_coupled;
         if !s.custom_expr.is_empty() {
             self.math_input.set_expression(&s.custom_expr);
+        }
+        if !s.custom_params.is_empty() {
+            self.math_input.set_params_map(&s.custom_params);
+        }
+        if let Some([e0, e1]) = s.coupled_exprs {
+            self.coupled_bank.set_expressions(&[e0, e1]);
+        }
+        if !s.coupled_params.is_empty() {
+            self.coupled_bank.set_params_map(&s.coupled_params);
         }
         if !preserve_snapshots {
             self.snapshot_manager = s.snapshot_manager;
@@ -182,4 +265,28 @@ impl OdeSolverTool {
         self.recalculate();
         Ok(())
     }
+}
+
+fn validate_deserialized_ode_state(s: &OdeState) -> Result<(), String> {
+    if !s.dt.is_finite()
+        || s.dt <= 0.0
+        || !s.total_time.is_finite()
+        || s.total_time <= 0.0
+        || !s.param_k.is_finite()
+        || !s.param_r.is_finite()
+        || !s.param_cap_k.is_finite()
+        || !s.ic_y0.is_finite()
+        || !s.ic_v0.is_finite()
+        || !s.custom_params.values().all(|v| v.is_finite())
+        || !s.coupled_params.values().all(|v| v.is_finite())
+    {
+        return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
+    }
+    if crate::presets::checked_ode_step_count(s.dt, s.total_time).is_none() {
+        return Err(format!(
+            "ODE step count (total_time / dt) exceeds maximum allowed limit ({})",
+            crate::presets::MAX_ODE_STEPS
+        ));
+    }
+    Ok(())
 }

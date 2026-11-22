@@ -75,13 +75,14 @@ pub(crate) fn fit_polynomial_scaled(
         log_x,
         log_y,
         log_mode: log_x || log_y,
+        custom_evaluator: None,
     })
 }
 
 fn solve_polynomial_normal_eqs(points: &[[f64; 2]], degree: usize) -> Option<Vec<f64>> {
     let m = degree + 1;
     let mut sum_x_pow = [0.0_f64; 9];
-    let mut rhs = [0.0_f64; 5];
+    let mut rhs = [0.0_f64; 6];
     for p in points {
         let mut cur = 1.0;
         for (k, slot) in sum_x_pow.iter_mut().enumerate().take(2 * degree + 1) {
@@ -92,19 +93,22 @@ fn solve_polynomial_normal_eqs(points: &[[f64; 2]], degree: usize) -> Option<Vec
             cur *= p[0];
         }
     }
-    let mut mat = [[0.0_f64; 5]; 5];
+    let mut mat = [[0.0_f64; 6]; 6];
     for (r, row) in mat.iter_mut().enumerate().take(m) {
         row[..m].copy_from_slice(&sum_x_pow[r..(r + m)]);
     }
     solve_dense_small(&mut mat, &mut rhs, m)
 }
 
-/// Gaussian elimination with partial pivoting for small systems ($1 \le n \le 5$).
+/// Gaussian elimination with partial pivoting for small systems ($1 \le n \le 6$).
 pub(crate) fn solve_dense_small(
-    a: &mut [[f64; 5]; 5],
-    b: &mut [f64; 5],
+    a: &mut [[f64; 6]; 6],
+    b: &mut [f64; 6],
     n: usize,
 ) -> Option<Vec<f64>> {
+    if n == 0 || n > 6 {
+        return None;
+    }
     for i in 0..n {
         let (mut max_row, mut max_val) = (i, a[i][i].abs());
         for (r, row) in a.iter().enumerate().take(n).skip(i + 1) {

@@ -48,3 +48,35 @@ fn surface_viewer_custom_parametric_union_parameter_cap_preserves_valid_mesh() {
     let preserved_pos = tool.custom_sandbox.build_parametric().position(0.5, 0.5);
     assert!((preserved_pos - baseline_pos).norm() < 1e-12);
 }
+
+#[test]
+fn surface_viewer_custom_domain_bounds_mesh_obj_and_state_roundtrip() {
+    let mut tool = SurfaceViewer {
+        surface_type: SurfaceType::CustomHeightfield,
+        u_resolution: 10,
+        v_resolution: 10,
+        ..Default::default()
+    };
+    tool.custom_sandbox.heightfield_bar.set_expression("x + 2 * y");
+    tool.custom_sandbox
+        .set_uv_bounds(SurfaceType::CustomHeightfield, [1.0, 5.0], [-3.0, 4.0])
+        .expect("valid domain bounds");
+
+    let obj = tool.build_obj_string();
+    assert!(obj.contains("v 5.000000 4.000000 13.000000") || obj.contains("v 5 4 13"));
+
+    let saved = tool.save_state().expect("save state");
+    assert!(saved.len() < 4096);
+    let mut restored = SurfaceViewer::default();
+    restored.try_load_state(&saved).expect("load state");
+    assert_eq!(
+        restored.custom_sandbox.uv_domain_for(SurfaceType::CustomHeightfield),
+        ((1.0, 5.0), (-3.0, 4.0))
+    );
+    assert!(
+        tool.custom_sandbox
+            .set_uv_bounds(SurfaceType::CustomHeightfield, [4.0, 1.0], [-1.0, 1.0])
+            .is_err()
+    );
+}
+

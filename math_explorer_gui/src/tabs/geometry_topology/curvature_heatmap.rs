@@ -32,6 +32,10 @@ struct CurvatureHeatmapSaveState {
     parametric_exprs: Option<[String; 3]>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    u_bounds: Option<[f64; 2]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    v_bounds: Option<[f64; 2]>,
 }
 
 #[derive(serde::Deserialize)]
@@ -59,6 +63,10 @@ struct CurvatureHeatmapState {
     parametric_exprs: Option<[String; 3]>,
     #[serde(default)]
     custom_params: BTreeMap<String, f64>,
+    #[serde(default)]
+    u_bounds: Option<[f64; 2]>,
+    #[serde(default)]
+    v_bounds: Option<[f64; 2]>,
 }
 
 pub struct CurvatureHeatmap {
@@ -142,7 +150,7 @@ impl CurvatureHeatmap {
         &self,
         surface: &T,
     ) -> Vec<(Vec<[f64; 2]>, egui::Color32)> {
-        let (u_range, v_range) = self.surface_type.uv_domain();
+        let (u_range, v_range) = self.custom_sandbox.uv_domain_for(self.surface_type);
         let (u_min, u_max) = u_range;
         let (v_min, v_max) = v_range;
         let (curvature_map, min_k, max_k) = self.sample_curvature_grid(surface, u_range, v_range);
@@ -295,6 +303,7 @@ impl InteractiveTool for CurvatureHeatmap {
     fn save_state(&self) -> Option<String> {
         let (custom_expr, parametric_exprs, custom_params) =
             self.custom_sandbox.export_fields(self.surface_type);
+        let (u_bounds, v_bounds) = self.custom_sandbox.export_domain_bounds(self.surface_type);
         serde_json::to_string(&CurvatureHeatmapSaveState {
             surface_type: self.surface_type,
             curvature_type: self.curvature_type,
@@ -308,6 +317,8 @@ impl InteractiveTool for CurvatureHeatmap {
             custom_expr,
             parametric_exprs,
             custom_params,
+            u_bounds,
+            v_bounds,
         })
         .ok()
     }
@@ -315,34 +326,7 @@ impl InteractiveTool for CurvatureHeatmap {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let loaded: CurvatureHeatmapState =
             serde_json::from_str(state).map_err(|e| format!("Invalid curvature state: {e}"))?;
-        if !loaded.sphere_radius.is_finite() || !(0.1..=5.0).contains(&loaded.sphere_radius) {
-            return Err(format!(
-                "sphere_radius out of range: {}",
-                loaded.sphere_radius
-            ));
-        }
-        if !loaded.torus_major_radius.is_finite()
-            || !(1.0..=5.0).contains(&loaded.torus_major_radius)
-        {
-            return Err(format!(
-                "torus_major_radius out of range: {}",
-                loaded.torus_major_radius
-            ));
-        }
-        if !loaded.torus_minor_radius.is_finite()
-            || !(0.1..=2.0).contains(&loaded.torus_minor_radius)
-        {
-            return Err(format!(
-                "torus_minor_radius out of range: {}",
-                loaded.torus_minor_radius
-            ));
-        }
-        if !loaded.klein_radius.is_finite() || !(0.5..=5.0).contains(&loaded.klein_radius) {
-            return Err(format!(
-                "klein_radius out of range: {}",
-                loaded.klein_radius
-            ));
-        }
+        validate_curvature_radii(&loaded)?;
         let max_res = math_commons::registry::MAX_GRID_SIZE;
         if !(10..=max_res).contains(&loaded.u_resolution)
             || !(10..=max_res).contains(&loaded.v_resolution)
@@ -355,6 +339,11 @@ impl InteractiveTool for CurvatureHeatmap {
             loaded.yaw,
             loaded.zoom,
             Some(Camera3D::default()),
+        )?;
+        self.custom_sandbox.load_domain_bounds(
+            loaded.surface_type,
+            loaded.u_bounds,
+            loaded.v_bounds,
         )?;
         self.surface_type = loaded.surface_type;
         self.curvature_type = loaded.curvature_type;
@@ -390,6 +379,22 @@ impl InteractiveTool for CurvatureHeatmap {
                 });
         });
     }
+}
+
+fn validate_curvature_radii(loaded: &CurvatureHeatmapState) -> Result<(), String> {
+    if !loaded.sphere_radius.is_finite() || !(0.1..=5.0).contains(&loaded.sphere_radius) {
+        return Err(format!("sphere_radius out of range: {}", loaded.sphere_radius));
+    }
+    if !loaded.torus_major_radius.is_finite() || !(1.0..=5.0).contains(&loaded.torus_major_radius) {
+        return Err(format!("torus_major_radius out of range: {}", loaded.torus_major_radius));
+    }
+    if !loaded.torus_minor_radius.is_finite() || !(0.1..=2.0).contains(&loaded.torus_minor_radius) {
+        return Err(format!("torus_minor_radius out of range: {}", loaded.torus_minor_radius));
+    }
+    if !loaded.klein_radius.is_finite() || !(0.5..=5.0).contains(&loaded.klein_radius) {
+        return Err(format!("klein_radius out of range: {}", loaded.klein_radius));
+    }
+    Ok(())
 }
 
 // [cite:graph_parameters_rust]

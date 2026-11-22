@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 mod annotations;
+mod canvas;
 pub mod comparison;
 mod persistence;
 pub mod recovery;
@@ -8,13 +9,18 @@ pub mod systems;
 pub mod ui;
 
 use comparison::{simulate_preset, SolverDiscrepancy};
+use systems::{default_coupled_ode_bank, CustomOdeSpec};
 
+use crate::framework::math_input::CoupledExpressionBank;
 use crate::framework::recovery::emit_divergence_telemetry;
 pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{
-    CalloutManager, InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager,
+    CalloutManager, MathExpressionInputBar, TraceSeries, TraceSnapshotManager,
 };
+#[cfg(test)]
+use crate::framework::InteractiveTool;
 use crate::presets::OdePreset;
+#[cfg(test)]
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 use recovery::{clamp_ode_parameters, clamp_ode_step_settings};
@@ -34,6 +40,8 @@ pub struct OdeSolverTool {
     pub v_series: Vec<f64>,
     pub(crate) diverged: bool,
     pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) custom_coupled: bool,
+    pub(crate) coupled_bank: CoupledExpressionBank,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) comparison_mode: bool,
     pub(crate) discrepancy_euler_rk4: SolverDiscrepancy,
@@ -78,7 +86,11 @@ impl Default for OdeSolverTool {
                     ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
                     ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
                 ],
-            ),
+            )
+            .with_axes(&["t", "y"])
+            .with_inline_sliders(false),
+            custom_coupled: false,
+            coupled_bank: default_coupled_ode_bank(),
             diagnostic_report: None,
             comparison_mode: false,
             discrepancy_euler_rk4: SolverDiscrepancy::default(),
@@ -103,8 +115,48 @@ impl OdeSolverTool {
         self.revision = self.revision.wrapping_add(1).max(1);
     }
 
+    pub(crate) const fn has_second_state(&self) -> bool {
+        matches!(self.preset, OdePreset::HarmonicOscillator)
+            || (matches!(self.preset, OdePreset::Custom) && self.custom_coupled)
+    }
+
+    pub(crate) const fn second_state_label(&self) -> &'static str {
+        if matches!(self.preset, OdePreset::HarmonicOscillator) {
+            "y'(t)"
+        } else {
+            "v(t)"
+        }
+    }
+
+    pub(crate) fn build_custom_ode_spec(&self) -> Option<CustomOdeSpec> {
+        if self.preset != OdePreset::Custom {
+            return None;
+        }
+        if self.custom_coupled {
+            CustomOdeSpec::from_coupled_bank(&self.coupled_bank)
+        } else {
+            CustomOdeSpec::from_scalar_bar(
+                &self.math_input,
+                self.param_k,
+                self.param_r,
+                self.param_cap_k,
+            )
+        }
+    }
+
     pub fn param_summary(&self) -> String {
         match self.preset {
+            OdePreset::Custom if self.custom_coupled => {
+                let mut parts: Vec<String> = self
+                    .coupled_bank
+                    .param_names()
+                    .iter()
+                    .zip(self.coupled_bank.param_slice())
+                    .map(|(n, v)| format!("{n}={v:.2}"))
+                    .collect();
+                parts.push(format!(r"\Delta t={:.2}", self.dt));
+                parts.join(", ")
+            }
             OdePreset::Exponential | OdePreset::HarmonicOscillator | OdePreset::Custom => {
                 format!(r"k={:.2}, \Delta t={:.2}", self.param_k, self.dt)
             }
@@ -161,6 +213,18 @@ impl OdeSolverTool {
             &mut self.ic_y0,
             &mut self.ic_v0,
         );
+        let mut scalar_map = self.math_input.params_map();
+        for val in scalar_map.values_mut() {
+            *val = if val.is_finite() { val.clamp(-10.0, 10.0) } else { 1.0 };
+        }
+        self.math_input.set_params_map(&scalar_map);
+
+        let mut coupled_map = self.coupled_bank.params_map();
+        for val in coupled_map.values_mut() {
+            *val = if val.is_finite() { val.clamp(-10.0, 10.0) } else { 1.0 };
+        }
+        self.coupled_bank.set_params_map(&coupled_map);
+
         clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
         self.recalculate();
     }
@@ -229,6 +293,11 @@ impl OdeSolverTool {
                 self.param_cap_k = 10.0;
                 self.ic_y0 = 1.0;
             }
+            OdePreset::Custom if self.custom_coupled => {
+                self.ic_y0 = 1.0;
+                self.ic_v0 = 0.0;
+                self.coupled_bank = default_coupled_ode_bank();
+            }
             OdePreset::Custom => {
                 self.param_k = 1.0;
                 self.ic_y0 = 1.0;
@@ -247,13 +316,16 @@ impl OdeSolverTool {
         plot_points_v: &[[f64; 2]],
     ) -> Vec<TraceSeries> {
         let mut series = vec![TraceSeries::new("y(t)", plot_points_y.to_vec())];
-        if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-            series.push(TraceSeries::new("y'(t)", plot_points_v.to_vec()));
+        if self.has_second_state() && !plot_points_v.is_empty() {
+            series.push(TraceSeries::new(
+                self.second_state_label(),
+                plot_points_v.to_vec(),
+            ));
         }
         series
     }
 
-    fn apply_sidebar_changes(
+    pub(super) fn apply_sidebar_changes(
         &mut self,
         changed: bool,
         sweep_active: bool,
@@ -323,6 +395,7 @@ impl OdeSolverTool {
     }
 
     fn recalculate_active(&mut self) {
+        let custom_spec = self.build_custom_ode_spec();
         let active_traj = simulate_preset(
             self.preset,
             self.method,
@@ -333,7 +406,7 @@ impl OdeSolverTool {
             self.param_cap_k,
             self.ic_y0,
             self.ic_v0,
-            self.math_input.expr(),
+            custom_spec.as_ref(),
         );
         self.time_series = active_traj.time_series;
         self.y_series = active_traj.y_series;
@@ -353,108 +426,6 @@ impl OdeSolverTool {
     }
 }
 
-impl InteractiveTool for OdeSolverTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
-        self
-    }
-    fn name(&self) -> &'static str {
-        "ODE Solvers"
-    }
-    fn domain(&self) -> &'static str {
-        "analysis"
-    }
-
-    fn state_revision(&self) -> u64 {
-        self.compute_state_revision()
-    }
-
-    fn has_finite_parameters(&self) -> bool {
-        FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut datasets = egui_plot::get_last_plot_datasets();
-        if datasets.is_empty() {
-            let mut plot_points_y = Vec::new();
-            let mut plot_points_v = Vec::new();
-            for (i, &t) in self.time_series.iter().enumerate() {
-                if let Some(&y) = self.y_series.get(i) {
-                    plot_points_y.push([t, y]);
-                }
-                if let Some(&v) = self.v_series.get(i) {
-                    plot_points_v.push([t, v]);
-                }
-            }
-            datasets.push(("y(t)".to_string(), plot_points_y));
-            if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-                datasets.push(("y'(t)".to_string(), plot_points_v));
-            }
-            datasets.extend(self.snapshot_manager.export_datasets());
-            if self.comparison_mode {
-                datasets.extend(self.comparison_manager.export_datasets());
-            }
-        }
-        datasets
-    }
-
-    fn save_state(&self) -> Option<String> {
-        self.serialize_full_state()
-    }
-
-    fn save_recovery_state(&self) -> Option<String> {
-        self.serialize_recovery_state()
-    }
-
-    fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
-        self.state_bounds().validate_json(state)?;
-        self.deserialize_state(state, true)
-    }
-
-    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        self.deserialize_state(state, false)
-    }
-
-    fn clamp_parameters(&mut self) -> bool {
-        FiniteStateGuard::clamp_parameters(self);
-        true
-    }
-
-    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
-        let mut changed = false;
-
-        let mut plot_points_y = Vec::new();
-        let mut plot_points_v = Vec::new();
-        for (i, &t) in self.time_series.iter().enumerate() {
-            if let Some(&y) = self.y_series.get(i) {
-                plot_points_y.push([t, y]);
-            }
-            if let Some(&v) = self.v_series.get(i) {
-                plot_points_v.push([t, v]);
-            }
-        }
-
-        let sweeps_before =
-            crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx());
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "ode_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            changed |= self.render_sidebar_controls(ui, &plot_points_y, &plot_points_v);
-        });
-        let sweep_active =
-            crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx()) > sweeps_before;
-
-        self.apply_sidebar_changes(changed, sweep_active, &plot_points_y, &plot_points_v);
-
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            self.render_plot_canvas(ui, plot_points_y, plot_points_v, &mut changed);
-        });
-    }
-
-    #[cfg(test)]
-    fn as_any(&self) -> Option<&dyn std::any::Any> {
-        Some(self)
-    }
-}
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "OdeSolverTool",
@@ -467,6 +438,9 @@ inventory::submit! {
 
 #[cfg(test)]
 mod comparison_tests;
+
+#[cfg(test)]
+mod coupled_tests;
 
 #[cfg(test)]
 mod ode_tests;
