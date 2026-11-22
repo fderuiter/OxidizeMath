@@ -4015,7 +4015,12 @@ impl PreparedPlot<'_> {
 /// ```
 fn next_power(value: f64, base: f64) -> f64 {
     debug_assert_ne!(value, 0.0, "Bad input"); // can be negative (typical for Y axis)
-    base.powi(value.abs().log(base).ceil() as i32)
+    let abs_value = value.abs();
+    let mut exp = abs_value.log(base).ceil() as i32;
+    if base.powi(exp) <= abs_value {
+        exp += 1;
+    }
+    base.powi(exp)
 }
 
 #[test]

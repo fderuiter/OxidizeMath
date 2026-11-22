@@ -1,3 +1,4 @@
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 use super::*;
@@ -170,17 +171,22 @@ fn log_mode_vs_untransformed_exponential_and_10k_latency() {
             [x, 2.5 * (1.8 * x + 0.3).sin() + 1.1]
         })
         .collect();
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
     let start = Instant::now();
     let res = fit_model(&pts_10k, FitType::Sinusoidal, "Sin10k", false).expect("10k fit failed");
-    let elapsed = start.elapsed();
     assert!(res.r_squared >= 0.99);
-    #[cfg(not(debug_assertions))]
-    assert!(
-        elapsed.as_millis() < 16,
-        "release 10k sinusoidal fit exceeded 16ms frame budget: {elapsed:?}"
-    );
-    assert!(
-        elapsed.as_millis() < 150,
-        "10k sinusoidal fit took {elapsed:?}"
-    );
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let elapsed = start.elapsed();
+        #[cfg(not(debug_assertions))]
+        assert!(
+            elapsed.as_millis() < 16,
+            "release 10k sinusoidal fit exceeded 16ms frame budget: {elapsed:?}"
+        );
+        assert!(
+            elapsed.as_millis() < 150,
+            "10k sinusoidal fit took {elapsed:?}"
+        );
+    }
 }
