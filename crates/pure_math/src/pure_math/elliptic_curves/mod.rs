@@ -8,13 +8,39 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum EllipticCurveError {
     #[error("The theorem applies only for i + j < psi(N).")]
     #[allow(missing_docs)]
     InvalidDegree,
+    #[error("Elliptic curve is singular because discriminant 4a^3 + 27b^2 vanishes.")]
+    #[allow(missing_docs)]
+    SingularCurve,
+    #[error("Short-Weierstrass prime field requires a prime modulus p > 3 (got {modulus}).")]
+    #[allow(missing_docs)]
+    InvalidModulus {
+        #[allow(missing_docs)]
+        modulus: i64,
+    },
+    #[error("Lattice point enumeration requires prime p <= {max_modulus} (got {modulus}).")]
+    #[allow(missing_docs)]
+    ModulusExceedsLatticeCap {
+        #[allow(missing_docs)]
+        modulus: i64,
+        #[allow(missing_docs)]
+        max_modulus: i64,
+    },
+    #[error("Supplied affine coordinates do not satisfy y^2 = x^3 + ax + b.")]
+    #[allow(missing_docs)]
+    PointNotOnCurve,
 }
+
+pub mod modular_bridge;
+pub mod weierstrass;
+
+pub use modular_bridge::*;
+pub use weierstrass::*;
 
 /// Calculates the prime factorization of a given number `n`.
 ///
@@ -239,4 +265,5 @@ pub fn theorem_1_2_bounds(n: u64, i: u64, j: u64) -> Result<Theorem12Bounds, Ell
     })
 }
 
-// [cite:graph_parameters_rust]
+// [cite:modular_polynomials_review]
+// [cite:hurwitz_kronecker]
