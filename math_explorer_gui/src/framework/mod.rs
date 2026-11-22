@@ -4,6 +4,7 @@ pub mod clamp;
 mod clamp_tests;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
+mod export_3d;
 mod export_figure;
 mod export_queue;
 #[cfg(test)]
@@ -270,6 +271,21 @@ pub trait InteractiveTool {
 
     /// Optional hook to provide custom figure export options.
     fn export_figure_options(&self) -> Option<egui_plot::export::ExportOptions> {
+        None
+    }
+
+    /// Optional cold-path hook to build a watertight 3D triangle [`oxidize_core::mesh::Mesh`] for `.stl`, `.ply`, and `.obj` exports.
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        None
+    }
+
+    /// Optional cold-path hook to build a per-vertex colored 3D [`oxidize_core::mesh::ColoredMesh`] for `.ply` exports.
+    fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
+        None
+    }
+
+    /// Optional cold-path hook to serialize an INRIA-standard 3D Gaussian Splatting binary `.ply` scene.
+    fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
         None
     }
 

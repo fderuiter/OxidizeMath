@@ -8,7 +8,7 @@ fn wrapped_colored_label(ui: &mut egui::Ui, color: egui::Color32, text: String) 
     ui.add(egui::Label::new(egui::RichText::new(text).color(color)).wrap());
 }
 
-fn export_action_button(
+pub(super) fn export_action_button(
     ui: &mut egui::Ui,
     enabled: bool,
     label: &str,
@@ -222,6 +222,7 @@ impl SimulationFramework {
         if export_action_button(ui, caps.figure, "Export PNG Image", fig_tip, close_on_click) {
             self.open_export_modal_for_active_tool();
         }
+        self.render_3d_export_action_items(ui, caps, close_on_click);
     }
 
     fn render_compact_export_menu(&mut self, ui: &mut egui::Ui) -> String {

@@ -1,10 +1,13 @@
-use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
+use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Plot3DViewport};
 use eframe::egui;
 use egui_plot::{Line, PlotPoints, Points};
 use math_explorer::physics::solid_state::lattice::{
     BodyCenteredCubic, CrystalSystem, FaceCenteredCubic, SimpleCubic, UnitCell,
 };
 use nalgebra::Vector3;
+use oxidize_core::mesh::{
+    append_colored_part, build_cylinder, build_uv_sphere, ColoredMesh, Mesh, Point3D, VertexColor,
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[allow(clippy::enum_variant_names)]
@@ -96,6 +99,86 @@ impl CrystalViewer {
             );
         }
     }
+
+    fn build_crystal_colored_mesh(&self) -> Result<ColoredMesh, String> {
+        if !self.lattice_constant.is_finite() || self.lattice_constant <= 0.0 {
+            return Err("Lattice constant must be finite and positive.".to_string());
+        }
+        let unit_cell = self.system.generate(self.lattice_constant);
+        let [v1, v2, v3] = unit_cell.lattice_vectors;
+        let center_offset = (v1 + v2 + v3) * 0.5;
+        let to_p3 = |v: Vector3<f64>| -> Point3D {
+            let c = v - center_offset;
+            Point3D::new(c.x as f32, c.y as f32, c.z as f32)
+        };
+
+        let a = self.lattice_constant as f32;
+        let atom_radius = (0.14 * a).max(0.05);
+        let corner_radius = (0.10 * a).max(0.04);
+        let strut_radius = (0.03 * a).max(0.015);
+        let mut combined = ColoredMesh::default();
+
+        let basis_color = VertexColor::new(235, 92, 74);
+        for &pos in &unit_cell.atomic_positions {
+            let sphere =
+                build_uv_sphere(to_p3(pos), atom_radius, 16, 12).map_err(|e| e.to_string())?;
+            append_colored_part(&mut combined, &sphere, basis_color);
+        }
+
+        let corners = [
+            Vector3::zeros(),
+            v1,
+            v1 + v2,
+            v2,
+            v3,
+            v1 + v3,
+            v1 + v2 + v3,
+            v2 + v3,
+        ];
+        let periodic_color = VertexColor::new(88, 176, 236);
+        for corner in &corners {
+            let overlaps_basis = unit_cell
+                .atomic_positions
+                .iter()
+                .any(|p| (p - corner).norm() < 1e-5);
+            if !overlaps_basis {
+                let sphere = build_uv_sphere(to_p3(*corner), corner_radius, 14, 10)
+                    .map_err(|e| e.to_string())?;
+                append_colored_part(&mut combined, &sphere, periodic_color);
+            }
+        }
+        let corner_pts = corners.map(to_p3);
+        Self::append_unit_cell_struts(&mut combined, &corner_pts, strut_radius)?;
+        Ok(combined)
+    }
+
+    fn append_unit_cell_struts(
+        combined: &mut ColoredMesh,
+        corners: &[Point3D; 8],
+        strut_radius: f32,
+    ) -> Result<(), String> {
+        let strut_color = VertexColor::new(142, 156, 178);
+        const EDGES: [(usize, usize); 12] = [
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 0),
+            (4, 5),
+            (5, 6),
+            (6, 7),
+            (7, 4),
+            (0, 4),
+            (1, 5),
+            (2, 6),
+            (3, 7),
+        ];
+        for (i0, i1) in EDGES {
+            let cyl = build_cylinder(corners[i0], corners[i1], strut_radius, 12)
+                .map_err(|e| e.to_string())?;
+            append_colored_part(combined, &cyl, strut_color);
+        }
+        Ok(())
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -127,6 +210,18 @@ impl InteractiveTool for CrystalViewer {
     }
     fn domain(&self) -> &'static str {
         "solid_state"
+    }
+
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_colored_mesh_3d(&self) -> Option<Result<ColoredMesh, String>> {
+        Some(self.build_crystal_colored_mesh())
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<Mesh, String>> {
+        Some(self.build_crystal_colored_mesh().map(|cm| cm.mesh))
     }
 
     fn save_state(&self) -> Option<String> {
@@ -326,5 +421,25 @@ mod tests {
         let ctx = egui::Context::default();
         let _ = ctx.run(egui::RawInput::default(), |ctx| restored.show(ctx));
         assert!(!egui_plot::get_last_plot_datasets().is_empty());
+
+        for sys in [
+            CrystalSystemEnum::SimpleCubic,
+            CrystalSystemEnum::BodyCenteredCubic,
+            CrystalSystemEnum::FaceCenteredCubic,
+        ] {
+            restored.system = sys;
+            let cm = restored
+                .export_colored_mesh_3d()
+                .expect("crystal 3D hook present")
+                .expect("crystal mesh builds");
+            assert_eq!(cm.colors.len(), cm.mesh.vertices.len());
+            assert_eq!(
+                crate::tabs::geometry_topology::export_utils::count_open_and_nonmanifold_edges(
+                    &cm.mesh
+                ),
+                (0, 0)
+            );
+            assert!(crate::tabs::geometry_topology::export_utils::signed_volume(&cm.mesh) > 0.0);
+        }
     }
 }

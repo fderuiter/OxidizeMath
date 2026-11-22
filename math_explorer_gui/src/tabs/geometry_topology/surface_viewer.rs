@@ -1,4 +1,4 @@
-use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
+use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Plot3DViewport};
 use eframe::egui;
 use egui_plot::{Line, PlotPoints};
 use math_explorer::pure_math::differential_geometry::surface::{
@@ -14,6 +14,10 @@ enum SurfaceType {
     KleinBottle,
 }
 
+const fn default_wall_thickness() -> f64 {
+    super::export_utils::DEFAULT_WALL_THICKNESS
+}
+
 #[derive(serde::Serialize)]
 struct SurfaceViewerSaveState {
     surface_type: SurfaceType,
@@ -21,6 +25,7 @@ struct SurfaceViewerSaveState {
     torus_major_radius: f64,
     torus_minor_radius: f64,
     klein_radius: f64,
+    wall_thickness: f64,
     u_resolution: usize,
     v_resolution: usize,
     camera: Camera3D,
@@ -34,6 +39,8 @@ struct SurfaceViewerState {
     torus_major_radius: f64,
     torus_minor_radius: f64,
     klein_radius: f64,
+    #[serde(default = "default_wall_thickness")]
+    wall_thickness: f64,
     u_resolution: usize,
     v_resolution: usize,
     #[serde(default)]
@@ -54,6 +61,7 @@ pub struct SurfaceViewer {
     torus_major_radius: f64,
     torus_minor_radius: f64,
     klein_radius: f64,
+    wall_thickness: f64,
 
     // Resolution
     u_resolution: usize,
@@ -71,6 +79,7 @@ impl Default for SurfaceViewer {
             torus_major_radius: 2.0,
             torus_minor_radius: 0.5,
             klein_radius: 2.0,
+            wall_thickness: default_wall_thickness(),
             u_resolution: 30,
             v_resolution: 30,
             camera: crate::framework::Camera3D::new(0.5, 0.5, 1.0),
@@ -144,6 +153,20 @@ impl InteractiveTool for SurfaceViewer {
         "geometry_topology"
     }
 
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        let surface = self.create_surface();
+        Some(super::export_utils::surface_to_mesh_with_thickness(
+            surface.as_ref(),
+            self.u_resolution,
+            self.v_resolution,
+            self.wall_thickness,
+        ))
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&SurfaceViewerSaveState {
             surface_type: self.surface_type,
@@ -151,6 +174,7 @@ impl InteractiveTool for SurfaceViewer {
             torus_major_radius: self.torus_major_radius,
             torus_minor_radius: self.torus_minor_radius,
             klein_radius: self.klein_radius,
+            wall_thickness: self.wall_thickness,
             u_resolution: self.u_resolution,
             v_resolution: self.v_resolution,
             camera: self.camera,
@@ -169,8 +193,12 @@ impl InteractiveTool for SurfaceViewer {
             || !(0.1..=2.0).contains(&loaded.torus_minor_radius)
             || !loaded.klein_radius.is_finite()
             || !(0.5..=5.0).contains(&loaded.klein_radius)
+            || !loaded.wall_thickness.is_finite()
+            || !(super::export_utils::MIN_WALL_THICKNESS
+                ..=super::export_utils::MAX_WALL_THICKNESS)
+                .contains(&loaded.wall_thickness)
         {
-            return Err("Surface radii out of valid bounds".to_string());
+            return Err("Surface radii or wall thickness out of valid bounds".to_string());
         }
         let max_res = math_commons::registry::MAX_GRID_SIZE;
         if !(10..=max_res).contains(&loaded.u_resolution)
@@ -190,6 +218,7 @@ impl InteractiveTool for SurfaceViewer {
         self.torus_major_radius = loaded.torus_major_radius;
         self.torus_minor_radius = loaded.torus_minor_radius;
         self.klein_radius = loaded.klein_radius;
+        self.wall_thickness = loaded.wall_thickness;
         self.u_resolution = loaded.u_resolution;
         self.v_resolution = loaded.v_resolution;
         self.camera.apply_pose(camera);
@@ -226,6 +255,14 @@ impl InteractiveTool for SurfaceViewer {
                 }
                 SurfaceType::KleinBottle => {
                     ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
+                    ui.add(
+                        egui::Slider::new(
+                            &mut self.wall_thickness,
+                            super::export_utils::MIN_WALL_THICKNESS
+                                ..=super::export_utils::MAX_WALL_THICKNESS,
+                        )
+                        .text("Shell Wall Thickness"),
+                    );
                 }
             });
 
@@ -238,38 +275,6 @@ impl InteractiveTool for SurfaceViewer {
 
                 ui.add(egui::Slider::new(&mut self.v_resolution, 10..=math_commons::registry::MAX_GRID_SIZE).text("Grid Size V"));
             });
-
-            ui.separator();
-            if ui.button("Export to OBJ").clicked() {
-                let surface = self.create_surface();
-                let mesh = super::export_utils::surface_to_mesh(
-                    surface.as_ref(),
-                    self.u_resolution,
-                    self.v_resolution,
-                );
-                let obj = oxidize_core::mesh::export_mesh_to_obj_string(&mesh)
-                    .unwrap_or_else(|_| String::new());
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .set_file_name("surface.obj")
-                        .add_filter("OBJ File", &["obj"])
-                        .save_file()
-                    {
-                        let _ = std::fs::write(path, obj);
-                    }
-                }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    let filename = "surface.obj";
-                    let obj_clone = obj.clone();
-                    wasm_bindgen_futures::spawn_local(async move {
-                        use oxidize_core::vfs::VirtualFileSystem;
-                        let vfs = oxidize_core::vfs::WasmVfs;
-                        let _ = vfs.write_to_file(filename, obj_clone.as_bytes()).await;
-                    });
-                }
-            }
         });
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
@@ -376,5 +381,32 @@ mod tests {
         let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
         assert!(!egui_plot::get_last_plot_datasets().is_empty());
         assert!(!egui_plot::get_last_plot_primitives().is_empty());
+
+        for (stype, expected_chi) in [
+            (SurfaceType::Sphere, 2),
+            (SurfaceType::Torus, 0),
+            (SurfaceType::KleinBottle, 0),
+        ] {
+            tool.surface_type = stype;
+            tool.wall_thickness = 0.20;
+            let mesh = tool
+                .export_mesh_3d()
+                .expect("3D mesh hook present")
+                .expect("3D mesh generation succeeds");
+            assert!(mesh.normals.iter().all(|n| n.is_finite()));
+            assert_eq!(
+                super::super::export_utils::count_open_and_nonmanifold_edges(&mesh),
+                (0, 0)
+            );
+            assert_eq!(
+                super::super::export_utils::euler_characteristic(&mesh),
+                expected_chi
+            );
+            assert!(super::super::export_utils::signed_volume(&mesh) > 0.0);
+        }
+
+        tool.import_preset_json(STARTER_PRESET_JSON)
+            .expect("starter preset without wall_thickness should import with default");
+        assert!((tool.wall_thickness - super::super::export_utils::DEFAULT_WALL_THICKNESS).abs() < 1e-9);
     }
 }

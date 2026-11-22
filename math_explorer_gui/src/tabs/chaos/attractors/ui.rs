@@ -79,6 +79,13 @@ impl AttractorPlotter {
             {
                 self.on_slider_changed();
             }
+            ui.add(
+                egui::Slider::new(
+                    &mut self.tube_radius,
+                    super::export::MIN_TUBE_RADIUS..=super::export::MAX_TUBE_RADIUS,
+                )
+                .text("3D Tube Radius"),
+            );
         });
     }
 

@@ -1,4 +1,7 @@
-use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
+#[path = "curvature_export.rs"]
+mod curvature_export;
+
+use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Plot3DViewport};
 use eframe::egui;
 use egui_plot::{Line, PlotPoints};
 use math_commons::math_kernel::colormap::mapped_gradient;
@@ -190,6 +193,18 @@ impl InteractiveTool for CurvatureHeatmap {
 
     fn domain(&self) -> &'static str {
         "geometry_topology"
+    }
+
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
+        Some(self.build_colored_mesh_3d())
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        Some(self.build_colored_mesh_3d().map(|cm| cm.mesh))
     }
 
     fn save_state(&self) -> Option<String> {
@@ -458,5 +473,25 @@ mod tests {
         let ctx = egui::Context::default();
         let _ = ctx.run(egui::RawInput::default(), |ctx| restored.show(ctx));
         assert!(!egui_plot::get_last_plot_datasets().is_empty());
+
+        for stype in [
+            SurfaceType::Sphere,
+            SurfaceType::Torus,
+            SurfaceType::KleinBottle,
+        ] {
+            restored.surface_type = stype;
+            let colored = restored
+                .export_colored_mesh_3d()
+                .expect("colored mesh hook present")
+                .expect("colored curvature mesh builds");
+            assert_eq!(colored.colors.len(), colored.mesh.vertices.len());
+            assert_eq!(
+                super::super::export_utils::count_open_and_nonmanifold_edges(&colored.mesh),
+                (0, 0)
+            );
+            let ply = oxidize_core::mesh::export_colored_mesh_to_ply_binary(&colored)
+                .expect("colored PLY serializes");
+            assert!(ply.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
+        }
     }
 }
