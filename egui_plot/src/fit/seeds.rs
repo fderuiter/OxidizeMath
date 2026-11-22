@@ -31,8 +31,22 @@ pub(crate) fn weighted_ols_line(samples: &[[f64; 3]]) -> Option<(f64, f64)> {
     (intercept.is_finite() && slope.is_finite()).then_some((intercept, slope))
 }
 
-/// Seed $[a, b]$ for $y = a \exp(b x)$ (returns exact Log Mode fit when `log_mode` is `true`).
-pub(crate) fn seed_exponential(points: &[[f64; 2]], log_mode: bool) -> Option<[f64; 2]> {
+/// Returns the finite minimum $x$ coordinate used to shift $u = x - x_0$ onto $[0, \text{span}]$.
+#[must_use]
+pub(crate) fn compute_x_origin_shift(points: &[[f64; 2]]) -> f64 {
+    let x_min = points.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
+    if x_min.is_finite() { x_min } else { 0.0 }
+}
+
+/// Returns a copy of `points` with $x$ coordinates shifted by `-x0`.
+#[must_use]
+pub(crate) fn shift_points_x(points: &[[f64; 2]], x0: f64) -> Vec<[f64; 2]> {
+    points.iter().map(|p| [p[0] - x0, p[1]]).collect()
+}
+
+/// Seed $[a, b, x_0]$ for $y = a \exp(b (x - x_0))$ (exact Log Mode fit when `log_mode` is `true`).
+pub(crate) fn seed_exponential(points: &[[f64; 2]], log_mode: bool) -> Option<[f64; 3]> {
+    let x0 = compute_x_origin_shift(points);
     let pos_energy: f64 = points
         .iter()
         .filter(|p| p[1] > 0.0)
@@ -50,11 +64,11 @@ pub(crate) fn seed_exponential(points: &[[f64; 2]], log_mode: bool) -> Option<[f
         .filter(|p| p[1] * sign > 0.0)
         .filter_map(|p| {
             let ly = (p[1] * sign).ln();
-            ly.is_finite().then_some([p[0], ly, 1.0])
+            ly.is_finite().then_some([p[0] - x0, ly, 1.0])
         })
         .collect();
     let (int_u, b_u) = weighted_ols_line(&unweighted)?;
-    let cand_u = [sign * int_u.exp(), b_u];
+    let cand_u = [sign * int_u.exp(), b_u, x0];
     if log_mode || !cand_u[0].is_finite() {
         return cand_u[0].is_finite().then_some(cand_u);
     }
@@ -65,11 +79,11 @@ pub(crate) fn seed_exponential(points: &[[f64; 2]], log_mode: bool) -> Option<[f
         .filter_map(|p| {
             let ly = (p[1] * sign).ln();
             let w = (p[1] * p[1]).max(1e-18);
-            (ly.is_finite() && w.is_finite()).then_some([p[0], ly, w])
+            (ly.is_finite() && w.is_finite()).then_some([p[0] - x0, ly, w])
         })
         .collect();
     if let Some((int_w, b_w)) = weighted_ols_line(&weighted) {
-        let cand_w = [sign * int_w.exp(), b_w];
+        let cand_w = [sign * int_w.exp(), b_w, x0];
         if cand_w[0].is_finite()
             && sum_squared_errors(points, &cand_w, eval_exp)
                 < sum_squared_errors(points, &cand_u, eval_exp)
@@ -143,11 +157,12 @@ pub(crate) fn seed_logarithmic(points: &[[f64; 2]]) -> Option<[f64; 2]> {
     Some([slope, intercept])
 }
 
-/// Multi-candidate logit seed $[L, a, k]$ for $y = L / (1 + a \exp(-k x))$.
-pub(crate) fn seed_logistic(points: &[[f64; 2]]) -> Option<[f64; 3]> {
+/// Multi-candidate logit seed $[L, a, k, x_0]$ for $y = L / (1 + a \exp(-k (x - x_0)))$.
+pub(crate) fn seed_logistic(points: &[[f64; 2]]) -> Option<[f64; 4]> {
     if points.len() < 3 {
         return None;
     }
+    let x0 = compute_x_origin_shift(points);
     let y_max = points
         .iter()
         .map(|p| p[1])
@@ -163,10 +178,10 @@ pub(crate) fn seed_logistic(points: &[[f64; 2]]) -> Option<[f64; 3]> {
         return None;
     }
 
-    let mut best: Option<([f64; 3], f64)> = None;
+    let mut best: Option<([f64; 4], f64)> = None;
     for mult in [1.001, 1.005, 1.02, 1.06, 1.15, 1.35, 1.8, 2.6] {
         let cap = peak * mult;
-        if let Some(cand) = fit_logit_for_asymptote(points, cap, sign)
+        if let Some(cand) = fit_logit_for_asymptote(points, cap, sign, x0)
             && let Some(sse) = sum_squared_errors(points, &cand, eval_logistic)
             && best.is_none_or(|(_, best_sse)| sse < best_sse)
         {
@@ -176,7 +191,7 @@ pub(crate) fn seed_logistic(points: &[[f64; 2]]) -> Option<[f64; 3]> {
     best.map(|(theta, _)| theta)
 }
 
-fn fit_logit_for_asymptote(points: &[[f64; 2]], cap: f64, sign: f64) -> Option<[f64; 3]> {
+fn fit_logit_for_asymptote(points: &[[f64; 2]], cap: f64, sign: f64, x0: f64) -> Option<[f64; 4]> {
     let mut samples = Vec::with_capacity(points.len());
     for p in points {
         let y_pos = p[1] * sign;
@@ -187,13 +202,13 @@ fn fit_logit_for_asymptote(points: &[[f64; 2]], cap: f64, sign: f64) -> Option<[
         let logit = ratio.ln();
         let weight = (y_pos * (cap - y_pos)).powi(2).max(1e-18);
         if logit.is_finite() && weight.is_finite() {
-            samples.push([p[0], logit, weight]);
+            samples.push([p[0] - x0, logit, weight]);
         }
     }
     let (ln_a, neg_k) = weighted_ols_line(&samples)?;
-    let a = ln_a.clamp(-60.0, 60.0).exp();
+    let a = ln_a.clamp(-500.0, 500.0).exp();
     let k = -neg_k;
-    (a.is_finite() && k.is_finite()).then_some([sign * cap, a, k])
+    (a.is_finite() && k.is_finite()).then_some([sign * cap, a, k, x0])
 }
 
 /// Seed $[a, b, c, d]$ for $y = a \sin(b x + c) + d$ combining Jacquelin integral

@@ -1,6 +1,9 @@
 //! Linear and polynomial Vandermonde least-squares solvers (degrees 1 to 4).
 
-use crate::fit::{FitResult, FitType};
+use crate::{
+    fit::{FitResult, FitType},
+    format::format_fit_param,
+};
 
 pub(crate) fn eval_scaled_polynomial(coeffs: &[f64], x: f64, log_x: bool, log_y: bool) -> f64 {
     let u = if log_x {
@@ -11,11 +14,9 @@ pub(crate) fn eval_scaled_polynomial(coeffs: &[f64], x: f64, log_x: bool, log_y:
     } else {
         x
     };
-    let mut poly = 0.0;
-    let mut u_pow = 1.0;
-    for &coeff in coeffs {
-        poly += coeff * u_pow;
-        u_pow *= u;
+    let mut poly = 0.0_f64;
+    for &coeff in coeffs.iter().rev() {
+        poly = poly.mul_add(u, coeff);
     }
     let out = if log_y {
         10.0_f64
@@ -55,7 +56,7 @@ pub(crate) fn fit_polynomial_scaled(
         .collect();
 
     let degree = target_degree.clamp(1, 4).min(transformed.len() - 1);
-    let coeffs = solve_polynomial_normal_eqs(&transformed, degree)?;
+    let (coeffs, u_scale) = solve_polynomial_normal_eqs(&transformed, degree)?;
     let r_squared = compute_transformed_r2(&transformed, &coeffs);
     let (rmse, residuals) = compute_data_space_residuals(&raw_valid, &coeffs, log_x, log_y);
     let fit_type = if degree == 1 {
@@ -65,12 +66,12 @@ pub(crate) fn fit_polynomial_scaled(
     };
     Some(FitResult {
         fit_type,
-        coefficients: coeffs.clone(),
+        formula: format_scaled_polynomial_formula(&coeffs, u_scale, log_x, log_y),
+        coefficients: coeffs,
         r_squared,
         rmse,
         residuals,
         degree,
-        formula: format_scaled_polynomial_formula(&coeffs, log_x, log_y),
         dataset_name: dataset_name.to_owned(),
         log_x,
         log_y,
@@ -78,25 +79,63 @@ pub(crate) fn fit_polynomial_scaled(
     })
 }
 
-fn solve_polynomial_normal_eqs(points: &[[f64; 2]], degree: usize) -> Option<Vec<f64>> {
+fn solve_polynomial_normal_eqs(points: &[[f64; 2]], degree: usize) -> Option<(Vec<f64>, f64)> {
+    let (u_min, u_max) = points
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+            (lo.min(p[0]), hi.max(p[0]))
+        });
+    let span = u_max - u_min;
+    if !span.is_finite() || span <= 1e-15 {
+        return None;
+    }
+    let mu = 0.5 * (u_min + u_max);
+    let scale = 0.5 * span;
+    let u_scale = u_min.abs().max(u_max.abs()).max(1.0);
+
     let m = degree + 1;
-    let mut sum_x_pow = [0.0_f64; 9];
+    let mut sum_z_pow = [0.0_f64; 9];
     let mut rhs = [0.0_f64; 5];
     for p in points {
+        let z = (p[0] - mu) / scale;
         let mut cur = 1.0;
-        for (k, slot) in sum_x_pow.iter_mut().enumerate().take(2 * degree + 1) {
+        for (k, slot) in sum_z_pow.iter_mut().enumerate().take(2 * degree + 1) {
             *slot += cur;
             if k < m {
                 rhs[k] += p[1] * cur;
             }
-            cur *= p[0];
+            cur *= z;
         }
     }
     let mut mat = [[0.0_f64; 5]; 5];
     for (r, row) in mat.iter_mut().enumerate().take(m) {
-        row[..m].copy_from_slice(&sum_x_pow[r..(r + m)]);
+        row[..m].copy_from_slice(&sum_z_pow[r..(r + m)]);
     }
-    solve_dense_small(&mut mat, &mut rhs, m)
+    let beta = solve_dense_small(&mut mat, &mut rhs, m)?;
+    let coeffs = uncenter_polynomial_coeffs(&beta, mu, scale)?;
+    Some((coeffs, u_scale))
+}
+
+fn uncenter_polynomial_coeffs(beta: &[f64], mu: f64, scale: f64) -> Option<Vec<f64>> {
+    const BINOM: [[f64; 5]; 5] = [
+        [1.0, 0.0, 0.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0, 0.0, 0.0],
+        [1.0, 2.0, 1.0, 0.0, 0.0],
+        [1.0, 3.0, 3.0, 1.0, 0.0],
+        [1.0, 4.0, 6.0, 4.0, 1.0],
+    ];
+    let m = beta.len();
+    let mut coeffs = vec![0.0_f64; m];
+    let mut inv_scale_k = 1.0_f64;
+    for (k, &bk) in beta.iter().enumerate() {
+        let scaled_bk = bk * inv_scale_k;
+        for (j, slot) in coeffs.iter_mut().enumerate().take(k + 1) {
+            let neg_mu_pow = (-mu).powi((k - j) as i32);
+            *slot += scaled_bk * BINOM[k][j] * neg_mu_pow;
+        }
+        inv_scale_k /= scale;
+    }
+    coeffs.iter().all(|c| c.is_finite()).then_some(coeffs)
 }
 
 /// Gaussian elimination with partial pivoting for small systems ($1 \le n \le 5$).
@@ -160,11 +199,9 @@ fn compute_transformed_r2(valid_points: &[[f64; 2]], coeffs: &[f64]) -> f64 {
     let y_mean = valid_points.iter().map(|p| p[1]).sum::<f64>() / n;
     let (mut ss_tot, mut ss_res) = (0.0, 0.0);
     for p in valid_points {
-        let mut y_pred = 0.0;
-        let mut x_pow = 1.0;
-        for &c in coeffs {
-            y_pred += c * x_pow;
-            x_pow *= p[0];
+        let mut y_pred = 0.0_f64;
+        for &c in coeffs.iter().rev() {
+            y_pred = y_pred.mul_add(p[0], c);
         }
         ss_tot += (p[1] - y_mean).powi(2);
         ss_res += (p[1] - y_pred).powi(2);
@@ -200,17 +237,34 @@ fn compute_data_space_residuals(
     (rmse, residuals)
 }
 
-fn format_scaled_polynomial_formula(coeffs: &[f64], log_x: bool, log_y: bool) -> String {
+fn format_scaled_polynomial_formula(
+    coeffs: &[f64],
+    u_scale: f64,
+    log_x: bool,
+    log_y: bool,
+) -> String {
     let lhs = if log_y { "log10(y)" } else { "y" };
     let var = if log_x { "log10(x)" } else { "x" };
     let degree = coeffs.len().saturating_sub(1);
     if degree == 0 {
-        return format!("{lhs} = {:.4}", coeffs.first().copied().unwrap_or(0.0));
+        return format!(
+            "{lhs} = {}",
+            format_fit_param(coeffs.first().copied().unwrap_or(0.0))
+        );
     }
+    let max_contrib = coeffs
+        .iter()
+        .enumerate()
+        .map(|(p, &c)| c.abs() * u_scale.powi(p as i32))
+        .fold(0.0_f64, f64::max);
     let mut terms = Vec::new();
     for power in (0..=degree).rev() {
         let coeff = coeffs[power];
-        if coeff.abs() < 1e-9 && terms.len() < degree {
+        let contrib = coeff.abs() * u_scale.powi(power as i32);
+        if max_contrib > 0.0 && contrib <= 1e-12 * max_contrib && terms.len() < degree {
+            continue;
+        }
+        if max_contrib == 0.0 && power > 0 {
             continue;
         }
         terms.push(format_poly_term(coeff, power, var, log_x, terms.is_empty()));
@@ -231,10 +285,11 @@ fn format_poly_term(coeff: f64, power: usize, var: &str, log_x: bool, is_first: 
         (false, false) => " + ",
     };
     let abs_c = coeff.abs();
+    let mag_str = format_fit_param(abs_c);
     match power {
-        0 => format!("{sign_str}{abs_c:.4}"),
+        0 => format!("{sign_str}{mag_str}"),
         1 if (abs_c - 1.0).abs() < 1e-6 => format!("{sign_str}{var}"),
-        1 => format!("{sign_str}{abs_c:.4}{var}"),
+        1 => format!("{sign_str}{mag_str}{var}"),
         p => {
             let sup = superscripts.get(p).copied().unwrap_or("");
             let base = if log_x {
@@ -245,7 +300,7 @@ fn format_poly_term(coeff: f64, power: usize, var: &str, log_x: bool, is_first: 
             if (abs_c - 1.0).abs() < 1e-6 {
                 format!("{sign_str}{base}")
             } else {
-                format!("{sign_str}{abs_c:.4}{base}")
+                format!("{sign_str}{mag_str}{base}")
             }
         }
     }

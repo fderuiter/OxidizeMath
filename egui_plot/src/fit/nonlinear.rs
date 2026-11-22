@@ -1,9 +1,15 @@
 //! Nonlinear model evaluation, analytical Jacobians, formula formatting, and fit assembly.
 
-use crate::fit::{
-    FitResult, FitType,
-    lm::levenberg_marquardt,
-    seeds::{seed_exponential, seed_logarithmic, seed_logistic, seed_power_law, seed_sinusoidal},
+use crate::{
+    fit::{
+        FitResult, FitType,
+        lm::levenberg_marquardt,
+        seeds::{
+            compute_x_origin_shift, seed_exponential, seed_logarithmic, seed_logistic,
+            seed_power_law, seed_sinusoidal, shift_points_x,
+        },
+    },
+    format::{format_fit_param, format_fit_param_signed},
 };
 
 pub(crate) fn eval_nonlinear_model(fit_type: FitType, coeffs: &[f64], x: f64) -> f64 {
@@ -22,23 +28,25 @@ pub(crate) fn eval_exp(x: f64, c: &[f64]) -> Option<f64> {
     if c.len() < 2 {
         return None;
     }
-    let arg = c[1] * x;
+    let u = x - c.get(2).copied().unwrap_or(0.0);
+    let arg = c[1] * u;
     if !arg.is_finite() || arg > 700.0 {
         return None;
     }
-    let y = c[0] * arg.exp();
+    let y = if arg < -745.0 { 0.0 } else { c[0] * arg.exp() };
     y.is_finite().then_some(y)
 }
 
 fn jac_exp(x: f64, c: &[f64], jac: &mut [f64; 4]) -> Option<f64> {
-    let arg = c[1] * x;
+    let u = x - c.get(2).copied().unwrap_or(0.0);
+    let arg = c[1] * u;
     if !arg.is_finite() || arg > 700.0 {
         return None;
     }
-    let e = arg.exp();
+    let e = if arg < -745.0 { 0.0 } else { arg.exp() };
     let y = c[0] * e;
     jac[0] = e;
-    jac[1] = y * x;
+    jac[1] = y * u;
     y.is_finite().then_some(y)
 }
 
@@ -74,7 +82,8 @@ pub(crate) fn eval_logistic(x: f64, c: &[f64]) -> Option<f64> {
     if c.len() < 3 {
         return None;
     }
-    let arg = (-c[2] * x).clamp(-700.0, 700.0);
+    let u = x - c.get(3).copied().unwrap_or(0.0);
+    let arg = (-c[2] * u).clamp(-700.0, 700.0);
     let denom = 1.0 + c[1] * arg.exp();
     if !denom.is_finite() || denom.abs() <= 1e-15 {
         return None;
@@ -84,11 +93,12 @@ pub(crate) fn eval_logistic(x: f64, c: &[f64]) -> Option<f64> {
 }
 
 fn jac_logistic(x: f64, c: &[f64], jac: &mut [f64; 4]) -> Option<f64> {
-    let arg = -c[2] * x;
+    let u = x - c.get(3).copied().unwrap_or(0.0);
+    let arg = -c[2] * u;
     if !arg.is_finite() || arg > 700.0 {
         return None;
     }
-    let e = arg.exp();
+    let e = if arg < -745.0 { 0.0 } else { arg.exp() };
     let denom = 1.0 + c[1] * e;
     if !denom.is_finite() || denom.abs() <= 1e-15 {
         return None;
@@ -98,7 +108,7 @@ fn jac_logistic(x: f64, c: &[f64], jac: &mut [f64; 4]) -> Option<f64> {
     let y_inv_d = y * inv_d;
     jac[0] = inv_d;
     jac[1] = -y_inv_d * e;
-    jac[2] = y_inv_d * c[1] * x * e;
+    jac[2] = y_inv_d * c[1] * u * e;
     y.is_finite().then_some(y)
 }
 
@@ -175,14 +185,7 @@ fn solve_model_parameters(
     use_log_mode: bool,
 ) -> Option<Vec<f64>> {
     match fit_type {
-        FitType::Exponential => {
-            let seed = seed_exponential(valid, use_log_mode)?;
-            if use_log_mode {
-                Some(seed.to_vec())
-            } else {
-                levenberg_marquardt(valid, &seed, eval_exp, jac_exp).or_else(|| Some(seed.to_vec()))
-            }
-        }
+        FitType::Exponential => solve_exponential_params(valid, use_log_mode),
         FitType::PowerLaw => {
             let seed = seed_power_law(valid, use_log_mode)?;
             if use_log_mode {
@@ -193,20 +196,76 @@ fn solve_model_parameters(
             }
         }
         FitType::Logarithmic => seed_logarithmic(valid).map(|s| s.to_vec()),
-        FitType::Logistic => {
-            let seed = seed_logistic(valid)?;
-            levenberg_marquardt(valid, &seed, eval_logistic, jac_logistic)
-                .or_else(|| Some(seed.to_vec()))
-        }
-        FitType::Sinusoidal => {
-            let seed = seed_sinusoidal(valid)?;
-            let mut params = levenberg_marquardt(valid, &seed, eval_sin, jac_sin)
-                .unwrap_or_else(|| seed.to_vec());
-            normalize_sinusoidal_params(&mut params);
-            Some(params)
-        }
+        FitType::Logistic => solve_logistic_params(valid),
+        FitType::Sinusoidal => solve_sinusoidal_params(valid),
         FitType::Linear | FitType::Polynomial(_) => None,
     }
+}
+
+fn solve_exponential_params(valid: &[[f64; 2]], use_log_mode: bool) -> Option<Vec<f64>> {
+    let [a0, b0, x0] = seed_exponential(valid, use_log_mode)?;
+    let [a, b] = if use_log_mode {
+        [a0, b0]
+    } else {
+        let shifted_buf;
+        let pts = if x0 == 0.0 {
+            valid
+        } else {
+            shifted_buf = shift_points_x(valid, x0);
+            &shifted_buf
+        };
+        if let Some(opt) = levenberg_marquardt(pts, &[a0, b0], eval_exp, jac_exp) {
+            [opt[0], opt[1]]
+        } else {
+            [a0, b0]
+        }
+    };
+    if x0 == 0.0 {
+        Some(vec![a, b])
+    } else {
+        Some(vec![a, b, x0])
+    }
+}
+
+fn solve_logistic_params(valid: &[[f64; 2]]) -> Option<Vec<f64>> {
+    let [cap0, a0, k0, x0] = seed_logistic(valid)?;
+    let shifted_buf;
+    let pts = if x0 == 0.0 {
+        valid
+    } else {
+        shifted_buf = shift_points_x(valid, x0);
+        &shifted_buf
+    };
+    let [cap, a, k] =
+        if let Some(opt) = levenberg_marquardt(pts, &[cap0, a0, k0], eval_logistic, jac_logistic) {
+            [opt[0], opt[1], opt[2]]
+        } else {
+            [cap0, a0, k0]
+        };
+    if x0 == 0.0 {
+        Some(vec![cap, a, k])
+    } else {
+        Some(vec![cap, a, k, x0])
+    }
+}
+
+fn solve_sinusoidal_params(valid: &[[f64; 2]]) -> Option<Vec<f64>> {
+    let x0 = compute_x_origin_shift(valid);
+    let shifted_buf;
+    let pts = if x0 == 0.0 {
+        valid
+    } else {
+        shifted_buf = shift_points_x(valid, x0);
+        &shifted_buf
+    };
+    let seed = seed_sinusoidal(pts)?;
+    let mut params =
+        levenberg_marquardt(pts, &seed, eval_sin, jac_sin).unwrap_or_else(|| seed.to_vec());
+    if x0 != 0.0 {
+        params[2] -= params[1] * x0;
+    }
+    normalize_sinusoidal_params(&mut params);
+    Some(params)
 }
 
 fn normalize_sinusoidal_params(params: &mut [f64]) {
@@ -256,23 +315,59 @@ fn compute_nonlinear_metrics(
     (r2, rmse, residuals)
 }
 
+fn format_shifted_x_var(x0: f64) -> String {
+    if x0 == 0.0 {
+        "x".to_owned()
+    } else if x0 > 0.0 {
+        format!("(x - {})", format_fit_param(x0))
+    } else {
+        format!("(x + {})", format_fit_param(-x0))
+    }
+}
+
 fn format_nonlinear_formula(fit_type: FitType, c: &[f64]) -> String {
     match fit_type {
-        FitType::Exponential => format!("y = {:.4}·exp({:+.4}x)", c[0], c[1]),
-        FitType::PowerLaw => format!("y = {:.4}·x^({:.4})", c[0], c[1]),
+        FitType::Exponential => {
+            let x_var = format_shifted_x_var(c.get(2).copied().unwrap_or(0.0));
+            format!(
+                "y = {}·exp({}{x_var})",
+                format_fit_param(c[0]),
+                format_fit_param_signed(c[1])
+            )
+        }
+        FitType::PowerLaw => {
+            format!(
+                "y = {}·x^({})",
+                format_fit_param(c[0]),
+                format_fit_param(c[1])
+            )
+        }
         FitType::Logarithmic => {
             let sign = if c[1] < 0.0 { "-" } else { "+" };
-            format!("y = {:.4}·ln(x) {sign} {:.4}", c[0], c[1].abs())
+            format!(
+                "y = {}·ln(x) {sign} {}",
+                format_fit_param(c[0]),
+                format_fit_param(c[1].abs())
+            )
         }
-        FitType::Logistic => format!("y = {:.4} / (1 + {:.4}·exp({:+.4}x))", c[0], c[1], -c[2]),
+        FitType::Logistic => {
+            let x_var = format_shifted_x_var(c.get(3).copied().unwrap_or(0.0));
+            format!(
+                "y = {} / (1 + {}·exp({}{x_var}))",
+                format_fit_param(c[0]),
+                format_fit_param(c[1]),
+                format_fit_param_signed(-c[2])
+            )
+        }
         FitType::Sinusoidal => {
+            let c_sign = if c[2] < 0.0 { "-" } else { "+" };
             let d_sign = if c[3] < 0.0 { "-" } else { "+" };
             format!(
-                "y = {:.4}·sin({:.4}x {:+.4}) {d_sign} {:.4}",
-                c[0],
-                c[1],
-                c[2],
-                c[3].abs()
+                "y = {}·sin({}x {c_sign} {}) {d_sign} {}",
+                format_fit_param(c[0]),
+                format_fit_param(c[1]),
+                format_fit_param(c[2].abs()),
+                format_fit_param(c[3].abs())
             )
         }
         FitType::Linear | FitType::Polynomial(_) => String::new(),

@@ -326,14 +326,14 @@ pub(crate) fn format_critical_point_live_summary(
     index: usize,
     total: usize,
 ) -> String {
+    let x_str = crate::format::format_readout_value(poi.point[0], 4, 4);
+    let y_str = crate::format::format_readout_value(poi.point[1], 4, 4);
     format!(
-        "Critical point {} of {}: {} ({}), X: {:.4}, Y: {:.4}",
+        "Critical point {} of {}: {} ({}), X: {x_str}, Y: {y_str}",
         index + 1,
         total,
         poi.kind.label(),
         poi.series_summary(),
-        poi.point[0],
-        poi.point[1]
     )
 }
 
@@ -345,9 +345,11 @@ pub(crate) fn show_critical_point_tooltip(
     announce_on_open: bool,
     include_pin_hint: bool,
 ) {
+    let x_str = crate::format::format_readout_value(poi.point[0], 6, 4);
+    let y_str = crate::format::format_readout_value(poi.point[1], 6, 4);
     let mut body_lines = vec![
-        (format!("x = {:.6}", poi.point[0]), true),
-        (format!("y = {:.6}", poi.point[1]), true),
+        (format!("x = {x_str}"), true),
+        (format!("y = {y_str}"), true),
     ];
     if include_pin_hint {
         body_lines.push(("Click marker to pin callout".to_owned(), false));

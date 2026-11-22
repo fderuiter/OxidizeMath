@@ -1,10 +1,12 @@
-//! Hoverable fitted curve & residual stem series injection, badge rendering, and Fit Curve menus.
+//! Hoverable fitted curve & residual stem series injection, wrapping badge / error banner
+//! rendering, and `Fit Curve` menus.
 
-use egui::{Color32, Rect, RichText, Stroke, Ui, vec2};
+use egui::{Color32, Pos2, Rect, RichText, Stroke, Ui, pos2, vec2};
 
 use crate::{
-    AccessState,
+    AccessState, Corner,
     a11y::{self, AccessibleTooltipExt as _},
+    emit_plot_live_message,
     fit::{FitResult, FitType, fit_model_with_axes},
     items::{Line, LineStyle, MarkerShape, PlotItem, Points},
     transform::PlotTransform,
@@ -12,8 +14,33 @@ use crate::{
 
 pub(crate) type BaseDatasetTuple = (String, Vec<[f64; 2]>, Color32);
 
+/// Outcome of evaluating the active curve-fit request for the current frame.
+#[derive(Clone, Debug)]
+pub(crate) enum FitOverlayStatus {
+    /// No fit model is currently selected.
+    Inactive,
+    /// Fit converged and produced a valid [`FitResult`].
+    Succeeded {
+        result: FitResult,
+        accent_color: Color32,
+    },
+    /// Fit was requested by the user, but failed on the active dataset.
+    Failed {
+        fit_type: FitType,
+        dataset_name: String,
+        reason: String,
+    },
+}
+
+impl FitOverlayStatus {
+    #[must_use]
+    pub(crate) const fn is_succeeded(&self) -> bool {
+        matches!(self, Self::Succeeded { .. })
+    }
+}
+
 /// Computes the active regression fit (if enabled) and appends hoverable fitted curve and
-/// optional vertical residual stem series directly into `items` prior to dataset extraction.
+/// optional vertical residual stem series directly into `items` BEFORE legend construction.
 pub(crate) fn compute_and_inject_fit_items<'a>(
     ui: &Ui,
     items: &mut Vec<Box<dyn PlotItem + 'a>>,
@@ -22,7 +49,7 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
     transform: &PlotTransform,
     log_x: bool,
     log_y: bool,
-) -> Option<(FitResult, Color32)> {
+) -> FitOverlayStatus {
     let valid_first = base_datasets
         .iter()
         .enumerate()
@@ -36,44 +63,139 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
         access_state.fit_dataset_idx = first_idx;
     }
 
-    let fit_type = access_state.fit_model?;
-    let (ds_name, ds_pts, ds_color) = base_datasets.get(access_state.fit_dataset_idx)?;
-    let fit_res = fit_model_with_axes(
+    let Some(fit_type) = access_state.fit_model else {
+        access_state.last_fit_error_announced = None;
+        return FitOverlayStatus::Inactive;
+    };
+    let Some((ds_name, ds_pts, ds_color)) = base_datasets.get(access_state.fit_dataset_idx) else {
+        return FitOverlayStatus::Failed {
+            fit_type,
+            dataset_name: "Selected series".to_owned(),
+            reason: "No visible series data available for curve fitting.".to_owned(),
+        };
+    };
+    let disp_name = display_dataset_name(ds_name, access_state.fit_dataset_idx);
+    let Some(fit_res) = fit_model_with_axes(
         ds_pts,
         fit_type,
-        ds_name,
+        &disp_name,
         log_x,
         log_y,
         access_state.fit_log_mode,
-    )?;
-    let accent = if *ds_color == Color32::TRANSPARENT {
-        ui.visuals().widgets.active.bg_fill
-    } else {
-        *ds_color
+    ) else {
+        let reason = diagnose_fit_failure(ds_pts, fit_type, log_x, log_y);
+        return FitOverlayStatus::Failed {
+            fit_type,
+            dataset_name: disp_name,
+            reason,
+        };
     };
 
+    access_state.last_fit_error_announced = None;
+    let accent = resolve_fit_accent_color(ui, *ds_color);
     if access_state.show_fit_overlay {
-        let disp_name = display_dataset_name(ds_name, access_state.fit_dataset_idx);
-        let curve_pts = sample_fit_curve(&fit_res, transform);
-        if curve_pts.len() >= 2 {
-            let line_name = format!("Fit ({}): {disp_name}", fit_res.fit_type.short_label());
-            let line = Line::new(line_name, curve_pts)
-                .color(accent)
-                .width(2.5_f32)
-                .style(LineStyle::Dashed { length: 8.0 });
-            items.push(Box::new(line));
-        }
-        if access_state.show_fit_residuals && !fit_res.residuals.is_empty() {
-            let res_color = residual_stem_color(ui, accent);
-            let stems = Points::new(format!("{disp_name} Residuals"), fit_res.residuals.clone())
-                .color(res_color)
-                .radius(3.2_f32)
-                .shape(MarkerShape::Circle)
-                .stems(0.0_f32);
-            items.push(Box::new(stems));
+        append_fitted_series(
+            ui,
+            items,
+            &fit_res,
+            &disp_name,
+            accent,
+            transform,
+            access_state,
+        );
+    }
+    FitOverlayStatus::Succeeded {
+        result: fit_res,
+        accent_color: accent,
+    }
+}
+
+fn resolve_fit_accent_color(ui: &Ui, ds_color: Color32) -> Color32 {
+    if ds_color == Color32::TRANSPARENT {
+        ui.visuals().widgets.active.bg_fill
+    } else {
+        ds_color
+    }
+}
+
+fn append_fitted_series<'a>(
+    ui: &Ui,
+    items: &mut Vec<Box<dyn PlotItem + 'a>>,
+    fit_res: &FitResult,
+    disp_name: &str,
+    accent: Color32,
+    transform: &PlotTransform,
+    access_state: &AccessState,
+) {
+    let curve_pts = sample_fit_curve(fit_res, transform);
+    if curve_pts.len() >= 2 {
+        let line_name = format!("Fit ({}): {disp_name}", fit_res.fit_type.short_label());
+        let line = Line::new(line_name, curve_pts)
+            .color(accent)
+            .width(2.5_f32)
+            .style(LineStyle::Dashed { length: 8.0 });
+        items.push(Box::new(line));
+    }
+    if access_state.show_fit_residuals && !fit_res.residuals.is_empty() {
+        let res_color = residual_stem_color(ui, accent);
+        let stems = Points::new(format!("{disp_name} Residuals"), fit_res.residuals.clone())
+            .color(res_color)
+            .radius(3.2_f32)
+            .shape(MarkerShape::Circle)
+            .stems(0.0_f32);
+        items.push(Box::new(stems));
+    }
+}
+
+fn diagnose_fit_failure(
+    points: &[[f64; 2]],
+    fit_type: FitType,
+    log_x: bool,
+    log_y: bool,
+) -> String {
+    let min_pts = match fit_type {
+        FitType::Logistic => 3,
+        FitType::Sinusoidal => 4,
+        _ => 2,
+    };
+    let finite: Vec<[f64; 2]> = points
+        .iter()
+        .copied()
+        .filter(|p| p[0].is_finite() && p[1].is_finite())
+        .collect();
+    if finite.len() < min_pts {
+        return format!(
+            "Requires at least {min_pts} finite points (found {}).",
+            finite.len()
+        );
+    }
+    let needs_pos_x = log_x || matches!(fit_type, FitType::PowerLaw | FitType::Logarithmic);
+    if needs_pos_x && finite.iter().filter(|p| p[0] > 0.0).count() < min_pts {
+        return "Requires strictly positive X values (x > 0) for logarithmic/power domain."
+            .to_owned();
+    }
+    if log_y && finite.iter().filter(|p| p[1] > 0.0).count() < min_pts {
+        return "Requires strictly positive Y values (y > 0) on logarithmic Y-axis.".to_owned();
+    }
+    if matches!(fit_type, FitType::Exponential | FitType::PowerLaw) {
+        let pos_y = finite.iter().filter(|p| p[1] > 0.0).count();
+        let neg_y = finite.iter().filter(|p| p[1] < 0.0).count();
+        if pos_y < 2 && neg_y < 2 {
+            return "Requires at least 2 non-zero Y values of matching sign.".to_owned();
         }
     }
-    Some((fit_res, accent))
+    let (x_min, x_max) = finite
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+            (lo.min(p[0]), hi.max(p[0]))
+        });
+    if (x_max - x_min).abs() <= 1e-15 {
+        return "Cannot fit constant-X dataset (zero X variance).".to_owned();
+    }
+    format!(
+        "{} solver did not converge on this dataset.",
+        fit_type.short_label()
+    )
 }
 
 fn sample_fit_curve(fit_res: &FitResult, transform: &PlotTransform) -> Vec<[f64; 2]> {
@@ -125,23 +247,122 @@ fn display_dataset_name(raw: &str, idx: usize) -> String {
     }
 }
 
-/// Paints the floating equation + `R²` + `RMSE` summary badge when a curve fit overlay is active.
-pub(crate) fn paint_fit_formula_badge(
+/// Placement context for the floating curve-fit summary frame or error banner.
+pub(crate) struct FitOverlayLayout {
+    pub plot_rect: Rect,
+    pub legend_placement: Option<(Corner, Rect)>,
+    pub right_controls_rect: Option<Rect>,
+    pub dataset_idx: usize,
+}
+
+/// Paints either the wrapping curve-fit formula summary or the inline failed-fit diagnostic banner.
+pub(crate) fn paint_fit_status_overlay(
     ui: &mut Ui,
-    plot_rect: Rect,
+    layout: &FitOverlayLayout,
+    status: &FitOverlayStatus,
+    access_state: &mut AccessState,
+) {
+    match status {
+        FitOverlayStatus::Inactive => {}
+        FitOverlayStatus::Succeeded {
+            result,
+            accent_color,
+        } => {
+            if access_state.show_fit_overlay {
+                let avail_rect = compute_fit_overlay_rect(layout);
+                paint_succeeded_fit_frame(
+                    ui,
+                    avail_rect,
+                    result,
+                    layout.dataset_idx,
+                    *accent_color,
+                );
+            }
+        }
+        FitOverlayStatus::Failed {
+            fit_type,
+            dataset_name,
+            reason,
+        } => {
+            announce_fit_failure_once(ui, access_state, *fit_type, dataset_name, reason);
+            let avail_rect = compute_fit_overlay_rect(layout);
+            paint_failed_fit_banner(
+                ui,
+                avail_rect,
+                *fit_type,
+                dataset_name,
+                reason,
+                access_state,
+            );
+        }
+    }
+}
+
+fn compute_fit_overlay_rect(layout: &FitOverlayLayout) -> Rect {
+    const PAD: f32 = 8.0;
+    let plot_rect = layout.plot_rect;
+    let x_min = plot_rect.min.x + PAD;
+    let mut y_min = plot_rect.min.y + PAD;
+    let ctrl_left = layout
+        .right_controls_rect
+        .map_or(plot_rect.max.x - PAD, |r| r.min.x - PAD);
+    let mut x_max = ctrl_left;
+
+    if let Some((corner, lrect)) = layout.legend_placement {
+        match corner {
+            Corner::LeftTop => {
+                y_min = (lrect.max.y + PAD).min(plot_rect.max.y - PAD);
+                if layout
+                    .right_controls_rect
+                    .is_none_or(|ctrl| y_min > ctrl.max.y + 4.0)
+                {
+                    x_max = plot_rect.max.x - PAD;
+                }
+            }
+            Corner::RightTop => {
+                let left_of_legend = lrect.min.x - PAD;
+                if left_of_legend - x_min >= 180.0 {
+                    x_max = x_max.min(left_of_legend);
+                } else {
+                    let below_ctrl = layout
+                        .right_controls_rect
+                        .map_or(lrect.max.y, |c| lrect.max.y.max(c.max.y));
+                    y_min = (below_ctrl + PAD).min(plot_rect.max.y - PAD);
+                    x_max = plot_rect.max.x - PAD;
+                }
+            }
+            Corner::LeftBottom | Corner::RightBottom => {}
+        }
+    }
+
+    let safe_max = Pos2::new(
+        x_max.max(x_min + 64.0),
+        (plot_rect.max.y - PAD).max(y_min + 24.0),
+    );
+    Rect::from_min_max(pos2(x_min, y_min), safe_max)
+}
+
+fn paint_succeeded_fit_frame(
+    ui: &mut Ui,
+    avail_rect: Rect,
     fit_res: &FitResult,
     dataset_idx: usize,
     accent_color: Color32,
 ) {
-    let badge_pos = plot_rect.min + vec2(12.0_f32, 36.0_f32);
-    let badge_rect = Rect::from_min_size(badge_pos, vec2(276.0_f32, 74.0_f32));
-    ui.scope_builder(egui::UiBuilder::new().max_rect(badge_rect), |ui| {
+    let max_frame_w = avail_rect.width().clamp(64.0, 384.0);
+    let wrap_w = (max_frame_w - 16.0).max(48.0);
+    let mut overlay_ui = ui.new_child(egui::UiBuilder::new().max_rect(avail_rect));
+    overlay_ui.set_clip_rect(avail_rect.intersect(ui.clip_rect()));
+    overlay_ui.scope(|ui| {
+        ui.set_max_width(max_frame_w);
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
         egui::Frame::window(ui.style())
-            .fill(ui.visuals().window_fill.gamma_multiply(0.88_f32))
+            .fill(ui.visuals().window_fill.gamma_multiply(0.92_f32))
             .stroke(Stroke::new(1.5_f32, accent_color))
             .corner_radius(6.0_f32)
             .inner_margin(6.0_f32)
             .show(ui, |ui| {
+                ui.set_max_width(wrap_w);
                 ui.vertical(|ui| {
                     let name_display = display_dataset_name(&fit_res.dataset_name, dataset_idx);
                     let mode_tag = if fit_res.log_mode { " [Log Mode]" } else { "" };
@@ -150,7 +371,12 @@ pub(crate) fn paint_fit_formula_badge(
                             .strong()
                             .color(accent_color),
                     );
-                    ui.label(RichText::new(&fit_res.formula).monospace().size(12.5_f32));
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(&fit_res.formula).monospace().size(12.0_f32),
+                        )
+                        .wrap(),
+                    );
                     let stats = format!(
                         "R² = {:.4}   RMSE = {}",
                         fit_res.r_squared,
@@ -166,24 +392,93 @@ pub(crate) fn paint_fit_formula_badge(
     });
 }
 
+fn announce_fit_failure_once(
+    ui: &Ui,
+    access_state: &mut AccessState,
+    fit_type: FitType,
+    dataset_name: &str,
+    reason: &str,
+) {
+    let key = (fit_type, access_state.fit_dataset_idx, reason.to_owned());
+    if access_state.last_fit_error_announced.as_ref() != Some(&key) {
+        access_state.last_fit_error_announced = Some(key);
+        let msg = format!(
+            "Curve fit failed ({}) on {dataset_name}: {reason}",
+            fit_type.short_label()
+        );
+        emit_plot_live_message(ui.ctx(), msg, true);
+    }
+}
+
+fn paint_failed_fit_banner(
+    ui: &mut Ui,
+    avail_rect: Rect,
+    fit_type: FitType,
+    dataset_name: &str,
+    reason: &str,
+    access_state: &mut AccessState,
+) {
+    let err_color = if ui.visuals().dark_mode {
+        Color32::from_rgb(255, 118, 118)
+    } else {
+        Color32::from_rgb(180, 28, 28)
+    };
+    let max_frame_w = avail_rect.width().clamp(64.0, 360.0);
+    let wrap_w = (max_frame_w - 16.0).max(48.0);
+    let mut overlay_ui = ui.new_child(egui::UiBuilder::new().max_rect(avail_rect));
+    overlay_ui.set_clip_rect(avail_rect.intersect(ui.clip_rect()));
+    overlay_ui.scope(|ui| {
+        ui.set_max_width(max_frame_w);
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+        egui::Frame::window(ui.style())
+            .fill(ui.visuals().window_fill.gamma_multiply(0.94_f32))
+            .stroke(Stroke::new(1.5_f32, err_color))
+            .corner_radius(6.0_f32)
+            .inner_margin(6.0_f32)
+            .show(ui, |ui| {
+                ui.set_max_width(wrap_w);
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new(format!("⚠ Fit Failed ({})", fit_type.short_label()))
+                            .strong()
+                            .color(err_color),
+                    );
+                    ui.add(egui::Label::new(format!("{dataset_name}: {reason}")).wrap());
+                    let clear_btn = egui::Button::new("Clear Fit").min_size(vec2(72.0, 24.0));
+                    if a11y::focusable_action_button(
+                        ui,
+                        true,
+                        clear_btn,
+                        Some("Clear failed curve fit"),
+                    )
+                    .accessible_tooltip("Clear failed curve fit")
+                    .clicked()
+                    {
+                        access_state.fit_model = None;
+                        access_state.last_fit_error_announced = None;
+                    }
+                });
+            });
+    });
+}
+
 fn format_metric_compact(v: f64) -> String {
     if !v.is_finite() {
         "N/A".to_owned()
     } else if v == 0.0 {
         "0.0000".to_owned()
-    } else if !(1e-3..1e5).contains(&v.abs()) {
-        format!("{v:.3e}")
     } else {
-        format!("{v:.4}")
+        crate::format::format_fit_param(v)
     }
 }
 
-/// Renders the shared `Fit Curve` menu items for both the top toolbar and context menu.
+/// Renders the shared `Fit Curve` menu items for both the docked header and context menu.
 pub(crate) fn render_fit_curve_menu(
     ui: &mut Ui,
     base_datasets: &[BaseDatasetTuple],
     access_state: &mut AccessState,
     in_context_menu: bool,
+    fit_status: &FitOverlayStatus,
 ) {
     let valid: Vec<(usize, &String, &Vec<[f64; 2]>)> = base_datasets
         .iter()
@@ -220,11 +515,31 @@ pub(crate) fn render_fit_curve_menu(
             .on_hover_text("Fit Exponential or Power Law via linearized logarithmic least squares");
     });
     if in_context_menu && access_state.fit_model.is_some() {
-        ui.separator();
-        if ui.button("Clear Fit Overlay").clicked() {
-            access_state.fit_model = None;
+        render_context_fit_actions(ui, access_state, fit_status);
+    }
+}
+
+fn render_context_fit_actions(
+    ui: &mut Ui,
+    access_state: &mut AccessState,
+    fit_status: &FitOverlayStatus,
+) {
+    ui.separator();
+    if fit_status.is_succeeded() {
+        let toggle_text = if access_state.show_fit_overlay {
+            "Hide Fit"
+        } else {
+            "Show Fit"
+        };
+        if ui.button(toggle_text).clicked() {
+            access_state.show_fit_overlay = !access_state.show_fit_overlay;
             ui.close();
         }
+    }
+    if ui.button("Clear Fit").clicked() {
+        access_state.fit_model = None;
+        access_state.last_fit_error_announced = None;
+        ui.close();
     }
 }
 

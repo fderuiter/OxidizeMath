@@ -463,6 +463,8 @@ impl<'a> Plot3DViewport<'a> {
             .allow_boxed_zoom(false)
             .allow_double_click_reset(false)
             .show_navigation_controls(false)
+            .show_toolbar(false)
+            .show_settings_button(false)
             .default_x_bounds(-x_half, x_half)
             .default_y_bounds(-y_half, y_half);
         if let Some(title) = self.title {

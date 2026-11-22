@@ -2129,7 +2129,7 @@ pub(super) fn rulers_and_tooltip_at_value(
     );
 }
 
-fn format_value_tooltip_content(
+pub(crate) fn format_value_tooltip_content(
     value: PlotPoint,
     name: &str,
     plot: &PlotConfig<'_>,
@@ -2155,10 +2155,12 @@ fn format_value_tooltip_content(
 
     let mut lines = Vec::with_capacity(2);
     if plot.show_x {
-        lines.push((format!("x = {:.*}", x_decimals, value.x), true));
+        let x_str = crate::format::format_readout_value(value.x, x_decimals, 4);
+        lines.push((format!("x = {x_str}"), true));
     }
     if plot.show_y {
-        lines.push((format!("y = {:.*}", y_decimals, value.y), true));
+        let y_str = crate::format::format_readout_value(value.y, y_decimals, 4);
+        lines.push((format!("y = {y_str}"), true));
     }
     (name.to_owned(), lines)
 }
