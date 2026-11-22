@@ -37,6 +37,8 @@ pub struct WaveUnified {
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
+    prev_mode_phases: [f64; 8],
+    sonification: crate::audio::SonificationFrame,
 }
 
 impl FiniteStateGuard for WaveUnified {
@@ -88,8 +90,16 @@ impl UnifiedModel for WaveUnified {
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
+            prev_mode_phases: [0.0; 8],
+            sonification: crate::audio::SonificationFrame::silent(),
         };
         sim.init_system(potential_type);
+        let init_modes = sim.psi.project_spatial_modes::<8>();
+        sim.sonification = crate::audio::mappings::quantum_wavepacket_frame(
+            &init_modes,
+            &mut sim.prev_mode_phases,
+            0.05,
+        );
         sim
     }
 
@@ -134,10 +144,33 @@ impl UnifiedModel for WaveUnified {
                 "psi_norm",
                 "Wave function normalization diverged: non-finite norm encountered.",
             ));
+            self.sonification = crate::audio::SonificationFrame::silent();
+            return;
         }
+
+        let modes = self.psi.project_spatial_modes::<8>();
+        self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
+            &modes,
+            &mut self.prev_mode_phases,
+            dt,
+        );
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
+        // Project complex amplitudes onto low-order spatial modes before Born-rule norm_sqr() collapse.
+        let modes = self.psi.project_spatial_modes::<8>();
+        let mut preview_phases = self.prev_mode_phases;
+        let sonification = if self.diverged {
+            crate::audio::SonificationFrame::silent()
+        } else if self.step_count > 0 {
+            self.sonification
+        } else {
+            crate::audio::mappings::quantum_wavepacket_frame(
+                &modes,
+                &mut preview_phases,
+                self.cached_dt.unwrap_or(0.05),
+            )
+        };
         let prob_density = self.psi.probability_density();
         let safe_prob: Vec<f64> = prob_density
             .iter()
@@ -161,7 +194,12 @@ impl UnifiedModel for WaveUnified {
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data: Vec::new(),
             structured_data: Some(structured_data),
+            sonification,
         }
+    }
+
+    fn sonification_tool_id() -> Option<&'static str> {
+        Some("wave_sim")
     }
 
     fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {

@@ -1,6 +1,6 @@
 use super::{
-    spawn_save_as_file_dialog, spawn_save_direct_file, DirectSaveConfig, PlatformInstant,
-    SaveAsDialogConfig,
+    spawn_save_as_file_dialog, spawn_save_binary_file_dialog, spawn_save_direct_file,
+    DirectSaveConfig, PlatformInstant, SaveAsDialogConfig,
 };
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
@@ -61,4 +61,23 @@ fn wasm_spawn_save_dialogs_trigger_browser_download_and_deliver_paths() {
         .expect("save-as browser download should succeed");
     assert_eq!(mapped_path, PathBuf::from("custom_preset.json"));
     assert_eq!(leaf_name, "custom_preset.json");
+
+    let wav_cfg = SaveAsDialogConfig {
+        filter_name: "WAV Audio",
+        extensions: &["wav"],
+        fallback_filename: "sonification.wav",
+        write_error_prefix: "Failed to write WAV",
+    };
+    let (wav_tx, wav_rx) = channel();
+    spawn_save_binary_file_dialog(
+        wav_tx,
+        wav_cfg,
+        "clips/lorenz.wav",
+        vec![b'R', b'I', b'F', b'F'],
+    );
+    let wav_saved = wav_rx
+        .try_recv()
+        .expect("binary browser download should send synchronously on channel")
+        .expect("binary browser download should succeed");
+    assert_eq!(wav_saved, PathBuf::from("lorenz.wav"));
 }

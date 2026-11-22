@@ -161,6 +161,11 @@ impl<'a> PlaybackTransport<'a> {
         }
 
         if let Some(triggered) = action {
+            match triggered {
+                PlaybackAction::Pause => crate::audio::notify_playback_paused(),
+                PlaybackAction::Reset => crate::audio::notify_playback_reset(),
+                PlaybackAction::Play | PlaybackAction::Step => {}
+            }
             self.announce_action(ui.ctx(), base_id, ui_enabled, triggered);
             ui.ctx().request_repaint();
         }

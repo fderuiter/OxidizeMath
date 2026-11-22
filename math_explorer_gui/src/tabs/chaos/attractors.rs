@@ -29,6 +29,7 @@ pub struct AttractorPlotter {
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
+    pub(super) latest_sonification: crate::audio::SonificationFrame,
 }
 
 impl Default for AttractorPlotter {
@@ -63,6 +64,11 @@ impl Default for AttractorPlotter {
             show_annotations: true,
             fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
             dragged_callout: None,
+            latest_sonification: crate::audio::mappings::attractor_frame(
+                [1.0, 1.0, 1.0],
+                [0.0, 26.0, -1.67],
+                false,
+            ),
         }
     }
 }
@@ -288,6 +294,7 @@ impl InteractiveTool for AttractorPlotter {
         let ui_diverged = self.diverged();
         let was_paused = self.is_paused();
         if let Some(snapshot) = self.worker.update() {
+            self.latest_sonification = snapshot.sonification;
             if !ui_diverged {
                 if let Some(data) = snapshot
                     .structured_data
@@ -307,6 +314,10 @@ impl InteractiveTool for AttractorPlotter {
         }
 
         let worker_faulted = self.worker.state().is_faulted();
+        if self.diverged() || worker_faulted {
+            self.latest_sonification = crate::audio::SonificationFrame::silent();
+            crate::audio::notify_solver_diverged();
+        }
         if !self.is_paused() && !worker_faulted {
             if !self.worker.is_running() {
                 let _ = self.worker.send_command(SimCommand::Start);

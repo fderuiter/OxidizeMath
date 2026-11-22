@@ -117,6 +117,15 @@ pub trait UnifiedModel:
     {
         None
     }
+
+    /// Returns a stable tool identifier when this unified model emits live
+    /// [`crate::audio::SonificationFrame`]s.
+    fn sonification_tool_id() -> Option<&'static str>
+    where
+        Self: Sized,
+    {
+        None
+    }
 }
 
 #[allow(missing_docs)]

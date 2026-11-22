@@ -146,6 +146,7 @@ impl SimulationRunner for MriRunner {
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data: vec![self.current_time, m.x, m.y, m.z],
             structured_data: Some(Box::new(snapshot)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

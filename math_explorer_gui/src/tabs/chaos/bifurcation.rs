@@ -2,7 +2,7 @@ use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
 use crate::framework::InteractiveTool;
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
-use egui_plot::{Plot, PlotPoint, Points};
+use egui_plot::{Plot, PlotPoint, Points, VLine};
 use scientific_metadata::theory::TheoryDescribable;
 use math_explorer::physics::chaos::logistic;
 use std::collections::HashMap;
@@ -10,6 +10,7 @@ use std::collections::HashMap;
 pub struct BifurcationDiagram {
     r_min: f64,
     r_max: f64,
+    probe_r: f64,
     steps: usize,
     points: Vec<PlotPoint>,
 }
@@ -19,6 +20,7 @@ impl Default for BifurcationDiagram {
         let mut tool = Self {
             r_min: 2.5,
             r_max: 4.0,
+            probe_r: 3.50,
             steps: 500,
             points: Vec::new(),
         };
@@ -102,6 +104,7 @@ impl InteractiveTool for BifurcationDiagram {
         }
         self.r_min = s.r_min;
         self.r_max = s.r_max;
+        self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
         self.steps = s.steps;
         self.recompute();
         Ok(())
@@ -110,43 +113,7 @@ impl InteractiveTool for BifurcationDiagram {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(ui, "bifurcation_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
-            ui.heading("Logistic Map");
-            ui.separator();
-
-            let mut changed = false;
-            changed |= ui
-                .add(
-                    AnimatedSlider::new(&mut self.r_min, 0.0..=4.0)
-                        .text("Min r")
-                        .id_salt("bifurcation_r_min"),
-                )
-                .changed();
-
-            changed |= ui
-                .add(
-                    AnimatedSlider::new(&mut self.r_max, self.r_min..=4.0)
-                        .text("Max r")
-                        .id_salt("bifurcation_r_max"),
-                )
-                .changed();
-
-            changed |= ui.add(egui::Slider::new(&mut self.steps, 100..=2000).text("Resolution (steps)"))
-                .changed();
-
-            if ui
-                .button("▶ Recompute")
-                .accessible_hover_text(
-                    "Regenerate the bifurcation diagram with the current parameters",
-                )
-                .clicked()
-                || changed
-            {
-                self.recompute();
-            }
-
-            ui.separator();
-            ui.label("Zoom: Use mouse wheel to zoom, drag to pan.");
-            ui.label("Double-click to reset view.");
+            self.render_controls(ui);
         });
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
@@ -161,10 +128,61 @@ impl InteractiveTool for BifurcationDiagram {
                             .radius(1.0_f32)
                             .color(palette.series_color(0)),
                     );
+                    plot_ui.vline(VLine::new("Audio Probe r", self.probe_r).color(palette.warning));
                 })
                 .response;
             response.accessible_theory_hover(self);
         });
+    }
+}
+
+impl BifurcationDiagram {
+    fn render_controls(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Logistic Map");
+        ui.separator();
+
+        let mut changed = false;
+        changed |= ui
+            .add(
+                AnimatedSlider::new(&mut self.r_min, 0.0..=4.0)
+                    .text("Min r")
+                    .id_salt("bifurcation_r_min"),
+            )
+            .changed();
+        changed |= ui
+            .add(
+                AnimatedSlider::new(&mut self.r_max, self.r_min..=4.0)
+                    .text("Max r")
+                    .id_salt("bifurcation_r_max"),
+            )
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut self.steps, 100..=2000).text("Resolution (steps)"))
+            .changed();
+
+        if ui
+            .button("▶ Recompute")
+            .accessible_hover_text("Regenerate the bifurcation diagram with the current parameters")
+            .clicked()
+            || changed
+        {
+            self.probe_r = self.probe_r.clamp(self.r_min, self.r_max);
+            self.recompute();
+        }
+
+        ui.separator();
+        let _ = ui.add(
+            AnimatedSlider::new(&mut self.probe_r, self.r_min..=self.r_max)
+                .text("Sweep r (Audio)")
+                .id_salt("bifurcation_probe_r"),
+        );
+        let frame =
+            crate::audio::mappings::bifurcation_frame(self.probe_r.clamp(self.r_min, self.r_max));
+        crate::audio::render_sonification_panel(ui, "bifurcation", &frame, false);
+
+        ui.separator();
+        ui.label("Zoom: Use mouse wheel to zoom, drag to pan.");
+        ui.label("Double-click to reset view.");
     }
 }
 
