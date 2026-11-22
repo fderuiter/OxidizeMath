@@ -1,6 +1,7 @@
 //! Simplicial complex construction and management.
 
 use super::core::{PointCloud, Simplex};
+use super::space3d::PointCloud3D;
 use crate::error::TdaError;
 use std::collections::HashSet;
 
@@ -169,54 +170,103 @@ pub fn vietoris_rips_complex(
     vietoris_rips_from_distances(&dist, radius)
 }
 
-/// Builds a Vietoris-Rips simplicial complex from a precomputed distance matrix.
+/// Constructs a 2-skeleton Vietoris-Rips complex from a 3D point cloud.
+///
+/// # Errors
+///
+/// Returns [`TdaError::InvalidRadius`] if `radius` is negative or non-finite.
+///
+/// # Example
+///
+/// ```
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::tda::{
+///     Point3D, PointCloud3D, vietoris_rips_complex_3d
+/// };
+///
+/// let cloud = PointCloud3D::new(vec![
+///     Point3D::new(0.0, 0.0, 0.0),
+///     Point3D::new(1.0, 0.0, 0.0),
+///     Point3D::new(0.0, 1.0, 0.0),
+/// ]).unwrap();
+/// let complex = vietoris_rips_complex_3d(&cloud, 1.5).unwrap();
+/// assert_eq!(complex.count_simplices(2), 1);
+/// ```
 #[verified_engine::verified]
-pub(crate) fn vietoris_rips_from_distances(
+pub fn vietoris_rips_complex_3d(
+    cloud: &PointCloud3D,
+    radius: f64,
+) -> Result<SimplicialComplex, TdaError> {
+    let dist = cloud.distance_matrix();
+    vietoris_rips_from_distances(&dist, radius)
+}
+
+/// Builds a Vietoris-Rips simplicial complex (up to 2-simplices) from any precomputed
+/// symmetric pairwise distance matrix.
+///
+/// # Errors
+///
+/// Returns [`TdaError::InvalidRadius`] if `radius` is negative or non-finite, or
+/// [`TdaError::MatrixError`] if `dist` is non-square or contains negative/non-finite entries.
+///
+/// # Example
+///
+/// ```
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::tda::vietoris_rips_from_distances;
+///
+/// let dist = vec![
+///     vec![0.0, 1.0, 1.0],
+///     vec![1.0, 0.0, 1.0],
+///     vec![1.0, 1.0, 0.0],
+/// ];
+/// let complex = vietoris_rips_from_distances(&dist, 1.0).unwrap();
+/// assert_eq!(complex.count_simplices(2), 1);
+/// ```
+#[verified_engine::verified]
+pub fn vietoris_rips_from_distances(
     dist: &[Vec<f64>],
     radius: f64,
 ) -> Result<SimplicialComplex, TdaError> {
     if radius < 0.0 || !radius.is_finite() {
         return Err(TdaError::InvalidRadius { value: radius });
     }
+    validate_distance_matrix(dist)?;
 
     let n = dist.len();
     let mut complex = SimplicialComplex::new();
-
-    // Add all vertices (0-simplices)
     for i in 0..n {
         complex.add_simplex(Simplex::new(vec![i])?)?;
     }
-
-    // Add edges (1-simplices) where distance ≤ radius
-    for (i, row) in dist.iter().enumerate().take(n) {
-        for (j, &d) in row.iter().enumerate().take(n).skip(i + 1) {
-            if d <= radius {
-                complex.add_simplex(Simplex::new(vec![i, j])?)?;
-            }
-        }
-    }
-
-    // Add triangles (2-simplices) where all pairwise distances ≤ radius
     for (i, row) in dist.iter().enumerate().take(n) {
         for (j, &d_ij) in row.iter().enumerate().take(n).skip(i + 1) {
             if d_ij > radius {
                 continue;
             }
-            // Use dist[j] for row j
+            complex.add_simplex(Simplex::new(vec![i, j])?)?;
             let row_j = &dist[j];
             for (k, &d_ik) in row.iter().enumerate().take(n).skip(j + 1) {
-                // d_ik is distance from i to k
-                // We also need d_jk (distance from j to k)
-                let d_jk = row_j[k];
-
-                if d_ik <= radius && d_jk <= radius {
+                if d_ik <= radius && row_j[k] <= radius {
                     complex.add_simplex(Simplex::new(vec![i, j, k])?)?;
                 }
             }
         }
     }
-
     Ok(complex)
+}
+
+#[verified_engine::verified]
+pub(crate) fn validate_distance_matrix(dist: &[Vec<f64>]) -> Result<(), TdaError> {
+    let n = dist.len();
+    for row in dist {
+        if row.len() != n || row.iter().any(|&d| !d.is_finite() || d < 0.0) {
+            return Err(TdaError::MatrixError {
+                reason: "Distance matrix must be square with finite non-negative entries"
+                    .to_string(),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

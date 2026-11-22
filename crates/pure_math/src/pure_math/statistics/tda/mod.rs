@@ -67,13 +67,13 @@
 //!
 //! #### Computing β₁ (Cycles/Holes)
 //!
-//! For a 2D simplicial complex, we use the relationship:
+//! Over `ℤ₂`, we compute the exact 1st Betti number from the 2-skeleton chain complex:
 //!
 //! ```text
-//! β₁ = (# edges) - (# vertices) + β₀ - (# filled triangles)
+//! β₁ = dim(ker ∂₁) - rank_ℤ₂(∂₂) = (# edges) - (# vertices) + β₀ - rank_ℤ₂(∂₂)
 //! ```
 //!
-//! This counts cycles that aren't filled by triangles.
+//! Gaussian column reduction mod 2 ensures dependent clique triangles never cancel independent 1-cycles.
 //!
 //! ### Persistence
 //!
@@ -259,11 +259,24 @@ pub mod complex;
 pub mod core;
 pub mod homology;
 pub mod persistence;
+pub mod space3d;
+pub mod workspace;
 
 // Re-export main types and functions
-pub use complex::{SimplicialComplex, vietoris_rips_complex};
+pub use complex::{
+    SimplicialComplex, vietoris_rips_complex, vietoris_rips_complex_3d,
+    vietoris_rips_from_distances,
+};
 pub use core::{Point2D, PointCloud, Simplex};
 pub use homology::{betti_number_0, betti_number_1, betti_numbers};
-pub use persistence::{PersistenceBarcode, PersistenceInterval, compute_persistence};
+pub use persistence::{
+    PersistenceBarcode, PersistenceInterval, compute_persistence,
+    compute_persistence_from_distances,
+};
+pub use space3d::{
+    Point3D, PointCloud3D, farthest_point_landmarks, farthest_point_landmarks_into,
+    takens_delay_embedding_3d,
+};
+pub use workspace::{FiltrationStepSummary, TdaFiltrationWorkspace};
 
 // [cite:clinical_trials_statistics]

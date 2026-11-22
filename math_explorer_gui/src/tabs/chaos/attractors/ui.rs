@@ -47,6 +47,22 @@ impl AttractorPlotter {
             ui.label(format!("X: {:.2}", state.x));
             ui.label(format!("Y: {:.2}", state.y));
             ui.label(format!("Z: {:.2}", state.z));
+            if let Some(lyap) = self.current_lyapunov_exponent() {
+                ui.label(format!("Lorenz Lyapunov λ₁: {lyap:+.3}"));
+            }
+            if let Some((c_eps, d2)) = self.current_correlation_invariants() {
+                ui.label(format!("Correlation C(ε): {c_eps:.3} (D₂ ≈ {d2:.2})"));
+            }
+            ui.separator();
+            if ui
+                .add_enabled(
+                    !self.diverged() && self.is_finite_state(),
+                    egui::Button::new("🕸 Send 3D Landmarks to Vietoris-Rips"),
+                )
+                .clicked()
+            {
+                let _ = self.send_landmarks_to_vietoris_rips(Some(ctx));
+            }
         });
     }
 

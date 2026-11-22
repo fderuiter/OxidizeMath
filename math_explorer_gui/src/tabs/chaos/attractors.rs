@@ -8,6 +8,8 @@ use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+#[path = "attractors/invariants.rs"]
+mod invariants;
 #[path = "attractors/runner.rs"]
 mod runner;
 pub use runner::*;
@@ -29,6 +31,7 @@ pub struct AttractorPlotter {
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
+    pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
 }
 
 impl Default for AttractorPlotter {
@@ -63,6 +66,7 @@ impl Default for AttractorPlotter {
             show_annotations: true,
             fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
             dragged_callout: None,
+            invariants_cache: invariants::CachedAttractorInvariants::default(),
         }
     }
 }
