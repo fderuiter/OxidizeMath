@@ -3,7 +3,7 @@
 use crate::framework::InteractiveTool;
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{Legend, Line, Plot, PlotPoints};
+use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints};
 use math_explorer::applied::clinical_trials::survival_analysis::{
     kaplan_meier, try_estimate_hazard_ratio, Observation, TimePoint,
 };
@@ -71,7 +71,7 @@ fn parse_arm_label(line_idx: usize, raw: &str) -> Result<ParsedArm, String> {
     }
 }
 
-fn build_step_points(curve: &[TimePoint]) -> Vec<[f64; 2]> {
+fn build_curve_step_points(curve: &[TimePoint]) -> Vec<[f64; 2]> {
     let mut plot_points = Vec::with_capacity(curve.len() * 2 + 2);
     plot_points.push([0.0, 1.0]);
     for point in curve {
@@ -230,6 +230,11 @@ impl SurvivalAnalysisTool {
         }
         ui.separator();
         render_copyable_metric(ui, "Treatment N", &self.observations.len().to_string());
+        let median_text = match self.median_survival_time() {
+            Some(t) => format!("{t:.2}"),
+            None => "Not reached".to_owned(),
+        };
+        render_copyable_metric(ui, "Median Survival", &median_text);
         if !self.control_observations.is_empty() {
             render_copyable_metric(
                 ui,
@@ -308,11 +313,11 @@ impl InteractiveTool for SurvivalAnalysisTool {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Kaplan-Meier Survival Curves");
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            let trt_pts = build_step_points(&self.curve);
+            let trt_pts = self.build_step_points();
             let ctrl_pts = if self.control_curve.is_empty() {
                 Vec::new()
             } else {
-                build_step_points(&self.control_curve)
+                build_curve_step_points(&self.control_curve)
             };
 
             Plot::new("kaplan_meier_plot")
@@ -333,15 +338,36 @@ impl InteractiveTool for SurvivalAnalysisTool {
                             .color(palette.accent)
                             .width(2.5_f32),
                     );
-                    if !ctrl_pts.is_empty() {
+                    let hline_color = if ctrl_pts.is_empty() {
+                        palette.warning
+                    } else {
                         plot_ui.line(
                             Line::new("Control Survival", PlotPoints::new(ctrl_pts))
                                 .color(palette.warning)
                                 .width(2.2_f32),
                         );
-                    }
+                        palette.muted_text
+                    };
+                    plot_ui.hline(
+                        HLine::new("S(t) = 0.50", 0.50)
+                            .color(hline_color)
+                            .style(LineStyle::Dashed { length: 8.0 }),
+                    );
                 });
         });
+    }
+}
+
+impl SurvivalAnalysisTool {
+    pub(crate) fn median_survival_time(&self) -> Option<f64> {
+        self.curve
+            .iter()
+            .find(|pt| pt.survival_probability <= 0.5 + 1e-12)
+            .map(|pt| pt.time)
+    }
+
+    pub(crate) fn build_step_points(&self) -> Vec<[f64; 2]> {
+        build_curve_step_points(&self.curve)
     }
 }
 
@@ -402,91 +428,4 @@ inventory::submit! {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_reject_infinite_and_non_finite_presets() {
-        let inf_preset = r#"{"metadata":{"schema_version":"1.0","title":"KM","domain":"clinical_trials","timestamp":"2026-11-19T00:00:00Z"},"config":{"input_text":"inf, 1"}}"#;
-        let mut tool = SurvivalAnalysisTool::default();
-        let baseline_len = tool.observations.len();
-        assert!(tool.import_preset_json(inf_preset).is_err());
-        assert_eq!(tool.observations.len(), baseline_len);
-
-        for invalid_input in ["-inf, 1", "Infinity, 0", "NaN, 1", "-1.0, 1"] {
-            let payload = format!(
-                r#"{{"metadata":{{"schema_version":"1.0","title":"KM","domain":"clinical_trials","timestamp":"2026-11-19T00:00:00Z"}},"config":{{"input_text":"{invalid_input}"}}}}"#
-            );
-            assert!(
-                tool.import_preset_json(&payload).is_err(),
-                "Expected error for preset input '{invalid_input}'"
-            );
-            assert_eq!(tool.observations.len(), baseline_len);
-        }
-    }
-
-    #[test]
-    fn test_observation_cap_enforced_in_recalculate_and_load_state() {
-        let max_obs = math_commons::registry::MAX_ITERATIONS;
-        let at_cap_input: String = (0..max_obs)
-            .map(|idx| format!("{}.0, 1", idx + 1))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let mut tool = SurvivalAnalysisTool::default();
-        let state_ok = serde_json::to_string(&SurvivalState {
-            input_text: at_cap_input,
-            control_text: String::new(),
-        })
-        .unwrap();
-        assert!(tool.try_load_state(&state_ok).is_ok());
-        assert_eq!(tool.observations.len(), max_obs);
-        assert!(tool.error_message.is_none());
-
-        let over_cap_input: String = (0..=max_obs)
-            .map(|idx| format!("{}.0, 1", idx + 1))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let state_over = serde_json::to_string(&SurvivalState {
-            input_text: over_cap_input.clone(),
-            control_text: String::new(),
-        })
-        .unwrap();
-        let err = tool.try_load_state(&state_over).unwrap_err();
-        assert!(err.contains(&max_obs.to_string()));
-        assert_eq!(tool.observations.len(), max_obs);
-
-        tool.input_text = over_cap_input;
-        tool.recalculate();
-        assert!(tool.error_message.is_some());
-        assert!(tool.observations.is_empty());
-        assert!(tool.curve.is_empty());
-    }
-
-    #[test]
-    fn test_starter_preset_preserves_survival_probabilities() {
-        let mut tool = SurvivalAnalysisTool::default();
-        tool.import_preset_json(STARTER_PRESET_JSON).unwrap();
-        assert_eq!(tool.observations.len(), 10);
-        assert_eq!(tool.curve.len(), 10);
-        assert!((tool.curve[0].survival_probability - 0.9).abs() < 1e-12);
-        assert!((tool.curve[1].survival_probability - 0.8).abs() < 1e-12);
-        assert!((tool.curve[2].survival_probability - 0.8).abs() < 1e-12);
-    }
-
-    #[test]
-    fn test_two_arm_kaplan_meier_estimates_hazard_ratio() {
-        let mut tool = SurvivalAnalysisTool::default();
-        let state = serde_json::to_string(&SurvivalState {
-            input_text: "10.0, 1\n12.0, 0\n15.0, 1".to_string(),
-            control_text: "4.0, 1\n5.0, 1\n6.0, 1".to_string(),
-        })
-        .unwrap();
-        tool.try_load_state(&state).unwrap();
-        assert_eq!(tool.observations.len(), 3);
-        assert_eq!(tool.control_observations.len(), 3);
-        assert!(!tool.control_curve.is_empty());
-        let hr = tool.hazard_ratio.as_ref().unwrap().as_ref().unwrap();
-        assert!(*hr < 1.0 && hr.is_finite());
-    }
-}
+mod tests;
