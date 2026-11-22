@@ -234,7 +234,9 @@ impl VectorOperations for DVector<f64> {
         }
     }
 
-    #[verified_engine::verified(opt_out = "inherent method call false positive")]
+    #[verified_engine::verified(
+        allow_recursion = "delegates trait copy_from to inherent Matrix::copy_from"
+    )]
     fn copy_from(&mut self, other: &Self) {
         self.copy_from(other);
     }
