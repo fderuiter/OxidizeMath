@@ -22,7 +22,13 @@ math_explorer = { path = "path/to/math_explorer" }
 
 ## Usage
 
-You can see all these models in action by running the standalone, fully executable example:
+Explore stationary distributions and non-stationary transition tensors interactively in the desktop or WebAssembly GUI under **Applied Math -> Paradox Lab -> Parrondo's Paradox**:
+
+```bash
+cargo run --release -p math_explorer_gui
+```
+
+You can also see the standalone CLI models in action by running the executable example:
 
 ```bash
 cargo run --release --package math_explorer --example markov_demo
@@ -36,7 +42,7 @@ This executable demonstrates:
 5. **Birth-Death Process (CTMC)**
 6. **Market Regime Detection (HMM)**
 
-*(See `math_explorer/examples/markov_demo.rs` for implementation details)*
+*(See `math_explorer_gui/src/tabs/paradox_lab/parrondo.rs` for interactive `MarkovChain` and `TransitionTensor` usage, and `math_explorer/examples/markov_demo.rs` for CLI examples)*
 
 ---
 
