@@ -56,7 +56,8 @@
 //!
 //! - **Molecular**: [`kinetics`] - Michaelis-Menten enzyme kinetics.
 //! - **Cellular**: [`neuroscience`] - Hodgkin-Huxley model for action potentials.
-//! - **Tissue**: [`morphogenesis`] - Turing reaction-diffusion systems for pattern formation.
+//! - **Tissue**: [`morphogenesis`] - Turing and Gray-Scott reaction-diffusion systems for pattern formation.
+//! - **Artificial Life**: [`lenia`] - Spectral 2D Lenia continuous cellular automata and soliton lifeforms.
 //! - **Population**: [`evolution`] - Evolutionary game theory (Hawk-Dove).
 //! - **Generic**: [`reaction_diffusion`] - Generic N-species reaction-diffusion framework.
 
@@ -66,8 +67,11 @@ pub mod kinetics;
 /// Hodgkin-Huxley neuron model.
 pub mod neuroscience;
 
-/// Turing reaction-diffusion systems.
+/// Turing and Gray-Scott reaction-diffusion systems.
 pub mod morphogenesis;
+
+/// Continuous 2D Lenia spectral cellular automata.
+pub mod lenia;
 
 /// Spatial diffusion strategies.
 pub mod diffusion;

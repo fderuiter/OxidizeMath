@@ -2668,6 +2668,185 @@
       "signature": "pub trait KineticsModel { fn reaction_velocity (& self , substrate_conc : f64) -> Result < f64 , KineticsError > }"
     }
   ],
+  "crates/domain_biology/src/biology/lenia/engine.rs": [
+    {
+      "signature": "impl LeniaEngine { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn dt (& self) -> f64 }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn from_species (width : usize , height : usize , species : LeniaSpecies , perturbation : f64 , rng : & mut OxidizeRng ,) -> Self }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn growth (& self) -> GrowthParams }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn kernel_hat (& self) -> & [Complex < f64 >] }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn new (width : usize , height : usize , shells : KernelShells , growth : GrowthParams , dt : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn paint_disc (& mut self , cx : usize , cy : usize , brush_radius : f64 , delta : f64) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn potential (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn refresh_telemetry (& mut self) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn seed_species (& mut self , species : LeniaSpecies , perturbation : f64 , rng : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn set_dt (& mut self , dt : f64) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn set_growth (& mut self , growth : GrowthParams) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn set_shells (& mut self , shells : KernelShells) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn shells (& self) -> & KernelShells }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn state (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn state_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn step (& mut self) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn telemetry (& self) -> LeniaTelemetry }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn update_parameters (& mut self , shells : KernelShells , growth : GrowthParams , dt : f64) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct LeniaEngine"
+    },
+    {
+      "signature": "pub struct LeniaTelemetry"
+    }
+  ],
+  "crates/domain_biology/src/biology/lenia/kernel.rs": [
+    {
+      "signature": "impl GrowthParams { pub fn evaluate (& self , u : f64) -> f64 }"
+    },
+    {
+      "signature": "impl GrowthParams { pub fn new (mu : f64 , sigma : f64) -> Self }"
+    },
+    {
+      "signature": "impl GrowthParams { pub fn sample_curve (& self , samples : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn new (radius : f64 , ring_weights : & [f64]) -> Self }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn radius (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn ring_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn ring_weights (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn sample_radial_profile (& self , samples : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn shell_unnormalized (& self , r_norm : f64) -> f64 }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn write_wrapped_spatial_kernel (& self , width : usize , height : usize , out : & mut [Complex < f64 >] ,) -> f64 }"
+    },
+    {
+      "signature": "pub fn growth_gaussian (u : f64 , mu : f64 , sigma : f64) -> f64"
+    },
+    {
+      "signature": "pub fn kernel_core_bump (r : f64) -> f64"
+    },
+    {
+      "signature": "pub struct GrowthParams"
+    },
+    {
+      "signature": "pub struct KernelShells"
+    }
+  ],
+  "crates/domain_biology/src/biology/lenia/mod.rs": [
+    {
+      "signature": "pub const MAX_GRID_SIZE : usize = 256"
+    },
+    {
+      "signature": "pub const MAX_KERNEL_RADIUS : f64 = 32.0"
+    },
+    {
+      "signature": "pub const MAX_KERNEL_RINGS : usize = 4"
+    },
+    {
+      "signature": "pub const MIN_GRID_SIZE : usize = 32"
+    },
+    {
+      "signature": "pub const MIN_KERNEL_RADIUS : f64 = 4.0"
+    },
+    {
+      "signature": "pub use engine :: LeniaEngine"
+    },
+    {
+      "signature": "pub use engine :: LeniaTelemetry"
+    },
+    {
+      "signature": "pub use kernel :: GrowthParams"
+    },
+    {
+      "signature": "pub use kernel :: KernelShells"
+    },
+    {
+      "signature": "pub use kernel :: growth_gaussian"
+    },
+    {
+      "signature": "pub use kernel :: kernel_core_bump"
+    },
+    {
+      "signature": "pub use presets :: LeniaGenome"
+    },
+    {
+      "signature": "pub use presets :: LeniaSpecies"
+    }
+  ],
+  "crates/domain_biology/src/biology/lenia/presets.rs": [
+    {
+      "signature": "impl LeniaSpecies { pub const ALL : [LeniaSpecies ; 4] = [LeniaSpecies :: Orbium , LeniaSpecies :: Geminium , LeniaSpecies :: Hydrogeminium , LeniaSpecies :: Scutium ,] }"
+    },
+    {
+      "signature": "impl LeniaSpecies { pub fn description (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl LeniaSpecies { pub fn display_name (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl LeniaSpecies { pub fn genome (& self) -> LeniaGenome }"
+    },
+    {
+      "signature": "pub enum LeniaSpecies"
+    },
+    {
+      "signature": "pub fn stamp_species_at (engine : & mut LeniaEngine , species : LeniaSpecies , cx : usize , cy : usize , perturbation : f64 , rng : & mut OxidizeRng ,)"
+    },
+    {
+      "signature": "pub struct LeniaGenome"
+    }
+  ],
   "crates/domain_biology/src/biology/mod.rs": [
     {
       "signature": "pub use crate :: error"
@@ -2705,6 +2884,9 @@
       "signature": "pub struct TuringSystem < const N : usize = 2 , K : ReactionKinetics < N > = SchnakenbergKinetics , D : SpatialDiffusion < N > = FiniteDifference1D , S : TuringSolverStrategy < N > = FusedEulerSolver , >"
     },
     {
+      "signature": "pub use reaction :: GrayScottKinetics"
+    },
+    {
       "signature": "pub use reaction :: ReactionKinetics"
     },
     {
@@ -2728,7 +2910,19 @@
   ],
   "crates/domain_biology/src/biology/morphogenesis/reaction.rs": [
     {
+      "signature": "impl GrayScottKinetics { pub fn coral () -> Self }"
+    },
+    {
+      "signature": "impl GrayScottKinetics { pub fn mitosis () -> Self }"
+    },
+    {
+      "signature": "impl GrayScottKinetics { pub fn new (f : f64 , k : f64) -> Self }"
+    },
+    {
       "signature": "impl SchnakenbergKinetics { pub fn new (a : f64 , b : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct GrayScottKinetics"
     },
     {
       "signature": "pub struct SchnakenbergKinetics"
