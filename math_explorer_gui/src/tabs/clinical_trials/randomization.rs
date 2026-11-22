@@ -1,22 +1,33 @@
+//! Interactive Clinical Trial Subject Allocation and Simpson's Paradox Tool.
+
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use super::simpson_paradox::{SimpsonParadoxConfig, SimpsonParadoxLab};
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::InteractiveTool;
+use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use math_explorer::applied::clinical_trials::design::{
     AllocationStrategy, BlockRandomizer, Group, SimpleRandomizer,
 };
+use oxidize_core::rng::{OxidizeRng, BASE_SEED};
 
-#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum RandomizationType {
     Simple,
     Block,
+    Stratified,
 }
 
+/// Interactive clinical trial randomization and stratified Simpson's paradox explorer.
 pub struct RandomizationTool {
     randomization_type: RandomizationType,
     n_subjects: usize,
     block_size: usize,
+    seed_counter: u64,
     assignments: Vec<Group>,
     error_message: Option<String>,
+    /// Hosted stratified confounding and Simpson's paradox laboratory.
+    pub simpson_lab: SimpsonParadoxLab,
 }
 
 impl Default for RandomizationTool {
@@ -25,9 +36,139 @@ impl Default for RandomizationTool {
             randomization_type: RandomizationType::Simple,
             n_subjects: 10,
             block_size: 4,
+            seed_counter: 0,
             assignments: Vec::new(),
             error_message: None,
+            simpson_lab: SimpsonParadoxLab::default(),
         }
+    }
+}
+
+impl RandomizationTool {
+    /// Increments `seed_counter` and draws a fresh deterministic subject allocation.
+    pub fn allocate_subjects(&mut self) {
+        self.error_message = None;
+        self.assignments.clear();
+        self.seed_counter = self.seed_counter.wrapping_add(1);
+        let mut rng = OxidizeRng::from_seed(BASE_SEED ^ self.seed_counter);
+
+        match self.randomization_type {
+            RandomizationType::Simple => match SimpleRandomizer.assign(&mut rng, self.n_subjects) {
+                Ok(assignments) => self.assignments = assignments,
+                Err(e) => self.error_message = Some(e.to_string()),
+            },
+            RandomizationType::Block => match BlockRandomizer::new(self.block_size) {
+                Ok(randomizer) => match randomizer.assign(&mut rng, self.n_subjects) {
+                    Ok(assignments) => self.assignments = assignments,
+                    Err(e) => self.error_message = Some(e.to_string()),
+                },
+                Err(e) => self.error_message = Some(e.to_string()),
+            },
+            RandomizationType::Stratified => {
+                self.simpson_lab
+                    .balance_via_stratified_randomizer(&mut self.seed_counter);
+            }
+        }
+    }
+
+    fn render_mode_selector(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Randomization Type:");
+            ui.radio_value(
+                &mut self.randomization_type,
+                RandomizationType::Simple,
+                "Simple",
+            );
+            ui.radio_value(
+                &mut self.randomization_type,
+                RandomizationType::Block,
+                "Block",
+            );
+            ui.radio_value(
+                &mut self.randomization_type,
+                RandomizationType::Stratified,
+                "Stratified (Simpson's Paradox Lab)",
+            );
+        });
+    }
+
+    fn render_unstratified_controls(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Number of Subjects:");
+            ui.add(egui::DragValue::new(&mut self.n_subjects).range(1..=1000));
+        });
+
+        if self.randomization_type == RandomizationType::Block {
+            ui.horizontal(|ui| {
+                ui.label("Block Size:");
+                ui.add(egui::DragValue::new(&mut self.block_size).range(2..=100));
+            });
+        }
+
+        ui.add_space(10.0);
+
+        let enter_pressed = crate::framework::is_pane_activation_shortcut_allowed(ui)
+            && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        ui.horizontal(|ui| {
+            if ui
+                .button("▶ Allocate Subjects")
+                .accessible_hover_text("Randomly assign subjects to treatment and control groups")
+                .clicked()
+                || enter_pressed
+            {
+                self.allocate_subjects();
+            }
+            ui.label(format!("(Seed #{})", self.seed_counter));
+        });
+    }
+
+    fn render_unstratified_results(&self, ui: &mut egui::Ui) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        if let Some(ref err) = self.error_message {
+            ui.colored_label(palette.error, format!("Error: {err}"));
+        } else if self.assignments.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.add_space(20.0);
+                ui.label(
+                    egui::RichText::new("No subjects allocated yet.")
+                        .strong()
+                        .color(palette.muted_text),
+                );
+                ui.label(
+                    egui::RichText::new(
+                        "Configure parameters and click 'Allocate Subjects' to begin.",
+                    )
+                    .color(palette.muted_text),
+                );
+            });
+        } else {
+            self.render_assignment_list(ui);
+        }
+    }
+
+    fn render_assignment_list(&self, ui: &mut egui::Ui) {
+        ui.heading("Assignments:");
+        let treatment_count = self
+            .assignments
+            .iter()
+            .filter(|&&g| g == Group::Treatment)
+            .count();
+        let control_count = self.assignments.len() - treatment_count;
+
+        ui.label(format!("Total Treatment: {treatment_count}"));
+        ui.label(format!("Total Control: {control_count}"));
+
+        egui::ScrollArea::vertical()
+            .max_height(300.0)
+            .show(ui, |ui| {
+                for (i, group) in self.assignments.iter().enumerate() {
+                    let group_str = match group {
+                        Group::Treatment => "Treatment",
+                        Group::Control => "Control",
+                    };
+                    ui.label(format!("Subject {}: {group_str}", i + 1));
+                }
+            });
     }
 }
 
@@ -37,6 +178,8 @@ struct RandomizationState {
     randomization_type: RandomizationType,
     n_subjects: usize,
     block_size: usize,
+    #[serde(default, skip_serializing_if = "SimpsonParadoxConfig::is_default")]
+    simpson_config: SimpsonParadoxConfig,
 }
 
 impl InteractiveTool for RandomizationTool {
@@ -49,8 +192,12 @@ impl InteractiveTool for RandomizationTool {
     fn domain(&self) -> &'static str {
         "clinical_trials"
     }
-    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+    fn export_capabilities(&self) -> ExportCapabilities {
+        if self.randomization_type == RandomizationType::Stratified {
+            ExportCapabilities::plot()
+        } else {
+            ExportCapabilities::none()
+        }
     }
 
     fn save_state(&self) -> Option<String> {
@@ -58,6 +205,7 @@ impl InteractiveTool for RandomizationTool {
             randomization_type: self.randomization_type,
             n_subjects: self.n_subjects,
             block_size: self.block_size,
+            simpson_config: self.simpson_lab.config.clone(),
         })
         .ok()
     }
@@ -71,129 +219,32 @@ impl InteractiveTool for RandomizationTool {
         if s.randomization_type == RandomizationType::Block {
             BlockRandomizer::new(s.block_size).map_err(|e| e.to_string())?;
         }
+        s.simpson_config.validate()?;
         self.randomization_type = s.randomization_type;
         self.n_subjects = s.n_subjects;
         self.block_size = s.block_size;
+        self.simpson_lab.config = s.simpson_config;
+        self.simpson_lab.recalculate();
         self.assignments.clear();
         self.error_message = None;
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.heading("Interactive Subject Allocation");
-
-            ui.add_space(10.0);
-
-            ui.horizontal(|ui| {
-                ui.label("Randomization Type:");
-                ui.radio_value(
-                    &mut self.randomization_type,
-                    RandomizationType::Simple,
-                    "Simple",
-                );
-                ui.radio_value(
-                    &mut self.randomization_type,
-                    RandomizationType::Block,
-                    "Block",
-                );
-            });
-
-            ui.add_space(5.0);
-
-            ui.horizontal(|ui| {
-                ui.label("Number of Subjects:");
-                ui.add(egui::DragValue::new(&mut self.n_subjects).range(1..=1000));
-            });
-
-            if self.randomization_type == RandomizationType::Block {
-                ui.horizontal(|ui| {
-                    ui.label("Block Size:");
-                    ui.add(egui::DragValue::new(&mut self.block_size).range(2..=100));
-                });
-            }
-
-            ui.add_space(10.0);
-
-            let enter_pressed = crate::framework::is_pane_activation_shortcut_allowed(ui)
-                && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if ui
-                .button("▶ Allocate Subjects")
-                .accessible_hover_text("Randomly assign subjects to treatment and control groups")
-                .clicked()
-                || enter_pressed
-            {
-                self.error_message = None;
-                self.assignments.clear();
-
-                let mut rng = oxidize_core::rng::OxidizeRng::default();
-
-                match self.randomization_type {
-                    RandomizationType::Simple => {
-                        let randomizer = SimpleRandomizer;
-                        match randomizer.assign(&mut rng, self.n_subjects) {
-                            Ok(assignments) => self.assignments = assignments,
-                            Err(e) => self.error_message = Some(e.to_string()),
-                        }
-                    }
-                    RandomizationType::Block => match BlockRandomizer::new(self.block_size) {
-                        Ok(randomizer) => match randomizer.assign(&mut rng, self.n_subjects) {
-                            Ok(assignments) => self.assignments = assignments,
-                            Err(e) => self.error_message = Some(e.to_string()),
-                        },
-                        Err(e) => self.error_message = Some(e.to_string()),
-                    },
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.heading("Interactive Subject Allocation");
+                ui.add_space(8.0);
+                self.render_mode_selector(ui);
+                ui.add_space(6.0);
+                if self.randomization_type == RandomizationType::Stratified {
+                    self.simpson_lab.show_ui(ui, &mut self.seed_counter);
+                } else {
+                    self.render_unstratified_controls(ui);
+                    ui.add_space(10.0);
+                    self.render_unstratified_results(ui);
                 }
-            }
-
-            ui.add_space(10.0);
-
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            if let Some(ref err) = self.error_message {
-                ui.colored_label(palette.error, format!("Error: {}", err));
-            } else if self.assignments.is_empty() {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(20.0);
-                    ui.label(
-                        egui::RichText::new("No subjects allocated yet.")
-                            .strong()
-                            .color(palette.muted_text),
-                    );
-                    ui.label(
-                        egui::RichText::new(
-                            "Configure parameters and click 'Allocate Subjects' to begin.",
-                        )
-                        .color(palette.muted_text),
-                    );
-                });
-            } else {
-                ui.heading("Assignments:");
-
-                let mut treatment_count = 0;
-                let mut control_count = 0;
-                for group in &self.assignments {
-                    match group {
-                        Group::Treatment => treatment_count += 1,
-                        Group::Control => control_count += 1,
-                    }
-                }
-
-                ui.label(format!("Total Treatment: {}", treatment_count));
-                ui.label(format!("Total Control: {}", control_count));
-
-                egui::ScrollArea::vertical()
-                    .max_height(300.0)
-                    .show(ui, |ui| {
-                        for (i, group) in self.assignments.iter().enumerate() {
-                            let group_str = match group {
-                                Group::Treatment => "Treatment",
-                                Group::Control => "Control",
-                            };
-                            ui.label(format!("Subject {}: {}", i + 1, group_str));
-                        }
-                    });
-            }
+            });
         });
     }
 }
@@ -215,6 +266,7 @@ impl scientific_metadata::theory::TheoryDescribable for RandomizationTool {
         let scheme = match self.randomization_type {
             RandomizationType::Simple => "simple Bernoulli randomization with equal allocation probability $P(\\text{Treatment}) = 0.5$",
             RandomizationType::Block => "permuted block randomization with block size guaranteeing periodic balance",
+            RandomizationType::Stratified => "stratified block randomization balancing prognostic strata to prevent Simpson's paradox confounding",
         };
         format!(
             "Clinical trial subject allocation using {} for $N = {}$ subjects to eliminate selection bias and balance prognostic factors.",
@@ -236,6 +288,10 @@ impl scientific_metadata::theory::TheoryDescribable for RandomizationTool {
         map.insert(
             "Block".into(),
             "Permuted block allocation ensuring exact balance at block boundaries".into(),
+        );
+        map.insert(
+            "Stratified".into(),
+            "Within-stratum block randomization preventing Simpson's paradox reversals".into(),
         );
         map
     }
@@ -265,5 +321,49 @@ inventory::submit! {
         domain: "clinical_trials",
         tool_name: Some("RandomizationTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_randomization_seed_counter_produces_distinct_allocations() {
+        let mut tool = RandomizationTool {
+            randomization_type: RandomizationType::Simple,
+            n_subjects: 40,
+            ..Default::default()
+        };
+        tool.allocate_subjects();
+        let first = tool.assignments.clone();
+        assert_eq!(tool.seed_counter, 1);
+        assert_eq!(first.len(), 40);
+
+        tool.allocate_subjects();
+        let second = tool.assignments.clone();
+        assert_eq!(tool.seed_counter, 2);
+        assert_ne!(
+            first, second,
+            "Consecutive Allocate Subjects clicks must advance seed_counter"
+        );
+    }
+
+    #[test]
+    fn test_randomization_legacy_and_stratified_state_roundtrip() {
+        let mut tool = RandomizationTool::default();
+        let legacy = r#"{"randomization_type":"Block","n_subjects":24,"block_size":6}"#;
+        tool.try_load_state(legacy).unwrap();
+        assert_eq!(tool.save_state().as_deref(), Some(legacy));
+
+        tool.randomization_type = RandomizationType::Stratified;
+        tool.simpson_lab.config.mild_treatment_share = 0.35;
+        tool.simpson_lab.apply_allocation_sliders();
+        let saved = tool.save_state().unwrap();
+
+        let mut restored = RandomizationTool::default();
+        restored.try_load_state(&saved).unwrap();
+        assert_eq!(restored.randomization_type, RandomizationType::Stratified);
+        assert!((restored.simpson_lab.config.mild_treatment_share - 0.35).abs() < 1e-9);
     }
 }

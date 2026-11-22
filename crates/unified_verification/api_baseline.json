@@ -5867,7 +5867,13 @@
   ],
   "crates/oxidize_core/src/rng.rs": [
     {
+      "signature": "impl OxidizeRng { pub fn from_seed (seed : u64) -> Self }"
+    },
+    {
       "signature": "impl OxidizeRng { pub fn new (seed : u64) -> Self }"
+    },
+    {
+      "signature": "pub const BASE_SEED : u64 = 0x0001_D1CE_CAFE_BABE"
     },
     {
       "signature": "pub struct OxidizeRng"
@@ -7673,6 +7679,9 @@
     },
     {
       "signature": "impl Odds { pub fn from_fractional (numerator : f64 , denominator : f64) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl Odds { pub fn from_net_odds (b : f64) -> Result < Self , KellyError > }"
     },
     {
       "signature": "impl Odds { pub fn implied_probability (& self) -> f64 }"

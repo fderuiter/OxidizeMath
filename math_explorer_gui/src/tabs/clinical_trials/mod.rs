@@ -4,6 +4,7 @@ use eframe::egui;
 
 pub mod randomization;
 pub mod sample_size;
+pub mod simpson_paradox;
 pub mod survival;
 
 
