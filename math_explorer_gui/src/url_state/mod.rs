@@ -36,5 +36,3 @@ pub use codec::{
     ShareUrlParams, CANONICAL_WEB_BASE_URL, MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
 };
 pub use sync::{UrlStateSignature, UrlSyncController, URL_SYNC_DEBOUNCE_MS};
-
-// theory_verification!

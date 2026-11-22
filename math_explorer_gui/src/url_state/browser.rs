@@ -32,7 +32,6 @@ pub fn with_mock_web_base_url<R>(base_url: &str, f: impl FnOnce() -> R) -> R {
 #[must_use]
 pub fn read_browser_location_parts() -> Option<(String, String)> {
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     {
         let window = web_sys::window()?;
         let location = window.location();
@@ -70,7 +69,6 @@ fn retain_non_share_query(search: &str) -> String {
 
 /// Updates the browser address bar in place via `History::replaceState` without pushing a history entry.
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 pub fn replace_browser_url_fragment(fragment: &str) -> Result<(), String> {
     let window = web_sys::window().ok_or_else(|| "Browser window unavailable".to_string())?;
     let history = window
@@ -116,7 +114,6 @@ fn base_share_origin() -> String {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     if let Some(window) = web_sys::window() {
         let loc = window.location();
         let origin = loc.origin().unwrap_or_default();

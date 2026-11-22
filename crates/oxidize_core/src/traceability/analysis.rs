@@ -238,7 +238,8 @@ fn record_visitor_violations(
             }
         }
     }
-    if visitor.total_funcs > 0
+    let unopted_funcs = visitor.total_funcs.saturating_sub(visitor.opted_out_funcs);
+    if unopted_funcs > 0
         && visitor.verified_funcs == 0
         && visitor.verified_modules.is_empty()
         && !visitor.opted_out

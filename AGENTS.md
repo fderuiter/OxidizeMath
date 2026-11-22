@@ -33,13 +33,13 @@ cargo check --workspace
 cargo build --workspace --all-features
 
 # Run fast diff-scoped pre-commit checks on staged paths (executed automatically by .githooks/pre-commit;
-# checks staged formatting, file lengths, entropy, policy audit, staged duplicates, .github/-gated workflows,
-# .md-gated links, and targeted host/wasm32 Clippy without OSV network calls, API drift, or ADR checks)
+# checks staged formatting, file lengths, entropy, policy audit, domain/registry-scoped traceability,
+# staged duplicates, .github/-gated workflows, .md-gated links, and targeted host/wasm32 Clippy)
 cargo run -p xtask -- lint-staged
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static
 # & single-parse AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift,
-# in-process traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, links, and OSV)
+# in-process traceability, entropy, policy audit, and Verification_Certificate.json parity, plus host & WASM clippy, rustdoc, doctests, links, and OSV)
 cargo run -p xtask -- lint-all
 ```
 
@@ -95,9 +95,17 @@ cargo run -p unified_verification --release -- traceability
 cargo run -p unified_verification --release -- verify-records --staged
 BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
 
-# Run the full high-integrity verified suite (including cargo llvm-cov coverage and Verification_Certificate.json)
-cargo run -p unified_verification --release -- verify-suite
-cargo run -p xtask -- verify-suite
+# Verify Verification_Certificate.json and README.md badge parity against AST metrics without llvm-cov
+cargo run -p unified_verification --release -- check-certificate
+cargo run -p xtask -- check-certificate
+
+# Run the full high-integrity verified suite in read-only --check mode (default; used in CI)
+cargo run -p unified_verification --release -- verify-suite --check
+cargo run -p xtask -- verify-suite --check
+
+# Explicitly refresh Verification_Certificate.json and README.md coverage badge after intentional metric changes
+cargo run -p unified_verification --release -- verify-suite --write
+cargo run -p xtask -- verify-suite --write
 
 # Native unit/integration tests and WebAssembly target checks
 cargo test --workspace --lib --tests --all-features

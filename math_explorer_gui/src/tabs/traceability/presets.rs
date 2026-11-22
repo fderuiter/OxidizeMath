@@ -216,4 +216,3 @@ impl TraceabilityTab {
     }
 }
 
-// theory_verification!

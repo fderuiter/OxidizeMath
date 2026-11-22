@@ -133,5 +133,3 @@ impl UrlSyncController {
         None
     }
 }
-
-// theory_verification!

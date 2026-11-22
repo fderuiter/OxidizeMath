@@ -156,7 +156,6 @@ impl MathExplorerApp {
 
         let canonical_frag = self.encode_current_share_fragment().ok();
         #[cfg(target_arch = "wasm32")]
-        // theory_verification!
         if raw_hash.trim_start_matches('#').trim().is_empty() {
             if let Some(ref frag) = canonical_frag {
                 let _ = crate::url_state::replace_browser_url_fragment(frag);
@@ -274,5 +273,3 @@ pub(super) fn render_file_share_menu_item(
         ui.close();
     }
 }
-
-// theory_verification!

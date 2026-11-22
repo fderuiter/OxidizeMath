@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
-// theory_verification!
-
 /// Spawns a file picker dialog (or browser `<input type="file">`) to open a workspace session.
 pub fn spawn_open_dialog(tx: Sender<Result<(PathBuf, String), String>>) {
     crate::web_io::spawn_open_file_dialog(

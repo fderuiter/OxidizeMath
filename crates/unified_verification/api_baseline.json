@@ -5826,6 +5826,12 @@
       "signature": "impl AstVisitor { pub fn new () -> Self }"
     },
     {
+      "signature": "impl AstVisitor { pub fn with_test_scope (initial_test_scope : bool) -> Self }"
+    },
+    {
+      "signature": "pub fn is_dedicated_test_path (filepath : & Path) -> bool"
+    },
+    {
       "signature": "pub struct AstVisitor"
     }
   ],

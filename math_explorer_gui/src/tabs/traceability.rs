@@ -166,7 +166,6 @@ impl TraceabilityTab {
         scanner::dispatch_native_refresh(self.repo_path.clone(), tx, cert_tx);
 
         #[cfg(target_arch = "wasm32")]
-        // theory_verification!
         wasm_bindgen_futures::spawn_local(async move {
             match web_snapshot::fetch_web_traceability().await {
                 Ok((report, cert)) => {

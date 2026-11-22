@@ -72,7 +72,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     #[allow(missing_docs)]
     pub fn verify_module_registered(module_name: &str) -> bool {
         const EMBEDDED_REGISTRY: &str = include_str!("../../../traceability.toml");

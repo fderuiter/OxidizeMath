@@ -1,5 +1,4 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-// theory_verification!
 
 use eframe::egui;
 use oxidize_core::traceability::TraceabilityReport;

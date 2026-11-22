@@ -11,6 +11,7 @@ These commands run automated checks in git hooks or CI.
 |---|---|---|
 | `check-api-drift` | Validates public API surface against `api_baseline.json`. | Active |
 | `check-cargo-docs` | Verifies workspace documentation builds without warnings. | Active |
+| `check-certificate` | Verifies `Verification_Certificate.json` and `README.md` parity against workspace AST metrics and `[verify_suite]` floors. | Active |
 | `check-docs` | Runs crate documentation audit. | Active |
 | `check-duplicates` | Runs AST-level code clone detector across first-party crates. | Active |
 | `check-entropy` | Scans codebase for high entropy strings and secrets. | Active |

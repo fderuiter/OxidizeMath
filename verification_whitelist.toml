@@ -38,4 +38,60 @@ job = "deploy-pages"
 allow_write = ["pages", "id-token"]
 reason = "Deploying to GitHub Pages requires pages: write and id-token: write"
 
+[verify_suite]
+min_verified_assertion_density = 0.40
+min_total_production_density = 0.0175
+min_verified_production_density = 0.0490
+coverage_tolerance_pct = 1.5
+unverified_modules = [
+    "apps/xtask",
+    "crates/diagnostics",
+    "crates/federated_registry",
+    "crates/markdown_tests",
+    "crates/math_commons",
+    "crates/oxidize_core",
+    "crates/scientific_metadata",
+    "crates/unified_verification",
+    "crates/verified_engine",
+    "crates/verified_engine_macros",
+    "math_explorer",
+    "math_explorer_gui",
+]
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/analysis/evolution.rs"
+reason = "infrastructure"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/analysis/stochastic.rs"
+reason = "Legacy missing assertions"
+
+[[verify_suite.opt_outs]]
+path = "crates/scientific_metadata/src/citation_registry.rs"
+reason = "metadata"
+
+[[verify_suite.opt_outs]]
+path = "crates/scientific_metadata/src/theory.rs"
+reason = "metadata"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/build_snapshot.rs"
+reason = "gui_tool"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/build_snapshot_scan.rs"
+reason = "gui_tool"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/src/"
+reason = "gui_tool"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/src/"
+reason = "infrastructure"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/src/"
+reason = "tests"
+
 

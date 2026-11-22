@@ -81,12 +81,10 @@ pub(crate) fn resolve_wasm_fetch_url(path: &str) -> String {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 #[rustfmt::skip]
 include!(concat!(env!("OUT_DIR"), "/vfs_data.rs"));
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 pub struct WasmVfs;
 
 #[cfg(target_arch = "wasm32")]
@@ -157,7 +155,6 @@ impl VirtualFileSystem for WasmVfs {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 pub fn trigger_download(filename: &str, content: &[u8]) {
     use wasm_bindgen::JsCast;
     let window = web_sys::window().unwrap();
@@ -180,7 +177,6 @@ pub fn trigger_download(filename: &str, content: &[u8]) {
     a.click();
     web_sys::Url::revoke_object_url(&url).unwrap();
 }
-// theory_verification!
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {

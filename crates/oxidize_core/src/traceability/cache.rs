@@ -24,14 +24,36 @@ impl AstCache {
         Self::default()
     }
 
-    /// Normalizes a file path to a canonical forward-slash cache key without leading `./` prefixes.
+    /// Normalizes a file path to a canonical forward-slash cache key without leading `./` prefixes
+    /// and with internal `.` and `..` segments collapsed lexically.
     pub fn normalize_key<P: AsRef<Path>>(path: P) -> String {
         let norm = crate::path_utils::normalize_path(path);
-        let mut trimmed = norm.as_str();
-        while let Some(rest) = trimmed.strip_prefix("./") {
-            trimmed = rest;
+        let leading_slash = norm.starts_with('/');
+        let mut stack: Vec<&str> = Vec::new();
+        for seg in norm.split('/') {
+            if seg.is_empty() || seg == "." {
+                continue;
+            }
+            if seg == ".." {
+                if let Some(&last) = stack.last()
+                    && last != ".."
+                {
+                    stack.pop();
+                    continue;
+                }
+                if !leading_slash {
+                    stack.push("..");
+                }
+                continue;
+            }
+            stack.push(seg);
         }
-        trimmed.to_string()
+        let joined = stack.join("/");
+        if leading_slash {
+            format!("/{joined}")
+        } else {
+            joined
+        }
     }
 
     /// Returns the total number of `syn::parse_file` invocations performed by this cache.
@@ -81,5 +103,50 @@ impl AstCache {
                 .insert(key.clone(), CachedRustFile { content, ast });
         }
         self.entries.get(&key)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AstCache;
+
+    #[test]
+    fn normalize_key_collapses_dot_and_parent_segments() {
+        assert_eq!(
+            AstCache::normalize_key("./crates/pure_math/src/../src/./lib.rs"),
+            "crates/pure_math/src/lib.rs"
+        );
+        assert_eq!(
+            AstCache::normalize_key("/app/OxidizeMath/crates/../crates/oxidize_core/src/lib.rs"),
+            "/app/OxidizeMath/crates/oxidize_core/src/lib.rs"
+        );
+        assert_eq!(
+            AstCache::normalize_key("crates\\domain_ai\\src\\.\\mod.rs"),
+            "crates/domain_ai/src/mod.rs"
+        );
+    }
+
+    #[test]
+    fn get_or_load_fs_reuses_parsed_entry_across_equivalent_paths() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "oxidize_ast_cache_test_{}_{}",
+            std::process::id(),
+            id
+        ));
+        let sub = root.join("sub");
+        std::fs::create_dir_all(&sub).expect("mkdir");
+        let file = sub.join("sample.rs");
+        std::fs::write(&file, "pub fn answer() -> i32 { 42 }\n").expect("write");
+
+        let mut cache = AstCache::new();
+        assert!(cache.get_or_load_fs(&file).is_some());
+        let alias = sub.join("..").join("sub").join(".").join("sample.rs");
+        assert!(cache.get_or_load_fs(&alias).is_some());
+        assert_eq!(cache.parse_calls(), 1);
+        assert_eq!(cache.len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

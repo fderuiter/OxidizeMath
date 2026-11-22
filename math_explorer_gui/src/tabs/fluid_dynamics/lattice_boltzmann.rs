@@ -1,3 +1,4 @@
+// [cite:fluid_dynamics]
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::{SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -11,7 +12,6 @@ use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct LbmUnified {
     pub(crate) solver: LatticeBoltzmannD2Q9<BgkCollision>,
     pub(crate) diverged: bool,

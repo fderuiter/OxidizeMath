@@ -97,7 +97,50 @@ pub fn run_batch_static(args: &[String]) -> bool {
         passed = false;
     }
 
+    println!("\n--- Static Gate 7: Verification Certificate AST Parity ---");
+    if !crate::report::certificate::check_ast_certificate_parity_with_cache(&members, &mut cache) {
+        passed = false;
+    }
+
     passed
+}
+
+const NON_TRACEABILITY_MEMBERS: &[&str] = &[
+    "crates/unified_verification",
+    "crates/diagnostics",
+    "crates/federated_registry",
+    "crates/oxidize_core",
+    "crates/verified_engine",
+    "crates/verified_engine_macros",
+    "apps/xtask",
+    "crates/math_commons",
+    "egui_plot",
+];
+
+pub(crate) fn should_run_staged_traceability(
+    all_staged: &[String],
+    workspace_members: &[String],
+) -> bool {
+    all_staged.iter().any(|raw| {
+        let norm = raw.replace('\\', "/");
+        let p = norm.trim_start_matches("./");
+        if p == "traceability.toml"
+            || p == "Cargo.toml"
+            || p.starts_with("papers/")
+            || p.starts_with("math_explorer_gui/src/tabs/")
+        {
+            return true;
+        }
+        workspace_members.iter().any(|member| {
+            if NON_TRACEABILITY_MEMBERS.contains(&member.as_str()) || member == "math_explorer_gui"
+            {
+                return false;
+            }
+            let manifest = format!("{member}/Cargo.toml");
+            let src_prefix = format!("{member}/src/");
+            p == manifest || p.starts_with(&src_prefix)
+        })
+    })
 }
 
 fn git_cached_paths(extra_args: &[&str]) -> Vec<String> {
@@ -186,6 +229,12 @@ pub(crate) fn run_batch_staged_for_paths(
         }
     }
 
+    if should_run_staged_traceability(all_staged, workspace_members)
+        && !run_traceability_with_cache(false, cache)
+    {
+        passed = false;
+    }
+
     crate::utils::check_staged_duplicates();
 
     if all_staged.iter().any(|p| p.starts_with(".github/"))
@@ -250,7 +299,46 @@ mod tests {
     }
 
     #[test]
-    fn test_batch_ast_parses_each_unique_workspace_file_at_most_once() {
+    fn test_should_run_staged_traceability_scopes_domain_and_registry_edits() {
+        let members = vec![
+            "crates/pure_math".to_string(),
+            "crates/domain_physics".to_string(),
+            "crates/scientific_metadata".to_string(),
+            "crates/unified_verification".to_string(),
+            "apps/xtask".to_string(),
+            "math_explorer_gui".to_string(),
+        ];
+
+        assert!(!should_run_staged_traceability(
+            &[
+                "README.md".to_string(),
+                "docs/adr/0036-test.md".to_string(),
+                "crates/unified_verification/src/main.rs".to_string(),
+                "apps/xtask/src/main.rs".to_string(),
+                "math_explorer_gui/src/app/theme.rs".to_string(),
+            ],
+            &members
+        ));
+        assert!(should_run_staged_traceability(
+            &["traceability.toml".to_string()],
+            &members
+        ));
+        assert!(should_run_staged_traceability(
+            &["papers/grpo.tex".to_string()],
+            &members
+        ));
+        assert!(should_run_staged_traceability(
+            &["crates/pure_math/src/lib.rs".to_string()],
+            &members
+        ));
+        assert!(should_run_staged_traceability(
+            &["math_explorer_gui/src/tabs/neuroscience/hodgkin_huxley.rs".to_string()],
+            &members
+        ));
+    }
+
+    #[test]
+    fn test_batch_ast_and_report_parse_each_unique_workspace_file_at_most_once() {
         let _lock = crate::DIR_LOCK.lock().unwrap();
         let orig = env::current_dir().unwrap();
         let _guard = CurrentDirGuard(orig);
@@ -274,6 +362,12 @@ mod tests {
             &mut cache
         ));
 
+        let rs_files = crate::report::collect_rs_files();
+        let metrics = crate::report::analyze_files_with_cache(&rs_files, &mut cache);
+        assert!(metrics.total_funcs > 0.0);
+        let unverified = crate::report::find_unverified_crates_with_cache(&members, &mut cache);
+        assert!(!unverified.contains(&"crates/pure_math".to_string()));
+
         assert!(cache.parse_calls() > 500);
         assert_eq!(cache.parse_calls(), cache.len());
 
@@ -284,7 +378,7 @@ mod tests {
         assert_eq!(
             canonical_files.len(),
             cache.parse_calls(),
-            "Every physical Rust file in the workspace must be parsed by syn::parse_file at most once"
+            "Every physical Rust file in the workspace must be parsed by syn::parse_file at most once across batch_ast + report"
         );
     }
 }

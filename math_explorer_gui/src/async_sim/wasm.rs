@@ -1,7 +1,5 @@
 //! Cooperative WebAssembly simulation scheduler and handle-keyed wake registry.
 
-// theory_verification!
-
 use super::worker::{advance_running_frame, drain_worker_commands, FrameTickOutcome};
 use super::{take_worker_context, SimCommand, SimWorkerState, WorkerStatusEvent};
 use std::cell::{Cell, RefCell};

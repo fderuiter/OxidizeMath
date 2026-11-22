@@ -35,6 +35,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-entropy" => gates::check_entropy(),
         "test-features" => test_features(rest),
         "verify-suite" => gates::verify_suite(rest),
+        "check-certificate" => gates::check_certificate(),
         "verify-records" => gates::verify_records(rest),
         "compile-papers" => papers::compile_papers(),
         "traceability" => gates::traceability(),
@@ -61,6 +62,7 @@ fn print_help() {
     println!("Active Quality Gates:");
     println!("  check-api-drift          - Validate public API surface against baseline");
     println!("  check-cargo-docs         - Verify workspace documentation builds without warnings");
+    println!("  check-certificate        - Verify Verification_Certificate.json AST parity");
     println!("  check-docs               - Run crate documentation audit");
     println!("  check-duplicates         - Run AST-level code clone detector across crates");
     println!("  check-entropy            - Scan codebase for high entropy strings and secrets");
@@ -326,6 +328,7 @@ mod tests {
         let help = String::from_utf8_lossy(&output.stdout);
         for cmd in [
             "check-api-drift",
+            "check-certificate",
             "check-duplicates",
             "check-profiles",
             "lint-workflows",

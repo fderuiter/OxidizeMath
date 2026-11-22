@@ -1,3 +1,4 @@
+// [cite:biology]
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::StateSnapshot;
 use math_explorer::biology::neuroscience::{HodgkinHuxleyNeuron, HodgkinHuxleyParameters};
@@ -5,7 +6,6 @@ use scientific_metadata::theory::ParameterConstraint;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct HodgkinHuxleyUnified {
     neuron: HodgkinHuxleyNeuron,
     params: HodgkinHuxleyParameters,

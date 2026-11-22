@@ -67,6 +67,52 @@ fn run_check_file_lengths_cli(args: &[String]) {
     }
 }
 
+fn run_check_certificate_cli() -> bool {
+    let (_, members) = oxidize_core::workspace::get_workspace_members();
+    let mut cache = oxidize_core::traceability::AstCache::new();
+    report::certificate::check_ast_certificate_parity_with_cache(&members, &mut cache)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct VerifySuiteOptions {
+    mode: report::ReportMode,
+    auto_fix: bool,
+}
+
+fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOptions, String> {
+    let mut saw_check = false;
+    let mut saw_write = false;
+    let mut auto_fix = false;
+
+    for arg in args {
+        match arg.as_str() {
+            "--check" => saw_check = true,
+            "--write" => saw_write = true,
+            "--auto-fix" => auto_fix = true,
+            other => {
+                return Err(format!(
+                    "Unknown verify-suite flag `{other}` (expected `--check`, `--write`, or `--write --auto-fix`)"
+                ));
+            }
+        }
+    }
+    if saw_check && saw_write {
+        return Err("Cannot pass both `--check` and `--write` to `verify-suite`".to_string());
+    }
+    let mode = if saw_write {
+        report::ReportMode::Write
+    } else {
+        report::ReportMode::Check
+    };
+    if auto_fix && mode != report::ReportMode::Write {
+        return Err(
+            "`--auto-fix` requires `--write` so read-only `--check` mode never mutates files"
+                .to_string(),
+        );
+    }
+    Ok(VerifySuiteOptions { mode, auto_fix })
+}
+
 fn exit_if_failed(passed: bool) {
     if !passed {
         std::process::exit(1);
@@ -86,6 +132,7 @@ fn main() {
         "batch-static" => exit_if_failed(batch::run_batch_static(&args[2..])),
         "batch-staged" | "lint-staged" => exit_if_failed(batch::run_batch_staged()),
         "verify-suite" => verify_suite(&args[2..]),
+        "check-certificate" => exit_if_failed(run_check_certificate_cli()),
         "regenerate-baseline" => api_drift::regenerate_baseline(),
         "check-api-drift" => exit_if_failed(api_drift::check_api_drift()),
         "check-duplicates" => exit_if_failed(ast_visitor::run_clone_detector()),
@@ -109,7 +156,7 @@ fn run_security_checks(
     auto_fix: bool,
     cache: &mut oxidize_core::traceability::AstCache,
 ) -> Vec<String> {
-    println!("Running security checks...");
+    println!("Running security and traceability checks...");
     let mut passed_security = true;
 
     if !profile::check_profiles(member_refs, auto_fix) {
@@ -124,11 +171,17 @@ fn run_security_checks(
     if !ast_visitor::run_clone_detector_with_cache(cache) {
         passed_security = false;
     }
+    if !batch::run_traceability_with_cache(auto_fix, cache) {
+        passed_security = false;
+    }
     if !policy_audit::run_policy_audit_with_cache(member_refs, cache) {
         passed_security = false;
     }
     let entropy_debt = entropy_guard::check_entropy_with_cache(&[], cache);
     if !entropy_debt.is_empty() {
+        for item in &entropy_debt {
+            println!("{item}");
+        }
         passed_security = false;
     }
     if !passed_security {
@@ -138,7 +191,12 @@ fn run_security_checks(
     entropy_debt
 }
 
-fn evaluate_coverage_and_report(members: &[String], entropy_debt: Vec<String>) -> bool {
+fn evaluate_coverage_and_report(
+    members: &[String],
+    entropy_debt: &[String],
+    mode: report::ReportMode,
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> bool {
     println!("Gathering native execution coverage...");
 
     let output = report::get_llvm_cov_output();
@@ -154,11 +212,9 @@ fn evaluate_coverage_and_report(members: &[String], entropy_debt: Vec<String>) -
 
     let rs_files = report::collect_rs_files();
     let (native_lines_total, native_lines_covered) = report::parse_coverage(&cov_json);
-    let m = report::analyze_files(&rs_files);
-    let mut all_debt = Vec::new();
-    all_debt.extend(report::check_unverified_modules(members));
-    all_debt.extend(check_file_lengths(members));
-    all_debt.extend(entropy_debt);
+    let m = report::analyze_files_with_cache(&rs_files, cache);
+    let unverified_crates = report::find_unverified_crates_with_cache(members, cache);
+    let file_len_debt = check_file_lengths(members);
 
     let native_cov_pct = if native_lines_total > 0.0 {
         native_lines_covered / native_lines_total * 100.0
@@ -171,17 +227,29 @@ fn evaluate_coverage_and_report(members: &[String], entropy_debt: Vec<String>) -
         100.0
     };
 
-    report::print_report(native_cov_pct, wasm_cov_pct, &m, &all_debt)
+    let debt = report::DebtSources {
+        unverified_crates: &unverified_crates,
+        file_length_debt: &file_len_debt,
+        entropy_debt,
+        extra_debt: &[],
+    };
+    report::run_report_with_mode(native_cov_pct, wasm_cov_pct, &m, &debt, mode)
 }
 
 fn verify_suite(args: &[String]) {
-    println!("=== High-Integrity Verified Suite ===");
-    let auto_fix = args.contains(&"--auto-fix".to_string());
+    let opts = match parse_verify_suite_args(args) {
+        Ok(opts) => opts,
+        Err(err) => {
+            eprintln!("Error: {err}");
+            std::process::exit(1);
+        }
+    };
+    println!("=== High-Integrity Verified Suite ({:?}) ===", opts.mode);
 
     let (_, members) = oxidize_core::workspace::get_workspace_members();
     let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
     let mut cache = oxidize_core::traceability::AstCache::new();
-    let entropy_debt = run_security_checks(&member_refs, auto_fix, &mut cache);
+    let entropy_debt = run_security_checks(&member_refs, opts.auto_fix, &mut cache);
 
     println!("Running ADR and API drift checks...");
     if !records::verify_records(&[]) {
@@ -191,8 +259,58 @@ fn verify_suite(args: &[String]) {
         std::process::exit(1);
     }
 
-    if !evaluate_coverage_and_report(&members, entropy_debt) {
+    if !evaluate_coverage_and_report(&members, &entropy_debt, opts.mode, &mut cache) {
         std::process::exit(1);
     }
-    println!("\nAll integrity checks passed!");
+    println!(
+        "\nAll integrity checks passed! ({} unique Rust files parsed)",
+        cache.parse_calls()
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{VerifySuiteOptions, parse_verify_suite_args};
+    use crate::report::ReportMode;
+
+    fn parse(args: &[&str]) -> Result<VerifySuiteOptions, String> {
+        let owned: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
+        parse_verify_suite_args(&owned)
+    }
+
+    #[test]
+    fn verify_suite_defaults_to_read_only_check_and_validates_flags() {
+        assert_eq!(
+            parse(&[]).unwrap(),
+            VerifySuiteOptions {
+                mode: ReportMode::Check,
+                auto_fix: false
+            }
+        );
+        assert_eq!(
+            parse(&["--check"]).unwrap(),
+            VerifySuiteOptions {
+                mode: ReportMode::Check,
+                auto_fix: false
+            }
+        );
+        assert_eq!(
+            parse(&["--write"]).unwrap(),
+            VerifySuiteOptions {
+                mode: ReportMode::Write,
+                auto_fix: false
+            }
+        );
+        assert_eq!(
+            parse(&["--write", "--auto-fix"]).unwrap(),
+            VerifySuiteOptions {
+                mode: ReportMode::Write,
+                auto_fix: true
+            }
+        );
+        assert!(parse(&["--check", "--write"]).is_err());
+        assert!(parse(&["--auto-fix"]).is_err());
+        assert!(parse(&["--check", "--auto-fix"]).is_err());
+        assert!(parse(&["--unknown"]).is_err());
+    }
 }

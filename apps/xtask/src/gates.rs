@@ -183,6 +183,11 @@ pub fn verify_suite(args: &[String]) {
     run_verification_with_args("verify-suite", &extra);
 }
 
+pub fn check_certificate() {
+    println!("=== Check Verification Certificate Parity ===");
+    run_verification("check-certificate");
+}
+
 pub fn verify_records(args: &[String]) {
     println!("=== Verify Records ===");
     let extra: Vec<&str> = args.iter().map(String::as_str).collect();

@@ -1,17 +1,75 @@
-use regex::Regex;
-use serde::Serialize;
-use std::fs;
-use std::path::Path;
-use std::process::Command;
+pub mod certificate;
 
-#[derive(Serialize)]
+use crate::whitelist::{VerifySuiteConfig, WORKSPACE_WHITELIST_CANDIDATES, load_whitelist_strict};
+use oxidize_core::ast_visitor::{AstVisitor, is_dedicated_test_path};
+use oxidize_core::traceability::AstCache;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use syn::visit::Visit;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReportMode {
+    Check,
+    Write,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct IntegrityReport {
     pub native_execution_coverage_pct: f64,
     pub wasm_path_coverage_pct: f64,
     pub total_assertion_density: f64,
     pub verified_modules_density: f64,
     pub unverified_modules_density: f64,
+    #[serde(default)]
+    pub total_production_assertion_density: f64,
+    #[serde(default)]
+    pub verified_production_assertion_density: f64,
+    #[serde(default)]
+    pub test_assertion_density: f64,
     pub passed: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FileMetrics {
+    pub wasm_paths: usize,
+    pub wasm_covered: usize,
+    pub total_funcs: f64,
+    pub total_asserts: f64,
+    pub verified_funcs: f64,
+    pub verified_asserts: f64,
+    pub unverified_funcs: f64,
+    pub unverified_asserts: f64,
+    pub prod_funcs: f64,
+    pub prod_asserts: f64,
+    pub verified_prod_funcs: f64,
+    pub verified_prod_asserts: f64,
+    pub test_funcs: f64,
+    pub test_asserts: f64,
+    pub opt_outs: Vec<(String, String)>,
+    pub legacy_funcs: Vec<(String, String)>,
+}
+
+pub struct DebtSources<'a> {
+    pub unverified_crates: &'a [String],
+    pub file_length_debt: &'a [String],
+    pub entropy_debt: &'a [String],
+    pub extra_debt: &'a [String],
+}
+
+pub struct GateEvaluation {
+    pub report: IntegrityReport,
+    pub unauthorized_debt: Vec<String>,
+    pub gate_errors: Vec<String>,
+    pub authorized_opt_outs: usize,
+    pub authorized_unverified_crates: usize,
+}
+
+pub fn load_verify_suite_config_strict(
+    explicit_whitelist: Option<&Path>,
+) -> Result<VerifySuiteConfig, String> {
+    load_whitelist_strict(explicit_whitelist, WORKSPACE_WHITELIST_CANDIDATES)
+        .map(|wl| wl.verify_suite.unwrap_or_default())
 }
 
 pub fn get_llvm_cov_output() -> std::process::Output {
@@ -20,7 +78,7 @@ pub fn get_llvm_cov_output() -> std::process::Output {
     cmd.output().expect("Failed to run cargo llvm-cov")
 }
 
-pub fn collect_rs_files() -> Vec<std::path::PathBuf> {
+pub fn collect_rs_files() -> Vec<PathBuf> {
     crate::utils::collect_rs_files_filtered(&[Path::new(".")], &["target", ".git", "egui_plot"])
 }
 
@@ -48,150 +106,98 @@ pub fn parse_coverage(cov_json: &serde_json::Value) -> (f64, f64) {
     (native_lines_total, native_lines_covered)
 }
 
-pub struct FileMetrics {
-    pub wasm_paths: usize,
-    pub wasm_covered: usize,
-    pub total_funcs: f64,
-    pub total_asserts: f64,
-    pub verified_funcs: f64,
-    pub verified_asserts: f64,
-    pub unverified_funcs: f64,
-    pub unverified_asserts: f64,
-    pub opt_outs: Vec<(String, String)>,
-}
-
-struct ReportPatterns {
-    assert_re: Regex,
-    fn_re: Regex,
-    opt_out_re: Regex,
-    legacy_re: Regex,
-}
-
-impl ReportPatterns {
-    fn new() -> Self {
-        Self {
-            assert_re: Regex::new(r"\b(assert|assert_eq|assert_ne|debug_assert)!\s*\(").unwrap(),
-            fn_re: Regex::new(r"\bfn\s+\w+\s*(?:<[^>]*>)?\s*\(").unwrap(),
-            opt_out_re: Regex::new(
-                r#"#\[(?:verified_engine::)?verified\(opt_out\s*=\s*"([^"]+)"\)\]"#,
-            )
-            .unwrap(),
-            legacy_re: Regex::new(r"\bfn\s+([a-zA-Z0-9_]*_legacy)\b").unwrap(),
-        }
-    }
-}
-
 fn normalize_report_path(filepath: &Path) -> String {
     let norm = crate::whitelist::lossy_slash_path(filepath);
     norm.strip_prefix("./").unwrap_or(&norm).to_string()
 }
 
-fn analyze_file_content(
+pub(crate) fn analyze_file_ast_into(
     filepath: &Path,
-    content: &str,
-    patterns: &ReportPatterns,
+    ast: &syn::File,
+    wasm_counts: (usize, usize),
     m: &mut FileMetrics,
 ) {
-    let is_verified =
-        content.contains("#[verified") || content.contains("#[verified_engine::verified");
-    let funcs = patterns.fn_re.find_iter(content).count() as f64;
-    let asserts = patterns.assert_re.find_iter(content).count() as f64;
+    let mut visitor = AstVisitor::with_test_scope(is_dedicated_test_path(filepath));
+    visitor.visit_file(ast);
+
     let norm = normalize_report_path(filepath);
-
-    for cap in patterns.opt_out_re.captures_iter(content) {
-        m.opt_outs.push((norm.clone(), cap[1].to_string()));
+    for reason in visitor.opt_outs {
+        m.opt_outs.push((norm.clone(), reason));
     }
-    for cap in patterns.legacy_re.captures_iter(content) {
-        m.opt_outs
-            .push((norm.clone(), format!("Legacy function call: {}", &cap[1])));
+    for fn_name in visitor.legacy_funcs {
+        m.legacy_funcs.push((norm.clone(), fn_name));
     }
 
-    m.total_funcs += funcs;
-    m.total_asserts += asserts;
-    if is_verified {
-        m.verified_funcs += funcs;
-        m.verified_asserts += asserts;
-    } else {
-        m.unverified_funcs += funcs;
-        m.unverified_asserts += asserts;
-    }
+    let unverified_funcs = visitor.total_funcs.saturating_sub(visitor.verified_funcs);
+    let unverified_asserts = visitor
+        .total_asserts
+        .saturating_sub(visitor.verified_asserts);
 
-    let (file_wasm_paths, file_wasm_covered) =
-        crate::wasm_coverage::count_file_wasm_coverage(filepath, content);
-    m.wasm_paths += file_wasm_paths;
-    m.wasm_covered += file_wasm_covered;
+    m.total_funcs += visitor.total_funcs as f64;
+    m.total_asserts += visitor.total_asserts as f64;
+    m.verified_funcs += visitor.verified_funcs as f64;
+    m.verified_asserts += visitor.verified_asserts as f64;
+    m.unverified_funcs += unverified_funcs as f64;
+    m.unverified_asserts += unverified_asserts as f64;
+    m.prod_funcs += visitor.prod_funcs as f64;
+    m.prod_asserts += visitor.prod_asserts as f64;
+    m.verified_prod_funcs += visitor.verified_prod_funcs as f64;
+    m.verified_prod_asserts += visitor.verified_prod_asserts as f64;
+    m.test_funcs += visitor.test_funcs as f64;
+    m.test_asserts += visitor.test_asserts as f64;
+    m.wasm_paths += wasm_counts.0;
+    m.wasm_covered += wasm_counts.1;
 }
 
-pub fn analyze_files(rs_files: &[std::path::PathBuf]) -> FileMetrics {
-    let mut m = FileMetrics {
-        wasm_paths: 0,
-        wasm_covered: 0,
-        total_funcs: 0.0,
-        total_asserts: 0.0,
-        verified_funcs: 0.0,
-        verified_asserts: 0.0,
-        unverified_funcs: 0.0,
-        unverified_asserts: 0.0,
-        opt_outs: Vec::new(),
-    };
-    let patterns = ReportPatterns::new();
-
+pub fn analyze_files_with_cache(rs_files: &[PathBuf], cache: &mut AstCache) -> FileMetrics {
+    let mut m = FileMetrics::default();
     for filepath in rs_files {
-        if let Ok(content) = fs::read_to_string(filepath) {
-            analyze_file_content(filepath, &content, &patterns, &mut m);
+        let wasm_counts =
+            crate::wasm_coverage::count_file_wasm_coverage_with_cache(filepath, cache);
+        if let Some(ast) = cache.get_or_load_fs(filepath).and_then(|e| e.ast.as_ref()) {
+            analyze_file_ast_into(filepath, ast, wasm_counts, &mut m);
         }
     }
     m.opt_outs.sort();
+    m.legacy_funcs.sort();
     m
 }
 
-pub fn check_unverified_modules(members: &[String]) -> Vec<String> {
-    let mut unverified_modules = Vec::new();
+pub fn find_unverified_crates_with_cache(members: &[String], cache: &mut AstCache) -> Vec<String> {
+    let mut unverified = Vec::new();
     for fm in members {
         if fm == "egui_plot" {
             continue;
         }
         let mod_dir = Path::new(fm).join("src");
-        if mod_dir.exists() {
-            let has_theory = crate::utils::collect_rs_files_filtered(&[&mod_dir], &["target"])
-                .into_iter()
-                .filter_map(|path| fs::read_to_string(path).ok())
-                .any(|content| {
-                    content.contains("theory_verification!")
-                        || content.contains("stochastic_signature_verification!")
-                });
-            if !has_theory {
-                unverified_modules.push(format!("Unverified Module: {}", fm));
-            }
+        if !mod_dir.exists() {
+            continue;
+        }
+        let has_theory = crate::utils::collect_rs_files_filtered(&[&mod_dir], &["target"])
+            .into_iter()
+            .any(|path| {
+                let Some(ast) = cache.get_or_load_fs(&path).and_then(|e| e.ast.as_ref()) else {
+                    return false;
+                };
+                let mut visitor = AstVisitor::new();
+                visitor.visit_file(ast);
+                visitor.has_verification_macro
+            });
+        if !has_theory {
+            unverified.push(fm.clone());
         }
     }
-    unverified_modules.sort();
-    unverified_modules
+    unverified.sort();
+    unverified
 }
 
-fn save_report(report: &IntegrityReport, native_cov: f64) {
-    if cfg!(test) {
-        return;
-    }
-    let json_report = serde_json::to_string_pretty(&report).unwrap();
-    fs::write("Verification_Certificate.json", json_report).unwrap();
-    println!("Generated Verification_Certificate.json");
-
-    if let Ok(mut readme) = fs::read_to_string("README.md") {
-        let badge_color = if native_cov >= 90.0 {
-            "brightgreen"
-        } else {
-            "yellow"
-        };
-        let new_badge = format!(
-            "![Coverage](https://img.shields.io/badge/coverage-{:.1}%25-{})",
-            native_cov, badge_color
-        );
-        let badge_re = Regex::new(r"!\[Coverage\]\(.*?\)").unwrap();
-        readme = badge_re.replace(&readme, new_badge.as_str()).to_string();
-        fs::write("README.md", readme).unwrap();
-        println!("README static badge updated with dynamic metric.");
-    }
+#[cfg(test)]
+pub fn check_unverified_modules(members: &[String]) -> Vec<String> {
+    let mut cache = AstCache::new();
+    find_unverified_crates_with_cache(members, &mut cache)
+        .into_iter()
+        .map(|fm| format!("Unverified Module: {fm}"))
+        .collect()
 }
 
 fn ratio_or_zero(numerator: f64, denominator: f64) -> f64 {
@@ -202,225 +208,245 @@ fn ratio_or_zero(numerator: f64, denominator: f64) -> f64 {
     }
 }
 
-fn print_debt_section(m: &FileMetrics, debt_items: &[String]) {
-    let mut all_debt = Vec::with_capacity(m.opt_outs.len() + debt_items.len());
-    for (file, reason) in &m.opt_outs {
-        all_debt.push(format!("{} bypassed: '{}'", file, reason));
-    }
-    all_debt.extend(debt_items.iter().cloned());
+fn collect_debt_violations(
+    m: &FileMetrics,
+    debt: &DebtSources<'_>,
+    config: &VerifySuiteConfig,
+) -> (Vec<String>, usize, usize) {
+    let mut unauthorized = Vec::new();
+    let mut auth_opt_outs = 0usize;
+    let mut auth_crates = 0usize;
 
-    if !all_debt.is_empty() {
-        println!("\n--- Integrity Debt ---");
-        for (idx, item) in all_debt.iter().enumerate() {
+    for (file, reason) in &m.opt_outs {
+        if config.is_opt_out_allowed(file, reason) {
+            auth_opt_outs += 1;
+        } else {
+            unauthorized.push(format!("Unauthorized opt_out in {file}: '{reason}'"));
+        }
+    }
+    for (file, fn_name) in &m.legacy_funcs {
+        unauthorized.push(format!("Legacy function in {file}: {fn_name}"));
+    }
+    for fm in debt.unverified_crates {
+        if config.is_unverified_module_allowed(fm) {
+            auth_crates += 1;
+        } else {
+            unauthorized.push(format!("Unwhitelisted unverified module: {fm}"));
+        }
+    }
+    unauthorized.extend(debt.file_length_debt.iter().cloned());
+    unauthorized.extend(debt.entropy_debt.iter().cloned());
+    unauthorized.extend(debt.extra_debt.iter().cloned());
+    (unauthorized, auth_opt_outs, auth_crates)
+}
+
+fn build_gate_errors(
+    native_cov_pct: f64,
+    verified_density: f64,
+    total_prod_density: f64,
+    verified_prod_density: f64,
+    config: &VerifySuiteConfig,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    if verified_density < config.min_verified_assertion_density {
+        errors.push(format!(
+            "Verified modules density {:.4} is below required {:.4} asserts/fn",
+            verified_density, config.min_verified_assertion_density
+        ));
+    }
+    if total_prod_density < config.min_total_production_density {
+        errors.push(format!(
+            "Total production density {:.4} is below ratcheted floor {:.4} asserts/fn",
+            total_prod_density, config.min_total_production_density
+        ));
+    }
+    if verified_prod_density < config.min_verified_production_density {
+        errors.push(format!(
+            "Verified production density {:.4} is below ratcheted floor {:.4} asserts/fn",
+            verified_prod_density, config.min_verified_production_density
+        ));
+    }
+    if native_cov_pct < 50.0 {
+        errors.push(format!(
+            "Native execution coverage {:.2}% is below threshold of 50.0%",
+            native_cov_pct
+        ));
+    }
+    errors
+}
+
+pub fn evaluate_integrity_gates(
+    native_cov_pct: f64,
+    wasm_cov_pct: f64,
+    m: &FileMetrics,
+    debt: &DebtSources<'_>,
+    config: &VerifySuiteConfig,
+) -> GateEvaluation {
+    let total_density = ratio_or_zero(m.total_asserts, m.total_funcs);
+    let verified_density = ratio_or_zero(m.verified_asserts, m.verified_funcs);
+    let unverified_density = ratio_or_zero(m.unverified_asserts, m.unverified_funcs);
+    let total_prod_density = ratio_or_zero(m.prod_asserts, m.prod_funcs);
+    let verified_prod_density = ratio_or_zero(m.verified_prod_asserts, m.verified_prod_funcs);
+    let test_density = ratio_or_zero(m.test_asserts, m.test_funcs);
+
+    let (unauthorized_debt, authorized_opt_outs, authorized_unverified_crates) =
+        collect_debt_violations(m, debt, config);
+    let gate_errors = build_gate_errors(
+        native_cov_pct,
+        verified_density,
+        total_prod_density,
+        verified_prod_density,
+        config,
+    );
+    let passed = gate_errors.is_empty() && unauthorized_debt.is_empty();
+
+    GateEvaluation {
+        report: IntegrityReport {
+            native_execution_coverage_pct: native_cov_pct,
+            wasm_path_coverage_pct: wasm_cov_pct,
+            total_assertion_density: total_density,
+            verified_modules_density: verified_density,
+            unverified_modules_density: unverified_density,
+            total_production_assertion_density: total_prod_density,
+            verified_production_assertion_density: verified_prod_density,
+            test_assertion_density: test_density,
+            passed,
+        },
+        unauthorized_debt,
+        gate_errors,
+        authorized_opt_outs,
+        authorized_unverified_crates,
+    }
+}
+
+pub(crate) fn print_gate_failures(eval: &GateEvaluation) {
+    for err in &eval.gate_errors {
+        println!("\n[!] {err}");
+    }
+    if !eval.unauthorized_debt.is_empty() {
+        println!("\n--- Unauthorized Integrity Debt (FAIL) ---");
+        for (idx, item) in eval.unauthorized_debt.iter().enumerate() {
             println!("[{}] {}", idx + 1, item);
         }
     }
 }
 
+fn print_dashboard(eval: &GateEvaluation) {
+    let r = &eval.report;
+    println!("\n--- Integrity Report ---");
+    println!(
+        "Native Execution Coverage: {:.2}%",
+        r.native_execution_coverage_pct
+    );
+    println!("WASM Path Coverage: {:.2}%", r.wasm_path_coverage_pct);
+    println!("\n--- High-Integrity Dashboard ---");
+    println!(
+        "Total Assertion Density: {:.2} asserts/fn",
+        r.total_assertion_density
+    );
+    println!(
+        "Verified Modules Density: {:.2} asserts/fn",
+        r.verified_modules_density
+    );
+    println!(
+        "Unverified Modules Density: {:.2} asserts/fn",
+        r.unverified_modules_density
+    );
+    println!(
+        "Total Production Density: {:.4} asserts/fn",
+        r.total_production_assertion_density
+    );
+    println!(
+        "Verified Production Density: {:.4} asserts/fn",
+        r.verified_production_assertion_density
+    );
+    println!(
+        "Test Assertion Density: {:.2} asserts/fn",
+        r.test_assertion_density
+    );
+    println!(
+        "Authorized whitelist exemptions: {} opt-outs, {} non-domain crates",
+        eval.authorized_opt_outs, eval.authorized_unverified_crates
+    );
+    print_gate_failures(eval);
+}
+
+pub fn run_report_with_mode(
+    native_cov_pct: f64,
+    wasm_cov_pct: f64,
+    m: &FileMetrics,
+    debt: &DebtSources<'_>,
+    mode: ReportMode,
+) -> bool {
+    let config = match load_verify_suite_config_strict(None) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("[!] {err}");
+            return false;
+        }
+    };
+    let eval = evaluate_integrity_gates(native_cov_pct, wasm_cov_pct, m, debt, &config);
+    print_dashboard(&eval);
+    if !eval.report.passed {
+        return false;
+    }
+
+    let cert_path = Path::new(certificate::CERT_FILE_NAME);
+    let readme_path = Path::new(certificate::README_FILE_NAME);
+    match mode {
+        ReportMode::Write => {
+            if let Err(err) =
+                certificate::write_certificate_and_readme(&eval.report, cert_path, readme_path)
+            {
+                eprintln!("[!] {err}");
+                return false;
+            }
+            true
+        }
+        ReportMode::Check => match certificate::verify_certificate_against_report(
+            &eval.report,
+            Some(native_cov_pct),
+            config.coverage_tolerance_pct,
+            cert_path,
+            readme_path,
+        ) {
+            Ok(()) => {
+                println!(
+                    "Verified {} and {} parity in read-only --check mode.",
+                    certificate::CERT_FILE_NAME,
+                    certificate::README_FILE_NAME
+                );
+                true
+            }
+            Err(diffs) => {
+                eprintln!("\n[!] Certificate parity check failed (--check):");
+                for diff in diffs {
+                    eprintln!("  - {diff}");
+                }
+                false
+            }
+        },
+    }
+}
+
+#[cfg(test)]
 pub fn print_report(
     native_cov_pct: f64,
     wasm_cov_pct: f64,
     m: &FileMetrics,
     debt_items: &[String],
 ) -> bool {
-    let total_density = ratio_or_zero(m.total_asserts, m.total_funcs);
-    let verified_density = ratio_or_zero(m.verified_asserts, m.verified_funcs);
-    let unverified_density = ratio_or_zero(m.unverified_asserts, m.unverified_funcs);
-
-    println!("\n--- Integrity Report ---");
-    println!("Native Execution Coverage: {:.2}%", native_cov_pct);
-    println!("WASM Path Coverage: {:.2}%", wasm_cov_pct);
-
-    println!("\n--- High-Integrity Dashboard ---");
-    println!("Total Assertion Density: {:.2} asserts/fn", total_density);
-    println!(
-        "Verified Modules Density: {:.2} asserts/fn",
-        verified_density
-    );
-    println!(
-        "Unverified Modules Density: {:.2} asserts/fn",
-        unverified_density
-    );
-
-    let mut passed = true;
-    if verified_density < 0.4 {
-        println!(
-            "\n[!] Assertion Density Failure: Verified modules have a density of {:.2} asserts/fn, which is below the minimum required 0.4 asserts/fn.",
-            verified_density
-        );
-        passed = false;
-    }
-
-    print_debt_section(m, debt_items);
-
-    if native_cov_pct < 50.0 {
-        println!(
-            "Coverage {:.2}% is below threshold of 50.0%",
-            native_cov_pct
-        );
-        passed = false;
-    }
-
-    let report = IntegrityReport {
-        native_execution_coverage_pct: native_cov_pct,
-        wasm_path_coverage_pct: wasm_cov_pct,
-        total_assertion_density: total_density,
-        verified_modules_density: verified_density,
-        unverified_modules_density: unverified_density,
-        passed,
+    let config = VerifySuiteConfig::default();
+    let debt = DebtSources {
+        unverified_crates: &[],
+        file_length_debt: &[],
+        entropy_debt: &[],
+        extra_debt: debt_items,
     };
-
-    save_report(&report, native_cov_pct);
-    passed
+    let eval = evaluate_integrity_gates(native_cov_pct, wasm_cov_pct, m, &debt, &config);
+    print_dashboard(&eval);
+    eval.report.passed
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_coverage_empty_and_valid() {
-        let (tot, cov) = parse_coverage(&serde_json::json!({}));
-        assert_eq!(tot, 0.0);
-        assert_eq!(cov, 0.0);
-
-        let data = serde_json::json!({
-            "data": [{
-                "files": [
-                    {
-                        "summary": {
-                            "lines": {
-                                "count": 100,
-                                "covered": 80
-                            }
-                        }
-                    },
-                    {
-                        "summary": {
-                            "lines": {
-                                "count": 50,
-                                "covered": 20
-                            }
-                        }
-                    }
-                ]
-            }]
-        });
-        let (tot2, cov2) = parse_coverage(&data);
-        assert_eq!(tot2, 150.0);
-        assert_eq!(cov2, 100.0);
-    }
-
-    #[test]
-    fn test_print_report_threshold_enforcement() {
-        let metrics = FileMetrics {
-            wasm_paths: 0,
-            wasm_covered: 0,
-            total_funcs: 10.0,
-            total_asserts: 10.0,
-            verified_funcs: 5.0,
-            verified_asserts: 5.0,
-            unverified_funcs: 5.0,
-            unverified_asserts: 5.0,
-            opt_outs: Vec::new(),
-        };
-
-        // Coverage below 50.0% should fail
-        let passed_low = print_report(49.9, 100.0, &metrics, &[]);
-        assert!(!passed_low, "Coverage below 50.0% must fail");
-
-        // Coverage at or above 50.0% with valid density should pass
-        let passed_high = print_report(55.0, 100.0, &metrics, &[]);
-        assert!(passed_high, "Coverage at or above 50.0% should pass");
-        let _ = fs::remove_file("Verification_Certificate.json");
-    }
-
-    #[test]
-    fn test_collect_rs_files_and_unverified_modules() {
-        let _lock = crate::DIR_LOCK.lock().unwrap();
-        let files = collect_rs_files();
-        assert!(!files.is_empty());
-        for f in &files {
-            assert!(f.extension().and_then(|s| s.to_str()) == Some("rs"));
-            let p_str = crate::whitelist::lossy_slash_path(f);
-            assert!(!p_str.contains("/target/"));
-            assert!(!p_str.contains("/egui_plot/"));
-        }
-
-        let unverified = check_unverified_modules(&["crates/pure_math".to_string()]);
-        // pure_math has theory_verification! so it should not be unverified
-        assert!(!unverified.iter().any(|u| u.contains("crates/pure_math")));
-    }
-
-    fn empty_file_metrics() -> FileMetrics {
-        FileMetrics {
-            wasm_paths: 0,
-            wasm_covered: 0,
-            total_funcs: 0.0,
-            total_asserts: 0.0,
-            verified_funcs: 0.0,
-            verified_asserts: 0.0,
-            unverified_funcs: 0.0,
-            unverified_asserts: 0.0,
-            opt_outs: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn test_wasm_coverage_ignores_theory_and_attribute_comments() {
-        let patterns = ReportPatterns::new();
-        let comment_only_src = r#"
-            #[cfg(target_arch = "wasm32")]
-            // theory_verification!
-            // stochastic_signature_verification!
-            // #[wasm_bindgen_test]
-            fn mark_boot_initialized() {
-                let _marker = "theory_verification! #[wasm_bindgen_test]";
-            }
-
-            #[cfg(target_arch = "wasm32")]
-            // theory_verification!
-            fn handle_webgl_failure() {}
-        "#;
-        let mut m = empty_file_metrics();
-        analyze_file_content(
-            Path::new("math_explorer_gui/src/comment_only_probe.rs"),
-            comment_only_src,
-            &patterns,
-            &mut m,
-        );
-        assert_eq!(m.wasm_paths, 2);
-        assert_eq!(
-            m.wasm_covered, 0,
-            "// theory_verification! comments must never count as covered WASM paths"
-        );
-    }
-
-    #[test]
-    fn test_wasm_coverage_counts_real_wasm_bindgen_tests() {
-        let patterns = ReportPatterns::new();
-        let tested_src = r#"
-            #[cfg(target_arch = "wasm32")]
-            pub fn browser_helper() -> u32 { 42 }
-
-            #[cfg(all(test, target_arch = "wasm32"))]
-            mod wasm_tests {
-                use wasm_bindgen_test::wasm_bindgen_test;
-
-                #[wasm_bindgen_test]
-                fn verifies_browser_helper() {
-                    assert_eq!(super::browser_helper(), 42);
-                }
-            }
-        "#;
-        let mut m = empty_file_metrics();
-        analyze_file_content(
-            Path::new("math_explorer_gui/src/tested_probe.rs"),
-            tested_src,
-            &patterns,
-            &mut m,
-        );
-        assert_eq!(m.wasm_paths, 1);
-        assert_eq!(m.wasm_covered, 1);
-    }
-}
+mod tests;

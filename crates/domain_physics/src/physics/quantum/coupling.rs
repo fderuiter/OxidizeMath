@@ -2,7 +2,6 @@
 //!
 //! This module provides functions related to the coupling of angular momenta
 //! in quantum mechanics.
-// theory_verification!
 use math_commons::wigner::ClebschGordan;
 
 /// Calculates the Clebsch-Gordan coefficient for coupling two angular momenta.
@@ -78,4 +77,3 @@ pub fn clebsch_gordan(j1: f64, m1: f64, j2: f64, m2: f64, j: f64, m: f64) -> f64
     #[allow(clippy::useless_conversion)]
     cg.value().into()
 }
-// theory_verification!
