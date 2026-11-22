@@ -5451,6 +5451,65 @@
       "signature": "pub use diagnostics :: Severity"
     }
   ],
+  "crates/math_commons/src/ast/compiled.rs": [
+    {
+      "signature": "impl CompiledExpr { pub const fn axis_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn compile (expr : & Expr) -> Result < Self , EvalError > }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn compile_complex (expr : & Expr , axes : & [& str]) -> Result < Self , EvalError > }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn compile_with_vars (expr : & Expr , axes : & [& str]) -> Result < Self , EvalError > }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn compile_with_vars_and_params (expr : & Expr , axes : & [& str] , shared_params : & [& str] ,) -> Result < Self , EvalError > }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn eval_1d (& self , x : f64 , params : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn eval_2d (& self , x : f64 , y : f64 , params : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn eval_3d (& self , x : f64 , y : f64 , z : f64 , params : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn eval_complex_slice (& self , vars : & [Complex64]) -> Complex64 }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn eval_complex_z (& self , z : Complex64) -> Complex64 }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn eval_complex_z_params (& self , z : Complex64 , params : & [f64]) -> Complex64 }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn eval_slice (& self , vars : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn instructions (& self) -> & [Instruction] }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn param_names (& self) -> & [String] }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn var_names (& self) -> & [String] }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn var_slot (& self , name : & str) -> Option < usize > }"
+    },
+    {
+      "signature": "impl Expr { pub fn compile (& self) -> Result < CompiledExpr , EvalError > }"
+    },
+    {
+      "signature": "pub enum Instruction"
+    },
+    {
+      "signature": "pub struct CompiledExpr"
+    }
+  ],
   "crates/math_commons/src/ast/eval.rs": [
     {
       "signature": "impl Expr { pub fn eval (& self , vars : & HashMap < String , f64 >) -> Result < f64 , EvalError > }"
@@ -5482,10 +5541,16 @@
       "signature": "impl Expr { pub fn binary (op : BinaryOp , left : Expr , right : Expr) -> Self }"
     },
     {
+      "signature": "impl Expr { pub fn free_variables (& self) -> Vec < String > }"
+    },
+    {
       "signature": "impl Expr { pub fn function (func : Func , args : Vec < Expr >) -> Self }"
     },
     {
       "signature": "impl Expr { pub fn unary (op : UnaryOp , expr : Expr) -> Self }"
+    },
+    {
+      "signature": "impl Func { pub const fn arity (& self) -> usize }"
     },
     {
       "signature": "impl Func { pub fn as_str (& self) -> & 'static str }"
@@ -5507,6 +5572,9 @@
     },
     {
       "signature": "pub enum UnaryOp"
+    },
+    {
+      "signature": "pub fn is_universal_constant (name : & str) -> bool"
     }
   ],
   "crates/math_commons/src/ast/latex.rs": [
@@ -5539,6 +5607,12 @@
   ],
   "crates/math_commons/src/ast/mod.rs": [
     {
+      "signature": "pub use compiled :: CompiledExpr"
+    },
+    {
+      "signature": "pub use compiled :: Instruction"
+    },
+    {
       "signature": "pub use eval :: EvalError"
     },
     {
@@ -5555,6 +5629,9 @@
     },
     {
       "signature": "pub use expr :: UnaryOp"
+    },
+    {
+      "signature": "pub use expr :: is_universal_constant"
     },
     {
       "signature": "pub use lexer :: LexError"
@@ -7084,6 +7161,24 @@
     }
   ],
   "crates/pure_math/src/pure_math/differential_geometry/surface.rs": [
+    {
+      "signature": "impl CompiledHeightfieldSurface { pub const fn compiled (& self) -> & CompiledExpr }"
+    },
+    {
+      "signature": "impl CompiledHeightfieldSurface { pub fn new (compiled : CompiledExpr , params : & [f64]) -> Self }"
+    },
+    {
+      "signature": "impl CompiledParametricSurface { pub fn new (x_expr : CompiledExpr , y_expr : CompiledExpr , z_expr : CompiledExpr , params : & [f64] ,) -> Self }"
+    },
+    {
+      "signature": "pub const MAX_SURFACE_PARAMS : usize = 6"
+    },
+    {
+      "signature": "pub struct CompiledHeightfieldSurface"
+    },
+    {
+      "signature": "pub struct CompiledParametricSurface"
+    },
     {
       "signature": "pub struct KleinBottle"
     },
