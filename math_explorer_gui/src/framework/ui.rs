@@ -416,7 +416,7 @@ impl SimulationFramework {
             if let Some(ref snapshot) = self.last_valid_snapshot {
                 egui_plot::clear_last_plot_datasets();
                 egui_plot::clear_last_plot_primitives();
-                egui_plot::append_last_plot_datasets(&snapshot.plot_datasets);
+                egui_plot::append_last_plot_shared_datasets(&snapshot.plot_datasets);
             }
             tool.show_inside(ui);
         } else {

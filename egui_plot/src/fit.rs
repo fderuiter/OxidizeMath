@@ -127,7 +127,7 @@ pub struct FitResult {
     /// Root-mean-square vertical error in data coordinates.
     pub rmse: f64,
     /// Vertical residuals `[x_i, y_i - y_hat(x_i)]` for valid fitted points.
-    pub residuals: Vec<[f64; 2]>,
+    pub residuals: crate::SharedPoints,
     /// Polynomial degree (`0` for nonlinear models).
     pub degree: usize,
     /// Mathematical equation string representation.

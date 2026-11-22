@@ -114,29 +114,166 @@ impl LineStyle {
                         if highlight {
                             radius *= 2f32.sqrt();
                         }
-                        shapes.extend(Shape::dotted_line(
-                            &line,
-                            path_stroke_color,
-                            *spacing,
-                            radius,
-                        ));
+                        if line.len() > 128 {
+                            if let Some(mesh) =
+                                build_dotted_line_mesh(&line, path_stroke_color, *spacing, radius)
+                            {
+                                shapes.push(Shape::Mesh(std::sync::Arc::new(mesh)));
+                            }
+                        } else {
+                            shapes.extend(Shape::dotted_line(
+                                &line,
+                                path_stroke_color,
+                                *spacing,
+                                radius,
+                            ));
+                        }
                     }
                     Self::Dashed { length } => {
                         if highlight {
                             stroke.width *= 2.0;
                         }
                         let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0; // 0.61803398875
-                        shapes.extend(Shape::dashed_line(
-                            &line,
-                            Stroke::new(stroke.width, path_stroke_color),
-                            *length,
-                            length * golden_ratio,
-                        ));
+                        let gap = length * golden_ratio;
+                        if line.len() > 128 {
+                            if let Some(mesh) = build_dashed_line_mesh(
+                                &line,
+                                stroke.width,
+                                path_stroke_color,
+                                *length,
+                                gap,
+                            ) {
+                                shapes.push(Shape::Mesh(std::sync::Arc::new(mesh)));
+                            }
+                        } else {
+                            shapes.extend(Shape::dashed_line(
+                                &line,
+                                Stroke::new(stroke.width, path_stroke_color),
+                                *length,
+                                gap,
+                            ));
+                        }
                     }
                 }
             }
         }
     }
+}
+
+fn build_dashed_line_mesh(
+    line: &[Pos2],
+    width: f32,
+    color: egui::Color32,
+    dash_length: f32,
+    gap_length: f32,
+) -> Option<egui::Mesh> {
+    let dash_len = dash_length.max(0.5);
+    let gap_len = gap_length.max(0.5);
+    let half_w = width.max(0.5) * 0.5;
+    let mut mesh = egui::Mesh::default();
+    let mut in_dash = true;
+    let mut remaining = dash_len;
+
+    for pair in line.windows(2) {
+        let (p0, p1) = (pair[0], pair[1]);
+        if !p0.is_finite() || !p1.is_finite() {
+            continue;
+        }
+        let seg = p1 - p0;
+        let seg_len = seg.length();
+        if seg_len <= 1e-5 {
+            continue;
+        }
+        let dir = seg / seg_len;
+        let half_normal = Vec2::new(-dir.y, dir.x) * half_w;
+        let mut cursor = 0.0_f32;
+
+        while cursor < seg_len {
+            let step = (seg_len - cursor).min(remaining);
+            if in_dash && step > 1e-5 {
+                let a = p0 + dir * cursor;
+                let b = p0 + dir * (cursor + step);
+                let base = mesh.vertices.len() as u32;
+                mesh.colored_vertex(a + half_normal, color);
+                mesh.colored_vertex(a - half_normal, color);
+                mesh.colored_vertex(b - half_normal, color);
+                mesh.colored_vertex(b + half_normal, color);
+                mesh.add_triangle(base, base + 1, base + 2);
+                mesh.add_triangle(base, base + 2, base + 3);
+            }
+            cursor += step;
+            remaining -= step;
+            if remaining <= 1e-5 {
+                in_dash = !in_dash;
+                remaining = if in_dash { dash_len } else { gap_len };
+            }
+        }
+    }
+
+    (!mesh.is_empty()).then_some(mesh)
+}
+
+fn build_dotted_line_mesh(
+    line: &[Pos2],
+    color: egui::Color32,
+    spacing: f32,
+    radius: f32,
+) -> Option<egui::Mesh> {
+    let step_len = spacing.max(1.0);
+    let r = radius.max(0.5);
+    let mut mesh = egui::Mesh::default();
+    let mut until_next = 0.0_f32;
+    const OFFSETS: [(f32, f32); 8] = [
+        (1.0, 0.0),
+        (
+            std::f32::consts::FRAC_1_SQRT_2,
+            std::f32::consts::FRAC_1_SQRT_2,
+        ),
+        (0.0, 1.0),
+        (
+            -std::f32::consts::FRAC_1_SQRT_2,
+            std::f32::consts::FRAC_1_SQRT_2,
+        ),
+        (-1.0, 0.0),
+        (
+            -std::f32::consts::FRAC_1_SQRT_2,
+            -std::f32::consts::FRAC_1_SQRT_2,
+        ),
+        (0.0, -1.0),
+        (
+            std::f32::consts::FRAC_1_SQRT_2,
+            -std::f32::consts::FRAC_1_SQRT_2,
+        ),
+    ];
+
+    for pair in line.windows(2) {
+        let (p0, p1) = (pair[0], pair[1]);
+        if !p0.is_finite() || !p1.is_finite() {
+            continue;
+        }
+        let seg = p1 - p0;
+        let seg_len = seg.length();
+        if seg_len <= 1e-5 {
+            continue;
+        }
+        let dir = seg / seg_len;
+        let mut cursor = until_next;
+        while cursor <= seg_len {
+            let center = p0 + dir * cursor;
+            let base = mesh.vertices.len() as u32;
+            mesh.colored_vertex(center, color);
+            for (ox, oy) in OFFSETS {
+                mesh.colored_vertex(center + Vec2::new(ox * r, oy * r), color);
+            }
+            for i in 0..8_u32 {
+                mesh.add_triangle(base, base + 1 + i, base + 1 + ((i + 1) % 8));
+            }
+            cursor += step_len;
+        }
+        until_next = cursor - seg_len;
+    }
+
+    (!mesh.is_empty()).then_some(mesh)
 }
 
 impl std::fmt::Display for LineStyle {
@@ -163,11 +300,11 @@ pub enum Orientation {
 
 /// Represents many [`PlotPoint`]s.
 ///
-/// These can be an owned `Vec`
-/// or generated on-the-fly by a function
-/// or borrowed from a slice.
+/// These can be an owned `Vec`, an `Arc`-backed [`super::SharedPoints`] buffer,
+/// generated on-the-fly by a function, or borrowed from a slice.
 pub enum PlotPoints<'a> {
     Owned(Vec<PlotPoint>),
+    Shared(super::SharedPoints),
     Generator(ExplicitGenerator<'a>),
     Borrowed(&'a [PlotPoint]),
 }
@@ -191,6 +328,20 @@ impl From<Vec<[f64; 2]>> for PlotPoints<'_> {
     }
 }
 
+impl From<super::SharedPoints> for PlotPoints<'_> {
+    #[inline]
+    fn from(points: super::SharedPoints) -> Self {
+        Self::Shared(points)
+    }
+}
+
+impl From<&super::SharedPoints> for PlotPoints<'_> {
+    #[inline]
+    fn from(points: &super::SharedPoints) -> Self {
+        Self::Shared(points.clone())
+    }
+}
+
 impl<'a> From<&'a [PlotPoint]> for PlotPoints<'a> {
     #[inline]
     fn from(points: &'a [PlotPoint]) -> Self {
@@ -209,11 +360,81 @@ impl<'a> PlotPoints<'a> {
         Self::from_iter(points)
     }
 
+    /// Construct [`PlotPoints`] backed by a shared coordinate buffer without copying.
+    #[inline]
+    pub fn from_shared(points: impl Into<super::SharedPoints>) -> Self {
+        Self::Shared(points.into())
+    }
+
     pub fn points(&self) -> &[PlotPoint] {
         match self {
             Self::Owned(points) => points.as_slice(),
-            Self::Generator(_) => &[],
+            Self::Shared(_) | Self::Generator(_) => &[],
             Self::Borrowed(points) => points,
+        }
+    }
+
+    /// Returns the underlying [`super::SharedPoints`] if backed by a shared buffer.
+    #[inline]
+    pub fn shared(&self) -> Option<&super::SharedPoints> {
+        match self {
+            Self::Shared(points) => Some(points),
+            Self::Owned(_) | Self::Generator(_) | Self::Borrowed(_) => None,
+        }
+    }
+
+    /// Number of materialized points currently held in this series.
+    #[inline]
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Owned(points) => points.len(),
+            Self::Shared(points) => points.len(),
+            Self::Generator(_) => 0,
+            Self::Borrowed(points) => points.len(),
+        }
+    }
+
+    /// Extract or reuse a [`super::SharedPoints`] buffer for this series.
+    #[inline]
+    pub fn to_shared_points(&self) -> super::SharedPoints {
+        match self {
+            Self::Shared(points) => points.clone(),
+            Self::Owned(points) => super::SharedPoints::from_plot_points(points),
+            Self::Borrowed(points) => super::SharedPoints::from_plot_points(points),
+            Self::Generator(_) => super::SharedPoints::default(),
+        }
+    }
+
+    /// Returns `true` when `cached` already holds identical coordinates for `self`.
+    #[inline]
+    pub(crate) fn matches_cached_shared(&self, cached: &super::SharedPoints) -> bool {
+        match self {
+            Self::Shared(points) => points.ptr_eq(cached),
+            Self::Owned(points) => cached.matches_plot_points(points),
+            Self::Borrowed(points) => cached.matches_plot_points(points),
+            Self::Generator(_) => false,
+        }
+    }
+
+    /// Returns the appropriate [`PlotGeometry`] view without copying coordinates.
+    #[inline]
+    pub(super) fn geometry(&self) -> PlotGeometry<'_> {
+        match self {
+            Self::Owned(points) => PlotGeometry::Points(points.as_slice()),
+            Self::Shared(points) => PlotGeometry::Shared(points.as_slice()),
+            Self::Generator(_) => PlotGeometry::Points(&[]),
+            Self::Borrowed(points) => PlotGeometry::Points(points),
+        }
+    }
+
+    /// Iterate over all materialized points as [`PlotPoint`] values without heap allocation.
+    #[inline]
+    pub(crate) fn iter_plot_points(&self) -> PlotPointsIter<'_> {
+        match self {
+            Self::Owned(points) => PlotPointsIter::Slice(points.iter()),
+            Self::Shared(points) => PlotPointsIter::Shared(points.iter()),
+            Self::Generator(_) => PlotPointsIter::Slice([].iter()),
+            Self::Borrowed(points) => PlotPointsIter::Slice(points.iter()),
         }
     }
 
@@ -288,9 +509,11 @@ impl<'a> PlotPoints<'a> {
     }
 
     /// Returns true if there are no data points available and there is no function to generate any.
-    pub(crate) fn is_empty(&self) -> bool {
+    #[inline]
+    pub fn is_empty(&self) -> bool {
         match self {
             Self::Owned(points) => points.is_empty(),
+            Self::Shared(points) => points.is_empty(),
             Self::Generator(_) => false,
             Self::Borrowed(points) => points.is_empty(),
         }
@@ -335,6 +558,13 @@ impl<'a> PlotPoints<'a> {
                 }
                 bounds
             }
+            Self::Shared(points) => {
+                let mut bounds = PlotBounds::NOTHING;
+                for &[x, y] in points.as_slice() {
+                    bounds.extend_with(&PlotPoint::new(x, y));
+                }
+                bounds
+            }
             Self::Generator(generator) => generator.estimate_bounds(),
             Self::Borrowed(points) => {
                 let mut bounds = PlotBounds::NOTHING;
@@ -346,6 +576,33 @@ impl<'a> PlotPoints<'a> {
         }
     }
 }
+
+pub(crate) enum PlotPointsIter<'a> {
+    Slice(std::slice::Iter<'a, PlotPoint>),
+    Shared(std::slice::Iter<'a, [f64; 2]>),
+}
+
+impl Iterator for PlotPointsIter<'_> {
+    type Item = PlotPoint;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Slice(it) => it.next().copied(),
+            Self::Shared(it) => it.next().map(|&[x, y]| PlotPoint::new(x, y)),
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            Self::Slice(it) => it.size_hint(),
+            Self::Shared(it) => it.size_hint(),
+        }
+    }
+}
+
+impl ExactSizeIterator for PlotPointsIter<'_> {}
 
 // ----------------------------------------------------------------------------
 
@@ -393,6 +650,9 @@ pub enum PlotGeometry<'a> {
 
     /// Point values (X-Y graphs)
     Points(&'a [PlotPoint]),
+
+    /// Point values stored as shared `[f64; 2]` coordinate pairs
+    Shared(&'a [[f64; 2]]),
 
     /// Rectangles (examples: boxes or bars)
     // Has currently no data, as it would require copying rects or iterating a list of pointers.

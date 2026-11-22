@@ -8,15 +8,15 @@ use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
 use crate::reflective_ui::{render_copyable_metric, AnimatedSlider};
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{Line, Plot, PlotPoints, SharedPoints};
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 
 impl OdeSolverTool {
     pub(super) fn render_sidebar_controls(
         &mut self,
         ui: &mut egui::Ui,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
+        plot_points_y: &SharedPoints,
+        plot_points_v: &SharedPoints,
     ) -> bool {
         let mut changed = false;
         changed |= self.render_preset_selector(ui);
@@ -225,7 +225,10 @@ impl OdeSolverTool {
         });
 
         ui.add_space(5.0);
-        if ui.checkbox(&mut self.show_annotations, "Show Annotations").changed() {
+        if ui
+            .checkbox(&mut self.show_annotations, "Show Annotations")
+            .changed()
+        {
             changed = true;
         }
 
@@ -238,14 +241,14 @@ impl OdeSolverTool {
     fn render_snapshots_and_sensitivity(
         &mut self,
         ui: &mut egui::Ui,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
+        plot_points_y: &SharedPoints,
+        plot_points_v: &SharedPoints,
     ) {
         ui.add_space(10.0);
         let param_summary = self.param_summary();
         let is_harmonic = self.preset == OdePreset::HarmonicOscillator;
-        let py = plot_points_y.to_vec();
-        let pv = plot_points_v.to_vec();
+        let py = plot_points_y.clone();
+        let pv = plot_points_v.clone();
         let current_len = self.snapshot_manager.len();
 
         if self.snapshot_manager.render_ui(ui, || {
@@ -261,22 +264,14 @@ impl OdeSolverTool {
 
         self.run_sensitivity_analysis();
 
-        crate::sensitivity::render_sensitivity_panel_ui(
-            ui,
-            &self.sensitivity_engine,
-            "ode_tool",
-        );
+        crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "ode_tool");
     }
 
     fn run_sensitivity_analysis(&mut self) {
         use crate::sensitivity::canonical_f64_bits;
 
         let exp_params = [("k", self.param_k), ("y0", self.ic_y0)];
-        let osc_params = [
-            ("k", self.param_k),
-            ("y0", self.ic_y0),
-            ("v0", self.ic_v0),
-        ];
+        let osc_params = [("k", self.param_k), ("y0", self.ic_y0), ("v0", self.ic_v0)];
         let log_params = [
             ("r", self.param_r),
             ("cap_k", self.param_cap_k),
@@ -293,8 +288,8 @@ impl OdeSolverTool {
         let current_dt = self.dt;
         let current_total_time = self.total_time;
         let custom_expr = self.math_input.expr();
-        let custom_ctx =
-            (current_preset == OdePreset::Custom).then_some(super::systems::AstContext(custom_expr));
+        let custom_ctx = (current_preset == OdePreset::Custom)
+            .then_some(super::systems::AstContext(custom_expr));
         let context = (
             current_preset as u8,
             current_method as u8,
@@ -356,14 +351,14 @@ impl OdeSolverTool {
     pub(super) fn render_plot_canvas(
         &mut self,
         ui: &mut egui::Ui,
-        mut plot_points_y: Vec<[f64; 2]>,
-        mut plot_points_v: Vec<[f64; 2]>,
+        mut plot_points_y: SharedPoints,
+        mut plot_points_v: SharedPoints,
         changed: &mut bool,
     ) {
         ui.heading("Solution Trajectory");
 
         if FiniteStateGuard::diverged(self) {
-            recovery::render_recovery_ui(
+            recovery::render_recovery_ui_shared(
                 ui,
                 self,
                 changed,
@@ -373,8 +368,6 @@ impl OdeSolverTool {
         }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let line_y =
-            Line::new("y(t)", PlotPoints::new(plot_points_y)).color(palette.series_color(0));
 
         Plot::new("ode_plot")
             .view_aspect(2.0)
@@ -383,9 +376,11 @@ impl OdeSolverTool {
             .legend(egui_plot::Legend::default())
             .show(ui, |plot_ui| {
                 if !self.comparison_mode {
+                    let line_y = Line::new("y(t)", PlotPoints::from(plot_points_y))
+                        .color(palette.series_color(0));
                     plot_ui.line(line_y);
                     if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-                        let line_v = Line::new("y'(t)", PlotPoints::new(plot_points_v))
+                        let line_v = Line::new("y'(t)", PlotPoints::from(plot_points_v))
                             .color(palette.series_color(1));
                         plot_ui.line(line_v);
                     }

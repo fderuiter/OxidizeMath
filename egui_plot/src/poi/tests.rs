@@ -291,3 +291,99 @@ fn fitted_curve_and_residual_series_appear_in_exported_datasets() {
     );
     assert!(exported.iter().any(|(n, _)| n == "Decay Residuals"));
 }
+
+fn reference_merged_knots_intersections(
+    a: &[[f64; 2]],
+    b: &[[f64; 2]],
+    bounds: PlotBounds,
+) -> Vec<[f64; 2]> {
+    let x_lo = a[0][0].max(b[0][0]).max(bounds.min[0]);
+    let x_hi = a[a.len() - 1][0].min(b[b.len() - 1][0]).min(bounds.max[0]);
+    if !x_lo.is_finite() || !x_hi.is_finite() || x_hi <= x_lo {
+        return Vec::new();
+    }
+    let mut merged_knots = vec![x_lo, x_hi];
+    for p in a {
+        if p[0] > x_lo && p[0] < x_hi {
+            merged_knots.push(p[0]);
+        }
+    }
+    for p in b {
+        if p[0] > x_lo && p[0] < x_hi {
+            merged_knots.push(p[0]);
+        }
+    }
+    merged_knots.sort_by(|u, v| u.total_cmp(v));
+    merged_knots.dedup_by(|u, v| (*u - *v).abs() <= 1e-12);
+
+    let mut ia = 0_usize;
+    let mut ib = 0_usize;
+    let mut hits = Vec::new();
+    for k in 0..merged_knots.len().saturating_sub(1) {
+        let (x0, x1) = (merged_knots[k], merged_knots[k + 1]);
+        if x1 > x0 {
+            let is_last = k + 2 == merged_knots.len();
+            super::intersect::evaluate_knot_interval(
+                a, b, x0, x1, is_last, &mut ia, &mut ib, &mut hits,
+            );
+        }
+    }
+    hits.into_iter()
+        .filter(|pt| pt[1] >= bounds.min[1] && pt[1] <= bounds.max[1])
+        .collect()
+}
+
+#[test]
+fn streaming_monotone_intersections_match_merged_knots_baseline() {
+    // Disjoint step sizes, shared knots, near-duplicate (5e-13) knots, and endpoint touch at x = 6.0.
+    let mut a: Vec<[f64; 2]> = (0..=80)
+        .map(|i| {
+            let x = i as f64 * 0.075;
+            [x, (1.3 * x).sin()]
+        })
+        .collect();
+    let mut b: Vec<[f64; 2]> = (0..=60)
+        .map(|i| {
+            let mut x = i as f64 * 0.1;
+            if i == 30 {
+                x += 5e-13; // within 1e-12 dedup tolerance of x = 3.0 in series a (40 * 0.075 = 3.0)
+            }
+            [x, (1.3 * x).cos() * 0.6]
+        })
+        .collect();
+    // Force exact endpoint touch at x = 6.0
+    let end_y = 0.25;
+    *a.last_mut().unwrap() = [6.0, end_y];
+    *b.last_mut().unwrap() = [6.0, end_y];
+
+    for (min_b, max_b) in [
+        ([0.0, -2.0], [6.0, 2.0]),
+        ([0.8, -2.0], [4.7, 2.0]),
+        ([2.9, -0.5], [6.0, 0.5]),
+    ] {
+        let transform = make_transform(min_b, max_b);
+        let bounds = *transform.bounds();
+        let expected = reference_merged_knots_intersections(&a, &b, bounds);
+        let items: Vec<Box<dyn PlotItem>> = vec![
+            Box::new(Line::new("Series A", a.clone())),
+            Box::new(Line::new("Series B", b.clone())),
+        ];
+        let pois = detect_critical_points(&items, &transform);
+        let actual: Vec<[f64; 2]> = pois
+            .iter()
+            .filter(|p| p.kind == CriticalPointKind::Intersection)
+            .map(|p| p.point)
+            .collect();
+        assert_eq!(actual.len(), expected.len(), "bounds={bounds:?}");
+        for (got, want) in actual.iter().zip(expected.iter()) {
+            assert!(
+                (got[0] - want[0]).abs() <= 1e-12,
+                "x mismatch: {got:?} vs {want:?}"
+            );
+            assert!(
+                (got[1] - want[1]).abs() <= 1e-12,
+                "y mismatch: {got:?} vs {want:?}"
+            );
+        }
+    }
+}

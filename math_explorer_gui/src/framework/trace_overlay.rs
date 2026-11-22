@@ -1,9 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use eframe::egui;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::ops::Deref;
-use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 
 #[path = "trace_overlay/ui.rs"]
 mod ui;
@@ -42,75 +40,23 @@ pub(super) fn resolve_trace_color(
 }
 
 /// Shared, reference-counted coordinate slice enabling O(1) snapshot cloning.
-#[derive(Clone, Debug, Default)]
-pub struct TracePoints(Arc<[[f64; 2]]>);
+pub type TracePoints = egui_plot::SharedPoints;
 
-impl TracePoints {
-    /// Returns `true` when both `TracePoints` handles share the same underlying allocation.
-    pub fn ptr_eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+mod shared_points_serde {
+    use super::TracePoints;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(
+        points: &TracePoints,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        points.as_slice().serialize(serializer)
     }
-}
 
-impl Deref for TracePoints {
-    type Target = [[f64; 2]];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl AsRef<[[f64; 2]]> for TracePoints {
-    fn as_ref(&self) -> &[[f64; 2]] {
-        &self.0
-    }
-}
-
-impl From<Vec<[f64; 2]>> for TracePoints {
-    fn from(points: Vec<[f64; 2]>) -> Self {
-        Self(Arc::from(points))
-    }
-}
-
-impl From<&[[f64; 2]]> for TracePoints {
-    fn from(points: &[[f64; 2]]) -> Self {
-        Self(Arc::from(points))
-    }
-}
-
-impl From<Arc<[[f64; 2]]>> for TracePoints {
-    fn from(points: Arc<[[f64; 2]]>) -> Self {
-        Self(points)
-    }
-}
-
-impl PartialEq for TracePoints {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0) || self.0.as_ref() == other.0.as_ref()
-    }
-}
-
-impl PartialEq<Vec<[f64; 2]>> for TracePoints {
-    fn eq(&self, other: &Vec<[f64; 2]>) -> bool {
-        self.0.as_ref() == other.as_slice()
-    }
-}
-
-impl PartialEq<[[f64; 2]]> for TracePoints {
-    fn eq(&self, other: &[[f64; 2]]) -> bool {
-        self.0.as_ref() == other
-    }
-}
-
-impl Serialize for TracePoints {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.0.as_ref().serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for TracePoints {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        Vec::<[f64; 2]>::deserialize(deserializer).map(Self::from)
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<TracePoints, D::Error> {
+        Vec::<[f64; 2]>::deserialize(deserializer).map(TracePoints::from)
     }
 }
 
@@ -119,6 +65,7 @@ impl<'de> Deserialize<'de> for TracePoints {
 #[serde(deny_unknown_fields)]
 pub struct TraceSeries {
     pub name: String,
+    #[serde(with = "shared_points_serde")]
     pub points: TracePoints,
 }
 

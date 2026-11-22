@@ -172,6 +172,36 @@ fn test_framework_save_state_embeds_raw_value_without_inner_escaping() {
     );
 }
 
+fn assert_post_idle_divergence_detection(
+    framework: &mut SimulationFramework,
+    save_calls: &Arc<AtomicUsize>,
+) {
+    egui_plot::clear_last_plot_datasets();
+    egui_plot::append_last_plot_datasets(&[(
+        "y(t)".to_string(),
+        vec![[0.0, 1.0], [0.05, f64::INFINITY]],
+    )]);
+    assert!(framework.inspect_runtime_state().is_err());
+    assert!(framework.is_diverged());
+    assert!(framework.rollback_step_back());
+    assert!(!framework.is_diverged());
+
+    if let Some(active) = framework.active_tool.as_mut() {
+        let nan_ode = OdeSolverTool {
+            param_k: f64::NAN,
+            ..Default::default()
+        };
+        *active = Box::new(SaveStateTrapTool {
+            inner: nan_ode,
+            save_calls: Arc::clone(save_calls),
+            finite_override: None,
+        });
+    }
+    assert!(framework.inspect_runtime_state().is_err());
+    assert!(framework.is_diverged());
+    assert_eq!(save_calls.load(Ordering::Relaxed), 0);
+}
+
 #[test]
 fn test_inspect_runtime_state_under_1ms_with_15_runs_without_save_state() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
@@ -190,18 +220,27 @@ fn test_inspect_runtime_state_under_1ms_with_15_runs_without_save_state() {
     egui_plot::clear_last_plot_datasets();
     egui_plot::append_last_plot_datasets(&[(
         "y(t)".to_string(),
-        (0..250).map(|i| [i as f64 * 0.04, 1.0]).collect(),
+        (0..400_002)
+            .map(|i| [i as f64 * 0.000025, (i as f64 * 0.001).cos()])
+            .collect(),
     )]);
 
     assert!(framework.inspect_runtime_state().is_ok());
+    framework.cache_valid_snapshot();
+    assert!(
+        framework.last_valid_snapshot().unwrap().memory_size() <= MAX_SNAPSHOT_BYTES,
+        "400,002-point snapshot must stay within 2 MiB ceiling"
+    );
+
     let start = PlatformInstant::now();
     for _ in 0..10 {
+        framework.cache_valid_snapshot();
         assert!(framework.inspect_runtime_state().is_ok());
     }
     let avg_secs = start.elapsed().as_secs_f64() / 10.0;
     assert!(
         avg_secs < 0.001,
-        "inspect_runtime_state took {:.4} ms (>= 1.0 ms)",
+        "inspect_runtime_state + cache_valid_snapshot at 400,002 idle points took {:.4} ms (>= 1.0 ms)",
         avg_secs * 1000.0
     );
     assert_eq!(
@@ -209,22 +248,7 @@ fn test_inspect_runtime_state_under_1ms_with_15_runs_without_save_state() {
         0,
         "inspect_runtime_state must never call InteractiveTool::save_state"
     );
-
-    // Non-finite parameter triggers divergence without calling save_state
-    if let Some(active) = framework.active_tool.as_mut() {
-        let nan_ode = OdeSolverTool {
-            param_k: f64::NAN,
-            ..Default::default()
-        };
-        *active = Box::new(SaveStateTrapTool {
-            inner: nan_ode,
-            save_calls: Arc::clone(&save_calls),
-            finite_override: None,
-        });
-    }
-    assert!(framework.inspect_runtime_state().is_err());
-    assert!(framework.is_diverged());
-    assert_eq!(save_calls.load(Ordering::Relaxed), 0);
+    assert_post_idle_divergence_detection(&mut framework, &save_calls);
 }
 
 #[test]

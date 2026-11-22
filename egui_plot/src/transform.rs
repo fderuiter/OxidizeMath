@@ -625,6 +625,37 @@ impl PlotTransform {
         )
     }
 
+    /// Precomputed affine projector for linear (non-logarithmic) axes, avoiding per-point divisions.
+    #[inline]
+    pub(crate) fn linear_projector(&self) -> Option<LinearProjector> {
+        if self.log_axis.x || self.log_axis.y {
+            return None;
+        }
+        let span_x = self.bounds.max[0] - self.bounds.min[0];
+        let span_y = self.bounds.max[1] - self.bounds.min[1];
+        if !span_x.is_finite() || span_x == 0.0 || !span_y.is_finite() || span_y == 0.0 {
+            return None;
+        }
+        let (x0, x1) = if self.inverted_axis[0] {
+            (self.frame.right() as f64, self.frame.left() as f64)
+        } else {
+            (self.frame.left() as f64, self.frame.right() as f64)
+        };
+        let (y0, y1) = if self.inverted_axis[1] {
+            (self.frame.top() as f64, self.frame.bottom() as f64)
+        } else {
+            (self.frame.bottom() as f64, self.frame.top() as f64)
+        };
+        Some(LinearProjector {
+            min_x: self.bounds.min[0],
+            scale_x: (x1 - x0) / span_x,
+            base_x: x0,
+            min_y: self.bounds.min[1],
+            scale_y: (y1 - y0) / span_y,
+            base_y: y0,
+        })
+    }
+
     /// Plot point from screen/ui position.
     pub fn value_from_position(&self, pos: Pos2) -> PlotPoint {
         let x_screen = if self.inverted_axis[0] {
@@ -791,6 +822,26 @@ impl PlotTransform {
                     .expand_y((current_aspect / aspect - 1.0) * self.bounds.height() * 0.5);
             }
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct LinearProjector {
+    min_x: f64,
+    scale_x: f64,
+    base_x: f64,
+    min_y: f64,
+    scale_y: f64,
+    base_y: f64,
+}
+
+impl LinearProjector {
+    #[inline(always)]
+    pub(crate) fn project(&self, x: f64, y: f64) -> Pos2 {
+        pos2(
+            (self.base_x + (x - self.min_x) * self.scale_x) as f32,
+            (self.base_y + (y - self.min_y) * self.scale_y) as f32,
+        )
     }
 }
 

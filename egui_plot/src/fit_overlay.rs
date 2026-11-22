@@ -1,60 +1,70 @@
 //! Hoverable fitted curve & residual stem series injection, badge rendering, and Fit Curve menus.
 
+use std::sync::Arc;
+
 use egui::{Color32, Rect, RichText, Stroke, Ui, vec2};
 
 use crate::{
-    AccessState,
+    AccessState, SharedPoints,
     a11y::{self, AccessibleTooltipExt as _},
-    fit::{FitResult, FitType, fit_model_with_axes},
+    fit::{FitResult, FitType},
     items::{Line, LineStyle, MarkerShape, PlotItem, Points},
+    runtime_cache::{CachedItemSeries, PlotRuntimeCache},
     transform::PlotTransform,
 };
 
-pub(crate) type BaseDatasetTuple = (String, Vec<[f64; 2]>, Color32);
-
-/// Computes the active regression fit (if enabled) and appends hoverable fitted curve and
-/// optional vertical residual stem series directly into `items` prior to dataset extraction.
+/// Computes or reuses the memoized active regression fit (if enabled) and appends hoverable
+/// fitted curve and optional vertical residual stem series directly into `items`.
+///
+/// When `access_state.fit_model` is `None`, skips regression fitting and curve sampling.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compute_and_inject_fit_items<'a>(
     ui: &Ui,
     items: &mut Vec<Box<dyn PlotItem + 'a>>,
-    base_datasets: &[BaseDatasetTuple],
+    base_series: &[CachedItemSeries],
+    runtime_cache: &mut PlotRuntimeCache,
     access_state: &mut AccessState,
     transform: &PlotTransform,
     log_x: bool,
     log_y: bool,
-) -> Option<(FitResult, Color32)> {
-    let valid_first = base_datasets
+) -> Option<(Arc<FitResult>, Color32)> {
+    let valid_first = base_series
         .iter()
         .enumerate()
-        .find(|(_, (_, pts, _))| pts.len() >= 2)
+        .find(|(_, entry)| entry.points.len() >= 2)
         .map(|(idx, _)| idx);
     if let Some(first_idx) = valid_first
-        && base_datasets
+        && base_series
             .get(access_state.fit_dataset_idx)
-            .is_none_or(|(_, pts, _)| pts.len() < 2)
+            .is_none_or(|entry| entry.points.len() < 2)
     {
         access_state.fit_dataset_idx = first_idx;
     }
 
-    let fit_type = access_state.fit_model?;
-    let (ds_name, ds_pts, ds_color) = base_datasets.get(access_state.fit_dataset_idx)?;
-    let fit_res = fit_model_with_axes(
-        ds_pts,
+    let Some(fit_type) = access_state.fit_model else {
+        runtime_cache.clear_fit();
+        return None;
+    };
+    let target = base_series.get(access_state.fit_dataset_idx)?;
+    let (fit_opt, curve_pts) = runtime_cache.resolve_fit_and_curve(
+        &target.points,
+        &target.name,
         fit_type,
-        ds_name,
         log_x,
         log_y,
         access_state.fit_log_mode,
-    )?;
-    let accent = if *ds_color == Color32::TRANSPARENT {
+        access_state.show_fit_overlay,
+        transform,
+    );
+    let fit_res = fit_opt?;
+    let accent = if target.color == Color32::TRANSPARENT {
         ui.visuals().widgets.active.bg_fill
     } else {
-        *ds_color
+        target.color
     };
 
     if access_state.show_fit_overlay {
-        let disp_name = display_dataset_name(ds_name, access_state.fit_dataset_idx);
-        let curve_pts = sample_fit_curve(&fit_res, transform);
+        let disp_name = display_dataset_name(&target.name, access_state.fit_dataset_idx);
         if curve_pts.len() >= 2 {
             let line_name = format!("Fit ({}): {disp_name}", fit_res.fit_type.short_label());
             let line = Line::new(line_name, curve_pts)
@@ -74,35 +84,6 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
         }
     }
     Some((fit_res, accent))
-}
-
-fn sample_fit_curve(fit_res: &FitResult, transform: &PlotTransform) -> Vec<[f64; 2]> {
-    let bounds = transform.bounds();
-    let (x_min, x_max) = (bounds.min[0], bounds.max[0]);
-    if !x_min.is_finite() || !x_max.is_finite() || x_max <= x_min {
-        return Vec::new();
-    }
-    let count = 200_usize;
-    let use_log_x = transform.log_axis().x && x_min > 0.0;
-    let (lo_log, hi_log) = if use_log_x {
-        (x_min.log10(), x_max.log10())
-    } else {
-        (0.0, 0.0)
-    };
-    let mut out = Vec::with_capacity(count + 1);
-    for i in 0..=count {
-        let t = i as f64 / (count as f64);
-        let x = if use_log_x {
-            10.0_f64.powf(lo_log + t * (hi_log - lo_log))
-        } else {
-            x_min + t * (x_max - x_min)
-        };
-        let y = fit_res.eval(x);
-        if x.is_finite() && y.is_finite() {
-            out.push([x, y]);
-        }
-    }
-    out
 }
 
 fn residual_stem_color(ui: &Ui, accent: Color32) -> Color32 {
@@ -181,15 +162,15 @@ fn format_metric_compact(v: f64) -> String {
 /// Renders the shared `Fit Curve` menu items for both the top toolbar and context menu.
 pub(crate) fn render_fit_curve_menu(
     ui: &mut Ui,
-    base_datasets: &[BaseDatasetTuple],
+    base_datasets: &[(String, SharedPoints, Color32)],
     access_state: &mut AccessState,
     in_context_menu: bool,
 ) {
-    let valid: Vec<(usize, &String, &Vec<[f64; 2]>)> = base_datasets
+    let valid: Vec<(usize, &str, usize)> = base_datasets
         .iter()
         .enumerate()
         .filter(|(_, (_, pts, _))| pts.len() >= 2)
-        .map(|(i, (name, pts, _))| (i, name, pts))
+        .map(|(i, (name, pts, _))| (i, name.as_str(), pts.len()))
         .collect();
     if valid.is_empty() {
         let reason = "Requires a dataset with at least 2 points for curve fitting";
@@ -199,6 +180,13 @@ pub(crate) fn render_fit_curve_menu(
                 .accessible_tooltip(reason);
         }
         return;
+    }
+    if let Some(&(first_idx, _, _)) = valid.first()
+        && !valid
+            .iter()
+            .any(|&(idx, _, _)| idx == access_state.fit_dataset_idx)
+    {
+        access_state.fit_dataset_idx = first_idx;
     }
     render_dataset_selector(ui, &valid, access_state);
     ui.label(RichText::new("Fit Model:").small().weak());
@@ -230,19 +218,19 @@ pub(crate) fn render_fit_curve_menu(
 
 fn render_dataset_selector(
     ui: &mut Ui,
-    valid: &[(usize, &String, &Vec<[f64; 2]>)],
+    valid: &[(usize, &str, usize)],
     access_state: &mut AccessState,
 ) {
     if valid.len() <= 1 {
         return;
     }
     ui.label(RichText::new("Select Dataset:").small().weak());
-    for &(idx, name, pts) in valid {
+    for &(idx, name, len) in valid {
         let label = display_dataset_name(name, idx);
         if ui
             .selectable_label(
                 access_state.fit_dataset_idx == idx,
-                format!("{label} ({} pts)", pts.len()),
+                format!("{label} ({len} pts)"),
             )
             .clicked()
         {

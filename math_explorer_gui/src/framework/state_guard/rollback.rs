@@ -89,12 +89,13 @@ impl SimulationFramework {
         let (details, used_fallback) =
             self.restore_verified_recovery_state(snapshot.tool_state.as_deref());
         self.bump_framework_revision();
-        let plots =
-            if !used_fallback && inspect_datasets_for_divergence(&snapshot.plot_datasets).is_ok() {
-                snapshot.plot_datasets
-            } else {
-                Vec::new()
-            };
+        let plots = if !used_fallback
+            && inspect_shared_datasets_for_divergence(&snapshot.plot_datasets, &[]).is_ok()
+        {
+            snapshot.plot_datasets
+        } else {
+            Vec::new()
+        };
         self.restore_snapshot_plots(plots);
         if used_fallback {
             self.refresh_saved_and_snapshot_after_reset();
@@ -125,12 +126,13 @@ impl SimulationFramework {
             used_fallback = fb;
         }
         self.bump_framework_revision();
-        let plots =
-            if !used_fallback && inspect_datasets_for_divergence(&snapshot.plot_datasets).is_ok() {
-                snapshot.plot_datasets
-            } else {
-                Vec::new()
-            };
+        let plots = if !used_fallback
+            && inspect_shared_datasets_for_divergence(&snapshot.plot_datasets, &[]).is_ok()
+        {
+            snapshot.plot_datasets
+        } else {
+            Vec::new()
+        };
         self.restore_snapshot_plots(plots);
         if used_fallback {
             self.refresh_saved_and_snapshot_after_reset();
@@ -144,9 +146,12 @@ impl SimulationFramework {
         true
     }
 
-    pub(super) fn restore_snapshot_plots(&mut self, plot_datasets: Vec<(String, Vec<[f64; 2]>)>) {
+    pub(super) fn restore_snapshot_plots(
+        &mut self,
+        plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
+    ) {
         egui_plot::clear_last_plot_datasets();
-        egui_plot::append_last_plot_datasets(&plot_datasets);
+        egui_plot::append_last_plot_shared_datasets(&plot_datasets);
         self.sync_state.datasets_owner_tool = self
             .active_tool
             .as_ref()
@@ -282,6 +287,7 @@ impl SimulationFramework {
             self.saved_tool_states.remove(tool.name());
         }
         self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
+        self.rev_cache.last_snapshot_source_datasets.clear();
         let mut snap = StateSnapshot {
             tool_state: recovery_state,
             plot_datasets: Vec::new(),
@@ -321,6 +327,7 @@ impl SimulationFramework {
         self.sync_state.datasets_owner_tool = Some(tool.name());
         self.current_valid_plot_datasets = datasets.clone();
         self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
+        self.rev_cache.last_snapshot_source_datasets = datasets.clone();
         let mut snap = StateSnapshot {
             tool_state: recovery,
             plot_datasets: datasets,

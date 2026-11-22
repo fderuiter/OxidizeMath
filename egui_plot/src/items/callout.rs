@@ -219,6 +219,10 @@ impl PlotItem for Callout {
         PlotGeometry::None
     }
 
+    fn matches_cached_shared_points(&self, cached: &super::SharedPoints) -> bool {
+        cached.is_empty()
+    }
+
     fn bounds(&self) -> PlotBounds {
         let mut bounds = PlotBounds::NOTHING;
         bounds.extend_with(&self.target_point);

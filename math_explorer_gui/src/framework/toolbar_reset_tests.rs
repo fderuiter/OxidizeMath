@@ -229,8 +229,10 @@ fn test_reset_parameters_rebuilds_from_factory_when_baseline_missing() {
         "Stale Series".to_string(),
         vec![[0.0, 1.0], [1.0, 2.0]],
     )]);
-    framework.current_valid_plot_datasets =
-        vec![("Stale Series".to_string(), vec![[0.0, 1.0], [1.0, 2.0]])];
+    framework.current_valid_plot_datasets = vec![(
+        "Stale Series".to_string(),
+        egui_plot::SharedPoints::from(vec![[0.0, 1.0], [1.0, 2.0]]),
+    )];
 
     framework.reset_parameters();
 

@@ -170,7 +170,7 @@ fn test_empty_primitives_and_raster_rejected() {
 fn test_primitives_log_axis_projection_png_and_svg() {
     let prim = ExportPrimitive::Points {
         name: "Decades".to_string(),
-        points: vec![[-5.0, 10.0], [1.0, 10.0], [10.0, 100.0], [100.0, 1000.0]],
+        points: vec![[-5.0, 10.0], [1.0, 10.0], [10.0, 100.0], [100.0, 1000.0]].into(),
         color: egui::Color32::from_rgb(80, 220, 120),
         radius: 4.0,
     };

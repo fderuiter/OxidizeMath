@@ -68,7 +68,7 @@ pub(crate) fn fit_polynomial_scaled(
         coefficients: coeffs.clone(),
         r_squared,
         rmse,
-        residuals,
+        residuals: residuals.into(),
         degree,
         formula: format_scaled_polynomial_formula(&coeffs, log_x, log_y),
         dataset_name: dataset_name.to_owned(),

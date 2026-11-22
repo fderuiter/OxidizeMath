@@ -28,7 +28,7 @@ fn export_action_button(
 struct FrameworkExportSource<'a> {
     active_tool: &'a mut Option<Box<dyn InteractiveTool>>,
     cached_tool_name: Option<&'static str>,
-    cached_plot_datasets: &'a [(String, Vec<[f64; 2]>)],
+    cached_plot_datasets: &'a [(String, egui_plot::SharedPoints)],
     export_queue: &'a mut ExportQueue,
     status_color: egui::Color32,
     ctx: egui::Context,
@@ -44,7 +44,7 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
             && self.cached_tool_name == Some(tool.name())
             && !self.cached_plot_datasets.is_empty()
         {
-            self.cached_plot_datasets.to_vec()
+            super::export_queue::materialize_shared_datasets(self.cached_plot_datasets)
         } else {
             datasets
         }
@@ -60,7 +60,8 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
             && self.cached_tool_name == Some(tool.name())
             && !self.cached_plot_datasets.is_empty()
         {
-            egui_plot::export::sample_progressive_frames(self.cached_plot_datasets, step_count)
+            let owned = super::export_queue::materialize_shared_datasets(self.cached_plot_datasets);
+            egui_plot::export::sample_progressive_frames(&owned, step_count)
         } else {
             frames
         }

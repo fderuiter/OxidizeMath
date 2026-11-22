@@ -57,6 +57,9 @@ pub struct SirTool {
     sensitivity_engine: crate::sensitivity::SensitivityEngine,
     last_param_summary: String,
     revision: u64,
+    series_key: (usize, usize, usize, usize, usize, usize),
+    series_finite: bool,
+    cached_peak: Option<(f64, f64)>,
 }
 
 impl Default for SirTool {
@@ -74,6 +77,9 @@ impl Default for SirTool {
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
             revision: 1,
+            series_key: (0, 0, 0, 0, 0, 0),
+            series_finite: true,
+            cached_peak: None,
         };
         tool.recalculate();
         tool
@@ -81,8 +87,49 @@ impl Default for SirTool {
 }
 
 impl SirTool {
+    fn current_series_key(&self) -> (usize, usize, usize, usize, usize, usize) {
+        (
+            self.s_points.as_ptr() as usize,
+            self.s_points.len(),
+            self.i_points.as_ptr() as usize,
+            self.i_points.len(),
+            self.r_points.as_ptr() as usize,
+            self.r_points.len(),
+        )
+    }
+
+    pub(crate) fn sync_series_cache(&mut self) {
+        let key = self.current_series_key();
+        if self.series_key != key {
+            self.series_finite = self
+                .s_points
+                .iter()
+                .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .i_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .r_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite());
+            self.cached_peak = metrics::compute_epidemic_peak(&self.i_points);
+            self.series_key = key;
+        }
+    }
+
+    pub(super) fn epidemic_peak(&self) -> Option<(f64, f64)> {
+        if self.series_key == self.current_series_key() {
+            self.cached_peak
+        } else {
+            metrics::compute_epidemic_peak(&self.i_points)
+        }
+    }
     pub fn param_summary(&self) -> String {
-        format!(r"\beta={:.2}, \gamma={:.2}, N={:.0}", self.beta, self.gamma, self.n)
+        format!(
+            r"\beta={:.2}, \gamma={:.2}, N={:.0}",
+            self.beta, self.gamma, self.n
+        )
     }
 
     fn render_parameter_controls(&mut self, ui: &mut egui::Ui) -> bool {
@@ -91,10 +138,7 @@ impl SirTool {
             .add(egui::Slider::new(&mut self.n, 100.0..=100_000.0).text("Population (N)"))
             .changed();
         changed |= ui
-            .add(
-                egui::Slider::new(&mut self.i0, 1.0..=self.n / 2.0)
-                    .text("Initial Infected (I0)"),
-            )
+            .add(egui::Slider::new(&mut self.i0, 1.0..=self.n / 2.0).text("Initial Infected (I0)"))
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.beta, 0.0..=5.0).text("Transmission Rate (beta)"))
@@ -185,6 +229,8 @@ impl SirTool {
                 model.step(dt);
             }
         }
+        self.series_key = (0, 0, 0, 0, 0, 0);
+        self.sync_series_cache();
     }
 
     fn load_sir_state(&mut self, state: &str, preserve_snapshots: bool) -> Result<(), String> {
@@ -215,7 +261,9 @@ impl SirTool {
 }
 
 impl InteractiveTool for SirTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "SIR Model"
     }
@@ -238,22 +286,46 @@ impl InteractiveTool for SirTool {
     }
 
     fn has_finite_parameters(&self) -> bool {
-        [self.n, self.i0, self.beta, self.gamma, self.duration]
+        let scalars_ok = [self.n, self.i0, self.beta, self.gamma, self.duration]
             .into_iter()
             .all(f64::is_finite)
             && self.n > 0.0
-            && self.duration > 0.0
-            && self.s_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
-            && self.i_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
-            && self.r_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
+            && self.duration > 0.0;
+        if !scalars_ok {
+            return false;
+        }
+        if self.series_key == self.current_series_key() {
+            self.series_finite
+        } else {
+            self.s_points
+                .iter()
+                .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .i_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .r_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite())
+        }
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut datasets = egui_plot::get_last_plot_datasets();
         if datasets.is_empty() {
-            datasets.push(("Susceptible".to_string(), self.s_points.iter().map(|p| [p.x, p.y]).collect()));
-            datasets.push(("Infected".to_string(), self.i_points.iter().map(|p| [p.x, p.y]).collect()));
-            datasets.push(("Recovered".to_string(), self.r_points.iter().map(|p| [p.x, p.y]).collect()));
+            datasets.push((
+                "Susceptible".to_string(),
+                self.s_points.iter().map(|p| [p.x, p.y]).collect(),
+            ));
+            datasets.push((
+                "Infected".to_string(),
+                self.i_points.iter().map(|p| [p.x, p.y]).collect(),
+            ));
+            datasets.push((
+                "Recovered".to_string(),
+                self.r_points.iter().map(|p| [p.x, p.y]).collect(),
+            ));
             datasets.extend(self.snapshot_manager.export_datasets());
         }
         datasets
@@ -303,10 +375,12 @@ impl InteractiveTool for SirTool {
     }
 
     fn show_ui(&mut self, ui: &mut egui::Ui) {
+        self.sync_series_cache();
         ui.vertical(|ui| {
             ui.heading("Parameters");
             if self.render_parameter_controls(ui) {
-                let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+                let to_pairs =
+                    |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
                 let series = vec![
                     TraceSeries::new("Susceptible", to_pairs(&self.s_points)),
                     TraceSeries::new("Infected", to_pairs(&self.i_points)),
@@ -328,7 +402,8 @@ impl InteractiveTool for SirTool {
 
             if self.snapshot_manager.render_ui(ui, move || {
                 let label = format!("Baseline {}", current_len + 1);
-                let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+                let to_pairs =
+                    |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
                 let series = vec![
                     TraceSeries::new("Susceptible", to_pairs(s_points)),
                     TraceSeries::new("Infected", to_pairs(i_points)),
@@ -349,7 +424,6 @@ impl InteractiveTool for SirTool {
 
 // [cite:graph_parameters_rust]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "SirTool",
@@ -368,9 +442,15 @@ impl scientific_metadata::theory::TheoryDescribable for SirTool {
             self.beta, self.gamma, r0
         )
     }
-    fn phonetic_description(&self) -> String { "Kermack-McKendrick SIR compartmental epidemic model theory".into() }
-    fn theory_citation(&self) -> String { "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Kermack-McKendrick SIR compartmental epidemic model theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 #[cfg(test)]

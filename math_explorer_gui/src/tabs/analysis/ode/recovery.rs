@@ -14,14 +14,24 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
         OdePreset::HarmonicOscillator => tool.param_k.is_finite() && tool.ic_v0.is_finite(),
         OdePreset::LogisticGrowth => tool.param_r.is_finite() && tool.param_cap_k.is_finite(),
     };
-    !tool.diverged
-        && tool.dt.is_finite()
-        && tool.total_time.is_finite()
-        && tool.ic_y0.is_finite()
-        && params_finite
-        && tool.time_series.iter().all(|t| t.is_finite())
-        && tool.y_series.iter().all(|y| y.is_finite())
-        && tool.v_series.iter().all(|v| v.is_finite())
+    if tool.diverged
+        || !tool.dt.is_finite()
+        || !tool.total_time.is_finite()
+        || !tool.ic_y0.is_finite()
+        || !params_finite
+    {
+        return false;
+    }
+    if tool
+        .series_cache
+        .matches_series(&tool.time_series, &tool.y_series, &tool.v_series)
+    {
+        tool.series_cache.is_series_finite()
+    } else {
+        tool.time_series.iter().all(|t| t.is_finite())
+            && tool.y_series.iter().all(|y| y.is_finite())
+            && tool.v_series.iter().all(|v| v.is_finite())
+    }
 }
 
 impl FiniteStateGuard for OdeSolverTool {
@@ -146,6 +156,7 @@ pub fn clamp_ode_step_settings(dt: &mut f64, total_time: &mut f64) {
 
 /// Applies a centralized [`RecoveryAction`] to [`OdeSolverTool`] via [`FiniteStateGuard`]
 /// and refreshes the active plot point buffers.
+#[cfg(test)]
 pub fn apply_recovery_action(
     tool: &mut OdeSolverTool,
     action: RecoveryAction,
@@ -172,6 +183,7 @@ pub fn apply_recovery_action(
 }
 
 /// Renders the centralized recovery banner and immediately applies recovery remedies to the tool.
+#[cfg(test)]
 pub fn render_recovery_ui(
     ui: &mut egui::Ui,
     tool: &mut super::OdeSolverTool,
@@ -181,5 +193,26 @@ pub fn render_recovery_ui(
 ) {
     if let Some(action) = render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(tool)) {
         apply_recovery_action(tool, action, changed, plot_points_y, plot_points_v);
+    }
+}
+
+pub(super) fn render_recovery_ui_shared(
+    ui: &mut egui::Ui,
+    tool: &mut super::OdeSolverTool,
+    changed: &mut bool,
+    plot_points_y: &mut egui_plot::SharedPoints,
+    plot_points_v: &mut egui_plot::SharedPoints,
+) {
+    if let Some(action) = render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(tool)) {
+        match action {
+            RecoveryAction::AutoScaleStepSize => FiniteStateGuard::auto_scale_step_size(tool),
+            RecoveryAction::ClampParameters => FiniteStateGuard::clamp_parameters(tool),
+            RecoveryAction::ResetParameters => FiniteStateGuard::reset_parameters(tool),
+        }
+        *changed = true;
+        tool.sync_series_cache();
+        let (py, pv) = tool.series_cache.shared_points();
+        *plot_points_y = py;
+        *plot_points_v = pv;
     }
 }

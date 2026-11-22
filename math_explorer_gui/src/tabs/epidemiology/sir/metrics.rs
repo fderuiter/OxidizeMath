@@ -55,7 +55,7 @@ pub(super) fn render_epidemic_metrics(ui: &mut egui::Ui, tool: &SirTool) {
         f64::INFINITY
     };
     render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{r0:.2}"));
-    if let Some((peak_day, peak_infected)) = compute_epidemic_peak(&tool.i_points) {
+    if let Some((peak_day, peak_infected)) = tool.epidemic_peak() {
         render_copyable_metric(ui, "Peak Infected", &format!("{peak_infected:.1}"));
         render_copyable_metric(ui, "Peak Day", &format!("Day {peak_day:.2}"));
     }

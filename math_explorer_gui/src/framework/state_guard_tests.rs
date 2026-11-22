@@ -89,7 +89,10 @@ fn test_simulation_framework_step_back_rollback_restores_parameters_and_plot() {
     )];
     egui_plot::clear_last_plot_datasets();
     egui_plot::append_last_plot_datasets(&pre_divergence_data);
-    framework.current_valid_plot_datasets = pre_divergence_data.clone();
+    framework.current_valid_plot_datasets = vec![(
+        "Trajectory".to_string(),
+        egui_plot::SharedPoints::from(pre_divergence_data[0].1.as_slice()),
+    )];
     framework.cache_valid_snapshot();
 
     let pre_state = framework.active_tool.as_ref().unwrap().save_state();
@@ -232,7 +235,10 @@ fn test_simulation_framework_performance_benchmarks() {
     );
 
     // Benchmark 2: Step-back state restoration latency (< 16 ms constraint)
-    framework.current_valid_plot_datasets = large_datasets;
+    framework.current_valid_plot_datasets = large_datasets
+        .into_iter()
+        .map(|(n, p)| (n, egui_plot::SharedPoints::from(p)))
+        .collect();
     framework.cache_valid_snapshot();
 
     // Trigger divergence
@@ -324,7 +330,10 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
         .unwrap()
         .load_state(&modified);
     egui_plot::append_last_plot_datasets(&[("Modified Run".to_string(), vec![[0.0, 5.0]])]);
-    framework.current_valid_plot_datasets = vec![("Modified Run".to_string(), vec![[0.0, 5.0]])];
+    framework.current_valid_plot_datasets = vec![(
+        "Modified Run".to_string(),
+        egui_plot::SharedPoints::from(vec![[0.0, 5.0]]),
+    )];
     framework.cache_valid_snapshot();
 
     let before_reset = crate::web_io::PlatformInstant::now();

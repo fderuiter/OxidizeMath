@@ -2,16 +2,59 @@
 
 use crate::items::PlotPoint;
 
+/// Uniform read-only 2D coordinate access over `[PlotPoint]` and `[[f64; 2]]` buffers.
+pub(crate) trait CoordSlice {
+    fn coord_len(&self) -> usize;
+    fn coord_at(&self, idx: usize) -> PlotPoint;
+}
+
+impl CoordSlice for [PlotPoint] {
+    #[inline]
+    fn coord_len(&self) -> usize {
+        self.len()
+    }
+
+    #[inline]
+    fn coord_at(&self, idx: usize) -> PlotPoint {
+        self[idx]
+    }
+}
+
+impl CoordSlice for [[f64; 2]] {
+    #[inline]
+    fn coord_len(&self) -> usize {
+        self.len()
+    }
+
+    #[inline]
+    fn coord_at(&self, idx: usize) -> PlotPoint {
+        let [x, y] = self[idx];
+        PlotPoint::new(x, y)
+    }
+}
+
 /// Locate all $x$ positions where a polyline crosses `y_target` (including step drops).
 pub fn interpolate_threshold_crossings(pts: &[PlotPoint], y_target: f64) -> Vec<f64> {
-    if pts.len() < 2 || !y_target.is_finite() {
+    interpolate_threshold_crossings_slice(pts, y_target)
+}
+
+/// Locate all $x$ positions where a `[[f64; 2]]` polyline crosses `y_target`.
+pub fn interpolate_threshold_crossings_pairs(pts: &[[f64; 2]], y_target: f64) -> Vec<f64> {
+    interpolate_threshold_crossings_slice(pts, y_target)
+}
+
+pub(crate) fn interpolate_threshold_crossings_slice<C: CoordSlice + ?Sized>(
+    pts: &C,
+    y_target: f64,
+) -> Vec<f64> {
+    let n = pts.coord_len();
+    if n < 2 || !y_target.is_finite() {
         return Vec::new();
     }
     let mut roots = Vec::new();
-    let n = pts.len();
     for i in 0..n - 1 {
-        let p0 = pts[i];
-        let p1 = pts[i + 1];
+        let p0 = pts.coord_at(i);
+        let p1 = pts.coord_at(i + 1);
         if !is_finite_pt(p0) || !is_finite_pt(p1) {
             continue;
         }
@@ -37,14 +80,18 @@ pub fn interpolate_threshold_crossings(pts: &[PlotPoint], y_target: f64) -> Vec<
 
 /// Evaluate or interpolate all $y$ values where a polyline crosses `x_target`.
 pub fn interpolate_y_at_x(pts: &[PlotPoint], x_target: f64) -> Vec<f64> {
-    if pts.len() < 2 || !x_target.is_finite() {
+    interpolate_y_at_x_slice(pts, x_target)
+}
+
+pub(crate) fn interpolate_y_at_x_slice<C: CoordSlice + ?Sized>(pts: &C, x_target: f64) -> Vec<f64> {
+    let n = pts.coord_len();
+    if n < 2 || !x_target.is_finite() {
         return Vec::new();
     }
     let mut values = Vec::new();
-    let n = pts.len();
     for i in 0..n - 1 {
-        let p0 = pts[i];
-        let p1 = pts[i + 1];
+        let p0 = pts.coord_at(i);
+        let p1 = pts.coord_at(i + 1);
         if !is_finite_pt(p0) || !is_finite_pt(p1) {
             continue;
         }
@@ -69,13 +116,14 @@ pub fn interpolate_y_at_x(pts: &[PlotPoint], x_target: f64) -> Vec<f64> {
 }
 
 /// Detect local maxima and minima via three-point parabolic interpolation.
-pub(crate) fn detect_local_extrema(pts: &[PlotPoint]) -> Vec<([f64; 2], bool)> {
-    if pts.len() < 3 {
+pub(crate) fn detect_local_extrema<C: CoordSlice + ?Sized>(pts: &C) -> Vec<([f64; 2], bool)> {
+    let n = pts.coord_len();
+    if n < 3 {
         return Vec::new();
     }
     let mut out = Vec::new();
-    for i in 1..pts.len() - 1 {
-        let (p0, p1, p2) = (pts[i - 1], pts[i], pts[i + 1]);
+    for i in 1..n - 1 {
+        let (p0, p1, p2) = (pts.coord_at(i - 1), pts.coord_at(i), pts.coord_at(i + 1));
         if !is_finite_pt(p0) || !is_finite_pt(p1) || !is_finite_pt(p2) {
             continue;
         }
@@ -96,10 +144,11 @@ pub(crate) fn detect_local_extrema(pts: &[PlotPoint]) -> Vec<([f64; 2], bool)> {
     out
 }
 
-fn next_distinct_y(pts: &[PlotPoint], idx: usize) -> Option<f64> {
-    let base_y = pts[idx].y;
-    for pt in &pts[idx + 1..] {
-        if !is_finite_pt(*pt) {
+fn next_distinct_y<C: CoordSlice + ?Sized>(pts: &C, idx: usize) -> Option<f64> {
+    let base_y = pts.coord_at(idx).y;
+    for j in (idx + 1)..pts.coord_len() {
+        let pt = pts.coord_at(j);
+        if !is_finite_pt(pt) {
             return None;
         }
         if (pt.y - base_y).abs() > 0.0 {
@@ -134,9 +183,13 @@ fn parabolic_vertex(p0: PlotPoint, p1: PlotPoint, p2: PlotPoint) -> [f64; 2] {
     }
 }
 
-fn solve_segment_crossing(pts: &[PlotPoint], idx: usize, y_target: f64) -> Option<f64> {
-    let p0 = pts[idx];
-    let p1 = pts[idx + 1];
+fn solve_segment_crossing<C: CoordSlice + ?Sized>(
+    pts: &C,
+    idx: usize,
+    y_target: f64,
+) -> Option<f64> {
+    let p0 = pts.coord_at(idx);
+    let p1 = pts.coord_at(idx + 1);
     let dx = p1.x - p0.x;
     if dx.abs() <= 1e-12 {
         return Some(p0.x);
@@ -157,9 +210,13 @@ fn solve_segment_crossing(pts: &[PlotPoint], idx: usize, y_target: f64) -> Optio
     x.is_finite().then_some(x)
 }
 
-pub(crate) fn eval_segment_at_x(pts: &[PlotPoint], idx: usize, x_target: f64) -> Option<f64> {
-    let p0 = pts[idx];
-    let p1 = pts[idx + 1];
+pub(crate) fn eval_segment_at_x<C: CoordSlice + ?Sized>(
+    pts: &C,
+    idx: usize,
+    x_target: f64,
+) -> Option<f64> {
+    let p0 = pts.coord_at(idx);
+    let p1 = pts.coord_at(idx + 1);
     let dx = p1.x - p0.x;
     if dx.abs() <= 1e-12 {
         return Some(0.5 * (p0.y + p1.y));
@@ -175,9 +232,9 @@ pub(crate) fn eval_segment_at_x(pts: &[PlotPoint], idx: usize, x_target: f64) ->
     y.is_finite().then_some(y)
 }
 
-fn monotone_hermite_slopes(pts: &[PlotPoint], idx: usize) -> Option<(f64, f64)> {
-    let p0 = pts[idx];
-    let p1 = pts[idx + 1];
+fn monotone_hermite_slopes<C: CoordSlice + ?Sized>(pts: &C, idx: usize) -> Option<(f64, f64)> {
+    let p0 = pts.coord_at(idx);
+    let p1 = pts.coord_at(idx + 1);
     let dx = p1.x - p0.x;
     if dx <= 1e-12 {
         return None;
@@ -188,11 +245,10 @@ fn monotone_hermite_slopes(pts: &[PlotPoint], idx: usize) -> Option<(f64, f64)> 
     }
     let prev = idx
         .checked_sub(1)
-        .map(|j| pts[j])
+        .map(|j| pts.coord_at(j))
         .filter(|p| is_finite_pt(*p) && p.x < p0.x);
-    let next = pts
-        .get(idx + 2)
-        .copied()
+    let next = (idx + 2 < pts.coord_len())
+        .then(|| pts.coord_at(idx + 2))
         .filter(|p| is_finite_pt(*p) && p.x > p1.x);
     if prev.is_none() && next.is_none() {
         return None;

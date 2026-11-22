@@ -193,7 +193,18 @@ impl SimulationFramework {
             expires_at_time: None,
         });
     }
+}
 
+pub(super) fn materialize_shared_datasets(
+    datasets: &[(String, egui_plot::SharedPoints)],
+) -> Vec<(String, Vec<[f64; 2]>)> {
+    datasets
+        .iter()
+        .map(|(name, pts)| (name.clone(), pts.to_vec()))
+        .collect()
+}
+
+impl SimulationFramework {
     /// Queues a dataset or figure file export request for deferred end-of-frame dispatch.
     pub(crate) fn queue_export(&mut self, format: ExportFormat) {
         self.export_queue.push(format);
@@ -210,7 +221,7 @@ impl SimulationFramework {
             && self.sync_state.datasets_owner_tool == Some(tool.name())
             && !self.current_valid_plot_datasets.is_empty()
         {
-            self.current_valid_plot_datasets.clone()
+            materialize_shared_datasets(&self.current_valid_plot_datasets)
         } else {
             datasets
         }

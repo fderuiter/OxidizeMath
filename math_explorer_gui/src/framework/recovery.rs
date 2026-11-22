@@ -281,38 +281,60 @@ pub fn render_state_guard_banner(
     chosen_action
 }
 
+fn inspect_coordinate_slice(name: &str, slice: &[[f64; 2]]) -> Result<(), DiagnosticReport> {
+    let mut idx = 0;
+    while idx < slice.len() {
+        let [x, y] = slice[idx];
+        if !(x > f64::NEG_INFINITY
+            && x < f64::INFINITY
+            && y > f64::NEG_INFINITY
+            && y < f64::INFINITY)
+        {
+            let (var_name, bad_val) = if !y.is_finite() {
+                (format!("{}.y", name), y)
+            } else {
+                (format!("{}.x", name), x)
+            };
+            return Err(DiagnosticReport::new(
+                0.0,
+                idx,
+                var_name,
+                format!(
+                    "Non-finite floating-point value ({}) encountered in plot dataset '{}' at point index {}.",
+                    bad_val, name, idx
+                ),
+            ));
+        }
+        idx += 1;
+    }
+    Ok(())
+}
+
 /// Inspects plot datasets for any non-finite floating-point numbers (`NaN`, `+Inf`, `-Inf`).
 /// Returns `Err(DiagnosticReport)` if any non-finite point coordinate is detected.
 pub fn inspect_datasets_for_divergence(
     datasets: &[(String, Vec<[f64; 2]>)],
 ) -> Result<(), DiagnosticReport> {
     for (name, points) in datasets {
-        let slice = points.as_slice();
-        let mut idx = 0;
-        while idx < slice.len() {
-            let [x, y] = slice[idx];
-            if !(x > f64::NEG_INFINITY
-                && x < f64::INFINITY
-                && y > f64::NEG_INFINITY
-                && y < f64::INFINITY)
-            {
-                let (var_name, bad_val) = if !y.is_finite() {
-                    (format!("{}.y", name), y)
-                } else {
-                    (format!("{}.x", name), x)
-                };
-                return Err(DiagnosticReport::new(
-                    0.0,
-                    idx,
-                    var_name,
-                    format!(
-                        "Non-finite floating-point value ({}) encountered in plot dataset '{}' at point index {}.",
-                        bad_val, name, idx
-                    ),
-                ));
-            }
-            idx += 1;
+        inspect_coordinate_slice(name, points.as_slice())?;
+    }
+    Ok(())
+}
+
+/// Inspects shared plot datasets for non-finite coordinates, skipping any dataset whose
+/// `SharedPoints` handle shares the exact `Arc` allocation of an entry in `already_verified`.
+pub fn inspect_shared_datasets_for_divergence(
+    datasets: &[(String, egui_plot::SharedPoints)],
+    already_verified: &[(String, egui_plot::SharedPoints)],
+) -> Result<(), DiagnosticReport> {
+    for (name, points) in datasets {
+        if already_verified
+            .iter()
+            .any(|(_, valid)| points.ptr_eq(valid))
+        {
+            continue;
         }
+        inspect_coordinate_slice(name, points.as_slice())?;
     }
     Ok(())
 }

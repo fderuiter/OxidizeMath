@@ -288,7 +288,10 @@ fn verify_tool_snapshot_gate_and_rollback(
 
     fw.last_valid_snapshot = Some(StateSnapshot {
         tool_state: Some(invalid_snapshot_json.to_string()),
-        plot_datasets: vec![("BadPlot".to_string(), vec![[0.0, f64::NAN]])],
+        plot_datasets: vec![(
+            "BadPlot".to_string(),
+            egui_plot::SharedPoints::from(vec![[0.0, f64::NAN]]),
+        )],
         step_index: 3,
         timestamp: crate::web_io::PlatformInstant::now(),
     });

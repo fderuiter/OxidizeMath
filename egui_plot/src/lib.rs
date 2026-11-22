@@ -27,6 +27,7 @@ pub mod modal_lifecycle;
 mod plot_ui;
 pub mod poi;
 mod poi_interaction;
+mod runtime_cache;
 mod transform;
 
 use std::{cmp::Ordering, ops::RangeInclusive, sync::Arc};
@@ -46,7 +47,7 @@ pub use crate::{
         DataTableState, DataTableViewMode, TableSeriesRef, data_table_clipboard_status_id,
         format_pois_csv, format_pois_tsv, format_table_value, format_tsv,
         poll_data_table_clipboard_status, series_share_x, show_data_table_modal,
-        show_data_table_modal_with_pois,
+        show_data_table_modal_with_pois, show_data_table_modal_with_shared_pois,
     },
     export::{
         AspectRatioOption, ExportFrame, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
@@ -64,13 +65,15 @@ pub use crate::{
     export_primitives::{
         ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,
         export_primitives_png, export_primitives_svg, export_raster_gif, export_raster_png,
-        export_raster_svg, get_last_plot_primitives, render_primitives_image,
+        export_raster_svg, get_last_plot_primitives, has_finite_shared_dataset_points,
+        render_primitives_image, shared_datasets_to_primitives,
     },
     fit::{FitResult, FitType, fit_dataset, fit_dataset_scaled, fit_model, fit_model_with_axes},
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
         LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
-        PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, Text, VLine,
+        PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, SharedPoints, Text,
+        VLine,
     },
     latex::{MathBox, parse_latex_to_layout_job, parse_latex_with_font, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
@@ -1172,6 +1175,7 @@ impl<'a> Plot<'a> {
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
             last_right_click_coord: None,
+            runtime_cache: Default::default(),
         });
 
         // Drain any newly imported CSV datasets for this plot
@@ -1387,6 +1391,7 @@ impl<'a> Plot<'a> {
             mem.auto_bounds,
             any_dynamic_modifications,
             &items,
+            mem.runtime_cache.peek_matching_series(&items),
             margin_fraction,
             log_axes,
         );
@@ -1659,42 +1664,65 @@ impl<'a> Plot<'a> {
             &min_auto_bounds,
             default_auto_bounds,
             &items,
+            mem.runtime_cache.peek_matching_series(&items),
             margin_fraction,
             log_axes,
         );
 
         let mut access_state = Self::load_frame_access_state(ui, plot_id, &mem);
-        let base_datasets: Vec<(String, Vec<[f64; 2]>, Color32)> = items
-            .iter()
-            .map(|it| (it.name().to_owned(), it.extract_points(), it.color()))
-            .collect();
-        let active_fit = fit_overlay::compute_and_inject_fit_items(
-            ui,
-            &mut items,
-            &base_datasets,
-            &mut access_state,
-            &mem.transform,
-            mem.log_x,
-            mem.log_y,
-        );
+        let base_count = items.len();
+        let mut accessible_datasets: Vec<(String, SharedPoints, Color32)> =
+            Vec::with_capacity(base_count + 2);
+        let mut item_shared_points: Vec<SharedPoints> = Vec::with_capacity(base_count + 2);
+        let mut extracted_primitives: Vec<ExportPrimitive> = Vec::with_capacity(base_count + 2);
+
+        let active_fit = if access_state.fit_model.is_some() {
+            let base_for_fit = mem.runtime_cache.resolve_base_series(&items).to_vec();
+            for (item, entry) in items.iter().zip(base_for_fit.iter()) {
+                accessible_datasets.push((entry.name.clone(), entry.points.clone(), entry.color));
+                item_shared_points.push(entry.points.clone());
+                extracted_primitives.extend(item.extract_export_primitives_shared(&entry.points));
+            }
+            fit_overlay::compute_and_inject_fit_items(
+                ui,
+                &mut items,
+                &base_for_fit,
+                &mut mem.runtime_cache,
+                &mut access_state,
+                &mem.transform,
+                mem.log_x,
+                mem.log_y,
+            )
+        } else {
+            mem.runtime_cache.clear_fit();
+            let base_cached = mem.runtime_cache.resolve_base_series(&items);
+            for (item, entry) in items.iter().zip(base_cached.iter()) {
+                accessible_datasets.push((entry.name.clone(), entry.points.clone(), entry.color));
+                item_shared_points.push(entry.points.clone());
+                extracted_primitives.extend(item.extract_export_primitives_shared(&entry.points));
+            }
+            None
+        };
 
         // --- EXTRACT DATASETS INJECTED ---
-        let mut accessible_datasets: Vec<(String, Vec<[f64; 2]>, Color32)> = Vec::new();
-        let mut extracted_primitives: Vec<ExportPrimitive> = Vec::new();
-        for item in &items {
-            accessible_datasets.push((item.name().to_owned(), item.extract_points(), item.color()));
-            extracted_primitives.extend(item.extract_export_primitives());
+        for item in &items[base_count..] {
+            let pts = item.extract_shared_points();
+            accessible_datasets.push((item.name().to_owned(), pts.clone(), item.color()));
+            extracted_primitives.extend(item.extract_export_primitives_shared(&pts));
+            item_shared_points.push(pts);
         }
-        let export_datasets: Vec<(String, Vec<[f64; 2]>)> = accessible_datasets
+        let export_shared_datasets: Vec<(String, SharedPoints)> = accessible_datasets
             .iter()
             .filter(|(_, p, _)| !p.is_empty())
             .map(|(n, p, _)| (n.clone(), p.clone()))
             .collect();
-        append_last_plot_datasets(&export_datasets);
+        append_last_plot_shared_datasets(&export_shared_datasets);
         append_last_plot_primitives(&extracted_primitives);
         // --- END EXTRACT DATASETS ---
 
-        let critical_points = poi::detect_critical_points(&items, &mem.transform);
+        let critical_points =
+            mem.runtime_cache
+                .resolve_critical_points(&items, &item_shared_points, &mem.transform);
         if response.has_focus() {
             let arrow_pressed = ui.input(|i| {
                 !i.key_pressed(egui::Key::Tab)
@@ -1773,7 +1801,7 @@ impl<'a> Plot<'a> {
                 .then_some(access_state.focused_poi)
                 .flatten(),
             persisted_tooltip: persisted_point_tooltip,
-            critical_points: critical_points.clone(),
+            critical_points: Arc::clone(&critical_points),
         };
 
         let (plot_cursors, mut hovered_plot_item, hovered_poi_idx) = prepared.ui(ui, &response);
@@ -1850,7 +1878,9 @@ impl<'a> Plot<'a> {
                 .data_mut(|d| d.insert_temp(plot_id.with("toggle_settings"), false));
         }
 
-        let has_fit_candidates = base_datasets.iter().any(|(_, pts, _)| pts.len() >= 2);
+        let has_fit_candidates = accessible_datasets[..base_count]
+            .iter()
+            .any(|(_, pts, _)| pts.len() >= 2);
         if access_state.show_fit_overlay
             && let Some((ref fit_res, accent_color)) = active_fit
         {
@@ -1888,12 +1918,13 @@ impl<'a> Plot<'a> {
                     access_state.export_modal.open = true;
                 }
                 if ui.button("Export CSV").clicked() {
-                    export::export_csv(&export_datasets);
+                    export::export_csv(&materialize_export_datasets(&export_shared_datasets));
                 }
                 if ui.button("Export JSON").clicked() {
-                    export::export_json(&export_datasets);
+                    export::export_json(&materialize_export_datasets(&export_shared_datasets));
                 }
-                let has_table_content = !export_datasets.is_empty() || !critical_points.is_empty();
+                let has_table_content =
+                    !export_shared_datasets.is_empty() || !critical_points.is_empty();
                 if ui
                     .add_enabled(has_table_content, egui::Button::new("Table View"))
                     .on_disabled_hover_text("No tabular data points available for this plot")
@@ -1921,7 +1952,7 @@ impl<'a> Plot<'a> {
                     ui.menu_button("Fit Curve", |ui| {
                         fit_overlay::render_fit_curve_menu(
                             ui,
-                            &base_datasets,
+                            &accessible_datasets[..base_count],
                             &mut access_state,
                             false,
                         );
@@ -1981,7 +2012,7 @@ impl<'a> Plot<'a> {
 
         {
             let table_window_title = format_modal_title("Data Table", title.as_deref());
-            data_table::show_data_table_modal_with_pois(
+            data_table::show_data_table_modal_with_shared_pois(
                 ui.ctx(),
                 plot_id,
                 &table_window_title,
@@ -2004,9 +2035,10 @@ impl<'a> Plot<'a> {
                 gif_filename: "plot.gif",
             };
             let mut export_source = export_modal::CallbackExportSource {
-                datasets_fn: || export_datasets.clone(),
+                datasets_fn: || materialize_export_datasets(&export_shared_datasets),
                 sample_frames_fn: |num_frames| {
-                    export::sample_progressive_frames(&export_datasets, num_frames)
+                    let materialized = materialize_export_datasets(&export_shared_datasets);
+                    export::sample_progressive_frames(&materialized, num_frames)
                 },
             };
             export_modal::show_export_modal(
@@ -2439,14 +2471,15 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {
-                export::export_csv(&export_datasets);
+                export::export_csv(&materialize_export_datasets(&export_shared_datasets));
                 ui.close();
             }
             if ui.button("Export JSON").clicked() {
-                export::export_json(&export_datasets);
+                export::export_json(&materialize_export_datasets(&export_shared_datasets));
                 ui.close();
             }
-            let has_table_content = !export_datasets.is_empty() || !critical_points.is_empty();
+            let has_table_content =
+                !export_shared_datasets.is_empty() || !critical_points.is_empty();
             if ui
                 .add_enabled(has_table_content, egui::Button::new("Table View"))
                 .on_disabled_hover_text("No tabular data points available for this plot")
@@ -2464,7 +2497,12 @@ impl<'a> Plot<'a> {
             ui.separator();
 
             ui.menu_button("Fit Curve", |ui| {
-                fit_overlay::render_fit_curve_menu(ui, &base_datasets, &mut access_state, true);
+                fit_overlay::render_fit_curve_menu(
+                    ui,
+                    &accessible_datasets[..base_count],
+                    &mut access_state,
+                    true,
+                );
             });
         });
 
@@ -2946,7 +2984,7 @@ fn try_pan_focused_plot(
 
 fn register_plot_dataset_commands(
     ctx: &egui::Context,
-    accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    accessible_datasets: &[(String, SharedPoints, Color32)],
     focused_item: usize,
 ) {
     use crate::commands::{CommandRegistryData, CommandTrigger};
@@ -2995,7 +3033,7 @@ fn register_plot_dataset_commands(
 
 fn handle_focused_plot_dataset_keys(
     ui: &Ui,
-    accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    accessible_datasets: &[(String, SharedPoints, Color32)],
     access_state: &mut AccessState,
 ) {
     use crate::commands::{CommandRegistryData, CommandTrigger};
@@ -3093,7 +3131,7 @@ fn step_focused_point_index(ui: &Ui, num_pts: usize, focused_point: &mut usize) 
 
 fn resolve_focused_plot_point<'a>(
     items: &[Box<dyn PlotItem + 'a>],
-    accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    accessible_datasets: &[(String, SharedPoints, Color32)],
     access_state: &mut AccessState,
 ) -> Option<FocusedPlotPoint> {
     if accessible_datasets.is_empty() {
@@ -3392,6 +3430,13 @@ fn collect_positive_axis_bounds(
                     }
                 }
             }
+            PlotGeometry::Shared(pts) => {
+                for pt in pts {
+                    if pt[0].is_finite() && pt[1].is_finite() {
+                        consider(pt[axis]);
+                    }
+                }
+            }
             PlotGeometry::None | PlotGeometry::Rects => {
                 let ib = item.bounds();
                 consider(ib.min[axis]);
@@ -3448,6 +3493,7 @@ fn apply_plot_bounds_with_scale(
     auto_bounds: Vec2b,
     any_dynamic_modifications: bool,
     items: &[Box<dyn PlotItem + '_>],
+    cached_series: Option<&[runtime_cache::CachedItemSeries]>,
     margin_fraction: Vec2,
     log_axes: Vec2b,
 ) {
@@ -3460,8 +3506,11 @@ fn apply_plot_bounds_with_scale(
     let auto_x = auto_bounds.x && (!min_auto_bounds.is_valid_x() || default_auto_bounds.x);
     let auto_y = auto_bounds.y && (!min_auto_bounds.is_valid_y() || default_auto_bounds.y);
     if (!log_axes.x && auto_x) || (!log_axes.y && auto_y) {
-        for item in items {
-            let item_bounds = item.bounds();
+        for (idx, item) in items.iter().enumerate() {
+            let item_bounds = cached_series
+                .and_then(|cs| cs.get(idx))
+                .filter(|_| item.is_line_item())
+                .map_or_else(|| item.bounds(), |entry| entry.bounds);
             if !log_axes.x && auto_x {
                 bounds.merge_x(&item_bounds);
             }
@@ -3493,6 +3542,7 @@ fn compute_auto_content_bounds(
     min_auto_bounds: &PlotBounds,
     default_auto_bounds: Vec2b,
     items: &[Box<dyn PlotItem + '_>],
+    cached_series: Option<&[runtime_cache::CachedItemSeries]>,
     margin_fraction: Vec2,
     log_axes: Vec2b,
 ) -> PlotBounds {
@@ -3501,8 +3551,12 @@ fn compute_auto_content_bounds(
         if default_auto_bounds.x || min_auto_bounds.is_valid_x() {
             out.set_x(min_auto_bounds);
         }
-        for item in items {
-            out.merge_x(&item.bounds());
+        for (idx, item) in items.iter().enumerate() {
+            let ib = cached_series
+                .and_then(|cs| cs.get(idx))
+                .filter(|_| item.is_line_item())
+                .map_or_else(|| item.bounds(), |entry| entry.bounds);
+            out.merge_x(&ib);
         }
         if !out.is_valid_x() {
             out.set_x(&PlotBounds::NOTHING);
@@ -3516,8 +3570,12 @@ fn compute_auto_content_bounds(
         if default_auto_bounds.y || min_auto_bounds.is_valid_y() {
             out.set_y(min_auto_bounds);
         }
-        for item in items {
-            out.merge_y(&item.bounds());
+        for (idx, item) in items.iter().enumerate() {
+            let ib = cached_series
+                .and_then(|cs| cs.get(idx))
+                .filter(|_| item.is_line_item())
+                .map_or_else(|| item.bounds(), |entry| entry.bounds);
+            out.merge_y(&ib);
         }
         if !out.is_valid_y() {
             out.set_y(&PlotBounds::NOTHING);
@@ -3573,7 +3631,7 @@ struct PreparedPlot<'a> {
     focused_point: Option<FocusedPlotPoint>,
     focused_poi: Option<usize>,
     persisted_tooltip: Option<a11y::PointTooltipState>,
-    critical_points: Vec<poi::CriticalPoint>,
+    critical_points: Arc<[poi::CriticalPoint]>,
 }
 
 impl PreparedPlot<'_> {
@@ -4149,8 +4207,15 @@ pub fn color_from_strength(ui: &Ui, strength: f32) -> Color32 {
     base_color.gamma_multiply(strength.sqrt())
 }
 
+fn materialize_export_datasets(shared: &[(String, SharedPoints)]) -> Vec<(String, Vec<[f64; 2]>)> {
+    shared
+        .iter()
+        .map(|(name, pts)| (name.clone(), pts.to_vec()))
+        .collect()
+}
+
 thread_local! {
-    static LAST_PLOT_DATASETS: std::cell::RefCell<Vec<(String, Vec<[f64; 2]>)>> = const { std::cell::RefCell::new(Vec::new()) };
+    static LAST_PLOT_DATASETS: std::cell::RefCell<Vec<(String, SharedPoints)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Clears thread-local record of plot datasets from the current frame.
@@ -4159,16 +4224,37 @@ pub fn clear_last_plot_datasets() {
     clear_last_plot_primitives();
 }
 
-/// Appends datasets captured from an `egui_plot::Plot` widget.
-pub fn append_last_plot_datasets(datasets: &[(String, Vec<[f64; 2]>)]) {
+/// Appends shared datasets captured from an `egui_plot::Plot` widget without cloning coordinate slices.
+pub fn append_last_plot_shared_datasets(datasets: &[(String, SharedPoints)]) {
     LAST_PLOT_DATASETS.with(|d| {
         d.borrow_mut().extend(datasets.iter().cloned());
     });
 }
 
+/// Retrieves all shared plot datasets captured across `egui_plot::Plot` widgets rendered in the active session.
+pub fn get_last_plot_shared_datasets() -> Vec<(String, SharedPoints)> {
+    LAST_PLOT_DATASETS.with(|d| d.borrow().clone())
+}
+
+/// Appends datasets captured from an `egui_plot::Plot` widget.
+pub fn append_last_plot_datasets(datasets: &[(String, Vec<[f64; 2]>)]) {
+    LAST_PLOT_DATASETS.with(|d| {
+        d.borrow_mut().extend(
+            datasets
+                .iter()
+                .map(|(name, pts)| (name.clone(), SharedPoints::from_slice(pts))),
+        );
+    });
+}
+
 /// Retrieves all plot datasets captured across `egui_plot::Plot` widgets rendered in the active session.
 pub fn get_last_plot_datasets() -> Vec<(String, Vec<[f64; 2]>)> {
-    LAST_PLOT_DATASETS.with(|d| d.borrow().clone())
+    LAST_PLOT_DATASETS.with(|d| {
+        d.borrow()
+            .iter()
+            .map(|(name, pts)| (name.clone(), pts.to_vec()))
+            .collect()
+    })
 }
 
 static PENDING_CANVAS_CALLOUTS: std::sync::Mutex<
@@ -4254,6 +4340,7 @@ fn test_plot_memory_grid_settings_persistence() {
         show_grid: Vec2b::new(true, false),
         show_settings_modal: true,
         last_right_click_coord: None,
+        runtime_cache: Default::default(),
     };
 
     mem.clone().store(&ctx, id);
@@ -4578,6 +4665,7 @@ mod callout_context_menu_tests {
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
             last_right_click_coord: None,
+            runtime_cache: Default::default(),
         };
         mem.store(&ctx, id);
 
@@ -4632,6 +4720,7 @@ mod callout_context_menu_tests {
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
             last_right_click_coord: None,
+            runtime_cache: Default::default(),
         };
         mem.store(&ctx, id);
 
@@ -5752,3 +5841,6 @@ impl Default for AccessState {
 
 #[cfg(test)]
 mod modal_lifecycle_tests;
+
+#[cfg(test)]
+mod memo_tests;

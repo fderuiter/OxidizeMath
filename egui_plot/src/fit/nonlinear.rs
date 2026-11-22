@@ -152,7 +152,7 @@ pub(crate) fn fit_nonlinear(
         coefficients: coeffs,
         r_squared,
         rmse,
-        residuals,
+        residuals: residuals.into(),
         degree: 0,
         dataset_name: dataset_name.to_owned(),
         log_x: false,

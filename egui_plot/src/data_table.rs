@@ -480,8 +480,63 @@ pub fn show_data_table_modal_with_pois(
             color: *color,
         })
         .collect();
-    let shared_x = series.len() > 1 && series_share_x(&series);
-    preprocess_data_table_frame(ctx, plot_id, state, &series, shared_x, critical_points);
+    render_data_table_modal_series(
+        ctx,
+        plot_id,
+        window_title,
+        open,
+        state,
+        &series,
+        critical_points,
+    );
+}
+
+/// Render the Data Table modal directly over shared coordinate buffers without cloning series vectors.
+pub fn show_data_table_modal_with_shared_pois(
+    ctx: &Context,
+    plot_id: Id,
+    window_title: &str,
+    open: &mut bool,
+    state: &mut DataTableState,
+    datasets: &[(String, crate::SharedPoints, Color32)],
+    critical_points: &[CriticalPoint],
+) {
+    poll_data_table_clipboard_status(ctx, plot_id, state);
+    if !*open {
+        let _ = ModalLifecycle::new(plot_id.with("data_table_modal")).show(ctx, open, |_, _| {});
+        return;
+    }
+    let series: Vec<_> = datasets
+        .iter()
+        .filter(|(_, p, _)| !p.is_empty())
+        .map(|(name, points, color)| TableSeriesRef {
+            name,
+            points: points.as_slice(),
+            color: *color,
+        })
+        .collect();
+    render_data_table_modal_series(
+        ctx,
+        plot_id,
+        window_title,
+        open,
+        state,
+        &series,
+        critical_points,
+    );
+}
+
+fn render_data_table_modal_series(
+    ctx: &Context,
+    plot_id: Id,
+    window_title: &str,
+    open: &mut bool,
+    state: &mut DataTableState,
+    series: &[TableSeriesRef<'_>],
+    critical_points: &[CriticalPoint],
+) {
+    let shared_x = series.len() > 1 && series_share_x(series);
+    preprocess_data_table_frame(ctx, plot_id, state, series, shared_x, critical_points);
     let max_w = (ctx.content_rect().width() - 48.0).clamp(360.0, 740.0);
     ModalLifecycle::new(plot_id.with("data_table_modal"))
         .title(window_title)
@@ -495,7 +550,7 @@ pub fn show_data_table_modal_with_pois(
                 DataTableViewMode::SeriesData => {
                     let mut view = TableView {
                         plot_id,
-                        series: &series,
+                        series,
                         shared_x,
                         state,
                     };

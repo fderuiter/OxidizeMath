@@ -74,6 +74,10 @@ pub struct PlotMemory {
 
     /// Last right-click position captured in plot coordinates.
     pub last_right_click_coord: Option<[f64; 2]>,
+
+    /// Transient per-plot memoization cache for series, curve fits, and critical points.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) runtime_cache: crate::runtime_cache::PlotRuntimeCache,
 }
 
 /// Persisted canvas callout annotation data.

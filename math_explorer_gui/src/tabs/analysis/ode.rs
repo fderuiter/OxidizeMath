@@ -4,6 +4,7 @@ mod annotations;
 pub mod comparison;
 mod persistence;
 pub mod recovery;
+mod series_cache;
 pub mod systems;
 pub mod ui;
 
@@ -47,6 +48,7 @@ pub struct OdeSolverTool {
     pub(crate) pending_sweep_run: Option<(String, Vec<TraceSeries>)>,
     pub show_annotations: bool,
     pub(crate) revision: u64,
+    pub(crate) series_cache: series_cache::OdeSeriesCache,
 }
 
 impl Default for OdeSolverTool {
@@ -92,6 +94,7 @@ impl Default for OdeSolverTool {
             pending_sweep_run: None,
             show_annotations: true,
             revision: 1,
+            series_cache: series_cache::OdeSeriesCache::default(),
         };
         tool.recalculate();
         tool
@@ -243,12 +246,12 @@ impl OdeSolverTool {
 
     fn build_current_trace_series(
         &self,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
+        plot_points_y: &egui_plot::SharedPoints,
+        plot_points_v: &egui_plot::SharedPoints,
     ) -> Vec<TraceSeries> {
-        let mut series = vec![TraceSeries::new("y(t)", plot_points_y.to_vec())];
+        let mut series = vec![TraceSeries::new("y(t)", plot_points_y.clone())];
         if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-            series.push(TraceSeries::new("y'(t)", plot_points_v.to_vec()));
+            series.push(TraceSeries::new("y'(t)", plot_points_v.clone()));
         }
         series
     }
@@ -257,8 +260,8 @@ impl OdeSolverTool {
         &mut self,
         changed: bool,
         sweep_active: bool,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
+        plot_points_y: &egui_plot::SharedPoints,
+        plot_points_v: &egui_plot::SharedPoints,
     ) {
         if sweep_active {
             if changed {
@@ -295,6 +298,14 @@ impl OdeSolverTool {
         self.diagnostic_report = None;
 
         self.recalculate_active();
+        self.series_cache.rebuild(
+            &self.time_series,
+            &self.y_series,
+            &self.v_series,
+            self.total_time,
+            self.ic_y0,
+            self.ic_v0,
+        );
         self.recalculate_comparison();
         self.last_param_summary = self.param_summary();
         self.update_callouts();
@@ -373,28 +384,12 @@ impl InteractiveTool for OdeSolverTool {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut datasets = egui_plot::get_last_plot_datasets();
+        let datasets = egui_plot::get_last_plot_datasets();
         if datasets.is_empty() {
-            let mut plot_points_y = Vec::new();
-            let mut plot_points_v = Vec::new();
-            for (i, &t) in self.time_series.iter().enumerate() {
-                if let Some(&y) = self.y_series.get(i) {
-                    plot_points_y.push([t, y]);
-                }
-                if let Some(&v) = self.v_series.get(i) {
-                    plot_points_v.push([t, v]);
-                }
-            }
-            datasets.push(("y(t)".to_string(), plot_points_y));
-            if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-                datasets.push(("y'(t)".to_string(), plot_points_v));
-            }
-            datasets.extend(self.snapshot_manager.export_datasets());
-            if self.comparison_mode {
-                datasets.extend(self.comparison_manager.export_datasets());
-            }
+            self.collect_fallback_export_datasets()
+        } else {
+            datasets
         }
-        datasets
     }
 
     fn save_state(&self) -> Option<String> {
@@ -421,20 +416,10 @@ impl InteractiveTool for OdeSolverTool {
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let mut changed = false;
+        self.sync_series_cache();
+        let (plot_points_y, plot_points_v) = self.series_cache.shared_points();
 
-        let mut plot_points_y = Vec::new();
-        let mut plot_points_v = Vec::new();
-        for (i, &t) in self.time_series.iter().enumerate() {
-            if let Some(&y) = self.y_series.get(i) {
-                plot_points_y.push([t, y]);
-            }
-            if let Some(&v) = self.v_series.get(i) {
-                plot_points_v.push([t, v]);
-            }
-        }
-
-        let sweeps_before =
-            crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx());
+        let sweeps_before = crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx());
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "ode_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             changed |= self.render_sidebar_controls(ui, &plot_points_y, &plot_points_v);
@@ -443,6 +428,8 @@ impl InteractiveTool for OdeSolverTool {
             crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx()) > sweeps_before;
 
         self.apply_sidebar_changes(changed, sweep_active, &plot_points_y, &plot_points_v);
+        self.sync_series_cache();
+        let (plot_points_y, plot_points_v) = self.series_cache.shared_points();
 
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.render_plot_canvas(ui, plot_points_y, plot_points_v, &mut changed);

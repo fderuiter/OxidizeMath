@@ -3,7 +3,8 @@
 use crate::{
     items::PlotPoint,
     poi::{
-        CriticalPoint, CriticalPointKind, LineSeriesRef, MAX_CRITICAL_POINTS, RefLineEntry, interp,
+        CriticalPoint, CriticalPointKind, LineSeriesRef, MAX_CRITICAL_POINTS, RefLineEntry,
+        interp::{self, CoordSlice},
         push_if_visible,
     },
     transform::{PlotBounds, PlotTransform},
@@ -19,7 +20,7 @@ pub(crate) fn collect_reference_intersections(
 ) {
     for line in lines {
         for hline in hlines {
-            for x in interp::interpolate_threshold_crossings(line.points, hline.value) {
+            for x in interp::interpolate_threshold_crossings_slice(&line.points, hline.value) {
                 push_if_visible(
                     out,
                     CriticalPoint {
@@ -35,7 +36,7 @@ pub(crate) fn collect_reference_intersections(
             }
         }
         for vline in vlines {
-            for y in interp::interpolate_y_at_x(line.points, vline.value) {
+            for y in interp::interpolate_y_at_x_slice(&line.points, vline.value) {
                 push_if_visible(
                     out,
                     CriticalPoint {
@@ -83,10 +84,10 @@ pub(crate) fn collect_pairwise_line_intersections(
             let a = &lines[i];
             let b = &lines[j];
             let crossings =
-                if is_strictly_increasing_x(a.points) && is_strictly_increasing_x(b.points) {
-                    intersect_monotone_polylines(a.points, b.points, bounds)
+                if is_strictly_increasing_x(&a.points) && is_strictly_increasing_x(&b.points) {
+                    intersect_monotone_polylines(&a.points, &b.points, bounds)
                 } else {
-                    intersect_general_polylines(a.points, b.points, bounds)
+                    intersect_general_polylines(&a.points, &b.points, bounds)
                 };
             for pt in crossings {
                 push_if_visible(
@@ -106,96 +107,231 @@ pub(crate) fn collect_pairwise_line_intersections(
     }
 }
 
-fn is_strictly_increasing_x(pts: &[PlotPoint]) -> bool {
-    pts.len() >= 2
-        && pts
-            .windows(2)
-            .all(|w| interp::is_finite_pt(w[0]) && interp::is_finite_pt(w[1]) && w[1].x > w[0].x)
+pub(crate) fn is_strictly_increasing_x<C: CoordSlice + ?Sized>(pts: &C) -> bool {
+    let n = pts.coord_len();
+    if n < 2 || !interp::is_finite_pt(pts.coord_at(0)) {
+        return false;
+    }
+    let mut prev = pts.coord_at(0);
+    for idx in 1..n {
+        let cur = pts.coord_at(idx);
+        if !interp::is_finite_pt(cur) || cur.x <= prev.x {
+            return false;
+        }
+        prev = cur;
+    }
+    true
 }
 
-fn intersect_monotone_polylines(
-    a: &[PlotPoint],
-    b: &[PlotPoint],
+/// Streamingly intersect two strictly $x$-increasing polylines over `bounds`
+/// using a two-pointer knot cursor without allocating a merged knot vector.
+pub(crate) fn intersect_monotone_polylines<A: CoordSlice + ?Sized, B: CoordSlice + ?Sized>(
+    a: &A,
+    b: &B,
     bounds: &PlotBounds,
 ) -> Vec<[f64; 2]> {
-    let x_lo = a[0].x.max(b[0].x).max(bounds.min[0]);
-    let x_hi = a[a.len() - 1].x.min(b[b.len() - 1].x).min(bounds.max[0]);
+    let na = a.coord_len();
+    let nb = b.coord_len();
+    if na < 2 || nb < 2 {
+        return Vec::new();
+    }
+    let x_lo = a.coord_at(0).x.max(b.coord_at(0).x).max(bounds.min[0]);
+    let x_hi = a
+        .coord_at(na - 1)
+        .x
+        .min(b.coord_at(nb - 1).x)
+        .min(bounds.max[0]);
     if !x_lo.is_finite() || !x_hi.is_finite() || x_hi <= x_lo {
         return Vec::new();
     }
-    let knots = merged_knots(a, b, x_lo, x_hi);
+
+    let mut stream = KnotStream::new(a, b, x_lo, x_hi);
+    let mut x0 = x_lo;
+    let Some(mut x1) = stream.next_distinct_knot(x0) else {
+        return Vec::new();
+    };
+    let mut ia = stream.initial_segment_a();
+    let mut ib = stream.initial_segment_b();
     let mut hits = Vec::new();
-    let mut ia = 0_usize;
-    let mut ib = 0_usize;
-    for k in 0..knots.len().saturating_sub(1) {
-        let (x0, x1) = (knots[k], knots[k + 1]);
-        if x1 <= x0 {
-            continue;
+
+    loop {
+        let next_after = stream.next_distinct_knot(x1);
+        let is_last = next_after.is_none();
+        if x1 > x0 {
+            evaluate_knot_interval(a, b, x0, x1, is_last, &mut ia, &mut ib, &mut hits);
         }
-        advance_cursor(a, x0, &mut ia);
-        advance_cursor(b, x0, &mut ib);
-        let (Some(ya0), Some(yb0)) = (
-            interp::eval_segment_at_x(a, ia, x0),
-            interp::eval_segment_at_x(b, ib, x0),
-        ) else {
-            continue;
+        let Some(x2) = next_after else {
+            break;
         };
-        advance_cursor(a, x1, &mut ia);
-        advance_cursor(b, x1, &mut ib);
-        let (Some(ya1), Some(yb1)) = (
-            interp::eval_segment_at_x(a, ia, x1),
-            interp::eval_segment_at_x(b, ib, x1),
-        ) else {
-            continue;
-        };
-        let d0 = ya0 - yb0;
-        let d1 = ya1 - yb1;
-        if d0 == 0.0 && d1 == 0.0 {
-            continue;
-        }
-        if d0 == 0.0 {
-            hits.push([x0, ya0]);
-        } else if (d0 > 0.0 && d1 < 0.0) || (d0 < 0.0 && d1 > 0.0) {
-            if let Some(pt) = refine_monotone_crossing(a, b, x0, x1, d0, d1) {
-                hits.push(pt);
-            }
-        } else if k + 2 == knots.len() && d1 == 0.0 {
-            hits.push([x1, ya1]);
-        }
+        x0 = x1;
+        x1 = x2;
     }
     hits
 }
 
-fn merged_knots(a: &[PlotPoint], b: &[PlotPoint], x_lo: f64, x_hi: f64) -> Vec<f64> {
-    let mut knots = Vec::with_capacity(a.len() + b.len() + 2);
-    knots.push(x_lo);
-    knots.extend(a.iter().map(|p| p.x).filter(|&x| x > x_lo && x < x_hi));
-    knots.extend(b.iter().map(|p| p.x).filter(|&x| x > x_lo && x < x_hi));
-    knots.push(x_hi);
-    knots.sort_by(f64::total_cmp);
-    knots.dedup_by(|u, v| (*u - *v).abs() <= 1e-12);
-    knots
+struct KnotStream<'a, A: CoordSlice + ?Sized, B: CoordSlice + ?Sized> {
+    a: &'a A,
+    b: &'a B,
+    ka: usize,
+    kb: usize,
+    init_ia: usize,
+    init_ib: usize,
+    x_hi: f64,
+    emitted_hi: bool,
 }
 
-fn advance_cursor(pts: &[PlotPoint], x: f64, idx: &mut usize) {
-    while *idx + 2 < pts.len() && pts[*idx + 1].x < x {
+impl<'a, A: CoordSlice + ?Sized, B: CoordSlice + ?Sized> KnotStream<'a, A, B> {
+    fn new(a: &'a A, b: &'a B, x_lo: f64, x_hi: f64) -> Self {
+        let ka = first_gt_index(a, x_lo);
+        let kb = first_gt_index(b, x_lo);
+        Self {
+            a,
+            b,
+            ka,
+            kb,
+            init_ia: ka.saturating_sub(1).min(a.coord_len().saturating_sub(2)),
+            init_ib: kb.saturating_sub(1).min(b.coord_len().saturating_sub(2)),
+            x_hi,
+            emitted_hi: false,
+        }
+    }
+
+    #[inline]
+    const fn initial_segment_a(&self) -> usize {
+        self.init_ia
+    }
+
+    #[inline]
+    const fn initial_segment_b(&self) -> usize {
+        self.init_ib
+    }
+
+    fn next_raw(&mut self) -> Option<f64> {
+        let xa = (self.ka < self.a.coord_len())
+            .then(|| self.a.coord_at(self.ka).x)
+            .filter(|&x| x < self.x_hi);
+        let xb = (self.kb < self.b.coord_len())
+            .then(|| self.b.coord_at(self.kb).x)
+            .filter(|&x| x < self.x_hi);
+        match (xa, xb) {
+            (Some(va), Some(vb)) => {
+                if va.total_cmp(&vb).is_le() {
+                    self.ka += 1;
+                    Some(va)
+                } else {
+                    self.kb += 1;
+                    Some(vb)
+                }
+            }
+            (Some(va), None) => {
+                self.ka += 1;
+                Some(va)
+            }
+            (None, Some(vb)) => {
+                self.kb += 1;
+                Some(vb)
+            }
+            (None, None) => {
+                if self.emitted_hi {
+                    None
+                } else {
+                    self.emitted_hi = true;
+                    Some(self.x_hi)
+                }
+            }
+        }
+    }
+
+    fn next_distinct_knot(&mut self, prev_kept: f64) -> Option<f64> {
+        while let Some(cand) = self.next_raw() {
+            if (cand - prev_kept).abs() > 1e-12 {
+                return Some(cand);
+            }
+        }
+        None
+    }
+}
+
+fn first_gt_index<C: CoordSlice + ?Sized>(pts: &C, x_lo: f64) -> usize {
+    let mut lo = 0_usize;
+    let mut hi = pts.coord_len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if pts.coord_at(mid).x <= x_lo {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn evaluate_knot_interval<A: CoordSlice + ?Sized, B: CoordSlice + ?Sized>(
+    a: &A,
+    b: &B,
+    x0: f64,
+    x1: f64,
+    is_last: bool,
+    ia: &mut usize,
+    ib: &mut usize,
+    hits: &mut Vec<[f64; 2]>,
+) {
+    advance_cursor(a, x0, ia);
+    advance_cursor(b, x0, ib);
+    let ia0 = *ia;
+    let ib0 = *ib;
+    let (Some(ya0), Some(yb0)) = (
+        interp::eval_segment_at_x(a, ia0, x0),
+        interp::eval_segment_at_x(b, ib0, x0),
+    ) else {
+        return;
+    };
+    advance_cursor(a, x1, ia);
+    advance_cursor(b, x1, ib);
+    let (Some(ya1), Some(yb1)) = (
+        interp::eval_segment_at_x(a, *ia, x1),
+        interp::eval_segment_at_x(b, *ib, x1),
+    ) else {
+        return;
+    };
+    let d0 = ya0 - yb0;
+    let d1 = ya1 - yb1;
+    if d0 == 0.0 && d1 == 0.0 {
+        return;
+    }
+    if d0 == 0.0 {
+        hits.push([x0, ya0]);
+    } else if (d0 > 0.0 && d1 < 0.0) || (d0 < 0.0 && d1 > 0.0) {
+        if let Some(pt) = refine_monotone_crossing(a, b, x0, x1, d0, d1, ia0, ib0) {
+            hits.push(pt);
+        }
+    } else if is_last && d1 == 0.0 {
+        hits.push([x1, ya1]);
+    }
+}
+
+fn advance_cursor<C: CoordSlice + ?Sized>(pts: &C, x: f64, idx: &mut usize) {
+    let n = pts.coord_len();
+    while *idx + 2 < n && pts.coord_at(*idx + 1).x < x {
         *idx += 1;
     }
-    while *idx > 0 && pts[*idx].x > x {
+    while *idx > 0 && pts.coord_at(*idx).x > x {
         *idx -= 1;
     }
 }
 
-fn refine_monotone_crossing(
-    a: &[PlotPoint],
-    b: &[PlotPoint],
+#[allow(clippy::too_many_arguments)]
+fn refine_monotone_crossing<A: CoordSlice + ?Sized, B: CoordSlice + ?Sized>(
+    a: &A,
+    b: &B,
     mut lo: f64,
     mut hi: f64,
     mut d_lo: f64,
     mut d_hi: f64,
+    mut ia: usize,
+    mut ib: usize,
 ) -> Option<[f64; 2]> {
-    let mut ia = 0_usize;
-    let mut ib = 0_usize;
     for _ in 0..14 {
         let denom = d_hi - d_lo;
         let sec = if denom.abs() > 1e-18 {
@@ -230,34 +366,37 @@ fn refine_monotone_crossing(
     Some([xm, ym])
 }
 
-fn intersect_general_polylines(
-    a: &[PlotPoint],
-    b: &[PlotPoint],
+fn intersect_general_polylines<A: CoordSlice + ?Sized, B: CoordSlice + ?Sized>(
+    a: &A,
+    b: &B,
     bounds: &PlotBounds,
 ) -> Vec<[f64; 2]> {
-    let mut segs_b: Vec<(f64, f64, PlotPoint, PlotPoint)> = b
-        .windows(2)
-        .filter(|w| interp::is_finite_pt(w[0]) && interp::is_finite_pt(w[1]))
-        .filter_map(|w| {
-            let min_x = w[0].x.min(w[1].x);
-            let max_x = w[0].x.max(w[1].x);
-            (max_x >= bounds.min[0] && min_x <= bounds.max[0]).then_some((min_x, max_x, w[0], w[1]))
+    let nb = b.coord_len();
+    let mut segs_b: Vec<(f64, f64, PlotPoint, PlotPoint)> = (0..nb.saturating_sub(1))
+        .map(|i| (b.coord_at(i), b.coord_at(i + 1)))
+        .filter(|&(p0, p1)| interp::is_finite_pt(p0) && interp::is_finite_pt(p1))
+        .filter_map(|(p0, p1)| {
+            let min_x = p0.x.min(p1.x);
+            let max_x = p0.x.max(p1.x);
+            (max_x >= bounds.min[0] && min_x <= bounds.max[0]).then_some((min_x, max_x, p0, p1))
         })
         .collect();
     segs_b.sort_by(|u, v| u.0.total_cmp(&v.0));
 
+    let na = a.coord_len();
     let mut hits = Vec::new();
-    for wa in a.windows(2) {
-        if !interp::is_finite_pt(wa[0]) || !interp::is_finite_pt(wa[1]) {
+    for i in 0..na.saturating_sub(1) {
+        let (wa0, wa1) = (a.coord_at(i), a.coord_at(i + 1));
+        if !interp::is_finite_pt(wa0) || !interp::is_finite_pt(wa1) {
             continue;
         }
-        let a_min_x = wa[0].x.min(wa[1].x);
-        let a_max_x = wa[0].x.max(wa[1].x);
+        let a_min_x = wa0.x.min(wa1.x);
+        let a_max_x = wa0.x.max(wa1.x);
         if a_max_x < bounds.min[0] || a_min_x > bounds.max[0] {
             continue;
         }
-        let a_min_y = wa[0].y.min(wa[1].y);
-        let a_max_y = wa[0].y.max(wa[1].y);
+        let a_min_y = wa0.y.min(wa1.y);
+        let a_max_y = wa0.y.max(wa1.y);
         for &(b_min_x, b_max_x, b0, b1) in &segs_b {
             if b_min_x > a_max_x {
                 break;
@@ -265,7 +404,7 @@ fn intersect_general_polylines(
             if b_max_x < a_min_x || b0.y.max(b1.y) < a_min_y || b0.y.min(b1.y) > a_max_y {
                 continue;
             }
-            if let Some(pt) = segment_intersection_2d(wa[0], wa[1], b0, b1) {
+            if let Some(pt) = segment_intersection_2d(wa0, wa1, b0, b1) {
                 hits.push(pt);
                 if hits.len() >= MAX_CRITICAL_POINTS {
                     return hits;
