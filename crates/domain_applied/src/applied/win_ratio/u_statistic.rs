@@ -297,8 +297,8 @@ fn reset_unmatched_scratch(scratch: &mut UnmatchedScratch, n1: usize, n2: usize,
     scratch.row_losses[..n1].fill(0);
     scratch.col_wins[..n2].fill(0);
     scratch.col_losses[..n2].fill(0);
-    for k in 0..n_tiers {
-        scratch.tier_counts[k] = TierCount {
+    for (k, tier) in scratch.tier_counts.iter_mut().enumerate().take(n_tiers) {
+        *tier = TierCount {
             tier_index: k,
             wins: 0,
             losses: 0,
