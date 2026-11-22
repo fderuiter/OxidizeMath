@@ -361,7 +361,7 @@ impl ChladniWaveTankTool {
 
 impl InteractiveTool for ChladniWaveTankTool {
     fn name(&self) -> &'static str {
-        "2D Chladni Plate & Wave Tank"
+        "Wave Tank & 2D Chladni Plate"
     }
 
     fn domain(&self) -> &'static str {
@@ -465,7 +465,7 @@ impl InteractiveTool for ChladniWaveTankTool {
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "ChladniWaveTankTool",
-        display_name: "2D Chladni Plate & Wave Tank",
+        display_name: "Wave Tank & 2D Chladni Plate",
         domain: "analysis",
         tags: &["pde", "chladni", "waves", "diffraction", "fft"],
         build: || Box::new(ChladniWaveTankTool::default()),

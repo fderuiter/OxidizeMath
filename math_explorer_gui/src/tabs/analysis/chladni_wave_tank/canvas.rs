@@ -11,11 +11,12 @@ use math_explorer::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::analysis::pde::wave_2d::young_double_slit_fringe_spacing;
 
 use super::*;
+use crate::app::{palette::DARK_PALETTE, SemanticPalette};
 
 impl ChladniWaveTankTool {
     pub(super) fn draw_central_workspace(&mut self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            ui.heading("2D Chladni Plate & Wave Tank");
+            ui.heading("Wave Tank & 2D Chladni Plate");
             let avail = ui.available_size();
             if avail.x > 620.0 {
                 ui.columns(2, |cols| {
@@ -61,7 +62,12 @@ impl ChladniWaveTankTool {
             let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
             painter.image(tex.id(), rect, uv, Color32::WHITE);
         }
-        self.paint_canvas_overlays(&painter, rect);
+        let raster_palette = if ui.visuals().dark_mode {
+            SemanticPalette::from_visuals(ui.visuals())
+        } else {
+            DARK_PALETTE
+        };
+        self.paint_canvas_overlays(&painter, rect, raster_palette);
         crate::accessibility::paint_canvas_focus_ring(ui, &response);
         ui.small("Drag to steer driver • Shift+Click to pin clamp • Arrows move • Enter pulses");
     }
@@ -127,7 +133,12 @@ impl ChladniWaveTankTool {
         }
     }
 
-    fn paint_canvas_overlays(&self, painter: &egui::Painter, rect: Rect) {
+    fn paint_canvas_overlays(
+        &self,
+        painter: &egui::Painter,
+        rect: Rect,
+        palette: SemanticPalette,
+    ) {
         let to_screen = |nx: f64, ny: f64| -> Pos2 {
             Pos2::new(
                 rect.left() + (nx as f32) * rect.width(),
@@ -139,10 +150,7 @@ impl ChladniWaveTankTool {
             |cx: f64, cy: f64| -> Pos2 { to_screen((cx + 0.5) * inv_grid, (cy + 0.5) * inv_grid) };
 
         if self.state.show_nodal_contours {
-            let stroke = Stroke::new(
-                1.35_f32,
-                Color32::from_rgba_unmultiplied(245, 250, 255, 220),
-            );
+            let stroke = Stroke::new(1.35_f32, palette.node_stroke.gamma_multiply(0.88));
             for &[p0, p1] in self.contours.segments() {
                 painter.line_segment(
                     [cell_to_screen(p0[0], p0[1]), cell_to_screen(p1[0], p1[1])],
@@ -152,7 +160,7 @@ impl ChladniWaveTankTool {
         }
 
         if self.state.show_sand_particles {
-            let sand_color = Color32::from_rgba_unmultiplied(250, 224, 130, 225);
+            let sand_color = palette.accent.gamma_multiply(0.9);
             for (&px, &py) in self
                 .sand
                 .positions_x()
@@ -167,16 +175,12 @@ impl ChladniWaveTankTool {
             let det_nx = ((self.state.detector_x as f64) + 0.5) * inv_grid;
             painter.line_segment(
                 [to_screen(det_nx, 0.02), to_screen(det_nx, 0.98)],
-                Stroke::new(1.3_f32, Color32::from_rgb(90, 230, 190)),
+                Stroke::new(1.3_f32, palette.success),
             );
         }
 
         let drv_pos = to_screen(self.state.driver_x, self.state.driver_y);
-        painter.circle_stroke(
-            drv_pos,
-            5.0_f32,
-            Stroke::new(1.8_f32, Color32::from_rgb(255, 110, 90)),
-        );
+        painter.circle_stroke(drv_pos, 5.0_f32, Stroke::new(1.8_f32, palette.axis_x));
     }
 
     fn draw_secondary_analysis_plot(&self, ui: &mut egui::Ui) {
@@ -187,6 +191,7 @@ impl ChladniWaveTankTool {
     }
 
     fn draw_detector_cross_section_plot(&self, ui: &mut egui::Ui) {
+        let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.label(format!(
             "Detector Intensity Cross-Section I(y) at x = {}",
             self.state.detector_x
@@ -208,14 +213,19 @@ impl ChladniWaveTankTool {
             .show(ui, |plot_ui| {
                 plot_ui.line(
                     Line::new("Detector I(y)", pts)
-                        .color(Color32::from_rgb(90, 230, 190))
+                        .color(palette.series_color(2))
                         .width(2.0_f32),
                 );
-                self.overlay_young_reference(plot_ui, peak_i);
+                self.overlay_young_reference(plot_ui, palette, peak_i);
             });
     }
 
-    fn overlay_young_reference(&self, plot_ui: &mut egui_plot::PlotUi<'_>, peak_i: f64) {
+    fn overlay_young_reference(
+        &self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        palette: SemanticPalette,
+        peak_i: f64,
+    ) {
         if !self.state.barrier_enabled || self.state.wave_speed <= 0.0 {
             return;
         }
@@ -223,7 +233,7 @@ impl ChladniWaveTankTool {
         let d_scr = (self.state.detector_x.saturating_sub(self.state.barrier_x)).max(1) as f64;
         let dy = young_double_slit_fringe_spacing(lam, self.state.slit_separation, d_scr);
         let cy = ((GRID_SIZE - 1) as f64) * 0.5;
-        let marker_c = Color32::from_rgb(255, 190, 80);
+        let marker_c = palette.warning;
         plot_ui.vline(VLine::new("Young +1", cy + dy).color(marker_c));
         plot_ui.vline(VLine::new("Young -1", cy - dy).color(marker_c));
         if self.state.slit_count == 2 && peak_i > 1.0e-12 {
@@ -247,6 +257,7 @@ impl ChladniWaveTankTool {
     }
 
     fn draw_radial_fft_plot(&self, ui: &mut egui::Ui) {
+        let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.label("2D FFT Azimuthal Radial Spectrum S(|k|)");
         let pts: PlotPoints = self
             .radial_spectrum
@@ -260,13 +271,13 @@ impl ChladniWaveTankTool {
             .show(ui, |plot_ui| {
                 plot_ui.line(
                     Line::new("Radial |F(k)|", pts)
-                        .color(Color32::from_rgb(130, 185, 255))
+                        .color(palette.series_color(0))
                         .width(2.0_f32),
                 );
                 if self.dominant_peak.k_radial > 0.0 {
                     plot_ui.vline(
                         VLine::new("Dominant |k|", self.dominant_peak.k_radial)
-                            .color(Color32::from_rgb(255, 140, 90)),
+                            .color(palette.series_color(1)),
                     );
                 }
             });
@@ -313,7 +324,7 @@ impl ChladniWaveTankTool {
                             String::new()
                         },
                         points: vec![[p0[0] + 0.5, p0[1] + 0.5], [p1[0] + 0.5, p1[1] + 0.5]],
-                        color: Color32::from_rgb(245, 250, 255),
+                        color: DARK_PALETTE.node_stroke,
                         stroke_width: 1.2,
                         closed: false,
                         fill: None,
@@ -335,7 +346,7 @@ impl ChladniWaveTankTool {
                 prims.push(ExportPrimitive::Points {
                     name: "Chladni Sand".into(),
                     points: pts,
-                    color: Color32::from_rgb(250, 224, 130),
+                    color: DARK_PALETTE.accent,
                     radius: 1.4,
                 });
             }
@@ -345,7 +356,7 @@ impl ChladniWaveTankTool {
             prims.push(ExportPrimitive::Polyline {
                 name: "Detector Screen".into(),
                 points: vec![[det_x, 2.0], [det_x, (GRID_SIZE - 2) as f64]],
-                color: Color32::from_rgb(90, 230, 190),
+                color: DARK_PALETTE.success,
                 stroke_width: 1.5,
                 closed: false,
                 fill: None,
@@ -412,7 +423,7 @@ fn populate_field_pixels(
             let src_idx = flatten_2d_index(grid_x, grid_y, w);
             let dst_idx = flatten_2d_index(grid_x, img_row, w);
             if solver.wall_mask[src_idx] <= 0.5 {
-                out_pixels[dst_idx] = Color32::from_rgb(58, 66, 82);
+                out_pixels[dst_idx] = DARK_PALETTE.surface_fill;
                 continue;
             }
             let rgb = match colormap {
