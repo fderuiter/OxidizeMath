@@ -757,6 +757,31 @@ fn color_image_to_rgba_bytes(image: &egui::ColorImage) -> Vec<u8> {
     rgba
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn with_native_clipboard<F>(op: F) -> Result<(), String>
+where
+    F: FnOnce(&mut arboard::Clipboard) -> Result<(), arboard::Error>,
+{
+    static CLIPBOARD: std::sync::OnceLock<std::sync::Mutex<Option<arboard::Clipboard>>> =
+        std::sync::OnceLock::new();
+    let mutex = CLIPBOARD.get_or_init(|| std::sync::Mutex::new(None));
+    let mut slot = mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if slot.is_none() {
+        *slot = Some(arboard::Clipboard::new().map_err(|e| e.to_string())?);
+    }
+    let res = if let Some(clipboard) = slot.as_mut() {
+        op(clipboard)
+    } else {
+        unreachable!("clipboard slot populated above")
+    };
+    if res.is_err() {
+        *slot = None;
+    }
+    res.map_err(|e| e.to_string())
+}
+
 /// Copy an `egui::ColorImage` to the system clipboard.
 pub fn copy_image_to_clipboard(image: &egui::ColorImage) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
@@ -767,9 +792,7 @@ pub fn copy_image_to_clipboard(image: &egui::ColorImage) -> Result<(), String> {
             height: image.height(),
             bytes: std::borrow::Cow::Owned(rgba),
         };
-        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-        clipboard.set_image(img_data).map_err(|e| e.to_string())?;
-        Ok(())
+        with_native_clipboard(|clipboard| clipboard.set_image(img_data))
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -878,11 +901,8 @@ where
 pub fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-        clipboard
-            .set_text(text.to_owned())
-            .map_err(|e| e.to_string())?;
-        Ok(())
+        let owned = text.to_owned();
+        with_native_clipboard(|clipboard| clipboard.set_text(owned))
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -1497,6 +1517,37 @@ mod tests {
         assert_eq!(res_direct.is_ok(), res_cb.is_ok());
         #[cfg(not(target_arch = "wasm32"))]
         assert!(callback_res.lock().unwrap().is_some());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_concurrent_clipboard_image_and_text_writes_remain_consistent() {
+        let expected_ok = copy_text_to_clipboard("Dataset,X,Y\nBaseline,0.0,0.0\n").is_ok();
+        std::thread::scope(|scope| {
+            for worker in 0..8 {
+                scope.spawn(move || {
+                    let img = egui::ColorImage::new([4, 4], vec![egui::Color32::GREEN; 16]);
+                    let csv = format!("Dataset,X,Y\nWorker{worker},1.0,2.0\n");
+                    for _ in 0..6 {
+                        let img_cb = std::sync::Arc::new(std::sync::Mutex::new(None));
+                        let img_slot = img_cb.clone();
+                        let res_img = copy_image_to_clipboard_with_callback(&img, move |r| {
+                            *img_slot.lock().unwrap() = Some(r.is_ok());
+                        });
+                        assert_eq!(res_img.is_ok(), expected_ok);
+                        assert_eq!(*img_cb.lock().unwrap(), Some(expected_ok));
+
+                        let txt_cb = std::sync::Arc::new(std::sync::Mutex::new(None));
+                        let txt_slot = txt_cb.clone();
+                        let res_txt = copy_text_to_clipboard_with_callback(&csv, move |r| {
+                            *txt_slot.lock().unwrap() = Some(r.is_ok());
+                        });
+                        assert_eq!(res_txt.is_ok(), expected_ok);
+                        assert_eq!(*txt_cb.lock().unwrap(), Some(expected_ok));
+                    }
+                });
+            }
+        });
     }
 
     #[test]
