@@ -33,3 +33,8 @@ pub mod __doctest_facade {
         petgraph, primitives, pure_math, rand, registry, rng, wigner,
     };
 }
+
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;

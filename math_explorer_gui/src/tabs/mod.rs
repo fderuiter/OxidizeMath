@@ -105,6 +105,7 @@ pub trait ExplorerTab {
 
             "Chaos Theory"
             | "Fluid Dynamics"
+            | "General Relativity"
             | "Medical Physics"
             | "MRI Physics"
             | "Quantum Mechanics"
@@ -169,6 +170,7 @@ pub trait ExplorerTab {
             "Financial Math" => "financial_math",
             "Fluid Dynamics" => "fluid_dynamics",
             "Game Theory" => "game_theory",
+            "General Relativity" => "relativity",
             "Geometry & Topology" => "geometry_topology",
             "Graph Theory" => "graph_theory",
             "Medical Physics" => "medical",
