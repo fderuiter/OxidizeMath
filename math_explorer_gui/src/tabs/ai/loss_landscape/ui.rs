@@ -8,7 +8,7 @@ use super::surfaces::{
     SCULPT_AMP_MAX, SCULPT_AMP_MIN, SCULPT_SIGMA_MAX, SCULPT_SIGMA_MIN,
 };
 use super::{
-    CanvasInteractionMode, LandscapeViewMode, LossLandscapeTool, LOSS_MIN_SPAN,
+    CanvasInteractionMode, LandscapeViewMode, LossLandscapeTool, PredictorMode, LOSS_MIN_SPAN,
     LOSS_PARAM_MAX_BOUND, LOSS_PARAM_MIN_BOUND,
 };
 use crate::app::SemanticPalette;
@@ -110,8 +110,13 @@ impl LossLandscapeTool {
         if self.surface != prev_surface {
             self.apply_surface_preset(self.surface);
         }
+        self.draw_predictor_formula_ui(ui);
         ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut self.interaction_mode, CanvasInteractionMode::Orbit, "Orbit");
+            ui.selectable_value(
+                &mut self.interaction_mode,
+                CanvasInteractionMode::Orbit,
+                "Orbit",
+            );
             ui.selectable_value(
                 &mut self.interaction_mode,
                 CanvasInteractionMode::Slingshot,
@@ -125,6 +130,32 @@ impl LossLandscapeTool {
         });
     }
 
+    fn draw_predictor_formula_ui(&mut self, ui: &mut egui::Ui) {
+        if self.surface != LandscapeSurface::LinearMse {
+            return;
+        }
+        let prev_mode = self.predictor_mode;
+        ui.horizontal(|ui| {
+            ui.radio_value(
+                &mut self.predictor_mode,
+                PredictorMode::Linear,
+                "Linear (w*x+b)",
+            );
+            ui.radio_value(
+                &mut self.predictor_mode,
+                PredictorMode::Custom,
+                "Custom f(x,w,b)",
+            );
+        });
+        if self.predictor_mode != prev_mode {
+            self.reset_arena();
+        }
+        if self.predictor_mode == PredictorMode::Custom {
+            ui.add_space(4.0);
+            self.math_input.ui(ui);
+        }
+    }
+
     fn draw_physics_and_sculpt_ui(&mut self, ui: &mut egui::Ui) {
         ui.add(egui::Slider::new(&mut self.resolution, 10..=50).text("Grid"));
         ui.add(egui::Slider::new(&mut self.arena_config.mass, MIN_MASS..=MAX_MASS).text("Mass m"));
@@ -133,8 +164,11 @@ impl LossLandscapeTool {
                 .text("Damp γ"),
         );
         ui.add(
-            egui::Slider::new(&mut self.arena_config.temperature, MIN_TEMPERATURE..=MAX_TEMPERATURE)
-                .text("Temp kBT"),
+            egui::Slider::new(
+                &mut self.arena_config.temperature,
+                MIN_TEMPERATURE..=MAX_TEMPERATURE,
+            )
+            .text("Temp kBT"),
         );
         ui.add(
             egui::Slider::new(&mut self.arena_config.dt, MIN_DT..=MAX_DT)
@@ -193,8 +227,11 @@ impl LossLandscapeTool {
 
     pub(super) fn handle_viewport_gesture(&mut self, ui: &egui::Ui, response: &egui::Response) {
         if self.interaction_mode == CanvasInteractionMode::Orbit {
-            (self.slingshot_anchor, self.slingshot_current, self.last_brush_wb) =
-                (None, None, None);
+            (
+                self.slingshot_anchor,
+                self.slingshot_current,
+                self.last_brush_wb,
+            ) = (None, None, None);
             return;
         }
         let pointer_pos = response.interact_pointer_pos();
@@ -227,18 +264,19 @@ impl LossLandscapeTool {
                 self.slingshot_current = Some(self.pointer_to_wb(response.rect, pos));
             }
         } else if response.drag_stopped_by(egui::PointerButton::Primary) {
-            if let (Some(a), Some(c)) = (self.slingshot_anchor.take(), self.slingshot_current.take())
+            if let (Some(a), Some(c)) =
+                (self.slingshot_anchor.take(), self.slingshot_current.take())
             {
                 let vel = [(a[0] - c[0]) * 2.5, (a[1] - c[1]) * 2.5];
                 let bounds = self.domain_bounds();
-                self.arena.launch_slingshot(
-                    &mut self.arena_config,
-                    a,
-                    vel,
+                let eval = Self::eval_from(
                     self.surface,
+                    self.predictor_mode,
+                    &self.math_input,
                     &self.sculpt_bumps,
-                    bounds,
                 );
+                self.arena
+                    .launch_slingshot(&mut self.arena_config, a, vel, eval, bounds);
             }
         }
     }
@@ -265,12 +303,17 @@ impl LossLandscapeTool {
                 plot_ui.ctx().data_mut(|d| {
                     d.insert_temp(pid.with("dragging_callout"), suppress_orbit);
                 });
+                let eval = self.surface_evaluator();
                 for (t, line_pts) in grid.wireframe_polylines(&saved_camera) {
                     let color = lerp_color(palette.axis_z, palette.axis_x, t);
-                    plot_ui.line(Line::new("Surface Mesh", line_pts).color(color).width(1.1_f32));
+                    plot_ui.line(
+                        Line::new("Surface Mesh", line_pts)
+                            .color(color)
+                            .width(1.1_f32),
+                    );
                 }
-                for &[mw, mb] in self.surface.global_minima() {
-                    let mloss = self.surface.evaluate(&self.sculpt_bumps, mw, mb);
+                for &[mw, mb] in eval.global_minima() {
+                    let mloss = eval.evaluate(mw, mb);
                     let p2 = saved_camera.project(&grid.world_point(mw, mb, mloss, 0.03));
                     plot_ui.points(
                         Points::new("Global Minimum", vec![p2])
@@ -281,8 +324,8 @@ impl LossLandscapeTool {
                 }
                 self.draw_3d_racers(plot_ui, grid, &saved_camera, &palette);
                 if let (Some(a), Some(c)) = (self.slingshot_anchor, self.slingshot_current) {
-                    let la = self.surface.evaluate(&self.sculpt_bumps, a[0], a[1]);
-                    let lc = self.surface.evaluate(&self.sculpt_bumps, c[0], c[1]);
+                    let la = eval.evaluate(a[0], a[1]);
+                    let lc = eval.evaluate(c[0], c[1]);
                     let pa = saved_camera.project(&grid.world_point(a[0], a[1], la, 0.05));
                     let pc = saved_camera.project(&grid.world_point(c[0], c[1], lc, 0.05));
                     plot_ui.line(
@@ -323,7 +366,7 @@ impl LossLandscapeTool {
                         );
                     }
                 }
-                for &[mw, mb] in self.surface.global_minima() {
+                for &[mw, mb] in self.surface_evaluator().global_minima() {
                     plot_ui.points(
                         Points::new("Global Minima (True Solution)", vec![[mw, mb]])
                             .color(palette.success)
@@ -343,6 +386,7 @@ impl LossLandscapeTool {
         cam: &Camera3D,
         palette: &SemanticPalette,
     ) {
+        let eval = self.surface_evaluator();
         for (idx, racer) in self.arena.racers.iter().enumerate() {
             if !self.arena_config.enabled_racers[idx] || !racer.kind.is_available_in_build() {
                 continue;
@@ -353,11 +397,15 @@ impl LossLandscapeTool {
                     .trail
                     .iter()
                     .map(|[w, b]| {
-                        let l = self.surface.evaluate(&self.sculpt_bumps, w, b);
+                        let l = eval.evaluate(w, b);
                         cam.project(&grid.world_point(w, b, l, 0.035))
                     })
                     .collect();
-                plot_ui.line(Line::new(racer.kind.label(), pts).color(color).width(2.2_f32));
+                plot_ui.line(
+                    Line::new(racer.kind.label(), pts)
+                        .color(color)
+                        .width(2.2_f32),
+                );
             }
             let head = cam.project(&grid.world_point(
                 racer.phase.q.x,
@@ -381,7 +429,11 @@ impl LossLandscapeTool {
             let color = racer.kind.color(palette);
             if racer.trail.len() >= 2 {
                 let trail: Vec<[f64; 2]> = racer.trail.iter().collect();
-                plot_ui.line(Line::new(racer.kind.label(), trail).color(color).width(2.2_f32));
+                plot_ui.line(
+                    Line::new(racer.kind.label(), trail)
+                        .color(color)
+                        .width(2.2_f32),
+                );
             }
             plot_ui.points(
                 Points::new(racer.kind.label(), vec![[racer.phase.q.x, racer.phase.q.y]])

@@ -1,7 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::arena::RacerKind;
-use super::surfaces::{LandscapeSurface, SculptBump, MAX_SCULPT_BUMPS};
+use super::presets::{PredictorMode, NONCONVEX_SINUSOIDAL_PRESET_JSON, STARTER_PRESET_JSON};
+use super::surfaces::{LandscapeSurface, SculptBump, SurfaceEvaluator, MAX_SCULPT_BUMPS};
 use super::{CanvasInteractionMode, LandscapeViewMode, LossLandscapeTool};
 use crate::framework::{InputMode, InteractionContext, InteractiveTool};
 use eframe::egui;
@@ -196,12 +197,12 @@ fn test_3d_and_2d_views_step_and_reflect_racers_within_bounds() {
     let mut tool = LossLandscapeTool::default();
     tool.apply_surface_preset(LandscapeSurface::Rosenbrock);
     let bounds = tool.domain_bounds();
+    let eval = SurfaceEvaluator::new(tool.surface, &tool.sculpt_bumps, None);
     tool.arena.launch_slingshot(
         &mut tool.arena_config,
         [-1.8, 2.8],
         [-25.0, 25.0],
-        tool.surface,
-        &tool.sculpt_bumps,
+        eval,
         bounds,
     );
     for _ in 0..80 {
@@ -352,4 +353,31 @@ fn test_racer_semantic_palette_colors_distinct_and_wcag_aa_across_themes() {
             }
         }
     }
+}
+
+#[test]
+fn test_custom_loss_landscape_mse_and_preset_roundtrip() {
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut tool = LossLandscapeTool {
+        predictor_mode: PredictorMode::Custom,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("w * x + b");
+    assert!((tool.evaluate_mse_at(2.0, 1.0).unwrap() - 0.0).abs() < 1e-12);
+
+    tool.import_preset_json(NONCONVEX_SINUSOIDAL_PRESET_JSON)
+        .expect("non-convex preset should load");
+    assert_eq!(tool.predictor_mode, PredictorMode::Custom);
+    assert!(tool.evaluate_mse_at(1.5, 0.8).unwrap().is_finite());
+
+    let (_res, metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        for _ in 0..16 {
+            tool.step_simulation();
+        }
+    });
+    assert_eq!(tool.arena.step_count, 16);
+    assert_eq!(metrics.memory_loads, 0);
+    assert!(tool.import_preset_json(STARTER_PRESET_JSON).is_ok());
 }

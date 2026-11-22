@@ -3,6 +3,7 @@
 //! Analytical benchmark potentials, real-time 32-bump Gaussian sculpting,
 //! 3D surface wireframe projection, and 2D marching-squares contour helpers.
 
+pub use super::evaluator::SurfaceEvaluator;
 use crate::camera::Camera3D;
 use eframe::egui::{self, Color32};
 use egui_plot::Points;
@@ -15,8 +16,8 @@ pub const SCULPT_SIGMA_MIN: f64 = 0.1;
 pub const SCULPT_SIGMA_MAX: f64 = 5.0;
 pub const ARENA_3D_HALF_EXTENT: f64 = 1.65;
 
-const LINEAR_MSE_X: [f64; 5] = [0.0, 1.0, 2.0, 3.0, 4.0];
-const LINEAR_MSE_Y: [f64; 5] = [1.0, 3.0, 5.0, 7.0, 9.0];
+pub(super) const LINEAR_MSE_X: [f64; 5] = [0.0, 1.0, 2.0, 3.0, 4.0];
+pub(super) const LINEAR_MSE_Y: [f64; 5] = [1.0, 3.0, 5.0, 7.0, 9.0];
 
 #[inline]
 fn round4(val: f64) -> f64 {
@@ -215,6 +216,7 @@ impl LandscapeSurface {
         }
     }
 
+    #[cfg(test)]
     #[inline]
     #[must_use]
     pub fn evaluate(self, bumps: &[SculptBump], w: f64, b: f64) -> f64 {
@@ -225,6 +227,7 @@ impl LandscapeSurface {
         total
     }
 
+    #[cfg(test)]
     #[inline]
     #[must_use]
     pub fn gradient(self, bumps: &[SculptBump], w: f64, b: f64) -> Vector2<f64> {
@@ -246,9 +249,8 @@ pub struct SurfaceGrid {
 
 impl SurfaceGrid {
     #[must_use]
-    pub fn sample(
-        surface: LandscapeSurface,
-        bumps: &[SculptBump],
+    pub fn sample_eval(
+        eval: SurfaceEvaluator<'_>,
         bounds: (f64, f64, f64, f64),
         resolution: usize,
     ) -> Self {
@@ -264,7 +266,7 @@ impl SurfaceGrid {
             let mut row = Vec::with_capacity(res);
             for i in 0..res {
                 let w = w_min + (i as f64) * w_step;
-                let loss = surface.evaluate(bumps, w, b);
+                let loss = eval.evaluate(w, b);
                 if loss.is_finite() {
                     min_loss = min_loss.min(loss);
                     max_loss = max_loss.max(loss);

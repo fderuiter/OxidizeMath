@@ -3,6 +3,8 @@
 //! 3D and 2D Hamiltonian Loss Landscape Arena (`LossLandscapeTool`).
 
 pub mod arena;
+pub mod evaluator;
+pub mod presets;
 pub mod surfaces;
 mod ui;
 
@@ -11,14 +13,20 @@ mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
+pub use presets::PredictorMode;
+
 use crate::camera::Camera3D;
-use crate::framework::{enforce_ordered_drag_range, InteractionContext, InteractiveTool};
+use crate::framework::{
+    enforce_ordered_drag_range, InteractionContext, InteractiveTool, MathExpressionInputBar,
+};
 use arena::{ArenaConfig, ParticleArena};
 use eframe::egui;
+use presets::DEFAULT_LOSS_EXPR;
+use std::collections::BTreeMap;
 use surfaces::{
     map_2d_rect_pos, push_sculpt_bump, unproject_3d_rect_pos, LandscapeSurface, SculptBump,
-    SurfaceGrid, MAX_SCULPT_BUMPS, SCULPT_AMP_MAX, SCULPT_AMP_MIN, SCULPT_SIGMA_MAX,
-    SCULPT_SIGMA_MIN,
+    SurfaceEvaluator, SurfaceGrid, MAX_SCULPT_BUMPS, SCULPT_AMP_MAX, SCULPT_AMP_MIN,
+    SCULPT_SIGMA_MAX, SCULPT_SIGMA_MIN,
 };
 
 pub(crate) const LOSS_PARAM_MIN_BOUND: f64 = -100.0;
@@ -51,11 +59,13 @@ pub enum CanvasInteractionMode {
 }
 
 pub struct LossLandscapeTool {
+    pub(crate) predictor_mode: PredictorMode,
     pub(crate) w_min: f64,
     pub(crate) w_max: f64,
     pub(crate) b_min: f64,
     pub(crate) b_max: f64,
     pub(crate) resolution: usize,
+    pub(crate) math_input: MathExpressionInputBar,
     pub surface: LandscapeSurface,
     pub view_mode: LandscapeViewMode,
     pub interaction_mode: CanvasInteractionMode,
@@ -74,11 +84,23 @@ pub struct LossLandscapeTool {
 impl Default for LossLandscapeTool {
     fn default() -> Self {
         let mut tool = Self {
+            predictor_mode: PredictorMode::Linear,
             w_min: 0.0,
             w_max: 4.0,
             b_min: -1.0,
             b_max: 3.0,
             resolution: 20,
+            math_input: MathExpressionInputBar::new(
+                "f(x,w,b)",
+                DEFAULT_LOSS_EXPR,
+                vec![
+                    ("Sinusoidal Non-Convex", "w * sin(b * x) + a"),
+                    ("Shifted ReLU Neuron", "w * max(0, x + b)"),
+                    ("Saturated Gate", "w * clamp(x + b, -1, 1)"),
+                    ("Linear Baseline", "w * x + b"),
+                ],
+            )
+            .with_axes(&["x", "w", "b"]),
             surface: LandscapeSurface::LinearMse,
             view_mode: LandscapeViewMode::View3D,
             interaction_mode: CanvasInteractionMode::Orbit,
@@ -106,6 +128,12 @@ struct LossLandscapeState {
     b_min: f64,
     b_max: f64,
     resolution: usize,
+    #[serde(default, skip_serializing_if = "PredictorMode::is_linear")]
+    predictor_mode: PredictorMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    custom_expr: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    custom_params: BTreeMap<String, f64>,
     #[serde(default)]
     surface: LandscapeSurface,
     #[serde(default)]
@@ -129,17 +157,62 @@ impl LossLandscapeTool {
         (self.w_min, self.w_max, self.b_min, self.b_max)
     }
 
-    pub fn reset_arena(&mut self) {
-        self.arena.reset(
-            &self.arena_config,
+    #[inline]
+    #[must_use]
+    pub(super) fn eval_from<'a>(
+        surface: LandscapeSurface,
+        mode: PredictorMode,
+        bar: &'a MathExpressionInputBar,
+        bumps: &'a [SculptBump],
+    ) -> SurfaceEvaluator<'a> {
+        let custom = (surface == LandscapeSurface::LinearMse && mode == PredictorMode::Custom)
+            .then(|| bar.active_compiled().map(|c| (c, bar.param_slice())))
+            .flatten();
+        SurfaceEvaluator::new(surface, bumps, custom)
+    }
+
+    #[must_use]
+    pub fn surface_evaluator(&self) -> SurfaceEvaluator<'_> {
+        Self::eval_from(
             self.surface,
+            self.predictor_mode,
+            &self.math_input,
             &self.sculpt_bumps,
-            self.domain_bounds(),
+        )
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn evaluate_mse_at(&self, w: f64, b: f64) -> Option<f64> {
+        match self.predictor_mode {
+            PredictorMode::Linear => SurfaceEvaluator::evaluate_mse_only(None, w, b),
+            PredictorMode::Custom => {
+                let compiled = self.math_input.active_compiled()?;
+                SurfaceEvaluator::evaluate_mse_only(
+                    Some((compiled, self.math_input.param_slice())),
+                    w,
+                    b,
+                )
+            }
+        }
+    }
+
+    pub fn reset_arena(&mut self) {
+        let bounds = self.domain_bounds();
+        let eval = Self::eval_from(
+            self.surface,
+            self.predictor_mode,
+            &self.math_input,
+            &self.sculpt_bumps,
         );
+        self.arena.reset(&self.arena_config, eval, bounds);
     }
 
     pub fn apply_surface_preset(&mut self, surface: LandscapeSurface) {
         self.surface = surface;
+        if surface != LandscapeSurface::LinearMse {
+            self.predictor_mode = PredictorMode::Linear;
+        }
         let (w0, w1, b0, b1) = surface.default_bounds();
         (self.w_min, self.w_max, self.b_min, self.b_max) = (w0, w1, b0, b1);
         self.sculpt_bumps.clear();
@@ -254,18 +327,34 @@ impl InteractiveTool for LossLandscapeTool {
     fn step_simulation(&mut self) {
         if self.has_finite_parameters() {
             let bounds = self.domain_bounds();
-            self.arena
-                .step_once(&self.arena_config, self.surface, &self.sculpt_bumps, bounds);
+            let eval = Self::eval_from(
+                self.surface,
+                self.predictor_mode,
+                &self.math_input,
+                &self.sculpt_bumps,
+            );
+            self.arena.step_once(&self.arena_config, eval, bounds);
         }
     }
 
     fn save_state(&self) -> Option<String> {
+        let is_custom = self.predictor_mode == PredictorMode::Custom;
+        let custom_expr = (is_custom || self.math_input.raw_text != DEFAULT_LOSS_EXPR)
+            .then(|| self.math_input.raw_text.clone());
+        let custom_params = if is_custom {
+            self.math_input.params_map()
+        } else {
+            BTreeMap::new()
+        };
         serde_json::to_string(&LossLandscapeState {
             w_min: self.w_min,
             w_max: self.w_max,
             b_min: self.b_min,
             b_max: self.b_max,
             resolution: self.resolution,
+            predictor_mode: self.predictor_mode,
+            custom_expr,
+            custom_params,
             surface: self.surface,
             view_mode: self.view_mode,
             camera: self.camera,
@@ -278,8 +367,8 @@ impl InteractiveTool for LossLandscapeTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let p: LossLandscapeState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid loss landscape state: {e}"))?;
+        let p: LossLandscapeState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid loss landscape state: {e}"))?;
         let bounds_ok = p.w_min.is_finite()
             && p.w_max.is_finite()
             && (LOSS_PARAM_MIN_BOUND..=LOSS_PARAM_MAX_BOUND).contains(&p.w_min)
@@ -290,6 +379,11 @@ impl InteractiveTool for LossLandscapeTool {
             && (LOSS_PARAM_MIN_BOUND..=LOSS_PARAM_MAX_BOUND).contains(&p.b_min)
             && (LOSS_PARAM_MIN_BOUND..=LOSS_PARAM_MAX_BOUND).contains(&p.b_max)
             && p.b_min < p.b_max;
+        let custom_ok = p.custom_expr.as_ref().is_none_or(|s| s.len() <= 512)
+            && p.custom_params.len() <= crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
+            && p.custom_params
+                .values()
+                .all(|v| v.is_finite() && (-1e4..=1e4).contains(v));
         let arena_ok = (10..=50).contains(&p.resolution)
             && p.camera.is_valid()
             && p.arena.is_valid()
@@ -299,11 +393,15 @@ impl InteractiveTool for LossLandscapeTool {
             && (SCULPT_SIGMA_MIN..=SCULPT_SIGMA_MAX).contains(&p.sculpt_sigma)
             && p.sculpt_bumps.len() <= MAX_SCULPT_BUMPS
             && p.sculpt_bumps.iter().all(SculptBump::is_valid);
-        if !bounds_ok || !arena_ok {
+        if !bounds_ok || !custom_ok || !arena_ok {
             return Err("Loss landscape parameter bounds or arena configuration invalid".into());
         }
         (self.w_min, self.w_max, self.b_min, self.b_max) = (p.w_min, p.w_max, p.b_min, p.b_max);
         (self.resolution, self.surface, self.view_mode) = (p.resolution, p.surface, p.view_mode);
+        self.predictor_mode = p.predictor_mode;
+        self.math_input
+            .set_expression(p.custom_expr.as_deref().unwrap_or(DEFAULT_LOSS_EXPR));
+        self.math_input.set_params_map(&p.custom_params);
         self.camera.apply_pose(p.camera);
         self.arena_config = p.arena;
         (self.sculpt_amplitude, self.sculpt_sigma) = (p.sculpt_amplitude, p.sculpt_sigma);
@@ -313,7 +411,11 @@ impl InteractiveTool for LossLandscapeTool {
             .map(|b| SculptBump::new(b.w, b.b, b.amplitude, b.sigma))
             .collect();
         self.is_playing = false;
-        (self.slingshot_anchor, self.slingshot_current, self.last_brush_wb) = (None, None, None);
+        (
+            self.slingshot_anchor,
+            self.slingshot_current,
+            self.last_brush_wb,
+        ) = (None, None, None);
         self.reset_arena();
         Ok(())
     }
@@ -338,9 +440,8 @@ impl InteractiveTool for LossLandscapeTool {
             if !self.has_finite_parameters() {
                 return;
             }
-            let grid = SurfaceGrid::sample(
-                self.surface,
-                &self.sculpt_bumps,
+            let grid = SurfaceGrid::sample_eval(
+                self.surface_evaluator(),
                 self.domain_bounds(),
                 self.resolution,
             );
@@ -361,39 +462,5 @@ inventory::submit! {
         domain: "ai",
         tags: &["hamiltonian", "langevin", "optimization", "3d"],
         build: || Box::new(LossLandscapeTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for LossLandscapeTool {
-    fn theory_description(&self) -> String {
-        "3D and 2D non-convex optimization arena comparing first-order optimizers ($\\text{SGD}$, $\\text{Adam}$) against symplectic/conformal Hamiltonian dynamics $H(q, p) = \\frac{\\|p\\|^2}{2m} + L(q)$ and underdamped BAOAB Langevin diffusion $dp = -\\nabla L(q)\\,dt - \\gamma p\\,dt + \\sqrt{2\\gamma m k_B T}\\,dW_t$ across sculpted Gaussian potentials.".into()
-    }
-
-    fn phonetic_description(&self) -> String {
-        "Hamiltonian and Langevin momentum optimization dynamics on 3D non-convex loss landscapes"
-            .into()
-    }
-
-    fn theory_citation(&self) -> String {
-        "Visualizing the Loss Landscape of Neural Nets (Li et al., 2018); Variational Perspectives on Accelerated Optimization (Wibisono, Wilson & Jordan, 2016); Molecular Dynamics (Leimkuhler & Matthews, 2015)".into()
-    }
-
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Loss Landscape","domain":"ai","timestamp":"2026-11-16T00:00:00Z"},"config":{"w_min":-1.0,"w_max":5.0,"b_min":-2.0,"b_max":4.0,"resolution":30}}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "loss_landscape_starter",
-        title: "Loss Landscape",
-        description: "3D and 2D Hamiltonian & Langevin loss landscape arena over Linear MSE, Rosenbrock, Rastrigin, and sculpted Gaussian surfaces.",
-        category: "Optimization",
-        icon: "⛰️",
-        domain: "ai",
-        tool_name: Some("LossLandscapeTool"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }

@@ -4,7 +4,7 @@
 //! (`QuadraticHamiltonian`), `LangevinBaoab2D` (`OxidizeRng`), and optional
 //! `#[cfg(feature = "physics")]` `LorenzSystem` chaotic forcing.
 
-use super::surfaces::{LandscapeSurface, SculptBump};
+use super::surfaces::SurfaceEvaluator;
 use crate::app::SemanticPalette;
 use eframe::egui::Color32;
 use math_explorer::applied::game_theory::mean_field::physics::{Hamiltonian, QuadraticHamiltonian};
@@ -249,8 +249,7 @@ impl ParticleArena {
     pub fn reset(
         &mut self,
         cfg: &ArenaConfig,
-        surface: LandscapeSurface,
-        bumps: &[SculptBump],
+        eval: SurfaceEvaluator<'_>,
         bounds: (f64, f64, f64, f64),
     ) {
         let mass = clamp_mass(cfg.mass);
@@ -260,7 +259,8 @@ impl ParticleArena {
             cfg.spawn[1].clamp(bounds.2, bounds.3),
         );
         let p0 = Vector2::new(cfg.slingshot_velocity[0], cfg.slingshot_velocity[1]) * mass;
-        let pot0 = surface.evaluate(bumps, q0.x, q0.y);
+        let raw_pot = eval.evaluate(q0.x, q0.y);
+        let pot0 = if raw_pot.is_finite() { raw_pot } else { 0.0 };
         let kin0 = quad_h.evaluate(p0.x) + quad_h.evaluate(p0.y);
 
         self.step_count = 0;
@@ -295,8 +295,7 @@ impl ParticleArena {
         cfg: &mut ArenaConfig,
         origin: [f64; 2],
         velocity: [f64; 2],
-        surface: LandscapeSurface,
-        bumps: &[SculptBump],
+        eval: SurfaceEvaluator<'_>,
         bounds: (f64, f64, f64, f64),
     ) {
         cfg.spawn = [
@@ -307,14 +306,13 @@ impl ParticleArena {
             (velocity[0].clamp(-80.0, 80.0) * 10_000.0).round() / 10_000.0,
             (velocity[1].clamp(-80.0, 80.0) * 10_000.0).round() / 10_000.0,
         ];
-        self.reset(cfg, surface, bumps, bounds);
+        self.reset(cfg, eval, bounds);
     }
 
     pub fn step_once(
         &mut self,
         cfg: &ArenaConfig,
-        surface: LandscapeSurface,
-        bumps: &[SculptBump],
+        eval: SurfaceEvaluator<'_>,
         bounds: (f64, f64, f64, f64),
     ) {
         let (mass, damping) = (clamp_mass(cfg.mass), clamp_damping(cfg.damping));
@@ -350,8 +348,7 @@ impl ParticleArena {
             rng: &mut self.rng,
         };
         let scalars = StepScalars {
-            surface,
-            bumps,
+            eval,
             dt,
             lr,
             mass,
@@ -367,7 +364,10 @@ impl ParticleArena {
                 continue;
             }
             step_racer(racer, &mut solvers, &scalars);
-            racer.potential_energy = surface.evaluate(bumps, racer.phase.q.x, racer.phase.q.y);
+            let pot = eval.evaluate(racer.phase.q.x, racer.phase.q.y);
+            if pot.is_finite() {
+                racer.potential_energy = pot;
+            }
             racer.trail.push([racer.phase.q.x, racer.phase.q.y]);
         }
         self.step_count += 1;
@@ -384,8 +384,7 @@ struct StepSolvers<'a> {
 }
 
 struct StepScalars<'a> {
-    surface: LandscapeSurface,
-    bumps: &'a [SculptBump],
+    eval: SurfaceEvaluator<'a>,
     dt: f64,
     lr: f64,
     mass: f64,
@@ -397,7 +396,7 @@ struct StepScalars<'a> {
 }
 
 fn step_racer(racer: &mut RacerTrack, s: &mut StepSolvers<'_>, sc: &StepScalars<'_>) {
-    let mut grad_fn = |q: Vector2<f64>| sc.surface.gradient(sc.bumps, q.x, q.y);
+    let mut grad_fn = |q: Vector2<f64>| sc.eval.gradient(q.x, q.y);
     match racer.kind {
         RacerKind::Sgd => {
             let prev = racer.phase.q;
