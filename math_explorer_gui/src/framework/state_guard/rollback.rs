@@ -155,6 +155,7 @@ impl SimulationFramework {
         self.current_valid_plot_datasets = plot_datasets;
         self.is_diverged = false;
         self.diagnostic_report = None;
+        self.resync_active_hud_callouts();
     }
 
     /// Coordinates parameter clamping on the active tool via domain hooks or JSON bounds fallback.
@@ -251,6 +252,7 @@ impl SimulationFramework {
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.step_counter = 0;
+        self.on_hud_parameters_reset();
         self.refresh_saved_and_snapshot_after_reset();
         emit_recovery_telemetry(
             "SimulationFramework",
@@ -428,11 +430,22 @@ impl SimulationFramework {
     }
 
     /// Rebuilds a clean target tool instance for a starter card, applies its preset JSON,
-    /// and synchronizes baseline/reset snapshots.
+    /// and synchronizes baseline/reset snapshots (activating Guided Story or Challenge HUDs when matched).
     pub fn launch_starter_card(
         &mut self,
         card: &crate::starter_gallery::StarterCard,
     ) -> Result<(), String> {
+        if let Some(story) =
+            crate::starter_gallery::find_story_by_id(card.id, Some(self.domain.as_str()))
+        {
+            return self.launch_story(story, 0);
+        }
+        if let Some(challenge) =
+            crate::starter_gallery::find_challenge_by_id(card.id, Some(self.domain.as_str()))
+        {
+            return self.launch_challenge(challenge);
+        }
+        self.clear_challenge_hud();
         self.apply_starter_card(card.title, card.tool_name, card.preset_json)
     }
 

@@ -399,6 +399,7 @@ impl SimulationFramework {
         self.sync_overlays_before_frame(&ctx, id_source);
 
         self.show_export_action_bar(ui, id_source);
+        self.render_challenge_hud_panel(ui, &ctx, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
 
@@ -410,6 +411,8 @@ impl SimulationFramework {
             let _ = self.inspect_runtime_state();
             if self.is_diverged {
                 ctx.request_repaint();
+            } else {
+                let _ = self.evaluate_challenge_predicates(Some(&ctx));
             }
         } else if let Some(tool) = &mut self.active_tool {
             // Solver execution halted: keep last valid plot data active in egui_plot

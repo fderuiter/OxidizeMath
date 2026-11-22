@@ -1,4 +1,4 @@
-use crate::framework::InteractiveTool;
+use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use crate::presets::ReplicatorPresetConfig;
 use eframe::egui;
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
@@ -11,12 +11,14 @@ pub struct ReplicatorDynamicsTool {
     payoff_matrix: DMatrix<f64>,
     initial_population: DVector<f64>,
     trajectory: Vec<(f64, DVector<f64>)>,
+    mean_fitness_series: Vec<[f64; 2]>,
     time_horizon: f64,
     dt: f64,
     strategy_names: Vec<String>,
     playback_time: f64,
     is_playing: bool,
     playback_speed: f64,
+    callout_manager: CalloutManager,
 }
 
 impl Default for ReplicatorDynamicsTool {
@@ -27,12 +29,14 @@ impl Default for ReplicatorDynamicsTool {
             payoff_matrix: payoff,
             initial_population: init,
             trajectory: Vec::new(),
+            mean_fitness_series: Vec::new(),
             time_horizon: 20.0,
             dt: 0.05,
             strategy_names: vec!["Hawk".to_string(), "Dove".to_string()],
             playback_time: 0.0,
             is_playing: false,
             playback_speed: 1.0,
+            callout_manager: CalloutManager::new(),
         };
         tool.run_simulation();
         tool
@@ -52,6 +56,14 @@ impl ReplicatorDynamicsTool {
         if let Ok(system) = ReplicatorDynamics::new(self.payoff_matrix.clone()) {
             self.trajectory =
                 system.simulate(self.initial_population.clone(), self.time_horizon, self.dt);
+            self.mean_fitness_series = self
+                .trajectory
+                .iter()
+                .filter_map(|(t, x)| {
+                    let avg = x.dot(&(&self.payoff_matrix * x));
+                    (t.is_finite() && avg.is_finite()).then_some([*t, avg])
+                })
+                .collect();
             self.playback_time = 0.0;
             self.is_playing = false;
         }
@@ -81,17 +93,66 @@ impl ReplicatorDynamicsTool {
         self.run_simulation();
     }
 
+    pub(crate) fn load_preset_prisoners_dilemma(&mut self) {
+        self.payoff_matrix = DMatrix::from_row_slice(2, 2, &[3.0, 0.0, 5.0, 1.0]);
+        self.initial_population = DVector::from_vec(vec![0.9, 0.1]);
+        self.strategy_names = vec!["Cooperate".to_string(), "Defect".to_string()];
+        self.time_horizon = 10.0;
+        self.run_simulation();
+    }
+
+    pub(crate) fn load_preset_stag_hunt(&mut self) {
+        self.payoff_matrix = DMatrix::from_row_slice(2, 2, &[4.0, 0.0, 3.0, 2.0]);
+        self.initial_population = DVector::from_vec(vec![0.55, 0.45]);
+        self.strategy_names = vec!["Stag".to_string(), "Hare".to_string()];
+        self.time_horizon = 12.0;
+        self.run_simulation();
+    }
+
     pub(crate) fn load_preset_rps(&mut self) {
         self.payoff_matrix =
             DMatrix::from_row_slice(3, 3, &[0.0, -1.0, 1.0, 1.0, 0.0, -1.0, -1.0, 1.0, 0.0]);
-        self.initial_population = DVector::from_vec(vec![0.33, 0.33, 0.34]);
+        self.initial_population = DVector::from_vec(vec![0.50, 0.30, 0.20]);
         self.strategy_names = vec![
             "Rock".to_string(),
             "Paper".to_string(),
             "Scissors".to_string(),
         ];
-        self.time_horizon = 50.0;
+        self.time_horizon = 40.0;
         self.run_simulation();
+    }
+
+    pub(crate) fn load_preset_spiral_rps(&mut self) {
+        self.payoff_matrix =
+            DMatrix::from_row_slice(3, 3, &[0.0, -0.7, 1.0, 1.0, 0.0, -0.7, -0.7, 1.0, 0.0]);
+        self.initial_population = DVector::from_vec(vec![0.55, 0.25, 0.20]);
+        self.strategy_names = vec![
+            "Rock".to_string(),
+            "Paper".to_string(),
+            "Scissors".to_string(),
+        ];
+        self.time_horizon = 40.0;
+        self.run_simulation();
+    }
+
+    fn compute_oscillation_span(&self) -> f64 {
+        if self.trajectory.is_empty() {
+            return 0.0;
+        }
+        let half = self.trajectory.len() / 2;
+        let mut min_x0 = f64::INFINITY;
+        let mut max_x0 = f64::NEG_INFINITY;
+        for (_, state) in &self.trajectory[half..] {
+            if let Some(&v) = state.get(0) {
+                min_x0 = min_x0.min(v);
+                max_x0 = max_x0.max(v);
+            }
+        }
+        if min_x0.is_finite() && max_x0.is_finite() {
+            (max_x0 - min_x0).max(0.0)
+        } else {
+            0.0
+        }
     }
 }
 
@@ -104,6 +165,38 @@ impl InteractiveTool for ReplicatorDynamicsTool {
     }
     fn domain(&self) -> &'static str {
         "game_theory"
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        if self.trajectory.is_empty() || self.mean_fitness_series.is_empty() {
+            return Vec::new();
+        }
+        let init_fit = self.mean_fitness_series.first().map_or(0.0, |p| p[1]);
+        let final_fit = self.mean_fitness_series.last().map_or(0.0, |p| p[1]);
+        let idx = ((self.playback_time / self.dt).round() as usize)
+            .min(self.mean_fitness_series.len().saturating_sub(1));
+        let cur_fit = self.mean_fitness_series[idx][1];
+        let first_state = &self.trajectory[0].1;
+        let last_state = &self.trajectory[self.trajectory.len() - 1].1;
+        let x0_init = first_state.get(0).copied().unwrap_or(0.0);
+        let x0_final = last_state.get(0).copied().unwrap_or(0.0);
+        let x1_init = first_state.get(1).copied().unwrap_or(0.0);
+        let x1_final = last_state.get(1).copied().unwrap_or(0.0);
+        vec![
+            ("initial_mean_fitness", init_fit),
+            ("final_mean_fitness", final_fit),
+            ("current_mean_fitness", cur_fit),
+            ("fitness_change", final_fit - init_fit),
+            ("x0_initial", x0_init),
+            ("x0_final", x0_final),
+            ("x1_initial", x1_init),
+            ("x1_final", x1_final),
+            ("oscillation_span", self.compute_oscillation_span()),
+        ]
+    }
+
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.callout_manager.sync_specs(callouts);
     }
 
     fn save_state(&self) -> Option<String> {
@@ -225,6 +318,26 @@ mod tests {
         tool.reset_playback();
         assert!(!tool.is_playing);
         assert_eq!(tool.playback_time, 0.0);
+    }
+
+    #[test]
+    fn test_prisoners_dilemma_mean_fitness_decline_and_stag_hunt() {
+        let mut tool = ReplicatorDynamicsTool::default();
+        tool.load_preset_prisoners_dilemma();
+        let obs = tool.observables();
+        let init_fit = obs.iter().find(|(k, _)| *k == "initial_mean_fitness").unwrap().1;
+        let final_fit = obs.iter().find(|(k, _)| *k == "final_mean_fitness").unwrap().1;
+        let x1_final = obs.iter().find(|(k, _)| *k == "x1_final").unwrap().1;
+        assert!(init_fit > 2.8 && final_fit < 1.05 && x1_final > 0.99);
+
+        tool.load_preset_stag_hunt();
+        let low_final = tool
+            .observables()
+            .into_iter()
+            .find(|(k, _)| *k == "x0_final")
+            .unwrap()
+            .1;
+        assert!(low_final < 0.05);
     }
 }
 

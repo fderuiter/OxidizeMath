@@ -318,6 +318,7 @@ impl SimulationFramework {
                 .insert(old_name.to_string(), old_json.to_string());
         }
         self.bump_framework_revision();
+        self.clear_challenge_hud();
         self.selected_tool_index = Some(index);
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();

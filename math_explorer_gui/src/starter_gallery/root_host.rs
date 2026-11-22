@@ -106,13 +106,101 @@ fn render_starter_card(ui: &mut egui::Ui, card: &StarterCard, card_width: f32) -
     launched
 }
 
-fn render_starter_gallery_body(
+fn resolve_gallery_domain<'a>(id_source: &'a str, cards: &'a [StarterCard]) -> &'a str {
+    if let Some(first) = cards.first() {
+        return first.domain;
+    }
+    match id_source.rsplit_once('_') {
+        Some((prefix, suffix))
+            if !prefix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            prefix
+        }
+        _ => id_source,
+    }
+}
+
+fn render_gallery_filter_tabs(
+    ui: &mut egui::Ui,
+    tab_state_id: egui::Id,
+    snapshot_count: usize,
+    story_count: usize,
+    challenge_count: usize,
+) -> super::StarterGalleryTab {
+    let mut active_tab = ui
+        .ctx()
+        .data(|d| d.get_temp::<super::StarterGalleryTab>(tab_state_id))
+        .unwrap_or_default();
+
+    ui.horizontal_wrapped(|ui| {
+        for (tab, label) in [
+            (
+                super::StarterGalleryTab::Snapshots,
+                format!("📸 Snapshots ({snapshot_count})"),
+            ),
+            (
+                super::StarterGalleryTab::GuidedStories,
+                format!("📖 Guided Stories ({story_count})"),
+            ),
+            (
+                super::StarterGalleryTab::Challenges,
+                format!("🎯 Challenges ({challenge_count})"),
+            ),
+        ] {
+            if ui.selectable_label(active_tab == tab, label).clicked() {
+                active_tab = tab;
+            }
+        }
+    });
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(tab_state_id, active_tab));
+    active_tab
+}
+
+fn render_gallery_card_grid(
     ui: &mut egui::Ui,
     frame_ctx: &mut crate::ModalFrameContext,
-    cards: &[StarterCard],
+    visible_cards: &[StarterCard],
     m: &GalleryOverlayMetrics,
 ) -> Option<StarterCard> {
     let mut selected_card = None;
+    egui::ScrollArea::vertical()
+        .max_height((m.scroll_h - 28.0).max(64.0))
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            ui.set_max_width(m.inner_w);
+            if visible_cards.is_empty() {
+                ui.label(
+                    egui::RichText::new(
+                        "No guided stories or challenges are registered for this domain yet.",
+                    )
+                    .weak(),
+                );
+                return;
+            }
+            ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
+            for row in visible_cards.chunks(m.cols.max(1)) {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
+                    for card in row {
+                        if render_starter_card(ui, card, m.card_w) {
+                            selected_card = Some(card.clone());
+                            frame_ctx.close();
+                        }
+                    }
+                });
+            }
+        });
+    selected_card
+}
+
+fn render_starter_gallery_body(
+    ui: &mut egui::Ui,
+    frame_ctx: &mut crate::ModalFrameContext,
+    id_source: &str,
+    cards: &[StarterCard],
+    m: &GalleryOverlayMetrics,
+) -> Option<StarterCard> {
     ui.set_max_width(m.inner_w);
     ui.set_width(m.inner_w);
     ui.horizontal(|ui| {
@@ -131,35 +219,35 @@ fn render_starter_gallery_body(
     ui.add(
         egui::Label::new(
             egui::RichText::new(
-                "Choose a guided starter model to launch pre-configured simulation parameters:",
+                "Choose a snapshot, guided paradox story, or playable AST target challenge:",
             )
             .color(ui.visuals().weak_text_color()),
         )
         .wrap(),
     );
-    ui.add_space(6.0);
-    ui.separator();
-    ui.add_space(8.0);
+    ui.add_space(4.0);
 
-    egui::ScrollArea::vertical()
-        .max_height(m.scroll_h)
-        .auto_shrink([false, true])
-        .show(ui, |ui| {
-            ui.set_max_width(m.inner_w);
-            ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-            for row in cards.chunks(m.cols.max(1)) {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-                    for card in row {
-                        if render_starter_card(ui, card, m.card_w) {
-                            selected_card = Some(card.clone());
-                            frame_ctx.close();
-                        }
-                    }
-                });
-            }
-        });
-    selected_card
+    let domain = resolve_gallery_domain(id_source, cards);
+    let story_cards = super::get_story_cards_for_domain(domain);
+    let challenge_cards = super::get_challenge_cards_for_domain(domain);
+    let tab_id = egui::Id::new((id_source, "starter_gallery_active_tab"));
+    let active_tab = render_gallery_filter_tabs(
+        ui,
+        tab_id,
+        cards.len(),
+        story_cards.len(),
+        challenge_cards.len(),
+    );
+    let visible_cards: &[StarterCard] = match active_tab {
+        super::StarterGalleryTab::Snapshots => cards,
+        super::StarterGalleryTab::GuidedStories => &story_cards,
+        super::StarterGalleryTab::Challenges => &challenge_cards,
+    };
+
+    ui.add_space(4.0);
+    ui.separator();
+    ui.add_space(6.0);
+    render_gallery_card_grid(ui, frame_ctx, visible_cards, m)
 }
 
 /// Renders the central canvas starter gallery card overlay clamped to root window bounds.
@@ -186,7 +274,7 @@ pub fn show_starter_gallery_overlay(
         .max_width(m.max_w)
         .max_height(m.max_h)
         .show(ctx, is_open, |ui, frame_ctx| {
-            selected_card = render_starter_gallery_body(ui, frame_ctx, cards, &m);
+            selected_card = render_starter_gallery_body(ui, frame_ctx, id_source, cards, &m);
         });
 
     selected_card

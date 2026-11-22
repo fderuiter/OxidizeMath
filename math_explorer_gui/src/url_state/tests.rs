@@ -215,3 +215,45 @@ fn test_tick_url_sync_defers_during_active_animated_slider_sweeps() {
         .url_sync_last_fragment_for_test()
         .is_some_and(|frag| frag.starts_with("#tab=")));
 }
+
+#[test]
+fn test_preset_challenge_and_step_url_codec_roundtrip_and_bounds() {
+    let ch_frag = encode_share_fragment_with_hud(
+        "financial_math",
+        Some("BankrollGrowthTool"),
+        None,
+        Some("kelly_ruin_trap"),
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(ch_frag.len() <= MAX_URL_FRAGMENT_BYTES);
+    let parsed_ch = parse_share_location(&ch_frag, "").unwrap().unwrap();
+    assert_eq!(parsed_ch.tab, "financial_math");
+    assert_eq!(parsed_ch.tool.as_deref(), Some("BankrollGrowthTool"));
+    assert_eq!(parsed_ch.challenge.as_deref(), Some("kelly_ruin_trap"));
+    assert_eq!(parsed_ch.preset, None);
+    assert_eq!(parsed_ch.step, None);
+
+    let st_frag = encode_share_fragment_with_hud(
+        "game_theory",
+        Some("ReplicatorDynamicsTool"),
+        Some("prisoners_dilemma_tragedy"),
+        None,
+        Some(2),
+        None,
+    )
+    .unwrap();
+    let parsed_st = parse_share_location(&st_frag, "").unwrap().unwrap();
+    assert_eq!(
+        parsed_st.preset.as_deref(),
+        Some("prisoners_dilemma_tragedy")
+    );
+    assert_eq!(parsed_st.step, Some(2));
+
+    // Reject simultaneous preset + challenge, step without preset, or malformed step
+    assert!(parse_share_location("#tab=chaos&preset=a&challenge=b", "").is_err());
+    assert!(parse_share_location("#tab=chaos&challenge=b&step=1", "").is_err());
+    assert!(parse_share_location("#tab=chaos&preset=a&step=999", "").is_err());
+    assert!(parse_share_location("#tab=chaos&preset=", "").is_err());
+}

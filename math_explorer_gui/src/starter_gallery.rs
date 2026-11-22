@@ -379,6 +379,10 @@ pub fn get_starter_cards_for_domain(
     cards
 }
 
+#[path = "starter_gallery/challenges.rs"]
+mod challenges;
+pub use challenges::*;
+
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
 pub use root_host::show_starter_gallery_overlay;

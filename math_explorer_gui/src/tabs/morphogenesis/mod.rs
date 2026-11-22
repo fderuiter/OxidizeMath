@@ -318,6 +318,23 @@ impl ExplorerTab for MorphogenesisTab {
         preset_json: Option<&str>,
     ) -> Result<(), String> {
         self.framework.import_url_preset_json(tool_id, preset_json)?;
+        self.sync_shared_params_from_framework();
+        Ok(())
+    }
+
+    fn import_url_share_params(
+        &mut self,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        self.framework.import_url_share_params(params, ctx)?;
+        self.sync_shared_params_from_framework();
+        Ok(())
+    }
+}
+
+impl MorphogenesisTab {
+    fn sync_shared_params_from_framework(&mut self) {
         let cfg = self.export_config();
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.a = cfg.a;
@@ -325,7 +342,6 @@ impl ExplorerTab for MorphogenesisTab {
         p.d_u = cfg.d_u;
         p.d_v = cfg.d_v;
         p.dt = cfg.dt;
-        Ok(())
     }
 }
 

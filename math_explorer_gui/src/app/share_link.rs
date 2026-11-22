@@ -44,12 +44,7 @@ impl MathExplorerApp {
         let (_, tab) = self
             .active_share_tab()
             .ok_or_else(|| "No active simulation tab selected".to_string())?;
-        let preset_json = tab.export_url_preset_json()?;
-        crate::url_state::encode_share_fragment(
-            tab.url_slug(),
-            tab.active_tool_id(),
-            preset_json.as_deref(),
-        )
+        tab.encode_url_share_fragment()
     }
 
     /// Encodes a full shareable web URL (`https://...#tab=...`) for the primary simulation tab.
@@ -140,9 +135,7 @@ impl MathExplorerApp {
             return Err(err);
         };
 
-        if let Err(err) = self.tabs[tab_idx]
-            .import_url_preset_json(params.tool.as_deref(), params.state_json.as_deref())
-        {
+        if let Err(err) = self.tabs[tab_idx].import_url_share_params(&params, ctx) {
             self.record_invalid_share_url(err.clone(), ctx);
             return Err(err);
         }

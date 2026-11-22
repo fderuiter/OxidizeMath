@@ -1,23 +1,39 @@
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::InteractiveTool;
+use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::kelly::{
-    kelly_fraction, variants, BankrollFraction, UnitInterval, Odds,
+    expected_growth_rate, expected_value, kelly_fraction, variants, BankrollFraction, Odds,
+    UnitInterval,
 };
 use rand::Rng;
+
+const BASE_KELLY_SEED: u64 = 0x0001_D1CE_CAFE_BABE;
+
+const fn default_stake_multiplier() -> f64 {
+    1.0
+}
+
+fn is_default_stake_multiplier(val: &f64) -> bool {
+    (*val - 1.0).abs() < 1e-12
+}
 
 pub struct BankrollGrowthTool {
     initial_bankroll: f64,
     probability: f64,
     odds: f64,
     num_bets: usize,
-
-    // Cached plot data
+    stake_multiplier: f64,
+    seed_offset: u64,
     full_kelly_points: Vec<PlotPoint>,
     half_kelly_points: Vec<PlotPoint>,
     quarter_kelly_points: Vec<PlotPoint>,
-
+    active_stake_points: Vec<PlotPoint>,
+    kelly_f_star: f64,
+    active_fraction: f64,
+    active_growth_rate: f64,
+    unit_expected_value: f64,
+    callout_manager: CalloutManager,
     error_msg: Option<String>,
 }
 
@@ -26,15 +42,51 @@ impl Default for BankrollGrowthTool {
         let mut tool = Self {
             initial_bankroll: 1000.0,
             probability: 0.55,
-            odds: 2.0, // Decimal odds (net profit multiplier + 1, wait Kelly odds b is net profit multiplier. The Odds type in math_explorer: Odds::new(b). Let's check.)
+            odds: 2.0,
             num_bets: 100,
-            full_kelly_points: vec![],
-            half_kelly_points: vec![],
-            quarter_kelly_points: vec![],
+            stake_multiplier: 1.0,
+            seed_offset: 0,
+            full_kelly_points: Vec::new(),
+            half_kelly_points: Vec::new(),
+            quarter_kelly_points: Vec::new(),
+            active_stake_points: Vec::new(),
+            kelly_f_star: 0.0,
+            active_fraction: 0.0,
+            active_growth_rate: 0.0,
+            unit_expected_value: 0.0,
+            callout_manager: CalloutManager::new(),
             error_msg: None,
         };
         tool.recalculate();
         tool
+    }
+}
+
+fn finite_kelly_growth_rate(p: &UnitInterval, o: &Odds, stake_fraction: f64) -> f64 {
+    let clamped = stake_fraction.clamp(0.0, 0.9999);
+    if let Ok(bf) = BankrollFraction::new(clamped) {
+        let g = expected_growth_rate(p, o, &bf);
+        if g.is_finite() {
+            return g;
+        }
+    }
+    let b = o.net_profit_multiplier();
+    if clamped <= 0.0 {
+        return 0.0;
+    }
+    if clamped >= 1.0 || 1.0 + b * clamped <= 0.0 {
+        return -20.0;
+    }
+    let fallback = p.value() * (1.0 + b * clamped).ln() + p.complement() * (1.0 - clamped).ln();
+    if fallback.is_finite() { fallback } else { -20.0 }
+}
+
+fn step_bankroll(bankroll: &mut f64, stake_fraction: f64, net_profit_mult: f64, win: bool) {
+    let bet_amount = (*bankroll * stake_fraction).max(0.0);
+    if win {
+        *bankroll = (*bankroll + bet_amount * net_profit_mult).max(0.0);
+    } else {
+        *bankroll = (*bankroll - bet_amount).max(0.0);
     }
 }
 
@@ -44,71 +96,151 @@ impl BankrollGrowthTool {
         self.probability = 0.55;
         self.odds = 2.0;
         self.num_bets = 100;
+        self.stake_multiplier = 1.0;
+        self.seed_offset = 0;
         self.recalculate();
     }
 
-    fn recalculate(&mut self) {
+    pub fn rerun_simulation(&mut self) {
+        self.seed_offset = self.seed_offset.wrapping_add(1);
+        self.recalculate();
+    }
+
+    fn clear_trajectories(&mut self) {
         self.full_kelly_points.clear();
         self.half_kelly_points.clear();
         self.quarter_kelly_points.clear();
+        self.active_stake_points.clear();
         self.error_msg = None;
+    }
 
-        let prob_result = UnitInterval::new(self.probability);
-        let odds_result = Odds::new(self.odds);
+    fn simulate_paths(&mut self, p: &UnitInterval, o: &Odds, fk: f64, hk: f64, qk: f64) {
+        let mut rng =
+            oxidize_core::rng::OxidizeRng::new(BASE_KELLY_SEED.wrapping_add(self.seed_offset));
+        let net_b = o.net_profit_multiplier();
+        let active_f = (fk * self.stake_multiplier).clamp(0.0, 0.9999);
+        self.kelly_f_star = fk;
+        self.active_fraction = active_f;
+        self.active_growth_rate = finite_kelly_growth_rate(p, o, active_f);
+        self.unit_expected_value = expected_value(p, o);
 
-        match (prob_result, odds_result) {
-            (Ok(p), Ok(o)) => {
-                let full_kelly_res = kelly_fraction(&p, &o);
-                let half_kelly_res = variants::half_kelly(&p, &o);
-                let quarter_kelly_res = variants::quarter_kelly(&p, &o);
+        let (mut w_fk, mut w_hk, mut w_qk, mut w_act) = (
+            self.initial_bankroll,
+            self.initial_bankroll,
+            self.initial_bankroll,
+            self.initial_bankroll,
+        );
+        self.full_kelly_points.push(PlotPoint::new(0.0, w_fk));
+        self.half_kelly_points.push(PlotPoint::new(0.0, w_hk));
+        self.quarter_kelly_points.push(PlotPoint::new(0.0, w_qk));
+        self.active_stake_points.push(PlotPoint::new(0.0, w_act));
 
-                match (full_kelly_res, half_kelly_res, quarter_kelly_res) {
-                    (Ok(fk), Ok(hk), Ok(qk)) => {
-                        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        for i in 1..=self.num_bets {
+            let win = rng.r#gen::<f64>() < p.value();
+            step_bankroll(&mut w_fk, fk, net_b, win);
+            step_bankroll(&mut w_hk, hk, net_b, win);
+            step_bankroll(&mut w_qk, qk, net_b, win);
+            step_bankroll(&mut w_act, active_f, net_b, win);
+            let x = i as f64;
+            self.full_kelly_points.push(PlotPoint::new(x, w_fk));
+            self.half_kelly_points.push(PlotPoint::new(x, w_hk));
+            self.quarter_kelly_points.push(PlotPoint::new(x, w_qk));
+            self.active_stake_points.push(PlotPoint::new(x, w_act));
+        }
+    }
 
-                        let mut fk_bankroll = self.initial_bankroll;
-                        let mut hk_bankroll = self.initial_bankroll;
-                        let mut qk_bankroll = self.initial_bankroll;
-
-                        self.full_kelly_points.push(PlotPoint::new(0.0, fk_bankroll));
-                        self.half_kelly_points.push(PlotPoint::new(0.0, hk_bankroll));
-                        self.quarter_kelly_points.push(PlotPoint::new(0.0, qk_bankroll));
-
-                        for i in 1..=self.num_bets {
-                            let win = rng.r#gen::<f64>() < p.value();
-
-                            // Let's create a helper closure for bankroll update
-                            let update_bankroll =
-                                |bankroll: &mut f64, fraction: &BankrollFraction| {
-                                    let bet_amount = *bankroll * fraction.value();
-                                    if win {
-                                        *bankroll += bet_amount * o.value();
-                                    } else {
-                                        *bankroll -= bet_amount;
-                                    }
-                                };
-
-                            update_bankroll(&mut fk_bankroll, &fk);
-                            update_bankroll(&mut hk_bankroll, &hk);
-                            update_bankroll(&mut qk_bankroll, &qk);
-
-                            self.full_kelly_points.push(PlotPoint::new(i as f64, fk_bankroll));
-                            self.half_kelly_points.push(PlotPoint::new(i as f64, hk_bankroll));
-                            self.quarter_kelly_points.push(PlotPoint::new(i as f64, qk_bankroll));
-                        }
-                    }
-                    (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
-                        self.error_msg = Some(format!("Error: {e}"));
-                    }
-                }
-            }
-            (Err(e), _) => {
+    fn recalculate(&mut self) {
+        self.clear_trajectories();
+        let p = match UnitInterval::new(self.probability) {
+            Ok(val) => val,
+            Err(e) => {
                 self.error_msg = Some(format!("Error: {e}"));
+                return;
             }
-            (_, Err(e)) => {
+        };
+        let o = match Odds::new(self.odds) {
+            Ok(val) => val,
+            Err(e) => {
+                self.error_msg = Some(format!("Error: {e}"));
+                return;
+            }
+        };
+        match (
+            kelly_fraction(&p, &o),
+            variants::half_kelly(&p, &o),
+            variants::quarter_kelly(&p, &o),
+        ) {
+            (Ok(fk), Ok(hk), Ok(qk)) => {
+                self.simulate_paths(&p, &o, fk.value(), hk.value(), qk.value());
+            }
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
                 self.error_msg = Some(format!("Error: {e}"));
             }
         }
+    }
+
+    fn draw_parameter_controls(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Parameters");
+        let mut changed = false;
+        changed |= ui
+            .add(egui::Slider::new(&mut self.initial_bankroll, 100.0..=10000.0).text("Initial Bankroll"))
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut self.probability, 0.01..=0.99).text("Win Probability (p)"))
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut self.odds, 1.05..=10.0).text("Decimal Odds (b + 1)"))
+            .accessible_hover_text("Decimal odds: 2.0 = even money (+1.0 net profit per unit staked).")
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut self.num_bets, 10..=1000).text("Number of Bets"))
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut self.stake_multiplier, 0.0..=3.0).text("Stake Multiplier (× f*)"))
+            .accessible_hover_text("Multiple of Kelly optimal stake f*. Above 2.0f*, expected log-growth turns negative.")
+            .changed();
+
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Rerun Simulation").clicked() {
+                self.rerun_simulation();
+            }
+            if ui
+                .button("↻ Reset to Defaults")
+                .accessible_hover_text("Reset initial bankroll, win probability, odds, and bet count to default values")
+                .clicked()
+            {
+                self.reset_defaults();
+            }
+            ui.small(format!(
+                "f* = {:.3} | Active f = {:.3} | EV = {:+.3} | Log-Growth g = {:+.4}",
+                self.kelly_f_star, self.active_fraction, self.unit_expected_value, self.active_growth_rate
+            ));
+        });
+        if changed {
+            self.recalculate();
+        }
+    }
+
+    fn draw_simulation_plot(&mut self, ui: &mut egui::Ui) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        if let Some(ref err) = self.error_msg {
+            ui.colored_label(palette.error, err);
+            return;
+        }
+        ui.heading("Bankroll Simulation");
+        let plot = Plot::new("bankroll_growth_plot")
+            .view_aspect(2.0)
+            .legend(egui_plot::Legend::default());
+        plot.show(ui, |plot_ui| {
+            plot_ui.line(Line::new("Full Kelly", &self.full_kelly_points[..]).color(palette.series_color(3)));
+            plot_ui.line(Line::new("Half Kelly", &self.half_kelly_points[..]).color(palette.series_color(5)));
+            plot_ui.line(Line::new("Quarter Kelly", &self.quarter_kelly_points[..]).color(palette.series_color(2)));
+            if !is_default_stake_multiplier(&self.stake_multiplier) {
+                let label = format!("Active Stake ({:.2}× f*)", self.stake_multiplier);
+                plot_ui.line(Line::new(label, &self.active_stake_points[..]).color(palette.series_color(0)).width(2.2_f32));
+            }
+            self.callout_manager.render_on_plot(plot_ui);
+        });
     }
 }
 
@@ -119,15 +251,44 @@ struct BankrollState {
     probability: f64,
     odds: f64,
     num_bets: usize,
+    #[serde(
+        default = "default_stake_multiplier",
+        skip_serializing_if = "is_default_stake_multiplier"
+    )]
+    stake_multiplier: f64,
 }
 
 impl InteractiveTool for BankrollGrowthTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Bankroll Growth"
     }
     fn domain(&self) -> &'static str {
         "financial_math"
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        if self.error_msg.is_some() {
+            return Vec::new();
+        }
+        let final_w = self
+            .active_stake_points
+            .last()
+            .map_or(self.initial_bankroll, |pt| pt.y);
+        vec![
+            ("kelly_fraction", self.kelly_f_star),
+            ("stake_multiplier", self.stake_multiplier),
+            ("stake_fraction", self.active_fraction),
+            ("expected_growth_rate", self.active_growth_rate),
+            ("expected_value", self.unit_expected_value),
+            ("final_bankroll", final_w),
+        ]
+    }
+
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.callout_manager.sync_specs(callouts);
     }
 
     fn save_state(&self) -> Option<String> {
@@ -136,6 +297,7 @@ impl InteractiveTool for BankrollGrowthTool {
             probability: self.probability,
             odds: self.odds,
             num_bets: self.num_bets,
+            stake_multiplier: self.stake_multiplier,
         })
         .ok()
     }
@@ -143,13 +305,14 @@ impl InteractiveTool for BankrollGrowthTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: BankrollState =
             serde_json::from_str(state).map_err(|e| format!("Invalid bankroll state: {e}"))?;
-        if ![s.initial_bankroll, s.probability, s.odds]
+        if ![s.initial_bankroll, s.probability, s.odds, s.stake_multiplier]
             .iter()
             .all(|v| v.is_finite())
             || !(100.0..=10_000.0).contains(&s.initial_bankroll)
             || !(0.01..=0.99).contains(&s.probability)
             || !(0.1..=10.0).contains(&s.odds)
             || !(10..=1000).contains(&s.num_bets)
+            || !(0.0..=3.0).contains(&s.stake_multiplier)
         {
             return Err("Bankroll simulation parameters out of bounds".into());
         }
@@ -162,94 +325,28 @@ impl InteractiveTool for BankrollGrowthTool {
         self.probability = s.probability;
         self.odds = s.odds;
         self.num_bets = s.num_bets;
+        self.stake_multiplier = s.stake_multiplier;
+        self.seed_offset = 0;
         self.recalculate();
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
             self.show_ui(ui);
         });
     }
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+
     fn show_ui(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
-            ui.heading("Parameters");
-            let mut changed = false;
-
-            changed |= ui
-                .add(
-                    egui::Slider::new(&mut self.initial_bankroll, 100.0..=10000.0)
-                        .text("Initial Bankroll"),
-                )
-                .changed();
-            changed |= ui
-                .add(
-                    egui::Slider::new(&mut self.probability, 0.01..=0.99)
-                        .text("Win Probability (p)"),
-                )
-                .changed();
-            changed |= ui
-                .add(egui::Slider::new(&mut self.odds, 0.1..=10.0).text("Net Odds (b)"))
-                .accessible_hover_text(
-                    "Net profit multiplier. E.g., for +100 / even money, b = 1.0.",
-                )
-                .changed();
-            changed |= ui
-                .add(egui::Slider::new(&mut self.num_bets, 10..=1000).text("Number of Bets"))
-                .changed();
-
-            ui.horizontal(|ui| {
-                if ui.button("Rerun Simulation").clicked() {
-                    changed = true;
-                }
-                if ui
-                    .button("↻ Reset to Defaults")
-                    .accessible_hover_text("Reset initial bankroll, win probability, odds, and bet count to default values")
-                    .clicked()
-                {
-                    self.reset_defaults();
-                }
-            });
-
-            if changed {
-                self.recalculate();
-            }
-
+            self.draw_parameter_controls(ui);
             ui.separator();
-
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            if let Some(ref err) = self.error_msg {
-                ui.colored_label(palette.error, err);
-            } else {
-                ui.heading("Bankroll Simulation");
-
-                let plot = Plot::new("bankroll_growth_plot")
-                    .view_aspect(2.0)
-                    .legend(egui_plot::Legend::default());
-
-                plot.show(ui, |plot_ui| {
-                    plot_ui.line(
-                        Line::new("Full Kelly", &self.full_kelly_points[..])
-                            .color(palette.series_color(3)),
-                    );
-                    plot_ui.line(
-                        Line::new("Half Kelly", &self.half_kelly_points[..])
-                            .color(palette.series_color(5)),
-                    );
-                    plot_ui.line(
-                        Line::new("Quarter Kelly", &self.quarter_kelly_points[..])
-                            .color(palette.series_color(2)),
-                    );
-                });
-            }
+            self.draw_simulation_plot(ui);
         });
     }
 }
 
 // [cite:clinical_trials_statistics]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -269,13 +366,23 @@ impl scientific_metadata::theory::TheoryDescribable for BankrollGrowthTool {
             self.initial_bankroll, self.probability, self.odds, f_kelly
         )
     }
-    fn phonetic_description(&self) -> String { "Kelly criterion bankroll growth and geometric compounding theory".into() }
-    fn theory_citation(&self) -> String { "A New Interpretation of Information Rate (Kelly, 1956); The Kelly Capital Growth Investment Criterion (MacLean et al., 2011)".into() }
+    fn phonetic_description(&self) -> String {
+        "Kelly criterion bankroll growth and geometric compounding theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "A New Interpretation of Information Rate (Kelly, 1956); The Kelly Capital Growth Investment Criterion (MacLean et al., 2011)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
         map.insert("Full Kelly".into(), "Maximizes expected logarithmic growth rate".into());
-        map.insert("Half Kelly".into(), "Reduces variance and drawdowns by half while retaining 75% of growth rate".into());
-        map.insert("Quarter Kelly".into(), "Conservative wagering for high volatility protection".into());
+        map.insert(
+            "Half Kelly".into(),
+            "Reduces variance and drawdowns by half while retaining 75% of growth rate".into(),
+        );
+        map.insert(
+            "Quarter Kelly".into(),
+            "Conservative wagering for high volatility protection".into(),
+        );
         map
     }
 }
@@ -291,16 +398,17 @@ mod tests {
             probability: 0.70,
             odds: 3.0,
             num_bets: 500,
+            stake_multiplier: 2.4,
             ..Default::default()
         };
         tool.recalculate();
-
         tool.reset_defaults();
 
         assert_eq!(tool.initial_bankroll, 1000.0);
         assert_eq!(tool.probability, 0.55);
         assert_eq!(tool.odds, 2.0);
         assert_eq!(tool.num_bets, 100);
+        assert_eq!(tool.stake_multiplier, 1.0);
         assert_eq!(tool.full_kelly_points.len(), 101);
         assert!(tool.error_msg.is_none());
     }
@@ -312,6 +420,29 @@ mod tests {
         let plot_points: egui_plot::PlotPoints<'_> = slice.into();
         assert!(matches!(plot_points, egui_plot::PlotPoints::Borrowed(_)));
         assert_eq!(plot_points.points().len(), tool.full_kelly_points.len());
+    }
+
+    #[test]
+    fn test_net_profit_multiplier_rerun_and_overbet_growth() {
+        let mut w = 1000.0;
+        let odds = Odds::new(2.0).expect("valid decimal odds");
+        step_bankroll(&mut w, 0.2, odds.net_profit_multiplier(), true);
+        assert!((w - 1200.0).abs() < 1e-9, "even-money win credits 1x stake, not 2x");
+
+        let mut tool = BankrollGrowthTool::default();
+        tool.try_load_state(
+            r#"{"initial_bankroll":1000.0,"probability":0.6,"odds":2.0,"num_bets":120,"stake_multiplier":2.5}"#,
+        )
+        .expect("overbet state loads");
+        let obs = tool.observables();
+        let ev = obs.iter().find(|(k, _)| *k == "expected_value").unwrap().1;
+        let g = obs.iter().find(|(k, _)| *k == "expected_growth_rate").unwrap().1;
+        assert!(ev > 0.15 && g < -0.02, "above 2f*, EV > 0 yet log-growth g < 0");
+
+        let before: Vec<f64> = tool.full_kelly_points.iter().map(|p| p.y).collect();
+        tool.rerun_simulation();
+        let after: Vec<f64> = tool.full_kelly_points.iter().map(|p| p.y).collect();
+        assert_ne!(before, after, "rerun_simulation must advance deterministic RNG seed");
     }
 }
 

@@ -1,4 +1,7 @@
 pub mod callout_overlay;
+pub mod challenge_hud;
+#[cfg(test)]
+mod challenge_hud_tests;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
@@ -41,6 +44,7 @@ mod ui;
 mod url_share;
 
 pub use callout_overlay::*;
+pub use challenge_hud::*;
 pub use clamp::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
@@ -169,6 +173,14 @@ pub trait InteractiveTool {
     fn has_finite_parameters(&self) -> bool {
         true
     }
+
+    /// Named scalar observables exposed to the Challenge HUD and `math_commons::ast` evaluator.
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        Vec::new()
+    }
+
+    /// Synchronizes declarative guided story or challenge callout pins onto the tool's plot.
+    fn sync_callouts(&mut self, _callouts: &[CalloutSpec]) {}
 
     /// Optional hook to serialize tool-specific parameters into a String (e.g. JSON).
     fn save_state(&self) -> Option<String> {
@@ -361,6 +373,8 @@ pub struct SimulationFramework {
     pub step_counter: usize,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
+    /// Declarative guided story and AST challenge HUD state.
+    pub challenge_hud: ChallengeHudState,
     pub(super) instance_id: u64,
     pub(super) sync_state: FrameworkSyncState,
     pub(super) rev_cache: FrameworkRevisionCache,
@@ -404,6 +418,7 @@ impl SimulationFramework {
             diagnostic_report: None,
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
+            challenge_hud: ChallengeHudState::default(),
             instance_id: overlay_sync::next_framework_id(),
             sync_state: FrameworkSyncState::default(),
             rev_cache: FrameworkRevisionCache::default(),
