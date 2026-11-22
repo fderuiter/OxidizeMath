@@ -38,6 +38,8 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
         self.state.rho.fill(1.0);
         self.state.ux.fill(0.0);
         self.state.uy.fill(0.0);
+        self.state.obstacle_force_x = 0.0;
+        self.state.obstacle_force_y = 0.0;
         let eq = L::equilibrium(1.0, 0.0, 0.0);
         self.state.f.fill(eq);
         self.state.f_new.fill(eq);
@@ -72,12 +74,15 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
         }
     }
 
-    /// Performs one simulation step (Stream -> Collision).
+    /// Performs one simulation step (Stream -> Boundary -> Macroscopic/Collision -> Buffer Swap).
     #[verified_engine::verified]
     pub fn step(&mut self) {
         self.stream();
         self.boundary_conditions(); // Apply macroscopic BCs if any
         self.macroscopic_and_collision();
+        pure_math::pure_math::analysis::evolution::DoubleBufferedState::swap_buffers(
+            &mut self.state,
+        );
     }
 
     /// Fused Macroscopic + Collision step.
@@ -136,15 +141,87 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
             });
     }
 
-    /// Streaming step: Move particles to neighboring cells.
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+    #[verified_engine::verified]
+    fn stream_interior(
+        state: &mut LatticeState<Q>,
+        cx: &[i32; Q],
+        cy: &[i32; Q],
+        opp: &[usize; Q],
+    ) -> (f64, f64) {
+        let mut fx = 0.0;
+        let mut fy = 0.0;
+        if state.width <= 2 || state.height <= 2 {
+            return (fx, fy);
+        }
+        for y in 1..state.height - 1 {
+            for x in 1..state.width - 1 {
+                if state.obstacles[(y, x)] {
+                    continue;
+                }
+                for k in 0..Q {
+                    let prev_y = (y as isize - cy[k] as isize) as usize;
+                    let prev_x = (x as isize - cx[k] as isize) as usize;
+                    if state.obstacles[(prev_y, prev_x)] {
+                        let bounce_val = state.f[(y, x)][opp[k]];
+                        state.f_new[(y, x)][k] = bounce_val;
+                        fx -= 2.0 * bounce_val * f64::from(cx[k]);
+                        fy -= 2.0 * bounce_val * f64::from(cy[k]);
+                    } else {
+                        state.f_new[(y, x)][k] = state.f[(prev_y, prev_x)][k];
+                    }
+                }
+            }
+        }
+        (fx, fy)
+    }
+
+    #[verified_engine::verified]
+    fn stream_boundary_cell(
+        x: usize,
+        y: usize,
+        state: &mut LatticeState<Q>,
+        cx: &[i32; Q],
+        cy: &[i32; Q],
+        opp: &[usize; Q],
+    ) -> (f64, f64) {
+        let mut fx = 0.0;
+        let mut fy = 0.0;
+        if state.obstacles[(y, x)] {
+            return (fx, fy);
+        }
+        let width_i32 = state.width as i32;
+        let height_i32 = state.height as i32;
+
+        for k in 0..Q {
+            let mut src_x = x as i32 - cx[k];
+            let src_y = y as i32 - cy[k];
+            if src_x < 0 {
+                src_x += width_i32;
+            } else if src_x >= width_i32 {
+                src_x -= width_i32;
+            }
+
+            if src_y < 0 || src_y >= height_i32 {
+                state.f_new[(y, x)][k] = state.f[(y, x)][opp[k]];
+            } else if state.obstacles[(src_y as usize, src_x as usize)] {
+                let bounce_val = state.f[(y, x)][opp[k]];
+                state.f_new[(y, x)][k] = bounce_val;
+                fx -= 2.0 * bounce_val * f64::from(cx[k]);
+                fy -= 2.0 * bounce_val * f64::from(cy[k]);
+            } else {
+                state.f_new[(y, x)][k] = state.f[(src_y as usize, src_x as usize)][k];
+            }
+        }
+        (fx, fy)
+    }
+
+    /// Streaming step: Move particles to neighboring cells and accumulate bounce-back forces.
     #[verified_engine::verified]
     fn stream(&mut self) {
         let width = self.state.width;
         let height = self.state.height;
         let required_len = width * height;
 
-        // Security Check: Ensure invariants hold before entering unsafe blocks.
         assert_eq!(
             self.state.f.len(),
             required_len,
@@ -160,95 +237,43 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
             required_len,
             "LatticeState invariant violated: obstacles.len() != width * height"
         );
+        if width == 0 || height == 0 {
+            self.state.obstacle_force_x = 0.0;
+            self.state.obstacle_force_y = 0.0;
+            return;
+        }
 
         let cx = L::directions_x();
         let cy = L::directions_y();
         let opp = L::opposite_indices();
 
-        // 1. Interior (Hot Path) - Loop Splitting & optimizations
-        if width > 2 && height > 2 {
-            for y in 1..height - 1 {
-                for x in 1..width - 1 {
-                    let is_obstacle = self.state.obstacles[(y, x)];
-                    if is_obstacle {
-                        continue;
-                    }
+        let (mut fx, mut fy) = Self::stream_interior(&mut self.state, &cx, &cy, &opp);
 
-                    for k in 0..Q {
-                        let prev_y = (y as isize - cy[k] as isize) as usize;
-                        let prev_x = (x as isize - cx[k] as isize) as usize;
-
-                        let source_is_obstacle = self.state.obstacles[(prev_y, prev_x)];
-
-                        if source_is_obstacle {
-                            // Bounce-back
-                            let bounce_val = self.state.f[(y, x)][opp[k]];
-                            self.state.f_new[(y, x)][k] = bounce_val;
-                        } else {
-                            // Stream
-                            let stream_val = self.state.f[(prev_y, prev_x)][k];
-                            self.state.f_new[(y, x)][k] = stream_val;
-                        }
-                    }
-                }
+        for x in 0..width {
+            let (dfx, dfy) = Self::stream_boundary_cell(x, 0, &mut self.state, &cx, &cy, &opp);
+            fx += dfx;
+            fy += dfy;
+            if height > 1 {
+                let (bfx, bfy) =
+                    Self::stream_boundary_cell(x, height - 1, &mut self.state, &cx, &cy, &opp);
+                fx += bfx;
+                fy += bfy;
+            }
+        }
+        for y in 1..height.saturating_sub(1) {
+            let (lfx, lfy) = Self::stream_boundary_cell(0, y, &mut self.state, &cx, &cy, &opp);
+            fx += lfx;
+            fy += lfy;
+            if width > 1 {
+                let (rfx, rfy) =
+                    Self::stream_boundary_cell(width - 1, y, &mut self.state, &cx, &cy, &opp);
+                fx += rfx;
+                fy += rfy;
             }
         }
 
-        // 2. Boundary Handling (Slow Path)
-        // Process top/bottom rows and left/right columns
-        let process_boundary_cell = |x: usize, y: usize, state: &mut LatticeState<Q>| {
-            if state.obstacles[(y, x)] {
-                return;
-            }
-
-            for k in 0..Q {
-                let prev_x = x as i32 - cx[k];
-                let prev_y = y as i32 - cy[k];
-
-                if prev_x >= 0 && prev_x < width as i32 && prev_y >= 0 && prev_y < height as i32 {
-                    if state.obstacles[(prev_y as usize, prev_x as usize)] {
-                        state.f_new[(y, x)][k] = state.f[(y, x)][opp[k]];
-                    } else {
-                        state.f_new[(y, x)][k] = state.f[(prev_y as usize, prev_x as usize)][k];
-                    }
-                } else {
-                    // Boundary Logic (Periodic X, Bounce Y)
-                    let mut src_x = prev_x;
-                    let src_y = prev_y;
-
-                    // Periodic X
-                    if src_x < 0 {
-                        src_x += width as i32;
-                    } else if src_x >= width as i32 {
-                        src_x -= width as i32;
-                    }
-
-                    if src_y < 0 || src_y >= height as i32 {
-                        // Wall Bounce
-                        state.f_new[(y, x)][k] = state.f[(y, x)][opp[k]];
-                    } else {
-                        if state.obstacles[(src_y as usize, src_x as usize)] {
-                            state.f_new[(y, x)][k] = state.f[(y, x)][opp[k]];
-                        } else {
-                            state.f_new[(y, x)][k] = state.f[(src_y as usize, src_x as usize)][k];
-                        }
-                    }
-                }
-            }
-        };
-
-        // Top & Bottom
-        for y in [0, height - 1] {
-            for x in 0..width {
-                process_boundary_cell(x, y, &mut self.state);
-            }
-        }
-        // Left & Right (excluding corners)
-        for y in 1..height - 1 {
-            for x in [0, width - 1] {
-                process_boundary_cell(x, y, &mut self.state);
-            }
-        }
+        self.state.obstacle_force_x = fx;
+        self.state.obstacle_force_y = fy;
     }
 
     /// Enforce specific boundary conditions (like driving velocity).
@@ -392,6 +417,8 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
     #[verified_engine::verified]
     pub fn clear_obstacles(&mut self) {
         self.state.obstacles.fill(false);
+        self.state.obstacle_force_x = 0.0;
+        self.state.obstacle_force_y = 0.0;
     }
 }
 
@@ -431,9 +458,6 @@ impl SimulationModel for LatticeBoltzmannD2Q9<BgkCollision> {
     )]
     fn step(&mut self) -> Result<(), Self::Error> {
         self.step();
-        pure_math::pure_math::analysis::evolution::DoubleBufferedState::swap_buffers(
-            &mut self.state,
-        );
         Ok(())
     }
 

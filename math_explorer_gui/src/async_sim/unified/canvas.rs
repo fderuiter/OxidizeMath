@@ -36,19 +36,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     && ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
                 {
                     if let Some(pos) = plot_ui.pointer_coordinate() {
-                        let grid_x = pos.x.round() as i32;
-                        let grid_y = pos.y.round() as i32;
-                        if self
-                            .controller
-                            .send_command(SimCommand::ApplyBrush {
-                                cx: grid_x,
-                                cy: grid_y,
-                                r: 2,
-                                is_obstacle: ctx.input(|i| i.pointer.primary_down()),
-                            })
-                            .is_ok()
-                        {
-                            ctx.request_repaint();
+                        if pos.x.is_finite() && pos.y.is_finite() {
+                            let max_x = f64::from((width - 1.0).max(0.0));
+                            let max_y = f64::from((height - 1.0).max(0.0));
+                            let grid_x = pos.x.floor().clamp(0.0, max_x) as i32;
+                            let grid_y = pos.y.floor().clamp(0.0, max_y) as i32;
+                            if self
+                                .controller
+                                .send_command(SimCommand::ApplyBrush {
+                                    cx: grid_x,
+                                    cy: grid_y,
+                                    r: 2,
+                                    is_obstacle: ctx.input(|i| i.pointer.primary_down()),
+                                })
+                                .is_ok()
+                            {
+                                ctx.request_repaint();
+                            }
                         }
                     }
                 }

@@ -119,7 +119,7 @@ fn render_tool_svg_with_fallback(
     export_primitives_svg(&primitives, options)
 }
 
-fn render_tool_gif_with_fallback(
+pub(crate) fn render_tool_gif_with_fallback(
     tool: &mut dyn InteractiveTool,
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,

@@ -141,4 +141,7 @@ fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut ising, "2D Ising Model spin lattice");
+
+    let mut lbm = crate::tabs::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(&mut lbm, "C_D");
 }

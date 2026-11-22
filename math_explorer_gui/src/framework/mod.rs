@@ -4,7 +4,7 @@ pub mod clamp;
 mod clamp_tests;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
-mod export_figure;
+pub(crate) mod export_figure;
 mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
