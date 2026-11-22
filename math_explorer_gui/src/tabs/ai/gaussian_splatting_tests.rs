@@ -207,3 +207,30 @@ fn test_gaussian_splatting_state_persistence_and_legacy_presets() {
         .try_load_state(r#"{"scale":1.0,"camera":{"pitch":0.0,"yaw":0.0,"zoom":150.0}}"#)
         .is_err());
 }
+
+#[test]
+fn test_gaussian_splatting_volumetric_presets_beyond_canonical_scene() {
+    let mut tool = GaussianSplattingTool::default();
+    let canonical_img = tool.render_splat_image();
+
+    for preset in [
+        VolumetricSplatPreset::HydrogenDipole1s2pz,
+        VolumetricSplatPreset::HydrogenCone3dz2,
+        VolumetricSplatPreset::TuringGyroid3d,
+    ] {
+        tool.set_scene_preset(preset);
+        assert!(
+            tool.scene.gaussians.len() > 8,
+            "Volumetric preset {preset:?} should generate rich multi-splat cloud"
+        );
+        let img = tool.render_splat_image();
+        assert_ne!(img.pixels, canonical_img.pixels);
+        let saved = tool.save_state().expect("save volumetric preset state");
+        let mut reloaded = GaussianSplattingTool::default();
+        reloaded
+            .try_load_state(&saved)
+            .expect("reload volumetric preset state");
+        assert_eq!(reloaded.scene_preset, preset);
+    }
+}
+

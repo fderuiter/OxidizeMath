@@ -103,3 +103,26 @@ pub struct Mesh {
     #[allow(missing_docs)]
     pub indices: Vec<usize>,
 }
+
+impl Mesh {
+    /// Creates an empty [`Mesh`] without heap allocation.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Pre-allocates vertex/normal and index buffers for zero-allocation reuse.
+    pub fn with_capacity(vertex_capacity: usize, index_capacity: usize) -> Self {
+        Self {
+            vertices: Vec::with_capacity(vertex_capacity),
+            normals: Vec::with_capacity(vertex_capacity),
+            indices: Vec::with_capacity(index_capacity),
+        }
+    }
+
+    /// Clears vertices, normals, and triangle indices while retaining allocated capacity.
+    pub fn clear(&mut self) {
+        self.vertices.clear();
+        self.normals.clear();
+        self.indices.clear();
+    }
+}

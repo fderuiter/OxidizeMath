@@ -49,11 +49,11 @@ depends = [
 default = ["math_explorer", "ai", "applied", "biology", "climate", "epidemiology", "physics", "pure_math"]
 pure_math = ["math_explorer/pure_math"]
 applied = ["math_explorer/applied", "pure_math"]
-ai = ["math_explorer/ai", "pure_math"]
-biology = ["math_explorer/biology", "applied", "pure_math"]
+ai = ["math_explorer/ai", "math_explorer/applied", "math_explorer/biology", "math_explorer/physics", "pure_math"]
+biology = ["math_explorer/biology", "math_explorer/ai", "math_explorer/physics", "applied", "pure_math"]
 climate = ["math_explorer/climate", "ai"]
 epidemiology = ["math_explorer/epidemiology", "pure_math"]
-physics = ["math_explorer/physics", "applied", "pure_math"]
+physics = ["math_explorer/physics", "math_explorer/ai", "math_explorer/biology", "applied", "pure_math"]
 
 [dependencies]
 futures = { workspace = true }
