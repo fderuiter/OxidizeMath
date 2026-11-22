@@ -4,7 +4,7 @@ use super::systems::{DynamicAstOde, ExponentialOde, HarmonicOscillatorOde, Logis
 use super::OdeSolverTool;
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
-use math_commons::ast::Expr;
+use math_commons::ast::CompiledExpr;
 use math_explorer::pure_math::analysis::ode::{
     Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, Solver, TimeStepper, VecState,
 };
@@ -40,7 +40,7 @@ pub fn simulate_preset(
     param_cap_k: f64,
     ic_y0: f64,
     ic_v0: f64,
-    custom_expr: Option<&Expr>,
+    custom_ode: Option<(&CompiledExpr, &[f64])>,
 ) -> SolverTrajectory {
     let mut traj = SolverTrajectory {
         method,
@@ -61,7 +61,8 @@ pub fn simulate_preset(
     };
     if traj.time_series.try_reserve(point_cap).is_err()
         || traj.y_series.try_reserve(point_cap).is_err()
-        || (preset == OdePreset::HarmonicOscillator && traj.v_series.try_reserve(point_cap).is_err())
+        || (preset == OdePreset::HarmonicOscillator
+            && traj.v_series.try_reserve(point_cap).is_err())
     {
         return traj;
     }
@@ -86,17 +87,7 @@ pub fn simulate_preset(
             run_step_loop(&mut traj, init_state, dynamics, method, dt, num_steps);
         }
         OdePreset::Custom => {
-            run_custom_ode(
-                &mut traj,
-                custom_expr,
-                ic_y0,
-                param_k,
-                param_r,
-                param_cap_k,
-                method,
-                dt,
-                num_steps,
-            );
+            run_custom_ode(&mut traj, custom_ode, ic_y0, method, dt, num_steps);
         }
     }
 
@@ -125,33 +116,18 @@ fn validate_initial_state(
     Some(num_steps)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_custom_ode(
     traj: &mut SolverTrajectory,
-    expr: Option<&Expr>,
+    custom_ode: Option<(&CompiledExpr, &[f64])>,
     ic_y0: f64,
-    param_k: f64,
-    param_r: f64,
-    param_cap_k: f64,
     method: IntegrationMethod,
     dt: f64,
     num_steps: usize,
 ) {
-    if let Some(expr) = expr {
-        let mut p_map = std::collections::HashMap::new();
-        p_map.insert("k".to_string(), param_k);
-        p_map.insert("r".to_string(), param_r);
-        p_map.insert("cap_k".to_string(), param_cap_k);
-        p_map.insert("K".to_string(), param_cap_k);
+    if let Some((compiled, params)) = custom_ode {
         let init_state = VecState(vec![ic_y0]);
-        let dynamics = DynamicAstOde {
-            expr: expr.clone(),
-            params: p_map,
-        };
+        let dynamics = DynamicAstOde { compiled, params };
         run_step_loop(traj, init_state, dynamics, method, dt, num_steps);
-    } else {
-        traj.diverged = true;
-        traj.divergence_info = Some((0.0, 0, "y(t)".to_string()));
     }
 }
 
@@ -249,7 +225,7 @@ impl OdeSolverTool {
             return;
         }
 
-        let custom_expr = self.math_input.expr();
+        let custom_ode = self.custom_compiled_ode();
         let rk4 = simulate_preset(
             self.preset,
             IntegrationMethod::RungeKutta4,
@@ -260,7 +236,7 @@ impl OdeSolverTool {
             self.param_cap_k,
             self.ic_y0,
             self.ic_v0,
-            custom_expr,
+            custom_ode,
         );
         let euler = simulate_preset(
             self.preset,
@@ -272,7 +248,7 @@ impl OdeSolverTool {
             self.param_cap_k,
             self.ic_y0,
             self.ic_v0,
-            custom_expr,
+            custom_ode,
         );
         let heun = simulate_preset(
             self.preset,
@@ -284,7 +260,7 @@ impl OdeSolverTool {
             self.param_cap_k,
             self.ic_y0,
             self.ic_v0,
-            custom_expr,
+            custom_ode,
         );
 
         if rk4.diverged || euler.diverged || heun.diverged {

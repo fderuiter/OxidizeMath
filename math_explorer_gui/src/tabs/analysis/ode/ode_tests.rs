@@ -57,13 +57,25 @@ fn test_ode_logistic_growth_divergence() {
 
 #[test]
 fn test_ode_trace_snapshot_pinning_and_export() {
-    let mut tool = OdeSolverTool { param_k: 1.0, ..Default::default() };
+    let mut tool = OdeSolverTool {
+        param_k: 1.0,
+        ..Default::default()
+    };
     tool.recalculate();
 
     // Pin baseline trajectory k=1.0
     let summary = tool.param_summary();
-    let pts: Vec<[f64; 2]> = tool.time_series.iter().zip(&tool.y_series).map(|(&t, &y)| [t, y]).collect();
-    tool.snapshot_manager.add_snapshot("Baseline 1", summary, vec![TraceSeries::new("y(t)", pts.clone())]);
+    let pts: Vec<[f64; 2]> = tool
+        .time_series
+        .iter()
+        .zip(&tool.y_series)
+        .map(|(&t, &y)| [t, y])
+        .collect();
+    tool.snapshot_manager.add_snapshot(
+        "Baseline 1",
+        summary,
+        vec![TraceSeries::new("y(t)", pts.clone())],
+    );
     assert_eq!(tool.snapshot_manager.len(), 1);
 
     // Change parameter k=2.5 and recalculate active simulation
@@ -71,7 +83,10 @@ fn test_ode_trace_snapshot_pinning_and_export() {
     tool.recalculate();
 
     // Pinned snapshot retains baseline curve points
-    assert_eq!(tool.snapshot_manager.snapshots()[0].param_summary, r"k=1.00, \Delta t=0.05");
+    assert_eq!(
+        tool.snapshot_manager.snapshots()[0].param_summary,
+        r"k=1.00, \Delta t=0.05"
+    );
     assert_eq!(tool.snapshot_manager.snapshots()[0].series[0].points, pts);
 
     // Export datasets includes active + pinned traces
@@ -92,15 +107,25 @@ fn test_ode_auto_history_buffering() {
 
     for i in 1..=7 {
         let old_summary = tool.param_summary();
-        let pts: Vec<[f64; 2]> = tool.time_series.iter().zip(&tool.y_series).map(|(&t, &y)| [t, y]).collect();
-        tool.snapshot_manager.push_history_run(old_summary, vec![TraceSeries::new("y(t)", pts)]);
+        let pts: Vec<[f64; 2]> = tool
+            .time_series
+            .iter()
+            .zip(&tool.y_series)
+            .map(|(&t, &y)| [t, y])
+            .collect();
+        tool.snapshot_manager
+            .push_history_run(old_summary, vec![TraceSeries::new("y(t)", pts)]);
         tool.param_k = i as f64 * 0.5;
         tool.recalculate();
     }
 
     assert_eq!(tool.snapshot_manager.history_len(), 5);
-    assert!(tool.snapshot_manager.history_runs()[0].param_summary.contains("k=1.00"));
-    assert!(tool.snapshot_manager.history_runs()[4].param_summary.contains("k=3.00"));
+    assert!(tool.snapshot_manager.history_runs()[0]
+        .param_summary
+        .contains("k=1.00"));
+    assert!(tool.snapshot_manager.history_runs()[4]
+        .param_summary
+        .contains("k=3.00"));
 
     let exported = tool.export_datasets();
     assert!(exported.iter().any(|(name, _)| name.contains("Run")));
@@ -148,7 +173,12 @@ fn test_ode_auto_callout_annotations_and_persistence() {
 #[test]
 fn test_ode_custom_equation_rk4() {
     let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom, param_k: 1.5, ic_y0: 2.0, dt: 0.05, total_time: 5.0, ..Default::default()
+        preset: OdePreset::Custom,
+        param_k: 1.5,
+        ic_y0: 2.0,
+        dt: 0.05,
+        total_time: 5.0,
+        ..Default::default()
     };
     tool.math_input.set_expression("-k * y * sin(t)");
     tool.recalculate();
@@ -168,7 +198,11 @@ fn test_ode_custom_equation_rk4() {
 
 #[test]
 fn test_ode_custom_equation_divergence_handling() {
-    let mut tool = OdeSolverTool { preset: OdePreset::Custom, ic_y0: 1.0, ..Default::default() };
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: 1.0,
+        ..Default::default()
+    };
     tool.math_input.set_expression("1 / (y - 1)");
     tool.recalculate();
     assert!(tool.diverged());
@@ -176,7 +210,10 @@ fn test_ode_custom_equation_divergence_handling() {
 
 #[test]
 fn test_ode_custom_state_roundtrip() {
-    let mut tool = OdeSolverTool { preset: OdePreset::Custom, ..Default::default() };
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ..Default::default()
+    };
     tool.math_input.set_expression("y' = -k * y * sin(t)");
     tool.recalculate();
 
@@ -187,6 +224,80 @@ fn test_ode_custom_state_roundtrip() {
     assert_eq!(restored.preset, OdePreset::Custom);
     assert_eq!(restored.math_input.raw_text, "y' = -k * y * sin(t)");
     assert!(!restored.diverged());
+}
+
+#[test]
+fn test_ode_custom_sliders_persistence_and_legacy_fallback() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: 2.0,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("r * y * (1 - y / cap_k)");
+    tool.recalculate();
+    assert_eq!(tool.math_input.active_param_names(), &["r", "cap_k"]);
+    assert_eq!(tool.math_input.param_slice(), &[1.0, 10.0]);
+    assert_eq!(tool.param_summary(), r"r=1.00, cap_k=10.00, \Delta t=0.05");
+
+    tool.math_input
+        .set_expression("-alpha * |y| * sin^2(t) + beta");
+    let rev_before = tool.state_revision();
+    let params = std::collections::BTreeMap::from([("alpha".into(), 1.6), ("beta".into(), 0.4)]);
+    tool.math_input.set_params_map(&params);
+    tool.recalculate();
+    assert!(!tool.diverged() && tool.state_revision() != rev_before);
+    assert_eq!(
+        tool.param_summary(),
+        r"alpha=1.60, beta=0.40, \Delta t=0.05"
+    );
+
+    let saved = tool.save_state().expect("save custom params state");
+    assert!(saved.contains(r#""custom_params""#));
+    let mut restored = OdeSolverTool::default();
+    restored.load_state(&saved);
+    assert_eq!(restored.math_input.param_slice(), &[1.6, 0.4]);
+    assert_eq!(restored.y_series, tool.y_series);
+
+    let legacy_json = r#"{"preset":"Custom","dt":0.05,"total_time":2.0,"param_k":1.0,"param_r":0.75,"param_cap_k":20.0,"ic_y0":1.5,"ic_v0":0.0,"custom_expr":"r * y * (1 - y / cap_k)"}"#;
+    let mut from_legacy = OdeSolverTool::default();
+    from_legacy.load_state(legacy_json);
+    assert_eq!(from_legacy.math_input.param_slice(), &[0.75, 20.0]);
+    assert!(!from_legacy.diverged());
+}
+
+#[test]
+fn test_ode_custom_edit_fallback_and_no_duplicate_k_slider() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: -1.5,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("-k * |y| * sin^2(t)");
+    tool.recalculate();
+    let valid_series = tool.y_series.clone();
+    assert!(!tool.diverged() && !valid_series.is_empty());
+
+    tool.math_input.set_expression("-k * |y| +");
+    tool.recalculate();
+    assert!(!tool.math_input.is_valid() && !tool.diverged());
+    assert_eq!(tool.y_series, valid_series);
+
+    tool.math_input
+        .set_expression("p1 + p2 + p3 + p4 + p5 + p6 + p7 + y");
+    tool.recalculate();
+    let err = tool.math_input.error_message().expect("max params error");
+    assert!(err.contains("maximum 6") && !tool.diverged());
+    assert_eq!(tool.y_series, valid_series);
+
+    tool.math_input.set_expression("-alpha * y");
+    tool.recalculate();
+    let ctx = egui::Context::default();
+    let out = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
+    for cs in &out.shapes {
+        if let egui::epaint::Shape::Text(t) = &cs.shape {
+            assert!(!t.galley.job.text.contains("k (Rate / Parameter)"));
+        }
+    }
 }
 
 #[test]
@@ -206,7 +317,12 @@ fn test_ode_deep_custom_expr_preset_and_state_rejected() {
 #[test]
 fn test_generate_custom_ode_and_complex_screenshots() {
     let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom, param_k: 2.0, ic_y0: 1.0, dt: 0.02, total_time: 10.0, ..Default::default()
+        preset: OdePreset::Custom,
+        param_k: 2.0,
+        ic_y0: 1.0,
+        dt: 0.02,
+        total_time: 10.0,
+        ..Default::default()
     };
     tool.math_input.set_expression("y' = -k * y * sin(t)");
     tool.recalculate();
@@ -308,18 +424,29 @@ fn test_ode_presets_theory_metadata() {
         preset: OdePreset::Exponential,
         ..Default::default()
     };
-    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{dy}{dt} = k y".into()));
+    assert_eq!(
+        tool.theory_latex_equation(),
+        Some(r"\frac{dy}{dt} = k y".into())
+    );
     assert!(tool.theory_citation().contains("Perko"));
     assert!(!tool.theory_description().is_empty());
 
     tool.preset = OdePreset::HarmonicOscillator;
-    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{d^2 y}{dt^2} = -k y".into()));
+    assert_eq!(
+        tool.theory_latex_equation(),
+        Some(r"\frac{d^2 y}{dt^2} = -k y".into())
+    );
     assert!(tool.theory_citation().contains("Goldstein"));
     assert!(!tool.theory_description().is_empty());
 
     tool.preset = OdePreset::LogisticGrowth;
-    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{dy}{dt} = r y (1 - \frac{y}{K})".into()));
-    assert!(tool.theory_citation().contains("Lotka") || tool.theory_citation().contains("Verhulst"));
+    assert_eq!(
+        tool.theory_latex_equation(),
+        Some(r"\frac{dy}{dt} = r y (1 - \frac{y}{K})".into())
+    );
+    assert!(
+        tool.theory_citation().contains("Lotka") || tool.theory_citation().contains("Verhulst")
+    );
     assert!(!tool.theory_description().is_empty());
 }
 
@@ -336,7 +463,10 @@ fn test_harmonic_equilibrium_root_dt_025_and_nonlinear_preset_fits() {
     };
     osc.recalculate();
     let root_t = annotations::harmonic_equilibrium_root(&osc).expect("harmonic root");
-    assert!((root_t - 5.0).abs() > 0.1, "must not anchor at arbitrary midpoint t=5.0");
+    assert!(
+        (root_t - 5.0).abs() > 0.1,
+        "must not anchor at arbitrary midpoint t=5.0"
+    );
     let nearest_analytical = 1.5 * std::f64::consts::PI;
     assert!(
         (root_t - nearest_analytical).abs() < 1e-3,
@@ -360,10 +490,7 @@ fn test_harmonic_equilibrium_root_dt_025_and_nonlinear_preset_fits() {
     };
     log_tool.recalculate();
     let log_pts = &log_tool.export_datasets()[0].1;
-    let logistic_fit =
-        egui_plot::fit_model(log_pts, egui_plot::FitType::Logistic, "y(t)", false)
-            .expect("logistic fit");
+    let logistic_fit = egui_plot::fit_model(log_pts, egui_plot::FitType::Logistic, "y(t)", false)
+        .expect("logistic fit");
     assert!(logistic_fit.r_squared >= 0.99);
 }
-
-

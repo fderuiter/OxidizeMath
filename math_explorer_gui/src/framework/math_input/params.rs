@@ -76,6 +76,36 @@ impl ParameterSliderBank {
         &self.packed_values[..self.active_names.len()]
     }
 
+    /// Looks up the active parameter value assigned to `name`.
+    #[must_use]
+    pub fn active_value(&self, name: &str) -> Option<f64> {
+        let idx = self.active_names.iter().position(|n| n == name)?;
+        Some(self.packed_values[idx])
+    }
+
+    /// Updates a single stored parameter value without clearing other remembered parameters.
+    pub fn set_param(&mut self, name: &str, value: f64) {
+        self.values
+            .insert(name.to_string(), sanitize_param(value, self.default_value));
+        self.repack();
+    }
+
+    /// Clamps active parameter values to `range`, replacing non-finite values with `default_value`.
+    pub fn clamp_active_values(&mut self, range: RangeInclusive<f64>) {
+        let lo = (*range.start()).min(*range.end());
+        let hi = (*range.start()).max(*range.end());
+        for name in &self.active_names {
+            let cur = self.values.get(name).copied().unwrap_or(self.default_value);
+            let clamped = if cur.is_finite() {
+                cur.clamp(lo, hi)
+            } else {
+                self.default_value
+            };
+            self.values.insert(name.clone(), clamped);
+        }
+        self.repack();
+    }
+
     /// Exports only the currently active parameter values for compact JSON / `#state=` URLs.
     #[must_use]
     pub fn export_active_map(&self) -> BTreeMap<String, f64> {

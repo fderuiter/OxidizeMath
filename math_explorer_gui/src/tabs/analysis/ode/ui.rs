@@ -74,6 +74,7 @@ impl OdeSolverTool {
         if self.preset == OdePreset::Custom {
             ui.add_space(6.0);
             if self.math_input.ui(ui) {
+                self.sync_legacy_params_from_math_input();
                 changed = true;
             }
         } else {
@@ -93,11 +94,14 @@ impl OdeSolverTool {
     }
 
     fn render_parameter_inputs(&mut self, ui: &mut egui::Ui) -> bool {
+        if self.preset == OdePreset::Custom {
+            return false;
+        }
         let mut changed = false;
         ui.add_space(10.0);
         ui.heading("Parameters");
         match self.preset {
-            OdePreset::Exponential | OdePreset::Custom => {
+            OdePreset::Exponential => {
                 if ui
                     .add(
                         AnimatedSlider::new(&mut self.param_k, -5.0..=5.0)
@@ -143,6 +147,7 @@ impl OdeSolverTool {
                     changed = true;
                 }
             }
+            OdePreset::Custom => unreachable!(),
         }
         changed
     }
@@ -225,7 +230,10 @@ impl OdeSolverTool {
         });
 
         ui.add_space(5.0);
-        if ui.checkbox(&mut self.show_annotations, "Show Annotations").changed() {
+        if ui
+            .checkbox(&mut self.show_annotations, "Show Annotations")
+            .changed()
+        {
             changed = true;
         }
 
@@ -261,40 +269,50 @@ impl OdeSolverTool {
 
         self.run_sensitivity_analysis();
 
-        crate::sensitivity::render_sensitivity_panel_ui(
-            ui,
-            &self.sensitivity_engine,
-            "ode_tool",
-        );
+        crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "ode_tool");
     }
 
     fn run_sensitivity_analysis(&mut self) {
         use crate::sensitivity::canonical_f64_bits;
 
+        let current_preset = self.preset;
+        let current_method = self.method;
+        let current_dt = self.dt;
+        let current_total_time = self.total_time;
+        let custom_compiled = self.math_input.active_compiled();
+
         let exp_params = [("k", self.param_k), ("y0", self.ic_y0)];
-        let osc_params = [
-            ("k", self.param_k),
-            ("y0", self.ic_y0),
-            ("v0", self.ic_v0),
-        ];
+        let osc_params = [("k", self.param_k), ("y0", self.ic_y0), ("v0", self.ic_v0)];
         let log_params = [
             ("r", self.param_r),
             ("cap_k", self.param_cap_k),
             ("y0", self.ic_y0),
         ];
-        let params: &[(&str, f64)] = match self.preset {
-            OdePreset::Exponential | OdePreset::Custom => &exp_params,
+        let mut custom_params: Vec<(&str, f64)> = Vec::new();
+        if current_preset == OdePreset::Custom {
+            if let Some(compiled) = custom_compiled {
+                for (name, &val) in compiled
+                    .param_names()
+                    .iter()
+                    .zip(self.math_input.param_slice())
+                {
+                    custom_params.push((name.as_str(), val));
+                }
+            }
+            if !custom_params.iter().any(|(name, _)| *name == "y0") {
+                custom_params.push(("y0", self.ic_y0));
+            }
+        }
+
+        let params: &[(&str, f64)] = match current_preset {
+            OdePreset::Exponential => &exp_params,
             OdePreset::HarmonicOscillator => &osc_params,
             OdePreset::LogisticGrowth => &log_params,
+            OdePreset::Custom => &custom_params,
         };
 
-        let current_preset = self.preset;
-        let current_method = self.method;
-        let current_dt = self.dt;
-        let current_total_time = self.total_time;
-        let custom_expr = self.math_input.expr();
-        let custom_ctx =
-            (current_preset == OdePreset::Custom).then_some(super::systems::AstContext(custom_expr));
+        let custom_ctx = (current_preset == OdePreset::Custom)
+            .then_some(super::systems::CompiledContext(custom_compiled));
         let context = (
             current_preset as u8,
             current_method as u8,
@@ -311,7 +329,7 @@ impl OdeSolverTool {
                     current_dt,
                     current_total_time,
                     p_map,
-                    custom_expr,
+                    custom_compiled,
                 )
             });
     }
@@ -363,13 +381,7 @@ impl OdeSolverTool {
         ui.heading("Solution Trajectory");
 
         if FiniteStateGuard::diverged(self) {
-            recovery::render_recovery_ui(
-                ui,
-                self,
-                changed,
-                &mut plot_points_y,
-                &mut plot_points_v,
-            );
+            recovery::render_recovery_ui(ui, self, changed, &mut plot_points_y, &mut plot_points_v);
         }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());

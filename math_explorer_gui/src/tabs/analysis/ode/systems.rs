@@ -4,79 +4,53 @@
 
 use super::OdeSolverTool;
 use crate::presets::OdePreset;
-use math_commons::ast::Expr;
+use math_commons::ast::{CompiledExpr, Instruction};
 use math_explorer::pure_math::analysis::ode::{
     Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
 };
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-pub(super) struct AstContext<'a>(pub(super) Option<&'a Expr>);
+pub(super) struct CompiledContext<'a>(pub(super) Option<&'a CompiledExpr>);
 
-impl Hash for AstContext<'_> {
+impl Hash for CompiledContext<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        let Some(root) = self.0 else {
+        let Some(compiled) = self.0 else {
             0_u8.hash(state);
             return;
         };
         1_u8.hash(state);
-        let mut stack: [Option<&Expr>; 64] = [None; 64];
-        stack[0] = Some(root);
-        let mut top = 1_usize;
-        for _ in 0..256 {
-            if top == 0 {
-                break;
-            }
-            top -= 1;
-            if let Some(node) = stack[top] {
-                push_and_hash_expr_node(node, &mut stack, &mut top, state);
-            }
+        compiled.axis_count().hash(state);
+        compiled.var_names().hash(state);
+        compiled.instructions().len().hash(state);
+        for &inst in compiled.instructions() {
+            hash_instruction(inst, state);
         }
     }
 }
 
-fn push_and_hash_expr_node<'a, H: Hasher>(
-    node: &'a Expr,
-    stack: &mut [Option<&'a Expr>; 64],
-    top: &mut usize,
-    state: &mut H,
-) {
-    match node {
-        Expr::Number(n) => {
+fn hash_instruction<H: Hasher>(inst: Instruction, state: &mut H) {
+    match inst {
+        Instruction::PushConst(n) => {
             1_u8.hash(state);
-            crate::sensitivity::canonical_f64_bits(*n).hash(state);
+            crate::sensitivity::canonical_f64_bits(n).hash(state);
         }
-        Expr::Variable(v) => {
-            2_u8.hash(state);
-            v.hash(state);
-        }
-        Expr::Binary { op, left, right } => {
+        Instruction::PushImagUnit => 2_u8.hash(state),
+        Instruction::LoadVar(slot) => {
             3_u8.hash(state);
-            op.hash(state);
-            if *top + 2 <= stack.len() {
-                stack[*top] = Some(right);
-                stack[*top + 1] = Some(left);
-                *top += 2;
-            }
+            slot.hash(state);
         }
-        Expr::Unary { op, expr } => {
+        Instruction::Unary(op) => {
             4_u8.hash(state);
             op.hash(state);
-            if *top < stack.len() {
-                stack[*top] = Some(expr);
-                *top += 1;
-            }
         }
-        Expr::Function { func, args } => {
+        Instruction::Binary(op) => {
             5_u8.hash(state);
+            op.hash(state);
+        }
+        Instruction::Call(func) => {
+            6_u8.hash(state);
             func.hash(state);
-            args.len().hash(state);
-            for arg in args.iter().rev() {
-                if *top < stack.len() {
-                    stack[*top] = Some(arg);
-                    *top += 1;
-                }
-            }
         }
     }
 }
@@ -132,13 +106,13 @@ impl OdeSystem<VecState> for LogisticGrowthOde {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct DynamicAstOde {
-    pub expr: Expr,
-    pub params: HashMap<String, f64>,
+#[derive(Clone, Copy, Debug)]
+pub struct DynamicAstOde<'a> {
+    pub compiled: &'a CompiledExpr,
+    pub params: &'a [f64],
 }
 
-impl OdeSystem<VecState> for DynamicAstOde {
+impl OdeSystem<VecState> for DynamicAstOde<'_> {
     fn derivative(&self, t: f64, state: &VecState) -> VecState {
         let mut out = VecState(vec![0.0; state.0.len()]);
         self.derivative_in_place(t, state, &mut out);
@@ -146,7 +120,7 @@ impl OdeSystem<VecState> for DynamicAstOde {
     }
     fn derivative_in_place(&self, t: f64, state: &VecState, out: &mut VecState) {
         let y = state.0[0];
-        out.0[0] = self.expr.eval_2d(t, y, &self.params);
+        out.0[0] = self.compiled.eval_2d(t, y, self.params);
     }
 }
 
@@ -156,7 +130,7 @@ pub fn eval_ode_final_state(
     dt: f64,
     total_time: f64,
     p_map: &HashMap<String, f64>,
-    custom_expr: Option<&Expr>,
+    custom_compiled: Option<&CompiledExpr>,
 ) -> f64 {
     let Some(steps) = crate::presets::checked_ode_step_count(dt, total_time) else {
         return f64::NAN;
@@ -181,11 +155,17 @@ pub fn eval_ode_final_state(
             step_model(init, LogisticGrowthOde { r, cap_k }, method, steps, dt)
         }
         OdePreset::Custom => {
-            if let Some(expr) = custom_expr {
+            if let Some(compiled) = custom_compiled {
+                let mut param_buf = [1.0_f64; crate::framework::MAX_SYNTHESIZED_PARAMS];
+                let param_names = compiled.param_names();
+                let count = param_names.len().min(param_buf.len());
+                for (slot, name) in param_buf.iter_mut().zip(param_names.iter()).take(count) {
+                    *slot = p_map.get(name.as_str()).copied().unwrap_or(1.0);
+                }
                 let init = VecState(vec![y0]);
                 let dynamics = DynamicAstOde {
-                    expr: expr.clone(),
-                    params: p_map.clone(),
+                    compiled,
+                    params: &param_buf[..count],
                 };
                 step_model(init, dynamics, method, steps, dt)
             } else {
@@ -236,13 +216,23 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
             OdePreset::Custom => "Custom user-defined ordinary differential equation: y' = f(t, y)".into(),
         }
     }
-    fn phonetic_description(&self) -> String { "Ordinary differential equations theory".into() }
+    fn phonetic_description(&self) -> String {
+        "Ordinary differential equations theory".into()
+    }
     fn theory_citation(&self) -> String {
         match self.preset {
-            OdePreset::Exponential => "Differential Equations and Dynamical Systems (Perko, 2001)".into(),
-            OdePreset::HarmonicOscillator => "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into(),
-            OdePreset::LogisticGrowth => "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into(),
-            OdePreset::Custom => "Differential Equations and Dynamical Systems (Perko, 2001)".into(),
+            OdePreset::Exponential => {
+                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
+            }
+            OdePreset::HarmonicOscillator => {
+                "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into()
+            }
+            OdePreset::LogisticGrowth => {
+                "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into()
+            }
+            OdePreset::Custom => {
+                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
+            }
         }
     }
     fn theory_latex_equation(&self) -> Option<String> {
@@ -256,10 +246,22 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Exponential".into(), "First-order linear ODE representing exponential growth or decay".into());
-        map.insert("Harmonic Oscillator".into(), "Second-order linear ODE representing simple harmonic motion".into());
-        map.insert("Logistic Growth".into(), "Nonlinear first-order ODE modeling population growth with carrying capacity".into());
-        map.insert("Custom".into(), "Custom user-defined ordinary differential equation".into());
+        map.insert(
+            "Exponential".into(),
+            "First-order linear ODE representing exponential growth or decay".into(),
+        );
+        map.insert(
+            "Harmonic Oscillator".into(),
+            "Second-order linear ODE representing simple harmonic motion".into(),
+        );
+        map.insert(
+            "Logistic Growth".into(),
+            "Nonlinear first-order ODE modeling population growth with carrying capacity".into(),
+        );
+        map.insert(
+            "Custom".into(),
+            "Custom user-defined ordinary differential equation".into(),
+        );
         map
     }
 }

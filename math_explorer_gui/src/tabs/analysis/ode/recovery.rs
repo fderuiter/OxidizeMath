@@ -10,7 +10,10 @@ use eframe::egui;
 /// Checks whether an [`OdeSolverTool`] is in a completely finite numerical state.
 pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
     let params_finite = match tool.preset {
-        OdePreset::Exponential | OdePreset::Custom => tool.param_k.is_finite(),
+        OdePreset::Exponential => tool.param_k.is_finite(),
+        OdePreset::Custom => {
+            tool.param_k.is_finite() && tool.math_input.param_slice().iter().all(|v| v.is_finite())
+        }
         OdePreset::HarmonicOscillator => tool.param_k.is_finite() && tool.ic_v0.is_finite(),
         OdePreset::LogisticGrowth => tool.param_r.is_finite() && tool.param_cap_k.is_finite(),
     };
