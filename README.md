@@ -32,7 +32,7 @@ Alternatively, you can manually build the library using Cargo:
 cargo build --release --package math_explorer
 ```
 
-**Note:** The setup process automatically installs Git hooks that enforce project standards (e.g., file-length constraints in core directories) at the commit level. This provides immediate local feedback and prevents compliance bypasses without manual intervention.
+**Note:** `cargo run -p xtask -- setup` installs the `wasm32-unknown-unknown` target and configures Git hooks (`.githooks/pre-commit`) to run `cargo run -p xtask -- lint-staged` on staged files at commit time for fast offline feedback. Before opening or updating a pull request, run `cargo run -p xtask -- lint-all` to execute the full workspace verification suite.
 
 ## Usage
 

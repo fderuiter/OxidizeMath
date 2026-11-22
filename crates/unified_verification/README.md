@@ -10,8 +10,9 @@ By consolidating compliance checks into a unified command-line tool, developer w
 
 ### Module Structure
 
+- **`batch-ast` / `batch-static` / `batch-staged`**: In-process batch verification modes sharing a single `oxidize_core::traceability::AstCache` so each unique `.rs` file is parsed at most once with `syn::parse_file` across clone detection, API drift, traceability, entropy scanning, and policy auditing.
 - **`verify-records`**: Audits git commit diffs or the staged git index (`--staged`) to enforce that modifying core logic (`crates/` or `math_explorer/`) is accompanied by creating or updating an Architectural Decision Record in `docs/adr/`.
-- **`traceability`**: Performs static AST scans across Rust source files to verify literature citation bindings (`papers/`) and module verification attributes.
+- **`traceability`**: Invokes `oxidize_core::traceability::TraceabilityEngine` directly in-process as a library to verify literature citation bindings (`papers/`) and module verification attributes without spawning a Cargo subprocess.
 - **`check-file-lengths`**: Enforces the 500-line ceiling per source file across workspace members to maintain modularity.
 - **`test-policy-audit`**: Enforces `[lints] workspace = true` inheritance in first-party `Cargo.toml` manifests, detects unauthorized `#[allow(dead_code)]`, `#[allow(unused)]`, or `#[allow(warnings)]` bypasses, blocks inner `#![allow]` / `#![expect]` and `mod` attributes (including `cfg_attr`) for `clippy::all`, `clippy::too_many_lines`, and `clippy::cognitive_complexity` plus item-level `clippy::all`, and flags unused dependencies.
 - **`check-entropy`**: Audits sources against the No-Entropy policy, ensuring that all random number generation relies on explicit seeds via `OxidizeRng`.
@@ -65,4 +66,4 @@ cargo run -p unified_verification --release -- check-file-lengths
 
 ## 3. Ecosystem Integration
 
-`unified_verification` is executed by `.githooks/pre-commit`, by `cargo run -p xtask -- lint-all`, and within `.github/workflows/ci.yml`, serving as the definitive verification authority for all proposed changes.
+`unified_verification` is executed in `batch-staged` mode by `.githooks/pre-commit` (`cargo run -p xtask -- lint-staged`), in `batch-static` mode by `cargo run -p xtask -- lint-all`, and within `.github/workflows/ci.yml`, serving as the definitive verification authority for all proposed changes.

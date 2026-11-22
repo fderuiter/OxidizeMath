@@ -25,22 +25,30 @@ Markdown verification gates:
 
 Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) restore Cargo registry sources and profile-scoped `target/` caches via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (referencing `./.github/actions/cargo-cache` without caching mutable CLI binaries).
 
-Run workspace builds and the full pre-commit verification suite aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [crates/unified_verification/README.md](crates/unified_verification/README.md) via `xtask`:
+Run workspace builds, fast diff-scoped pre-commit checks (`lint-staged`), and the full PR verification suite (`lint-all`) aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [crates/unified_verification/README.md](crates/unified_verification/README.md) via `xtask` (`xtask` builds `unified_verification` with Cargo's default `dev` profile locally to skip release fat LTO):
 
 ```bash
 # Type-check and build all workspace members
 cargo check --workspace
 cargo build --workspace --all-features
 
-# Run the full verification suite (formatting, Cargo profiles, AST code duplicates, public API drift,
-# staged ADR verification, file lengths, host & WASM clippy, rustdoc, doctests, markdown links,
-# workflow lints, crate docs, traceability, entropy, vulnerabilities, and policy audit)
+# Run fast diff-scoped pre-commit checks on staged paths (executed automatically by .githooks/pre-commit;
+# checks staged formatting, file lengths, entropy, policy audit, staged duplicates, .github/-gated workflows,
+# .md-gated links, and targeted host/wasm32 Clippy without OSV network calls, API drift, or ADR checks)
+cargo run -p xtask -- lint-staged
+
+# Run the full PR verification suite before opening or updating a pull request (formatting, batched static
+# & single-parse AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift,
+# in-process traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, links, and OSV)
 cargo run -p xtask -- lint-all
 ```
 
-Before opening or updating a pull request, individual quality gates defined in [.github/workflows/ci.yml](.github/workflows/ci.yml) can also be run directly:
+Before opening or updating a pull request, individual or batched quality gates defined in [.github/workflows/ci.yml](.github/workflows/ci.yml) can also be run directly:
 
 ```bash
+# Run all five syn AST passes (duplicates, API drift, traceability, entropy, policy audit) in one parse per .rs file
+cargo run -p unified_verification -- batch-ast
+
 # Format and lint host and WebAssembly targets with Clippy (warnings denied)
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings

@@ -338,21 +338,20 @@ fn audit_member_sources(
     whitelist: &VerificationWhitelist,
     check_clippy_bypasses: bool,
     dep_visitor: &mut DependencyVisitor,
+    cache: &mut oxidize_core::traceability::AstCache,
 ) -> bool {
     let mut success = true;
     for path in crate::utils::collect_rs_files_filtered(&[member_dir], &["target"]) {
         let file_path = crate::whitelist::lossy_slash_path(&path);
-        if let Ok(content) = fs::read_to_string(&path)
-            && let Ok(ast) = syn::parse_file(&content)
-        {
-            dep_visitor.visit_file(&ast);
+        if let Some(ast) = cache.get_or_load_fs(&path).and_then(|e| e.ast.as_ref()) {
+            dep_visitor.visit_file(ast);
 
             let mut dc_visitor = DeadCodeVisitor {
                 file_path: file_path.clone(),
                 allowed: whitelist.dead_code.clone(),
                 has_unauthorized: false,
             };
-            dc_visitor.visit_file(&ast);
+            dc_visitor.visit_file(ast);
             if dc_visitor.has_unauthorized {
                 success = false;
             }
@@ -362,7 +361,7 @@ fn audit_member_sources(
                     file_path,
                     has_unauthorized: false,
                 };
-                clippy_visitor.visit_file(&ast);
+                clippy_visitor.visit_file(ast);
                 if clippy_visitor.has_unauthorized {
                     success = false;
                 }
@@ -372,7 +371,11 @@ fn audit_member_sources(
     success
 }
 
-fn audit_single_member(member: &str, whitelist: &VerificationWhitelist) -> bool {
+fn audit_single_member(
+    member: &str,
+    whitelist: &VerificationWhitelist,
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> bool {
     let member_dir = lint_policy::resolve_member_dir(member);
     let cargo_toml_path = member_dir.join("Cargo.toml");
     let Ok(content) = fs::read_to_string(&cargo_toml_path) else {
@@ -400,6 +403,7 @@ fn audit_single_member(member: &str, whitelist: &VerificationWhitelist) -> bool 
         whitelist,
         check_clippy_bypasses,
         &mut dep_visitor,
+        cache,
     ) {
         success = false;
     }
@@ -420,6 +424,14 @@ fn audit_single_member(member: &str, whitelist: &VerificationWhitelist) -> bool 
 }
 
 pub fn run_policy_audit(members: &[&str]) -> bool {
+    let mut cache = oxidize_core::traceability::AstCache::new();
+    run_policy_audit_with_cache(members, &mut cache)
+}
+
+pub fn run_policy_audit_with_cache(
+    members: &[&str],
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> bool {
     let candidates = if lint_policy::cwd_is_member_crate_dir() {
         WORKSPACE_WHITELIST_CANDIDATES
     } else {
@@ -427,10 +439,20 @@ pub fn run_policy_audit(members: &[&str]) -> bool {
     };
     let whitelist_path = crate::whitelist::resolve_whitelist_path(candidates)
         .unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
-    run_policy_audit_with_whitelist(members, &whitelist_path)
+    run_policy_audit_with_whitelist_and_cache(members, &whitelist_path, cache)
 }
 
+#[cfg(test)]
 pub(crate) fn run_policy_audit_with_whitelist(members: &[&str], whitelist_path: &Path) -> bool {
+    let mut cache = oxidize_core::traceability::AstCache::new();
+    run_policy_audit_with_whitelist_and_cache(members, whitelist_path, &mut cache)
+}
+
+pub(crate) fn run_policy_audit_with_whitelist_and_cache(
+    members: &[&str],
+    whitelist_path: &Path,
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> bool {
     let whitelist = match crate::whitelist::load_whitelist_strict(None, &[whitelist_path]) {
         Ok(cfg) => cfg,
         Err(err) => {
@@ -445,7 +467,7 @@ pub(crate) fn run_policy_audit_with_whitelist(members: &[&str], whitelist_path: 
     );
 
     for member in members {
-        if !audit_single_member(member, &whitelist) {
+        if !audit_single_member(member, &whitelist, cache) {
             success = false;
         }
     }

@@ -1,4 +1,13 @@
 mod analysis;
+mod cache;
+mod runner;
+
+pub use cache::{AstCache, CachedRustFile};
+pub use runner::{
+    check_and_print_traceability_errors, discover_workspace_code_dirs,
+    print_traceability_dashboard, run_workspace_traceability,
+    run_workspace_traceability_with_cache,
+};
 
 use crate::vfs::VirtualFileSystem;
 use std::collections::{HashMap, HashSet};
@@ -160,10 +169,27 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         }
     }
 
+    async fn load_cached_optional(
+        &self,
+        norm_path: &str,
+        cache: &mut AstCache,
+    ) -> Result<bool, std::io::Error> {
+        let key = AstCache::normalize_key(norm_path);
+        if cache.get(&key).is_some() {
+            return Ok(true);
+        }
+        if let Some(content) = self.read_optional_file(norm_path).await? {
+            cache.insert_source(key, content);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     async fn gather_active_files(
         &self,
         code_dirs: &[&str],
         active_files: &mut HashSet<String>,
+        cache: &mut AstCache,
     ) -> Result<(), std::io::Error> {
         for dir in code_dirs {
             let normalized = crate::path_utils::normalize_path(dir);
@@ -171,12 +197,12 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
             let main = crate::path_utils::join_and_normalize(&normalized, "main.rs");
             let mut has_entrypoint = false;
 
-            if self.read_optional_file(&lib).await?.is_some() {
-                self.parse_module_tree(&lib, active_files).await?;
+            if self.load_cached_optional(&lib, cache).await? {
+                self.parse_module_tree(&lib, active_files, cache).await?;
                 has_entrypoint = true;
             }
-            if self.read_optional_file(&main).await?.is_some() {
-                self.parse_module_tree(&main, active_files).await?;
+            if self.load_cached_optional(&main, cache).await? {
+                self.parse_module_tree(&main, active_files, cache).await?;
                 has_entrypoint = true;
             }
             if !has_entrypoint {
@@ -225,6 +251,19 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         papers_dir: &str,
         auto_fix: bool,
     ) -> Result<TraceabilityReport, std::io::Error> {
+        let mut cache = AstCache::new();
+        self.scan_repository_with_cache(code_dirs, papers_dir, auto_fix, &mut cache)
+            .await
+    }
+
+    /// Scans `code_dirs` and `papers_dir` while reusing and populating pre-parsed ASTs in `cache`.
+    pub async fn scan_repository_with_cache(
+        &self,
+        code_dirs: &[&str],
+        papers_dir: &str,
+        auto_fix: bool,
+        cache: &mut AstCache,
+    ) -> Result<TraceabilityReport, std::io::Error> {
         let mut valid_papers = HashSet::new();
         let mut report = TraceabilityReport::default();
 
@@ -243,7 +282,7 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         );
 
         let mut active_files = HashSet::new();
-        self.gather_active_files(code_dirs, &mut active_files)
+        self.gather_active_files(code_dirs, &mut active_files, cache)
             .await?;
 
         let mut code_files: Vec<String> = active_files.into_iter().collect();
@@ -255,6 +294,7 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
             &registry_links,
             &mut report,
             auto_fix,
+            cache,
         )
         .await?;
 
@@ -271,10 +311,18 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         registry_links: &HashMap<String, String>,
         report: &mut TraceabilityReport,
         auto_fix: bool,
+        cache: &mut AstCache,
     ) -> Result<(), std::io::Error> {
         for file in code_files {
-            self.process_single_file(file, registered_modules, registry_links, report, auto_fix)
-                .await?;
+            self.process_single_file(
+                file,
+                registered_modules,
+                registry_links,
+                report,
+                auto_fix,
+                cache,
+            )
+            .await?;
         }
         Ok(())
     }
@@ -286,34 +334,54 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         registry_links: &HashMap<String, String>,
         report: &mut TraceabilityReport,
         auto_fix: bool,
+        cache: &mut AstCache,
     ) -> Result<(), std::io::Error> {
         let norm_file = crate::path_utils::normalize_path(&file);
-        let mut content = self.vfs.read_to_string(&norm_file).await?;
+        let key = AstCache::normalize_key(&norm_file);
+        if cache.get(&key).is_none() {
+            let content = self.vfs.read_to_string(&norm_file).await?;
+            cache.insert_source(key.clone(), content);
+        }
+
         report.scanned_files += 1;
         let is_module = norm_file.ends_with("mod.rs")
             || norm_file.contains("/tabs/")
             || norm_file.ends_with("lib.rs");
 
-        let citations = Self::extract_citations(&content);
-        let (file_modified, final_citations) = analysis::fix_and_collect_citations(
-            &norm_file,
-            &mut content,
-            citations,
-            registered_modules,
-            registry_links,
-            report,
-            auto_fix,
-        );
+        let citations = cache
+            .get(&key)
+            .map(|entry| Self::extract_citations(&entry.content))
+            .unwrap_or_default();
 
-        if file_modified {
-            self.vfs
-                .write_to_file(&norm_file, content.as_bytes())
-                .await?;
-        }
+        let final_citations = if auto_fix {
+            let mut updated = cache
+                .get(&key)
+                .map(|entry| entry.content.clone())
+                .unwrap_or_default();
+            let (file_modified, resolved) = analysis::fix_and_collect_citations(
+                &norm_file,
+                &mut updated,
+                citations,
+                registered_modules,
+                registry_links,
+                report,
+                true,
+            );
+            if file_modified {
+                self.vfs
+                    .write_to_file(&norm_file, updated.as_bytes())
+                    .await?;
+                cache.insert_source(key.clone(), updated);
+            }
+            resolved
+        } else {
+            analysis::collect_valid_citations(&norm_file, citations, registered_modules, report)
+        };
 
-        analysis::analyze_file_ast(
+        let ast = cache.get(&key).and_then(|entry| entry.ast.as_ref());
+        analysis::analyze_parsed_ast(
             &norm_file,
-            &content,
+            ast,
             is_module,
             &final_citations,
             registered_modules,
@@ -328,33 +396,57 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         &self,
         file_path: &str,
         active_files: &mut HashSet<String>,
+        cache: &mut AstCache,
     ) -> Result<(), std::io::Error> {
         let norm_file_path = crate::path_utils::normalize_path(file_path);
         if active_files.contains(&norm_file_path) {
             return Ok(());
         }
-        let content = self.vfs.read_to_string(&norm_file_path).await?;
+        let key = AstCache::normalize_key(&norm_file_path);
+        if cache.get(&key).is_none() {
+            let content = self.vfs.read_to_string(&norm_file_path).await?;
+            cache.insert_source(key.clone(), content);
+        }
         active_files.insert(norm_file_path.clone());
-        let Ok(ast) = syn::parse_file(&content) else {
-            return Ok(());
-        };
-        let mut visitor = crate::ast_visitor::AstVisitor::new();
-        syn::visit::Visit::visit_file(&mut visitor, &ast);
 
+        let submodules = collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
         let dir_path = module_child_dir(&norm_file_path);
-        for submodule in visitor.active_submodules {
+        for submodule in submodules {
             let path1 = crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}.rs"));
             let path2 =
                 crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}/mod.rs"));
 
-            if self.read_optional_file(&path1).await?.is_some() {
-                self.parse_module_tree(&path1, active_files).await?;
-            } else if self.read_optional_file(&path2).await?.is_some() {
-                self.parse_module_tree(&path2, active_files).await?;
+            if self.load_cached_optional(&path1, cache).await? {
+                self.parse_module_tree(&path1, active_files, cache).await?;
+            } else if self.load_cached_optional(&path2, cache).await? {
+                self.parse_module_tree(&path2, active_files, cache).await?;
             }
         }
         Ok(())
     }
+}
+
+#[derive(Default)]
+struct SubmoduleCollector {
+    submodules: Vec<String>,
+}
+
+impl<'ast> syn::visit::Visit<'ast> for SubmoduleCollector {
+    fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
+        if node.content.is_none() {
+            self.submodules.push(node.ident.to_string());
+        }
+        syn::visit::visit_item_mod(self, node);
+    }
+}
+
+fn collect_external_submodules(ast: Option<&syn::File>) -> Vec<String> {
+    let Some(ast) = ast else {
+        return Vec::new();
+    };
+    let mut collector = SubmoduleCollector::default();
+    syn::visit::Visit::visit_file(&mut collector, ast);
+    collector.submodules
 }
 
 fn module_child_dir(norm_file_path: &str) -> String {
