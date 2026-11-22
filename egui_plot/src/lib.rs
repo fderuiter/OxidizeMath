@@ -1894,11 +1894,17 @@ impl<'a> Plot<'a> {
                     export::export_json(&export_datasets);
                 }
                 let has_table_content = !export_datasets.is_empty() || !critical_points.is_empty();
-                if ui
-                    .add_enabled(has_table_content, egui::Button::new("Table View"))
-                    .on_disabled_hover_text("No tabular data points available for this plot")
-                    .clicked()
-                {
+                let mut table_btn = a11y::focusable_action_button(
+                    ui,
+                    has_table_content,
+                    egui::Button::new("Table View"),
+                    Some("Table View"),
+                );
+                if !has_table_content {
+                    table_btn = table_btn
+                        .accessible_tooltip("No tabular data points available for this plot");
+                }
+                if has_table_content && table_btn.clicked() {
                     access_state.show_table = !access_state.show_table;
                 }
                 if ui.button("🔧 Settings").clicked() {
@@ -2447,11 +2453,17 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
             let has_table_content = !export_datasets.is_empty() || !critical_points.is_empty();
-            if ui
-                .add_enabled(has_table_content, egui::Button::new("Table View"))
-                .on_disabled_hover_text("No tabular data points available for this plot")
-                .clicked()
-            {
+            let mut table_btn = a11y::focusable_action_button(
+                ui,
+                has_table_content,
+                egui::Button::new("Table View"),
+                Some("Table View"),
+            );
+            if !has_table_content {
+                table_btn =
+                    table_btn.accessible_tooltip("No tabular data points available for this plot");
+            }
+            if has_table_content && table_btn.clicked() {
                 access_state.show_table = !access_state.show_table;
                 ui.close();
             }
