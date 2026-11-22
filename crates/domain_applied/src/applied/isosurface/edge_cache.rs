@@ -12,7 +12,7 @@ pub(super) const EMPTY_EDGE_VERTEX: u32 = u32::MAX;
 
 /// Lazy rolling cache mapping cube edges to mesh vertex indices across two XY
 /// planes and two Z-directed rows.
-pub(super) struct SliceEdgeCache {
+pub struct SliceEdgeCache {
     width: usize,
     height: usize,
     xy_len: usize,
@@ -41,7 +41,7 @@ impl SliceEdgeCache {
     /// Creates an unallocated rolling cache for a grid of `width x height` XY dimensions.
     #[inline]
     #[verified_engine::verified]
-    pub(super) fn new(width: usize, height: usize) -> Self {
+    pub fn new(width: usize, height: usize) -> Self {
         debug_assert!(width >= 2 && height >= 2);
         let xy_len = width * height * 2;
         Self {
@@ -57,6 +57,36 @@ impl SliceEdgeCache {
             next_xy_dirty: false,
             curr_z_dirty: false,
             next_z_dirty: false,
+        }
+    }
+
+    /// Creates a pre-allocated rolling cache for zero-allocation Marching Cubes extraction.
+    #[verified_engine::verified]
+    pub fn preallocated(width: usize, height: usize) -> Self {
+        let mut cache = Self::new(width, height);
+        cache.allocate_buffers();
+        cache
+    }
+
+    /// Resets and resizes the cache for a `width x height` XY slice, reusing existing heap capacity.
+    #[verified_engine::verified]
+    pub fn prepare(&mut self, width: usize, height: usize) {
+        self.width = width;
+        self.height = height;
+        self.xy_len = width * height * 2;
+        if self.allocated {
+            self.curr_xy.resize(self.xy_len, EMPTY_EDGE_VERTEX);
+            self.next_xy.resize(self.xy_len, EMPTY_EDGE_VERTEX);
+            self.curr_z_row.resize(self.width, EMPTY_EDGE_VERTEX);
+            self.next_z_row.resize(self.width, EMPTY_EDGE_VERTEX);
+            self.curr_xy.fill(EMPTY_EDGE_VERTEX);
+            self.next_xy.fill(EMPTY_EDGE_VERTEX);
+            self.curr_z_row.fill(EMPTY_EDGE_VERTEX);
+            self.next_z_row.fill(EMPTY_EDGE_VERTEX);
+            self.curr_xy_dirty = false;
+            self.next_xy_dirty = false;
+            self.curr_z_dirty = false;
+            self.next_z_dirty = false;
         }
     }
 

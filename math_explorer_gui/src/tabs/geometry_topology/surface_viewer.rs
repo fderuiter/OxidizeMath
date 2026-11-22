@@ -1,17 +1,22 @@
 use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
+use crate::web_io::{SaveAsDialogConfig, download_mesh_bytes};
 use eframe::egui;
 use egui_plot::{Line, PlotPoints};
 use math_explorer::pure_math::differential_geometry::surface::{
     KleinBottle, ParametricSurface, Sphere, Torus,
 };
 use nalgebra::Point3;
-use std::f64::consts::PI;
+use oxidize_core::mesh::{analyze_mesh, export_mesh_to_obj_string, export_mesh_to_stl_bytes};
 
 #[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum SurfaceType {
     Sphere,
     Torus,
     KleinBottle,
+}
+
+const fn default_scale_mm() -> f32 {
+    20.0
 }
 
 #[derive(serde::Serialize)]
@@ -23,6 +28,7 @@ struct SurfaceViewerSaveState {
     klein_radius: f64,
     u_resolution: usize,
     v_resolution: usize,
+    scale_mm: f32,
     camera: Camera3D,
 }
 
@@ -36,6 +42,8 @@ struct SurfaceViewerState {
     klein_radius: f64,
     u_resolution: usize,
     v_resolution: usize,
+    #[serde(default = "default_scale_mm")]
+    scale_mm: f32,
     #[serde(default)]
     camera: Option<Camera3D>,
     #[serde(default)]
@@ -48,18 +56,13 @@ struct SurfaceViewerState {
 
 pub struct SurfaceViewer {
     surface_type: SurfaceType,
-
-    // Parameters
     sphere_radius: f64,
     torus_major_radius: f64,
     torus_minor_radius: f64,
     klein_radius: f64,
-
-    // Resolution
     u_resolution: usize,
     v_resolution: usize,
-
-    // View
+    scale_mm: f32,
     camera: crate::framework::Camera3D,
 }
 
@@ -73,6 +76,7 @@ impl Default for SurfaceViewer {
             klein_radius: 2.0,
             u_resolution: 30,
             v_resolution: 30,
+            scale_mm: default_scale_mm(),
             camera: crate::framework::Camera3D::new(0.5, 0.5, 1.0),
         }
     }
@@ -86,13 +90,9 @@ impl SurfaceViewer {
 
     fn generate_grid_lines(&self, surface: &dyn ParametricSurface) -> Vec<Vec<[f64; 2]>> {
         let mut lines = Vec::new();
+        let (u_min, u_max) = surface.u_domain();
+        let (v_min, v_max) = surface.v_domain();
 
-        let u_min = 0.0;
-        let u_max = 2.0 * PI;
-        let v_min = 0.0;
-        let v_max = 2.0 * PI;
-
-        // Lines of constant u
         for i in 0..=self.u_resolution {
             let u = u_min + (u_max - u_min) * (i as f64 / self.u_resolution as f64);
             let mut line = Vec::new();
@@ -104,7 +104,6 @@ impl SurfaceViewer {
             lines.push(line);
         }
 
-        // Lines of constant v
         for j in 0..=self.v_resolution {
             let v = v_min + (v_max - v_min) * (j as f64 / self.v_resolution as f64);
             let mut line = Vec::new();
@@ -118,6 +117,7 @@ impl SurfaceViewer {
 
         lines
     }
+
     fn create_surface(&self) -> Box<dyn ParametricSurface> {
         match self.surface_type {
             SurfaceType::Sphere => Box::new(Sphere {
@@ -130,6 +130,32 @@ impl SurfaceViewer {
             SurfaceType::KleinBottle => Box::new(KleinBottle {
                 radius: self.klein_radius,
             }),
+        }
+    }
+
+    fn export_stem(&self) -> &'static str {
+        match self.surface_type {
+            SurfaceType::Sphere => "sphere",
+            SurfaceType::Torus => "torus",
+            SurfaceType::KleinBottle => "klein_bottle",
+        }
+    }
+
+    fn build_scaled_mesh(&self) -> oxidize_core::mesh::Mesh {
+        let surface = self.create_surface();
+        if (self.scale_mm - 1.0).abs() <= f32::EPSILON {
+            super::export_utils::surface_to_mesh(
+                surface.as_ref(),
+                self.u_resolution,
+                self.v_resolution,
+            )
+        } else {
+            super::export_utils::surface_to_mesh_scaled(
+                surface.as_ref(),
+                self.u_resolution,
+                self.v_resolution,
+                self.scale_mm,
+            )
         }
     }
 }
@@ -153,6 +179,7 @@ impl InteractiveTool for SurfaceViewer {
             klein_radius: self.klein_radius,
             u_resolution: self.u_resolution,
             v_resolution: self.v_resolution,
+            scale_mm: self.scale_mm,
             camera: self.camera,
         })
         .ok()
@@ -169,8 +196,10 @@ impl InteractiveTool for SurfaceViewer {
             || !(0.1..=2.0).contains(&loaded.torus_minor_radius)
             || !loaded.klein_radius.is_finite()
             || !(0.5..=5.0).contains(&loaded.klein_radius)
+            || !loaded.scale_mm.is_finite()
+            || !(1.0..=200.0).contains(&loaded.scale_mm)
         {
-            return Err("Surface radii out of valid bounds".to_string());
+            return Err("Surface radii or millimeter scale out of valid bounds".to_string());
         }
         let max_res = math_commons::registry::MAX_GRID_SIZE;
         if !(10..=max_res).contains(&loaded.u_resolution)
@@ -192,6 +221,7 @@ impl InteractiveTool for SurfaceViewer {
         self.klein_radius = loaded.klein_radius;
         self.u_resolution = loaded.u_resolution;
         self.v_resolution = loaded.v_resolution;
+        self.scale_mm = loaded.scale_mm;
         self.camera.apply_pose(camera);
         Ok(())
     }
@@ -216,17 +246,30 @@ impl InteractiveTool for SurfaceViewer {
 
             ui.separator();
 
-            ui.collapsing("Parameters", |ui| match self.surface_type {
-                SurfaceType::Sphere => {
-                    ui.add(egui::Slider::new(&mut self.sphere_radius, 0.1..=5.0).text("Radius"));
+            ui.collapsing("Parameters", |ui| {
+                match self.surface_type {
+                    SurfaceType::Sphere => {
+                        ui.add(egui::Slider::new(&mut self.sphere_radius, 0.1..=5.0).text("Radius"));
+                    }
+                    SurfaceType::Torus => {
+                        ui.add(
+                            egui::Slider::new(&mut self.torus_major_radius, 1.0..=5.0)
+                                .text("Major Radius (R)"),
+                        );
+                        ui.add(
+                            egui::Slider::new(&mut self.torus_minor_radius, 0.1..=2.0)
+                                .text("Minor Radius (r)"),
+                        );
+                    }
+                    SurfaceType::KleinBottle => {
+                        ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
+                    }
                 }
-                SurfaceType::Torus => {
-                    ui.add(egui::Slider::new(&mut self.torus_major_radius, 1.0..=5.0).text("Major Radius (R)"));
-                    ui.add(egui::Slider::new(&mut self.torus_minor_radius, 0.1..=2.0).text("Minor Radius (r)"));
-                }
-                SurfaceType::KleinBottle => {
-                    ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
-                }
+                ui.add(
+                    egui::Slider::new(&mut self.scale_mm, 1.0..=200.0)
+                        .suffix(" mm")
+                        .text("Physical Scale"),
+                );
             });
 
             egui::CollapsingHeader::new("View")
@@ -234,42 +277,69 @@ impl InteractiveTool for SurfaceViewer {
                 .show(ui, |ui| self.camera.ui(ui));
 
             ui.collapsing("Resolution", |ui| {
-                ui.add(egui::Slider::new(&mut self.u_resolution, 10..=math_commons::registry::MAX_GRID_SIZE).text("Grid Size U"));
-
-                ui.add(egui::Slider::new(&mut self.v_resolution, 10..=math_commons::registry::MAX_GRID_SIZE).text("Grid Size V"));
+                ui.add(
+                    egui::Slider::new(
+                        &mut self.u_resolution,
+                        10..=math_commons::registry::MAX_GRID_SIZE,
+                    )
+                    .text("Grid Size U"),
+                );
+                ui.add(
+                    egui::Slider::new(
+                        &mut self.v_resolution,
+                        10..=math_commons::registry::MAX_GRID_SIZE,
+                    )
+                    .text("Grid Size V"),
+                );
             });
 
             ui.separator();
-            if ui.button("Export to OBJ").clicked() {
-                let surface = self.create_surface();
-                let mesh = super::export_utils::surface_to_mesh(
-                    surface.as_ref(),
-                    self.u_resolution,
-                    self.v_resolution,
-                );
-                let obj = oxidize_core::mesh::export_mesh_to_obj_string(&mesh)
-                    .unwrap_or_else(|_| String::new());
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .set_file_name("surface.obj")
-                        .add_filter("OBJ File", &["obj"])
-                        .save_file()
-                    {
-                        let _ = std::fs::write(path, obj);
+            let preview_mesh = self.build_scaled_mesh();
+            let diag = analyze_mesh(&preview_mesh);
+            ui.small(format!(
+                "Bounds: {:.1} × {:.1} × {:.1} mm | Open edges: {} | NaN normals: {}",
+                diag.dimensions_mm.x,
+                diag.dimensions_mm.y,
+                diag.dimensions_mm.z,
+                diag.open_edges,
+                diag.nan_normals
+            ));
+            ui.small(format!(
+                "Area: {:.1} mm² | Signed Vol: {:.1} mm³",
+                diag.area_mm2, diag.signed_volume_mm3
+            ));
+            ui.horizontal(|ui| {
+                if ui.button("Download .STL (mm)").clicked() {
+                    if let Ok(bytes) = export_mesh_to_stl_bytes(&preview_mesh) {
+                        let filename = format!("{}_mm.stl", self.export_stem());
+                        download_mesh_bytes(
+                            SaveAsDialogConfig {
+                                filter_name: "Binary STL Mesh (*.stl)",
+                                extensions: &["stl"],
+                                fallback_filename: "surface.stl",
+                                write_error_prefix: "Failed to write STL file",
+                            },
+                            &filename,
+                            bytes,
+                        );
                     }
                 }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    let filename = "surface.obj";
-                    let obj_clone = obj.clone();
-                    wasm_bindgen_futures::spawn_local(async move {
-                        use oxidize_core::vfs::VirtualFileSystem;
-                        let vfs = oxidize_core::vfs::WasmVfs;
-                        let _ = vfs.write_to_file(filename, obj_clone.as_bytes()).await;
-                    });
+                if ui.button("Download .OBJ (mm)").clicked() {
+                    if let Ok(obj) = export_mesh_to_obj_string(&preview_mesh) {
+                        let filename = format!("{}_mm.obj", self.export_stem());
+                        download_mesh_bytes(
+                            SaveAsDialogConfig {
+                                filter_name: "Wavefront OBJ Mesh (*.obj)",
+                                extensions: &["obj"],
+                                fallback_filename: "surface.obj",
+                                write_error_prefix: "Failed to write OBJ file",
+                            },
+                            &filename,
+                            obj.into_bytes(),
+                        );
+                    }
                 }
-            }
+            });
         });
 
         egui::CentralPanel::default().show_inside(ui, |ui| {

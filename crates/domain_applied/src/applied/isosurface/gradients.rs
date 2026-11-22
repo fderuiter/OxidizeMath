@@ -1,4 +1,4 @@
-use super::types::{Point3D, VoxelGrid};
+use super::types::{Mesh, Point3D, VoxelGrid};
 
 /// Strategy trait for estimating gradients in a voxel grid.
 pub trait GradientEstimator {
@@ -66,23 +66,43 @@ pub trait GradientEstimator {
     /// This method will panic if the bounds check fails.
     #[verified_engine::verified]
     fn gradient_fast(&self, data: &[f32], idx: usize, stride_y: usize, stride_z: usize) -> Point3D;
+
+    /// Computes the physical gradient scaled by inverse voxel spacing `(1/dx, 1/dy, 1/dz)`.
+    #[inline(always)]
+    #[verified_engine::verified]
+    fn gradient_fast_scaled(
+        &self,
+        data: &[f32],
+        idx: usize,
+        stride_y: usize,
+        stride_z: usize,
+        inv_voxel_size: Point3D,
+    ) -> Point3D {
+        let g = self.gradient_fast(data, idx, stride_y, stride_z);
+        Point3D::new(
+            g.x * inv_voxel_size.x,
+            g.y * inv_voxel_size.y,
+            g.z * inv_voxel_size.z,
+        )
+    }
 }
 
-/// Estimates gradients using the Central Difference method.
+/// Estimates physical gradients using the Central Difference method scaled by `voxel_size`.
 ///
-/// $ \nabla f \approx \left( \frac{f(x+1) - f(x-1)}{2}, \frac{f(y+1) - f(y-1)}{2}, \frac{f(z+1) - f(z-1)}{2} \right) $
+/// $ \nabla f \approx \left( \frac{f(x+1) - f(x-1)}{2 \Delta x}, \frac{f(y+1) - f(y-1)}{2 \Delta y}, \frac{f(z+1) - f(z-1)}{2 \Delta z} \right) $
 pub struct CentralDifferenceEstimator;
 
 impl GradientEstimator for CentralDifferenceEstimator {
     #[inline]
     #[verified_engine::verified]
     fn gradient(&self, grid: &VoxelGrid, x: usize, y: usize, z: usize) -> Point3D {
+        let spacing = grid.voxel_size();
         let dx = if x == 0 {
             grid.get(x + 1, y, z) - grid.get(x, y, z)
         } else if x == grid.width() - 1 {
             grid.get(x, y, z) - grid.get(x - 1, y, z)
         } else {
-            (grid.get(x + 1, y, z) - grid.get(x - 1, y, z)) / 2.0
+            (grid.get(x + 1, y, z) - grid.get(x - 1, y, z)) * 0.5
         };
 
         let dy = if y == 0 {
@@ -90,7 +110,7 @@ impl GradientEstimator for CentralDifferenceEstimator {
         } else if y == grid.height() - 1 {
             grid.get(x, y, z) - grid.get(x, y - 1, z)
         } else {
-            (grid.get(x, y + 1, z) - grid.get(x, y - 1, z)) / 2.0
+            (grid.get(x, y + 1, z) - grid.get(x, y - 1, z)) * 0.5
         };
 
         let dz = if z == 0 {
@@ -98,10 +118,10 @@ impl GradientEstimator for CentralDifferenceEstimator {
         } else if z == grid.depth() - 1 {
             grid.get(x, y, z) - grid.get(x, y, z - 1)
         } else {
-            (grid.get(x, y, z + 1) - grid.get(x, y, z - 1)) / 2.0
+            (grid.get(x, y, z + 1) - grid.get(x, y, z - 1)) * 0.5
         };
 
-        Point3D::new(dx, dy, dz)
+        Point3D::new(dx / spacing.x, dy / spacing.y, dz / spacing.z)
     }
 
     #[inline(always)]
@@ -135,5 +155,71 @@ impl GradientEstimator for CentralDifferenceEstimator {
                 .unwrap_or(0.0))
             * 0.5;
         Point3D::new(dx, dy, dz)
+    }
+}
+
+/// Interpolates between two points `(p1, v1)` and `(p2, v2)` to find where `value == threshold`.
+#[inline]
+#[verified_engine::verified]
+pub(super) fn interpolate_vertex(
+    p1: Point3D,
+    v1: f32,
+    p2: Point3D,
+    v2: f32,
+    threshold: f32,
+) -> Point3D {
+    if (threshold - v1).abs() < Point3D::EPSILON || (v1 - v2).abs() < Point3D::EPSILON {
+        return p1;
+    }
+    if (threshold - v2).abs() < Point3D::EPSILON {
+        return p2;
+    }
+    let t = (threshold - v1) / (v2 - v1);
+    p1 + (p2 - p1) * t
+}
+
+/// Linearly interpolates and normalizes vertex normals along an active cube edge.
+#[inline]
+#[verified_engine::verified]
+pub(super) fn interpolate_normal(
+    n1: Point3D,
+    v1: f32,
+    n2: Point3D,
+    v2: f32,
+    threshold: f32,
+) -> Point3D {
+    if (v1 - v2).abs() < Point3D::EPSILON {
+        return n1;
+    }
+    let t = (threshold - v1) / (v2 - v1);
+    (n1 + (n2 - n1) * t).normalize()
+}
+
+/// Replaces any degenerate or non-finite corner normals on triangle `(i0, i1, i2)` with its geometric facet normal.
+#[inline]
+#[verified_engine::verified]
+pub(super) fn ensure_valid_triangle_normals(mesh: &mut Mesh, i0: usize, i1: usize, i2: usize) {
+    let needs_fix = |n: Point3D| {
+        !n.x.is_finite()
+            || !n.y.is_finite()
+            || !n.z.is_finite()
+            || (n.x * n.x + n.y * n.y + n.z * n.z) <= 1.0e-12
+    };
+    if !needs_fix(mesh.normals[i0]) && !needs_fix(mesh.normals[i1]) && !needs_fix(mesh.normals[i2])
+    {
+        return;
+    }
+    let cross =
+        (mesh.vertices[i1] - mesh.vertices[i0]).cross(mesh.vertices[i2] - mesh.vertices[i0]);
+    let mag = cross.magnitude();
+    let fallback = if mag > Point3D::EPSILON && mag.is_finite() {
+        cross / mag
+    } else {
+        Point3D::new(0.0, 0.0, 1.0)
+    };
+    for idx in [i0, i1, i2] {
+        if needs_fix(mesh.normals[idx]) {
+            mesh.normals[idx] = fallback;
+        }
     }
 }

@@ -42,7 +42,8 @@
 //! cargo run --example isosurface_torus
 //! ```
 
-mod edge_cache;
+/// Rolling slice cache for zero-allocation Marching Cubes vertex deduplication.
+pub mod edge_cache;
 #[allow(missing_docs)]
 pub mod gradients;
 #[allow(missing_docs)]
@@ -52,6 +53,7 @@ pub mod tables;
 #[allow(missing_docs)]
 pub mod types;
 
+pub use edge_cache::SliceEdgeCache;
 pub use gradients::{CentralDifferenceEstimator, GradientEstimator};
 pub use marching_cubes::extract_isosurface;
 pub use types::{Mesh, Point3D, VoxelGrid};

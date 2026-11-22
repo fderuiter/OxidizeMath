@@ -1,38 +1,11 @@
 use super::edge_cache::{EMPTY_EDGE_VERTEX, SliceEdgeCache};
-use super::gradients::{CentralDifferenceEstimator, GradientEstimator};
+use super::gradients::{
+    CentralDifferenceEstimator, GradientEstimator, ensure_valid_triangle_normals,
+    interpolate_normal, interpolate_vertex,
+};
 use super::tables::{CUBE_EDGE_FLAGS, EDGE_CONNECTION, TRIANGLE_CONNECTION_TABLE};
 use super::types::{Mesh, Point3D, VoxelGrid};
 use crate::error::IsosurfaceError;
-
-/// Interpolates between two points (p1, v1) and (p2, v2) to find the point where value == threshold.
-#[inline]
-#[verified_engine::verified]
-fn interpolate(p1: Point3D, v1: f32, p2: Point3D, v2: f32, threshold: f32) -> Point3D {
-    if (threshold - v1).abs() < Point3D::EPSILON {
-        return p1;
-    }
-    if (threshold - v2).abs() < Point3D::EPSILON {
-        return p2;
-    }
-    if (v1 - v2).abs() < Point3D::EPSILON {
-        return p1;
-    }
-
-    let t = (threshold - v1) / (v2 - v1);
-    p1 + (p2 - p1) * t
-}
-
-/// Linear interpolation of normals.
-#[inline]
-#[verified_engine::verified]
-fn interpolate_normal(n1: Point3D, v1: f32, n2: Point3D, v2: f32, threshold: f32) -> Point3D {
-    if (v1 - v2).abs() < Point3D::EPSILON {
-        return n1;
-    }
-    let t = (threshold - v1) / (v2 - v1);
-    let n = n1 + (n2 - n1) * t;
-    n.normalize()
-}
 
 /// Data for a single cube in the grid.
 struct CubeData {
@@ -105,17 +78,32 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
     /// ```
     #[verified_engine::verified]
     pub fn extract(&self, threshold: f32) -> Result<Mesh, IsosurfaceError> {
-        self.validate_grid()?;
-
-        let mut vertices = Vec::new();
-        let mut normals = Vec::new();
-        let mut indices = Vec::new();
+        let mut mesh = Mesh::default();
         let mut edge_cache = SliceEdgeCache::new(self.grid.width(), self.grid.height());
+        self.extract_into(threshold, &mut edge_cache, &mut mesh)?;
+        Ok(mesh)
+    }
+
+    /// Extracts the isosurface into pre-allocated [`SliceEdgeCache`] and [`Mesh`] buffers
+    /// so inner loops execute with zero dynamic heap allocations when capacity suffices.
+    #[verified_engine::verified]
+    pub fn extract_into(
+        &self,
+        threshold: f32,
+        edge_cache: &mut SliceEdgeCache,
+        mesh: &mut Mesh,
+    ) -> Result<(), IsosurfaceError> {
+        self.validate_grid()?;
+        mesh.vertices.clear();
+        mesh.normals.clear();
+        mesh.indices.clear();
+        edge_cache.prepare(self.grid.width(), self.grid.height());
 
         let stride_y = self.grid.width();
         let stride_z = self.grid.width() * self.grid.height();
+        let spacing = self.grid.voxel_size();
+        let inv_voxel_size = Point3D::new(1.0 / spacing.x, 1.0 / spacing.y, 1.0 / spacing.z);
 
-        // Iterate over each cube in the grid
         for z in 0..self.grid.depth() - 1 {
             if z > 0 {
                 edge_cache.advance_z();
@@ -126,14 +114,11 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
                 if y > 0 {
                     edge_cache.advance_y();
                 }
-                let y_interior = y > 0 && y < self.grid.height() - 2;
-                let row_is_interior = z_interior && y_interior;
-
+                let row_is_interior = z_interior && y > 0 && y < self.grid.height() - 2;
                 let mut cached_gradients: Option<[Point3D; 4]> = None;
 
                 for x in 0..self.grid.width() - 1 {
                     let base_idx = z * stride_z + y * stride_y + x;
-
                     let (values, index) =
                         self.get_cube_values_fast(base_idx, stride_y, stride_z, threshold);
 
@@ -143,11 +128,11 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
                     }
 
                     let positions = self.get_cube_positions(x, y, z);
-
                     let (cube_normals, right_face) = self.compute_gradients_fast(
                         (x, y, z),
                         base_idx,
                         (stride_y, stride_z),
+                        inv_voxel_size,
                         row_is_interior,
                         cached_gradients,
                     );
@@ -161,23 +146,11 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
                         coords: (x, y, z),
                     };
 
-                    self.triangulate_cube(
-                        &cube_data,
-                        threshold,
-                        &mut vertices,
-                        &mut normals,
-                        &mut indices,
-                        &mut edge_cache,
-                    );
+                    self.triangulate_cube(&cube_data, threshold, mesh, edge_cache);
                 }
             }
         }
-
-        Ok(Mesh {
-            vertices,
-            normals,
-            indices,
-        })
+        Ok(())
     }
 
     #[verified_engine::verified]
@@ -272,94 +245,96 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
         ]
     }
 
-    /// Computes the gradient (normal vectors) for the 8 corners of a cube, utilizing caching.
-    ///
-    /// This method implements a fast path for interior points where boundary conditions
-    /// do not apply, avoiding branch predictions and bounds checks.
-    ///
+    /// Computes physical gradient vectors for the 8 corners of a cube with X-axis face caching.
     #[inline(always)]
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     #[verified_engine::verified]
     fn compute_gradients_fast(
         &self,
         coords: (usize, usize, usize),
         base_idx: usize,
         strides: (usize, usize),
+        inv_voxel_size: Point3D,
         row_is_interior: bool,
         cached_left_face: Option<[Point3D; 4]>,
     ) -> ([Point3D; 8], [Point3D; 4]) {
         let (x, y, z) = coords;
         let (stride_y, stride_z) = strides;
-        let mut normals = [Point3D::new(0.0, 0.0, 0.0); 8];
-        let data = &self.grid.data();
+        let data = self.grid.data();
+        let can_use_fast_path = row_is_interior && x > 0 && x < self.grid.width() - 2;
 
-        // Check if X is interior (safe for fast path)
-        let x_interior = x > 0 && x < self.grid.width() - 2;
-        let can_use_fast_path = row_is_interior && x_interior;
-
-        // 1. Fill Left Face (0, 3, 4, 7)
-        if let Some(grads) = cached_left_face {
-            normals[0] = grads[0];
-            normals[3] = grads[1];
-            normals[4] = grads[2];
-            normals[7] = grads[3];
+        let left_face = if let Some(grads) = cached_left_face {
+            grads
         } else if can_use_fast_path {
-            normals[0] = self
-                .estimator
-                .gradient_fast(data, base_idx, stride_y, stride_z);
-            normals[3] =
-                self.estimator
-                    .gradient_fast(data, base_idx + stride_y, stride_y, stride_z);
-            normals[4] =
-                self.estimator
-                    .gradient_fast(data, base_idx + stride_z, stride_y, stride_z);
-            normals[7] = self.estimator.gradient_fast(
-                data,
-                base_idx + stride_y + stride_z,
-                stride_y,
-                stride_z,
-            );
+            self.face_gradients_fast(data, base_idx, stride_y, stride_z, inv_voxel_size)
         } else {
-            normals[0] = self.estimator.gradient(self.grid, x, y, z);
-            normals[3] = self.estimator.gradient(self.grid, x, y + 1, z);
-            normals[4] = self.estimator.gradient(self.grid, x, y, z + 1);
-            normals[7] = self.estimator.gradient(self.grid, x, y + 1, z + 1);
-        }
-
-        // 2. Compute Right Face (1, 2, 5, 6)
-        // These are always computed anew as they become the next Left Face
-        let right_face = if can_use_fast_path {
-            let next_x_idx = base_idx + 1;
-            let n1 = self
-                .estimator
-                .gradient_fast(data, next_x_idx, stride_y, stride_z);
-            let n2 = self
-                .estimator
-                .gradient_fast(data, next_x_idx + stride_y, stride_y, stride_z);
-            let n5 = self
-                .estimator
-                .gradient_fast(data, next_x_idx + stride_z, stride_y, stride_z);
-            let n6 = self.estimator.gradient_fast(
-                data,
-                next_x_idx + stride_y + stride_z,
-                stride_y,
-                stride_z,
-            );
-            [n1, n2, n5, n6]
-        } else {
-            let n1 = self.estimator.gradient(self.grid, x + 1, y, z);
-            let n2 = self.estimator.gradient(self.grid, x + 1, y + 1, z);
-            let n5 = self.estimator.gradient(self.grid, x + 1, y, z + 1);
-            let n6 = self.estimator.gradient(self.grid, x + 1, y + 1, z + 1);
-            [n1, n2, n5, n6]
+            self.face_gradients_checked(x, y, z)
         };
 
-        normals[1] = right_face[0];
-        normals[2] = right_face[1];
-        normals[5] = right_face[2];
-        normals[6] = right_face[3];
+        let right_face = if can_use_fast_path {
+            self.face_gradients_fast(data, base_idx + 1, stride_y, stride_z, inv_voxel_size)
+        } else {
+            self.face_gradients_checked(x + 1, y, z)
+        };
 
+        let normals = [
+            left_face[0],
+            right_face[0],
+            right_face[1],
+            left_face[1],
+            left_face[2],
+            right_face[2],
+            right_face[3],
+            left_face[3],
+        ];
         (normals, right_face)
+    }
+
+    #[inline(always)]
+    #[verified_engine::verified]
+    fn face_gradients_fast(
+        &self,
+        data: &[f32],
+        x_idx: usize,
+        stride_y: usize,
+        stride_z: usize,
+        inv_voxel_size: Point3D,
+    ) -> [Point3D; 4] {
+        [
+            self.estimator
+                .gradient_fast_scaled(data, x_idx, stride_y, stride_z, inv_voxel_size),
+            self.estimator.gradient_fast_scaled(
+                data,
+                x_idx + stride_y,
+                stride_y,
+                stride_z,
+                inv_voxel_size,
+            ),
+            self.estimator.gradient_fast_scaled(
+                data,
+                x_idx + stride_z,
+                stride_y,
+                stride_z,
+                inv_voxel_size,
+            ),
+            self.estimator.gradient_fast_scaled(
+                data,
+                x_idx + stride_y + stride_z,
+                stride_y,
+                stride_z,
+                inv_voxel_size,
+            ),
+        ]
+    }
+
+    #[inline(always)]
+    #[verified_engine::verified]
+    fn face_gradients_checked(&self, x: usize, y: usize, z: usize) -> [Point3D; 4] {
+        [
+            self.estimator.gradient(self.grid, x, y, z),
+            self.estimator.gradient(self.grid, x, y + 1, z),
+            self.estimator.gradient(self.grid, x, y, z + 1),
+            self.estimator.gradient(self.grid, x, y + 1, z + 1),
+        ]
     }
 
     #[inline]
@@ -368,16 +343,13 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
         &self,
         cube: &CubeData,
         threshold: f32,
-        vertices: &mut Vec<Point3D>,
-        normals: &mut Vec<Point3D>,
-        indices: &mut Vec<usize>,
+        mesh: &mut Mesh,
         edge_cache: &mut SliceEdgeCache,
     ) {
         let edge_flags = CUBE_EDGE_FLAGS[cube.index];
         let mut edge_vertex_indices = [0usize; 12];
         let (x, y, _z) = cube.coords;
 
-        // Interpolate vertices and normals on intersected edges
         for i in 0..12 {
             if (edge_flags & (1 << i)) != 0 {
                 let slot = edge_cache.slot_mut(x, y, i);
@@ -389,14 +361,13 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
                     let v1_idx = EDGE_CONNECTION[i][0];
                     let v2_idx = EDGE_CONNECTION[i][1];
 
-                    let v = interpolate(
+                    let v = interpolate_vertex(
                         cube.positions[v1_idx],
                         cube.values[v1_idx],
                         cube.positions[v2_idx],
                         cube.values[v2_idx],
                         threshold,
                     );
-
                     let n = interpolate_normal(
                         cube.normals[v1_idx],
                         cube.values[v1_idx],
@@ -405,16 +376,16 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
                         threshold,
                     );
 
-                    let new_idx = vertices.len();
-                    vertices.push(v);
-                    normals.push(n);
+                    let new_idx = mesh.vertices.len();
+                    mesh.vertices.push(v);
+                    mesh.normals.push(n);
                     *slot = new_idx as u32;
                     edge_vertex_indices[i] = new_idx;
                 }
             }
         }
 
-        // Generate triangles using lookup table
+        // Emit outward counter-clockwise triangles for {V < threshold} solids.
         let mut i = 0;
         loop {
             let v1_lookup = TRIANGLE_CONNECTION_TABLE[cube.index][i];
@@ -424,9 +395,13 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
             let v2_lookup = TRIANGLE_CONNECTION_TABLE[cube.index][i + 1];
             let v3_lookup = TRIANGLE_CONNECTION_TABLE[cube.index][i + 2];
 
-            indices.push(edge_vertex_indices[v1_lookup as usize]);
-            indices.push(edge_vertex_indices[v2_lookup as usize]);
-            indices.push(edge_vertex_indices[v3_lookup as usize]);
+            let i0 = edge_vertex_indices[v1_lookup as usize];
+            let i1 = edge_vertex_indices[v3_lookup as usize];
+            let i2 = edge_vertex_indices[v2_lookup as usize];
+            mesh.indices.push(i0);
+            mesh.indices.push(i1);
+            mesh.indices.push(i2);
+            ensure_valid_triangle_normals(mesh, i0, i1, i2);
 
             i += 3;
         }

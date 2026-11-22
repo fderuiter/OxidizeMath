@@ -267,8 +267,11 @@ mod tests {
 
     #[test]
     #[verified_engine::verified]
-    fn test_empty_grid_zero_heap_allocations() {
-        let grid = VoxelGrid::builder()
+    fn test_empty_grid_and_preallocated_extract_into_zero_heap_allocations() {
+        use domain_applied::applied::isosurface::marching_cubes::MarchingCubes;
+        use domain_applied::applied::isosurface::{CentralDifferenceEstimator, SliceEdgeCache};
+
+        let empty_grid = VoxelGrid::builder()
             .dimensions(16, 12, 10)
             .data(vec![10.0; 16 * 12 * 10])
             .voxel_size(Point3D::new(1.0, 1.0, 1.0))
@@ -276,10 +279,145 @@ mod tests {
             .build()
             .unwrap();
 
-        let (mesh, _metrics) =
-            VerifiedEngine::run_verified(|| extract_isosurface(&grid, 0.0).unwrap());
-        assert!(mesh.vertices.is_empty());
-        assert!(mesh.normals.is_empty());
-        assert!(mesh.indices.is_empty());
+        let n = 14usize;
+        let mut sphere_data = Vec::with_capacity(n * n * n);
+        let c = (n as f32 - 1.0) * 0.5;
+        for z in 0..n {
+            for y in 0..n {
+                for x in 0..n {
+                    let dx = x as f32 - c;
+                    let dy = y as f32 - c;
+                    let dz = z as f32 - c;
+                    sphere_data.push((dx * dx + dy * dy + dz * dz).sqrt() - 4.5);
+                }
+            }
+        }
+        let sphere_grid = VoxelGrid::builder()
+            .dimensions(n, n, n)
+            .data(sphere_data)
+            .voxel_size(Point3D::new(1.5, 1.5, 1.5))
+            .origin(Point3D::new(-10.0, -10.0, -10.0))
+            .clamp_exterior(Some(0.0))
+            .build()
+            .unwrap();
+
+        let mut cache = SliceEdgeCache::preallocated(n, n);
+        let mut mesh = Mesh {
+            vertices: Vec::with_capacity(2048),
+            normals: Vec::with_capacity(2048),
+            indices: Vec::with_capacity(8192),
+        };
+        let extractor = MarchingCubes::new(&sphere_grid, CentralDifferenceEstimator);
+
+        let (empty_mesh, metrics) = VerifiedEngine::run_verified(|| {
+            let empty = extract_isosurface(&empty_grid, 0.0).unwrap();
+            extractor.extract_into(0.0, &mut cache, &mut mesh).unwrap();
+            empty
+        });
+
+        // VerifiedAllocator panics on any alloc/realloc inside run_verified;
+        // metrics.memory_loads > 0 confirms #[verified] instrumentation executed.
+        assert!(metrics.memory_loads > 0);
+        assert!(empty_mesh.vertices.is_empty());
+        assert!(!mesh.indices.is_empty());
+        let diag = oxidize_core::mesh::analyze_mesh(&mesh);
+        assert!(diag.is_watertight());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_exterior_clamp_caps_clipped_gyroid_into_watertight_millimeter_solid() {
+        let res = 24usize;
+        let box_mm = 40.0_f32;
+        let step = box_mm / (res as f32 - 1.0);
+        let half = box_mm * 0.5;
+        let k = std::f32::consts::TAU / 20.0;
+        let mut data = Vec::with_capacity(res * res * res);
+
+        for z in 0..res {
+            let pz = -half + z as f32 * step;
+            for y in 0..res {
+                let py = -half + y as f32 * step;
+                for x in 0..res {
+                    let px = -half + x as f32 * step;
+                    let g = (px * k).sin() * (py * k).cos()
+                        + (py * k).sin() * (pz * k).cos()
+                        + (pz * k).sin() * (px * k).cos();
+                    data.push(g.abs() - 0.55);
+                }
+            }
+        }
+
+        let unsealed_grid = VoxelGrid::builder()
+            .dimensions(res, res, res)
+            .data(data.clone())
+            .voxel_size(Point3D::new(step, step, step))
+            .origin(Point3D::new(-half, -half, -half))
+            .build()
+            .unwrap();
+        let unsealed_diag =
+            oxidize_core::mesh::analyze_mesh(&extract_isosurface(&unsealed_grid, 0.0).unwrap());
+        assert!(
+            unsealed_diag.open_edges > 0,
+            "Unsealed TPMS lattice must leave open boundary edges"
+        );
+
+        let sealed_grid = VoxelGrid::builder()
+            .dimensions(res, res, res)
+            .data(data)
+            .voxel_size(Point3D::new(step, step, step))
+            .origin(Point3D::new(-half, -half, -half))
+            .clamp_exterior(Some(0.0))
+            .build()
+            .unwrap();
+        let sealed_mesh = extract_isosurface(&sealed_grid, 0.0).unwrap();
+        assert_closed_manifold(&sealed_mesh);
+        let diag = oxidize_core::mesh::analyze_mesh(&sealed_mesh);
+        assert!(diag.is_watertight());
+        assert_eq!(diag.open_edges, 0);
+        assert_eq!(diag.nan_normals, 0);
+        assert!(diag.signed_volume_mm3 > 1000.0);
+        assert!((diag.dimensions_mm.x - box_mm).abs() < 1e-3);
+        assert!((diag.dimensions_mm.y - box_mm).abs() < 1e-3);
+        assert!((diag.dimensions_mm.z - box_mm).abs() < 1e-3);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_anisotropic_millimeter_voxel_size_scales_gradient_normals() {
+        use domain_applied::applied::isosurface::{CentralDifferenceEstimator, GradientEstimator};
+
+        let (w, h, d) = (5, 5, 5);
+        let (vx, vy, vz) = (0.5_f32, 2.0_f32, 4.0_f32);
+        let mut data = Vec::with_capacity(w * h * d);
+        for z in 0..d {
+            for y in 0..h {
+                for x in 0..w {
+                    // Physical linear field f(X, Y, Z) = 3*X - 2*Y + 5*Z in millimeters
+                    let px = x as f32 * vx;
+                    let py = y as f32 * vy;
+                    let pz = z as f32 * vz;
+                    data.push(3.0 * px - 2.0 * py + 5.0 * pz);
+                }
+            }
+        }
+        let grid = VoxelGrid::builder()
+            .dimensions(w, h, d)
+            .data(data)
+            .voxel_size(Point3D::new(vx, vy, vz))
+            .origin(Point3D::new(0.0, 0.0, 0.0))
+            .build()
+            .unwrap();
+
+        let est = CentralDifferenceEstimator;
+        let g_interior = est.gradient(&grid, 2, 2, 2);
+        assert!((g_interior.x - 3.0).abs() < 1e-5);
+        assert!((g_interior.y - (-2.0)).abs() < 1e-5);
+        assert!((g_interior.z - 5.0).abs() < 1e-5);
+
+        let g_boundary = est.gradient(&grid, 0, 4, 0);
+        assert!((g_boundary.x - 3.0).abs() < 1e-5);
+        assert!((g_boundary.y - (-2.0)).abs() < 1e-5);
+        assert!((g_boundary.z - 5.0).abs() < 1e-5);
     }
 }

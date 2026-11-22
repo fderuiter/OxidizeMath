@@ -22,6 +22,65 @@ pub trait ParametricSurface {
         let h = math_commons::registry::TOLERANCE_FAST;
         (self.position(u, v + h) - self.position(u, v - h)) / (2.0 * h)
     }
+
+    /// Returns the natural parameter interval $[u_{\min}, u_{\max}]$ for single-cover meshing.
+    #[verified_engine::verified]
+    fn u_domain(&self) -> (f64, f64) {
+        (0.0, std::f64::consts::TAU)
+    }
+
+    /// Returns the natural parameter interval $[v_{\min}, v_{\max}]$ for single-cover meshing.
+    #[verified_engine::verified]
+    fn v_domain(&self) -> (f64, f64) {
+        (0.0, std::f64::consts::TAU)
+    }
+
+    /// Returns `true` when $r(u_{\min}, v) = r(u_{\max}, v)$ so seam vertices weld along $u$.
+    #[verified_engine::verified]
+    fn is_u_periodic(&self) -> bool {
+        true
+    }
+
+    /// Returns `true` when $r(u, v_{\min}) = r(u, v_{\max})$ so seam vertices weld along $v$.
+    #[verified_engine::verified]
+    fn is_v_periodic(&self) -> bool {
+        true
+    }
+
+    /// Returns `true` when $v = v_{\min}$ and $v = v_{\max}$ collapse to single polar vertices.
+    #[verified_engine::verified]
+    fn has_v_poles(&self) -> bool {
+        false
+    }
+
+    /// Finite unit normal fallback used at singular points where $|r_u \times r_v| = 0$.
+    #[verified_engine::verified]
+    fn singular_normal(&self, _u: f64, _v: f64) -> Vector3<f64> {
+        Vector3::new(0.0, 0.0, 1.0)
+    }
+
+    /// Outward-pointing finite unit normal for 3D mesh export without pole `NaN` singularities.
+    #[verified_engine::verified]
+    fn outward_normal(&self, u: f64, v: f64) -> Vector3<f64>
+    where
+        Self: Sized,
+    {
+        self.unit_normal(u, v)
+    }
+
+    /// Object-safe outward unit normal query for `dyn ParametricSurface` mesh builders.
+    #[verified_engine::verified]
+    fn mesh_normal(&self, u: f64, v: f64) -> Vector3<f64> {
+        let ru = self.partial_u(u, v);
+        let rv = self.partial_v(u, v);
+        let cross = ru.cross(&rv);
+        let norm = cross.norm();
+        if norm > 1.0e-12 && norm.is_finite() {
+            cross / norm
+        } else {
+            self.singular_normal(u, v)
+        }
+    }
 }
 
 /// Extension trait providing geometric analysis methods for any `ParametricSurface`.
@@ -65,7 +124,12 @@ impl<T: ParametricSurface> SurfaceAnalysis for T {
         let ru = self.partial_u(u, v);
         let rv = self.partial_v(u, v);
         let cross = ru.cross(&rv);
-        cross.normalize()
+        let norm = cross.norm();
+        if norm > 1.0e-12 && norm.is_finite() {
+            cross / norm
+        } else {
+            self.singular_normal(u, v)
+        }
     }
 
     #[verified_engine::verified]
@@ -144,17 +208,43 @@ pub struct Sphere {
 impl ParametricSurface for Sphere {
     #[verified_engine::verified]
     fn position(&self, u: f64, v: f64) -> Point3<f64> {
-        // u = theta (azimuthal), v = phi (polar)
-        // x = R sin(v) cos(u)
-        // y = R sin(v) sin(u)
-        // z = R cos(v)
+        // u = theta (azimuthal in [0, 2*pi)), v = phi (polar in [0, pi])
         let x = self.radius * v.sin() * u.cos();
         let y = self.radius * v.sin() * u.sin();
         let z = self.radius * v.cos();
         Point3::new(x, y, z)
     }
 
-    // Optional: Override derivatives for analytical precision if needed
+    #[verified_engine::verified]
+    fn v_domain(&self) -> (f64, f64) {
+        (0.0, std::f64::consts::PI)
+    }
+
+    #[verified_engine::verified]
+    fn is_v_periodic(&self) -> bool {
+        false
+    }
+
+    #[verified_engine::verified]
+    fn has_v_poles(&self) -> bool {
+        true
+    }
+
+    #[verified_engine::verified]
+    fn singular_normal(&self, _u: f64, v: f64) -> Vector3<f64> {
+        let sign = if v.cos() >= 0.0 { -1.0 } else { 1.0 };
+        Vector3::new(0.0, 0.0, sign)
+    }
+
+    #[verified_engine::verified]
+    fn outward_normal(&self, u: f64, v: f64) -> Vector3<f64> {
+        Vector3::new(v.sin() * u.cos(), v.sin() * u.sin(), v.cos())
+    }
+
+    #[verified_engine::verified]
+    fn mesh_normal(&self, u: f64, v: f64) -> Vector3<f64> {
+        Vector3::new(v.sin() * u.cos(), v.sin() * u.sin(), v.cos())
+    }
 }
 
 /// A Torus with major radius R and minor radius r.
@@ -195,5 +285,10 @@ impl ParametricSurface for KleinBottle {
             * u.sin();
         let z = r / 2.0 * v.sin() * (u / 2.0).cos() + r / 2.0 * v.cos() * (u / 2.0).sin();
         Point3::new(x, y, z)
+    }
+
+    #[verified_engine::verified]
+    fn is_u_periodic(&self) -> bool {
+        false
     }
 }

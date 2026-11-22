@@ -58,6 +58,25 @@ impl Expr {
         })
     }
 
+    /// Evaluates the expression for 3D spatial fields given coordinates `(x, y, z)`.
+    ///
+    /// Optimized for high-throughput marching-cubes and implicit CAD loops without
+    /// per-sample heap allocations. Returns `f64::NAN` on divergence or error.
+    #[must_use]
+    pub fn eval_3d(&self, x: f64, y: f64, z: f64) -> f64 {
+        self.eval_fast(0, &|name| {
+            if name.eq_ignore_ascii_case("x") {
+                Some(x)
+            } else if name.eq_ignore_ascii_case("y") {
+                Some(y)
+            } else if name.eq_ignore_ascii_case("z") {
+                Some(z)
+            } else {
+                None
+            }
+        })
+    }
+
     /// Evaluates the expression over complex numbers `Complex64`.
     pub fn eval_complex(&self, vars: &HashMap<String, Complex64>) -> Result<Complex64, EvalError> {
         self.eval_checked(vars, 0)
@@ -89,17 +108,7 @@ impl Expr {
                 Ok(eval_binop(*op, l, r))
             }
             Self::Unary { op, expr } => Ok(eval_unary(*op, expr.eval_checked(vars, depth + 1)?)),
-            Self::Function { func, args } => {
-                if args.len() != 1 {
-                    return Err(EvalError::WrongArgumentCount {
-                        func: *func,
-                        expected: 1,
-                        found: args.len(),
-                    });
-                }
-                let arg = args[0].eval_checked(vars, depth + 1)?;
-                Ok(eval_func(*func, arg))
-            }
+            Self::Function { func, args } => eval_function_checked(*func, args, vars, depth),
         }
     }
 
@@ -118,20 +127,89 @@ impl Expr {
                 .or_else(|| resolve_var(name))
                 .unwrap_or(T::NAN),
             Self::Binary { op, left, right } => {
-                let l = left.eval_fast(depth + 1, resolve_var);
-                let r = right.eval_fast(depth + 1, resolve_var);
+                let l = self_or_child_fast(left, depth + 1, resolve_var);
+                let r = self_or_child_fast(right, depth + 1, resolve_var);
                 eval_binop(*op, l, r)
             }
             Self::Unary { op, expr } => eval_unary(*op, expr.eval_fast(depth + 1, resolve_var)),
-            Self::Function { func, args } => {
-                if args.is_empty() {
-                    return T::NAN;
-                }
-                let arg = args[0].eval_fast(depth + 1, resolve_var);
-                eval_func(*func, arg)
-            }
+            Self::Function { func, args } => eval_function_fast(*func, args, depth, resolve_var),
         }
     }
+}
+
+#[inline]
+fn self_or_child_fast<T: EvalScalar, F: Fn(&str) -> Option<T>>(
+    expr: &Expr,
+    depth: usize,
+    resolve_var: &F,
+) -> T {
+    expr.eval_fast(depth, resolve_var)
+}
+
+fn eval_function_checked<T: EvalScalar>(
+    func: Func,
+    args: &[Expr],
+    vars: &HashMap<String, T>,
+    depth: usize,
+) -> Result<T, EvalError> {
+    if matches!(func, Func::Min | Func::Max) {
+        if args.len() < 2 {
+            return Err(EvalError::WrongArgumentCount {
+                func,
+                expected: 2,
+                found: args.len(),
+            });
+        }
+        let mut acc = args[0].eval_checked(vars, depth + 1)?;
+        for arg in &args[1..] {
+            let rhs = arg.eval_checked(vars, depth + 1)?;
+            acc = if func == Func::Min {
+                acc.min_checked(rhs)?
+            } else {
+                acc.max_checked(rhs)?
+            };
+        }
+        return Ok(acc);
+    }
+
+    if args.len() != 1 {
+        return Err(EvalError::WrongArgumentCount {
+            func,
+            expected: 1,
+            found: args.len(),
+        });
+    }
+    let arg = args[0].eval_checked(vars, depth + 1)?;
+    Ok(eval_func(func, arg))
+}
+
+fn eval_function_fast<T: EvalScalar, F: Fn(&str) -> Option<T>>(
+    func: Func,
+    args: &[Expr],
+    depth: usize,
+    resolve_var: &F,
+) -> T {
+    if matches!(func, Func::Min | Func::Max) {
+        if args.len() < 2 {
+            return T::NAN;
+        }
+        let mut acc = args[0].eval_fast(depth + 1, resolve_var);
+        for arg in &args[1..] {
+            let rhs = arg.eval_fast(depth + 1, resolve_var);
+            acc = if func == Func::Min {
+                acc.min_fast(rhs)
+            } else {
+                acc.max_fast(rhs)
+            };
+        }
+        return acc;
+    }
+
+    if args.len() != 1 {
+        return T::NAN;
+    }
+    let arg = args[0].eval_fast(depth + 1, resolve_var);
+    eval_func(func, arg)
 }
 
 trait EvalScalar: ComplexFloat<Real = f64> {
@@ -140,6 +218,10 @@ trait EvalScalar: ComplexFloat<Real = f64> {
     fn from_real(val: f64) -> Self;
     fn div_checked(self, rhs: Self) -> Self;
     fn pow_scalar(self, rhs: Self) -> Self;
+    fn min_checked(self, rhs: Self) -> Result<Self, EvalError>;
+    fn max_checked(self, rhs: Self) -> Result<Self, EvalError>;
+    fn min_fast(self, rhs: Self) -> Self;
+    fn max_fast(self, rhs: Self) -> Self;
     fn extra_const(name: &str) -> Option<Self> {
         let _ = name;
         None
@@ -159,6 +241,30 @@ impl EvalScalar for f64 {
 
     fn pow_scalar(self, rhs: Self) -> Self {
         self.powf(rhs)
+    }
+
+    fn min_checked(self, rhs: Self) -> Result<Self, EvalError> {
+        Ok(self.min_fast(rhs))
+    }
+
+    fn max_checked(self, rhs: Self) -> Result<Self, EvalError> {
+        Ok(self.max_fast(rhs))
+    }
+
+    fn min_fast(self, rhs: Self) -> Self {
+        if self.is_nan() || rhs.is_nan() {
+            f64::NAN
+        } else {
+            self.min(rhs)
+        }
+    }
+
+    fn max_fast(self, rhs: Self) -> Self {
+        if self.is_nan() || rhs.is_nan() {
+            f64::NAN
+        } else {
+            self.max(rhs)
+        }
     }
 }
 
@@ -183,6 +289,26 @@ impl EvalScalar for Complex64 {
         } else {
             self.powc(rhs)
         }
+    }
+
+    fn min_checked(self, _rhs: Self) -> Result<Self, EvalError> {
+        Err(EvalError::DomainError(
+            "min() is only defined for real numbers".to_string(),
+        ))
+    }
+
+    fn max_checked(self, _rhs: Self) -> Result<Self, EvalError> {
+        Err(EvalError::DomainError(
+            "max() is only defined for real numbers".to_string(),
+        ))
+    }
+
+    fn min_fast(self, _rhs: Self) -> Self {
+        Self::NAN
+    }
+
+    fn max_fast(self, _rhs: Self) -> Self {
+        Self::NAN
     }
 
     fn extra_const(name: &str) -> Option<Self> {
@@ -223,6 +349,7 @@ fn eval_func<T: EvalScalar>(func: Func, arg: T) -> T {
         Func::Asin => arg.asin(),
         Func::Acos => arg.acos(),
         Func::Atan => arg.atan(),
+        Func::Min | Func::Max => T::NAN,
     }
 }
 

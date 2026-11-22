@@ -95,7 +95,11 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 32, "Expected 32 Plot dataset+figure tools");
+    let expected_plot_tools = if cfg!(feature = "applied") { 33 } else { 32 };
+    assert_eq!(
+        plot_tool_count, expected_plot_tools,
+        "Unexpected Plot dataset+figure tool count"
+    );
     assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
     assert_eq!(unsupported_tool_count, 16, "Expected 16 non-export tools");
 }

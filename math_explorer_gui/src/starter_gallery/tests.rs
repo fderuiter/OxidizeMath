@@ -53,12 +53,22 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 55, "Expected 55 registered tools");
+    let expected_tools = if cfg!(feature = "applied") { 56 } else { 55 };
+    assert_eq!(
+        tools.len(),
+        expected_tools,
+        "Unexpected registered tool count"
+    );
 
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 59, "Expected 59 registered starter presets");
+    let expected_presets = if cfg!(feature = "applied") { 62 } else { 59 };
+    assert_eq!(
+        presets.len(),
+        expected_presets,
+        "Unexpected starter preset count"
+    );
 
     for tool in &tools {
         let matching: Vec<_> = presets
@@ -216,10 +226,11 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
+    let expected_presets = if cfg!(feature = "applied") { 62 } else { 59 };
     assert_eq!(
         presets.len(),
-        59,
-        "Expected 59 StarterPresetMetadata entries"
+        expected_presets,
+        "Unexpected StarterPresetMetadata entry count"
     );
 
     for preset in presets {
@@ -241,7 +252,12 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(tools.len(), 55, "Expected 55 InteractiveTool registrations");
+    let expected_tools = if cfg!(feature = "applied") { 56 } else { 55 };
+    assert_eq!(
+        tools.len(),
+        expected_tools,
+        "Unexpected InteractiveTool registration count"
+    );
 
     for tool_meta in tools {
         let default_tool = (tool_meta.build)();

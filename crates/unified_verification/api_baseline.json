@@ -1887,6 +1887,20 @@
       "signature": "pub fn uncertainty_reward (p_hat : f64) -> f64"
     }
   ],
+  "crates/domain_applied/src/applied/isosurface/edge_cache.rs": [
+    {
+      "signature": "impl SliceEdgeCache { pub fn new (width : usize , height : usize) -> Self }"
+    },
+    {
+      "signature": "impl SliceEdgeCache { pub fn preallocated (width : usize , height : usize) -> Self }"
+    },
+    {
+      "signature": "impl SliceEdgeCache { pub fn prepare (& mut self , width : usize , height : usize) }"
+    },
+    {
+      "signature": "pub struct SliceEdgeCache"
+    }
+  ],
   "crates/domain_applied/src/applied/isosurface/gradients.rs": [
     {
       "signature": "pub struct CentralDifferenceEstimator"
@@ -1899,11 +1913,17 @@
     },
     {
       "signature": "pub trait GradientEstimator { fn gradient_fast (& self , data : & [f32] , idx : usize , stride_y : usize , stride_z : usize) -> Point3D }"
+    },
+    {
+      "signature": "pub trait GradientEstimator { fn gradient_fast_scaled (& self , data : & [f32] , idx : usize , stride_y : usize , stride_z : usize , inv_voxel_size : Point3D ,) -> Point3D }"
     }
   ],
   "crates/domain_applied/src/applied/isosurface/marching_cubes.rs": [
     {
       "signature": "impl < 'a , G : GradientEstimator > MarchingCubes < 'a , G > { pub fn extract (& self , threshold : f32) -> Result < Mesh , IsosurfaceError > }"
+    },
+    {
+      "signature": "impl < 'a , G : GradientEstimator > MarchingCubes < 'a , G > { pub fn extract_into (& self , threshold : f32 , edge_cache : & mut SliceEdgeCache , mesh : & mut Mesh ,) -> Result < () , IsosurfaceError > }"
     },
     {
       "signature": "impl < 'a , G : GradientEstimator > MarchingCubes < 'a , G > { pub fn new (grid : & 'a VoxelGrid , estimator : G) -> Self }"
@@ -1916,6 +1936,9 @@
     }
   ],
   "crates/domain_applied/src/applied/isosurface/mod.rs": [
+    {
+      "signature": "pub use edge_cache :: SliceEdgeCache"
+    },
     {
       "signature": "pub use gradients :: CentralDifferenceEstimator"
     },
@@ -1951,10 +1974,19 @@
   ],
   "crates/domain_applied/src/applied/isosurface/types.rs": [
     {
+      "signature": "impl VoxelGrid { pub fn apply_exterior_clamp (& mut self) }"
+    },
+    {
       "signature": "impl VoxelGrid { pub fn builder () -> VoxelGridBuilder }"
     },
     {
+      "signature": "impl VoxelGrid { pub fn clamp_exterior (& self) -> Option < f32 > }"
+    },
+    {
       "signature": "impl VoxelGrid { pub fn data (& self) -> & [f32] }"
+    },
+    {
+      "signature": "impl VoxelGrid { pub fn data_mut (& mut self) -> & mut [f32] }"
     },
     {
       "signature": "impl VoxelGrid { pub fn depth (& self) -> usize }"
@@ -1967,6 +1999,12 @@
     },
     {
       "signature": "impl VoxelGrid { pub fn origin (& self) -> & Point3D }"
+    },
+    {
+      "signature": "impl VoxelGrid { pub fn resize_dimensions (& mut self , width : usize , height : usize , depth : usize ,) -> Result < () , VoxelGridError > }"
+    },
+    {
+      "signature": "impl VoxelGrid { pub fn set_clamp_exterior (& mut self , clamp_min : Option < f32 >) }"
     },
     {
       "signature": "impl VoxelGrid { pub fn set_origin (& mut self , origin : Point3D) }"
@@ -1982,6 +2020,9 @@
     },
     {
       "signature": "impl VoxelGridBuilder { pub fn build (self) -> Result < VoxelGrid , VoxelGridError > }"
+    },
+    {
+      "signature": "impl VoxelGridBuilder { pub fn clamp_exterior (mut self , clamp_min : Option < f32 >) -> Self }"
     },
     {
       "signature": "impl VoxelGridBuilder { pub fn data (mut self , data : Vec < f32 >) -> Self }"
@@ -5459,6 +5500,9 @@
       "signature": "impl Expr { pub fn eval_2d (& self , t : f64 , y : f64 , params : & HashMap < String , f64 >) -> f64 }"
     },
     {
+      "signature": "impl Expr { pub fn eval_3d (& self , x : f64 , y : f64 , z : f64) -> f64 }"
+    },
+    {
       "signature": "impl Expr { pub fn eval_complex (& self , vars : & HashMap < String , Complex64 >) -> Result < Complex64 , EvalError > }"
     },
     {
@@ -5815,12 +5859,29 @@
       "signature": "pub trait SimulationModel { type State : ModelState }"
     }
   ],
+  "crates/oxidize_core/src/mesh/analysis.rs": [
+    {
+      "signature": "impl MeshDiagnostics { pub fn is_watertight (& self) -> bool }"
+    },
+    {
+      "signature": "pub fn analyze_mesh (mesh : & Mesh) -> MeshDiagnostics"
+    },
+    {
+      "signature": "pub struct MeshDiagnostics"
+    }
+  ],
   "crates/oxidize_core/src/mesh/export.rs": [
     {
-      "signature": "pub fn export_mesh_to_obj_string (mesh : & Mesh) -> Result < String , std :: io :: Error >"
+      "signature": "pub fn export_mesh_to_obj_string (mesh : & Mesh) -> Result < String , Error >"
+    },
+    {
+      "signature": "pub fn export_mesh_to_stl_bytes (mesh : & Mesh) -> Result < Vec < u8 > , Error >"
     }
   ],
   "crates/oxidize_core/src/mesh/mod.rs": [
+    {
+      "signature": "pub use analysis :: *"
+    },
     {
       "signature": "pub use export :: *"
     },
@@ -7094,6 +7155,21 @@
       "signature": "pub trait ParametricSurface"
     },
     {
+      "signature": "pub trait ParametricSurface { fn has_v_poles (& self) -> bool }"
+    },
+    {
+      "signature": "pub trait ParametricSurface { fn is_u_periodic (& self) -> bool }"
+    },
+    {
+      "signature": "pub trait ParametricSurface { fn is_v_periodic (& self) -> bool }"
+    },
+    {
+      "signature": "pub trait ParametricSurface { fn mesh_normal (& self , u : f64 , v : f64) -> Vector3 < f64 > }"
+    },
+    {
+      "signature": "pub trait ParametricSurface { fn outward_normal (& self , u : f64 , v : f64) -> Vector3 < f64 > where Self : Sized , }"
+    },
+    {
       "signature": "pub trait ParametricSurface { fn partial_u (& self , u : f64 , v : f64) -> Vector3 < f64 > }"
     },
     {
@@ -7101,6 +7177,15 @@
     },
     {
       "signature": "pub trait ParametricSurface { fn position (& self , u : f64 , v : f64) -> Point3 < f64 > }"
+    },
+    {
+      "signature": "pub trait ParametricSurface { fn singular_normal (& self , _u : f64 , _v : f64) -> Vector3 < f64 > }"
+    },
+    {
+      "signature": "pub trait ParametricSurface { fn u_domain (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "pub trait ParametricSurface { fn v_domain (& self) -> (f64 , f64) }"
     },
     {
       "signature": "pub trait SurfaceAnalysis"

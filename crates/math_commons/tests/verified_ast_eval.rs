@@ -52,6 +52,24 @@ fn check_conformal_eval_complex_z(expr: &Expr, unknown: &Expr) {
     assert!(bad.re.is_nan() && bad.im.is_nan());
 }
 
+fn check_implicit_eval_3d(expr: &Expr, unknown: &Expr) {
+    let mut accum = 0.0;
+    for ix in -4..=4 {
+        for iy in -4..=4 {
+            for iz in -4..=4 {
+                let x = f64::from(ix) * 0.5;
+                let y = f64::from(iy) * 0.5;
+                let z = f64::from(iz) * 0.5;
+                let v = expr.eval_3d(x, y, z);
+                assert!(v.is_finite());
+                accum += v;
+            }
+        }
+    }
+    assert!(accum.is_finite());
+    assert!(unknown.eval_3d(1.0, 2.0, 3.0).is_nan());
+}
+
 #[test]
 fn test_ast_evaluators_zero_allocations_with_global_allocator() {
     // Initialize all AST nodes and variable maps prior to locking allocations.
@@ -72,6 +90,10 @@ fn test_ast_evaluators_zero_allocations_with_global_allocator() {
     complex_vars.insert("Gain".to_string(), Complex64::new(3.0, -0.5));
 
     let conformal_expr = parse("Z^3 - 1 / z + PI * I + Tau - E").expect("parse conformal");
+    let implicit_csg_expr = parse(
+        "max(sin(x) * cos(y) + sin(y) * cos(z) + sin(z) * cos(x), min(abs(X) - 3, abs(Y) - 3, abs(Z) - 3))",
+    )
+    .expect("parse implicit 3d csg");
 
     // Keep all VerifiedEngine::run_verified assertions in one test to prevent MEMORY_LOCK races.
     let ((), metrics) = VerifiedEngine::run_verified(|| {
@@ -79,6 +101,7 @@ fn test_ast_evaluators_zero_allocations_with_global_allocator() {
         check_ode_rk4_eval_2d(&ode_expr, &unknown_expr, &ode_params);
         check_complex_eval(&complex_expr, &complex_vars);
         check_conformal_eval_complex_z(&conformal_expr, &unknown_expr);
+        check_implicit_eval_3d(&implicit_csg_expr, &unknown_expr);
     });
 
     assert_eq!(metrics.memory_loads, 0);

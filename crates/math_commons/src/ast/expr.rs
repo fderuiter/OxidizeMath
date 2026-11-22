@@ -80,6 +80,10 @@ pub enum Func {
     Acos,
     /// Inverse tangent ($\arctan(x)$).
     Atan,
+    /// Minimum across two or more real arguments ($\min(a, b, \dots)$).
+    Min,
+    /// Maximum across two or more real arguments ($\max(a, b, \dots)$).
+    Max,
 }
 
 impl Func {
@@ -101,6 +105,8 @@ impl Func {
             Self::Asin => "asin",
             Self::Acos => "acos",
             Self::Atan => "atan",
+            Self::Min => "min",
+            Self::Max => "max",
         }
     }
 
@@ -122,6 +128,8 @@ impl Func {
             "asin" | "arcsin" => Some(Self::Asin),
             "acos" | "arccos" => Some(Self::Acos),
             "atan" | "arctan" => Some(Self::Atan),
+            "min" => Some(Self::Min),
+            "max" => Some(Self::Max),
             _ => None,
         }
     }

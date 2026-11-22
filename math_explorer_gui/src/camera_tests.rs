@@ -403,6 +403,8 @@ fn test_all_six_3d_tools_expose_reset_view_and_helper_on_initial_open() {
         "CrystalViewer",
         #[cfg(feature = "pure_math")]
         "CurvatureHeatmap",
+        #[cfg(feature = "applied")]
+        "ImplicitCadStudio",
         #[cfg(feature = "ai")]
         "Gaussian Splatting",
     ];

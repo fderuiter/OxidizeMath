@@ -18,6 +18,8 @@ pub struct VoxelGrid {
     voxel_size: Point3D,
     /// The physical coordinate of the grid's origin (0,0,0 index).
     origin: Point3D,
+    /// Optional minimum scalar value enforced on all six exterior grid faces to seal clipped solids.
+    clamp_exterior: Option<f32>,
 }
 
 #[derive(Debug)]
@@ -54,6 +56,7 @@ pub struct VoxelGridBuilder {
     data: Option<Vec<f32>>,
     voxel_size: Point3D,
     origin: Point3D,
+    clamp_exterior: Option<f32>,
 }
 
 impl Default for VoxelGridBuilder {
@@ -74,6 +77,7 @@ impl VoxelGridBuilder {
             data: None,
             voxel_size: Point3D::new(1.0, 1.0, 1.0),
             origin: Point3D::new(0.0, 0.0, 0.0),
+            clamp_exterior: None,
         }
     }
 
@@ -107,6 +111,13 @@ impl VoxelGridBuilder {
         self
     }
 
+    /// Configures optional minimum scalar clamping across all six exterior boundary faces.
+    #[verified_engine::verified]
+    pub fn clamp_exterior(mut self, clamp_min: Option<f32>) -> Self {
+        self.clamp_exterior = clamp_min;
+        self
+    }
+
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn build(self) -> Result<VoxelGrid, VoxelGridError> {
@@ -127,14 +138,17 @@ impl VoxelGridBuilder {
             return Err(VoxelGridError::InvalidVoxelSize);
         }
 
-        Ok(VoxelGrid {
+        let mut grid = VoxelGrid {
             width,
             height,
             depth,
             data,
             voxel_size: self.voxel_size,
             origin: self.origin,
-        })
+            clamp_exterior: self.clamp_exterior,
+        };
+        grid.apply_exterior_clamp();
+        Ok(grid)
     }
 }
 
@@ -165,6 +179,11 @@ impl VoxelGrid {
     pub fn data(&self) -> &[f32] {
         &self.data
     }
+    /// Returns a mutable slice into the underlying scalar buffer for zero-allocation resampling.
+    #[verified_engine::verified]
+    pub fn data_mut(&mut self) -> &mut [f32] {
+        &mut self.data
+    }
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn voxel_size(&self) -> &Point3D {
@@ -174,6 +193,11 @@ impl VoxelGrid {
     #[verified_engine::verified]
     pub fn origin(&self) -> &Point3D {
         &self.origin
+    }
+    /// Returns the optional exterior boundary clamp floor.
+    #[verified_engine::verified]
+    pub fn clamp_exterior(&self) -> Option<f32> {
+        self.clamp_exterior
     }
 
     #[allow(missing_docs)]
@@ -191,14 +215,73 @@ impl VoxelGrid {
     pub fn set_origin(&mut self, origin: Point3D) {
         self.origin = origin;
     }
+
+    /// Updates the optional exterior boundary clamp floor and applies it when `Some`.
+    #[verified_engine::verified]
+    pub fn set_clamp_exterior(&mut self, clamp_min: Option<f32>) {
+        self.clamp_exterior = clamp_min;
+        self.apply_exterior_clamp();
+    }
+
+    /// Resizes the grid dimensions in place, reusing existing buffer capacity when large enough.
+    #[verified_engine::verified]
+    pub fn resize_dimensions(
+        &mut self,
+        width: usize,
+        height: usize,
+        depth: usize,
+    ) -> Result<(), VoxelGridError> {
+        if width == 0 || height == 0 || depth == 0 {
+            return Err(VoxelGridError::InvalidDimensions);
+        }
+        let total = width
+            .checked_mul(height)
+            .and_then(|wh| wh.checked_mul(depth))
+            .ok_or(VoxelGridError::InvalidDimensions)?;
+        self.width = width;
+        self.height = height;
+        self.depth = depth;
+        self.data.resize(total, 0.0);
+        Ok(())
+    }
+
+    /// Clamps all six exterior faces of the scalar buffer so `v >= min_val` when `clamp_exterior` is set.
+    #[verified_engine::verified]
+    pub fn apply_exterior_clamp(&mut self) {
+        let Some(min_val) = self.clamp_exterior else {
+            return;
+        };
+        let (w, h, d) = (self.width, self.height, self.depth);
+        if w == 0 || h == 0 || d == 0 || self.data.len() < w * h * d {
+            return;
+        }
+        for z in 0..d {
+            let z_face = z == 0 || z + 1 == d;
+            for y in 0..h {
+                let yz_face = z_face || y == 0 || y + 1 == h;
+                let row_start = (z * h + y) * w;
+                if yz_face {
+                    for slot in &mut self.data[row_start..row_start + w] {
+                        *slot = clamp_sample(*slot, min_val);
+                    }
+                } else {
+                    self.data[row_start] = clamp_sample(self.data[row_start], min_val);
+                    let last = row_start + w - 1;
+                    self.data[last] = clamp_sample(self.data[last], min_val);
+                }
+            }
+        }
+    }
+
     /// Retrieves the value at the given grid index (x, y, z).
     ///
-    /// Returns `0.0` if the coordinates are out of bounds.
+    /// Returns the exterior clamp floor (or `0.0`) if the coordinates are out of bounds.
     #[inline]
     #[verified_engine::verified]
     pub fn get(&self, x: usize, y: usize, z: usize) -> f32 {
+        let oob_default = self.clamp_exterior.unwrap_or(0.0);
         if x >= self.width || y >= self.height || z >= self.depth {
-            return 0.0; // Boundary condition
+            return oob_default; // Boundary condition
         }
         // Sentinel: Prevent panic if data buffer is malformed (smaller than dimensions imply)
         let idx = z
@@ -207,9 +290,30 @@ impl VoxelGrid {
             .and_then(|val| val.checked_add(y.checked_mul(self.width)?))
             .and_then(|val| val.checked_add(x));
 
-        match idx {
-            Some(i) => self.data.get(i).copied().unwrap_or(0.0),
-            None => 0.0,
+        let raw = match idx {
+            Some(i) => self.data.get(i).copied().unwrap_or(oob_default),
+            None => oob_default,
+        };
+        if let Some(min_val) = self.clamp_exterior
+            && (x == 0
+                || x + 1 == self.width
+                || y == 0
+                || y + 1 == self.height
+                || z == 0
+                || z + 1 == self.depth)
+        {
+            return clamp_sample(raw, min_val);
         }
+        raw
+    }
+}
+
+#[inline]
+#[verified_engine::verified]
+fn clamp_sample(val: f32, min_val: f32) -> f32 {
+    if val.is_finite() {
+        val.max(min_val)
+    } else {
+        min_val + 1.0
     }
 }

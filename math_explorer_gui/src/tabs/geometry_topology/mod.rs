@@ -4,6 +4,8 @@ use eframe::egui;
 
 pub mod curvature_heatmap;
 pub mod export_utils;
+#[cfg(feature = "applied")]
+pub mod implicit_cad;
 pub mod surface_viewer;
 pub mod vietoris_rips;
 

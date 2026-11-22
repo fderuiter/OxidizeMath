@@ -15,7 +15,7 @@ By decoupling simulation state contracts from concrete numerical algorithms and 
   - `ModelState`: Cloneable state representation supporting checkpoints and history buffers.
   - `SimulationModel`: Lifecycle interface defining `initialize`, `step`, and `get_state`.
 - **`rng`**: Deterministic pseudo-random number generator (`OxidizeRng`) based on ChaCha8, enforcing workspace reproducible simulation policies.
-- **`mesh`**: Indexed 3D geometry primitives (`Point3D`, `Mesh`) and Wavefront OBJ serialization (`export_mesh_to_obj_string`).
+- **`mesh`**: Indexed 3D geometry primitives (`Point3D`, `Mesh`), manifold diagnostics (`MeshDiagnostics`, `analyze_mesh`), and binary STL / Wavefront OBJ serialization (`export_mesh_to_stl_bytes`, `export_mesh_to_obj_string`).
 - **`boundary`**: Coordinate boundary condition traits and clamping resolvers (`BoundaryCondition`, `NeumannBoundary`).
 - **`iteration`**: Interior and boundary coordinate traversal helpers (`IterationPattern`).
 - **`vfs`**: Virtual file system layer abstracting asset access across native and web environments.
