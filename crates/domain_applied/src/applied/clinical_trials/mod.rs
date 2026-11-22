@@ -34,11 +34,12 @@
 //! ## Example: Full Trial Simulation
 //!
 //! ```rust
-//! use domain_applied::applied::clinical_trials::design::{SimpleRandomizer, AllocationStrategy, Group};
-//! use oxidize_core::rng::OxidizeRng;
-//! use domain_applied::applied::clinical_trials::sample_size::calculate_sample_size_means;
-//! use domain_applied::applied::clinical_trials::analysis::calculate_risk_metrics;
-//! use domain_applied::applied::clinical_trials::types::ContingencyTable;
+//! # use domain_applied::__doctest_facade as math_explorer;
+//! use math_explorer::applied::clinical_trials::design::{SimpleRandomizer, AllocationStrategy, Group};
+//! use math_explorer::rng::OxidizeRng;
+//! use math_explorer::applied::clinical_trials::sample_size::calculate_sample_size_means;
+//! use math_explorer::applied::clinical_trials::analysis::calculate_risk_metrics;
+//! use math_explorer::applied::clinical_trials::types::ContingencyTable;
 //!
 //! fn main() {
 //!     // 1. Plan: We want to detect a mean difference of 5.0 with SD=10.0

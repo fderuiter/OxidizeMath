@@ -24,22 +24,22 @@ use num_traits::ToPrimitive;
 /// - Seasonal effects in time series
 ///
 /// # Example
-///
 /// ```rust
-/// use pure_math::pure_math::statistics::markov::tensor::{TransitionTensor, TimeIndex};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::markov::tensor::{TransitionTensor, TimeIndex};
 ///
 /// // Create a tensor with transitions at different shot clock times
 /// let mut tensor = TransitionTensor::<f64>::new(2, TimeIndex::new(0.0).unwrap(), TimeIndex::new(24.0).unwrap());
 ///
 /// // Add transition matrix at t=24 (full shot clock - patient offense)
-/// let p_24 = nalgebra::DMatrix::from_row_slice(2, 2, &[
+/// let p_24 = math_explorer::nalgebra::DMatrix::from_row_slice(2, 2, &[
 ///     0.9, 0.1,  // Mostly stay in possession
 ///     0.2, 0.8,
 /// ]);
 /// tensor.add_time_slice(TimeIndex::new(24.0).unwrap(), p_24).unwrap();
 ///
 /// // Add transition matrix at t=5 (urgency - more shots)
-/// let p_5 = nalgebra::DMatrix::from_row_slice(2, 2, &[
+/// let p_5 = math_explorer::nalgebra::DMatrix::from_row_slice(2, 2, &[
 ///     0.5, 0.5,  // More aggressive
 ///     0.3, 0.7,
 /// ]);

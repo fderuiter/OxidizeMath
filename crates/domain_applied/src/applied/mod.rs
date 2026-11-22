@@ -55,4 +55,7 @@ pub mod clinical_trials;
 pub mod algorithms;
 pub mod engineering;
 
+/// Error types for applied mathematics modules.
+pub use crate::error;
+
 // [cite:graph_parameters_rust]

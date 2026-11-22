@@ -57,7 +57,8 @@ pub trait GatingKinetics: Send + Sync + std::fmt::Debug {
 /// # Example
 ///
 /// ```rust
-/// use domain_biology::biology::neuroscience::kinetics::{GatingKinetics, StandardKinetics};
+/// # use domain_biology::__doctest_facade as math_explorer;
+/// use math_explorer::biology::neuroscience::kinetics::{GatingKinetics, StandardKinetics};
 ///
 /// let kinetics = StandardKinetics::default();
 /// let v_rest = -65.0;

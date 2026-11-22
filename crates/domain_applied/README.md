@@ -31,7 +31,8 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 Analyze hierarchical composite endpoints using pair-wise comparison strategies:
 
 ```rust
-use domain_applied::applied::win_ratio::pair_comparison::{
+# use domain_applied::__doctest_facade as math_explorer;
+use math_explorer::applied::win_ratio::pair_comparison::{
     calculate_statistics, HigherIsBetter, UnmatchedPairing, WinRatioAnalysis,
 };
 

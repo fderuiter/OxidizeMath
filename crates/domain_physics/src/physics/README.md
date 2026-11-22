@@ -16,7 +16,7 @@ This module is part of the `math_explorer` core library. To use it, include the 
 
 ```toml
 [dependencies]
-math_explorer = { path = "path/to/math_explorer" }
+math_explorer = { path = "path/to/math_explorer", features = ["physics"] }
 ```
 
 ---
@@ -28,7 +28,8 @@ math_explorer = { path = "path/to/math_explorer" }
 Simulate the Lorenz Attractor to observe deterministic chaos and the exponential divergence of nearby trajectories.
 
 ```rust
-use domain_physics::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
 
 // 1. Initialize the system state close to the attractor
 let state = LorenzState::new(10.0, 10.0, 10.0);

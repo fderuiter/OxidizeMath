@@ -51,8 +51,9 @@ impl MomentumType {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::ou_process::MomentumType;
-    /// use math_commons::primitives::PositiveFloat;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::ou_process::MomentumType;
+    /// use math_explorer::primitives::PositiveFloat;
     ///
     /// let theta = PositiveFloat::new(0.3).unwrap();
     /// let momentum_type = MomentumType::classify(theta.value());
@@ -99,7 +100,8 @@ impl OuAnalyzer {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::ou_process::{OuAnalyzer, OuParams, TimeStep};
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::ou_process::{OuAnalyzer, OuParams, TimeStep};
     ///
     /// let params = OuParams::from_values(0.45, 1.0, 0.15).unwrap();
     /// let dt = TimeStep::new(0.01).unwrap();
@@ -137,15 +139,16 @@ impl OuAnalyzer {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::ou_process::{OuAnalyzer, OuParams, TimeStep};
-    /// use rand::SeedableRng;
-    /// use rand::rngs::StdRng;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::ou_process::{OuAnalyzer, OuParams, TimeStep};
+    /// use math_explorer::rand::SeedableRng;
+    /// use math_explorer::rand::rngs::StdRng;
     ///
     /// let params = OuParams::from_values(0.45, 1.0, 0.15).unwrap();
     /// let dt = TimeStep::new(0.01).unwrap();
     /// let analyzer = OuAnalyzer::new(params, dt);
     ///
-    /// let mut rng = oxidize_core::rng::OxidizeRng::default();
+    /// let mut rng = math_explorer::rng::OxidizeRng::default();
     /// let stats = analyzer.monte_carlo_forecast(0.50, 1.0, 10000, Some(0.48), &mut rng);
     /// ```
     #[verified_engine::verified]
@@ -249,7 +252,8 @@ impl OuAnalyzer {
 /// # Example
 ///
 /// ```
-/// use pure_math::pure_math::statistics::ou_process::estimate_ou_params;
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::ou_process::estimate_ou_params;
 ///
 /// let observations = vec![0.45, 0.47, 0.46, 0.48, 0.44, 0.46];
 /// let dt = 1.0;  // One observation per time unit

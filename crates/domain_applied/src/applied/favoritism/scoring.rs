@@ -26,7 +26,8 @@ use rand::Rng;
 /// # Example
 ///
 /// ```
-/// use domain_applied::applied::favoritism::{FavoritismInputs, calculate_favoritism_score};
+/// # use domain_applied::__doctest_facade as math_explorer;
+/// use math_explorer::applied::favoritism::{FavoritismInputs, calculate_favoritism_score};
 ///
 /// let mut inputs = FavoritismInputs::default();
 /// inputs.social.helped_during_crisis = true; // Crucial factor

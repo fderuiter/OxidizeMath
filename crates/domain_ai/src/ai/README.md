@@ -15,7 +15,7 @@ This module is part of the `math_explorer` core library. To use it, include the 
 
 ```toml
 [dependencies]
-math_explorer = { path = "path/to/math_explorer" }
+math_explorer = { path = "path/to/math_explorer", features = ["ai"] }
 ```
 
 ---
@@ -27,14 +27,15 @@ math_explorer = { path = "path/to/math_explorer" }
 Create a standard Transformer Encoder stack to process sequential data.
 
 ```bash
-cargo run --release --package math_explorer --example transformer_demo
+cargo run --release --package math_explorer --features ai --example transformer_demo
 ```
 
 *(See `math_explorer/examples/transformer_demo.rs` for implementation details)*
 
 ```rust
-use domain_ai::ai::transformer::Encoder;
-use nalgebra::DMatrix;
+# use domain_ai::__doctest_facade as math_explorer;
+use math_explorer::ai::transformer::Encoder;
+use math_explorer::nalgebra::DMatrix;
 
 // 1. Configure the Architecture
 let num_layers = 2;

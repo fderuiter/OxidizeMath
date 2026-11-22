@@ -27,8 +27,9 @@ use num_traits::ToPrimitive;
 /// # Example
 ///
 /// ```rust
-/// use pure_math::pure_math::statistics::markov::ctmc::ContinuousMarkovChain;
-/// use nalgebra::DMatrix;
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::markov::ctmc::ContinuousMarkovChain;
+/// use math_explorer::nalgebra::DMatrix;
 ///
 /// // Two-state birth-death process
 /// // State 0 → State 1 at rate 2.0
@@ -336,10 +337,11 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use pure_math::pure_math::statistics::markov::ContinuousMarkovChain;
-    /// use nalgebra::DMatrix;
-    /// use rand::SeedableRng;
-    /// use rand::rngs::StdRng;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::markov::ContinuousMarkovChain;
+    /// use math_explorer::nalgebra::DMatrix;
+    /// use math_explorer::rand::SeedableRng;
+    /// use math_explorer::rand::rngs::StdRng;
     ///
     /// // A simple 2-state Birth-Death process
     /// let generator = DMatrix::from_row_slice(2, 2, &[
@@ -347,7 +349,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     ///      2.0, -2.0
     /// ]);
     /// let chain = ContinuousMarkovChain::new(generator).unwrap();
-    /// let mut rng = oxidize_core::rng::OxidizeRng::default();
+    /// let mut rng = math_explorer::rng::OxidizeRng::default();
     ///
     /// let trajectory = chain.simulate_trajectory(0, 10.0, &mut rng).unwrap();
     /// assert!(!trajectory.is_empty());

@@ -71,7 +71,8 @@
 //! ## Example Usage
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::zip_regression::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::zip_regression::{
 //!     ZipDistribution, ZipParams, ZeroInflation, PoissonRate, Count
 //! };
 //!
@@ -94,7 +95,8 @@
 //! ## Simple Regression Example
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::zip_regression::{simple_zip_fit, Count};
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::zip_regression::{simple_zip_fit, Count};
 //!
 //! // Observed player block counts over 10 games
 //! let blocks = vec![

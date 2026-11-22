@@ -28,7 +28,8 @@ impl LongTermMean {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::ou_process::LongTermMean;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::ou_process::LongTermMean;
     ///
     /// let mu = LongTermMean::new(0.45).unwrap();
     /// assert_eq!(mu.value(), 0.45);
@@ -78,10 +79,11 @@ impl OuParams {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::ou_process::{
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::ou_process::{
     ///     OuParams, LongTermMean
     /// };
-    /// use math_commons::primitives::{PositiveFloat, NonNegativeFloat};
+    /// use math_explorer::primitives::{PositiveFloat, NonNegativeFloat};
     ///
     /// let params = OuParams::new(
     ///     LongTermMean::new(0.5).unwrap(),

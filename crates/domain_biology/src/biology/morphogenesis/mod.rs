@@ -36,17 +36,18 @@
 //! Simulate the emergence of a pattern from random noise.
 //!
 //! ```rust
-//! use domain_biology::biology::morphogenesis::{TuringSystem, SchnakenbergKinetics};
+//! # use domain_biology::__doctest_facade as math_explorer;
+//! use math_explorer::biology::morphogenesis::{TuringSystem, SchnakenbergKinetics};
 //!
 //! // 1. System Configuration
 //! // Activator diffuses slowly (1.0), Inhibitor diffuses fast (40.0)
 //! let n = 100;
-//! let mut system = TuringSystem::new(math_commons::math_kernel::types::Dimension(n), domain_biology::biology::morphogenesis::DiffusionCoeff(1.0), domain_biology::biology::morphogenesis::DiffusionCoeff(40.0), math_commons::math_kernel::types::StepSize(1.0));
+//! let mut system = TuringSystem::new(math_explorer::math_kernel::types::Dimension(n), math_explorer::biology::morphogenesis::DiffusionCoeff(1.0), math_explorer::biology::morphogenesis::DiffusionCoeff(40.0), math_explorer::math_kernel::types::StepSize(1.0));
 //!
 //! // 2. Initialize with Random Noise
 //! // A uniform state would be stable without noise
-//! use oxidize_core::rng::OxidizeRng;
-//! use rand::Rng;
+//! use math_explorer::rng::OxidizeRng;
+//! use math_explorer::rand::Rng;
 //! let mut rng = OxidizeRng::default();
 //! for i in 0..n {
 //!     system.u_mut()[i] = 1.0 + rng.gen_range(-0.1..0.1); // Add some perturbation
@@ -285,7 +286,9 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
         &mut self.state
     }
 
-    #[verified_engine::verified(opt_out = "inherent method call false positive")]
+    #[verified_engine::verified(
+        allow_recursion = "delegates trait step to inherent TuringSystem::step"
+    )]
     fn step(&mut self, dt: f64) {
         // Delegate to the optimized inherent method
         self.step(dt);

@@ -49,7 +49,8 @@
 //! ## Example: "Hero Ball" Analysis
 //!
 //! ```rust
-//! use pure_math::pure_math::statistics::copula::{
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::statistics::copula::{
 //!     sgp_joint_probability, Probability, CorrelationMatrix, Correlation
 //! };
 //!

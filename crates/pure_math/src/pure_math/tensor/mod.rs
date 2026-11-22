@@ -9,8 +9,9 @@
 //! Compute the Christoffel symbols for a 2D sphere.
 //!
 //! ```rust
-//! use pure_math::pure_math::tensor::{christoffel_symbols, RiemannianMetric};
-//! use nalgebra::{DMatrix, DVector};
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::tensor::{christoffel_symbols, RiemannianMetric};
+//! use math_explorer::nalgebra::{DMatrix, DVector};
 //!
 //! // 1. Define the Metric for a Sphere (Radius = 1.0)
 //! // g_theta_theta = 1, g_phi_phi = sin^2(theta)

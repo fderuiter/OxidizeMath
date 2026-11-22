@@ -30,7 +30,8 @@ By formalizing disease spread through ordinary differential equations, stochasti
 Instantiate and simulate an SIR compartmental epidemic model:
 
 ```rust
-use domain_epidemiology::epidemiology::SIRModel;
+# use domain_epidemiology::__doctest_facade as math_explorer;
+use math_explorer::epidemiology::SIRModel;
 
 // Population: 1000, Initial infected: 10, Transmission rate: 0.5, Recovery rate: 0.1
 let mut model = SIRModel::new(1000.0, 10.0, 0.5, 0.1).expect("Valid epidemic parameters");

@@ -26,7 +26,8 @@ use crate::error::KellyError;
 /// # Example
 ///
 /// ```
-/// use pure_math::pure_math::statistics::kelly::{
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::kelly::{
 ///     kelly_fraction, UnitInterval, Odds
 /// };
 ///
@@ -92,7 +93,8 @@ pub fn kelly_fraction(
 /// # Example
 ///
 /// ```
-/// use pure_math::pure_math::statistics::kelly::{
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::kelly::{
 ///     fractional_kelly, UnitInterval, Odds
 /// };
 ///
@@ -143,7 +145,8 @@ pub fn fractional_kelly(
 /// # Example
 ///
 /// ```
-/// use pure_math::pure_math::statistics::kelly::{
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::kelly::{
 ///     expected_growth_rate, kelly_fraction, UnitInterval, Odds
 /// };
 ///
@@ -194,7 +197,8 @@ pub fn expected_growth_rate(
 /// # Example
 ///
 /// ```
-/// use pure_math::pure_math::statistics::kelly::{
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::kelly::{
 ///     expected_value, UnitInterval, Odds
 /// };
 ///

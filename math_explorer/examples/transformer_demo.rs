@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 use math_explorer::ai::transformer::Encoder;
-use nalgebra::DMatrix;
+use math_explorer::nalgebra::DMatrix;
 
 fn main() {
     // Initialize an Encoder stack: 2 layers, 512 embedding dim, 8 heads, 2048 FF dim

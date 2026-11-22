@@ -36,8 +36,9 @@
 //! Train an agent to navigate a simple 1D grid to reach a target.
 //!
 //! ```rust
-//! use domain_ai::ai::reinforcement_learning::{QLearningAgent, State, Action, TabularQFunction};
-//! use math_commons::primitives::UnitInterval;
+//! # use domain_ai::__doctest_facade as math_explorer;
+//! use math_explorer::ai::reinforcement_learning::{QLearningAgent, State, Action, TabularQFunction};
+//! use math_explorer::primitives::UnitInterval;
 //!
 //! // 1. Define State and Action
 //! #[derive(Clone, Debug, PartialEq, Eq, Hash)]

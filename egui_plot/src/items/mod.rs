@@ -151,6 +151,26 @@ pub trait PlotItem {
         self.base().id
     }
 
+    fn line_points(&self) -> Option<&[PlotPoint]> {
+        None
+    }
+
+    fn hline_y(&self) -> Option<f64> {
+        None
+    }
+
+    fn vline_x(&self) -> Option<f64> {
+        None
+    }
+
+    fn closest_continuous_point(
+        &self,
+        _pointer: Pos2,
+        _transform: &PlotTransform,
+    ) -> Option<(PlotPoint, f32)> {
+        None
+    }
+
     fn find_closest(&self, point: Pos2, transform: &PlotTransform) -> Option<ClosestElem> {
         match self.geometry() {
             PlotGeometry::None => None,
@@ -191,35 +211,8 @@ pub trait PlotItem {
             }
         };
 
-        let item_color = if self.color() != Color32::TRANSPARENT {
-            self.color()
-        } else if plot.ui.visuals().dark_mode {
-            Color32::from_gray(200)
-        } else {
-            Color32::from_black_alpha(200)
-        };
-
         // this method is only called, if the value is in the result set of find_closest()
         let value = points[elem.index];
-        let pointer = plot.transform.position_from_point(&value);
-
-        // Marker dot anchored to snapped point
-        shapes.push(Shape::circle_filled(pointer, 4.0, item_color));
-        shapes.push(Shape::circle_stroke(
-            pointer,
-            6.0,
-            Stroke::new(1.5_f32, plot.ui.visuals().window_stroke().color),
-        ));
-
-        // Callout box frame anchored around snapped point
-        let callout_rect = Rect::from_center_size(pointer, vec2(14.0, 14.0));
-        shapes.push(Shape::rect_stroke(
-            callout_rect,
-            2.0,
-            Stroke::new(1.0_f32, item_color),
-            egui::StrokeKind::Outside,
-        ));
-
         let world_point = plot.world_point.or_else(|| {
             plot.sidecar_3d
                 .and_then(|s| s.world_point(self.id(), elem.index, [value.x, value.y]))
@@ -228,18 +221,61 @@ pub trait PlotItem {
             world_point,
             ..*plot
         };
-
-        rulers_and_tooltip_at_value(
+        Some(render_snapped_hover_point(
+            self,
             plot_area_response,
             value,
-            self.name(),
-            &item_plot,
+            shapes,
             cursors,
+            &item_plot,
             label_formatter,
-        );
-
-        Some(value)
+        ))
     }
+}
+
+pub(crate) fn render_snapped_hover_point<T: PlotItem + ?Sized>(
+    item: &T,
+    plot_area_response: &egui::Response,
+    value: PlotPoint,
+    shapes: &mut Vec<Shape>,
+    cursors: &mut Vec<Cursor>,
+    plot: &PlotConfig<'_>,
+    label_formatter: &LabelFormatter<'_>,
+) -> PlotPoint {
+    let raw_color = item.color();
+    let item_color = if raw_color != Color32::TRANSPARENT {
+        raw_color
+    } else if plot.ui.visuals().dark_mode {
+        Color32::from_gray(200)
+    } else {
+        Color32::from_black_alpha(200)
+    };
+    let pointer = plot.transform.position_from_point(&value);
+
+    shapes.push(Shape::circle_filled(pointer, 4.0, item_color));
+    shapes.push(Shape::circle_stroke(
+        pointer,
+        6.0,
+        Stroke::new(1.5_f32, plot.ui.visuals().window_stroke().color),
+    ));
+
+    let callout_rect = Rect::from_center_size(pointer, vec2(14.0, 14.0));
+    shapes.push(Shape::rect_stroke(
+        callout_rect,
+        2.0,
+        Stroke::new(1.0_f32, item_color),
+        egui::StrokeKind::Outside,
+    ));
+
+    rulers_and_tooltip_at_value(
+        plot_area_response,
+        value,
+        item.name(),
+        plot,
+        cursors,
+        label_formatter,
+    );
+    value
 }
 
 // ----------------------------------------------------------------------------
@@ -289,6 +325,12 @@ impl HLine {
     pub fn style(mut self, style: LineStyle) -> Self {
         self.style = style;
         self
+    }
+
+    /// Returns the y-coordinate of this horizontal line.
+    #[inline]
+    pub const fn y_value(&self) -> f64 {
+        self.y
     }
 
     builder_methods_for_base!();
@@ -344,6 +386,33 @@ impl PlotItem for HLine {
         bounds.max[1] = self.y;
         bounds
     }
+
+    fn hline_y(&self) -> Option<f64> {
+        Some(self.y)
+    }
+
+    fn closest_continuous_point(
+        &self,
+        pointer: Pos2,
+        transform: &PlotTransform,
+    ) -> Option<(PlotPoint, f32)> {
+        if !self.y.is_finite()
+            || (transform.log_axis().y && self.y <= 0.0)
+            || !transform.bounds().range_y().contains(&self.y)
+        {
+            return None;
+        }
+        let frame = transform.frame();
+        let screen_y = transform.position_from_point_y(self.y);
+        if !screen_y.is_finite() {
+            return None;
+        }
+        let proj = pos2(pointer.x.clamp(frame.min.x, frame.max.x), screen_y);
+        let val_x = transform.value_from_position(proj).x;
+        val_x
+            .is_finite()
+            .then(|| (PlotPoint::new(val_x, self.y), pointer.distance_sq(proj)))
+    }
 }
 
 /// A vertical line in a plot, filling the full width
@@ -391,6 +460,12 @@ impl VLine {
     pub fn style(mut self, style: LineStyle) -> Self {
         self.style = style;
         self
+    }
+
+    /// Returns the x-coordinate of this vertical line.
+    #[inline]
+    pub const fn x_value(&self) -> f64 {
+        self.x
     }
 
     builder_methods_for_base!();
@@ -445,6 +520,33 @@ impl PlotItem for VLine {
         bounds.min[0] = self.x;
         bounds.max[0] = self.x;
         bounds
+    }
+
+    fn vline_x(&self) -> Option<f64> {
+        Some(self.x)
+    }
+
+    fn closest_continuous_point(
+        &self,
+        pointer: Pos2,
+        transform: &PlotTransform,
+    ) -> Option<(PlotPoint, f32)> {
+        if !self.x.is_finite()
+            || (transform.log_axis().x && self.x <= 0.0)
+            || !transform.bounds().range_x().contains(&self.x)
+        {
+            return None;
+        }
+        let frame = transform.frame();
+        let screen_x = transform.position_from_point_x(self.x);
+        if !screen_x.is_finite() {
+            return None;
+        }
+        let proj = pos2(screen_x, pointer.y.clamp(frame.min.y, frame.max.y));
+        let val_y = transform.value_from_position(proj).y;
+        val_y
+            .is_finite()
+            .then(|| (PlotPoint::new(self.x, val_y), pointer.distance_sq(proj)))
     }
 }
 
@@ -690,6 +792,76 @@ impl PlotItem for Line<'_> {
     fn bounds(&self) -> PlotBounds {
         self.series.bounds()
     }
+
+    fn line_points(&self) -> Option<&[PlotPoint]> {
+        Some(self.series.points())
+    }
+
+    fn closest_continuous_point(
+        &self,
+        pointer: Pos2,
+        transform: &PlotTransform,
+    ) -> Option<(PlotPoint, f32)> {
+        closest_point_on_polyline(self.series.points(), pointer, transform)
+    }
+}
+
+fn closest_point_on_polyline(
+    pts: &[PlotPoint],
+    pointer: Pos2,
+    transform: &PlotTransform,
+) -> Option<(PlotPoint, f32)> {
+    const VERTEX_MAGNET_SQ: f32 = 36.0;
+    let mut best_vertex: Option<(PlotPoint, f32)> = None;
+    for &pt in pts {
+        if !transform.is_point_valid_for_scale(&pt) {
+            continue;
+        }
+        let s = transform.position_from_point(&pt);
+        let d_sq = pointer.distance_sq(s);
+        if s.is_finite() && d_sq <= VERTEX_MAGNET_SQ && best_vertex.is_none_or(|(_, b)| d_sq < b) {
+            best_vertex = Some((pt, d_sq));
+        }
+    }
+    if best_vertex.is_some() || pts.len() == 1 {
+        return best_vertex.or_else(|| {
+            let p0 = *pts.first()?;
+            transform.is_point_valid_for_scale(&p0).then(|| {
+                let s0 = transform.position_from_point(&p0);
+                (p0, pointer.distance_sq(s0))
+            })
+        });
+    }
+    let mut best: Option<(PlotPoint, f32)> = None;
+    for pair in pts.windows(2) {
+        if !transform.is_point_valid_for_scale(&pair[0])
+            || !transform.is_point_valid_for_scale(&pair[1])
+        {
+            continue;
+        }
+        let s0 = transform.position_from_point(&pair[0]);
+        let s1 = transform.position_from_point(&pair[1]);
+        if !s0.is_finite() || !s1.is_finite() {
+            continue;
+        }
+        let seg = s1 - s0;
+        let len_sq = seg.length_sq();
+        let t = if len_sq <= 1e-12 {
+            0.0
+        } else {
+            ((pointer - s0).dot(seg) / len_sq).clamp(0.0, 1.0)
+        };
+        let proj = s0 + t * seg;
+        let dist_sq = pointer.distance_sq(proj);
+        let value = transform.value_from_position(proj);
+        if value.x.is_finite()
+            && value.y.is_finite()
+            && best.is_none_or(|(_, best_d)| dist_sq < best_d)
+        {
+            best = Some((value, dist_sq));
+        }
+    }
+    best
 }
 
 /// A convex polygon.

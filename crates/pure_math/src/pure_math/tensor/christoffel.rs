@@ -27,9 +27,10 @@ use nalgebra::{DMatrix, DVector};
 /// # Examples
 ///
 /// ```
-/// use pure_math::pure_math::tensor::christoffel::christoffel_symbols;
-/// use pure_math::pure_math::tensor::metric::RiemannianMetric;
-/// use nalgebra::{DMatrix, DVector};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::tensor::christoffel::christoffel_symbols;
+/// use math_explorer::pure_math::tensor::metric::RiemannianMetric;
+/// use math_explorer::nalgebra::{DMatrix, DVector};
 ///
 /// // Define a 2D polar metric: g_{rr} = 1, g_{\theta\theta} = r^2, off-diagonals = 0
 /// let polar_metric = RiemannianMetric::new(|p: &DVector<f64>| {

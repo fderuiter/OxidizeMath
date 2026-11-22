@@ -11,7 +11,8 @@
 //! Check if a number is prime using optimized algorithms.
 //!
 //! ```rust
-//! use pure_math::pure_math::number_theory;
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::number_theory;
 //!
 //! // Check a small prime
 //! assert!(number_theory::is_prime(17));
@@ -55,6 +56,9 @@ pub mod statistics;
 pub mod tensor;
 #[allow(missing_docs)]
 pub mod vector_calculus;
+
+/// Error types for pure mathematics modules.
+pub use crate::error;
 
 // [cite:graph_parameters_rust]
 

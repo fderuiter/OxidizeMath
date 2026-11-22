@@ -83,8 +83,9 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
     /// # Examples
     ///
     /// ```rust
-    /// use domain_applied::applied::isosurface::{CentralDifferenceEstimator, VoxelGrid, Point3D};
-    /// use domain_applied::applied::isosurface::marching_cubes::MarchingCubes;
+    /// # use domain_applied::__doctest_facade as math_explorer;
+    /// use math_explorer::applied::isosurface::{CentralDifferenceEstimator, VoxelGrid, Point3D};
+    /// use math_explorer::applied::isosurface::marching_cubes::MarchingCubes;
     ///
     /// // Define a minimal 2x2x2 grid.
     /// let grid = VoxelGrid::builder()
@@ -450,7 +451,8 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
 /// # Examples
 ///
 /// ```
-/// use domain_applied::applied::isosurface::{extract_isosurface, VoxelGrid, Point3D};
+/// # use domain_applied::__doctest_facade as math_explorer;
+/// use math_explorer::applied::isosurface::{extract_isosurface, VoxelGrid, Point3D};
 ///
 /// // Create a tiny 2x2x2 grid representing a corner
 /// let grid = VoxelGrid::builder()

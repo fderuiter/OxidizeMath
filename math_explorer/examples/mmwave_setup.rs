@@ -3,8 +3,8 @@
 //! This example simulates a radar signal reflected from a target and runs the verified
 //! processing pipeline: Coarse FFT -> Fine CZT -> Phase Extraction -> Displacement.
 
+use math_explorer::num_complex::Complex;
 use math_explorer::physics::medical::radar_gating::{C, FmcwConfig, chirp_z_transform};
-use num_complex::Complex;
 use std::f64::consts::PI;
 
 fn simulate_signal(

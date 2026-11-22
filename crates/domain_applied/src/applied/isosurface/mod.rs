@@ -12,7 +12,8 @@
 //! ## Quick Usage
 //!
 //! ```rust
-//! use domain_applied::applied::isosurface::{extract_isosurface, VoxelGrid, Point3D};
+//! # use domain_applied::__doctest_facade as math_explorer;
+//! use math_explorer::applied::isosurface::{extract_isosurface, VoxelGrid, Point3D};
 //!
 //! // 1. Create a tiny 2x2x2 grid
 //! let grid = VoxelGrid::builder()
