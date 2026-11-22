@@ -63,7 +63,7 @@ fn test_all_registered_tools_have_starter_presets() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = 59
+    let expected_presets = 66
         + if cfg!(all(feature = "physics", feature = "biology")) {
             4
         } else {
@@ -231,7 +231,7 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = 59
+    let expected_presets = 66
         + if cfg!(all(feature = "physics", feature = "biology")) {
             4
         } else {

@@ -198,7 +198,7 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = 59
+    let expected_presets = 66
         + if cfg!(all(feature = "physics", feature = "biology")) {
             4
         } else {
