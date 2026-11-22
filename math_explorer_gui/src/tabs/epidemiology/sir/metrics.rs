@@ -61,8 +61,98 @@ pub(super) fn render_epidemic_metrics(ui: &mut egui::Ui, tool: &SirTool) {
     }
 }
 
+/// Renders the live empirical network overlay toggle and heterogeneous R₀ badge.
+pub(super) fn render_network_overlay_controls(
+    ui: &mut egui::Ui,
+    tool: &mut SirTool,
+    net_trace: Option<&crate::app::EpidemicTraceSignal>,
+) {
+    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+    ui.horizontal_wrapped(|ui| {
+        let resp = ui
+            .checkbox(
+                &mut tool.show_network_overlay,
+                "Overlay Network Epidemic Trace",
+            )
+            .on_hover_text(
+                "Plot live empirical S(t), I(t), and R(t) trajectories streamed from Network Propagation.",
+            );
+        if resp.changed() {
+            let status = if tool.show_network_overlay {
+                "SIR Model: Network epidemic overlay enabled"
+            } else {
+                "SIR Model: Network epidemic overlay hidden"
+            };
+            crate::accessibility::announce_live_status(ui.ctx(), status);
+        }
+        if let Some(trace) = net_trace {
+            ui.label(
+                egui::RichText::new(format!(
+                    "Network rev #{} (N={}, R₀_het={:.2})",
+                    trace.revision, trace.population, trace.heterogeneous_r0
+                ))
+                .small()
+                .color(palette.info),
+            );
+        } else {
+            ui.label(
+                egui::RichText::new("No active Network Propagation stream")
+                    .small()
+                    .color(palette.muted_text),
+            );
+        }
+    });
+}
+
+fn render_empirical_overlay_lines(
+    plot_ui: &mut egui_plot::PlotUi<'_>,
+    palette: &crate::app::SemanticPalette,
+    n_pop: f64,
+    trace: &crate::app::EpidemicTraceSignal,
+) {
+    if trace.population == 0 {
+        return;
+    }
+    let scale = n_pop / (trace.population as f64);
+    let style = egui_plot::LineStyle::dashed_dense();
+    let s_emp: Vec<[f64; 2]> = trace
+        .susceptible
+        .iter()
+        .map(|p| [p[0], p[1] * scale])
+        .collect();
+    let i_emp: Vec<[f64; 2]> = trace
+        .infected
+        .iter()
+        .map(|p| [p[0], p[1] * scale])
+        .collect();
+    let r_emp: Vec<[f64; 2]> = trace
+        .recovered
+        .iter()
+        .map(|p| [p[0], p[1] * scale])
+        .collect();
+    plot_ui.line(
+        Line::new("Network S (empirical)", s_emp)
+            .color(palette.axis_z)
+            .style(style),
+    );
+    plot_ui.line(
+        Line::new("Network I (empirical)", i_emp)
+            .color(palette.axis_x)
+            .style(style),
+    );
+    plot_ui.line(
+        Line::new("Network R (empirical)", r_emp)
+            .color(palette.axis_y)
+            .style(style),
+    );
+}
+
 /// Renders the SIR simulation plot and CSV dataset import header.
-pub(super) fn render_simulation_plot(ui: &mut egui::Ui, tool: &SirTool) {
+pub(super) fn render_simulation_plot(
+    ui: &mut egui::Ui,
+    tool: &SirTool,
+    net_trace: Option<&crate::app::EpidemicTraceSignal>,
+) {
     let plot_id = ui.make_persistent_id("sir_plot");
     ui.horizontal(|ui| {
         ui.heading("Simulation");
@@ -81,6 +171,11 @@ pub(super) fn render_simulation_plot(ui: &mut egui::Ui, tool: &SirTool) {
         plot_ui.line(Line::new("Susceptible", &tool.s_points[..]).color(palette.axis_z));
         plot_ui.line(Line::new("Infected", &tool.i_points[..]).color(palette.axis_x));
         plot_ui.line(Line::new("Recovered", &tool.r_points[..]).color(palette.axis_y));
+        if tool.show_network_overlay {
+            if let Some(trace) = net_trace {
+                render_empirical_overlay_lines(plot_ui, &palette, tool.n, trace);
+            }
+        }
         tool.snapshot_manager.render_on_plot(plot_ui);
     });
 }

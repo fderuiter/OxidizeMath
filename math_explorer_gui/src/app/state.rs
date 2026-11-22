@@ -123,6 +123,7 @@ pub(crate) struct AppStateFingerprint {
     pane_tabs: [usize; 4],
     primary_revisions_hash: u64,
     secondary_revisions_hash: u64,
+    bus_revisions: (u64, u64),
     pub(crate) all_revisions_tracked: bool,
 }
 
@@ -185,6 +186,7 @@ impl AppStateFingerprint {
             pane_tabs,
             primary_revisions_hash: primary_hasher.finish(),
             secondary_revisions_hash: secondary_hash,
+            bus_revisions: (app.data_bus.graph_revision(), app.data_bus.trace_revision()),
             all_revisions_tracked: all_tracked,
         }
     }
@@ -221,6 +223,11 @@ pub struct AppState {
     pub focused_pane: usize,
     #[serde(default)]
     pub pane_tab_states: Vec<HashMap<String, String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "super::data_bus::WorkspaceDataBus::is_empty"
+    )]
+    pub data_bus: super::data_bus::WorkspaceDataBus,
 }
 
 impl Default for AppState {
@@ -243,6 +250,7 @@ impl Default for AppState {
             pane_tabs: vec![0, 1, 2, 3],
             focused_pane: 0,
             pane_tab_states: Vec::new(),
+            data_bus: super::data_bus::WorkspaceDataBus::default(),
         }
     }
 }
@@ -297,6 +305,7 @@ impl AppState {
             pane_tabs,
             focused_pane: app.active_focused_pane(),
             pane_tab_states: app.extract_pane_tab_states(),
+            data_bus: app.data_bus.clone(),
         }
     }
 
@@ -336,6 +345,7 @@ impl AppState {
             self.quad_split_ratios.1.clamp(0.20, 0.80),
         );
         app.viewport_layout = self.viewport_layout;
+        app.data_bus = self.data_bus.clone();
 
         if app.viewport_layout == ViewportLayout::Single
             && app.split_layout_mode != SplitLayoutMode::Single

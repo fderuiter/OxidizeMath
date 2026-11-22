@@ -38,6 +38,8 @@ impl ReplicatorDynamicsTool {
     pub(super) fn show_settings_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading("Settings");
         ui.separator();
+        self.render_spatial_controls(ui);
+        ui.separator();
 
         ui.label("Presets:");
         ui.horizontal(|ui| {
@@ -112,7 +114,19 @@ impl ReplicatorDynamicsTool {
                         .get(i)
                         .cloned()
                         .unwrap_or_else(|| format!("Strategy {i}"));
-                    plot_ui.line(Line::new(name, points));
+                    plot_ui.line(Line::new(name.clone(), points));
+                    if !self.spatial.trajectory.is_empty() {
+                        let sp_pts: PlotPoints = self
+                            .spatial
+                            .trajectory
+                            .iter()
+                            .filter_map(|(t, st)| st.get(i).map(|&v| [*t, v]))
+                            .collect();
+                        plot_ui.line(
+                            Line::new(format!("{name} (Spatial Graph)"), sp_pts)
+                                .style(egui_plot::LineStyle::dashed_dense()),
+                        );
+                    }
                 }
                 plot_ui.vline(VLine::new("Current Time", self.playback_time).color(text_color));
             });

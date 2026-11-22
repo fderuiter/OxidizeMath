@@ -1,4 +1,11 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+#[path = "algorithm_visualizer/bus_sync.rs"]
+mod bus_sync;
+
 use crate::accessibility::AccessibleHoverText;
+use crate::app::data_bus::ui::render_follow_workspace_toggle;
+use crate::app::data_bus::{SharedGraph, SESSION_MAX_BUS_EDGES, SESSION_MAX_BUS_NODES};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use eframe::egui::Pos2;
@@ -8,6 +15,15 @@ use math_explorer::pure_math::graph_theory::graph::Graph;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::{Bfs, Dfs};
 use std::collections::HashMap;
+use std::sync::Arc;
+
+fn default_true() -> bool {
+    true
+}
+
+const fn is_true(value: &bool) -> bool {
+    *value
+}
 
 #[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum Algorithm {
@@ -22,6 +38,10 @@ struct AlgorithmVisualizerState {
     selected_algorithm: Algorithm,
     start_node: Option<usize>,
     playback_speed: f32,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    follow_workspace_graph: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frozen_graph: Option<SharedGraph>,
 }
 
 pub struct AlgorithmVisualizerTool {
@@ -34,13 +54,15 @@ pub struct AlgorithmVisualizerTool {
     start_node: Option<usize>,
     focused_node: usize,
 
-    // Animation state
     animation_step: usize,
-    visit_order: Vec<usize>, // List of node IDs in the order they are visited
-    distances: HashMap<usize, f64>, // For Dijkstra
+    visit_order: Vec<usize>,
+    distances: HashMap<usize, f64>,
     is_playing: bool,
     playback_speed: f32,
     step_timer: f32,
+    pub(crate) follow_workspace_graph: bool,
+    pub(crate) applied_bus_revision: u64,
+    active_shared_graph: Option<Arc<SharedGraph>>,
 }
 
 impl Default for AlgorithmVisualizerTool {
@@ -59,6 +81,9 @@ impl Default for AlgorithmVisualizerTool {
             is_playing: false,
             playback_speed: 2.0,
             step_timer: 0.0,
+            follow_workspace_graph: true,
+            applied_bus_revision: 0,
+            active_shared_graph: None,
         };
         tool.build_sample_graph();
         tool
@@ -67,13 +92,16 @@ impl Default for AlgorithmVisualizerTool {
 
 impl AlgorithmVisualizerTool {
     fn build_sample_graph(&mut self) {
-        // Create a 4x4 grid graph for visualization
+        self.graph = Graph::new();
+        self.node_indices.clear();
+        self.node_positions.clear();
+        self.edges.clear();
+
         let rows = 4;
         let cols = 4;
         let spacing = 80.0;
         let offset = Pos2::new(100.0, 100.0);
 
-        // We store relative positions from (0,0) and offset them during rendering
         for r in 0..rows {
             for c in 0..cols {
                 let id = flatten_2d_index(c, r, cols);
@@ -93,7 +121,6 @@ impl AlgorithmVisualizerTool {
             }
         };
 
-        // Add grid edges with arbitrary weights
         for r in 0..rows {
             for c in 0..cols {
                 let u = flatten_2d_index(c, r, cols);
@@ -108,34 +135,27 @@ impl AlgorithmVisualizerTool {
             }
         }
 
-        // Set default start node
         self.start_node = Some(0);
         self.run_algorithm();
     }
 
-    fn run_algorithm(&mut self) {
+    pub(super) fn run_algorithm(&mut self) {
         self.visit_order.clear();
         self.distances.clear();
         self.animation_step = 0;
         self.is_playing = false;
         self.step_timer = 0.0;
 
-        let start_id = match self.start_node {
-            Some(id) => id,
-            None => return,
+        let Some(start_id) = self.start_node else {
+            return;
         };
-
-        let start_idx = match self.node_indices.get(&start_id) {
-            Some(&idx) => idx,
-            None => return,
+        let Some(&start_idx) = self.node_indices.get(&start_id) else {
+            return;
         };
 
         match self.selected_algorithm {
             Algorithm::Dijkstra => {
-                // Dijkstra's algorithm from math_explorer
                 let result = dijkstra(&self.graph.graph, start_idx);
-
-                // Map node indices back to our IDs and store distances
                 let mut dist_vec = Vec::new();
                 for (&id, &idx) in &self.node_indices {
                     if let Some(&dist) = result.distances.get(&idx) {
@@ -143,8 +163,6 @@ impl AlgorithmVisualizerTool {
                         dist_vec.push((id, dist));
                     }
                 }
-
-                // Sort by distance to simulate the visit order
                 dist_vec.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
                 self.visit_order = dist_vec.into_iter().map(|(id, _)| id).collect();
             }
@@ -166,6 +184,7 @@ impl AlgorithmVisualizerTool {
             }
         }
     }
+
     fn update_animation(&mut self, ctx: &egui::Context) {
         if self.is_playing && !self.visit_order.is_empty() {
             let dt = ctx.input(|i| i.stable_dt);
@@ -195,56 +214,113 @@ impl AlgorithmVisualizerTool {
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Algorithm Visualizer");
             ui.separator();
+
+            let rev_opt = (self.applied_bus_revision > 0).then_some(self.applied_bus_revision);
+            if render_follow_workspace_toggle(
+                ui,
+                &mut self.follow_workspace_graph,
+                "Algorithm Visualizer",
+                rev_opt,
+            ) && self.follow_workspace_graph
+            {
+                self.applied_bus_revision = 0;
+                self.sync_from_bus(ui.ctx());
+            }
+            ui.separator();
+
             ui.label("Select Algorithm:");
             let mut changed = false;
-            if ui.radio_value(&mut self.selected_algorithm, Algorithm::Dijkstra, "Dijkstra").clicked() { changed = true; }
-            if ui.radio_value(&mut self.selected_algorithm, Algorithm::Bfs, "BFS").clicked() { changed = true; }
-            if ui.radio_value(&mut self.selected_algorithm, Algorithm::Dfs, "DFS").clicked() { changed = true; }
-            if changed { self.run_algorithm(); }
+            changed |= ui
+                .radio_value(&mut self.selected_algorithm, Algorithm::Dijkstra, "Dijkstra")
+                .clicked();
+            changed |= ui
+                .radio_value(&mut self.selected_algorithm, Algorithm::Bfs, "BFS")
+                .clicked();
+            changed |= ui
+                .radio_value(&mut self.selected_algorithm, Algorithm::Dfs, "DFS")
+                .clicked();
+            if changed {
+                self.run_algorithm();
+            }
             ui.separator();
             self.render_start_node_selector(ui);
             ui.separator();
-
-            if !self.visit_order.is_empty() {
-                ui.label(format!("Animation Step: {} / {}", self.animation_step, self.visit_order.len()));
-                ui.horizontal(|ui| {
-                    if ui.button("↻ Reset").accessible_hover_text("Restart the algorithm visualization").clicked() {
-                        self.animation_step = 0;
-                        self.is_playing = false;
-                        self.step_timer = 0.0;
-                    }
-                    let play_pause_label = if self.is_playing { "⏸ Pause" } else { "▶ Play" };
-                    let play_pause_hover = if self.is_playing { "Pause the algorithm visualization" } else { "Start or resume continuous algorithm visualization" };
-                    if ui.button(play_pause_label).accessible_hover_text(play_pause_hover).clicked() {
-                        if self.is_playing {
-                            self.is_playing = false;
-                            self.step_timer = 0.0;
-                        } else {
-                            if self.animation_step >= self.visit_order.len() { self.animation_step = 0; }
-                            self.is_playing = true;
-                            self.step_timer = 0.0;
-                        }
-                    }
-                    let can_step = self.animation_step < self.visit_order.len();
-                    if ui.add_enabled(can_step, eframe::egui::Button::new("▶ Step")).accessible_hover_text("Advance visualization by one step").clicked() {
-                        self.animation_step += 1;
-                        self.is_playing = false;
-                        self.step_timer = 0.0;
-                    }
-                    if ui.add_enabled(can_step, eframe::egui::Button::new("⏹ Finish")).accessible_hover_text("Skip to the end of the visualization").clicked() {
-                        self.animation_step = self.visit_order.len();
-                        self.is_playing = false;
-                        self.step_timer = 0.0;
-                    }
-                });
-
-                let slider = egui::Slider::new(&mut self.animation_step, 0..=self.visit_order.len()).text("Step");
-                if ui.add(slider).changed() { self.step_timer = 0.0; }
-                ui.add(egui::Slider::new(&mut self.playback_speed, 0.5..=5.0).text("Speed").suffix("x"));
-            }
+            self.render_playback_controls(ui);
             ui.separator();
             ui.label("Click a node or use Arrow keys + Enter on the canvas to set the start node.");
         });
+    }
+
+    fn render_playback_buttons(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if ui
+                .button("↻ Reset")
+                .accessible_hover_text("Restart the algorithm visualization")
+                .clicked()
+            {
+                self.animation_step = 0;
+                self.is_playing = false;
+                self.step_timer = 0.0_f32;
+            }
+            let (lbl, hov) = if self.is_playing {
+                ("⏸ Pause", "Pause the algorithm visualization")
+            } else {
+                ("▶ Play", "Start or resume continuous algorithm visualization")
+            };
+            if ui.button(lbl).accessible_hover_text(hov).clicked() {
+                if self.is_playing {
+                    self.is_playing = false;
+                } else {
+                    if self.animation_step >= self.visit_order.len() {
+                        self.animation_step = 0;
+                    }
+                    self.is_playing = true;
+                }
+                self.step_timer = 0.0_f32;
+            }
+            let can_step = self.animation_step < self.visit_order.len();
+            if ui
+                .add_enabled(can_step, egui::Button::new("▶ Step"))
+                .accessible_hover_text("Advance visualization by one step")
+                .clicked()
+            {
+                self.animation_step += 1;
+                self.is_playing = false;
+                self.step_timer = 0.0_f32;
+            }
+            if ui
+                .add_enabled(can_step, egui::Button::new("⏹ Finish"))
+                .accessible_hover_text("Skip to the end of the visualization")
+                .clicked()
+            {
+                self.animation_step = self.visit_order.len();
+                self.is_playing = false;
+                self.step_timer = 0.0_f32;
+            }
+        });
+    }
+
+    fn render_playback_controls(&mut self, ui: &mut egui::Ui) {
+        if self.visit_order.is_empty() {
+            return;
+        }
+        ui.label(format!(
+            "Animation Step: {} / {}",
+            self.animation_step,
+            self.visit_order.len()
+        ));
+        self.render_playback_buttons(ui);
+
+        let slider =
+            egui::Slider::new(&mut self.animation_step, 0..=self.visit_order.len()).text("Step");
+        if ui.add(slider).changed() {
+            self.step_timer = 0.0_f32;
+        }
+        ui.add(
+            egui::Slider::new(&mut self.playback_speed, 0.5_f32..=5.0_f32)
+                .text("Speed")
+                .suffix("x"),
+        );
     }
 
     fn render_start_node_selector(&mut self, ui: &mut egui::Ui) {
@@ -279,7 +355,10 @@ impl AlgorithmVisualizerTool {
 mod canvas;
 
 impl InteractiveTool for AlgorithmVisualizerTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+
     fn name(&self) -> &'static str {
         "Algorithm Visualizer"
     }
@@ -287,15 +366,21 @@ impl InteractiveTool for AlgorithmVisualizerTool {
     fn domain(&self) -> &'static str {
         "graph_theory"
     }
+
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::none()
     }
 
     fn save_state(&self) -> Option<String> {
+        let frozen_graph = (!self.follow_workspace_graph)
+            .then(|| self.active_shared_graph.as_deref().cloned())
+            .flatten();
         serde_json::to_string(&AlgorithmVisualizerState {
             selected_algorithm: self.selected_algorithm,
             start_node: self.start_node,
             playback_speed: self.playback_speed,
+            follow_workspace_graph: self.follow_workspace_graph,
+            frozen_graph,
         })
         .ok()
     }
@@ -309,31 +394,45 @@ impl InteractiveTool for AlgorithmVisualizerTool {
                 loaded.playback_speed
             ));
         }
+        if let Some(ref g) = loaded.frozen_graph {
+            g.validate(SESSION_MAX_BUS_NODES, SESSION_MAX_BUS_EDGES)?;
+        }
+        if let Some(g) = loaded.frozen_graph {
+            self.apply_shared_graph(Arc::new(g));
+        }
         if let Some(id) = loaded.start_node {
-            if !self.node_indices.contains_key(&id) {
+            if !loaded.follow_workspace_graph && !self.node_indices.contains_key(&id) {
                 return Err(format!("Unknown start_node id: {id}"));
+            }
+            if id >= SESSION_MAX_BUS_NODES {
+                return Err(format!("start_node id out of bounds: {id}"));
             }
         }
         self.selected_algorithm = loaded.selected_algorithm;
+        self.follow_workspace_graph = loaded.follow_workspace_graph;
         self.start_node = loaded.start_node;
         if let Some(id) = loaded.start_node {
             self.focused_node = id;
         }
         self.playback_speed = loaded.playback_speed;
+        if self.follow_workspace_graph {
+            self.applied_bus_revision = 0;
+        }
         self.run_algorithm();
         Ok(())
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.sync_from_bus(&ctx);
         self.update_animation(&ctx);
         self.render_controls(ui);
+        self.sync_from_bus(&ctx);
         self.render_canvas(ui);
     }
 }
 
 // [cite:graph_parameters_rust]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -353,17 +452,31 @@ impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool 
             Algorithm::Dfs => "Depth-First Search recursive stack traversal exploring graph connectivity and cycles",
         };
         format!(
-            "Graph traversal and pathfinding analysis executing {} across $|V| = {}$ nodes and $|E| = {}$ edges.",
-            algo_str, self.node_positions.len(), self.edges.len()
+            "Graph traversal and pathfinding analysis executing {algo_str} across $|V| = {}$ nodes and $|E| = {}$ edges.",
+            self.node_positions.len(),
+            self.edges.len()
         )
     }
-    fn phonetic_description(&self) -> String { "Graph search and shortest path algorithm theory".into() }
-    fn theory_citation(&self) -> String { "A Note on Two Problems in Connexion with Graphs (Dijkstra, 1959); Introduction to Algorithms (Cormen et al., 2022)".into() }
+    fn phonetic_description(&self) -> String {
+        "Graph search and shortest path algorithm theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "A Note on Two Problems in Connexion with Graphs (Dijkstra, 1959); Introduction to Algorithms (Cormen et al., 2022)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Dijkstra".into(), "Greedy shortest path in non-negatively weighted graphs".into());
-        map.insert("BFS".into(), "Queue-based breadth traversal finding minimum hop counts".into());
-        map.insert("DFS".into(), "Stack-based depth exploration identifying connected components".into());
+        map.insert(
+            "Dijkstra".into(),
+            "Greedy shortest path in non-negatively weighted graphs".into(),
+        );
+        map.insert(
+            "BFS".into(),
+            "Queue-based breadth traversal finding minimum hop counts".into(),
+        );
+        map.insert(
+            "DFS".into(),
+            "Stack-based depth exploration identifying connected components".into(),
+        );
         map
     }
 }
@@ -371,30 +484,3 @@ impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool 
 #[cfg(test)]
 #[path = "algorithm_visualizer_tests.rs"]
 mod algorithm_visualizer_tests;
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Dijkstra Shortest Path",
-    "domain": "graph_theory",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "selected_algorithm": "Dijkstra",
-    "start_node": 5,
-    "playback_speed": 3.0
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "algorithm_visualizer_starter",
-        title: "Dijkstra Shortest Path",
-        description: "Priority-queue shortest path relaxation across weighted undirected graph topologies.",
-        category: "Graph Algorithms",
-        icon: "🛤️",
-        domain: "graph_theory",
-        tool_name: Some("AlgorithmVisualizerTool"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}

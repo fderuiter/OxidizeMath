@@ -98,7 +98,8 @@ pub fn validate_url_preset_json(json_str: &str) -> Result<(), String> {
     URL_JSON_BOUNDS.validate_json(cleaned)?;
     let parsed: serde_json::Value =
         serde_json::from_str(cleaned).map_err(|e| format!("Invalid URL state JSON: {e}"))?;
-    ensure_all_json_numbers_finite(&parsed)
+    ensure_all_json_numbers_finite(&parsed)?;
+    crate::app::data_bus::validate_embedded_url_bus_fields(&parsed)
 }
 
 /// Encodes `tab_slug`, optional `tool_id`, and optional compact `preset_json` into a

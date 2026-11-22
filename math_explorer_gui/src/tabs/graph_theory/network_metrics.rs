@@ -1,4 +1,11 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+#[path = "network_metrics/bus_sync.rs"]
+mod bus_sync;
+
 use crate::accessibility::AccessibleHoverText;
+use crate::app::data_bus::ui::render_follow_workspace_toggle;
+use crate::app::data_bus::{SharedGraph, SESSION_MAX_BUS_EDGES, SESSION_MAX_BUS_NODES};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use eframe::egui::Pos2;
@@ -9,6 +16,15 @@ use math_explorer::pure_math::graph_theory::parameters::network_metrics::{
 };
 use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
+use std::sync::Arc;
+
+fn default_true() -> bool {
+    true
+}
+
+const fn is_true(value: &bool) -> bool {
+    *value
+}
 
 #[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum MetricType {
@@ -21,6 +37,10 @@ enum MetricType {
 #[serde(deny_unknown_fields)]
 struct NetworkMetricsState {
     selected_metric: MetricType,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    follow_workspace_graph: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frozen_graph: Option<SharedGraph>,
 }
 
 pub struct NetworkMetricsTool {
@@ -33,6 +53,9 @@ pub struct NetworkMetricsTool {
     metric_values: HashMap<usize, f64>,
     global_diameter: Option<usize>,
     global_clustering: Option<f64>,
+    pub(crate) follow_workspace_graph: bool,
+    pub(crate) applied_bus_revision: u64,
+    active_shared_graph: Option<Arc<SharedGraph>>,
 }
 
 impl Default for NetworkMetricsTool {
@@ -46,6 +69,9 @@ impl Default for NetworkMetricsTool {
             metric_values: HashMap::new(),
             global_diameter: None,
             global_clustering: None,
+            follow_workspace_graph: true,
+            applied_bus_revision: 0,
+            active_shared_graph: None,
         };
         tool.build_sample_graph();
         tool
@@ -54,15 +80,19 @@ impl Default for NetworkMetricsTool {
 
 impl NetworkMetricsTool {
     fn build_sample_graph(&mut self) {
-        // Create a star-like graph to show clear centrality differences
-        let center = Pos2::new(300.0, 300.0);
+        self.graph = Graph::new();
+        self.node_indices.clear();
+        self.node_positions.clear();
+        self.edges.clear();
+
+        let center = Pos2::new(220.0, 220.0);
         let center_id = 0;
         let center_idx = self.graph.add_node(center);
         self.node_indices.insert(center_id, center_idx);
         self.node_positions.insert(center_id, center);
 
         let num_outer = 6;
-        let radius = 150.0;
+        let radius = 130.0;
 
         for i in 0..num_outer {
             let angle = 2.0 * std::f32::consts::PI * (i as f32) / (num_outer as f32);
@@ -75,11 +105,9 @@ impl NetworkMetricsTool {
             self.node_indices.insert(id, idx);
             self.node_positions.insert(id, pos);
 
-            // Connect to center
             self.edges.push((center_id, id, 1.0));
             self.graph.add_edge(center_idx, idx, 1.0);
 
-            // Connect outer nodes forming a ring
             if i > 0 {
                 let prev_id = i;
                 self.edges.push((prev_id, id, 1.0));
@@ -88,7 +116,6 @@ impl NetworkMetricsTool {
             }
         }
 
-        // Connect last outer node to first outer node to close the ring
         let first_id = 1;
         let last_id = num_outer;
         self.edges.push((last_id, first_id, 1.0));
@@ -99,8 +126,13 @@ impl NetworkMetricsTool {
         self.compute_metrics();
     }
 
-    fn compute_metrics(&mut self) {
+    pub(crate) fn compute_metrics(&mut self) {
         self.metric_values.clear();
+        if self.node_indices.is_empty() {
+            self.global_diameter = Some(0);
+            self.global_clustering = Some(0.0);
+            return;
+        }
 
         let raw_metrics = match self.selected_metric {
             MetricType::DegreeCentrality => degree_centrality(&self.graph),
@@ -117,76 +149,94 @@ impl NetworkMetricsTool {
         self.global_diameter = Some(diameter(&self.graph));
         self.global_clustering = Some(average_clustering_coefficient(&self.graph));
     }
-}
 
-impl InteractiveTool for NetworkMetricsTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
-        self
-    }
-    fn name(&self) -> &'static str {
-        "Network Metrics"
-    }
-
-    fn domain(&self) -> &'static str {
-        "graph_theory"
-    }
-    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+    #[cfg(all(
+        test,
+        feature = "biology",
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
+    pub(crate) fn node_count(&self) -> usize {
+        self.node_positions.len()
     }
 
-    fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&NetworkMetricsState {
-            selected_metric: self.selected_metric,
-        })
-        .ok()
+    #[cfg(all(
+        test,
+        feature = "biology",
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
+    pub(crate) fn diameter_value(&self) -> Option<usize> {
+        self.global_diameter
     }
 
-    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded: NetworkMetricsState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid NetworkMetrics state: {e}"))?;
-        self.selected_metric = loaded.selected_metric;
-        self.compute_metrics();
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+    fn render_sidebar(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "network_metrics_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Network Metrics");
             ui.separator();
 
+            let rev_opt = (self.applied_bus_revision > 0).then_some(self.applied_bus_revision);
+            if render_follow_workspace_toggle(
+                ui,
+                &mut self.follow_workspace_graph,
+                "Network Metrics",
+                rev_opt,
+            ) && self.follow_workspace_graph
+            {
+                self.applied_bus_revision = 0;
+                self.sync_from_bus(ui.ctx());
+            }
+            ui.separator();
+
             ui.label("Select Metric to Visualize:");
             let mut changed = false;
-
-            if ui.radio_value(&mut self.selected_metric, MetricType::DegreeCentrality, "Degree Centrality").clicked() {
-                changed = true;
-            }
-            if ui.radio_value(&mut self.selected_metric, MetricType::ClosenessCentrality, "Closeness Centrality").clicked() {
-                changed = true;
-            }
-            if ui.radio_value(&mut self.selected_metric, MetricType::ClusteringCoefficient, "Local Clustering Coefficient").clicked() {
-                changed = true;
-            }
+            changed |= ui
+                .radio_value(
+                    &mut self.selected_metric,
+                    MetricType::DegreeCentrality,
+                    "Degree Centrality",
+                )
+                .clicked();
+            changed |= ui
+                .radio_value(
+                    &mut self.selected_metric,
+                    MetricType::ClosenessCentrality,
+                    "Closeness Centrality",
+                )
+                .clicked();
+            changed |= ui
+                .radio_value(
+                    &mut self.selected_metric,
+                    MetricType::ClusteringCoefficient,
+                    "Local Clustering Coefficient",
+                )
+                .clicked();
 
             if changed {
                 self.compute_metrics();
             }
 
             ui.separator();
-
             ui.heading("Global Metrics");
             if let Some(d) = self.global_diameter {
-                ui.label(format!("Diameter: {}", d));
+                ui.label(format!("Diameter: {d}"));
             }
             if let Some(c) = self.global_clustering {
-                ui.label(format!("Avg Clustering Coefficient: {:.3}", c));
+                ui.label(format!("Avg Clustering Coefficient: {c:.3}"));
             }
-
             ui.separator();
-            ui.label("Nodes are color-coded based on the selected metric value. Red indicates higher values.");
+            ui.label(
+                "Nodes are color-coded based on the selected metric value. Red indicates higher values.",
+            );
         });
+    }
 
+    fn render_metrics_canvas(&self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let (response, painter) = ui.allocate_painter(
                 ui.available_size(),
@@ -213,62 +263,128 @@ impl InteractiveTool for NetworkMetricsTool {
                 response.rect,
             );
 
-            // Draw edges
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            for &(u, v, _) in &self.edges {
+            for &(u, v, w) in &self.edges {
                 if let (Some(&pos_u), Some(&pos_v)) =
                     (self.node_positions.get(&u), self.node_positions.get(&v))
                 {
-                    let screen_pos_u = to_screen.transform_pos(pos_u);
-                    let screen_pos_v = to_screen.transform_pos(pos_v);
-                    painter.line_segment([screen_pos_u, screen_pos_v], (2.0, palette.graph_edge));
+                    let edge_color = if w < 0.0 {
+                        palette.error
+                    } else {
+                        palette.graph_edge
+                    };
+                    painter.line_segment(
+                        [to_screen.transform_pos(pos_u), to_screen.transform_pos(pos_v)],
+                        (2.0, edge_color),
+                    );
                 }
             }
 
-            // Find max/min metric values for color scaling
-            let mut max_val = 0.0_f64;
-            let mut min_val = f64::MAX;
-            for &val in self.metric_values.values() {
-                if val > max_val {
-                    max_val = val;
-                }
-                if val < min_val {
-                    min_val = val;
-                }
-            }
-            let range = max_val - min_val;
-
-            // Draw nodes
-            for (&id, &pos) in &self.node_positions {
-                let screen_pos = to_screen.transform_pos(pos);
-                let val = self.metric_values.get(&id).copied().unwrap_or(0.0);
-
-                // Color mapping: low metric (blue) to high metric (red)
-                let t = if range > 0.0 {
-                    ((val - min_val) / range) as f32
-                } else {
-                    0.5
-                };
-
-                let low = palette.axis_z;
-                let high = palette.axis_x;
-                let lerp = |a: u8, b: u8| {
-                    (f32::from(a) + (f32::from(b) - f32::from(a)) * t.clamp(0.0, 1.0)).round() as u8
-                };
-                let fill_color =
-                    egui::Color32::from_rgb(lerp(low.r(), high.r()), lerp(low.g(), high.g()), lerp(low.b(), high.b()));
-
-                painter.circle(screen_pos, 20.0, fill_color, (1.0, palette.node_stroke));
-
-                painter.text(
-                    screen_pos,
-                    egui::Align2::CENTER_CENTER,
-                    format!("{:.2}", val),
-                    egui::FontId::proportional(12.0),
-                    crate::app::contrasting_text_color(fill_color),
-                );
-            }
+            self.paint_metric_nodes(&painter, &to_screen, &palette);
         });
+    }
+
+    fn paint_metric_nodes(
+        &self,
+        painter: &egui::Painter,
+        to_screen: &eframe::egui::emath::RectTransform,
+        palette: &crate::app::SemanticPalette,
+    ) {
+        let mut max_val = 0.0_f64;
+        let mut min_val = f64::MAX;
+        for &val in self.metric_values.values() {
+            max_val = max_val.max(val);
+            min_val = min_val.min(val);
+        }
+        let range = max_val - min_val;
+
+        for (&id, &pos) in &self.node_positions {
+            let screen_pos = to_screen.transform_pos(pos);
+            let val = self.metric_values.get(&id).copied().unwrap_or(0.0);
+            let t = if range > 0.0 {
+                ((val - min_val) / range) as f32
+            } else {
+                0.5_f32
+            };
+            let low = palette.axis_z;
+            let high = palette.axis_x;
+            let lerp = |a: u8, b: u8| {
+                (f32::from(a) + (f32::from(b) - f32::from(a)) * t.clamp(0.0_f32, 1.0_f32)).round()
+                    as u8
+            };
+            let fill_color = egui::Color32::from_rgb(
+                lerp(low.r(), high.r()),
+                lerp(low.g(), high.g()),
+                lerp(low.b(), high.b()),
+            );
+            painter.circle(
+                screen_pos,
+                20.0_f32,
+                fill_color,
+                (1.0_f32, palette.node_stroke),
+            );
+            painter.text(
+                screen_pos,
+                egui::Align2::CENTER_CENTER,
+                format!("{val:.2}"),
+                egui::FontId::proportional(12.0_f32),
+                crate::app::contrasting_text_color(fill_color),
+            );
+        }
+    }
+}
+
+impl InteractiveTool for NetworkMetricsTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+
+    fn name(&self) -> &'static str {
+        "Network Metrics"
+    }
+
+    fn domain(&self) -> &'static str {
+        "graph_theory"
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::none()
+    }
+
+    fn save_state(&self) -> Option<String> {
+        let frozen_graph = (!self.follow_workspace_graph)
+            .then(|| self.active_shared_graph.as_deref().cloned())
+            .flatten();
+        serde_json::to_string(&NetworkMetricsState {
+            selected_metric: self.selected_metric,
+            follow_workspace_graph: self.follow_workspace_graph,
+            frozen_graph,
+        })
+        .ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let loaded: NetworkMetricsState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid NetworkMetrics state: {e}"))?;
+        if let Some(ref g) = loaded.frozen_graph {
+            g.validate(SESSION_MAX_BUS_NODES, SESSION_MAX_BUS_EDGES)?;
+        }
+        self.selected_metric = loaded.selected_metric;
+        self.follow_workspace_graph = loaded.follow_workspace_graph;
+        if let Some(g) = loaded.frozen_graph {
+            self.apply_shared_graph(Arc::new(g));
+        } else {
+            self.applied_bus_revision = 0;
+            self.compute_metrics();
+        }
+        Ok(())
+    }
+
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        self.sync_from_bus(parent_ui.ctx());
+        self.render_sidebar(parent_ui);
+        self.sync_from_bus(parent_ui.ctx());
+        self.render_metrics_canvas(parent_ui);
     }
 }
 
@@ -295,10 +411,7 @@ impl scientific_metadata::theory::TheoryDescribable for NetworkMetricsTool {
                 "Watts-Strogatz local clustering coefficient $C_v = \\frac{2 e_v}{k_v(k_v-1)}$"
             }
         };
-        format!(
-            "Complex network topological parameter analysis computing {}.",
-            metric_str
-        )
+        format!("Complex network topological parameter analysis computing {metric_str}.")
     }
     fn phonetic_description(&self) -> String {
         "Network metrics and graph centrality theory".into()
@@ -321,30 +434,5 @@ impl scientific_metadata::theory::TheoryDescribable for NetworkMetricsTool {
             "Fraction of neighbor pairs that are mutually connected".into(),
         );
         map
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Network Centrality Metrics",
-    "domain": "graph_theory",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "selected_metric": "ClosenessCentrality"
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "network_metrics_starter",
-        title: "Network Centrality Metrics",
-        description: "Degree centrality, closeness centrality, local clustering coefficient, and graph diameter.",
-        category: "Network Science",
-        icon: "📊",
-        domain: "graph_theory",
-        tool_name: Some("NetworkMetricsTool"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }

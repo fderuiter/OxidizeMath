@@ -9,6 +9,14 @@ const MIN_SIR_DURATION: f64 = 10.0;
 const MAX_SIR_DURATION: f64 = 365.0;
 const MAX_SIR_STEPS: usize = 100_000;
 
+fn default_true() -> bool {
+    true
+}
+
+const fn is_true(v: &bool) -> bool {
+    *v
+}
+
 #[derive(serde::Serialize)]
 struct SirStateRef<'a> {
     n: f64,
@@ -16,6 +24,8 @@ struct SirStateRef<'a> {
     beta: f64,
     gamma: f64,
     duration: f64,
+    #[serde(skip_serializing_if = "is_true")]
+    show_network_overlay: bool,
     #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
     snapshot_manager: &'a TraceSnapshotManager,
 }
@@ -37,6 +47,8 @@ struct SirState {
     beta: f64,
     gamma: f64,
     duration: f64,
+    #[serde(default = "default_true")]
+    show_network_overlay: bool,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
 }
@@ -47,6 +59,7 @@ pub struct SirTool {
     pub(crate) beta: f64,
     pub(crate) gamma: f64,
     pub(crate) duration: f64,
+    pub(crate) show_network_overlay: bool,
 
     // Cached plot data
     pub(crate) s_points: Vec<PlotPoint>,
@@ -67,6 +80,7 @@ impl Default for SirTool {
             beta: 0.5,
             gamma: 0.1,
             duration: 100.0,
+            show_network_overlay: true,
             s_points: vec![],
             i_points: vec![],
             r_points: vec![],
@@ -207,6 +221,7 @@ impl SirTool {
         self.gamma = s.gamma;
         self.duration = s.duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION);
         if !preserve_snapshots {
+            self.show_network_overlay = s.show_network_overlay;
             self.snapshot_manager = s.snapshot_manager;
         }
         self.recalculate();
@@ -232,6 +247,7 @@ impl InteractiveTool for SirTool {
         self.beta.to_bits().hash(&mut h);
         self.gamma.to_bits().hash(&mut h);
         self.duration.to_bits().hash(&mut h);
+        self.show_network_overlay.hash(&mut h);
         self.snapshot_manager.len().hash(&mut h);
         self.snapshot_manager.history_len().hash(&mut h);
         h.finish().max(1)
@@ -266,6 +282,7 @@ impl InteractiveTool for SirTool {
             beta: self.beta,
             gamma: self.gamma,
             duration: self.duration,
+            show_network_overlay: self.show_network_overlay,
             snapshot_manager: &self.snapshot_manager,
         })
         .ok()
@@ -342,7 +359,9 @@ impl InteractiveTool for SirTool {
             self.evaluate_sensitivity(ui);
 
             ui.separator();
-            metrics::render_simulation_plot(ui, self);
+            let net_trace = crate::app::data_bus::read_epidemic_trace(ui.ctx());
+            metrics::render_network_overlay_controls(ui, self, net_trace.as_deref());
+            metrics::render_simulation_plot(ui, self, net_trace.as_deref());
         });
     }
 }

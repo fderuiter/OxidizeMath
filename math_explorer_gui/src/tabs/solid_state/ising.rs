@@ -9,11 +9,21 @@ use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
 use std::sync::Arc;
 
+#[path = "ising/graph_mode.rs"]
+mod graph_mode;
 #[path = "ising/runner.rs"]
 mod runner;
 pub use runner::*;
 
 const DEFAULT_ISING_SIZE: usize = 100;
+
+const fn default_true() -> bool {
+    true
+}
+
+fn is_true(v: &bool) -> bool {
+    *v
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -26,6 +36,12 @@ struct IsingState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     running: Option<bool>,
     steps_per_frame: usize,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    follow_workspace_graph: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    seeded_graph: Option<crate::app::data_bus::SharedGraph>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frozen_graph: Option<crate::app::data_bus::SharedGraph>,
 }
 
 pub struct IsingModelTool {
@@ -42,6 +58,7 @@ pub struct IsingModelTool {
     dirty: bool,
     params: Arc<std::sync::RwLock<IsingSharedParams>>,
     pub worker: BackgroundWorker<IsingRunner>,
+    graph_mode: graph_mode::GraphSpinMode,
 }
 
 impl IsingModelTool {
@@ -66,6 +83,9 @@ impl IsingModelTool {
 
     /// Resets the worker lattice in place or respawns a disconnected worker.
     pub fn reset(&mut self) {
+        if self.reset_graph_spins() {
+            return;
+        }
         let params = Arc::clone(&self.params);
         self.worker.reset_or_respawn(|| IsingRunner {
             lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
@@ -85,7 +105,7 @@ impl IsingModelTool {
         }
     }
 
-    fn request_metric_refresh(&mut self, ctx: &egui::Context) {
+    pub(super) fn request_metric_refresh(&mut self, ctx: &egui::Context) {
         if self.worker.state().is_ready()
             && self
                 .worker
@@ -96,59 +116,23 @@ impl IsingModelTool {
         }
     }
 
-    fn draw_parameter_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if ui
-            .add(
-                egui::Slider::new(&mut self.temperature, 0.1..=10.0)
-                    .text("Temperature (T) - K (relative)"),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .temperature = self.temperature;
-        }
-        ui.small("Critical Temp Tc ≈ 2.269 (for J=1)");
-
-        if ui
-            .add(
-                egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .j_coupling = self.j_coupling;
-            self.request_metric_refresh(ctx);
-        }
-        ui.small("Positive: Ferromagnetic\nNegative: Antiferromagnetic");
-
-        if ui
-            .add(egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (H) - H"))
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .h_field = self.h_field;
-            self.request_metric_refresh(ctx);
-        }
-
-        ui.separator();
-        if ui
-            .add(
-                egui::Slider::new(&mut self.steps_per_frame, 100..=50000)
-                    .text("Simulation Speed (Steps/Frame)")
-                    .logarithmic(true),
-            )
-            .changed()
-        {
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .steps_per_frame = self.steps_per_frame;
+    fn handle_transport_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
+        match action {
+            PlaybackAction::Play => {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            PlaybackAction::Pause => {
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+            PlaybackAction::Step => {
+                if !self.step_graph_spins(1) {
+                    let _ = self.worker.send_command(SimCommand::Step(1));
+                }
+            }
+            PlaybackAction::Reset => {
+                self.reset();
+                ctx.request_repaint();
+            }
         }
     }
 
@@ -159,6 +143,8 @@ impl IsingModelTool {
             .default_width(220.0)
             .show_inside(parent_ui, |ui| {
                 ui.heading("Ising Model Controls");
+                ui.separator();
+                self.render_graph_spin_controls(ui, ctx);
                 ui.separator();
 
                 if let Some(WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters) =
@@ -185,26 +171,15 @@ impl IsingModelTool {
                 .can_reset(true)
                 .show(ui)
                 {
-                    match action {
-                        PlaybackAction::Play => {
-                            let _ = self.worker.send_command(SimCommand::Start);
-                        }
-                        PlaybackAction::Pause => {
-                            let _ = self.worker.send_command(SimCommand::Pause);
-                        }
-                        PlaybackAction::Step => {
-                            let _ = self.worker.send_command(SimCommand::Step(1));
-                        }
-                        PlaybackAction::Reset => {
-                            self.reset();
-                            ctx.request_repaint();
-                        }
-                    }
+                    self.handle_transport_action(action, ctx);
                 }
 
                 ui.separator();
                 ui.label(format!("Magnetization: {:.3}", self.magnetization));
                 ui.label(format!("Energy: {:.3}", self.energy));
+                if self.is_graph_spin_mode() {
+                    ui.label(format!("Frustrated Edges: {}", self.frustrated_edge_count()));
+                }
             });
     }
 
@@ -255,6 +230,9 @@ impl IsingModelTool {
 
     fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
+            if self.render_graph_spin_canvas(ui) {
+                return;
+            }
             self.sync_lattice_texture(ctx);
 
             if let Some(texture) = &self.texture {
@@ -318,6 +296,7 @@ impl Default for IsingModelTool {
             dirty: true,
             params,
             worker,
+            graph_mode: graph_mode::GraphSpinMode::default(),
         };
         tool.sync_metrics_from_latest();
         tool
@@ -354,6 +333,10 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn step_simulation(&mut self) {
+        let sweeps = (self.steps_per_frame / 500).clamp(1, 32);
+        if self.step_graph_spins(sweeps) {
+            return;
+        }
         let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None);
         let j_scale = if self.j_coupling.abs() < 1e-6 {
             1.0
@@ -383,6 +366,9 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn save_state(&self) -> Option<String> {
+        let frozen_graph = (!self.graph_mode.follow_workspace_graph)
+            .then(|| self.graph_mode.active_graph.as_ref().map(|g| (**g).clone()))
+            .flatten();
         serde_json::to_string(&IsingState {
             temperature: self.temperature,
             j_coupling: self.j_coupling,
@@ -390,6 +376,9 @@ impl InteractiveTool for IsingModelTool {
             state: Some(self.worker.state()),
             running: None,
             steps_per_frame: self.steps_per_frame,
+            follow_workspace_graph: self.graph_mode.follow_workspace_graph,
+            seeded_graph: self.graph_mode.seeded_graph.clone(),
+            frozen_graph,
         })
         .ok()
     }
@@ -407,10 +396,26 @@ impl InteractiveTool for IsingModelTool {
         {
             return Err("Ising parameters out of valid bounds".to_string());
         }
+        for g in [&s.seeded_graph, &s.frozen_graph].into_iter().flatten() {
+            g.validate(
+                crate::app::data_bus::SESSION_MAX_BUS_NODES,
+                crate::app::data_bus::SESSION_MAX_BUS_EDGES,
+            )?;
+        }
         self.temperature = s.temperature;
         self.j_coupling = s.j_coupling;
         self.h_field = s.h_field;
         self.steps_per_frame = s.steps_per_frame;
+        self.graph_mode.follow_workspace_graph = s.follow_workspace_graph;
+        self.graph_mode.seeded_graph = s.seeded_graph.clone();
+        self.graph_mode.pending_seed_publish = s.seeded_graph.is_some();
+        if let Some(g) = s.frozen_graph.or(s.seeded_graph) {
+            self.apply_shared_spin_graph(&Arc::new(g));
+        } else if self.graph_mode.follow_workspace_graph {
+            self.graph_mode.system = None;
+            self.graph_mode.active_graph = None;
+            self.graph_mode.applied_bus_revision = 0;
+        }
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.temperature = self.temperature;
@@ -418,20 +423,7 @@ impl InteractiveTool for IsingModelTool {
             p.h_field = self.h_field;
             p.steps_per_frame = self.steps_per_frame;
         }
-        let target_state = s.state.unwrap_or_else(|| {
-            if s.running.unwrap_or(false) {
-                SimWorkerState::Running
-            } else {
-                SimWorkerState::Ready
-            }
-        });
-        if target_state == SimWorkerState::Running {
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-        } else if self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-        }
+        self.sync_worker_target_state(s.state, s.running);
         self.stepped_pixels = None;
         self.dirty = true;
         Ok(())
@@ -439,16 +431,26 @@ impl InteractiveTool for IsingModelTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.sync_graph_from_bus(&ctx);
         let theme = crate::app::ThemeMode::from_visuals(ui.visuals());
         if self.last_theme != Some(theme) {
             self.last_theme = Some(theme);
             self.params.write().unwrap_or_else(|e| e.into_inner()).theme = theme;
             self.dirty = true;
         }
-        if let Some(snapshot) = self.worker.update() {
-            if snapshot.custom_data.len() >= 2 {
-                self.magnetization = snapshot.custom_data[0];
-                self.energy = snapshot.custom_data[1];
+        let snap_metrics = self
+            .worker
+            .update()
+            .map(|s| (s.custom_data.first().copied(), s.custom_data.get(1).copied()));
+        if self.is_graph_spin_mode() {
+            if self.worker.state() == SimWorkerState::Running {
+                let sweeps = (self.steps_per_frame / 500).clamp(1, 32);
+                let _ = self.step_graph_spins(sweeps);
+            }
+        } else if let Some((m_opt, e_opt)) = snap_metrics {
+            if let (Some(m), Some(e)) = (m_opt, e_opt) {
+                self.magnetization = m;
+                self.energy = e;
             }
             self.stepped_pixels = None;
             self.dirty = true;

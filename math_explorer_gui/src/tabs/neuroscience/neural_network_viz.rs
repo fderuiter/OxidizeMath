@@ -1,9 +1,45 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+#[path = "neural_network_viz/bus_sync.rs"]
+mod bus_sync;
+#[path = "neural_network_viz/presets.rs"]
+mod presets;
+
 use crate::accessibility::AccessibleHoverText;
+use crate::app::data_bus::ui::{render_follow_workspace_toggle, render_node_budget_banner};
+use crate::app::data_bus::{
+    SharedGraph, MAX_HH_NEURON_BUDGET, SESSION_MAX_BUS_EDGES, SESSION_MAX_BUS_NODES,
+};
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui::Color32;
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 use std::f32::consts::TAU;
+use std::sync::Arc;
+
+fn default_true() -> bool {
+    true
+}
+
+const fn is_true(value: &bool) -> bool {
+    *value
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NeuralNetworkVizState {
+    external_input: Vec<f64>,
+    #[serde(default)]
+    weights: Vec<Vec<f64>>,
+    dt: f64,
+    is_running: bool,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    follow_workspace_graph: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    seeded_graph: Option<SharedGraph>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frozen_graph: Option<SharedGraph>,
+}
 
 pub struct NeuralNetworkVizTool {
     neurons: Vec<HodgkinHuxleyNeuron>,
@@ -12,13 +48,19 @@ pub struct NeuralNetworkVizTool {
     external_input: Vec<f64>,
     is_running: bool,
     dt: f64,
+    pub(crate) follow_workspace_graph: bool,
+    pub(crate) applied_bus_revision: u64,
+    clamped_source_nodes: Option<usize>,
+    active_shared_graph: Option<Arc<SharedGraph>>,
+    seeded_graph: Option<SharedGraph>,
+    pending_seed_publish: bool,
 }
 
 impl Default for NeuralNetworkVizTool {
     fn default() -> Self {
         let num_neurons = 5;
-        let mut neurons = Vec::new();
-        let mut positions = Vec::new();
+        let mut neurons = Vec::with_capacity(num_neurons);
+        let mut positions = Vec::with_capacity(num_neurons);
         let mut weights = vec![vec![0.0; num_neurons]; num_neurons];
         let mut external_input = vec![0.0; num_neurons];
 
@@ -32,14 +74,9 @@ impl Default for NeuralNetworkVizTool {
         for i in 0..num_neurons {
             let next = (i + 1) % num_neurons;
             let prev = (i + num_neurons - 1) % num_neurons;
-            if let Some(row) = weights.get_mut(next) {
-                row[i] = 2.0;
-            }
-            if let Some(row) = weights.get_mut(prev) {
-                row[i] = -1.0;
-            }
+            weights[next][i] = 2.0;
+            weights[prev][i] = -1.0;
         }
-
         external_input[0] = 10.0;
 
         Self {
@@ -49,15 +86,17 @@ impl Default for NeuralNetworkVizTool {
             external_input,
             is_running: false,
             dt: 0.05,
+            follow_workspace_graph: true,
+            applied_bus_revision: 0,
+            clamped_source_nodes: None,
+            active_shared_graph: None,
+            seeded_graph: None,
+            pending_seed_publish: false,
         }
     }
 }
 
 impl NeuralNetworkVizTool {
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
-
     pub(crate) fn step_once(&mut self) {
         self.is_running = false;
         self.step();
@@ -87,6 +126,25 @@ impl NeuralNetworkVizTool {
             ui.heading("Controls");
             ui.separator();
 
+            let rev_opt = (self.applied_bus_revision > 0).then_some(self.applied_bus_revision);
+            if render_follow_workspace_toggle(
+                ui,
+                &mut self.follow_workspace_graph,
+                "Neural Network Viz",
+                rev_opt,
+            ) && self.follow_workspace_graph
+            {
+                self.applied_bus_revision = 0;
+                self.sync_from_bus(ui.ctx());
+            }
+            render_node_budget_banner(
+                ui,
+                self.clamped_source_nodes,
+                MAX_HH_NEURON_BUDGET,
+                "Hodgkin-Huxley neurons",
+            );
+            ui.separator();
+
             if let Some(action) = PlaybackTransport::in_thread(
                 "nn_viz_transport",
                 "Neural Network Viz",
@@ -104,18 +162,20 @@ impl NeuralNetworkVizTool {
 
             ui.separator();
             ui.heading("External Current (uA/cm^2)");
-            for i in 0..self.external_input.len() {
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Slider::new(&mut self.external_input[i], -10.0..=50.0)
-                            .text(format!("Neuron {i}")),
-                    );
+            egui::ScrollArea::vertical()
+                .max_height(240.0)
+                .show(ui, |ui| {
+                    for i in 0..self.external_input.len() {
+                        ui.add(
+                            egui::Slider::new(&mut self.external_input[i], -10.0..=50.0)
+                                .text(format!("Neuron {i}")),
+                        );
+                    }
                 });
-            }
 
             ui.separator();
             ui.label(
-                "Synaptic activity is modeled simply: if a presynaptic neuron's voltage > 0, a scaled current is added to the postsynaptic neuron.",
+                "Signed synapses: +w excitatory edges depolarize postsynaptic neurons; -w inhibitory edges hyperpolarize and quench spike loops.",
             );
         });
     }
@@ -138,9 +198,8 @@ impl NeuralNetworkVizTool {
                     } else {
                         palette.error
                     };
-                    let color =
-                        Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
-                    painter.line_segment([p2, p1], (1.0 + weight.abs() as f32, color));
+                    let color = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 185);
+                    painter.line_segment([p2, p1], (1.0 + weight.abs().min(4.0) as f32, color));
                 }
             }
         }
@@ -198,14 +257,28 @@ impl NeuralNetworkVizTool {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct NeuralNetworkVizState {
-    external_input: Vec<f64>,
-    #[serde(default)]
-    weights: Vec<Vec<f64>>,
-    dt: f64,
-    is_running: bool,
+fn validate_loaded_nn_state(s: &NeuralNetworkVizState) -> Result<usize, String> {
+    let n = s.external_input.len();
+    let weights_valid = s.weights.is_empty()
+        || (s.weights.len() == n
+            && s.weights
+                .iter()
+                .all(|row| row.len() == n && row.iter().all(|w| w.is_finite())));
+    if !(1..=MAX_HH_NEURON_BUDGET).contains(&n)
+        || !weights_valid
+        || !s
+            .external_input
+            .iter()
+            .all(|v| v.is_finite() && (-10.0..=50.0).contains(v))
+        || !s.dt.is_finite()
+        || !(0.001..=0.5).contains(&s.dt)
+    {
+        return Err("NeuralNetworkViz parameters or dimensions out of bounds".into());
+    }
+    for g in [&s.seeded_graph, &s.frozen_graph].into_iter().flatten() {
+        g.validate(SESSION_MAX_BUS_NODES, SESSION_MAX_BUS_EDGES)?;
+    }
+    Ok(n)
 }
 
 impl InteractiveTool for NeuralNetworkVizTool {
@@ -222,12 +295,28 @@ impl InteractiveTool for NeuralNetworkVizTool {
         "neuroscience"
     }
 
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
     fn save_state(&self) -> Option<String> {
+        let frozen_graph = (!self.follow_workspace_graph)
+            .then(|| self.active_shared_graph.as_deref().cloned())
+            .flatten();
+        let weights = if self.seeded_graph.is_some() {
+            Vec::new()
+        } else {
+            self.weights.clone()
+        };
         serde_json::to_string(&NeuralNetworkVizState {
             external_input: self.external_input.clone(),
-            weights: self.weights.clone(),
+            weights,
             dt: self.dt,
             is_running: self.is_running,
+            follow_workspace_graph: self.follow_workspace_graph,
+            seeded_graph: self.seeded_graph.clone(),
+            frozen_graph,
         })
         .ok()
     }
@@ -235,25 +324,28 @@ impl InteractiveTool for NeuralNetworkVizTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: NeuralNetworkVizState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid neural network viz state: {e}"))?;
-        let n = s.external_input.len();
-        let weights_valid = s.weights.is_empty()
-            || (s.weights.len() == n
-                && s.weights
-                    .iter()
-                    .all(|row| row.len() == n && row.iter().all(|w| w.is_finite())));
-        if !(1..=32).contains(&n)
-            || !weights_valid
-            || !s
-                .external_input
-                .iter()
-                .all(|v| v.is_finite() && (-10.0..=50.0).contains(v))
-            || !s.dt.is_finite()
-            || !(0.001..=0.5).contains(&s.dt)
-        {
-            return Err("NeuralNetworkViz parameters or dimensions out of bounds".into());
-        }
-        if s.weights.is_empty() && n == 5 {
-            self.reset();
+        let n = validate_loaded_nn_state(&s)?;
+
+        self.follow_workspace_graph = s.follow_workspace_graph;
+        self.seeded_graph = s.seeded_graph.clone();
+        self.active_shared_graph = None;
+        self.clamped_source_nodes = None;
+        self.applied_bus_revision = 0;
+        self.external_input = s.external_input.clone();
+
+        if let Some(g) = s.frozen_graph.or(s.seeded_graph) {
+            self.apply_shared_graph(&Arc::new(g));
+            for (i, &val) in s.external_input.iter().enumerate() {
+                if let Some(slot) = self.external_input.get_mut(i) {
+                    *slot = val;
+                }
+            }
+            self.pending_seed_publish = self.seeded_graph.is_some();
+        } else if s.weights.is_empty() && n == 5 {
+            let follow = self.follow_workspace_graph;
+            *self = Self::default();
+            self.follow_workspace_graph = follow;
+            self.external_input = s.external_input;
         } else {
             let radius = 100.0;
             self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
@@ -268,22 +360,27 @@ impl InteractiveTool for NeuralNetworkVizTool {
             } else {
                 s.weights
             };
+            self.pending_seed_publish = false;
         }
-        self.external_input = s.external_input;
+
         self.dt = s.dt;
         self.is_running = s.is_running;
         Ok(())
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        self.sync_from_bus(&ctx);
+
         if self.is_running {
             for _ in 0..10 {
                 self.step();
             }
-            ui.ctx().request_repaint();
+            ctx.request_repaint();
         }
 
         self.draw_controls(ui);
+        self.sync_from_bus(&ctx);
         self.draw_network(ui);
     }
 }
@@ -330,39 +427,5 @@ mod tests {
         tool.step_once();
         assert!(!tool.is_running);
         assert_ne!(tool.neurons[0].v(), initial_v0);
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Spiking Neural Circuit",
-    "domain": "neuroscience",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "external_input": [15.0, 0.0, 0.0, 0.0, 0.0],
-    "weights": [
-      [0.0, -1.0, 0.0, 0.0, 2.0],
-      [2.0, 0.0, -1.0, 0.0, 0.0],
-      [0.0, 2.0, 0.0, -1.0, 0.0],
-      [0.0, 0.0, 2.0, 0.0, -1.0],
-      [-1.0, 0.0, 0.0, 2.0, 0.0]
-    ],
-    "dt": 0.05,
-    "is_running": false
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "neural_network_viz_starter",
-        title: "Spiking Neural Circuit",
-        description: "Coupled 5-neuron Hodgkin-Huxley ring circuit with excitatory and inhibitory synaptic currents.",
-        category: "Neural Circuits",
-        icon: "⚡",
-        domain: "neuroscience",
-        tool_name: Some("NeuralNetworkVizTool"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }

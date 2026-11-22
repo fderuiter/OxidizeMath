@@ -4,8 +4,34 @@ use eframe::egui;
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
 use nalgebra::{DMatrix, DVector};
 
+#[path = "replicator/spatial.rs"]
+mod spatial;
 #[path = "replicator/ui.rs"]
 mod ui;
+
+const fn default_true() -> bool {
+    true
+}
+
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReplicatorToolState {
+    payoff_matrix: Vec<Vec<f64>>,
+    initial_population: Vec<f64>,
+    time_horizon: f64,
+    dt: f64,
+    strategy_names: Vec<String>,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    follow_workspace_graph: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    seeded_graph: Option<crate::app::data_bus::SharedGraph>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frozen_graph: Option<crate::app::data_bus::SharedGraph>,
+}
 
 pub struct ReplicatorDynamicsTool {
     payoff_matrix: DMatrix<f64>,
@@ -17,6 +43,7 @@ pub struct ReplicatorDynamicsTool {
     playback_time: f64,
     is_playing: bool,
     playback_speed: f64,
+    spatial: spatial::SpatialReplicatorState,
 }
 
 impl Default for ReplicatorDynamicsTool {
@@ -33,6 +60,7 @@ impl Default for ReplicatorDynamicsTool {
             playback_time: 0.0,
             is_playing: false,
             playback_speed: 1.0,
+            spatial: spatial::SpatialReplicatorState::default(),
         };
         tool.run_simulation();
         tool
@@ -55,6 +83,7 @@ impl ReplicatorDynamicsTool {
             self.playback_time = 0.0;
             self.is_playing = false;
         }
+        self.recompute_spatial_trajectory();
     }
 
     pub(crate) fn step_once(&mut self) {
@@ -74,6 +103,7 @@ impl ReplicatorDynamicsTool {
     }
 
     pub(crate) fn load_preset_hawk_dove(&mut self) {
+        self.spatial.seeded_graph = None;
         self.payoff_matrix = DMatrix::from_row_slice(2, 2, &[-1.0, 2.0, 0.0, 1.0]);
         self.initial_population = DVector::from_vec(vec![0.1, 0.9]);
         self.strategy_names = vec!["Hawk".to_string(), "Dove".to_string()];
@@ -82,6 +112,7 @@ impl ReplicatorDynamicsTool {
     }
 
     pub(crate) fn load_preset_rps(&mut self) {
+        self.spatial.seeded_graph = None;
         self.payoff_matrix =
             DMatrix::from_row_slice(3, 3, &[0.0, -1.0, 1.0, 1.0, 0.0, -1.0, -1.0, 1.0, 0.0]);
         self.initial_population = DVector::from_vec(vec![0.33, 0.33, 0.34]);
@@ -107,16 +138,54 @@ impl InteractiveTool for ReplicatorDynamicsTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&self.export_config()).ok()
+        let cfg = self.export_config();
+        let frozen_graph = (!self.spatial.follow_workspace_graph)
+            .then(|| self.spatial.active_graph.as_ref().map(|g| (**g).clone()))
+            .flatten();
+        serde_json::to_string(&ReplicatorToolState {
+            payoff_matrix: cfg.payoff_matrix,
+            initial_population: cfg.initial_population,
+            time_horizon: cfg.time_horizon,
+            dt: cfg.dt,
+            strategy_names: cfg.strategy_names,
+            follow_workspace_graph: self.spatial.follow_workspace_graph,
+            seeded_graph: self.spatial.seeded_graph.clone(),
+            frozen_graph,
+        })
+        .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let config: ReplicatorPresetConfig = serde_json::from_str(state)
+        let s: ReplicatorToolState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid ReplicatorDynamicsTool state: {e}"))?;
-        self.apply_config(config)
+        for g in [&s.seeded_graph, &s.frozen_graph].into_iter().flatten() {
+            g.validate(
+                crate::app::data_bus::SESSION_MAX_BUS_NODES,
+                crate::app::data_bus::SESSION_MAX_BUS_EDGES,
+            )?;
+        }
+        self.spatial.follow_workspace_graph = s.follow_workspace_graph;
+        self.spatial.seeded_graph = s.seeded_graph.clone();
+        self.spatial.pending_seed_publish = s.seeded_graph.is_some();
+        self.apply_config(ReplicatorPresetConfig {
+            payoff_matrix: s.payoff_matrix,
+            initial_population: s.initial_population,
+            time_horizon: s.time_horizon,
+            dt: s.dt,
+            strategy_names: s.strategy_names,
+        })?;
+        if let Some(g) = s.frozen_graph.or(s.seeded_graph) {
+            self.apply_shared_game_graph(&std::sync::Arc::new(g));
+        } else if self.spatial.follow_workspace_graph {
+            self.spatial.active_graph = None;
+            self.spatial.applied_bus_revision = 0;
+            self.spatial.trajectory.clear();
+        }
+        Ok(())
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        self.sync_spatial_from_bus(parent_ui.ctx());
         if self.is_playing && !self.trajectory.is_empty() {
             let dt = f64::from(parent_ui.ctx().input(|i| i.stable_dt));
             self.playback_time += dt * self.playback_speed;

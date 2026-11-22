@@ -1617,7 +1617,39 @@
       "signature": "pub trait Correspondence { fn is_in_image (& self , source : & DVector < f64 > , target : & DVector < f64 >) -> bool }"
     }
   ],
+  "crates/domain_applied/src/applied/game_theory/evolutionary/graph_replicator.rs": [
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn evolve (& mut self , steps : usize , dt : f64) }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn from_population_mean (num_nodes : usize , payoff_matrix : & DMatrix < f64 > , edges : & [(usize , usize , f64)] , mean_state : & [f64] ,) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn mean_frequencies (& self , out : & mut [f64]) }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn new (num_nodes : usize , payoff_matrix : & DMatrix < f64 > , edges : & [(usize , usize , f64)] , initial_states : & [f64] ,) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn node_state (& self , node : usize) -> & [f64] }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn num_nodes (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn num_strategies (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn step (& mut self , dt : f64) }"
+    },
+    {
+      "signature": "pub struct GraphReplicatorSystem"
+    }
+  ],
   "crates/domain_applied/src/applied/game_theory/evolutionary/mod.rs": [
+    {
+      "signature": "pub use graph_replicator :: GraphReplicatorSystem"
+    },
     {
       "signature": "pub use replicator :: ReplicatorDynamics"
     },
@@ -5350,6 +5382,53 @@
       "signature": "pub fn helmholtz_free_energy (partition_function : f64 , temperature : f64) -> f64"
     }
   ],
+  "crates/domain_physics/src/physics/stat_mech/graph_ising.rs": [
+    {
+      "signature": "impl GraphSpinSystem { pub fn evolve (& mut self , steps : usize , temperature : f64 , j_coupling : f64 , h_field : f64) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn frustrated_edge_count (& self , j_coupling : f64) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn hamiltonian (& self , j_coupling : f64 , h_field : f64) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn magnetization (& self) -> i64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn mean_magnetization (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn metropolis_step (& mut self , temperature : f64 , j_coupling : f64 , h_field : f64) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn neighbors_of (& self , node : usize) -> (& [usize] , & [f64]) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn new (num_nodes : usize , edges : & [(usize , usize , f64)] , seed : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn new_with_spins (spins : Vec < i8 > , edges : & [(usize , usize , f64)] , seed : Option < u64 > ,) -> Self }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn num_edges (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn num_nodes (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn reseed (& mut self , seed : u64) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn set_spin (& mut self , node : usize , spin : i8) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn spins (& self) -> & [i8] }"
+    },
+    {
+      "signature": "pub struct GraphSpinSystem"
+    }
+  ],
   "crates/domain_physics/src/physics/stat_mech/ising.rs": [
     {
       "signature": "impl SpinLattice { pub fn evolve (& mut self , steps : usize , temperature : f64 , j_coupling : f64 , h_field : f64) }"
@@ -5389,11 +5468,17 @@
     },
     {
       "signature": "pub struct SpinLattice"
+    },
+    {
+      "signature": "pub use super :: graph_ising :: GraphSpinSystem"
     }
   ],
   "crates/domain_physics/src/physics/stat_mech/mod.rs": [
     {
       "signature": "pub const KB : f64 = 1.380649e-23"
+    },
+    {
+      "signature": "pub use graph_ising :: GraphSpinSystem"
     }
   ],
   "crates/domain_physics/src/physics/stat_mech/quantum_stats.rs": [
