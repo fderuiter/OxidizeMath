@@ -192,15 +192,15 @@ fn test_contract_all_56_tools_lossless_url_roundtrip() {
 }
 
 #[test]
-fn test_contract_all_62_starter_presets_lossless_url_roundtrip() {
+fn test_contract_all_69_starter_presets_lossless_url_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
     assert_eq!(
         presets.len(),
-        62,
-        "Expected all 62 StarterPresetMetadata entries"
+        69,
+        "Expected all 69 StarterPresetMetadata entries"
     );
 
     for preset in presets {

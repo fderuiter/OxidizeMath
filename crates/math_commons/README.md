@@ -10,6 +10,7 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 
 ### Module Structure
 
+- **`ast`**: Native mathematical expression parser, LaTeX formatter, and zero-allocation postfix stack bytecode evaluator (`CompiledExpr`) for real and complex formulas.
 - **`constants`**: Centralized registry of physical, astronomical, and mathematical constants:
   - Speed of light (`C`), Gravitational constant (`G`), Solar mass (`SOLAR_MASS`).
   - Reduced Planck constant (`HBAR_C`), Proton mass (`PROTON_MASS`), Neutron mass (`NEUTRON_MASS`).

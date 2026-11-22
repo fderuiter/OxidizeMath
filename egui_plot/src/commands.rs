@@ -164,6 +164,55 @@ impl CommandRegistryData {
 
         triggered
     }
+
+    /// Registers `Alt+ArrowRight` and `Alt+ArrowLeft` critical point commands in `CMD_REGISTRY`.
+    pub fn register_poi_navigation(ctx: &Context) {
+        Self::register(
+            ctx,
+            "Next Critical Point",
+            "Jump to the next critical point (root, extremum, or intersection)",
+            CommandTrigger::Shortcut(Modifiers::ALT, Key::ArrowRight),
+            false,
+            "Plot Accessibility",
+        );
+        Self::register(
+            ctx,
+            "Previous Critical Point",
+            "Jump to the previous critical point (root, extremum, or intersection)",
+            CommandTrigger::Shortcut(Modifiers::ALT, Key::ArrowLeft),
+            false,
+            "Plot Accessibility",
+        );
+    }
+
+    /// Checks `Alt+ArrowRight` (`Some(1)`) or `Alt+ArrowLeft` (`Some(-1)`) on a focused plot.
+    pub fn check_poi_navigation_step(ctx: &Context, ui: &Ui) -> Option<isize> {
+        if Self::register_and_check(
+            ctx,
+            "Next Critical Point",
+            "Jump to the next critical point (root, extremum, or intersection)",
+            CommandTrigger::Shortcut(Modifiers::ALT, Key::ArrowRight),
+            false,
+            "Plot Accessibility",
+            Some(ui),
+            None,
+        ) {
+            return Some(1);
+        }
+        if Self::register_and_check(
+            ctx,
+            "Previous Critical Point",
+            "Jump to the previous critical point (root, extremum, or intersection)",
+            CommandTrigger::Shortcut(Modifiers::ALT, Key::ArrowLeft),
+            false,
+            "Plot Accessibility",
+            Some(ui),
+            None,
+        ) {
+            return Some(-1);
+        }
+        None
+    }
 }
 
 #[cfg(test)]
@@ -263,6 +312,14 @@ mod tests {
         assert_eq!(
             CommandTrigger::Shortcut(Modifiers::MAC_CMD, Key::Slash).display_label(),
             "Cmd+/"
+        );
+        assert_eq!(
+            CommandTrigger::Shortcut(Modifiers::ALT, Key::ArrowRight).display_label(),
+            "Alt+Right"
+        );
+        assert_eq!(
+            CommandTrigger::Shortcut(Modifiers::ALT, Key::ArrowLeft).display_label(),
+            "Alt+Left"
         );
         assert_eq!(CommandTrigger::AltClick.display_label(), "Alt+Click");
     }
