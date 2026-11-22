@@ -14,13 +14,79 @@
 //! The core function `evolve_state` computes the state at time $t$ given an initial state and a Hamiltonian.
 
 use crate::physics::quantum::types::{QuantumOperator, QuantumState};
-use nalgebra::DVector;
+use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
+
+#[verified_engine::verified]
+fn try_extract_real_symmetric(matrix: &DMatrix<Complex<f64>>) -> Option<DMatrix<f64>> {
+    let n = matrix.nrows();
+    if n < 4 || matrix.ncols() != n {
+        return None;
+    }
+    let src = matrix.as_slice();
+    if src.iter().any(|c| !c.re.is_finite() || c.im != 0.0) {
+        return None;
+    }
+    for c in 0..n {
+        for r in 0..c {
+            if matrix[(r, c)].re != matrix[(c, r)].re {
+                return None;
+            }
+        }
+    }
+    let real_vec: Vec<f64> = src.iter().map(|c| c.re).collect();
+    Some(DMatrix::from_vec(n, n, real_vec))
+}
+
+#[verified_engine::verified]
+fn accumulate_eigenmode_upper(
+    u_slice: &mut [Complex<f64>],
+    q_col: &[f64],
+    cos_t: f64,
+    sin_t: f64,
+    n: usize,
+) {
+    for (c, (&qc, u_col)) in q_col.iter().zip(u_slice.chunks_exact_mut(n)).enumerate() {
+        if qc == 0.0 {
+            continue;
+        }
+        let qc_re = cos_t * qc;
+        let qc_im = sin_t * qc;
+        for (u_entry, &qr) in u_col[..=c].iter_mut().zip(&q_col[..=c]) {
+            u_entry.re += qr * qc_re;
+            u_entry.im += qr * qc_im;
+        }
+    }
+}
+
+#[verified_engine::verified]
+fn real_symmetric_propagator(real_h: DMatrix<f64>, omega: f64) -> Option<QuantumOperator> {
+    let n = real_h.nrows();
+    let eig = nalgebra::SymmetricEigen::new(real_h);
+    let evals = eig.eigenvalues.as_slice();
+    let q_slice = eig.eigenvectors.as_slice();
+    if evals.iter().any(|v| !v.is_finite()) || q_slice.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    let mut u_matrix = DMatrix::<Complex<f64>>::zeros(n, n);
+    let u_slice = u_matrix.as_mut_slice();
+    for (&lambda, q_col) in evals.iter().zip(q_slice.chunks_exact(n)) {
+        let (sin_t, cos_t) = (omega * lambda).sin_cos();
+        accumulate_eigenmode_upper(u_slice, q_col, cos_t, sin_t, n);
+    }
+    for c in 0..n {
+        for r in 0..c {
+            u_matrix[(c, r)] = u_matrix[(r, c)];
+        }
+    }
+    Some(QuantumOperator::new(u_matrix))
+}
 
 /// Calculates the time evolution operator $U(t) = e^{-i\hat{H}t/\hbar}$.
 ///
 /// This implementation assumes the Hamiltonian $\hat{H}$ is time-independent.
-/// The operator is computed using matrix exponentiation.
+/// The operator is computed via orthogonal spectral decomposition for finite real-symmetric
+/// Hamiltonians ($N \ge 4$) and complex matrix exponentiation otherwise.
 ///
 /// $$ U(t) = \exp\left(-\frac{i}{\hbar} \hat{H} t\right) $$
 ///
@@ -72,19 +138,21 @@ pub fn time_evolution_operator(
     t: f64,
     h_bar: f64,
 ) -> QuantumOperator {
-    // U(t) = exp(-i * H * t / h_bar)
+    let omega = -t / h_bar;
+    if let Some(op) = omega
+        .is_finite()
+        .then(|| try_extract_real_symmetric(&hamiltonian.matrix))
+        .flatten()
+        .and_then(|real_h| real_symmetric_propagator(real_h, omega))
+    {
+        return op;
+    }
+
+    // Fallback for small, complex Hermitian, non-symmetric, or non-finite operators
     let i = Complex::new(0.0, 1.0);
-    // Avoid division by zero if h_bar is 0 (though physical h_bar is non-zero)
     let factor = -i * t / h_bar;
-
-    // Scale the Hamiltonian matrix by -it/hbar
     let scaled_h = &hamiltonian.matrix * factor;
-
-    // Compute the matrix exponential: e^A
-    // nalgebra's exp() is for square matrices.
-    let u_matrix = scaled_h.exp();
-
-    QuantumOperator::new(u_matrix)
+    QuantumOperator::new(scaled_h.exp())
 }
 
 /// Evolves a quantum state over time using the Schrödinger equation.
@@ -233,4 +301,37 @@ pub fn transmission_probability(state: &QuantumState, split_idx: usize) -> f64 {
         transmitted += amp.norm_sqr();
     }
     (transmitted / total).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::physics::quantum::hamiltonian::construct_1d_hamiltonian;
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_real_symmetric_spectral_propagator_parity_and_complex_fallback() {
+        let n = 24;
+        let potential = DVector::from_fn(n, |i, _| {
+            let x = -2.0 + i as f64 * 0.18;
+            0.4 * x * x + if (7..=10).contains(&i) { 9.5 } else { 0.0 }
+        });
+        let h_real = construct_1d_hamiltonian(&potential, 0.18, 1.0, 1.0);
+        let dt = 0.04;
+        let fast_u = time_evolution_operator(&h_real, dt, 1.0);
+        let ref_u = (&h_real.matrix * Complex::new(0.0, -dt)).exp();
+        assert!((&fast_u.matrix - &ref_u).norm() < 1e-11);
+
+        let identity = DMatrix::<Complex<f64>>::identity(n, n);
+        let unitarity_err = (fast_u.matrix.adjoint() * &fast_u.matrix - identity).norm();
+        assert!(unitarity_err < 1e-12);
+
+        let mut h_complex = h_real.matrix.clone();
+        h_complex[(0, 1)] += Complex::new(0.0, 0.35);
+        h_complex[(1, 0)] -= Complex::new(0.0, 0.35);
+        let op_complex = QuantumOperator::new(h_complex.clone());
+        let u_complex = time_evolution_operator(&op_complex, dt, 1.0);
+        let expected_complex = (h_complex * Complex::new(0.0, -dt)).exp();
+        assert!((u_complex.matrix - expected_complex).norm() < 1e-12);
+    }
 }

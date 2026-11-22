@@ -20,11 +20,24 @@ use crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool;
 use crate::tabs::morphogenesis::MorphogenesisTool;
 use crate::tabs::quantum::wave_sim::{WaveData, WaveUnified};
 use crate::url_state::{encode_share_fragment, parse_share_location, MAX_DECODED_URL_STATE_BYTES};
+use crate::web_io::PlatformInstant;
 use eframe::egui;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     BgkCollision, LatticeBoltzmannD2Q9,
 };
 use std::time::Duration;
+
+const WORKER_POLL_TIMEOUT: Duration = Duration::from_secs(20);
+
+fn poll_until(timeout: Duration, mut predicate: impl FnMut() -> bool) {
+    let start = PlatformInstant::now();
+    loop {
+        if predicate() || start.elapsed() >= timeout {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
 
 fn make_stroke(start: [f64; 2], end: [f64; 2], radius: f64, mode: BrushMode) -> BrushStroke {
     BrushStroke {
@@ -48,23 +61,17 @@ fn send_brush_stroke(tool: &mut dyn InteractiveTool, stroke: BrushStroke) {
 }
 
 fn wait_for_unified_snapshot<M: UnifiedModel>(tool: &mut UnifiedSimTool<M>) {
-    for _ in 0..1600 {
+    poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = tool.controller.update();
-        if tool.controller.latest_snapshot().is_some() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
+        tool.controller.latest_snapshot().is_some()
+    });
 }
 
 fn wait_for_morpho_snapshot(tool: &mut MorphogenesisTool) {
-    for _ in 0..1600 {
+    poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = tool.worker.update();
-        if tool.worker.latest_snapshot().is_some() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
+        tool.worker.latest_snapshot().is_some()
+    });
 }
 
 #[test]
@@ -73,31 +80,21 @@ fn test_lbm_on_brush_y_alignment() {
     wait_for_unified_snapshot(&mut tool);
 
     let _ = tool.controller.send_command(SimCommand::ClearObstacles);
-    for _ in 0..400 {
+    poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = tool.controller.update();
-        if tool
-            .export_raster_image()
+        tool.export_raster_image()
             .is_some_and(|img| img.pixels[25 * LBM_WIDTH + 30] != egui::Color32::from_gray(50))
-        {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
+    });
 
     send_brush_stroke(
         &mut tool,
         make_stroke([20.5, 8.5], [32.5, 14.5], 1.0, BrushMode::Solid),
     );
-    for _ in 0..400 {
+    poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = tool.controller.update();
-        if tool
-            .export_raster_image()
+        tool.export_raster_image()
             .is_some_and(|img| img.pixels[41 * LBM_WIDTH + 20] == egui::Color32::from_gray(50))
-        {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
+    });
 
     let img = tool.export_raster_image().expect("LBM raster image");
     assert_eq!(img.size, [LBM_WIDTH, LBM_HEIGHT]);
@@ -129,22 +126,17 @@ fn test_lbm_naca_vorticity_and_url_roundtrip() {
         .controller
         .send_command(SimCommand::Custom("stamp_naca:2412:14.00".to_string()));
     let _ = tool.controller.send_command(SimCommand::Step(10));
-    for _ in 0..400 {
+    poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = tool.controller.update();
-        let ready = tool
-            .controller
+        tool.controller
             .latest_snapshot()
             .and_then(|s| {
                 s.structured_data
                     .as_ref()?
                     .downcast_ref::<LbmSnapshotMetrics>()
             })
-            .is_some_and(|m| m.max_vorticity > 0.0);
-        if ready {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
+            .is_some_and(|m| m.max_vorticity > 0.0)
+    });
 
     let snap = tool.controller.latest_snapshot().expect("LBM snapshot");
     let metrics = snap
@@ -181,16 +173,11 @@ fn test_morphogenesis_on_brush_y_alignment_maze_and_url_roundtrip() {
         make_stroke([15.5, 12.5], [35.5, 28.5], 1.0, BrushMode::ZeroFluxWall),
     );
     let _ = tool.worker.send_command(SimCommand::Step(2));
-    for _ in 0..400 {
+    poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = tool.worker.update();
-        if tool
-            .export_raster_image()
+        tool.export_raster_image()
             .is_some_and(|img| img.pixels[87 * 100 + 15] == egui::Color32::from_gray(55))
-        {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
+    });
 
     let img = tool.export_raster_image().expect("Morpho raster image");
     assert_eq!(img.size, [100, 100]);
@@ -242,18 +229,13 @@ fn test_wave_on_brush_unitarity_and_url_roundtrip() {
         make_stroke([0.2, 2.0], [0.5, 2.0], 0.2, BrushMode::PotentialBarrier),
     );
     let _ = wave.controller.send_command(SimCommand::Step(25));
-    for _ in 0..1600 {
+    poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = wave.controller.update();
-        let advanced = wave
-            .controller
+        wave.controller
             .latest_snapshot()
             .and_then(|s| s.structured_data.as_ref()?.downcast_ref::<WaveData>())
-            .is_some_and(|w| w.time > 0.0 && w.potential.iter().any(|&v| v > 4.0));
-        if advanced {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
+            .is_some_and(|w| w.time > 0.0 && w.potential.iter().any(|&v| v > 4.0))
+    });
 
     let snap = wave.controller.latest_snapshot().expect("Wave snapshot");
     let wdata = snap
