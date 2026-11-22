@@ -2668,6 +2668,125 @@
       "signature": "pub trait KineticsModel { fn reaction_velocity (& self , substrate_conc : f64) -> Result < f64 , KineticsError > }"
     }
   ],
+  "crates/domain_biology/src/biology/lenia/kernel.rs": [
+    {
+      "signature": "impl LeniaKernelCore { pub fn evaluate (self , local_r : f64) -> f64 }"
+    },
+    {
+      "signature": "pub enum LeniaKernelCore"
+    },
+    {
+      "signature": "pub fn build_spatial_kernel (width : usize , height : usize , kernel_radius : usize , ring_weights : & [f64] , core : LeniaKernelCore , out_kernel : & mut [f64] ,)"
+    },
+    {
+      "signature": "pub fn evaluate_shell_kernel (r : f64 , ring_weights : & [f64] , core : LeniaKernelCore) -> f64"
+    }
+  ],
+  "crates/domain_biology/src/biology/lenia/mod.rs": [
+    {
+      "signature": "impl LeniaParams { pub fn validate (& self) -> Result < () , LeniaError > }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn apply_preset (& mut self , preset : LeniaPreset) }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn from_preset (width : usize , height : usize , preset : LeniaPreset ,) -> Result < Self , LeniaError > }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn grid (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn grid_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn kernel_spatial (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn new (width : usize , height : usize , params : LeniaParams) -> Result < Self , LeniaError > }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn params (& self) -> & LeniaParams }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn potential (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn rebuild_kernel_spectrum (& mut self) }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn recompute_telemetry (& mut self) }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn set_params (& mut self , params : LeniaParams) -> Result < () , LeniaError > }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn step (& mut self) }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn step_count (& self) -> u64 }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn telemetry (& self) -> LeniaTelemetry }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn update_scalar_params (& mut self , mu : f64 , sigma : f64 , dt : f64 , kernel_radius : usize ,) -> Result < () , LeniaError > }"
+    },
+    {
+      "signature": "impl LeniaSystem { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub enum LeniaError"
+    },
+    {
+      "signature": "pub fn growth_mapping (potential : f64 , mu : f64 , sigma : f64) -> f64"
+    },
+    {
+      "signature": "pub struct LeniaParams"
+    },
+    {
+      "signature": "pub struct LeniaSystem"
+    },
+    {
+      "signature": "pub use kernel :: LeniaKernelCore"
+    },
+    {
+      "signature": "pub use kernel :: build_spatial_kernel"
+    },
+    {
+      "signature": "pub use kernel :: evaluate_shell_kernel"
+    },
+    {
+      "signature": "pub use presets :: LeniaPreset"
+    },
+    {
+      "signature": "pub use telemetry :: LeniaTelemetry"
+    },
+    {
+      "signature": "pub use telemetry :: shortest_toroidal_delta"
+    }
+  ],
+  "crates/domain_biology/src/biology/lenia/presets.rs": [
+    {
+      "signature": "impl LeniaPreset { pub fn params (self) -> LeniaParams }"
+    },
+    {
+      "signature": "impl LeniaPreset { pub fn stamp_into_grid (self , grid : & mut [f64] , width : usize , height : usize , kernel_radius : usize , center_x : usize , center_y : usize ,) }"
+    },
+    {
+      "signature": "pub enum LeniaPreset"
+    }
+  ],
+  "crates/domain_biology/src/biology/lenia/telemetry.rs": [
+    {
+      "signature": "pub fn shortest_toroidal_delta (target : f64 , origin : f64 , period : f64) -> f64"
+    },
+    {
+      "signature": "pub struct LeniaTelemetry"
+    }
+  ],
   "crates/domain_biology/src/biology/mod.rs": [
     {
       "signature": "pub use crate :: error"
@@ -2705,6 +2824,9 @@
       "signature": "pub struct TuringSystem < const N : usize = 2 , K : ReactionKinetics < N > = SchnakenbergKinetics , D : SpatialDiffusion < N > = FiniteDifference1D , S : TuringSolverStrategy < N > = FusedEulerSolver , >"
     },
     {
+      "signature": "pub use reaction :: GrayScottKinetics"
+    },
+    {
       "signature": "pub use reaction :: ReactionKinetics"
     },
     {
@@ -2728,7 +2850,13 @@
   ],
   "crates/domain_biology/src/biology/morphogenesis/reaction.rs": [
     {
+      "signature": "impl GrayScottKinetics { pub fn new (f : f64 , k : f64) -> Self }"
+    },
+    {
       "signature": "impl SchnakenbergKinetics { pub fn new (a : f64 , b : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct GrayScottKinetics"
     },
     {
       "signature": "pub struct SchnakenbergKinetics"
@@ -2920,6 +3048,168 @@
     },
     {
       "signature": "pub struct HodgkinHuxleyState"
+    }
+  ],
+  "crates/domain_biology/src/biology/phyllotaxis/lsystem.rs": [
+    {
+      "signature": "impl LSystemEngine { pub fn generate (& mut self , config : LSystemConfig , nutrient : & NutrientCoupling) }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn new (max_symbols : usize , max_segments : usize , max_stack_depth : usize) -> Self }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn segments (& self) -> & [[f64 ; 4]] }"
+    },
+    {
+      "signature": "impl LSystemEngine { pub fn symbols (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl LSystemPreset { pub fn axiom (self) -> & 'static [u8] }"
+    },
+    {
+      "signature": "impl LSystemPreset { pub fn default_angle_deg (self) -> f64 }"
+    },
+    {
+      "signature": "pub enum LSystemPreset"
+    },
+    {
+      "signature": "pub struct LSystemConfig"
+    },
+    {
+      "signature": "pub struct LSystemEngine"
+    }
+  ],
+  "crates/domain_biology/src/biology/phyllotaxis/mod.rs": [
+    {
+      "signature": "pub use lsystem :: LSystemConfig"
+    },
+    {
+      "signature": "pub use lsystem :: LSystemEngine"
+    },
+    {
+      "signature": "pub use lsystem :: LSystemPreset"
+    },
+    {
+      "signature": "pub use vogel :: GOLDEN_ANGLE_DEG"
+    },
+    {
+      "signature": "pub use vogel :: GOLDEN_ANGLE_RAD"
+    },
+    {
+      "signature": "pub use vogel :: LUCAS_ANGLE_DEG"
+    },
+    {
+      "signature": "pub use vogel :: NutrientCoupling"
+    },
+    {
+      "signature": "pub use vogel :: NutrientKineticsKind"
+    },
+    {
+      "signature": "pub use vogel :: PhyllotaxisConfig"
+    },
+    {
+      "signature": "pub use vogel :: PhyllotaxisState"
+    },
+    {
+      "signature": "pub use vogel :: Primordium"
+    },
+    {
+      "signature": "pub use vogel :: detect_parastichy_spirals"
+    },
+    {
+      "signature": "pub use vogel :: is_consecutive_fibonacci_pair"
+    }
+  ],
+  "crates/domain_biology/src/biology/phyllotaxis/vogel.rs": [
+    {
+      "signature": "impl NutrientCoupling { pub fn hill_n (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NutrientCoupling { pub fn k_m (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NutrientCoupling { pub fn kind (& self) -> NutrientKineticsKind }"
+    },
+    {
+      "signature": "impl NutrientCoupling { pub fn new (kind : NutrientKineticsKind , substrate : f64 , v_max : f64 , k_m : f64 , hill_n : f64 ,) -> Result < Self , KineticsError > }"
+    },
+    {
+      "signature": "impl NutrientCoupling { pub fn normalized_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NutrientCoupling { pub fn reaction_velocity (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NutrientCoupling { pub fn substrate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NutrientCoupling { pub fn v_max (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn active_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn config (& self) -> PhyllotaxisConfig }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn detect_parastichy_pair (& self) -> (usize , usize) }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn elapsed_time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn max_primordia (& self) -> usize }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn new (max_primordia : usize , initial_count : usize , config : PhyllotaxisConfig , nutrient : NutrientCoupling ,) -> Self }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn nutrient (& self) -> NutrientCoupling }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn primordia (& self) -> & [Primordium] }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn set_active_count (& mut self , count : usize) }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn set_config (& mut self , config : PhyllotaxisConfig) }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn set_nutrient (& mut self , nutrient : NutrientCoupling) }"
+    },
+    {
+      "signature": "impl PhyllotaxisState { pub fn step (& mut self , dt : f64) }"
+    },
+    {
+      "signature": "pub const GOLDEN_ANGLE_DEG : f64 = 137.507_764_050_037_85"
+    },
+    {
+      "signature": "pub const GOLDEN_ANGLE_RAD : f64 = 2.399_963_229_728_653_5"
+    },
+    {
+      "signature": "pub const LUCAS_ANGLE_DEG : f64 = 99.501_552_809_976_85"
+    },
+    {
+      "signature": "pub enum NutrientKineticsKind"
+    },
+    {
+      "signature": "pub fn detect_parastichy_spirals (count : usize , divergence_angle_deg : f64) -> (usize , usize)"
+    },
+    {
+      "signature": "pub fn is_consecutive_fibonacci_pair (m : usize , n : usize) -> bool"
+    },
+    {
+      "signature": "pub struct NutrientCoupling"
+    },
+    {
+      "signature": "pub struct PhyllotaxisConfig"
+    },
+    {
+      "signature": "pub struct PhyllotaxisState"
+    },
+    {
+      "signature": "pub struct Primordium"
     }
   ],
   "crates/domain_biology/src/biology/reaction_diffusion/mod.rs": [

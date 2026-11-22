@@ -28,7 +28,7 @@ pub(super) const INDEX_HTML_HEADER: &str = r#"<!DOCTYPE html>
   <div class="container">
     <header>
       <h1>OxidizeMath Academic Papers</h1>
-      <p class="subtitle">Permanent theoretical foundation and empirical verification publications (28 papers)</p>
+      <p class="subtitle">Permanent theoretical foundation and empirical verification publications (29 papers)</p>
       <div class="actions-bar">
         <a class="btn" href="papers-bundle.tar.gz">📦 Download All Papers (.tar.gz)</a>
         <a class="btn" href="SHA256SUMS">🔒 Checksum Manifest (SHA256)</a>

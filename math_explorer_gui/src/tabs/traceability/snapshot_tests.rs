@@ -122,7 +122,7 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
         .keys()
         .filter(|k| k.ends_with(".tex"))
         .count();
-    assert_eq!(tex_paper_count, 28, "Manifest must cover all 28 .tex papers");
+    assert_eq!(tex_paper_count, 29, "Manifest must cover all 29 .tex papers");
     assert!(manifest_report.orphaned_papers.is_empty());
     assert!(manifest_report.unlinked_code.is_empty());
     assert!(manifest_report.invalid_links.is_empty());

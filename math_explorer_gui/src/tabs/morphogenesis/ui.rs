@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::presets::MorphogenesisModelKind;
 use super::{MorphogenesisTool, SimpleRng};
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
@@ -11,8 +12,12 @@ use eframe::egui;
 use eframe::egui::ColorImage;
 use egui_plot::{Plot, PlotImage, PlotPoint};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
+use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use math_explorer::biology::morphogenesis::{
+    GrayScottKinetics, SchnakenbergKinetics, TuringSystem,
+};
+use math_explorer::biology::reaction_diffusion::ChemicalState;
 
 impl MorphogenesisTool {
     fn sync_texture_from_snapshot(&mut self, ctx: &egui::Context) {
@@ -68,23 +73,98 @@ impl MorphogenesisTool {
         self.dirty = false;
     }
 
-    fn draw_parameter_sliders(&self, ui: &mut egui::Ui) {
-        let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
-        ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
-        ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
-        ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
-        ui.add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"));
+    fn draw_model_selector(ui: &mut egui::Ui, model: &mut MorphogenesisModelKind) -> bool {
+        let prev = *model;
+        egui::ComboBox::from_label("Model")
+            .selected_text(match *model {
+                MorphogenesisModelKind::Schnakenberg => "Schnakenberg (Turing)",
+                MorphogenesisModelKind::GrayScott => "Gray-Scott (Turing)",
+                MorphogenesisModelKind::GenericReactionDiffusion => "Generic R-D (Gray-Scott)",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    model,
+                    MorphogenesisModelKind::Schnakenberg,
+                    "Schnakenberg (Turing)",
+                );
+                ui.selectable_value(
+                    model,
+                    MorphogenesisModelKind::GrayScott,
+                    "Gray-Scott (Turing)",
+                );
+                ui.selectable_value(
+                    model,
+                    MorphogenesisModelKind::GenericReactionDiffusion,
+                    "Generic R-D (Gray-Scott)",
+                );
+            });
+        *model != prev
+    }
+
+    fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
+        let mut model_switched = None;
+        {
+            let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
+            let mut mp = self.model_params.write().unwrap_or_else(|e| e.into_inner());
+            if Self::draw_model_selector(ui, &mut mp.model) {
+                model_switched = Some(mp.model);
+            }
+
+            match mp.model {
+                MorphogenesisModelKind::Schnakenberg => {
+                    ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
+                    ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
+                    ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
+                    ui.add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"));
+                    ui.add(egui::Slider::new(&mut params.dt, 0.001..=0.1).text("dt"));
+                }
+                MorphogenesisModelKind::GrayScott
+                | MorphogenesisModelKind::GenericReactionDiffusion => {
+                    ui.add(egui::Slider::new(&mut mp.f, 0.005..=0.12).text("Feed (f)"));
+                    ui.add(egui::Slider::new(&mut mp.k, 0.03..=0.08).text("Kill (k)"));
+                    ui.add(egui::Slider::new(&mut params.d_u, 0.02..=1.0).text("D_u"));
+                    ui.add(egui::Slider::new(&mut params.d_v, 0.01..=1.0).text("D_v"));
+                    ui.add(egui::Slider::new(&mut params.dt, 0.05..=1.0).text("dt"));
+                }
+            }
+        }
+        if let Some(new_model) = model_switched {
+            let diff_dt = if new_model == MorphogenesisModelKind::Schnakenberg {
+                (1.0, 50.0, 0.02)
+            } else {
+                (0.2, 0.1, 0.5)
+            };
+            self.apply_model_preset(new_model, (0.1, 0.9), (0.037, 0.060), diff_dt);
+        }
     }
 
     fn draw_presets(&mut self, ui: &mut egui::Ui) {
         ui.separator();
         ui.label("Presets:");
-        if ui.button("Spots").clicked() {
-            self.apply_named_preset(0.1, 0.9, 1.0, 100.0, 0.05);
-        }
-        if ui.button("Stripes").clicked() {
-            self.apply_named_preset(0.14, 0.86, 1.0, 50.0, 0.02);
-        }
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Spots").clicked() {
+                self.apply_named_preset(0.1, 0.9, 1.0, 100.0, 0.05);
+            }
+            if ui.button("Stripes").clicked() {
+                self.apply_named_preset(0.14, 0.86, 1.0, 50.0, 0.02);
+            }
+            if ui.button("Gray-Scott Coral").clicked() {
+                self.apply_model_preset(
+                    MorphogenesisModelKind::GrayScott,
+                    (0.1, 0.9),
+                    (0.037, 0.060),
+                    (0.2, 0.1, 0.5),
+                );
+            }
+            if ui.button("Gray-Scott Mitosis").clicked() {
+                self.apply_model_preset(
+                    MorphogenesisModelKind::GenericReactionDiffusion,
+                    (0.1, 0.9),
+                    (0.028, 0.062),
+                    (0.2, 0.1, 0.5),
+                );
+            }
+        });
     }
 
     fn draw_fault_and_recovery(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -160,7 +240,7 @@ impl MorphogenesisTool {
             if let Some(texture) = &self.texture {
                 let w = self.width as f32;
                 let h = self.height as f32;
-                Plot::new("morphogenesis_plot")
+                let plot_resp = Plot::new("morphogenesis_plot")
                     .data_aspect(1.0)
                     .view_aspect(1.0)
                     .show_grid(false)
@@ -175,6 +255,23 @@ impl MorphogenesisTool {
                             [w, h],
                         ));
                     });
+                let focus_resp = ui.interact(
+                    plot_resp.response.rect,
+                    ui.id().with("morphogenesis_canvas_a11y"),
+                    egui::Sense::focusable_noninteractive(),
+                );
+                let label = format!(
+                    "Turing Morphogenesis Concentration Field ({}x{})",
+                    self.width, self.height
+                );
+                crate::accessibility::register_canvas_accessibility(
+                    ui,
+                    &focus_resp,
+                    egui::accesskit::Role::Image,
+                    &label,
+                    None,
+                );
+                crate::accessibility::paint_canvas_focus_ring(ui, &focus_resp);
             } else {
                 render_empty_plot_guidance(
                     ui,
@@ -201,6 +298,60 @@ impl MorphogenesisTool {
             system.u_mut()[i] = u_eq + rng.range(-0.1, 0.1);
             system.v_mut()[i] = v_eq + rng.range(-0.1, 0.1);
         }
+    }
+
+    pub(crate) fn initialize_gray_scott_system(
+        system: &mut TuringSystem<2, GrayScottKinetics, FiniteDifference2D>,
+        width: usize,
+        height: usize,
+    ) {
+        system.u_mut().fill(1.0);
+        system.v_mut().fill(0.0);
+        let mut rng = SimpleRng::new(54321);
+        let cx = width / 2;
+        let cy = height / 2;
+        let r = (width.min(height) / 10).max(2);
+        for y in cy.saturating_sub(r)..=(cy + r).min(height.saturating_sub(1)) {
+            for x in cx.saturating_sub(r)..=(cx + r).min(width.saturating_sub(1)) {
+                let idx = flatten_2d_index(x, y, width);
+                system.u_mut()[idx] = (0.50 + rng.range(-0.04, 0.04)).clamp(0.0, 1.0);
+                system.v_mut()[idx] = (0.25 + rng.range(-0.04, 0.04)).clamp(0.0, 1.0);
+            }
+        }
+    }
+
+    pub(crate) fn initialize_gray_scott_slices(
+        u: &mut [f64],
+        v: &mut [f64],
+        width: usize,
+        height: usize,
+    ) {
+        u.fill(1.0);
+        v.fill(0.0);
+        let mut rng = SimpleRng::new(54321);
+        let cx = width / 2;
+        let cy = height / 2;
+        let r = (width.min(height) / 10).max(2);
+        for y in cy.saturating_sub(r)..=(cy + r).min(height.saturating_sub(1)) {
+            for x in cx.saturating_sub(r)..=(cx + r).min(width.saturating_sub(1)) {
+                let idx = flatten_2d_index(x, y, width);
+                u[idx] = (0.50 + rng.range(-0.04, 0.04)).clamp(0.0, 1.0);
+                v[idx] = (0.25 + rng.range(-0.04, 0.04)).clamp(0.0, 1.0);
+            }
+        }
+    }
+
+    pub(crate) fn initialize_chemical_state(
+        state: &mut ChemicalState,
+        width: usize,
+        height: usize,
+    ) {
+        let n = width * height;
+        if state.num_species() < 2 || state.grid_size() != n {
+            return;
+        }
+        let (u, v) = state.grid.as_mut_slice().split_at_mut(n);
+        Self::initialize_gray_scott_slices(u, v, width, height);
     }
 
     #[cfg(test)]

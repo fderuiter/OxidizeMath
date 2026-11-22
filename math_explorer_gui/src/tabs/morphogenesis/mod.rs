@@ -15,12 +15,36 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// Evolutionary replicator and enzyme saturation kinetics tool.
+pub mod evolution_kinetics_tool;
+/// UI rendering for [`evolution_kinetics_tool::EvolutionKineticsTool`].
+pub mod evolution_kinetics_ui;
+/// Background simulation runner for [`lenia_tool::LeniaTool`].
+pub mod lenia_runner;
+/// Spectral continuous cellular automaton (`LeniaSystem`) tool.
+pub mod lenia_tool;
+/// UI rendering for [`lenia_tool::LeniaTool`].
+pub mod lenia_ui;
+/// Vogel golden-angle phyllotaxis and nutrient-coupled L-system tool.
+pub mod phyllotaxis_tool;
+/// UI rendering for [`phyllotaxis_tool::PhyllotaxisLSystemTool`].
+pub mod phyllotaxis_ui;
+/// Starter presets, PRNG helper, and scientific metadata wrappers.
 pub mod presets;
+/// Multi-model reaction-diffusion simulation runner.
 pub mod runner;
+/// Multi-model Turing morphogenesis tool.
 pub mod tool;
+/// UI rendering for [`tool::MorphogenesisTool`].
 pub mod ui;
 
-pub use presets::SimpleRng;
+#[cfg(test)]
+pub use evolution_kinetics_tool::EvolutionKineticsTool;
+#[cfg(test)]
+pub use lenia_tool::{LeniaPresetChoice, LeniaTool};
+#[cfg(test)]
+pub use phyllotaxis_tool::PhyllotaxisLSystemTool;
+pub use presets::{MorphogenesisModelKind, SimpleRng};
 #[cfg(test)]
 pub use runner::MorphogenesisRunner;
 pub use runner::MorphogenesisSharedParams;
@@ -46,9 +70,9 @@ pub struct LegacyMorphoState {
     pub pending_initial_start: bool,
 }
 
-/// Biology tab hosting [`MorphogenesisTool`] inside [`crate::framework::SimulationFramework`].
+/// Biology tab hosting Turing morphogenesis, spectral Lenia, phyllotaxis L-systems, and evolution/kinetics tools.
 pub struct MorphogenesisTab {
-    /// Underlying simulation framework managing exports, presets, theory portal, and state guard.
+    /// Underlying simulation framework managing tool selection, exports, presets, theory portal, and state guard.
     pub framework: crate::framework::SimulationFramework,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
 }
@@ -56,6 +80,13 @@ pub struct MorphogenesisTab {
 impl Default for MorphogenesisTab {
     fn default() -> Self {
         let mut framework = crate::framework::SimulationFramework::new("biology");
+        if let Some(idx) = framework
+            .available_tools
+            .iter()
+            .position(|m| m.id == "MorphogenesisTool")
+        {
+            framework.selected_tool_index = Some(idx);
+        }
         let tool = MorphogenesisTool::default();
         let params = Arc::clone(&tool.params);
         let name = crate::framework::InteractiveTool::name(&tool).to_string();
@@ -139,9 +170,11 @@ impl MorphogenesisTab {
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
-        let current_state = tool
+        let existing = tool
             .save_state()
-            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok())
+            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok());
+        let current_state = existing
+            .as_ref()
             .and_then(|s| s.state)
             .unwrap_or(SimWorkerState::Ready);
         let target_state = if current_state == SimWorkerState::Running {
@@ -157,6 +190,12 @@ impl MorphogenesisTab {
             dt: config.dt,
             width: config.width,
             height: config.height,
+            model: existing
+                .as_ref()
+                .map(|s| s.model)
+                .unwrap_or(MorphogenesisModelKind::Schnakenberg),
+            f: existing.as_ref().map(|s| s.f).unwrap_or(0.037),
+            k: existing.as_ref().map(|s| s.k).unwrap_or(0.060),
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
@@ -228,7 +267,11 @@ impl MorphogenesisTab {
 impl FiniteStateGuard for MorphogenesisTab {
     fn is_finite_state(&self) -> bool {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        p.a.is_finite() && p.b.is_finite() && p.d_u.is_finite() && p.d_v.is_finite() && p.dt.is_finite()
+        p.a.is_finite()
+            && p.b.is_finite()
+            && p.d_u.is_finite()
+            && p.d_v.is_finite()
+            && p.dt.is_finite()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -330,6 +373,10 @@ impl ExplorerTab for MorphogenesisTab {
 }
 
 #[cfg(test)]
+mod new_tools_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests;
 
-// [cite:favorite_child]
+// [cite:biology]

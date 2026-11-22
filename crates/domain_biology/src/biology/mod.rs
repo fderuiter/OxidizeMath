@@ -54,13 +54,16 @@
 //!
 //! ## Submodules
 //!
-//! - **Molecular**: [`kinetics`] - Michaelis-Menten enzyme kinetics.
+//! - **Molecular**: [`kinetics`] - Michaelis-Menten and Hill cooperative enzyme kinetics.
 //! - **Cellular**: [`neuroscience`] - Hodgkin-Huxley model for action potentials.
-//! - **Tissue**: [`morphogenesis`] - Turing reaction-diffusion systems for pattern formation.
-//! - **Population**: [`evolution`] - Evolutionary game theory (Hawk-Dove).
+//! - **Artificial Life**: [`lenia`] - Spectral continuous cellular automata (`Orbium`, `Hydrogeminium`).
+//! - **Botanical**: [`phyllotaxis`] - Vogel golden-angle packing, Fibonacci parastichies, and nutrient-coupled L-systems.
+//! - **Tissue**: [`morphogenesis`] - Turing reaction-diffusion systems (`SchnakenbergKinetics`, `GrayScottKinetics`).
+//! - **Spatial**: [`diffusion`] - 1D and 2D finite-difference Laplacian operators.
+//! - **Population**: [`evolution`] - Evolutionary game theory (`HawkDovePopulation`).
 //! - **Generic**: [`reaction_diffusion`] - Generic N-species reaction-diffusion framework.
 
-/// Michaelis-Menten enzyme kinetics.
+/// Michaelis-Menten and Hill enzyme kinetics.
 pub mod kinetics;
 
 /// Hodgkin-Huxley neuron model.
@@ -78,10 +81,16 @@ pub mod evolution;
 /// Generic reaction-diffusion framework.
 pub mod reaction_diffusion;
 
+/// Spectral continuous cellular automata (Lenia).
+pub mod lenia;
+
+/// Vogel golden-angle phyllotaxis and nutrient-coupled L-systems.
+pub mod phyllotaxis;
+
 /// Error types for computational biology modules.
 pub use crate::error;
 
-// [cite:favorite_child]
+// [cite:biology]
 
 use pure_math::theory_verification;
 theory_verification!(module = "biology", constants = {}, test = {});
