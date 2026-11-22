@@ -132,6 +132,12 @@ fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
     let mut fractals = crate::tabs::chaos::fractals::FractalViewer::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut fractals, "Mandelbrot");
 
+    let mut kuramoto = crate::tabs::chaos::kuramoto::KuramotoOscillatorTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut kuramoto,
+        "Kuramoto Phase Oscillator Network",
+    );
+
     let mut ising = crate::tabs::solid_state::ising::IsingModelTool::default();
     // Allow background Ising worker to publish its initial spin lattice snapshot.
     for _ in 0..40 {

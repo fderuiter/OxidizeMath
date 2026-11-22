@@ -44,6 +44,10 @@ fn default_quad_split_ratios() -> (f32, f32) {
     (0.5, 0.5)
 }
 
+fn is_all_false_links(links: &[bool]) -> bool {
+    links.iter().all(|&linked| !linked)
+}
+
 pub(super) fn has_frame_input(ctx: &egui::Context) -> bool {
     ctx.input(|i| {
         i.pointer.any_down()
@@ -121,6 +125,7 @@ pub(crate) struct AppStateFingerprint {
     quad_split_ratio_bits: (u32, u32),
     focused_pane: usize,
     pane_tabs: [usize; 4],
+    pane_bus_links_mask: u8,
     primary_revisions_hash: u64,
     secondary_revisions_hash: u64,
     pub(crate) all_revisions_tracked: bool,
@@ -183,11 +188,16 @@ impl AppStateFingerprint {
             ),
             focused_pane: app.active_focused_pane(),
             pane_tabs,
+            pane_bus_links_mask: pack_pane_links_mask(app.pane_bus_links),
             primary_revisions_hash: primary_hasher.finish(),
             secondary_revisions_hash: secondary_hash,
             all_revisions_tracked: all_tracked,
         }
     }
+}
+
+const fn pack_pane_links_mask(links: [bool; 4]) -> u8 {
+    (links[0] as u8) | ((links[1] as u8) << 1) | ((links[2] as u8) << 2) | ((links[3] as u8) << 3)
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
@@ -221,6 +231,9 @@ pub struct AppState {
     pub focused_pane: usize,
     #[serde(default)]
     pub pane_tab_states: Vec<HashMap<String, String>>,
+    /// Per-pane `SharedWorkspaceBus` link flags (`0..4`).
+    #[serde(default, skip_serializing_if = "is_all_false_links")]
+    pub pane_bus_links: Vec<bool>,
 }
 
 impl Default for AppState {
@@ -243,6 +256,7 @@ impl Default for AppState {
             pane_tabs: vec![0, 1, 2, 3],
             focused_pane: 0,
             pane_tab_states: Vec::new(),
+            pane_bus_links: Vec::new(),
         }
     }
 }
@@ -297,6 +311,11 @@ impl AppState {
             pane_tabs,
             focused_pane: app.active_focused_pane(),
             pane_tab_states: app.extract_pane_tab_states(),
+            pane_bus_links: if is_all_false_links(&app.pane_bus_links) {
+                Vec::new()
+            } else {
+                app.pane_bus_links.to_vec()
+            },
         }
     }
 
@@ -356,7 +375,14 @@ impl AppState {
         }
         app.tab_state_cache.clear();
         Self::apply_pane_indices_and_focus(&self, app);
+        let mut restored_links = [false; 4];
+        for (slot, &linked) in restored_links.iter_mut().zip(self.pane_bus_links.iter()) {
+            *slot = linked;
+        }
+        app.pane_bus_links = restored_links;
+        app.workspace_bus.reset();
         app.restore_pane_tab_states(self.pane_tab_states, &self.tab_states);
+        app.sync_linked_panes_bus();
     }
 
     fn apply_pane_indices_and_focus(&self, app: &mut super::MathExplorerApp) {

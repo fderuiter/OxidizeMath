@@ -30,6 +30,8 @@ pub struct ShareUrlParams {
     pub tool: Option<String>,
     /// Optional decoded and structurally validated `PresetWrapper` JSON string.
     pub state_json: Option<String>,
+    /// Optional decoded and structurally validated multi-pane workspace link descriptor JSON.
+    pub workspace_json: Option<String>,
 }
 
 fn percent_encode_component(raw: &str) -> String {
@@ -108,6 +110,17 @@ pub fn encode_share_fragment(
     tool_id: Option<&str>,
     preset_json: Option<&str>,
 ) -> Result<String, String> {
+    encode_share_fragment_with_workspace(tab_slug, tool_id, preset_json, None)
+}
+
+/// Encodes `tab_slug`, optional `tool_id`, optional `preset_json`, and optional multi-pane
+/// `workspace_json` (`&ws=<base64url>`) while enforcing the 4 KiB and 8 KiB caps.
+pub fn encode_share_fragment_with_workspace(
+    tab_slug: &str,
+    tool_id: Option<&str>,
+    preset_json: Option<&str>,
+    workspace_json: Option<&str>,
+) -> Result<String, String> {
     if tab_slug.trim().is_empty() {
         return Err("Cannot encode share URL with an empty tab slug".to_string());
     }
@@ -121,6 +134,12 @@ pub fn encode_share_fragment(
         let encoded_state = base64url::encode(json.as_bytes());
         fragment.push_str("&state=");
         fragment.push_str(&encoded_state);
+    }
+    if let Some(ws_json) = workspace_json {
+        validate_url_preset_json(ws_json)?;
+        let encoded_ws = base64url::encode(ws_json.as_bytes());
+        fragment.push_str("&ws=");
+        fragment.push_str(&encoded_ws);
     }
     if fragment.len() > MAX_URL_FRAGMENT_BYTES {
         return Err(format!(
@@ -162,6 +181,7 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
     let mut tab: Option<String> = None;
     let mut tool: Option<String> = None;
     let mut state_b64: Option<String> = None;
+    let mut ws_b64: Option<String> = None;
 
     for pair in raw.split('&').filter(|s| !s.is_empty()) {
         let Some((k_raw, v_raw)) = pair.split_once('=') else {
@@ -174,6 +194,7 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
             "tab" => set_unique_param(&mut tab, v_raw, "tab")?,
             "tool" => set_unique_param(&mut tool, v_raw, "tool")?,
             "state" => set_unique_param(&mut state_b64, v_raw, "state")?,
+            "ws" => set_unique_param(&mut ws_b64, v_raw, "ws")?,
             _ if strict_keys => {
                 return Err(format!("Unknown URL fragment parameter '{k_raw}'"));
             }
@@ -181,10 +202,10 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
         }
     }
 
-    if tab.is_none() && tool.is_none() && state_b64.is_none() {
+    if tab.is_none() && tool.is_none() && state_b64.is_none() && ws_b64.is_none() {
         return Ok(None);
     }
-    build_validated_share_params(tab, tool, state_b64)
+    build_validated_share_params(tab, tool, state_b64, ws_b64)
 }
 
 fn set_unique_param(slot: &mut Option<String>, raw_val: &str, name: &str) -> Result<(), String> {
@@ -195,10 +216,22 @@ fn set_unique_param(slot: &mut Option<String>, raw_val: &str, name: &str) -> Res
     Ok(())
 }
 
+fn decode_validated_b64_json(raw_b64: &str, label: &str) -> Result<String, String> {
+    if raw_b64.trim().is_empty() {
+        return Err(format!("Shared URL contains an empty '{label}' parameter"));
+    }
+    let decoded_bytes = base64url::decode(raw_b64.trim(), MAX_DECODED_URL_STATE_BYTES)?;
+    let json_str = String::from_utf8(decoded_bytes)
+        .map_err(|_| format!("Decoded URL '{label}' parameter is not valid UTF-8"))?;
+    validate_url_preset_json(&json_str)?;
+    Ok(json_str)
+}
+
 fn build_validated_share_params(
     tab: Option<String>,
     tool: Option<String>,
     state_b64: Option<String>,
+    ws_b64: Option<String>,
 ) -> Result<Option<ShareUrlParams>, String> {
     let tab_val = tab
         .map(|t| t.trim().to_string())
@@ -211,23 +244,19 @@ fn build_validated_share_params(
         Some(t) => Some(t.trim().to_string()),
         None => None,
     };
-    let state_json = match state_b64 {
-        Some(raw_b64) => {
-            if raw_b64.trim().is_empty() {
-                return Err("Shared URL contains an empty 'state' parameter".to_string());
-            }
-            let decoded_bytes = base64url::decode(raw_b64.trim(), MAX_DECODED_URL_STATE_BYTES)?;
-            let json_str = String::from_utf8(decoded_bytes)
-                .map_err(|_| "Decoded URL state is not valid UTF-8".to_string())?;
-            validate_url_preset_json(&json_str)?;
-            Some(json_str)
-        }
-        None => None,
-    };
+    let state_json = state_b64
+        .as_deref()
+        .map(|s| decode_validated_b64_json(s, "state"))
+        .transpose()?;
+    let workspace_json = ws_b64
+        .as_deref()
+        .map(|s| decode_validated_b64_json(s, "ws"))
+        .transpose()?;
     Ok(Some(ShareUrlParams {
         tab: tab_val,
         tool: tool_val,
         state_json,
+        workspace_json,
     }))
 }
 

@@ -3893,6 +3893,83 @@
       "signature": "pub fn escape_time_mandelbrot (c : Complex < f64 > , max_iter : u32) -> u32"
     }
   ],
+  "crates/domain_physics/src/physics/chaos/kuramoto.rs": [
+    {
+      "signature": "impl KuramotoBuilder { pub fn build (self) -> KuramotoSystem }"
+    },
+    {
+      "signature": "impl KuramotoBuilder { pub fn coupling_k (mut self , k : f64) -> Self }"
+    },
+    {
+      "signature": "impl KuramotoBuilder { pub fn edges (mut self , edges : Vec < (usize , usize , f64) >) -> Self }"
+    },
+    {
+      "signature": "impl KuramotoBuilder { pub fn frequency_spread (mut self , spread : f64) -> Self }"
+    },
+    {
+      "signature": "impl KuramotoBuilder { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl KuramotoBuilder { pub fn num_oscillators (mut self , count : usize) -> Self }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn builder () -> KuramotoBuilder }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn coupling_k (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn critical_coupling_estimate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn directed_edge_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn frequency_spread (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn natural_frequencies (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn num_oscillators (& self) -> usize }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn order_parameter (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn phases (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn reset_phases (& mut self) }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn set_coupling_k (& mut self , k : f64) }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn set_frequency_spread (& mut self , spread : f64) }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn set_phases (& mut self , phases : & [f64]) }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn set_topology (& mut self , num_nodes : usize , edges : & [(usize , usize , f64)]) }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn step_rk4 (& mut self , dt : f64) }"
+    },
+    {
+      "signature": "impl KuramotoSystem { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn default_small_world_ring_edges (num_nodes : usize) -> Vec < (usize , usize , f64) >"
+    },
+    {
+      "signature": "pub struct KuramotoBuilder"
+    },
+    {
+      "signature": "pub struct KuramotoSystem"
+    }
+  ],
   "crates/domain_physics/src/physics/chaos/logistic.rs": [
     {
       "signature": "impl LogisticMap { pub fn new (r : f64 , initial_state : f64) -> Self }"

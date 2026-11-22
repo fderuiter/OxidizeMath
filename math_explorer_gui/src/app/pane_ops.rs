@@ -22,6 +22,7 @@ impl MathExplorerApp {
         };
 
         self.pane_tabs.swap(lo, hi);
+        self.pane_bus_links.swap(lo, hi);
         self.selected_tab = self.pane_tabs[0];
         self.secondary_tab = self.pane_tabs[1];
         self.pending_focus_prune = true;

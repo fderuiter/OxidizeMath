@@ -122,6 +122,15 @@ pub(super) fn render_pane_header(
     header_ui.add_space(8.0);
     header_ui.strong(label);
     header_ui.separator();
+    render_pane_bus_link_toggle(
+        app,
+        ctx,
+        &mut header_ui,
+        pane_idx,
+        label,
+        suppress_focus_hint,
+    );
+    header_ui.separator();
     render_pane_header_layout_actions(app, &mut header_ui, pane_idx, header_rect.width());
 
     let mut tab_to_switch = None;
@@ -149,6 +158,41 @@ pub(super) fn render_pane_header(
     }
 }
 
+fn render_pane_bus_link_toggle(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    header_ui: &mut egui::Ui,
+    pane_idx: usize,
+    label: &str,
+    suppress_focus_hint: bool,
+) {
+    let linked = app.is_pane_bus_linked(pane_idx);
+    let btn_label = if linked { "🔗 Linked" } else { "⛓ Link" };
+    let hint = if linked {
+        format!("Unlink {label} from SharedWorkspaceBus")
+    } else {
+        format!("Link {label} to SharedWorkspaceBus for live topology and signal coupling")
+    };
+    let resp = header_ui.selectable_label(linked, btn_label);
+    let clicked = if suppress_focus_hint {
+        resp.on_hover_text(hint).clicked()
+    } else {
+        crate::app::domain_bar::attach_hover_hint(resp, move || hint).clicked()
+    };
+    if clicked {
+        let now_linked = app.toggle_pane_bus_link(pane_idx);
+        if now_linked {
+            app.sync_linked_panes_bus();
+        }
+        let status = if now_linked {
+            format!("{label} linked to shared workspace bus")
+        } else {
+            format!("{label} unlinked from shared workspace bus")
+        };
+        crate::accessibility::announce_live_status(ctx, status);
+    }
+}
+
 pub(super) fn render_pane_content(
     app: &mut MathExplorerApp,
     ctx: &egui::Context,
@@ -172,13 +216,21 @@ pub(super) fn render_pane_content(
     });
     crate::reflective_ui::slider::begin_pane_sweep_scope(ctx, pane_idx);
     egui_plot::clear_last_plot_datasets();
+    let is_linked =
+        app.viewport_layout != super::ViewportLayout::Single && app.is_pane_bus_linked(pane_idx);
     focus::with_pane_scoped_input(ctx, pane_idx, || {
-        if let Some(tab) = app.pane_tab_mut(pane_idx) {
-            tab.show_inside(&mut content_ui, frame);
-        } else {
-            content_ui.centered_and_justified(|ui| {
-                ui.label("No module selected.");
-            });
+        let mut bus_snapshot = is_linked.then(|| std::mem::take(&mut app.workspace_bus));
+        crate::app::workspace_bus::with_pane_bus_scope(bus_snapshot.as_mut(), pane_idx, || {
+            if let Some(tab) = app.pane_tab_mut(pane_idx) {
+                tab.show_inside(&mut content_ui, frame);
+            } else {
+                content_ui.centered_and_justified(|ui| {
+                    ui.label("No module selected.");
+                });
+            }
+        });
+        if let Some(updated_bus) = bus_snapshot {
+            app.workspace_bus = updated_bus;
         }
     });
     egui_plot::clear_last_plot_datasets();

@@ -9,6 +9,8 @@ use eframe::egui;
 use federated_registry::Severity;
 use std::time::Duration;
 
+mod workspace_url;
+
 const APP_SHARE_CLIPBOARD_ID: &str = "app_share_clipboard_status";
 
 impl MathExplorerApp {
@@ -25,30 +27,34 @@ impl MathExplorerApp {
     #[must_use]
     pub fn current_url_signature(&self) -> UrlStateSignature {
         if let Some((selected_tab, tab)) = self.active_share_tab() {
+            let state_revision = self.workspace_url_revision_mix(tab.url_state_revision());
             UrlStateSignature {
                 selected_tab,
                 active_tool_id: tab.active_tool_id(),
-                state_revision: tab.url_state_revision(),
+                state_revision,
             }
         } else {
             UrlStateSignature {
                 selected_tab: self.selected_tab,
                 active_tool_id: None,
-                state_revision: 0,
+                state_revision: self.workspace_url_revision_mix(0),
             }
         }
     }
 
-    /// Encodes the active focused simulation pane's state as a `#tab=...` URL fragment.
+    /// Encodes the active focused simulation pane's state (plus linked multi-pane bindings when active)
+    /// as a `#tab=...` URL fragment.
     pub fn encode_current_share_fragment(&self) -> Result<String, String> {
         let (_, tab) = self
             .active_share_tab()
             .ok_or_else(|| "No active simulation tab selected".to_string())?;
         let preset_json = tab.export_url_preset_json()?;
-        crate::url_state::encode_share_fragment(
+        let workspace_json = self.encode_workspace_link_url_json()?;
+        crate::url_state::encode_share_fragment_with_workspace(
             tab.url_slug(),
             tab.active_tool_id(),
             preset_json.as_deref(),
+            workspace_json.as_deref(),
         )
     }
 
@@ -140,18 +146,27 @@ impl MathExplorerApp {
             return Err(err);
         };
 
-        if let Err(err) = self.tabs[tab_idx]
-            .import_url_preset_json(params.tool.as_deref(), params.state_json.as_deref())
-        {
-            self.record_invalid_share_url(err.clone(), ctx);
-            return Err(err);
-        }
+        if let Some(ref ws_json) = params.workspace_json {
+            if let Err(err) = self.apply_workspace_link_url_json(ws_json) {
+                self.record_invalid_share_url(err.clone(), ctx);
+                return Err(err);
+            }
+        } else {
+            if let Err(err) = self.tabs[tab_idx]
+                .import_url_preset_json(params.tool.as_deref(), params.state_json.as_deref())
+            {
+                self.record_invalid_share_url(err.clone(), ctx);
+                return Err(err);
+            }
 
-        let tab_name = self.tabs[tab_idx].name();
-        self.tab_state_cache.invalidate_tab(tab_name);
-        self.selected_tab = tab_idx;
-        self.focused_pane = 0;
-        self.set_layout(ViewportLayout::Single);
+            let tab_name = self.tabs[tab_idx].name();
+            self.tab_state_cache.invalidate_tab(tab_name);
+            self.selected_tab = tab_idx;
+            self.focused_pane = 0;
+            self.pane_bus_links = [false; 4];
+            self.workspace_bus.reset();
+            self.set_layout(ViewportLayout::Single);
+        }
         self.session_manager.clear_toast();
 
         let canonical_frag = self.encode_current_share_fragment().ok();

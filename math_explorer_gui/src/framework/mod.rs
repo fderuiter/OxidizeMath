@@ -155,6 +155,9 @@ pub trait InteractiveTool {
     #[allow(missing_docs)]
     fn on_keyboard(&mut self, _ctx: &InteractionContext) {}
 
+    /// Optional hook to synchronize a linked pane's tool with [`crate::app::workspace_bus::SharedWorkspaceBus`].
+    fn sync_workspace_bus(&mut self, _bus: &mut crate::app::workspace_bus::SharedWorkspaceBus) {}
+
     /// Revision counter for persisted tool state (`0` falls back to framework UI revision tracking).
     fn state_revision(&self) -> u64 {
         0

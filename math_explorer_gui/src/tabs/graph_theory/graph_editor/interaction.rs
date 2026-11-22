@@ -1,0 +1,270 @@
+//! Mouse interaction, toolbar actions, and layout helpers for [`super::GraphEditorTool`].
+
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use super::{EditorMode, GraphEditorTool};
+use crate::accessibility::AccessibleHoverText;
+use crate::framework::InteractionContext;
+use eframe::egui::{self, Pos2};
+use math_explorer::pure_math::graph_theory::{
+    graph::Graph,
+    layout::{circular_layout, force_directed_layout, grid_layout},
+};
+use petgraph::graph::NodeIndex;
+use std::collections::HashMap;
+
+impl GraphEditorTool {
+    pub(super) fn handle_hover(&mut self, ctx: &InteractionContext) {
+        let node_radius = 15.0;
+        self.hovered_node = None;
+        self.hovered_edge = None;
+        let Some(pos) = ctx.pointer_pos else {
+            return;
+        };
+
+        for (&id, &node_pos) in &self.node_positions {
+            if (pos - node_pos).length() <= node_radius {
+                self.hovered_node = Some(id);
+                return;
+            }
+        }
+
+        for (i, &(u, v, _weight)) in self.edges.iter().enumerate() {
+            if let (Some(&pos_u), Some(&pos_v)) =
+                (self.node_positions.get(&u), self.node_positions.get(&v))
+            {
+                let dir = pos_v - pos_u;
+                let len_sq = dir.length_sq();
+                if len_sq > 0.0 {
+                    let t = ((pos - pos_u).dot(dir) / len_sq).clamp(0.0, 1.0);
+                    let proj = pos_u + dir * t;
+                    if (pos - proj).length() <= 5.0 {
+                        self.hovered_edge = Some(i);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    pub(super) fn handle_drag(&mut self, ctx: &InteractionContext) {
+        if self.mode != EditorMode::AddNode {
+            self.dragged_node = None;
+            return;
+        }
+        if ctx.response.drag_started() {
+            if let Some(id) = self.hovered_node {
+                self.push_undo_snapshot();
+                self.dragged_node = Some(id);
+            }
+        }
+        if ctx.response.dragged() {
+            if let Some(dragged_id) = self.dragged_node {
+                if let Some(node_pos) = self.node_positions.get_mut(&dragged_id) {
+                    *node_pos += ctx.delta;
+                    self.bump_revision();
+                }
+            }
+        }
+        if ctx.response.drag_stopped() {
+            self.dragged_node = None;
+        }
+    }
+
+    pub(super) fn handle_click(&mut self, ctx: &InteractionContext) {
+        if !ctx.is_clicked || self.dragged_node.is_some() {
+            return;
+        }
+        let Some(pos) = ctx.pointer_pos else {
+            return;
+        };
+        match self.mode {
+            EditorMode::AddNode => self.click_add_node(pos),
+            EditorMode::AddEdge => self.click_add_edge(),
+            EditorMode::Remove => self.click_remove_element(),
+        }
+    }
+
+    fn click_add_node(&mut self, pos: Pos2) {
+        if self.hovered_node.is_none() {
+            self.push_undo_snapshot();
+            let node_index = self.graph.add_node(pos);
+            self.node_indices.insert(self.next_node_id, node_index);
+            self.node_positions.insert(self.next_node_id, pos);
+            self.next_node_id += 1;
+        }
+    }
+
+    fn click_add_edge(&mut self) {
+        let Some(clicked_id) = self.hovered_node else {
+            self.selected_node = None;
+            return;
+        };
+        let Some(selected_id) = self.selected_node else {
+            self.selected_node = Some(clicked_id);
+            return;
+        };
+        if selected_id != clicked_id {
+            let edge_exists = self.edges.iter().any(|&(u, v, _)| {
+                (u == selected_id && v == clicked_id) || (v == selected_id && u == clicked_id)
+            });
+            if !edge_exists {
+                self.push_undo_snapshot();
+                let weight = 1.0;
+                self.edges.push((selected_id, clicked_id, weight));
+                if let (Some(&u_idx), Some(&v_idx)) = (
+                    self.node_indices.get(&selected_id),
+                    self.node_indices.get(&clicked_id),
+                ) {
+                    self.graph.add_edge(u_idx, v_idx, weight);
+                }
+            }
+        }
+        self.selected_node = None;
+    }
+
+    fn click_remove_element(&mut self) {
+        if let Some(clicked_id) = self.hovered_node {
+            self.push_undo_snapshot();
+            self.node_positions.remove(&clicked_id);
+            self.node_indices.remove(&clicked_id);
+            self.edges
+                .retain(|&(u, v, _)| u != clicked_id && v != clicked_id);
+            self.rebuild_graph();
+        } else if let Some(edge_idx) = self.hovered_edge {
+            self.push_undo_snapshot();
+            self.edges.remove(edge_idx);
+            self.rebuild_graph();
+        }
+    }
+
+    pub(super) fn show_undo_redo_toolbar(&mut self, ui: &mut egui::Ui) {
+        let m = self.register_keyboard_commands(ui.ctx());
+        let bridge = crate::app::session::shortcuts::read_workspace_history_bridge(ui.ctx());
+        let can_undo = if bridge.active {
+            bridge.can_undo
+        } else {
+            self.can_undo()
+        };
+        let can_redo = if bridge.active {
+            bridge.can_redo
+        } else {
+            self.can_redo()
+        };
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(can_undo, egui::Button::new("↩ Undo"))
+                .accessible_hover_text("Undo the last graph modification (Ctrl+Z / Cmd+Z)")
+                .clicked()
+            {
+                if bridge.active {
+                    crate::app::session::shortcuts::request_workspace_undo(ui.ctx());
+                    crate::accessibility::announce_status("Undid graph modification");
+                } else {
+                    self.undo();
+                }
+            }
+
+            if ui
+                .add_enabled(can_redo, egui::Button::new("↪ Redo"))
+                .accessible_hover_text(
+                    "Redo the last undone graph modification (Ctrl+Y / Cmd+Shift+Z)",
+                )
+                .clicked()
+            {
+                if bridge.active {
+                    crate::app::session::shortcuts::request_workspace_redo(ui.ctx());
+                    crate::accessibility::announce_status("Redid graph modification");
+                } else {
+                    self.redo();
+                }
+            }
+        });
+
+        if !bridge.active {
+            self.consume_toolbar_undo_redo(ui, m);
+        }
+    }
+
+    pub(super) fn show_clear_button(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .button("🔄 Clear Graph")
+            .accessible_hover_text("Remove all nodes and edges and start with a fresh graph")
+            .clicked()
+            && (!self.node_positions.is_empty() || !self.edges.is_empty())
+        {
+            self.push_undo_snapshot();
+            self.graph = Graph::new();
+            self.node_indices.clear();
+            self.node_positions.clear();
+            self.edges.clear();
+            self.selected_node = None;
+            self.next_node_id = 0;
+        }
+    }
+
+    pub(super) fn show_layout_toolbar(&mut self, ui: &mut egui::Ui) {
+        ui.label("Auto Layout:");
+        ui.horizontal(|ui| {
+            let bounds = (100.0, 100.0, 700.0, 500.0);
+
+            if ui
+                .button("⭕ Circular")
+                .accessible_hover_text("Arrange nodes in a circle")
+                .clicked()
+                && !self.node_positions.is_empty()
+            {
+                self.push_undo_snapshot();
+                let layout = circular_layout(&self.graph, bounds);
+                self.apply_layout(&layout);
+            }
+
+            if ui
+                .button("▦ Grid")
+                .accessible_hover_text("Arrange nodes in a grid layout")
+                .clicked()
+                && !self.node_positions.is_empty()
+            {
+                self.push_undo_snapshot();
+                let layout = grid_layout(&self.graph, bounds);
+                self.apply_layout(&layout);
+            }
+
+            if ui
+                .button("🧲 Force-Directed")
+                .accessible_hover_text("Arrange nodes using force-directed physics")
+                .clicked()
+                && !self.node_positions.is_empty()
+            {
+                self.push_undo_snapshot();
+                let layout = force_directed_layout(&self.graph, bounds, 100);
+                self.apply_layout(&layout);
+            }
+        });
+    }
+
+    pub(super) fn apply_layout(&mut self, layout: &HashMap<NodeIndex, (f32, f32)>) {
+        for (&id, &node_idx) in &self.node_indices {
+            if let Some(&(x, y)) = layout.get(&node_idx) {
+                self.node_positions.insert(id, Pos2::new(x, y));
+            }
+        }
+        self.rebuild_graph();
+    }
+
+    pub(crate) fn rebuild_graph(&mut self) {
+        self.graph = Graph::new();
+        self.node_indices.clear();
+        for (&id, &pos) in &self.node_positions {
+            let idx = self.graph.add_node(pos);
+            self.node_indices.insert(id, idx);
+        }
+        for &(u, v, weight) in &self.edges {
+            if let (Some(&u_idx), Some(&v_idx)) =
+                (self.node_indices.get(&u), self.node_indices.get(&v))
+            {
+                self.graph.add_edge(u_idx, v_idx, weight);
+            }
+        }
+    }
+}

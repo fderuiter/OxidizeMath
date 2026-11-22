@@ -155,6 +155,15 @@ pub trait ExplorerTab {
         }
     }
 
+    /// Synchronizes this tab's active tool with [`crate::app::workspace_bus::SharedWorkspaceBus`] when linked.
+    fn sync_workspace_bus(&mut self, bus: &mut crate::app::workspace_bus::SharedWorkspaceBus) {
+        if let Some(fw) = self.framework_mut() {
+            if let Some(tool) = fw.active_tool.as_mut() {
+                tool.sync_workspace_bus(bus);
+            }
+        }
+    }
+
     /// Canonical URL slug identifying this tab in `#tab=<slug>` share links.
     fn url_slug(&self) -> &'static str {
         match self.name() {

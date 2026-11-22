@@ -264,8 +264,11 @@ fn render_multi_pane_regions(
 ) {
     let pane_count = app.viewport_layout.pane_count();
     let pane_labels = app.viewport_layout.pane_labels();
+    let initial_revs = app.workspace_bus.revisions();
+    let mut earlier_linked_needs_sync = false;
     const HEADER_HEIGHT: f32 = 28.0;
     for (pane_idx, &pane_rect) in pane_rects.iter().take(pane_count).enumerate() {
+        let rev_before_pane = app.workspace_bus.revisions();
         let label = pane_labels.get(pane_idx).copied().unwrap_or("Pane");
         let header_rect =
             egui::Rect::from_min_size(pane_rect.min, egui::vec2(pane_rect.width(), HEADER_HEIGHT));
@@ -288,6 +291,19 @@ fn render_multi_pane_regions(
         );
         render_pane_content(app, ctx, frame, &mut pane_ui, pane_idx, content_rect);
         focus::finish_pending_pane_focus(ctx, should_focus);
+
+        if pane_idx > 0
+            && app.workspace_bus.revisions() != rev_before_pane
+            && (0..pane_idx).any(|prev| app.is_pane_bus_linked(prev))
+        {
+            earlier_linked_needs_sync = true;
+        }
+    }
+    if earlier_linked_needs_sync || app.workspace_bus.revisions() != initial_revs {
+        app.sync_linked_panes_bus();
+        if earlier_linked_needs_sync {
+            ctx.request_repaint();
+        }
     }
 }
 
