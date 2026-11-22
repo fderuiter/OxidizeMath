@@ -1,0 +1,24 @@
+# ADR 0035: Local Win Ratio and Clinical Cohort Workbench
+
+## Status
+Accepted
+
+## Context
+Biostatistics researchers using `ClinicalTrialsTab` in `math_explorer_gui` faced three functional and architectural gaps despite verified domain kernels in `crates/domain_applied` and mathematical derivations in `papers/win_ratio.tex` and `papers/clinical_trials_statistics.tex`:
+1. **Unexposed Win Ratio Kernels and Missing Per-Tier Breakdowns**: `crates/domain_applied/src/applied/win_ratio` implemented hierarchical pairwise comparators (`HigherIsBetter`, `LowerIsBetter`, `ThresholdComparator`), `UnmatchedPairing`, `MatchedPairing`, `calculate_statistics`, `WinLossCounts`, `BivariateWeibullModel`, and `ProbabilityWinRatioContext`, yet `WinRatioAnalysis` collapsed all hierarchical outcomes into aggregate `(wins, losses)` totals, `MatchedPairing::evaluate` panicked via `assert_eq!` on unequal arm sizes, and `ClinicalTrialsTab` exposed no Win Ratio tool.
+2. **Single-Arm Survival Input and Unwired Log-Rank / Risk Counts**: `SurvivalAnalysisTool` parsed only legacy two-column `time, event` text, omitted two-arm `time, event, arm` cohorts, lacked a Mantel-Haenszel two-arm log-rank test in `survival_analysis.rs`, and discarded `TimePoint` counts (`n_at_risk`, `n_events`, `n_censored`) during rendering and dataset export.
+3. **Disabled Trial Planning Exports and Nondeterministic Strata Ordering**: `RandomizationTool` and `SampleSizeCalculatorTool` returned `ExportCapabilities::none()`, omitted `StratifiedRandomizer`, `TTestIndependent`, `ChiSquare2x2`, and `calculate_risk_metrics` from the GUI, and `StratifiedRandomizer::assign_stratified` grouped strata with `HashMap`, causing platform-dependent RNG draw order across `wasm32` and native builds.
+
+## Decision
+1. **Zero-Allocation Verified Tier Breakdown and Mantel-Haenszel Log-Rank Kernels**:
+   - Add `#[verified_engine::verified]` `TierOutcomeCounts`, `PairingStrategy::evaluate_tiers_into`, `WinRatioAnalysis::evaluate_tiers_into`, and `WinRatioAnalysis::evaluate_tiers` in `crates/domain_applied/src/applied/win_ratio/pair_comparison.rs`, returning fallible `Result<..., ClinicalTrialError>` on empty cohorts or unequal `MatchedPairing` group lengths while performing zero heap allocations inside inner pair loops under `VerifiedAllocator`.
+   - Add `#[verified_engine::verified]` `LogRankResult`, `log_rank_test_into`, and `log_rank_test` in `crates/domain_applied/src/applied/clinical_trials/survival_analysis.rs`, sorting preallocated scratch slices via `f64::total_cmp` and sweeping tied event timestamps within `math_commons::registry::TOLERANCE_STANDARD` with zero inner-loop heap allocations.
+   - Replace the internal `HashMap` grouping in `StratifiedRandomizer::assign_stratified` with `BTreeMap` so seeded `OxidizeRng` schedules reproduce identically across desktop and `wasm32-unknown-unknown`.
+2. **Privacy-Preserving `WinRatioWorkbenchTool` and Upgraded `ClinicalTrialsTab` Suite**:
+   - Add `WinRatioWorkbenchTool` (`win_ratio.rs` and `win_ratio_io.rs`) with up to four configurable tiers, `UnmatchedPairing` and `MatchedPairing`, `WinLossCounts` and `calculate_statistics` metrics, a waterfall `BarChart`, a `BivariateWeibullModel` + `ProbabilityWinRatioContext` simulator view, and local CSV/TSV cohort I/O via `spawn_open_file_dialog` and `spawn_save_as_file_dialog` under the `'self'` CSP.
+   - Upgrade `SurvivalAnalysisTool` (`survival.rs` and `survival_io.rs`) to accept both legacy `time, event` text and two-arm `time, event, arm` CSV/TSV cohorts (stripping UTF-8 BOM via `strip_utf8_bom`, enforcing `SurvivalTime::new` finiteness and `MAX_ITERATIONS`), plot censor `Points`, display `try_estimate_hazard_ratio` and `log_rank_test`, and export `TimePoint` risk tables while keeping `SurvivalState` unchanged for `.mws` and preset compatibility.
+   - Upgrade `RandomizationTool` and `SampleSizeCalculatorTool` (`sample_size.rs` and `sample_size_cards.rs`) to `ExportCapabilities::plot()`, adding seeded `StratifiedRandomizer` schedules, cumulative arm-balance trajectories, sample-size power curves, and `TTestIndependent`, `ChiSquare2x2`, and `calculate_risk_metrics` cards while preserving backward-compatible `#[serde(default, skip_serializing_if = ...)]` state serialization.
+
+## Consequences
+- **Positive**: All four `ClinicalTrialsTab` tools now support `ExportCapabilities::plot()` (raising audited plot tools from `32` to `35` and cutting non-export tools from `16` to `14` across `56` total tools), local patient CSV/TSV cohorts never leave the browser or desktop sandbox, and verified hot loops allocate zero bytes under `VerifiedAllocator`.
+- **Neutral**: Existing public signatures remain backward-compatible while newly verified items are recorded in `crates/unified_verification/api_baseline.json`, with zero new Cargo dependencies so the WebAssembly bundle stays well below the `3 MB` ceiling.

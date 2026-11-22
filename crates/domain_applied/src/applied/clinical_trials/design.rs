@@ -162,12 +162,13 @@ impl<S: AllocationStrategy> StratifiedRandomizer<S> {
         rng: &mut R,
         patients: &[Patient],
     ) -> Result<HashMap<String, Group>, ClinicalTrialError> {
-        let mut strata_map: HashMap<String, Vec<&Patient>> = HashMap::new();
+        let mut strata_map: std::collections::BTreeMap<String, Vec<&Patient>> =
+            std::collections::BTreeMap::new();
         for p in patients {
             strata_map.entry(p.stratum.clone()).or_default().push(p);
         }
 
-        let mut final_assignments = HashMap::new();
+        let mut final_assignments = HashMap::with_capacity(patients.len());
 
         for (_stratum, patients_in_stratum) in strata_map {
             let n = patients_in_stratum.len();

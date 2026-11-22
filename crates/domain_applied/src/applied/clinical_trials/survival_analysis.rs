@@ -1,4 +1,5 @@
 use super::types::{ClinicalTrialError, SurvivalTime};
+use statrs::distribution::{ChiSquared, ContinuousCDF};
 
 /// Represents a single subject's outcome in a survival analysis study.
 #[derive(Debug, Clone, Copy)]
@@ -187,4 +188,138 @@ pub fn try_estimate_hazard_ratio(
     let rate2 = events2 / time2;
 
     Ok(rate1 / rate2)
+}
+
+/// Summary statistics from a two-arm Mantel-Haenszel survival log-rank test.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LogRankResult {
+    /// Mantel-Haenszel chi-square test statistic ($\chi^2$ with 1 degree of freedom).
+    pub statistic: f64,
+    /// Two-sided survival equivalence p-value derived from $\chi^2_1$.
+    pub p_value: f64,
+    /// Observed events $O_1$ in `group1`.
+    pub observed_group1: f64,
+    /// Expected events $E_1$ in `group1` under the null hypothesis of identical hazards.
+    pub expected_group1: f64,
+    /// Hypergeometric Mantel-Haenszel variance $V_1$ accumulated across distinct event times.
+    pub variance: f64,
+}
+
+#[verified_engine::verified]
+fn next_anchor_time(g1: &[Observation], i1: usize, g2: &[Observation], i2: usize) -> f64 {
+    match (g1.get(i1), g2.get(i2)) {
+        (Some(a), Some(b)) => a.time.as_f64().min(b.time.as_f64()),
+        (Some(a), None) => a.time.as_f64(),
+        (None, Some(b)) => b.time.as_f64(),
+        (None, None) => 0.0,
+    }
+}
+
+#[verified_engine::verified]
+fn step_arm_at_time(obs: &[Observation], cursor: &mut usize, anchor_t: f64) -> (usize, usize) {
+    let mut events = 0;
+    let mut censored = 0;
+    while *cursor < obs.len()
+        && (obs[*cursor].time.as_f64() - anchor_t).abs()
+            < math_commons::registry::TOLERANCE_STANDARD
+    {
+        if obs[*cursor].event_occurred {
+            events += 1;
+        } else {
+            censored += 1;
+        }
+        *cursor += 1;
+    }
+    (events, censored)
+}
+
+/// Computes the two-arm Mantel-Haenszel log-rank test using caller-supplied scratch buffers.
+///
+/// When `scratch1` and `scratch2` are preallocated with at least `group1.len()` and `group2.len()`
+/// capacity, sorting and event-time accumulation perform zero dynamic heap allocations.
+#[verified_engine::verified]
+pub fn log_rank_test_into(
+    group1: &[Observation],
+    group2: &[Observation],
+    scratch1: &mut Vec<Observation>,
+    scratch2: &mut Vec<Observation>,
+) -> Result<LogRankResult, ClinicalTrialError> {
+    if group1.is_empty() || group2.is_empty() {
+        return Err(ClinicalTrialError::InsufficientSampleSize {
+            required: 1,
+            actual: group1.len().min(group2.len()),
+        });
+    }
+
+    scratch1.clear();
+    scratch1.extend_from_slice(group1);
+    scratch1.sort_unstable_by(|a, b| a.time.as_f64().total_cmp(&b.time.as_f64()));
+
+    scratch2.clear();
+    scratch2.extend_from_slice(group2);
+    scratch2.sort_unstable_by(|a, b| a.time.as_f64().total_cmp(&b.time.as_f64()));
+
+    let mut i1 = 0;
+    let mut i2 = 0;
+    let mut n1_risk = scratch1.len();
+    let mut n2_risk = scratch2.len();
+    let mut observed_1 = 0.0;
+    let mut expected_1 = 0.0;
+    let mut variance_1 = 0.0;
+
+    while i1 < scratch1.len() || i2 < scratch2.len() {
+        let t = next_anchor_time(scratch1, i1, scratch2, i2);
+        let (d1, c1) = step_arm_at_time(scratch1, &mut i1, t);
+        let (d2, c2) = step_arm_at_time(scratch2, &mut i2, t);
+        let d = d1 + d2;
+        let n = n1_risk + n2_risk;
+
+        if d > 0 && n > 0 {
+            let n_f = n as f64;
+            let d_f = d as f64;
+            let n1_f = n1_risk as f64;
+            let n2_f = n2_risk as f64;
+            observed_1 += d1 as f64;
+            expected_1 += d_f * (n1_f / n_f);
+            if n > 1 {
+                variance_1 += (n1_f * n2_f * d_f * (n_f - d_f)) / (n_f * n_f * (n_f - 1.0));
+            }
+        }
+
+        n1_risk -= d1 + c1;
+        n2_risk -= d2 + c2;
+    }
+
+    if variance_1 <= 0.0 {
+        return Err(ClinicalTrialError::StatisticalError(
+            "Log-rank variance is zero (no comparable uncensored events across arms)".to_string(),
+        ));
+    }
+
+    let statistic = (observed_1 - expected_1).powi(2) / variance_1;
+    let dist =
+        ChiSquared::new(1.0).map_err(|e| ClinicalTrialError::StatisticalError(e.to_string()))?;
+    let p_value = (1.0 - dist.cdf(statistic)).clamp(0.0, 1.0);
+
+    Ok(LogRankResult {
+        statistic,
+        p_value,
+        observed_group1: observed_1,
+        expected_group1: expected_1,
+        variance: variance_1,
+    })
+}
+
+/// Computes the two-arm Mantel-Haenszel log-rank test statistic and two-sided $\chi^2_1$ p-value.
+///
+/// Preallocates sorted observation buffers outside the time-step scan before delegating to
+/// [`log_rank_test_into`].
+#[verified_engine::verified]
+pub fn log_rank_test(
+    group1: &[Observation],
+    group2: &[Observation],
+) -> Result<LogRankResult, ClinicalTrialError> {
+    let mut scratch1 = Vec::with_capacity(group1.len());
+    let mut scratch2 = Vec::with_capacity(group2.len());
+    log_rank_test_into(group1, group2, &mut scratch1, &mut scratch2)
 }
