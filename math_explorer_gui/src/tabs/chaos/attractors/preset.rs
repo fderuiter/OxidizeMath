@@ -17,6 +17,8 @@ struct AttractorSaveState {
     execution_state: SolverExecutionState,
     show_annotations: bool,
     camera: Camera3D,
+    #[serde(default, skip_serializing_if = "crate::audio::AcousticSettings::is_default")]
+    audio: crate::audio::AcousticSettings,
 }
 
 #[derive(serde::Deserialize)]
@@ -41,6 +43,8 @@ struct AttractorState {
     yaw: Option<f32>,
     #[serde(default)]
     zoom: Option<f32>,
+    #[serde(default)]
+    audio: crate::audio::AcousticSettings,
 }
 
 impl AttractorPlotter {
@@ -54,6 +58,7 @@ impl AttractorPlotter {
             execution_state: self.execution_state,
             show_annotations: self.show_annotations,
             camera: self.camera,
+            audio: self.audio_settings,
         })
         .ok()
     }
@@ -62,6 +67,7 @@ impl AttractorPlotter {
         <Self as crate::framework::InteractiveTool>::state_bounds(self).validate_json(state)?;
         let s: AttractorState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid AttractorPlotter state: {e}"))?;
+        s.audio.validate()?;
         if !s.sigma.is_finite()
             || !s.rho.is_finite()
             || !s.beta.is_finite()
@@ -88,6 +94,7 @@ impl AttractorPlotter {
         self.dt = s.dt;
         self.simulation_speed = s.simulation_speed;
         self.show_annotations = s.show_annotations;
+        self.audio_settings = s.audio;
         self.camera.apply_pose(camera);
         self.dragged_callout = None;
         self.reset();

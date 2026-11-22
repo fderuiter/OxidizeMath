@@ -397,6 +397,7 @@ impl SimulationFramework {
         });
 
         self.sync_overlays_before_frame(&ctx, id_source);
+        self.begin_frame_audio_bridge(&ctx);
 
         self.show_export_action_bar(ui, id_source);
         self.show_side_panel(ui, id_source);
@@ -440,6 +441,7 @@ impl SimulationFramework {
         self.show_export_modal_dialog(&ctx, id_source);
         self.show_starter_gallery_if_open(&ctx, id_source);
         self.sync_overlays_after_frame(&ctx, id_source);
+        self.finish_frame_audio_bridge(&ctx);
 
         self.dispatch_pending_exports_with_ctx(&ctx);
     }

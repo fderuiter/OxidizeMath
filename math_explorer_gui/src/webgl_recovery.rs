@@ -151,6 +151,7 @@ fn on_context_lost(event: &web_sys::Event, runtime_rc: &Rc<RefCell<RecoveryRunti
     if crate::is_error_boundary_active(&doc) {
         return;
     }
+    crate::audio::silence_all_audio_on_webgl_loss();
 
     let (epoch, runner_to_destroy, envelope_json, filename, storage_blocked) = {
         let mut rt = runtime_rc.borrow_mut();

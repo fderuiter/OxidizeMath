@@ -25,6 +25,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) cached_param_labels: Vec<String>,
     pub(super) cached_observable_label: Option<&'static str>,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(crate) audio_settings: crate::audio::AcousticSettings,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -74,6 +75,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             cached_param_labels,
             cached_observable_label: None,
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
+            audio_settings: crate::audio::AcousticSettings::default(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -179,11 +181,13 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         });
         ui.separator();
 
-        if let Some(action) =
+        let mut transport =
             PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
-                .can_reset(true)
-                .show(ui)
-        {
+                .can_reset(true);
+        if M::supports_sonification() {
+            transport = transport.with_sonification(&mut self.audio_settings);
+        }
+        if let Some(action) = transport.show(ui) {
             match action {
                 PlaybackAction::Play => {
                     let _ = self.controller.send_command(SimCommand::Start);
@@ -238,10 +242,15 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        if M::is_raster_model() {
+        let base = if M::is_raster_model() {
             crate::framework::ExportCapabilities::raster_only()
         } else {
             crate::framework::ExportCapabilities::plot()
+        };
+        if M::supports_sonification() {
+            base.with_audio()
+        } else {
+            base
         }
     }
 
@@ -280,6 +289,10 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                 val.to_bits().hash(&mut h);
             }
         }
+        if M::supports_sonification() {
+            self.audio_settings.gain.to_bits().hash(&mut h);
+            self.audio_settings.pitch_scale.to_bits().hash(&mut h);
+        }
         h.finish().max(1)
     }
 
@@ -294,13 +307,34 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
 
     fn save_state(&self) -> Option<String> {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let sorted: std::collections::BTreeMap<&String, &f64> = params.iter().collect();
+        let mut sorted: std::collections::BTreeMap<String, f64> =
+            params.iter().map(|(k, &v)| (k.clone(), v)).collect();
+        if M::supports_sonification() && !self.audio_settings.is_default() {
+            sorted.insert(
+                "audio_gain".to_string(),
+                f64::from(self.audio_settings.gain),
+            );
+            sorted.insert(
+                "audio_pitch_scale".to_string(),
+                f64::from(self.audio_settings.pitch_scale),
+            );
+        }
         serde_json::to_string(&sorted).ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let params: HashMap<String, f64> = serde_json::from_str(state)
+        let mut params: HashMap<String, f64> = serde_json::from_str(state)
             .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
+        let mut next_audio = crate::audio::AcousticSettings::default();
+        if M::supports_sonification() {
+            if let Some(g) = params.remove("audio_gain") {
+                next_audio.gain = g as f32;
+            }
+            if let Some(ps) = params.remove("audio_pitch_scale") {
+                next_audio.pitch_scale = ps as f32;
+            }
+            next_audio.validate()?;
+        }
         if !self.param_metadata.is_empty() && params.is_empty() {
             return Err(format!(
                 "Empty parameter configuration for {}; expected parameters: {}",
@@ -330,6 +364,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                 guard.insert(key, value);
             }
         }
+        self.audio_settings = next_audio;
         self.texture = None;
         self.reset_simulation(None);
         Ok(())
@@ -359,6 +394,55 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         {
             ui.ctx().request_repaint();
         }
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        if !M::supports_sonification() {
+            return None;
+        }
+        let snapshot = self
+            .stepped_snapshot
+            .as_ref()
+            .or_else(|| self.controller.latest_snapshot())?;
+        let mut frame = M::sonification_from_snapshot(snapshot)?;
+        frame.active = self.controller.state().is_running() && self.has_finite_parameters();
+        Some(frame.sanitized())
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.audio_settings
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.audio_settings = settings.sanitized();
+    }
+
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        if !M::supports_sonification() {
+            return Vec::new();
+        }
+        let count = num_frames.max(1);
+        let params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let mut model = M::new(&params);
+        let sub_steps = self.steps_per_frame.clamp(1, 20);
+        let mut out = Vec::with_capacity(count);
+        for _ in 0..count {
+            for _ in 0..sub_steps {
+                model.step(&params);
+            }
+            if let Some(mut frame) = model.sonification_frame() {
+                frame.active = true;
+                out.push(frame.sanitized());
+            }
+        }
+        out
     }
 }
 

@@ -93,6 +93,7 @@ impl MriTool {
         )
         .reset_label("↻ Reset (90° Pulse)")
         .can_reset(true)
+        .with_sonification(&mut self.audio_settings)
         .show(ui)
         {
             match action {

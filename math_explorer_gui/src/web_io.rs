@@ -301,6 +301,8 @@ mod tests {
         assert_eq!(infer_mime_type("plot.svg"), "image/svg+xml");
         assert_eq!(infer_mime_type("figure.png"), "image/png");
         assert_eq!(infer_mime_type("anim.gif"), "image/gif");
+        assert_eq!(infer_mime_type("clip_audio.wav"), "audio/wav");
+        assert_eq!(infer_mime_type("CLIP.WAV"), "audio/wav");
         assert_eq!(infer_mime_type("surface.obj"), "application/octet-stream");
     }
 

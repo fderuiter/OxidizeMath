@@ -5,6 +5,8 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 
 pub mod runner;
+/// Zero-allocation NMR free-induction-decay (`T1`/`T2`) bell synthesis helpers.
+pub mod sonification;
 pub mod theory;
 pub mod tool;
 pub mod ui;

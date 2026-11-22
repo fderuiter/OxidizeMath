@@ -1,8 +1,12 @@
-use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
+use crate::framework::{ExportCapabilities, InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Line, Plot, PlotPoint, Points};
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 use std::collections::VecDeque;
+
+#[path = "spike_analysis/sonification.rs"]
+mod sonification;
+pub use sonification::hodgkin_huxley_sonification_frame;
 
 pub struct SpikeAnalysisTool {
     neuron: HodgkinHuxleyNeuron,
@@ -16,6 +20,8 @@ pub struct SpikeAnalysisTool {
     input_current: f64,
     spike_threshold: f64,
     simulation_speed: usize,
+    steps_since_last_spike: u32,
+    audio_settings: crate::audio::AcousticSettings,
 }
 
 impl Default for SpikeAnalysisTool {
@@ -32,6 +38,8 @@ impl Default for SpikeAnalysisTool {
             input_current: 10.0,
             spike_threshold: 0.0,
             simulation_speed: 10,
+            steps_since_last_spike: u32::MAX,
+            audio_settings: crate::audio::AcousticSettings::default(),
         }
     }
 }
@@ -44,6 +52,8 @@ struct SpikeAnalysisState {
     simulation_speed: usize,
     #[serde(default)]
     is_running: bool,
+    #[serde(default, skip_serializing_if = "crate::audio::AcousticSettings::is_default")]
+    audio: crate::audio::AcousticSettings,
 }
 
 impl InteractiveTool for SpikeAnalysisTool {
@@ -60,12 +70,37 @@ impl InteractiveTool for SpikeAnalysisTool {
         "neuroscience"
     }
 
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_audio()
+    }
+
+    fn state_revision(&self) -> u64 {
+        self.compute_state_revision()
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(self.current_sonification_frame())
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.get_audio_settings()
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.update_audio_settings(settings);
+    }
+
+    fn sample_sonification_frames(&mut self, frame_count: usize) -> Vec<crate::audio::SonificationFrame> {
+        self.render_wav_frames(frame_count)
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&SpikeAnalysisState {
             input_current: self.input_current,
             spike_threshold: self.spike_threshold,
             simulation_speed: self.simulation_speed,
             is_running: self.is_running,
+            audio: self.audio_settings,
         })
         .ok()
     }
@@ -73,6 +108,7 @@ impl InteractiveTool for SpikeAnalysisTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let parsed: SpikeAnalysisState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid spike analysis state: {e}"))?;
+        parsed.audio.validate()?;
         if !parsed.input_current.is_finite()
             || !(0.0..=50.0).contains(&parsed.input_current)
             || !parsed.spike_threshold.is_finite()
@@ -86,6 +122,7 @@ impl InteractiveTool for SpikeAnalysisTool {
         self.spike_threshold = parsed.spike_threshold;
         self.simulation_speed = parsed.simulation_speed;
         self.is_running = parsed.is_running;
+        self.audio_settings = parsed.audio;
         Ok(())
     }
 
@@ -131,6 +168,7 @@ impl SpikeAnalysisTool {
                 "Spike Train Analysis",
                 self.is_running,
             )
+            .with_sonification(&mut self.audio_settings)
             .show(ui)
             {
                 match action {
@@ -217,6 +255,7 @@ impl SpikeAnalysisTool {
 
     fn advance_dt_tick(&mut self) {
         let dt = 0.01;
+        self.steps_since_last_spike = self.steps_since_last_spike.saturating_add(1);
         self.neuron.update(dt, self.input_current);
         let v = self.neuron.v();
         self.time += dt;
@@ -248,6 +287,7 @@ impl SpikeAnalysisTool {
     }
 
     fn record_spike(&mut self, time: f64) {
+        self.steps_since_last_spike = 0;
         if let Some(&last_spike_time) = self.spike_times.last() {
             let isi = time - last_spike_time;
             self.isis.push_back(isi);
@@ -269,6 +309,7 @@ impl SpikeAnalysisTool {
         self.spike_plot_points.clear();
         self.isis.clear();
         self.last_voltage = -65.0;
+        self.steps_since_last_spike = u32::MAX;
         self.is_running = false;
     }
 

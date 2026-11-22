@@ -15,11 +15,15 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[path = "wave_sim/sonification.rs"]
+mod sonification;
+
 pub struct WaveData {
     pub time: f64,
     pub x_axis: Vec<f64>,
     pub prob_density: Vec<f64>,
     pub potential: Vec<f64>,
+    pub sonification: crate::audio::SonificationFrame,
 }
 
 pub struct WaveUnified {
@@ -153,6 +157,7 @@ impl UnifiedModel for WaveUnified {
             x_axis: self.x_axis.clone(),
             prob_density: safe_prob,
             potential: safe_potential,
+            sonification: self.compute_sonification_frame(),
         }) as Box<dyn Any + Send>;
 
         StateSnapshot {
@@ -162,6 +167,24 @@ impl UnifiedModel for WaveUnified {
             custom_data: Vec::new(),
             structured_data: Some(structured_data),
         }
+    }
+
+    fn supports_sonification() -> bool {
+        true
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(self.compute_sonification_frame())
+    }
+
+    fn sonification_from_snapshot(
+        snapshot: &StateSnapshot,
+    ) -> Option<crate::audio::SonificationFrame> {
+        snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<WaveData>())
+            .map(|w| w.sonification)
     }
 
     fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {

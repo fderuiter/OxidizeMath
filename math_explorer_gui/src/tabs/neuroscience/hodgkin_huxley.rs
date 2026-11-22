@@ -13,6 +13,7 @@ pub struct HodgkinHuxleyUnified {
     time: f64,
     i_ext: f64,
     dt: f64,
+    spike_latch: u8,
 }
 
 impl crate::framework::recovery::FiniteStateGuard for HodgkinHuxleyUnified {}
@@ -45,6 +46,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             time: 0.0,
             i_ext,
             dt: 0.01,
+            spike_latch: 0,
         }
     }
 
@@ -76,12 +78,43 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             }
         }
 
+        let prev_v = self.neuron.v();
         self.neuron.update(self.dt, self.i_ext);
+        let next_v = self.neuron.v();
+        if prev_v < 0.0 && next_v >= 0.0 {
+            self.spike_latch = 30;
+        } else {
+            self.spike_latch = self.spike_latch.saturating_sub(1);
+        }
         self.time += self.dt;
-        self.history.push_back([self.time, self.neuron.v()]);
+        self.history.push_back([self.time, next_v]);
         while self.history.len() > 10_000 {
             self.history.pop_front();
         }
+    }
+
+    fn supports_sonification() -> bool {
+        true
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(super::spike_analysis::hodgkin_huxley_sonification_frame(
+            self.neuron.v(),
+            self.neuron.m(),
+            self.neuron.h(),
+            self.neuron.n(),
+            self.spike_latch > 0,
+        ))
+    }
+
+    fn sonification_from_snapshot(
+        snapshot: &StateSnapshot,
+    ) -> Option<crate::audio::SonificationFrame> {
+        snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<crate::audio::SonificationFrame>())
+            .copied()
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -92,13 +125,16 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         }
         custom_data.push(self.time);
         custom_data.push(self.neuron.v());
+        let structured_data = self
+            .sonification_frame()
+            .map(|f| Box::new(f) as Box<dyn std::any::Any + Send>);
 
         StateSnapshot {
             width: 0,
             height: 0,
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data,
-            structured_data: None,
+            structured_data,
         }
     }
 

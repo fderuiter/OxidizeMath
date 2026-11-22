@@ -1,10 +1,13 @@
+mod audio_sync;
 pub mod callout_overlay;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
+mod export_audio;
 mod export_figure;
+mod export_preset_bar;
 mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
@@ -22,6 +25,7 @@ mod pane_scope;
 mod perf_guard_tests;
 mod persistence;
 pub mod playback;
+mod playback_audio;
 #[cfg(test)]
 mod playback_tests;
 pub mod recovery;
@@ -302,6 +306,36 @@ pub trait InteractiveTool {
         frames
     }
 
+    /// Optional hook emitting a zero-allocation [`crate::audio::SonificationFrame`] for live Web Audio and `.wav` export.
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        None
+    }
+
+    /// Returns persisted non-mute [`crate::audio::AcousticSettings`] for presets and share URLs.
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        crate::audio::AcousticSettings::default()
+    }
+
+    /// Applies persisted non-mute [`crate::audio::AcousticSettings`] without unmuting playback.
+    fn set_acoustic_settings(&mut self, _settings: crate::audio::AcousticSettings) {}
+
+    /// Samples deterministic multi-step [`crate::audio::SonificationFrame`] trajectories for 16-bit `.wav` export.
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        let count = num_frames.max(1);
+        let mut frames = Vec::with_capacity(count);
+        for _ in 0..count {
+            self.step_simulation();
+            if let Some(mut frame) = self.sonification_frame() {
+                frame.active = true;
+                frames.push(frame.sanitized());
+            }
+        }
+        frames
+    }
+
     /// Returns a type-erased reference for test inspection of concrete tool state.
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
@@ -361,6 +395,8 @@ pub struct SimulationFramework {
     pub step_counter: usize,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
+    /// Default-muted live Web Audio and gain-limiter controller.
+    pub audio_controller: crate::audio::AudioEngineController,
     pub(super) instance_id: u64,
     pub(super) sync_state: FrameworkSyncState,
     pub(super) rev_cache: FrameworkRevisionCache,
@@ -404,6 +440,7 @@ impl SimulationFramework {
             diagnostic_report: None,
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
+            audio_controller: crate::audio::AudioEngineController::new(),
             instance_id: overlay_sync::next_framework_id(),
             sync_state: FrameworkSyncState::default(),
             rev_cache: FrameworkRevisionCache::default(),

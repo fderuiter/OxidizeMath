@@ -15,6 +15,8 @@ pub(crate) enum ExportFormat {
     Svg,
     /// Animated Graphics Interchange Format (`.gif`).
     Gif,
+    /// 16-bit PCM Waveform Audio File Format (`.wav`).
+    Wav,
 }
 
 impl ExportFormat {
@@ -25,6 +27,7 @@ impl ExportFormat {
             Self::Png => ("png", "PNG", "PNG Image", "figure"),
             Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
             Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
+            Self::Wav => ("wav", "WAV", "WAV Audio", "audio"),
         }
     }
 
@@ -250,6 +253,7 @@ impl SimulationFramework {
             (ExportFormat::Png, ExportTarget::Clipboard) => self.dispatch_png_clipboard_export(ctx),
             (ExportFormat::Svg, _) => self.dispatch_svg_export(),
             (ExportFormat::Gif, _) => self.dispatch_gif_export(),
+            (ExportFormat::Wav, _) => self.dispatch_wav_export(),
         }
     }
 

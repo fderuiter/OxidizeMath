@@ -1,7 +1,11 @@
 use crate::accessibility::AccessibleTheoryHover;
+use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui::{self, Color32, ColorImage, TextureHandle, TextureOptions};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::number_theory::primes::primes_up_to;
+
+#[path = "prime_spiral/sonification.rs"]
+mod sonification;
 
 pub struct PrimeSpiralWidget {
     grid_size: usize,
@@ -9,6 +13,9 @@ pub struct PrimeSpiralWidget {
     texture: Option<TextureHandle>,
     pixels_buffer: Vec<Color32>,
     is_prime_lookup: Vec<bool>,
+    seq_playing: bool,
+    seq_cursor: usize,
+    audio_settings: crate::audio::AcousticSettings,
 }
 
 impl Default for PrimeSpiralWidget {
@@ -19,6 +26,9 @@ impl Default for PrimeSpiralWidget {
             texture: None,
             pixels_buffer: Vec::new(),
             is_prime_lookup: Vec::new(),
+            seq_playing: false,
+            seq_cursor: 2,
+            audio_settings: crate::audio::AcousticSettings::default(),
         }
     }
 }
@@ -29,6 +39,8 @@ use crate::framework::InteractiveTool;
 #[serde(deny_unknown_fields)]
 struct PrimeSpiralState {
     grid_size: usize,
+    #[serde(default, skip_serializing_if = "crate::audio::AcousticSettings::is_default")]
+    audio: crate::audio::AcousticSettings,
 }
 
 impl InteractiveTool for PrimeSpiralWidget {
@@ -42,9 +54,34 @@ impl InteractiveTool for PrimeSpiralWidget {
         "number_theory"
     }
 
+    fn state_revision(&self) -> u64 {
+        self.compute_state_revision()
+    }
+
+    fn step_simulation(&mut self) {
+        self.advance_spiral_cursor();
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(self.compute_sonification_frame())
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.audio_settings
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.audio_settings = settings.sanitized();
+    }
+
+    fn sample_sonification_frames(&mut self, frame_count: usize) -> Vec<crate::audio::SonificationFrame> {
+        self.render_wav_frames(frame_count)
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&PrimeSpiralState {
             grid_size: self.grid_size,
+            audio: self.audio_settings,
         })
         .ok()
     }
@@ -52,16 +89,18 @@ impl InteractiveTool for PrimeSpiralWidget {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let parsed: PrimeSpiralState =
             serde_json::from_str(state).map_err(|e| format!("Invalid prime spiral state: {e}"))?;
+        parsed.audio.validate()?;
         if !(10..=math_commons::registry::MAX_GRID_SIZE).contains(&parsed.grid_size) {
             return Err("grid_size out of allowed bounds".into());
         }
         self.grid_size = parsed.grid_size;
+        self.audio_settings = parsed.audio;
         self.texture = None;
         Ok(())
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_only()
+        crate::framework::ExportCapabilities::raster_only().with_audio()
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
@@ -79,6 +118,8 @@ impl InteractiveTool for PrimeSpiralWidget {
             ui.add_space(10.0);
 
             ui.vertical(|ui| {
+                self.draw_transport_bar(ui);
+
                 let changed = ui
                     .add(
                         egui::Slider::new(
@@ -120,6 +161,34 @@ impl InteractiveTool for PrimeSpiralWidget {
 }
 
 impl PrimeSpiralWidget {
+    fn draw_transport_bar(&mut self, ui: &mut egui::Ui) {
+        if let Some(action) = PlaybackTransport::in_thread(
+            "prime_spiral_transport",
+            "Prime Spiral (Ulam Spiral)",
+            self.seq_playing,
+        )
+        .with_sonification(&mut self.audio_settings)
+        .show(ui)
+        {
+            match action {
+                PlaybackAction::Play => self.seq_playing = true,
+                PlaybackAction::Pause => self.seq_playing = false,
+                PlaybackAction::Step => {
+                    self.seq_playing = false;
+                    self.advance_spiral_cursor();
+                }
+                PlaybackAction::Reset => {
+                    self.seq_playing = false;
+                    self.seq_cursor = 2;
+                }
+            }
+        }
+        if self.seq_playing {
+            self.advance_spiral_cursor();
+            ui.ctx().request_repaint();
+        }
+    }
+
     pub(crate) fn populate_ulam_pixels(
         size: usize,
         theme: crate::app::ThemeMode,

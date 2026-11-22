@@ -82,6 +82,18 @@ impl AttractorPlotter {
         });
     }
 
+    fn resolve_transport_state(&self, worker_faulted: bool) -> SimWorkerState {
+        if self.diverged() || worker_faulted {
+            SimWorkerState::Faulted
+        } else if self.worker.state().is_stepping() {
+            SimWorkerState::Stepping
+        } else if self.is_paused() {
+            SimWorkerState::Ready
+        } else {
+            self.worker.state()
+        }
+    }
+
     fn draw_simulation_controls(
         &mut self,
         ui: &mut egui::Ui,
@@ -91,15 +103,7 @@ impl AttractorPlotter {
         egui::CollapsingHeader::new("Simulation")
             .default_open(true)
             .show(ui, |ui| {
-                let transport_state = if self.diverged() || worker_faulted {
-                    SimWorkerState::Faulted
-                } else if self.worker.state().is_stepping() {
-                    SimWorkerState::Stepping
-                } else if self.is_paused() {
-                    SimWorkerState::Ready
-                } else {
-                    self.worker.state()
-                };
+                let transport_state = self.resolve_transport_state(worker_faulted);
 
                 if let Some(action) = PlaybackTransport::from_worker_state(
                     "attractor_transport",
@@ -107,6 +111,7 @@ impl AttractorPlotter {
                     transport_state,
                 )
                 .can_reset(true)
+                .with_sonification(&mut self.audio_settings)
                 .show(ui)
                 {
                     match action {

@@ -15,6 +15,9 @@ pub use runner::*;
 #[path = "attractors/ui.rs"]
 mod ui;
 
+#[path = "attractors/sonification.rs"]
+mod sonification;
+
 pub struct AttractorPlotter {
     pub(crate) system: LorenzSystem,
     pub(crate) execution_state: SolverExecutionState,
@@ -29,6 +32,7 @@ pub struct AttractorPlotter {
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
+    pub(crate) audio_settings: crate::audio::AcousticSettings,
 }
 
 impl Default for AttractorPlotter {
@@ -63,6 +67,7 @@ impl Default for AttractorPlotter {
             show_annotations: true,
             fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
             dragged_callout: None,
+            audio_settings: crate::audio::AcousticSettings::default(),
         }
     }
 }
@@ -196,6 +201,29 @@ impl InteractiveTool for AttractorPlotter {
         "chaos"
     }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot().with_audio()
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(sonification::lorenz_sonification_frame(
+            &self.system,
+            self.diverged() || !self.is_finite_state(),
+        ))
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.audio_settings
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.audio_settings = settings.sanitized();
+    }
+
+    fn sample_sonification_frames(&mut self, frame_count: usize) -> Vec<crate::audio::SonificationFrame> {
+        self.render_wav_frames(frame_count)
+    }
+
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -211,6 +239,8 @@ impl InteractiveTool for AttractorPlotter {
         self.camera.pitch.to_bits().hash(&mut h);
         self.camera.yaw.to_bits().hash(&mut h);
         self.camera.zoom.to_bits().hash(&mut h);
+        self.audio_settings.gain.to_bits().hash(&mut h);
+        self.audio_settings.pitch_scale.to_bits().hash(&mut h);
         h.finish().max(1)
     }
 

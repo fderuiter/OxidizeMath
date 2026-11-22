@@ -48,6 +48,9 @@ pub struct MriToolState {
     /// Legacy boolean pause flag accepted on deserialization.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused: Option<bool>,
+    /// Persisted non-mute acoustic synthesis settings.
+    #[serde(default, skip_serializing_if = "crate::audio::AcousticSettings::is_default")]
+    pub audio: crate::audio::AcousticSettings,
 }
 
 impl MriToolState {
@@ -73,7 +76,7 @@ impl MriToolState {
                 ));
             }
         }
-        Ok(())
+        self.audio.validate()
     }
 
     fn resolve_target_state(&self) -> SimWorkerState {
@@ -107,6 +110,8 @@ pub struct MriTool {
     pub params: Arc<std::sync::RwLock<MriSharedParams>>,
     /// Background Bloch worker controller.
     pub worker: BackgroundWorker<MriRunner>,
+    /// Persisted non-mute acoustic synthesis settings.
+    pub audio_settings: crate::audio::AcousticSettings,
     theory: MriBlochTheory,
 }
 
@@ -141,6 +146,7 @@ impl Default for MriTool {
             mz_points: Vec::new(),
             params,
             worker,
+            audio_settings: crate::audio::AcousticSettings::default(),
             theory: MriBlochTheory,
         }
     }
@@ -245,7 +251,26 @@ impl InteractiveTool for MriTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_audio()
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(super::sonification::bloch_fid_sonification_frame(
+            &self.simulator,
+            self.worker.state() == SimWorkerState::Faulted,
+        ))
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.audio_settings
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.audio_settings = settings.sanitized();
+    }
+
+    fn sample_sonification_frames(&mut self, frame_count: usize) -> Vec<crate::audio::SonificationFrame> {
+        self.render_wav_frames(frame_count)
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -320,6 +345,8 @@ impl InteractiveTool for MriTool {
         self.simulator.b_field.y.to_bits().hash(&mut h);
         self.simulator.b_field.z.to_bits().hash(&mut h);
         self.time_scale.to_bits().hash(&mut h);
+        self.audio_settings.gain.to_bits().hash(&mut h);
+        self.audio_settings.pitch_scale.to_bits().hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         h.finish().max(1)
     }
@@ -334,6 +361,7 @@ impl InteractiveTool for MriTool {
             time_scale: self.time_scale,
             state: Some(self.worker.state()),
             paused: None,
+            audio: self.audio_settings,
         })
         .ok()
     }
@@ -348,6 +376,7 @@ impl InteractiveTool for MriTool {
         self.simulator.t2 = parsed.t2;
         self.simulator.b_field = b_field;
         self.time_scale = parsed.time_scale;
+        self.audio_settings = parsed.audio;
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.t1 = parsed.t1;

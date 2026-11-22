@@ -33,6 +33,21 @@ pub struct PlaybackTransport<'a> {
     pause_label: &'a str,
     step_label: &'a str,
     reset_label: &'a str,
+    audio_settings: Option<&'a mut crate::audio::AcousticSettings>,
+}
+
+/// Scoped `egui` temp-data bridge synchronizing [`PlaybackTransport`] audio controls with [`super::SimulationFramework`].
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ScopedAudioUiBridge {
+    pub(crate) muted: bool,
+    pub(crate) toggled_mute: bool,
+    pub(crate) pause_triggered: bool,
+    pub(crate) settings_changed: bool,
+    pub(crate) settings: crate::audio::AcousticSettings,
+}
+
+pub(crate) fn scoped_audio_bridge_id() -> egui::Id {
+    egui::Id::new("SCOPED_FRAMEWORK_AUDIO_BRIDGE")
 }
 
 impl<'a> PlaybackTransport<'a> {
@@ -58,6 +73,7 @@ impl<'a> PlaybackTransport<'a> {
             pause_label: "⏸ Pause",
             step_label: "⏭ Step",
             reset_label: "↺ Reset",
+            audio_settings: None,
         }
     }
 
@@ -76,6 +92,7 @@ impl<'a> PlaybackTransport<'a> {
             pause_label: "⏸ Pause",
             step_label: "⏭ Step",
             reset_label: "↺ Reset",
+            audio_settings: None,
         }
     }
 
@@ -107,49 +124,32 @@ impl<'a> PlaybackTransport<'a> {
         self
     }
 
+    /// Attaches default-muted sonification controls (Mute/Unmute toggle and Gain slider)
+    /// bound to the tool's persisted [`crate::audio::AcousticSettings`].
+    #[must_use]
+    pub fn with_sonification(mut self, settings: &'a mut crate::audio::AcousticSettings) -> Self {
+        self.audio_settings = Some(settings);
+        self
+    }
+
     /// Renders the transport bar and returns any triggered [`PlaybackAction`].
-    pub fn show(self, ui: &mut egui::Ui) -> Option<PlaybackAction> {
+    pub fn show(mut self, ui: &mut egui::Ui) -> Option<PlaybackAction> {
         let base_id = ui.make_persistent_id(self.id_salt);
         let min_size = button_min_size(ui.ctx());
         let ui_enabled = ui.is_enabled();
         let mut action = None;
 
         ui.horizontal_wrapped(|ui| {
-            if self.render_toggle_button(ui, base_id, min_size) {
-                action = Some(if self.is_playing {
-                    PlaybackAction::Pause
-                } else {
-                    PlaybackAction::Play
-                });
-            }
-
-            let step_a11y = format!(
-                "Step {} simulation forward one step (Period)",
-                self.tool_name
-            );
-            if render_action_button(
-                ui,
-                base_id.with("step_button_info"),
-                self.step_label,
-                &step_a11y,
-                ui_enabled && self.can_step,
-                min_size,
-            ) && action.is_none()
-            {
-                action = Some(PlaybackAction::Step);
-            }
-
-            let reset_a11y = format!("Reset {} simulation", self.tool_name);
-            if render_action_button(
-                ui,
-                base_id.with("reset_button_info"),
-                self.reset_label,
-                &reset_a11y,
-                ui_enabled && self.can_reset,
-                min_size,
-            ) && action.is_none()
-            {
-                action = Some(PlaybackAction::Reset);
+            action = self.render_core_buttons(ui, base_id, ui_enabled, min_size);
+            if let Some(settings) = self.audio_settings.take() {
+                super::playback_audio::render_audio_controls(
+                    ui,
+                    base_id,
+                    self.tool_name,
+                    ui_enabled,
+                    min_size,
+                    settings,
+                );
             }
         });
 
@@ -161,10 +161,60 @@ impl<'a> PlaybackTransport<'a> {
         }
 
         if let Some(triggered) = action {
+            if triggered == PlaybackAction::Pause {
+                super::playback_audio::notify_pause_triggered(ui.ctx());
+            }
             self.announce_action(ui.ctx(), base_id, ui_enabled, triggered);
             ui.ctx().request_repaint();
         }
 
+        action
+    }
+
+    fn render_core_buttons(
+        &self,
+        ui: &mut egui::Ui,
+        base_id: egui::Id,
+        ui_enabled: bool,
+        min_size: egui::Vec2,
+    ) -> Option<PlaybackAction> {
+        let mut action = None;
+        if self.render_toggle_button(ui, base_id, min_size) {
+            action = Some(if self.is_playing {
+                PlaybackAction::Pause
+            } else {
+                PlaybackAction::Play
+            });
+        }
+
+        let step_a11y = format!(
+            "Step {} simulation forward one step (Period)",
+            self.tool_name
+        );
+        if render_action_button(
+            ui,
+            base_id.with("step_button_info"),
+            self.step_label,
+            &step_a11y,
+            ui_enabled && self.can_step,
+            min_size,
+        ) && action.is_none()
+        {
+            action = Some(PlaybackAction::Step);
+        }
+
+        let reset_a11y = format!("Reset {} simulation", self.tool_name);
+        if render_action_button(
+            ui,
+            base_id.with("reset_button_info"),
+            self.reset_label,
+            &reset_a11y,
+            ui_enabled && self.can_reset,
+            min_size,
+        ) && action.is_none()
+        {
+            action = Some(PlaybackAction::Reset);
+        }
         action
     }
 

@@ -117,6 +117,29 @@ pub trait UnifiedModel:
     {
         None
     }
+
+    /// Whether this model emits live [`crate::audio::SonificationFrame`] descriptors and `.wav` exports.
+    fn supports_sonification() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    /// Emits a zero-allocation [`crate::audio::SonificationFrame`] directly from live model state.
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        None
+    }
+
+    /// Extracts a cached [`crate::audio::SonificationFrame`] from a worker [`StateSnapshot`].
+    fn sonification_from_snapshot(
+        _snapshot: &StateSnapshot,
+    ) -> Option<crate::audio::SonificationFrame>
+    where
+        Self: Sized,
+    {
+        None
+    }
 }
 
 #[allow(missing_docs)]
