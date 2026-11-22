@@ -46,7 +46,8 @@
 //! Construct the Finite Field $\mathbb{F}_7$ and perform polynomial arithmetic over it.
 //!
 //! ```rust
-//! use pure_math::pure_math::algebra::{Fp, Polynomial};
+//! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::pure_math::algebra::{Fp, Polynomial};
 //!
 //! // 1. Define elements in F_7 (Integers mod 7)
 //! let a = Fp::<7>::new(3);

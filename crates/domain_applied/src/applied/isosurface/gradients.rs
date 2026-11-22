@@ -22,8 +22,9 @@ pub trait GradientEstimator {
     /// # Examples
     ///
     /// ```
-    /// use domain_applied::applied::isosurface::types::{VoxelGrid, Point3D};
-    /// use domain_applied::applied::isosurface::gradients::{GradientEstimator, CentralDifferenceEstimator};
+    /// # use domain_applied::__doctest_facade as math_explorer;
+    /// use math_explorer::applied::isosurface::types::{VoxelGrid, Point3D};
+    /// use math_explorer::applied::isosurface::gradients::{GradientEstimator, CentralDifferenceEstimator};
     ///
     /// let data = vec![0.0, 1.0, 2.0, 1.0, 2.0, 3.0, 2.0, 3.0, 4.0];
     /// let grid = VoxelGrid::builder()

@@ -62,11 +62,13 @@
 //! ## Usage
 //!
 //! ```rust
-//! use domain_climate::climate::cera::Cera;
-//! use domain_climate::climate::config::CeraConfig;
-//! use domain_climate::climate::training::CeraTrainer;
-//! use nalgebra::DMatrix;
-//! use rand::Rng;
+//! # use domain_climate::__doctest_facade as math_explorer;
+//! use math_explorer::climate::cera::Cera;
+//! use math_explorer::climate::config::CeraConfig;
+//! use math_explorer::climate::training::CeraTrainer;
+//! use math_explorer::nalgebra::DMatrix;
+//! use math_explorer::rand::Rng;
+//! use math_explorer::rng::OxidizeRng;
 //!
 //! // 1. Configure the model
 //! let config = CeraConfig {
@@ -87,9 +89,9 @@
 //!
 //! // 3. Create dummy data (Batch size * Num Levels, Channels)
 //! // In reality, this would be your climate simulation data.
-//! let inputs = DMatrix::from_fn(20, 2, |_, _| oxidize_core::rng::OxidizeRng::default().r#gen());
-//! let targets = DMatrix::from_fn(2, 5, |_, _| oxidize_core::rng::OxidizeRng::default().r#gen());
-//! let warm_inputs = DMatrix::from_fn(20, 2, |_, _| oxidize_core::rng::OxidizeRng::default().r#gen()); // Different climate
+//! let inputs = DMatrix::from_fn(20, 2, |_, _| OxidizeRng::default().r#gen());
+//! let targets = DMatrix::from_fn(2, 5, |_, _| OxidizeRng::default().r#gen());
+//! let warm_inputs = DMatrix::from_fn(20, 2, |_, _| OxidizeRng::default().r#gen()); // Different climate
 //!
 //! // 4. Train (using the mock optimizer)
 //! let mut trainer = CeraTrainer::new(&mut model);
@@ -108,6 +110,9 @@ pub mod loss;
 pub mod predictor;
 pub mod tensor_ops;
 pub mod training;
+
+/// Error types for climate modeling modules.
+pub use crate::error;
 
 // [cite:graph_parameters_rust]
 

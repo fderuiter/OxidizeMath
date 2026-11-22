@@ -1,8 +1,8 @@
 use pure_math::pure_math::analysis::roots::{AnalysisError, Bisection, RootFinder};
 use rand::Rng;
-use rand::distributions::Distribution as RandDistribution;
-use statrs::distribution::{Continuous, ContinuousCDF};
-use statrs::statistics::Distribution;
+pub use rand::distributions::Distribution as RandDistribution;
+pub use statrs::distribution::{self, Continuous, ContinuousCDF};
+pub use statrs::statistics::Distribution;
 
 /// Represents a distribution of bidder valuations.
 ///
@@ -57,8 +57,9 @@ impl<D: Continuous<f64, f64> + ContinuousCDF<f64, f64> + Distribution<f64> + Ran
 ///
 /// # Example
 /// ```
-/// use domain_applied::applied::game_theory::mechanism_design::optimal_reserve_price;
-/// use statrs::distribution::Uniform;
+/// # use domain_applied::__doctest_facade as math_explorer;
+/// use math_explorer::applied::game_theory::mechanism_design::optimal_reserve_price;
+/// use math_explorer::applied::game_theory::mechanism_design::distribution::Uniform;
 ///
 /// // For Uniform(0, 100), J(v) = 2v - 100.
 /// // J(r) = 0 => 2r = 100 => r = 50.

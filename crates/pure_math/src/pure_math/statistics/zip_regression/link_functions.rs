@@ -27,11 +27,12 @@ impl LogLink {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::zip_regression::LogLink;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::zip_regression::LogLink;
     ///
     /// let eta = 1.0;
     /// let lambda = LogLink::link(eta);
-    /// assert!((lambda - 2.718281828).abs() < math_commons::registry::TOLERANCE_FAST);  // e^1
+    /// assert!((lambda - 2.718281828).abs() < math_explorer::registry::TOLERANCE_FAST);  // e^1
     /// ```
     #[verified_engine::verified]
     pub fn link(linear_predictor: f64) -> f64 {
@@ -89,11 +90,12 @@ impl LogitLink {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::zip_regression::LogitLink;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::zip_regression::LogitLink;
     ///
     /// let gamma = 0.0;
     /// let rho = LogitLink::link(gamma);
-    /// assert!((rho - 0.5).abs() < math_commons::registry::TOLERANCE_STANDARD);  // expit(0) = 0.5
+    /// assert!((rho - 0.5).abs() < math_explorer::registry::TOLERANCE_STANDARD);  // expit(0) = 0.5
     /// ```
     #[verified_engine::verified]
     pub fn link(linear_predictor: f64) -> f64 {

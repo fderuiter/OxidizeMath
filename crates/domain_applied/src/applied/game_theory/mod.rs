@@ -37,8 +37,9 @@
 //! According to Myerson's Lemma, this is where the virtual valuation $J(v) = 0$.
 //!
 //! ```rust
-//! use domain_applied::applied::game_theory::mechanism_design::optimal_reserve_price;
-//! use statrs::distribution::Uniform;
+//! # use domain_applied::__doctest_facade as math_explorer;
+//! use math_explorer::applied::game_theory::mechanism_design::optimal_reserve_price;
+//! use math_explorer::applied::game_theory::mechanism_design::distribution::Uniform;
 //!
 //! fn main() {
 //!     // Bidders have valuations uniformly distributed between $0 and $100

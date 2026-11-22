@@ -23,7 +23,8 @@ pub enum EllipticCurveError {
 /// # Examples
 ///
 /// ```
-/// use pure_math::pure_math::elliptic_curves::prime_factors;
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::elliptic_curves::prime_factors;
 /// let factors = prime_factors(84);
 /// assert_eq!(factors.get(&2), Some(&2));
 /// assert_eq!(factors.get(&3), Some(&1));
@@ -61,7 +62,8 @@ pub fn prime_factors(mut n: u64) -> HashMap<u64, u32> {
 /// # Examples
 ///
 /// ```
-/// use pure_math::pure_math::elliptic_curves::psi;
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::elliptic_curves::psi;
 /// assert_eq!(psi(1), 1);
 /// assert_eq!(psi(2), 3); // 2 * (1 + 1/2)
 /// assert_eq!(psi(6), 12); // 6 * (1 + 1/2) * (1 + 1/3) = 6 * 3/2 * 4/3
@@ -114,7 +116,8 @@ pub struct Theorem11Bounds {
 /// # Examples
 ///
 /// ```
-/// use pure_math::pure_math::elliptic_curves::{theorem_1_1_bounds, Theorem11Bounds};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::elliptic_curves::{theorem_1_1_bounds, Theorem11Bounds};
 /// // For N=5, psi(5) = 6. Let's check a_{1,1} where i+j=2.
 /// let bounds = theorem_1_1_bounds(5, 1, 1).unwrap();
 /// assert_eq!(bounds.v2_bound, Some(15 * (6 - 2))); // 2 does not divide 5
@@ -193,7 +196,8 @@ pub struct Theorem12Bounds {
 /// # Examples
 ///
 /// ```
-/// use pure_math::pure_math::elliptic_curves::{theorem_1_2_bounds, Theorem12Bounds};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::elliptic_curves::{theorem_1_2_bounds, Theorem12Bounds};
 /// // For N=5, psi(5) = 6. N=5 is 1 mod 4. Check a_{0,0}.
 /// let bounds = theorem_1_2_bounds(5, 0, 0).unwrap();
 /// assert_eq!(bounds.v2_bound, Some(10 * (6 - 0)));

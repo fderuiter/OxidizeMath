@@ -1,11 +1,12 @@
 //! Comprehensive example demonstrating Markov Chain models.
 
+use math_explorer::nalgebra::{DMatrix, DVector};
 use math_explorer::pure_math::statistics::markov::TimeIndex;
 use math_explorer::pure_math::statistics::markov::ctmc::ContinuousMarkovChain;
 use math_explorer::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
 use math_explorer::pure_math::statistics::markov::hmm::HiddenMarkovModel;
 use math_explorer::pure_math::statistics::markov::tensor::TransitionTensor;
-use nalgebra::{DMatrix, DVector};
+use math_explorer::rng::OxidizeRng;
 
 fn demo_epv() {
     println!("1. Expected Possession Value (DTMC with Rewards)");
@@ -133,7 +134,7 @@ fn demo_birth_death() {
     let p_t = chain.transition_probabilities(1.0).unwrap();
     println!("   P(0→1, t=1) = {:.3}", p_t[(0, 1)]);
 
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = OxidizeRng::default();
     let trajectory = chain.simulate_trajectory(0, 10.0, &mut rng).unwrap();
     println!("   Trajectory length: {}\n", trajectory.len());
 }

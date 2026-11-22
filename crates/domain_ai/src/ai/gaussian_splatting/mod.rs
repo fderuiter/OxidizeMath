@@ -46,8 +46,9 @@
 //! Create a scene with two Gaussians (Red and Green) and simulate the blending process at a specific pixel.
 //!
 //! ```rust
-//! use domain_ai::ai::gaussian_splatting::{Gaussian2D, rendering};
-//! use nalgebra::{Point2, Vector3, Matrix2};
+//! # use domain_ai::__doctest_facade as math_explorer;
+//! use math_explorer::ai::gaussian_splatting::{Gaussian2D, rendering};
+//! use math_explorer::nalgebra::{Point2, Vector3, Matrix2};
 //!
 //! // 1. Define pre-projected 2D Gaussians
 //! // In a full pipeline, these come from projecting Gaussian3D objects.

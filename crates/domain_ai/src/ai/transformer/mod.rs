@@ -53,8 +53,9 @@
 //! Constructing and running a full Transformer model (Encoder + Decoder).
 //!
 //! ```rust
-//! use domain_ai::ai::transformer::{Encoder, Decoder, Transformer};
-//! use nalgebra::DMatrix;
+//! # use domain_ai::__doctest_facade as math_explorer;
+//! use math_explorer::ai::transformer::{Encoder, Decoder, Transformer};
+//! use math_explorer::nalgebra::DMatrix;
 //!
 //! // 1. Configure Model Parameters
 //! let d_model = 64;  // Embedding dimension

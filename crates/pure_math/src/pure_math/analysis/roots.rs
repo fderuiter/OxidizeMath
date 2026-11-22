@@ -22,22 +22,23 @@ pub enum AnalysisError {
 /// # Examples
 ///
 /// ```
-/// use pure_math::pure_math::analysis::roots::{RootFinder, Bisection, NewtonRaphson};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::analysis::roots::{RootFinder, Bisection, NewtonRaphson};
 ///
-/// fn main() -> Result<(), pure_math::pure_math::analysis::roots::AnalysisError> {
+/// fn main() -> Result<(), math_explorer::pure_math::analysis::roots::AnalysisError> {
 ///     // Define the function f(x) = x^2 - 4
 ///     let f = |x: f64| x * x - 4.0;
 ///
 ///     // Use Bisection (bracketing method)
 ///     let bisection = Bisection::default();
 ///     let root = bisection.find_root(f, 0.0, 5.0)?;
-///     assert!((root - 2.0).abs() < math_commons::registry::TOLERANCE_FAST);
+///     assert!((root - 2.0).abs() < math_explorer::registry::TOLERANCE_FAST);
 ///
 ///     // Use Newton-Raphson (open method)
 ///     let newton = NewtonRaphson::default();
 ///     // Note: For open methods, min/max are used to determine the initial guess.
 ///     let root = newton.find_root(f, 0.0, 5.0)?;
-///     assert!((root - 2.0).abs() < math_commons::registry::TOLERANCE_FAST);
+///     assert!((root - 2.0).abs() < math_explorer::registry::TOLERANCE_FAST);
 ///
 ///     Ok(())
 /// }
@@ -73,14 +74,15 @@ pub trait RootFinder {
 /// # Examples
 ///
 /// ```
-/// use pure_math::pure_math::analysis::roots::{RootFinder, Bisection};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::analysis::roots::{RootFinder, Bisection};
 ///
-/// fn main() -> Result<(), pure_math::pure_math::analysis::roots::AnalysisError> {
+/// fn main() -> Result<(), math_explorer::pure_math::analysis::roots::AnalysisError> {
 ///     let solver = Bisection::default();
 ///
 ///     // Find root of x^2 - 2 = 0 in [1, 2]
 ///     let root = solver.find_root(|x| x * x - 2.0, 1.0, 2.0)?;
-///     assert!((root - std::f64::consts::SQRT_2).abs() < math_commons::registry::TOLERANCE_FAST);
+///     assert!((root - std::f64::consts::SQRT_2).abs() < math_explorer::registry::TOLERANCE_FAST);
 ///
 ///     // Error if root is not bracketed (signs at endpoints must differ)
 ///     let result = solver.find_root(|x| x * x + 1.0, -2.0, 2.0);
@@ -191,20 +193,21 @@ impl RootFinder for Bisection {
 /// # Examples
 ///
 /// ```
-/// use pure_math::pure_math::analysis::roots::{RootFinder, NewtonRaphson};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::analysis::roots::{RootFinder, NewtonRaphson};
 ///
-/// fn main() -> Result<(), pure_math::pure_math::analysis::roots::AnalysisError> {
+/// fn main() -> Result<(), math_explorer::pure_math::analysis::roots::AnalysisError> {
 ///     let solver = NewtonRaphson::default();
 ///
 ///     // Find root of x^2 - 2 = 0
 ///     // Initial guess will be (1.0 + 2.0) / 2.0 = 1.5
 ///     let root = solver.find_root(|x| x * x - 2.0, 1.0, 2.0)?;
-///     assert!((root - std::f64::consts::SQRT_2).abs() < math_commons::registry::TOLERANCE_FAST);
+///     assert!((root - std::f64::consts::SQRT_2).abs() < math_explorer::registry::TOLERANCE_FAST);
 ///
 ///     // Example where root is outside the initial "interval"
 ///     // Root of x - 10 = 0 is 10. Initial guess is 2.5.
 ///     let root = solver.find_root(|x| x - 10.0, 0.0, 5.0)?;
-///     assert!((root - 10.0).abs() < math_commons::registry::TOLERANCE_FAST);
+///     assert!((root - 10.0).abs() < math_explorer::registry::TOLERANCE_FAST);
 ///
 ///     Ok(())
 /// }

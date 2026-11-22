@@ -13,9 +13,10 @@
 //! due to pressure gradients and viscosity.
 //!
 //! ```rust
-//! use domain_physics::physics::fluid_dynamics::types::{FluidProperties, FlowState, SpatialGradients};
-//! use domain_physics::physics::fluid_dynamics::conservation::{NavierStokes, MomentumEquation};
-//! use nalgebra::{Vector3, Matrix3};
+//! # use domain_physics::__doctest_facade as math_explorer;
+//! use math_explorer::physics::fluid_dynamics::types::{FluidProperties, FlowState, SpatialGradients};
+//! use math_explorer::physics::fluid_dynamics::conservation::{NavierStokes, MomentumEquation};
+//! use math_explorer::nalgebra::{Vector3, Matrix3};
 //!
 //! // 1. Setup Fluid (Water @ 20°C)
 //! let water = FluidProperties::water();

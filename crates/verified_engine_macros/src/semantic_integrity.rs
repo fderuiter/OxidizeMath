@@ -23,7 +23,7 @@ impl<'ast> Visit<'ast> for RustOpVisitor {
             }
             syn::BinOp::BitXor(_) => {
                 self.ops.insert(MathOp::Pow);
-            } // sometimes ^ is used
+            }
             _ => {}
         }
         syn::visit::visit_expr_binary(self, node);
@@ -31,7 +31,7 @@ impl<'ast> Visit<'ast> for RustOpVisitor {
 
     fn visit_expr_unary(&mut self, node: &'ast syn::ExprUnary) {
         if let syn::UnOp::Neg(_) = node.op {
-            self.ops.insert(MathOp::Sub); // Negation counts as subtraction for structural purposes
+            self.ops.insert(MathOp::Sub);
         }
         syn::visit::visit_expr_unary(self, node);
     }
@@ -45,14 +45,11 @@ impl<'ast> Visit<'ast> for RustOpVisitor {
     }
 }
 
-pub fn verify_semantic_integrity(latex_str: &str, rust_fn: &syn::ItemFn) -> Result<(), String> {
-    let latex_ops_vec = crate::latex_parser::parse_latex_math(latex_str);
-    let mut latex_ops = HashSet::new();
-    for op in latex_ops_vec {
-        latex_ops.insert(op);
-    }
+pub fn verify_block_semantic_integrity(latex_str: &str, block: &syn::Block) -> Result<(), String> {
+    let mut latex_ops: HashSet<MathOp> = crate::latex_parser::parse_latex_math(latex_str)
+        .into_iter()
+        .collect();
 
-    // Heuristic: if latex string contains "e^" or "\exp" or "exp", add Pow
     if latex_str.contains("e^") || latex_str.contains("\\exp") {
         latex_ops.insert(MathOp::Pow);
     }
@@ -60,9 +57,8 @@ pub fn verify_semantic_integrity(latex_str: &str, rust_fn: &syn::ItemFn) -> Resu
     let mut visitor = RustOpVisitor {
         ops: HashSet::new(),
     };
-    visitor.visit_item_fn(rust_fn);
+    visitor.visit_block(block);
 
-    // Verify operations
     for op in &latex_ops {
         if !visitor.ops.contains(op) {
             return Err(format!(
@@ -73,6 +69,11 @@ pub fn verify_semantic_integrity(latex_str: &str, rust_fn: &syn::ItemFn) -> Resu
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+pub fn verify_semantic_integrity(latex_str: &str, rust_fn: &syn::ItemFn) -> Result<(), String> {
+    verify_block_semantic_integrity(latex_str, &rust_fn.block)
 }
 
 #[cfg(test)]

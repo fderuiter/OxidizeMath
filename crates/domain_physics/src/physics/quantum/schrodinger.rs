@@ -37,9 +37,10 @@ use num_complex::Complex;
 /// Calculate the time evolution operator for a spin-1/2 system with Hamiltonian H = \sigma_z.
 ///
 /// ```
-/// use domain_physics::physics::quantum::{time_evolution_operator, sigma_z};
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::quantum::{time_evolution_operator, sigma_z};
 /// use std::f64::consts::PI;
-/// use num_complex::Complex;
+/// use math_explorer::num_complex::Complex;
 ///
 /// // 1. Define Hamiltonian H = sigma_z (Spin-1/2 Z-operator)
 /// // \sigma_z = |0><0| - |1><1| = diag(1, -1)
@@ -58,12 +59,12 @@ use num_complex::Complex;
 /// let expected_diag = Complex::new(-1.0, 0.0);
 ///
 /// // Check diagonal elements
-/// assert!((u_matrix[(0, 0)] - expected_diag).norm() < math_commons::registry::TOLERANCE_STANDARD, "U(0,0) incorrect");
-/// assert!((u_matrix[(1, 1)] - expected_diag).norm() < math_commons::registry::TOLERANCE_STANDARD, "U(1,1) incorrect");
+/// assert!((u_matrix[(0, 0)] - expected_diag).norm() < math_explorer::registry::TOLERANCE_STANDARD, "U(0,0) incorrect");
+/// assert!((u_matrix[(1, 1)] - expected_diag).norm() < math_explorer::registry::TOLERANCE_STANDARD, "U(1,1) incorrect");
 ///
 /// // Check off-diagonal elements are zero
-/// assert!(u_matrix[(0, 1)].norm() < math_commons::registry::TOLERANCE_STANDARD, "U(0,1) should be 0");
-/// assert!(u_matrix[(1, 0)].norm() < math_commons::registry::TOLERANCE_STANDARD, "U(1,0) should be 0");
+/// assert!(u_matrix[(0, 1)].norm() < math_explorer::registry::TOLERANCE_STANDARD, "U(0,1) should be 0");
+/// assert!(u_matrix[(1, 0)].norm() < math_explorer::registry::TOLERANCE_STANDARD, "U(1,0) should be 0");
 /// ```
 #[verified_engine::verified]
 pub fn time_evolution_operator(
@@ -106,10 +107,11 @@ pub fn time_evolution_operator(
 /// Simulating a 2-level system (Qubit) undergoing Rabi oscillations.
 ///
 /// ```
-/// use domain_physics::physics::quantum::schrodinger::evolve_state;
-/// use domain_physics::physics::quantum::types::{QuantumState, QuantumOperator};
-/// use nalgebra::{DMatrix, DVector};
-/// use num_complex::Complex;
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::quantum::schrodinger::evolve_state;
+/// use math_explorer::physics::quantum::types::{QuantumState, QuantumOperator};
+/// use math_explorer::nalgebra::{DMatrix, DVector};
+/// use math_explorer::num_complex::Complex;
 ///
 /// // 1. Define the Hamiltonian for a spin in a magnetic field (Pauli X)
 /// // H = \hbar * omega * sigma_x / 2
@@ -165,11 +167,12 @@ pub fn evolve_state(
 /// # Example
 ///
 /// ```
-/// use domain_physics::physics::quantum::{
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::quantum::{
 ///     evolve_state_in_place, sigma_x, time_evolution_operator, QuantumState,
 /// };
-/// use nalgebra::DVector;
-/// use num_complex::Complex;
+/// use math_explorer::nalgebra::DVector;
+/// use math_explorer::num_complex::Complex;
 ///
 /// let h_hat = sigma_x();
 /// let dt = std::f64::consts::PI / 2.0;

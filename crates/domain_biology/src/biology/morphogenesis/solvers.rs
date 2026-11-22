@@ -132,8 +132,9 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
 /// Manually stepping a system:
 ///
 /// ```rust
-/// use domain_biology::biology::morphogenesis::{FusedEulerSolver, TuringSolverStrategy, TuringState, SchnakenbergKinetics, TuringDynamics};
-/// use domain_biology::biology::diffusion::FiniteDifference1D;
+/// # use domain_biology::__doctest_facade as math_explorer;
+/// use math_explorer::biology::morphogenesis::{FusedEulerSolver, TuringSolverStrategy, TuringState, SchnakenbergKinetics, TuringDynamics};
+/// use math_explorer::biology::diffusion::FiniteDifference1D;
 ///
 /// // 1. Setup System Components
 /// let mut solver = FusedEulerSolver::new();
@@ -141,7 +142,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
 /// let state = TuringState::new(n);
 /// let mut next_state = TuringState::new(n);
 /// let kinetics = SchnakenbergKinetics::default();
-/// let diffusion = FiniteDifference1D::new(math_commons::math_kernel::types::StepSize(1.0));
+/// let diffusion = FiniteDifference1D::new(math_explorer::math_kernel::types::StepSize(1.0));
 /// let dynamics = TuringDynamics {
 ///    kinetics: &kinetics,
 ///    diffusion: &diffusion,

@@ -1,4 +1,13 @@
 #![doc = include_str!("../README.md")]
+
+pub mod error;
+pub mod prelude;
+
+pub use diagnostics;
+pub use math_commons::{ast, constants, math_kernel, primitives, registry, wigner};
+pub use scientific_metadata;
+pub use verified_engine;
+
 #[cfg(feature = "ai")]
 pub use domain_ai::ai;
 
@@ -18,9 +27,14 @@ pub use domain_epidemiology::epidemiology;
 pub use domain_physics::physics;
 
 #[cfg(feature = "pure_math")]
-pub use pure_math::pure_math;
-
-pub use diagnostics;
-pub use math_commons::math_kernel;
-
-// math_explorer/src/error.rs could just export the individual errors, but it's simpler to keep it as it was if possible, or just let users import from specific crates.
+pub use ::pure_math::{math_types, pure_math};
+#[cfg(feature = "pure_math")]
+pub use nalgebra;
+#[cfg(feature = "pure_math")]
+pub use num_complex;
+#[cfg(feature = "pure_math")]
+pub use oxidize_core::{mesh, rng};
+#[cfg(feature = "pure_math")]
+pub use petgraph;
+#[cfg(feature = "pure_math")]
+pub use rand;

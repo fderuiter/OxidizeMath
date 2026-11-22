@@ -49,9 +49,10 @@
 //! Train a simple 2-layer network to solve a classification problem using our theoretical primitives.
 //!
 //! ```rust
-//! use domain_ai::ai::deep_learning_theory::cycle::TrainingLoop;
-//! use domain_ai::ai::optimization::SGD;
-//! use nalgebra::DVector;
+//! # use domain_ai::__doctest_facade as math_explorer;
+//! use math_explorer::ai::deep_learning_theory::cycle::TrainingLoop;
+//! use math_explorer::ai::optimization::SGD;
+//! use math_explorer::nalgebra::DVector;
 //!
 //! // 1. Define Architecture
 //! // Input Layer: 2 neurons

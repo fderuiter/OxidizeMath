@@ -9,7 +9,8 @@
 //! ##  Quick Start: Simulating an Outbreak
 //!
 //! ```rust
-//! use domain_epidemiology::epidemiology::{SIRModel, SIRState};
+//! # use domain_epidemiology::__doctest_facade as math_explorer;
+//! use math_explorer::epidemiology::{SIRModel, SIRState};
 //!
 //! // 1. Initialize the model
 //! // Population: 1000, Initial Infected: 10
@@ -79,6 +80,9 @@ pub mod stochastic;
 
 // Re-exports for easier access
 pub use compartmental::{SEIRModel, SEIRState, SIRModel, SIRState};
+
+/// Error types for epidemiology modules.
+pub use crate::error;
 
 // [cite:graph_parameters_rust]
 

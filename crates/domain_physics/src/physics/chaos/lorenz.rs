@@ -122,8 +122,9 @@ impl LorenzBuilder {
 /// # Example
 ///
 /// ```
-/// use domain_physics::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
-/// use pure_math::pure_math::analysis::ode::TimeStepper;
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
+/// use math_explorer::pure_math::analysis::ode::TimeStepper;
 ///
 /// // 1. Initialize the system state close to the attractor
 /// let state = LorenzState::new(10.0, 10.0, 10.0);
@@ -285,7 +286,7 @@ impl SimulationModel for LorenzSystem {
             .build(state))
     }
 
-    #[verified_engine::verified(opt_out = "inherent method call false positive")]
+    #[verified_engine::verified]
     fn step(&mut self) -> Result<(), Self::Error> {
         let dt = self.dt;
         match self.integration_method {

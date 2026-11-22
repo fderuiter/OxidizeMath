@@ -26,5 +26,7 @@ pub mod metrics;
 /// ```
 pub use verified_engine_macros::verified;
 
-// Re-export the macros
+// Re-export the macros and hidden runtime support crate for macro expansion
+#[doc(hidden)]
+pub use scientific_metadata;
 pub use verified_engine_macros::{Theory, embed_theory};
