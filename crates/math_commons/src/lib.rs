@@ -3,6 +3,7 @@
 #[allow(missing_docs)]
 pub mod ast;
 pub mod constants;
+pub mod contours;
 #[allow(missing_docs)]
 pub mod error;
 #[allow(missing_docs)]

@@ -1,9 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::potential_flow_streamlines::{default_show_streamlines, default_streamline_count};
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{bounded_drag_value, InteractiveTool};
 use eframe::egui;
-use egui_plot::{Arrows, Plot};
+use egui_plot::Plot;
 use math_explorer::physics::fluid_dynamics::potential_flow::{
     Doublet, FlowElement, PotentialFlowField, Source, UniformFlow, Vortex,
 };
@@ -28,6 +29,8 @@ pub struct PotentialFlowTool {
     pub(crate) new_element_x: f64,
     pub(crate) new_element_y: f64,
     pub(crate) new_element_angle: f64,
+    pub(crate) show_streamlines: bool,
+    pub(crate) streamline_count: usize,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -87,11 +90,16 @@ struct PotentialFlowState {
     new_element_y: f64,
     #[serde(default)]
     new_element_angle: f64,
+    #[serde(default = "default_show_streamlines")]
+    show_streamlines: bool,
+    #[serde(default = "default_streamline_count")]
+    streamline_count: usize,
 }
 
 impl PotentialFlowState {
     fn is_valid(&self) -> bool {
         (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_size)
+            && (2..=64).contains(&self.streamline_count)
             && self.view_range.is_finite()
             && (FLOW_VIEW_MIN..=FLOW_VIEW_MAX).contains(&self.view_range)
             && self.new_element_strength.is_finite()
@@ -136,6 +144,8 @@ impl Default for PotentialFlowTool {
             new_element_x: 0.0,
             new_element_y: 0.0,
             new_element_angle: 0.0,
+            show_streamlines: default_show_streamlines(),
+            streamline_count: default_streamline_count(),
         };
         tool.rebuild_field();
         tool
@@ -157,6 +167,7 @@ impl InteractiveTool for PotentialFlowTool {
 
     fn has_finite_parameters(&self) -> bool {
         (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_size)
+            && (2..=64).contains(&self.streamline_count)
             && self.view_range.is_finite()
             && (FLOW_VIEW_MIN..=FLOW_VIEW_MAX).contains(&self.view_range)
             && self.new_element_strength.is_finite()
@@ -181,6 +192,8 @@ impl InteractiveTool for PotentialFlowTool {
             new_element_x: self.new_element_x,
             new_element_y: self.new_element_y,
             new_element_angle: self.new_element_angle,
+            show_streamlines: self.show_streamlines,
+            streamline_count: self.streamline_count,
         })
         .ok()
     }
@@ -202,8 +215,18 @@ impl InteractiveTool for PotentialFlowTool {
         self.new_element_x = loaded.new_element_x;
         self.new_element_y = loaded.new_element_y;
         self.new_element_angle = loaded.new_element_angle;
+        self.show_streamlines = loaded.show_streamlines;
+        self.streamline_count = loaded.streamline_count;
         self.rebuild_field();
         Ok(())
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.build_export_datasets()
     }
 
     #[cfg(test)]
@@ -224,10 +247,7 @@ impl InteractiveTool for PotentialFlowTool {
                 .data_aspect(1.0)
                 .view_aspect(1.0)
                 .show(ui, |plot_ui| {
-                    let arrow_color =
-                        crate::app::SemanticPalette::from_visuals(&plot_ui.ctx().style().visuals)
-                            .series_color(0);
-                    plot_ui.arrows(Arrows::new("Vector Field", origins, tips).color(arrow_color));
+                    self.render_plot_contents(plot_ui, origins, tips);
                 });
         });
     }
@@ -306,6 +326,13 @@ impl PotentialFlowTool {
                     .text("Visualization - Grid Density"),
             );
             ui.add(egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"));
+            ui.checkbox(&mut self.show_streamlines, "Show Streamlines (RK4)");
+            if self.show_streamlines {
+                ui.add(
+                    egui::Slider::new(&mut self.streamline_count, 4..=48)
+                        .text("Streamline Density"),
+                );
+            }
         });
     }
 

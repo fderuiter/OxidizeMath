@@ -14,6 +14,7 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
   - Speed of light (`C`), Gravitational constant (`G`), Solar mass (`SOLAR_MASS`).
   - Reduced Planck constant (`HBAR_C`), Proton mass (`PROTON_MASS`), Neutron mass (`NEUTRON_MASS`).
   - Liquid drop nuclear model constants and floating-point tolerances (`EPSILON`).
+- **`contours`**: 2D marching-squares isoline extraction (`extract_contours`), undirected segment deduplication (`deduplicate_segments`), nearest-neighbor toolpath ordering (`order_paths_nearest_neighbor`), and RK4 streamline tracing (`trace_streamlines_rk4`).
 - **`math_kernel`**: Standardized numerical routines:
   - `types`: 2D/3D index flattening (`flatten_2d_index`) and spatial offsets.
   - `colormap`: Heatmap color generation (`heatmap_color`) and gradient interpolation for scientific visualization.

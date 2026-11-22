@@ -20,6 +20,7 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 - **`graph_theory`**: Network graph structures, centrality metrics, and traversal algorithms.
 - **`statistics`**: Stochastic processes (Markov chains, Ornstein-Uhlenbeck), ranking systems (Glicko-2), and Kelly criterion decision models.
 - **`special_functions`**: Classical mathematical functions (Bessel functions, Legendre polynomials).
+- **`tilings`**: Aperiodic 2D tilings (`PenroseP2`, `PenroseP3`, `EinsteinHat`, `EinsteinSpectre`) with shared interior edge deduplication for vector fabrication.
 
 ---
 

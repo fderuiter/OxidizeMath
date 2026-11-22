@@ -57,9 +57,11 @@ pub use crate::{
         clipboard_status_id, exceeds_max_dimension, poll_clipboard_status, show_export_modal,
     },
     export_primitives::{
-        ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,
-        export_primitives_png, export_primitives_svg, export_raster_gif, export_raster_png,
-        export_raster_svg, get_last_plot_primitives, render_primitives_image,
+        ExportPrimitive, FabricationBedPreset, FabricationBedTransform, FabricationPolyline,
+        FabricationSvgOptions, MAX_FABRICATION_BED_MM, MIN_FABRICATION_BED_MM,
+        append_last_plot_primitives, clear_last_plot_primitives, export_domain_fabrication_svg,
+        export_fabrication_svg, export_primitives_png, export_primitives_svg, export_raster_gif,
+        export_raster_png, export_raster_svg, get_last_plot_primitives, render_primitives_image,
     },
     fit::{FitResult, FitType, fit_dataset, fit_dataset_scaled},
     items::{

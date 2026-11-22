@@ -103,11 +103,15 @@ fn render_tool_svg_with_fallback(
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<String, String> {
+    if let Some(custom_svg) = tool.export_custom_svg() {
+        return custom_svg;
+    }
     let plot_prims = tool.export_plot_primitives();
+    if has_drawable_primitives(&plot_prims) {
+        return export_primitives_svg(&plot_prims, options);
+    }
     if let Some(raster) = valid_raster_image(tool) {
-        if !has_drawable_primitives(&plot_prims) {
-            return export_raster_svg(&raster, options);
-        }
+        return export_raster_svg(&raster, options);
     }
     let primitives = resolve_tool_primitives_with_fallback(tool, fallback_datasets);
     if !has_drawable_primitives(&primitives) {

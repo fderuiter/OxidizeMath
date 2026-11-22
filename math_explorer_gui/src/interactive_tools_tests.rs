@@ -33,6 +33,7 @@ mod tests {
         check_tool!(crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool);
         check_tool!(crate::tabs::clinical_trials::randomization::RandomizationTool);
         check_tool!(crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool);
+        check_tool!(crate::tabs::geometry_topology::fabrication_studio::FabricationStudioTool);
         check_tool!(crate::tabs::climate::cera::CeraTool);
         check_tool!(crate::tabs::climate::co2_projections::Co2ProjectionsTool);
         check_tool!(crate::tabs::climate::temperature::TemperatureAnomaliesTool);

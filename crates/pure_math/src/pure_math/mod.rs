@@ -54,6 +54,7 @@ pub mod number_theory;
 pub mod special_functions;
 pub mod statistics;
 pub mod tensor;
+pub mod tilings;
 #[allow(missing_docs)]
 pub mod vector_calculus;
 

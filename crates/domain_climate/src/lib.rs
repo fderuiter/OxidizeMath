@@ -8,7 +8,7 @@ pub mod error;
 pub mod __doctest_facade {
     pub use crate::climate;
     pub use ::pure_math::__doctest_facade::{
-        ast, constants, diagnostics, error, math_kernel, math_types, mesh, nalgebra, num_complex,
-        petgraph, prelude, primitives, pure_math, rand, registry, rng, wigner,
+        ast, constants, contours, diagnostics, error, math_kernel, math_types, mesh, nalgebra,
+        num_complex, petgraph, prelude, primitives, pure_math, rand, registry, rng, wigner,
     };
 }

@@ -97,8 +97,10 @@ pub struct MorphogenesisTool {
     pub(crate) height: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) pixels: Vec<egui::Color32>,
+    pub(crate) cached_u_grid: Vec<f64>,
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
+    pub(crate) stepped_u_grid: Option<(usize, usize, Vec<f64>)>,
     pub(crate) step_runner: Option<MorphogenesisRunner>,
     pub(crate) pending_initial_start: bool,
     pub(crate) last_high_contrast: Option<bool>,
@@ -128,8 +130,10 @@ impl Default for MorphogenesisTool {
             height,
             texture: None,
             pixels: Vec::new(),
+            cached_u_grid: Vec::new(),
             dirty: true,
             stepped_pixels: None,
+            stepped_u_grid: None,
             step_runner: None,
             pending_initial_start: true,
             last_high_contrast: None,
@@ -179,6 +183,7 @@ impl MorphogenesisTool {
         let runner = Self::create_runner(&self.params, self.width, self.height);
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
+        self.stepped_u_grid = None;
         self.step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
@@ -198,6 +203,7 @@ impl MorphogenesisTool {
         self.worker
             .reset_or_respawn(|| Self::create_runner(&params, width, height));
         self.stepped_pixels = None;
+        self.stepped_u_grid = None;
         self.step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
@@ -288,6 +294,10 @@ impl InteractiveTool for MorphogenesisTool {
         ExportCapabilities::raster_only()
     }
 
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.extract_isoline_primitives()
+    }
+
     fn export_raster_image(&self) -> Option<ColorImage> {
         if let Some((w, h, ref px)) = self.stepped_pixels {
             if w > 0 && h > 0 && px.len() == w * h {
@@ -328,6 +338,11 @@ impl InteractiveTool for MorphogenesisTool {
         let snap = runner.get_snapshot();
         let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
         self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
+        self.stepped_u_grid = snap
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<Vec<f64>>())
+            .map(|u| (snap.width, snap.height, u.clone()));
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -418,6 +433,7 @@ impl InteractiveTool for MorphogenesisTool {
             let runner = Self::create_runner(&self.params, self.width, self.height);
             self.worker = BackgroundWorker::new(runner);
             self.stepped_pixels = None;
+            self.stepped_u_grid = None;
             self.step_runner = None;
             self.dirty = true;
         } else {

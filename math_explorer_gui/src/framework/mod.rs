@@ -273,6 +273,11 @@ pub trait InteractiveTool {
         None
     }
 
+    /// Optional hook for physical fabrication tools to supply a custom standalone SVG document.
+    fn export_custom_svg(&self) -> Option<Result<String, String>> {
+        None
+    }
+
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
 

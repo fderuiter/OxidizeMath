@@ -50,6 +50,8 @@ impl MorphogenesisTool {
                 high_contrast,
             );
             self.pixels.copy_from_slice(&recolored.pixels);
+            self.cached_u_grid.clear();
+            self.cached_u_grid.extend_from_slice(u_data);
         } else if snapshot_pixels.len() == num_pixels {
             self.pixels.copy_from_slice(&snapshot_pixels);
         }

@@ -34,7 +34,7 @@ pub mod __doctest_facade {
     }
     pub use crate::{math_types, pure_math};
     pub use diagnostics;
-    pub use math_commons::{ast, constants, math_kernel, primitives, registry, wigner};
+    pub use math_commons::{ast, constants, contours, math_kernel, primitives, registry, wigner};
     pub use nalgebra;
     pub use num_complex;
     pub use oxidize_core::{mesh, rng};

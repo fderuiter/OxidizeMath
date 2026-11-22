@@ -4,7 +4,7 @@ pub mod error;
 pub mod prelude;
 
 pub use diagnostics;
-pub use math_commons::{ast, constants, math_kernel, primitives, registry, wigner};
+pub use math_commons::{ast, constants, contours, math_kernel, primitives, registry, wigner};
 
 #[cfg(feature = "ai")]
 pub use domain_ai::ai;

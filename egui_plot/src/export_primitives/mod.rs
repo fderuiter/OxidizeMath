@@ -1,5 +1,6 @@
 //! Offscreen plot primitive representation, capture, and rendering for PNG, SVG, and GIF exports.
 
+pub mod fabrication_svg;
 pub(crate) mod pixel_ops;
 pub(crate) mod raster;
 pub(crate) mod svg;
@@ -14,6 +15,11 @@ use crate::export::{
     color32_images_to_gif,
 };
 
+pub use fabrication_svg::{
+    FabricationBedPreset, FabricationBedTransform, FabricationPolyline, FabricationSvgOptions,
+    MAX_FABRICATION_BED_MM, MIN_FABRICATION_BED_MM, export_domain_fabrication_svg,
+    export_fabrication_svg,
+};
 pub use raster::{render_primitives_image, render_primitives_image_with_bounds, scale_color_image};
 pub use svg::{encode_base64, export_primitives_svg, export_raster_svg};
 

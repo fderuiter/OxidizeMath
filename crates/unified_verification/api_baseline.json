@@ -811,6 +811,9 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: contours }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
     },
     {
@@ -2502,6 +2505,9 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: contours }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
     },
     {
@@ -3072,6 +3078,9 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: contours }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
     },
     {
@@ -3279,6 +3288,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: contours }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
@@ -3642,6 +3654,9 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: contours }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
     },
     {
@@ -3782,6 +3797,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: contours }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
@@ -4172,6 +4190,14 @@
     },
     {
       "signature": "pub trait FlowElement { fn velocity (& self , x : f64 , y : f64) -> Vector2 < f64 > }"
+    }
+  ],
+  "crates/domain_physics/src/physics/fluid_dynamics/potential_flow_streamlines.rs": [
+    {
+      "signature": "impl PotentialFlowField { pub fn default_streamline_seeds (& self , view_range : f64 , count : usize) -> Vec < Point2D > }"
+    },
+    {
+      "signature": "impl PotentialFlowField { pub fn trace_streamlines (& self , view_range : f64 , count : usize) -> Vec < ContourPath > }"
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/regimes.rs": [
@@ -5663,6 +5689,113 @@
       "signature": "pub mod property_constants { pub const R0 : f64 = 1.2 }"
     }
   ],
+  "crates/math_commons/src/contours/marching_squares.rs": [
+    {
+      "signature": "pub fn extract_contours (values : & [f64] , width : usize , height : usize , bounds : & GridBounds2D , iso_level : f64 ,) -> MathResult < Vec < ContourPath > >"
+    },
+    {
+      "signature": "pub fn extract_multi_contours (values : & [f64] , width : usize , height : usize , bounds : & GridBounds2D , iso_levels : & [f64] ,) -> MathResult < Vec < (f64 , Vec < ContourPath >) > >"
+    }
+  ],
+  "crates/math_commons/src/contours/mod.rs": [
+    {
+      "signature": "impl ContourPath { pub fn arc_length (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ContourPath { pub fn end_pen_position (& self) -> Option < Point2D > }"
+    },
+    {
+      "signature": "impl ContourPath { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl ContourPath { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl ContourPath { pub fn new (points : Vec < Point2D > , closed : bool) -> Self }"
+    },
+    {
+      "signature": "impl ContourPath { pub fn polyline_points (& self) -> Vec < Point2D > }"
+    },
+    {
+      "signature": "impl GridBounds2D { pub fn contains (& self , pt : Point2D) -> bool }"
+    },
+    {
+      "signature": "impl GridBounds2D { pub fn new (min_x : f64 , max_x : f64 , min_y : f64 , max_y : f64) -> MathResult < Self > }"
+    },
+    {
+      "signature": "impl GridBounds2D { pub fn span_x (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GridBounds2D { pub fn span_y (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct ContourPath"
+    },
+    {
+      "signature": "pub struct GridBounds2D"
+    },
+    {
+      "signature": "pub type Point2D = [f64 ; 2]"
+    },
+    {
+      "signature": "pub type Segment2D = [Point2D ; 2]"
+    },
+    {
+      "signature": "pub use marching_squares :: extract_contours"
+    },
+    {
+      "signature": "pub use marching_squares :: extract_multi_contours"
+    },
+    {
+      "signature": "pub use path_order :: chain_segments"
+    },
+    {
+      "signature": "pub use path_order :: deduplicate_segments"
+    },
+    {
+      "signature": "pub use path_order :: order_paths_nearest_neighbor"
+    },
+    {
+      "signature": "pub use path_order :: pen_lift_segments"
+    },
+    {
+      "signature": "pub use path_order :: pen_lift_travel_distance"
+    },
+    {
+      "signature": "pub use streamlines :: StreamlineConfig"
+    },
+    {
+      "signature": "pub use streamlines :: trace_streamlines_rk4"
+    }
+  ],
+  "crates/math_commons/src/contours/path_order.rs": [
+    {
+      "signature": "pub fn chain_segments (segments : & [Segment2D] , tolerance : f64) -> Vec < ContourPath >"
+    },
+    {
+      "signature": "pub fn deduplicate_segments (segments : & [Segment2D] , tolerance : f64) -> Vec < Segment2D >"
+    },
+    {
+      "signature": "pub fn order_paths_nearest_neighbor (paths : & [ContourPath]) -> Vec < ContourPath >"
+    },
+    {
+      "signature": "pub fn pen_lift_segments (paths : & [ContourPath]) -> Vec < Segment2D >"
+    },
+    {
+      "signature": "pub fn pen_lift_travel_distance (paths : & [ContourPath]) -> f64"
+    }
+  ],
+  "crates/math_commons/src/contours/streamlines.rs": [
+    {
+      "signature": "impl StreamlineConfig { pub fn new (bounds : GridBounds2D , step_size : f64 , max_steps : usize , min_speed : f64 ,) -> MathResult < Self > }"
+    },
+    {
+      "signature": "pub fn trace_streamlines_rk4 < F > (seeds : & [Point2D] , config : & StreamlineConfig , velocity_fn : F ,) -> MathResult < Vec < ContourPath > > where F : Fn (f64 , f64) -> [f64 ; 2] ,"
+    },
+    {
+      "signature": "pub struct StreamlineConfig"
+    }
+  ],
   "crates/math_commons/src/error.rs": [
     {
       "signature": "pub enum MathError"
@@ -6134,6 +6267,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use math_commons :: constants }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_commons :: contours }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use math_commons :: math_kernel }"
@@ -8490,6 +8626,26 @@
       "signature": "pub struct Rank2Tensor"
     }
   ],
+  "crates/pure_math/src/pure_math/tilings/mod.rs": [
+    {
+      "signature": "pub const MAX_TILING_DEPTH : usize = 6"
+    },
+    {
+      "signature": "pub enum TileRole"
+    },
+    {
+      "signature": "pub enum TilingKind"
+    },
+    {
+      "signature": "pub fn generate_aperiodic_tiling (kind : TilingKind , depth : usize) -> MathResult < TilingPatch >"
+    },
+    {
+      "signature": "pub struct TilePolygon"
+    },
+    {
+      "signature": "pub struct TilingPatch"
+    }
+  ],
   "crates/pure_math/src/pure_math/vector_calculus/coordinates.rs": [
     {
       "signature": "pub struct Cartesian"
@@ -8776,6 +8932,9 @@
     },
     {
       "signature": "pub use math_commons :: constants"
+    },
+    {
+      "signature": "pub use math_commons :: contours"
     },
     {
       "signature": "pub use math_commons :: math_kernel"
