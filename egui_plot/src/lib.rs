@@ -9,7 +9,7 @@
     clippy::too_many_arguments
 )]
 
-mod a11y;
+pub mod a11y;
 mod axis;
 pub mod commands;
 pub mod data_table;
@@ -41,6 +41,7 @@ use egui::{
 use emath::Float as _;
 
 pub use crate::{
+    a11y::{contrast_ratio, focus_ring_stroke},
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
     data_table::{
         DataTableState, DataTableViewMode, TableSeriesRef, data_table_clipboard_status_id,

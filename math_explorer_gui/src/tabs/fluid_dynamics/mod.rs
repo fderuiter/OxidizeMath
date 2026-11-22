@@ -3,7 +3,9 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod lattice_boltzmann;
+pub mod lattice_boltzmann_sculpt;
 pub mod potential_flow;
+mod potential_flow_brush;
 pub mod turbulence;
 
 

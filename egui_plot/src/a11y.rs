@@ -40,7 +40,7 @@ fn relative_luminance(color: Color32) -> f32 {
 
 /// Computes the WCAG 2.2 relative luminance contrast ratio between two colors.
 #[must_use]
-pub(crate) fn contrast_ratio(fg: Color32, bg: Color32) -> f32 {
+pub fn contrast_ratio(fg: Color32, bg: Color32) -> f32 {
     let lum_a = relative_luminance(fg);
     let lum_b = relative_luminance(bg);
     let lighter = lum_a.max(lum_b);
@@ -51,7 +51,7 @@ pub(crate) fn contrast_ratio(fg: Color32, bg: Color32) -> f32 {
 /// Returns a focus border stroke derived from `visuals.selection.stroke`
 /// guaranteed to achieve at least 3:1 contrast against `bg`.
 #[must_use]
-pub(crate) fn focus_ring_stroke(visuals: &egui::Visuals, bg: Color32) -> Stroke {
+pub fn focus_ring_stroke(visuals: &egui::Visuals, bg: Color32) -> Stroke {
     let mut stroke = visuals.selection.stroke;
     stroke.width = stroke.width.max(2.0);
     if contrast_ratio(stroke.color, bg) < 3.0 {

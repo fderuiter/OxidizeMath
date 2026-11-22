@@ -2,8 +2,13 @@
 
 use super::{UnifiedModel, UnifiedSimRunner};
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
-use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
+use crate::async_sim::{
+    BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState, StateSnapshot,
+};
+use crate::framework::{
+    BrushStroke, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
+    SpatialBrushKit,
+};
 use eframe::egui::{self, ColorImage};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
@@ -13,6 +18,8 @@ use std::sync::{Arc, RwLock};
 pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) controller: BackgroundWorker<UnifiedSimRunner<M>>,
     pub(crate) params: Arc<RwLock<HashMap<String, f64>>>,
+    pub(crate) sculpt_state: Arc<RwLock<SculptStatePayload>>,
+    pub(crate) brush_kit: SpatialBrushKit,
     pub(super) param_metadata: Vec<(String, ParameterConstraint)>,
     steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
@@ -50,9 +57,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
 
         let params = Arc::new(RwLock::new(initial_params.clone()));
-        let runner = UnifiedSimRunner::<M>::new(Arc::clone(&params));
+        let sculpt_state = Arc::new(RwLock::new(SculptStatePayload::default()));
+        let runner =
+            UnifiedSimRunner::<M>::new_with_sculpt(Arc::clone(&params), Arc::clone(&sculpt_state));
         let controller = BackgroundWorker::new(runner);
         let temp_model = M::new(&initial_params);
+        let brush_kit = M::default_brush_kit();
 
         let cached_param_labels = param_metadata
             .iter()
@@ -62,6 +72,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Self {
             controller,
             params,
+            sculpt_state,
+            brush_kit,
             param_metadata,
             steps_per_frame: 5,
             texture: None,
@@ -84,13 +96,45 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 
     pub(super) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
+        self.sculpt_state
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.respawn_preserving_sculpt(ctx);
+    }
+
+    pub(super) fn respawn_preserving_sculpt(&mut self, ctx: Option<&egui::Context>) {
         self.stepped_snapshot = None;
         let params = Arc::clone(&self.params);
+        let sculpt = Arc::clone(&self.sculpt_state);
         self.controller
-            .reset_or_respawn(|| UnifiedSimRunner::<M>::new(params));
+            .reset_or_respawn(|| UnifiedSimRunner::<M>::new_with_sculpt(params, sculpt));
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
+        }
+    }
+
+    /// Dispatches an interpolated [`BrushStroke`] to both UI sculpt state and the background worker.
+    pub fn dispatch_brush_stroke(&mut self, stroke: BrushStroke, ctx: Option<&egui::Context>) {
+        if M::supports_spatial_brush() {
+            let params_snap = self
+                .params
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            let mut sculpt = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
+            M::record_ui_brush_stroke(&stroke, &params_snap, &mut sculpt);
+        }
+        if self
+            .controller
+            .send_command(SimCommand::ApplyBrushStroke(stroke))
+            .is_ok()
+        {
+            self.dirty = true;
+            if let Some(c) = ctx {
+                c.request_repaint();
+            }
         }
     }
 
@@ -263,6 +307,12 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     fn step_simulation(&mut self) {
         if let Ok(params) = self.params.read() {
             let mut model = M::new(&params);
+            if M::supports_spatial_brush() {
+                let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+                if !sculpt.is_empty() {
+                    model.apply_sculpt_payload(&sculpt, &params);
+                }
+            }
             for _ in 0..self.steps_per_frame.max(1) {
                 model.step(&params);
             }
@@ -270,9 +320,20 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         }
     }
 
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(stroke) = ctx.brush_stroke {
+            self.dispatch_brush_stroke(stroke, Some(&ctx.response.ctx));
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
+    }
+
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
         let mut h = std::collections::hash_map::DefaultHasher::new();
         for (key, _) in &self.param_metadata {
             key.hash(&mut h);
@@ -280,6 +341,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                 val.to_bits().hash(&mut h);
             }
         }
+        sculpt.hash_into(&mut h);
         h.finish().max(1)
     }
 
@@ -293,46 +355,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn save_state(&self) -> Option<String> {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let sorted: std::collections::BTreeMap<&String, &f64> = params.iter().collect();
-        serde_json::to_string(&sorted).ok()
+        self.serialize_unified_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let params: HashMap<String, f64> = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
-        if !self.param_metadata.is_empty() && params.is_empty() {
-            return Err(format!(
-                "Empty parameter configuration for {}; expected parameters: {}",
-                M::name(),
-                self.param_metadata
-                    .iter()
-                    .map(|m| m.0.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-        for (key, value) in &params {
-            if !self.param_metadata.iter().any(|meta| &meta.0 == key) {
-                return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
-            }
-            if !value.is_finite() {
-                return Err(format!(
-                    "Non-finite value for parameter '{}' in {}",
-                    key,
-                    M::name()
-                ));
-            }
-        }
-        {
-            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (key, value) in params {
-                guard.insert(key, value);
-            }
-        }
-        self.texture = None;
-        self.reset_simulation(None);
-        Ok(())
+        self.deserialize_unified_state(state)
     }
 
     fn clamp_parameters(&mut self) -> bool {

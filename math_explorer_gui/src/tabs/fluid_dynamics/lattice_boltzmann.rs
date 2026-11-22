@@ -1,22 +1,83 @@
+use super::lattice_boltzmann_sculpt::{
+    apply_lbm_custom_action, apply_stroke_to_lbm, draw_lbm_brush_panel, export_solver_rle,
+    record_stroke_in_rle, rotate_airfoil_in_place, stamp_airfoil_on_solver,
+};
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
-use crate::async_sim::{SimCommand, StateSnapshot};
+use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::{decode_rle_mask, BrushMode, BrushStroke, SpatialBrushKit};
 use eframe::egui::Color32;
 use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-    BgkCollision, LatticeBoltzmannD2Q9,
+    advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_vorticity_into,
+    AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+
+pub(crate) const LBM_WIDTH: usize = 100;
+pub(crate) const LBM_HEIGHT: usize = 50;
+pub(crate) const LBM_INLET_U: f64 = 0.1;
+
+/// Live hydrodynamic force and vorticity diagnostics attached to LBM snapshots.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LbmSnapshotMetrics {
+    /// Dimensionless lift coefficient $C_L$.
+    pub lift_coeff: f64,
+    /// Dimensionless drag coefficient $C_D$.
+    pub drag_coeff: f64,
+    /// Peak vorticity magnitude $|\omega_z|$ across interior fluid cells.
+    pub max_vorticity: f64,
+}
 
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct LbmUnified {
     pub(crate) solver: LatticeBoltzmannD2Q9<BgkCollision>,
+    pub(crate) vorticity_buf: Vec<f64>,
+    pub(crate) latest_aero: AerodynamicCoefficients,
+    pub(crate) stamped_airfoil: Option<(u16, f64)>,
+    pub(crate) display_vorticity: bool,
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
+}
+
+impl LbmUnified {
+    pub(crate) fn seed_initial_geometry(
+        solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+        params: &HashMap<String, f64>,
+    ) -> Option<(u16, f64)> {
+        let profile = *params.get("naca_profile").unwrap_or(&0.0);
+        let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+        let stamped = if profile >= 1.0 {
+            let code = profile.round() as u16;
+            stamp_airfoil_on_solver(solver, code, aoa);
+            Some((code, aoa))
+        } else {
+            let center_x = 30;
+            let center_y = 25;
+            let radius = 5;
+            for y in 0..solver.height() {
+                for x in 0..solver.width() {
+                    let dx = x as i32 - center_x;
+                    let dy = y as i32 - center_y;
+                    if dx * dx + dy * dy <= radius * radius {
+                        solver.set_obstacle(x, y, true);
+                    }
+                }
+            }
+            None
+        };
+        solver.set_inlet(0, 0, solver.width(), solver.height(), LBM_INLET_U, 0.0);
+        stamped
+    }
+
+    fn refresh_diagnostics(&mut self) {
+        compute_vorticity_into(&self.solver, &mut self.vorticity_buf);
+        self.latest_aero = compute_aerodynamic_coefficients(&self.solver, LBM_INLET_U, 24.0, 3);
+    }
 }
 
 impl FiniteStateGuard for LbmUnified {
@@ -24,17 +85,8 @@ impl FiniteStateGuard for LbmUnified {
         if self.diverged {
             return false;
         }
-        self.solver
-            .state
-            .velocity_x()
-            .iter()
-            .all(|&v| v.is_finite())
-            && self
-                .solver
-                .state
-                .velocity_y()
-                .iter()
-                .all(|&v| v.is_finite())
+        self.solver.state.velocity_x().iter().all(|&v| v.is_finite())
+            && self.solver.state.velocity_y().iter().all(|&v| v.is_finite())
             && self.solver.state.density().iter().all(|&v| v.is_finite())
     }
 
@@ -60,34 +112,23 @@ impl UnifiedModel for LbmUnified {
 
     fn new(params: &HashMap<String, f64>) -> Self {
         let viscosity = *params.get("viscosity").unwrap_or(&0.02);
-        let width = 100;
-        let height = 50;
         let tau = 3.0 * viscosity + 0.5;
+        let mut solver = LatticeBoltzmannD2Q9::new(LBM_WIDTH, LBM_HEIGHT, tau);
+        let stamped_airfoil = Self::seed_initial_geometry(&mut solver, params);
 
-        let mut solver = LatticeBoltzmannD2Q9::new(width, height, tau);
-        solver.set_inlet(0, 20, 5, 10, 0.1, 0.0);
-
-        let center_x = 30;
-        let center_y = 25;
-        let radius = 5;
-        for y in 0..height {
-            for x in 0..width {
-                let dx = x as i32 - center_x;
-                let dy = y as i32 - center_y;
-                if dx * dx + dy * dy <= radius * radius {
-                    solver.set_obstacle(x, y, true);
-                }
-            }
-        }
-
-        solver.set_inlet(0, 0, 2, height, 0.1, 0.0);
-
-        Self {
+        let display_vorticity = *params.get("field_view").unwrap_or(&0.0) >= 0.5;
+        let mut model = Self {
             solver,
+            vorticity_buf: vec![0.0; LBM_WIDTH * LBM_HEIGHT],
+            latest_aero: AerodynamicCoefficients::default(),
+            stamped_airfoil,
+            display_vorticity,
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
-        }
+        };
+        model.refresh_diagnostics();
+        model
     }
 
     fn step(&mut self, params: &HashMap<String, f64>) {
@@ -101,15 +142,22 @@ impl UnifiedModel for LbmUnified {
                 self.step_count as f64,
                 self.step_count,
                 "viscosity",
-                format!("Invalid non-finite viscosity: {}", viscosity),
+                format!("Invalid non-finite viscosity: {viscosity}"),
             ));
             return;
         }
+        if let Some((code, prev_aoa)) = self.stamped_airfoil {
+            let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+            if aoa.is_finite() && (aoa - prev_aoa).abs() > 1e-6 {
+                rotate_airfoil_in_place(&mut self.solver, code, prev_aoa, aoa);
+                self.stamped_airfoil = Some((code, aoa));
+            }
+        }
+        self.display_vorticity = *params.get("field_view").unwrap_or(&0.0) >= 0.5;
         self.step_count += 1;
         self.solver.collision_model.tau = 3.0 * viscosity + 0.5;
-        self.solver
-            .set_inlet(0, 0, 2, self.solver.height(), 0.1, 0.0);
-        self.solver.step();
+        advance_wind_tunnel_step(&mut self.solver, LBM_INLET_U);
+        self.refresh_diagnostics();
 
         if !FiniteStateGuard::is_finite_state(self) {
             self.diverged = true;
@@ -125,38 +173,54 @@ impl UnifiedModel for LbmUnified {
     fn get_snapshot(&self) -> StateSnapshot {
         let width = self.solver.width();
         let height = self.solver.height();
-
         let mut pixels = vec![Color32::BLACK; width * height];
+        let mut max_vort = 0.0_f64;
+
         for y in 0..height {
+            let solver_y = height - 1 - y;
             for x in 0..width {
                 let pixel_idx = flatten_2d_index(x, y, width);
-                if self.solver.is_obstacle(x, height - 1 - y) {
+                let solver_idx = flatten_2d_index(x, solver_y, width);
+                if self.solver.is_obstacle(x, solver_y) {
                     pixels[pixel_idx] = Color32::from_gray(50);
+                } else if self.display_vorticity {
+                    let omega = self.vorticity_buf[solver_idx];
+                    let safe_w = if omega.is_finite() { omega } else { 0.0 };
+                    max_vort = max_vort.max(safe_w.abs());
+                    let norm = (0.5 + safe_w * 12.0).clamp(0.0, 1.0);
+                    let rgb = heatmap_color(norm);
+                    pixels[pixel_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
                 } else {
-                    let v = self.solver.get_velocity_magnitude(x, height - 1 - y);
+                    let omega = self.vorticity_buf[solver_idx];
+                    if omega.is_finite() {
+                        max_vort = max_vort.max(omega.abs());
+                    }
+                    let v = self.solver.get_velocity_magnitude(x, solver_y);
                     let safe_v = if v.is_finite() { v } else { 0.0 };
                     let normalized_v = (safe_v * 1000.0 / 255.0).clamp(0.0, 1.0);
-                    let safe_norm = if normalized_v.is_finite() {
-                        normalized_v
-                    } else {
-                        0.0
-                    };
-                    let rgb = heatmap_color(safe_norm);
+                    let rgb = heatmap_color(normalized_v);
                     pixels[pixel_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
                 }
             }
         }
 
+        let metrics = LbmSnapshotMetrics {
+            lift_coeff: self.latest_aero.lift_coeff,
+            drag_coeff: self.latest_aero.drag_coeff,
+            max_vorticity: max_vort,
+        };
+
         StateSnapshot {
             width,
             height,
-            pixels: Arc::new(std::sync::RwLock::new(pixels)),
+            pixels: Arc::new(RwLock::new(pixels)),
             custom_data: Vec::new(),
-            structured_data: None,
+            structured_data: Some(Box::new(metrics)),
         }
     }
 
-    fn process_command(&mut self, cmd: SimCommand, _params: &HashMap<String, f64>) {
+    fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
+        self.display_vorticity = *params.get("field_view").unwrap_or(&0.0) >= 0.5;
         match cmd {
             SimCommand::Reset => {
                 self.diverged = false;
@@ -177,19 +241,32 @@ impl UnifiedModel for LbmUnified {
                             && x < width
                             && y >= 0
                             && y < height
-                            && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r
+                            && (x - cx).pow(2) + (y - cy).pow(2) <= r * r
                         {
-                            self.solver
-                                .set_obstacle(x as usize, y as usize, is_obstacle);
+                            self.solver.set_obstacle(x as usize, y as usize, is_obstacle);
                         }
                     }
                 }
+                self.refresh_diagnostics();
+            }
+            SimCommand::ApplyBrushStroke(ref stroke) => {
+                apply_stroke_to_lbm(&mut self.solver, stroke);
+                self.refresh_diagnostics();
             }
             SimCommand::ClearObstacles => {
                 self.solver.clear_obstacles();
+                self.stamped_airfoil = None;
+                self.refresh_diagnostics();
             }
-            SimCommand::Custom(ref action) if action == "Clear Obstacles" => {
-                self.solver.clear_obstacles();
+            SimCommand::Custom(ref action)
+                if apply_lbm_custom_action(
+                    &mut self.solver,
+                    &mut self.stamped_airfoil,
+                    action,
+                    params,
+                ) =>
+            {
+                self.refresh_diagnostics();
             }
             _ => {}
         }
@@ -203,17 +280,93 @@ impl UnifiedModel for LbmUnified {
         true
     }
 
+    fn supports_spatial_brush() -> bool {
+        true
+    }
+
+    fn default_brush_kit() -> SpatialBrushKit {
+        SpatialBrushKit::new(BrushMode::Solid, 2.0)
+            .with_radius_bounds(1.0, 8.0, 1.0)
+            .with_cursor_step(2.0, 2.0)
+    }
+
+    fn draw_brush_controls(
+        ui: &mut eframe::egui::Ui,
+        brush_kit: &mut SpatialBrushKit,
+        params: &Arc<RwLock<HashMap<String, f64>>>,
+        sculpt_state: &Arc<RwLock<SculptStatePayload>>,
+        snapshot: Option<&StateSnapshot>,
+    ) -> Vec<SimCommand> {
+        draw_lbm_brush_panel(ui, brush_kit, params, sculpt_state, snapshot)
+    }
+
+    fn record_ui_brush_stroke(
+        stroke: &BrushStroke,
+        params: &HashMap<String, f64>,
+        sculpt_state: &mut SculptStatePayload,
+    ) {
+        record_stroke_in_rle(stroke, params, sculpt_state);
+    }
+
+    fn apply_sculpt_payload(&mut self, payload: &SculptStatePayload, params: &HashMap<String, f64>) {
+        if payload.rle_mask.is_empty() {
+            return;
+        }
+        let w = self.solver.width();
+        let h = self.solver.height();
+        if let Ok(bytes) = decode_rle_mask(&payload.rle_mask, w * h) {
+            for y in 0..h {
+                for x in 0..w {
+                    self.solver
+                        .set_obstacle(x, y, bytes[flatten_2d_index(x, y, w)] != 0);
+                }
+            }
+            let profile = *params.get("naca_profile").unwrap_or(&0.0);
+            let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+            self.stamped_airfoil = (profile >= 1.0).then_some((profile.round() as u16, aoa));
+            self.refresh_diagnostics();
+        }
+    }
+
+    fn export_sculpt_payload(&self, _params: &HashMap<String, f64>) -> SculptStatePayload {
+        SculptStatePayload {
+            rle_mask: export_solver_rle(&self.solver),
+            sparse_potential: Vec::new(),
+        }
+    }
+
     fn parameters() -> HashMap<String, ParameterConstraint> {
         let mut map = HashMap::new();
-
-        // We will just hardcode constraint based on tau [0.51, 2.0] -> visc = (tau-0.5)/3.0
-        // visc min = 0.00333, max = 0.5
         map.insert(
             "viscosity".to_string(),
             ParameterConstraint {
                 min: 0.00333,
                 max: 0.5,
-                step: 0.01,
+                step: 0.005,
+            },
+        );
+        map.insert(
+            "angle_of_attack".to_string(),
+            ParameterConstraint {
+                min: -25.0,
+                max: 25.0,
+                step: 1.0,
+            },
+        );
+        map.insert(
+            "naca_profile".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 4412.0,
+                step: 1.0,
+            },
+        );
+        map.insert(
+            "field_view".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 1.0,
+                step: 1.0,
             },
         );
         map
@@ -222,7 +375,23 @@ impl UnifiedModel for LbmUnified {
     fn parameter_label(name: &str) -> String {
         match name {
             "viscosity" => "Kinematic Viscosity (ν)".to_string(),
+            "angle_of_attack" => "Angle of Attack α (°)".to_string(),
+            "naca_profile" => "Obstacle / Airfoil Profile".to_string(),
+            "field_view" => "Scalar Field View".to_string(),
             other => other.to_string(),
+        }
+    }
+
+    fn parameter_choices(name: &str) -> &'static [(&'static str, f64)] {
+        match name {
+            "naca_profile" => &[
+                ("Cylinder (Default)", 0.0),
+                ("NACA 0012 (Symmetric)", 12.0),
+                ("NACA 2412 (Cambered)", 2412.0),
+                ("NACA 4412 (High Camber)", 4412.0),
+            ],
+            "field_view" => &[("Velocity |u|", 0.0), ("Vorticity ω_z", 1.0)],
+            _ => &[],
         }
     }
 
@@ -254,7 +423,7 @@ impl TheoryDescribable for LbmUnified {
         LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).theory_citation()
     }
 
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+    fn available_descriptions(&self) -> HashMap<String, String> {
         LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).available_descriptions()
     }
 }

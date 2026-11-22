@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 pub mod presets;
 pub mod runner;
+pub mod sculpt;
 pub mod tool;
 pub mod ui;
 
@@ -98,7 +99,7 @@ impl MorphogenesisTab {
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         width: usize,
         height: usize,
-    ) -> MorphogenesisRunner {
+    ) -> MorphogenesisRunner<math_explorer::biology::diffusion::MaskedFiniteDifference2D> {
         MorphogenesisTool::create_runner(params, width, height)
     }
 
@@ -139,11 +140,17 @@ impl MorphogenesisTab {
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
-        let current_state = tool
+        let (current_state, existing_mask) = tool
             .save_state()
             .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok())
-            .and_then(|s| s.state)
-            .unwrap_or(SimWorkerState::Ready);
+            .map_or((SimWorkerState::Ready, Vec::new()), |s| {
+                let keep_mask = if s.width == config.width && s.height == config.height {
+                    s.mask_rle
+                } else {
+                    Vec::new()
+                };
+                (s.state.unwrap_or(SimWorkerState::Ready), keep_mask)
+            });
         let target_state = if current_state == SimWorkerState::Running {
             SimWorkerState::Running
         } else {
@@ -160,6 +167,7 @@ impl MorphogenesisTab {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            mask_rle: existing_mask,
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;

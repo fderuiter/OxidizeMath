@@ -49,6 +49,38 @@ pub fn construct_1d_hamiltonian(
     QuantumOperator::new(matrix)
 }
 
+/// Updates an existing [`QuantumOperator`] in place with the 1D finite-difference Hamiltonian
+/// $\hat{H} = -\frac{\hbar^2}{2m}\frac{d^2}{dx^2} + V(x)$, performing zero heap allocations
+/// when `out.matrix` already matches `potential.len()`.
+#[verified_engine::verified]
+pub fn construct_1d_hamiltonian_into(
+    potential: &DVector<f64>,
+    dx: f64,
+    mass: f64,
+    h_bar: f64,
+    out: &mut QuantumOperator,
+) {
+    let n_points = potential.len();
+    if out.matrix.nrows() != n_points || out.matrix.ncols() != n_points {
+        *out = construct_1d_hamiltonian(potential, dx, mass, h_bar);
+        return;
+    }
+    out.matrix.fill(Complex::new(0.0, 0.0));
+    let h_bar_sq = h_bar * h_bar;
+    let diag_kin = h_bar_sq / (mass * dx * dx);
+    let off_diag_kin = -h_bar_sq / (2.0 * mass * dx * dx);
+
+    for i in 0..n_points {
+        out.matrix[(i, i)] = Complex::new(diag_kin + potential[i], 0.0);
+        if i > 0 {
+            out.matrix[(i, i - 1)] = Complex::new(off_diag_kin, 0.0);
+        }
+        if i + 1 < n_points {
+            out.matrix[(i, i + 1)] = Complex::new(off_diag_kin, 0.0);
+        }
+    }
+}
+
 /// Creates a Gaussian wavepacket state.
 ///
 /// psi(x) = A * exp(-(x - x0)^2 / (2 * sigma^2)) * exp(i * k0 * x)

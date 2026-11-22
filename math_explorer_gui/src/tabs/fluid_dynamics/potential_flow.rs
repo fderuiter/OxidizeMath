@@ -1,7 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::{bounded_drag_value, InteractiveTool};
+use crate::framework::{
+    bounded_drag_value, BrushMode, InteractionContext, InteractiveTool, SpatialBrushKit,
+};
 use eframe::egui;
 use egui_plot::{Arrows, Plot};
 use math_explorer::physics::fluid_dynamics::potential_flow::{
@@ -28,6 +30,7 @@ pub struct PotentialFlowTool {
     pub(crate) new_element_x: f64,
     pub(crate) new_element_y: f64,
     pub(crate) new_element_angle: f64,
+    pub(crate) brush_kit: SpatialBrushKit,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -136,6 +139,7 @@ impl Default for PotentialFlowTool {
             new_element_x: 0.0,
             new_element_y: 0.0,
             new_element_angle: 0.0,
+            brush_kit: Self::default_flow_brush_kit(),
         };
         tool.rebuild_field();
         tool
@@ -216,19 +220,44 @@ impl InteractiveTool for PotentialFlowTool {
         Some(self)
     }
 
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(ref stroke) = ctx.brush_stroke {
+            self.apply_flow_brush_stroke(stroke);
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.draw_controls(ui);
         let (origins, tips) = self.compute_arrow_field();
+        let allow_pan = !self.brush_kit.is_sculpting();
+        let vr = self.view_range.max(1.0);
+        let mut strokes = Vec::new();
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            Plot::new("potential_flow_plot")
+            let plot_resp = Plot::new("potential_flow_plot")
                 .data_aspect(1.0)
                 .view_aspect(1.0)
+                .allow_drag(allow_pan)
+                .allow_zoom(allow_pan)
                 .show(ui, |plot_ui| {
                     let arrow_color =
                         crate::app::SemanticPalette::from_visuals(&plot_ui.ctx().style().visuals)
                             .series_color(0);
                     plot_ui.arrows(Arrows::new("Vector Field", origins, tips).color(arrow_color));
+                    strokes = self.brush_kit.sample_plot(
+                        plot_ui,
+                        [-vr, -vr],
+                        [vr, vr],
+                        Some(BrushMode::Erase),
+                    );
                 });
+            for stroke in strokes {
+                let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
+                self.on_brush(&ic);
+            }
         });
     }
 }
@@ -290,6 +319,7 @@ impl PotentialFlowTool {
             ui.heading("Potential Flow Controls");
             ui.separator();
             self.draw_add_element_controls(ui);
+            self.draw_brush_toolbar(ui);
 
             ui.separator();
             if ui

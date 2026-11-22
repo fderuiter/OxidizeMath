@@ -209,3 +209,28 @@ pub fn evolve_state_in_place(
     propagator.matrix.mul_to(&state.vector, scratch);
     std::mem::swap(&mut state.vector, scratch);
 }
+
+/// Computes the total squared norm $\sum_i |\psi_i|^2$ of `state` with zero heap allocations.
+#[verified_engine::verified]
+pub fn state_norm_squared(state: &QuantumState) -> f64 {
+    let mut sum = 0.0;
+    for amp in state.vector.iter() {
+        sum += amp.norm_sqr();
+    }
+    sum
+}
+
+/// Computes the quantum transmission probability $T = \sum_{i \ge \text{split}} |\psi_i|^2 / \sum_i |\psi_i|^2$
+/// to the right of `split_idx` with zero heap allocations.
+#[verified_engine::verified]
+pub fn transmission_probability(state: &QuantumState, split_idx: usize) -> f64 {
+    let total = state_norm_squared(state);
+    if total <= 1e-15 || split_idx >= state.vector.len() {
+        return 0.0;
+    }
+    let mut transmitted = 0.0;
+    for amp in state.vector.as_slice()[split_idx..].iter() {
+        transmitted += amp.norm_sqr();
+    }
+    (transmitted / total).clamp(0.0, 1.0)
+}

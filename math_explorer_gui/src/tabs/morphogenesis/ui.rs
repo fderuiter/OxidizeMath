@@ -1,17 +1,23 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::runner::MorphoSnapshotData;
+use super::sculpt::{
+    build_maze_rle, draw_morpho_sculpt_controls, overlay_cell_mask_colors,
+};
 use super::{MorphogenesisTool, SimpleRng};
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::SimCommand;
 use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    BrushMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
+};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use egui_plot::{Plot, PlotImage, PlotPoint};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
-use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::diffusion::SpatialDiffusion;
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 
 impl MorphogenesisTool {
@@ -37,18 +43,21 @@ impl MorphogenesisTool {
             crate::app::ThemeMode::from_visuals(&ctx.style().visuals)
                 == crate::app::ThemeMode::HighContrast
         });
-        if let Some(u_data) = snapshot
+        if let Some(mdata) = snapshot
             .structured_data
             .as_ref()
-            .and_then(|d| d.downcast_ref::<Vec<f64>>())
-            .filter(|u| u.len() == num_pixels)
+            .and_then(|d| d.downcast_ref::<MorphoSnapshotData>())
+            .filter(|m| m.u_data.len() == num_pixels)
         {
-            let recolored = Self::plot_concentration_with_contrast(
-                u_data,
+            let mut recolored = Self::plot_concentration_with_contrast(
+                &mdata.u_data,
                 snapshot.width,
                 snapshot.height,
                 high_contrast,
             );
+            if !mdata.mask_roles.is_empty() {
+                overlay_cell_mask_colors(&mut recolored, &mdata.mask_roles, high_contrast);
+            }
             self.pixels.copy_from_slice(&recolored.pixels);
         } else if snapshot_pixels.len() == num_pixels {
             self.pixels.copy_from_slice(&snapshot_pixels);
@@ -148,6 +157,29 @@ impl MorphogenesisTool {
                 }
             }
 
+            if let Some(cmd) = draw_morpho_sculpt_controls(ui, &mut self.brush_kit) {
+                match cmd {
+                    "stamp_maze" => {
+                        *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
+                            build_maze_rle(self.width, self.height);
+                        let _ = self
+                            .worker
+                            .send_command(SimCommand::Custom("stamp_maze".to_string()));
+                        self.dirty = true;
+                        ctx.request_repaint();
+                    }
+                    "clear_mask" => {
+                        self.mask_rle
+                            .write()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .clear();
+                        let _ = self.worker.send_command(SimCommand::ClearObstacles);
+                        self.dirty = true;
+                        ctx.request_repaint();
+                    }
+                    _ => {}
+                }
+            }
             self.draw_presets(ui);
         });
     }
@@ -157,16 +189,18 @@ impl MorphogenesisTool {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             self.sync_texture_from_snapshot(&ctx);
 
-            if let Some(texture) = &self.texture {
+            if let Some(texture) = self.texture.clone() {
                 let w = self.width as f32;
                 let h = self.height as f32;
-                Plot::new("morphogenesis_plot")
+                let allow_pan = !self.brush_kit.is_sculpting();
+                let mut strokes = Vec::new();
+                let plot_resp = Plot::new("morphogenesis_plot")
                     .data_aspect(1.0)
                     .view_aspect(1.0)
                     .show_grid(false)
                     .show_axes([false, false])
-                    .allow_drag(true)
-                    .allow_zoom(true)
+                    .allow_drag(allow_pan)
+                    .allow_zoom(allow_pan)
                     .show(ui, |plot_ui| {
                         plot_ui.image(PlotImage::new(
                             "morphogenesis_image",
@@ -174,7 +208,17 @@ impl MorphogenesisTool {
                             PlotPoint::new(f64::from(w) / 2.0, f64::from(h) / 2.0),
                             [w, h],
                         ));
+                        strokes = self.brush_kit.sample_plot(
+                            plot_ui,
+                            [0.5, 0.5],
+                            [f64::from(w) - 0.5, f64::from(h) - 0.5],
+                            Some(BrushMode::Erase),
+                        );
                     });
+                for stroke in strokes {
+                    let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
+                    self.on_brush(&ic);
+                }
             } else {
                 render_empty_plot_guidance(
                     ui,
@@ -184,8 +228,8 @@ impl MorphogenesisTool {
         });
     }
 
-    pub(crate) fn initialize_system(
-        system: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+    pub(crate) fn initialize_system<D: SpatialDiffusion<2>>(
+        system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
         width: usize,
         height: usize,
     ) {

@@ -4,6 +4,7 @@
 //! This is a mesoscopic method that simulates fluid dynamics by tracking
 //! distribution functions on a discrete lattice.
 
+pub mod aerodynamics;
 #[allow(missing_docs)]
 pub mod algorithms;
 #[allow(missing_docs)]
@@ -14,6 +15,7 @@ pub mod state;
 #[cfg(test)]
 mod tests;
 
+pub use aerodynamics::*;
 pub use model::*;
 pub use state::*;
 

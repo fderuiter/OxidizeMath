@@ -216,8 +216,7 @@ fn dispatch_key(tool: &mut GraphEditorTool, key: egui::Key, modifiers: egui::Mod
         egui::Area::new(egui::Id::new("test_graph_canvas"))
             .fixed_pos(Pos2::ZERO)
             .show(ctx, |ui| {
-                let (response, _painter) =
-                    ui.allocate_painter(viewport, egui::Sense::click_and_drag());
+                let (response, _painter) = ui.allocate_painter(viewport, egui::Sense::click_and_drag());
                 let mut keys_down = std::collections::HashSet::new();
                 keys_down.insert(key);
                 let interaction_ctx = crate::framework::InteractionContext {
@@ -228,6 +227,7 @@ fn dispatch_key(tool: &mut GraphEditorTool, key: egui::Key, modifiers: egui::Mod
                     response: &response,
                     input_mode: crate::framework::InputMode::Mouse,
                     multi_touch: None,
+                    brush_stroke: None,
                     keys_down,
                     modifiers,
                 };

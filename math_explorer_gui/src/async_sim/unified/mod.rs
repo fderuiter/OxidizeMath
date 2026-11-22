@@ -2,10 +2,12 @@
 
 mod canvas;
 mod controls;
+pub mod sculpt;
 pub mod tool;
 pub use tool::*;
 
-use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::async_sim::{SculptStatePayload, SimCommand, SimulationRunner, StateSnapshot};
+use crate::framework::{BrushStroke, SpatialBrushKit};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -99,6 +101,60 @@ pub trait UnifiedModel:
         false
     }
 
+    /// Whether this model supports interactive [`SpatialBrushKit`] sculpting and persistence.
+    fn supports_spatial_brush() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    /// Returns the default [`SpatialBrushKit`] configuration for this model.
+    fn default_brush_kit() -> SpatialBrushKit
+    where
+        Self: Sized,
+    {
+        SpatialBrushKit::default()
+    }
+
+    /// Renders optional brush controls and live diagnostic readouts in the left side panel.
+    fn draw_brush_controls(
+        _ui: &mut eframe::egui::Ui,
+        _brush_kit: &mut SpatialBrushKit,
+        _params: &Arc<RwLock<HashMap<String, f64>>>,
+        _sculpt_state: &Arc<RwLock<SculptStatePayload>>,
+        _snapshot: Option<&StateSnapshot>,
+    ) -> Vec<SimCommand>
+    where
+        Self: Sized,
+    {
+        Vec::new()
+    }
+
+    /// Updates UI-side `sculpt_state` synchronously when a `BrushStroke` is applied so
+    /// `save_state()` immediately reflects sculpted masks/potentials.
+    fn record_ui_brush_stroke(
+        _stroke: &BrushStroke,
+        _params: &HashMap<String, f64>,
+        _sculpt_state: &mut SculptStatePayload,
+    ) where
+        Self: Sized,
+    {
+    }
+
+    /// Restores or exports sculpted state on the worker model instance.
+    fn apply_sculpt_payload(
+        &mut self,
+        _payload: &SculptStatePayload,
+        _params: &HashMap<String, f64>,
+    ) {
+    }
+
+    /// Exports current worker model sculpt state into `payload`.
+    fn export_sculpt_payload(&self, _params: &HashMap<String, f64>) -> SculptStatePayload {
+        SculptStatePayload::default()
+    }
+
     /// Allow the model to draw custom visualization in the central panel.
     /// Return true if custom rendering was performed.
     fn custom_central_panel(_ui: &mut eframe::egui::Ui, _snapshot: Option<&StateSnapshot>) -> bool
@@ -106,6 +162,19 @@ pub trait UnifiedModel:
         Self: Sized,
     {
         false
+    }
+
+    /// Allow the model to draw custom visualization with [`SpatialBrushKit`] sampling,
+    /// returning `(handled, emitted_strokes)`.
+    fn custom_central_panel_with_brush(
+        ui: &mut eframe::egui::Ui,
+        snapshot: Option<&StateSnapshot>,
+        _brush_kit: &mut SpatialBrushKit,
+    ) -> (bool, Vec<BrushStroke>)
+    where
+        Self: Sized,
+    {
+        (Self::custom_central_panel(ui, snapshot), Vec::new())
     }
 
     /// Evaluate a fast scalar observable `(metric_label, value)` from `params`
@@ -123,17 +192,42 @@ pub trait UnifiedModel:
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,
+    sculpt_state: Arc<RwLock<SculptStatePayload>>,
     steps_per_frame: usize,
 }
 
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
     #[allow(missing_docs)]
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
+        Self::new_with_sculpt(params, Arc::new(RwLock::new(SculptStatePayload::default())))
+    }
+
+    #[allow(missing_docs)]
+    pub fn new_with_sculpt(
+        params: Arc<RwLock<HashMap<String, f64>>>,
+        sculpt_state: Arc<RwLock<SculptStatePayload>>,
+    ) -> Self {
         let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut model = M::new(&initial_params);
+        if M::supports_spatial_brush() {
+            let sculpt = sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+            if !sculpt.is_empty() {
+                model.apply_sculpt_payload(&sculpt, &initial_params);
+            }
+        }
         Self {
-            model: M::new(&initial_params),
+            model,
             params,
+            sculpt_state,
             steps_per_frame: 5,
+        }
+    }
+
+    fn sync_sculpt_from_model(&self, current_params: &HashMap<String, f64>) {
+        if M::supports_spatial_brush() {
+            let exported = self.model.export_sculpt_payload(current_params);
+            let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
+            *guard = exported;
         }
     }
 }
@@ -149,8 +243,22 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
             SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
             SimCommand::Reset => {
                 self.model = M::new(&current_params);
+                if M::supports_spatial_brush() {
+                    let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+                    if !sculpt.is_empty() {
+                        self.model.apply_sculpt_payload(&sculpt, &current_params);
+                    }
+                }
             }
-            _ => self.model.process_command(cmd, &current_params),
+            SimCommand::SyncSculptState(payload) => {
+                self.model.apply_sculpt_payload(&payload, &current_params);
+                let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
+                *guard = payload;
+            }
+            other => {
+                self.model.process_command(other, &current_params);
+                self.sync_sculpt_from_model(&current_params);
+            }
         }
     }
 

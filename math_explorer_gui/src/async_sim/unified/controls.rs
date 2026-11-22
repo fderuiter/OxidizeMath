@@ -67,6 +67,22 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
 
         drop(params_lock);
+        if M::supports_spatial_brush() {
+            ui.separator();
+            let cmds = M::draw_brush_controls(
+                ui,
+                &mut self.brush_kit,
+                &self.params,
+                &self.sculpt_state,
+                self.controller.latest_snapshot(),
+            );
+            for cmd in cmds {
+                if self.controller.send_command(cmd).is_ok() {
+                    self.dirty = true;
+                    ctx.request_repaint();
+                }
+            }
+        }
         self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation(Some(ctx));

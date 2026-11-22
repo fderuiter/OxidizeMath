@@ -1,3 +1,4 @@
+pub mod brush_codec;
 pub mod callout_overlay;
 pub mod clamp;
 #[cfg(test)]
@@ -29,6 +30,11 @@ pub mod recovery;
 #[allow(clippy::disallowed_methods)]
 mod recovery_tests;
 pub mod side_panel;
+pub mod spatial_brush;
+#[cfg(all(test, feature = "physics", feature = "biology"))]
+mod spatial_brush_integration_tests;
+#[cfg(test)]
+mod spatial_brush_tests;
 pub mod state_bounds;
 #[cfg(test)]
 mod state_bounds_tests;
@@ -40,6 +46,7 @@ pub mod trace_overlay;
 mod ui;
 mod url_share;
 
+pub use brush_codec::*;
 pub use callout_overlay::*;
 pub use clamp::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
@@ -55,6 +62,7 @@ pub use side_panel::{
     clear_pane_side_panel_records, pane_side_panel_records, PaneSidePanel, PaneSidePanelRecord,
     MAX_PANE_SIDE_PANEL_WIDTH_RATIO,
 };
+pub use spatial_brush::*;
 pub use state_bounds::*;
 pub use state_guard::*;
 pub use trace_overlay::*;
@@ -93,6 +101,26 @@ pub struct InteractionContext<'a> {
     pub multi_touch: Option<egui::MultiTouchInfo>,
     pub keys_down: std::collections::HashSet<egui::Key>,
     pub modifiers: egui::Modifiers,
+    pub brush_stroke: Option<BrushStroke>,
+}
+
+impl<'a> InteractionContext<'a> {
+    /// Builds an [`InteractionContext`] carrying an interpolated [`BrushStroke`] for [`InteractiveTool::on_brush`].
+    #[must_use]
+    pub fn from_brush_stroke(response: &'a egui::Response, stroke: BrushStroke) -> Self {
+        Self {
+            pointer_pos: response.interact_pointer_pos(),
+            delta: response.drag_delta(),
+            is_dragging: response.dragged(),
+            is_clicked: response.clicked(),
+            response,
+            input_mode: InputMode::Mouse,
+            multi_touch: None,
+            keys_down: std::collections::HashSet::new(),
+            modifiers: egui::Modifiers::NONE,
+            brush_stroke: Some(stroke),
+        }
+    }
 }
 
 pub trait InteractiveTool {
