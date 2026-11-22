@@ -3,6 +3,10 @@
 #[path = "curvature_heatmap_ui.rs"]
 mod ui;
 
+#[path = "curvature_heatmap/presets.rs"]
+mod presets;
+
+use super::custom_surface::{CustomSurfaceSandbox, SurfaceType};
 use crate::framework::{Camera3D, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
 use egui_plot::LineStyle;
@@ -11,14 +15,7 @@ use math_explorer::pure_math::differential_geometry::surface::{
     KleinBottle, ParametricSurface, Sphere, SurfaceAnalysis, Torus,
 };
 use nalgebra::Point3;
-use std::f64::consts::PI;
-
-#[derive(PartialEq, Eq, Hash, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum SurfaceType {
-    Sphere,
-    Torus,
-    KleinBottle,
-}
+use std::collections::BTreeMap;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum CurvatureType {
@@ -37,6 +34,12 @@ struct CurvatureHeatmapSaveState {
     u_resolution: usize,
     v_resolution: usize,
     camera: Camera3D,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    custom_expr: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parametric_exprs: Option<[String; 3]>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    custom_params: BTreeMap<String, f64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -58,6 +61,12 @@ struct CurvatureHeatmapState {
     yaw: Option<f32>,
     #[serde(default)]
     zoom: Option<f32>,
+    #[serde(default)]
+    custom_expr: Option<String>,
+    #[serde(default)]
+    parametric_exprs: Option<[String; 3]>,
+    #[serde(default)]
+    custom_params: BTreeMap<String, f64>,
 }
 
 /// Interactive 3D parametric manifold Gaussian and mean curvature heatmap viewer.
@@ -72,6 +81,7 @@ pub struct CurvatureHeatmap {
     v_resolution: usize,
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
+    pub(super) custom_sandbox: CustomSurfaceSandbox,
     curvature_grid: Vec<f64>,
     surface_vertices: Vec<Point3<f64>>,
 }
@@ -90,6 +100,7 @@ impl Default for CurvatureHeatmap {
             v_resolution: 30,
             camera,
             scene_builder: Scene3DBuilder::new(camera),
+            custom_sandbox: CustomSurfaceSandbox::default(),
             curvature_grid: Vec::new(),
             surface_vertices: Vec::new(),
         }
@@ -125,10 +136,19 @@ impl CurvatureHeatmap {
                 };
                 self.build_surface_segments(&s, series_color);
             }
+            SurfaceType::CustomHeightfield => {
+                let s = self.custom_sandbox.build_heightfield();
+                self.build_surface_segments(&s, series_color);
+            }
+            SurfaceType::CustomParametric => {
+                let s = self.custom_sandbox.build_parametric();
+                self.build_surface_segments(&s, series_color);
+            }
         }
     }
 
     fn sample_surface_grid<T: ParametricSurface>(&mut self, surface: &T) -> (f64, f64) {
+        let ((u_min, u_max), (v_min, v_max)) = self.surface_type.uv_domain();
         let cols = self.v_resolution + 1;
         let total = (self.u_resolution + 1) * cols;
         self.curvature_grid.clear();
@@ -138,16 +158,21 @@ impl CurvatureHeatmap {
 
         let mut min_c = f64::INFINITY;
         let mut max_c = f64::NEG_INFINITY;
-        let u_scale = 2.0 * PI / (self.u_resolution as f64);
-        let v_scale = 2.0 * PI / (self.v_resolution as f64);
+        let u_span = u_max - u_min;
+        let v_span = v_max - v_min;
 
         for i in 0..=self.u_resolution {
-            let u = (i as f64) * u_scale;
+            let u = u_min + u_span * (i as f64 / self.u_resolution as f64);
             for j in 0..=self.v_resolution {
-                let v = (j as f64) * v_scale;
-                let c = match self.curvature_type {
+                let v = v_min + v_span * (j as f64 / self.v_resolution as f64);
+                let raw = match self.curvature_type {
                     CurvatureType::Gaussian => surface.gaussian_curvature(u, v),
                     CurvatureType::Mean => surface.mean_curvature(u, v),
+                };
+                let c = if raw.is_finite() {
+                    raw.clamp(-1e4, 1e4)
+                } else {
+                    0.0
                 };
                 min_c = min_c.min(c);
                 max_c = max_c.max(c);
@@ -155,7 +180,11 @@ impl CurvatureHeatmap {
                 self.surface_vertices.push(surface.position(u, v));
             }
         }
-        (min_c, max_c)
+        if !min_c.is_finite() || !max_c.is_finite() {
+            (0.0, 1.0)
+        } else {
+            (min_c, max_c)
+        }
     }
 
     fn build_surface_segments<T: ParametricSurface>(
@@ -202,9 +231,11 @@ impl InteractiveTool for CurvatureHeatmap {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }
+
     fn name(&self) -> &'static str {
         "Curvature Heatmap"
     }
+
     fn domain(&self) -> &'static str {
         "geometry_topology"
     }
@@ -221,10 +252,13 @@ impl InteractiveTool for CurvatureHeatmap {
         self.u_resolution.hash(&mut h);
         self.v_resolution.hash(&mut h);
         self.camera.hash_state(&mut h);
+        self.custom_sandbox.hash_state(&mut h);
         h.finish().max(1)
     }
 
     fn save_state(&self) -> Option<String> {
+        let (custom_expr, parametric_exprs, custom_params) =
+            self.custom_sandbox.export_fields(self.surface_type);
         serde_json::to_string(&CurvatureHeatmapSaveState {
             surface_type: self.surface_type,
             curvature_type: self.curvature_type,
@@ -235,6 +269,9 @@ impl InteractiveTool for CurvatureHeatmap {
             u_resolution: self.u_resolution,
             v_resolution: self.v_resolution,
             camera: self.camera,
+            custom_expr,
+            parametric_exprs,
+            custom_params,
         })
         .ok()
     }
@@ -266,6 +303,11 @@ impl InteractiveTool for CurvatureHeatmap {
         self.u_resolution = loaded.u_resolution;
         self.v_resolution = loaded.v_resolution;
         self.camera.apply_pose(camera);
+        self.custom_sandbox.load_fields(
+            loaded.custom_expr.as_deref(),
+            loaded.parametric_exprs.as_ref(),
+            &loaded.custom_params,
+        );
         Ok(())
     }
 
@@ -325,6 +367,8 @@ impl scientific_metadata::theory::TheoryDescribable for CurvatureHeatmap {
             SurfaceType::Sphere => "sphere",
             SurfaceType::Torus => "torus",
             SurfaceType::KleinBottle => "Klein bottle",
+            SurfaceType::CustomHeightfield => "custom compiled heightfield",
+            SurfaceType::CustomParametric => "custom compiled parametric manifold",
         };
         let curv_formula = match self.curvature_type {
             CurvatureType::Gaussian => "Gaussian curvature $K = \\kappa_1 \\kappa_2 = \\frac{LN - M^2}{EG - F^2}$ (an intrinsic invariant by Gauss's Theorema Egregium)",
@@ -334,12 +378,15 @@ impl scientific_metadata::theory::TheoryDescribable for CurvatureHeatmap {
             "Differential geometry surface analysis evaluating {curv_formula} on a parametric {surf_name}."
         )
     }
+
     fn phonetic_description(&self) -> String {
         "Differential geometry surface curvature and Gauss-Bonnet theory".into()
     }
+
     fn theory_citation(&self) -> String {
         "Differential Geometry of Curves and Surfaces (do Carmo, 2016)".into()
     }
+
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
         map.insert(
@@ -354,74 +401,6 @@ impl scientific_metadata::theory::TheoryDescribable for CurvatureHeatmap {
     }
 }
 
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Gaussian Curvature Heatmap",
-    "domain": "geometry_topology",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "surface_type": "Torus",
-    "curvature_type": "Gaussian",
-    "sphere_radius": 1.0,
-    "torus_major_radius": 2.5,
-    "torus_minor_radius": 0.8,
-    "klein_radius": 2.0,
-    "u_resolution": 36,
-    "v_resolution": 36,
-    "camera": {
-      "pitch": 0.6,
-      "yaw": 0.4,
-      "zoom": 1.0
-    }
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "curvature_heatmap_starter",
-        title: "Gaussian Curvature Heatmap",
-        description: "K = κ₁·κ₂: Intrinsic differential Gaussian and mean curvature distribution across manifolds.",
-        category: "Differential Geometry",
-        icon: "🌐",
-        domain: "geometry_topology",
-        tool_name: Some("CurvatureHeatmap"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    #![cfg_attr(any(), verified(opt_out = "tests"))]
-
-    use super::*;
-
-    #[test]
-    fn curvature_heatmap_camera_preset_and_export_work() {
-        let tool = CurvatureHeatmap {
-            camera: Camera3D::new(0.7, -0.35, 1.4),
-            ..Default::default()
-        };
-        let saved = tool.save_state().expect("state should serialize");
-
-        let mut restored = CurvatureHeatmap::default();
-        restored
-            .try_load_state(&saved)
-            .expect("saved state should load");
-        assert!((restored.camera.pitch - 0.7).abs() < 1e-6);
-        assert!((restored.camera.yaw + 0.35).abs() < 1e-6);
-        assert!((restored.camera.zoom - 1.4).abs() < 1e-6);
-
-        let legacy = r#"{"surface_type":"Torus","curvature_type":"Mean","sphere_radius":1.0,"torus_major_radius":2.0,"torus_minor_radius":0.5,"klein_radius":2.0,"u_resolution":20,"v_resolution":20,"pitch":0.4,"yaw":0.8,"zoom":1.2}"#;
-        restored
-            .try_load_state(legacy)
-            .expect("legacy pitch/yaw/zoom preset should load");
-        assert!((restored.camera.yaw - 0.8).abs() < 1e-6);
-
-        let ctx = egui::Context::default();
-        let _ = ctx.run(egui::RawInput::default(), |ctx| restored.show(ctx));
-        assert!(!egui_plot::get_last_plot_datasets().is_empty());
-        assert!(!egui_plot::get_last_plot_datasets_3d().is_empty());
-    }
-}
+#[path = "curvature_heatmap/tests.rs"]
+mod tests;

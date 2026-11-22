@@ -3,6 +3,7 @@
 #[path = "surface_viewer_ui.rs"]
 mod ui;
 
+use super::custom_surface::{CustomSurfaceSandbox, SurfaceType};
 use crate::framework::{Camera3D, InteractiveTool, Scene3DBuilder};
 use crate::web_io::{spawn_save_as_file_dialog, SaveAsDialogConfig};
 use eframe::egui;
@@ -11,7 +12,7 @@ use math_explorer::pure_math::differential_geometry::surface::{
     KleinBottle, ParametricSurface, Sphere, Torus,
 };
 use nalgebra::Point3;
-use std::f64::consts::PI;
+use std::collections::BTreeMap;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
 const OBJ_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
@@ -20,13 +21,6 @@ const OBJ_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
     fallback_filename: "surface.obj",
     write_error_prefix: "Failed to save OBJ mesh",
 };
-
-#[derive(PartialEq, Eq, Hash, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum SurfaceType {
-    Sphere,
-    Torus,
-    KleinBottle,
-}
 
 #[derive(serde::Serialize)]
 struct SurfaceViewerSaveState {
@@ -38,6 +32,12 @@ struct SurfaceViewerSaveState {
     u_resolution: usize,
     v_resolution: usize,
     camera: Camera3D,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    custom_expr: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parametric_exprs: Option<[String; 3]>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    custom_params: BTreeMap<String, f64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -58,6 +58,12 @@ struct SurfaceViewerState {
     yaw: Option<f32>,
     #[serde(default)]
     zoom: Option<f32>,
+    #[serde(default)]
+    custom_expr: Option<String>,
+    #[serde(default)]
+    parametric_exprs: Option<[String; 3]>,
+    #[serde(default)]
+    custom_params: BTreeMap<String, f64>,
 }
 
 /// Interactive 3D parametric wireframe manifold viewer with asynchronous `.obj` export.
@@ -71,6 +77,7 @@ pub struct SurfaceViewer {
     v_resolution: usize,
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
+    pub(super) custom_sandbox: CustomSurfaceSandbox,
     line_scratch: Vec<Point3<f64>>,
     surface_vertices: Vec<Point3<f64>>,
     pub(super) obj_export_rx: Option<Receiver<Result<String, String>>>,
@@ -90,6 +97,7 @@ impl Default for SurfaceViewer {
             v_resolution: 30,
             camera,
             scene_builder: Scene3DBuilder::new(camera),
+            custom_sandbox: CustomSurfaceSandbox::default(),
             line_scratch: Vec::new(),
             surface_vertices: Vec::new(),
             obj_export_rx: None,
@@ -111,19 +119,29 @@ impl SurfaceViewer {
             SurfaceType::KleinBottle => Box::new(KleinBottle {
                 radius: self.klein_radius,
             }),
+            SurfaceType::CustomHeightfield => Box::new(self.custom_sandbox.build_heightfield()),
+            SurfaceType::CustomParametric => Box::new(self.custom_sandbox.build_parametric()),
         }
     }
 
     /// Generates serialized Wavefront `.obj` text for the active parametric surface mesh.
     pub fn build_obj_mesh_string(&self) -> Result<String, String> {
         let surface = self.create_surface();
-        let mesh = super::export_utils::surface_to_mesh(
+        let (u_range, v_range) = self.surface_type.uv_domain();
+        let mesh = super::export_utils::surface_to_mesh_with_domain(
             surface.as_ref(),
+            u_range,
+            v_range,
             self.u_resolution,
             self.v_resolution,
         );
         oxidize_core::mesh::export_mesh_to_obj_string(&mesh)
             .map_err(|e| format!("Failed to serialize OBJ mesh: {e}"))
+    }
+
+    #[cfg(test)]
+    fn build_obj_string(&self) -> String {
+        self.build_obj_mesh_string().unwrap_or_default()
     }
 
     pub(super) fn trigger_obj_export(&mut self) {
@@ -180,20 +198,22 @@ impl SurfaceViewer {
     /// Populates `self.scene_builder` with world `Point3<f64>` wireframe grid polylines.
     pub fn populate_scene(&mut self, color: egui::Color32) {
         let surface = self.create_surface();
+        let ((u_min, u_max), (v_min, v_max)) = self.surface_type.uv_domain();
         self.scene_builder.begin(self.camera);
         self.surface_vertices.clear();
         self.surface_vertices
             .reserve((self.u_resolution + 1) * (self.v_resolution + 1));
 
         let stroke = egui::Stroke::new(1.25_f32, color);
-        let u_scale = 2.0 * PI / (self.u_resolution as f64);
-        let v_scale = 2.0 * PI / (self.v_resolution as f64);
+        let u_span = u_max - u_min;
+        let v_span = v_max - v_min;
 
         for i in 0..=self.u_resolution {
-            let u = (i as f64) * u_scale;
+            let u = u_min + u_span * (i as f64 / self.u_resolution as f64);
             self.line_scratch.clear();
             for j in 0..=self.v_resolution {
-                let pt = surface.position(u, (j as f64) * v_scale);
+                let v = v_min + v_span * (j as f64 / self.v_resolution as f64);
+                let pt = surface.position(u, v);
                 self.line_scratch.push(pt);
                 self.surface_vertices.push(pt);
             }
@@ -207,11 +227,11 @@ impl SurfaceViewer {
         }
 
         for j in 0..=self.v_resolution {
-            let v = (j as f64) * v_scale;
+            let v = v_min + v_span * (j as f64 / self.v_resolution as f64);
             self.line_scratch.clear();
             for i in 0..=self.u_resolution {
-                self.line_scratch
-                    .push(surface.position((i as f64) * u_scale, v));
+                let u = u_min + u_span * (i as f64 / self.u_resolution as f64);
+                self.line_scratch.push(surface.position(u, v));
             }
             self.scene_builder.add_polyline(
                 "Surface",
@@ -231,9 +251,11 @@ impl InteractiveTool for SurfaceViewer {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }
+
     fn name(&self) -> &'static str {
         "Surface Viewer"
     }
+
     fn domain(&self) -> &'static str {
         "geometry_topology"
     }
@@ -249,10 +271,13 @@ impl InteractiveTool for SurfaceViewer {
         self.u_resolution.hash(&mut h);
         self.v_resolution.hash(&mut h);
         self.camera.hash_state(&mut h);
+        self.custom_sandbox.hash_state(&mut h);
         h.finish().max(1)
     }
 
     fn save_state(&self) -> Option<String> {
+        let (custom_expr, parametric_exprs, custom_params) =
+            self.custom_sandbox.export_fields(self.surface_type);
         serde_json::to_string(&SurfaceViewerSaveState {
             surface_type: self.surface_type,
             sphere_radius: self.sphere_radius,
@@ -262,6 +287,9 @@ impl InteractiveTool for SurfaceViewer {
             u_resolution: self.u_resolution,
             v_resolution: self.v_resolution,
             camera: self.camera,
+            custom_expr,
+            parametric_exprs,
+            custom_params,
         })
         .ok()
     }
@@ -302,6 +330,11 @@ impl InteractiveTool for SurfaceViewer {
         self.u_resolution = loaded.u_resolution;
         self.v_resolution = loaded.v_resolution;
         self.camera.apply_pose(camera);
+        self.custom_sandbox.load_fields(
+            loaded.custom_expr.as_deref(),
+            loaded.parametric_exprs.as_ref(),
+            &loaded.custom_params,
+        );
         Ok(())
     }
 
@@ -340,15 +373,20 @@ impl scientific_metadata::theory::TheoryDescribable for SurfaceViewer {
             SurfaceType::Sphere => "sphere $S^2$: $\\vec{r}(u, v) = (R \\sin u \\cos v, R \\sin u \\sin v, R \\cos u)$",
             SurfaceType::Torus => "torus $T^2$: $\\vec{r}(u, v) = ((R + r \\cos v)\\cos u, (R + r \\cos v)\\sin u, r \\sin v)$",
             SurfaceType::KleinBottle => "non-orientable Klein bottle embedded in 3D: $\\chi(M) = 0$",
+            SurfaceType::CustomHeightfield => "custom Monge heightfield $z = f(x, y)$ compiled to stack bytecode",
+            SurfaceType::CustomParametric => "custom 3D parametric immersion $\\vec{r}(u, v) = (x(u,v), y(u,v), z(u,v))$",
         };
         format!("Parametric 2-manifold surface representation: {surf_desc}.")
     }
+
     fn phonetic_description(&self) -> String {
         "Parametric 2-manifold differential geometry theory".into()
     }
+
     fn theory_citation(&self) -> String {
         "Differential Geometry of Curves and Surfaces (do Carmo, 2016)".into()
     }
+
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
         map.insert(
@@ -390,6 +428,34 @@ const STARTER_PRESET_JSON: &str = r#"{
   }
 }"#;
 
+const CUSTOM_RIPPLE_MANIFOLD_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Custom Ripple Manifold",
+    "domain": "geometry_topology",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "surface_type": "CustomHeightfield",
+    "sphere_radius": 1.0,
+    "torus_major_radius": 2.0,
+    "torus_minor_radius": 0.5,
+    "klein_radius": 2.0,
+    "u_resolution": 36,
+    "v_resolution": 36,
+    "camera": {
+      "pitch": 0.55,
+      "yaw": 0.45,
+      "zoom": 1.0
+    },
+    "custom_expr": "a * cos(k * sqrt(x^2 + y^2 + 0.01))",
+    "custom_params": {
+      "a": 0.7,
+      "k": 2.8
+    }
+  }
+}"#;
+
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "surface_viewer_starter",
@@ -403,23 +469,23 @@ inventory::submit! {
     }
 }
 
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "surface_viewer_custom_ripple",
+        title: "Custom Ripple Manifold",
+        description: "z = a*cos(k*sqrt(x^2 + y^2)): Compiled Monge heightfield wireframe with .obj export and live sliders.",
+        category: "Differential Geometry",
+        icon: "🌊",
+        domain: "geometry_topology",
+        tool_name: Some("SurfaceViewer"),
+        preset_generator: || CUSTOM_RIPPLE_MANIFOLD_PRESET_JSON,
+    }
+}
+
 #[cfg(test)]
 #[path = "surface_viewer_tests.rs"]
 mod async_obj_tests;
 
 #[cfg(test)]
-mod tests {
-    #![cfg_attr(any(), verified(opt_out = "tests"))]
-
-    use super::*;
-
-    #[test]
-    fn surface_viewer_viewport_and_plot_export_work() {
-        let mut tool = SurfaceViewer::default();
-        let ctx = egui::Context::default();
-        let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
-        assert!(!egui_plot::get_last_plot_datasets().is_empty());
-        assert!(!egui_plot::get_last_plot_datasets_3d().is_empty());
-        assert!(!egui_plot::get_last_plot_primitives().is_empty());
-    }
-}
+#[path = "surface_viewer/tests.rs"]
+mod tests;

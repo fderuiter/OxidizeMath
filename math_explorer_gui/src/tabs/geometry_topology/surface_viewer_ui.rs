@@ -12,13 +12,23 @@ impl SurfaceViewer {
             ui.separator();
 
             ui.label("Select Surface:");
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.radio_value(&mut self.surface_type, SurfaceType::Sphere, "Sphere");
                 ui.radio_value(&mut self.surface_type, SurfaceType::Torus, "Torus");
                 ui.radio_value(
                     &mut self.surface_type,
                     SurfaceType::KleinBottle,
                     "Klein Bottle",
+                );
+                ui.radio_value(
+                    &mut self.surface_type,
+                    SurfaceType::CustomHeightfield,
+                    "Custom z=f(x,y)",
+                );
+                ui.radio_value(
+                    &mut self.surface_type,
+                    SurfaceType::CustomParametric,
+                    "Custom r(u,v)",
                 );
             });
 
@@ -41,24 +51,32 @@ impl SurfaceViewer {
     }
 
     fn draw_parameter_controls(&mut self, ui: &mut egui::Ui) {
-        ui.collapsing("Parameters", |ui| match self.surface_type {
-            SurfaceType::Sphere => {
-                ui.add(egui::Slider::new(&mut self.sphere_radius, 0.1..=5.0).text("Radius"));
-            }
-            SurfaceType::Torus => {
-                ui.add(
-                    egui::Slider::new(&mut self.torus_major_radius, 1.0..=5.0)
-                        .text("Major Radius (R)"),
-                );
-                ui.add(
-                    egui::Slider::new(&mut self.torus_minor_radius, 0.1..=2.0)
-                        .text("Minor Radius (r)"),
-                );
-            }
-            SurfaceType::KleinBottle => {
-                ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
-            }
-        });
+        egui::CollapsingHeader::new("Parameters")
+            .default_open(matches!(
+                self.surface_type,
+                SurfaceType::CustomHeightfield | SurfaceType::CustomParametric
+            ))
+            .show(ui, |ui| match self.surface_type {
+                SurfaceType::Sphere => {
+                    ui.add(egui::Slider::new(&mut self.sphere_radius, 0.1..=5.0).text("Radius"));
+                }
+                SurfaceType::Torus => {
+                    ui.add(
+                        egui::Slider::new(&mut self.torus_major_radius, 1.0..=5.0)
+                            .text("Major Radius (R)"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut self.torus_minor_radius, 0.1..=2.0)
+                            .text("Minor Radius (r)"),
+                    );
+                }
+                SurfaceType::KleinBottle => {
+                    ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
+                }
+                SurfaceType::CustomHeightfield | SurfaceType::CustomParametric => {
+                    self.custom_sandbox.ui_for_type(ui, self.surface_type);
+                }
+            });
     }
 
     fn draw_obj_export_section(&mut self, ui: &mut egui::Ui) {
