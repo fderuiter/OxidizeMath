@@ -85,6 +85,8 @@ fn test_replicator_matrix_validation() {
         time_horizon: 20.0,
         dt: 0.05,
         strategy_names: vec!["A".to_string(), "B".to_string()],
+        symbolic_payoffs: None,
+        symbolic_params: std::collections::BTreeMap::new(),
     };
     assert!(valid.validate().is_ok());
 
@@ -94,6 +96,8 @@ fn test_replicator_matrix_validation() {
         time_horizon: 20.0,
         dt: 0.05,
         strategy_names: vec!["A".to_string(), "B".to_string()],
+        symbolic_payoffs: None,
+        symbolic_params: std::collections::BTreeMap::new(),
     };
     assert!(non_square.validate().is_err());
 
@@ -103,8 +107,27 @@ fn test_replicator_matrix_validation() {
         time_horizon: 20.0,
         dt: 0.05,
         strategy_names: vec!["A".to_string()],
+        symbolic_payoffs: None,
+        symbolic_params: std::collections::BTreeMap::new(),
     };
     assert!(strategy_mismatch.validate().is_err());
+
+    let mut params = std::collections::BTreeMap::new();
+    params.insert("v".to_string(), 2.0);
+    params.insert("c".to_string(), 4.0);
+    let valid_symbolic = ReplicatorPresetConfig {
+        payoff_matrix: vec![vec![-1.0, 2.0], vec![0.0, 1.0]],
+        initial_population: vec![0.1, 0.9],
+        time_horizon: 20.0,
+        dt: 0.05,
+        strategy_names: vec!["Hawk".to_string(), "Dove".to_string()],
+        symbolic_payoffs: Some(vec![
+            vec!["(v - c) / 2".to_string(), "v".to_string()],
+            vec!["0".to_string(), "v / 2".to_string()],
+        ]),
+        symbolic_params: params,
+    };
+    assert!(valid_symbolic.validate().is_ok());
 }
 
 #[test]
