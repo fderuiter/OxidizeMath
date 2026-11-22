@@ -191,10 +191,10 @@ impl MriKSpaceRunner {
             let b0 = self.delta_b0[idx];
             let spread = ISOCHROMAT_SPREAD_FRAC * b0.abs();
 
-            for s in 0..ISOCHROMAT_COUNT {
+            for (s, spin) in self.spins[idx].iter_mut().enumerate() {
                 let bz = b0 + ((s as f64) - 1.0) * spread;
                 let theta = gamma * bz * te;
-                self.spins[idx][s] = Vector3::new(
+                *spin = Vector3::new(
                     m_xy0 * e_t2 * theta.sin(),
                     m_xy0 * e_t2 * theta.cos(),
                     mz_te,
