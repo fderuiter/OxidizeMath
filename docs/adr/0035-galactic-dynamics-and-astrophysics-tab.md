@@ -1,0 +1,23 @@
+# ADR 0035: Dwarf-Galaxy Dark-Matter Rotation Curves, Zero-Allocation Symplectic Orbits, and Auto-Discovered `AstrophysicsTab`
+
+## Status
+Accepted (extends [ADR 0005](0005-active-documentation-standard.md), [ADR 0016](0016-standardize-crate-documentation-suite.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
+
+## Context
+1. **Static Astrophysics Regressions Without Dynamical Kernels**: [`crates/domain_physics/src/physics/astrophysics/galaxies.rs`](../../crates/domain_physics/src/physics/astrophysics/galaxies.rs) implemented verified linear scaling regressions for 413 irregular dwarf galaxies from Tillaboev, Tadjibaev & Otojanova (2025) (`tillaboev2025` in [`papers/references.bib`](../../papers/references.bib) and [`papers/dwarf_galaxy_empirical_dependencies.tex`](../../papers/dwarf_galaxy_empirical_dependencies.tex)), yet [`crates/domain_physics/src/physics/astrophysics/mod.rs`](../../crates/domain_physics/src/physics/astrophysics/mod.rs) exported only `galaxies` with a `DUMMY = 1.0` placeholder check while [`traceability.toml`](../../traceability.toml) mapped `astrophysics` to `"graph_parameters_rust.tex"`.
+2. **Missing GUI Exploration Surface**: [`math_explorer_gui`](../../math_explorer_gui/README.md) omitted `astrophysics` across all `ExplorerTab` modules, preventing interactive comparison of Tillaboev (2025) scaling laws, core-versus-cusp dark-matter rotation curves (`BurkertCore` vs. `NfwCusp`), and differential galactic orbits on native desktop and `wasm32`.
+
+## Decision
+1. **Verified Rotation-Curve Decomposition (`rotation_curves.rs`)**:
+   - Add [`crates/domain_physics/src/physics/astrophysics/rotation_curves.rs`](../../crates/domain_physics/src/physics/astrophysics/rotation_curves.rs) deriving stellar Kuzmin disk and extended HI gas masses directly from [`GalaxyModel`](../../crates/domain_physics/src/physics/astrophysics/galaxies.rs) (`Mpc`, `Magnitude`, `SolarMassLog`, `Redshift`) and decomposing $v_{\text{circ}}(r) = \sqrt{v_{\text{disk}}^2 + v_{\text{gas}}^2 + v_{\text{halo}}^2}$ across `BaryonicOnly` (Keplerian $r^{-1/2}$ falloff), `NfwCusp`, and `BurkertCore` halos with softened central clamping ($r \ge 10^{-3}\,\text{kpc}$) and closed-form midplane potentials $\Phi(r)$.
+2. **Zero-Allocation Symplectic Disk Orbits (`orbits.rs`)**:
+   - Add [`crates/domain_physics/src/physics/astrophysics/orbits.rs`](../../crates/domain_physics/src/physics/astrophysics/orbits.rs) implementing a `#[verified_engine::verified]` kick-drift-kick (KDK) symplectic leapfrog integrator (`GalacticDiskSystem`) with pre-allocated ring buffers for disk tracer stars and tidal streams so stepping inside `VerifiedEngine::run_verified` performs zero heap allocations while conserving energy and planar angular momentum.
+   - Re-export `galaxies`, `rotation_curves`, and `orbits` in [`crates/domain_physics/src/physics/astrophysics/mod.rs`](../../crates/domain_physics/src/physics/astrophysics/mod.rs), replace `DUMMY = 1.0` with a circular-velocity quadrature invariant, map `astrophysics` to `"dwarf_galaxy_empirical_dependencies.tex"` in [`traceability.toml`](../../traceability.toml), and refresh [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json).
+3. **Auto-Discovered `AstrophysicsTab` (`math_explorer_gui/src/tabs/astrophysics/`)**:
+   - Register `AstrophysicsTab` via `// @explorer_feature = "physics"` overriding `academic_domain` (`"Physics"`) and `url_slug` (`"astrophysics"`) without modifying [`math_explorer_gui/src/tabs/mod.rs`](../../math_explorer_gui/src/tabs/mod.rs).
+   - Provide `RotationCurveExplorer` and `GalacticOrbitSimulator` backed by `SimulationFramework`, `PlaybackTransport`, `StarterPresetMetadata`, `FiniteStateGuard` clamping/rollback, an explicit badge when `TypeCode95To99::apparent_magnitude_from_distance` returns `None`, and `wasm32` test coverage.
+
+## Consequences
+- **Positive**: `math_explorer::physics::astrophysics` now fulfills [`crates/domain_physics/README.md`](../../crates/domain_physics/README.md) with verified galactic kinematics and zero-allocation symplectic orbits traceable to `dwarf_galaxy_empirical_dependencies.tex` (`tillaboev2025`).
+- **Positive**: Users can bookmark `#tab=astrophysics` URLs, compare Keplerian falloff against cored (`BurkertCore`) and cuspy (`NfwCusp`) dark-matter halos, animate differential spiral winding, and export CSV/JSON/PNG/SVG/GIF artifacts offline.
+- **Neutral**: Existing `GalaxyModel` trait methods (`GeneralIrregular`, `TypeCode10`, `TypeCode95To99`) retain identical signatures and numerical outputs.
