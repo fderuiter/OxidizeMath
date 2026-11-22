@@ -1,7 +1,9 @@
 //! Reusable egui mathematical expression input bar with live syntax validation and LaTeX preview.
 
+use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 use math_commons::ast::{parse_equation, Expr, ParseError};
+use std::collections::HashMap;
 
 /// Reusable input bar component for dynamic mathematical equations.
 ///
@@ -121,10 +123,18 @@ impl MathExpressionInputBar {
         }
     }
 
-    /// Renders the math expression input bar UI.
+    /// Renders the math expression input bar UI without substituted scalar parameters.
     ///
     /// Returns `true` if the expression was modified by the user or preset selection.
     pub fn ui(&mut self, ui: &mut egui::Ui) -> bool {
+        let empty = HashMap::new();
+        self.ui_with_params(ui, &empty)
+    }
+
+    /// Renders the math expression input bar UI with live parameter-calibrated LaTeX preview and code copy/save actions.
+    ///
+    /// Returns `true` if the expression was modified by the user or preset selection.
+    pub fn ui_with_params(&mut self, ui: &mut egui::Ui, params: &HashMap<String, f64>) -> bool {
         let mut changed = false;
 
         ui.group(|ui| {
@@ -150,11 +160,13 @@ impl MathExpressionInputBar {
                 });
 
                 ui.add_space(4.0);
+                let default_prefix =
+                    (!self.default_lhs.is_empty()).then_some(self.default_lhs.as_str());
+                let lhs_prefix = self.lhs_name.as_deref().or(default_prefix);
                 render_status_row(
                     ui,
-                    &self.parsed_expr,
-                    &self.latex_cache,
-                    &self.raw_text,
+                    (&self.parsed_expr, lhs_prefix, params),
+                    (&self.latex_cache, &self.raw_text),
                     &mut self.had_error,
                     &mut self.last_announced_error,
                 );
@@ -192,28 +204,32 @@ fn render_presets(
 
 fn render_status_row(
     ui: &mut egui::Ui,
-    parsed: &Result<Expr, ParseError>,
-    latex: &str,
-    raw: &str,
+    (parsed, lhs_prefix, params): (
+        &Result<Expr, ParseError>,
+        Option<&str>,
+        &HashMap<String, f64>,
+    ),
+    (latex, raw): (&str, &str),
     had_error: &mut bool,
     last_announced_error: &mut Option<String>,
 ) {
     match parsed {
-        Ok(_) => {
+        Ok(expr) => {
             if *had_error {
                 crate::accessibility::announce_status("Mathematical expression is valid");
                 *had_error = false;
                 *last_announced_error = None;
             }
-            ui.horizontal(|ui| {
+            let calibrated = build_calibrated_preview(expr, lhs_prefix, latex, raw, params);
+            ui.horizontal_wrapped(|ui| {
                 ui.label(egui::RichText::new("Preview:").weak());
-                let preview_str = if !latex.is_empty() { latex } else { raw };
                 egui_plot::render_math_label(
                     ui,
-                    preview_str,
+                    &calibrated,
                     egui::TextStyle::Body,
                     ui.visuals().text_color(),
                 );
+                render_expr_export_actions(ui, expr, &calibrated, params);
             });
         }
         Err(err) => {
@@ -234,6 +250,82 @@ fn render_status_row(
             });
         }
     }
+}
+
+fn build_calibrated_preview(
+    expr: &Expr,
+    lhs_prefix: Option<&str>,
+    symbolic_latex: &str,
+    raw: &str,
+    params: &HashMap<String, f64>,
+) -> String {
+    if !params.is_empty() {
+        if let Ok(cal_rhs) = expr.to_latex_with_params(params) {
+            return match lhs_prefix {
+                Some(prefix) => format!("{prefix} = {cal_rhs}"),
+                None => cal_rhs,
+            };
+        }
+    }
+    if !symbolic_latex.is_empty() {
+        symbolic_latex.to_string()
+    } else {
+        raw.to_string()
+    }
+}
+
+fn render_expr_export_actions(
+    ui: &mut egui::Ui,
+    expr: &Expr,
+    calibrated_latex: &str,
+    params: &HashMap<String, f64>,
+) {
+    if ui
+        .small_button("📋 LaTeX")
+        .accessible_hover_text("Copy calibrated LaTeX expression to clipboard")
+        .clicked()
+    {
+        copy_expr_snippet(ui, calibrated_latex, "Copied LaTeX expression to clipboard");
+    }
+    if ui
+        .small_button("📋 Rust")
+        .accessible_hover_text("Copy Rust f64 expression to clipboard")
+        .clicked()
+    {
+        if let Ok(rs) = expr.to_rust_expr(params) {
+            copy_expr_snippet(ui, &rs, "Copied Rust expression to clipboard");
+        }
+    }
+    if ui
+        .small_button("📋 Python")
+        .accessible_hover_text("Copy Python numpy expression to clipboard")
+        .clicked()
+    {
+        if let Ok(py) = expr.to_python_expr(params) {
+            copy_expr_snippet(ui, &py, "Copied Python expression to clipboard");
+        }
+    }
+    if ui
+        .small_button("💾 .tex")
+        .accessible_hover_text("Save LaTeX expression to .tex file")
+        .clicked()
+    {
+        #[cfg(not(test))]
+        egui_plot::file_io::save_file_dialog(
+            "expression.tex",
+            calibrated_latex.as_bytes(),
+            "LaTeX Document",
+            &["tex"],
+        );
+        crate::accessibility::announce_status("Saved expression.tex");
+    }
+}
+
+fn copy_expr_snippet(ui: &egui::Ui, text: &str, announcement: &str) {
+    ui.ctx().copy_text(text.to_string());
+    #[cfg(not(test))]
+    let _ = egui_plot::export::copy_text_to_clipboard(text);
+    crate::accessibility::announce_status(announcement);
 }
 
 #[cfg(test)]

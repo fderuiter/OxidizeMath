@@ -4,6 +4,8 @@ use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use num_complex::Complex64;
 
+#[path = "complex_mapping/code_export.rs"]
+mod code_export;
 #[path = "complex_mapping/ui.rs"]
 mod ui;
 
@@ -179,6 +181,14 @@ impl InteractiveTool for ComplexMappingTool {
 
     fn domain(&self) -> &'static str {
         "analysis"
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot_with_code()
+    }
+
+    fn export_code_artifact(&self) -> Option<crate::framework::CodeArtifact> {
+        self.build_code_artifact()
     }
 
     fn has_finite_parameters(&self) -> bool {

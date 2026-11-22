@@ -2,7 +2,7 @@ use super::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Supported formats for deferred end-of-frame dataset and figure exports.
+/// Supported formats for deferred end-of-frame dataset, figure, and code exports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ExportFormat {
     /// Comma-separated values dataset format (`.csv`).
@@ -15,6 +15,12 @@ pub(crate) enum ExportFormat {
     Svg,
     /// Animated Graphics Interchange Format (`.gif`).
     Gif,
+    /// Parameter-calibrated LaTeX mathematical model document (`.tex`).
+    Tex,
+    /// Standalone Rust 2024 numerical solver snippet (`.rs`).
+    Rust,
+    /// Standalone Python 3 (`numpy` / `scipy`) numerical script (`.py`).
+    Python,
 }
 
 impl ExportFormat {
@@ -25,6 +31,9 @@ impl ExportFormat {
             Self::Png => ("png", "PNG", "PNG Image", "figure"),
             Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
             Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
+            Self::Tex => ("tex", "LaTeX", "LaTeX Document", "model"),
+            Self::Rust => ("rs", "Rust", "Rust Source File", "model"),
+            Self::Python => ("py", "Python", "Python Script", "model"),
         }
     }
 
@@ -250,6 +259,9 @@ impl SimulationFramework {
             (ExportFormat::Png, ExportTarget::Clipboard) => self.dispatch_png_clipboard_export(ctx),
             (ExportFormat::Svg, _) => self.dispatch_svg_export(),
             (ExportFormat::Gif, _) => self.dispatch_gif_export(),
+            (ExportFormat::Tex | ExportFormat::Rust | ExportFormat::Python, target) => {
+                self.dispatch_code_export(req.format, target, ctx);
+            }
         }
     }
 
@@ -333,7 +345,7 @@ impl SimulationFramework {
         }
     }
 
-    fn write_system_text_clipboard(
+    pub(super) fn write_system_text_clipboard(
         &self,
         label: &'static str,
         content: &str,

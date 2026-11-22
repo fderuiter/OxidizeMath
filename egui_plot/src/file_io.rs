@@ -31,6 +31,12 @@ pub fn infer_mime_type(filename: &str) -> &'static str {
         "text/tab-separated-values"
     } else if lower.ends_with(".txt") {
         "text/plain"
+    } else if lower.ends_with(".tex") {
+        "text/x-tex"
+    } else if lower.ends_with(".rs") {
+        "text/x-rust"
+    } else if lower.ends_with(".py") {
+        "text/x-python"
     } else if lower.ends_with(".svg") {
         "image/svg+xml"
     } else if lower.ends_with(".png") {

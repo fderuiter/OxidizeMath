@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 mod annotations;
+mod code_export;
 pub mod comparison;
 mod persistence;
 pub mod recovery;
@@ -372,6 +373,14 @@ impl InteractiveTool for OdeSolverTool {
         FiniteStateGuard::is_finite_state(self)
     }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot_with_code()
+    }
+
+    fn export_code_artifact(&self) -> Option<crate::framework::CodeArtifact> {
+        self.build_code_artifact()
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut datasets = egui_plot::get_last_plot_datasets();
         if datasets.is_empty() {
@@ -451,6 +460,11 @@ impl InteractiveTool for OdeSolverTool {
 
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
 }

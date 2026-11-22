@@ -4,6 +4,9 @@ use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::epidemiology::compartmental::SIRModel;
 
+#[path = "sir_code_export.rs"]
+mod code_export;
+
 const MIN_SIR_DURATION: f64 = 10.0;
 const MAX_SIR_DURATION: f64 = 365.0;
 const MAX_SIR_STEPS: usize = 100_000;
@@ -222,6 +225,14 @@ impl InteractiveTool for SirTool {
         "epidemiology"
     }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot_with_code()
+    }
+
+    fn export_code_artifact(&self) -> Option<crate::framework::CodeArtifact> {
+        self.build_code_artifact()
+    }
+
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -292,6 +303,11 @@ impl InteractiveTool for SirTool {
 
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
 

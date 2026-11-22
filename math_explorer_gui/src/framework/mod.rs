@@ -2,6 +2,16 @@ pub mod callout_overlay;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod code_export;
+pub mod code_export_modal;
+#[cfg(all(
+    test,
+    feature = "pure_math",
+    feature = "physics",
+    feature = "applied",
+    feature = "epidemiology"
+))]
+mod code_export_tests;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_figure;
@@ -42,6 +52,8 @@ mod url_share;
 
 pub use callout_overlay::*;
 pub use clamp::*;
+pub use code_export::*;
+pub use code_export_modal::CodeExportTab;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
@@ -248,9 +260,14 @@ pub trait InteractiveTool {
         self.try_load_state(config_str)
     }
 
-    /// Declares which dataset and figure export formats this tool supports.
+    /// Declares which dataset, figure, and code export formats this tool supports.
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
+    }
+
+    /// Optional cold-path hook returning calibrated LaTeX, Rust, and Python code artifacts.
+    fn export_code_artifact(&self) -> Option<CodeArtifact> {
+        None
     }
 
     /// Optional hook to export tool datasets.
@@ -337,6 +354,8 @@ pub struct SimulationFramework {
     last_announced_count: Option<usize>,
     last_announced_query: String,
     pub show_export_modal: bool,
+    pub show_code_export_modal: bool,
+    pub code_export_tab: CodeExportTab,
     pub export_options: egui_plot::export::ExportOptions,
     pub export_bg_dark: bool,
     pub export_gif_fps: u32,
@@ -388,6 +407,8 @@ impl SimulationFramework {
             last_announced_count: None,
             last_announced_query: String::new(),
             show_export_modal: false,
+            show_code_export_modal: false,
+            code_export_tab: CodeExportTab::Latex,
             export_options: egui_plot::export::ExportOptions::default(),
             export_bg_dark: true,
             export_gif_fps: 15,

@@ -8,6 +8,9 @@ fn test_infer_mime_type_all_supported_extensions() {
     assert_eq!(infer_mime_type("data.csv"), "text/csv");
     assert_eq!(infer_mime_type("table.tsv"), "text/tab-separated-values");
     assert_eq!(infer_mime_type("notes.txt"), "text/plain");
+    assert_eq!(infer_mime_type("equation.tex"), "text/x-tex");
+    assert_eq!(infer_mime_type("SOLVER.RS"), "text/x-rust");
+    assert_eq!(infer_mime_type("script.py"), "text/x-python");
     assert_eq!(infer_mime_type("chart.png"), "image/png");
     assert_eq!(infer_mime_type("chart.svg"), "image/svg+xml");
     assert_eq!(infer_mime_type("anim.gif"), "image/gif");

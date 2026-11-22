@@ -5451,6 +5451,32 @@
       "signature": "pub use diagnostics :: Severity"
     }
   ],
+  "crates/math_commons/src/ast/codegen.rs": [
+    {
+      "signature": "impl Expr { pub fn to_latex_with_params (& self , params : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_python_expr (& self , params : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_python_ode_rhs (& self , params : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_rust_expr (& self , params : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_rust_fn (& self , fn_name : & str , args : & [& str] , params : & HashMap < String , f64 > ,) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "pub fn format_latex_scalar (val : f64) -> Result < String , EvalError >"
+    },
+    {
+      "signature": "pub fn format_python_float (val : f64) -> Result < String , EvalError >"
+    },
+    {
+      "signature": "pub fn format_rust_f64 (val : f64) -> Result < String , EvalError >"
+    }
+  ],
   "crates/math_commons/src/ast/eval.rs": [
     {
       "signature": "impl Expr { pub fn eval (& self , vars : & HashMap < String , f64 >) -> Result < f64 , EvalError > }"
@@ -5535,6 +5561,15 @@
     }
   ],
   "crates/math_commons/src/ast/mod.rs": [
+    {
+      "signature": "pub use codegen :: format_latex_scalar"
+    },
+    {
+      "signature": "pub use codegen :: format_python_float"
+    },
+    {
+      "signature": "pub use codegen :: format_rust_f64"
+    },
     {
       "signature": "pub use eval :: EvalError"
     },

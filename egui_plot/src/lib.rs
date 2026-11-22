@@ -18,6 +18,7 @@ pub mod export_modal;
 pub mod export_primitives;
 pub mod file_io;
 pub mod fit;
+pub mod fit_export;
 mod items;
 pub mod latex;
 mod legend;
@@ -1855,12 +1856,14 @@ impl<'a> Plot<'a> {
 
                 // Draw formula badge overlay on plot canvas
                 let badge_pos = plot_rect.min + egui::vec2(12.0_f32, 36.0_f32);
+                let badge_width = 280.0_f32.min((plot_rect.width() - 24.0_f32).max(160.0_f32));
+                let badge_height = 120.0_f32.min((plot_rect.height() - 44.0_f32).max(65.0_f32));
                 let badge_rect =
-                    egui::Rect::from_min_size(badge_pos, egui::vec2(220.0_f32, 65.0_f32));
+                    egui::Rect::from_min_size(badge_pos, egui::vec2(badge_width, badge_height));
 
                 ui.scope_builder(egui::UiBuilder::new().max_rect(badge_rect), |ui| {
                     egui::Frame::window(ui.style())
-                        .fill(ui.visuals().window_fill.gamma_multiply(0.85_f32))
+                        .fill(ui.visuals().window_fill.gamma_multiply(0.88_f32))
                         .stroke(egui::Stroke::new(1.5_f32, accent_color))
                         .corner_radius(6.0_f32)
                         .inner_margin(6.0_f32)
@@ -1885,6 +1888,11 @@ impl<'a> Plot<'a> {
                                     egui::RichText::new(format!("R² = {:.4}", fit_res.r_squared))
                                         .small()
                                         .color(ui.visuals().text_color()),
+                                );
+                                fit_export::render_fit_overlay_actions(
+                                    ui,
+                                    &fit_res,
+                                    &mut access_state.import_toast,
                                 );
                             });
                         });

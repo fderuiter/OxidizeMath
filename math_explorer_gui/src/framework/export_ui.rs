@@ -1,29 +1,9 @@
+use super::code_export_modal::{export_action_button, wrapped_colored_label};
 use super::*;
 use eframe::egui;
 
 /// Pane toolbar width threshold below which `Export` and `Presets` collapse into overflow menus.
 pub const EXPORT_BAR_OVERFLOW_BREAKPOINT: f32 = 960.0;
-
-fn wrapped_colored_label(ui: &mut egui::Ui, color: egui::Color32, text: String) {
-    ui.add(egui::Label::new(egui::RichText::new(text).color(color)).wrap());
-}
-
-fn export_action_button(
-    ui: &mut egui::Ui,
-    enabled: bool,
-    label: &str,
-    tip: &str,
-    close_on_click: bool,
-) -> bool {
-    let clicked = ui
-        .add_enabled(enabled, egui::Button::new(label))
-        .accessible_hover_text(tip)
-        .clicked();
-    if clicked && close_on_click {
-        ui.close();
-    }
-    clicked
-}
 
 struct FrameworkExportSource<'a> {
     active_tool: &'a mut Option<Box<dyn InteractiveTool>>,
@@ -222,6 +202,14 @@ impl SimulationFramework {
         if export_action_button(ui, caps.figure, "Export PNG Image", fig_tip, close_on_click) {
             self.open_export_modal_for_active_tool();
         }
+        let code_tip = if caps.code {
+            "Preview, copy, and download calibrated LaTeX, Rust (.rs), and Python (.py) model code"
+        } else {
+            caps.code_disabled_reason
+        };
+        if export_action_button(ui, caps.code, "Code & LaTeX", code_tip, close_on_click) {
+            self.open_code_export_modal();
+        }
     }
 
     fn render_compact_export_menu(&mut self, ui: &mut egui::Ui) -> String {
@@ -293,7 +281,7 @@ impl SimulationFramework {
                 } else {
                     let remaining = (exp - now).max(0.05);
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
-                    if !self.show_export_modal {
+                    if !self.show_export_modal && !self.show_code_export_modal {
                         wrapped_colored_label(ui, palette.success, format!("✓ {}", status.message));
                         if ui
                             .small_button("✖")
@@ -305,7 +293,7 @@ impl SimulationFramework {
                         }
                     }
                 }
-            } else if !self.show_export_modal {
+            } else if !self.show_export_modal && !self.show_code_export_modal {
                 let err_color = if self.export_status_severity == ExportStatusSeverity::Warning {
                     palette.warning
                 } else {

@@ -73,7 +73,8 @@ impl OdeSolverTool {
 
         if self.preset == OdePreset::Custom {
             ui.add_space(6.0);
-            if self.math_input.ui(ui) {
+            let params = self.active_param_map();
+            if self.math_input.ui_with_params(ui, &params) {
                 changed = true;
             }
         } else {

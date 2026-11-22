@@ -45,6 +45,26 @@ pub fn render_copyable_metric(ui: &mut egui::Ui, label: &str, value: &str) -> eg
     response
 }
 
+fn copy_formula_text(ui: &egui::Ui, text: &str, status: &str) {
+    ui.ctx().copy_text(text.to_string());
+    #[cfg(not(test))]
+    let _ = egui_plot::export::copy_text_to_clipboard(text);
+    crate::accessibility::announce_status(status);
+}
+
+fn save_formula_tex(latex_str: &str) {
+    #[cfg(test)]
+    let _ = latex_str;
+    #[cfg(not(test))]
+    egui_plot::file_io::save_file_dialog(
+        "formula.tex",
+        latex_str.as_bytes(),
+        "LaTeX Document",
+        &["tex"],
+    );
+    crate::accessibility::announce_status("Saved formula.tex");
+}
+
 /// Renders a mathematical formula (LaTeX with optional plain text) alongside inline export buttons and a right-click context menu.
 pub fn render_formula_with_export(
     ui: &mut egui::Ui,
@@ -68,31 +88,55 @@ pub fn render_formula_with_export(
                 .accessible_hover_text("Copy LaTeX formula")
                 .clicked()
             {
-                ui.ctx().copy_text(latex_str.to_string());
+                copy_formula_text(ui, latex_str, "Copied LaTeX formula to clipboard");
             }
             if ui
                 .add_enabled(!is_plain_empty, egui::Button::new("📋 Text"))
                 .accessible_hover_text("Copy plain text formula")
                 .clicked()
             {
-                ui.ctx().copy_text(plain_text.to_string());
+                copy_formula_text(ui, plain_text, "Copied plain text formula to clipboard");
+            }
+            if ui
+                .add_enabled(!is_latex_empty, egui::Button::new("💾 .tex"))
+                .accessible_hover_text("Save LaTeX formula to .tex file")
+                .clicked()
+            {
+                save_formula_tex(latex_str);
             }
         })
         .response;
 
+    attach_formula_context_menu(response, latex_str, plain_text)
+}
+
+fn attach_formula_context_menu(
+    response: egui::Response,
+    latex_str: &str,
+    plain_text: &str,
+) -> egui::Response {
+    let is_latex_empty = latex_str.trim().is_empty();
+    let is_plain_empty = plain_text.trim().is_empty();
     response.context_menu(|ui| {
         if ui
             .add_enabled(!is_latex_empty, egui::Button::new("Copy LaTeX"))
             .clicked()
         {
-            ui.ctx().copy_text(latex_str.to_string());
+            copy_formula_text(ui, latex_str, "Copied LaTeX formula to clipboard");
             ui.close_kind(egui::UiKind::Menu);
         }
         if ui
             .add_enabled(!is_plain_empty, egui::Button::new("Copy Plain Text"))
             .clicked()
         {
-            ui.ctx().copy_text(plain_text.to_string());
+            copy_formula_text(ui, plain_text, "Copied plain text formula to clipboard");
+            ui.close_kind(egui::UiKind::Menu);
+        }
+        if ui
+            .add_enabled(!is_latex_empty, egui::Button::new("Save LaTeX (.tex)"))
+            .clicked()
+        {
+            save_formula_tex(latex_str);
             ui.close_kind(egui::UiKind::Menu);
         }
         if !is_latex_empty
@@ -100,12 +144,11 @@ pub fn render_formula_with_export(
             && latex_str != plain_text
             && ui.button("Copy Both (LaTeX & Text)").clicked()
         {
-            ui.ctx()
-                .copy_text(format!("LaTeX: {}\nPlain: {}", latex_str, plain_text));
+            let both = format!("LaTeX: {}\nPlain: {}", latex_str, plain_text);
+            copy_formula_text(ui, &both, "Copied LaTeX and plain text formula");
             ui.close_kind(egui::UiKind::Menu);
         }
     });
-
     response
 }
 
