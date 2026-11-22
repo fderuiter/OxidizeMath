@@ -19,7 +19,6 @@ oxidize_core = { path = "../oxidize_core" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
 
 math_commons = { path = "../math_commons" }
-scientific_metadata = { path = "../scientific_metadata" }
 diagnostics = { path = "../diagnostics" }
 dashu = { workspace = true, features = ["num-traits_v02"] }
 
@@ -28,6 +27,3 @@ approx = { workspace = true }
 
 [lints]
 workspace = true
-
-[package.metadata.cargo-machete]
-ignored = ["scientific_metadata"]
