@@ -19,7 +19,7 @@ This module is part of the `math_explorer` core library. To use it, include the 
 
 ```toml
 [dependencies]
-math_explorer = { path = "path/to/math_explorer" }
+math_explorer = { path = "path/to/math_explorer", features = ["applied"] }
 ```
 
 ---
@@ -29,7 +29,7 @@ math_explorer = { path = "path/to/math_explorer" }
 You can see this model in action by running the standalone, fully executable example:
 
 ```bash
-cargo run --release --package math_explorer --example bench_lorahub
+cargo run --release --package math_explorer --features applied --example bench_lorahub
 ```
 
 *(See `math_explorer/examples/bench_lorahub.rs` for implementation details)*
@@ -37,8 +37,9 @@ cargo run --release --package math_explorer --example bench_lorahub
 ### Quick Start: Merging LoRAs
 
 ```rust
-use domain_applied::applied::lorahub::{LoraEnsemble, LoraStateDict};
-use nalgebra::DMatrix;
+# use domain_applied::__doctest_facade as math_explorer;
+use math_explorer::applied::lorahub::{LoraEnsemble, LoraStateDict};
+use math_explorer::nalgebra::DMatrix;
 
 // 1. Create Dummy LoRA Modules (usually loaded from disk)
 let mut lora_1 = LoraStateDict::new();

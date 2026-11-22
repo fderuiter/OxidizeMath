@@ -74,7 +74,8 @@ impl Monoid for CyclicElement {
 /// # Example
 ///
 /// ```rust
-/// use pure_math::pure_math::algebra::{Zn, Group, Semigroup};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::algebra::{Zn, Group, Semigroup};
 ///
 /// // Work in Z_5
 /// let a = Zn::<5>::new(3);

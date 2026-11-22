@@ -7,30 +7,38 @@ license = "AGPL-3.0-or-later"
 [dependencies]
 math_commons = { path = "../crates/math_commons" }
 diagnostics = { path = "../crates/diagnostics" }
-pure_math = { path = "../crates/pure_math" }
+pure_math = { path = "../crates/pure_math", optional = true }
 domain_applied = { path = "../crates/domain_applied", optional = true }
 domain_ai = { path = "../crates/domain_ai", optional = true }
 domain_physics = { path = "../crates/domain_physics", optional = true }
 domain_biology = { path = "../crates/domain_biology", optional = true }
 domain_climate = { path = "../crates/domain_climate", optional = true }
 domain_epidemiology = { path = "../crates/domain_epidemiology", optional = true }
-nalgebra = { workspace = true }
-oxidize_core = { path = "../crates/oxidize_core" }
+nalgebra = { workspace = true, optional = true }
+num-complex = { workspace = true, optional = true }
+oxidize_core = { path = "../crates/oxidize_core", optional = true }
+petgraph = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
 
 [features]
 default = []
-pure_math = []
+pure_math = [
+    "dep:pure_math",
+    "dep:nalgebra",
+    "dep:num-complex",
+    "dep:oxidize_core",
+    "dep:petgraph",
+    "dep:rand",
+]
 applied = ["pure_math", "dep:domain_applied"]
 ai = ["pure_math", "dep:domain_ai"]
 biology = ["applied", "pure_math", "dep:domain_biology"]
-climate = ["ai", "dep:domain_climate"]
+climate = ["ai", "pure_math", "dep:domain_climate"]
 epidemiology = ["pure_math", "dep:domain_epidemiology"]
 physics = ["applied", "pure_math", "dep:domain_physics"]
 
 [dev-dependencies]
 approx = { workspace = true }
-num-complex = { workspace = true }
-rand = { workspace = true }
 serde_json = { workspace = true }
 verified_engine = { path = "../crates/verified_engine" }
 criterion = { workspace = true }

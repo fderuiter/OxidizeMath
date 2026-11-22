@@ -42,8 +42,9 @@ impl ContravariantVector {
     /// # Examples
     ///
     /// ```
-    /// use pure_math::pure_math::tensor::ContravariantVector;
-    /// use nalgebra::DVector;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::tensor::ContravariantVector;
+    /// use math_explorer::nalgebra::DVector;
     ///
     /// let vec = ContravariantVector::new(DVector::from_vec(vec![1.0, 2.0]));
     /// assert_eq!(vec.dim(), 2);
@@ -75,8 +76,9 @@ impl CovariantVector {
     /// # Examples
     ///
     /// ```
-    /// use pure_math::pure_math::tensor::CovariantVector;
-    /// use nalgebra::DVector;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::tensor::CovariantVector;
+    /// use math_explorer::nalgebra::DVector;
     ///
     /// let vec = CovariantVector::new(DVector::from_vec(vec![3.0, 4.0, 5.0]));
     /// assert_eq!(vec.dim(), 3);
@@ -108,8 +110,9 @@ impl Rank2Tensor {
     /// # Examples
     ///
     /// ```
-    /// use pure_math::pure_math::tensor::types::Rank2Tensor;
-    /// use nalgebra::DMatrix;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::tensor::types::Rank2Tensor;
+    /// use math_explorer::nalgebra::DMatrix;
     ///
     /// let tensor = Rank2Tensor::new(DMatrix::from_vec(2, 2, vec![1.0, 0.0, 0.0, 1.0]));
     /// assert_eq!(tensor.0.nrows(), 2);

@@ -36,7 +36,8 @@
 //! ## Quick Start
 //!
 //! ```rust
-//! use domain_applied::applied::win_ratio::pair_comparison::{
+//! # use domain_applied::__doctest_facade as math_explorer;
+//! use math_explorer::applied::win_ratio::pair_comparison::{
 //!     WinRatioAnalysis, HigherIsBetter, calculate_statistics, UnmatchedPairing
 //! };
 //!

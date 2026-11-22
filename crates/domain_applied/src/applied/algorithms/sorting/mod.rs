@@ -23,7 +23,8 @@
 //! ## Example
 //!
 //! ```rust
-//! use domain_applied::applied::algorithms::sorting::{merge_sort, SortingResult};
+//! # use domain_applied::__doctest_facade as math_explorer;
+//! use math_explorer::applied::algorithms::sorting::{merge_sort, SortingResult};
 //!
 //! let data = vec![5, 2, 9, 1, 5, 6];
 //!

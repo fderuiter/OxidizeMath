@@ -4,6 +4,7 @@
 //! which is expected to be called in a tight loop.
 
 use math_explorer::biology::evolution::HawkDovePopulation;
+use math_explorer::primitives::UnitInterval;
 use std::time::Instant;
 
 fn main() {
@@ -12,7 +13,7 @@ fn main() {
     let c = 10.0;
     let population = HawkDovePopulation::new(v, c);
 
-    let mut hawk_freq = math_commons::primitives::UnitInterval::new(0.9).unwrap();
+    let mut hawk_freq = UnitInterval::new(0.9).unwrap();
     let dt = 0.0001; // Small dt for stability
 
     println!(

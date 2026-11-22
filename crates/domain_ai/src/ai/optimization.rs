@@ -2,11 +2,9 @@ use nalgebra::{DVector, RealField};
 
 // Re-export the core trait and implementations from pure_math
 pub use pure_math::pure_math::analysis::optimization::{
-    ModelOptimizer as Optimizer, OptimizationError, Optimizer as GenericOptimizer, ParamType, SGD,
+    Adam as GenericAdam, ModelOptimizer as Optimizer, OptimizationError,
+    Optimizer as GenericOptimizer, ParamType, SGD,
 };
-
-// Import the generic Adam implementation from pure_math
-use pure_math::pure_math::analysis::optimization::Adam as GenericAdam;
 
 // Type alias to maintain backward compatibility for Adam
 // The generic Adam now takes a Key, so we fix it to (usize, ParamType) for the AI module.

@@ -21,7 +21,8 @@ impl Probability {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::copula::Probability;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::copula::Probability;
     ///
     /// let p = Probability::new(0.75).unwrap();
     /// assert_eq!(p.value(), 0.75);
@@ -59,7 +60,8 @@ impl Correlation {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::copula::Correlation;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::copula::Correlation;
     ///
     /// let rho = Correlation::new(-0.3).unwrap();
     /// assert_eq!(rho.value(), -0.3);
@@ -157,7 +159,8 @@ impl CorrelationMatrix {
     /// # Example
     ///
     /// ```
-    /// use pure_math::pure_math::statistics::copula::{CorrelationMatrix, Correlation};
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::copula::{CorrelationMatrix, Correlation};
     ///
     /// let rho = Correlation::new(-0.3).unwrap();
     /// let matrix = CorrelationMatrix::bivariate(rho).unwrap();

@@ -83,7 +83,8 @@ impl TotalBits {
 /// # Example
 ///
 /// ```
-/// use domain_applied::applied::engineering::{calculate_uart_throughput, BaudRate, DataBits, TotalBits};
+/// # use domain_applied::__doctest_facade as math_explorer;
+/// use math_explorer::applied::engineering::{calculate_uart_throughput, BaudRate, DataBits, TotalBits};
 ///
 /// // Standard 9600 8N1
 /// let throughput = calculate_uart_throughput(

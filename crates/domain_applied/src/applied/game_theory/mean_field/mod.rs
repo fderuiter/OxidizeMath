@@ -11,13 +11,14 @@
 //! Solve a standard 1D MFG where agents try to minimize travel cost while avoiding congestion.
 //!
 //! ```rust
-//! use domain_applied::applied::game_theory::mean_field::{MFGConfig, FixedPointSolver, MFGSolver};
+//! # use domain_applied::__doctest_facade as math_explorer;
+//! use math_explorer::applied::game_theory::mean_field::{MFGConfig, FixedPointSolver, MFGSolver};
 //!
 //! // 1. Configuration
 //! // Viscosity (noise) = 0.1, Time Horizon = 1.0
 //! // Grid: 50 spatial points, 100 time steps. Range: [-2.0, 2.0]
 //! use std::num::NonZeroUsize;
-//! use domain_applied::applied::game_theory::mean_field::types::MFGConfigBuilder;
+//! use math_explorer::applied::game_theory::mean_field::types::MFGConfigBuilder;
 //! let config = MFGConfigBuilder::new()
 //!     .viscosity(0.1)
 //!     .time_horizon(1.0)
@@ -30,7 +31,7 @@
 //!
 //! // 2. Define Costs and Initial Distribution
 //! // Running Cost: F(x, m) = m + x^2 (Agents dislike crowds + prefer origin)
-//! use domain_applied::applied::game_theory::mean_field::types::{Density, Position};
+//! use math_explorer::applied::game_theory::mean_field::types::{Density, Position};
 //! let cost_fn = |p: Position, d: Density| -> f64 { d.0 + p.0 * p.0 };
 //!
 //! // Terminal Cost: G(x) = x^2 (Agents want to be at origin at T)

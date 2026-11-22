@@ -36,8 +36,9 @@
 //! **Kinematic Time Dilation** (Special Relativity).
 //!
 //! ```rust
-//! use domain_physics::physics::high_energy::{SchwarzschildBlackHole, C, SOLAR_MASS};
-//! use domain_physics::physics::high_energy::observer::calculate_lorentz_factor;
+//! # use domain_physics::__doctest_facade as math_explorer;
+//! use math_explorer::physics::high_energy::{SchwarzschildBlackHole, C, SOLAR_MASS};
+//! use math_explorer::physics::high_energy::observer::calculate_lorentz_factor;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // 1. Define a Supermassive Black Hole (1 million solar masses)

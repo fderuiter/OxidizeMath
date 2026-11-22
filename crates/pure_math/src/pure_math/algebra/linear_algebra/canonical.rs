@@ -37,8 +37,9 @@ impl JordanBlock {
     /// # Examples
     ///
     /// ```
-    /// use pure_math::pure_math::algebra::linear_algebra::canonical::JordanBlock;
-    /// use nalgebra::Complex;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::algebra::linear_algebra::canonical::JordanBlock;
+    /// use math_explorer::nalgebra::Complex;
     ///
     /// let block = JordanBlock::new(Complex::new(2.0, 0.0), 3);
     /// let mat = block.to_matrix();
@@ -85,7 +86,8 @@ impl CompanionMatrix {
     /// # Examples
     ///
     /// ```
-    /// use pure_math::pure_math::algebra::linear_algebra::canonical::CompanionMatrix;
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::algebra::linear_algebra::canonical::CompanionMatrix;
     ///
     /// // Polynomial t^2 + 3t + 2 => coeffs = [2.0, 3.0]
     /// let companion = CompanionMatrix::new(vec![2.0, 3.0]);

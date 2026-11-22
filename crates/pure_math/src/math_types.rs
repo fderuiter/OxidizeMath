@@ -1,6 +1,6 @@
 use dashu::base::Abs;
 use dashu::float::FBig;
-use dashu::integer::IBig;
+pub use dashu::integer::IBig;
 use dashu::rational::RBig;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, RemAssign, Sub, SubAssign};
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]

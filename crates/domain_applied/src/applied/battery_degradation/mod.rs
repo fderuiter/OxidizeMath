@@ -5,7 +5,7 @@ pub mod model;
 pub mod types;
 
 pub use model::PowerLawModel;
-pub use types::{Capacity, Cycles, DepthOfDischarge};
+pub use types::{BatteryError, Capacity, Cycles, DepthOfDischarge};
 
 // [cite:algorithmic_information_rust]
 

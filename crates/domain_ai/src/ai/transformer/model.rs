@@ -30,7 +30,8 @@ use verified_engine::Theory;
 /// whether you are doing Seq2Seq, Causal LM, or Masked LM), you should instantiate components manually:
 ///
 /// ```rust
-/// use domain_ai::ai::transformer::{Transformer, Encoder, Decoder};
+/// # use domain_ai::__doctest_facade as math_explorer;
+/// use math_explorer::ai::transformer::{Transformer, Encoder, Decoder};
 ///
 /// // 1. Configure Layers
 /// let encoder = Encoder::new(6, 512, 8, 2048);

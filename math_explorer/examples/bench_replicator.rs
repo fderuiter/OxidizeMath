@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
+use math_explorer::nalgebra::{DMatrix, DVector};
 use math_explorer::pure_math::analysis::ode::RungeKutta4;
-use nalgebra::{DMatrix, DVector};
 use std::time::Instant;
 
 fn main() {

@@ -15,7 +15,7 @@ This module is part of the `math_explorer` core library. To use it, include the 
 
 ```toml
 [dependencies]
-math_explorer = { path = "path/to/math_explorer" }
+math_explorer = { path = "path/to/math_explorer", features = ["applied"] }
 ```
 
 ---
@@ -25,7 +25,7 @@ math_explorer = { path = "path/to/math_explorer" }
 You can see this model in action by running the standalone, fully executable example:
 
 ```bash
-cargo run --release --package math_explorer --example battery_degradation_demo
+cargo run --release --package math_explorer --features applied --example battery_degradation_demo
 ```
 
 *(See `math_explorer/examples/battery_degradation_demo.rs` for implementation details)*
@@ -43,7 +43,8 @@ Where:
 This implies that **shallower discharges drastically increase cycle life**.
 
 ```rust
-use domain_applied::applied::battery_degradation::{PowerLawModel, DepthOfDischarge, Cycles, Capacity};
+# use domain_applied::__doctest_facade as math_explorer;
+use math_explorer::applied::battery_degradation::{PowerLawModel, DepthOfDischarge, Cycles, Capacity};
 
 fn main() {
     // 1. Initialize the standard model

@@ -30,7 +30,8 @@ const VOLATILITY_TOLERANCE: f64 = math_commons::registry::TOLERANCE_FAST;
 /// # Example
 ///
 /// ```
-/// use pure_math::pure_math::statistics::glicko2::{
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::glicko2::{
 ///     GlickoPlayer, MatchResult, Rating, RatingDeviation, Volatility, SystemConstant, update_rating
 /// };
 ///

@@ -1,5 +1,6 @@
 //! Comprehensive demonstration of all sports analytics modules.
 
+use math_explorer::nalgebra::{DMatrix, DVector};
 use math_explorer::pure_math::statistics::{
     copula::{Correlation, CorrelationMatrix, Probability, sgp_joint_probability},
     glicko2::{
@@ -11,7 +12,7 @@ use math_explorer::pure_math::statistics::{
     ou_process::{EulerMaruyama, OuParams, TimeStep},
     zip_regression::{Count, ZipDistribution, ZipParams},
 };
-use nalgebra::{DMatrix, DVector};
+use math_explorer::rng::OxidizeRng;
 
 fn demo_zip_regression() {
     println!("1. ZIP REGRESSION - Player Block Modeling");
@@ -31,7 +32,7 @@ fn demo_ou_process() {
     let ou_params = OuParams::from_values(0.45, 1.0, 0.15).unwrap();
     let dt = TimeStep::new(0.01).unwrap();
     let solver = EulerMaruyama::new(ou_params, dt);
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = OxidizeRng::default();
     let trajectory = solver.simulate(0.60, 100, &mut rng);
     println!("   True skill: 45%, Currently: 60% (hot)");
     println!(

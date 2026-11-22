@@ -32,9 +32,10 @@ Standard statistical models often fail to generalize across different climate re
 Configure a CERA network and evaluate climate-invariant predictions:
 
 ```rust
-use domain_climate::climate::cera::Cera;
-use domain_climate::climate::config::CeraConfig;
-use nalgebra::DMatrix;
+# use domain_climate::__doctest_facade as math_explorer;
+use math_explorer::climate::cera::Cera;
+use math_explorer::climate::config::CeraConfig;
+use math_explorer::nalgebra::DMatrix;
 
 // Define CERA network architecture configuration
 let config = CeraConfig {

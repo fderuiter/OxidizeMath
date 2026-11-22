@@ -30,9 +30,10 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 Generate prime sequences and compute polynomial arithmetic over finite fields:
 
 ```rust
-use pure_math::pure_math::algebra::fields::Fp;
-use pure_math::pure_math::algebra::polynomial::Polynomial;
-use pure_math::pure_math::number_theory::primes::primes_up_to;
+# use pure_math::__doctest_facade as math_explorer;
+use math_explorer::pure_math::algebra::fields::Fp;
+use math_explorer::pure_math::algebra::polynomial::Polynomial;
+use math_explorer::pure_math::number_theory::primes::primes_up_to;
 
 // Generate prime numbers up to a specified limit
 let primes = primes_up_to(20);
