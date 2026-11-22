@@ -6937,6 +6937,250 @@
       "signature": "pub struct WaveEquation1D"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d.rs": [
+    {
+      "signature": "impl Wave2DSolver { pub fn clear_wave_state (& mut self) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn displacement (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn dx (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn dy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn effective_courant (& self , params : & Wave2DParams , requested_dt : f64) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn energy_field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn inject_gaussian_pulse (& mut self , cx_norm : f64 , cy_norm : f64 , sigma_norm : f64 , amplitude : f64 ,) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn modal_field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn new (width : usize , height : usize , dx : f64 , dy : f64) -> Self }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn new_unit_square (size : usize) -> Self }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn read_detector_profile (& self , det_x : usize , out : & mut [f64]) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn reset_all (& mut self) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn reset_detector (& mut self) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn safe_substep_plan (& self , params : & Wave2DParams , requested_dt : f64) -> (usize , f64) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn set_stationary_displacement (& mut self , values : & [f64]) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn step (& mut self , params : & Wave2DParams , requested_dt : f64) -> usize }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn step_driven (& mut self , params : & Wave2DParams , driver : & DriverConfig2D , requested_dt : f64 , detector_x : Option < usize > ,) -> usize }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct Wave2DSolver"
+    },
+    {
+      "signature": "pub use config :: BoundaryMode2D"
+    },
+    {
+      "signature": "pub use config :: DriverConfig2D"
+    },
+    {
+      "signature": "pub use config :: MAX_BIHARMONIC_NUMBER"
+    },
+    {
+      "signature": "pub use config :: MAX_COURANT_NUMBER"
+    },
+    {
+      "signature": "pub use config :: MAX_VERLET_SUBSTEPS"
+    },
+    {
+      "signature": "pub use config :: Wave2DMedium"
+    },
+    {
+      "signature": "pub use config :: Wave2DParams"
+    },
+    {
+      "signature": "pub use config :: analytic_clamped_square_omega"
+    },
+    {
+      "signature": "pub use config :: young_double_slit_fringe_spacing"
+    },
+    {
+      "signature": "pub use masks :: apply_biconvex_lens"
+    },
+    {
+      "signature": "pub use masks :: apply_circular_drumhead_mask"
+    },
+    {
+      "signature": "pub use masks :: apply_multi_slit_barrier"
+    },
+    {
+      "signature": "pub use masks :: apply_point_clamp"
+    },
+    {
+      "signature": "pub use masks :: apply_sponge_layer"
+    },
+    {
+      "signature": "pub use particles_and_contours :: ChladniSandSystem"
+    },
+    {
+      "signature": "pub use particles_and_contours :: MarchingSquares2D"
+    },
+    {
+      "signature": "pub use spectral :: SpectralAnalyzer2D"
+    },
+    {
+      "signature": "pub use spectral :: SpectralPeak2D"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/config.rs": [
+    {
+      "signature": "pub const MAX_BIHARMONIC_NUMBER : f64 = 0.18"
+    },
+    {
+      "signature": "pub const MAX_COURANT_NUMBER : f64 = 0.65"
+    },
+    {
+      "signature": "pub const MAX_VERLET_SUBSTEPS : usize = 64"
+    },
+    {
+      "signature": "pub enum BoundaryMode2D"
+    },
+    {
+      "signature": "pub enum Wave2DMedium"
+    },
+    {
+      "signature": "pub fn analytic_clamped_square_omega (mode_m : usize , mode_n : usize , length : f64 , plate_stiffness : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn young_double_slit_fringe_spacing (wavelength : f64 , slit_separation : f64 , screen_distance : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub struct DriverConfig2D"
+    },
+    {
+      "signature": "pub struct Wave2DParams"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/masks.rs": [
+    {
+      "signature": "pub fn apply_biconvex_lens (wave_speed_mask : & mut [f64] , width : usize , height : usize , center_x : usize , half_aperture : f64 , half_thickness : f64 , refractive_index : f64 ,)"
+    },
+    {
+      "signature": "pub fn apply_circular_drumhead_mask (wall_mask : & mut [f64] , width : usize , height : usize , radius_norm : f64 ,)"
+    },
+    {
+      "signature": "pub fn apply_multi_slit_barrier (wall_mask : & mut [f64] , width : usize , height : usize , barrier_x : usize , wall_thickness : usize , slit_count : usize , slit_width : usize , slit_separation : f64 ,)"
+    },
+    {
+      "signature": "pub fn apply_point_clamp (wall_mask : & mut [f64] , width : usize , height : usize , cx_norm : f64 , cy_norm : f64 , radius_cells : f64 ,)"
+    },
+    {
+      "signature": "pub fn apply_sponge_layer (sponge_mask : & mut [f64] , width : usize , height : usize , thickness : usize , max_damping : f64 ,)"
+    },
+    {
+      "signature": "pub fn clamped_beam_eigenfunction (mode : usize , xi : f64) -> f64"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/particles_and_contours.rs": [
+    {
+      "signature": "impl ChladniSandSystem { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn mean_normalized_energy (& self , energy_field : & [f64] , width : usize) -> f64 }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn new (capacity : usize , seed : u64 , width : usize , height : usize , wall_mask : & [f64]) -> Self }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn positions_x (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn positions_y (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn reseed (& mut self , seed : u64 , width : usize , height : usize , wall_mask : & [f64]) }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn step (& mut self , energy_field : & [f64] , wall_mask : & [f64] , width : usize , height : usize , mobility : f64 , agitation : f64 , dt : f64 ,) }"
+    },
+    {
+      "signature": "impl MarchingSquares2D { pub fn extract_zero_contours (& mut self , field : & [f64] , wall_mask : & [f64] , width : usize , height : usize , amplitude_floor : f64 ,) -> & [[[f64 ; 2] ; 2]] }"
+    },
+    {
+      "signature": "impl MarchingSquares2D { pub fn new (max_segments : usize) -> Self }"
+    },
+    {
+      "signature": "impl MarchingSquares2D { pub fn segments (& self) -> & [[[f64 ; 2] ; 2]] }"
+    },
+    {
+      "signature": "pub const DEFAULT_SAND_PARTICLES : usize = 4_000"
+    },
+    {
+      "signature": "pub struct ChladniSandSystem"
+    },
+    {
+      "signature": "pub struct MarchingSquares2D"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/spectral.rs": [
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn compute_radial_profile (& self , out_bins : & mut [f64] , counts : & mut [usize]) }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn compute_spectrum (& mut self , field : & [f64]) -> & [f64] }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn dominant_peak (& self) -> SpectralPeak2D }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn new (width : usize , height : usize) -> Self }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn set_hann_window (& mut self , enabled : bool) }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn spectrum (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct SpectralAnalyzer2D"
+    },
+    {
+      "signature": "pub struct SpectralPeak2D"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/roots.rs": [
     {
       "signature": "impl Bisection { pub fn new (max_iterations : usize , tolerance : f64) -> Self }"
