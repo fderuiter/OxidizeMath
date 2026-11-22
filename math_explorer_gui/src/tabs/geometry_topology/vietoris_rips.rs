@@ -178,7 +178,10 @@ impl InteractiveTool for VietorisRipsTool {
             && self.brush_radius.is_finite()
             && self.camera.is_valid()
             && self.chaos.has_finite_parameters()
-            && self.points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
+            && self
+                .points
+                .iter()
+                .all(|p| p.x.is_finite() && p.y.is_finite())
             && self.points_3d.iter().all(Point3D::is_finite)
     }
 
@@ -246,7 +249,6 @@ impl scientific_metadata::theory::TheoryDescribable for VietorisRipsTool {
             self.beta_0, self.beta_1, self.radius, count
         )
     }
-
     fn phonetic_description(&self) -> String {
         "Vietoris-Rips persistent homology and Takens delay embedding theory".into()
     }
