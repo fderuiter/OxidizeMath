@@ -84,11 +84,42 @@ pub enum Func {
     Min,
     /// Two-argument maximum ($\max(a, b)$).
     Max,
-    /// Four-quadrant inverse tangent ($\mathrm{atan2}(y, x)$).
+    /// Three-argument clamping ($\operatorname{clamp}(x, \text{lo}, \text{hi})$).
+    Clamp,
+    /// Unit Heaviside step ($0$ for $x < 0$, $1$ for $x \ge 0$).
+    Step,
+    /// Unit rectangular boxcar pulse ($1$ for $|x| \le 0.5$, $0$ otherwise).
+    Rect,
+    /// Two-argument four-quadrant inverse tangent ($\operatorname{atan2}(y, x)$).
     Atan2,
 }
 
 impl Func {
+    /// Returns the exact argument count required by this function.
+    #[must_use]
+    pub const fn arity(&self) -> usize {
+        match self {
+            Self::Min | Self::Max | Self::Atan2 => 2,
+            Self::Clamp => 3,
+            Self::Sin
+            | Self::Cos
+            | Self::Tan
+            | Self::Exp
+            | Self::Ln
+            | Self::Log10
+            | Self::Sqrt
+            | Self::Abs
+            | Self::Sinh
+            | Self::Cosh
+            | Self::Tanh
+            | Self::Asin
+            | Self::Acos
+            | Self::Atan
+            | Self::Step
+            | Self::Rect => 1,
+        }
+    }
+
     /// Returns the name of the function.
     #[must_use]
     pub fn as_str(&self) -> &'static str {
@@ -109,29 +140,10 @@ impl Func {
             Self::Atan => "atan",
             Self::Min => "min",
             Self::Max => "max",
+            Self::Clamp => "clamp",
+            Self::Step => "step",
+            Self::Rect => "rect",
             Self::Atan2 => "atan2",
-        }
-    }
-
-    /// Returns the expected argument count for this built-in function.
-    #[must_use]
-    pub const fn arity(&self) -> usize {
-        match self {
-            Self::Min | Self::Max | Self::Atan2 => 2,
-            Self::Sin
-            | Self::Cos
-            | Self::Tan
-            | Self::Exp
-            | Self::Ln
-            | Self::Log10
-            | Self::Sqrt
-            | Self::Abs
-            | Self::Sinh
-            | Self::Cosh
-            | Self::Tanh
-            | Self::Asin
-            | Self::Acos
-            | Self::Atan => 1,
         }
     }
 
@@ -155,6 +167,9 @@ impl Func {
             "atan" | "arctan" => Some(Self::Atan),
             "min" => Some(Self::Min),
             "max" => Some(Self::Max),
+            "clamp" => Some(Self::Clamp),
+            "step" => Some(Self::Step),
+            "rect" => Some(Self::Rect),
             "atan2" | "arctan2" => Some(Self::Atan2),
             _ => None,
         }
@@ -219,6 +234,35 @@ impl Expr {
         Self::Function { func, args }
     }
 
+    /// Returns the distinct free variable identifiers in left-to-right source order,
+    /// excluding built-in universal mathematical constants (`pi`, `e`, `tau`).
+    #[must_use]
+    pub fn free_variables(&self) -> Vec<String> {
+        let mut vars = Vec::new();
+        let mut stack = vec![self];
+        while let Some(node) = stack.pop() {
+            match node {
+                Self::Number(_) => {}
+                Self::Variable(name) => {
+                    if !is_universal_constant(name) && !vars.iter().any(|v| v == name) {
+                        vars.push(name.clone());
+                    }
+                }
+                Self::Unary { expr, .. } => stack.push(expr),
+                Self::Binary { left, right, .. } => {
+                    stack.push(right);
+                    stack.push(left);
+                }
+                Self::Function { args, .. } => {
+                    for arg in args.iter().rev() {
+                        stack.push(arg);
+                    }
+                }
+            }
+        }
+        vars
+    }
+
     const fn has_children(&self) -> bool {
         matches!(
             self,
@@ -267,4 +311,12 @@ impl Drop for Expr {
             node.take_children(&mut worklist);
         }
     }
+}
+
+/// Returns `true` if `name` matches a built-in universal real/complex constant (`pi`, `e`, `tau`).
+#[must_use]
+pub fn is_universal_constant(name: &str) -> bool {
+    name.eq_ignore_ascii_case("pi")
+        || name.eq_ignore_ascii_case("e")
+        || name.eq_ignore_ascii_case("tau")
 }

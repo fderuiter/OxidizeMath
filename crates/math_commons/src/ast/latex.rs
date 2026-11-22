@@ -182,7 +182,10 @@ fn latex_func_name(func: Func) -> &'static str {
         Func::Atan => r"\arctan",
         Func::Min => r"\min",
         Func::Max => r"\max",
+        Func::Clamp => r"\mathrm{clamp}",
+        Func::Step => r"\mathrm{step}",
+        Func::Rect => r"\mathrm{rect}",
         Func::Atan2 => r"\mathrm{atan2}",
-        _ => func.as_str(),
+        Func::Sqrt | Func::Abs => func.as_str(),
     }
 }

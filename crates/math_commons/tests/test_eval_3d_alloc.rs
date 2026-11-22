@@ -55,9 +55,11 @@ fn test_binary_func_arity_latex_and_nan_propagation() {
     assert!(nan_prop.eval(&vars).unwrap().is_nan());
     assert!(nan_prop.eval_3d(0.0, 0.0, 0.0, &vars).is_nan());
 
-    let cvars = HashMap::from([("z".to_string(), Complex64::new(1.0, 2.0))]);
+    let cvars = HashMap::from([("z".to_string(), Complex64::new(2.5, 2.0))]);
     let complex_min = parse("min(z, 1)").expect("parse complex min");
-    assert!(complex_min.eval_complex(&cvars).unwrap().re.is_nan());
+    assert!((complex_min.eval_complex(&cvars).unwrap() - Complex64::new(1.0, 0.0)).norm() < 1e-12);
+    let complex_nan = parse("min(1 / 0, z)").expect("parse complex nan min");
+    assert!(complex_nan.eval_complex(&cvars).unwrap().re.is_nan());
 }
 
 #[test]
@@ -73,7 +75,7 @@ fn test_eval_3d_zero_heap_allocations_across_64_cubed_voxels() {
     let total_voxels = dim * dim * dim;
     assert_eq!(total_voxels, 262_144);
 
-    let (accum, _metrics) = VerifiedEngine::run_verified(|| {
+    let (accum, metrics) = VerifiedEngine::run_verified(|| {
         let mut checksum = 0.0_f64;
         let step = 2.0 * std::f64::consts::PI / dim as f64;
         for iz in 0..dim {
@@ -89,5 +91,6 @@ fn test_eval_3d_zero_heap_allocations_across_64_cubed_voxels() {
         checksum
     });
 
+    assert_eq!(metrics.memory_loads, 0);
     assert!(accum.is_finite(), "64^3 checksum must be finite: {accum}");
 }

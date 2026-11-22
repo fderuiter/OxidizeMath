@@ -1063,7 +1063,6 @@ dependencies = [
  "pure_math",
  "rand",
  "rand_distr",
- "scientific_metadata",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -1079,7 +1078,6 @@ dependencies = [
  "oxidize_core",
  "pure_math",
  "rand",
- "scientific_metadata",
  "statrs",
  "thiserror 2.0.21",
  "verified_engine",
@@ -1097,7 +1095,6 @@ dependencies = [
  "oxidize_core",
  "pure_math",
  "rand",
- "scientific_metadata",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -1112,7 +1109,6 @@ dependencies = [
  "oxidize_core",
  "pure_math",
  "rand",
- "scientific_metadata",
  "verified_engine",
 ]
 
@@ -1127,7 +1123,6 @@ dependencies = [
  "oxidize_core",
  "pure_math",
  "rand",
- "scientific_metadata",
  "verified_engine",
 ]
 
@@ -2453,6 +2448,7 @@ dependencies = [
  "petgraph",
  "pure_math",
  "rand",
+ "scientific_metadata",
  "serde_json",
  "verified_engine",
 ]
@@ -3417,7 +3413,6 @@ dependencies = [
  "rand",
  "rand_distr",
  "rustfft",
- "scientific_metadata",
  "serde",
  "statrs",
  "thiserror 2.0.21",
@@ -4464,6 +4459,7 @@ name = "verified_engine"
 version = "0.1.0"
 dependencies = [
  "approx",
+ "scientific_metadata",
  "serde",
  "verified_engine_macros",
 ]
