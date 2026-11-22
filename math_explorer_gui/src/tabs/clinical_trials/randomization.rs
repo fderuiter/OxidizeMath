@@ -63,8 +63,8 @@ impl InteractiveTool for RandomizationTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: RandomizationState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid randomization state: {e}"))?;
+        let s: RandomizationState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid randomization state: {e}"))?;
         if !(1..=1000).contains(&s.n_subjects) || !(2..=100).contains(&s.block_size) {
             return Err("Randomization subject count or block_size out of bounds".into());
         }

@@ -309,6 +309,10 @@ mod tests {
             r#"{"input_text":"5.0, 1\n12.0, 0"}"#,
         );
         assert_tool_roundtrip(
+            &mut crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool::default(),
+            r#"{"lambda1":0.16,"lambda2":0.36,"alpha":0.7,"theta":0.6,"censor_horizon":4.5,"dropout_rate":0.06,"sig_alpha":0.05,"n_min":30,"n_max":150,"n_steps":5,"replicates":80,"seed":9001,"chart_mode":"TierWaterfall"}"#,
+        );
+        assert_tool_roundtrip(
             &mut crate::tabs::epidemiology::network_propagation::NetworkPropagationTool::default(),
             r#"{"num_nodes":30,"beta":0.08,"gamma":0.03}"#,
         );

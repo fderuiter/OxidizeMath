@@ -1243,6 +1243,12 @@
   ],
   "crates/domain_applied/src/applied/clinical_trials/sample_size.rs": [
     {
+      "signature": "pub fn calculate_power_means (alpha : f64 , n_per_group : usize , delta : f64 , sigma : f64 ,) -> Result < f64 , ClinicalTrialError >"
+    },
+    {
+      "signature": "pub fn calculate_power_proportions (alpha : f64 , n_per_group : usize , p1 : f64 , p2 : f64 ,) -> Result < f64 , ClinicalTrialError >"
+    },
+    {
       "signature": "pub fn calculate_sample_size_means (alpha : f64 , power : f64 , delta : f64 , sigma : f64 ,) -> Result < usize , ClinicalTrialError >"
     },
     {
@@ -2244,6 +2250,29 @@
       "signature": "pub fn calculate_bmi (weight_kg : f64 , height_m : f64) -> f64"
     }
   ],
+  "crates/domain_applied/src/applied/win_ratio/censoring.rs": [
+    {
+      "signature": "impl CensoredOutcome { pub fn censored_at (& self , horizon : Option < f64 >) -> (f64 , bool) }"
+    },
+    {
+      "signature": "impl CensoredOutcome { pub fn new (time : f64 , event_occurred : bool) -> Result < Self , ClinicalTrialError > }"
+    },
+    {
+      "signature": "impl RightCensoredComparator { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl RightCensoredComparator { pub fn with_horizon (horizon : f64) -> Result < Self , ClinicalTrialError > }"
+    },
+    {
+      "signature": "pub struct CensoredOutcome"
+    },
+    {
+      "signature": "pub struct RightCensoredComparator"
+    },
+    {
+      "signature": "pub struct TierCount"
+    }
+  ],
   "crates/domain_applied/src/applied/win_ratio/pair_comparison.rs": [
     {
       "signature": "impl < T > WinRatioAnalysis < T > { pub fn add_strategy (mut self , strategy : Box < dyn OutcomeComparator < T > >) -> Self }"
@@ -2252,10 +2281,16 @@
       "signature": "impl < T > WinRatioAnalysis < T > { pub fn compare_subjects (& self , subject1 : & [T] , subject2 : & [T]) -> ComparisonResult }"
     },
     {
+      "signature": "impl < T > WinRatioAnalysis < T > { pub fn compare_subjects_with_tier (& self , subject1 : & [T] , subject2 : & [T] ,) -> (ComparisonResult , Option < usize >) }"
+    },
+    {
       "signature": "impl < T > WinRatioAnalysis < T > { pub fn evaluate_pairs < P : PairingStrategy < T > > (& self , group1 : & [Vec < T >] , group2 : & [Vec < T >] , strategy : & P ,) -> (i32 , i32) }"
     },
     {
       "signature": "impl < T > WinRatioAnalysis < T > { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl < T > WinRatioAnalysis < T > { pub fn num_tiers (& self) -> usize }"
     },
     {
       "signature": "impl ThresholdComparator { pub fn new (threshold : f64) -> Self }"
@@ -2301,6 +2336,68 @@
     },
     {
       "signature": "pub trait PairingStrategy < T > { fn evaluate (& self , analysis : & WinRatioAnalysis < T > , group1 : & [Vec < T >] , group2 : & [Vec < T >] ,) -> (i32 , i32) }"
+    },
+    {
+      "signature": "pub use super :: censoring :: CensoredOutcome"
+    },
+    {
+      "signature": "pub use super :: censoring :: RightCensoredComparator"
+    },
+    {
+      "signature": "pub use super :: censoring :: TierCount"
+    },
+    {
+      "signature": "pub use super :: u_statistic :: SubjectMarginals"
+    },
+    {
+      "signature": "pub use super :: u_statistic :: UnmatchedScratch"
+    },
+    {
+      "signature": "pub use super :: u_statistic :: UnmatchedWinRatioSummary"
+    },
+    {
+      "signature": "pub use super :: u_statistic :: compute_unmatched_u_statistics"
+    }
+  ],
+  "crates/domain_applied/src/applied/win_ratio/power_sweep.rs": [
+    {
+      "signature": "impl PowerSweepConfig { pub fn sample_size_at (& self , step_idx : usize) -> usize }"
+    },
+    {
+      "signature": "impl PowerSweepConfig { pub fn validate (& self) -> Result < () , ClinicalTrialError > }"
+    },
+    {
+      "signature": "impl PowerSweepWorkspace { pub fn with_capacity (max_arm : usize , max_steps : usize) -> Self }"
+    },
+    {
+      "signature": "pub const MAX_ARM_SIZE : usize = 500"
+    },
+    {
+      "signature": "pub const MAX_SWEEP_REPLICATES : usize = 500"
+    },
+    {
+      "signature": "pub const MAX_SWEEP_STEPS : usize = 16"
+    },
+    {
+      "signature": "pub fn run_power_sweep_into (params : & SimulationParams , cfg : & PowerSweepConfig , seed : u64 , workspace : & mut PowerSweepWorkspace ,) -> Result < (usize , UnmatchedWinRatioSummary , [TierCount ; 2]) , ClinicalTrialError >"
+    },
+    {
+      "signature": "pub fn run_weibull_power_sweep (params : & SimulationParams , cfg : & PowerSweepConfig , seed : u64 ,) -> Result < PowerSweepReport , ClinicalTrialError >"
+    },
+    {
+      "signature": "pub fn simulate_weibull_trial_into (params : & SimulationParams , n_per_arm : usize , censor_horizon : f64 , dropout_rate : f64 , sig_alpha : f64 , rng : & mut OxidizeRng , workspace : & mut PowerSweepWorkspace ,) -> Result < (Option < UnmatchedWinRatioSummary > , [TierCount ; 2]) , ClinicalTrialError >"
+    },
+    {
+      "signature": "pub struct PowerSweepConfig"
+    },
+    {
+      "signature": "pub struct PowerSweepReport"
+    },
+    {
+      "signature": "pub struct PowerSweepWorkspace"
+    },
+    {
+      "signature": "pub struct SampleSizePowerPoint"
     }
   ],
   "crates/domain_applied/src/applied/win_ratio/probability_win_ratio.rs": [
@@ -2418,6 +2515,85 @@
     },
     {
       "signature": "pub struct SimulationParams"
+    },
+    {
+      "signature": "pub use super :: power_sweep :: MAX_ARM_SIZE"
+    },
+    {
+      "signature": "pub use super :: power_sweep :: MAX_SWEEP_REPLICATES"
+    },
+    {
+      "signature": "pub use super :: power_sweep :: MAX_SWEEP_STEPS"
+    },
+    {
+      "signature": "pub use super :: power_sweep :: PowerSweepConfig"
+    },
+    {
+      "signature": "pub use super :: power_sweep :: PowerSweepReport"
+    },
+    {
+      "signature": "pub use super :: power_sweep :: PowerSweepWorkspace"
+    },
+    {
+      "signature": "pub use super :: power_sweep :: SampleSizePowerPoint"
+    },
+    {
+      "signature": "pub use super :: power_sweep :: run_power_sweep_into"
+    },
+    {
+      "signature": "pub use super :: power_sweep :: run_weibull_power_sweep"
+    },
+    {
+      "signature": "pub use super :: power_sweep :: simulate_weibull_trial_into"
+    },
+    {
+      "signature": "pub use super :: weibull_sampler :: SimulatedSubject"
+    }
+  ],
+  "crates/domain_applied/src/applied/win_ratio/u_statistic.rs": [
+    {
+      "signature": "impl < T > WinRatioAnalysis < T > { pub fn evaluate_unmatched < S1 , S2 > (& self , group1 : & [S1] , group2 : & [S2] , alpha : f64 ,) -> Option < (UnmatchedWinRatioSummary , Vec < TierCount >) > where S1 : AsRef < [T] > , S2 : AsRef < [T] > , }"
+    },
+    {
+      "signature": "impl < T > WinRatioAnalysis < T > { pub fn evaluate_unmatched_into < S1 , S2 > (& self , group1 : & [S1] , group2 : & [S2] , alpha : f64 , scratch : & mut UnmatchedScratch ,) -> Option < UnmatchedWinRatioSummary > where S1 : AsRef < [T] > , S2 : AsRef < [T] > , }"
+    },
+    {
+      "signature": "impl UnmatchedScratch { pub fn marginals (& self , n1 : usize , n2 : usize) -> SubjectMarginals < '_ > }"
+    },
+    {
+      "signature": "impl UnmatchedScratch { pub fn with_capacity (max_n1 : usize , max_n2 : usize , max_tiers : usize) -> Self }"
+    },
+    {
+      "signature": "impl UnmatchedWinRatioSummary { pub fn as_stats (& self) -> WinRatioStats }"
+    },
+    {
+      "signature": "pub fn compute_unmatched_u_statistics (n1 : usize , n2 : usize , wins : usize , losses : usize , m : & SubjectMarginals < '_ > , alpha : f64 ,) -> Option < UnmatchedWinRatioSummary >"
+    },
+    {
+      "signature": "pub struct SubjectMarginals < 'a >"
+    },
+    {
+      "signature": "pub struct UnmatchedScratch"
+    },
+    {
+      "signature": "pub struct UnmatchedWinRatioSummary"
+    }
+  ],
+  "crates/domain_applied/src/applied/win_ratio/weibull_sampler.rs": [
+    {
+      "signature": "impl BivariateWeibullModel { pub fn try_sample_censored_subject (& self , rng : & mut OxidizeRng , horizon : f64 , dropout_rate : f64 ,) -> Result < SimulatedSubject , ClinicalTrialError > }"
+    },
+    {
+      "signature": "impl BivariateWeibullModel { pub fn try_sample_event_times (& self , rng : & mut OxidizeRng ,) -> Result < (f64 , f64) , ClinicalTrialError > }"
+    },
+    {
+      "signature": "impl BivariateWeibullModel { pub fn validate (& self) -> Result < () , ClinicalTrialError > }"
+    },
+    {
+      "signature": "impl SimulationParams { pub fn validate (& self) -> Result < () , ClinicalTrialError > }"
+    },
+    {
+      "signature": "pub struct SimulatedSubject"
     }
   ],
   "crates/domain_applied/src/error.rs": [

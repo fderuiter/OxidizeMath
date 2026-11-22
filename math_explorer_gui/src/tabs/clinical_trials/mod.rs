@@ -5,7 +5,7 @@ use eframe::egui;
 pub mod randomization;
 pub mod sample_size;
 pub mod survival;
-
+pub mod win_ratio;
 
 pub struct ClinicalTrialsTab {
     framework: crate::framework::SimulationFramework,
