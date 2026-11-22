@@ -2,8 +2,13 @@
 
 use super::*;
 use crate::framework::shader_foundry::validate_complex_shader_vars;
-use math_commons::ast::parse_equation;
+use crate::framework::MAX_SYNTHESIZED_PARAMS;
+use math_commons::ast::{
+    is_universal_constant, parse_equation, BinaryOp, CompiledExpr, Expr, Func, UnaryOp,
+    MAX_EVAL_DEPTH,
+};
 use math_commons::math_kernel::colormap::ShaderPalette;
+use std::collections::BTreeMap;
 
 const fn default_domain_coloring() -> bool {
     true
@@ -31,6 +36,8 @@ pub(super) struct ComplexMappingState {
     pub(super) inspection_point: [f64; 2],
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) custom_expr: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(super) custom_params: BTreeMap<String, f64>,
     #[serde(default = "default_domain_coloring", skip_serializing_if = "is_true")]
     pub(super) domain_coloring: bool,
     #[serde(
@@ -40,8 +47,114 @@ pub(super) struct ComplexMappingState {
     pub(super) palette: String,
 }
 
+enum BindFrame<'a> {
+    Visit { expr: &'a Expr, depth: usize },
+    Unary(UnaryOp),
+    Binary(BinaryOp),
+    Func { func: Func, arity: usize },
+}
+
+fn visit_bind_node<'a>(
+    expr: &'a Expr,
+    depth: usize,
+    params: &BTreeMap<String, f64>,
+    work: &mut Vec<BindFrame<'a>>,
+    out: &mut Vec<Expr>,
+) -> Result<(), String> {
+    if depth > MAX_EVAL_DEPTH {
+        return Err(format!(
+            "Custom complex expression exceeds depth limit {MAX_EVAL_DEPTH}"
+        ));
+    }
+    match expr {
+        Expr::Number(v) => out.push(Expr::Number(*v)),
+        Expr::Variable(name) => {
+            let is_reserved = name.eq_ignore_ascii_case("z")
+                || name.eq_ignore_ascii_case("i")
+                || is_universal_constant(name);
+            if !is_reserved {
+                if let Some(&val) = params.get(name) {
+                    if !val.is_finite() {
+                        return Err(format!("Non-finite parameter '{name}'"));
+                    }
+                    out.push(Expr::Number(val));
+                    return Ok(());
+                }
+            }
+            out.push(Expr::Variable(name.clone()));
+        }
+        Expr::Unary { op, expr: inner } => {
+            work.push(BindFrame::Unary(*op));
+            work.push(BindFrame::Visit {
+                expr: inner,
+                depth: depth + 1,
+            });
+        }
+        Expr::Binary { op, left, right } => {
+            work.push(BindFrame::Binary(*op));
+            work.push(BindFrame::Visit {
+                expr: right,
+                depth: depth + 1,
+            });
+            work.push(BindFrame::Visit {
+                expr: left,
+                depth: depth + 1,
+            });
+        }
+        Expr::Function { func, args } => {
+            work.push(BindFrame::Func {
+                func: *func,
+                arity: args.len(),
+            });
+            for arg in args.iter().rev() {
+                work.push(BindFrame::Visit {
+                    expr: arg,
+                    depth: depth + 1,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn bind_complex_shader_params(
+    root: &Expr,
+    params: &BTreeMap<String, f64>,
+) -> Result<Expr, String> {
+    let mut work = vec![BindFrame::Visit {
+        expr: root,
+        depth: 0,
+    }];
+    let mut out = Vec::new();
+    while let Some(frame) = work.pop() {
+        match frame {
+            BindFrame::Visit { expr, depth } => {
+                visit_bind_node(expr, depth, params, &mut work, &mut out)?;
+            }
+            BindFrame::Unary(op) => {
+                let inner = out.pop().ok_or("Shader AST stack underflow")?;
+                out.push(Expr::unary(op, inner));
+            }
+            BindFrame::Binary(op) => {
+                let rhs = out.pop().ok_or("Shader AST stack underflow")?;
+                let lhs = out.pop().ok_or("Shader AST stack underflow")?;
+                out.push(Expr::binary(op, lhs, rhs));
+            }
+            BindFrame::Func { func, arity } => {
+                let split = out
+                    .len()
+                    .checked_sub(arity)
+                    .ok_or("Shader AST stack underflow")?;
+                let args = out.split_off(split);
+                out.push(Expr::function(func, args));
+            }
+        }
+    }
+    out.pop().ok_or_else(|| "Empty shader AST".to_string())
+}
+
 impl ComplexMappingState {
-    pub(super) fn validate(&self) -> Result<ShaderPalette, String> {
+    fn validate_bounds(&self) -> Result<(), String> {
         if !self.grid_min.is_finite()
             || !self.grid_max.is_finite()
             || !(COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&self.grid_min)
@@ -55,6 +168,18 @@ impl ComplexMappingState {
         {
             return Err("Complex mapping bounds or density out of valid range".into());
         }
+        if self.custom_params.len() > MAX_SYNTHESIZED_PARAMS
+            || !self.custom_params.iter().all(|(k, &v)| {
+                !k.is_empty() && k.len() <= 64 && v.is_finite() && (-1.0e4..=1.0e4).contains(&v)
+            })
+        {
+            return Err("Custom complex parameters out of valid range".into());
+        }
+        Ok(())
+    }
+
+    pub(super) fn validate(&self) -> Result<ShaderPalette, String> {
+        self.validate_bounds()?;
         let palette = ShaderPalette::from_slug(&self.palette)
             .ok_or_else(|| format!("Unknown complex mapping palette '{}'", self.palette))?;
         if let Some(raw) = &self.custom_expr {
@@ -63,7 +188,22 @@ impl ComplexMappingState {
             }
             let (_, expr) = parse_equation(raw.trim())
                 .map_err(|e| format!("Invalid custom complex expression: {e}"))?;
-            validate_complex_shader_vars(&expr)?;
+            let compiled = CompiledExpr::compile_complex(&expr, &["z"])
+                .map_err(|e| format!("Invalid custom complex expression: {e}"))?;
+            if compiled.param_names().len() > MAX_SYNTHESIZED_PARAMS {
+                return Err(format!(
+                    "Custom complex expression exceeds {MAX_SYNTHESIZED_PARAMS} parameters"
+                ));
+            }
+            let mut effective = BTreeMap::new();
+            for name in compiled.param_names() {
+                effective.insert(
+                    name.clone(),
+                    self.custom_params.get(name).copied().unwrap_or(1.0),
+                );
+            }
+            let bound = bind_complex_shader_params(&expr, &effective)?;
+            validate_complex_shader_vars(&bound)?;
         }
         Ok(palette)
     }
@@ -71,9 +211,15 @@ impl ComplexMappingState {
 
 impl ComplexMappingTool {
     pub(super) fn to_serializable_state(&self) -> ComplexMappingState {
-        let custom_expr = (self.function == MappingFunction::Custom
+        let is_custom = self.function == MappingFunction::Custom;
+        let custom_expr = (is_custom
             || self.math_input.raw_text.trim() != DEFAULT_CUSTOM_MAPPING_EXPR)
             .then(|| self.math_input.raw_text.clone());
+        let custom_params = if is_custom {
+            self.math_input.params_map()
+        } else {
+            BTreeMap::new()
+        };
         ComplexMappingState {
             function: self.function,
             grid_min: self.grid_min,
@@ -81,6 +227,7 @@ impl ComplexMappingTool {
             grid_density: self.grid_density,
             inspection_point: self.inspection_point,
             custom_expr,
+            custom_params,
             domain_coloring: self.domain_coloring,
             palette: self.palette.as_slug().to_string(),
         }

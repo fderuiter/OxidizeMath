@@ -104,9 +104,49 @@ fn test_complex_preludes_cover_all_helpers_and_target_intrinsics() {
 
     let wgsl_r = wgsl_real_prelude();
     let glsl_r = glsl_real_prelude();
-    for helper in ["om_safe_div", "om_safe_pow", "om_ln", "om_log10"] {
+    for helper in [
+        "om_safe_div",
+        "om_safe_pow",
+        "om_ln",
+        "om_log10",
+        "om_step",
+        "om_rect",
+        "om_clamp",
+        "om_atan_yx",
+    ] {
         assert!(wgsl_r.contains(helper) && glsl_r.contains(helper));
     }
+}
+
+#[test]
+fn test_multi_arg_and_piecewise_func_shader_lowering() {
+    for (src, real_expected, complex_expected) in [
+        ("step(x)", "om_step(x)", "c_step(x)"),
+        ("rect(x)", "om_rect(x)", "c_rect(x)"),
+        ("min(x, y)", "min(x, y)", "c_min(x, y)"),
+        ("max(x, y)", "max(x, y)", "c_max(x, y)"),
+        ("atan2(y, x)", "om_atan_yx(y, x)", "c_atan_yx(y, x)"),
+        (
+            "clamp(x, -1, 1)",
+            "om_clamp(x, (-1.0), 1.0)",
+            "c_clamp(x, (-vec2<f32>(1.0, 0.0)), vec2<f32>(1.0, 0.0))",
+        ),
+    ] {
+        let ast = parse(src).expect("parse multi/piecewise func");
+        assert_eq!(ast.to_wgsl().unwrap(), real_expected);
+        assert_eq!(ast.to_glsl().unwrap(), real_expected);
+        assert_eq!(ast.to_wgsl_complex().unwrap(), complex_expected);
+    }
+
+    let bad_clamp = parse("clamp(x, 0)").expect("parse 2-arg clamp");
+    assert_eq!(
+        bad_clamp.to_wgsl(),
+        Err(ShaderEmitError::WrongArgumentCount {
+            func: Func::Clamp,
+            expected: 3,
+            found: 2,
+        })
+    );
 }
 
 #[test]

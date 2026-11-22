@@ -16,7 +16,7 @@ use std::hash::{Hash, Hasher};
 
 #[path = "complex_mapping/state.rs"]
 mod state;
-use state::ComplexMappingState;
+use state::{bind_complex_shader_params, ComplexMappingState};
 
 #[path = "complex_mapping/ui.rs"]
 mod ui;
@@ -26,6 +26,7 @@ pub(crate) const COMPLEX_COORD_MAX: f64 = 50.0;
 pub(super) const COMPLEX_MIN_SPAN: f64 = 0.1;
 pub(super) const DOMAIN_COLOR_PREVIEW_SIDE: usize = 160;
 const EXP_SIN_GUARD_LIMIT: f64 = 50.0;
+const NAN_COMPLEX: Complex64 = Complex64::new(f64::NAN, f64::NAN);
 pub(super) const MAX_CUSTOM_EXPR_BYTES: usize = 512;
 pub(super) const DEFAULT_CUSTOM_MAPPING_EXPR: &str = "z^3 - 1/z";
 
@@ -38,11 +39,19 @@ pub(crate) enum MappingFunction {
     Custom,
 }
 
-fn sanitize_complex(w: Complex64, fallback: Complex64) -> Complex64 {
+fn sanitize_complex_pole(w: Complex64) -> Complex64 {
     if w.re.is_finite() && w.im.is_finite() {
         w
     } else {
-        fallback
+        NAN_COMPLEX
+    }
+}
+
+fn sanitize_complex_deriv(w: Complex64) -> Complex64 {
+    if w.re.is_finite() && w.im.is_finite() {
+        w
+    } else {
+        Complex64::new(0.0, 0.0)
     }
 }
 
@@ -58,9 +67,8 @@ impl MappingFunction {
     }
 
     fn evaluate(&self, z: Complex64) -> Complex64 {
-        let fallback = Complex64::new(1e6, 1e6);
         if !z.re.is_finite() || !z.im.is_finite() {
-            return fallback;
+            return NAN_COMPLEX;
         }
         let raw = match self {
             MappingFunction::ZSquared => z * z,
@@ -71,21 +79,20 @@ impl MappingFunction {
                 Complex64::new(z.re, z.im.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT)).sin()
             }
             MappingFunction::Inverse => {
-                if z.norm() < 1e-6 {
-                    fallback
+                if z.norm_sqr() < 1e-12 {
+                    NAN_COMPLEX
                 } else {
                     1.0 / z
                 }
             }
-            MappingFunction::Custom => fallback,
+            MappingFunction::Custom => NAN_COMPLEX,
         };
-        sanitize_complex(raw, fallback)
+        sanitize_complex_pole(raw)
     }
 
     fn derivative(&self, z: Complex64) -> Complex64 {
-        let fallback = Complex64::new(0.0, 0.0);
         if !z.re.is_finite() || !z.im.is_finite() {
-            return fallback;
+            return Complex64::new(0.0, 0.0);
         }
         let raw = match self {
             MappingFunction::ZSquared => 2.0 * z,
@@ -96,15 +103,15 @@ impl MappingFunction {
                 Complex64::new(z.re, z.im.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT)).cos()
             }
             MappingFunction::Inverse => {
-                if z.norm() < 1e-6 {
-                    Complex64::new(1e6, 1e6)
+                if z.norm_sqr() < 1e-12 {
+                    NAN_COMPLEX
                 } else {
                     -1.0 / (z * z)
                 }
             }
-            MappingFunction::Custom => fallback,
+            MappingFunction::Custom => Complex64::new(0.0, 0.0),
         };
-        sanitize_complex(raw, fallback)
+        sanitize_complex_deriv(raw)
     }
 }
 
@@ -135,14 +142,16 @@ impl Default for ComplexMappingTool {
                 "w",
                 DEFAULT_CUSTOM_MAPPING_EXPR,
                 vec![
+                    ("w = z + a^2 / z (Parameterized Joukowsky)", "z + a^2 / z"),
                     ("w = z^3 - 1/z", "z^3 - 1/z"),
                     ("w = z^2", "z^2"),
                     ("w = exp(z)", "exp(z)"),
                     ("w = sin(z)", "sin(z)"),
                     ("w = 1/z", "1/z"),
-                    ("w = z + 1/z (Joukowsky)", "z + 1/z"),
                 ],
-            ),
+            )
+            .with_axes(&["z"])
+            .with_complex_mode(true),
             domain_coloring: true,
             palette: ShaderPalette::PhaseWheel,
             high_contrast: false,
@@ -155,55 +164,27 @@ impl Default for ComplexMappingTool {
 
 impl ComplexMappingTool {
     pub(crate) fn eval_z(&self, z: Complex64) -> Complex64 {
-        let fallback = Complex64::new(1e6, 1e6);
         if !z.re.is_finite() || !z.im.is_finite() {
-            return fallback;
+            return NAN_COMPLEX;
         }
         match self.function {
-            MappingFunction::Custom => self.math_input.expr().map_or(fallback, |expr| {
-                sanitize_complex(expr.eval_complex_z(z), fallback)
+            MappingFunction::Custom => self.math_input.active_compiled().map_or(NAN_COMPLEX, |c| {
+                sanitize_complex_pole(c.eval_complex_z_params(z, self.math_input.param_slice()))
             }),
             _ => self.function.evaluate(z),
         }
     }
 
-    fn eval_domain_z(&self, z: Complex64) -> Complex64 {
-        if !z.re.is_finite() || !z.im.is_finite() {
-            return Complex64::new(f64::NAN, f64::NAN);
-        }
-        match self.function {
-            MappingFunction::ZSquared => z * z,
-            MappingFunction::Exponential => {
-                Complex64::new(z.re.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT), z.im).exp()
-            }
-            MappingFunction::Sine => {
-                Complex64::new(z.re, z.im.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT)).sin()
-            }
-            MappingFunction::Inverse => {
-                if z.norm_sqr() < 1.0e-24 {
-                    Complex64::new(f64::NAN, f64::NAN)
-                } else {
-                    1.0 / z
-                }
-            }
-            MappingFunction::Custom => self
-                .math_input
-                .expr()
-                .map_or(Complex64::new(f64::NAN, f64::NAN), |e| e.eval_complex_z(z)),
-        }
-    }
-
     pub(crate) fn deriv_z(&self, z: Complex64) -> Complex64 {
-        let fallback = Complex64::new(0.0, 0.0);
         if !z.re.is_finite() || !z.im.is_finite() {
-            return fallback;
+            return Complex64::new(0.0, 0.0);
         }
         match self.function {
             MappingFunction::Custom => {
                 let h = Complex64::new(1e-7, 0.0);
                 let f_plus = self.eval_z(z + h);
                 let f_minus = self.eval_z(z - h);
-                sanitize_complex((f_plus - f_minus) / (2.0 * h), fallback)
+                sanitize_complex_deriv((f_plus - f_minus) / (2.0 * h))
             }
             _ => self.function.derivative(z),
         }
@@ -218,6 +199,9 @@ impl ComplexMappingTool {
         self.palette.hash(&mut hasher);
         self.high_contrast.hash(&mut hasher);
         self.math_input.raw_text.hash(&mut hasher);
+        for &param in self.math_input.param_slice() {
+            param.to_bits().hash(&mut hasher);
+        }
         hasher.finish()
     }
 
@@ -231,11 +215,14 @@ impl ComplexMappingTool {
         };
         match builtin {
             Some(src) => parse(src).map_err(|e| e.to_string()),
-            None => self.math_input.expr().cloned().ok_or_else(|| {
-                self.math_input
-                    .error_message()
-                    .unwrap_or_else(|| "Invalid custom complex mapping expression".to_string())
-            }),
+            None => {
+                let expr = self.math_input.expr().ok_or_else(|| {
+                    self.math_input
+                        .error_message()
+                        .unwrap_or_else(|| "Invalid custom complex mapping expression".to_string())
+                })?;
+                bind_complex_shader_params(expr, &self.math_input.params_map())
+            }
         }
     }
 
@@ -281,7 +268,7 @@ impl ComplexMappingTool {
             let im = hi - (y as f64 / denom) * span;
             for x in 0..dim {
                 let re = lo + (x as f64 / denom) * span;
-                let w = self.eval_domain_z(Complex64::new(re, im));
+                let w = self.eval_z(Complex64::new(re, im));
                 let rgb = domain_color_with_palette(w.re, w.im, self.palette, self.high_contrast);
                 pixels[flatten_2d_index(x, y, dim)] =
                     egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
@@ -337,6 +324,7 @@ impl InteractiveTool for ComplexMappingTool {
                 .as_deref()
                 .unwrap_or(DEFAULT_CUSTOM_MAPPING_EXPR),
         );
+        self.math_input.set_params_map(&s.custom_params);
         self.domain_texture_key = None;
         self.shader_preview.invalidate();
         Ok(())
@@ -388,6 +376,26 @@ const STARTER_PRESET_JSON: &str = r#"{
   }
 }"#;
 
+const JOUKOWSKY_POLE_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Joukowsky Pole Explorer",
+    "domain": "analysis",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "function": "Custom",
+    "grid_min": -2.0,
+    "grid_max": 2.0,
+    "grid_density": 15,
+    "inspection_point": [1.2, 0.4],
+    "custom_expr": "z + a^2 / z",
+    "custom_params": {
+      "a": 0.85
+    }
+  }
+}"#;
+
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "complex_mapping_starter",
@@ -398,6 +406,19 @@ inventory::submit! {
         domain: "analysis",
         tool_name: Some("ComplexMappingTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "complex_mapping_joukowsky_pole",
+        title: "Joukowsky Pole Explorer",
+        description: "w = z + a^2/z: Parameterized Joukowsky airfoil map with pole-split contours and live slider a.",
+        category: "Complex Analysis",
+        icon: "✈️",
+        domain: "analysis",
+        tool_name: Some("ComplexMappingTool"),
+        preset_generator: || JOUKOWSKY_POLE_PRESET_JSON,
     }
 }
 

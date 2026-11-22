@@ -10,7 +10,7 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 
 ### Module Structure
 
-- **`ast`**: Bounded Pratt expression parser, iterative LaTeX formatter, real/complex dynamic evaluators, and iterative WGSL/GLSL shader transpilers (`to_wgsl`, `to_glsl`, `to_wgsl_complex`, `to_glsl_complex`).
+- **`ast`**: Bounded Pratt expression parser, iterative LaTeX formatter, zero-allocation postfix stack bytecode evaluator (`CompiledExpr`), real/complex dynamic evaluators, and iterative WGSL/GLSL shader transpilers (`to_wgsl`, `to_glsl`, `to_wgsl_complex`, `to_glsl_complex`).
 - **`constants`**: Centralized registry of physical, astronomical, and mathematical constants:
   - Speed of light (`C`), Gravitational constant (`G`), Solar mass (`SOLAR_MASS`).
   - Reduced Planck constant (`HBAR_C`), Proton mass (`PROTON_MASS`), Neutron mass (`NEUTRON_MASS`).

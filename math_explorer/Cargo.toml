@@ -19,6 +19,8 @@ num-complex = { workspace = true, optional = true }
 oxidize_core = { path = "../crates/oxidize_core", optional = true }
 petgraph = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
+scientific_metadata = { path = "../crates/scientific_metadata" }
+verified_engine = { path = "../crates/verified_engine" }
 
 [features]
 default = []
@@ -40,7 +42,6 @@ physics = ["applied", "pure_math", "dep:domain_physics"]
 [dev-dependencies]
 approx = { workspace = true }
 serde_json = { workspace = true }
-verified_engine = { path = "../crates/verified_engine" }
 criterion = { workspace = true }
 
 [[bench]]

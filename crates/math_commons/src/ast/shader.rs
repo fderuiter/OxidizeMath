@@ -348,6 +348,12 @@ fn scalar_func_wrap(func: Func) -> (&'static str, &'static str) {
         Func::Asin => ("asin(clamp(", ", -1.0, 1.0))"),
         Func::Acos => ("acos(clamp(", ", -1.0, 1.0))"),
         Func::Atan => ("atan(", ")"),
+        Func::Min => ("min(", ")"),
+        Func::Max => ("max(", ")"),
+        Func::Clamp => ("om_clamp(", ")"),
+        Func::Step => ("om_step(", ")"),
+        Func::Rect => ("om_rect(", ")"),
+        Func::Atan2 => ("om_atan_yx(", ")"),
     }
 }
 
@@ -367,6 +373,12 @@ fn complex_func_wrap(func: Func) -> (&'static str, &'static str) {
         Func::Asin => ("c_asin(", ")"),
         Func::Acos => ("c_acos(", ")"),
         Func::Atan => ("c_atan(", ")"),
+        Func::Min => ("c_min(", ")"),
+        Func::Max => ("c_max(", ")"),
+        Func::Clamp => ("c_clamp(", ")"),
+        Func::Step => ("c_step(", ")"),
+        Func::Rect => ("c_rect(", ")"),
+        Func::Atan2 => ("c_atan_yx(", ")"),
     }
 }
 
@@ -378,10 +390,11 @@ fn push_function<'a>(
     stack: &mut Vec<EmitFrame<'a>>,
     out: &mut String,
 ) -> Result<(), ShaderEmitError> {
-    if args.len() != 1 {
+    let expected = func.arity();
+    if args.len() != expected {
         return Err(ShaderEmitError::WrongArgumentCount {
             func,
-            expected: 1,
+            expected,
             found: args.len(),
         });
     }
@@ -391,9 +404,14 @@ fn push_function<'a>(
     };
     out.push_str(prefix);
     stack.push(EmitFrame::Raw(suffix));
-    stack.push(EmitFrame::Eval {
-        expr: &args[0],
-        depth: depth + 1,
-    });
+    for idx in (0..expected).rev() {
+        stack.push(EmitFrame::Eval {
+            expr: &args[idx],
+            depth: depth + 1,
+        });
+        if idx > 0 {
+            stack.push(EmitFrame::Raw(", "));
+        }
+    }
     Ok(())
 }

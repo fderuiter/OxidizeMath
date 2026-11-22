@@ -45,6 +45,28 @@ fn om_ln(x: f32) -> f32 {
 fn om_log10(x: f32) -> f32 {
     return log(max(x, 1.0e-30)) * 0.43429448;
 }
+
+fn om_step(x: f32) -> f32 {
+    return select(1.0, 0.0, x < 0.0);
+}
+
+fn om_rect(x: f32) -> f32 {
+    return select(0.0, 1.0, abs(x) <= 0.5);
+}
+
+fn om_clamp(x: f32, lo: f32, hi: f32) -> f32 {
+    if (lo > hi) {
+        return 0.0;
+    }
+    return clamp(x, lo, hi);
+}
+
+fn om_atan_yx(y: f32, x: f32) -> f32 {
+    if (abs(y) < 1.0e-30 && abs(x) < 1.0e-30) {
+        return 0.0;
+    }
+    return atan2(y, x);
+}
 "#
 }
 
@@ -83,6 +105,28 @@ float om_ln(float x) {
 
 float om_log10(float x) {
     return log(max(x, 1.0e-30)) * 0.43429448;
+}
+
+float om_step(float x) {
+    return (x < 0.0) ? 0.0 : 1.0;
+}
+
+float om_rect(float x) {
+    return (abs(x) <= 0.5) ? 1.0 : 0.0;
+}
+
+float om_clamp(float x, float lo, float hi) {
+    if (lo > hi) {
+        return 0.0;
+    }
+    return clamp(x, lo, hi);
+}
+
+float om_atan_yx(float y, float x) {
+    if (abs(y) < 1.0e-30 && abs(x) < 1.0e-30) {
+        return 0.0;
+    }
+    return atan(y, x);
 }
 "#
 }
@@ -205,9 +249,39 @@ fn c_atan(z: vec2<f32>) -> vec2<f32> {
     let d = c_ln(vec2<f32>(1.0, 0.0) - iz) - c_ln(vec2<f32>(1.0, 0.0) + iz);
     return vec2<f32>(-0.5 * d.y, 0.5 * d.x);
 }
+
+fn c_step(z: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(select(1.0, 0.0, z.x < 0.0), 0.0);
+}
+
+fn c_rect(z: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(select(0.0, 1.0, abs(z.x) <= 0.5), 0.0);
+}
+
+fn c_min(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(min(a.x, b.x), 0.0);
+}
+
+fn c_max(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(max(a.x, b.x), 0.0);
+}
+
+fn c_clamp(x: vec2<f32>, lo: vec2<f32>, hi: vec2<f32>) -> vec2<f32> {
+    if (lo.x > hi.x) {
+        return vec2<f32>(0.0, 0.0);
+    }
+    return vec2<f32>(clamp(x.x, lo.x, hi.x), 0.0);
+}
+
+fn c_atan_yx(y: vec2<f32>, x: vec2<f32>) -> vec2<f32> {
+    if (abs(y.x) < 1.0e-30 && abs(x.x) < 1.0e-30) {
+        return vec2<f32>(0.0, 0.0);
+    }
+    return vec2<f32>(atan2(y.x, x.x), 0.0);
+}
 "#;
 
-/// Returns the WGSL helper prelude for `vec2<f32>` complex arithmetic and all 14 elementary functions.
+/// Returns the WGSL helper prelude for `vec2<f32>` complex arithmetic and all 20 built-in functions.
 #[must_use]
 pub const fn wgsl_complex_prelude() -> &'static str {
     WGSL_COMPLEX_PRELUDE
@@ -331,9 +405,39 @@ vec2 c_atan(vec2 z) {
     vec2 d = c_ln(vec2(1.0, 0.0) - iz) - c_ln(vec2(1.0, 0.0) + iz);
     return vec2(-0.5 * d.y, 0.5 * d.x);
 }
+
+vec2 c_step(vec2 z) {
+    return vec2((z.x < 0.0) ? 0.0 : 1.0, 0.0);
+}
+
+vec2 c_rect(vec2 z) {
+    return vec2((abs(z.x) <= 0.5) ? 1.0 : 0.0, 0.0);
+}
+
+vec2 c_min(vec2 a, vec2 b) {
+    return vec2(min(a.x, b.x), 0.0);
+}
+
+vec2 c_max(vec2 a, vec2 b) {
+    return vec2(max(a.x, b.x), 0.0);
+}
+
+vec2 c_clamp(vec2 x, vec2 lo, vec2 hi) {
+    if (lo.x > hi.x) {
+        return vec2(0.0, 0.0);
+    }
+    return vec2(clamp(x.x, lo.x, hi.x), 0.0);
+}
+
+vec2 c_atan_yx(vec2 y, vec2 x) {
+    if (abs(y.x) < 1.0e-30 && abs(x.x) < 1.0e-30) {
+        return vec2(0.0, 0.0);
+    }
+    return vec2(atan(y.x, x.x), 0.0);
+}
 "#;
 
-/// Returns the GLSL ES 3.00 helper prelude for `vec2` complex arithmetic and all 14 elementary functions.
+/// Returns the GLSL ES 3.00 helper prelude for `vec2` complex arithmetic and all 20 built-in functions.
 #[must_use]
 pub const fn glsl_complex_prelude() -> &'static str {
     GLSL_COMPLEX_PRELUDE
