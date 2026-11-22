@@ -3,8 +3,12 @@
 pub(crate) mod pixel_ops;
 pub(crate) mod raster;
 pub(crate) mod svg;
+/// Vector `<svg>` serializers for 2D contour isolines and discrete matrix grids.
+pub mod svg_contours;
 #[cfg(test)]
 mod tests;
+/// Borderless power-of-two 16-bit grayscale heightmap and tangent-space normal-map PNG encoders.
+pub mod texture_maps;
 
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -16,6 +20,16 @@ use crate::export::{
 
 pub use raster::{render_primitives_image, render_primitives_image_with_bounds, scale_color_image};
 pub use svg::{encode_base64, export_primitives_svg, export_raster_svg};
+pub use svg_contours::{
+    MAX_SVG_CONTOUR_LEVELS, MIN_SVG_CONTOUR_LEVELS, SvgContourLayer, SvgContourPath, SvgRectCell,
+    copy_svg_to_clipboard, copy_svg_to_clipboard_with_callback, export_contour_layers_svg,
+    export_rect_grid_svg,
+};
+pub use texture_maps::{
+    TEXTURE_SIZE_PRESETS, decode_heightmap_16bit_png, decode_normal_map_16bit_png,
+    encode_heightmap_16bit_png, encode_normal_map_png, resample_scalar_field_borderless,
+    sanitize_texture_size,
+};
 
 /// Offscreen-drawable plot primitive extracted from [`crate::PlotItem`] instances.
 #[derive(Clone, Debug)]

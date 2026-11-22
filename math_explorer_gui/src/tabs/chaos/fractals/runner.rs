@@ -3,8 +3,11 @@
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use eframe::egui;
+use math_commons::math_kernel::marching_squares::ScalarField2D;
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::physics::chaos::fractals::{escape_time_julia, escape_time_mandelbrot};
+use math_explorer::physics::chaos::fractals::{
+    escape_time_julia, escape_time_mandelbrot, smooth_escape_julia, smooth_escape_mandelbrot,
+};
 use num_complex::Complex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
@@ -53,14 +56,9 @@ pub(super) struct FractalState {
 
 impl FractalState {
     pub(super) fn validate(&self) -> Result<(), String> {
-        let coords_valid = [
-            self.center_re,
-            self.center_im,
-            self.julia_re,
-            self.julia_im,
-        ]
-        .iter()
-        .all(|v| v.is_finite() && (COORD_MIN..=COORD_MAX).contains(v));
+        let coords_valid = [self.center_re, self.center_im, self.julia_re, self.julia_im]
+            .iter()
+            .all(|v| v.is_finite() && (COORD_MIN..=COORD_MAX).contains(v));
         let zoom_valid = self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom);
         let iter_valid =
             (10..=math_commons::registry::MAX_ITERATIONS as u32).contains(&self.max_iter);
@@ -151,7 +149,8 @@ pub(super) fn snapshot_to_clamped_color_image(
         let src_y = (y * snapshot.height / clamped_h).min(snapshot.height - 1);
         for x in 0..clamped_w {
             let src_x = (x * snapshot.width / clamped_w).min(snapshot.width - 1);
-            out[flatten_2d_index(x, y, clamped_w)] = px[flatten_2d_index(src_x, src_y, snapshot.width)];
+            out[flatten_2d_index(x, y, clamped_w)] =
+                px[flatten_2d_index(src_x, src_y, snapshot.width)];
         }
     }
     Some(egui::ColorImage::new([clamped_w, clamped_h], out))
@@ -209,6 +208,51 @@ pub fn render_fractal_color_image(req: &FractalRenderRequest) -> egui::ColorImag
         }
     }
     egui::ColorImage::new([width, height], pixels)
+}
+
+/// Evaluates a smooth continuous escape-potential [`ScalarField2D`] for Marching Squares contours and 16-bit textures.
+#[must_use]
+pub fn render_fractal_scalar_field(req: &FractalRenderRequest) -> ScalarField2D {
+    let (width, height) = clamp_fractal_dimensions(req.width, req.height, MAX_FRACTAL_TEXTURE_SIDE);
+    if width == 0 || height == 0 {
+        return ScalarField2D {
+            width: 1,
+            height: 1,
+            values: vec![0.0],
+            periodic: false,
+            default_levels: 10,
+        };
+    }
+    let zoom = if req.zoom.is_finite() && req.zoom >= ZOOM_MIN {
+        req.zoom.min(ZOOM_MAX)
+    } else {
+        1.0
+    };
+    let scale_y = 3.0 / zoom;
+    let scale_x = scale_y * (width as f64 / height as f64);
+    let x_start = req.center.re - scale_x * 0.5;
+    let y_start = req.center.im + scale_y * 0.5;
+    let mut values = vec![0.0_f64; width * height];
+
+    for y in 0..height {
+        let im = y_start - (y as f64 / height as f64) * scale_y;
+        for x in 0..width {
+            let re = x_start + (x as f64 / width as f64) * scale_x;
+            let pt = Complex::new(re, im);
+            let pot = match req.mode {
+                FractalMode::Mandelbrot => smooth_escape_mandelbrot(pt, req.max_iter),
+                FractalMode::Julia => smooth_escape_julia(pt, req.julia_c, req.max_iter),
+            };
+            values[flatten_2d_index(x, y, width)] = pot;
+        }
+    }
+    ScalarField2D {
+        width,
+        height,
+        values,
+        periodic: false,
+        default_levels: 10,
+    }
 }
 
 /// Background worker runner executing cancellable `8x -> 4x -> 2x -> 1x` fractal passes.

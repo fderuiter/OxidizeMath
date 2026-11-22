@@ -2,8 +2,11 @@
 
 use crate::export::{
     AspectRatioOption, DatasetFrame, ExportDataset, ExportOptions, MAX_EXPORT_DIMENSION,
-    copy_image_to_clipboard_with_callback, export_custom_gif, export_custom_image,
-    export_custom_png, export_custom_svg, save_file_dialog,
+    copy_image_to_clipboard_with_callback, copy_text_to_clipboard_with_callback, export_custom_gif,
+    export_custom_image, export_custom_png, export_custom_svg, save_file_dialog,
+};
+use crate::export_primitives::{
+    MAX_SVG_CONTOUR_LEVELS, MIN_SVG_CONTOUR_LEVELS, TEXTURE_SIZE_PRESETS,
 };
 
 /// Consistent section header rendered inside the export modal window.
@@ -112,10 +115,31 @@ pub enum ExportModalAction {
     SavePng,
     /// Save vector SVG figure to disk.
     SaveSvg,
+    /// Copy vector SVG markup to the system clipboard.
+    CopySvg,
     /// Save multi-frame animated GIF to disk.
     SaveGif,
     /// Copy high-resolution PNG figure to the system clipboard.
     CopyClipboard,
+    /// Save borderless 16-bit grayscale heightmap PNG to disk.
+    SaveHeightmap16Png,
+    /// Save borderless tangent-space normal-map PNG to disk.
+    SaveNormalMapPng,
+}
+
+/// Mutable bindings for 2D scalar-field contour and borderless 16-bit texture controls.
+#[derive(Debug)]
+pub struct SpatialExportBindings<'a> {
+    /// Number of isoline contour levels (`1..=16`) for SVG contour extraction.
+    pub contour_levels: &'a mut usize,
+    /// Borderless power-of-two square size (`256`, `512`, `1024`, `2048`) for texture exports.
+    pub texture_size: &'a mut u32,
+    /// Surface gradient strength multiplier for normal-map generation.
+    pub normal_strength: &'a mut f32,
+    /// Whether contour threshold count controls should be displayed.
+    pub show_contour_controls: bool,
+    /// Whether 16-bit heightmap and normal-map controls and actions should be displayed.
+    pub show_texture_controls: bool,
 }
 
 /// Provider interface supplying plot datasets and sampled GIF frames on demand.
@@ -139,6 +163,11 @@ pub trait ExportDataSource {
     /// Optional hook to intercept modal button clicks (e.g. to queue deferred end-of-frame exports).
     fn intercept_action(&mut self, _action: ExportModalAction) -> bool {
         false
+    }
+
+    /// Optional mutable bindings enabling 2D contour and borderless 16-bit texture controls.
+    fn spatial_bindings(&mut self) -> Option<SpatialExportBindings<'_>> {
+        None
     }
 }
 
@@ -313,6 +342,35 @@ fn render_modal_settings(
     });
 }
 
+fn render_spatial_settings(ui: &mut egui::Ui, spatial: &mut SpatialExportBindings<'_>) {
+    if !spatial.show_contour_controls && !spatial.show_texture_controls {
+        return;
+    }
+    ui.separator();
+    ui.label(egui::RichText::new("2D Contours & 16-Bit Material Maps").strong());
+    if spatial.show_contour_controls {
+        ui.horizontal(|ui| {
+            ui.label("Contour Thresholds:");
+            ui.add(egui::Slider::new(
+                spatial.contour_levels,
+                MIN_SVG_CONTOUR_LEVELS..=MAX_SVG_CONTOUR_LEVELS,
+            ));
+        });
+    }
+    if spatial.show_texture_controls {
+        ui.horizontal(|ui| {
+            ui.label("Borderless Size:");
+            for preset in TEXTURE_SIZE_PRESETS {
+                ui.selectable_value(spatial.texture_size, preset, format!("{preset}x{preset}"));
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Normal Strength:");
+            ui.add(egui::Slider::new(spatial.normal_strength, 0.1..=16.0));
+        });
+    }
+}
+
 fn render_dimension_and_status(
     ui: &mut egui::Ui,
     options: &ExportOptions,
@@ -440,6 +498,42 @@ fn handle_copy_clipboard(
     }
 }
 
+fn handle_copy_svg(
+    ctx: &egui::Context,
+    scope_id: egui::Id,
+    options: &ExportOptions,
+    source: &mut impl ExportDataSource,
+    status_message: &mut Option<String>,
+) {
+    let datasets = source.export_datasets();
+    match export_custom_svg(&datasets, options) {
+        Ok(svg_text) => {
+            let cb_ctx = ctx.clone();
+            let status_id = clipboard_status_id(scope_id);
+            match copy_text_to_clipboard_with_callback(&svg_text, move |res| {
+                cb_ctx.data_mut(|d| {
+                    let msg = match res {
+                        Ok(()) => "Copied SVG markup to clipboard!".to_string(),
+                        Err(e) => format!("SVG clipboard copy failed: {e}"),
+                    };
+                    d.insert_temp(status_id, msg);
+                });
+                cb_ctx.request_repaint();
+            }) {
+                Ok(()) => {
+                    *status_message = Some("Copied SVG markup to clipboard!".to_string());
+                }
+                Err(e) => {
+                    *status_message = Some(format!("SVG clipboard copy failed: {e}"));
+                }
+            }
+        }
+        Err(e) => {
+            *status_message = Some(format!("SVG render failed: {e}"));
+        }
+    }
+}
+
 fn modal_fig_button(ui: &mut egui::Ui, enabled: bool, label: &str, disabled_reason: &str) -> bool {
     use crate::a11y::AccessibleTooltipExt as _;
 
@@ -451,6 +545,28 @@ fn modal_fig_button(ui: &mut egui::Ui, enabled: bool, label: &str, disabled_reas
     enabled && resp.clicked()
 }
 
+fn render_texture_action_row(
+    ui: &mut egui::Ui,
+    enabled: bool,
+    reason: &str,
+    source: &mut impl ExportDataSource,
+) {
+    let has_textures = source
+        .spatial_bindings()
+        .is_some_and(|s| s.show_texture_controls);
+    if !has_textures {
+        return;
+    }
+    ui.horizontal(|ui| {
+        if modal_fig_button(ui, enabled, "🗻 Save 16-bit Heightmap", reason) {
+            let _ = source.intercept_action(ExportModalAction::SaveHeightmap16Png);
+        }
+        if modal_fig_button(ui, enabled, "🧭 Save Normal Map", reason) {
+            let _ = source.intercept_action(ExportModalAction::SaveNormalMapPng);
+        }
+    });
+}
+
 fn render_action_buttons(
     ui: &mut egui::Ui,
     bindings: &mut ExportModalBindings<'_>,
@@ -459,7 +575,7 @@ fn render_action_buttons(
 ) -> bool {
     let mut close_requested = false;
     let (enabled, reason) = source.figure_capability();
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if modal_fig_button(ui, enabled, "💾 Save PNG", reason)
             && !source.intercept_action(ExportModalAction::SavePng)
         {
@@ -476,6 +592,17 @@ fn render_action_buttons(
             handle_save_svg(
                 bindings.options,
                 config.svg_filename,
+                source,
+                bindings.status_message,
+            );
+        }
+        if modal_fig_button(ui, enabled, "📋 Copy SVG", reason)
+            && !source.intercept_action(ExportModalAction::CopySvg)
+        {
+            handle_copy_svg(
+                ui.ctx(),
+                config.id,
+                bindings.options,
                 source,
                 bindings.status_message,
             );
@@ -507,6 +634,7 @@ fn render_action_buttons(
             close_requested = true;
         }
     });
+    render_texture_action_row(ui, enabled, reason, source);
     close_requested
 }
 
@@ -523,11 +651,14 @@ pub fn show_export_modal(
     let mut modal_open = *bindings.open;
     crate::modal_lifecycle::ModalLifecycle::new(modal_id)
         .title(config.window_title)
-        .default_width(380.0)
+        .default_width(420.0)
         .show(ctx, &mut modal_open, |ui, frame_ctx| {
             ui.label(egui::RichText::new(MODAL_HEADER_TEXT).strong());
             ui.separator();
             render_modal_settings(ui, config.id, &mut bindings);
+            if let Some(mut spatial) = source.spatial_bindings() {
+                render_spatial_settings(ui, &mut spatial);
+            }
             ui.separator();
             render_dimension_and_status(
                 ui,

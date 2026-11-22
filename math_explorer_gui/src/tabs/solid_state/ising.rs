@@ -6,9 +6,10 @@ use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
-use math_explorer::physics::stat_mech::KB;
 use std::sync::Arc;
 
+#[path = "ising/export.rs"]
+mod export;
 #[path = "ising/runner.rs"]
 mod runner;
 pub use runner::*;
@@ -38,6 +39,7 @@ pub struct IsingModelTool {
     texture: Option<egui::TextureHandle>,
     pixels: Vec<egui::Color32>,
     stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
+    stepped_spins: Option<(usize, usize, Vec<i8>)>,
     last_theme: Option<crate::app::ThemeMode>,
     dirty: bool,
     params: Arc<std::sync::RwLock<IsingSharedParams>>,
@@ -54,6 +56,7 @@ impl IsingModelTool {
         };
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.sync_metrics_from_latest();
         self.dirty = true;
     }
@@ -72,6 +75,7 @@ impl IsingModelTool {
             params,
         });
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.sync_metrics_from_latest();
         self.dirty = true;
     }
@@ -113,7 +117,8 @@ impl IsingModelTool {
 
         if ui
             .add(
-                egui::Slider::new(&mut self.j_coupling, -2.0..=2.0).text("Coupling Constant (J) - J"),
+                egui::Slider::new(&mut self.j_coupling, -2.0..=2.0)
+                    .text("Coupling Constant (J) - J"),
             )
             .changed()
         {
@@ -314,6 +319,7 @@ impl Default for IsingModelTool {
             texture: None,
             pixels: Vec::new(),
             stepped_pixels: None,
+            stepped_spins: None,
             last_theme: None,
             dirty: true,
             params,
@@ -336,50 +342,29 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_only()
+        crate::framework::ExportCapabilities::discrete_lattice()
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && !px.is_empty() {
-                return Some(egui::ColorImage::new([w, h], px.clone()));
-            }
-        }
-        let snap = self.worker.latest_snapshot()?;
-        let px = snap.pixels.try_read().ok()?;
-        if px.is_empty() || snap.width == 0 || snap.height == 0 {
-            return None;
-        }
-        Some(egui::ColorImage::new([snap.width, snap.height], px.clone()))
+        self.build_ising_raster_image()
+    }
+
+    fn export_scalar_field(
+        &self,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        self.build_ising_scalar_field()
+    }
+
+    fn export_vector_svg(
+        &self,
+        options: &egui_plot::export::ExportOptions,
+        _contour_levels: usize,
+    ) -> Option<Result<String, String>> {
+        Some(self.build_ising_vector_svg(options))
     }
 
     fn step_simulation(&mut self) {
-        let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None);
-        let j_scale = if self.j_coupling.abs() < 1e-6 {
-            1.0
-        } else {
-            self.j_coupling.abs()
-        };
-        let t_phys = self.temperature * j_scale / KB;
-        lattice.evolve(
-            self.steps_per_frame.clamp(100, 5000),
-            t_phys,
-            self.j_coupling,
-            self.h_field,
-        );
-        let palette = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .theme
-            .palette();
-        let pixels: Vec<egui::Color32> = lattice
-            .spins()
-            .iter()
-            .map(|&s| ising_spin_color(s, &palette))
-            .collect();
-        self.stepped_pixels = Some((lattice.width(), lattice.height(), pixels));
-        self.dirty = true;
+        self.step_ising_offscreen();
     }
 
     fn save_state(&self) -> Option<String> {
@@ -433,6 +418,7 @@ impl InteractiveTool for IsingModelTool {
             let _ = self.worker.send_command(SimCommand::Pause);
         }
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.dirty = true;
         Ok(())
     }
@@ -451,6 +437,7 @@ impl InteractiveTool for IsingModelTool {
                 self.energy = snapshot.custom_data[1];
             }
             self.stepped_pixels = None;
+            self.stepped_spins = None;
             self.dirty = true;
         }
 

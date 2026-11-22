@@ -18,6 +18,7 @@ pub mod fd2d;
 
 pub use fd1d::FiniteDifference1D;
 pub use fd2d::FiniteDifference2D;
+pub use fd2d::boundary::{BoundaryMode, NeumannBoundary, PeriodicBoundary};
 use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
 
 /// Defines a strategy for computing spatial diffusion.

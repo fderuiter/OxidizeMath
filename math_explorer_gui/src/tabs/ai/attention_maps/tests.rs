@@ -94,7 +94,10 @@ fn test_cell_at_pos_precision_and_bounds() {
     );
 
     // Points outside rect return None
-    assert_eq!(cell_at_pos(ncols, nrows, rect, egui::pos2(50.0, 50.0)), None);
+    assert_eq!(
+        cell_at_pos(ncols, nrows, rect, egui::pos2(50.0, 50.0)),
+        None
+    );
     assert_eq!(
         cell_at_pos(ncols, nrows, rect, egui::pos2(550.0, 450.0)),
         None
@@ -109,8 +112,7 @@ fn test_cell_at_pos_precision_and_bounds() {
 fn test_theme_contrast_adaptation() {
     let dark_color = compute_attention_cell_color(0.9, ThemeContrastMode::Dark);
     let light_color = compute_attention_cell_color(0.9, ThemeContrastMode::Light);
-    let high_contrast_color =
-        compute_attention_cell_color(0.9, ThemeContrastMode::HighContrast);
+    let high_contrast_color = compute_attention_cell_color(0.9, ThemeContrastMode::HighContrast);
 
     // Different theme contrast modes produce distinct color mappings
     assert_ne!(dark_color, light_color);
@@ -295,4 +297,43 @@ fn test_attention_maps_arrow_key_cursor_and_live_announcements() {
         Some(heatmap_egui_id),
         "Tab must advance focus away from the heatmap"
     );
+}
+
+#[test]
+fn test_attention_maps_vector_rect_svg_and_scalar_field_exports() {
+    let mut tool = AttentionMapsTool::default();
+    tool.q_matrix[(0, 0)] = 2.2;
+    tool.k_matrix[(1, 2)] = -1.4;
+    tool.v_matrix[(2, 3)] = 1.8;
+    tool.recalculate();
+
+    let dark_opts = egui_plot::export::ExportOptions::default();
+    let dark_svg = tool
+        .export_attention_svg(&dark_opts)
+        .expect("dark vector SVG export should succeed");
+    assert!(dark_svg.contains("<svg"));
+    assert!(dark_svg.contains("<rect"));
+    assert!(!dark_svg.contains("data:image/png"));
+
+    // 4x4 weights + 4x4 output = 32 matrix cells (+ 1 background rect = 33 <rect tags)
+    let rect_count = dark_svg.matches("<rect ").count();
+    assert_eq!(rect_count, 33);
+
+    let light_opts = egui_plot::export::ExportOptions {
+        background_color: egui::Color32::WHITE,
+        ..Default::default()
+    };
+    let light_svg = tool
+        .export_attention_svg(&light_opts)
+        .expect("light vector SVG export should succeed");
+    assert_ne!(dark_svg, light_svg);
+    assert!(!light_svg.contains("data:image/png"));
+
+    let field = tool
+        .export_scalar_field()
+        .expect("attention weights scalar field");
+    assert_eq!(field.width, 4);
+    assert_eq!(field.height, 4);
+    assert!(!field.periodic);
+    assert_eq!(field.values.len(), 16);
 }

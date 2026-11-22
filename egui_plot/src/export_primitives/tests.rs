@@ -278,3 +278,121 @@ fn test_shared_pixel_ops_and_svg_header_helpers() {
     assert!(pixels.iter().any(|&c| c.a() > 0));
     assert_eq!(blend_over(src, egui::Color32::TRANSPARENT, 1.0), src);
 }
+
+#[test]
+fn test_svg_contours_and_rect_grid_emit_pure_vectors_without_base64_images() {
+    use super::svg_contours::{
+        SvgContourLayer, SvgContourPath, SvgRectCell, export_contour_layers_svg,
+        export_rect_grid_svg,
+    };
+
+    let layers = vec![SvgContourLayer {
+        label: "Level 0.50".to_string(),
+        color: egui::Color32::from_rgb(64, 180, 255),
+        stroke_width: 1.5,
+        fill: None,
+        paths: vec![SvgContourPath {
+            points: vec![[2.0, 1.0], [6.0, 1.0], [6.0, 5.0], [2.0, 5.0]],
+            closed: true,
+        }],
+    }];
+    let svg = export_contour_layers_svg(8.0, 8.0, &layers, &ExportOptions::default())
+        .expect("contour SVG");
+    assert!(svg.contains("<path d=\"M "));
+    assert!(svg.contains(" Z\""));
+    assert!(!svg.contains("data:image/png"));
+    assert!(!svg.contains("<image"));
+
+    let cells = vec![
+        SvgRectCell {
+            col: 0,
+            row: 0,
+            fill: egui::Color32::from_rgb(240, 180, 40),
+            stroke: None,
+        },
+        SvgRectCell {
+            col: 1,
+            row: 1,
+            fill: egui::Color32::from_rgb(30, 90, 210),
+            stroke: None,
+        },
+    ];
+    let rect_svg =
+        export_rect_grid_svg(2, 2, &cells, &ExportOptions::default()).expect("rect grid SVG");
+    assert!(rect_svg.contains("<rect "));
+    assert!(!rect_svg.contains("data:image/png"));
+}
+
+#[test]
+fn test_16bit_heightmap_and_periodic_normal_map_encoding() {
+    use super::texture_maps::{
+        decode_heightmap_16bit_png, decode_normal_map_16bit_png, encode_heightmap_16bit_png,
+        encode_normal_map_png, resample_scalar_field_borderless,
+    };
+    use std::collections::HashSet;
+    use std::f64::consts::TAU;
+
+    let (src_w, src_h) = (64_usize, 64_usize);
+    let mut field = vec![0.0_f64; src_w * src_h];
+    for y in 0..src_h {
+        for x in 0..src_w {
+            let u = (x as f64 / src_w as f64) * TAU;
+            let v = (y as f64 / src_h as f64) * TAU;
+            field[y * src_w + x] = 0.5 + 0.3 * u.cos() + 0.2 * v.sin();
+        }
+    }
+
+    // Verify toroidal wrap error < 1e-9: shifting source by half-period (32, 32) must match
+    // shifting the borderless 512x512 resampled output by (256, 256) across the seam!
+    let mut shifted_src = vec![0.0_f64; src_w * src_h];
+    for y in 0..src_h {
+        for x in 0..src_w {
+            shifted_src[((y + 32) % src_h) * src_w + ((x + 32) % src_w)] = field[y * src_w + x];
+        }
+    }
+    let resampled =
+        resample_scalar_field_borderless(&field, src_w, src_h, 512, 512, true).expect("resample");
+    let resampled_shifted =
+        resample_scalar_field_borderless(&shifted_src, src_w, src_h, 512, 512, true)
+            .expect("resample shifted");
+    for y in 0..512 {
+        for x in [0_usize, 1, 255, 256, 510, 511] {
+            let a = resampled[y * 512 + x];
+            let b = resampled_shifted[((y + 256) % 512) * 512 + ((x + 256) % 512)];
+            assert!(
+                (a - b).abs() < 1e-12,
+                "Toroidal wrap seam mismatch at ({x}, {y}): {a} vs {b}"
+            );
+        }
+    }
+
+    for target_size in [512_u32, 1024_u32] {
+        let hm_bytes = encode_heightmap_16bit_png(&field, src_w, src_h, target_size, true)
+            .expect("16-bit heightmap");
+        let (w, h, samples) = decode_heightmap_16bit_png(&hm_bytes).expect("decode 16-bit");
+        assert_eq!((w, h), (target_size, target_size));
+        let unique: HashSet<u16> = samples.into_iter().collect();
+        assert!(
+            unique.len() > 256,
+            "Expected > 256 unique 16-bit grayscale levels, got {}",
+            unique.len()
+        );
+
+        let nm_bytes = encode_normal_map_png(&field, src_w, src_h, target_size, true, 2.5)
+            .expect("16-bit normal map");
+        let (nw, nh, normals) = decode_normal_map_16bit_png(&nm_bytes).expect("decode normal map");
+        assert_eq!((nw, nh), (target_size, target_size));
+        let stride = target_size as usize;
+        for row in [0_usize, stride / 4, stride / 2, (3 * stride) / 4] {
+            let left = normals[row * stride];
+            let right = normals[row * stride + (stride - 1)];
+            for ch in 0..3 {
+                let diff = (f64::from(left[ch]) - f64::from(right[ch])).abs() / 65535.0;
+                assert!(
+                    diff < 0.02,
+                    "Periodic normal seam jump {diff} too large at row {row} channel {ch}"
+                );
+            }
+        }
+    }
+}

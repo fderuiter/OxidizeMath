@@ -8,8 +8,10 @@ mod export_figure;
 mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
+mod export_spatial;
 pub mod export_types;
 mod export_ui;
+mod export_ui_modal;
 #[cfg(test)]
 mod export_ui_tests;
 pub mod math_input;
@@ -263,8 +265,33 @@ pub trait InteractiveTool {
         egui_plot::get_last_plot_primitives()
     }
 
-    /// Optional hook for texture-backed tools to expose their rendered 2D raster field for PNG, SVG, and GIF exports.
+    /// Optional hook for texture-backed tools to expose their rendered 2D raster field for PNG and GIF exports.
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        None
+    }
+
+    /// Optional hook for 2D spatial tools to expose continuous or lattice scalar fields for Marching Squares contours and 16-bit textures.
+    fn export_scalar_field(
+        &self,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        None
+    }
+
+    /// Optional resolution-aware scalar-field hook used when baking borderless power-of-two 16-bit heightmaps or normal maps.
+    fn export_scalar_field_at(
+        &self,
+        _width: usize,
+        _height: usize,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        self.export_scalar_field()
+    }
+
+    /// Optional hook for discrete lattice or matrix tools to serialize standalone vector `<path>` or `<rect>` SVG documents.
+    fn export_vector_svg(
+        &self,
+        _options: &egui_plot::export::ExportOptions,
+        _contour_levels: usize,
+    ) -> Option<Result<String, String>> {
         None
     }
 
@@ -341,6 +368,9 @@ pub struct SimulationFramework {
     pub export_bg_dark: bool,
     pub export_gif_fps: u32,
     pub export_gif_frames: u32,
+    pub export_contour_levels: usize,
+    pub export_texture_size: u32,
+    pub export_normal_strength: f32,
     pub export_status_message: Option<String>,
     pub export_status_severity: ExportStatusSeverity,
     pub domain: String,
@@ -392,6 +422,9 @@ impl SimulationFramework {
             export_bg_dark: true,
             export_gif_fps: 15,
             export_gif_frames: 20,
+            export_contour_levels: 8,
+            export_texture_size: 1024,
+            export_normal_strength: 2.0,
             export_status_message: None,
             export_status_severity: ExportStatusSeverity::Success,
             domain: domain.to_string(),

@@ -98,11 +98,22 @@ fn render_tool_png_with_fallback(
     color32_image_to_png(&image)
 }
 
-fn render_tool_svg_with_fallback(
+pub(super) fn render_tool_svg_with_fallback(
     tool: &dyn InteractiveTool,
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
+    contour_levels: usize,
 ) -> Result<String, String> {
+    if let Some(svg_res) = tool.export_vector_svg(options, contour_levels) {
+        return svg_res;
+    }
+    if let Some(field) = tool.export_scalar_field() {
+        return super::export_spatial::render_scalar_field_contours_svg(
+            &field,
+            options,
+            contour_levels,
+        );
+    }
     let plot_prims = tool.export_plot_primitives();
     if let Some(raster) = valid_raster_image(tool) {
         if !has_drawable_primitives(&plot_prims) {
@@ -326,12 +337,13 @@ impl SimulationFramework {
         };
         let filename = Self::build_export_filename(&tool_name, ExportFormat::Svg);
         let fallback = self.export_datasets_with_fallback();
+        let contour_levels = self.export_contour_levels;
         let tool = self
             .active_tool
             .as_ref()
             .expect("verified active tool")
             .as_ref();
-        match render_tool_svg_with_fallback(tool, &fallback, &self.export_options) {
+        match render_tool_svg_with_fallback(tool, &fallback, &self.export_options, contour_levels) {
             Ok(svg) => {
                 let bytes = svg.as_bytes().to_vec();
                 self.complete_file_export(

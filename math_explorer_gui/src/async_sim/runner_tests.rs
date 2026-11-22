@@ -34,14 +34,11 @@ fn test_morphogenesis_runner_offload() {
         d_v: 100.0,
         dt: 0.05,
         high_contrast: false,
+        ..Default::default()
     }));
 
-    let mut runner = MorphogenesisRunner {
-        system,
-        params: Arc::clone(&params),
-        width,
-        height,
-    };
+    let mut runner =
+        MorphogenesisRunner::from_schnakenberg(system, Arc::clone(&params), width, height);
 
     let snap_before = runner.get_snapshot();
     assert_eq!(snap_before.width, 20);

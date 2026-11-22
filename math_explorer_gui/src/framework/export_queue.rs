@@ -15,6 +15,10 @@ pub(crate) enum ExportFormat {
     Svg,
     /// Animated Graphics Interchange Format (`.gif`).
     Gif,
+    /// Borderless power-of-two 16-bit grayscale heightmap PNG (`.png`).
+    Heightmap16Png,
+    /// Borderless power-of-two 16-bit tangent-space normal-map PNG (`.png`).
+    NormalMapPng,
 }
 
 impl ExportFormat {
@@ -25,6 +29,13 @@ impl ExportFormat {
             Self::Png => ("png", "PNG", "PNG Image", "figure"),
             Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
             Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
+            Self::Heightmap16Png => (
+                "png",
+                "16-bit Heightmap",
+                "16-bit Heightmap PNG",
+                "heightmap16",
+            ),
+            Self::NormalMapPng => ("png", "Normal Map", "Normal Map PNG", "normal_map"),
         }
     }
 
@@ -248,8 +259,11 @@ impl SimulationFramework {
             }
             (ExportFormat::Png, ExportTarget::File) => self.dispatch_png_export(),
             (ExportFormat::Png, ExportTarget::Clipboard) => self.dispatch_png_clipboard_export(ctx),
-            (ExportFormat::Svg, _) => self.dispatch_svg_export(),
+            (ExportFormat::Svg, ExportTarget::File) => self.dispatch_svg_export(),
+            (ExportFormat::Svg, ExportTarget::Clipboard) => self.dispatch_svg_clipboard_export(ctx),
             (ExportFormat::Gif, _) => self.dispatch_gif_export(),
+            (ExportFormat::Heightmap16Png, _) => self.dispatch_heightmap16_export(),
+            (ExportFormat::NormalMapPng, _) => self.dispatch_normal_map_export(),
         }
     }
 
@@ -302,13 +316,18 @@ impl SimulationFramework {
         }
     }
 
-    fn dispatch_clipboard_text_request(
+    pub(super) fn dispatch_clipboard_text_request(
         &mut self,
         format: ExportFormat,
         content: String,
         ctx: Option<&egui::Context>,
     ) {
         let label = format.label();
+        let noun = if format == ExportFormat::Svg {
+            "vector"
+        } else {
+            "dataset"
+        };
         let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
             writer(&content)
         } else {
@@ -321,9 +340,9 @@ impl SimulationFramework {
                 let msg = if cfg!(target_arch = "wasm32")
                     && self.export_queue.custom_clipboard_writer.is_none()
                 {
-                    format!("Copying {label} dataset to clipboard...")
+                    format!("Copying {label} {noun} to clipboard...")
                 } else {
-                    format!("Copied {label} dataset to clipboard!")
+                    format!("Copied {label} {noun} to clipboard!")
                 };
                 self.set_export_status(ExportStatusSeverity::Success, msg);
             }

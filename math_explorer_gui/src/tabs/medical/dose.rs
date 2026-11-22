@@ -3,6 +3,7 @@ use eframe::egui;
 use egui::{Color32, ColorImage, TextureOptions};
 use egui_plot::{Plot, PlotImage, PlotPoint};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
+use math_commons::math_kernel::marching_squares::ScalarField2D;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::medical::dose::kernel::{DoseKernel, ExponentialKernel};
 
@@ -50,11 +51,19 @@ impl InteractiveTool for DoseCalculationTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only()
+        ExportCapabilities::scalar_field()
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
         Some(self.compute_dose_image())
+    }
+
+    fn export_scalar_field(&self) -> Option<ScalarField2D> {
+        Some(self.compute_dose_scalar_field(self.width.clamp(60, 256), self.height.clamp(60, 256)))
+    }
+
+    fn export_scalar_field_at(&self, width: usize, height: usize) -> Option<ScalarField2D> {
+        Some(self.compute_dose_scalar_field(width.clamp(16, 2048), height.clamp(16, 2048)))
     }
 
     fn save_state(&self) -> Option<String> {
@@ -68,10 +77,13 @@ impl InteractiveTool for DoseCalculationTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded: DoseState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid DoseCalculation state: {e}"))?;
+        let loaded: DoseState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid DoseCalculation state: {e}"))?;
         if !loaded.amplitude.is_finite() || !(0.1..=10.0).contains(&loaded.amplitude) {
-            return Err(format!("amplitude out of [0.1, 10.0]: {}", loaded.amplitude));
+            return Err(format!(
+                "amplitude out of [0.1, 10.0]: {}",
+                loaded.amplitude
+            ));
         }
         if !loaded.beta.is_finite() || !(0.1..=5.0).contains(&loaded.beta) {
             return Err(format!("beta out of [0.1, 5.0]: {}", loaded.beta));
@@ -148,6 +160,38 @@ impl InteractiveTool for DoseCalculationTool {
 }
 
 impl DoseCalculationTool {
+    pub(crate) fn compute_dose_scalar_field(&self, width: usize, height: usize) -> ScalarField2D {
+        let width = width.max(2);
+        let height = height.max(2);
+        let kernel = ExponentialKernel::new(self.amplitude, self.beta);
+        let range = 20.0;
+        let dx = range / width as f64;
+        let dy = range / height as f64;
+        let max_dose = kernel.value_at(0.1).unwrap_or(10.0);
+        let mut values = vec![0.0_f64; width * height];
+
+        for y in 0..height {
+            let py = (y as f64 - height as f64 / 2.0) * dy;
+            for x in 0..width {
+                let px = (x as f64 - width as f64 / 2.0) * dx;
+                let r = (px * px + py * py).sqrt();
+                let dose = if r < 1e-3 {
+                    max_dose
+                } else {
+                    kernel.value_at(r).unwrap_or(0.0).min(max_dose)
+                };
+                values[flatten_2d_index(x, y, width)] = (1.0 + dose).ln();
+            }
+        }
+        ScalarField2D {
+            width,
+            height,
+            values,
+            periodic: false,
+            default_levels: 8,
+        }
+    }
+
     pub(crate) fn compute_dose_image_for_contrast(&self, high_contrast: bool) -> ColorImage {
         let width = self.width.max(1);
         let height = self.height.max(1);

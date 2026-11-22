@@ -2551,7 +2551,13 @@
   ],
   "crates/domain_biology/src/biology/diffusion/fd2d/boundary.rs": [
     {
+      "signature": "pub enum BoundaryMode"
+    },
+    {
       "signature": "pub struct NeumannBoundary"
+    },
+    {
+      "signature": "pub struct PeriodicBoundary"
     },
     {
       "signature": "pub trait BoundaryStrategy"
@@ -2596,7 +2602,16 @@
   ],
   "crates/domain_biology/src/biology/diffusion/fd2d/mod.rs": [
     {
+      "signature": "impl FiniteDifference2D { pub fn is_periodic (& self) -> bool }"
+    },
+    {
       "signature": "impl FiniteDifference2D { pub fn new (width : Dimension , height : Dimension , dx : StepSize , dy : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl FiniteDifference2D { pub fn new_periodic (width : Dimension , height : Dimension , dx : StepSize , dy : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl FiniteDifference2D { pub fn with_boundary_mode (mut self , mode : BoundaryMode) -> Self }"
     },
     {
       "signature": "pub struct FiniteDifference2D"
@@ -2623,6 +2638,15 @@
     },
     {
       "signature": "pub use fd2d :: FiniteDifference2D"
+    },
+    {
+      "signature": "pub use fd2d :: boundary :: BoundaryMode"
+    },
+    {
+      "signature": "pub use fd2d :: boundary :: NeumannBoundary"
+    },
+    {
+      "signature": "pub use fd2d :: boundary :: PeriodicBoundary"
     }
   ],
   "crates/domain_biology/src/biology/evolution.rs": [
@@ -2705,6 +2729,12 @@
       "signature": "pub struct TuringSystem < const N : usize = 2 , K : ReactionKinetics < N > = SchnakenbergKinetics , D : SpatialDiffusion < N > = FiniteDifference1D , S : TuringSolverStrategy < N > = FusedEulerSolver , >"
     },
     {
+      "signature": "pub use reaction :: GrayScottKinetics"
+    },
+    {
+      "signature": "pub use reaction :: MorphogenesisKinetics"
+    },
+    {
       "signature": "pub use reaction :: ReactionKinetics"
     },
     {
@@ -2728,7 +2758,16 @@
   ],
   "crates/domain_biology/src/biology/morphogenesis/reaction.rs": [
     {
+      "signature": "impl GrayScottKinetics { pub fn new (f : f64 , k : f64) -> Self }"
+    },
+    {
       "signature": "impl SchnakenbergKinetics { pub fn new (a : f64 , b : f64) -> Self }"
+    },
+    {
+      "signature": "pub enum MorphogenesisKinetics"
+    },
+    {
+      "signature": "pub struct GrayScottKinetics"
     },
     {
       "signature": "pub struct SchnakenbergKinetics"
@@ -3891,6 +3930,12 @@
     },
     {
       "signature": "pub fn escape_time_mandelbrot (c : Complex < f64 > , max_iter : u32) -> u32"
+    },
+    {
+      "signature": "pub fn smooth_escape_julia (z : Complex < f64 > , c : Complex < f64 > , max_iter : u32) -> f64"
+    },
+    {
+      "signature": "pub fn smooth_escape_mandelbrot (c : Complex < f64 > , max_iter : u32) -> f64"
     }
   ],
   "crates/domain_physics/src/physics/chaos/logistic.rs": [
@@ -5691,6 +5736,41 @@
       "signature": "pub fn mapped_gradient (value : f64 , min_val : f64 , max_val : f64) -> [u8 ; 3]"
     }
   ],
+  "crates/math_commons/src/math_kernel/marching_squares.rs": [
+    {
+      "signature": "impl MarchingSquares { pub fn extract_at_thresholds (field : & ScalarField2D , thresholds : & [f64]) -> Vec < ContourLevel > }"
+    },
+    {
+      "signature": "impl MarchingSquares { pub fn extract_levels (field : & ScalarField2D , num_levels : usize) -> Vec < ContourLevel > }"
+    },
+    {
+      "signature": "impl ScalarField2D { pub fn domain_extents (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl ScalarField2D { pub fn finite_min_max (& self) -> Option < (f64 , f64) > }"
+    },
+    {
+      "signature": "impl ScalarField2D { pub fn new (width : usize , height : usize , values : Vec < f64 > , periodic : bool , default_levels : usize ,) -> Self }"
+    },
+    {
+      "signature": "impl ScalarField2D { pub fn sample_grid (& self , x : usize , y : usize) -> f64 }"
+    },
+    {
+      "signature": "pub const MAX_CONTOUR_LEVELS : usize = 16"
+    },
+    {
+      "signature": "pub struct ContourLevel"
+    },
+    {
+      "signature": "pub struct ContourPath"
+    },
+    {
+      "signature": "pub struct MarchingSquares"
+    },
+    {
+      "signature": "pub struct ScalarField2D"
+    }
+  ],
   "crates/math_commons/src/math_kernel/types.rs": [
     {
       "signature": "pub fn flatten_2d_index (x : usize , y : usize , width : usize) -> usize"
@@ -6814,6 +6894,9 @@
     },
     {
       "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_neumann < const N : usize , F > (& self , dim : (usize , usize) , src : [& [f64] ; N] , dst : [& mut [f64] ; N] , dt : f64 , dir : f64 , mut op : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_periodic < const N : usize , F > (& self , dim : (usize , usize) , src : [& [f64] ; N] , dst : [& mut [f64] ; N] , dt : f64 , dir : f64 , mut op : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
     },
     {
       "signature": "impl StencilOperators { pub fn central_diff_1st (& self , prev : f64 , next : f64) -> f64 }"

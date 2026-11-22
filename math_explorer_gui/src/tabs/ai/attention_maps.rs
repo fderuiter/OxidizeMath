@@ -1,5 +1,7 @@
 use crate::framework::{InputMode, InteractiveTool};
 use eframe::egui;
+use egui_plot::export_primitives::{export_rect_grid_svg, SvgRectCell};
+use math_commons::math_kernel::marching_squares::ScalarField2D;
 use math_explorer::ai::transformer::{Decoder, Encoder, Transformer};
 use nalgebra::DMatrix;
 use scientific_metadata::theory::TheoryDescribable;
@@ -9,7 +11,7 @@ pub use crate::app::ThemeMode as ThemeContrastMode;
 mod heatmap;
 #[cfg(test)]
 pub use heatmap::cell_at_pos;
-pub use heatmap::{HeatmapTexture, compute_attention_cell_color};
+pub use heatmap::{compute_attention_cell_color, HeatmapTexture};
 
 pub struct AttentionMapsTool {
     q_matrix: DMatrix<f64>,
@@ -75,6 +77,44 @@ impl AttentionMapsTool {
         self.output_texture.mark_dirty();
     }
 
+    /// Serializes the active attention weights and output projection matrices into a standalone
+    /// vector `<svg>` document composed of crisp `<rect>` cells without base64 `<image>` tags.
+    pub fn export_attention_svg(
+        &self,
+        options: &egui_plot::export::ExportOptions,
+    ) -> Result<String, String> {
+        if self.attention_weights.nrows() == 0 || self.attention_weights.ncols() == 0 {
+            return Err("Attention weights matrix is empty".to_string());
+        }
+        let gap = usize::from(self.output_matrix.nrows() > 0 && self.output_matrix.ncols() > 0);
+        let total_cols = self.attention_weights.ncols() + gap + self.output_matrix.ncols();
+        let total_rows = self
+            .attention_weights
+            .nrows()
+            .max(self.output_matrix.nrows());
+        let bg_sum = u16::from(options.background_color.r())
+            + u16::from(options.background_color.g())
+            + u16::from(options.background_color.b());
+        let theme = if bg_sum < 384 {
+            ThemeContrastMode::Dark
+        } else {
+            ThemeContrastMode::Light
+        };
+        let border = egui::Color32::from_rgba_unmultiplied(128, 128, 140, 90);
+        let mut cells = Vec::with_capacity(total_cols * total_rows);
+        append_matrix_rect_cells(&self.attention_weights, 0, theme, border, &mut cells);
+        if gap > 0 {
+            append_matrix_rect_cells(
+                &self.output_matrix,
+                self.attention_weights.ncols() + gap,
+                theme,
+                border,
+                &mut cells,
+            );
+        }
+        export_rect_grid_svg(total_cols, total_rows, &cells, options)
+    }
+
     fn draw_matrix_input(ui: &mut egui::Ui, name: &str, matrix: &mut DMatrix<f64>) -> bool {
         let mut changed = false;
         ui.label(name);
@@ -121,11 +161,41 @@ impl InteractiveTool for AttentionMapsTool {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_only()
+        crate::framework::ExportCapabilities::vector_grid()
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
         preset::render_attention_raster(&self.attention_weights, &self.output_matrix)
+    }
+
+    fn export_scalar_field(&self) -> Option<ScalarField2D> {
+        let nrows = self.attention_weights.nrows();
+        let ncols = self.attention_weights.ncols();
+        if nrows < 2 || ncols < 2 {
+            return None;
+        }
+        let mut values = Vec::with_capacity(nrows * ncols);
+        for r in 0..nrows {
+            for c in 0..ncols {
+                let v = self.attention_weights[(r, c)];
+                values.push(if v.is_finite() { v } else { 0.0 });
+            }
+        }
+        Some(ScalarField2D {
+            width: ncols,
+            height: nrows,
+            values,
+            periodic: false,
+            default_levels: 6,
+        })
+    }
+
+    fn export_vector_svg(
+        &self,
+        options: &egui_plot::export::ExportOptions,
+        _contour_levels: usize,
+    ) -> Option<Result<String, String>> {
+        Some(self.export_attention_svg(options))
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
@@ -226,6 +296,43 @@ inventory::submit! {
         domain: "ai",
         tags: &[],
         build: || Box::new(AttentionMapsTool::default()),
+    }
+}
+
+fn append_matrix_rect_cells(
+    mat: &DMatrix<f64>,
+    col_offset: usize,
+    theme: ThemeContrastMode,
+    border: egui::Color32,
+    cells: &mut Vec<SvgRectCell>,
+) {
+    let (min_v, max_v) = mat
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
+            (lo.min(v), hi.max(v))
+        });
+    let (min_v, max_v) = if min_v.is_finite() && max_v.is_finite() {
+        (min_v, max_v)
+    } else {
+        (0.0, 1.0)
+    };
+    let span = max_v - min_v;
+    for r in 0..mat.nrows() {
+        for c in 0..mat.ncols() {
+            let norm = if span.abs() > 1e-6 {
+                ((mat[(r, c)] - min_v) / span).clamp(0.0, 1.0)
+            } else {
+                0.5
+            };
+            cells.push(SvgRectCell {
+                col: col_offset + c,
+                row: r,
+                fill: compute_attention_cell_color(norm, theme),
+                stroke: Some((border, 0.75)),
+            });
+        }
     }
 }
 

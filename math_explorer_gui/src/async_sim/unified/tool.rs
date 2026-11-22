@@ -238,7 +238,9 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        if M::is_raster_model() {
+        if M::has_scalar_field() {
+            crate::framework::ExportCapabilities::scalar_field()
+        } else if M::is_raster_model() {
             crate::framework::ExportCapabilities::raster_only()
         } else {
             crate::framework::ExportCapabilities::plot()
@@ -258,6 +260,22 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
             [snapshot.width, snapshot.height],
             guard.clone(),
         ))
+    }
+
+    fn export_scalar_field(
+        &self,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        let snapshot = self
+            .stepped_snapshot
+            .as_ref()
+            .or_else(|| self.controller.latest_snapshot())?;
+        snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| {
+                d.downcast_ref::<math_commons::math_kernel::marching_squares::ScalarField2D>()
+            })
+            .cloned()
     }
 
     fn step_simulation(&mut self) {

@@ -11,6 +11,10 @@ pub struct ExportCapabilities {
     pub dataset: bool,
     /// Whether offscreen figure exports (`PNG`, `SVG`, `GIF`) are supported.
     pub figure: bool,
+    /// Whether borderless 16-bit heightmap and normal-map PNG exports are supported.
+    pub scalar_field: bool,
+    /// Whether Marching Squares contour-level controls (`1..=16`) apply to SVG figure exports.
+    pub contour_controls: bool,
     /// Explanatory hover text shown when `CSV` / `JSON` buttons are disabled.
     pub dataset_disabled_reason: &'static str,
     /// Explanatory hover text shown when `PNG` / `SVG` / `GIF` buttons are disabled.
@@ -30,7 +34,48 @@ impl ExportCapabilities {
         Self {
             dataset: true,
             figure: true,
+            scalar_field: false,
+            contour_controls: false,
             dataset_disabled_reason: "",
+            figure_disabled_reason: "",
+        }
+    }
+
+    /// Capability profile for 2D continuous scalar-field simulations supporting Marching Squares SVG contours and 16-bit textures.
+    #[must_use]
+    pub const fn scalar_field() -> Self {
+        Self {
+            dataset: false,
+            figure: true,
+            scalar_field: true,
+            contour_controls: true,
+            dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool simulates a 2D spatial scalar field rather than tabular (X, Y) series.",
+            figure_disabled_reason: "",
+        }
+    }
+
+    /// Capability profile for discrete 2D lattice tools supporting exact vector `<path>` SVGs and borderless 16-bit textures.
+    #[must_use]
+    pub const fn discrete_lattice() -> Self {
+        Self {
+            dataset: false,
+            figure: true,
+            scalar_field: true,
+            contour_controls: false,
+            dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool renders a 2D discrete lattice rather than tabular (X, Y) series.",
+            figure_disabled_reason: "",
+        }
+    }
+
+    /// Capability profile for 2D matrix heatmap tools emitting exact `<rect>` SVG geometry and borderless 16-bit textures.
+    #[must_use]
+    pub const fn vector_grid() -> Self {
+        Self {
+            dataset: false,
+            figure: true,
+            scalar_field: true,
+            contour_controls: false,
+            dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool renders a 2D matrix heatmap rather than tabular (X, Y) series.",
             figure_disabled_reason: "",
         }
     }
@@ -41,6 +86,8 @@ impl ExportCapabilities {
         Self {
             dataset: false,
             figure: true,
+            scalar_field: false,
+            contour_controls: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool renders a 2D raster field rather than tabular (X, Y) series.",
             figure_disabled_reason: "",
         }
@@ -52,6 +99,8 @@ impl ExportCapabilities {
         Self {
             dataset: false,
             figure: false,
+            scalar_field: false,
+            contour_controls: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool does not produce tabular plot series.",
             figure_disabled_reason: "Figure export is unavailable: this tool does not render an offscreen plot or raster field.",
         }

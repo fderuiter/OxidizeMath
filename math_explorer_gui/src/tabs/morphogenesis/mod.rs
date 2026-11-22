@@ -15,6 +15,7 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod export;
 pub mod presets;
 pub mod runner;
 pub mod tool;
@@ -139,9 +140,11 @@ impl MorphogenesisTab {
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
-        let current_state = tool
+        let existing = tool
             .save_state()
-            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok())
+            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok());
+        let current_state = existing
+            .as_ref()
             .and_then(|s| s.state)
             .unwrap_or(SimWorkerState::Ready);
         let target_state = if current_state == SimWorkerState::Running {
@@ -157,6 +160,10 @@ impl MorphogenesisTab {
             dt: config.dt,
             width: config.width,
             height: config.height,
+            kinetics: existing.as_ref().map_or_default(|s| s.kinetics),
+            boundary: existing.as_ref().map_or_default(|s| s.boundary),
+            feed_rate: existing.as_ref().map_or(0.037, |s| s.feed_rate),
+            kill_rate: existing.as_ref().map_or(0.060, |s| s.kill_rate),
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
@@ -228,7 +235,11 @@ impl MorphogenesisTab {
 impl FiniteStateGuard for MorphogenesisTab {
     fn is_finite_state(&self) -> bool {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        p.a.is_finite() && p.b.is_finite() && p.d_u.is_finite() && p.d_v.is_finite() && p.dt.is_finite()
+        p.a.is_finite()
+            && p.b.is_finite()
+            && p.d_u.is_finite()
+            && p.d_v.is_finite()
+            && p.dt.is_finite()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -317,7 +328,8 @@ impl ExplorerTab for MorphogenesisTab {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.framework.import_url_preset_json(tool_id, preset_json)?;
+        self.framework
+            .import_url_preset_json(tool_id, preset_json)?;
         let cfg = self.export_config();
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.a = cfg.a;

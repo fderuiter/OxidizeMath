@@ -99,6 +99,14 @@ pub trait UnifiedModel:
         false
     }
 
+    /// Whether `StateSnapshot::structured_data` carries a `ScalarField2D` for contours and 16-bit textures.
+    fn has_scalar_field() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
     /// Allow the model to draw custom visualization in the central panel.
     /// Return true if custom rendering was performed.
     fn custom_central_panel(_ui: &mut eframe::egui::Ui, _snapshot: Option<&StateSnapshot>) -> bool

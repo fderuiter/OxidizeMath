@@ -48,6 +48,46 @@ for _ in 0..500 {
 assert!(spiked, "Neuron should depolarize and fire an action potential under continuous current injection");
 ```
 
+### Toroidal Gray-Scott Reaction-Diffusion
+
+Simulate seamless 2D morphogenesis with `GrayScottKinetics` and `PeriodicBoundary`:
+
+```rust
+# use domain_biology::__doctest_facade as math_explorer;
+use math_explorer::biology::diffusion::{BoundaryMode, FiniteDifference2D, PeriodicBoundary};
+use math_explorer::biology::morphogenesis::{DiffusionCoeff, GrayScottKinetics, TuringSystem};
+use math_explorer::math_kernel::types::{Dimension, StepSize, flatten_2d_index};
+
+let (width, height) = (16, 16);
+let diffusion = FiniteDifference2D::new_periodic(
+    Dimension(width),
+    Dimension(height),
+    StepSize(1.0),
+    StepSize(1.0),
+);
+assert_eq!(diffusion.boundary_mode, BoundaryMode::Periodic);
+let _ = PeriodicBoundary;
+
+let kinetics = GrayScottKinetics::new(0.055, 0.062);
+let mut system = TuringSystem::new_with_kinetics(
+    Dimension(width * height),
+    DiffusionCoeff(0.16),
+    DiffusionCoeff(0.08),
+    kinetics,
+    diffusion,
+);
+
+system.u_mut().fill(1.0);
+let center = flatten_2d_index(8, 8, width);
+system.u_mut()[center] = 0.50;
+system.v_mut()[center] = 0.25;
+
+for _ in 0..20 {
+    system.step(1.0);
+}
+assert!(system.v()[center].is_finite() && system.v()[center] > 0.0);
+```
+
 ---
 
 ## 3. Ecosystem Integration

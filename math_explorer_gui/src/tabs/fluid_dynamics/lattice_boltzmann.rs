@@ -3,6 +3,7 @@ use crate::async_sim::{SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use eframe::egui::Color32;
 use math_commons::math_kernel::colormap::heatmap_color;
+use math_commons::math_kernel::marching_squares::ScalarField2D;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     BgkCollision, LatticeBoltzmannD2Q9,
@@ -127,14 +128,17 @@ impl UnifiedModel for LbmUnified {
         let height = self.solver.height();
 
         let mut pixels = vec![Color32::BLACK; width * height];
+        let mut scalar_values = vec![0.0_f64; width * height];
         for y in 0..height {
             for x in 0..width {
                 let pixel_idx = flatten_2d_index(x, y, width);
                 if self.solver.is_obstacle(x, height - 1 - y) {
                     pixels[pixel_idx] = Color32::from_gray(50);
+                    scalar_values[pixel_idx] = -0.01;
                 } else {
                     let v = self.solver.get_velocity_magnitude(x, height - 1 - y);
                     let safe_v = if v.is_finite() { v } else { 0.0 };
+                    scalar_values[pixel_idx] = safe_v;
                     let normalized_v = (safe_v * 1000.0 / 255.0).clamp(0.0, 1.0);
                     let safe_norm = if normalized_v.is_finite() {
                         normalized_v
@@ -152,7 +156,13 @@ impl UnifiedModel for LbmUnified {
             height,
             pixels: Arc::new(std::sync::RwLock::new(pixels)),
             custom_data: Vec::new(),
-            structured_data: None,
+            structured_data: Some(Box::new(ScalarField2D {
+                width,
+                height,
+                values: scalar_values,
+                periodic: false,
+                default_levels: 8,
+            })),
         }
     }
 
@@ -200,6 +210,10 @@ impl UnifiedModel for LbmUnified {
     }
 
     fn is_raster_model() -> bool {
+        true
+    }
+
+    fn has_scalar_field() -> bool {
         true
     }
 

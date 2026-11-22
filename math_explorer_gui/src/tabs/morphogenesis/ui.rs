@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::tool::{MorphogenesisBoundaryMode, MorphogenesisKineticsMode};
 use super::{MorphogenesisTool, SimpleRng};
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
@@ -11,8 +12,11 @@ use eframe::egui;
 use eframe::egui::ColorImage;
 use egui_plot::{Plot, PlotImage, PlotPoint};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
+use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use math_explorer::biology::morphogenesis::{
+    GrayScottKinetics, SchnakenbergKinetics, TuringSystem,
+};
 
 impl MorphogenesisTool {
     fn sync_texture_from_snapshot(&mut self, ctx: &egui::Context) {
@@ -68,12 +72,63 @@ impl MorphogenesisTool {
         self.dirty = false;
     }
 
-    fn draw_parameter_sliders(&self, ui: &mut egui::Ui) {
-        let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
-        ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
-        ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
-        ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
-        ui.add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"));
+    fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
+        let mut reset_needed = false;
+        {
+            let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
+            ui.horizontal(|ui| {
+                ui.label("Kinetics:");
+                reset_needed |= ui
+                    .selectable_value(
+                        &mut params.kinetics,
+                        MorphogenesisKineticsMode::Schnakenberg,
+                        "Schnakenberg",
+                    )
+                    .changed();
+                reset_needed |= ui
+                    .selectable_value(
+                        &mut params.kinetics,
+                        MorphogenesisKineticsMode::GrayScott,
+                        "Gray-Scott",
+                    )
+                    .changed();
+            });
+            ui.horizontal(|ui| {
+                ui.label("Boundary:");
+                reset_needed |= ui
+                    .selectable_value(
+                        &mut params.boundary,
+                        MorphogenesisBoundaryMode::Neumann,
+                        "Neumann",
+                    )
+                    .changed();
+                reset_needed |= ui
+                    .selectable_value(
+                        &mut params.boundary,
+                        MorphogenesisBoundaryMode::Periodic,
+                        "Periodic",
+                    )
+                    .changed();
+            });
+            match params.kinetics {
+                MorphogenesisKineticsMode::Schnakenberg => {
+                    ui.add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"));
+                    ui.add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"));
+                    ui.add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"));
+                    ui.add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"));
+                }
+                MorphogenesisKineticsMode::GrayScott => {
+                    ui.add(egui::Slider::new(&mut params.feed_rate, 0.01..=0.09).text("Feed (f)"));
+                    ui.add(egui::Slider::new(&mut params.kill_rate, 0.03..=0.075).text("Kill (k)"));
+                }
+            }
+        }
+        if reset_needed {
+            self.dirty = true;
+            let _ = self
+                .worker
+                .send_command(SimCommand::Custom("reinit".to_string()));
+        }
     }
 
     fn draw_presets(&mut self, ui: &mut egui::Ui) {
@@ -203,6 +258,28 @@ impl MorphogenesisTool {
         }
     }
 
+    pub(crate) fn initialize_gray_scott_system(
+        system: &mut TuringSystem<2, GrayScottKinetics, FiniteDifference2D>,
+        width: usize,
+        height: usize,
+    ) {
+        let n = width * height;
+        let mut rng = SimpleRng::new(54321);
+        system.u_mut()[..n].fill(1.0);
+        system.v_mut()[..n].fill(0.0);
+        let rx = (width / 8).max(2);
+        let ry = (height / 8).max(2);
+        let cx = width / 2;
+        let cy = height / 2;
+        for y in cy.saturating_sub(ry)..(cy + ry).min(height) {
+            for x in cx.saturating_sub(rx)..(cx + rx).min(width) {
+                let idx = flatten_2d_index(x, y, width);
+                system.u_mut()[idx] = 0.50 + rng.range(-0.02, 0.02);
+                system.v_mut()[idx] = 0.25 + rng.range(-0.02, 0.02);
+            }
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn plot_concentration(data: &[f64], width: usize, height: usize) -> ColorImage {
         Self::plot_concentration_with_contrast(data, width, height, false)
@@ -217,15 +294,15 @@ impl MorphogenesisTool {
         let num_pixels = width * height;
         let mut pixels = Vec::with_capacity(num_pixels);
 
-        let (min, max) = data
-            .iter()
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), &val| {
-                if val.is_finite() {
-                    (min.min(val), max.max(val))
-                } else {
-                    (min, max)
-                }
-            });
+        let (min, max) =
+            data.iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), &val| {
+                    if val.is_finite() {
+                        (min.min(val), max.max(val))
+                    } else {
+                        (min, max)
+                    }
+                });
 
         let (min, max) = if min.is_finite() && max.is_finite() && max >= min {
             (min, max)
