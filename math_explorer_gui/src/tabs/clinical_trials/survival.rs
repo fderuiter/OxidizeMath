@@ -1,7 +1,7 @@
 use crate::framework::InteractiveTool;
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{HLine, Line, LineStyle, Plot, PlotPoints};
 use math_explorer::applied::clinical_trials::survival_analysis::{
     kaplan_meier, Observation, TimePoint,
 };
@@ -165,42 +165,59 @@ impl InteractiveTool for SurvivalAnalysisTool {
 
             ui.separator();
             render_copyable_metric(ui, "Observations", &self.observations.len().to_string());
+            let median_text = match self.median_survival_time() {
+                Some(t) => format!("{t:.2}"),
+                None => "Not reached".to_owned(),
+            };
+            render_copyable_metric(ui, "Median Survival", &median_text);
         });
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Kaplan-Meier Survival Curve");
-
-            let mut plot_points: Vec<[f64; 2]> = Vec::new();
-
-            // Start at (0, 1.0)
-            plot_points.push([0.0, 1.0]);
-
-            // Add steps
-            for point in &self.curve {
-                // Step logic: Horizontal to new time, then vertical down to new probability
-                if let Some(last) = plot_points.last() {
-                    plot_points.push([point.time, last[1]]);
-                }
-                plot_points.push([point.time, point.survival_probability]);
-            }
-
-            // Extend to max time if needed (usually handled by plot bounds, but nice to visualize)
-            if let Some(last) = plot_points.last() {
-                // Extend a bit further for visualization
-                plot_points.push([last[0] * 1.1, last[1]]);
-            }
+            let plot_points = self.build_step_points();
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
 
             Plot::new("kaplan_meier_plot")
                 .view_aspect(2.0)
                 .x_axis_label("Time")
                 .y_axis_label("Survival Probability")
+                .include_y(0.0)
+                .include_y(1.0)
                 .show(ui, |plot_ui| {
                     plot_ui.line(
                         Line::new("Survival Probability", PlotPoints::new(plot_points))
                             .name("Survival Probability"),
                     );
+                    plot_ui.hline(
+                        HLine::new("S(t) = 0.50", 0.50)
+                            .color(palette.warning)
+                            .style(LineStyle::Dashed { length: 8.0 }),
+                    );
                 });
         });
+    }
+}
+
+impl SurvivalAnalysisTool {
+    pub(crate) fn median_survival_time(&self) -> Option<f64> {
+        self.curve
+            .iter()
+            .find(|pt| pt.survival_probability <= 0.5 + 1e-12)
+            .map(|pt| pt.time)
+    }
+
+    pub(crate) fn build_step_points(&self) -> Vec<[f64; 2]> {
+        let mut plot_points: Vec<[f64; 2]> = vec![[0.0, 1.0]];
+        for point in &self.curve {
+            if let Some(last) = plot_points.last() {
+                plot_points.push([point.time, last[1]]);
+            }
+            plot_points.push([point.time, point.survival_probability]);
+        }
+        if let Some(last) = plot_points.last() {
+            plot_points.push([last[0] * 1.1, last[1]]);
+        }
+        plot_points
     }
 }
 
@@ -328,5 +345,31 @@ mod tests {
         assert!((tool.curve[0].survival_probability - 0.9).abs() < 1e-12);
         assert!((tool.curve[1].survival_probability - 0.8).abs() < 1e-12);
         assert!((tool.curve[2].survival_probability - 0.8).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_median_survival_and_half_probability_step_crossing() {
+        let mut tool = SurvivalAnalysisTool::default();
+        tool.import_preset_json(STARTER_PRESET_JSON).unwrap();
+        let median = tool.median_survival_time().expect("median survival reached");
+        assert!((median - 18.0).abs() < 1e-9);
+
+        let step_pts = tool.build_step_points();
+        let items: Vec<Box<dyn egui_plot::PlotItem>> = vec![
+            Box::new(Line::new("S(t) (Kaplan-Meier)", step_pts)),
+            Box::new(HLine::new("S(t) = 0.50", 0.50)),
+        ];
+        let tf = egui_plot::PlotTransform::new(
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(800.0, 600.0)),
+            egui_plot::PlotBounds::from_min_max([0.0, 0.0], [35.0, 1.05]),
+            true,
+        );
+        let pois = egui_plot::detect_critical_points(&items, &tf);
+        let crossing = pois
+            .iter()
+            .find(|p| p.kind == egui_plot::CriticalPointKind::Intersection)
+            .expect("S(t) = 0.50 step intersection");
+        assert!((crossing.point[0] - median).abs() < 1e-9);
+        assert!((crossing.point[1] - 0.50).abs() < 1e-9);
     }
 }

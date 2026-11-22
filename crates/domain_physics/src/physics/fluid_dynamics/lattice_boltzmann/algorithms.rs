@@ -443,7 +443,9 @@ impl SimulationModel for LatticeBoltzmannD2Q9<BgkCollision> {
         Ok(Self::new(config.width, config.height, config.tau))
     }
 
-    #[verified_engine::verified(opt_out = "inherent method call false positive")]
+    #[verified_engine::verified(
+        allow_recursion = "delegates trait step to inherent LatticeBoltzmann::step"
+    )]
     fn step(&mut self) -> Result<(), Self::Error> {
         self.step();
         Ok(())
