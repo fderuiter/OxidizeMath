@@ -2,7 +2,10 @@
 
 // theory_verification!
 
-use super::worker::{advance_running_frame, drain_worker_commands, FrameTickOutcome};
+use super::worker::{
+    advance_running_frame, drain_worker_commands, make_worker_ring, sync_worker_timeline,
+    FrameTickOutcome,
+};
 use super::{take_worker_context, SimCommand, SimWorkerState, WorkerStatusEvent};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -231,6 +234,8 @@ pub async fn run_simulation_worker(handle: u32) {
 
     let mut state = SimWorkerState::Ready;
     let mut steps_per_frame = runner.get_steps_per_frame();
+    let mut ring = make_worker_ring(&*runner);
+    sync_worker_timeline(&ring, &state_tx);
     if !state_tx.mark_seeded()
         && state_tx
             .send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready)
@@ -250,6 +255,7 @@ pub async fn run_simulation_worker(handle: u32) {
                 first_cmd,
                 &cmd_rx,
                 &mut *runner,
+                &mut ring,
                 &mut state,
                 &mut steps_per_frame,
                 &state_tx,
@@ -265,6 +271,7 @@ pub async fn run_simulation_worker(handle: u32) {
             if matches!(
                 advance_running_frame(
                     &mut *runner,
+                    &mut ring,
                     steps_per_frame,
                     Some(WASM_FRAME_SLICE_BUDGET),
                     &mut state,

@@ -1,5 +1,9 @@
 #[cfg(test)]
+mod checkpoint_tests;
+#[cfg(test)]
 mod fault_and_seed_tests;
+#[cfg(test)]
+mod mvp_time_travel_tests;
 #[cfg(test)]
 mod runner_tests;
 #[cfg(test)]
@@ -12,8 +16,12 @@ pub mod ui;
 pub mod unified;
 mod worker;
 
+mod background_worker;
+pub use background_worker::BackgroundWorker;
 pub mod channel;
 pub use channel::*;
+pub mod checkpoint;
+pub use checkpoint::*;
 pub mod state;
 pub use state::*;
 
@@ -46,6 +54,50 @@ pub trait SimulationRunner: Send + 'static {
     fn diagnostic_report(&self) -> Option<crate::framework::recovery::DiagnosticReport> {
         None
     }
+    /// Opt-in keyframe capture stride `K` (`Some(1)` for compact ODEs, `Some(16)` for 2D grids).
+    fn checkpoint_stride(&self) -> Option<usize> {
+        None
+    }
+    /// Current deterministic step index for opted-in time-travel runners.
+    fn current_step(&self) -> usize {
+        0
+    }
+    /// Captures a self-contained [`TimeTravelCheckpoint`] at `current_step()`.
+    fn capture_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
+        None
+    }
+    /// Captures active model parameters for mid-run parameter epoch tracking.
+    fn capture_active_params(&self) -> Option<CheckpointParams> {
+        None
+    }
+    /// Restores dynamical fields, active parameters, step index, and cloned `OxidizeRng`.
+    fn restore_checkpoint(&mut self, _checkpoint: &TimeTravelCheckpoint) {}
+    /// Reconstructs bounded trajectory histories from retained keyframes `..=kf_idx`.
+    fn rebuild_history(&mut self, _front: &[TimeTravelCheckpoint], _back: &[TimeTravelCheckpoint]) {
+    }
+    /// Advances one zero-allocation sub-step during deterministic checkpoint replay.
+    fn replay_step(&mut self, _params: &CheckpointParams) {
+        self.step_once();
+    }
+    /// Number of sub-steps executed per running frame tick when checkpointing is active.
+    fn running_substeps_per_tick(&self) -> usize {
+        1
+    }
+    /// Advances a single running sub-step while keeping runner execution state in `Running`.
+    fn step_running_substep(&mut self) {
+        self.step();
+    }
+}
+
+fn initial_runner_timeline<T: SimulationRunner>(runner: &T) -> Option<TimelineMetadata> {
+    let stride = runner.checkpoint_stride()?.max(1);
+    let step = runner.current_step();
+    Some(TimelineMetadata {
+        current_step: step,
+        min_step: step,
+        max_step: step,
+        stride,
+    })
 }
 
 #[allow(missing_docs)]
@@ -53,6 +105,7 @@ pub struct SimulationController {
     cmd_tx: Sender<SimCommand>,
     state_rx: SimStateReceiver,
     latest_snapshot: Option<StateSnapshot>,
+    timeline_metadata: Option<TimelineMetadata>,
     pending_snapshot: bool,
     awaiting_pause_ack: bool,
     state: SimWorkerState,
@@ -77,6 +130,8 @@ impl SimulationController {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
         let (state_tx, state_rx) = sim_state_channel();
         let initial_snapshot = runner.get_snapshot();
+        let initial_timeline = initial_runner_timeline(&runner);
+        state_tx.set_timeline(initial_timeline);
         if !state_tx.mark_seeded() {
             let _ =
                 state_tx.send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready);
@@ -88,6 +143,7 @@ impl SimulationController {
             cmd_tx,
             state_rx,
             latest_snapshot: Some(initial_snapshot),
+            timeline_metadata: initial_timeline,
             pending_snapshot: false,
             awaiting_pause_ack: false,
             state: SimWorkerState::Ready,
@@ -101,6 +157,8 @@ impl SimulationController {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
         let (state_tx, state_rx) = sim_state_channel();
         let initial_snapshot = runner.get_snapshot();
+        let initial_timeline = initial_runner_timeline(&runner);
+        state_tx.set_timeline(initial_timeline);
         if !state_tx.mark_seeded() {
             let _ =
                 state_tx.send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready);
@@ -119,6 +177,7 @@ impl SimulationController {
             cmd_tx,
             state_rx,
             latest_snapshot: Some(initial_snapshot),
+            timeline_metadata: initial_timeline,
             pending_snapshot: false,
             awaiting_pause_ack: false,
             state: SimWorkerState::Ready,
@@ -130,6 +189,11 @@ impl SimulationController {
     #[allow(missing_docs)]
     pub fn state(&self) -> SimWorkerState {
         self.state
+    }
+
+    /// Latest scrubbable timeline metadata if the underlying runner opted into time travel.
+    pub fn timeline_metadata(&self) -> Option<TimelineMetadata> {
+        self.timeline_metadata
     }
 
     #[cfg(test)]
@@ -178,6 +242,9 @@ impl SimulationController {
                 }
             }
         }
+        if !is_reset && !self.state.is_terminated() {
+            self.timeline_metadata = batch.timeline_metadata;
+        }
         if let Some(snapshot) = batch.latest_snapshot {
             if is_reset {
                 self.pending_snapshot = false;
@@ -206,6 +273,23 @@ impl SimulationController {
         }
     }
 
+    fn apply_optimistic_timeline(&mut self, cmd: &SimCommand) {
+        let Some(meta) = &mut self.timeline_metadata else {
+            return;
+        };
+        match *cmd {
+            SimCommand::Reset => {
+                meta.current_step = 0;
+                meta.min_step = 0;
+                meta.max_step = 0;
+            }
+            SimCommand::SeekStep(target) => {
+                meta.current_step = target.clamp(meta.min_step, meta.max_step);
+            }
+            _ => {}
+        }
+    }
+
     #[allow(missing_docs)]
     pub fn send_command(&mut self, cmd: SimCommand) -> Result<(), SimCommandError> {
         if !self.state.is_command_valid(&cmd) {
@@ -216,18 +300,21 @@ impl SimulationController {
         }
 
         let was_running = self.state.is_running();
-        let is_pause = matches!(cmd, SimCommand::Pause);
+        let pauses_running = matches!(cmd, SimCommand::Pause | SimCommand::SeekStep(_));
         let is_reset = matches!(cmd, SimCommand::Reset);
         let cmd_target_state = match cmd {
             SimCommand::Start | SimCommand::TrainEpisodes(_) => Some(SimWorkerState::Running),
-            SimCommand::Step(_) => Some(SimWorkerState::Stepping),
-            SimCommand::Pause | SimCommand::Reset => Some(SimWorkerState::Ready),
+            SimCommand::Step(_) | SimCommand::StepBack(_) => Some(SimWorkerState::Stepping),
+            SimCommand::Pause | SimCommand::Reset | SimCommand::SeekStep(_) => {
+                Some(SimWorkerState::Ready)
+            }
             _ => None,
         };
 
         if cmd_target_state.is_some() {
             self.drain_pre_command_updates(is_reset);
         }
+        self.apply_optimistic_timeline(&cmd);
 
         if self.cmd_tx.send(cmd).is_err() {
             self.state = SimWorkerState::Faulted;
@@ -235,17 +322,11 @@ impl SimulationController {
             return Err(SimCommandError::ChannelDisconnected);
         }
 
-        if is_pause && was_running {
-            self.awaiting_pause_ack = true;
-        } else if cmd_target_state.is_some() {
-            self.awaiting_pause_ack = false;
-        }
-
+        self.awaiting_pause_ack = pauses_running && was_running;
         if is_reset {
             self.diagnostic_report = None;
             self.pending_snapshot = false;
         }
-
         if let Some(target) = cmd_target_state {
             self.state = target;
         }
@@ -318,13 +399,15 @@ impl SimulationController {
             }
         }
 
+        if !self.state.is_terminated() {
+            self.timeline_metadata = batch.timeline_metadata;
+        }
         if let Some(snapshot) = batch.latest_snapshot {
             if !self.state.is_faulted() && !self.state.is_terminated() {
                 self.latest_snapshot = Some(snapshot);
                 received_new_snapshot = true;
             }
         }
-
         if batch.disconnected {
             self.awaiting_pause_ack = false;
             if self.state != SimWorkerState::Terminated {
@@ -347,109 +430,6 @@ impl SimulationController {
             .filter(|_| received_new_snapshot)
     }
 }
-
-/// Generic background worker wrapper struct that manages offloaded simulation runners
-/// and provides thread-safe channel communication between the UI and compute threads.
-#[allow(missing_docs)]
-pub struct BackgroundWorker<T: SimulationRunner> {
-    controller: SimulationController,
-    _marker: std::marker::PhantomData<fn() -> T>,
-}
-
-impl<T: SimulationRunner> BackgroundWorker<T> {
-    /// Spawns a background worker executing the given simulation runner.
-    #[allow(missing_docs)]
-    pub fn new(runner: T) -> Self {
-        Self {
-            controller: SimulationController::new(runner),
-            _marker: std::marker::PhantomData,
-        }
-    }
-
-    #[allow(missing_docs)]
-    pub fn state(&self) -> SimWorkerState {
-        self.controller.state()
-    }
-
-    #[cfg(test)]
-    #[allow(missing_docs)]
-    pub fn set_state_for_test(&mut self, state: SimWorkerState) {
-        self.controller.set_state_for_test(state);
-    }
-
-    #[allow(missing_docs)]
-    pub fn is_running(&self) -> bool {
-        self.controller.is_running()
-    }
-
-    #[allow(missing_docs)]
-    pub fn send_command(&mut self, cmd: SimCommand) -> Result<(), SimCommandError> {
-        self.controller.send_command(cmd)
-    }
-
-    /// Resets the worker in place or respawns a fresh runner when disconnected.
-    #[allow(missing_docs)]
-    pub fn reset_or_respawn<F>(&mut self, make_runner: F) -> bool
-    where
-        F: FnOnce() -> T,
-    {
-        self.controller.reset_or_respawn(make_runner)
-    }
-
-    #[allow(missing_docs)]
-    pub fn latest_snapshot(&self) -> Option<&StateSnapshot> {
-        self.controller.latest_snapshot()
-    }
-
-    #[allow(missing_docs)]
-    pub fn update(&mut self) -> Option<&StateSnapshot> {
-        self.controller.update()
-    }
-
-    #[allow(missing_docs)]
-    pub fn controller(&self) -> &SimulationController {
-        &self.controller
-    }
-
-    #[allow(missing_docs)]
-    pub fn controller_mut(&mut self) -> &mut SimulationController {
-        &mut self.controller
-    }
-
-    #[allow(missing_docs)]
-    pub fn into_controller(self) -> SimulationController {
-        self.controller
-    }
-}
-
-impl<T: SimulationRunner> std::ops::Deref for BackgroundWorker<T> {
-    type Target = SimulationController;
-
-    fn deref(&self) -> &Self::Target {
-        &self.controller
-    }
-}
-
-impl<T: SimulationRunner> std::ops::DerefMut for BackgroundWorker<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.controller
-    }
-}
-
-impl<T: SimulationRunner> From<SimulationController> for BackgroundWorker<T> {
-    fn from(controller: SimulationController) -> Self {
-        Self {
-            controller,
-            _marker: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<T: SimulationRunner> From<BackgroundWorker<T>> for SimulationController {
-    fn from(worker: BackgroundWorker<T>) -> Self {
-        worker.controller
-    }
-}
 // theory_verification!
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -461,3 +441,5 @@ pub use registry::*;
 pub mod wasm;
 #[cfg(target_arch = "wasm32")]
 pub use wasm::*;
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests;

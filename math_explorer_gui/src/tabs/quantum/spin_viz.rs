@@ -118,6 +118,7 @@ impl SpinVisualizer {
                     PlaybackAction::Play => self.paused = false,
                     PlaybackAction::Pause => self.paused = true,
                     PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset(),
                 }
             }

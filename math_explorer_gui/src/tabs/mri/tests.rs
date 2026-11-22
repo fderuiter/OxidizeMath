@@ -256,6 +256,8 @@ fn test_mri_poisoned_lock_recovery_and_plot_buffers_reuse() {
         current_time: 0.0,
         history: VecDeque::with_capacity(100),
         max_history: 100,
+        step_count: 0,
+        rng: oxidize_core::rng::OxidizeRng::default(),
     };
     runner.step();
     assert!(runner.current_time > 0.0);

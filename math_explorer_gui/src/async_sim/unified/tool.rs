@@ -181,6 +181,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         if let Some(action) =
             PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
+                .timeline(self.controller.timeline_metadata())
                 .can_reset(true)
                 .show(ui)
         {
@@ -193,6 +194,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 }
                 PlaybackAction::Step => {
                     let _ = self.controller.send_command(SimCommand::Step(1));
+                }
+                PlaybackAction::StepBack => {
+                    let _ = self.controller.send_command(SimCommand::StepBack(1));
+                }
+                PlaybackAction::ScrubTo(step) => {
+                    let _ = self.controller.send_command(SimCommand::SeekStep(step));
                 }
                 PlaybackAction::Reset => {
                     self.reset_simulation(Some(ctx));

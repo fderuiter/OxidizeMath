@@ -1,18 +1,53 @@
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
-use crate::async_sim::StateSnapshot;
-use math_explorer::biology::neuroscience::{HodgkinHuxleyNeuron, HodgkinHuxleyParameters};
+use crate::async_sim::{
+    CheckpointParams, CheckpointPayload, StateSnapshot, TimeTravelCheckpoint,
+};
+use math_explorer::biology::neuroscience::{
+    HodgkinHuxleyModel, HodgkinHuxleyParameters, HodgkinHuxleyState,
+};
+use math_explorer::pure_math::analysis::ode::{Euler, SolverExt};
+use oxidize_core::rng::OxidizeRng;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
+const HH_MAX_HISTORY: usize = 10_000;
+
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct HodgkinHuxleyUnified {
-    neuron: HodgkinHuxleyNeuron,
+    state: HodgkinHuxleyState,
     params: HodgkinHuxleyParameters,
     history: VecDeque<[f64; 2]>,
     time: f64,
     i_ext: f64,
     dt: f64,
+    step_count: usize,
+    rng: OxidizeRng,
+}
+
+impl HodgkinHuxleyUnified {
+    fn apply_scalar_step(&mut self, g_na: f64, g_k: f64, g_l: f64, i_ext: f64, dt: f64) {
+        self.params.g_na = g_na.max(0.0);
+        self.params.g_k = g_k.max(0.0);
+        self.params.g_l = g_l.max(0.0);
+        self.i_ext = i_ext;
+        self.dt = dt;
+        let mut solver = Euler::new(&self.state);
+        let model = HodgkinHuxleyModel::new(self.params.clone(), self.i_ext);
+        let next = solver.solve(&model, 0.0, &self.state, self.dt);
+        self.state = HodgkinHuxleyState {
+            v: next.v,
+            n: next.n.clamp(0.0, 1.0),
+            m: next.m.clamp(0.0, 1.0),
+            h: next.h.clamp(0.0, 1.0),
+        };
+        self.time += self.dt;
+        self.step_count += 1;
+        if self.history.len() >= HH_MAX_HISTORY {
+            self.history.pop_front();
+        }
+        self.history.push_back([self.time, self.state.v]);
+    }
 }
 
 impl crate::framework::recovery::FiniteStateGuard for HodgkinHuxleyUnified {}
@@ -29,22 +64,26 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         let i_ext = *params.get("i_ext").unwrap_or(&10.0);
 
         let hh_params = HodgkinHuxleyParameters {
-            g_na,
-            g_k,
-            g_l,
+            g_na: g_na.max(0.0),
+            g_k: g_k.max(0.0),
+            g_l: g_l.max(0.0),
             ..Default::default()
         };
 
         Self {
-            neuron: HodgkinHuxleyNeuron::builder()
-                .with_params(hh_params.clone())
-                .build()
-                .unwrap_or(HodgkinHuxleyNeuron::new(-65.0)),
+            state: HodgkinHuxleyState {
+                v: -65.0,
+                n: 0.32,
+                m: 0.05,
+                h: 0.6,
+            },
             params: hh_params,
-            history: VecDeque::new(),
+            history: VecDeque::with_capacity(HH_MAX_HISTORY),
             time: 0.0,
             i_ext,
             dt: 0.01,
+            step_count: 0,
+            rng: OxidizeRng::new(0x4848_5F4E_4555_524F),
         }
     }
 
@@ -53,35 +92,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         let new_g_k = *params.get("g_k").unwrap_or(&36.0);
         let new_g_l = *params.get("g_l").unwrap_or(&0.3);
         let new_i_ext = *params.get("i_ext").unwrap_or(&10.0);
-
-        let params_changed = self.params.g_na != new_g_na
-            || self.params.g_k != new_g_k
-            || self.params.g_l != new_g_l;
-
-        self.params.g_na = new_g_na;
-        self.params.g_k = new_g_k;
-        self.params.g_l = new_g_l;
-        self.i_ext = new_i_ext;
-
-        if params_changed {
-            let builder = HodgkinHuxleyNeuron::builder()
-                .with_initial_v(self.neuron.v())
-                .with_n(self.neuron.n())
-                .with_m(self.neuron.m())
-                .with_h(self.neuron.h())
-                .with_params(self.params.clone());
-
-            if let Ok(new_neuron) = builder.build() {
-                self.neuron = new_neuron;
-            }
-        }
-
-        self.neuron.update(self.dt, self.i_ext);
-        self.time += self.dt;
-        self.history.push_back([self.time, self.neuron.v()]);
-        while self.history.len() > 10_000 {
-            self.history.pop_front();
-        }
+        self.apply_scalar_step(new_g_na, new_g_k, new_g_l, new_i_ext, self.dt);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -91,7 +102,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             custom_data.push(v);
         }
         custom_data.push(self.time);
-        custom_data.push(self.neuron.v());
+        custom_data.push(self.state.v);
 
         StateSnapshot {
             width: 0,
@@ -166,19 +177,119 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             ..Default::default()
         };
 
-        let mut neuron = HodgkinHuxleyNeuron::builder()
-            .with_params(hh_params)
-            .build()
-            .ok()?;
-
+        let mut state = HodgkinHuxleyState {
+            v: -65.0,
+            n: 0.32,
+            m: 0.05,
+            h: 0.6,
+        };
+        let mut solver = Euler::new(&state);
+        let model = HodgkinHuxleyModel::new(hh_params, i_ext);
         let dt = 0.01;
-        let mut peak_v = neuron.v();
+        let mut peak_v = state.v;
         for _ in 0..600 {
-            neuron.update(dt, i_ext);
-            peak_v = peak_v.max(neuron.v());
+            let next = solver.solve(&model, 0.0, &state, dt);
+            state = HodgkinHuxleyState {
+                v: next.v,
+                n: next.n.clamp(0.0, 1.0),
+                m: next.m.clamp(0.0, 1.0),
+                h: next.h.clamp(0.0, 1.0),
+            };
+            peak_v = peak_v.max(state.v);
         }
 
         Some(("Peak Membrane Potential (mV)", peak_v))
+    }
+
+    fn checkpoint_stride(&self) -> Option<usize> {
+        Some(1)
+    }
+
+    fn current_step(&self) -> usize {
+        self.step_count
+    }
+
+    fn capture_active_params(&self, params: &HashMap<String, f64>) -> Option<CheckpointParams> {
+        let g_na = *params.get("g_na").unwrap_or(&120.0);
+        let g_k = *params.get("g_k").unwrap_or(&36.0);
+        let g_l = *params.get("g_l").unwrap_or(&0.3);
+        let i_ext = *params.get("i_ext").unwrap_or(&10.0);
+        Some(CheckpointParams::scalars(&[
+            g_na, g_k, g_l, i_ext, self.dt,
+        ]))
+    }
+
+    fn capture_checkpoint(&self, params: &HashMap<String, f64>) -> Option<TimeTravelCheckpoint> {
+        let cp_params = self.capture_active_params(params)?;
+        Some(TimeTravelCheckpoint {
+            step: self.step_count,
+            rng: self.rng.clone(),
+            params: cp_params,
+            state: CheckpointPayload::scalars(&[
+                self.state.v,
+                self.state.n,
+                self.state.m,
+                self.state.h,
+                self.time,
+            ]),
+        })
+    }
+
+    fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
+        if let Some(p) = checkpoint.params.as_scalars() {
+            if p.len() >= 5 {
+                self.params.g_na = p[0].max(0.0);
+                self.params.g_k = p[1].max(0.0);
+                self.params.g_l = p[2].max(0.0);
+                self.i_ext = p[3];
+                self.dt = p[4];
+            }
+        }
+        if let Some(s) = checkpoint.state.as_scalars() {
+            if s.len() >= 5 {
+                self.state = HodgkinHuxleyState {
+                    v: s[0],
+                    n: s[1].clamp(0.0, 1.0),
+                    m: s[2].clamp(0.0, 1.0),
+                    h: s[3].clamp(0.0, 1.0),
+                };
+                self.time = s[4];
+            }
+        }
+        self.step_count = checkpoint.step;
+        self.rng = checkpoint.rng.clone();
+    }
+
+    fn rebuild_history(&mut self, front: &[TimeTravelCheckpoint], back: &[TimeTravelCheckpoint]) {
+        self.history.clear();
+        let total = front
+            .iter()
+            .chain(back.iter())
+            .filter(|cp| cp.step >= 1)
+            .count();
+        let skip = total.saturating_sub(HH_MAX_HISTORY);
+        for cp in front
+            .iter()
+            .chain(back.iter())
+            .filter(|cp| cp.step >= 1)
+            .skip(skip)
+        {
+            if let Some(s) = cp.state.as_scalars() {
+                if s.len() >= 5 {
+                    self.history.push_back([s[4], s[0]]);
+                }
+            }
+        }
+    }
+
+    fn replay_step(&mut self, params: &CheckpointParams) {
+        if let Some(p) = params.as_scalars() {
+            if p.len() >= 5 {
+                self.apply_scalar_step(p[0], p[1], p[2], p[3], p[4]);
+            }
+        } else if let Some(map) = params.as_named_map() {
+            self.step(map);
+        }
     }
 }
 

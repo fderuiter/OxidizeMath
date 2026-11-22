@@ -12,6 +12,9 @@ use std::sync::Arc;
 mod runner;
 pub use runner::*;
 
+#[path = "attractors/theory.rs"]
+mod theory;
+
 #[path = "attractors/ui.rs"]
 mod ui;
 

@@ -99,6 +99,13 @@ To comply with zero-allocation constraints in core simulation code:
 3. **Avoid Dynamic Formatting**: Avoid `format!` or string concatenations in inner loops.
 4. **Use Fixed Arrays**: Use stack-allocated arrays (`[T; N]`) or static matrices (`SMatrix`) when array dimensions are fixed at compile time.
 
+## Time-Travel Sub-Step Replay
+
+Opt-in `SimulationRunner` and `UnifiedModel` implementations support deterministic timeline scrubbing via a bounded `2 MiB` (`MAX_CHECKPOINT_RING_BYTES`) periodic keyframe ring (`K = 1` for compact ODE runners, `K = 16` for 2D reaction-diffusion grids):
+
+- **Keyframe Capture**: Periodic snapshots (`capture_checkpoint`) run only at keyframe boundaries (`step % K == 0`) outside inner sub-step replay loops, evicting the oldest keyframe whenever retained ring usage would exceed `2 MiB`.
+- **Zero-Allocation Sub-Step Replay**: Seeking to `target_step` restores the nearest preceding keyframe (`step_kf <= target_step`) into pre-allocated runner buffers (`copy_from_slice` for 2D fields, pre-sized `VecDeque` ring histories for ODE traces) and executes `target_step - step_kf` deterministic `replay_step` advances using stack-resident parameter epochs (`CheckpointParams::Scalars`) and cloned `OxidizeRng` streams—producing zero heap allocations under `VerifiedEngine::run_verified`.
+
 ## Related References
 
 - Verified engine entry point: [`crates/verified_engine/src/lib.rs`](../../crates/verified_engine/src/lib.rs)

@@ -172,6 +172,8 @@ impl MriTool {
             current_time: self.current_time,
             history,
             max_history: self.max_history,
+            step_count: (self.current_time / 0.001).round() as usize,
+            rng: oxidize_core::rng::OxidizeRng::new(0x4D52_495F_424C_4F43),
         };
         self.worker = BackgroundWorker::new(runner);
     }

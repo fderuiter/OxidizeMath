@@ -24,6 +24,8 @@ mod persistence;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;
+#[cfg(test)]
+mod playback_time_travel_tests;
 pub mod recovery;
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]

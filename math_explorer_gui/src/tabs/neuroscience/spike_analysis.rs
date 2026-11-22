@@ -137,6 +137,7 @@ impl SpikeAnalysisTool {
                     PlaybackAction::Play => self.is_running = true,
                     PlaybackAction::Pause => self.is_running = false,
                     PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset(),
                 }
             }

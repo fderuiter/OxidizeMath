@@ -3,7 +3,7 @@
 //! Stores only the newest unread [`StateSnapshot`] in a single overwriteable slot while
 //! preserving every [`WorkerStatusEvent`] and [`DiagnosticReport`] in an unbounded FIFO queue.
 
-use super::{StateSnapshot, WorkerStatusEvent};
+use super::{StateSnapshot, TimelineMetadata, WorkerStatusEvent};
 use crate::framework::recovery::DiagnosticReport;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -27,12 +27,15 @@ pub struct ChannelPollBatch {
     pub events: Vec<SimControlEvent>,
     /// Most recent unread state snapshot, if one was published since the previous drain.
     pub latest_snapshot: Option<StateSnapshot>,
+    /// Latest scrubbable timeline bounds reported by the worker, if time travel is enabled.
+    pub timeline_metadata: Option<TimelineMetadata>,
     /// `true` when all [`SimStateSender`] handles have been dropped.
     pub disconnected: bool,
 }
 
 struct ChannelInner {
     latest_snapshot: Option<StateSnapshot>,
+    timeline_metadata: Option<TimelineMetadata>,
     events: VecDeque<SimControlEvent>,
     sender_count: usize,
     receiver_alive: bool,
@@ -101,6 +104,14 @@ impl SimStateSender {
         Ok(())
     }
 
+    /// Updates the latest [`TimelineMetadata`] exposed to the UI thread without blocking.
+    pub fn set_timeline(&self, timeline: Option<TimelineMetadata>) {
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.receiver_alive {
+            guard.timeline_metadata = timeline;
+        }
+    }
+
     /// Atomically publishes `snapshot` and appends `status` under a single lock acquisition.
     pub fn send_snapshot_and_status(
         &self,
@@ -137,10 +148,12 @@ impl SimStateReceiver {
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let events = guard.events.drain(..).collect();
         let latest_snapshot = guard.latest_snapshot.take();
+        let timeline_metadata = guard.timeline_metadata;
         let disconnected = guard.sender_count == 0;
         ChannelPollBatch {
             events,
             latest_snapshot,
+            timeline_metadata,
             disconnected,
         }
     }
@@ -158,6 +171,7 @@ impl SimStateReceiver {
 pub fn sim_state_channel() -> (SimStateSender, SimStateReceiver) {
     let inner = Arc::new(Mutex::new(ChannelInner {
         latest_snapshot: None,
+        timeline_metadata: None,
         events: VecDeque::new(),
         sender_count: 1,
         receiver_alive: true,

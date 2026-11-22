@@ -38,6 +38,10 @@ impl<'ast> Visit<'ast> for ExprCounter {
 struct InjectorVisitor;
 
 impl VisitMut for InjectorVisitor {
+    fn visit_item_mut(&mut self, _item: &mut syn::Item) {
+        // Nested items have their own scope and do not capture `__ve_active`.
+    }
+
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
         let mut new_stmts = Vec::new();
         for mut stmt in std::mem::take(&mut block.stmts) {
@@ -47,16 +51,26 @@ impl VisitMut for InjectorVisitor {
             };
             counter.visit_stmt(&stmt);
 
-            if counter.arithmetic > 0 {
-                let count = counter.arithmetic;
+            let arith = counter.arithmetic as u64;
+            let loads = counter.loads as u64;
+            if arith > 0 && loads > 0 {
                 new_stmts.push(syn::parse_quote! {
-                    verified_engine::metrics::increment_arithmetic(#count as u64);
+                    if __ve_active {
+                        verified_engine::metrics::increment_arithmetic(#arith);
+                        verified_engine::metrics::increment_memory_loads(#loads);
+                    }
                 });
-            }
-            if counter.loads > 0 {
-                let count = counter.loads;
+            } else if arith > 0 {
                 new_stmts.push(syn::parse_quote! {
-                    verified_engine::metrics::increment_memory_loads(#count as u64);
+                    if __ve_active {
+                        verified_engine::metrics::increment_arithmetic(#arith);
+                    }
+                });
+            } else if loads > 0 {
+                new_stmts.push(syn::parse_quote! {
+                    if __ve_active {
+                        verified_engine::metrics::increment_memory_loads(#loads);
+                    }
                 });
             }
 
@@ -183,18 +197,21 @@ pub fn verified(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
+    let mut injector = InjectorVisitor;
+    injector.visit_block_mut(&mut input_fn.block);
+
     let fn_block = &input_fn.block;
     let new_block: syn::Block = syn::parse_quote! {
         {
-            verified_engine::metrics::increment_calls();
+            let __ve_active = verified_engine::metrics::is_verification_enabled();
+            if __ve_active {
+                verified_engine::metrics::increment_calls();
+            }
             #fn_block
         }
     };
 
     *input_fn.block = new_block;
-
-    let mut injector = InjectorVisitor;
-    injector.visit_item_fn_mut(&mut input_fn);
 
     TokenStream::from(quote! { #input_fn })
 }

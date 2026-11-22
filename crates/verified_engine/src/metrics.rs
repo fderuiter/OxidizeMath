@@ -1,4 +1,7 @@
 use std::cell::Cell;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static ACTIVE_VERIFIERS: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 #[allow(missing_docs)]
@@ -31,17 +34,22 @@ thread_local! {
 
 #[allow(missing_docs)]
 pub fn enable_verification() {
-    VERIFICATION_MODE.set(true);
+    if !VERIFICATION_MODE.replace(true) {
+        ACTIVE_VERIFIERS.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 #[allow(missing_docs)]
 pub fn disable_verification() {
-    VERIFICATION_MODE.set(false);
+    if VERIFICATION_MODE.replace(false) {
+        ACTIVE_VERIFIERS.fetch_sub(1, Ordering::Relaxed);
+    }
 }
 
+#[inline(always)]
 #[allow(missing_docs)]
 pub fn is_verification_enabled() -> bool {
-    VERIFICATION_MODE.get()
+    ACTIVE_VERIFIERS.load(Ordering::Relaxed) != 0 && VERIFICATION_MODE.get()
 }
 
 #[allow(missing_docs)]

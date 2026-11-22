@@ -5,7 +5,9 @@ mod controls;
 pub mod tool;
 pub use tool::*;
 
-use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::async_sim::{
+    CheckpointParams, SimCommand, SimulationRunner, StateSnapshot, TimeTravelCheckpoint,
+};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -117,6 +119,41 @@ pub trait UnifiedModel:
     {
         None
     }
+
+    /// Opt-in keyframe capture stride `K` (`Some(1)` for compact ODEs, `Some(16)` for 2D grids).
+    fn checkpoint_stride(&self) -> Option<usize> {
+        None
+    }
+
+    /// Current deterministic step index for opted-in time-travel models.
+    fn current_step(&self) -> usize {
+        0
+    }
+
+    /// Captures a self-contained [`TimeTravelCheckpoint`] at `current_step()`.
+    fn capture_checkpoint(&self, _params: &HashMap<String, f64>) -> Option<TimeTravelCheckpoint> {
+        None
+    }
+
+    /// Captures active model parameters for mid-run parameter epoch tracking.
+    fn capture_active_params(&self, params: &HashMap<String, f64>) -> Option<CheckpointParams> {
+        self.checkpoint_stride()
+            .map(|_| CheckpointParams::NamedMap(params.clone()))
+    }
+
+    /// Restores dynamical fields, active parameters, step index, and cloned `OxidizeRng`.
+    fn restore_checkpoint(&mut self, _checkpoint: &TimeTravelCheckpoint) {}
+
+    /// Reconstructs bounded trajectory histories from retained keyframes `..=kf_idx`.
+    fn rebuild_history(&mut self, _front: &[TimeTravelCheckpoint], _back: &[TimeTravelCheckpoint]) {
+    }
+
+    /// Advances one zero-allocation sub-step during deterministic checkpoint replay.
+    fn replay_step(&mut self, params: &CheckpointParams) {
+        if let Some(map) = params.as_named_map() {
+            self.step(map);
+        }
+    }
 }
 
 #[allow(missing_docs)]
@@ -129,9 +166,11 @@ pub struct UnifiedSimRunner<M: UnifiedModel> {
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
     #[allow(missing_docs)]
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
-        let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let guard = params.read().unwrap_or_else(|e| e.into_inner());
+        let model = M::new(&guard);
+        drop(guard);
         Self {
-            model: M::new(&initial_params),
+            model,
             params,
             steps_per_frame: 5,
         }
@@ -140,27 +179,19 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
 
 impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
     fn process_command(&mut self, cmd: SimCommand) {
-        let current_params = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
         match cmd {
             SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
             SimCommand::Reset => {
-                self.model = M::new(&current_params);
+                self.model = M::new(&guard);
             }
-            _ => self.model.process_command(cmd, &current_params),
+            _ => self.model.process_command(cmd, &guard),
         }
     }
 
     fn step(&mut self) {
-        let current_params = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        self.model.step(&current_params);
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+        self.model.step(&guard);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -177,5 +208,35 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
 
     fn diagnostic_report(&self) -> Option<crate::framework::recovery::DiagnosticReport> {
         self.model.diagnostic_report().cloned()
+    }
+
+    fn checkpoint_stride(&self) -> Option<usize> {
+        self.model.checkpoint_stride()
+    }
+
+    fn current_step(&self) -> usize {
+        self.model.current_step()
+    }
+
+    fn capture_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+        self.model.capture_checkpoint(&guard)
+    }
+
+    fn capture_active_params(&self) -> Option<CheckpointParams> {
+        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+        self.model.capture_active_params(&guard)
+    }
+
+    fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
+        self.model.restore_checkpoint(checkpoint);
+    }
+
+    fn rebuild_history(&mut self, front: &[TimeTravelCheckpoint], back: &[TimeTravelCheckpoint]) {
+        self.model.rebuild_history(front, back);
+    }
+
+    fn replay_step(&mut self, params: &CheckpointParams) {
+        self.model.replay_step(params);
     }
 }

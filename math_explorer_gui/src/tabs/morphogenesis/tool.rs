@@ -170,6 +170,9 @@ impl MorphogenesisTool {
             params: Arc::clone(params),
             width,
             height,
+            step_count: 0,
+            rng: oxidize_core::rng::OxidizeRng::new(super::runner::DEFAULT_MORPHOGENESIS_SEED),
+            noise_amplitude: 0.0,
         }
     }
 

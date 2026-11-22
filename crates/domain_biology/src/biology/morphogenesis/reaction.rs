@@ -57,6 +57,7 @@ impl Default for SchnakenbergKinetics {
 }
 
 impl ReactionKinetics<2> for SchnakenbergKinetics {
+    #[inline(always)]
     #[verified_engine::verified]
     fn reaction(&self, concentrations: [f64; 2]) -> [f64; 2] {
         let u = concentrations[0];
