@@ -3,6 +3,7 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod factorization;
+pub mod fractran_machine;
 pub mod partitions_widget;
 pub mod prime_spiral;
 pub mod ualbf_widget;
