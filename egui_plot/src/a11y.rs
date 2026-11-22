@@ -319,6 +319,49 @@ pub(crate) fn show_snapped_point_tooltip(
     paint_anchored_point_popup(plot_area_response, anchor_pos, title, body_lines);
 }
 
+/// Formats a polite ARIA live announcement for a focused or snapped critical point.
+#[must_use]
+pub(crate) fn format_critical_point_live_summary(
+    poi: &crate::poi::CriticalPoint,
+    index: usize,
+    total: usize,
+) -> String {
+    format!(
+        "Critical point {} of {}: {} ({}), X: {:.4}, Y: {:.4}",
+        index + 1,
+        total,
+        poi.kind.label(),
+        poi.series_summary(),
+        poi.point[0],
+        poi.point[1]
+    )
+}
+
+/// Renders an Escape-dismissible tooltip anchored at a critical point marker and optionally announces it.
+pub(crate) fn show_critical_point_tooltip(
+    plot_area_response: &Response,
+    anchor_pos: Pos2,
+    poi: &crate::poi::CriticalPoint,
+    announce_on_open: bool,
+    include_pin_hint: bool,
+) {
+    let mut body_lines = vec![
+        (format!("x = {:.6}", poi.point[0]), true),
+        (format!("y = {:.6}", poi.point[1]), true),
+    ];
+    if include_pin_hint {
+        body_lines.push(("Click marker to pin callout".to_owned(), false));
+    }
+    show_snapped_point_tooltip(
+        plot_area_response,
+        anchor_pos,
+        poi.point,
+        &poi.tooltip_title(),
+        &body_lines,
+        announce_on_open,
+    );
+}
+
 fn format_point_tooltip_summary(title: &str, body_lines: &[(String, bool)]) -> String {
     let mut parts: Vec<&str> = Vec::with_capacity(body_lines.len() + 1);
     if !title.is_empty() {
