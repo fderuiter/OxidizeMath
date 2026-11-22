@@ -190,12 +190,23 @@ fn test_csv_json_png_and_svg_exports_across_dashboard_and_lexis_modes() {
 
 #[test]
 fn test_cannibalism_visual_artifacts_screenshot_generation() {
+    let temp_dir = std::env::temp_dir();
+    let pid = std::process::id();
     let cases = [
-        (PopulationViewMode::LexisHeatmap, "/tmp/cannibalism_lexis_heatmap.png"),
-        (PopulationViewMode::PhasePortrait, "/tmp/cannibalism_hopf_phase_portrait.png"),
-        (PopulationViewMode::AgePyramid, "/tmp/cannibalism_age_pyramid.png"),
+        (
+            PopulationViewMode::LexisHeatmap,
+            "cannibalism_lexis_heatmap.png",
+        ),
+        (
+            PopulationViewMode::PhasePortrait,
+            "cannibalism_hopf_phase_portrait.png",
+        ),
+        (
+            PopulationViewMode::AgePyramid,
+            "cannibalism_age_pyramid.png",
+        ),
     ];
-    for (mode, out_path) in cases {
+    for (mode, filename) in cases {
         let mut tab = PopulationStructureTab::default();
         tab.framework.export_options.width = 1100;
         tab.framework.export_options.height = 700;
@@ -224,7 +235,10 @@ fn test_cannibalism_visual_artifacts_screenshot_generation() {
             .last_exported_bytes
             .as_deref()
             .expect("PNG bytes generated");
-        std::fs::write(out_path, bytes).expect("writes screenshot PNG");
+        assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        let out_path = temp_dir.join(format!("oxidize_{pid}_{filename}"));
+        std::fs::write(&out_path, bytes).expect("writes screenshot PNG");
+        let _ = std::fs::remove_file(&out_path);
     }
 }
 
