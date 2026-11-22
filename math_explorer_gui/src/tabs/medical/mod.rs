@@ -4,7 +4,7 @@ use eframe::egui;
 
 pub mod beam_profiling;
 pub mod dose;
-
+pub mod imrt;
 
 pub struct MedicalTab {
     framework: crate::framework::SimulationFramework,

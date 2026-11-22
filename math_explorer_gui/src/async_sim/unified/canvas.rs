@@ -2,7 +2,7 @@
 
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::ui::render_empty_plot_guidance;
-use crate::async_sim::{SimCommand, StateSnapshot};
+use crate::async_sim::SimCommand;
 use eframe::egui::{self, ColorImage, TextureOptions};
 use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points};
 
@@ -16,6 +16,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let width = texture.size()[0] as f32;
         let height = texture.size()[1] as f32;
 
+        let visuals = ui.visuals().clone();
+        let mut ext_cmds = Vec::new();
         Plot::new(format!("{}_plot_img", M::name()))
             .data_aspect(1.0)
             .view_aspect(1.0)
@@ -32,31 +34,43 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     [width, height],
                 ));
 
+                if let Some(ext) = &mut self.ui_extension {
+                    ext_cmds = ext.handle_canvas_overlay(ctx, &visuals, plot_ui);
+                }
+
                 if plot_ui.response().hovered()
                     && ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
                 {
                     if let Some(pos) = plot_ui.pointer_coordinate() {
                         let grid_x = pos.x.round() as i32;
                         let grid_y = pos.y.round() as i32;
-                        if self
-                            .controller
-                            .send_command(SimCommand::ApplyBrush {
-                                cx: grid_x,
-                                cy: grid_y,
-                                r: 2,
-                                is_obstacle: ctx.input(|i| i.pointer.primary_down()),
-                            })
-                            .is_ok()
+                        let is_obs = ctx.input(|i| i.pointer.primary_down());
+                        let allowed = self
+                            .ui_extension
+                            .as_mut()
+                            .is_none_or(|ext| ext.on_brush(grid_x, grid_y, 2, is_obs));
+                        if allowed
+                            && self
+                                .controller
+                                .send_command(SimCommand::ApplyBrush {
+                                    cx: grid_x,
+                                    cy: grid_y,
+                                    r: 2,
+                                    is_obstacle: is_obs,
+                                })
+                                .is_ok()
                         {
                             ctx.request_repaint();
                         }
                     }
                 }
+                self.callout_manager.render_on_plot(plot_ui);
             });
+        self.dispatch_extension_commands(ext_cmds, Some(ctx));
     }
 
-    fn draw_line_plot(&self, ui: &mut egui::Ui, snapshot: &StateSnapshot) {
-        if snapshot.custom_data.is_empty() {
+    fn draw_line_plot(&mut self, ui: &mut egui::Ui, custom_data: &[f64]) {
+        if custom_data.is_empty() {
             render_empty_plot_guidance(
                 ui,
                 "No trajectory samples yet — click ▶ Run in the side panel to begin.",
@@ -64,15 +78,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             return;
         }
         let mut points = Vec::new();
-        for i in (0..snapshot.custom_data.len()).step_by(2) {
-            if i + 1 < snapshot.custom_data.len() {
-                points.push([snapshot.custom_data[i], snapshot.custom_data[i + 1]]);
+        for i in (0..custom_data.len()).step_by(2) {
+            if i + 1 < custom_data.len() {
+                points.push([custom_data[i], custom_data[i + 1]]);
             }
         }
         if points.len() <= 1 {
             render_empty_plot_guidance(
                 ui,
                 "Initial resting state ready — click ▶ Run to evolve the trajectory over time.",
+            );
+        }
+        if let Some(&last_pt) = points.last() {
+            self.callout_manager.set_auto_callout(
+                "unified_latest",
+                last_pt,
+                format!("({:.2}, {:.2})", last_pt[0], last_pt[1]),
+                [22.0_f32, -18.0_f32],
             );
         }
 
@@ -96,6 +118,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                             .color(color),
                     );
                 }
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 
@@ -129,11 +152,18 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
 
             self.refresh_texture_if_dirty(&ctx);
+            if let Some(ext) = &self.ui_extension {
+                ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
+            }
 
             if let Some(texture) = self.texture.clone() {
                 self.draw_image_plot(ui, &ctx, &texture);
-            } else if let Some(snapshot) = self.controller.latest_snapshot() {
-                self.draw_line_plot(ui, snapshot);
+            } else if let Some(custom_data) = self
+                .controller
+                .latest_snapshot()
+                .map(|s| s.custom_data.clone())
+            {
+                self.draw_line_plot(ui, &custom_data);
             } else {
                 render_empty_plot_guidance(
                     ui,

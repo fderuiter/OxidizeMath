@@ -1,9 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{UnifiedModel, UnifiedSimRunner};
+use super::{UnifiedModel, UnifiedSimRunner, UnifiedUiExtension};
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
-use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    CalloutManager, ChallengeEvaluation, InteractiveTool, PlaybackAction, PlaybackTransport,
+};
 use eframe::egui::{self, ColorImage};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
@@ -25,6 +27,8 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) cached_param_labels: Vec<String>,
     pub(super) cached_observable_label: Option<&'static str>,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(crate) callout_manager: CalloutManager,
+    pub(super) ui_extension: Option<Box<dyn UnifiedUiExtension>>,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -59,6 +63,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .map(|(name, _)| M::parameter_label(name))
             .collect();
 
+        let mut callout_manager = CalloutManager::new();
+        let ui_extension = M::create_ui_extension();
+        if let Some(ext) = &ui_extension {
+            ext.sync_callouts(controller.latest_snapshot(), &mut callout_manager);
+        }
+
         Self {
             controller,
             params,
@@ -74,6 +84,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             cached_param_labels,
             cached_observable_label: None,
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
+            callout_manager,
+            ui_extension,
             _marker: std::marker::PhantomData,
         }
     }
@@ -83,8 +95,33 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.controller.state()
     }
 
+    pub(super) fn dispatch_extension_commands(
+        &mut self,
+        commands: Vec<SimCommand>,
+        ctx: Option<&egui::Context>,
+    ) {
+        if commands.is_empty() {
+            return;
+        }
+        for cmd in commands {
+            let _ = self.controller.send_command(cmd);
+        }
+        self.dirty = true;
+        if let Some(ext) = &self.ui_extension {
+            ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
+        }
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
+    }
+
     pub(super) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
         self.stepped_snapshot = None;
+        if let Some(ext) = &mut self.ui_extension {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            ext.on_reset(&p);
+            ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
+        }
         let params = Arc::clone(&self.params);
         self.controller
             .reset_or_respawn(|| UnifiedSimRunner::<M>::new(params));
@@ -280,6 +317,9 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                 val.to_bits().hash(&mut h);
             }
         }
+        if let Some(ext) = &self.ui_extension {
+            ext.state_revision_salt().hash(&mut h);
+        }
         h.finish().max(1)
     }
 
@@ -294,11 +334,31 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
 
     fn save_state(&self) -> Option<String> {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(ext) = &self.ui_extension {
+            if let Some(custom) = ext.save_extra_state(&params) {
+                return Some(custom);
+            }
+        }
         let sorted: std::collections::BTreeMap<&String, &f64> = params.iter().collect();
         serde_json::to_string(&sorted).ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        if let Some(ext) = &mut self.ui_extension {
+            let mut next_params = self
+                .params
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            if let Some(res) = ext.try_load_extra_state(state, &mut next_params) {
+                let cmds = res?;
+                *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
+                self.texture = None;
+                self.reset_simulation(None);
+                self.dispatch_extension_commands(cmds, None);
+                return Ok(());
+            }
+        }
         let params: HashMap<String, f64> = serde_json::from_str(state)
             .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
         if !self.param_metadata.is_empty() && params.is_empty() {
@@ -333,6 +393,44 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         self.texture = None;
         self.reset_simulation(None);
         Ok(())
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        let Some(ext) = &mut self.ui_extension else {
+            return if let Some(id) = challenge_id {
+                Err(format!(
+                    "Tool '{}' does not support challenge '{id}'",
+                    M::name()
+                ))
+            } else {
+                Ok(())
+            };
+        };
+        let mut next_params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let cmds = ext.apply_challenge(challenge_id, &mut next_params)?;
+        *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
+        self.dispatch_extension_commands(cmds, None);
+        Ok(())
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.ui_extension
+            .as_ref()
+            .and_then(|ext| ext.active_challenge_id())
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        let snap = self
+            .stepped_snapshot
+            .as_ref()
+            .or_else(|| self.controller.latest_snapshot());
+        self.ui_extension
+            .as_ref()
+            .and_then(|ext| ext.evaluate_challenge(snap))
     }
 
     fn clamp_parameters(&mut self) -> bool {

@@ -28,6 +28,8 @@ pub struct ShareUrlParams {
     pub tab: String,
     /// Optional target `InteractiveTool` identifier or display name.
     pub tool: Option<String>,
+    /// Optional inverse `ChallengeMetadata` identifier (`challenge=<id>`).
+    pub challenge: Option<String>,
     /// Optional decoded and structurally validated `PresetWrapper` JSON string.
     pub state_json: Option<String>,
 }
@@ -108,6 +110,17 @@ pub fn encode_share_fragment(
     tool_id: Option<&str>,
     preset_json: Option<&str>,
 ) -> Result<String, String> {
+    encode_share_fragment_with_challenge(tab_slug, tool_id, None, preset_json)
+}
+
+/// Encodes `tab_slug`, optional `tool_id`, optional `challenge_id`, and optional compact
+/// `preset_json` into `#tab=<slug>&tool=<id>&challenge=<id>&state=<base64url>`.
+pub fn encode_share_fragment_with_challenge(
+    tab_slug: &str,
+    tool_id: Option<&str>,
+    challenge_id: Option<&str>,
+    preset_json: Option<&str>,
+) -> Result<String, String> {
     if tab_slug.trim().is_empty() {
         return Err("Cannot encode share URL with an empty tab slug".to_string());
     }
@@ -115,6 +128,11 @@ pub fn encode_share_fragment(
     if let Some(tool) = tool_id.filter(|t| !t.trim().is_empty()) {
         fragment.push_str("&tool=");
         fragment.push_str(&percent_encode_component(tool));
+    }
+    if let Some(ch) = challenge_id.filter(|c| !c.trim().is_empty()) {
+        validate_challenge_id(ch.trim())?;
+        fragment.push_str("&challenge=");
+        fragment.push_str(&percent_encode_component(ch.trim()));
     }
     if let Some(json) = preset_json {
         validate_url_preset_json(json)?;
@@ -129,6 +147,23 @@ pub fn encode_share_fragment(
         ));
     }
     Ok(fragment)
+}
+
+fn validate_challenge_id(raw_id: &str) -> Result<String, String> {
+    let trimmed = raw_id.trim();
+    if trimmed.is_empty() {
+        return Err("Shared URL contains an empty 'challenge' parameter".to_string());
+    }
+    if trimmed.len() > 64
+        || !trimmed
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+    {
+        return Err(format!(
+            "Invalid 'challenge' identifier '{trimmed}' in shared URL"
+        ));
+    }
+    Ok(trimmed.to_string())
 }
 
 /// Parses `location.hash` first, falling back to `location.search` (ignoring unrelated query
@@ -161,6 +196,7 @@ pub fn parse_share_location(hash: &str, search: &str) -> Result<Option<ShareUrlP
 fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlParams>, String> {
     let mut tab: Option<String> = None;
     let mut tool: Option<String> = None;
+    let mut challenge: Option<String> = None;
     let mut state_b64: Option<String> = None;
 
     for pair in raw.split('&').filter(|s| !s.is_empty()) {
@@ -173,6 +209,7 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
         match k_raw {
             "tab" => set_unique_param(&mut tab, v_raw, "tab")?,
             "tool" => set_unique_param(&mut tool, v_raw, "tool")?,
+            "challenge" => set_unique_param(&mut challenge, v_raw, "challenge")?,
             "state" => set_unique_param(&mut state_b64, v_raw, "state")?,
             _ if strict_keys => {
                 return Err(format!("Unknown URL fragment parameter '{k_raw}'"));
@@ -181,10 +218,10 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
         }
     }
 
-    if tab.is_none() && tool.is_none() && state_b64.is_none() {
+    if tab.is_none() && tool.is_none() && challenge.is_none() && state_b64.is_none() {
         return Ok(None);
     }
-    build_validated_share_params(tab, tool, state_b64)
+    build_validated_share_params(tab, tool, challenge, state_b64)
 }
 
 fn set_unique_param(slot: &mut Option<String>, raw_val: &str, name: &str) -> Result<(), String> {
@@ -198,6 +235,7 @@ fn set_unique_param(slot: &mut Option<String>, raw_val: &str, name: &str) -> Res
 fn build_validated_share_params(
     tab: Option<String>,
     tool: Option<String>,
+    challenge: Option<String>,
     state_b64: Option<String>,
 ) -> Result<Option<ShareUrlParams>, String> {
     let tab_val = tab
@@ -209,6 +247,10 @@ fn build_validated_share_params(
             return Err("Shared URL contains an empty 'tool' parameter".to_string());
         }
         Some(t) => Some(t.trim().to_string()),
+        None => None,
+    };
+    let challenge_val = match challenge {
+        Some(c) => Some(validate_challenge_id(&c)?),
         None => None,
     };
     let state_json = match state_b64 {
@@ -227,6 +269,7 @@ fn build_validated_share_params(
     Ok(Some(ShareUrlParams {
         tab: tab_val,
         tool: tool_val,
+        challenge: challenge_val,
         state_json,
     }))
 }

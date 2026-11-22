@@ -302,8 +302,11 @@ impl PotentialFlowTool {
 
             ui.separator();
             ui.add(
-                egui::Slider::new(&mut self.grid_size, 10..=math_commons::registry::MAX_GRID_SIZE)
-                    .text("Visualization - Grid Density"),
+                egui::Slider::new(
+                    &mut self.grid_size,
+                    10..=math_commons::registry::MAX_GRID_SIZE,
+                )
+                .text("Visualization - Grid Density"),
             );
             ui.add(egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"));
         });
@@ -370,7 +373,9 @@ impl PotentialFlowTool {
     pub(crate) fn add_element(&mut self) {
         self.elements.push(SerializedFlowElement {
             element_type: self.selected_element_type,
-            strength: self.new_element_strength.clamp(FLOW_STRENGTH_MIN, FLOW_STRENGTH_MAX),
+            strength: self
+                .new_element_strength
+                .clamp(FLOW_STRENGTH_MIN, FLOW_STRENGTH_MAX),
             x: self.new_element_x.clamp(FLOW_POS_MIN, FLOW_POS_MAX),
             y: self.new_element_y.clamp(FLOW_POS_MIN, FLOW_POS_MAX),
             angle: self.new_element_angle.clamp(FLOW_ANGLE_MIN, FLOW_ANGLE_MAX),
@@ -415,8 +420,14 @@ impl scientific_metadata::theory::TheoryDescribable for PotentialFlowTool {
             "Uniform".into(),
             "Uniform freestream flow phi = U (x cos(alpha) + y sin(alpha))".into(),
         );
-        map.insert("Source/Sink".into(), "Radial flow phi = (m / 2 pi) ln(r)".into());
-        map.insert("Vortex".into(), "Circulation flow phi = (Gamma / 2 pi) theta".into());
+        map.insert(
+            "Source/Sink".into(),
+            "Radial flow phi = (m / 2 pi) ln(r)".into(),
+        );
+        map.insert(
+            "Vortex".into(),
+            "Circulation flow phi = (Gamma / 2 pi) theta".into(),
+        );
         map.insert(
             "Doublet".into(),
             "Source-sink dipole limit phi = (mu / 2 pi) cos(theta) / r".into(),

@@ -4,16 +4,16 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+pub mod pulse;
 pub mod runner;
+mod state;
 pub mod theory;
 pub mod tool;
 pub mod ui;
 
 pub use runner::sanitize_mri_time_scale;
 #[cfg(test)]
-pub use runner::{
-    MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE,
-};
+pub use runner::{MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE};
 #[cfg(test)]
 pub use tool::MriTool;
 pub use tool::MriToolState;
