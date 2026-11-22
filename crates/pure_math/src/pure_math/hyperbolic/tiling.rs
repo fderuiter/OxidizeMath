@@ -145,9 +145,9 @@ fn build_regular_seed_tile(p: u32, q: u32) -> Result<TiledPolygon, HyperbolicErr
         depth: 0,
         anchor: Complex64::new(0.0, 0.0),
     };
-    for k in 0..n {
+    for (k, vertex) in tile.vertices[..n].iter_mut().enumerate() {
         let theta = TAU * (k as f64) / (n as f64);
-        tile.vertices[k] = Complex64::new(r0 * theta.cos(), r0 * theta.sin());
+        *vertex = Complex64::new(r0 * theta.cos(), r0 * theta.sin());
     }
     assert_eq!(tile.vertex_count, n);
     Ok(tile)
@@ -169,11 +169,14 @@ fn build_ideal_apeirogon_seed_tile(q: u32) -> Result<TiledPolygon, HyperbolicErr
         depth: 0,
         anchor: Complex64::new(1.0, 0.0),
     };
-    for idx in 0..IDEAL_APEIROGON_FINITE_VERTICES {
+    for (idx, vertex) in tile.vertices[..IDEAL_APEIROGON_FINITE_VERTICES]
+        .iter_mut()
+        .enumerate()
+    {
         let k = (idx as i32) - half_span + 1;
         let u = (f64::from(k) - 0.5) * step;
         let hp = HalfPlanePoint::new_clamped(u, height);
-        tile.vertices[idx] = cayley_half_plane_to_disk(hp).as_complex();
+        *vertex = cayley_half_plane_to_disk(hp).as_complex();
     }
     tile.vertices[IDEAL_APEIROGON_FINITE_VERTICES] = Complex64::new(1.0, 0.0);
     assert_eq!(tile.vertex_count, IDEAL_APEIROGON_FINITE_VERTICES + 1);
