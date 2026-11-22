@@ -199,4 +199,119 @@ mod tests {
             (next_state.pressure - 101325.0).abs() < math_commons::registry::TOLERANCE_STANDARD
         ); // Pressure should be constant
     }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_potential_flow_contours_and_branch_cut_skip() {
+        use crate::physics::fluid_dynamics::potential_flow::{
+            Doublet, PotentialFlowField, Source, UniformFlow,
+        };
+        use std::f64::consts::PI;
+
+        let mut cylinder = PotentialFlowField::new();
+        cylinder.add(Box::new(UniformFlow::new(10.0, 0.0)));
+        cylinder.add(Box::new(Doublet::new(2.0 * PI * 10.0 * 4.0, 0.0, 0.0)));
+        let levels = [-15.0, -5.0, 0.0, 5.0, 15.0];
+        let segs = cylinder.extract_streamline_segments((-8.0, 8.0, -8.0, 8.0), 48, &levels);
+        assert!(!segs.is_empty());
+        assert!(segs.iter().all(|(a, b)| a[0].is_finite()
+            && a[1].is_finite()
+            && b[0].is_finite()
+            && b[1].is_finite()));
+
+        // Single source has an atan2 jump along (-inf, 0) at y = 0; branch-cut cells must be skipped.
+        let mut source_only = PotentialFlowField::new();
+        source_only.add(Box::new(Source::new(20.0, 0.0, 0.0)));
+        let branch_segs = source_only.extract_streamline_segments(
+            (-6.0, -1.0, -0.5, 0.5),
+            20,
+            &[-8.0, -4.0, 4.0, 8.0],
+        );
+        assert!(
+            branch_segs
+                .iter()
+                .all(|(a, b)| !(a[1] * b[1] < 0.0 && a[0] < -1.0)),
+            "Marching squares must skip Source atan2 branch-cut jump cells"
+        );
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_stagnation_points_cylinder_and_kutta_joukowski_lift() {
+        use crate::physics::fluid_dynamics::potential_flow::{
+            Doublet, PotentialFlowField, UniformFlow, Vortex,
+        };
+        use std::f64::consts::PI;
+
+        let u = 10.0;
+        let r = 2.0;
+        let kappa = 2.0 * PI * u * r * r;
+        let mut field = PotentialFlowField::new();
+        field.add(Box::new(UniformFlow::new(u, 0.0)));
+        field.add(Box::new(Doublet::new(kappa, 0.0, 0.0)));
+
+        let stag = field.detect_stagnation_points((-6.0, 6.0, -6.0, 6.0), 44);
+        assert_eq!(stag.len(), 2);
+        assert!(
+            stag.iter()
+                .any(|p| (p.x - (-2.0)).abs() < 0.05 && p.y.abs() < 0.05)
+        );
+        assert!(
+            stag.iter()
+                .any(|p| (p.x - 2.0).abs() < 0.05 && p.y.abs() < 0.05)
+        );
+
+        // Add clockwise circulation Gamma = -2*pi*U*R -> stagnation points shift to y = -R/2 = -1.0
+        field.add(Box::new(Vortex::new(-2.0 * PI * u * r, 0.0, 0.0)));
+        let lifted = field.detect_stagnation_points((-6.0, 6.0, -6.0, 6.0), 48);
+        assert_eq!(lifted.len(), 2);
+        assert!(lifted.iter().all(|p| (p.y - (-1.0)).abs() < 0.08));
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_potential_tracer_rk4_and_euler_probe_readout() {
+        use crate::physics::fluid_dynamics::potential_flow::{
+            Doublet, FlowElement, PotentialFlowField, UniformFlow,
+        };
+        use crate::physics::fluid_dynamics::solver::PotentialTracerSystem;
+        use nalgebra::Vector2;
+        use pure_math::pure_math::analysis::ode::TimeStepper;
+        use std::f64::consts::PI;
+
+        let mut field = PotentialFlowField::new();
+        field.add(Box::new(UniformFlow::new(10.0, 0.0)));
+        field.add(Box::new(Doublet::new(2.0 * PI * 10.0 * 4.0, 0.0, 0.0)));
+
+        let start = Vector2::new(-6.0, 1.5);
+        let psi0 = field.stream_function(start.x, start.y);
+        let mut tracer = PotentialTracerSystem::new(&field, start, 80.0);
+        for _ in 0..20 {
+            tracer.step(0.02);
+        }
+        let psi1 = field.stream_function(tracer.position.x, tracer.position.y);
+        assert!(tracer.position.x > start.x);
+        assert!(
+            (psi1 - psi0).abs() < 1e-3,
+            "RK4 tracer must conserve stream function psi"
+        );
+
+        let air = FluidProperties::air();
+        let readout = tracer.evaluate_probe(&air, 10.0, 101_325.0, 0.01);
+        assert!(readout.bernoulli_pressure.is_finite());
+        assert!(readout.convective_acceleration.norm() > 0.0);
+        // Steady Euler balance: predicted velocity step matches convective acceleration * dt
+        let dv_pred = Vector2::new(
+            readout.predicted_state.velocity.x - readout.velocity.x,
+            readout.predicted_state.velocity.y - readout.velocity.y,
+        );
+        assert!((dv_pred - readout.convective_acceleration * 0.01).norm() < 5e-3);
+
+        // Core clamp guard inside TOLERANCE_HIGH
+        let core_tracer = PotentialTracerSystem::new(&field, Vector2::new(0.0, 0.0), 50.0);
+        assert_eq!(
+            core_tracer.clamped_velocity(Vector2::new(0.0, 0.0)),
+            Vector2::zeros()
+        );
+    }
 }

@@ -4135,6 +4135,15 @@
       "signature": "impl PotentialFlowField { pub fn clear (& mut self) }"
     },
     {
+      "signature": "impl PotentialFlowField { pub fn detect_stagnation_points (& self , bounds : (f64 , f64 , f64 , f64) , resolution : usize ,) -> Vec < Vector2 < f64 > > }"
+    },
+    {
+      "signature": "impl PotentialFlowField { pub fn extract_streamline_segments (& self , bounds : (f64 , f64 , f64 , f64) , resolution : usize , iso_levels : & [f64] ,) -> Vec < ([f64 ; 2] , [f64 ; 2]) > }"
+    },
+    {
+      "signature": "impl PotentialFlowField { pub fn is_near_singularity (& self , x : f64 , y : f64 , min_r2 : f64) -> bool }"
+    },
+    {
       "signature": "impl PotentialFlowField { pub fn new () -> Self }"
     },
     {
@@ -4168,6 +4177,9 @@
       "signature": "pub trait FlowElement { fn potential (& self , x : f64 , y : f64) -> f64 }"
     },
     {
+      "signature": "pub trait FlowElement { fn singularity_center (& self) -> Option < Vector2 < f64 > > }"
+    },
+    {
       "signature": "pub trait FlowElement { fn stream_function (& self , x : f64 , y : f64) -> f64 }"
     },
     {
@@ -4196,7 +4208,25 @@
       "signature": "impl < 'a , M : MomentumEquation > FluidParticleSystem < 'a , M > { pub fn new (properties : & 'a FluidProperties , momentum_equation : M , gradients : SpatialGradients , body_force : Vector3 < f64 > , initial_state : FlowState ,) -> Self }"
     },
     {
+      "signature": "impl < 'a > PotentialTracerSystem < 'a > { pub fn bernoulli_pressure_at (& self , pos : Vector2 < f64 > , density : f64 , freestream_speed : f64 , reference_pressure : f64 ,) -> f64 }"
+    },
+    {
+      "signature": "impl < 'a > PotentialTracerSystem < 'a > { pub fn clamped_velocity (& self , pos : Vector2 < f64 >) -> Vector2 < f64 > }"
+    },
+    {
+      "signature": "impl < 'a > PotentialTracerSystem < 'a > { pub fn evaluate_probe (& self , properties : & FluidProperties , freestream_speed : f64 , reference_pressure : f64 , dt : f64 ,) -> TracerProbeReadout }"
+    },
+    {
+      "signature": "impl < 'a > PotentialTracerSystem < 'a > { pub fn new (field : & 'a PotentialFlowField , position : Vector2 < f64 > , max_speed : f64) -> Self }"
+    },
+    {
       "signature": "pub struct FluidParticleSystem < 'a , M : MomentumEquation >"
+    },
+    {
+      "signature": "pub struct PotentialTracerSystem < 'a >"
+    },
+    {
+      "signature": "pub struct TracerProbeReadout"
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/turbulence.rs": [
