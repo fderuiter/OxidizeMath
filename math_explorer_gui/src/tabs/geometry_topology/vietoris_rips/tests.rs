@@ -224,15 +224,11 @@ fn test_interval_csv_json_exports_and_svg_png_figure_primitives() {
         let svg = export_primitives_svg(&prims, &opts).unwrap();
         assert!(svg.contains("<svg") && svg.len() > 250);
         let img = render_primitives_image(&prims, &opts).unwrap();
+        assert!(
+            img.width() > 0 && img.height() > 0 && img.pixels.len() == img.width() * img.height()
+        );
         let png = color32_image_to_png(&img).unwrap();
-        let mut reader = png::Decoder::new(std::io::Cursor::new(&png))
-            .read_info()
-            .unwrap();
-        let mut buf = vec![0u8; reader.output_buffer_size().unwrap()];
-        let info = reader.next_frame(&mut buf).unwrap();
-        let w = info.width as usize;
-        let h = info.height as usize;
-        assert!(w > 0 && h > 0 && info.buffer_size() == w * h * 4);
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
 }
 

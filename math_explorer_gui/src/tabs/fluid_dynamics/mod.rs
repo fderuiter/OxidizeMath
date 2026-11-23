@@ -4,6 +4,8 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod lattice_boltzmann;
+pub mod lbm_fairing;
+pub mod lbm_fairing_ui;
 pub mod potential_flow;
 pub mod turbulence;
 

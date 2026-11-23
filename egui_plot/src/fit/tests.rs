@@ -19,15 +19,8 @@ fn test_linear_and_polynomial_fits_exact() {
             [x, -1.5 * x * x + 2.0 * x + 4.0]
         })
         .collect();
-    let res_q = fit_model_with_axes(
-        &quad,
-        FitType::Polynomial(2),
-        "TestQuad",
-        false,
-        false,
-        false,
-    )
-    .expect("Quad fit failed");
+    let res_q = fit_model_with_axes(&quad, FitType::Quadratic, "TestQuad", false, false, false)
+        .expect("Quad fit failed");
     assert!((res_q.r_squared - 1.0).abs() < 1e-12);
 
     let quartic: Vec<[f64; 2]> = (0..=6)
@@ -36,39 +29,41 @@ fn test_linear_and_polynomial_fits_exact() {
             [x, 0.25 * x.powi(4) - x.powi(3) + 2.0]
         })
         .collect();
-    let res_4 = fit_model_with_axes(
-        &quartic,
-        FitType::Polynomial(4),
-        "Quartic",
-        false,
-        false,
-        false,
-    )
-    .expect("Quartic fit failed");
+    let res_4 = fit_model_with_axes(&quartic, FitType::Quartic, "Quartic", false, false, false)
+        .expect("Quartic fit failed");
+    assert_eq!(res_4.fit_type, FitType::Quartic);
     assert!((res_4.r_squared - 1.0).abs() < 1e-9);
+    assert_eq!(
+        math_commons::fit::fit_polynomial(&quartic, 5),
+        Err(FitError::UnsupportedDegree { degree: 5 })
+    );
 }
 
 #[test]
 fn test_edge_cases_and_nan_rejection() {
-    assert!(
+    assert!(matches!(
         fit_model_with_axes(
             &[[1.0, 2.0]],
             FitType::Linear,
             "Single",
             false,
             false,
-            false
-        )
-        .is_none()
-    );
+            false,
+        ),
+        Err(FitError::InsufficientPoints {
+            required: 2,
+            actual: 1
+        })
+    ));
     let singular = vec![
         [1.0, 2.0],
         [1.0, 5.0],
         [f64::NAN, 3.0],
         [2.0, f64::INFINITY],
     ];
-    assert!(
-        fit_model_with_axes(&singular, FitType::Linear, "Singular", false, false, false).is_none()
+    assert_eq!(
+        fit_model_with_axes(&singular, FitType::Linear, "Singular", false, false, false),
+        Err(FitError::SingularMatrix)
     );
     assert!(
         fit_model_with_axes(
@@ -77,9 +72,9 @@ fn test_edge_cases_and_nan_rejection() {
             "BadExp",
             false,
             false,
-            false
+            false,
         )
-        .is_none()
+        .is_err()
     );
     assert!(
         fit_model_with_axes(
@@ -88,9 +83,9 @@ fn test_edge_cases_and_nan_rejection() {
             "BadSin",
             false,
             false,
-            false
+            false,
         )
-        .is_none()
+        .is_err()
     );
 }
 
@@ -367,7 +362,7 @@ fn centered_polynomial_fit_recovers_high_offset_quartic_accurately() {
 
     let fit = fit_model_with_axes(
         &pts,
-        FitType::Polynomial(4),
+        FitType::Quartic,
         "ShiftedQuartic",
         false,
         false,
