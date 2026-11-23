@@ -2338,16 +2338,28 @@
       "signature": "pub use surface :: internal_energy"
     },
     {
+      "signature": "pub use thickness :: FlatSpatialGrid"
+    },
+    {
       "signature": "pub use thickness :: SpatialGrid"
     },
     {
+      "signature": "pub use thickness :: ThicknessWorkspace"
+    },
+    {
       "signature": "pub use thickness :: cortical_thickness"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_indexed"
     },
     {
       "signature": "pub use thickness :: cortical_thickness_into"
     },
     {
       "signature": "pub use thickness :: cortical_thickness_map"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_map_into"
     },
     {
       "signature": "pub use thickness :: cortical_thickness_mesh"
@@ -2431,13 +2443,10 @@
   ],
   "crates/domain_applied/src/applied/freesurfer/thickness.rs": [
     {
-      "signature": "impl SpatialGrid { pub fn from_surface (_ : & Surface) -> Self }"
-    },
-    {
-      "signature": "impl SpatialGrid { pub fn shortest_distance (& self , _ : & [f64 ; 3]) -> f64 }"
-    },
-    {
       "signature": "pub fn cortical_thickness (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & Surface , _ : & Surface ,) -> f64"
+    },
+    {
+      "signature": "pub fn cortical_thickness_indexed (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & FlatSpatialGrid < '_ > , _ : & FlatSpatialGrid < '_ > ,) -> f64"
     },
     {
       "signature": "pub fn cortical_thickness_into (_ : & Surface , _ : & Surface , _ : & SpatialGrid , _ : & SpatialGrid , _ : & mut [f64] ,)"
@@ -2446,13 +2455,22 @@
       "signature": "pub fn cortical_thickness_map (_ : & Surface , _ : & Surface) -> Vec < f64 >"
     },
     {
+      "signature": "pub fn cortical_thickness_map_into (_ : & Surface , _ : & Surface , _ : & mut ThicknessWorkspace , _ : & mut [f64] ,) -> usize"
+    },
+    {
       "signature": "pub fn cortical_thickness_mesh (_ : & Surface , _ : & Surface) -> Vec < f64 >"
     },
     {
       "signature": "pub fn cortical_thickness_with_grid (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & SpatialGrid , _ : & SpatialGrid ,) -> f64"
     },
     {
-      "signature": "pub struct SpatialGrid"
+      "signature": "pub use thickness_grid :: FlatSpatialGrid"
+    },
+    {
+      "signature": "pub use thickness_grid :: SpatialGrid"
+    },
+    {
+      "signature": "pub use thickness_grid :: ThicknessWorkspace"
     }
   ],
   "crates/domain_applied/src/applied/game_theory/equilibrium.rs": [
