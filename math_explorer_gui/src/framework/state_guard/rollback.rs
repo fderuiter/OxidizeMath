@@ -375,6 +375,7 @@ impl SimulationFramework {
             None => self.selected_tool_index,
         };
 
+        self.cancel_active_gif_export(false);
         if let Some(idx) = target_idx {
             self.activate_starter_card_tool(idx, card_title, preset_json)?;
         } else if let Some(json_str) = preset_json {

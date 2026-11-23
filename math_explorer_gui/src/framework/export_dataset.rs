@@ -10,6 +10,8 @@ pub(super) struct FrameworkExportSource<'a> {
     pub(super) cached_tool_name: Option<&'static str>,
     pub(super) cached_plot_datasets: &'a [(String, egui_plot::SharedPoints)],
     pub(super) export_queue: &'a mut ExportQueue,
+    pub(super) gif_progress: Option<(usize, usize)>,
+    pub(super) cancel_gif_requested: &'a mut bool,
     pub(super) status_color: egui::Color32,
     pub(super) ctx: egui::Context,
 }
@@ -62,6 +64,9 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
     }
 
     fn intercept_action(&mut self, action: egui_plot::ExportModalAction) -> bool {
+        if action == egui_plot::ExportModalAction::SaveGif && self.gif_progress.is_some() {
+            return true;
+        }
         let (format, target) = match action {
             egui_plot::ExportModalAction::SavePng => (ExportFormat::Png, ExportTarget::File),
             egui_plot::ExportModalAction::SaveSvg => (ExportFormat::Svg, ExportTarget::File),
@@ -73,6 +78,19 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
         self.export_queue.push_target(format, target);
         self.ctx.request_repaint();
         true
+    }
+
+    fn active_gif_progress(&self) -> Option<(usize, usize)> {
+        self.gif_progress
+    }
+
+    fn cancel_gif_export(&mut self) -> bool {
+        if self.gif_progress.is_some() {
+            *self.cancel_gif_requested = true;
+            true
+        } else {
+            false
+        }
     }
 }
 

@@ -172,8 +172,32 @@ impl SimulationFramework {
         file_slug
     }
 
+    fn render_action_bar_gif_progress(&mut self, ui: &mut egui::Ui) -> bool {
+        let Some((completed, total)) = self.active_gif_progress() else {
+            return false;
+        };
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        wrapped_colored_label(
+            ui,
+            palette.success,
+            format!("⏳ Encoding GIF frame {completed}/{total}..."),
+        );
+        if ui
+            .small_button("⏹ Cancel GIF")
+            .accessible_hover_text("Cancel active GIF animation export")
+            .clicked()
+        {
+            self.cancel_active_gif_export(true);
+            ui.ctx().request_repaint();
+        }
+        true
+    }
+
     fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         self.poll_action_bar_clipboard_status(ctx);
+        if self.render_action_bar_gif_progress(ui) {
+            return;
+        }
 
         let now = ctx.input(|i| i.time);
         let mut clear_status = false;
@@ -370,6 +394,8 @@ impl SimulationFramework {
         let status_color = self
             .export_status_severity
             .palette_color(&ctx.style().visuals);
+        let gif_progress = self.active_gif_progress();
+        let mut cancel_gif_requested = false;
         let bindings = egui_plot::export_modal::ExportModalBindings {
             open: &mut self.show_export_modal,
             options: &mut self.export_options,
@@ -377,15 +403,21 @@ impl SimulationFramework {
             gif_fps: &mut self.export_gif_fps,
             gif_frames: &mut self.export_gif_frames,
             status_message: &mut self.export_status_message,
+            gif_job: None,
         };
         let mut source = FrameworkExportSource {
             active_tool: &mut self.active_tool,
             cached_tool_name: self.sync_state.datasets_owner_tool,
             cached_plot_datasets: &self.current_valid_plot_datasets,
             export_queue: &mut self.export_queue,
+            gif_progress,
+            cancel_gif_requested: &mut cancel_gif_requested,
             status_color,
             ctx: ctx.clone(),
         };
         egui_plot::export_modal::show_export_modal(ctx, bindings, &config, &mut source);
+        if cancel_gif_requested {
+            self.cancel_active_gif_export(true);
+        }
     }
 }

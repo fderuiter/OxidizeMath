@@ -300,6 +300,7 @@ impl SimulationFramework {
 
         let Some(idx) = tool_idx.filter(|&i| i < self.available_tools.len()) else {
             if tool_idx.is_none() {
+                self.cancel_active_gif_export(false);
                 self.selected_tool_index = None;
                 self.active_tool = None;
             }
@@ -314,6 +315,7 @@ impl SimulationFramework {
     }
 
     fn reload_existing_active_tool(&mut self, idx: usize) {
+        self.cancel_active_gif_export(false);
         let meta = self.available_tools[idx];
         self.is_diverged = false;
         self.diagnostic_report = None;
@@ -366,6 +368,7 @@ impl SimulationFramework {
             self.saved_tool_states
                 .insert(old_name.to_string(), old_json.to_string());
         }
+        self.cancel_active_gif_export(false);
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
         self.clear_challenge_hud();

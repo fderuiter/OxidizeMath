@@ -190,6 +190,11 @@ impl ExportQueue {
     pub(crate) fn drain_requests(&mut self) -> Vec<ExportRequest> {
         std::mem::take(&mut self.target_requests)
     }
+
+    /// Removes any queued requests matching `format`.
+    pub(crate) fn remove_format(&mut self, format: ExportFormat) {
+        self.target_requests.retain(|req| req.format != format);
+    }
 }
 
 impl SimulationFramework {
@@ -223,6 +228,9 @@ pub(super) fn materialize_shared_datasets(
 impl SimulationFramework {
     /// Queues a dataset or figure file export request for deferred end-of-frame dispatch.
     pub(crate) fn queue_export(&mut self, format: ExportFormat) {
+        if format == ExportFormat::Gif && self.gif_job.is_some() {
+            return;
+        }
         self.export_queue.push(format);
     }
 
@@ -259,7 +267,7 @@ impl SimulationFramework {
             (ExportFormat::Png, ExportTarget::File) => self.dispatch_png_export(),
             (ExportFormat::Png, ExportTarget::Clipboard) => self.dispatch_png_clipboard_export(ctx),
             (ExportFormat::Svg, _) => self.dispatch_svg_export(),
-            (ExportFormat::Gif, _) => self.dispatch_gif_export(),
+            (ExportFormat::Gif, _) => self.start_gif_export(ctx),
             (ExportFormat::Stl | ExportFormat::Ply | ExportFormat::Obj, target) => {
                 self.dispatch_3d_export(req.format, target, ctx);
             }
