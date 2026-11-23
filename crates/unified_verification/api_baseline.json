@@ -3975,16 +3975,10 @@
       "signature": "pub fn continuity_divergence (velocity_divergence : f64) -> f64"
     },
     {
-      "signature": "pub fn euler_time_derivative (rho : f64 , state : & FlowState , velocity_gradient : & nalgebra :: Matrix3 < f64 > , pressure_gradient : Vector3 < f64 > , body_force_accel : Vector3 < f64 > ,) -> Result < Vector3 < f64 > , FluidError >"
-    },
-    {
       "signature": "pub fn material_derivative_scalar (local_change : f64 , velocity : Vector3 < f64 > , gradient : Vector3 < f64 > ,) -> f64"
     },
     {
       "signature": "pub fn material_derivative_vector (local_change : Vector3 < f64 > , velocity : Vector3 < f64 > , gradient_tensor : & nalgebra :: Matrix3 < f64 > ,) -> Vector3 < f64 >"
-    },
-    {
-      "signature": "pub fn navier_stokes_time_derivative (properties : & FluidProperties , state : & FlowState , velocity_gradient : & nalgebra :: Matrix3 < f64 > , pressure_gradient : Vector3 < f64 > , laplacian_velocity : Vector3 < f64 > , body_force_accel : Vector3 < f64 > ,) -> Vector3 < f64 >"
     },
     {
       "signature": "pub struct Euler"
@@ -4534,9 +4528,6 @@
       "signature": "impl GatingLogic { pub fn is_beam_active (& self) -> bool }"
     },
     {
-      "signature": "impl GatingLogic { pub fn is_beam_on (& self) -> bool }"
-    },
-    {
       "signature": "impl GatingLogic { pub fn new (threshold : f64 , hysteresis : f64 , system_latency : f64) -> Self }"
     },
     {
@@ -4914,21 +4905,6 @@
   ],
   "crates/domain_physics/src/physics/nuclear/mod.rs": [
     {
-      "signature": "pub mod liquid_drop"
-    },
-    {
-      "signature": "pub mod liquid_drop { pub fn binding_energy (atomic_number : AtomicNumber , mass_number : MassNumber ,) -> Result < f64 , NuclearError > }"
-    },
-    {
-      "signature": "pub mod liquid_drop { pub fn binding_energy_per_nucleon (atomic_number : AtomicNumber , mass_number : MassNumber ,) -> Result < f64 , NuclearError > }"
-    },
-    {
-      "signature": "pub mod shell_model"
-    },
-    {
-      "signature": "pub mod shell_model { pub fn spin_orbit_coupling (l : f64 , s : f64 , j : f64) -> f64 }"
-    },
-    {
       "signature": "pub use models :: BindingEnergyModel"
     },
     {
@@ -5171,9 +5147,6 @@
     },
     {
       "signature": "impl IsotropicBCSModel { pub fn new (energies : Vec < f64 > , potential : f64 , debye_cutoff : f64 ,) -> Result < Self , SolidStateError > }"
-    },
-    {
-      "signature": "pub fn coherence_factors (xi_k : f64 , delta : f64) -> Result < (f64 , f64) , String >"
     },
     {
       "signature": "pub fn coherence_factors_strong (xi_k : ElectronVolts , delta : ElectronVolts ,) -> Result < (f64 , f64) , String >"
@@ -5462,13 +5435,7 @@
   ],
   "crates/domain_physics/src/physics/stat_mech/quantum_stats.rs": [
     {
-      "signature": "pub enum ParticleType"
-    },
-    {
       "signature": "pub fn calculate_occupancy < D : StatisticalDistribution > (distribution : D , energy : f64 , chemical_potential : f64 , temperature : f64 ,) -> Result < f64 , StatMechError >"
-    },
-    {
-      "signature": "pub fn occupancy_probability (particle_type : ParticleType , energy : f64 , chemical_potential : f64 , temperature : f64 ,) -> Result < f64 , StatMechError >"
     },
     {
       "signature": "pub struct BoseEinstein"
