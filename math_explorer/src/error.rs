@@ -31,10 +31,10 @@ pub use domain_physics::error::{
 
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
-    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
-    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
-    TransformError, ZipError,
+    AmbsError, AnalysisError, BayesianError, CopulaError, DistributionError, EllipticCurveError,
+    EvolutionError, FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarkovError,
+    NumberTheoryError, OptimizationError, OuError, PureMathError, StochasticError, TdaError,
+    TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -162,9 +162,15 @@ pub enum Error {
     /// Numerical root-finding and analysis error.
     #[cfg(feature = "pure_math")]
     Analysis(AnalysisError),
+    /// Bayesian inference and MCMC error.
+    #[cfg(feature = "pure_math")]
+    Bayesian(BayesianError),
     /// Copula modeling error.
     #[cfg(feature = "pure_math")]
     Copula(CopulaError),
+    /// Probability distribution and fitting error.
+    #[cfg(feature = "pure_math")]
+    Distribution(DistributionError),
     /// Elliptic curve error.
     #[cfg(feature = "pure_math")]
     EllipticCurve(EllipticCurveError),

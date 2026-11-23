@@ -181,7 +181,7 @@ fn capture_isolated_tool_datasets_3d(tool: &dyn InteractiveTool) -> Vec<(String,
 }
 
 impl SimulationFramework {
-    #[allow(missing_docs)]
+    /// Creates a new simulation framework discovering all tools registered under `domain`.
     pub fn new(domain: &str) -> Self {
         let mut available_tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>
             .into_iter()

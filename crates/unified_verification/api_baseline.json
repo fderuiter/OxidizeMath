@@ -1209,6 +1209,17 @@
       "signature": "pub struct RiskMetrics"
     }
   ],
+  "crates/domain_applied/src/applied/clinical_trials/bayesian_testing.rs": [
+    {
+      "signature": "pub fn bayesian_two_arm_continuous (_ : & GroupData , _ : & GroupData , _ : f64 , _ : & mut OxidizeRng ,) -> Result < BayesianTwoArmResult , ClinicalTrialError >"
+    },
+    {
+      "signature": "pub fn bayesian_two_arm_proportions (_ : & ContingencyTable , _ : f64 , _ : f64 , _ : f64 , _ : & mut OxidizeRng ,) -> Result < BayesianTwoArmResult , ClinicalTrialError >"
+    },
+    {
+      "signature": "pub struct BayesianTwoArmResult"
+    }
+  ],
   "crates/domain_applied/src/applied/clinical_trials/design.rs": [
     {
       "signature": "impl < S : AllocationStrategy > StratifiedRandomizer < S > { pub fn assign_stratified < R : Rng + ? Sized > (& self , _ : & mut R , _ : & [Patient] ,) -> Result < HashMap < String , Group > , ClinicalTrialError > }"
@@ -1268,9 +1279,27 @@
     },
     {
       "signature": "pub trait HypothesisTest < Input > { fn test (& self , _ : Input) -> Result < TestResult , ClinicalTrialError > }"
+    },
+    {
+      "signature": "pub use super :: bayesian_testing :: BayesianTwoArmResult"
+    },
+    {
+      "signature": "pub use super :: bayesian_testing :: bayesian_two_arm_continuous"
+    },
+    {
+      "signature": "pub use super :: bayesian_testing :: bayesian_two_arm_proportions"
     }
   ],
   "crates/domain_applied/src/applied/clinical_trials/mod.rs": [
+    {
+      "signature": "pub use bayesian_testing :: BayesianTwoArmResult"
+    },
+    {
+      "signature": "pub use bayesian_testing :: bayesian_two_arm_continuous"
+    },
+    {
+      "signature": "pub use bayesian_testing :: bayesian_two_arm_proportions"
+    },
     {
       "signature": "pub use types :: ClinicalTrialError"
     }
@@ -1583,6 +1612,12 @@
       "signature": "pub use segmentation :: bayesian_classification"
     },
     {
+      "signature": "pub use segmentation :: bayesian_classify_labels"
+    },
+    {
+      "signature": "pub use segmentation :: normalized_bayesian_posteriors"
+    },
+    {
       "signature": "pub use surface :: Surface"
     },
     {
@@ -1601,6 +1636,12 @@
   "crates/domain_applied/src/applied/freesurfer/segmentation.rs": [
     {
       "signature": "pub fn bayesian_classification (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn bayesian_classify_labels (_ : & [f64] , _ : & [f64] ,) -> Result < (usize , Vec < f64 >) , MathError >"
+    },
+    {
+      "signature": "pub fn normalized_bayesian_posteriors (_ : & [f64] , _ : & [f64] , _ : & mut [f64] ,) -> Result < usize , MathError >"
     }
   ],
   "crates/domain_applied/src/applied/freesurfer/surface.rs": [
@@ -7644,7 +7685,21 @@
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
     },
     {
+      "signature": "pub use statistics_errors :: BayesianError"
+    },
+    {
+      "signature": "pub use statistics_errors :: DistributionError"
+    },
+    {
       "signature": "pub use umbrella :: PureMathError"
+    }
+  ],
+  "crates/pure_math/src/error/statistics_errors.rs": [
+    {
+      "signature": "pub enum BayesianError"
+    },
+    {
+      "signature": "pub enum DistributionError"
     }
   ],
   "crates/pure_math/src/error/umbrella.rs": [
@@ -7666,7 +7721,13 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: AnalysisError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: BayesianError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: CopulaError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: DistributionError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EllipticCurveError } }"
@@ -9849,6 +9910,336 @@
       "signature": "pub fn laguerre (_ : u64 , _ : f64) -> f64"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/bayesian/conjugate_continuous.rs": [
+    {
+      "signature": "impl NormalInverseGamma { pub fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn credible_interval_mean (& self , _ : f64) -> Result < CredibleInterval , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn kappa (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn ln_marginal_likelihood (& self , _ : & [f64]) -> Result < f64 , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn marginal_mean_dist (& self) -> Result < StudentTDist , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn mu (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn posterior_sigma2_mean (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn predictive_dist (& self) -> Result < StudentTDist , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalInverseGamma { pub fn update_slice (& self , _ : & [f64]) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn bayes_factor_vs_point (& self , _ : f64 , _ : & [f64] ,) -> Result < BayesFactor , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn credible_interval (& self , _ : f64) -> Result < CredibleInterval , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn known_sigma_sq (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn posterior_dist (& self) -> Result < NormalDist , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn posterior_mean (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn posterior_variance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn predictive_dist (& self) -> Result < NormalDist , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn update_slice (& self , _ : & [f64]) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl NormalNormal { pub fn update_summary (& self , _ : f64 , _ : usize) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "pub struct NormalInverseGamma"
+    },
+    {
+      "signature": "pub struct NormalNormal"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/bayesian/conjugate_discrete.rs": [
+    {
+      "signature": "impl BetaBinomial { pub fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn bayes_factor_vs_point (& self , _ : f64 , _ : u64 , _ : u64 ,) -> Result < BayesFactor , BayesianError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn credible_interval (& self , _ : f64) -> Result < CredibleInterval , BayesianError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn hpd_interval (& self , _ : f64) -> Result < CredibleInterval , BayesianError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn jeffreys () -> Self }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn ln_marginal_likelihood (& self , _ : u64 , _ : u64 ,) -> Result < f64 , BayesianError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn new (_ : f64 , _ : f64) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn posterior_dist (& self) -> Result < BetaDist , BayesianError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn posterior_mean (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn posterior_mode (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn posterior_variance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn predictive_pmf (& self , _ : u64 , _ : u64 ,) -> Result < f64 , BayesianError > }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn uniform () -> Self }"
+    },
+    {
+      "signature": "impl BetaBinomial { pub fn update (& self , _ : u64 , _ : u64) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn bayes_factor_vs_rate (& self , _ : f64 , _ : & [u64] ,) -> Result < BayesFactor , BayesianError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn credible_interval (& self , _ : f64) -> Result < CredibleInterval , BayesianError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn hpd_interval (& self , _ : f64) -> Result < CredibleInterval , BayesianError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn ln_marginal_likelihood (& self , _ : & [u64]) -> Result < f64 , BayesianError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn new (_ : f64 , _ : f64) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn posterior_dist (& self) -> Result < GammaDist , BayesianError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn posterior_mean (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn posterior_variance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn predictive_dist (& self) -> Result < NegativeBinomialDist , BayesianError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn shape (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn update (& self , _ : u64 , _ : f64) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl GammaPoisson { pub fn update_counts (& self , _ : & [u64]) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "pub struct BetaBinomial"
+    },
+    {
+      "signature": "pub struct GammaPoisson"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/bayesian/dirichlet.rs": [
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn alphas (& self) -> & [f64 ; K] }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn bayes_factor_vs_probs (& self , _ : & [f64 ; K] , _ : & [u64 ; K] ,) -> Result < BayesFactor , BayesianError > }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn concentration (& self) -> f64 }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn ln_marginal_likelihood (& self , _ : & [u64 ; K]) -> Result < f64 , BayesianError > }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn marginal_beta (& self , _ : usize) -> Result < BetaDist , BayesianError > }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn marginal_credible_interval (& self , _ : usize , _ : f64 ,) -> Result < CredibleInterval , BayesianError > }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn new (_ : [f64 ; K]) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn posterior_mean (& self) -> [f64 ; K] }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn sample_simplex (& self , _ : & mut OxidizeRng) -> [f64 ; K] }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn symmetric (_ : f64) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl < const K : usize > DirichletMultinomial < K > { pub fn update (& self , _ : & [u64 ; K]) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "pub struct DirichletMultinomial < const K : usize >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/bayesian/intervals_and_bf.rs": [
+    {
+      "signature": "impl BayesFactor { pub fn from_ln_marginals (_ : f64 , _ : f64) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl CredibleInterval { pub fn contains (& self , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl CredibleInterval { pub fn width (& self) -> f64 }"
+    },
+    {
+      "signature": "pub enum JeffreysEvidence"
+    },
+    {
+      "signature": "pub fn equal_tailed_credible_interval < D : ContinuousDistribution > (_ : & D , _ : f64 ,) -> Result < CredibleInterval , BayesianError >"
+    },
+    {
+      "signature": "pub fn hpd_credible_interval < D : ContinuousDistribution > (_ : & D , _ : f64 ,) -> Result < CredibleInterval , BayesianError >"
+    },
+    {
+      "signature": "pub struct BayesFactor"
+    },
+    {
+      "signature": "pub struct CredibleInterval"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/bayesian/mcmc.rs": [
+    {
+      "signature": "impl < const D : usize > MetropolisHastingsND < D > { pub fn acceptance_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl < const D : usize > MetropolisHastingsND < D > { pub fn new (_ : [f64 ; D] , _ : [f64 ; D]) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl < const D : usize > MetropolisHastingsND < D > { pub fn sample_into < F > (& mut self , _ : F , _ : usize , _ : & mut [[f64 ; D]] , _ : & mut OxidizeRng ,) -> Result < [f64 ; D] , BayesianError > where F : Fn (& [f64 ; D]) -> f64 , }"
+    },
+    {
+      "signature": "impl < const D : usize > MetropolisHastingsND < D > { pub fn state (& self) -> & [f64 ; D] }"
+    },
+    {
+      "signature": "impl < const D : usize > MetropolisHastingsND < D > { pub fn step < F > (& mut self , _ : F , _ : & mut OxidizeRng ,) -> Result < [f64 ; D] , BayesianError > where F : Fn (& [f64 ; D]) -> f64 , }"
+    },
+    {
+      "signature": "impl MetropolisHastings1D { pub fn acceptance_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MetropolisHastings1D { pub fn new (_ : f64 , _ : f64) -> Result < Self , BayesianError > }"
+    },
+    {
+      "signature": "impl MetropolisHastings1D { pub fn proposal_std (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MetropolisHastings1D { pub fn reset (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl MetropolisHastings1D { pub fn sample_into < F > (& mut self , _ : F , _ : usize , _ : & mut [f64] , _ : & mut OxidizeRng ,) -> Result < McmcSummary , BayesianError > where F : Fn (f64) -> f64 , }"
+    },
+    {
+      "signature": "impl MetropolisHastings1D { pub fn set_proposal_std (& mut self , _ : f64) -> Result < () , BayesianError > }"
+    },
+    {
+      "signature": "impl MetropolisHastings1D { pub fn state (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MetropolisHastings1D { pub fn step < F > (& mut self , _ : F , _ : & mut OxidizeRng) -> Result < f64 , BayesianError > where F : Fn (f64) -> f64 , }"
+    },
+    {
+      "signature": "impl MetropolisHastings1D { pub fn total_steps (& self) -> u64 }"
+    },
+    {
+      "signature": "pub fn empirical_credible_interval (_ : & [f64] , _ : & mut [f64] , _ : f64 ,) -> Result < CredibleInterval , BayesianError >"
+    },
+    {
+      "signature": "pub struct McmcSummary"
+    },
+    {
+      "signature": "pub struct MetropolisHastings1D"
+    },
+    {
+      "signature": "pub struct MetropolisHastingsND < const D : usize >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/bayesian/mod.rs": [
+    {
+      "signature": "pub use conjugate_continuous :: NormalInverseGamma"
+    },
+    {
+      "signature": "pub use conjugate_continuous :: NormalNormal"
+    },
+    {
+      "signature": "pub use conjugate_discrete :: BetaBinomial"
+    },
+    {
+      "signature": "pub use conjugate_discrete :: GammaPoisson"
+    },
+    {
+      "signature": "pub use crate :: error :: BayesianError"
+    },
+    {
+      "signature": "pub use dirichlet :: DirichletMultinomial"
+    },
+    {
+      "signature": "pub use intervals_and_bf :: BayesFactor"
+    },
+    {
+      "signature": "pub use intervals_and_bf :: CredibleInterval"
+    },
+    {
+      "signature": "pub use intervals_and_bf :: JeffreysEvidence"
+    },
+    {
+      "signature": "pub use intervals_and_bf :: equal_tailed_credible_interval"
+    },
+    {
+      "signature": "pub use intervals_and_bf :: hpd_credible_interval"
+    },
+    {
+      "signature": "pub use mcmc :: McmcSummary"
+    },
+    {
+      "signature": "pub use mcmc :: MetropolisHastings1D"
+    },
+    {
+      "signature": "pub use mcmc :: MetropolisHastingsND"
+    },
+    {
+      "signature": "pub use mcmc :: empirical_credible_interval"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/copula/core.rs": [
     {
       "signature": "impl Correlation { pub fn new (_ : f64) -> Result < Self , CopulaError > }"
@@ -9860,7 +10251,13 @@
       "signature": "impl CorrelationMatrix { pub fn bivariate (_ : Correlation) -> Result < Self , CopulaError > }"
     },
     {
+      "signature": "impl CorrelationMatrix { pub fn cholesky_factor (& self) -> & DMatrix < f64 > }"
+    },
+    {
       "signature": "impl CorrelationMatrix { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl CorrelationMatrix { pub fn equicorrelated (_ : usize , _ : Correlation) -> Result < Self , CopulaError > }"
     },
     {
       "signature": "impl CorrelationMatrix { pub fn get_correlation (& self , _ : usize , _ : usize) -> Option < f64 > }"
@@ -9893,6 +10290,9 @@
     },
     {
       "signature": "impl GaussianCopula { pub fn cdf (& self , _ : & [Probability]) -> Result < Probability , CopulaError > }"
+    },
+    {
+      "signature": "impl GaussianCopula { pub fn cdf_with_rng (& self , _ : & [Probability] , _ : & mut OxidizeRng , _ : usize ,) -> Result < Probability , CopulaError > }"
     },
     {
       "signature": "impl GaussianCopula { pub fn correlation (& self) -> & CorrelationMatrix }"
@@ -9960,6 +10360,387 @@
     },
     {
       "signature": "pub trait ProbabilityTransform { fn to_uniform (& self , _ : f64) -> Result < Probability , CopulaError > }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/distributions/continuous_bounded_tail.rs": [
+    {
+      "signature": "impl BetaDist { pub fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BetaDist { pub fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BetaDist { pub fn fit_mle (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl BetaDist { pub fn fit_mom (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl BetaDist { pub fn new (_ : f64 , _ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl ChiSquaredDist { pub fn df (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ChiSquaredDist { pub fn fit_mle (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl ChiSquaredDist { pub fn fit_mom (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl ChiSquaredDist { pub fn new (_ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "pub struct BetaDist"
+    },
+    {
+      "signature": "pub struct ChiSquaredDist"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/distributions/continuous_gamma.rs": [
+    {
+      "signature": "impl GammaDist { pub fn fit_mle (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl GammaDist { pub fn fit_mom (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl GammaDist { pub fn from_shape_scale (_ : f64 , _ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl GammaDist { pub fn new (_ : f64 , _ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl GammaDist { pub fn rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GammaDist { pub fn scale (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GammaDist { pub fn shape (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct GammaDist"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/distributions/continuous_location.rs": [
+    {
+      "signature": "impl ExponentialDist { pub fn fit_mle (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl ExponentialDist { pub fn fit_mom (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl ExponentialDist { pub fn new (_ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl ExponentialDist { pub fn rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalDist { pub fn fit_mle (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl NormalDist { pub fn fit_mom (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl NormalDist { pub fn mu (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalDist { pub fn new (_ : f64 , _ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl NormalDist { pub fn sigma (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NormalDist { pub fn standard () -> Self }"
+    },
+    {
+      "signature": "impl UniformDist { pub fn fit_mle (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl UniformDist { pub fn fit_mom (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl UniformDist { pub fn lower (& self) -> f64 }"
+    },
+    {
+      "signature": "impl UniformDist { pub fn new (_ : f64 , _ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl UniformDist { pub fn upper (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct ExponentialDist"
+    },
+    {
+      "signature": "pub struct NormalDist"
+    },
+    {
+      "signature": "pub struct UniformDist"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/distributions/continuous_positive.rs": [
+    {
+      "signature": "impl LogNormalDist { pub fn fit_mle (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl LogNormalDist { pub fn fit_mom (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl LogNormalDist { pub fn mu (& self) -> f64 }"
+    },
+    {
+      "signature": "impl LogNormalDist { pub fn new (_ : f64 , _ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl LogNormalDist { pub fn sigma (& self) -> f64 }"
+    },
+    {
+      "signature": "impl WeibullDist { pub fn fit_mle (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl WeibullDist { pub fn fit_mom (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl WeibullDist { pub fn new (_ : f64 , _ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl WeibullDist { pub fn scale (& self) -> f64 }"
+    },
+    {
+      "signature": "impl WeibullDist { pub fn shape (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct LogNormalDist"
+    },
+    {
+      "signature": "pub struct WeibullDist"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/distributions/continuous_student.rs": [
+    {
+      "signature": "impl StudentTDist { pub fn df (& self) -> f64 }"
+    },
+    {
+      "signature": "impl StudentTDist { pub fn fit_mle (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl StudentTDist { pub fn fit_mom (_ : & [f64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl StudentTDist { pub fn location (& self) -> f64 }"
+    },
+    {
+      "signature": "impl StudentTDist { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl StudentTDist { pub fn scale (& self) -> f64 }"
+    },
+    {
+      "signature": "impl StudentTDist { pub fn standard (_ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "pub struct StudentTDist"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/distributions/discrete_count.rs": [
+    {
+      "signature": "impl GeometricDist { pub fn fit_mle (_ : & [u64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl GeometricDist { pub fn fit_mom (_ : & [u64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl GeometricDist { pub fn new (_ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl GeometricDist { pub fn p (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NegativeBinomialDist { pub fn fit_mle (_ : & [u64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl NegativeBinomialDist { pub fn fit_mom (_ : & [u64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl NegativeBinomialDist { pub fn new (_ : f64 , _ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl NegativeBinomialDist { pub fn p (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NegativeBinomialDist { pub fn r (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PoissonDist { pub fn fit_mle (_ : & [u64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl PoissonDist { pub fn fit_mom (_ : & [u64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl PoissonDist { pub fn lambda (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PoissonDist { pub fn new (_ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "pub struct GeometricDist"
+    },
+    {
+      "signature": "pub struct NegativeBinomialDist"
+    },
+    {
+      "signature": "pub struct PoissonDist"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/distributions/discrete_finite.rs": [
+    {
+      "signature": "impl BernoulliDist { pub fn fit_mle (_ : & [u64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl BernoulliDist { pub fn fit_mom (_ : & [u64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl BernoulliDist { pub fn new (_ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl BernoulliDist { pub fn p (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BinomialDist { pub fn fit_mle (_ : & [u64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl BinomialDist { pub fn fit_mle_known_n (_ : & [u64] , _ : u64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl BinomialDist { pub fn fit_mom (_ : & [u64]) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl BinomialDist { pub fn n (& self) -> u64 }"
+    },
+    {
+      "signature": "impl BinomialDist { pub fn new (_ : u64 , _ : f64) -> Result < Self , DistributionError > }"
+    },
+    {
+      "signature": "impl BinomialDist { pub fn p (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct BernoulliDist"
+    },
+    {
+      "signature": "pub struct BinomialDist"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/distributions/mod.rs": [
+    {
+      "signature": "pub use continuous_bounded_tail :: BetaDist"
+    },
+    {
+      "signature": "pub use continuous_bounded_tail :: ChiSquaredDist"
+    },
+    {
+      "signature": "pub use continuous_gamma :: GammaDist"
+    },
+    {
+      "signature": "pub use continuous_location :: ExponentialDist"
+    },
+    {
+      "signature": "pub use continuous_location :: NormalDist"
+    },
+    {
+      "signature": "pub use continuous_location :: UniformDist"
+    },
+    {
+      "signature": "pub use continuous_positive :: LogNormalDist"
+    },
+    {
+      "signature": "pub use continuous_positive :: WeibullDist"
+    },
+    {
+      "signature": "pub use continuous_student :: StudentTDist"
+    },
+    {
+      "signature": "pub use crate :: error :: DistributionError"
+    },
+    {
+      "signature": "pub use discrete_count :: GeometricDist"
+    },
+    {
+      "signature": "pub use discrete_count :: NegativeBinomialDist"
+    },
+    {
+      "signature": "pub use discrete_count :: PoissonDist"
+    },
+    {
+      "signature": "pub use discrete_finite :: BernoulliDist"
+    },
+    {
+      "signature": "pub use discrete_finite :: BinomialDist"
+    },
+    {
+      "signature": "pub use traits :: ContinuousDistribution"
+    },
+    {
+      "signature": "pub use traits :: DiscreteDistribution"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/distributions/traits.rs": [
+    {
+      "signature": "pub trait ContinuousDistribution"
+    },
+    {
+      "signature": "pub trait ContinuousDistribution { fn cdf (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub trait ContinuousDistribution { fn ln_pdf (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub trait ContinuousDistribution { fn mean (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "pub trait ContinuousDistribution { fn pdf (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub trait ContinuousDistribution { fn quantile (& self , _ : f64) -> Result < f64 , DistributionError > }"
+    },
+    {
+      "signature": "pub trait ContinuousDistribution { fn sample (& self , _ : & mut OxidizeRng) -> f64 }"
+    },
+    {
+      "signature": "pub trait ContinuousDistribution { fn std_dev (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "pub trait ContinuousDistribution { fn support (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "pub trait ContinuousDistribution { fn variance (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "pub trait DiscreteDistribution"
+    },
+    {
+      "signature": "pub trait DiscreteDistribution { fn cdf (& self , _ : u64) -> f64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDistribution { fn ln_pmf (& self , _ : u64) -> f64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDistribution { fn mean (& self) -> f64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDistribution { fn pmf (& self , _ : u64) -> f64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDistribution { fn quantile (& self , _ : f64) -> Result < u64 , DistributionError > }"
+    },
+    {
+      "signature": "pub trait DiscreteDistribution { fn sample (& self , _ : & mut OxidizeRng) -> u64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDistribution { fn std_dev (& self) -> f64 }"
+    },
+    {
+      "signature": "pub trait DiscreteDistribution { fn variance (& self) -> f64 }"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/glicko2/core.rs": [
@@ -11249,6 +12030,9 @@
       "signature": "impl ZipDistribution { pub fn from_values (_ : f64 , _ : f64) -> Result < Self , ZipError > }"
     },
     {
+      "signature": "impl ZipDistribution { pub fn ln_pmf (& self , _ : Count) -> f64 }"
+    },
+    {
       "signature": "impl ZipDistribution { pub fn mean (& self) -> f64 }"
     },
     {
@@ -11261,6 +12045,12 @@
       "signature": "impl ZipDistribution { pub fn pmf (& self , _ : Count) -> f64 }"
     },
     {
+      "signature": "impl ZipDistribution { pub fn quantile (& self , _ : f64) -> Result < Count , ZipError > }"
+    },
+    {
+      "signature": "impl ZipDistribution { pub fn sample (& self , _ : & mut OxidizeRng) -> Count }"
+    },
+    {
       "signature": "impl ZipDistribution { pub fn std_dev (& self) -> f64 }"
     },
     {
@@ -11268,6 +12058,11 @@
     },
     {
       "signature": "pub struct ZipDistribution"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/zip_regression/em_solver.rs": [
+    {
+      "signature": "pub struct ZipFitResult"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/zip_regression/link_functions.rs": [
@@ -11319,6 +12114,9 @@
       "signature": "pub use distribution :: ZipDistribution"
     },
     {
+      "signature": "pub use em_solver :: ZipFitResult"
+    },
+    {
       "signature": "pub use link_functions :: LogLink"
     },
     {
@@ -11336,6 +12134,12 @@
       "signature": "impl ZipRegression { pub fn counts (& self) -> & [Count] }"
     },
     {
+      "signature": "impl ZipRegression { pub fn fit (& self , _ : usize , _ : f64) -> Result < ZipFitResult , ZipError > }"
+    },
+    {
+      "signature": "impl ZipRegression { pub fn fit_default (& self) -> Result < ZipFitResult , ZipError > }"
+    },
+    {
       "signature": "impl ZipRegression { pub fn log_likelihood (& self , _ : & DVector < f64 > , _ : & DVector < f64 >) -> f64 }"
     },
     {
@@ -11346,6 +12150,12 @@
     },
     {
       "signature": "impl ZipRegression { pub fn predict (_ : & DVector < f64 > , _ : & DVector < f64 > , _ : & DVector < f64 > , _ : & DVector < f64 > ,) -> Result < ZipParams , ZipError > }"
+    },
+    {
+      "signature": "impl ZipRegression { pub fn x_matrix (& self) -> & DMatrix < f64 > }"
+    },
+    {
+      "signature": "impl ZipRegression { pub fn z_matrix (& self) -> & DMatrix < f64 > }"
     },
     {
       "signature": "pub fn simple_zip_fit (_ : & [Count]) -> Result < ZipParams , ZipError >"
@@ -11828,7 +12638,13 @@
       "signature": "pub use pure_math :: error :: AnalysisError"
     },
     {
+      "signature": "pub use pure_math :: error :: BayesianError"
+    },
+    {
       "signature": "pub use pure_math :: error :: CopulaError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: DistributionError"
     },
     {
       "signature": "pub use pure_math :: error :: EllipticCurveError"

@@ -383,6 +383,7 @@ impl From<math_commons::error::MathError> for CopulaError {
     }
 }
 
+mod statistics_errors;
 mod submodule_diagnostics;
 mod umbrella;
 
@@ -397,6 +398,7 @@ pub use crate::pure_math::{
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };
+pub use statistics_errors::{BayesianError, DistributionError};
 pub use umbrella::PureMathError;
 
 #[cfg(test)]

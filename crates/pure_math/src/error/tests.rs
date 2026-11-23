@@ -32,7 +32,9 @@ fn test_pure_math_leaf_wrappers_preserve_source_chain() {
 #[verified_engine::verified]
 fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
     let cases: Vec<PureMathError> = vec![
+        BayesianError::InvalidCredibleLevel { level: 1.2 }.into(),
         CopulaError::NotSymmetric.into(),
+        DistributionError::InvalidProbability { value: -0.1 }.into(),
         Glicko2Error::EmptyMatchResults.into(),
         KellyError::InvalidOdds { value: 0.5 }.into(),
         MarkovError::from(sample_math_err()).into(),
@@ -76,6 +78,8 @@ fn propagate_pure_math_question_mark(trigger_err: bool) -> std::result::Result<f
         })?;
     }
     let _: f64 = Ok::<f64, KellyError>(0.25)?;
+    let _: f64 = Ok::<f64, DistributionError>(0.5)?;
+    let _: f64 = Ok::<f64, BayesianError>(0.5)?;
     Ok(1.0)
 }
 

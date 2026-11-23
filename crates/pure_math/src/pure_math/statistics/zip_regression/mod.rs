@@ -123,11 +123,13 @@
 
 pub mod core;
 pub mod distribution;
+pub mod em_solver;
 pub mod link_functions;
 pub mod regression;
 
 pub use core::{Count, PoissonRate, ZeroInflation, ZipParams};
 pub use distribution::ZipDistribution;
+pub use em_solver::ZipFitResult;
 pub use link_functions::{LogLink, LogitLink};
 pub use regression::{ZipRegression, simple_zip_fit};
 

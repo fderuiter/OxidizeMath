@@ -51,7 +51,15 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::ParseError::UnexpectedEof, bus),
         check_leaf(error::AmbsError::ConversionError, bus),
         check_leaf(error::AnalysisError::ConvergenceError(1.0), bus),
+        check_leaf(
+            error::BayesianError::InvalidCredibleLevel { level: 1.1 },
+            bus,
+        ),
         check_leaf(error::CopulaError::NotSymmetric, bus),
+        check_leaf(
+            error::DistributionError::InvalidProbability { value: 2.0 },
+            bus,
+        ),
         check_leaf(error::EllipticCurveError::InvalidDegree, bus),
         check_leaf(error::EvolutionError::BoundsError, bus),
         check_leaf(error::FractranError::InvalidFractionSyntax, bus),
@@ -192,21 +200,23 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 49);
-    assert_eq!(*events.lock().unwrap(), 49);
+    assert_eq!(converted.len(), 51);
+    assert_eq!(*events.lock().unwrap(), 51);
 
     verify_six_umbrellas_and_fifteen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 55);
+    assert_eq!(*events.lock().unwrap(), 57);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
         let y: f64 = Ok::<f64, error::BatteryError>(0.5)?;
+        let _: f64 = Ok::<f64, error::BayesianError>(0.0)?;
+        let _: f64 = Ok::<f64, error::DistributionError>(0.0)?;
         Ok(x + y)
     });
     assert_eq!(ok_run.unwrap(), 1.0);
 
     let (err_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
-        let _: f64 = Err(error::NuclearError::VolumeZero)?;
+        let _: f64 = Err(error::DistributionError::InvalidProbability { value: -1.0 })?;
         Ok(0.0)
     });
     assert!(err_run.is_err());
@@ -269,7 +279,9 @@ pub fn verify_prelude_error_reexports() {
     let _pure = core::mem::size_of::<(
         p::AmbsError,
         p::AnalysisError,
+        p::BayesianError,
         p::CopulaError,
+        p::DistributionError,
         p::EllipticCurveError,
         p::EvolutionError,
         p::FractranError,

@@ -89,7 +89,8 @@ pub trait ExplorerTab {
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
-            | "Number Theory" => "Pure Math",
+            | "Number Theory"
+            | "Probability & Statistics" => "Pure Math",
 
             "Astrophysics"
             | "Chaos Theory"
@@ -191,6 +192,7 @@ pub trait ExplorerTab {
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
             "Paradox Lab" => "paradox_lab",
+            "Probability & Statistics" => "probability_statistics",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",

@@ -18,7 +18,7 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 - **`differential_geometry`**: Manifolds, metric tensors, and Riemannian curvature.
 - **`elliptic_curves`**: Curve group arithmetic and cryptographic operations over finite fields.
 - **`graph_theory`**: Network graph structures, centrality metrics, and traversal algorithms.
-- **`statistics`**: Stochastic processes (Markov chains, Ornstein-Uhlenbeck), ranking systems (Glicko-2), and Kelly criterion decision models.
+- **`statistics`**: Verified univariate continuous and discrete probability distributions (`distributions`: Normal, Beta, Gamma, Student-$t$, Chi-Squared, Exponential, Uniform, Log-Normal, Weibull, Bernoulli, Binomial, Poisson, Geometric, Negative Binomial) with safeguarded quantiles and MLE/MoM fitters; conjugate Bayesian inference and zero-allocation Metropolis-Hastings MCMC (`bayesian`); Cholesky-validated multivariate Gaussian copulas with Plackett quadrature and Genz Quasi-Monte Carlo (`copula`); Expectation-Maximization Zero-Inflated Poisson covariate regression (`zip_regression`); topological data analysis (`tda`); stochastic processes (Markov chains, Ornstein-Uhlenbeck); Glicko-2 ratings; and Kelly criterion decision models.
 - **`special_functions`**: Classical mathematical functions (Bessel functions, Legendre polynomials).
 
 ---
@@ -53,6 +53,29 @@ let sum = p1 + q1;
 assert_eq!(sum.coeffs[0], Fp::<7>::new(6));
 assert_eq!(sum.coeffs[1], Fp::<7>::new(2));
 assert_eq!(sum.coeffs[2], Fp::<7>::new(3));
+```
+
+### Parametric Distributions and Conjugate Bayesian Updating
+
+Evaluate exact quantiles, fit parameters, and compute conjugate Highest Posterior Density (HPD) intervals:
+
+```rust
+# use pure_math::__doctest_facade as math_explorer;
+use math_explorer::pure_math::statistics::bayesian::BetaBinomial;
+use math_explorer::pure_math::statistics::distributions::{
+    ContinuousDistribution, GammaDist,
+};
+
+# fn main() -> math_explorer::error::Result<()> {
+let gamma = GammaDist::new(3.0, 1.5)?;
+let median = gamma.quantile(0.5)?;
+assert!((gamma.cdf(median) - 0.5).abs() < 1e-10);
+
+let posterior = BetaBinomial::uniform().update(16, 20)?;
+let hpd95 = posterior.hpd_interval(0.95)?;
+assert!(hpd95.contains(posterior.posterior_mean()));
+# Ok(())
+# }
 ```
 
 ---

@@ -1,7 +1,8 @@
 use super::{
-    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
-    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    AmbsError, AnalysisError, BayesianError, CopulaError, DistributionError, EllipticCurveError,
+    EvolutionError, FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarkovError,
+    NumberTheoryError, OptimizationError, OuError, StochasticError, TdaError, TensorError,
+    TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -14,9 +15,15 @@ use thiserror::Error;
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum PureMathError {
+    /// Bayesian inference and MCMC error.
+    #[error("{0}")]
+    Bayesian(#[from] BayesianError),
     /// Copula modeling error.
     #[error("{0}")]
     Copula(#[from] CopulaError),
+    /// Probability distribution and fitting error.
+    #[error("{0}")]
+    Distribution(#[from] DistributionError),
     /// Glicko-2 rating error.
     #[error("{0}")]
     Glicko2(#[from] Glicko2Error),
@@ -115,7 +122,9 @@ impl PureMathError {
     #[verified_engine::verified]
     fn as_diagnostic(&self) -> &dyn Diagnostic {
         match self {
+            Self::Bayesian(err) => err,
             Self::Copula(err) => err,
+            Self::Distribution(err) => err,
             Self::Glicko2(err) => err,
             Self::Kelly(err) => err,
             Self::Markov(err) => err,

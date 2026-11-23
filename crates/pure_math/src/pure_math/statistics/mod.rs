@@ -96,7 +96,9 @@
 //! }
 //! ```
 
+pub mod bayesian;
 pub mod copula;
+pub mod distributions;
 pub mod glicko2;
 pub mod kelly;
 pub mod markov;

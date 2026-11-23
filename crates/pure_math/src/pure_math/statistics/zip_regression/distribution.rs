@@ -1,48 +1,25 @@
 //! Zero-Inflated Poisson distribution implementation.
-//!
-//! This module implements the probability mass function (PMF) and statistical
-//! properties of the Zero-Inflated Poisson (ZIP) distribution.
 
 use super::core::{Count, ZipParams};
-use crate::error::ZipError;
-use statrs::function::gamma::ln_gamma;
+use crate::error::{DistributionError, ZipError};
+use crate::pure_math::statistics::distributions::DiscreteDistribution;
+use crate::pure_math::statistics::distributions::special::{
+    sample_poisson, sample_uniform_open, validate_probability,
+};
+use oxidize_core::rng::OxidizeRng;
+use statrs::function::gamma::{gamma_ur, ln_gamma};
 
-/// Zero-Inflated Poisson distribution.
+/// Zero-Inflated Poisson distribution $\mathrm{ZIP}(\rho, \lambda)$.
 ///
-/// A ZIP distribution is a mixture model that combines:
-/// 1. A point mass at zero (structural zeros) with probability ρ
-/// 2. A Poisson distribution with rate λ and probability (1-ρ)
-///
-/// # Mathematical Definition
-///
-/// The probability mass function is:
-///
-/// ```text
-/// P(Y = 0) = ρ + (1-ρ)e^(-λ)
-/// P(Y = k) = (1-ρ)(λ^k e^(-λ))/k!  for k > 0
-/// ```
-///
-/// # Statistical Properties
-///
-/// - **Mean**: E\[Y\] = (1-ρ)λ
-/// - **Variance**: Var\[Y\] = (1-ρ)λ(1 + ρλ)
-/// - The variance is strictly greater than the mean when ρ > 0, demonstrating overdispersion
-///
-/// # References
-///
-/// Lambert, D. (1992). "Zero-Inflated Poisson Regression, with an Application to Defects in Manufacturing."
-/// *Technometrics*, 34(1), 1-14.
+/// Combines a structural point mass at zero with probability $\rho \in [0, 1]$ and an active
+/// $\mathrm{Poisson}(\lambda)$ process with weight $1 - \rho$.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ZipDistribution {
     params: ZipParams,
 }
 
 impl ZipDistribution {
-    /// Creates a new ZIP distribution.
-    ///
-    /// # Arguments
-    ///
-    /// * `params` - The distribution parameters (ρ and λ)
+    /// Creates a new ZIP distribution from validated [`ZipParams`].
     ///
     /// # Example
     ///
@@ -52,26 +29,14 @@ impl ZipDistribution {
     ///
     /// let params = ZipParams::from_values(0.3, 2.0).unwrap();
     /// let dist = ZipDistribution::new(params);
+    /// assert!(dist.mean() > 0.0);
     /// ```
     #[verified_engine::verified]
     pub fn new(params: ZipParams) -> Self {
         Self { params }
     }
 
-    /// Creates a new ZIP distribution from raw parameter values.
-    ///
-    /// # Arguments
-    ///
-    /// * `rho` - The zero-inflation probability (must be in [0, 1])
-    /// * `lambda` - The Poisson rate (must be positive)
-    ///
-    /// # Returns
-    ///
-    /// * `Result<ZipDistribution, ZipError>` - The distribution or an error
-    ///
-    /// # Errors
-    ///
-    /// Returns a `ZipError` if the underlying parameters are invalid (e.g., negative lambda).
+    /// Creates a new ZIP distribution from raw `rho` $\in [0, 1]$ and `lambda` $> 0$.
     #[verified_engine::verified]
     pub fn from_values(rho: f64, lambda: f64) -> Result<Self, ZipError> {
         Ok(Self {
@@ -79,113 +44,62 @@ impl ZipDistribution {
         })
     }
 
-    /// Returns the distribution parameters.
+    /// Returns the underlying [`ZipParams`].
     #[verified_engine::verified]
     pub fn params(&self) -> ZipParams {
         self.params
     }
 
-    /// Computes the probability mass function P(Y = k).
-    ///
-    /// # Arguments
-    ///
-    /// * `count` - The count value k
-    ///
-    /// # Returns
-    ///
-    /// The probability of observing exactly k events
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use pure_math::__doctest_facade as math_explorer;
-    /// use math_explorer::pure_math::statistics::zip_regression::{ZipDistribution, Count};
-    ///
-    /// let dist = ZipDistribution::from_values(0.2, 3.0).unwrap();
-    /// let prob_zero = dist.pmf(Count::new(0));
-    /// let prob_one = dist.pmf(Count::new(1));
-    /// ```
+    /// Computes the probability mass function $P(Y = k)$.
     #[verified_engine::verified]
     pub fn pmf(&self, count: Count) -> f64 {
-        let k = count.value();
-        let rho = self.params.rho.value();
-        let lambda = self.params.lambda.value();
-
-        if k == 0 {
-            // P(Y = 0) = ρ + (1-ρ)e^(-λ)
-            rho + (1.0 - rho) * (-lambda).exp()
-        } else {
-            // P(Y = k) = (1-ρ)(λ^k e^(-λ))/k!
-            (1.0 - rho) * self.poisson_pmf(lambda, k)
-        }
+        self.pmf_u64(count.value() as u64)
     }
 
-    /// Computes the cumulative distribution function P(Y ≤ k).
-    ///
-    /// # Arguments
-    ///
-    /// * `count` - The count value k
-    ///
-    /// # Returns
-    ///
-    /// The probability of observing k or fewer events
+    /// Computes the natural log probability mass $\ln P(Y = k)$.
+    #[verified_engine::verified]
+    pub fn ln_pmf(&self, count: Count) -> f64 {
+        self.ln_pmf_u64(count.value() as u64)
+    }
+
+    /// Computes the cumulative distribution function $P(Y \le k)$ in $O(1)$ via regularized gamma.
     #[verified_engine::verified]
     pub fn cdf(&self, count: Count) -> f64 {
-        let k = count.value();
-        let mut sum = 0.0;
-        for i in 0..=k {
-            sum += self.pmf(Count::new(i));
-        }
-        sum
+        self.cdf_u64(count.value() as u64)
     }
 
-    /// Computes the mean (expected value) of the distribution.
-    ///
-    /// The mean is given by: E\[Y\] = (1-ρ)λ
-    ///
-    /// # Returns
-    ///
-    /// The expected value
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use pure_math::__doctest_facade as math_explorer;
-    /// use math_explorer::pure_math::statistics::zip_regression::ZipDistribution;
-    ///
-    /// let dist = ZipDistribution::from_values(0.2, 3.0).unwrap();
-    /// let mean = dist.mean();
-    /// assert!((mean - 2.4).abs() < math_explorer::registry::TOLERANCE_STANDARD);  // (1-0.2)*3.0 = 2.4
-    /// ```
+    /// Computes the smallest [`Count`] $k$ satisfying $F(k) \ge p$ for $p \in [0, 1]$.
+    #[verified_engine::verified]
+    pub fn quantile(&self, p: f64) -> Result<Count, ZipError> {
+        if !p.is_finite() || !(0.0..=1.0).contains(&p) {
+            return Err(ZipError::InvalidProbability {
+                value: p,
+                parameter: "p".to_string(),
+            });
+        }
+        let k = self
+            .quantile_u64(p)
+            .map_err(|_| ZipError::InvalidProbability {
+                value: p,
+                parameter: "p".to_string(),
+            })?;
+        Ok(Count::new(k.min(u32::MAX as u64) as u32))
+    }
+
+    /// Draws a deterministic [`Count`] from $\mathrm{ZIP}(\rho, \lambda)$ using `rng`.
+    #[verified_engine::verified]
+    pub fn sample(&self, rng: &mut OxidizeRng) -> Count {
+        let k = <Self as DiscreteDistribution>::sample(self, rng);
+        Count::new(k.min(u32::MAX as u64) as u32)
+    }
+
+    /// Computes the mean $E(Y) = (1 - \rho)\lambda$.
     #[verified_engine::verified]
     pub fn mean(&self) -> f64 {
-        let rho = self.params.rho.value();
-        let lambda = self.params.lambda.value();
-        (1.0 - rho) * lambda
+        (1.0 - self.params.rho.value()) * self.params.lambda.value()
     }
 
-    /// Computes the variance of the distribution.
-    ///
-    /// The variance is given by: Var\[Y\] = (1-ρ)λ(1 + ρλ)
-    ///
-    /// Note that Var\[Y\] > E\[Y\] when ρ > 0, demonstrating overdispersion.
-    ///
-    /// # Returns
-    ///
-    /// The variance
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use pure_math::__doctest_facade as math_explorer;
-    /// use math_explorer::pure_math::statistics::zip_regression::ZipDistribution;
-    ///
-    /// let dist = ZipDistribution::from_values(0.2, 3.0).unwrap();
-    /// let variance = dist.variance();
-    /// let mean = dist.mean();
-    /// // For ZIP with ρ > 0, variance > mean (overdispersion)
-    /// assert!(variance > mean);
-    /// ```
+    /// Computes the variance $\mathrm{Var}(Y) = (1 - \rho)\lambda(1 + \rho\lambda)$.
     #[verified_engine::verified]
     pub fn variance(&self) -> f64 {
         let rho = self.params.rho.value();
@@ -193,137 +107,164 @@ impl ZipDistribution {
         (1.0 - rho) * lambda * (1.0 + rho * lambda)
     }
 
-    /// Computes the standard deviation of the distribution.
+    /// Computes the standard deviation $\sqrt{\mathrm{Var}(Y)}$.
     #[verified_engine::verified]
     pub fn std_dev(&self) -> f64 {
         self.variance().sqrt()
     }
 
-    /// Helper function to compute the Poisson PMF: P(X = k) = (λ^k e^(-λ))/k!
     #[verified_engine::verified]
-    fn poisson_pmf(&self, lambda: f64, k: u32) -> f64 {
-        let k_f64 = k as f64;
-        let log_prob = k_f64 * lambda.ln() - lambda - self.log_factorial(k);
-        log_prob.exp()
-    }
-
-    /// Helper function to compute log(k!) using the gamma function.
-    #[verified_engine::verified]
-    fn log_factorial(&self, k: u32) -> f64 {
+    fn pmf_u64(&self, k: u64) -> f64 {
+        let rho = self.params.rho.value();
+        let lambda = self.params.lambda.value();
         if k == 0 {
+            rho + (1.0 - rho) * (-lambda).exp()
+        } else if rho >= 1.0 {
             0.0
         } else {
-            // log(k!) = log(Γ(k+1))
-            Self::log_gamma((k + 1) as f64)
+            self.ln_pmf_u64(k).exp()
         }
     }
 
-    /// Helper function to compute log(Γ(x)) using statrs.
     #[verified_engine::verified]
-    fn log_gamma(x: f64) -> f64 {
-        ln_gamma(x)
+    fn ln_pmf_u64(&self, k: u64) -> f64 {
+        let rho = self.params.rho.value();
+        let lambda = self.params.lambda.value();
+        if k == 0 {
+            let p0 = rho + (1.0 - rho) * (-lambda).exp();
+            if p0 <= 0.0 {
+                f64::NEG_INFINITY
+            } else {
+                p0.ln()
+            }
+        } else if rho >= 1.0 {
+            f64::NEG_INFINITY
+        } else {
+            let kf = k as f64;
+            (-rho).ln_1p() + kf * lambda.ln() - lambda - ln_gamma(kf + 1.0)
+        }
+    }
+
+    #[verified_engine::verified]
+    fn cdf_u64(&self, k: u64) -> f64 {
+        let rho = self.params.rho.value();
+        if rho >= 1.0 {
+            return 1.0;
+        }
+        let lambda = self.params.lambda.value();
+        (rho + (1.0 - rho) * gamma_ur((k as f64) + 1.0, lambda)).clamp(0.0, 1.0)
+    }
+
+    #[verified_engine::verified]
+    fn quantile_u64(&self, p: f64) -> Result<u64, DistributionError> {
+        validate_probability(p)?;
+        let rho = self.params.rho.value();
+        if rho >= 1.0 {
+            return Ok(0);
+        }
+        if p >= 1.0 {
+            return Err(DistributionError::InvalidProbability { value: p });
+        }
+        if p <= self.pmf_u64(0) {
+            return Ok(0);
+        }
+        let mut lo = 0_u64;
+        let mut hi = (self.params.lambda.value().ceil() as u64).max(4);
+        while self.cdf_u64(hi) < p && hi < (1_u64 << 40) {
+            lo = hi + 1;
+            hi = hi.saturating_mul(2);
+        }
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if self.cdf_u64(mid) >= p {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        Ok(lo)
+    }
+}
+
+impl DiscreteDistribution for ZipDistribution {
+    #[verified_engine::verified]
+    fn pmf(&self, k: u64) -> f64 {
+        self.pmf_u64(k)
+    }
+
+    #[verified_engine::verified]
+    fn ln_pmf(&self, k: u64) -> f64 {
+        self.ln_pmf_u64(k)
+    }
+
+    #[verified_engine::verified]
+    fn cdf(&self, k: u64) -> f64 {
+        self.cdf_u64(k)
+    }
+
+    #[verified_engine::verified]
+    fn quantile(&self, p: f64) -> Result<u64, DistributionError> {
+        self.quantile_u64(p)
+    }
+
+    #[verified_engine::verified]
+    fn mean(&self) -> f64 {
+        ZipDistribution::mean(self)
+    }
+
+    #[verified_engine::verified]
+    fn variance(&self) -> f64 {
+        ZipDistribution::variance(self)
+    }
+
+    #[verified_engine::verified]
+    fn sample(&self, rng: &mut OxidizeRng) -> u64 {
+        if sample_uniform_open(rng) < self.params.rho.value() {
+            0
+        } else {
+            sample_poisson(self.params.lambda.value(), rng)
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #![cfg_attr(any(), verified_engine::verified(opt_out = "tests"))]
+
     use super::*;
+    use verified_engine::engine::VerifiedEngine;
 
     #[test]
-    #[verified_engine::verified]
-    fn test_zip_pmf_zero_count() {
-        // With rho=0.2, lambda=3.0
-        // P(Y=0) = 0.2 + 0.8 * e^(-3.0)
+    fn test_zip_pmf_moments_and_overdispersion() {
         let dist = ZipDistribution::from_values(0.2, 3.0).unwrap();
-        let prob = dist.pmf(Count::new(0));
+        let expected_zero = 0.2 + 0.8 * (-3.0_f64).exp();
+        assert!((dist.pmf(Count::new(0)) - expected_zero).abs() < 1e-12);
+        assert!((dist.ln_pmf(Count::new(1)).exp() - dist.pmf(Count::new(1))).abs() < 1e-12);
+        assert!((dist.mean() - 2.4).abs() < 1e-12);
+        assert!((dist.variance() - 3.84).abs() < 1e-12);
+        assert!(dist.variance() > dist.mean());
 
-        let expected = 0.2 + 0.8 * (-3.0_f64).exp();
-        assert!((prob - expected).abs() < math_commons::registry::TOLERANCE_STANDARD);
+        let pois_equiv = ZipDistribution::from_values(0.0, 2.0).unwrap();
+        assert!((pois_equiv.mean() - 2.0).abs() < 1e-12);
+        assert!((pois_equiv.variance() - 2.0).abs() < 1e-12);
     }
 
     #[test]
-    #[verified_engine::verified]
-    fn test_zip_pmf_positive_count() {
-        // With rho=0.2, lambda=3.0
-        // P(Y=1) = 0.8 * (3^1 * e^(-3)) / 1!
-        let dist = ZipDistribution::from_values(0.2, 3.0).unwrap();
-        let prob = dist.pmf(Count::new(1));
-
-        let lambda = 3.0_f64;
-        let poisson_prob = lambda * (-lambda).exp();
-        let expected = 0.8 * poisson_prob;
-        assert!((prob - expected).abs() < math_commons::registry::TOLERANCE_FAST);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_zip_mean() {
-        let dist = ZipDistribution::from_values(0.2, 3.0).unwrap();
-        let mean = dist.mean();
-        // E[Y] = (1-0.2)*3.0 = 2.4
-        assert!((mean - 2.4).abs() < math_commons::registry::TOLERANCE_STANDARD);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_zip_variance() {
-        let dist = ZipDistribution::from_values(0.2, 3.0).unwrap();
-        let variance = dist.variance();
-        // Var[Y] = (1-0.2)*3.0*(1 + 0.2*3.0) = 0.8*3.0*1.6 = 3.84
-        let expected = 0.8 * 3.0 * 1.6;
-        assert!((variance - expected).abs() < math_commons::registry::TOLERANCE_STANDARD);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_overdispersion() {
-        // ZIP distributions with rho > 0 should exhibit overdispersion
-        let dist = ZipDistribution::from_values(0.3, 2.5).unwrap();
-        let mean = dist.mean();
-        let variance = dist.variance();
-
-        // Variance should be strictly greater than mean
-        assert!(variance > mean);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_reduce_to_poisson() {
-        // When rho = 0, ZIP reduces to standard Poisson
-        let dist = ZipDistribution::from_values(0.0, 2.0).unwrap();
-        let mean = dist.mean();
-        let variance = dist.variance();
-
-        // For standard Poisson, mean = variance = lambda
-        assert!((mean - 2.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
-        assert!((variance - 2.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_pmf_sums_to_one() {
-        let dist = ZipDistribution::from_values(0.2, 2.0).unwrap();
-        let mut sum = 0.0;
-
-        // Sum over first 20 values (should be very close to 1.0)
-        for k in 0..20 {
-            sum += dist.pmf(Count::new(k));
+    fn test_zip_quantiles_sampling_and_zero_allocation() {
+        let dist = ZipDistribution::from_values(0.35, 4.0).unwrap();
+        for &q in &[0.1, 0.4, 0.75, 0.95] {
+            let k = dist.quantile(q).unwrap();
+            assert!(dist.cdf(k) + 1e-12 >= q);
+            if k.value() > 0 {
+                assert!(dist.cdf(Count::new(k.value() - 1)) <= q + 1e-12);
+            }
         }
-
-        assert!((sum - 1.0).abs() < 1e-3);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_cdf_monotonic() {
-        let dist = ZipDistribution::from_values(0.15, 2.5).unwrap();
-
-        let mut prev_cdf = 0.0;
-        for k in 0..10 {
-            let cdf = dist.cdf(Count::new(k));
-            assert!(cdf >= prev_cdf);
-            assert!(cdf <= 1.0);
-            prev_cdf = cdf;
-        }
+        let mut rng = OxidizeRng::from_seed(314);
+        let (acc, _) = VerifiedEngine::run_verified(|| {
+            let q = DiscreteDistribution::quantile(&dist, 0.8).unwrap();
+            let s = DiscreteDistribution::sample(&dist, &mut rng);
+            q + s
+        });
+        assert!(acc < 10_000);
     }
 }

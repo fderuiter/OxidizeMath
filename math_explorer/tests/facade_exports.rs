@@ -144,6 +144,8 @@ fn assert_pure_math_eighteen_errors() {
         e::ZipError::InvalidCount { value: -1.0 }.severity(),
         e::TdaError::EmptyPointCloud.severity(),
         e::CopulaError::NotSymmetric.severity(),
+        e::DistributionError::InvalidProbability { value: 1.5 }.severity(),
+        e::BayesianError::InvalidCredibleLevel { level: 1.0 }.severity(),
         e::Glicko2Error::EmptyMatchResults.severity(),
         e::AnalysisError::ConvergenceError(0.0).severity(),
         e::EllipticCurveError::InvalidDegree.severity(),

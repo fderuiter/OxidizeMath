@@ -98,6 +98,7 @@
 
 pub mod core;
 pub mod gaussian;
+mod qmc;
 pub mod transforms;
 
 pub use core::{Correlation, CorrelationMatrix, Probability};
