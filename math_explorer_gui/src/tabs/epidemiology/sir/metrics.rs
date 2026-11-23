@@ -110,7 +110,7 @@ fn render_empirical_overlay_lines(
     );
 }
 
-/// Renders the SIR simulation plot, CSV dataset import header, and inline network overlay toggle.
+/// Renders the SIR simulation plot and inline network overlay toggle.
 pub(super) fn render_simulation_plot(
     ui: &mut egui::Ui,
     tool: &mut SirTool,
@@ -119,9 +119,6 @@ pub(super) fn render_simulation_plot(
     let plot_id = ui.make_persistent_id("sir_plot");
     ui.horizontal_wrapped(|ui| {
         ui.heading("Simulation");
-        if ui.button("Import Dataset (CSV)").clicked() {
-            egui_plot::export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
-        }
         ui.separator();
         render_network_overlay_controls(ui, tool, net_trace);
     });
