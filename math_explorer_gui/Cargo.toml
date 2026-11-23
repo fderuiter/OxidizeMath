@@ -95,7 +95,6 @@ web-sys = { workspace = true, features = [
     "BiquadFilterNode",
     "BiquadFilterType",
     "CssStyleDeclaration",
-    "DedicatedWorkerGlobalScope",
     "Document",
     "DynamicsCompressorNode",
     "Element",
@@ -108,7 +107,6 @@ web-sys = { workspace = true, features = [
     "HtmlElement",
     "Location",
     "MediaQueryList",
-    "MessageEvent",
     "Node",
     "NodeList",
     "OscillatorNode",
@@ -119,9 +117,6 @@ web-sys = { workspace = true, features = [
     "StereoPannerNode",
     "Storage",
     "Window",
-    "Worker",
-    "WorkerOptions",
-    "WorkerType",
 ] }
 
 [target.wasm32-unknown-unknown.dependencies]
