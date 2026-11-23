@@ -1,4 +1,4 @@
-//! Seeded point-cloud shape generators and starter gallery preset for the Vietoris-Rips TDA workbench.
+//! Seeded point-cloud shape generators and starter gallery presets for the Vietoris-Rips TDA workbench.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -224,198 +224,6 @@ fn sample_uniform_random(rng: &mut oxidize_core::rng::OxidizeRng, count: usize) 
         .collect()
 }
 
-pub(super) struct SerializedPoints2D<'a> {
-    pub(super) pts: &'a [Point2D],
-    pub(super) quantize: bool,
-}
-
-impl serde::Serialize for SerializedPoints2D<'_> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeSeq;
-        let mut seq = serializer.serialize_seq(Some(self.pts.len()))?;
-        for pt in self.pts {
-            let pair = if self.quantize {
-                [
-                    super::io::quantize_url_coord(pt.x),
-                    super::io::quantize_url_coord(pt.y),
-                ]
-            } else {
-                [pt.x, pt.y]
-            };
-            seq.serialize_element(&pair)?;
-        }
-        seq.end()
-    }
-}
-
-fn is_zero(val: &f64) -> bool {
-    *val == 0.0
-}
-
-#[derive(serde::Serialize)]
-pub(super) struct VietorisRipsSaveState<'a> {
-    pub(super) radius: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) points: Option<SerializedPoints2D<'a>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) generator: Option<&'a GeneratorDescriptor>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) points_nd: Option<&'a [Vec<f64>]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) axis_x: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) axis_y: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) plot_mode: Option<super::plots::PersistencePlotMode>,
-    #[serde(skip_serializing_if = "is_zero")]
-    pub(super) min_persistence: f64,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct VietorisRipsLoadState {
-    pub(super) radius: f64,
-    #[serde(default)]
-    pub(super) points: Option<Vec<[f64; 2]>>,
-    #[serde(default)]
-    pub(super) generator: Option<GeneratorDescriptor>,
-    #[serde(default)]
-    pub(super) points_nd: Option<Vec<Vec<f64>>>,
-    #[serde(default)]
-    pub(super) axis_x: Option<usize>,
-    #[serde(default)]
-    pub(super) axis_y: Option<usize>,
-    #[serde(default)]
-    pub(super) plot_mode: super::plots::PersistencePlotMode,
-    #[serde(default)]
-    pub(super) min_persistence: f64,
-}
-
-const MAX_ALLOWED_RADIUS: f64 = 1_000_000.0;
-
-pub(super) fn serialize_tool_state(tool: &super::VietorisRipsTool) -> Option<String> {
-    let mode_opt = (!tool.plot_mode.is_default()).then_some(tool.plot_mode);
-    let state = match &tool.source {
-        super::CloudSource::Custom2D(pts) => VietorisRipsSaveState {
-            radius: tool.radius,
-            points: Some(SerializedPoints2D {
-                pts,
-                quantize: pts.len() <= super::io::MAX_URL_CUSTOM_POINTS_2D,
-            }),
-            generator: None,
-            points_nd: None,
-            axis_x: None,
-            axis_y: None,
-            plot_mode: mode_opt,
-            min_persistence: tool.min_persistence,
-        },
-        super::CloudSource::Generator(desc) => VietorisRipsSaveState {
-            radius: tool.radius,
-            points: None,
-            generator: Some(desc),
-            points_nd: None,
-            axis_x: None,
-            axis_y: None,
-            plot_mode: mode_opt,
-            min_persistence: tool.min_persistence,
-        },
-        super::CloudSource::CustomNd {
-            cloud,
-            axis_x,
-            axis_y,
-        } => VietorisRipsSaveState {
-            radius: tool.radius,
-            points: None,
-            generator: None,
-            points_nd: Some(cloud.points()),
-            axis_x: Some(*axis_x),
-            axis_y: Some(*axis_y),
-            plot_mode: mode_opt,
-            min_persistence: tool.min_persistence,
-        },
-    };
-    serde_json::to_string(&state).ok()
-}
-
-pub(super) fn deserialize_tool_state(
-    tool: &mut super::VietorisRipsTool,
-    state: &str,
-) -> Result<(), String> {
-    let loaded: VietorisRipsLoadState =
-        serde_json::from_str(state).map_err(|e| format!("Invalid Vietoris-Rips state: {e}"))?;
-    if !loaded.radius.is_finite() || !(0.0..=MAX_ALLOWED_RADIUS).contains(&loaded.radius) {
-        return Err(format!(
-            "radius out of [0.0, {MAX_ALLOWED_RADIUS}]: {}",
-            loaded.radius
-        ));
-    }
-    if !loaded.min_persistence.is_finite()
-        || !(0.0..=MAX_ALLOWED_RADIUS).contains(&loaded.min_persistence)
-    {
-        return Err(format!(
-            "invalid min_persistence: {}",
-            loaded.min_persistence
-        ));
-    }
-    apply_loaded_cloud(tool, loaded)
-}
-
-fn apply_loaded_cloud(
-    tool: &mut super::VietorisRipsTool,
-    loaded: VietorisRipsLoadState,
-) -> Result<(), String> {
-    use math_explorer::pure_math::statistics::tda::core::NdPointCloud;
-    let sources = usize::from(loaded.points.is_some())
-        + usize::from(loaded.generator.is_some())
-        + usize::from(loaded.points_nd.is_some());
-    if sources != 1 {
-        return Err(
-            "Vietoris-Rips state must specify one of 'points', 'generator', or 'points_nd'"
-                .to_string(),
-        );
-    }
-    if let Some(raw_pts) = loaded.points {
-        if !(1..=super::io::MAX_VIETORIS_RIPS_POINTS).contains(&raw_pts.len())
-            || !raw_pts.iter().all(|p| p[0].is_finite() && p[1].is_finite())
-        {
-            return Err(format!(
-                "points must contain 1..={} finite points",
-                super::io::MAX_VIETORIS_RIPS_POINTS
-            ));
-        }
-        let quantize = raw_pts.len() <= super::io::MAX_URL_CUSTOM_POINTS_2D;
-        let pts: Vec<Point2D> = raw_pts
-            .into_iter()
-            .map(|[x, y]| {
-                if quantize {
-                    Point2D::new(
-                        super::io::quantize_url_coord(x),
-                        super::io::quantize_url_coord(y),
-                    )
-                } else {
-                    Point2D::new(x, y)
-                }
-            })
-            .collect();
-        tool.rebuild_from_2d(super::CloudSource::Custom2D(pts), Vec::new(), loaded.radius)?;
-    } else if let Some(desc) = loaded.generator {
-        desc.validate()?;
-        let pts = generate_preset_points(&desc);
-        tool.rebuild_from_2d(super::CloudSource::Generator(desc), pts, loaded.radius)?;
-    } else if let Some(nd_rows) = loaded.points_nd {
-        let nd = NdPointCloud::new(nd_rows).map_err(|e| format!("{e}"))?;
-        let ax = loaded.axis_x.unwrap_or(0);
-        let ay = loaded
-            .axis_y
-            .unwrap_or(1.min(nd.dimension().saturating_sub(1)));
-        tool.rebuild_from_nd(nd, ax, ay, loaded.radius)?;
-    }
-    tool.plot_mode = loaded.plot_mode;
-    tool.min_persistence = loaded.min_persistence;
-    tool.refresh_url_budget_flag();
-    Ok(())
-}
-
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
@@ -433,6 +241,58 @@ const STARTER_PRESET_JSON: &str = r#"{
   }
 }"#;
 
+const STARTER_PRESET_LORENZ_3D_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "3D Lorenz Strange Attractor Homology",
+    "domain": "geometry_topology",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "mode": "lorenz_3d",
+    "radius": 7.5,
+    "chaos": {
+      "sigma": 10.0,
+      "rho": 28.0,
+      "beta": 2.6666666666666665,
+      "dt": 0.01,
+      "landmark_count": 64,
+      "takens_lag": 8
+    },
+    "camera": {
+      "pitch": 0.35,
+      "yaw": 0.55,
+      "zoom": 1.0
+    }
+  }
+}"#;
+
+const STARTER_PRESET_TAKENS_3D_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Takens Delay Attractor Reconstruction",
+    "domain": "geometry_topology",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "mode": "takens_3d",
+    "radius": 7.0,
+    "chaos": {
+      "sigma": 10.0,
+      "rho": 28.0,
+      "beta": 2.6666666666666665,
+      "dt": 0.01,
+      "landmark_count": 64,
+      "takens_lag": 10
+    },
+    "camera": {
+      "pitch": 0.45,
+      "yaw": -0.6,
+      "zoom": 1.0
+    }
+  }
+}"#;
+
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "vietoris_rips_starter",
@@ -443,6 +303,32 @@ inventory::submit! {
         domain: "geometry_topology",
         tool_name: Some("VietorisRipsTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "vietoris_rips_lorenz_3d",
+        title: "3D Lorenz Strange Attractor Homology",
+        description: "64-landmark 3D Lorenz butterfly filtration locking onto β₁ = 2 persistent loops alongside λ₁ and D₂.",
+        category: "Algebraic Topology",
+        icon: "🦋",
+        domain: "geometry_topology",
+        tool_name: Some("VietorisRipsTool"),
+        preset_generator: || STARTER_PRESET_LORENZ_3D_JSON,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "vietoris_rips_takens_3d",
+        title: "Takens Delay Attractor Reconstruction",
+        description: "3D delay-coordinate embedding (x(t), x(t-τ), x(t-2τ)) reconstructing strange-attractor topology from scalar observations.",
+        category: "Algebraic Topology",
+        icon: "🌀",
+        domain: "geometry_topology",
+        tool_name: Some("VietorisRipsTool"),
+        preset_generator: || STARTER_PRESET_TAKENS_3D_JSON,
     }
 }
 

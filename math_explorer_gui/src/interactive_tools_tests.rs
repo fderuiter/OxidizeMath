@@ -29,6 +29,7 @@ mod tests {
         check_tool!(crate::tabs::solid_state::ising::IsingModelTool);
         check_tool!(crate::tabs::quantum::clebsch::ClebschGordanTool);
         check_tool!(crate::tabs::graph_theory::network_metrics::NetworkMetricsTool);
+        check_tool!(crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool);
         check_tool!(crate::tabs::clinical_trials::survival::SurvivalAnalysisTool);
         check_tool!(crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool);
         check_tool!(crate::tabs::clinical_trials::randomization::RandomizationTool);
@@ -47,9 +48,11 @@ mod tests {
         check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
         check_tool!(crate::tabs::medical::radar_gating::RadarGatingTool);
         check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
+        check_tool!(crate::tabs::number_theory::fractran_machine::FractranMachineTool);
         check_tool!(crate::tabs::number_theory::ualbf_widget::UalbfWidget);
         check_tool!(crate::tabs::number_theory::partitions_widget::PartitionsWidget);
         check_tool!(crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget);
+        check_tool!(crate::tabs::morphogenesis::lenia::LeniaTool);
         check_tool!(crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool);
         check_tool!(crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool);
     }
