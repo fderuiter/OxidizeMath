@@ -1,11 +1,13 @@
 //! Reusable egui mathematical expression input bar with live syntax validation, LaTeX preview,
 //! coordinate scope validation, `CompiledExpr` bytecode caching, and `AnimatedSlider` synthesis.
 
+pub mod coupled;
 pub mod params;
 
 #[cfg(test)]
 mod tests;
 
+pub use coupled::CoupledExpressionBank;
 pub use params::{ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
 
 use eframe::egui;
@@ -154,6 +156,28 @@ impl MathExpressionInputBar {
     #[must_use]
     pub fn param_slice(&self) -> &[f64] {
         self.slider_bank.param_slice()
+    }
+
+    /// Returns the ordered list of active free parameter names aligned with [`Self::param_slice`].
+    #[must_use]
+    pub fn active_param_names(&self) -> &[String] {
+        self.slider_bank.active_names()
+    }
+
+    /// Looks up the active parameter value assigned to `name`.
+    #[must_use]
+    pub fn active_param_value(&self, name: &str) -> Option<f64> {
+        self.slider_bank.active_value(name)
+    }
+
+    /// Updates a single parameter value in the slider bank without clearing other remembered parameters.
+    pub fn set_param(&mut self, name: &str, value: f64) {
+        self.slider_bank.set_param(name, value);
+    }
+
+    /// Clamps active free parameter values to `range`.
+    pub fn clamp_active_params(&mut self, range: RangeInclusive<f64>) {
+        self.slider_bank.clamp_active_values(range);
     }
 
     /// Computes a deterministic fingerprint of the active formula and free-parameter sliders.
@@ -310,6 +334,14 @@ impl MathExpressionInputBar {
         });
 
         changed
+    }
+
+    /// Renders only the synthesized parameter sliders under a scoped `id_salt`.
+    pub fn sliders_ui(&mut self, ui: &mut egui::Ui, id_salt: &str) -> bool {
+        if !self.scope_enabled {
+            return false;
+        }
+        ui.push_id(id_salt, |ui| self.slider_bank.ui(ui)).inner
     }
 }
 

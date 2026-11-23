@@ -1,8 +1,13 @@
 #![allow(missing_docs)]
+#[cfg(not(target_arch = "wasm32"))]
 use domain_biology::biology::diffusion::FiniteDifference2D;
+#[cfg(not(target_arch = "wasm32"))]
 use domain_biology::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(clippy::disallowed_methods)]
 #[test]
 #[verified_engine::verified]
 fn bench_turing_2d_step() {

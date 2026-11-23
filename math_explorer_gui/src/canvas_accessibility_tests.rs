@@ -144,4 +144,10 @@ fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
 
     let mut optics = crate::tabs::optics_waves::OpticsWaveTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut optics, "2D Wave & Caustics Playground");
+
+    let mut radar = crate::tabs::medical::radar_gating::RadarGatingTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut radar,
+        "60 GHz MIMO Radar Room Visualization",
+    );
 }

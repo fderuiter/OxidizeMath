@@ -1,5 +1,9 @@
 # ADR 0014: Fused Batch Linear Projections for Multi-Head Attention
 
+## Status
+
+Accepted
+
 ## Context
 In `crates/domain_ai/src/ai/transformer/attention.rs`, multi-head attention previously executed separate linear projection matrix multiplications per attention head in an isolated loop. For a layer with `h` attention heads, this triggered `3 * h` dynamic matrix allocations and fragmented matrix multiplications that prevented hardware GEMM parallelism.
 
