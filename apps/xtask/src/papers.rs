@@ -6,12 +6,12 @@ pub use bundle::package_release_bundle;
 use bundle::{
     build_checksum_args, build_tar_args, collect_bundle_artifacts, is_safe_bundle_filename,
 };
-#[cfg(test)]
-use index_html::encode_uri_component;
 use index_html::{
-    INDEX_HTML_FOOTER, INDEX_HTML_HEADER, extract_latex_command, extract_latex_environment,
-    format_title_from_stem, render_paper_card,
+    INDEX_HTML_FOOTER, IndexTarget, extract_latex_command, extract_latex_environment,
+    format_title_from_stem, render_index_header, render_paper_card_for_target,
 };
+#[cfg(test)]
+use index_html::{encode_uri_component, render_paper_card};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -51,7 +51,7 @@ pub fn compile_papers() {
         tex_files.len()
     );
 
-    println!("=== Generating Papers Index Page ===");
+    println!("=== Generating Papers Index Pages ===");
     generate_index_html(&tex_files, output_dir);
 
     println!("=== Packaging Papers Release Archive ===");
@@ -404,20 +404,41 @@ fn run_pdflatex(path: &Path, output_dir: &Path) {
     }
 }
 
-/// Generate the static HTML index page for compiled academic papers.
+fn render_index_document(
+    papers_meta: &[(String, String, String, String)],
+    target: IndexTarget,
+) -> String {
+    let mut html = render_index_header(target);
+    for (stem, title, author, abstract_text) in papers_meta {
+        html.push_str(&render_paper_card_for_target(
+            stem,
+            title,
+            author,
+            abstract_text,
+            target,
+        ));
+    }
+    html.push_str(INDEX_HTML_FOOTER);
+    html
+}
+
+/// Generate static HTML index pages for the release archive and GitHub Pages.
 pub fn generate_index_html(tex_files: &[PathBuf], output_dir: &Path) {
     let mut papers_meta = extract_papers_metadata(tex_files);
     papers_meta.sort_by(|a, b| a.1.cmp(&b.1));
 
-    let mut html = String::from(INDEX_HTML_HEADER);
-    for (stem, title, author, abstract_text) in papers_meta {
-        html.push_str(&render_paper_card(&stem, &title, &author, &abstract_text));
-    }
-    html.push_str(INDEX_HTML_FOOTER);
+    let archive_path = output_dir.join("index.html");
+    let archive_html = render_index_document(&papers_meta, IndexTarget::Archive);
+    fs::write(&archive_path, archive_html).unwrap();
+    println!("Generated archive papers index page at {:?}", archive_path);
 
-    let index_path = output_dir.join("index.html");
-    fs::write(&index_path, html).unwrap();
-    println!("Generated papers index page at {:?}", index_path);
+    let pages_path = output_dir.join("pages-index.html");
+    let pages_html = render_index_document(&papers_meta, IndexTarget::GitHubPages);
+    fs::write(&pages_path, pages_html).unwrap();
+    println!(
+        "Generated GitHub Pages papers index page at {:?}",
+        pages_path
+    );
 }
 
 fn try_extract_papers_metadata(

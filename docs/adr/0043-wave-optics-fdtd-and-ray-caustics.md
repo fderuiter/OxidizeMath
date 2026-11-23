@@ -1,4 +1,4 @@
-# ADR 0042: Pre-Allocated 2D FDTD Wave Solver, Hamiltonian Ray Caustics, and Auto-Discovered Optics Playground
+# ADR 0043: Pre-Allocated 2D FDTD Wave Solver, Hamiltonian Ray Caustics, and Auto-Discovered Optics Playground
 
 ## Status
 Accepted (extends [ADR 0008](0008-finite-state-solver-guard.md), [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
@@ -13,7 +13,7 @@ Bridging physical wave diffraction and geometric-optics caustics across desktop 
 
 ## Decision
 1. **Zero-Allocation 2D FDTD Solver (`WaveField2D`) in `pure_math`**:
-   - Add [`wave_2d.rs`](../../crates/pure_math/src/pure_math/analysis/pde/wave_2d.rs) and re-export `WaveField2D`, `WaveFieldConfig2D`, `WaveSource2D`, and `WaveSourceKind` from [`wave.rs`](../../crates/pure_math/src/pure_math/analysis/pde/wave.rs).
+   - Add [`wave_fdtd.rs`](../../crates/pure_math/src/pure_math/analysis/pde/wave_fdtd.rs) and re-export `WaveField2D`, `WaveFieldConfig2D`, `WaveSource2D`, and `WaveSourceKind` from [`wave.rs`](../../crates/pure_math/src/pure_math/analysis/pde/wave.rs).
    - Step positive-index inhomogeneous media via centered leapfrog using [`StencilOperators::central_diff_2nd_2d`](../../crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs), quadratic sponge absorbing boundaries, Dirichlet obstacle masks, and 2D Courant-Friedrichs-Lewy (`cfl_dt`) clamping.
    - Pre-allocate passive matched-Drude auxiliary fields (`hx`, `hy`, `jz`, `mx`, `my`, `omega_p_sq`) activated automatically when negative-index cells ($n < 0$) are configured, reproducing backward phase fronts and Veselago superlens focusing with zero heap allocation during `step`.
 2. **Optical Media, RK4 Hamiltonian Caustics, and Virtual Detector Readouts in `domain_physics`**:
@@ -27,4 +27,4 @@ Bridging physical wave diffraction and geometric-optics caustics across desktop 
 ## Consequences
 - **Positive**: Users and downstream `math_explorer` consumers gain verified 2D scalar/metamaterial FDTD wave propagation, RK4 Hamiltonian ray caustics, and calibrated optical detector readouts on both native desktop and `wasm32` with zero hot-loop heap allocations.
 - **Positive**: `OpticsWaveTab` integrates seamlessly into `SimulationFramework` preset, raster export, URL state, and accessibility contract suites without manual edits to `app.rs`.
-- **Neutral**: Adding `OpticsWaveTab`, `OpticsWaveTool`, and three starter presets increments workspace GUI inventory contract counts to `23` tabs, `66` tools, and `88` starter presets, reflected in `api_baseline.json` and contract tests.
+- **Neutral**: Adding `OpticsWaveTab`, `OpticsWaveTool`, and three starter presets increments workspace GUI inventory contract counts to `24` tabs, `69` tools, and `100` starter presets, reflected in `api_baseline.json` and contract tests.

@@ -86,6 +86,9 @@ pub mod heat;
 pub mod laplace;
 #[allow(missing_docs)]
 pub mod wave;
+/// Zero-allocation 2D Verlet wave tank, biharmonic Chladni plate, 2D FFT spectra, and sand drift.
 pub mod wave_2d;
+/// Pre-allocated 2D FDTD scalar and matched-Drude metamaterial wave solver.
+pub mod wave_fdtd;
 
 // [cite:graph_parameters_rust]
