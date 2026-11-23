@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for demo neuron builder.
 use math_explorer::biology::neuroscience::neuron::HodgkinHuxleyNeuron;
 
 fn main() {

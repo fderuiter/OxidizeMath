@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for bench mfg.
 #![cfg_attr(not(target_arch = "wasm32"), allow(clippy::disallowed_methods))]
 use math_explorer::applied::game_theory::mean_field::{
     Density, FixedPointSolver, MFGConfigBuilder, MFGSolver, Position,

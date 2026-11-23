@@ -14,7 +14,8 @@ fn test_glicko2_starter_presets_fit_4096b_url_cap_and_roundtrip() {
     ] {
         assert!(raw.len() <= crate::url_state::MAX_DECODED_URL_STATE_BYTES);
         let mut tool = Glicko2TournamentTool::default();
-        tool.import_preset_json(raw).expect("starter preset must load");
+        tool.import_preset_json(raw)
+            .expect("starter preset must load");
         assert!(tool.url_share_warning().is_none());
         let saved = tool.save_state().expect("must serialize");
         let mut restored = Glicko2TournamentTool::default();
@@ -78,8 +79,10 @@ fn test_glicko2_large_roster_warns_url_cap_while_preserving_local_exports() {
     cfg.periods.clear();
 
     let mut tool = Glicko2TournamentTool::default();
-    tool.apply_config(cfg).expect("48-player local config must succeed");
-    tool.simulate_next_period().expect("period simulation must succeed");
+    tool.apply_config(cfg)
+        .expect("48-player local config must succeed");
+    tool.simulate_next_period()
+        .expect("period simulation must succeed");
 
     assert!(
         tool.estimated_url_state_bytes() > crate::url_state::MAX_DECODED_URL_STATE_BYTES,
@@ -129,7 +132,10 @@ fn test_glicko2_render_all_four_plot_modes_and_manual_round_commit() {
         .iter()
         .map(|c| (c.sequential.rating.value() - c.current.rating.value()).abs())
         .fold(0.0_f64, f64::max);
-    assert!(max_drift > 1e-3, "expected measurable sequential vs frozen drift");
+    assert!(
+        max_drift > 1e-3,
+        "expected measurable sequential vs frozen drift"
+    );
 
     let prev_periods = tool.completed_periods.len();
     tool.commit_manual_period().expect("manual round commit");

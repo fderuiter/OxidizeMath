@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for lorenz chaos.
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
 use std::fmt;
 

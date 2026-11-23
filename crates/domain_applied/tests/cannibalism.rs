@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for cannibalism.
 use domain_applied::applied::cannibalism;
 
 #[test]

@@ -6,9 +6,9 @@ pub mod atlas;
 use crate::async_sim::atlas::RegimeCartographer;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::StateSnapshot;
-pub use atlas::{HodgkinHuxleyCartographer, HH_ATLAS_AXIS_PAIRS};
 #[cfg(test)]
 pub use atlas::HodgkinHuxleyRegime;
+pub use atlas::{HodgkinHuxleyCartographer, HH_ATLAS_AXIS_PAIRS};
 use math_explorer::biology::neuroscience::{
     HodgkinHuxleyModel, HodgkinHuxleyNeuron, HodgkinHuxleyParameters,
 };

@@ -479,6 +479,12 @@ impl PlotTransform {
         }
     }
 
+    /// Clears logarithmic scaling on both axes while preserving existing symmetric 3D bounds.
+    #[inline]
+    pub fn clear_log_axis(&mut self) {
+        self.log_axis = Vec2b::FALSE;
+    }
+
     /// Returns `true` if `point` has finite coordinates and strictly positive values on active log axes.
     #[inline]
     pub fn is_point_valid_for_scale(&self, point: &PlotPoint) -> bool {

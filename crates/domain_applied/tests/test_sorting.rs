@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test sorting.
 use domain_applied::applied::algorithms::sorting::*;
 
 // Helper to test strategy composition
