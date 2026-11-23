@@ -42,9 +42,9 @@ pub enum SimCommand {
         /// Tool-specific brush mode index.
         mode: u8,
     },
-    /// Applies a continuous interpolated [`BrushStroke`] in plot/grid coordinates.
+    /// Applies an interpolated spatial brush stroke to the simulation field.
     ApplyBrushStroke(BrushStroke),
-    /// Synchronizes a compact [`SculptStatePayload`] onto the worker simulation model.
+    /// Synchronizes persisted spatial sculpt state with the worker model.
     SyncSculptState(SculptStatePayload),
     #[allow(missing_docs)]
     ClearObstacles,
